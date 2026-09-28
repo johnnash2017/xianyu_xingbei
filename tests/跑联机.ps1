@@ -21,7 +21,7 @@ param(
     [int]$端口 = 32717,
     [int]$秒 = 45,
     [string]$EnginePath = "D:\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe",
-    [string]$ProjectPath = "d:\星杯传说工程\星杯传说2\星杯传说"
+    [string]$ProjectPath = "d:\星杯传说工程\星杯传说2\xianyu_xingbei"
 )
 
 $ErrorActionPreference = "Stop"
