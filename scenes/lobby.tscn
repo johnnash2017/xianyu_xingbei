@@ -1,0 +1,251 @@
+[gd_scene format=3 uid="uid://dly4gegiltdtl"]
+
+[ext_resource type="Script" uid="uid://wf2jgc5748wc" path="res://scripts/ui/lobby.gd" id="1_5gu6x"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nqcc7"]
+content_margin_left = 35.0
+content_margin_top = 35.0
+content_margin_right = 35.0
+content_margin_bottom = 35.0
+bg_color = Color(0.07, 0.08, 0.13, 0.98)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.45, 0.62, 0.95, 0.9)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "人数选项", "选将选项", "创建按钮", "取消创建按钮")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_5gu6x")
+"标题栏" = NodePath("主列/标题栏")
+"房间列表" = NodePath("主列/房间列表")
+"状态栏" = NodePath("主列/状态栏")
+"进入按钮" = NodePath("主列/按钮行/进入按钮")
+"刷新按钮" = NodePath("主列/按钮行/刷新按钮")
+"创建房间按钮" = NodePath("主列/按钮行/创建房间按钮")
+"搜索按钮" = NodePath("主列/按钮行/搜索按钮")
+"返回登录按钮" = NodePath("主列/按钮行/返回登录按钮")
+"跨机IP输入" = NodePath("主列/跨机行/跨机IP输入")
+"连接按钮" = NodePath("主列/跨机行/连接按钮")
+"房主列表" = NodePath("主列/房主列表")
+"创建层" = NodePath("创建层")
+"房名输入" = NodePath("创建层/居中/创建卡片/内容/房名输入")
+"人数选项" = NodePath("创建层/居中/创建卡片/内容/人数选项")
+"选将选项" = NodePath("创建层/居中/创建卡片/内容/选将选项")
+"创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/创建按钮")
+"取消创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/取消创建按钮")
+
+[node name="主列" type="VBoxContainer" parent="." unique_id=992213050]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 58.0
+offset_top = 32.0
+offset_right = -58.0
+offset_bottom = -32.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="标题栏" type="Label" parent="主列" unique_id=1597862457]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+
+[node name="分隔线" type="HSeparator" parent="主列" unique_id=322689434]
+layout_mode = 2
+
+[node name="房间列表" type="ItemList" parent="主列" unique_id=1948636468]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 56
+theme_override_constants/v_separation = 8
+
+[node name="按钮行" type="HBoxContainer" parent="主列" unique_id=1014058521]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="进入按钮" type="Button" parent="主列/按钮行" unique_id=691515620]
+custom_minimum_size = Vector2(288, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "进入选中房间"
+
+[node name="刷新按钮" type="Button" parent="主列/按钮行" unique_id=430257712]
+custom_minimum_size = Vector2(192, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "刷新列表"
+
+[node name="创建房间按钮" type="Button" parent="主列/按钮行" unique_id=389403812]
+custom_minimum_size = Vector2(224, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "创建房间"
+
+[node name="搜索按钮" type="Button" parent="主列/按钮行" unique_id=536616621]
+custom_minimum_size = Vector2(272, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "搜索局域网房主"
+
+[node name="返回登录按钮" type="Button" parent="主列/按钮行" unique_id=1990566153]
+custom_minimum_size = Vector2(192, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "返回登录"
+
+[node name="跨机行" type="HBoxContainer" parent="主列" unique_id=1285522029]
+layout_mode = 2
+theme_override_constants/separation = 13
+
+[node name="连接提示" type="Label" parent="主列/跨机行" unique_id=33848590]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "连接其他机器："
+
+[node name="跨机IP输入" type="LineEdit" parent="主列/跨机行" unique_id=516299558]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 26
+text = "127.0.0.1"
+
+[node name="连接按钮" type="Button" parent="主列/跨机行" unique_id=80773373]
+custom_minimum_size = Vector2(144, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "连接"
+
+[node name="房主列表" type="ItemList" parent="主列" unique_id=541978100]
+visible = false
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+
+[node name="状态栏" type="Label" parent="主列" unique_id=872283274]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+
+[node name="创建层" type="Control" parent="." unique_id=1580318978]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="遮罩" type="ColorRect" parent="创建层" unique_id=898516771]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="居中" type="CenterContainer" parent="创建层" unique_id=1214549149]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="创建卡片" type="PanelContainer" parent="创建层/居中" unique_id=1884565551]
+custom_minimum_size = Vector2(672, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_nqcc7")
+
+[node name="内容" type="VBoxContainer" parent="创建层/居中/创建卡片" unique_id=1464767473]
+layout_mode = 2
+theme_override_constants/separation = 19
+
+[node name="标题" type="Label" parent="创建层/居中/创建卡片/内容" unique_id=62574755]
+layout_mode = 2
+theme_override_font_sizes/font_size = 38
+text = "创建房间"
+horizontal_alignment = 1
+
+[node name="房间名标签" type="Label" parent="创建层/居中/创建卡片/内容" unique_id=342692905]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "房间名"
+
+[node name="房名输入" type="LineEdit" parent="创建层/居中/创建卡片/内容" unique_id=516970594]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "我的房间"
+
+[node name="人数标签" type="Label" parent="创建层/居中/创建卡片/内容" unique_id=1254177390]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "人数"
+
+[node name="人数选项" type="OptionButton" parent="创建层/居中/创建卡片/内容" unique_id=1912333304]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+selected = 2
+item_count = 7
+popup/item_0/text = "2 人"
+popup/item_0/id = 0
+popup/item_1/text = "3 人"
+popup/item_1/id = 1
+popup/item_2/text = "4 人"
+popup/item_2/id = 2
+popup/item_3/text = "5 人"
+popup/item_3/id = 3
+popup/item_4/text = "6 人"
+popup/item_4/id = 4
+popup/item_5/text = "7 人"
+popup/item_5/id = 5
+popup/item_6/text = "8 人"
+popup/item_6/id = 6
+
+[node name="选将标签" type="Label" parent="创建层/居中/创建卡片/内容" unique_id=1143571578]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "选将"
+
+[node name="选将选项" type="OptionButton" parent="创建层/居中/创建卡片/内容" unique_id=964607044]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+selected = 0
+item_count = 4
+popup/item_0/text = "随机"
+popup/item_0/id = 0
+popup/item_1/text = "三选一"
+popup/item_1/id = 1
+popup/item_2/text = "Ban-Pick"
+popup/item_2/id = 2
+popup/item_3/text = "CM"
+popup/item_3/id = 3
+
+[node name="按钮行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容" unique_id=1846027509]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="创建按钮" type="Button" parent="创建层/居中/创建卡片/内容/按钮行" unique_id=1808786785]
+custom_minimum_size = Vector2(208, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "创建"
+
+[node name="取消创建按钮" type="Button" parent="创建层/居中/创建卡片/内容/按钮行" unique_id=2092129321]
+custom_minimum_size = Vector2(208, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "取消"

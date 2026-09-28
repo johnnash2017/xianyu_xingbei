@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://cmgsbwal4m5qs"
+path="res://.godot/imported/It's your turn.wav-97a1e39cf04f3409971c59ab4ad7e6e9.sample"
+
+[deps]
+
+source_file="res://资源/音效/It's your turn.wav"
+dest_files=["res://.godot/imported/It's your turn.wav-97a1e39cf04f3409971c59ab4ad7e6e9.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

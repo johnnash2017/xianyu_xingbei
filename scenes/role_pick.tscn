@@ -1,0 +1,182 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/role_pick.gd" id="1_p4iqs"]
+[ext_resource type="Texture2D" path="res://资源/界面/background.png" id="2_rqerd"]
+[ext_resource type="Texture2D" path="res://资源/界面/button.png" id="3_fj8gs"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1msmj"]
+bg_color = Color(0.11, 0.12, 0.17, 0.97)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.75, 0.68, 0.35, 1)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_evpdd"]
+texture = ExtResource("3_fj8gs")
+texture_margin_left = 12.0
+texture_margin_top = 8.0
+texture_margin_right = 12.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_pltg1"]
+texture = ExtResource("3_fj8gs")
+texture_margin_left = 12.0
+texture_margin_top = 8.0
+texture_margin_right = 12.0
+texture_margin_bottom = 8.0
+modulate_color = Color(0.78, 0.78, 0.78, 1)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_b7wfk"]
+texture = ExtResource("3_fj8gs")
+texture_margin_left = 12.0
+texture_margin_top = 8.0
+texture_margin_right = 12.0
+texture_margin_bottom = 8.0
+modulate_color = Color(1, 0.94, 0.82, 1)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_12ru0"]
+texture = ExtResource("3_fj8gs")
+texture_margin_left = 12.0
+texture_margin_top = 8.0
+texture_margin_right = 12.0
+texture_margin_bottom = 8.0
+modulate_color = Color(1, 1, 1, 0.4)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_v5qp3"]
+texture = ExtResource("3_fj8gs")
+texture_margin_left = 12.0
+texture_margin_top = 8.0
+texture_margin_right = 12.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_5e4al"]
+texture = ExtResource("3_fj8gs")
+texture_margin_left = 12.0
+texture_margin_top = 8.0
+texture_margin_right = 12.0
+texture_margin_bottom = 8.0
+modulate_color = Color(0.78, 0.78, 0.78, 1)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_k7104"]
+texture = ExtResource("3_fj8gs")
+texture_margin_left = 12.0
+texture_margin_top = 8.0
+texture_margin_right = 12.0
+texture_margin_bottom = 8.0
+modulate_color = Color(1, 0.94, 0.82, 1)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_dbb0g"]
+texture = ExtResource("3_fj8gs")
+texture_margin_left = 12.0
+texture_margin_top = 8.0
+texture_margin_right = 12.0
+texture_margin_bottom = 8.0
+modulate_color = Color(1, 1, 1, 0.4)
+
+[node name="RolePick" type="Control" unique_id=819897583 node_paths=PackedStringArray("标题", "提示", "网格", "确定按钮", "取消按钮")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_p4iqs")
+"标题" = NodePath("面板/标题")
+"提示" = NodePath("面板/提示")
+"网格" = NodePath("面板/滚动/网格")
+"确定按钮" = NodePath("面板/按钮行/确定按钮")
+"取消按钮" = NodePath("面板/按钮行/取消按钮")
+
+[node name="遮罩" type="ColorRect" parent="." unique_id=2126150805]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.5)
+
+[node name="面板" type="Panel" parent="." unique_id=1344786224]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -768.0
+offset_top = -448.0
+offset_right = 768.0
+offset_bottom = 448.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_1msmj")
+
+[node name="底图" type="TextureRect" parent="面板" unique_id=421112170]
+modulate = Color(1, 1, 1, 0.45)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource("2_rqerd")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="标题" type="Label" parent="面板" unique_id=1443981982]
+layout_mode = 0
+offset_left = 26.0
+offset_top = 19.0
+offset_right = 1510.0
+offset_bottom = 73.0
+theme_override_font_sizes/font_size = 35
+horizontal_alignment = 1
+
+[node name="提示" type="Label" parent="面板" unique_id=1235116865]
+layout_mode = 0
+offset_left = 26.0
+offset_top = 80.0
+offset_right = 1510.0
+offset_bottom = 122.0
+theme_override_font_sizes/font_size = 24
+horizontal_alignment = 1
+
+[node name="滚动" type="ScrollContainer" parent="面板" unique_id=1117962745]
+layout_mode = 0
+offset_left = 26.0
+offset_top = 134.0
+offset_right = 1510.0
+offset_bottom = 771.0
+horizontal_scroll_mode = 0
+
+[node name="网格" type="GridContainer" parent="面板/滚动" unique_id=354808376]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 13
+theme_override_constants/v_separation = 13
+columns = 7
+
+[node name="按钮行" type="HBoxContainer" parent="面板" unique_id=383236792]
+layout_mode = 0
+offset_left = 26.0
+offset_top = 797.0
+offset_right = 1510.0
+offset_bottom = 867.0
+theme_override_constants/separation = 19
+alignment = 1
+
+[node name="确定按钮" type="Button" parent="面板/按钮行" unique_id=1559293973]
+custom_minimum_size = Vector2(192, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("StyleBoxTexture_evpdd")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_pltg1")
+theme_override_styles/hover = SubResource("StyleBoxTexture_b7wfk")
+theme_override_styles/disabled = SubResource("StyleBoxTexture_12ru0")
+disabled = true
+text = "确定"
+
+[node name="取消按钮" type="Button" parent="面板/按钮行" unique_id=1416422856]
+visible = false
+custom_minimum_size = Vector2(192, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("StyleBoxTexture_v5qp3")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_5e4al")
+theme_override_styles/hover = SubResource("StyleBoxTexture_k7104")
+theme_override_styles/disabled = SubResource("StyleBoxTexture_dbb0g")
+text = "取消"

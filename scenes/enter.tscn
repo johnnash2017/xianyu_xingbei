@@ -1,0 +1,95 @@
+[gd_scene format=3 uid="uid://hpidtcldnlmb"]
+
+[ext_resource type="Script" uid="uid://c53hmhd2aksy1" path="res://scripts/ui/enter.gd" id="1_kiq4n"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bmkq5"]
+content_margin_left = 45.0
+content_margin_top = 45.0
+content_margin_right = 45.0
+content_margin_bottom = 45.0
+bg_color = Color(0.06, 0.07, 0.12, 0.9)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.45, 0.62, 0.95, 0.9)
+corner_radius_top_left = 19
+corner_radius_top_right = 19
+corner_radius_bottom_right = 19
+corner_radius_bottom_left = 19
+
+[node name="Enter" type="Control" unique_id=1575434935 node_paths=PackedStringArray("昵称输入", "进入按钮")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_kiq4n")
+"昵称输入" = NodePath("居中/登录卡片/内容/昵称输入")
+"进入按钮" = NodePath("进入按钮")
+
+[node name="进入按钮" type="Button" parent="." unique_id=235291491]
+self_modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -540.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_font_sizes/font_size = 38
+text = "进入游戏"
+
+[node name="Label" type="Label" parent="进入按钮" unique_id=2138837536]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+theme_override_font_sizes/font_size = 36
+text = "进入游戏"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="居中" type="CenterContainer" parent="." unique_id=599699738]
+mouse_filter = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="登录卡片" type="PanelContainer" parent="居中" unique_id=338765314]
+custom_minimum_size = Vector2(736, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_bmkq5")
+
+[node name="内容" type="VBoxContainer" parent="居中/登录卡片" unique_id=380544764]
+layout_mode = 2
+theme_override_constants/separation = 22
+
+[node name="标题" type="Label" parent="居中/登录卡片/内容" unique_id=1002070406]
+layout_mode = 2
+theme_override_font_sizes/font_size = 64
+text = "星杯传说"
+horizontal_alignment = 1
+
+[node name="分隔线" type="HSeparator" parent="居中/登录卡片/内容" unique_id=1843160353]
+layout_mode = 2
+
+[node name="昵称标签" type="Label" parent="居中/登录卡片/内容" unique_id=1629361459]
+layout_mode = 2
+theme_override_font_sizes/font_size = 29
+text = "昵称"
+
+[node name="昵称输入" type="LineEdit" parent="居中/登录卡片/内容" unique_id=149606733]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+placeholder_text = "请输入昵称"
+max_length = 12

@@ -1,0 +1,41 @@
+[gd_scene format=3 uid="uid://bstarbg00001"]
+
+[ext_resource type="Script" uid="uid://cp7o0rlc5aoij" path="res://scripts/ui/main.gd" id="1_main"]
+[ext_resource type="Shader" uid="uid://d37bq32es8ijy" path="res://资源/界面/ui/star_scroll.gdshader" id="1_rvslj"]
+[ext_resource type="Texture2D" uid="uid://bks2f673hrv1b" path="res://资源/界面/ui/back3.png" id="2_0bbpv"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_0bbpv"]
+shader = ExtResource("1_rvslj")
+shader_parameter/star_tex = ExtResource("2_0bbpv")
+shader_parameter/speed = 0.01
+shader_parameter/gain = 1.0000000475
+shader_parameter/fade = 0.18
+
+[node name="Main" type="Control" unique_id=638649211 node_paths=PackedStringArray("界面层")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_main")
+"界面层" = NodePath("界面层")
+
+[node name="背景" type="TextureRect" parent="." unique_id=2097367495]
+material = SubResource("ShaderMaterial_0bbpv")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 1536.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_0bbpv")
+
+[node name="界面层" type="Control" parent="." unique_id=1577710718]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2

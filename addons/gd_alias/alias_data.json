@@ -1,0 +1,10 @@
+{
+	"res://addons/": "插件",
+	"res://addons/gd_alias/": "别名",
+	"res://addons/gd_alias/gd_file_alias.gd": "别名",
+	"res://addons/label_font_auto_sizer/": "自适应富文本",
+	"res://addons/label_font_auto_sizer/label_auto_sizer.gd": "文字自适应",
+	"res://addons/label_font_auto_sizer/label_font_auto_size_manager.gd": "自适应管理",
+	"res://addons/label_font_auto_sizer/plugin.gd": "自适应插件",
+	"res://addons/label_font_auto_sizer/rich_label_auto_sizer.gd": "富文自适应"
+}

@@ -1,0 +1,508 @@
+extends BattleRole
+## 圣弓（roleID 37）—— 移植自服务端 role/ShengGong.cpp
+## 指示物：tokens[0] = 信仰（上限 10）；治疗上限 3
+## 技能：天之弓（3701，被动：主动攻击使用的牌非【圣】命格时本次伤害 -1）、
+##       圣邪巨胞（3702，法术：弃 2 张同系牌，以该系【圣】命格攻击牌对目标发起一次攻击）、
+##       圣邪巨胞·未命中（37021，响应：耗 X 治疗，目标弃 X 张牌或摸 X 张牌）、
+##       圣煌魔矢（3703，法术：耗 2 治疗或 2 信仰 → 横置并额外 +1 法术行动）、
+##       圣光爆裂（3704，法术：耗 X 治疗并 +1 信仰，对目标造成 2 点（＋目标中有治疗者数）
+##                 攻击伤害，然后自身弃 X 张牌或摸 X 张牌）、
+##       圣流星弹（3705，响应：特殊行动时若横置则重置并 +1 治疗）、
+##       圣流星弹·攻击（37051，响应：主动攻击宣告后耗 1 治疗或 1 信仰，目标 +1 治疗）、
+##       圣流星弹·命中（37052，被动：主动攻击命中且为【圣】命格时 +1 信仰）、
+##       辉光炮（3706，法术：全场手牌调整到 4 张，星杯 +1，并使双方士气相等）、
+##       自动天冲（3707，回合结束：耗 1 能量换成信仰或治疗）
+##
+## 说明：
+## - 圣流星弹（3705）在 p_before_special 中触发（引擎在当前玩家发动特殊行动前调用该钩子；
+##   服务端同在特殊行动前触发，且只做横置解除与恢复治疗，不需要玩家输入）。
+## - 服务端 v_magic_skill 对法术技能不做任何校验，此处按客户端规则补最小校验（动作号、牌数、目标）。
+
+const TIAN_ZHI_GONG: int = 3701
+const SHENG_XIE_JU_BAO: int = 3702
+const SHENG_XIE_MISS: int = 37021
+const SHENG_HUANG_MO_SHI: int = 3703
+const SHENG_GUANG_BAO_LIE: int = 3704
+const SHENG_LIU_XING_DAN: int = 3705
+const SHENG_LIU_XING_ATK: int = 37051
+const SHENG_LIU_XING_HIT: int = 37052
+const HUI_GUANG_PAO: int = 3706
+const ZI_DONG_TIAN_CHONG: int = 3707
+
+## 本引擎自有的分步标记（服务端把子步骤实现为压栈状态，此处只用 step 记录进度）
+const SHENG_XIE_MISS_DISCARD: int = 37022   # 圣邪巨胞·未命中：请目标弃牌
+
+const TOKEN_XIN_YANG: int = 0
+const TOKEN_XIN_YANG_MAX: int = 10
+const CROSS_MAX_SHENG_GONG: int = 3
+const SHENG_GUANG_BAO_LIE_BASE: int = 2     # 圣光爆裂基础伤害
+const ATTACK_BASE_POINT: int = 2            # 攻击牌基础伤害
+const HUI_GUANG_KEEP: int = 4               # 辉光炮：全场手牌调整到 4 张
+const HUI_GUANG_PAO_COST: int = 5           # 辉光炮：信仰消耗为士气差 + 5
+
+var no_tian_chong: bool = false             # 本回合是否进行过特殊行动（跳过自动天冲）
+
+## 圣邪巨胞·未命中的中间状态
+var sheng_xie_miss_dst: int = -1
+var sheng_xie_miss_num: int = 0
+
+## 辉光炮的进度（-1 表示未开始；主动法术技能不在钩子轮次内，step 不会被重置）
+var hui_guang_index: int = -1
+
+
+func setup(p: BattlePlayer, e: BattleEngine) -> void:
+	super.setup(p, e)
+	p.tokens[TOKEN_XIN_YANG] = {"name": "信仰", "max": TOKEN_XIN_YANG_MAX, "num": 0}
+	p.cross_max = CROSS_MAX_SHENG_GONG
+
+
+func available_skills() -> Array:
+	var out: Array = []
+	if _hand_has_same_element_pair():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_XIE_JU_BAO, "need_card": 1, "need_target": 1})
+	if (_xin_yang() > 1 or player.cross_num > 1) and not player.tap:
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_HUANG_MO_SHI, "need_card": 0, "need_target": 0})
+	if player.cross_num > 0 and player.tap:
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_BAO_LIE, "need_card": 1, "need_target": 1})
+	# 辉光炮：仅当我方士气低于敌方且信仰足够支付（士气差 + 5）时可选（客户端同此判定）
+	var en_color: int = GConst.BLUE if player.color == GConst.RED else GConst.RED
+	var my_morale: int = engine.team_morale[player.color]
+	var en_morale: int = engine.team_morale[en_color]
+	if my_morale < en_morale and _xin_yang() >= (en_morale - my_morale) + HUI_GUANG_PAO_COST:
+		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_GUANG_PAO, "need_card": 0, "need_target": 0})
+	return out
+
+
+# ============================================================
+# 指示物与工具
+# ============================================================
+func _xin_yang() -> int:
+	var t: Dictionary = player.tokens[TOKEN_XIN_YANG]
+	return int(t["num"])
+
+
+func _set_token(idx: int, v: int) -> void:
+	var t: Dictionary = player.tokens[idx]
+	t["num"] = clampi(v, 0, int(t["max"]))
+
+
+func _same_element(a: int, b: int) -> bool:
+	var ca: GCard = Data.get_card(a)
+	var cb: GCard = Data.get_card(b)
+	if ca == null or cb == null:
+		return false
+	return ca.element_enum() == cb.element_enum()
+
+
+func _hand_has_same_element_pair() -> bool:
+	for i: int in range(player.hand_cards.size()):
+		for j: int in range(i + 1, player.hand_cards.size()):
+			if _same_element(int(player.hand_cards[i]), int(player.hand_cards[j])):
+				return true
+	return false
+
+
+## 从 ids 中挑出 n 张手牌（不足时按手牌顺序补齐）
+func _pick_cards(target: BattlePlayer, ids: Array, n: int) -> Array:
+	var out: Array = []
+	for c: Variant in ids:
+		if out.size() >= n:
+			break
+		var cid: int = int(c)
+		if target.has_hand_card(cid) and not out.has(cid):
+			out.append(cid)
+	for cid2: int in target.hand_cards:
+		if out.size() >= n:
+			break
+		if not out.has(cid2):
+			out.append(cid2)
+	return out
+
+
+func _discard_own(ids: Array, n: int) -> void:
+	var want: int = mini(n, player.hand_cards.size())
+	if want <= 0:
+		return
+	var chosen: Array = _pick_cards(player, ids, want)
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": chosen, "is_real": true,
+	})
+	engine.take_from_hand(player.id, chosen)
+	engine.to_discard(chosen)
+
+
+## 请某名角色弃 n 张牌（服务端 StateRequestHand）
+func _request_discard(pid: int, n: int, cause: int) -> int:
+	var target: BattlePlayer = engine.p(pid)
+	if target == null or n <= 0 or target.hand_cards.is_empty():
+		return SUCCESS
+	if not engine.has_reply():
+		engine.ask_skill(pid, cause, 1, 0)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var want: int = mini(n, target.hand_cards.size())
+	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
+		"card_ids": chosen, "is_real": true,
+	})
+	engine.take_from_hand(pid, chosen)
+	engine.to_discard(chosen)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 从自己开始顺时针的全部角色 id，再反转（顺位处理顺序）
+func _ids_from_self() -> Array:
+	var ids: Array = []
+	var cur: int = player.id
+	var guard: int = engine.order.size() + 1
+	while guard > 0:
+		ids.append(cur)
+		cur = engine.next_id(cur)
+		guard -= 1
+		if cur == player.id:
+			break
+	ids.reverse()
+	return ids
+
+
+func p_before_turn_begin(_ctx: Dictionary) -> int:
+	no_tian_chong = false
+	return SUCCESS
+
+
+# ============================================================
+# 攻击宣告后（timeline_1）：天之弓（3701）→ 圣流星弹·攻击（37051）
+# ============================================================
+func p_timeline_1(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+		return SUCCESS
+	if step >= STEP_DONE:
+		return SUCCESS
+	if step == 0:
+		step = TIAN_ZHI_GONG
+	if step == TIAN_ZHI_GONG:
+		# 非【圣】命格的攻击牌：本次伤害 -1
+		var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+		if card != null and card.property_enum() != GConst.CardProperty.Holy:
+			var harm: Dictionary = ctx.get("harm", {})
+			harm["point"] = int(harm.get("point", 0)) - 1
+		step = SHENG_LIU_XING_ATK
+	if step == SHENG_LIU_XING_ATK:
+		var r: int = _sheng_liu_xing_atk()
+		if r == WAIT:
+			return WAIT
+		step = STEP_DONE
+	return SUCCESS
+
+
+## 圣流星弹·攻击：耗 1 治疗或 1 信仰，令目标 +1 治疗
+func _sheng_liu_xing_atk() -> int:
+	if not player.tap or (player.cross_num == 0 and _xin_yang() == 0):
+		return SUCCESS
+	if not engine.has_reply():
+		engine.ask_skill(player.id, SHENG_LIU_XING_ATK, 0, 1)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var dsts: Array = r.get("dst_ids", [])
+	var choice: int = int(args[0]) if not args.is_empty() else 0
+	if choice <= 0 or dsts.is_empty():
+		return SUCCESS
+	if choice == 1:
+		player.sub_cross_num(1)
+	else:
+		_set_token(TOKEN_XIN_YANG, _xin_yang() - 1)
+	var dst: BattlePlayer = engine.p(int(dsts[0]))
+	if dst != null:
+		dst.add_cross_num(1)
+	notice_skill(SHENG_LIU_XING_ATK, dsts)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+# ============================================================
+# 主动攻击命中后（timeline_2_hit）：圣流星弹·命中（37052）
+# ============================================================
+func p_timeline_2_hit(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+		return SUCCESS
+	if step >= STEP_DONE:
+		return SUCCESS
+	step = STEP_DONE
+	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+	if card != null and card.property_enum() == GConst.CardProperty.Holy:
+		notice_skill(SHENG_LIU_XING_HIT, [player.id])
+		_set_token(TOKEN_XIN_YANG, _xin_yang() + 1)
+		engine._broadcast_game()
+	return SUCCESS
+
+
+# ============================================================
+# 主动攻击未命中后（timeline_2_miss）：圣邪巨胞·未命中（37021）
+# ============================================================
+func p_timeline_2_miss(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) != player.id:
+		return SUCCESS
+	if step >= STEP_DONE:
+		return SUCCESS
+	if step == 0:
+		step = SHENG_XIE_MISS
+	if step == SHENG_XIE_MISS:
+		if not engine.has_reply():
+			engine.ask_skill(player.id, SHENG_XIE_MISS, 0, 1)
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		var args: Array = r.get("args", [])
+		var dsts: Array = r.get("dst_ids", [])
+		var choice: int = int(args[0]) if not args.is_empty() else 0
+		var num: int = int(args[1]) if args.size() > 1 else 0
+		if choice <= 0 or num <= 0 or dsts.is_empty():
+			step = STEP_DONE
+			return SUCCESS
+		sheng_xie_miss_dst = int(dsts[0])
+		sheng_xie_miss_num = num
+		player.sub_cross_num(num)
+		notice_skill(SHENG_XIE_MISS, dsts)
+		engine._broadcast_game()
+		if choice == 1:
+			step = SHENG_XIE_MISS_DISCARD
+		else:
+			engine.draw(sheng_xie_miss_dst, num)
+			engine._broadcast_game()
+			step = STEP_DONE
+	if step == SHENG_XIE_MISS_DISCARD:
+		var r2: int = _request_discard(sheng_xie_miss_dst, sheng_xie_miss_num, SHENG_XIE_MISS)
+		if r2 == WAIT:
+			return WAIT
+		step = STEP_DONE
+	return SUCCESS
+
+
+# ============================================================
+# 特殊行动前：圣流星弹（3705）——横置时重置并 +1 治疗，且本回合跳过自动天冲
+# ============================================================
+func p_before_special(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	# 服务端在本钩子中无条件置位（无论是否横置）
+	no_tian_chong = true
+	if not player.tap:
+		return SUCCESS
+	notice_skill(SHENG_LIU_XING_DAN, [player.id])
+	player.tap = false
+	player.add_cross_num(1)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+# ============================================================
+# 回合结束：自动天冲（3707）
+# ============================================================
+func p_turn_end(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	if no_tian_chong or player.get_energy() < 1:
+		return SUCCESS
+	if step >= STEP_DONE:
+		return SUCCESS
+	if step == 0:
+		step = ZI_DONG_TIAN_CHONG
+	if not engine.has_reply():
+		engine.ask_skill(player.id, ZI_DONG_TIAN_CHONG, 0, 0)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	step = STEP_DONE
+	var args: Array = r.get("args", [])
+	var choice: int = int(args[0]) if not args.is_empty() else 0
+	if choice < 1 or choice > 4:
+		return SUCCESS
+	notice_skill(ZI_DONG_TIAN_CHONG, [player.id])
+	match choice:
+		1:
+			player.set_gem(player.gem - 1)
+			player.set_crystal(player.crystal + 1)
+			_set_token(TOKEN_XIN_YANG, _xin_yang() + 2)
+		2:
+			player.set_gem(player.gem - 1)
+			player.set_crystal(player.crystal + 1)
+			player.add_cross_num(2)
+		3:
+			if player.crystal > 0:
+				player.set_crystal(player.crystal - 1)
+			else:
+				player.set_gem(player.gem - 1)
+			_set_token(TOKEN_XIN_YANG, _xin_yang() + 1)
+		4:
+			if player.crystal > 0:
+				player.set_crystal(player.crystal - 1)
+			else:
+				player.set_gem(player.gem - 1)
+			player.add_cross_num(1)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+# ============================================================
+# 主动法术技能
+# ============================================================
+func v_magic_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	match int(action.get("action_id", 0)):
+		SHENG_XIE_JU_BAO:
+			if cards.size() < 3 or dsts.is_empty():
+				return GConst.GE_INVALID_ACTION
+			if not player.has_hand_card(int(cards[0])) or not player.has_hand_card(int(cards[1])):
+				return GConst.GE_INVALID_ACTION
+			if not _same_element(int(cards[0]), int(cards[1])):
+				return GConst.GE_INVALID_CARDID
+		SHENG_HUANG_MO_SHI:
+			if player.cross_num < 2 and _xin_yang() < 2:
+				return GConst.GE_INVALID_ACTION
+		SHENG_GUANG_BAO_LIE:
+			if player.cross_num < 1 or not player.tap:
+				return GConst.GE_INVALID_ACTION
+		HUI_GUANG_PAO:
+			pass
+		_:
+			return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+func p_magic_skill(action: Dictionary) -> int:
+	match int(action.get("action_id", 0)):
+		SHENG_XIE_JU_BAO:
+			return _sheng_xie_ju_bao(action)
+		SHENG_HUANG_MO_SHI:
+			return _sheng_huang_mo_shi(action)
+		SHENG_GUANG_BAO_LIE:
+			return _sheng_guang_bao_lie(action)
+		HUI_GUANG_PAO:
+			return _hui_guang_pao(action)
+	return GConst.GE_INVALID_ACTION
+
+
+## 圣邪巨胞：弃 2 张同系牌，用该系【圣】命格攻击牌（客户端给出的虚拟牌）发起一次攻击
+func _sheng_xie_ju_bao(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var dst_id: int = int(dsts[0])
+	var virtual_card: int = int(cards[2])
+	var use_cards: Array = [int(cards[0]), int(cards[1])]
+	notice_skill(SHENG_XIE_JU_BAO, [dst_id])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": use_cards, "is_real": true,
+	})
+	engine.take_from_hand(player.id, use_cards)
+	engine.to_discard(use_cards)
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": ATTACK_BASE_POINT,
+		"cause": SHENG_XIE_JU_BAO, "type": GConst.HarmType.Attack,
+		"card_id": virtual_card, "is_active": true,
+	}
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, virtual_card, harm))
+	engine._broadcast_game()
+	return URGENT
+
+
+## 圣煌魔矢：耗 2 治疗或 2 信仰 → 横置并额外 +1 法术行动
+func _sheng_huang_mo_shi(action: Dictionary) -> int:
+	var args: Array = action.get("args", [])
+	var choice: int = int(args[0]) if not args.is_empty() else 0
+	notice_skill(SHENG_HUANG_MO_SHI, [player.id])
+	if choice == 1:
+		player.sub_cross_num(2)
+	else:
+		_set_token(TOKEN_XIN_YANG, _xin_yang() - 2)
+	player.tap = true
+	player.add_action(GConst.ActionType.Magic, SHENG_HUANG_MO_SHI)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 圣光爆裂：耗 X 治疗并 +1 信仰，对目标造成 2（＋目标中有治疗者数）点攻击伤害，再弃/摸 X 张牌
+func _sheng_guang_bao_lie(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var args: Array = action.get("args", [])
+	var howmany: int = int(args[1]) if args.size() > 1 else 0
+	var choice: int = int(args[0]) if not args.is_empty() else 0
+	notice_skill(SHENG_GUANG_BAO_LIE, [player.id])
+	var point: int = SHENG_GUANG_BAO_LIE_BASE
+	for d: Variant in dsts:
+		var dp: BattlePlayer = engine.p(int(d))
+		if dp != null and dp.cross_num > 0:
+			point += 1
+	_set_token(TOKEN_XIN_YANG, _xin_yang() + 1)
+	player.sub_cross_num(howmany)
+	engine._broadcast_game()
+	# 按座位逆序绕一圈（服务端从自己上家开始），对选中目标造成伤害
+	var cur: int = player.pre_id
+	for _i: int in range(engine.order.size()):
+		var cp: BattlePlayer = engine.p(cur)
+		if cp == null:
+			break
+		if dsts.has(cur):
+			engine.push_harm({
+				"src": player.id, "dst": cur, "point": point,
+				"cause": SHENG_GUANG_BAO_LIE, "type": GConst.HarmType.Attack,
+			})
+		cur = cp.pre_id
+	if choice == 1:
+		_discard_own(cards, howmany)
+	else:
+		engine.draw(player.id, howmany)
+	engine._broadcast_game()
+	return URGENT
+
+
+## 辉光炮：全场手牌调整到 4 张，星杯 +1，并使双方士气相等（信仰消耗为士气差 + 5）
+func _hui_guang_pao(action: Dictionary) -> int:
+	if hui_guang_index < 0:
+		hui_guang_index = 0
+		notice_skill(HUI_GUANG_PAO, [player.id])
+		engine._broadcast_game()
+	if hui_guang_index >= 0:
+		var ids: Array = _ids_from_self()
+		while hui_guang_index < ids.size():
+			var pid: int = int(ids[hui_guang_index])
+			var dp: BattlePlayer = engine.p(pid)
+			if dp == null:
+				hui_guang_index += 1
+				continue
+			var diff: int = dp.hand_cards.size() - HUI_GUANG_KEEP
+			if diff < 0:
+				engine.draw(pid, -diff)
+				hui_guang_index += 1
+				continue
+			if diff == 0:
+				hui_guang_index += 1
+				continue
+			var r: int = _request_discard(pid, diff, HUI_GUANG_PAO)
+			if r == WAIT:
+				return WAIT
+			hui_guang_index += 1
+		var my_color: int = player.color
+		var en_color: int = GConst.BLUE if my_color == GConst.RED else GConst.RED
+		var my_morale: int = engine.team_morale[my_color]
+		var en_morale: int = engine.team_morale[en_color]
+		var gap: int = absi(my_morale - en_morale)
+		var args: Array = action.get("args", [])
+		var choice: int = int(args[0]) if not args.is_empty() else 0
+		if choice == 1:
+			engine.set_morale(my_color, en_morale)
+		else:
+			engine.set_morale(en_color, my_morale)
+		engine.team_grail[my_color] += 1
+		_set_token(TOKEN_XIN_YANG, _xin_yang() - gap - HUI_GUANG_PAO_COST)
+		engine._broadcast_game()
+		if engine.team_grail[my_color] >= GConst.GRAIL_WIN:
+			engine._game_over(my_color)
+		hui_guang_index = -1
+	return SUCCESS
