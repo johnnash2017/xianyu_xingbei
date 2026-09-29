@@ -582,14 +582,17 @@ func set_HandCount(value: Vector2i) -> void:
 	#   handcardfull  红色  → 超过手牌上限的部分（「爆牌」标记）
 	# 所以空位要用暗灰的 handcardempty，不能用红色那张 —— 之前把空位画成红色，
 	# 手牌不满时看起来像「超上限了」。
+	# 顺序也一样重要：**先判「是否已超过上限」**，再判「这一格摸到没」。
+	# 之前先判 j < 当前手牌，爆牌时（当前 > 上限）所有格子都落进第一个分支涂成绿色，
+	# 红色的「爆牌」块永远不会出现。
 	var total := maxi(value.x, value.y)
 	for j in range(total):
-		if j < value.y:
-			_add_image(handArea, ps, "handcard", 扁平格尺寸, true)
-		elif j < value.x:
-			_add_image(handArea, ps, "handcardempty", 扁平格尺寸, true)
-		else:
+		if j >= value.x:
 			_add_image(handArea, ps, "handcardfull", 扁平格尺寸, true)
+		elif j < value.y:
+			_add_image(handArea, ps, "handcard", 扁平格尺寸, true)
+		else:
+			_add_image(handArea, ps, "handcardempty", 扁平格尺寸, true)
 
 ## 对应 C# public uint HealCount 的 setter
 func set_HealCount(value: int) -> void:
