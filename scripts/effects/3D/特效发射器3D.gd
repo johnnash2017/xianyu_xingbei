@@ -49,7 +49,9 @@ var particles : Array[GPUParticles3D]:
 
 var anim : AnimationPlayer:
 	get():
-		if get_node("AnimationPlayer"):
+		# 用 get_node_or_null：这些素材是 @tool 脚本，编辑器里也会跑这个 getter，
+		# 用 get_node 时一旦场景里没有 AnimationPlayer 子节点就会刷「Node not found」报错。
+		if get_node_or_null("AnimationPlayer"):
 			if !Engine.is_editor_hint() && anim:
 				return anim
 			return $AnimationPlayer
