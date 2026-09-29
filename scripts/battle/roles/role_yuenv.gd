@@ -48,8 +48,24 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if player.gem > 0:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": CANG_BAI_ZHI_YUE, "need_card": 1, "need_target": 1})
+	# 苍白之月：耗 1 宝石，可选「移除 3【石化】」或「移除 x【新月】并造成伤害」；两者都不满足时不显示
+	var 选项: Array = _cang_bai_choices()
+	if player.gem > 0 and not 选项.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": CANG_BAI_ZHI_YUE, "need_card": 0, "need_target": 0,
+			"target_max": 1, "arg_choices": 选项})
+	return out
+
+
+## 苍白之月的参数选项：choice=1 移除 3 点【石化】（无需目标）；
+## choice=2 移除 x 点【新月】，弃 1 张牌并对目标造成 x+1 点法术伤害（需 1 名目标）
+func _cang_bai_choices() -> Array:
+	var out: Array = []
+	if int(player.tokens[1]["num"]) >= 3:
+		out.append({"text": "移除 3 点【石化】", "args": [1]})
+	var 新月数: int = int(player.tokens[0]["num"])
+	for x: int in range(1, 新月数 + 1):
+		out.append({"text": "移除 %d 点【新月】，弃 1 张牌并对目标造成 %d 点法术伤害" % [x, x + 1],
+			"args": [2, x], "need_target": 1})
 	return out
 
 

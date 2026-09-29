@@ -1,0 +1,47 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/battle/b05_new_argsItem.png" id="1_b05newargsItempng"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
+
+[node name="ArgsItem" type="Button"]
+anchor_left = 0
+anchor_top = 1
+anchor_right = 0
+anchor_bottom = 1
+offset_left = 0
+offset_top = -150
+offset_right = 0
+offset_bottom = 150
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(0, 150)
+icon = ExtResource("1_b05newargsItempng")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+expand_icon = true
+focus_mode = 0
+
+[node name="Text" type="Label" parent="."]
+anchor_left = 0
+anchor_top = 0
+anchor_right = 1
+anchor_bottom = 1
+offset_left = 0
+offset_top = 0
+offset_right = 0
+offset_bottom = 0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(0, 0)
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 40
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+autowrap_mode = 3
+clip_text = true
+mouse_filter = 2

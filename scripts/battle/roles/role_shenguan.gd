@@ -30,13 +30,27 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	if _count_magic_cards() >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHEN_SHENG_QI_FU, "need_card": 1, "need_target": 0})
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHEN_SHENG_QI_FU, "need_card": 2, "need_target": 0,
+			"cards": magic_hand_ids()})
 	if _has_water_card():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHUI_ZHI_SHEN_LI, "need_card": 1, "need_target": 1})
+		# 水之神力要弃 1 张水系牌：只让手牌里的水系牌可点（v_magic_skill 校验 card2.element_enum() == Water）
+		# 目标须为同色队友（v_magic_skill：dst1.color != player.color 时返回 GE_INVALID_ACTION）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHUI_ZHI_SHEN_LI, "need_card": 1, "need_target": 1,
+			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water),
+			"targets": ally_ids()})
 	if player.get_energy() >= 1:
+		# 神圣领域要弃牌：手牌多于 2 张时恰好弃 2 张，否则把手牌弃光（v_magic_skill 同一条）
+		# 两种用法的合法目标不同，所以目标白名单挂在各自选项上：
+		#   mode=0（args[0]==0）目标须同色队友；mode=1（args[0]==1）不限颜色，且自身治疗须 ≥ 1
+		var 领域选项: Array = [{"text": "自己 +2 治疗，目标队友 +1 治疗", "args": [0], "need_target": 1,
+			"targets": ally_ids()}]
+		if player.cross_num >= 1:
+			领域选项.append({"text": "移除自己 1 治疗，对目标造成 2 点法术伤害", "args": [1], "need_target": 1,
+				"targets": player_ids_where(func(_p: BattlePlayer) -> bool: return true)})
 		out.append({
 			"type": GConst.ActionType.MagicSkill, "id": SHEN_SHENG_LING_YU,
-			"need_card": 1 if not player.hand_cards.is_empty() else 0, "need_target": 1,
+			"need_card": mini(LING_YU_DISCARD, player.hand_cards.size()), "need_target": 1,
+			"arg_choices": 领域选项,
 		})
 	return out
 

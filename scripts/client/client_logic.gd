@@ -5,6 +5,8 @@ extends Node
 signal room_list_changed(rooms: Array)
 signal error_received(err_id: int, msg: String)
 signal gossip_received(txt: String)
+## 系统公告（超时 / 掉线 / 重连 / 终局等）：界面只把它写进日志，不进聊天区
+signal notice_received(txt: String)
 signal game_info_updated(info: Dictionary)
 signal command_received(data: Dictionary)
 signal turn_changed(player_id: int, round_id: int)
@@ -68,7 +70,7 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 				var who: String = talker.nickname if talker != null else str(pid)
 				gossip_received.emit("%s：%s" % [who, str(data.get("txt", ""))])
 			else:
-				gossip_received.emit(str(data.get("txt", "")))
+				notice_received.emit(str(data.get("txt", "")))
 		GConst.Msg.TurnBegin:
 			turn_changed.emit(int(data.get("id", -1)), int(data.get("round", 0)))
 		GConst.Msg.Hit:
@@ -103,9 +105,13 @@ func _on_game(data: Dictionary) -> void:
 	if started:
 		Data.init_team(18 if Data.player_max == 8 else 15)
 	in_room = true
-	# 首条对局信息 → 切到战斗/房间界面
-	if UI.current == null or UI.current.name != "Battle":
-		UI.goto_battle()
+	# 首条对局信息 → 切界面：未开局进「房间准备室」（ReadyRoom），开局切新版战斗界面
+	var 目标界面名: String = "BattleUIMobile" if started else "ReadyRoom"
+	if UI.current == null or UI.current.name != 目标界面名:
+		if started:
+			UI.goto_battle_mobile()
+		else:
+			UI.goto_ready_room()
 	game_info_updated.emit(data)
 
 
@@ -123,7 +129,7 @@ func _on_connected() -> void:
 		return
 	# 每次连接 Net 都会重发 LoginReq（见 net_manager），登录回执到达后再进房
 	_pending_reenter = true
-	gossip_received.emit("已重新连接，正在回到房间…")
+	notice_received.emit("已重新连接，正在回到房间…")
 
 
 ## 登录回执：重连场合下紧接着重新进房（服务端对每条连接都会回一条 LoginRep）
@@ -148,7 +154,7 @@ func _give_up_reconnect(txt: String) -> void:
 	started = false
 	# 先切回大厅再提示：旧界面随即被替换，提示才会落到新大厅上
 	UI.goto_lobby()
-	gossip_received.emit(txt)
+	notice_received.emit(txt)
 
 
 # ============================================================

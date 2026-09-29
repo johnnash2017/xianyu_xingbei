@@ -1,0 +1,83 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/choose_args_ui.gd" id="1_ChooseArgsUIgd"]
+[ext_resource type="Texture2D" uid="uid://6cawbt7k51tn" path="res://assets/textures/battle/b05_sys_cancel.png" id="123_b05syscancelpng"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 24.0
+content_margin_top = 18.0
+content_margin_right = 24.0
+content_margin_bottom = 18.0
+bg_color = Color(0.07, 0.1, 0.17, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.45, 0.68, 1, 0.85)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[node name="ChooseArgsUI" type="Control" node_paths=PackedStringArray("Title", "OptionsBox", "BtnBack")]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_ChooseArgsUIgd")
+Title = NodePath("Root/VBox/Title")
+OptionsBox = NodePath("Root/VBox/OptionsBox")
+BtnBack = NodePath("Root/VBox/BtnBack")
+
+[node name="Mask" type="ColorRect" parent="." unique_id=910273881]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="Root" type="PanelContainer" parent="." unique_id=179318183]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="VBox" type="VBoxContainer" parent="Root" unique_id=2138913945]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Root/VBox" unique_id=1059538968]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "消耗能量"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="OptionsBox" type="VBoxContainer" parent="Root/VBox" unique_id=2138913946]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="BtnBack" type="Button" parent="Root/VBox" unique_id=118076582]
+custom_minimum_size = Vector2(256, 48)
+layout_mode = 2
+size_flags_horizontal = 4
+focus_mode = 0
+icon = ExtResource("123_b05syscancelpng")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+expand_icon = true

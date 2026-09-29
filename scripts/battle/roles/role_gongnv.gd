@@ -16,20 +16,15 @@ const TAG_SHAN_GUANG: String = "闪光陷阱"
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _hand_has_tag(TAG_SHAN_GUANG):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHAN_GUANG_XIAN_JING, "need_card": 1, "need_target": 1})
+	# 闪光陷阱：只有手中带【闪光陷阱】的牌可作发动牌，下发给界面把其余手牌置灰
+	# （v_magic_skill 校验同一张牌：须在手且带该特技）
+	var 闪光牌: Array[int] = hand_ids_with_speciality(TAG_SHAN_GUANG)
+	if not 闪光牌.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHAN_GUANG_XIAN_JING, "need_card": 1, "need_target": 1,
+			"cards": 闪光牌})
 	if player.crystal > 0 or player.gem > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": JU_JI, "need_card": 0, "need_target": 1})
 	return out
-
-
-## 手牌中是否有带某特技的牌
-func _hand_has_tag(tag: String) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.has_speciality_name(tag):
-			return true
-	return false
 
 
 # ============================================================

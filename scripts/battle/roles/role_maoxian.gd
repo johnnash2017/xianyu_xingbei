@@ -14,6 +14,9 @@ const TE_SHU_JIA_GONG: int = 1204            # 特殊加工（法术技能）
 ## 偷天换日 / 特殊加工 的回合限定标记（两者互斥）
 var used_TouTianHuanRi: bool = false
 
+## 欺诈的虚牌 id（原客户端固定这 6 张攻击牌，顺序照抄）
+const QI_ZHA_VIRTUAL_CARDS: Array[int] = [66, 133, 87, 45, 110, 39]
+
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_TouTianHuanRi = false
@@ -22,16 +25,19 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 欺诈：需要弃 2~3 张同系牌 + 指定攻击目标
+	# 欺诈：弃 2~3 张同系牌 + 指定敌方目标，虚牌（args[0]）由参数按钮选择
 	if player.hand_cards.size() >= 2:
-		out.append({"type": GConst.ActionType.AttackSkill, "id": QI_ZHA, "need_card": 1, "need_target": 1})
+		out.append({"type": GConst.ActionType.AttackSkill, "id": QI_ZHA, "need_card": 2, "card_max": 3, "need_target": 1,
+			"targets": enemy_ids(), "arg_choices": _qi_zha_choices()})
 	if player.get_energy() > 0 and not used_TouTianHuanRi:
 		if engine.team_gem[1 - player.color] >= 1:
 			out.append({"type": GConst.ActionType.MagicSkill, "id": TOU_TIAN_HUAN_RI, "need_card": 0, "need_target": 0})
 		out.append({"type": GConst.ActionType.MagicSkill, "id": TE_SHU_JIA_GONG, "need_card": 0, "need_target": 0})
-	# 冒险者天堂：需将战绩区能量分给队友
-	if engine.team_gem[player.color] + engine.team_crystal[player.color] > 0:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": MAO_XIAN_ZHE_TIAN_TANG, "need_card": 0, "need_target": 1})
+	# 冒险者天堂：把战绩区能量交给队友（目标限队友，给出量由参数按钮选择）
+	var 队友: Array[int] = ally_ids()
+	if engine.team_gem[player.color] + engine.team_crystal[player.color] > 0 and not 队友.is_empty():
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": MAO_XIAN_ZHE_TIAN_TANG, "need_card": 0, "need_target": 1,
+			"targets": 队友, "arg_choices": _tian_tang_choices()})
 	return out
 
 
@@ -217,6 +223,44 @@ func p_special_skill(action: Dictionary) -> int:
 # ============================================================
 # 工具
 # ============================================================
+## 欺诈的参数选项：虚牌（攻击牌）决定本次视为哪种攻击（服务端校验 args[0] 为攻击牌）
+func _qi_zha_choices() -> Array:
+	var out: Array = []
+	for cid: int in QI_ZHA_VIRTUAL_CARDS:
+		out.append({"text": Data.get_card(cid).card_name, "args": [cid], "need_card": 2, "need_target": 1})
+	return out
+
+
+## 冒险者天堂的参数选项：把战绩区能量交给队友。
+## 组合照抄原客户端（最多 5 项：两个宝石 / 两个水晶 / 一宝石一水晶 / 一个宝石 / 一个水晶），
+## 每项只让「还放得下这么多能量」的队友可点（v_special_skill：gem + crystal + dst 现有能量 > 上限即拒）
+func _tian_tang_choices() -> Array:
+	var out: Array = []
+	var 宝石数: int = engine.team_gem[player.color]
+	var 水晶数: int = engine.team_crystal[player.color]
+	if 宝石数 >= 2:
+		out.append(_tian_tang_choice(2, 0, 2))
+	if 水晶数 >= 2:
+		out.append(_tian_tang_choice(0, 2, 2))
+	if 宝石数 >= 1 and 水晶数 >= 1:
+		out.append(_tian_tang_choice(1, 1, 2))
+	if 宝石数 >= 1:
+		out.append(_tian_tang_choice(1, 0, 1))
+	if 水晶数 >= 1:
+		out.append(_tian_tang_choice(0, 1, 1))
+	return out
+
+
+## 一条「冒险者天堂」选项：args = [宝石, 水晶]，目标限定为能给得起的队友
+func _tian_tang_choice(宝石: int, 水晶: int, 需要容量: int) -> Dictionary:
+	return {
+		"text": "我方 -%d 宝石 -%d 水晶，队友 +%d 宝石 +%d 水晶" % [宝石, 水晶, 宝石, 水晶],
+		"args": [宝石, 水晶], "need_target": 1,
+		"targets": player_ids_where(func(p: BattlePlayer) -> bool:
+			return p.color == player.color and p.energy_max - p.get_energy() >= 需要容量),
+	}
+
+
 ## 消耗 1 点个人能量（优先扣水晶，与服务端一致）
 func _consume_one_energy() -> void:
 	if player.crystal > 0:

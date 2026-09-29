@@ -17,9 +17,6 @@ const AN_YING_LIU_XING: int = 905
 const HEI_AN_ZHEN_CHAN: int = 906
 const HEI_AN_ZHEN_CHAN_BU_PAI: int = 9061
 
-## 黑暗震颤补牌基准手牌数
-const HAND_BASE: int = 4
-
 var used_xiu_luo_lian_zhan: bool = false
 var using_xiu_luo_lian_zhan: bool = false
 var used_hei_an_zhen_chan: bool = false
@@ -28,9 +25,10 @@ var using_hei_an_zhen_chan: bool = false
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 暗影流星（905）：仅[暗影形态]（tap）下可用，需弃 2 张法术牌
+	# 暗影流星（905）：仅[暗影形态]（tap）下可用，代价是弃 2 张法术牌（服务端 v_magic_skill 也按 2 张校验）
 	if player.tap and _magic_card_count() >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": AN_YING_LIU_XING, "need_card": 1, "need_target": 1})
+		out.append({"type": GConst.ActionType.MagicSkill, "id": AN_YING_LIU_XING, "need_card": 2, "need_target": 1,
+			"cards": magic_hand_ids()})
 	return out
 
 
@@ -49,8 +47,16 @@ func _magic_card_count() -> int:
 # 【暗影抗拒】（904）：服务端恒返回 GE_INVALID_CARDID，即不能使用魔弹/圣盾/虚弱；
 # 【修罗连斩】（901）的额外攻击行动期间，服务端限定只能用火系攻击牌。
 # 暗影流星（905）属法术技能（走 v_magic_skill），不受上述限制。
-# 说明：服务端未覆写中毒等其他法术牌的校验路径，故本引擎同样不拦截。
+# 说明：服务端只覆写了上面这三个法术牌，中毒等其它法术牌没拦（技能原文是「行动阶段不能使用法术牌」），
+# 这里补一个动作总闸 v_allow_action 把整个「法术」行动一并禁掉 —— 法术技能照常可用。
 # ============================================================
+## 【暗影抗拒】（904）：行动阶段不能用法术牌（法术技能不算）
+func v_allow_action(action_type: int, _args: Array) -> int:
+	if action_type != GConst.ActionType.Magic:
+		return V_NOT_OVERRIDE
+	return GConst.GE_INVALID_ACTION
+
+
 func v_missile(_card_id: int, _dst_id: int) -> int:
 	return GConst.GE_INVALID_CARDID
 
@@ -164,15 +170,16 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 黑暗震颤补牌：手牌多于 4 则弃到 4，少于 4 则摸到 4
+## 黑暗震颤补牌：手牌多于上限则弃到上限，少于上限则摸到上限
+## （技能原文「你的手牌直接补到上限」，上限＝player.hand_cards_max，别的角色也这么取）
 func _hei_an_zhen_chan_bu_pai() -> int:
 	if not using_hei_an_zhen_chan:
 		step = STEP_DONE
 		return SUCCESS
-	var num: int = player.hand_cards.size() - HAND_BASE
+	var num: int = player.hand_cards.size() - player.hand_cards_max
 	if num > 0:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, HEI_AN_ZHEN_CHAN_BU_PAI, 1, 0)
+			engine.ask_skill(player.id, HEI_AN_ZHEN_CHAN_BU_PAI, num, 0)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		step = STEP_DONE

@@ -39,14 +39,24 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	if _fire_like_count() >= 1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": CANG_YAN_FA_DIAN, "need_card": 1, "need_target": 1})
+		# 苍炎法典只能弃视为火系的牌（v_magic_skill 的 _has_fire_like 校验同一条）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": CANG_YAN_FA_DIAN, "need_card": 1, "need_target": 1,
+			"cards": hand_ids_where(func(cid: int, _c: GCard) -> bool: return _is_fire_like(cid))})
 	if _fire_like_count() >= 2 and (player.tap or int(player.tokens[0]["num"]) >= 1):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_HUO_DUAN_KONG, "need_card": 1, "need_target": 1})
+		# 天火断空只能弃视为火系的牌（v_magic_skill 的 _has_fire_like 校验同一条）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_HUO_DUAN_KONG, "need_card": 2, "need_target": 1,
+			"cards": hand_ids_where(func(cid: int, _c: GCard) -> bool: return _is_fire_like(cid))})
 	if player.get_energy() >= 1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TONG_KU_LIAN_JIE, "need_card": 0, "need_target": 1})
+		# 痛苦链接：目标须为对手（v_magic_skill：dst.color == player.color 时返回 GE_INVALID_ACTION）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": TONG_KU_LIAN_JIE, "need_card": 0, "need_target": 1,
+			"targets": enemy_ids()})
 	# 服务端 v_attack_skill 未限制形态；该技能即【烈焰形态】下把攻击牌当作火系【火焰斩】打出
 	if player.tap and not player.hand_cards.is_empty():
-		out.append({"type": GConst.ActionType.AttackSkill, "id": MO_NV_ZHI_NU_ATTACK, "need_card": 1, "need_target": 1})
+		# 只能弃攻击牌（v_attack_skill 校验同一条）
+		# 目标须为对手（v_attack_skill：dst.color == player.color 时返回 GE_INVALID_PLAYERID）
+		out.append({"type": GConst.ActionType.AttackSkill, "id": MO_NV_ZHI_NU_ATTACK, "need_card": 1, "need_target": 1,
+			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack()),
+			"targets": enemy_ids()})
 	return out
 
 
@@ -221,7 +231,7 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 	if step != MO_NENG_FAN_ZHUAN:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, MO_NENG_FAN_ZHUAN, 1, 1)
+		engine.ask_skill(player.id, MO_NENG_FAN_ZHUAN, 2, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

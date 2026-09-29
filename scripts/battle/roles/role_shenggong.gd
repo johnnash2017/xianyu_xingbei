@@ -58,18 +58,28 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _hand_has_same_element_pair():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_XIE_JU_BAO, "need_card": 1, "need_target": 1})
+	# 圣邪巨胞要弃 2 张同系牌：只让「手里该系不少于 2 张、且该系有【圣】命格攻击牌」的牌可点，
+	# 界面据此把同系孤张与没有虚拟牌的系置灰（与 v_magic_skill 的校验一致）
+	var 同系牌: Array[int] = _sheng_xie_hand_ids()
+	if not 同系牌.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_XIE_JU_BAO, "need_card": 2, "need_target": 1,
+			"cards": 同系牌})
 	if (_xin_yang() > 1 or player.cross_num > 1) and not player.tap:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_HUANG_MO_SHI, "need_card": 0, "need_target": 0})
 	if player.cross_num > 0 and player.tap:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_BAO_LIE, "need_card": 1, "need_target": 1})
+		# v_magic_skill 只校验治疗数与横置，不校验任何牌，故不强制选牌
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_BAO_LIE, "need_card": 0, "need_target": 1})
 	# 辉光炮：仅当我方士气低于敌方且信仰足够支付（士气差 + 5）时可选（客户端同此判定）
 	var en_color: int = GConst.BLUE if player.color == GConst.RED else GConst.RED
 	var my_morale: int = engine.team_morale[player.color]
 	var en_morale: int = engine.team_morale[en_color]
 	if my_morale < en_morale and _xin_yang() >= (en_morale - my_morale) + HUI_GUANG_PAO_COST:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_GUANG_PAO, "need_card": 0, "need_target": 0})
+		# v_magic_skill 不校验任何牌/目标；执行体 _hui_guang_pao 用 args[0] 决定把哪一方士气拉到与另一方相等
+		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_GUANG_PAO, "need_card": 0, "need_target": 0,
+			"arg_choices": [
+				{"text": "敌方士气拉平到我方（提升敌方）", "args": [0]},
+				{"text": "我方士气拉平到敌方（降低我方）", "args": [1]},
+			]})
 	return out
 
 
@@ -94,12 +104,33 @@ func _same_element(a: int, b: int) -> bool:
 	return ca.element_enum() == cb.element_enum()
 
 
-func _hand_has_same_element_pair() -> bool:
-	for i: int in range(player.hand_cards.size()):
-		for j: int in range(i + 1, player.hand_cards.size()):
-			if _same_element(int(player.hand_cards[i]), int(player.hand_cards[j])):
-				return true
-	return false
+## 圣邪巨胞可弃的手牌：该系手里至少有 2 张，且该系存在【圣】命格攻击牌可当虚拟牌用
+func _sheng_xie_hand_ids() -> Array[int]:
+	var out: Array[int] = []
+	for cid: int in player.hand_cards:
+		var c: GCard = Data.get_card(cid)
+		if c == null or _sheng_xie_virtual_card(c.element_enum()) < 0:
+			continue
+		var 同系数: int = 0
+		for other: int in player.hand_cards:
+			var o: GCard = Data.get_card(other)
+			if o != null and o.element_enum() == c.element_enum():
+				同系数 += 1
+		if 同系数 >= 2:
+			out.append(cid)
+	return out
+
+
+## 该系【圣】命格攻击牌（发动时当作打出的虚拟牌）；取值与服务端客户端 ShengGong.cpp 的硬编码一致
+func _sheng_xie_virtual_card(element: int) -> int:
+	match element:
+		GConst.CardElement.Earth: return 54       # 地裂斩
+		GConst.CardElement.Wind: return 75        # 风神斩
+		GConst.CardElement.Water: return 137      # 水涟斩
+		GConst.CardElement.Thunder: return 117    # 雷光斩
+		GConst.CardElement.Fire: return 96        # 火焰斩
+		GConst.CardElement.Darkness: return 39    # 暗灭
+	return -1
 
 
 ## 从 ids 中挑出 n 张手牌（不足时按手牌顺序补齐）
@@ -355,14 +386,19 @@ func v_magic_skill(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	match int(action.get("action_id", 0)):
 		SHENG_XIE_JU_BAO:
-			if cards.size() < 3 or dsts.is_empty():
+			# 弃 2 张同系手牌，虚拟牌（该系【圣】命格攻击牌）由服务端按元素自己取，客户端不用传
+			if cards.size() != 2 or dsts.is_empty():
 				return GConst.GE_INVALID_ACTION
 			if not player.has_hand_card(int(cards[0])) or not player.has_hand_card(int(cards[1])):
 				return GConst.GE_INVALID_ACTION
 			if not _same_element(int(cards[0]), int(cards[1])):
 				return GConst.GE_INVALID_CARDID
+			var first: GCard = Data.get_card(int(cards[0]))
+			if first == null or _sheng_xie_virtual_card(first.element_enum()) < 0:
+				return GConst.GE_INVALID_CARDID
 		SHENG_HUANG_MO_SHI:
-			if player.cross_num < 2 and _xin_yang() < 2:
+			# 技能要横置自己，已经横置就不能再发动（客户端门槛同此，这里补齐服务端漏掉的一条）
+			if player.tap or (player.cross_num < 2 and _xin_yang() < 2):
 				return GConst.GE_INVALID_ACTION
 		SHENG_GUANG_BAO_LIE:
 			if player.cross_num < 1 or not player.tap:
@@ -387,13 +423,13 @@ func p_magic_skill(action: Dictionary) -> int:
 	return GConst.GE_INVALID_ACTION
 
 
-## 圣邪巨胞：弃 2 张同系牌，用该系【圣】命格攻击牌（客户端给出的虚拟牌）发起一次攻击
+## 圣邪巨胞：弃 2 张同系牌，用该系【圣】命格攻击牌（虚拟牌）发起一次攻击
 func _sheng_xie_ju_bao(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0])
-	var virtual_card: int = int(cards[2])
 	var use_cards: Array = [int(cards[0]), int(cards[1])]
+	var virtual_card: int = _sheng_xie_virtual_card(Data.get_card(int(cards[0])).element_enum())
 	notice_skill(SHENG_XIE_JU_BAO, [dst_id])
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,

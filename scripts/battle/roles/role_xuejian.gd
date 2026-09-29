@@ -27,7 +27,7 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	if int(player.tokens[0]["num"]) >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_RAN_QIANG_WEI, "need_card": 0, "need_target": 1})
+		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_RAN_QIANG_WEI, "need_card": 0, "need_target": 2})
 	return out
 
 

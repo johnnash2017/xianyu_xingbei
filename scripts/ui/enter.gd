@@ -21,6 +21,9 @@ func _ready() -> void:
 	昵称输入.text_submitted.connect(func(_t: String) -> void: _on_enter_pressed())
 	进入按钮.pressed.connect(_on_enter_pressed)
 	昵称输入.grab_focus()
+	# 光标停在昵称末尾：LineEdit 默认把光标放在第 0 列，回填上次昵称后
+	# 看起来像要往名字最前面插字（同 lobby.gd 打开建房时的处理）
+	昵称输入.caret_column = 昵称输入.text.length()
 	_设标题昵称(Cfg.nickname)
 
 

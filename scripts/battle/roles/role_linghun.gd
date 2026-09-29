@@ -48,13 +48,25 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	if _hand_has_magic():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHAO_HUAN, "need_card": 1, "need_target": 0})
+		# 灵魂召还：弃 X 张法术牌 → +（X＋1）蓝魂。只让手牌里的法术牌可点，上限＝手里的法术牌数
+		# （v_magic_skill 校验同一条件）
+		var 法术牌: Array[int] = magic_hand_ids()
+		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHAO_HUAN, "need_card": 1, "need_target": 0,
+			"cards": 法术牌, "card_max": 法术牌.size()})
 	if _huang() >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_JING_XIANG, "need_card": 1, "need_target": 1})
-	if _huang() >= 3 and _hand_has_tag(TAG_ZHEN_BAO):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHEN_BAO, "need_card": 1, "need_target": 1})
-	if _lan() >= 3 and _hand_has_tag(TAG_CI_YU):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_CI_YU, "need_card": 1, "need_target": 1})
+		# v_magic_skill 只校验黄魂数与目标；执行体最多弃 3 张（mini(cards.size(), 3)），故放开选牌上限
+		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_JING_XIANG, "need_card": 1, "need_target": 1,
+			"card_max": 3})
+	# 灵魂震爆/灵魂赐予：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
+	# （v_magic_skill 校验同一张牌：须在手且带该特技）
+	var 震爆牌: Array[int] = hand_ids_with_speciality(TAG_ZHEN_BAO)
+	if _huang() >= 3 and not 震爆牌.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHEN_BAO, "need_card": 1, "need_target": 1,
+			"cards": 震爆牌})
+	var 赐予牌: Array[int] = hand_ids_with_speciality(TAG_CI_YU)
+	if _lan() >= 3 and not 赐予牌.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_CI_YU, "need_card": 1, "need_target": 1,
+			"cards": 赐予牌})
 	return out
 
 
@@ -81,14 +93,6 @@ func _hand_has_magic() -> bool:
 	for cid: int in player.hand_cards:
 		var c: GCard = Data.get_card(cid)
 		if c != null and c.is_magic():
-			return true
-	return false
-
-
-func _hand_has_tag(tag: String) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.has_speciality_name(tag):
 			return true
 	return false
 
@@ -320,8 +324,13 @@ func v_magic_skill(action: Dictionary) -> int:
 			if action.get("dst_ids", []).is_empty():
 				return GConst.GE_INVALID_ACTION
 		LING_HUN_ZHAO_HUAN:
-			# 服务端 v_magic_skill 对灵魂召还不做任何校验
-			pass
+			# 弃 X 张法术牌 → +（X＋1）蓝魂：至少弃 1 张，且每张都得是自己手里的法术牌
+			if cards.is_empty():
+				return GConst.GE_INVALID_CARDID
+			for c: Variant in cards:
+				var 法术牌: GCard = Data.get_card(int(c))
+				if 法术牌 == null or not 法术牌.is_magic() or not player.has_hand_card(int(c)):
+					return GConst.GE_INVALID_ACTION
 		_:
 			return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS

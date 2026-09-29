@@ -38,10 +38,17 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _hand_has_element(GConst.CardElement.Water):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_YAO, "need_card": 1, "need_target": 0})
+	var 水系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water)
+	if not 水系牌.is_empty():
+		# 辉耀只能弃水系牌（v_magic_skill 校验同一条），下发 cards 让界面把其余手牌置灰
+		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_YAO, "need_card": 1, "need_target": 0,
+			"cards": 水系牌})
 	if _hand_has_magic() and _has_other_with_cross():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": CHENG_JIE, "need_card": 1, "need_target": 1})
+		# 惩戒只能弃法术牌（v_magic_skill 校验同一条）
+		# 目标须有治疗（v_magic_skill：dst.cross_num == 0 时返回 GE_INVALID_ACTION）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": CHENG_JIE, "need_card": 1, "need_target": 1,
+			"cards": magic_hand_ids(),
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.cross_num > 0)})
 	if player.gem >= 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_QI_YU, "need_card": 0, "need_target": 0})
 	return out
@@ -230,14 +237,6 @@ func _sheng_guang_qi_yu() -> int:
 # ============================================================
 # 工具
 # ============================================================
-func _hand_has_element(elem: int) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.element_enum() == elem:
-			return true
-	return false
-
-
 func _hand_has_magic() -> bool:
 	for cid: int in player.hand_cards:
 		var c: GCard = Data.get_card(cid)

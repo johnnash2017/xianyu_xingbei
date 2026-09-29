@@ -25,6 +25,8 @@ Logic="*res://scripts/client/client_logic.gd"
 UI="*res://scripts/ui/ui_manager.gd"
 Art="*res://scripts/ui/art.gd"
 Audio="*res://scripts/client/audio.gd"
+AssetIndex="*res://scripts/framework/AssetIndex.gd"
+MessageSystem="*res://scripts/framework/MessageSystem.gd"
 
 [display]
 

@@ -100,8 +100,8 @@ func _ready() -> void:
 	Logic.hit_received.connect(_on_hit)
 	Logic.card_shown.connect(_on_card)
 	Logic.hurt_received.connect(_on_hurt)
-	Logic.skill_received.connect(_on_skill)
 	Logic.gossip_received.connect(_on_gossip)
+	Logic.notice_received.connect(_on_gossip)
 	Logic.game_over.connect(_on_game_over)
 	Logic.error_received.connect(func(_id: int, msg: String) -> void: _set_tip(msg))
 	# 场景里各按钮接上自己的处理
@@ -1227,10 +1227,6 @@ func _flash_panel(pid: int, color: Color) -> void:
 	panel.modulate = color
 	var tw: Tween = create_tween()
 	tw.tween_property(panel, "modulate", Color.WHITE, 0.35)
-
-
-func _on_skill(_msg: Dictionary) -> void:
-	Art.play_sfx("Skill")
 
 
 ## 公告：写日志，并识别「游戏结束，X 方获胜」的胜负提示

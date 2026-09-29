@@ -25,12 +25,46 @@ const TAG_TIAN_SHI_ZHI_QIANG: String = "天使之墙"
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _hand_has_element(GConst.CardElement.Wind):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_ZHI_JIE_JING, "need_card": 1, "need_target": 1})
-	if _hand_has_tag(TAG_TIAN_SHI_ZHI_QIANG):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHI_QIANG, "need_card": 1, "need_target": 1})
-	if _hand_has_element(GConst.CardElement.Water):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHU_FU, "need_card": 1, "need_target": 1})
+	# 风之洁净：只有风系手牌可作发动牌，下发给界面把其余手牌置灰（v_magic_skill 校验同一条）
+	# 场上没有基础效果可移除时（v_magic_skill 要求 args[0] 是目标身上的基础效果牌），不给出该技能
+	var 风系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Wind)
+	var 洁净选项: Array = _feng_zhi_jie_jing_choices()
+	if not 风系牌.is_empty() and not 洁净选项.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_ZHI_JIE_JING, "need_card": 1, "need_target": 1,
+			"cards": 风系牌, "arg_choices": 洁净选项})
+	# 天使之墙：只有手中带【天使之墙】的牌可作发动牌（v_magic_skill 校验同一张牌）
+	# 目标已有【圣盾】或【天使之墙】基础效果时服务端拒收（v_magic_skill + v_shield）
+	var 墙牌: Array[int] = hand_ids_with_speciality(TAG_TIAN_SHI_ZHI_QIANG)
+	if not 墙牌.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHI_QIANG, "need_card": 1, "need_target": 1,
+			"cards": 墙牌,
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return not p.check_basic_effect_name(GConst.CardName.Shield) and not _has_basic_tag(p, TAG_TIAN_SHI_ZHI_QIANG))})
+	# 天使祝福：只有水系手牌可作发动牌（v_magic_skill 校验同一条）
+	# 服务端允许 1~2 名目标（v_magic_skill：dsts.size() > 2 时拒收）
+	var 水系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water)
+	if not 水系牌.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHU_FU, "need_card": 1, "need_target": 1,
+			"target_max": 2, "cards": 水系牌})
+	return out
+
+
+## 风之洁净的选项：场上每张基础效果牌一项，args = [该牌 id]
+## （v_magic_skill：args[0] 必须是目标身上的基础效果牌，即 _has_basic_card(dst2, int(args[0]))）
+func _feng_zhi_jie_jing_choices() -> Array:
+	var out: Array = []
+	for pid: int in engine.order:
+		var p0: BattlePlayer = engine.p(pid)
+		# 自己永远不是可选目标（客户端把「自己」排除在候选目标之外），所以自己身上的基础效果不作选项
+		if p0 == null or p0.id == player.id:
+			continue
+		for e: Dictionary in p0.basic_effects:
+			var cid: int = int(e["card"])
+			var card: GCard = Data.get_card(cid)
+			var 拥有者: GPlayer = Data.get_player_by_id(pid)
+			var 牌名: String = card.card_name if card != null else str(cid)
+			var 人名: String = 拥有者.nickname if 拥有者 != null else str(pid)
+			out.append({"text": "移除 %s 面前的【%s】" % [人名, 牌名], "args": [cid],
+				"need_card": 1, "need_target": 1})
 	return out
 
 
@@ -346,22 +380,6 @@ func _pick_cards(target: BattlePlayer, ids: Array, n: int) -> Array:
 		if not out.has(cid2):
 			out.append(cid2)
 	return out
-
-
-func _hand_has_element(elem: int) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.element_enum() == elem:
-			return true
-	return false
-
-
-func _hand_has_tag(tag: String) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.has_speciality_name(tag):
-			return true
-	return false
 
 
 ## 目标是否拥有带某特技的基础效果（天使之墙）

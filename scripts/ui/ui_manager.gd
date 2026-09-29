@@ -5,7 +5,12 @@ extends Node
 
 const SCENE_ENTER: String = "res://scenes/enter.tscn"
 const SCENE_LOBBY: String = "res://scenes/lobby.tscn"
+## 旧的桌面战斗界面：房间等待阶段已经改用 ReadyRoom，这个界面现在只被自检用例使用
 const SCENE_BATTLE: String = "res://scenes/battle.tscn"
+## 房间准备室：进房后、开局前的界面（参照工程的 ReadyRoom 搬过来）
+const SCENE_READY_ROOM: String = "res://scenes/ReadyRoom.tscn"
+## 对局进行中用参考工程搬来的那套：res://scenes/BattleUIMobile.tscn
+const SCENE_BATTLE_MOBILE: String = "res://scenes/BattleUIMobile.tscn"
 
 var current: Node = null
 ## 界面容器：主场景 _ready 时通过 attach() 交过来
@@ -31,7 +36,11 @@ func register(n: Node) -> void:
 	current = n
 
 
-func goto(scene_path: String) -> Node:
+## 进入界面。播放主界面音乐默认打开：登录 / 大厅 / 房间准备室都用主界面曲子（进房间不换曲子）。
+## 战斗界面要传 false —— 它自己按「对局是否开始 / 谁赢了」管音乐，
+## 而 add_child 会先同步跑完新界面的 _ready（战斗曲就是在那里起播的），
+## 这里再补一句主界面曲子会把刚起的战斗曲直接盖掉。
+func goto(scene_path: String, 播放主界面音乐: bool = true) -> Node:
 	var ps: PackedScene = load(scene_path)
 	if ps == null:
 		push_error("UI: 无法加载场景 %s" % scene_path)
@@ -44,9 +53,8 @@ func goto(scene_path: String) -> Node:
 	current = inst
 	if old != null and old != inst and is_instance_valid(old):
 		old.queue_free()
-	# 切界面时同步音乐：登录 / 大厅 / 房间等待阶段都用主界面音乐（进房间不换曲子），
-	# 战斗音乐与胜负音乐由 battle.gd 按对局是否真正开始来切
-	Audio.播放音乐(Audio.场景主界面)
+	if 播放主界面音乐:
+		Audio.播放音乐(Audio.场景主界面)
 	return inst
 
 
@@ -56,6 +64,16 @@ func goto_lobby() -> Node:
 
 func goto_battle() -> Node:
 	return goto(SCENE_BATTLE)
+
+
+## 房间准备室（进房后、开局前）
+func goto_ready_room() -> Node:
+	return goto(SCENE_READY_ROOM)
+
+
+## 对局进行中的战斗界面（参考工程那套 BattleUIMobile）：音乐由它自己切，见 goto 的说明
+func goto_battle_mobile() -> Node:
+	return goto(SCENE_BATTLE_MOBILE, false)
 
 
 func goto_enter() -> Node:

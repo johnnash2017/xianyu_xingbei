@@ -18,22 +18,29 @@ var used_sheng_liao: bool = false
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _hand_has_tag(TAG_ZHI_LIAO):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_LIAO_SHU, "need_card": 1, "need_target": 1})
-	if _hand_has_tag(TAG_ZHI_YU):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_YU_ZHI_GUANG, "need_card": 1, "need_target": 1})
+	# 治疗术/治愈之光：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
+	# （v_magic_skill 校验同一张牌：须在手且带该特技）
+	var 治疗牌: Array[int] = hand_ids_with_speciality(TAG_ZHI_LIAO)
+	if not 治疗牌.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_LIAO_SHU, "need_card": 1, "need_target": 1,
+			"cards": 治疗牌})
+	var 治愈牌: Array[int] = hand_ids_with_speciality(TAG_ZHI_YU)
+	if not 治愈牌.is_empty():
+		# v_magic_skill：dsts 至少 1 名、至多 3 名（dsts.size() > 3 直接拒），故放开目标上限
+		out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_YU_ZHI_GUANG, "need_card": 1, "need_target": 1,
+			"target_max": 3, "cards": 治愈牌})
 	if player.get_energy() >= 1 and not used_sheng_liao:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_LIAO, "need_card": 0, "need_target": 1})
+		# v_magic_skill 只校验能量与使用标记，不校验目标数/args；
+		# 执行体 _sheng_liao 把 3 点治疗按 args 逐一分配给 dsts（args[i] 为第 i 名目标的治疗量，合计 3），
+		# 至多 3 名目标；用 arg_choices 列出全部 3 点分配方案（按选择顺序对应）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_LIAO, "need_card": 0, "need_target": 1,
+			"target_max": 3, "arg_choices": [
+				{"text": "1 名目标 +3 治疗", "args": [3], "need_target": 1},
+				{"text": "2 名目标 +1/+2 治疗（按选择顺序）", "args": [1, 2], "need_target": 2},
+				{"text": "2 名目标 +2/+1 治疗（按选择顺序）", "args": [2, 1], "need_target": 2},
+				{"text": "3 名目标各 +1 治疗", "args": [1, 1, 1], "need_target": 3},
+			]})
 	return out
-
-
-## 手牌中是否有带某特技的牌
-func _hand_has_tag(tag: String) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.has_speciality_name(tag):
-			return true
-	return false
 
 
 ## 每回合开始重置「圣疗」使用标记

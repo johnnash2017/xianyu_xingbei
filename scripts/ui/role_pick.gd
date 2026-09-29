@@ -351,7 +351,6 @@ func _set_submitted() -> void:
 	确定按钮.disabled = true
 	取消按钮.visible = false
 	提示.text = "已提交，等待其他玩家…"
-	Art.play_sfx("Skill")
 
 
 func _on_game_info(info: Dictionary) -> void:

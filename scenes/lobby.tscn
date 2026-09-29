@@ -223,15 +223,17 @@ text = "选将"
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 selected = 0
-item_count = 4
+item_count = 5
 popup/item_0/text = "随机"
 popup/item_0/id = 0
 popup/item_1/text = "三选一"
 popup/item_1/id = 1
-popup/item_2/text = "Ban-Pick"
+popup/item_2/text = "六选一"
 popup/item_2/id = 2
-popup/item_3/text = "CM"
+popup/item_3/text = "Ban-Pick"
 popup/item_3/id = 3
+popup/item_4/text = "CM"
+popup/item_4/id = 4
 
 [node name="按钮行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容" unique_id=1846027509]
 layout_mode = 2

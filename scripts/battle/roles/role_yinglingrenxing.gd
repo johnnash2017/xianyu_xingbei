@@ -11,6 +11,9 @@ const NU_HUO_MO_WEN: int = 2701       # 怒火压制 / 魔纹融合 的询问号
 const NU_HUO_YA_ZHI: int = 2702       # 怒火压制（宣告号）
 const ZHAN_WEN_SUI_JI: int = 2703     # 战纹碎击（响应）
 const MO_WEN_RONG_HE: int = 2704      # 魔纹融合（宣告号）
+## 怒火压制／魔纹融合 询问的选项值（客户端点选项即以该值作为回复 args[0]）
+const CHOICE_NU_HUO_YA_ZHI: int = 1
+const CHOICE_MO_WEN_RONG_HE: int = 2
 const FU_WEN_GAI_ZAO: int = 2705      # 符文改造（启动）
 const FU_WEN_GAI_ZAO_TOKEN: int = 27051 # 符文改造·重排指示物
 const SHUANG_CHONG_HUI_XIANG: int = 2706 # 双重回响（响应）
@@ -145,7 +148,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 ## 战纹碎击：翻转 1 个战纹，弃 X 张同系牌，本次伤害 +(X-1)（可额外翻转 Y 个战纹，再 +Y）
 func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
 	if not engine.has_reply():
-		engine.ask_skill(player.id, ZHAN_WEN_SUI_JI, 1, 0)
+		engine.ask_skill(player.id, ZHAN_WEN_SUI_JI, 2, 0)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -200,15 +203,20 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 
 
 ## 怒火压制（1）/ 魔纹融合（2）
+## 两个分支对牌的要求不同（分支 1 不用牌；分支 2 要 ≥2 张异系牌），所以下发选项按钮让玩家选：
+## 先按需选好牌（分支 2 用），再点对应选项；点分支 1 时不用选牌。
 func _nu_huo_mo_wen(ctx: Dictionary) -> int:
 	var dst_id: int = int(ctx.get("dst", -1))
 	if not engine.has_reply():
-		engine.ask_skill(player.id, NU_HUO_MO_WEN, 1, 0)
+		engine.ask_skill(player.id, NU_HUO_MO_WEN, 2, 0, GConst.CardSource.Hand, [
+			{"value": CHOICE_NU_HUO_YA_ZHI, "label": "怒火压制"},
+			{"value": CHOICE_MO_WEN_RONG_HE, "label": "魔纹融合"},
+		])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var choice: int = int(args[0]) if not args.is_empty() else 0
-	if choice == 1:
+	if choice == CHOICE_NU_HUO_YA_ZHI:
 		# 怒火压制：翻转 1 个战纹为魔纹
 		if _zhan_wen() < 1:
 			return GConst.GE_INVALID_ARGUMENT
@@ -217,7 +225,7 @@ func _nu_huo_mo_wen(ctx: Dictionary) -> int:
 		_set_mo_wen(_mo_wen() + 1)
 		engine._broadcast_game()
 		return SUCCESS
-	if choice == 2:
+	if choice == CHOICE_MO_WEN_RONG_HE:
 		# 魔纹融合：翻转 1 个魔纹，弃 X 张异系牌，对目标造成 (X-1) 点法术伤害
 		var cards: Array = r.get("card_ids", [])
 		if _mo_wen() < 1 or cards.size() < 2:

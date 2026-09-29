@@ -6,7 +6,7 @@ extends Control
 ##   * 跨机加入走「搜索局域网房主」（UDP 发现）或直接填 IP 连接。
 ## 界面结构全部在 lobby.tscn 里（可在编辑器里所见即所得地改），本脚本只绑节点 + 跑逻辑。
 
-const 刷新间隔: float = 2.0
+const 刷新间隔: float = 0.5
 
 # ---- 场景里的界面节点 ----
 @export var 标题栏: Label
@@ -35,6 +35,7 @@ var _发现的房主: Array = []
 var _选将值: Array[int] = [
 	GConst.RoleStrategy.Random,
 	GConst.RoleStrategy.Strategy31,
+	GConst.RoleStrategy.Strategy61,
 	GConst.RoleStrategy.BP,
 	GConst.RoleStrategy.CM,
 ]
@@ -46,6 +47,7 @@ func _ready() -> void:
 	Logic.room_list_changed.connect(_fill)
 	Logic.error_received.connect(_on_error)
 	Logic.gossip_received.connect(_on_gossip)
+	Logic.notice_received.connect(_on_gossip)
 	Net.discovery.host_found.connect(_on_host_found)
 	房间列表.item_activated.connect(_on_room_activated)
 	房主列表.item_activated.connect(_on_host_activated)

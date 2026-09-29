@@ -1,0 +1,47 @@
+[gd_scene format=3 uid="uid://bwibd45sfsras"]
+
+[ext_resource type="Script" uid="uid://cmelax4n6gqjx" path="res://scripts/effects/斩击2D.gd" id="1_wrap"]
+[ext_resource type="PackedScene" path="res://scenes/prefabs/effects/斩击3D/雷斩.tscn" id="2_vfx"]
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_add"]
+blend_mode = 1
+
+[sub_resource type="Environment" id="Environment_slash"]
+background_mode = 1
+tonemap_mode = 3
+glow_enabled = true
+glow_bloom = 0.2
+glow_blend_mode = 0
+
+[node name="雷斩" type="Node2D" unique_id=138131764 node_paths=PackedStringArray("VFX")]
+script = ExtResource("1_wrap")
+VFX = NodePath("视口容器/视口/特效位/特效")
+
+[node name="视口容器" type="SubViewportContainer" parent="." unique_id=1578834627]
+material = SubResource("CanvasItemMaterial_add")
+offset_left = -950.0
+offset_top = -256.0
+offset_right = 650.0
+offset_bottom = 256.0
+mouse_filter = 2
+stretch = true
+
+[node name="视口" type="SubViewport" parent="视口容器" unique_id=2024510667]
+own_world_3d = true
+handle_input_locally = false
+msaa_3d = 1
+size = Vector2i(1600, 512)
+render_target_update_mode = 4
+
+[node name="环境" type="WorldEnvironment" parent="视口容器/视口" unique_id=1069673166]
+environment = SubResource("Environment_slash")
+
+[node name="相机" type="Camera3D" parent="视口容器/视口" unique_id=86116215]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3.9)
+fov = 60.0
+
+[node name="特效位" type="Node3D" parent="视口容器/视口" unique_id=1814890213]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 1, 0, 0)
+
+[node name="特效" parent="视口容器/视口/特效位" unique_id=15167908 instance=ExtResource("2_vfx")]
+emitting = false

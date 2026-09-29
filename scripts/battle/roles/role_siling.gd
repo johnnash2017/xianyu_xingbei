@@ -28,10 +28,17 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _hand_has_element(GConst.CardElement.Earth):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": WEN_YI, "need_card": 1, "need_target": 0})
-	if player.cross_num >= 2 and _has_same_element_pair():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SI_WANG_ZHI_CHU, "need_card": 1, "need_target": 1})
+	var 地系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Earth)
+	if not 地系牌.is_empty():
+		# 瘟疫只能弃地系牌（v_magic_skill 校验同一条），下发 cards 让界面把其余手牌置灰
+		out.append({"type": GConst.ActionType.MagicSkill, "id": WEN_YI, "need_card": 1, "need_target": 0,
+			"cards": 地系牌})
+	var 同系牌: Array[int] = _same_element_hand_ids()
+	if player.cross_num >= 2 and not 同系牌.is_empty():
+		# 死亡之触要求两张同系牌：下发「手里该系至少 2 张」的牌把同系孤张置灰；
+		# 具体选中两张是否同系、移除几点治疗仍由服务端 v_magic_skill 校验
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SI_WANG_ZHI_CHU, "need_card": 2, "need_target": 1,
+			"cards": 同系牌, "arg_choices": _si_wang_choices()})
 	if player.gem >= 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": MU_BEI_YUN_LUO, "need_card": 0, "need_target": 0})
 	return out
@@ -210,26 +217,29 @@ func _mu_bei_yun_luo(_action: Dictionary) -> int:
 # ============================================================
 # 工具
 # ============================================================
-func _hand_has_element(elem: int) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.element_enum() == elem:
-			return true
-	return false
-
-
-## 手牌中是否存在两张同系牌（死亡之触的弃牌条件）
-func _has_same_element_pair() -> bool:
-	var elems: Array[int] = []
+## 手牌中「该系至少有 2 张」的牌 id（死亡之触须弃 2 张同系牌，同系孤张会被服务端驳回）
+func _same_element_hand_ids() -> Array[int]:
+	var out: Array[int] = []
 	for cid: int in player.hand_cards:
 		var c: GCard = Data.get_card(cid)
 		if c == null:
 			continue
-		var e: int = c.element_enum()
-		if elems.has(e):
-			return true
-		elems.append(e)
-	return false
+		var 同系数: int = 0
+		for other: int in player.hand_cards:
+			var o: GCard = Data.get_card(other)
+			if o != null and o.element_enum() == c.element_enum():
+				同系数 += 1
+		if 同系数 >= 2:
+			out.append(cid)
+	return out
+
+
+## 死亡之触的参数选项：移除 n 点治疗（n 从 2 到自己当前治疗，服务端 args[0] 需 ≤ cross_num）
+func _si_wang_choices() -> Array:
+	var out: Array = []
+	for n: int in range(2, player.cross_num + 1):
+		out.append({"text": "造成 %d 点法术伤害" % n, "args": [n], "need_card": 2, "need_target": 1})
+	return out
 
 
 ## 从自己下家开始、按座位序绕回自己之前，收集其他所有角色 id

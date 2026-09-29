@@ -54,6 +54,8 @@ enum RoleStrategy {
 	BP = 3,
 	CM = 4,
 	Any = 5,
+	## 六选一：与 31 同一套候选流程，只是每人候选发 6 个（取自服务端不用的 RANK_SOLO 值）
+	Strategy61 = 6,
 	All = 9,
 }
 
@@ -181,6 +183,7 @@ enum CardSource {
 	Hand = 0,        # 只能选自己的手牌
 	Cover = 1,       # 只能选自己的盖牌
 	HandOrCover = 2, # 手牌或盖牌皆可（由角色的选项决定具体用哪种）
+	BasicEffect = 3, # 只能选场上基础效果牌（如【封印破碎】把任意一张基础效果牌收入手中）
 }
 
 enum CmOperation {

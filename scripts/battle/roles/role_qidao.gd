@@ -39,12 +39,21 @@ func available_skills() -> Array:
 	var out: Array = []
 	# 光辉信仰 / 漆黑信仰：仅祈祷形态（横置）且符文 > 0
 	if player.tap and _fu_wen() > 0:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": GUANG_HUI_XIN_YANG, "need_card": 1, "need_target": 1})
+		# 光辉信仰不校验发动牌（v_magic_skill 对 GUANG_HUI_XIN_YANG 只判形态与符文），故 need_card 为 0
+		out.append({"type": GConst.ActionType.MagicSkill, "id": GUANG_HUI_XIN_YANG, "need_card": 0, "need_target": 1})
 		out.append({"type": GConst.ActionType.MagicSkill, "id": QI_HEI_XIN_YANG, "need_card": 0, "need_target": 1})
-	if _hand_has_tag(TAG_XUN_JIE):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": XUN_JIE_CI_FU, "need_card": 1, "need_target": 1})
-	if _hand_has_tag(TAG_WEI_LI):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": WEI_LI_CI_FU, "need_card": 1, "need_target": 1})
+	# 迅捷赐福/威力赐福：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
+	# （v_magic_skill 校验同一张牌：须在手、带该特技；目标面前已有同类赐福时拒收，见 _check_ci_fu_target）
+	var 迅捷牌: Array[int] = hand_ids_with_speciality(TAG_XUN_JIE)
+	if not 迅捷牌.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": XUN_JIE_CI_FU, "need_card": 1, "need_target": 1,
+			"cards": 迅捷牌,
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return _find_effect_card(p, TAG_XUN_JIE) < 0)})
+	var 威力牌: Array[int] = hand_ids_with_speciality(TAG_WEI_LI)
+	if not 威力牌.is_empty():
+		out.append({"type": GConst.ActionType.MagicSkill, "id": WEI_LI_CI_FU, "need_card": 1, "need_target": 1,
+			"cards": 威力牌,
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return _find_effect_card(p, TAG_WEI_LI) < 0)})
 	return out
 
 
@@ -366,11 +375,3 @@ func _find_effect_card(target: BattlePlayer, tag: String) -> int:
 		if c != null and c.has_speciality_name(tag):
 			return int(be["card"])
 	return -1
-
-
-func _hand_has_tag(tag: String) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.has_speciality_name(tag):
-			return true
-	return false

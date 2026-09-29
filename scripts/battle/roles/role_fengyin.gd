@@ -43,12 +43,23 @@ var _wu_xi_draw: int = 0
 func available_skills() -> Array:
 	var out: Array = []
 	for sid: int in [FENG_ZHI_FENG_YIN, SHUI_ZHI_FENG_YIN, HUO_ZHI_FENG_YIN, DI_ZHI_FENG_YIN, LEI_ZHI_FENG_YIN]:
-		if _hand_has_tag(_seal_tag(sid)):
-			out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 1})
+		# 只有手里带对应【X之封印】的牌才能发动，下发给界面用来把其余手牌置灰（v_magic_skill 校验同一条）
+		var 封印牌: Array[int] = hand_ids_with_speciality(_seal_tag(sid))
+		if not 封印牌.is_empty():
+			# 目标须非同色、且身上没有同种封印（v_magic_skill：dst.color == player.color
+			# 或 dst.check_basic_effect_tag(_seal_tag(aid)) 为真时拒收）
+			out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 1,
+				"cards": 封印牌,
+				"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.color != player.color and not p.check_basic_effect_tag(_seal_tag(sid)))})
 	if player.get_energy() > 0:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": WU_XI_SHU_FU, "need_card": 0, "need_target": 1})
+		# 五系束缚：目标须为对手（v_magic_skill：dst.color == player.color 时拒收）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": WU_XI_SHU_FU, "need_card": 0, "need_target": 1,
+			"targets": enemy_ids()})
 		if _any_basic_effect_on_field():
-			out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_YIN_PO_SUI, "need_card": 1, "need_target": 1})
+			# 封印破碎：发动牌是目标面前的基础效果牌，不是手牌
+			# （v_magic_skill 用 _has_basic_card(dst3, cards[0]) 校验目标身上的基础效果牌）
+			out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_YIN_PO_SUI, "need_card": 1, "need_target": 1,
+				"card_source": GConst.CardSource.BasicEffect})
 	return out
 
 
@@ -77,17 +88,9 @@ func p_boot(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 跳过当前玩家的行动阶段：效仿引擎 SWeaken 的做法（移除尚未执行的行动阶段状态，压入回合结束状态）
+## 跳过当前玩家的行动阶段：给引擎打个标记，轮到 SActionPhase 时它自己会直接收尾进回合结束
 func _skip_action_phase() -> void:
-	var found: bool = false
-	for st: Variant in engine._states:
-		if st is BattleEngine.SActionPhase:
-			found = true
-			break
-	if not found:
-		return
-	engine._remove_next_state(BattleEngine.SActionPhase)
-	engine.resolve_action(GConst.ActionType.None, {})
+	engine.skip_action_phase = true
 
 
 # ============================================================
@@ -275,14 +278,6 @@ func _seal_cause(element: int) -> int:
 		GConst.CardElement.Earth: return DI_ZHI_FENG_YIN
 		GConst.CardElement.Thunder: return LEI_ZHI_FENG_YIN
 	return 0
-
-
-func _hand_has_tag(tag: String) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.has_speciality_name(tag):
-			return true
-	return false
 
 
 ## 场上封印牌数量（五系束缚的 X 来源）

@@ -58,7 +58,8 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	if _ling_gan() > 1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": BU_XIE_HE_XIAN, "need_card": 0, "need_target": 1})
+		out.append({"type": GConst.ActionType.MagicSkill, "id": BU_XIE_HE_XIAN, "need_card": 0, "need_target": 1,
+			"arg_choices": _bu_xie_choices()})
 	return out
 
 
@@ -73,6 +74,17 @@ func _ling_gan() -> int:
 func _set_ling_gan(v: int) -> void:
 	var t: Dictionary = player.tokens[TOKEN_LING_GAN]
 	t["num"] = clampi(v, 0, int(t["max"]))
+
+
+## 不谐和弦的参数选项：num 从 2 到当前灵感；choice=1 双方各摸 num-1 张，choice=2 双方各弃 num-1 张
+func _bu_xie_choices() -> Array:
+	var out: Array = []
+	for num: int in range(2, _ling_gan() + 1):
+		out.append({"text": "移除 %d 点灵感，双方各摸 %d 张牌" % [num, num - 1],
+			"args": [num, 1], "need_target": 1})
+		out.append({"text": "移除 %d 点灵感，双方各弃 %d 张牌" % [num, num - 1],
+			"args": [num, 2], "need_target": 1})
+	return out
 
 
 ## 从 ids 中挑出 n 张目标手牌（不足时按其手牌顺序补齐）
@@ -97,11 +109,12 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	var target: BattlePlayer = engine.p(pid)
 	if target == null or n <= 0 or target.hand_cards.is_empty():
 		return SUCCESS
+	# 要弃的张数最多到他的手牌数（问超过手牌数会让他永远选不够、只能放弃）
+	var want: int = mini(n, target.hand_cards.size())
 	if not engine.has_reply():
-		engine.ask_skill(pid, cause, 1, 0)
+		engine.ask_skill(pid, cause, want, 0)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	var want: int = mini(n, target.hand_cards.size())
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,

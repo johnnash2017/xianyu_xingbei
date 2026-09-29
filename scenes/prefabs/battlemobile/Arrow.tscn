@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/battle/b05_new_argsItem.png" id="1_b05newargsItempng"]
+[ext_resource type="Script" path="res://scripts/Arrow.gd" id="2_Arrowgd"]
+
+[node name="Arrow" type="Node2D"]
+position = Vector2(-102.64005, 56.73503)
+rotation = -85.19343
+script = ExtResource("2_Arrowgd")

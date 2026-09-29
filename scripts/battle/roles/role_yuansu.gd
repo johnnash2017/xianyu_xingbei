@@ -36,30 +36,20 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _hand_has_tag(TAG_YUN_SHI):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": YUN_SHI, "need_card": 1, "need_target": 1})
-	if _hand_has_tag(TAG_FENG_REN):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_REN, "need_card": 1, "need_target": 1})
-	if _hand_has_tag(TAG_HUO_QIU):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": HUO_QIU, "need_card": 1, "need_target": 1})
-	if _hand_has_tag(TAG_LEI_JI):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LEI_JI, "need_card": 1, "need_target": 1})
-	if _hand_has_tag(TAG_BING_DONG):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": BING_DONG, "need_card": 1, "need_target": 1})
+	# 陨石/风刃/火球/雷击/冰冻：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
+	# （v_magic_skill 用 _skill_tag 校验同一张牌：须在手且带该特技）
+	for sid: int in [YUN_SHI, FENG_REN, HUO_QIU, LEI_JI, BING_DONG]:
+		var 法术牌: Array[int] = hand_ids_with_speciality(_skill_tag(sid))
+		if not 法术牌.is_empty():
+			# 冰冻必须指定 2 名角色（v_magic_skill：dsts.size() < 2 拒绝），其余法术只需 1 名
+			var 目标下限: int = 2 if sid == BING_DONG else 1
+			out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 目标下限,
+				"cards": 法术牌})
 	if _element_token() >= TOKEN_ELEMENT_MAX:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": YUAN_SU_DIAN_RAN, "need_card": 0, "need_target": 1})
 	if player.gem > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": YUE_GUANG, "need_card": 0, "need_target": 1})
 	return out
-
-
-## 手牌中是否有带某特技的牌
-func _hand_has_tag(tag: String) -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.has_speciality_name(tag):
-			return true
-	return false
 
 
 ## 技能号 → 对应牌上的特技标签

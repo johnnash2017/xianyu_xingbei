@@ -15,8 +15,9 @@ const ROLE_POOL_ANY: Array = [
 	20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 108,
 ]
 
-## 31/CM 策略每人候选角色数（服务端 StateRoleStrategy31：roles->pop(5, options)）
-const ROLE_PICK_COUNT: int = 5
+## 候选制选将每人发几个候选：三选一发 3 个、六选一发 6 个，都只从中选 1 个
+const 三选一候选数: int = 3
+const 六选一候选数: int = 6
 
 ## BP 候选角色数（服务端 GameGrailCommon.h：BP_ALTERNATIVE_NUM[] = {12,16,20}）
 const BP_ALTERNATIVE_NUM: Array = [12, 16, 20]
@@ -183,8 +184,9 @@ func create_room(conn_id: int, data: Dictionary) -> void:
 		"conn_of": {},          # player_id -> conn_id
 		"client_of": {},        # player_id -> client_id（进程身份，断线重连认领座位用）
 		"battle": battle,
-		"next_player_id": 0,
 	}
+	battle.room_name = str(room["name"])
+	battle.room_max_player = int(room["max_player"])
 	battle.send_cb = func(target: int, msg_type: int, fields: Dictionary) -> void:
 		_engine_send(rid, target, msg_type, fields)
 	_rooms[rid] = room
@@ -209,8 +211,12 @@ func enter_room(conn_id: int, room_id: int) -> void:
 		pid = 认领
 		(room["conn_of"] as Dictionary)[pid] = conn_id
 	elif battle.order.size() < int(room["max_player"]):
-		pid = int(room["next_player_id"])
-		room["next_player_id"] = pid + 1
+		# 座位号取「当前空闲的最小号」：有人退房再进人时新玩家补进空出来的座位，
+		# 房间界面的座位图才不会因为号一直自增而串位
+		var 空位: int = 0
+		while battle.players.has(空位):
+			空位 += 1
+		pid = 空位
 		battle.add_player(pid, GConst.TEAM_NONE, str(s["nickname"]))
 		(room["conn_of"] as Dictionary)[pid] = conn_id
 		var cid: String = str(s.get("client_id", ""))
@@ -305,6 +311,10 @@ func ready_for_game(conn_id: int, type: int) -> void:
 	_broadcast_game(room)
 	if not battle.all_ready():
 		return
+	if battle.order.size() != int(room["max_player"]):
+		# 人数没坐满不开局：房间设定几人就得几人（2V2 必须凑齐 4 人），
+		# 否则 2V2 的房间里两个人都准备了也会直接开成 1v1
+		return
 	if room.has("pick"):
 		# 选将进行中，等待各玩家提交
 		return
@@ -339,10 +349,12 @@ func _begin_role_pick(room: Dictionary) -> void:
 			_begin_pick_cm(room)
 		GConst.RoleStrategy.Any, GConst.RoleStrategy.All:
 			# Any 与大厅用的 All：候选人 = 全部已实现角色（服务端 StateRoleStrategyAny 直接下发 SUMMON 全表）
-			_begin_pick_candidates(room, ROLE_POOL_ANY, false)
+			_begin_pick_candidates(room, ROLE_POOL_ANY, 0)
+		GConst.RoleStrategy.Strategy61:
+			_begin_pick_candidates(room, ROLE_POOL_BASE, 六选一候选数)
 		_:
-			# 31（Random 与未指定策略同样走 31）
-			_begin_pick_candidates(room, ROLE_POOL_BASE, true)
+			# 31（三选一）。Random 不走这里：它在 ready_for_game 里直接随机分配
+			_begin_pick_candidates(room, ROLE_POOL_BASE, 三选一候选数)
 
 
 ## 收客户端的 PickBan（选角结果），路由到当前房间的选将状态
@@ -358,18 +370,19 @@ func _on_pick_ban(room: Dictionary, pid: int, data: Dictionary) -> void:
 		_on_pick_ban_candidates(room, pid, data)
 
 
-## 31 / Any：服务端 StateRoleStrategy31(331-372) 与 StateRoleStrategyAny(374-407)
-## 抽候选=true 时每人抽 ROLE_PICK_COUNT 个不重复候选（31）；false 时下发整池（Any）
-## 下发用 strategy=2：服务端 Coder::askForRole(GameGrailCommon.h:759) 固定填 ROLE_STRATEGY_31，Any 只差候选池
-func _begin_pick_candidates(room: Dictionary, pool: Array, 抽候选: bool) -> void:
+## 31 / 61 / Any：服务端 StateRoleStrategy31(331-372) 与 StateRoleStrategyAny(374-407)
+## 候选数 > 0：每人抽这么多个互不重复的候选（三选一发 3 个、六选一发 6 个），最后只取其一；
+## 候选数 = 0：整池下发（Any）
+## 下发用 strategy=2：服务端 Coder::askForRole(GameGrailCommon.h:759) 固定填 ROLE_STRATEGY_31，Any/61 只差候选池
+func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> void:
 	var battle: BattleEngine = room["battle"]
 	var 池: Array = pool.duplicate()
 	池.shuffle()
 	var 候选表: Dictionary = {}
 	for pid: int in battle.order:
 		var 候选: Array = []
-		if 抽候选:
-			for _k: int in range(ROLE_PICK_COUNT):
+		if 候选数 > 0:
+			for _k: int in range(候选数):
 				if 池.is_empty():
 					池 = pool.duplicate()
 					池.shuffle()
@@ -473,8 +486,8 @@ func _begin_pick_cm(room: Dictionary) -> void:
 	battle.balance_colors()
 	var 人数: int = battle.order.size()
 	if 人数 < 4 or 人数 > 8 or 人数 % 2 != 0:
-		# 人数无法套用 BP_ALTERNATIVE_NUM：退回 31，避免卡死
-		_begin_pick_candidates(room, ROLE_POOL_BASE, true)
+		# 人数无法套用 BP_ALTERNATIVE_NUM：退回 31（三选一），避免卡死
+		_begin_pick_candidates(room, ROLE_POOL_BASE, 三选一候选数)
 		return
 	var 候选数: int = int(BP_ALTERNATIVE_NUM[人数 / 2 - 2])
 	var 池: Array = ROLE_POOL_BASE.duplicate()
@@ -694,8 +707,8 @@ func _begin_pick_bp(room: Dictionary) -> void:
 	battle.balance_colors()
 	var 人数: int = battle.order.size()
 	if 人数 < 4 or 人数 > 8 or 人数 % 2 != 0:
-		# 人数无法套用 BP_ALTERNATIVE_NUM（服务端会 GE_FATAL_ERROR）：退回 31，避免卡死
-		_begin_pick_candidates(room, ROLE_POOL_BASE, true)
+		# 人数无法套用 BP_ALTERNATIVE_NUM（服务端会 GE_FATAL_ERROR）：退回 31（三选一），避免卡死
+		_begin_pick_candidates(room, ROLE_POOL_BASE, 三选一候选数)
 		return
 	var 候选数: int = int(BP_ALTERNATIVE_NUM[人数 / 2 - 2])
 	var 池: Array = ROLE_POOL_BASE.duplicate()

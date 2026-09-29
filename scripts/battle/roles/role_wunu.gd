@@ -37,21 +37,22 @@ func available_skills() -> Array:
 	if tong_sheng_id == -1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": TONG_SHENG_GONG_SI, "need_card": 0, "need_target": 1})
 	if player.tap and player.hand_cards.size() >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": NI_LIU, "need_card": 1, "need_target": 0})
-	if _has_bei_ming_card():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_BEI_MING, "need_card": 1, "need_target": 1})
+		# 逆流任意 2 张手牌都可弃，无牌类限制，故不下发 cards
+		out.append({"type": GConst.ActionType.MagicSkill, "id": NI_LIU, "need_card": 2, "need_target": 0})
+	var 悲鸣牌: Array[int] = hand_ids_with_speciality(TAG_XUE_ZHI_BEI_MING)
+	if not 悲鸣牌.is_empty():
+		# 血之悲鸣只能弃带【血之悲鸣】特技的牌（v_magic_skill 校验同一条）；
+		# v_magic_skill 允许 args[0] 取 1~3，执行体对目标与自己各造成该点数的法术伤害，
+		# 故用 arg_choices 让玩家在选好牌与目标后选定伤害点数
+		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_BEI_MING, "need_card": 1, "need_target": 1,
+			"cards": 悲鸣牌, "arg_choices": [
+				{"text": "对目标与自身各造成 1 点法术伤害", "args": [1], "need_card": 1, "need_target": 1},
+				{"text": "对目标与自身各造成 2 点法术伤害", "args": [2], "need_card": 1, "need_target": 1},
+				{"text": "对目标与自身各造成 3 点法术伤害", "args": [3], "need_card": 1, "need_target": 1},
+			]})
 	if player.gem >= 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_ZU_ZHOU, "need_card": 0, "need_target": 1})
 	return out
-
-
-## 手牌中是否有带【血之悲鸣】特技的牌
-func _has_bei_ming_card() -> bool:
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.has_speciality_name(TAG_XUE_ZHI_BEI_MING):
-			return true
-	return false
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:

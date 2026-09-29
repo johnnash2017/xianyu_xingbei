@@ -1,0 +1,115 @@
+[gd_scene format=3 uid="uid://lmlgmqoml24j"]
+
+[ext_resource type="Script" uid="uid://2qfxc4whtrwa" path="res://addons/label_font_auto_sizer/label_auto_sizer.gd" id="4_3fapl"]
+[ext_resource type="Texture2D" uid="uid://xlkm0ydut1qt" path="res://assets/textures/battle/skilltag.png" id="26_skilltagpng"]
+[ext_resource type="Texture2D" uid="uid://wx7hbio0adyl" path="res://assets/textures/battle/血.png" id="27_png"]
+[ext_resource type="Script" uid="uid://canvstlchfvb5" path="res://scripts/SkillInfo.gd" id="28_SkillInfogd"]
+
+[sub_resource type="StyleBoxLine" id="StyleBoxLine_3fapl"]
+content_margin_left = 3.0
+content_margin_top = 3.0
+content_margin_right = 3.0
+content_margin_bottom = 3.0
+color = Color(0.4700758, 0.47007585, 0.47007567, 1)
+thickness = 6
+
+[node name="SKillInfo" type="VBoxContainer" unique_id=890735960]
+custom_minimum_size = Vector2(580, 80)
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -80.0
+offset_right = 600.0
+grow_vertical = 0
+pivot_offset = Vector2(300, 0)
+theme_override_constants/separation = 0
+script = ExtResource("28_SkillInfogd")
+
+[node name="SkillTitle" type="TextureRect" parent="." unique_id=1181250678]
+visible = false
+custom_minimum_size = Vector2(600, 100)
+layout_mode = 2
+mouse_filter = 0
+texture = ExtResource("26_skilltagpng")
+expand_mode = 1
+
+[node name="SkillName" type="Label" parent="SkillTitle" unique_id=283402631]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -192.2
+offset_top = -15.0
+offset_right = 192.2
+offset_bottom = 50.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(192.2, 32.5)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 35
+text = "血腥咆哮"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="skilltag" type="Label" parent="SkillTitle" unique_id=2047513155]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -45.0
+offset_right = 150.0
+offset_bottom = -15.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(150, 15)
+theme_override_font_sizes/font_size = 20
+text = "响应"
+autowrap_mode = 3
+
+[node name="SkillImage" type="TextureRect" parent="SkillTitle" unique_id=298659143]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -287.5
+offset_top = -50.0
+offset_right = -172.5
+offset_bottom = 50.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(57.5, 50)
+mouse_filter = 0
+texture = ExtResource("27_png")
+expand_mode = 1
+
+[node name="Panel" type="Panel" parent="." unique_id=1041973915]
+self_modulate = Color(1, 1, 1, 0)
+custom_minimum_size = Vector2(580, 100)
+layout_mode = 2
+
+[node name="SkillContent" type="Label" parent="Panel" unique_id=1165846530]
+custom_minimum_size = Vector2(1, 1)
+layout_mode = 0
+offset_top = -1.0
+offset_right = 600.0
+offset_bottom = 99.0
+theme_override_font_sizes/font_size = 26
+text = "【响应】血腥咆哮：（作为主动攻击打出时，若攻击的目标拥有的[治疗]为２）本次攻击强制命中。"
+vertical_alignment = 1
+autowrap_mode = 3
+clip_text = true
+script = ExtResource("4_3fapl")
+_max_size = 26
+_current_font_size = 26
+_editor_defaults_set = true
+metadata/_custom_type_script = "uid://2qfxc4whtrwa"
+
+[node name="Panel2" type="Panel" parent="." unique_id=1070571819]
+custom_minimum_size = Vector2(580, 8)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxLine_3fapl")

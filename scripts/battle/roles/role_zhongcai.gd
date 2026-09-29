@@ -34,7 +34,11 @@ func available_skills() -> Array:
 	if t > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_RI_SHEN_PAN, "need_card": 0, "need_target": 1})
 	if t < TOKEN_MAX and player.get_energy() > 0:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": PAN_JUE_TIAN_PING, "need_card": 0, "need_target": 0})
+		out.append({"type": GConst.ActionType.MagicSkill, "id": PAN_JUE_TIAN_PING, "need_card": 0, "need_target": 0,
+			"arg_choices": [
+				{"text": "弃光手牌", "args": [0]},
+				{"text": "补满手牌，我方 +1 宝石", "args": [1]},
+			]})
 	return out
 
 

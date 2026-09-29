@@ -6,7 +6,10 @@ extends Node
 var card_db: Array[GCard] = []
 var role_list: Dictionary = {}          # roleID -> 角色名
 var role_skill_db: Dictionary = {}      # roleID -> 技能文本
+var role_property_db: Dictionary = {}   # roleID -> 派系（技 / 血 / 幻 / 咏 / 圣）
 var button_db: Dictionary = {}          # 技能名 -> 按钮说明
+## 角色表（角色 id / 角色名 / 简称 / 派系…），第 13 列是派系
+const HERO_INFO_PATH: String = "res://assets/data/heroInfo.txt"
 
 # ---------------- 对局视图状态 ----------------
 var player_list: Array[GPlayer] = []
@@ -31,6 +34,7 @@ func _ready() -> void:
 	_load_card_db()
 	_load_role_list()
 	_load_role_skill_db()
+	_load_role_property()
 	_load_button_db()
 
 
@@ -68,6 +72,16 @@ func _load_role_skill_db() -> void:
 		role_skill_db[int(cells[0])] = cells[1].replace("#", "\n")
 
 
+## 角色派系（技 / 血 / 幻 / 咏 / 圣）：取自角色表第 13 列（同参考工程 RoleBase.RoleProperty）
+func _load_role_property() -> void:
+	role_property_db.clear()
+	for line: String in _read_lines(HERO_INFO_PATH):
+		var cells: PackedStringArray = line.split("\t")
+		if cells.size() < 13 or cells[0] == "":
+			continue
+		role_property_db[int(cells[0])] = cells[12].strip_edges()
+
+
 func _load_button_db() -> void:
 	button_db.clear()
 	for line: String in _read_lines("res://数据/buttonDB.txt"):
@@ -97,6 +111,11 @@ func _read_lines(path: String) -> PackedStringArray:
 # ============================================================
 func role_name(rid: int) -> String:
 	return role_list.get(rid, "角色")
+
+
+## 角色派系（技 / 血 / 幻 / 咏 / 圣）；角色表里没有的角色返回空串（界面据此不显示派系图标）
+func role_property(rid: int) -> String:
+	return role_property_db.get(rid, "")
 
 
 ## 角色专属指示物定义（槽位 → {name, max}），逐行对照原客户端 data/Player.cpp 的 addToken

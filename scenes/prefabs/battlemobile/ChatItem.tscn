@@ -1,0 +1,35 @@
+[gd_scene format=3 uid="uid://d35bbib6yc0ic"]
+
+[ext_resource type="Script" uid="uid://buy11hksca5di" path="res://scripts/ChatItem.gd" id="19_ChatItemgd"]
+
+[node name="ChatItem" type="HBoxContainer" unique_id=105115639]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+script = ExtResource("19_ChatItemgd")
+
+[node name="Icon" type="TextureRect" parent="." unique_id=1940596381]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ChatBG" type="ColorRect" parent="." unique_id=488068090]
+self_modulate = Color(1, 1, 1, 0)
+custom_minimum_size = Vector2(540, 100)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Text" type="Label" parent="ChatBG" unique_id=1747949362]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "New Text"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3

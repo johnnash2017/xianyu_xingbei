@@ -22,9 +22,12 @@ func available_skills() -> Array:
 	var out: Array = []
 	if player.gem > 0:
 		if _max_different_elements() >= 2:
-			out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAO_FA_DIAN, "need_card": 1, "need_target": 1})
+			out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAO_FA_DIAN, "need_card": 2, "need_target": 1})
 		if _max_different_elements() >= 3:
-			out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_JIE_FA_DIAN, "need_card": 1, "need_target": 1})
+			# 圣洁法典要弃 X 张两两异系的牌（v_magic_skill：cards.size() >= 3 且全异系）：
+			# 最少 3 张，最多只能选到手牌里不同元素的种数，界面据此放开点选上限
+			out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_JIE_FA_DIAN, "need_card": 3, "need_target": 1,
+				"card_max": _max_different_elements()})
 	return out
 
 

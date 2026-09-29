@@ -51,10 +51,16 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _available_lei_guang and _cover_has_element(GConst.CardElement.Thunder):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LEI_GUANG_SAN_SHE, "need_card": 1, "need_target": 1})
+	if _available_lei_guang:
+		# 雷光散射：只从盖牌区选雷系牌（服务端 v_magic_skill 校验盖牌区存在雷系牌）
+		var 雷系盖牌: Array[int] = _cover_ids_of_element(GConst.CardElement.Thunder)
+		if not 雷系盖牌.is_empty():
+			out.append({"type": GConst.ActionType.MagicSkill, "id": LEI_GUANG_SAN_SHE, "need_card": 1,
+				"card_source": GConst.CardSource.Cover, "cards": 雷系盖牌, "card_max": 雷系盖牌.size()})
 	if _duo_chong_ready and not player.cover_cards.is_empty():
-		out.append({"type": GConst.ActionType.AttackSkill, "id": DUO_CHONG_SHE_JI, "need_card": 1, "need_target": 1})
+		# 多重射击：所出的牌须属于盖牌区（服务端 v_attack_skill），目标限敌方
+		out.append({"type": GConst.ActionType.AttackSkill, "id": DUO_CHONG_SHE_JI, "need_card": 1, "need_target": 1,
+			"card_source": GConst.CardSource.Cover, "cards": player.cover_cards, "targets": enemy_ids()})
 	return out
 
 
@@ -491,13 +497,19 @@ func _gai_pai(skill_id: int, max_n: int) -> int:
 # ============================================================
 # 工具
 # ============================================================
-## 盖牌区是否有某系别的【充能】
-func _cover_has_element(elem: int) -> bool:
+## 盖牌区某系别的全部牌 id（雷光散射的 cards 用它限制只能选雷系盖牌）
+func _cover_ids_of_element(elem: int) -> Array[int]:
+	var out: Array[int] = []
 	for cid: int in player.cover_cards:
 		var c: GCard = Data.get_card(cid)
 		if c != null and c.element_enum() == elem:
-			return true
-	return false
+			out.append(cid)
+	return out
+
+
+## 盖牌区是否有某系别的【充能】
+func _cover_has_element(elem: int) -> bool:
+	return not _cover_ids_of_element(elem).is_empty()
 
 
 ## 取回复中第一张指定系别的盖牌

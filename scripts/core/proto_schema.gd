@@ -159,6 +159,9 @@ const TABLE: Dictionary = {
 		15: {"n": "wait_pid", "t": "i32"},
 		16: {"n": "wait_ms", "t": "u32"},
 		17: {"n": "wait_total_ms", "t": "u32"},
+		# 房名与房间设定人数：房间准备室据此显示房名、并从一开始就把所有空座位摆出来
+		18: {"n": "room_name", "t": "str"},
+		19: {"n": "max_player", "t": "i32"},
 	},
 	GConst.Msg.Talk: {
 		1: {"n": "txt", "t": "str"},

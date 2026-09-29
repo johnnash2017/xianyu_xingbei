@@ -3,38 +3,30 @@ extends BattleRole
 ## 技能：
 ##   魔爆冲击（801）——【法术】弃 1 张法术牌【展示】，指定 2 名对手各弃 1 张法术牌【展示】；
 ##        若其中有人不如此做，则对其造成 2 点法术伤害③；只要有对手未弃牌，我方【战绩区】+1【宝石】
-##   魔弹融合（803）——【响应】你的地系或火系牌可以当【魔弹】使用（p_magic_skill：打出后成为魔弹，
-##        沿最近对手的方向传递；被指向者可打出【魔弹】/地系/火系牌继续传递（每传递一次伤害 +1）、
-##        用【圣光】抵挡（效果终止），或不如此做而承受伤害（其拥有【圣盾】/【天使之墙】时改为移除之并视作未命中））
+##   魔弹融合（803）——【响应】你的地系或火系牌可以当【魔弹】使用（打出后成为魔弹，
+##        落点＝右手边最近的对手；之后由引擎统一的「魔弹传递」询问接手：
+##        被指向者可打出【魔弹】/地系/火系牌继续传递（每传递一次伤害 +1）、用【圣光】抵挡（效果终止），
+##        或不如此做而承受伤害（其拥有【圣盾】/【天使之墙】时改为移除之并视作未命中））
 ##   毁灭风暴（804）——【法术·宝石】对 2 名对手各造成 2 点法术伤害③
 ##
 ## 牌类校验覆写：服务端 MoDao.cpp 覆写 v_missile / v_remissile（手中【魔弹】或地系/火系牌
 ## 可当【魔弹】使用与响应），已按服务端移植于本文件。
-## 引擎限制说明：服务端 MoDao.cpp 并未实现【魔弹掌握】(802)，故本文件不实现该技能（不凭空编造）。
-## 变通说明：服务端用 StateRequestHand / StateMissiled 状态处理「请求手牌」「魔弹传递」，
-## 本引擎无对应状态，改用 ask_skill 逐一询问相关玩家（回复 args[0]==1 表示照做，card_ids 给出所弃/所打出的牌）。
+## 引擎限制说明：服务端 MoDao.cpp 未实现【魔弹掌握】(802)，本文件按技能原文（
+## 「你主动使用【魔弹】时可以选择逆向传递」）补上：见 has_missile_mastery。
+## 变通说明：服务端用 StateRequestHand 处理「请求手牌」，本引擎改用 ask_skill 逐一询问相关玩家
+## （回复 args[0]==1 表示照做，card_ids 给出所弃的牌）；「魔弹传递」则复用引擎的 SMissileAsk。
 
 const MO_BAO_CHONG_JI: int = 801
 const MO_DAN_RONG_HE: int = 803
 const HUI_MIE_FENG_BAO: int = 804
 
-const TAG_TIAN_SHI_ZHI_QIANG: String = "天使之墙"
-
 const MO_BAO_HARM_POINT: int = 2        # 魔爆冲击：不弃法术牌的对手受到的法术伤害
-const MISSILE_BASE_POINT: int = 2       # 魔弹初始伤害
 const HUI_MIE_HARM_POINT: int = 2       # 毁灭风暴：每名对手受到的法术伤害
 
 ## 魔爆冲击的多目标询问进度
 var _mo_bao_targets: Array[int] = []
 var _mo_bao_damage: Array[int] = []
 var _mo_bao_gem: bool = false
-
-## 魔弹传递的临时状态
-var _missile_holder: int = -1
-var _missile_src: int = -1
-var _missile_point: int = 0
-var _missile_post_dir: bool = true
-var _missile_used: Array[int] = []
 
 
 # ============================================================
@@ -44,11 +36,18 @@ func available_skills() -> Array:
 	var out: Array = []
 	var enemies: int = _enemy_count()
 	if _hand_has_magic() and enemies >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_BAO_CHONG_JI, "need_card": 1, "need_target": 1})
+		# 弃 1 张法术牌 + 指定 2 名对手（服务端 _check_two_target 就是按 2 个目标校验）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_BAO_CHONG_JI, "need_card": 1, "need_target": 2,
+			"targets": enemy_ids(), "cards": magic_hand_ids()})
 	if _hand_has_fire_or_earth() and enemies >= 1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAN_RONG_HE, "need_card": 1, "need_target": 1})
+		# 落点候选（有【魔弹掌握】时左右各一个）一并发给客户端，界面只亮这些
+		# 可用牌＝手中的地系/火系牌（与 v_missile_fusion 的牌校验同一条），界面据此把其余手牌置灰
+		var 魔弹牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Fire or c.element_enum() == GConst.CardElement.Earth)
+		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAN_RONG_HE, "need_card": 1, "need_target": 1,
+			"targets": missile_targets(player.id), "cards": 魔弹牌})
 	if player.gem > 0 and enemies >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_MIE_FENG_BAO, "need_card": 0, "need_target": 1})
+		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_MIE_FENG_BAO, "need_card": 0, "need_target": 2,
+			"targets": enemy_ids()})
 	return out
 
 
@@ -70,15 +69,7 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_CARDID
 			return _check_two_target(action)
 		MO_DAN_RONG_HE:
-			if cards.is_empty():
-				return GConst.GE_INVALID_CARDID
-			var cid2: int = int(cards[0])
-			var card2: GCard = Data.get_card(cid2)
-			if not player.has_hand_card(cid2) or card2 == null:
-				return GConst.GE_INVALID_CARDID
-			if card2.element_enum() != GConst.CardElement.Fire and card2.element_enum() != GConst.CardElement.Earth:
-				return GConst.GE_INVALID_CARDID
-			return GConst.GE_SUCCESS
+			return v_missile_fusion(action)
 		HUI_MIE_FENG_BAO:
 			if player.gem <= 0:
 				return GConst.GE_INVALID_ACTION
@@ -93,7 +84,7 @@ func p_magic_skill(action: Dictionary) -> int:
 		MO_BAO_CHONG_JI:
 			return _mo_bao_chong_ji(action)
 		MO_DAN_RONG_HE:
-			return _mo_dan_rong_he(action)
+			return cast_missile_fusion(action)
 		HUI_MIE_FENG_BAO:
 			return _hui_mie_feng_bao(action)
 	return GConst.GE_INVALID_ACTION
@@ -142,87 +133,6 @@ func _mo_bao_chong_ji(action: Dictionary) -> int:
 	return URGENT
 
 
-## 魔弹融合：把一张地系/火系牌当成【魔弹】打出并沿方向传递
-func _mo_dan_rong_he(action: Dictionary) -> int:
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	if step == 0:
-		var cid: int = int(cards[0])
-		var dst_id: int = int(dsts[0])
-		notice_skill(MO_DAN_RONG_HE, [dst_id])
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": dst_id,
-			"card_ids": [cid], "is_real": true,
-		})
-		engine.take_from_hand(player.id, [cid])
-		engine.to_discard([cid])
-		# 传递方向：若指定目标就是 post 方向最近的对手则沿 post 传递，否则沿 pre（对照 StateMissiled::create）
-		_missile_post_dir = dst_id == _nearest_enemy(player.id, true)
-		_missile_holder = dst_id
-		_missile_src = player.id
-		_missile_point = MISSILE_BASE_POINT
-		_missile_used.clear()
-		_missile_used.append(player.id)
-		_missile_used.append(dst_id)
-		step = 1
-	if step != 1:
-		return SUCCESS
-	while true:
-		var holder: BattlePlayer = engine.p(_missile_holder)
-		if holder == null:
-			step = STEP_DONE
-			return SUCCESS
-		if not engine.has_reply():
-			engine.ask_skill(holder.id, MO_DAN_RONG_HE, 1, 0)
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		var given: Array = r.get("card_ids", [])
-		var use_card: int = -1
-		if not args.is_empty() and int(args[0]) == 1 and not given.is_empty():
-			var gid: int = int(given[0])
-			if holder.has_hand_card(gid):
-				use_card = gid
-		if use_card < 0:
-			return _missile_give_up(holder)
-		var ucard: GCard = Data.get_card(use_card)
-		if ucard == null:
-			return _missile_give_up(holder)
-		if ucard.card_name_enum() == GConst.CardName.HolyLight:
-			# 圣光抵挡：魔弹效果终止，不造成伤害
-			step = STEP_DONE
-			_use_missile_card(holder.id, use_card)
-			return SUCCESS
-		if not _can_remissile(ucard):
-			# 打出的牌既不是圣光也不能继续传递：视为放弃（服务端校验失败等价于此）
-			return _missile_give_up(holder)
-		_use_missile_card(holder.id, use_card)
-		_missile_point += 1
-		_missile_src = holder.id
-		var nxt: int = _next_missile_target(holder.id, _missile_post_dir, _missile_used)
-		if nxt < 0:
-			# 无人可继续传递：由当前持有者承受伤害
-			_missile_holder = holder.id
-			return _missile_give_up(holder)
-		_missile_used.append(nxt)
-		_missile_holder = nxt
-	return SUCCESS
-
-
-## 放弃传递：有【圣盾】/【天使之墙】则移除之（视作未命中），否则承受当前魔弹伤害
-func _missile_give_up(holder: BattlePlayer) -> int:
-	step = STEP_DONE
-	if _missile_block_by_basic(holder.id):
-		engine._broadcast_game()
-		return SUCCESS
-	engine.push_harm({
-		"src": _missile_src, "dst": holder.id, "point": _missile_point,
-		"cause": GConst.CAUSE_MISSILE, "type": GConst.HarmType.Magic,
-	})
-	engine._broadcast_game()
-	return URGENT
-
-
 ## 毁灭风暴：消耗 1 宝石，对 2 名对手各造成 2 点法术伤害
 func _hui_mie_feng_bao(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
@@ -252,6 +162,16 @@ func v_remissile(card_id: int) -> int:
 	if not _can_use_missile(card_id):
 		return GConst.GE_INVALID_CARDID
 	return GConst.GE_SUCCESS
+
+
+# ============================================================
+# 【魔弹掌握】（802）
+# 技能原文：「你主动使用【魔弹】时可以选择逆向传递」（服务端 MoDao.cpp 未实现，按技能原文补上）。
+# 效果＝打【魔弹】时可以选左手边那个对手（逆向），由基类的 missile_targets 统一给出候选；
+# 响应【魔弹】继续传递时同样可以选方向（见 BattleEngine.SMissileAsk）。
+# ============================================================
+func has_missile_mastery() -> bool:
+	return true
 
 
 # ============================================================
@@ -294,17 +214,6 @@ func _target_discard_magic(tid: int, r: Dictionary) -> bool:
 	return true
 
 
-## 打出一张牌（魔弹传递/圣光抵挡用）
-func _use_missile_card(pid: int, cid: int) -> void:
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Use, "src_id": pid, "dst_id": pid,
-		"card_ids": [cid], "is_real": true,
-	})
-	engine.take_from_hand(pid, [cid])
-	engine.to_discard([cid])
-	engine._broadcast_game()
-
-
 ## 手中牌能否当作【魔弹】使用／响应（服务端 v_missile / v_remissile 的判定）
 func _can_use_missile(card_id: int) -> bool:
 	if not player.has_hand_card(card_id):
@@ -321,59 +230,6 @@ func _can_remissile(card: GCard) -> bool:
 		return true
 	var e: int = card.element_enum()
 	return e == GConst.CardElement.Fire or e == GConst.CardElement.Earth
-
-
-## 目标若拥有【圣盾】或【天使之墙】，移除之并返回 true（魔弹视作未命中）
-func _missile_block_by_basic(target_id: int) -> bool:
-	var target: BattlePlayer = engine.p(target_id)
-	if target == null:
-		return false
-	var cid: int = -1
-	if target.check_basic_effect_name(GConst.CardName.Shield):
-		cid = engine._find_basic_card(target, GConst.CardName.Shield)
-	else:
-		for e: Dictionary in target.basic_effects:
-			var c: GCard = Data.get_card(int(e["card"]))
-			if c != null and c.has_speciality_name(TAG_TIAN_SHI_ZHI_QIANG):
-				cid = int(e["card"])
-				break
-	if cid < 0:
-		return false
-	engine.remove_basic_effect(target_id, cid, GConst.CAUSE_MISSILE)
-	engine.to_discard([cid])
-	return true
-
-
-## 指定方向上最近的一名对手
-func _nearest_enemy(from_id: int, post_dir: bool) -> int:
-	var cur: BattlePlayer = engine.p(from_id)
-	if cur == null:
-		return -1
-	var nid: int = cur.post_id if post_dir else cur.pre_id
-	for _i: int in range(engine.order.size()):
-		var pp: BattlePlayer = engine.p(nid)
-		if pp == null:
-			return -1
-		if pp.color != cur.color:
-			return nid
-		nid = pp.post_id if post_dir else pp.pre_id
-	return -1
-
-
-## 指定方向上最近的、且尚未参与过本轮传递的对手
-func _next_missile_target(from_id: int, post_dir: bool, used: Array) -> int:
-	var cur: BattlePlayer = engine.p(from_id)
-	if cur == null:
-		return -1
-	var nid: int = cur.post_id if post_dir else cur.pre_id
-	for _i: int in range(engine.order.size()):
-		var pp: BattlePlayer = engine.p(nid)
-		if pp == null:
-			return -1
-		if pp.color != cur.color and not used.has(nid):
-			return nid
-		nid = pp.post_id if post_dir else pp.pre_id
-	return -1
 
 
 func _enemy_count() -> int:

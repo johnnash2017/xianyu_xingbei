@@ -1,0 +1,1653 @@
+[gd_scene format=3 uid="uid://dxw73ymlbrqwj"]
+
+[ext_resource type="Texture2D" uid="uid://c1a6jl776wqay" path="res://assets/resources/agcv3/scene_title/input.png" id="1_inputpng"]
+[ext_resource type="Texture2D" uid="uid://qv27j8yxrrpy" path="res://assets/textures/battle/b05_botton_info.png" id="4_b05bottoninfopng"]
+[ext_resource type="Texture2D" uid="uid://70sve2d7vnyg" path="res://assets/misc/Texture2D/b05_botton_set.png" id="5_b05bottonsetpng"]
+[ext_resource type="Texture2D" uid="uid://tya6rvbcu6rp" path="res://assets/textures/battle/b05_botton_sst.png" id="6_b05bottonsstpng"]
+[ext_resource type="Texture2D" uid="uid://bylbt510762dk" path="res://assets/textures/battle/b02_chara_light_g.png" id="10_b02charalightgpng"]
+[ext_resource type="Texture2D" uid="uid://bsstg2lsg8wkx" path="res://assets/textures/battle/b02_selected.png" id="11_b02selectedpng"]
+[ext_resource type="Texture2D" uid="uid://bv6rskm345axg" path="res://assets/textures/battle/1x1.png" id="15_1x1png"]
+[ext_resource type="Texture2D" uid="uid://bc33yxox3hjtv" path="res://assets/textures/battle/b02_chara_red.png" id="18_b02chararedpng"]
+[ext_resource type="Texture2D" uid="uid://b2jgdrw8wb2gd" path="res://assets/textures/hero/small/0S.png" id="20_0Spng"]
+[ext_resource type="Texture2D" uid="uid://rk773wcilfl" path="res://assets/textures/battle/b02_team_blue.png" id="23_b02teambluepng"]
+[ext_resource type="Texture2D" uid="uid://bbcdwf471py48" path="res://assets/textures/battle/b02_team_red.png" id="24_b02teamredpng"]
+[ext_resource type="Script" uid="uid://c54t7nb08mldh" path="res://scripts/UIFontDirty.gd" id="26_UIFontDirtygd"]
+[ext_resource type="Script" uid="uid://hatkgal7ft8s" path="res://scripts/UIEdgeFix.gd" id="27_UIEdgeFixgd"]
+[ext_resource type="Script" uid="uid://cojj3ucexnb3j" path="res://scripts/ItemOverlay.gd" id="30_ItemOverlaygd"]
+[ext_resource type="Texture2D" uid="uid://b7fundhb10idd" path="res://assets/textures/battle/ui_notice.png" id="33_uinoticepng"]
+[ext_resource type="Texture2D" uid="uid://dw4qa6mkukslj" path="res://assets/textures/battle/b05_botton_ok.png" id="34_b05bottonokpng"]
+[ext_resource type="Texture2D" uid="uid://ewjnpky7ad7f" path="res://assets/textures/battle/b05_botton_no.png" id="35_b05bottonnopng"]
+[ext_resource type="Texture2D" uid="uid://dsepx1im7hkkc" path="res://assets/textures/battle/b05_botton_action.png" id="36_b05bottonactionpng"]
+[ext_resource type="Texture2D" uid="uid://sfwnplqm25o5" path="res://assets/textures/battle/b05_botton_skip.png" id="37_b05bottonskippng"]
+[ext_resource type="Texture2D" uid="uid://xsyp34kxxe75" path="res://assets/textures/battle/b05_button_log.png" id="38_b05buttonlogpng"]
+[ext_resource type="Texture2D" uid="uid://ci3wvo4id2il" path="res://assets/textures/battle/b05_button_chat.png" id="39_b05buttonchatpng"]
+[ext_resource type="Texture2D" uid="uid://67dwk0sleqoe" path="res://assets/resources/agcv3/scene_banpick/icon_chat.png" id="40_iconchatpng"]
+[ext_resource type="Texture2D" uid="uid://dg1hwyjwei8xd" path="res://assets/textures/battle/b05_sys_btlobby.png" id="41_b05sysbtlobbypng"]
+[ext_resource type="Script" uid="uid://dtkgp5wtb1u4b" path="res://scripts/AutoClearLog.gd" id="43_AutoClearLoggd"]
+[ext_resource type="Script" uid="uid://bpg0b6fg4gxdf" path="res://scripts/ui/battle_mobile.gd" id="45_BattleMobilegd"]
+[ext_resource type="PackedScene" uid="uid://c1suqv71vxxev" path="res://scenes/prefabs/battlemobile/PlayerSelfPanel.tscn" id="9001_selfpanel"]
+[ext_resource type="PackedScene" uid="uid://dtx56vhow1f1t" path="res://scenes/prefabs/battlemobile/PlayerOtherPanel.tscn" id="9002_otherpanel"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
+
+[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "TxtTurn", "TxtRID", "TxtHint", "Hint", "Content_2", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign")]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+scale = Vector2(1.5, 1.5)
+script = ExtResource("45_BattleMobilegd")
+Root = NodePath("Root")
+MainPlayer = NodePath("Root/MainPlayer")
+PlayerStatusMobileR = NodePath("Root/PlayerStatusMobileR")
+PlayerStatusMobileUR = NodePath("Root/PlayerStatusMobileUR")
+PlayerStatusMobileU = NodePath("Root/PlayerStatusMobileU")
+PlayerStatusMobileUL = NodePath("Root/PlayerStatusMobileUL")
+PlayerStatusMobileL = NodePath("Root/PlayerStatusMobileL")
+BlueMorale = NodePath("Root/BlueTeam/BlueMorale")
+RedMorale = NodePath("Root/RedTeam/RedMorale")
+BlueEnergy = NodePath("Root/BlueTeam/BlueEnergy")
+RedEnergy = NodePath("Root/RedTeam/RedEnergy")
+BlueGrail = NodePath("Root/BlueTeam/BlueGrail")
+RedGrail = NodePath("Root/RedTeam/RedGrail")
+TxtTurn = NodePath("Root/Status/TxtTurn")
+TxtRID = NodePath("Root/Status/TxtRID")
+TxtHint = NodePath("Root/Hint/TxtHint")
+Hint = NodePath("Root/Hint")
+Content_2 = NodePath("Root/LogRoot/MsgRoot/Viewport_2/Content_2")
+Content = NodePath("Root/ChatRoot_/ChatRoot/ScrollView/Viewport/Content")
+InputField = NodePath("Root/ChatRoot_/ChatRoot/InputFiledLayout/InputField")
+BtnSubmit = NodePath("Root/ChatRoot_/ChatRoot/InputFiledLayout/BtnSubmit")
+BtnLogExpand = NodePath("Root/BtnLogExpand")
+BtnChatExpand = NodePath("Root/BtnChatExpand")
+WinPanel = NodePath("WinPanel")
+EndTxt = NodePath("WinPanel/EndTxt")
+BtnBack = NodePath("WinPanel/BtnBack")
+LogRoot = NodePath("Root/LogRoot")
+ChatRoot = NodePath("Root/ChatRoot_")
+HandArea = NodePath("Root/HandArea")
+SkillArea = NodePath("Root/SkillArea")
+ChildrenSkillArea = NodePath("Root/ChildrenSkillArea")
+ChooseArea = NodePath("Root/ChooseArea")
+BtnOK = NodePath("Root/BtnOK")
+BtnCancel = NodePath("Root/BtnCancel")
+BtnCovered = NodePath("Root/BtnCovered")
+BtnSpecila = NodePath("Root/BtnSpecila")
+BtnResign = NodePath("Root/BtnResign")
+
+[node name="PlayerAgentUI" type="Control" parent="." unique_id=561347129]
+visible = false
+anchors_preset = 0
+mouse_filter = 2
+
+[node name="UIFontDirty" type="Node" parent="." unique_id=763842865]
+script = ExtResource("26_UIFontDirtygd")
+
+[node name="FixCanvasTool" type="Control" parent="." unique_id=1297391267]
+visible = false
+anchors_preset = 0
+mouse_filter = 2
+
+[node name="UIEdgeFix" type="Control" parent="." unique_id=286013103]
+visible = false
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("27_UIEdgeFixgd")
+
+[node name="Root" type="Control" parent="." unique_id=1723247347]
+anchors_preset = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MainPlayer" parent="Root" unique_id=1048259497 instance=ExtResource("9001_selfpanel")]
+layout_mode = 0
+anchors_preset = 0
+anchor_top = 0.0
+anchor_bottom = 0.0
+offset_top = 456.00006
+offset_bottom = 720.00006
+grow_horizontal = 1
+grow_vertical = 1
+
+[node name="HandArea" type="Control" parent="Root" unique_id=1728113150]
+anchors_preset = 0
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -322.0
+offset_top = -200.0
+offset_right = 393.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(345.5, 95)
+
+[node name="ShowCardArea" type="GridContainer" parent="Root" unique_id=1585281306]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -340.0
+offset_top = -75.0
+offset_right = 360.0
+offset_bottom = 115.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(350, 95)
+theme_override_constants/h_separation = 0
+theme_override_constants/v_separation = 0
+columns = 6
+
+[node name="SkillArea" type="TextureRect" parent="Root" unique_id=519657714]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -360.0
+offset_top = -5.0
+offset_right = -360.0
+offset_bottom = 115.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(0, 60)
+mouse_filter = 0
+texture = ExtResource("1_inputpng")
+expand_mode = 1
+
+[node name="ChildrenSkillArea" type="GridContainer" parent="Root" unique_id=2096393800]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -415.0
+offset_top = -65.0
+offset_right = 355.0
+offset_bottom = 25.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(385, 45)
+theme_override_constants/h_separation = 0
+theme_override_constants/v_separation = 0
+columns = 6
+
+[node name="Hint" type="TextureRect" parent="Root" unique_id=1236043393]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -340.0
+offset_top = -245.0
+offset_right = 340.0
+offset_bottom = -215.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(340, 15)
+mouse_filter = 0
+texture = ExtResource("33_uinoticepng")
+expand_mode = 1
+
+[node name="TxtHint" type="Label" parent="Root/Hint" unique_id=1308289630]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 25
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Status" type="TextureRect" parent="Root" unique_id=1754816046]
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -309.5
+offset_top = -35.0
+offset_right = -50.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(129.5, 17.5)
+mouse_filter = 0
+texture = ExtResource("4_b05bottoninfopng")
+expand_mode = 1
+
+[node name="LblTurn" type="Label" parent="Root/Status" unique_id=1076033971]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -106.4
+offset_top = -12.5
+offset_right = -46.4
+offset_bottom = 17.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(30, 15)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "回合:"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="TxtTurn" type="Label" parent="Root/Status" unique_id=1967017097]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -46.0
+offset_top = -12.5
+offset_right = -11.0
+offset_bottom = 17.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(17.5, 15)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "08"
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="LblRID" type="Label" parent="Root/Status" unique_id=1304739370]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -2.7
+offset_top = -12.5
+offset_right = 57.3
+offset_bottom = 17.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(30, 15)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "房号:"
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="TxtRID" type="Label" parent="Root/Status" unique_id=1578308667]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 48.95
+offset_top = -12.5
+offset_right = 96.25
+offset_bottom = 17.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(23.65, 15)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "8888"
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="BtnOK" type="Button" parent="Root" unique_id=792897171]
+visible = false
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -228.0
+offset_top = -275.0
+offset_right = -94.0
+offset_bottom = -157.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(67, 59)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("34_b05bottonokpng")
+expand_icon = true
+
+[node name="BtnCancel" type="Button" parent="Root" unique_id=1426519125]
+visible = false
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -86.0
+offset_top = -174.5
+offset_bottom = -103.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(43, 35.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("35_b05bottonnopng")
+expand_icon = true
+
+[node name="BtnSpecila" type="Button" parent="Root" unique_id=150154565]
+visible = false
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -212.0
+offset_top = -130.5
+offset_right = -110.0
+offset_bottom = -43.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(51, 43.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("36_b05bottonactionpng")
+expand_icon = true
+
+[node name="BtnSetting" type="Button" parent="Root" unique_id=602787382]
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -86.0
+offset_top = -71.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(43, 35.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("5_b05bottonsetpng")
+expand_icon = true
+
+[node name="BtnResign" type="Button" parent="Root" unique_id=248496715]
+visible = false
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -86.0
+offset_top = -300.5
+offset_bottom = -229.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(43, 35.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("37_b05bottonskippng")
+expand_icon = true
+
+[node name="BtnCovered" type="Button" parent="Root" unique_id=1914479708]
+visible = false
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -1280.0
+offset_top = -325.5
+offset_right = -1194.0
+offset_bottom = -254.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(43, 35.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("6_b05bottonsstpng")
+expand_icon = true
+
+[node name="PlayerStatusMobileL" parent="Root" unique_id=1654437967 instance=ExtResource("9002_otherpanel")]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 106.0
+offset_right = 250.0
+offset_bottom = 356.0
+grow_horizontal = 1
+grow_vertical = 1
+
+[node name="PlayerStatusMobileUL" parent="Root" unique_id=1304925747 instance=ExtResource("9002_otherpanel")]
+layout_mode = 0
+offset_left = 256.5
+offset_top = 49.5
+offset_right = 506.5
+offset_bottom = 299.5
+grow_horizontal = 1
+grow_vertical = 1
+
+[node name="PlayerStatusMobileU" parent="Root" unique_id=1133651417 instance=ExtResource("9002_otherpanel")]
+layout_mode = 0
+offset_left = 514.5
+offset_top = -0.5
+offset_right = 764.5
+offset_bottom = 249.5
+grow_horizontal = 1
+grow_vertical = 1
+
+[node name="PlayerStatusMobileUR" parent="Root" unique_id=1142594047 instance=ExtResource("9002_otherpanel")]
+layout_mode = 0
+offset_left = 771.49976
+offset_top = 49.5
+offset_right = 1021.49976
+offset_bottom = 299.5
+grow_horizontal = 1
+grow_vertical = 1
+
+[node name="PlayerStatusMobileR" parent="Root" unique_id=908205178 instance=ExtResource("9002_otherpanel")]
+layout_mode = 0
+offset_left = 1012.0
+offset_top = 116.0
+offset_right = 1262.0
+offset_bottom = 366.0
+grow_horizontal = 1
+grow_vertical = 1
+
+[node name="BlueTeam" type="Control" parent="Root" unique_id=1145109082]
+anchors_preset = 0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -640.0
+offset_bottom = 128.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(640, 0)
+mouse_filter = 2
+
+[node name="BlueBG" type="TextureRect" parent="Root/BlueTeam" unique_id=745106329]
+layout_mode = 0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -412.0
+offset_bottom = 128.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(412, 0)
+mouse_filter = 2
+texture = ExtResource("23_b02teambluepng")
+expand_mode = 1
+
+[node name="BlueMorale" type="Label" parent="Root/BlueTeam" unique_id=826245982]
+layout_mode = 0
+anchor_left = 0.73044
+anchor_top = 0.07837
+anchor_right = 0.80325
+anchor_bottom = 0.383
+offset_left = 5.0
+offset_top = 1.0
+offset_right = 0.29999
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 35
+text = "15"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="BlueEnergy" type="GridContainer" parent="Root/BlueTeam" unique_id=395773713]
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -27.7
+offset_top = 15.0
+offset_right = 122.3
+offset_bottom = 45.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(75, 15)
+mouse_filter = 2
+theme_override_constants/h_separation = 0
+theme_override_constants/v_separation = 0
+columns = 5
+
+[node name="BlueGrail" type="GridContainer" parent="Root/BlueTeam" unique_id=1333406052]
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -177.69995
+offset_right = -27.69995
+offset_bottom = 30.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(75, 15)
+mouse_filter = 2
+theme_override_constants/h_separation = 0
+theme_override_constants/v_separation = 0
+columns = 5
+
+[node name="RedTeam" type="Control" parent="Root" unique_id=1020451163]
+anchors_preset = 0
+offset_right = 640.0
+offset_bottom = 128.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="RedBG" type="TextureRect" parent="Root/RedTeam" unique_id=147081809]
+layout_mode = 0
+offset_right = 412.0
+offset_bottom = 128.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("24_b02teamredpng")
+expand_mode = 1
+
+[node name="RedMorale" type="Label" parent="Root/RedTeam" unique_id=50698542]
+layout_mode = 0
+anchor_left = 0.18169
+anchor_top = 0.07837
+anchor_right = 0.26
+anchor_bottom = 0.39081
+offset_left = 1.20002
+offset_right = -0.79998
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 35
+text = "15"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="RedEnergy" type="GridContainer" parent="Root/RedTeam" unique_id=412828096]
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -118.2
+offset_top = 15.0
+offset_right = 31.8
+offset_bottom = 45.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(75, 15)
+mouse_filter = 2
+theme_override_constants/h_separation = 0
+theme_override_constants/v_separation = 0
+columns = 5
+
+[node name="RedGrail" type="GridContainer" parent="Root/RedTeam" unique_id=1343260555]
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = 31.79999
+offset_right = 181.79999
+offset_bottom = 30.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(75, 15)
+mouse_filter = 2
+theme_override_constants/h_separation = 0
+theme_override_constants/v_separation = 0
+columns = 5
+
+[node name="ChooseArea" type="TextureRect" parent="Root" unique_id=62792194]
+visible = false
+modulate = Color(0, 0, 0, 0.503)
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -310.0
+offset_top = -450.0
+offset_right = 381.0
+offset_bottom = -250.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(345.5, 100)
+mouse_filter = 0
+script = ExtResource("30_ItemOverlaygd")
+
+[node name="ChatRoot_" type="ColorRect" parent="Root" unique_id=169828850]
+visible = false
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 641.0
+grow_vertical = 2
+pivot_offset = Vector2(320.5, 0)
+color = Color(0, 0, 0, 0.78431)
+
+[node name="ChatRoot" type="Control" parent="Root/ChatRoot_" unique_id=420274746]
+anchors_preset = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ScrollView" type="ScrollContainer" parent="Root/ChatRoot_/ChatRoot" unique_id=1962520917]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_bottom = -50.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(0, -25)
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+
+[node name="Viewport" type="VBoxContainer" parent="Root/ChatRoot_/ChatRoot/ScrollView" unique_id=587915108]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="Content" type="GridContainer" parent="Root/ChatRoot_/ChatRoot/ScrollView/Viewport" unique_id=510138905]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 0
+theme_override_constants/v_separation = 0
+
+[node name="InputFiledLayout" type="HBoxContainer" parent="Root/ChatRoot_/ChatRoot" unique_id=1799652129]
+custom_minimum_size = Vector2(-1, 50)
+layout_mode = 0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -50.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(0, 25)
+theme_override_constants/separation = 0
+
+[node name="InputField" type="LineEdit" parent="Root/ChatRoot_/ChatRoot/InputFiledLayout" unique_id=376668398]
+custom_minimum_size = Vector2(480, 0)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 30
+placeholder_text = "Enter text..."
+
+[node name="BtnSubmit" type="Button" parent="Root/ChatRoot_/ChatRoot/InputFiledLayout" unique_id=11396785]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+size_flags_vertical = 3
+focus_mode = 0
+
+[node name="Text_2" type="Label" parent="Root/ChatRoot_/ChatRoot/InputFiledLayout/BtnSubmit" unique_id=1887866871]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 35
+text = "发送"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="LogRoot" type="ColorRect" parent="Root" unique_id=88300484]
+visible = false
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -638.0
+grow_horizontal = 0
+grow_vertical = 2
+pivot_offset = Vector2(320, 0)
+color = Color(0, 0, 0, 0.78431)
+
+[node name="MsgRoot" type="ScrollContainer" parent="Root/LogRoot" unique_id=1767378718]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+
+[node name="Viewport_2" type="VBoxContainer" parent="Root/LogRoot/MsgRoot" unique_id=1039470778]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="Content_2" type="Label" parent="Root/LogRoot/MsgRoot/Viewport_2" unique_id=677482167]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 25
+autowrap_mode = 3
+script = ExtResource("43_AutoClearLoggd")
+
+[node name="BtnLogExpand" type="Button" parent="Root" unique_id=729892912]
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -48.0
+offset_top = -33.0
+offset_bottom = 33.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(48, 33)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("38_b05buttonlogpng")
+expand_icon = true
+
+[node name="BtnChatExpand" type="Button" parent="Root" unique_id=750123701]
+layout_mode = 0
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_top = -33.0
+offset_right = 48.0
+offset_bottom = 33.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(48, 33)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("39_b05buttonchatpng")
+expand_icon = true
+
+[node name="BtnChangePlayer" type="Button" parent="Root" unique_id=135654479]
+visible = false
+layout_mode = 0
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 1167.0
+offset_top = 154.0
+offset_right = 1267.0
+offset_bottom = 254.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(100, 50)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("40_iconchatpng")
+expand_icon = true
+
+[node name="BtnHide" type="Button" parent="Root" unique_id=369609747]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 290.011
+offset_top = 129.868
+offset_right = 370.011
+offset_bottom = 179.868
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(40, 25)
+focus_mode = 0
+
+[node name="GiveUpBoard" type="TextureRect" parent="Root/BtnHide" unique_id=413479980]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -26.041
+offset_top = -282.30948
+offset_right = 234.041
+offset_bottom = 16.30951
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(130.041, 149.3095)
+mouse_filter = 0
+texture = ExtResource("1_inputpng")
+expand_mode = 1
+
+[node name="Text_3" type="Label" parent="Root/BtnHide/GiveUpBoard" unique_id=1530816832]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -121.835
+offset_top = -72.419
+offset_right = 120.835
+offset_bottom = -30.981
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(121.335, 20.719)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 30
+text = "我方正在发起投降"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Button" type="Node2D" parent="Root/BtnHide/GiveUpBoard" unique_id=1534963109]
+visible = false
+position = Vector2(-469.39178, -78.31961)
+scale = Vector2(2, 2)
+
+[node name="Agree" type="Button" parent="Root/BtnHide/GiveUpBoard/Button" unique_id=122926095]
+visible = false
+modulate = Color(0, 1, 0.22516, 1)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 115.55077
+offset_top = 16.83171
+offset_right = 355.15485
+offset_bottom = 75.94191
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.5, 0.5)
+pivot_offset = Vector2(119.80205, 29.5551)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("1_inputpng")
+expand_icon = true
+
+[node name="Text_4" type="Label" parent="Root/BtnHide/GiveUpBoard/Button/Agree" unique_id=745469883]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -50.0
+offset_top = -50.0
+offset_right = 50.0
+offset_bottom = 50.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(50, 50)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 27
+text = "同意"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Decline" type="Button" parent="Root/BtnHide/GiveUpBoard/Button" unique_id=634925783]
+visible = false
+modulate = Color(1, 0.21226, 0.21226, 1)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 115.55077
+offset_top = 59.24491
+offset_right = 355.15485
+offset_bottom = 118.35511
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.5, 0.5)
+pivot_offset = Vector2(119.80205, 29.5551)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("1_inputpng")
+expand_icon = true
+
+[node name="Text__1_" type="Label" parent="Root/BtnHide/GiveUpBoard/Button/Decline" unique_id=1923631097]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -51.19995
+offset_top = -51.04
+offset_right = 48.80005
+offset_bottom = 48.96
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(50, 50)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 27
+text = "反对"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="ChoiceArea" type="HBoxContainer" parent="Root/BtnHide/GiveUpBoard" unique_id=1277895018]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -121.835
+offset_top = -123.0005
+offset_right = 130.045
+offset_bottom = -72.4195
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(125.94, 25.2905)
+theme_override_constants/separation = 0
+
+[node name="GameObject" type="Control" parent="Root/BtnHide/GiveUpBoard" unique_id=1516232869]
+visible = false
+anchors_preset = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -50.0
+offset_top = -50.0
+offset_right = 50.0
+offset_bottom = 50.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(50, 50)
+
+[node name="image" type="TextureRect" parent="Root/BtnHide" unique_id=81102654]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -40.0
+offset_top = -25.0
+offset_right = 40.0
+offset_bottom = 25.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(40, 25)
+mouse_filter = 0
+texture = ExtResource("1_inputpng")
+expand_mode = 1
+
+[node name="text" type="Label" parent="Root/BtnHide" unique_id=1690807128]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -40.0
+offset_top = -25.0
+offset_right = 40.0
+offset_bottom = 25.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(40, 25)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 25
+text = "隐藏"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="movelog" type="Control" parent="Root" unique_id=959278604]
+visible = false
+anchors_preset = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -285.0
+offset_top = -60.0
+offset_right = 285.0
+offset_bottom = 60.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(285, 60)
+
+[node name="Viewport_3" type="TextureRect" parent="Root/movelog" unique_id=835798300]
+visible = false
+clip_contents = true
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Content_3" type="Label" parent="Root/movelog/Viewport_3" unique_id=1369320591]
+visible = false
+layout_mode = 0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_bottom = -27.03106
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(0, 27.03106)
+theme_override_font_sizes/font_size = 25
+vertical_alignment = 1
+autowrap_mode = 3
+script = ExtResource("43_AutoClearLoggd")
+
+[node name="WinPanel" type="TextureRect" parent="." unique_id=450394288]
+visible = false
+modulate = Color(0, 0, 0, 0.78431)
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="WinImg" type="TextureRect" parent="WinPanel" unique_id=882423617]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -360.0
+offset_right = 250.0
+offset_bottom = -120.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(250, 120)
+mouse_filter = 0
+texture = ExtResource("15_1x1png")
+expand_mode = 1
+
+[node name="BtnBack" type="Button" parent="WinPanel" unique_id=1410318941]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -80.0
+offset_top = 182.0
+offset_right = 80.0
+offset_bottom = 212.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(80, 15)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("41_b05sysbtlobbypng")
+expand_icon = true
+
+[node name="EndTxt" type="Label" parent="WinPanel" unique_id=2010206512]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -640.0
+offset_top = 125.0
+offset_right = 640.0
+offset_bottom = 175.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(640, 25)
+theme_override_font_sizes/font_size = 27
+text = "游戏已结束！"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="MVPRoot" type="HBoxContainer" parent="WinPanel" unique_id=137947583]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -640.0
+offset_top = -20.0
+offset_right = 640.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(640, 0)
+theme_override_constants/separation = 10
+alignment = 3
+
+[node name="PlayerIco" type="TextureRect" parent="WinPanel/MVPRoot" unique_id=1557226348]
+visible = false
+clip_contents = true
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("18_b02chararedpng")
+expand_mode = 1
+
+[node name="Hero_7" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco" unique_id=413672622]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -100.0
+offset_top = -100.0
+offset_right = 100.0
+offset_bottom = 100.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(100, 100)
+mouse_filter = 0
+texture = ExtResource("20_0Spng")
+expand_mode = 1
+
+[node name="CanSelect_7" type="Button" parent="WinPanel/MVPRoot/PlayerIco" unique_id=1480660512]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("10_b02charalightgpng")
+expand_icon = true
+
+[node name="Select_7" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco" unique_id=1001528388]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+mouse_filter = 0
+texture = ExtResource("11_b02selectedpng")
+expand_mode = 1
+
+[node name="PlayerIco__1_" type="TextureRect" parent="WinPanel/MVPRoot" unique_id=491936119]
+visible = false
+clip_contents = true
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("18_b02chararedpng")
+expand_mode = 1
+
+[node name="Hero_8" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__1_" unique_id=833630456]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -100.0
+offset_top = -100.0
+offset_right = 100.0
+offset_bottom = 100.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(100, 100)
+mouse_filter = 0
+texture = ExtResource("20_0Spng")
+expand_mode = 1
+
+[node name="CanSelect_8" type="Button" parent="WinPanel/MVPRoot/PlayerIco__1_" unique_id=1209939161]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("10_b02charalightgpng")
+expand_icon = true
+
+[node name="Select_8" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__1_" unique_id=182914118]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+mouse_filter = 0
+texture = ExtResource("11_b02selectedpng")
+expand_mode = 1
+
+[node name="PlayerIco__2_" type="TextureRect" parent="WinPanel/MVPRoot" unique_id=1406586391]
+visible = false
+clip_contents = true
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("18_b02chararedpng")
+expand_mode = 1
+
+[node name="Hero_9" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__2_" unique_id=957090332]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -100.0
+offset_top = -100.0
+offset_right = 100.0
+offset_bottom = 100.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(100, 100)
+mouse_filter = 0
+texture = ExtResource("20_0Spng")
+expand_mode = 1
+
+[node name="CanSelect_9" type="Button" parent="WinPanel/MVPRoot/PlayerIco__2_" unique_id=1429274545]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("10_b02charalightgpng")
+expand_icon = true
+
+[node name="Select_9" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__2_" unique_id=257102051]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+mouse_filter = 0
+texture = ExtResource("11_b02selectedpng")
+expand_mode = 1
+
+[node name="PlayerIco__3_" type="TextureRect" parent="WinPanel/MVPRoot" unique_id=1179459105]
+visible = false
+clip_contents = true
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("18_b02chararedpng")
+expand_mode = 1
+
+[node name="Hero_10" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__3_" unique_id=284225835]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -100.0
+offset_top = -100.0
+offset_right = 100.0
+offset_bottom = 100.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(100, 100)
+mouse_filter = 0
+texture = ExtResource("20_0Spng")
+expand_mode = 1
+
+[node name="CanSelect_10" type="Button" parent="WinPanel/MVPRoot/PlayerIco__3_" unique_id=685819323]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("10_b02charalightgpng")
+expand_icon = true
+
+[node name="Select_10" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__3_" unique_id=1837684956]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+mouse_filter = 0
+texture = ExtResource("11_b02selectedpng")
+expand_mode = 1
+
+[node name="PlayerIco__4_" type="TextureRect" parent="WinPanel/MVPRoot" unique_id=312743389]
+visible = false
+clip_contents = true
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("18_b02chararedpng")
+expand_mode = 1
+
+[node name="Hero_11" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__4_" unique_id=412270303]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -100.0
+offset_top = -100.0
+offset_right = 100.0
+offset_bottom = 100.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(100, 100)
+mouse_filter = 0
+texture = ExtResource("20_0Spng")
+expand_mode = 1
+
+[node name="CanSelect_11" type="Button" parent="WinPanel/MVPRoot/PlayerIco__4_" unique_id=475363427]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("10_b02charalightgpng")
+expand_icon = true
+
+[node name="Select_11" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__4_" unique_id=197755875]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+mouse_filter = 0
+texture = ExtResource("11_b02selectedpng")
+expand_mode = 1
+
+[node name="PlayerIco__5_" type="TextureRect" parent="WinPanel/MVPRoot" unique_id=880625988]
+visible = false
+clip_contents = true
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("18_b02chararedpng")
+expand_mode = 1
+
+[node name="Hero_12" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__5_" unique_id=1669316538]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -100.0
+offset_top = -100.0
+offset_right = 100.0
+offset_bottom = 100.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(100, 100)
+mouse_filter = 0
+texture = ExtResource("20_0Spng")
+expand_mode = 1
+
+[node name="CanSelect_12" type="Button" parent="WinPanel/MVPRoot/PlayerIco__5_" unique_id=1708319744]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("10_b02charalightgpng")
+expand_icon = true
+
+[node name="Select_12" type="TextureRect" parent="WinPanel/MVPRoot/PlayerIco__5_" unique_id=2050791508]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -109.0
+offset_top = -107.5
+offset_right = 109.0
+offset_bottom = 107.5
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(109, 107.5)
+mouse_filter = 0
+texture = ExtResource("11_b02selectedpng")
+expand_mode = 1
+
+[node name="WaitWindow" type="TextureRect" parent="." unique_id=644686147]
+visible = false
+modulate = Color(0, 0, 0, 1)
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -105.0
+offset_right = 200.0
+offset_bottom = 145.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(200, 125)
+mouse_filter = 0
+
+[node name="WaitTxt" type="Label" parent="WaitWindow" unique_id=745403939]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -200.0
+offset_right = 200.0
+offset_bottom = 300.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(200, 250)
+theme_override_font_sizes/font_size = 18
+text = "游戏已暂停
+请等待１分钟，之后将开始投票。"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Button_2" type="Button" parent="WaitWindow" unique_id=1955176096]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -80.0
+offset_top = 95.0
+offset_right = 80.0
+offset_bottom = 125.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(80, 15)
+focus_mode = 0
+
+[node name="Text_5" type="Label" parent="WaitWindow/Button_2" unique_id=1134255572]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.19608, 0.19608, 0.19608, 1)
+theme_override_font_sizes/font_size = 16
+text = "我知道了"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="DisConPlayer" type="Label" parent="WaitWindow" unique_id=1757707364]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -120.0
+offset_right = 200.0
+offset_bottom = 80.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(200, 100)
+theme_override_font_sizes/font_size = 18
+text = "有玩家掉线了"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[connection signal="pressed" from="Root/BtnHide" to="." method="onBtnHideClick"]
+[connection signal="pressed" from="Root/BtnHide/GiveUpBoard/Button/Agree" to="." method="onBtnGiveUpClick"]
+[connection signal="pressed" from="Root/BtnHide/GiveUpBoard/Button/Decline" to="." method="onBtnDeclineClick"]
+[connection signal="pressed" from="WinPanel/BtnBack" to="." method="winAndExit"]

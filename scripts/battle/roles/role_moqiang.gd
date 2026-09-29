@@ -59,7 +59,10 @@ func available_skills() -> Array:
 	# 黑暗束缚：始终不能使用法术牌（由 v_missile/v_shield/v_weaken 覆写实现）
 	# 暗之解放后本回合不能发动充盈
 	if availabel_chong_ying and (_hand_has_thunder() or _hand_has_magic()):
-		out.append({"type": GConst.ActionType.MagicSkill, "id": CHONG_YING, "need_card": 1, "need_target": 0})
+		# 充盈要弃 1 张法术牌或雷系牌：只让这些牌可点（v_magic_skill 校验同一条）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": CHONG_YING, "need_card": 1, "need_target": 0,
+			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool:
+				return c.is_magic() or c.element_enum() == GConst.CardElement.Thunder)})
 	return out
 
 
@@ -346,7 +349,11 @@ func v_magic_skill(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	if cards.is_empty():
 		return GConst.GE_INVALID_CARDID
-	if not player.has_hand_card(int(cards[0])):
+	var cid: int = int(cards[0])
+	var card: GCard = Data.get_card(cid)
+	# 只能弃法术牌或雷系牌（技能原文，原先服务端漏了这条；客户端按同一条给 cards 白名单）
+	if not player.has_hand_card(cid) or card == null \
+			or (not card.is_magic() and card.element_enum() != GConst.CardElement.Thunder):
 		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 

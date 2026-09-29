@@ -41,12 +41,43 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	out.append({"type": GConst.ActionType.MagicSkill, "id": WU_DONG, "need_card": 1, "need_target": 0})
+	# 舞动：服务端不校验，args[0]=1 摸 1 张，否则弃 1 张（弃牌时才需选 1 张手牌）
+	out.append({"type": GConst.ActionType.MagicSkill, "id": WU_DONG, "need_card": 0, "need_target": 0,
+		"arg_choices": [
+			{"text": "摸 1 张牌", "args": [1]},
+			{"text": "弃 1 张牌", "args": [0], "need_card": 1},
+		]})
 	if player.gem > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": YONG_HUA, "need_card": 0, "need_target": 0})
 	if player.get_energy() > 0:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": DAO_NI_ZHI_DIE, "need_card": 1, "need_target": 1})
+		out.append({"type": GConst.ActionType.MagicSkill, "id": DAO_NI_ZHI_DIE, "need_card": 2, "need_target": 0,
+			"target_max": 1, "arg_choices": _dao_ni_choices()})
 	return out
+
+
+## 倒逆之蝶的参数选项：弃 2 张手牌后选择分支
+## ●choice=1 对目标造成 1 点法术伤害（需目标）；●choice=2 移除一对【茧】（args 带两张盖牌 id）
+func _dao_ni_choices() -> Array:
+	var out: Array = [
+		{"text": "对目标造成 1 点法术伤害", "args": [1], "need_card": 2, "need_target": 1},
+	]
+	# 【茧】两两组合，args 里按 id 升序放两张盖牌（服务端从 args(1..2) 读取）
+	var covers: Array = player.cover_cards
+	for i: int in range(covers.size()):
+		for j: int in range(i + 1, covers.size()):
+			var a: int = mini(int(covers[i]), int(covers[j]))
+			var b: int = maxi(int(covers[i]), int(covers[j]))
+			out.append({
+				"text": "移除【茧】%s、%s" % [_cover_name(a), _cover_name(b)],
+				"args": [2, a, b], "need_card": 2,
+			})
+	return out
+
+
+## 取【茧】（盖牌）的卡名，用于参数按钮文案
+func _cover_name(cid: int) -> String:
+	var card: GCard = Data.get_card(cid)
+	return card.card_name if card != null else str(cid)
 
 
 # ============================================================

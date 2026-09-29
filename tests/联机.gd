@@ -14,6 +14,9 @@ const 等房间超时: float = 15.0
 const 等开局超时: float = 20.0
 
 var _出牌次数: int = 0
+## 出牌广播 / 命中广播的计数：确认攻击真的「打出去了」，而不是只「发出去了」
+var _亮牌次数: int = 0
+var _命中次数: int = 0
 var _错误: Array[String] = []
 
 
@@ -21,6 +24,8 @@ func _ready() -> void:
 	await get_tree().process_frame
 	Logic.error_received.connect(_on_error)
 	Logic.command_received.connect(_on_command)
+	Logic.card_shown.connect(_on_card_shown)
+	Logic.hit_received.connect(_on_hit)
 	# 主场景照真实启动走一遍（等价于 project.godot 的 run/main_scene）
 	var 主: Control = (load("res://scenes/Main.tscn") as PackedScene).instantiate()
 	get_tree().root.add_child(主)
@@ -120,10 +125,20 @@ func _结束(问题: String) -> void:
 		结论 = "失败：收到错误 %s" % str(_错误)
 	elif _出牌次数 == 0:
 		结论 = "失败：整局没出过牌"
-	print("[联机%d] 结论=%s 房主=%s 座位=%d 界面=%s 出牌=%d 错误=%d 声音=%s" % [
-		Cfg.slot, 结论, str(Net.hosting), Logic.my_player_id, 界面, _出牌次数, _错误.size(),
-		"关" if Audio.是否静音() else "开"])
+	print("[联机%d] 结论=%s 房主=%s 座位=%d 界面=%s 出牌=%d 亮牌=%d 命中=%d 错误=%d 声音=%s" % [
+		Cfg.slot, 结论, str(Net.hosting), Logic.my_player_id, 界面, _出牌次数, _亮牌次数, _命中次数,
+		_错误.size(), "关" if Audio.是否静音() else "开"])
 	get_tree().quit(0 if 结论 == "通过" else 1)
+
+
+## 出牌广播（引擎确实把这张牌打出去了才会广播）—— 用来确认「发出去了」不等于「真打出去了」
+func _on_card_shown(_msg: Dictionary) -> void:
+	_亮牌次数 += 1
+
+
+## 命中判定广播
+func _on_hit(_src: int, _dst: int, _hit: int) -> void:
+	_命中次数 += 1
 
 
 # ============================================================
@@ -139,8 +154,13 @@ func _有房间() -> bool:
 	return not (UI.current.get("_room_ids") as Array).is_empty()
 
 
+## 已开局：开局后从「房间准备室」ReadyRoom 切到新版战斗界面 BattleUIMobile
 func _已开局() -> bool:
-	if UI.current == null or UI.current.name != "Battle":
+	if UI.current == null:
+		return false
+	if UI.current.name == "BattleUIMobile":
+		return true
+	if UI.current.name != "Battle":
 		return false
 	var 等待框: Control = UI.current.get("_waiting_box")
 	return 等待框 != null and not 等待框.visible

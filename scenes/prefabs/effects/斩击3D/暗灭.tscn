@@ -1,0 +1,246 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_oa7wf"]
+[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="2_0q0vv"]
+[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="3_yyr62"]
+[ext_resource type="Texture2D" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="4_r8r4w"]
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_xpmf4"]
+noise_type = 2
+seed = 2
+fractal_type = 3
+fractal_octaves = 2
+fractal_weighted_strength = 1.0
+cellular_distance_function = 1
+cellular_return_type = 3
+domain_warp_enabled = true
+domain_warp_amplitude = 100.0
+domain_warp_frequency = 0.01
+domain_warp_fractal_octaves = 1
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_oa7wf"]
+noise = SubResource("FastNoiseLite_xpmf4")
+seamless = true
+invert = true
+seamless_blend_skirt = 0.2
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_upqsu"]
+render_priority = 0
+shader = ExtResource("2_0q0vv")
+shader_parameter/effect_decay = 0.0
+shader_parameter/primary_color = Color(0.8509804, 0.16862746, 0.72156864, 1)
+shader_parameter/secondary_color = Color(0.09411765, 0, 0.8784314, 1)
+shader_parameter/tertiary_color = Color(0.09411765, 0, 0.8784314, 1)
+shader_parameter/emission = 2.0
+shader_parameter/noise_texture = SubResource("NoiseTexture2D_oa7wf")
+shader_parameter/noise_scale = Vector2(1, 1)
+shader_parameter/noise_scroll = Vector2(1, 0)
+shader_parameter/noise_shape = 1.0
+shader_parameter/pulse_frequency = 1.0
+shader_parameter/pulse_amount = 1.0
+shader_parameter/edge_position = 0.05
+shader_parameter/edge_hardness = 0.0
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_1k66x"]
+size = Vector2(3.6, 3)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_fd1u5"]
+render_priority = 0
+shader = ExtResource("3_yyr62")
+shader_parameter/primary_color = Color(0.8509804, 0.16862746, 0.72156864, 1)
+shader_parameter/secondary_color = Color(0.09411765, 0, 0.8784314, 1)
+shader_parameter/tertiary_color = Color(0.09411765, 0, 0.8784314, 1)
+shader_parameter/emission = 2.0
+shader_parameter/noise_texture = SubResource("NoiseTexture2D_oa7wf")
+shader_parameter/noise_scale = Vector2(1, 1)
+shader_parameter/noise_scroll = Vector2(1, 0)
+shader_parameter/noise_shape = 1.0
+shader_parameter/align_noise = true
+shader_parameter/use_icon = false
+shader_parameter/icon_texture = ExtResource("4_r8r4w")
+shader_parameter/edge_position = 0.05
+shader_parameter/edge_hardness = 0.0
+
+[sub_resource type="Curve" id="Curve_lgny2"]
+_data = [Vector2(0, 0), 0.0, 7.5355353, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), -2.6613095, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_cksi3"]
+curve = SubResource("Curve_lgny2")
+
+[sub_resource type="Gradient" id="Gradient_ls04x"]
+colors = PackedColorArray(0, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_cksi3"]
+gradient = SubResource("Gradient_ls04x")
+
+[sub_resource type="Curve" id="Curve_s8gev"]
+_data = [Vector2(0, 1), 0.0, 0.11526213, 0, 0, Vector2(1, 0), -2.4136317, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_rhydk"]
+curve = SubResource("Curve_s8gev")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_rcltq"]
+particle_flag_align_y = true
+emission_shape_scale = Vector3(1, 0.1, 1)
+emission_shape = 1
+emission_sphere_radius = 1.5
+angle_min = -720.0
+angle_max = 720.0
+direction = Vector3(-1, 0, 0)
+spread = 0.0
+initial_velocity_min = 4.0
+initial_velocity_max = 8.0
+gravity = Vector3(0, 0, 0)
+scale_curve = SubResource("CurveTexture_rhydk")
+color_initial_ramp = SubResource("GradientTexture1D_cksi3")
+alpha_curve = SubResource("CurveTexture_cksi3")
+
+[sub_resource type="QuadMesh" id="QuadMesh_dwgt3"]
+size = Vector2(1, 2)
+orientation = 0
+
+[sub_resource type="Animation" id="Animation_ay6cf"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Slash:material_override:shader_parameter/effect_decay")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Particles:emitting")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [true]
+}
+
+[sub_resource type="Animation" id="Animation_q6c3c"]
+resource_name = "close"
+step = 0.1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Slash:material_override:shader_parameter/effect_decay")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.6),
+"transitions": PackedFloat32Array(1, 0.3),
+"update": 0,
+"values": [0.0, 0.999999977648]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath(".:volume_animation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.6),
+"transitions": PackedFloat32Array(1, 0.3),
+"update": 0,
+"values": [0.0, 0.999999977648]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Particles:emitting")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.2),
+"transitions": PackedFloat32Array(1, 1),
+"update": 1,
+"values": [true, false]
+}
+
+[sub_resource type="Animation" id="Animation_to6d6"]
+resource_name = "open"
+step = 0.1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Slash:material_override:shader_parameter/effect_decay")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.6),
+"transitions": PackedFloat32Array(0.3, 1),
+"update": 0,
+"values": [0.999999977648, 0.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath(".:volume_animation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.6),
+"transitions": PackedFloat32Array(0.3, 1),
+"update": 0,
+"values": [0.999999977648, 0.0]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Particles:emitting")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.2),
+"transitions": PackedFloat32Array(1, 1),
+"update": 1,
+"values": [false, true]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_dd0w5"]
+_data = {
+&"RESET": SubResource("Animation_ay6cf"),
+&"close": SubResource("Animation_q6c3c"),
+&"open": SubResource("Animation_to6d6")
+}
+
+[node name="暗灭" type="Node3D" unique_id=926772538]
+script = ExtResource("1_oa7wf")
+primary_color = Color(0.8509804, 0.16862746, 0.72156864, 1)
+secondary_color = Color(0.09411765, 0, 0.8784314, 1)
+tertiary_color = Color(0.09411765, 0, 0.8784314, 1)
+emission = 2.0
+noise_texture = SubResource("NoiseTexture2D_oa7wf")
+pulse_amount = 1.0
+
+[node name="Slash" type="MeshInstance3D" parent="." unique_id=1526208885]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, 0)
+material_override = SubResource("ShaderMaterial_upqsu")
+mesh = SubResource("PlaneMesh_1k66x")
+
+[node name="Particles" type="GPUParticles3D" parent="." unique_id=2063599802]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.4, 0, 0)
+material_override = SubResource("ShaderMaterial_fd1u5")
+amount = 32
+lifetime = 0.7
+local_coords = true
+process_material = SubResource("ParticleProcessMaterial_rcltq")
+draw_pass_1 = SubResource("QuadMesh_dwgt3")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1127682539]
+libraries/ = SubResource("AnimationLibrary_dd0w5")
+
+[node name="AudioStreamPlayer3D" type="AudioStreamPlayer3D" parent="." unique_id=1211111198]
+volume_db = -24.0
+max_distance = 3.0

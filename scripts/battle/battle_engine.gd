@@ -15,11 +15,19 @@ const SUSPEND: int = 2
 
 enum Phase { Idle, Playing, Over }
 
-## 回复超时（毫秒）：普通玩家 30s；已掉线玩家 5s（避免队友长时间干等）
-const RESPONSE_TIMEOUT_MS: int = 30000
+## 回复超时（毫秒）：普通玩家 60s；已掉线玩家 5s（避免队友长时间干等）
+## 这个值就是「行动等待时间」—— 对局里所有要玩家回话的询问（行动/应战/技能/弃牌/魔弹传递…）都用它
+const RESPONSE_TIMEOUT_MS: int = 60000
 const OFFLINE_TIMEOUT_MS: int = 5000
 
+## 【魔弹】的初始伤害（每被传递一次 +1）
+const MISSILE_BASE_POINT: int = 2
+
 var room_id: int = 0
+## 房间名与房间设定人数：由服务端建房时写入，随 Game 快照下发，
+## 房间准备界面据此显示房名与「已到 / 应到」人数
+var room_name: String = ""
+var room_max_player: int = 0
 var players: Dictionary = {}      # id -> BattlePlayer
 var order: Array[int] = []        # 座位顺序（顺时针）
 var deck: BattleDeck = BattleDeck.new()
@@ -40,6 +48,9 @@ var send_cb: Callable = Callable()
 
 ## 状态机
 var _states: Array = []
+## 本回合要不要跳过行动阶段（虚弱拒绝 / 五系束缚拒绝）：轮到 SActionPhase 时它自己直接收尾进回合结束。
+## 用标记而不是「把 SActionPhase 从栈里抠掉再压回合结束」，是为了不打断它上面还有的 p_boot / p_before_action 钩子
+var skip_action_phase: bool = false
 var _await_id: int = -1
 var _await_kind: int = -1
 var _reply: Dictionary = {}
@@ -54,9 +65,6 @@ var offline_players: Dictionary = {}
 var _pending_respond_id: int = 0
 var _pending_args: Array = []
 var _running: bool = false
-## 钩子轮次的迭代游标
-var _hook_owner: Variant = null
-var _hook_iter: int = 0
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
@@ -276,6 +284,9 @@ func take_reply() -> Dictionary:
 
 func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	if _await_id != pid or kind != _await_kind:
+		# 临时诊断：客户端发来的行动/应答被丢掉时打出来（正常收工前删掉这行）
+		print("[战斗诊断] 丢弃消息：来自 %d 类型 %d，当前在等 %d 的类型 %d；内容=%s" % [
+			pid, kind, _await_id, _await_kind, str(data)])
 		return
 	_reply = data
 	_has_reply = true
@@ -331,8 +342,8 @@ func _build_timeout_reply(pid: int, kind: int) -> Dictionary:
 	if rid >= 100:
 		# 技能询问（ask_skill 以技能号作为询问号）→ 不发动
 		args = [0]
-	elif rid == GConst.RespondType.ReplyAttack:
-		# 应战 → 放弃应战
+	elif rid == GConst.RespondType.ReplyAttack or rid == GConst.RespondType.Bullet:
+		# 应战 / 魔弹传递 → 放弃（魔弹放弃＝承受伤害，面前有【圣盾】则自动挡下）
 		args = [GConst.Reattack.GiveUp]
 	elif rid == GConst.RespondType.Heal:
 		# 治疗抵御 → 不使用（0 点）
@@ -482,8 +493,18 @@ func ask_action(pid: int, action_type: int) -> void:
 		for sk: Dictionary in pl.role.available_skills():
 			cmds.append({
 				"respond_id": int(sk.get("type", 0)), "src_id": pid,
-				"dst_ids": [], "card_ids": [],
-				"args": [int(sk.get("id", 0)), int(sk.get("need_card", 0)), int(sk.get("need_target", 0))],
+				# targets 非空时，客户端只把这几名玩家点亮（如【魔弹融合】的落点固定是右手边最近的对手）
+				"dst_ids": sk.get("targets", []),
+				# cards 非空时，客户端只让这几张牌可点（如【暗影流星】只能弃法术牌）
+				"card_ids": sk.get("cards", []),
+				# card_max 非空时，客户端点选上限放宽到它（如【欺诈】弃 2~3 张）
+				"card_max": int(sk.get("card_max", 0)),
+				# arg_choices 非空时，客户端把每项渲染成一个按钮，点哪个就用当前已选的牌/目标提交该项 args
+				# （如【冒险者天堂】选要用哪些星石）
+				"arg_choices": sk.get("arg_choices", []),
+				# args = [技能号, 最少选牌, 最少选目标, 最多选目标, 选牌来源]
+				"args": [int(sk.get("id", 0)), int(sk.get("need_card", 0)), int(sk.get("need_target", 0)),
+					int(sk.get("target_max", 0)), int(sk.get("card_source", GConst.CardSource.Hand))],
 			})
 	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Action, "commands": cmds})
 
@@ -541,6 +562,8 @@ func game_info(viewer_id: int) -> Dictionary:
 		剩余 = maxi(wait_deadline_ms - Time.get_ticks_msec(), 0)
 	return {
 		"room_id": room_id,
+		"room_name": room_name,
+		"max_player": room_max_player,
 		"player_id": viewer_id,
 		"red_morale": team_morale[GConst.RED],
 		"blue_morale": team_morale[GConst.BLUE],
@@ -698,11 +721,20 @@ func set_tap(pid: int, v: bool) -> void:
 # 内部状态类
 # ============================================================
 
-## 通用钩子轮次：对每个玩家按座位序调用同名钩子；全部完成后依次压入 after
+## 通用钩子轮次：对每个玩家按座位序调用同名钩子；全部完成后依次压入 after。
+## 进度（轮到第几个座位）与「各角色的 step」都存放在**本实例**里：
+## 角色在钩子里压入新状态后会返回 URGENT 挂起本轮次，先跑那些新状态；
+## 那些新状态里往往又含别的钩子轮次（p_timeline_* 等），它们会把所有角色的 step 归零——
+## 回到本轮次时必须把 step 还原，否则角色会从 step 0 重跑（表现为同一回合反复询问同一技能）。
 class SHook:
 	var hook: String
 	var ctx: Dictionary
 	var after: Array
+	## 本轮次处理到第几个座位
+	var _iter: int = 0
+	var _started: bool = false
+	## 挂起前各角色的 step 快照（键 = player_id）
+	var _steps: Dictionary = {}
 
 	func _init(h: String, c: Dictionary = {}, a: Array = []) -> void:
 		hook = h
@@ -710,27 +742,37 @@ class SHook:
 		after = a
 
 	func handle(e: BattleEngine) -> int:
-		if e._hook_owner != self:
-			e._hook_owner = self
-			e._hook_iter = 0
+		if not _started:
+			_started = true
+			_iter = 0
 			# 每次钩子轮次开始统一重置所有角色的 step
 			for pid: int in e.order:
 				var r0: BattleRole = e.p(pid).role
 				if r0 != null:
 					r0.step = 0
-		while e._hook_iter < e.order.size():
-			var pid2: int = e.order[e._hook_iter]
+		elif not _steps.is_empty():
+			# 从挂起中回来：把 step 还原成本轮次挂起前的值
+			for pid: int in _steps:
+				var r1: BattleRole = e.p(pid).role
+				if r1 != null:
+					r1.step = int(_steps[pid])
+			_steps.clear()
+		while _iter < e.order.size():
+			var pid2: int = e.order[_iter]
 			var r: BattleRole = e.p(pid2).role
 			if r != null:
 				var res: int = r.call_hook(hook, ctx)
 				if res == BattleRole.WAIT:
 					return BattleEngine.WAIT
 				if res == BattleRole.URGENT:
-					# 角色已压入新状态：先让它们执行，之后再从同一位玩家继续
+					# 角色已压入新状态：先存档 step，让新状态执行，之后再从同一位玩家继续
+					_steps.clear()
+					for pid3: int in e.order:
+						var r2: BattleRole = e.p(pid3).role
+						if r2 != null:
+							_steps[pid3] = r2.step
 					return BattleEngine.SUSPEND
-			e._hook_iter += 1
-		e._hook_owner = null
-		e._hook_iter = 0
+			_iter += 1
 		# after[0] 应先执行，故逆序压栈
 		for i: int in range(after.size() - 1, -1, -1):
 			e.push(after[i])
@@ -742,6 +784,7 @@ class SCheckTurnStart:
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
 		cur.clear_additional_action()
+		e.skip_action_phase = false
 		var poison_cards: Array[int] = []
 		for be: Dictionary in cur.basic_effects:
 			var c: GCard = Data.get_card(int(be["card"]))
@@ -796,10 +839,11 @@ class SWeaken:
 			if accept == 1:
 				e.draw(cur.id, draw_n)
 				e._broadcast_game()
+				# 强摸可能把手牌顶过上限：走和购买/特殊行动同一条「强制弃牌 + 掉士气」的路径
+				e.push(SHandOverflow.new())
 				return BattleEngine.CONTINUE
+			e.skip_action_phase = true
 			e._broadcast_game()
-			e._remove_next_state(SActionPhase)
-			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
 		e.ask_respond(cur.id, GConst.RespondType.Weaken, [cur.id, draw_n])
 		e.wait_for(cur.id, GConst.Msg.Respond)
@@ -809,6 +853,11 @@ class SWeaken:
 ## 行动阶段
 class SActionPhase:
 	func handle(e: BattleEngine) -> int:
+		# 虚弱拒绝 / 五系束缚拒绝：本回合没有行动阶段，直接收尾（额外行动由 STurnEnd 照常处理）
+		if e.skip_action_phase:
+			e.skip_action_phase = false
+			e.push(STurnEnd.new())
+			return BattleEngine.CONTINUE
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
 			var at: int = int(r.get("action_type", GConst.ActionType.None))
@@ -919,7 +968,6 @@ class SAttackCard:
 				"harm": harm,
 			}
 			ctx_built = true
-			e._hook_owner = null
 			e.push(SHook.new("p_before_attack", ctx, [
 				SHook.new("p_timeline_1", ctx, [SAttacked.new(self)]),
 			]))
@@ -1021,6 +1069,84 @@ class SAttackedAsk:
 		e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, [hit_rate, owner.card, defender.id, owner.src, owner.ctx.get("can_light", 1)])
 		e.wait_for(defender.id, GConst.Msg.Respond)
 		return BattleEngine.WAIT
+
+
+## 魔弹传递询问：持有者可以打出【魔弹】继续传递、出【圣光】抵挡，或放弃并承受伤害。
+## 对照服务端 StateMissiled：传递方向沿用出弹时定下的方向（【魔弹】默认右手边 post；
+## 魔导用【魔弹掌握】逆向打出则是 pre），后续传递者只是「传给下一个」、不改方向，
+## 只有【魔弹掌握】的持有者才能在传递时改方向。同一轮传递里每人只能参与一次。
+## 即使持有者手里既没有【魔弹】也没有【圣光】，也照样要问、要等应答。
+class SMissileAsk:
+	## 当前持有者 / 上一个打出魔弹的人（伤害来源）/ 当前伤害
+	var holder: int
+	var src: int
+	var point: int
+	## 当前传递方向：true = 沿 post（角色顺序的下一个座位），false = 逆向（pre）
+	var post_dir: bool
+	## 本轮已参与过的玩家（含最初打出魔弹的人与第一个目标）
+	var used: Array[int]
+
+	func _init(h: int, s: int, p: int, dir: bool, u: Array[int]) -> void:
+		holder = h
+		src = s
+		point = p
+		post_dir = dir
+		used = u
+
+	func handle(e: BattleEngine) -> int:
+		if not e.has_reply():
+			# dst_ids = 本次可以把魔弹传给谁（候选，有【魔弹掌握】时左右各一个）
+			# args[0] 放持有者 id：客户端据此判断这条询问是不是发给自己的
+			e.ask_respond(holder, GConst.RespondType.Bullet, [holder, point, src],
+				e._missile_relay_targets(holder, post_dir, used))
+			e.wait_for(holder, GConst.Msg.Respond)
+			return BattleEngine.WAIT
+		var r: Dictionary = e.take_reply()
+		var args: Array = r.get("args", [])
+		var choice: int = int(args[0]) if args.size() > 0 else GConst.Reattack.GiveUp
+		var cards: Array = r.get("card_ids", [])
+		var me: BattlePlayer = e.p(holder)
+		if me != null and not cards.is_empty():
+			var cid: int = int(cards[0])
+			if choice == GConst.Reattack.Block and me.v_block(cid) == GConst.GE_SUCCESS:
+				# 【圣光】抵挡：魔弹效果终止，不造成伤害
+				e.take_from_hand(holder, [cid])
+				e.to_discard([cid])
+				e.broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": holder, "dst_id": holder, "card_ids": [cid], "is_real": true})
+				e._broadcast_game()
+				return BattleEngine.CONTINUE
+			if choice == GConst.Reattack.Attack and me.v_remissile(cid) == GConst.GE_SUCCESS:
+				# 继续传递：伤害 +1，沿**当前方向**转给下一个还没参与过的对手
+				# （方向是出弹时定下的：顺时针打出＝顺向，被魔导用【魔弹掌握】逆向打出＝逆向，传递者不改方向）
+				e.take_from_hand(holder, [cid])
+				e.to_discard([cid])
+				e.broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": holder, "dst_id": holder, "card_ids": [cid], "is_real": true})
+				var 顺: int = e._next_missile_target(holder, post_dir, used)
+				var nxt: int = 顺
+				var nxt_dir: bool = post_dir
+				# 只有【魔弹掌握】802 能在传递时改方向（＝选另一个方向上那个人）
+				if me.role != null and me.role.has_missile_mastery():
+					var 回复选: Array = r.get("dst_ids", [])
+					if not 回复选.is_empty() and int(回复选[0]) != 顺:
+						var 逆: int = e._next_missile_target(holder, not post_dir, used)
+						if 逆 >= 0 and int(回复选[0]) == 逆:
+							nxt = 逆
+							nxt_dir = not post_dir
+				if nxt >= 0:
+					used.append(nxt)
+					e.push(SMissileAsk.new(nxt, holder, point + 1, nxt_dir, used))
+				else:
+					# 没人能再接：由当前持有者承受
+					e.push_harm({"src": src, "dst": holder, "point": point, "cause": GConst.CAUSE_MISSILE, "type": GConst.HarmType.Magic})
+				e._broadcast_game()
+				return BattleEngine.CONTINUE
+		# 放弃（或打出的牌既不是【圣光】也不能继续传递）：面前有【圣盾】/【天使之墙】则视作未命中
+		if e._missile_block_by_basic(holder):
+			e._broadcast_game()
+			return BattleEngine.CONTINUE
+		e.push_harm({"src": src, "dst": holder, "point": point, "cause": GConst.CAUSE_MISSILE, "type": GConst.HarmType.Magic})
+		e._broadcast_game()
+		return BattleEngine.CONTINUE
 
 
 ## 命中
@@ -1244,7 +1370,10 @@ func _reject_action(cur: BattlePlayer) -> int:
 func resolve_action(action_type: int, data: Dictionary) -> int:
 	var cur: BattlePlayer = players.get(current_id)
 	# 动作合法性总闸：角色可用 v_allow_action 覆写（如「审判满 4 时该阶段只能发动末日审判」）
-	if cur != null and cur.v_allow_action(action_type, data.get("args", [])) != GConst.GE_SUCCESS:
+	var 总闸: int = cur.v_allow_action(action_type, data.get("args", [])) if cur != null else GConst.GE_SUCCESS
+	if 总闸 != GConst.GE_SUCCESS:
+		# 临时诊断（收工前删）
+		print("[战斗诊断] 行动被拒：v_allow_action(action_type=%d) 返回 %d" % [action_type, 总闸])
 		return _reject_action(cur)
 	match action_type:
 		GConst.ActionType.None:
@@ -1298,15 +1427,23 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	var cards: Array = data.get("card_ids", [])
 	var dsts: Array = data.get("dst_ids", [])
 	if cards.is_empty() or dsts.is_empty():
+		print("[战斗诊断] 攻击被丢弃：牌或目标为空 → 直接结束回合")
 		push(STurnEnd.new())
 		return CONTINUE
 	var cid: int = int(cards[0])
 	var dst_id: int = int(dsts[0])
-	if cur.v_attack(cid, dst_id, players) != GConst.GE_SUCCESS:
+	var 校验: int = cur.v_attack(cid, dst_id, players)
+	if 校验 != GConst.GE_SUCCESS:
+		print("[战斗诊断] 攻击被拒：v_attack 返回 %d（牌 %d，目标 %d，我方队色 %d，目标队色 %s）" % [
+			校验, cid, dst_id, cur.color,
+			str(players.get(dst_id).color if players.get(dst_id) != null else -9)])
+		# 临时诊断
 		return _reject_action(cur)
 	# 防守方角色可拒绝被选为目标（如暗杀者潜行中「不能成为主动攻击的目标」）
 	var dst_p: BattlePlayer = players.get(dst_id)
 	if dst_p != null and dst_p.v_attacked() != GConst.GE_SUCCESS:
+		print("[战斗诊断] 攻击被拒：目标角色 v_attacked 返回 %d" % dst_p.v_attacked())
+		# 临时诊断
 		return _reject_action(cur)
 	push_after_action("p_after_attack", {"player": cur.id, "card_id": cid, "dst": dst_id})
 	take_from_hand(cur.id, [cid])
@@ -1366,7 +1503,20 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		push_after_action("p_after_magic", {"src": cur.id, "card_id": cid})
 		return CONTINUE
 	if name_enum == GConst.CardName.Missile:
-		var target: int = _nearest_enemy(cur)
+		# 落点默认是右手边最近的对手；有【魔弹掌握】802 的角色可以把落点选成左手边那个
+		# （客户端点哪个就把哪个放在 dst_ids[0]，落点决定传递方向）
+		var 候选: Array[int] = []
+		if cur.role != null:
+			候选 = cur.role.missile_targets(cur.id)
+		else:
+			var 顺: int = _nearest_enemy(cur)
+			if 顺 >= 0:
+				候选.append(顺)
+		var target: int = 候选[0] if not 候选.is_empty() else -1
+		var 顺向: bool = true
+		if not dsts.is_empty() and 候选.has(int(dsts[0])):
+			target = int(dsts[0])
+			顺向 = target == _nearest_enemy(cur)
 		# 角色可用 v_missile 禁止使用魔弹（如魔剑/魔枪的牌类禁止）
 		if target >= 0 and cur.v_missile(cid, target) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
@@ -1375,7 +1525,10 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		push_after_action("p_after_magic", {"src": cur.id, "card_id": cid})
 		if target >= 0:
 			broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": target, "card_ids": [cid], "is_real": true})
-			push_harm({"src": cur.id, "dst": target, "point": 2, "cause": GConst.CAUSE_MISSILE, "type": GConst.HarmType.Magic})
+			# 交给目标自己决定：打出【魔弹】继续传递 / 出【圣光】抵挡 / 放弃并承受伤害。
+			# 即使他手里既没有【魔弹】也没有【圣光】，也要问一次并等他应答（对照服务端 StateMissiled）
+			var used: Array[int] = [cur.id, target]
+			push(SMissileAsk.new(target, cur.id, MISSILE_BASE_POINT, 顺向, used))
 		return CONTINUE
 	# 其余法术牌（如【圣光】只作响应）不能主动施放
 	return _reject_action(cur)
@@ -1389,6 +1542,59 @@ func _nearest_enemy(cur: BattlePlayer) -> int:
 			return nid
 		nid = next_id(nid)
 	return -1
+
+
+## 本次可以把魔弹传给谁（候选）：默认只有「当前传递方向上最近、本轮还没接过的对手」；
+## 有【魔弹掌握】802 的角色另一个方向上那个人也能选（方向随之改写）。
+func _missile_relay_targets(holder: int, post_dir: bool, used: Array[int]) -> Array[int]:
+	var out: Array[int] = []
+	var 顺: int = _next_missile_target(holder, post_dir, used)
+	if 顺 >= 0:
+		out.append(顺)
+	var h: BattlePlayer = players.get(holder)
+	if h != null and h.role != null and h.role.has_missile_mastery():
+		var 逆: int = _next_missile_target(holder, not post_dir, used)
+		if 逆 >= 0 and not out.has(逆):
+			out.append(逆)
+	return out
+
+
+## 该方向上最近的一名「本轮还没参与过魔弹传递」的对手（对照服务端 StateMissiled）。
+## 该方向上的人全都参与过之后从头再来：允许把魔弹递给已经接过的人（否则传完一圈就没人可接、链条卡死）。
+func _next_missile_target(from_id: int, post_dir: bool, used: Array[int]) -> int:
+	var cur: BattlePlayer = players.get(from_id)
+	if cur == null:
+		return -1
+	var nid: int = cur.post_id if post_dir else cur.pre_id
+	var 已传过的人: int = -1
+	for _i: int in range(order.size()):
+		var pp: BattlePlayer = players.get(nid)
+		if pp == null:
+			return -1
+		if pp.color != cur.color:
+			if not used.has(nid):
+				return nid
+			if 已传过的人 < 0:
+				已传过的人 = nid
+		nid = pp.post_id if post_dir else pp.pre_id
+	return 已传过的人
+
+
+## 目标若拥有【圣盾】或视作【圣盾】的【天使之墙】，移除之并返回 true（魔弹视作未命中）
+func _missile_block_by_basic(target_id: int) -> bool:
+	var dst: BattlePlayer = players.get(target_id)
+	if dst == null:
+		return false
+	var cid: int = -1
+	if dst.check_basic_effect_name(GConst.CardName.Shield):
+		cid = _find_basic_card(dst, GConst.CardName.Shield)
+	elif dst.check_basic_effect_tag("天使之墙"):
+		cid = _find_basic_card_by_tag(dst, "天使之墙")
+	if cid < 0:
+		return false
+	remove_basic_effect(target_id, cid, GConst.CAUSE_MISSILE)
+	to_discard([cid])
+	return true
 
 
 func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
@@ -1503,11 +1709,3 @@ func _game_over(win_color: int) -> void:
 		"txt": "游戏结束，%s方获胜！" % ("红" if win_color == GConst.RED else "蓝"),
 		"id": 0,
 	})
-
-
-## 从状态栈中移除尚未执行的某类状态
-func _remove_next_state(klass) -> void:
-	for i: int in range(_states.size() - 1, -1, -1):
-		if is_instance_of(_states[i], klass):
-			_states.remove_at(i)
-			return

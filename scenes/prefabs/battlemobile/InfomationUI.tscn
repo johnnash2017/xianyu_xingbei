@@ -1,0 +1,149 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/information_ui.gd" id="1_InformationUgd"]
+[ext_resource type="Texture2D" uid="uid://bn4j2t812c7v2" path="res://assets/textures/hero/large/0L.png" id="12_0Lpng"]
+[ext_resource type="Texture2D" uid="uid://b7uyxbb1vyacs" path="res://assets/textures/battle/b05_botton_return.png" id="62_b05bottonreturnpng"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dark"]
+bg_color = Color(0, 0, 0, 0.55)
+
+[node name="InfomationUI" type="Control" node_paths=PackedStringArray("Hero", "RoleProperty", "HeroName", "SkillText", "BtnClose")]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_InformationUgd")
+Hero = NodePath("Root/Hero")
+RoleProperty = NodePath("Root/RoleProperty")
+HeroName = NodePath("Root/HeroName")
+SkillText = NodePath("Root/SkillView/SkillText")
+BtnClose = NodePath("Root/BtnClose")
+
+[node name="Mask" type="ColorRect" parent="." unique_id=979508438]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.78431)
+
+[node name="Root" type="Control" parent="." unique_id=2115016699]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Hero" type="TextureRect" parent="Root" unique_id=719571219]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -600.0
+offset_top = -360.0
+offset_right = -20.0
+offset_bottom = 360.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("12_0Lpng")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="NameBG" type="Panel" parent="Root" unique_id=1887615376]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 28.0
+offset_right = 320.0
+offset_bottom = 92.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_dark")
+
+[node name="RoleProperty" type="TextureRect" parent="Root" unique_id=1048449079]
+layout_mode = 0
+offset_left = 28.0
+offset_top = 36.0
+offset_right = 76.0
+offset_bottom = 84.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="HeroName" type="Label" parent="Root" unique_id=729319585]
+layout_mode = 0
+offset_left = 84.0
+offset_top = 36.0
+offset_right = 304.0
+offset_bottom = 84.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "英雄名字"
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="SkillBG" type="Panel" parent="Root" unique_id=46515622]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_top = -360.0
+offset_right = 640.0
+offset_bottom = 360.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_dark")
+
+[node name="SkillView" type="ScrollContainer" parent="Root" unique_id=1515187383]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 20.0
+offset_top = -360.0
+offset_right = 620.0
+offset_bottom = 360.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+
+[node name="SkillText" type="Label" parent="Root/SkillView" unique_id=413411837]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+vertical_alignment = 0
+autowrap_mode = 3
+
+[node name="BtnClose" type="Button" parent="Root" unique_id=1396743606]
+layout_mode = 0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -130.0
+offset_right = 180.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(90, 65)
+focus_mode = 0
+icon = ExtResource("62_b05bottonreturnpng")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+expand_icon = true

@@ -1,0 +1,158 @@
+[gd_scene format=3 uid="uid://cv6vng7f67bfn"]
+
+[ext_resource type="Script" uid="uid://hatkgal7ft8s" path="res://scripts/UIEdgeFix.gd" id="27_UIEdgeFixgd"]
+[ext_resource type="Texture2D" uid="uid://b16n8wts7bpwp" path="res://assets/textures/battle/b05_action_charge.png" id="120_b05actionchargepng"]
+[ext_resource type="Texture2D" uid="uid://4lmf5id2ccjf" path="res://assets/textures/battle/b05_action_compose.png" id="121_b05actioncomposepng"]
+[ext_resource type="Texture2D" uid="uid://bmuvjdd3sgbq" path="res://assets/textures/battle/b05_action_extract.png" id="122_b05actionextractpng"]
+[ext_resource type="Texture2D" uid="uid://6cawbt7k51tn" path="res://assets/textures/battle/b05_sys_cancel.png" id="123_b05syscancelpng"]
+[ext_resource type="Script" uid="uid://dbmwy3qt4euv1" path="res://scripts/ui/special_action_ui.gd" id="124_SpecialActionUIgd"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
+
+[node name="SpecialActionUI" type="Control" unique_id=540364972 node_paths=PackedStringArray("BtnBuy", "BtnSynthesis", "BtnExtract", "BtnBack", "Titile")]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("124_SpecialActionUIgd")
+BtnBuy = NodePath("Root/BtnBuy")
+BtnSynthesis = NodePath("Root/BtnSynthesis")
+BtnExtract = NodePath("Root/BtnExtract")
+BtnBack = NodePath("Root/BtnBack")
+Titile = NodePath("Root/Titile")
+
+[node name="UIEdgeFix" type="Control" parent="." unique_id=1015131043]
+visible = false
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("27_UIEdgeFixgd")
+
+[node name="Mask" type="ColorRect" parent="." unique_id=609273887]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="Root" type="TextureRect" parent="." unique_id=609273885]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="BtnBuy" type="Button" parent="Root" unique_id=663687901]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -393.0
+offset_top = -187.0
+offset_right = -131.0
+offset_bottom = 187.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(131, 187)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
+icon = ExtResource("120_b05actionchargepng")
+expand_icon = true
+
+[node name="BtnSynthesis" type="Button" parent="Root" unique_id=1131617241]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -131.0
+offset_top = -187.0
+offset_right = 131.0
+offset_bottom = 187.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(131, 187)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
+icon = ExtResource("121_b05actioncomposepng")
+expand_icon = true
+
+[node name="BtnExtract" type="Button" parent="Root" unique_id=1937778216]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 131.0
+offset_top = -187.0
+offset_right = 393.0
+offset_bottom = 187.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(131, 187)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
+icon = ExtResource("122_b05actionextractpng")
+expand_icon = true
+
+[node name="BtnBack" type="Button" parent="Root" unique_id=118076582]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -128.0
+offset_top = 283.0
+offset_right = 128.0
+offset_bottom = 331.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(128, 24)
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("123_b05syscancelpng")
+expand_icon = true
+
+[node name="Titile" type="Label" parent="Root" unique_id=1973350010]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = 224.0
+offset_right = 150.0
+offset_bottom = 254.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(150, 15)
+theme_override_font_sizes/font_size = 25
+text = "选择要执行的行动"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
