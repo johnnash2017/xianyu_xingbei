@@ -1,9 +1,9 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://buvd1s2fre7li"]
 
-[ext_resource type="Script" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_oa7wf"]
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="2_0q0vv"]
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="3_yyr62"]
-[ext_resource type="Texture2D" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="4_r8r4w"]
+[ext_resource type="Script" uid="uid://bl8hvxnm485jw" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_oa7wf"]
+[ext_resource type="Shader" uid="uid://b5o40v2ekd53a" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="2_0q0vv"]
+[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子_普通混合.gdshader" id="3_yyr62"]
+[ext_resource type="Texture2D" uid="uid://pefd1ubijsxp" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="4_r8r4w"]
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_xpmf4"]
 noise_type = 2
@@ -28,9 +28,9 @@ seamless_blend_skirt = 0.2
 render_priority = 0
 shader = ExtResource("2_0q0vv")
 shader_parameter/effect_decay = 0.0
-shader_parameter/primary_color = Color(0.8509804, 0.16862746, 0.72156864, 1)
-shader_parameter/secondary_color = Color(0.09411765, 0, 0.8784314, 1)
-shader_parameter/tertiary_color = Color(0.09411765, 0, 0.8784314, 1)
+shader_parameter/primary_color = Color(0, 0, 0, 1)
+shader_parameter/secondary_color = Color(0.44634444, 0.0001577726, 0.4541322, 1)
+shader_parameter/tertiary_color = Color(0.15642482, 1.7453414e-05, 0.15642345, 1)
 shader_parameter/emission = 2.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_oa7wf")
 shader_parameter/noise_scale = Vector2(1, 1)
@@ -38,7 +38,7 @@ shader_parameter/noise_scroll = Vector2(1, 0)
 shader_parameter/noise_shape = 1.0
 shader_parameter/pulse_frequency = 1.0
 shader_parameter/pulse_amount = 1.0
-shader_parameter/edge_position = 0.05
+shader_parameter/edge_position = 0.0499999988824
 shader_parameter/edge_hardness = 0.0
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_1k66x"]
@@ -47,9 +47,9 @@ size = Vector2(3.6, 3)
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_fd1u5"]
 render_priority = 0
 shader = ExtResource("3_yyr62")
-shader_parameter/primary_color = Color(0.8509804, 0.16862746, 0.72156864, 1)
-shader_parameter/secondary_color = Color(0.09411765, 0, 0.8784314, 1)
-shader_parameter/tertiary_color = Color(0.09411765, 0, 0.8784314, 1)
+shader_parameter/primary_color = Color(0, 0, 0, 1)
+shader_parameter/secondary_color = Color(0.21960784, 0, 0.22352941, 1)
+shader_parameter/tertiary_color = Color(0.21960784, 0, 0.22352941, 1)
 shader_parameter/emission = 2.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_oa7wf")
 shader_parameter/noise_scale = Vector2(1, 1)
@@ -242,5 +242,4 @@ draw_pass_1 = SubResource("QuadMesh_dwgt3")
 libraries/ = SubResource("AnimationLibrary_dd0w5")
 
 [node name="AudioStreamPlayer3D" type="AudioStreamPlayer3D" parent="." unique_id=1211111198]
-volume_db = -24.0
 max_distance = 3.0

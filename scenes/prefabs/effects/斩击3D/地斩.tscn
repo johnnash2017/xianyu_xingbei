@@ -1,21 +1,18 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://dh6d3ktnmuajd"]
 
-[ext_resource type="Script" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_bpr27"]
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="2_etk7l"]
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="3_j63u7"]
-[ext_resource type="Texture2D" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="4_etk7l"]
+[ext_resource type="Script" uid="uid://bl8hvxnm485jw" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_bpr27"]
+[ext_resource type="Shader" uid="uid://b5o40v2ekd53a" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="2_etk7l"]
+[ext_resource type="Shader" uid="uid://w5jia5wnqkw" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="3_j63u7"]
+[ext_resource type="Texture2D" uid="uid://pefd1ubijsxp" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="4_etk7l"]
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_vgu1i"]
 noise_type = 2
-seed = 2
 fractal_type = 3
 fractal_octaves = 2
-fractal_weighted_strength = 1.0
 cellular_distance_function = 3
 cellular_return_type = 6
 domain_warp_enabled = true
-domain_warp_amplitude = 100.0
-domain_warp_frequency = 0.01
+domain_warp_frequency = 0.0
 domain_warp_fractal_octaves = 1
 
 [sub_resource type="NoiseTexture2D" id="NoiseTexture2D_etk7l"]
@@ -28,9 +25,9 @@ seamless_blend_skirt = 0.2
 render_priority = 0
 shader = ExtResource("2_etk7l")
 shader_parameter/effect_decay = 0.0
-shader_parameter/primary_color = Color(0.74509805, 0.8352941, 0, 1)
-shader_parameter/secondary_color = Color(0.17254902, 0.7411765, 0, 1)
-shader_parameter/tertiary_color = Color(0.25882354, 0.29411766, 0, 1)
+shader_parameter/primary_color = Color(0.25882354, 0.16078432, 0.0627451, 1)
+shader_parameter/secondary_color = Color(0.95686275, 0.8980392, 0.56078434, 1)
+shader_parameter/tertiary_color = Color(0.25882354, 0.16078432, 0.0627451, 1)
 shader_parameter/emission = 4.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_etk7l")
 shader_parameter/noise_scale = Vector2(0.7, 1)
@@ -47,9 +44,9 @@ size = Vector2(3.6, 3)
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_ht210"]
 render_priority = 0
 shader = ExtResource("3_j63u7")
-shader_parameter/primary_color = Color(0.74509805, 0.8352941, 0, 1)
-shader_parameter/secondary_color = Color(0.17254902, 0.7411765, 0, 1)
-shader_parameter/tertiary_color = Color(0.25882354, 0.29411766, 0, 1)
+shader_parameter/primary_color = Color(0.654902, 0.6509804, 0.0627451, 1)
+shader_parameter/secondary_color = Color(0.59607846, 0.4627451, 0.17254902, 1)
+shader_parameter/tertiary_color = Color(0.25882354, 0.16078432, 0.0627451, 1)
 shader_parameter/emission = 4.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_etk7l")
 shader_parameter/noise_scale = Vector2(0.7, 1)
@@ -58,6 +55,8 @@ shader_parameter/noise_shape = 2.0
 shader_parameter/align_noise = true
 shader_parameter/use_icon = true
 shader_parameter/icon_texture = ExtResource("4_etk7l")
+shader_parameter/edge_position = 0.0
+shader_parameter/edge_hardness = 0.0
 
 [sub_resource type="Curve" id="Curve_ooxhx"]
 _data = [Vector2(0, 0), 0.0, 7.5355353, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), -2.6613095, 0.0, 0, 0]
@@ -99,6 +98,81 @@ alpha_curve = SubResource("CurveTexture_cksi3")
 [sub_resource type="QuadMesh" id="QuadMesh_vcb7a"]
 size = Vector2(0.4, 0.4)
 orientation = 1
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_22c3h"]
+noise_type = 2
+seed = 2
+fractal_type = 3
+fractal_octaves = 2
+fractal_weighted_strength = 1.0
+cellular_distance_function = 1
+cellular_return_type = 3
+domain_warp_enabled = true
+domain_warp_amplitude = 100.0
+domain_warp_frequency = 0.01
+domain_warp_fractal_octaves = 1
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_ilr8t"]
+noise = SubResource("FastNoiseLite_22c3h")
+seamless = true
+seamless_blend_skirt = 0.2
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ome41"]
+render_priority = 0
+shader = ExtResource("3_j63u7")
+shader_parameter/primary_color = Color(0.65326774, 0.6505537, 0.06410481, 1)
+shader_parameter/secondary_color = Color(0.59682006, 0.4608159, 0.17141515, 1)
+shader_parameter/tertiary_color = Color(0.25875565, 0.16091275, 0.062071145, 1)
+shader_parameter/emission = 2.0
+shader_parameter/noise_texture = SubResource("NoiseTexture2D_ilr8t")
+shader_parameter/noise_scale = Vector2(0.5, 2)
+shader_parameter/noise_scroll = Vector2(1, 0)
+shader_parameter/noise_shape = 2.0
+shader_parameter/align_noise = true
+shader_parameter/use_icon = false
+shader_parameter/icon_texture = ExtResource("4_etk7l")
+shader_parameter/edge_position = 0.05
+shader_parameter/edge_hardness = 0.0
+
+[sub_resource type="Curve" id="Curve_1bfs3"]
+_data = [Vector2(0, 0), 0.0, 7.5355353, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), -2.6613095, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_rti5w"]
+curve = SubResource("Curve_1bfs3")
+
+[sub_resource type="Gradient" id="Gradient_0bs24"]
+colors = PackedColorArray(0, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_xyshx"]
+gradient = SubResource("Gradient_0bs24")
+
+[sub_resource type="Curve" id="Curve_yxvwo"]
+_data = [Vector2(0, 1), 0.0, 0.11526213, 0, 0, Vector2(1, 0), -2.4136317, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_yg4pf"]
+curve = SubResource("Curve_yxvwo")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_uxmkw"]
+particle_flag_align_y = true
+emission_shape_scale = Vector3(1, 0.1, 1)
+emission_shape = 1
+emission_sphere_radius = 1.5
+angle_min = -720.0
+angle_max = 720.0
+direction = Vector3(-1, 0, 0)
+spread = 0.0
+initial_velocity_min = 4.0
+initial_velocity_max = 8.0
+gravity = Vector3(0, 0, 0)
+scale_curve = SubResource("CurveTexture_yg4pf")
+color_initial_ramp = SubResource("GradientTexture1D_xyshx")
+alpha_curve = SubResource("CurveTexture_rti5w")
+
+[sub_resource type="QuadMesh" id="QuadMesh_1p0kc"]
+size = Vector2(1, 2)
+orientation = 0
 
 [sub_resource type="Animation" id="Animation_ay6cf"]
 length = 0.001
@@ -216,9 +290,9 @@ _data = {
 
 [node name="地斩" type="Node3D" unique_id=57357230]
 script = ExtResource("1_bpr27")
-primary_color = Color(0.74509805, 0.8352941, 0, 1)
-secondary_color = Color(0.17254902, 0.7411765, 0, 1)
-tertiary_color = Color(0.25882354, 0.29411766, 0, 1)
+primary_color = Color(0.98039216, 0.9882353, 0.78431374, 1)
+secondary_color = Color(0.89411765, 0.7176471, 0.36078432, 1)
+tertiary_color = Color(0.6, 0.4, 0.2, 1)
 emission = 4.0
 noise_texture = SubResource("NoiseTexture2D_etk7l")
 noise_scale = Vector2(0.7, 1)
@@ -232,6 +306,7 @@ mesh = SubResource("PlaneMesh_exd2m")
 
 [node name="Particles" type="GPUParticles3D" parent="." unique_id=969174313]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.4, 0, 0)
+visible = false
 material_override = SubResource("ShaderMaterial_ht210")
 amount = 32
 lifetime = 0.7
@@ -239,9 +314,17 @@ local_coords = true
 process_material = SubResource("ParticleProcessMaterial_7744v")
 draw_pass_1 = SubResource("QuadMesh_vcb7a")
 
+[node name="Particles2" type="GPUParticles3D" parent="." unique_id=1308023192]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.4, 0, 0)
+material_override = SubResource("ShaderMaterial_ome41")
+amount = 32
+lifetime = 0.7
+local_coords = true
+process_material = SubResource("ParticleProcessMaterial_uxmkw")
+draw_pass_1 = SubResource("QuadMesh_1p0kc")
+
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1830955940]
 libraries/ = SubResource("AnimationLibrary_2tufe")
 
 [node name="AudioStreamPlayer3D" type="AudioStreamPlayer3D" parent="." unique_id=1039211284]
-volume_db = -24.0
 max_distance = 3.0

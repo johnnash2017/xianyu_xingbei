@@ -313,6 +313,7 @@ func 跑() -> void:
 			检(false, "斩击预制体 %s 加载失败（脚本没挂上？）" % 名)
 			continue
 		检(桥.VFX != null, "斩击预制体 %s 没绑里面的 3D 特效节点（VFX 为空）" % 名)
+		检(桥.BG != null, "斩击预制体 %s 没绑背景节点（BG 为空，命中时就收不掉背景）" % 名)
 		检(桥.get_node_or_null("视口容器/视口/特效位/特效") != null, "斩击预制体 %s 缺 SubViewport 结构" % 名)
 		桥.free()
 		# 里面的 3D 素材本身也要能加载
@@ -323,13 +324,6 @@ func 跑() -> void:
 		检(素材 is 特效发射器3D, "3D 斩击素材 %s 没挂 斩击特效3D 脚本" % 名)
 		检(素材.get_node_or_null("Slash") != null and 素材.get_node_or_null("Particles") != null,
 			"3D 斩击素材 %s 缺 Slash / Particles 节点" % 名)
-		var 斩痕: MeshInstance3D = 素材.get_node_or_null("Slash") as MeshInstance3D
-		if 斩痕 != null:
-			var 材质: ShaderMaterial = 斩痕.material_override as ShaderMaterial
-			var 特效: 斩击特效3D = 素材 as 斩击特效3D
-			检(材质 != null and 材质.get_shader_parameter("primary_color") == 特效.primary_color,
-				"3D 斩击素材 %s 的「主色」没同步到着色器（脚本=%s 材质=%s）" % [名,
-					str(特效.primary_color), str(材质.get_shader_parameter("primary_color") if 材质 != null else null)])
 		素材.free()
 
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)

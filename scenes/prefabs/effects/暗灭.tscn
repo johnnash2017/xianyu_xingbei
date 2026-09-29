@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://dhapumibove0t"]
 
 [ext_resource type="Script" uid="uid://cmelax4n6gqjx" path="res://scripts/effects/斩击2D.gd" id="1_wrap"]
-[ext_resource type="PackedScene" path="res://scenes/prefabs/effects/斩击3D/暗灭.tscn" id="2_vfx"]
+[ext_resource type="Texture2D" uid="uid://cwl6mdfa4r2v8" path="res://光点.png" id="2_gy0yi"]
+[ext_resource type="PackedScene" uid="uid://buvd1s2fre7li" path="res://scenes/prefabs/effects/斩击3D/暗灭.tscn" id="2_vfx"]
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_add"]
-blend_mode = 1
 
 [sub_resource type="Environment" id="Environment_slash"]
 background_mode = 1
@@ -13,9 +13,16 @@ glow_enabled = true
 glow_bloom = 0.2
 glow_blend_mode = 0
 
-[node name="暗灭" type="Node2D" unique_id=964036132 node_paths=PackedStringArray("VFX")]
+[node name="暗灭" type="Node2D" unique_id=964036132 node_paths=PackedStringArray("VFX", "BG")]
 script = ExtResource("1_wrap")
 VFX = NodePath("视口容器/视口/特效位/特效")
+BG = NodePath("背景")
+
+[node name="背景" type="Sprite2D" parent="." unique_id=42102569]
+modulate = Color(0.6384227, 0.11910751, 0.7300889, 1)
+position = Vector2(-79.00001, 5.0000005)
+scale = Vector2(1.7833226, 1.6789169)
+texture = ExtResource("2_gy0yi")
 
 [node name="视口容器" type="SubViewportContainer" parent="." unique_id=1296613301]
 material = SubResource("CanvasItemMaterial_add")
@@ -28,6 +35,7 @@ stretch = true
 
 [node name="视口" type="SubViewport" parent="视口容器" unique_id=1364190840]
 own_world_3d = true
+transparent_bg = true
 handle_input_locally = false
 msaa_3d = 1
 size = Vector2i(1600, 512)

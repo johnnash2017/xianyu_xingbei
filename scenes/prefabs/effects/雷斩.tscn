@@ -1,7 +1,8 @@
 [gd_scene format=3 uid="uid://bwibd45sfsras"]
 
 [ext_resource type="Script" uid="uid://cmelax4n6gqjx" path="res://scripts/effects/斩击2D.gd" id="1_wrap"]
-[ext_resource type="PackedScene" path="res://scenes/prefabs/effects/斩击3D/雷斩.tscn" id="2_vfx"]
+[ext_resource type="Texture2D" uid="uid://cwl6mdfa4r2v8" path="res://光点.png" id="2_rekfk"]
+[ext_resource type="PackedScene" uid="uid://eqwo1tcu2y84" path="res://scenes/prefabs/effects/斩击3D/雷斩.tscn" id="2_vfx"]
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_add"]
 blend_mode = 1
@@ -13,9 +14,16 @@ glow_enabled = true
 glow_bloom = 0.2
 glow_blend_mode = 0
 
-[node name="雷斩" type="Node2D" unique_id=138131764 node_paths=PackedStringArray("VFX")]
+[node name="雷斩" type="Node2D" unique_id=138131764 node_paths=PackedStringArray("VFX", "BG")]
 script = ExtResource("1_wrap")
 VFX = NodePath("视口容器/视口/特效位/特效")
+BG = NodePath("背景")
+
+[node name="背景" type="Sprite2D" parent="." unique_id=1915307674]
+modulate = Color(0.20031899, 6.899543e-05, 0.23129678, 1)
+position = Vector2(-127, 1.999999)
+scale = Vector2(2.2866642, 2.029886)
+texture = ExtResource("2_rekfk")
 
 [node name="视口容器" type="SubViewportContainer" parent="." unique_id=1578834627]
 material = SubResource("CanvasItemMaterial_add")

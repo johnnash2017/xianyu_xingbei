@@ -1,9 +1,9 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://d2hbi6ufpna0w"]
 
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="1_2gujl"]
-[ext_resource type="Script" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_ilr8t"]
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="2_ilr8t"]
-[ext_resource type="Texture2D" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="3_3sdqi"]
+[ext_resource type="Shader" uid="uid://b5o40v2ekd53a" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="1_2gujl"]
+[ext_resource type="Script" uid="uid://bl8hvxnm485jw" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_ilr8t"]
+[ext_resource type="Shader" uid="uid://w5jia5wnqkw" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="2_ilr8t"]
+[ext_resource type="Texture2D" uid="uid://pefd1ubijsxp" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="3_3sdqi"]
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_impk2"]
 noise_type = 2
@@ -27,9 +27,9 @@ seamless_blend_skirt = 0.2
 render_priority = 0
 shader = ExtResource("1_2gujl")
 shader_parameter/effect_decay = 0.0
-shader_parameter/primary_color = Color(1, 1, 1, 1)
-shader_parameter/secondary_color = Color(0.3764706, 0.56078434, 0.54901963, 1)
-shader_parameter/tertiary_color = Color(0.34117648, 0.3882353, 0.42352942, 1)
+shader_parameter/primary_color = Color(0.7137255, 0.9490196, 0.35686275, 1)
+shader_parameter/secondary_color = Color(0.4, 1, 0.2, 1)
+shader_parameter/tertiary_color = Color(0.24313726, 0.43137255, 0.15294118, 1)
 shader_parameter/emission = 2.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_ilr8t")
 shader_parameter/noise_scale = Vector2(0.5, 2)
@@ -46,9 +46,9 @@ size = Vector2(3.6, 3)
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_7krj6"]
 render_priority = 0
 shader = ExtResource("2_ilr8t")
-shader_parameter/primary_color = Color(1, 1, 1, 1)
-shader_parameter/secondary_color = Color(0.3764706, 0.56078434, 0.54901963, 1)
-shader_parameter/tertiary_color = Color(0.34117648, 0.3882353, 0.42352942, 1)
+shader_parameter/primary_color = Color(0.7137255, 0.9490196, 0.35686275, 1)
+shader_parameter/secondary_color = Color(0.4, 1, 0.2, 1)
+shader_parameter/tertiary_color = Color(0.24313726, 0.43137255, 0.15294118, 1)
 shader_parameter/emission = 2.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_ilr8t")
 shader_parameter/noise_scale = Vector2(0.5, 2)

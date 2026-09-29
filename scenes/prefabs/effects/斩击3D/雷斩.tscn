@@ -1,30 +1,37 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://eqwo1tcu2y84"]
 
-[ext_resource type="Script" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_hgwlg"]
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="2_0nt80"]
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="3_vw7d2"]
-[ext_resource type="Texture2D" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="4_hsviu"]
+[ext_resource type="Script" uid="uid://bl8hvxnm485jw" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_hgwlg"]
+[ext_resource type="Shader" uid="uid://b5o40v2ekd53a" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="2_0nt80"]
+[ext_resource type="Shader" uid="uid://w5jia5wnqkw" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="3_vw7d2"]
+[ext_resource type="Texture2D" uid="uid://pefd1ubijsxp" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="4_hsviu"]
 
-[sub_resource type="FastNoiseLite" id="FastNoiseLite_5gaam"]
-noise_type = 2
-frequency = 0.02
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_ch82m"]
+noise_type = 0
+frequency = 0.0107
+fractal_type = 2
 fractal_octaves = 2
-cellular_distance_function = 2
-cellular_jitter = 10.0
-cellular_return_type = 0
+fractal_gain = 3.0
+fractal_weighted_strength = 1.0
+cellular_distance_function = 1
+cellular_return_type = 6
+domain_warp_enabled = true
+domain_warp_type = 1
+domain_warp_amplitude = 20.0
+domain_warp_frequency = 0.01
+domain_warp_fractal_octaves = 1
 
 [sub_resource type="NoiseTexture2D" id="NoiseTexture2D_0nt80"]
 generate_mipmaps = false
-noise = SubResource("FastNoiseLite_5gaam")
+noise = SubResource("FastNoiseLite_ch82m")
 seamless = true
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_wg3r3"]
 render_priority = 0
 shader = ExtResource("2_0nt80")
 shader_parameter/effect_decay = 0.0
-shader_parameter/primary_color = Color(0.26666668, 1, 0.5411765, 1)
-shader_parameter/secondary_color = Color(0, 0.6117647, 0.43529412, 1)
-shader_parameter/tertiary_color = Color(0, 0.3019608, 0.33333334, 1)
+shader_parameter/primary_color = Color(0.78945154, 0.6508865, 0.9330489, 1)
+shader_parameter/secondary_color = Color(0.8862949, 0.5567852, 0.9677506, 1)
+shader_parameter/tertiary_color = Color(0.62352943, 0, 0.7058824, 1)
 shader_parameter/emission = 3.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_0nt80")
 shader_parameter/noise_scale = Vector2(1, 1)
@@ -41,9 +48,9 @@ size = Vector2(3.6, 3)
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_rgwu2"]
 render_priority = 0
 shader = ExtResource("3_vw7d2")
-shader_parameter/primary_color = Color(0.26666668, 1, 0.5411765, 1)
-shader_parameter/secondary_color = Color(0, 0.6117647, 0.43529412, 1)
-shader_parameter/tertiary_color = Color(0, 0.3019608, 0.33333334, 1)
+shader_parameter/primary_color = Color(0.7882353, 0.6509804, 0.93333334, 1)
+shader_parameter/secondary_color = Color(0.8862745, 0.5568628, 0.96862745, 1)
+shader_parameter/tertiary_color = Color(0.62352943, 0, 0.7058824, 1)
 shader_parameter/emission = 3.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_0nt80")
 shader_parameter/noise_scale = Vector2(1, 1)
