@@ -1,0 +1,66 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://rew6ftjwmm00"]
+
+[ext_resource type="Shader" uid="uid://dmqri588r15eg" path="res://scenes/prefabs/effects/魔弹3D/着色器/透明.gdshader" id="1_72fhe"]
+[ext_resource type="Texture2D" uid="uid://by2rajqwq8ttq" path="res://scenes/prefabs/effects/魔弹3D/贴图/网纹01.tres" id="2_72fhe"]
+
+[sub_resource type="Gradient" id="Gradient_lagfn"]
+offsets = PackedFloat32Array(0, 0.721311, 1)
+colors = PackedColorArray(0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_htm7d"]
+gradient = SubResource("Gradient_lagfn")
+
+[sub_resource type="Gradient" id="Gradient_htm7d"]
+interpolation_mode = 2
+interpolation_color_space = 1
+offsets = PackedFloat32Array(0, 0.688525, 1)
+colors = PackedColorArray(0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_2xbmx"]
+gradient = SubResource("Gradient_htm7d")
+fill_from = Vector2(0.5, 0)
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_72fhe")
+shader_parameter/mask1_texture = SubResource("GradientTexture2D_htm7d")
+shader_parameter/mask1_scroll = Vector2(0, -6)
+shader_parameter/mask1_scale = Vector2(1, 10)
+shader_parameter/mask1_radial = false
+shader_parameter/mask1_rotation = 0.0
+shader_parameter/use_mask2 = true
+shader_parameter/mask2_texture = ExtResource("2_72fhe")
+shader_parameter/mask2_scroll = Vector2(0, -0.25)
+shader_parameter/mask2_scale = Vector2(1, 0.5)
+shader_parameter/mask2_strength = 1.0
+shader_parameter/mask2_blend_mode = 7
+shader_parameter/mask2_radial = false
+shader_parameter/mask2_rotation = 0.0
+shader_parameter/use_mask3 = true
+shader_parameter/mask3_texture = SubResource("GradientTexture2D_2xbmx")
+shader_parameter/mask3_scroll = Vector2(0, 0)
+shader_parameter/mask3_scale = Vector2(1, 1)
+shader_parameter/mask3_strength = 1.0
+shader_parameter/mask3_blend_mode = 2
+shader_parameter/mask3_radial = false
+shader_parameter/mask3_rotation = 0.0
+shader_parameter/primary_color = Color(0.8, 0.878431, 1, 1)
+shader_parameter/secondary_color = Color(0.5529412, 0.5647059, 1, 1)
+shader_parameter/tertiary_color = Color(0.176471, 0.431373, 1, 1)
+shader_parameter/use_tertiary = true
+shader_parameter/color_smoothness = 0.5
+shader_parameter/billboard = false
+shader_parameter/displacement_scale = 0.05
+shader_parameter/displacement_offset = 0.5
+shader_parameter/time_scale = 1.0
+shader_parameter/texture_scale = Vector2(1, 1)
+shader_parameter/uv_alignment = 0
+shader_parameter/emission_strength = 2.0
+shader_parameter/proximity_fade = false
+shader_parameter/proximity_fade_distance = 1.0
+shader_parameter/edge_cutoff = Vector4(0, 0, 0, 0)
+shader_parameter/alpha_smoothness = 0.954
+shader_parameter/alpha_multiplier = 1.0
+shader_parameter/alpha_mode = 0
+shader_parameter/alpha_cutoff = 0.02
+shader_parameter/dither_cutoff = 0.8

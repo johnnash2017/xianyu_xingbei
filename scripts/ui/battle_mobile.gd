@@ -561,7 +561,8 @@ func _播出手特效(src: int, dst: int, msg: Dictionary) -> void:
 
 ## 出手时放专属特效的牌 → 特效预制体（scenes/prefabs/effects/）
 ## 斩击类（水 / 火 / 地 / 风 / 雷 / 暗灭）是把 3D 斩击素材经 SubViewport 转成 2D 的预制体，见 scripts/effects/斩击2D.gd；
-## 魔弹 / 圣光是原生 2D 粒子（GPUParticles2D），见 scripts/effects/粒子特效.gd。
+## 魔弹同样是把 3D 弹道素材经 SubViewport 转成 2D 的预制体，见 scripts/effects/魔弹2D.gd；
+## 圣光是原生 2D 粒子（GPUParticles2D），见 scripts/effects/粒子特效.gd。
 const 特效预制表: Dictionary = {
 	GConst.CardName.WaterSlash: preload("res://scenes/prefabs/effects/水斩.tscn"),
 	GConst.CardName.FireSlash: preload("res://scenes/prefabs/effects/火斩.tscn"),

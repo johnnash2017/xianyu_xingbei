@@ -11,7 +11,8 @@ extends Node2D
 ## 预制体里的 3D 斩击节点（在各预制体的检查器里绑好：视口容器/视口/特效位/特效）
 @export var VFX: 特效发射器3D
 
-## 预制体里垫在斩痕下面的背景光点（在各预制体的检查器里绑好：背景），命中时会被隐藏
+## 预制体里垫在斩痕下面的背景光点（在各预制体的检查器里绑好：背景）。
+## 是否在命中时隐藏由「命中隐藏背景」决定
 @export var BG: Sprite2D
 
 ## 飞完全程的时长（秒）
@@ -19,9 +20,19 @@ extends Node2D
 
 ## 出场倍速：3D 特效的「出现」动画（斩痕淡入，原速 0.6 秒）播放多快。
 ## 调大就能一出手就看到完整斩痕（1.0 = 不加速，按原始淡入速度）
-@export var 出场倍速: float = 6.0
+@export var 出场倍速: float = 10.0
 
-## 命中后等多久才销毁（秒）—— 留给 3D 特效播「消失」动画与粒子拖尾
+## 命中后整体淡到全透明所用的时间（秒）
+@export var 透明时长: float = 0.15
+
+## 命中后缩小的快慢：每秒缩掉多少缩放值（1.0 = 一秒缩掉 1.0 的缩放；
+## 6.0 ≈ 0.13 秒把 0.75 的斩击缩没）。实际用时 = 当前缩放 / 缩小速度
+@export var 缩小速度: float = 3.0
+
+## 命中时是否把「背景」光点收掉（先关着，要恢复就勾上）
+@export var 命中隐藏背景: bool = false
+
+## 命中后等多久才销毁（秒）—— 留给粒子拖尾飞完
 @export var 收尾时长: float = 1.2
 
 ## 显示缩放（1.0 = 视口原尺寸 512×512）—— 单张牌自己的缩放，在预制体上单独调
@@ -67,12 +78,19 @@ func _process(delta: float) -> void:
 		_命中()
 
 
-## 到位：让 3D 特效播 close（斩痕淡出、粒子停止发射，已经喷出的拖尾飞完），再等 收尾时长 销毁自己
+## 到位：不关粒子、也不播 3D 素材的「关闭」动画，而是整体快速缩小 + 淡到透明
+##（时长/速度见 透明时长、缩小速度），再等 收尾时长 销毁自己
 func _命中() -> void:
 	_运行中 = false
-	BG.visible = false             # 命中就把背景光点收掉，只留斩痕的消失动画
-	VFX.anim.speed_scale = 1.0     # 消失这一段按原始速度播，别跟着出场一起加速
-	VFX.emitting = false
+	if 命中隐藏背景:
+		BG.visible = false
+	var 缩小时长: float = absf(scale.x) / maxf(缩小速度, 0.01)
+	var 淡出色: Color = modulate
+	淡出色.a = 0.0
 	var t: Tween = create_tween()
+	t.set_parallel(true)
+	t.tween_property(self, "scale", Vector2.ZERO, 缩小时长)
+	t.tween_property(self, "modulate", 淡出色, maxf(透明时长, 0.01))
+	t.set_parallel(false)
 	t.tween_interval(收尾时长)
 	t.tween_callback(queue_free)

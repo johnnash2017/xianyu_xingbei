@@ -19,9 +19,15 @@ VFX = NodePath("视口容器/视口/特效位/特效")
 BG = NodePath("背景")
 
 [node name="背景" type="Sprite2D" parent="." unique_id=42102569]
+self_modulate = Color(0.18431373, 0, 0.11764706, 0.8509804)
+position = Vector2(-154, 9.536743e-07)
+scale = Vector2(2.0118053, 2.0100598)
+texture = ExtResource("2_gy0yi")
+
+[node name="背景2" type="Sprite2D" parent="背景" unique_id=604588833]
 modulate = Color(0.6384227, 0.11910751, 0.7300889, 1)
-position = Vector2(-79.00001, 5.0000005)
-scale = Vector2(1.7833226, 1.6789169)
+position = Vector2(52.56224, 7.222222)
+scale = Vector2(0.90103, 0.90103)
 texture = ExtResource("2_gy0yi")
 
 [node name="视口容器" type="SubViewportContainer" parent="." unique_id=1296613301]

@@ -297,9 +297,9 @@ func 跑() -> void:
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 0, "回答技能询问后没有回到等待态：%d" % int(窗.get("_mode")))
 
-	# 出手特效预制体（scenes/prefabs/effects/）：8 个都要能实例化
-	# 【魔弹】【圣光】是原生 2D 粒子；斩击类是把 3D 斩击素材经 SubViewport 转成 2D 的预制体
-	for 名: String in ["魔弹", "圣光"]:
+	# 出手特效预制体（scenes/prefabs/effects/）：
+	# 【圣光】是原生 2D 粒子；斩击类与【魔弹】是把 3D 素材经 SubViewport 转成 2D 的预制体
+	for 名: String in ["圣光"]:
 		var 根: GPUParticles2D = (load("res://scenes/prefabs/effects/%s.tscn" % 名) as PackedScene).instantiate() as GPUParticles2D
 		if 根 == null:
 			检(false, "粒子特效 %s 的根节点不是 GPUParticles2D（脚本没挂上？）" % 名)
@@ -307,6 +307,24 @@ func 跑() -> void:
 		检(根.texture != null, "粒子特效 %s 没配贴图" % 名)
 		检(根.process_material != null, "粒子特效 %s 没配粒子材质" % 名)
 		根.free()
+
+	# 【魔弹】：2D 预制体 + 里面的 3D 素材
+	var 弹: 魔弹2D = (load("res://scenes/prefabs/effects/魔弹.tscn") as PackedScene).instantiate() as 魔弹2D
+	if 弹 == null:
+		检(false, "魔弹预制体加载失败（脚本没挂上？）")
+	else:
+		检(弹.VFX != null, "魔弹预制体没绑里面的 3D 特效节点（VFX 为空）")
+		检(弹.get_node_or_null("视口容器/视口/特效位/特效") != null, "魔弹预制体缺 SubViewport 结构")
+		弹.free()
+	var 弹素材: Node3D = (load("res://scenes/prefabs/effects/魔弹3D/魔弹.tscn") as PackedScene).instantiate() as Node3D
+	if 弹素材 == null:
+		检(false, "3D 魔弹素材加载失败")
+	else:
+		检(弹素材 is 特效控制器3D, "3D 魔弹素材没挂 特效控制器3D 脚本")
+		检(弹素材.get_node_or_null("Head") != null and 弹素材.get_node_or_null("AnimationPlayer") != null,
+			"3D 魔弹素材缺 Head / AnimationPlayer 节点")
+		弹素材.free()
+
 	for 名: String in ["水斩", "火斩", "地斩", "风斩", "雷斩", "暗灭"]:
 		var 桥: 斩击2D = (load("res://scenes/prefabs/effects/%s.tscn" % 名) as PackedScene).instantiate() as 斩击2D
 		if 桥 == null:

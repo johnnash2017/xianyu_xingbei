@@ -2,13 +2,13 @@
 
 [ext_resource type="Script" uid="uid://bl8hvxnm485jw" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_oa7wf"]
 [ext_resource type="Shader" uid="uid://b5o40v2ekd53a" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="2_0q0vv"]
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子_普通混合.gdshader" id="3_yyr62"]
+[ext_resource type="Shader" uid="uid://boikjkp1x3qvh" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子_普通混合.gdshader" id="3_yyr62"]
 [ext_resource type="Texture2D" uid="uid://pefd1ubijsxp" path="res://scenes/prefabs/effects/斩击3D/贴图/叶.png" id="4_r8r4w"]
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_xpmf4"]
 noise_type = 2
 seed = 2
-fractal_type = 3
+frequency = 0.02
 fractal_octaves = 2
 fractal_weighted_strength = 1.0
 cellular_distance_function = 1
@@ -29,17 +29,17 @@ render_priority = 0
 shader = ExtResource("2_0q0vv")
 shader_parameter/effect_decay = 0.0
 shader_parameter/primary_color = Color(0, 0, 0, 1)
-shader_parameter/secondary_color = Color(0.44634444, 0.0001577726, 0.4541322, 1)
-shader_parameter/tertiary_color = Color(0.15642482, 1.7453414e-05, 0.15642345, 1)
+shader_parameter/secondary_color = Color(0.9135961, 0.00021870613, 0.7952465, 1)
+shader_parameter/tertiary_color = Color(0.13381714, 1.5052892e-05, 0.13651198, 1)
 shader_parameter/emission = 2.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_oa7wf")
 shader_parameter/noise_scale = Vector2(1, 1)
 shader_parameter/noise_scroll = Vector2(1, 0)
-shader_parameter/noise_shape = 1.0
+shader_parameter/noise_shape = 1.8025043
 shader_parameter/pulse_frequency = 1.0
-shader_parameter/pulse_amount = 1.0
+shader_parameter/pulse_amount = 0.999999977648
 shader_parameter/edge_position = 0.0499999988824
-shader_parameter/edge_hardness = 0.0
+shader_parameter/edge_hardness = 0.499999988824
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_1k66x"]
 size = Vector2(3.6, 3)
@@ -48,13 +48,13 @@ size = Vector2(3.6, 3)
 render_priority = 0
 shader = ExtResource("3_yyr62")
 shader_parameter/primary_color = Color(0, 0, 0, 1)
-shader_parameter/secondary_color = Color(0.21960784, 0, 0.22352941, 1)
-shader_parameter/tertiary_color = Color(0.21960784, 0, 0.22352941, 1)
+shader_parameter/secondary_color = Color(0.9135961, 0.00021870613, 0.7952465, 1)
+shader_parameter/tertiary_color = Color(0.13381714, 1.5052892e-05, 0.13651198, 1)
 shader_parameter/emission = 2.0
 shader_parameter/noise_texture = SubResource("NoiseTexture2D_oa7wf")
 shader_parameter/noise_scale = Vector2(1, 1)
 shader_parameter/noise_scroll = Vector2(1, 0)
-shader_parameter/noise_shape = 1.0
+shader_parameter/noise_shape = 1.8025043
 shader_parameter/align_noise = true
 shader_parameter/use_icon = false
 shader_parameter/icon_texture = ExtResource("4_r8r4w")
@@ -217,11 +217,11 @@ _data = {
 
 [node name="暗灭" type="Node3D" unique_id=926772538]
 script = ExtResource("1_oa7wf")
-primary_color = Color(0.8509804, 0.16862746, 0.72156864, 1)
-secondary_color = Color(0.09411765, 0, 0.8784314, 1)
-tertiary_color = Color(0.09411765, 0, 0.8784314, 1)
+secondary_color = Color(0.9135961, 0.00021870613, 0.7952465, 1)
+tertiary_color = Color(0.13381714, 1.5052892e-05, 0.13651198, 1)
 emission = 2.0
 noise_texture = SubResource("NoiseTexture2D_oa7wf")
+noise_shape = 1.8025043
 pulse_amount = 1.0
 
 [node name="Slash" type="MeshInstance3D" parent="." unique_id=1526208885]
