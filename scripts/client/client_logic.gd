@@ -16,7 +16,7 @@ signal hurt_received(msg: Dictionary)
 signal skill_received(msg: Dictionary)
 signal game_over(winner: int)
 signal role_pick_required(data: Dictionary)
-signal role_pick_submitted(strategy: int, is_pick: bool, role_ids: Array)
+signal role_pick_submitted(strategy: int, role_ids: Array)
 
 ## 选将弹层场景（叠在当前界面上，不参与 UI.goto 切换）
 const SCENE_ROLE_PICK: String = "res://scenes/role_pick.tscn"
@@ -177,10 +177,10 @@ func _show_role_pick(data: Dictionary) -> void:
 		return
 	var inst: Node = ps.instantiate()
 	role_pick_layer = inst
-	var parent: Node = UI.current
-	if parent == null:
-		parent = get_tree().root
-	parent.add_child(inst)
+	# 选将是满屏弹层，挂到「界面层」（屏幕坐标空间）。不能挂进当前界面：
+	# 房间界面是按 1280x720 设计、整体放大 1.5 倍的（见 ReadyRoom.tscn 根节点 scale），
+	# 挂进去会跟着放大 1.5 倍，整块版面溢出屏幕。
+	UI.界面层.add_child(inst)
 	inst.apply_request(data)
 
 
@@ -205,16 +205,15 @@ func create_room(room_name: String, max_player: int, role_strategy: int = GConst
 	})
 
 
-## 选将结果上行：31/Any 用 [选中角色]；BP 用 is_pick 区分 Ban/Pick；CM 取消额外禁用用哨兵 [100]
-func send_pick_ban(strategy: int, is_pick: bool, role_ids: Array) -> void:
+## 选将结果上行：role_ids 里是自己选中的角色
+func send_pick(strategy: int, role_ids: Array) -> void:
 	if not Net.is_connected_to_host():
 		return
 	Net.send(GConst.Msg.PickBan, {
 		"strategy": strategy,
-		"is_pick": is_pick,
 		"role_ids": role_ids,
 	})
-	role_pick_submitted.emit(strategy, is_pick, role_ids)
+	role_pick_submitted.emit(strategy, role_ids)
 
 
 func enter_room(room_id: int) -> void:

@@ -53,6 +53,11 @@ func goto(scene_path: String, 播放主界面音乐: bool = true) -> Node:
 	current = inst
 	if old != null and old != inst and is_instance_valid(old):
 		old.queue_free()
+	# 界面层里除新界面外还可能留着弹层（如选将层）。切界面时一并清掉，
+	# 否则把弹层留在已经换掉的界面上（比如选将中途退出房间，选将层会盖在大厅上）。
+	for c: Node in 界面层.get_children():
+		if c != inst and is_instance_valid(c) and not c.is_queued_for_deletion():
+			c.queue_free()
 	if 播放主界面音乐:
 		Audio.播放音乐(Audio.场景主界面)
 	return inst

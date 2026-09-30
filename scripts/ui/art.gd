@@ -4,6 +4,8 @@ extends Node
 
 const DIR_CARD: String = "res://资源/卡面/"
 const DIR_ROLE: String = "res://资源/角色/"
+## 选角大立绘（260x363，搬自参照工程 assets/textures/hero/middle）
+const DIR_ROLE_BIG: String = "res://资源/角色大图/"
 const DIR_STATUS: String = "res://资源/界面/status/"
 const DIR_TAP: String = "res://资源/界面/tap/"
 const DIR_BP: String = "res://资源/界面/bp/"
@@ -70,6 +72,16 @@ func card_face(card: GCard) -> Texture2D:
 
 func role_avatar(role_id: int) -> Texture2D:
 	return tex("%s%d.png" % [DIR_ROLE, role_id])
+
+
+## 选角用的大立绘（260x363）；参照工程没收录的角色回退到小立绘
+func role_hero(role_id: int) -> Texture2D:
+	var 大图: Texture2D = tex("%s%dM.jpg" % [DIR_ROLE_BIG, role_id])
+	if 大图 == null:
+		大图 = tex("%s%dM.png" % [DIR_ROLE_BIG, role_id])
+	if 大图 == null:
+		return role_avatar(role_id)
+	return 大图
 
 
 func role_tap(role_id: int) -> Texture2D:

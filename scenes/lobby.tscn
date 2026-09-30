@@ -2,23 +2,11 @@
 
 [ext_resource type="Script" uid="uid://wf2jgc5748wc" path="res://scripts/ui/lobby.gd" id="1_5gu6x"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nqcc7"]
-content_margin_left = 35.0
-content_margin_top = 35.0
-content_margin_right = 35.0
-content_margin_bottom = 35.0
-bg_color = Color(0.07, 0.08, 0.13, 0.98)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.45, 0.62, 0.95, 0.9)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
+[sub_resource type="ButtonGroup" id="ButtonGroup_people"]
 
-[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "人数选项", "选将选项", "创建按钮", "取消创建按钮")]
+[sub_resource type="ButtonGroup" id="ButtonGroup_strategy"]
+
+[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "创建按钮", "取消创建按钮")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -39,8 +27,8 @@ script = ExtResource("1_5gu6x")
 "房主列表" = NodePath("主列/房主列表")
 "创建层" = NodePath("创建层")
 "房名输入" = NodePath("创建层/居中/创建卡片/内容/房名输入")
-"人数选项" = NodePath("创建层/居中/创建卡片/内容/人数选项")
-"选将选项" = NodePath("创建层/居中/创建卡片/内容/选将选项")
+"人数组" = SubResource("ButtonGroup_people")
+"选角组" = SubResource("ButtonGroup_strategy")
 "创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/创建按钮")
 "取消创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/取消创建按钮")
 
@@ -164,9 +152,8 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="创建卡片" type="PanelContainer" parent="创建层/居中" unique_id=1884565551]
-custom_minimum_size = Vector2(672, 0)
+custom_minimum_size = Vector2(880, 0)
 layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_nqcc7")
 
 [node name="内容" type="VBoxContainer" parent="创建层/居中/创建卡片" unique_id=1464767473]
 layout_mode = 2
@@ -189,51 +176,109 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "我的房间"
 
-[node name="人数标签" type="Label" parent="创建层/居中/创建卡片/内容" unique_id=1254177390]
+[node name="人数行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="人数标签" type="Label" parent="创建层/居中/创建卡片/内容/人数行"]
+custom_minimum_size = Vector2(96, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "人数"
+vertical_alignment = 1
 
-[node name="人数选项" type="OptionButton" parent="创建层/居中/创建卡片/内容" unique_id=1912333304]
+[node name="人数_2" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
-selected = 2
-item_count = 7
-popup/item_0/text = "2 人"
-popup/item_0/id = 0
-popup/item_1/text = "3 人"
-popup/item_1/id = 1
-popup/item_2/text = "4 人"
-popup/item_2/id = 2
-popup/item_3/text = "5 人"
-popup/item_3/id = 3
-popup/item_4/text = "6 人"
-popup/item_4/id = 4
-popup/item_5/text = "7 人"
-popup/item_5/id = 5
-popup/item_6/text = "8 人"
-popup/item_6/id = 6
+toggle_mode = true
+button_group = SubResource("ButtonGroup_people")
+metadata/people = 2
+text = "2 人"
 
-[node name="选将标签" type="Label" parent="创建层/居中/创建卡片/内容" unique_id=1143571578]
+[node name="人数_3" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
-text = "选将"
+toggle_mode = true
+button_group = SubResource("ButtonGroup_people")
+metadata/people = 3
+text = "3 人"
 
-[node name="选将选项" type="OptionButton" parent="创建层/居中/创建卡片/内容" unique_id=964607044]
+[node name="人数_4" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
-selected = 0
-item_count = 5
-popup/item_0/text = "随机"
-popup/item_0/id = 0
-popup/item_1/text = "三选一"
-popup/item_1/id = 1
-popup/item_2/text = "六选一"
-popup/item_2/id = 2
-popup/item_3/text = "Ban-Pick"
-popup/item_3/id = 3
-popup/item_4/text = "CM"
-popup/item_4/id = 4
+toggle_mode = true
+button_pressed = true
+button_group = SubResource("ButtonGroup_people")
+metadata/people = 4
+text = "4 人"
+
+[node name="人数_5" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_group = SubResource("ButtonGroup_people")
+metadata/people = 5
+text = "5 人"
+
+[node name="人数_6" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_group = SubResource("ButtonGroup_people")
+metadata/people = 6
+text = "6 人"
+
+[node name="人数_7" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_group = SubResource("ButtonGroup_people")
+metadata/people = 7
+text = "7 人"
+
+[node name="人数_8" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_group = SubResource("ButtonGroup_people")
+metadata/people = 8
+text = "8 人"
+
+[node name="选角行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="选角标签" type="Label" parent="创建层/居中/创建卡片/内容/选角行"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "选角"
+vertical_alignment = 1
+
+[node name="选角_随机" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_pressed = true
+button_group = SubResource("ButtonGroup_strategy")
+metadata/strategy = 1
+text = "随机"
+
+[node name="选角_三选一" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_group = SubResource("ButtonGroup_strategy")
+metadata/strategy = 2
+text = "三选一"
+
+[node name="选角_六选一" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_group = SubResource("ButtonGroup_strategy")
+metadata/strategy = 6
+text = "六选一"
 
 [node name="按钮行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容" unique_id=1846027509]
 layout_mode = 2

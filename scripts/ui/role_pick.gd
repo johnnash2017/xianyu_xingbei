@@ -1,52 +1,71 @@
 extends Control
-## 选将界面（弹层）
-## 由 Logic 收到服务端 RoleReq 后实例化并叠在当前界面之上，处理三选一/任意选与 Ban-Pick（含 CM）。
-## 不使用 UI.goto 整屏切换；角色立绘、Ban/Pick 标记与按钮贴图统一通过 Art 接口取用。
-## 遮罩/面板/标题/网格/按钮等结构都在 role_pick.tscn 里（可所见即所得地改），
-## 本脚本只负责「每个角色一个按钮」这类动态内容。
+## 选角界面（弹层）
+## 由 Logic 收到服务端 RoleReq 后实例化并叠在当前界面之上。
+## 版面照搬参照工程的 RoleChoose31：全屏压黑遮罩 + 屏幕正中的候选面板（大立绘卡，一行 3 张、多的换行）
+## + 面板上方的标题 + 面板下方的提示条（ui_notice 底图）。
+## 点一下立绘即选定（参照工程就是这么做的，没有「确定」按钮）；选定后只留自己选中的那张卡。
+## 遮罩/面板/标题/提示条等结构都在 role_pick.tscn 里（可所见即所得地改），
+## 本脚本只负责「每个角色一张卡」这类动态内容与点击。
 
-## 角色卡片网格参数（设计基准 1920x1080；网格列数等版面参数在场景里设）
-const ROLE_BTN_W: float = 192.0
-const ROLE_BTN_H: float = 243.0
-## 角色立绘尺寸（与 资源/角色 原图一致：42x120）及卡片内的排布
-const ROLE_CARD_W: float = 67.0
-const ROLE_CARD_H: float = 192.0
-const ROLE_CARD_TOP: float = 6.0
-const ROLE_NAME_H: float = 42.0
-
-## 角色在本次选将中的标记（决定叠加的 Ban/Pick 图标与是否还能选）
-enum RoleMark {
-	None = 0,      # 可选
-	Ban = 1,       # 已被禁用
-	ExtraBan = 2,  # CM 额外禁用
-	Pick = 3,      # 已被选择
-}
+## 候选卡尺寸（与参照工程一致：立绘原图 260x363）
+const ROLE_BTN_W: float = 260.0
+const ROLE_BTN_H: float = 363.0
+## 一行摆几张、面板最多显示几行（多于这个行数就滚动）
+const 每行张数: int = 3
+const 可见行数: int = 2
+## 面板宽（一行 每行张数 张卡正好铺满）
+const 面板宽: float = ROLE_BTN_W * 每行张数
+## 顶部座位条上的座位格尺寸（与 SeatMain.png / SeatBlue.png 一致）
+const 座次格宽: float = 32.0
+const 座次条高: float = 37.0
+## 座位格里那层小队色菱形的尺寸（SeatBlue.png / SeatRed.png 原始尺寸）
+const 座次内格宽: float = 26.0
+const 座次内格高: float = 30.0
+## 座位条自己画的横轨（照参照工程座位条的双线）：线粗、上下线 y、颜色
+const 轨道线粗: float = 2.0
+const 轨道上线y: float = 13.0
+const 轨道下线y: float = 22.0
+const 轨道色: Color = Color(0.78, 0.8, 0.88, 0.6)
 
 # ---- 当前 RoleReq 数据 ----
 var _strategy: int = 0
-var _operation: int = 0
 var _ask_id: int = -1
 var _role_ids: Array[int] = []
-var _args: Array[int] = []
-## 是否轮到自己操作（决定按钮是否可点）
+## 是否轮到自己选（没轮到自己时卡片不可点）
 var _interactive: bool = false
 
 # ---- 场景里绑定的界面节点（结构在 role_pick.tscn 里，可所见即所得地改） ----
 @export var 标题: Label
 @export var 提示: Label
-@export var 网格: GridContainer
-@export var 确定按钮: Button
-@export var 取消按钮: Button
+## 选角倒计时进度条（剩余时间由服务端在 RoleReq 里下发）
+@export var 倒计时: ProgressBar
+## 顶部「座位顺序」条：座位菱形的容器
+@export var 座次条: Control
+## 卡片容器：卡片由脚本按行列手动摆放（容器排不出「一行张数不足时居中」）
+@export var 卡片区: Control
+## 卡片外面的滚动框：高度按候选行数在脚本里改
+@export var 滚动: ScrollContainer
 
-## 角色按钮的互斥组（每次刷新重建）
-var _group: ButtonGroup
+## 自己是否已经提交过（提交后只留自己选中的那张卡）
+var _已提交: bool = false
+## 自己提交的角色 id
+var _已选角色: int = -1
+## 倒计时剩余 / 总时长（毫秒），来自服务端 RoleReq 的 wait_ms / wait_total_ms
+var _剩余毫秒: float = 0.0
+var _总毫秒: float = 0.0
 
 
 func _ready() -> void:
-	确定按钮.pressed.connect(_on_ok_pressed)
-	取消按钮.pressed.connect(_on_cancel_pressed)
 	# 选将结束后（对局开始）自动关闭
 	Logic.game_info_updated.connect(_on_game_info)
+
+
+## 倒计时进度条：每秒把剩余时长减掉（到 0 就停住，收尾由服务端负责）
+func _process(delta: float) -> void:
+	if _剩余毫秒 <= 0.0:
+		return
+	_剩余毫秒 = maxf(_剩余毫秒 - delta * 1000.0, 0.0)
+	倒计时.value = _剩余毫秒
 
 
 # ============================================================
@@ -55,19 +74,23 @@ func _ready() -> void:
 ## 应用（或更新）一条 RoleReq 数据；重复收到时复用本实例刷新内容，避免叠层
 func apply_request(data: Dictionary) -> void:
 	_strategy = int(data.get("strategy", 0))
-	_operation = int(data.get("opration", 0))
 	_ask_id = int(data.get("id", -1))
 	_role_ids.clear()
 	var raw_roles: Array = data.get("role_ids", [])
 	for rid: int in raw_roles:
 		_role_ids.append(rid)
-	_args.clear()
-	var raw_args: Array = data.get("args", [])
-	for v: int in raw_args:
-		_args.append(v)
-	_interactive = _ask_id == Logic.my_player_id and _can_choose()
-	# 只有轮到自己操作时才提示，避免全量广播快照反复响（对照参考项目 ChooseRole → sys-turn）
+	_interactive = _ask_id == Logic.my_player_id
+	# 倒计时（服务端下发的剩余时长）：进度条由 _process 每秒递减
+	_总毫秒 = float(data.get("wait_total_ms", 0))
+	_剩余毫秒 = float(data.get("wait_ms", 0))
+	倒计时.visible = _总毫秒 > 0.0
+	倒计时.max_value = _总毫秒
+	倒计时.value = _剩余毫秒
 	if _interactive:
+		# 轮到自己：清掉上一次的提交状态，重新铺满候选
+		_已提交 = false
+		_已选角色 = -1
+	# 只有轮到自己时才提示，避免重发快照反复响（对照参考项目 ChooseRole → sys-turn）
 		Audio.播音效("sys-turn")
 	_refresh()
 
@@ -78,279 +101,168 @@ func apply_request(data: Dictionary) -> void:
 func _refresh() -> void:
 	标题.text = _mode_title()
 	提示.text = _status_text()
-	确定按钮.visible = _interactive
-	确定按钮.disabled = true
-	取消按钮.visible = _interactive and _is_extra_ban()
+	_刷新座次()
 
-	for c: Node in 网格.get_children():
-		网格.remove_child(c)
+	for c: Node in 卡片区.get_children():
+		卡片区.remove_child(c)
 		c.queue_free()
-	# 每次刷新都重建按钮组，清掉上一次的选择
-	_group = ButtonGroup.new()
-	for i: int in range(_role_ids.size()):
-		var rid: int = _role_ids[i]
-		var step: int = _args[i] if i < _args.size() else 0
-		网格.add_child(_build_role_button(rid, _role_mark(step), _role_team(step)))
+	# 卡片按「一行 每行张数 张」手动摆；一行张数不足时（任意选的最后一行）在这一行里居中。
+	# 摆不下就滚动：可见区域最多 可见行数 行高，面板宽度固定。
+	var 张数: int = _role_ids.size()
+	var 行数: int = maxi(1, ceili(float(张数) / 每行张数))
+	滚动.custom_minimum_size = Vector2(面板宽, mini(行数, 可见行数) * ROLE_BTN_H)
+	卡片区.custom_minimum_size = Vector2(面板宽, 行数 * ROLE_BTN_H)
+	for i: int in range(张数):
+		var btn: Button = _build_role_button(_role_ids[i])
+		卡片区.add_child(btn)
+		var 行: int = i / 每行张数
+		var 本行张数: int = mini(每行张数, 张数 - 行 * 每行张数)
+		btn.position = Vector2(
+			(面板宽 - 本行张数 * ROLE_BTN_W) * 0.5 + (i % 每行张数) * ROLE_BTN_W,
+			行 * ROLE_BTN_H)
+	# 自己已经提交过：只留自己选中的那张卡
+	if _已提交:
+		_只留选中卡()
 
 
-## 一个角色卡片：立绘 + 角色名 + Ban/Pick 叠加标记
-func _build_role_button(rid: int, mark: int, team: int) -> Button:
+## 顶部「座位顺序」条：按服务端下发的座位顺序（Game 快照里 player_infos 的顺序）摆座位菱形，
+## 自己那格用黄框 SeatMain，其余按队伍蓝/红；几个玩家就摆几格，在整条上均匀铺开。
+## 轨道自己画：参照工程那张 b09_seat_1.png 里固定画了 6 个空位菱形，
+## 人数不是 6 时（比如 2V2）会多出空位，所以不用它，改成自画双线横轨 + 只摆在场的玩家。
+func _刷新座次() -> void:
+	for c: Node in 座次条.get_children():
+		座次条.remove_child(c)
+		c.queue_free()
+	var 条宽: float = 座次条.custom_minimum_size.x
+	for 线y: float in [轨道上线y, 轨道下线y]:
+		var 轨: ColorRect = ColorRect.new()
+		轨.color = 轨道色
+		轨.position = Vector2(0.0, 线y)
+		轨.size = Vector2(条宽, 轨道线粗)
+		轨.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		座次条.add_child(轨)
+	var infos: Array = Data.game_info.get("player_infos", [])
+	var 人数: int = infos.size()
+	if 人数 <= 0:
+		return
+	var 间距: float = 0.0 if 人数 <= 1 else (条宽 - 座次格宽) / float(人数 - 1)
+	for i: int in range(人数):
+		var 数据: Dictionary = infos[i]
+		var 队: int = int(数据.get("team", GConst.TEAM_NONE))
+		var 是我: bool = int(数据.get("id", -1)) == Logic.my_player_id
+		var 格: TextureRect = TextureRect.new()
+		格.position = Vector2(i * 间距, 0.0)
+		格.size = Vector2(座次格宽, 座次条高)
+		格.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		格.texture = Art.ui(_座次贴图名(队, 是我))
+		if not 是我 and 队 < 0:
+			# 未分队：没有灰色的座位图，借蓝色的形状调灰
+			格.self_modulate = Color(0.6, 0.6, 0.64, 1.0)
+		座次条.add_child(格)
+		if 队 < 0:
+			continue
+		var 内格: TextureRect = TextureRect.new()
+		内格.position = Vector2((座次格宽 - 座次内格宽) * 0.5, (座次条高 - 座次内格高) * 0.5)
+		内格.size = Vector2(座次内格宽, 座次内格高)
+		内格.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		内格.texture = Art.ui(_座次贴图名(队, false))
+		格.add_child(内格)
+
+
+## 座位菱形的贴图名：自己用黄框 SeatMain，其余按队伍蓝/红
+func _座次贴图名(队: int, 是我: bool) -> String:
+	if 是我:
+		return "SeatMain"
+	return "SeatRed" if 队 == GConst.RED else "SeatBlue"
+
+
+## 一张角色卡：整张立绘（无边框、无名字，角色名与技能在 tooltip 上）
+func _build_role_button(rid: int) -> Button:
 	var btn: Button = Button.new()
-	btn.toggle_mode = true
-	btn.button_group = _group
 	btn.custom_minimum_size = Vector2(ROLE_BTN_W, ROLE_BTN_H)
+	btn.size = Vector2(ROLE_BTN_W, ROLE_BTN_H)
+	btn.flat = true
 	btn.set_meta("role_id", rid)
-	btn.pressed.connect(_on_role_pressed)
+	btn.pressed.connect(_on_role_pressed.bind(rid))
+	btn.disabled = not _interactive
 
-	var state_text: String = _role_state_text(mark)
-	var tip_text: String = Data.role_name(rid)
-	if state_text != "":
-		tip_text += "（%s）" % state_text
+	var tip_text: String = "%d.%s" % [rid, Data.role_name(rid)]
 	var info: String = Data.role_skill_info(rid)
 	if info != "":
 		tip_text += "\n" + info
 	btn.tooltip_text = tip_text
 
-	var face_pos: Vector2 = Vector2((ROLE_BTN_W - ROLE_CARD_W) * 0.5, ROLE_CARD_TOP)
-	var face_size: Vector2 = Vector2(ROLE_CARD_W, ROLE_CARD_H)
-	var face_tex: Texture2D = Art.role_avatar(rid)
+	var face_size: Vector2 = Vector2(ROLE_BTN_W, ROLE_BTN_H)
+	var face_tex: Texture2D = Art.role_hero(rid)
 	if face_tex != null:
 		var face: TextureRect = TextureRect.new()
 		face.texture = face_tex
-		face.position = face_pos
 		face.size = face_size
 		face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		# 大立绘（260x363）正好铺满；参照工程没收录的角色用小立绘，按比例放大裁切填满
+		face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# 还没轮到自己时把立绘压暗，表示点不动
+		if not _interactive:
+			face.modulate = Color(0.62, 0.62, 0.62, 1.0)
 		btn.add_child(face)
 	else:
 		# 立绘缺失（尚无素材的角色）：用深色占位块，避免格子出现空洞
 		var hole: ColorRect = ColorRect.new()
 		hole.color = Color(0.18, 0.19, 0.24, 1.0)
-		hole.position = face_pos
 		hole.size = face_size
 		hole.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(hole)
-
-	var name_label: Label = Label.new()
-	name_label.text = "%d.%s" % [rid, Data.role_name(rid)]
-	name_label.position = Vector2(0.0, ROLE_CARD_TOP + ROLE_CARD_H)
-	name_label.size = Vector2(ROLE_BTN_W, ROLE_NAME_H)
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 19)
-	if _is_ban_mark(mark):
-		name_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.55))
-	elif mark == RoleMark.Pick:
-		name_label.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0))
-	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	btn.add_child(name_label)
-
-	# 已被禁/选的角色不可再选
-	btn.disabled = (mark != RoleMark.None) or (not _interactive)
-	if mark != RoleMark.None:
-		_add_mark_overlay(btn, face_pos, face_size, mark, team, rid)
 	return btn
 
 
-## 在立绘上叠加标记；找不到对应素材时退化为半透明遮罩 + 文字
-func _add_mark_overlay(btn: Button, face_pos: Vector2, face_size: Vector2, mark: int, team: int, rid: int) -> void:
-	var icon: Texture2D = _mark_icon(mark, team, rid)
-	if icon != null:
-		var mark_rect: TextureRect = TextureRect.new()
-		mark_rect.texture = icon
-		mark_rect.position = face_pos
-		mark_rect.size = face_size
-		mark_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		mark_rect.stretch_mode = TextureRect.STRETCH_SCALE
-		mark_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		btn.add_child(mark_rect)
-		return
-	var mask: ColorRect = ColorRect.new()
-	mask.color = _mark_mask_color(mark)
-	mask.position = face_pos
-	mask.size = face_size
-	mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	btn.add_child(mask)
-	var text_label: Label = Label.new()
-	text_label.text = _role_state_text(mark)
-	text_label.position = face_pos
-	text_label.size = face_size
-	text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	text_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text_label.add_theme_font_size_override("font_size", 19)
-	text_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
-	text_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0))
-	text_label.add_theme_constant_override("outline_size", 5)
-	text_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	btn.add_child(text_label)
-
-
-## 标记对应的叠加图标（缺图返回 null，由调用方退化处理）
-func _mark_icon(mark: int, team: int, rid: int) -> Texture2D:
-	match mark:
-		RoleMark.Ban:
-			return Art.bp_icon("Ban%d" % rid)
-		RoleMark.ExtraBan:
-			return Art.bp_icon("GameInsertBan")
-		RoleMark.Pick:
-			if team == GConst.RED:
-				return Art.bp_icon("GamePickRed")
-			if team == GConst.BLUE:
-				return Art.bp_icon("GamePickBlue")
-			return null
-	return null
-
-
-## 无图标时遮罩颜色：禁用类为红、选择为绿
-func _mark_mask_color(mark: int) -> Color:
-	if mark == RoleMark.Pick:
-		return Color(0.25, 0.85, 0.4, 0.55)
-	return Color(0.9, 0.2, 0.2, 0.55)
-
-
-func _is_ban_mark(mark: int) -> bool:
-	return mark == RoleMark.Ban or mark == RoleMark.ExtraBan
-
-
 func _mode_title() -> String:
-	if _strategy == GConst.RoleStrategy.Strategy31 or _strategy == GConst.RoleStrategy.Any:
-		return "请选择角色" if _interactive else "选将"
-	if _strategy == GConst.RoleStrategy.BP:
-		if _operation == GConst.BpOperation.Ban:
-			return "请禁用一角色"
-		if _operation == GConst.BpOperation.Pick:
-			return "请选择一角色"
-		return "Ban-Pick 选将"
-	if _strategy == GConst.RoleStrategy.CM:
-		if _operation == GConst.CmOperation.RedBan or _operation == GConst.CmOperation.BlueBan:
-			return "请禁用一角色"
-		if _operation == GConst.CmOperation.RedPick or _operation == GConst.CmOperation.BluePick:
-			return "请选择一角色"
-		if _is_extra_ban():
-			return "请额外禁用角色，或点「取消」"
-		return "选将（CM）"
-	return "选将"
+	return "请选择角色" if _interactive and not _已提交 else "选角"
 
 
 func _status_text() -> String:
-	if _interactive:
-		return "选中一个角色后点「确定」"
-	if _ask_id == Logic.my_player_id:
-		return "等待其他玩家选择角色…"
-	return "等待玩家 %s 选择角色…" % _ask_player_name()
-
-
-## 只有被询问的玩家本人、且当前需要其操作时才能点击
-func _can_choose() -> bool:
-	if _strategy == GConst.RoleStrategy.Strategy31 or _strategy == GConst.RoleStrategy.Any:
-		return true
-	if _strategy == GConst.RoleStrategy.BP:
-		return _operation == GConst.BpOperation.Ban or _operation == GConst.BpOperation.Pick
-	if _strategy == GConst.RoleStrategy.CM:
-		return _operation != GConst.CmOperation.Null
-	return false
-
-
-## CM 的「额外禁用」步骤允许点「取消」跳过
-func _is_extra_ban() -> bool:
-	if _strategy != GConst.RoleStrategy.CM:
-		return false
-	return _operation == GConst.CmOperation.RedInsertBan or _operation == GConst.CmOperation.BlueInsertBan
-
-
-func _ask_player_name() -> String:
-	var p: GPlayer = Data.get_player_by_id(_ask_id)
-	if p != null and p.nickname != "":
-		return p.nickname
-	return "%d 号" % _ask_id
-
-
-## 依据 args 中的步骤值判断角色在本次选将中的标记
-func _role_mark(step: int) -> int:
-	if step <= 0:
-		return RoleMark.None
-	if _strategy == GConst.RoleStrategy.BP:
-		# 与服务端一致：每 4 步为一轮，前 2 步禁用、后 2 步选择
-		return RoleMark.Ban if ((step - 1) % 4) < 2 else RoleMark.Pick
-	# CM：args 即 CmOperation 值，>10 表示第十步之后发生的额外禁用
-	var op: int = step - 10 if step > 10 else step
-	if op == GConst.CmOperation.RedBan or op == GConst.CmOperation.BlueBan:
-		return RoleMark.Ban
-	if op == GConst.CmOperation.RedInsertBan or op == GConst.CmOperation.BlueInsertBan:
-		return RoleMark.ExtraBan
-	if op == GConst.CmOperation.RedPick or op == GConst.CmOperation.BluePick:
-		return RoleMark.Pick
-	# 步骤含义未知时统一按已禁用展示，保证该角色不可再被选走
-	return RoleMark.Ban
-
-
-## 标记的中文说明（用于 tooltip 与无图标时的遮罩文字）
-func _role_state_text(mark: int) -> String:
-	match mark:
-		RoleMark.Ban:
-			return "已禁"
-		RoleMark.ExtraBan:
-			return "已额外禁"
-		RoleMark.Pick:
-			return "已选"
-	return ""
-
-
-## 该角色被哪一队禁/选；判断不出返回 GConst.TEAM_NONE
-func _role_team(step: int) -> int:
-	if step <= 0:
-		return GConst.TEAM_NONE
-	if _strategy == GConst.RoleStrategy.BP:
-		# 服务端：颜色 = 步 % 2，奇数步为红队行动、偶数步为蓝队行动
-		return GConst.RED if step % 2 == 1 else GConst.BLUE
-	var op: int = step - 10 if step > 10 else step
-	if op == GConst.CmOperation.RedBan or op == GConst.CmOperation.RedInsertBan or op == GConst.CmOperation.RedPick:
-		return GConst.RED
-	if op == GConst.CmOperation.BlueBan or op == GConst.CmOperation.BlueInsertBan or op == GConst.CmOperation.BluePick:
-		return GConst.BLUE
-	return GConst.TEAM_NONE
+	if _interactive and not _已提交:
+		return "点一下立绘即选定"
+	return "等待其他玩家选择角色…"
 
 
 # ============================================================
 # 交互
 # ============================================================
-func _on_role_pressed() -> void:
-	确定按钮.disabled = false
-
-
-func _on_ok_pressed() -> void:
-	var pressed_btn: BaseButton = _group.get_pressed_button()
-	if pressed_btn == null:
-		return
+## 点一下立绘就选定并上行（参照工程 RoleChoose31 的点击回调）
+func _on_role_pressed(rid: int) -> void:
 	Art.play_sfx("Equip")
-	var rid: int = int(pressed_btn.get_meta("role_id"))
-	if _strategy == GConst.RoleStrategy.BP:
-		Logic.send_pick_ban(GConst.RoleStrategy.BP, _operation == GConst.BpOperation.Pick, [rid])
-	elif _strategy == GConst.RoleStrategy.CM:
-		var is_pick: bool = _operation == GConst.CmOperation.RedPick or _operation == GConst.CmOperation.BluePick
-		Logic.send_pick_ban(GConst.RoleStrategy.CM, is_pick, [rid])
-	else:
-		Logic.send_pick_ban(_strategy, true, [rid])
-	_set_submitted()
+	Logic.send_pick(_strategy, [rid])
+	_set_submitted(rid)
 
 
-func _on_cancel_pressed() -> void:
-	Art.play_sfx("Equip")
-	# 取消额外禁用：上行哨兵角色 id
-	Logic.send_pick_ban(GConst.RoleStrategy.CM, false, [GConst.CM_CANCEL_ROLE_ID])
-	_set_submitted()
-
-
-## 已提交：锁定界面，等待下一条 RoleReq 或对局开始
-func _set_submitted() -> void:
-	for c: Node in 网格.get_children():
+## 已提交：锁定界面，只留下自己选中的那张卡，等对局开始
+func _set_submitted(rid: int) -> void:
+	_已提交 = true
+	_已选角色 = rid
+	for c: Node in 卡片区.get_children():
 		if c is Button:
 			(c as Button).disabled = true
-	确定按钮.disabled = true
-	取消按钮.visible = false
-	提示.text = "已提交，等待其他玩家…"
+	标题.text = _mode_title()
+	提示.text = _status_text()
+	_只留选中卡()
+
+
+## 只留下自己选中的那张卡，并把它摆到面板正中（参照工程 RoleChoose31 的同名处理）
+func _只留选中卡() -> void:
+	var 选中: Button = null
+	for c: Node in 卡片区.get_children():
+		var b: Button = c as Button
+		if int(b.get_meta("role_id", -1)) == _已选角色:
+			选中 = b
+		else:
+			b.visible = false
+	if 选中 == null:
+		return
+	# 面板收成一行高，把这唯一一张卡摆到正中（参照工程选定后面板也只剩一张卡那么大）
+	滚动.custom_minimum_size = Vector2(面板宽, ROLE_BTN_H)
+	卡片区.custom_minimum_size = Vector2(面板宽, ROLE_BTN_H)
+	选中.position = Vector2((面板宽 - ROLE_BTN_W) * 0.5, 0.0)
 
 
 func _on_game_info(info: Dictionary) -> void:

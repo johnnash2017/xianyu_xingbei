@@ -53,7 +53,7 @@ func 跑() -> void:
 	厅.call("_on_open_create_pressed")
 	await 等帧(2)
 	检((厅.get("创建层") as Control).visible, "点了「创建房间」弹层没显示")
-	检((厅.get("人数选项") as OptionButton).selected == 2, "房间人数默认不是 4 人")
+	检(int((厅.get("人数组") as ButtonGroup).get_pressed_button().get_meta("people")) == 4, "房间人数默认不是 4 人")
 	var 房名框: LineEdit = 厅.get("房名输入")
 	检(房名框.caret_column == 房名框.text.length(),
 		"房名光标不在末尾（%d / %d）" % [房名框.caret_column, 房名框.text.length()])

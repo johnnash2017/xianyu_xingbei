@@ -2,22 +2,6 @@
 
 [ext_resource type="Script" uid="uid://c53hmhd2aksy1" path="res://scripts/ui/enter.gd" id="1_kiq4n"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bmkq5"]
-content_margin_left = 45.0
-content_margin_top = 45.0
-content_margin_right = 45.0
-content_margin_bottom = 45.0
-bg_color = Color(0.06, 0.07, 0.12, 0.9)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.45, 0.62, 0.95, 0.9)
-corner_radius_top_left = 19
-corner_radius_top_right = 19
-corner_radius_bottom_right = 19
-corner_radius_bottom_left = 19
-
 [node name="Enter" type="Control" unique_id=1575434935 node_paths=PackedStringArray("昵称输入", "进入按钮")]
 layout_mode = 3
 anchors_preset = 15
@@ -67,7 +51,6 @@ grow_vertical = 2
 [node name="登录卡片" type="PanelContainer" parent="居中" unique_id=338765314]
 custom_minimum_size = Vector2(736, 0)
 layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_bmkq5")
 
 [node name="内容" type="VBoxContainer" parent="居中/登录卡片" unique_id=380544764]
 layout_mode = 2

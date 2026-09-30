@@ -19,14 +19,6 @@ const ROLE_POOL_ANY: Array = [
 const 三选一候选数: int = 3
 const 六选一候选数: int = 6
 
-## BP 候选角色数（服务端 GameGrailCommon.h：BP_ALTERNATIVE_NUM[] = {12,16,20}）
-const BP_ALTERNATIVE_NUM: Array = [12, 16, 20]
-
-## BP 操作类型（服务端 protocal/action_respond.proto：BP_OPRATION）
-const BP_NULL: int = 1
-const BP_BAN: int = 2
-const BP_PICK: int = 3
-
 ## 选将超时（毫秒），超时按服务端 GE_TIMEOUT 的语义收尾
 const PICK_TIMEOUT_MS: int = 30000
 
@@ -56,7 +48,7 @@ func poll() -> void:
 	server.poll()
 	for rid: int in _rooms.keys():
 		var room: Dictionary = _rooms[rid]
-		# 推进选将阶段的超时（31/Any 到点收尾、BP 到点跳过当前步）
+		# 推进选将阶段的超时（到点还没提交的按候选第 1 个收尾）
 		if room.has("pick"):
 			_check_pick_timeout(room)
 		# 推进对局回复超时：挂机/掉线玩家到点自动代打，避免整局被一个人卡死
@@ -324,6 +316,10 @@ func ready_for_game(conn_id: int, type: int) -> void:
 		battle.start(ROLE_POOL_BASE.duplicate())
 		rooms_changed.emit()
 		return
+	# 选将前先把队伍配平：没提前选边的人在这里定下蓝/红（对照参照工程开局前先 balance_colors），
+	# 否则选角界面顶部的「座位顺序」全是未分队，看不出谁跟谁一队
+	battle.balance_colors()
+	_broadcast_game(room)
 	_begin_role_pick(room)
 
 
@@ -343,10 +339,6 @@ func _talk(conn_id: int, txt: String) -> void:
 ## 开局前入口：按房间策略进入选将流程。选将状态保存在 room["pick"]，由 poll() 推进超时。
 func _begin_role_pick(room: Dictionary) -> void:
 	match int(room["role_strategy"]):
-		GConst.RoleStrategy.BP:
-			_begin_pick_bp(room)
-		GConst.RoleStrategy.CM:
-			_begin_pick_cm(room)
 		GConst.RoleStrategy.Any, GConst.RoleStrategy.All:
 			# Any 与大厅用的 All：候选人 = 全部已实现角色（服务端 StateRoleStrategyAny 直接下发 SUMMON 全表）
 			_begin_pick_candidates(room, ROLE_POOL_ANY, 0)
@@ -357,17 +349,11 @@ func _begin_role_pick(room: Dictionary) -> void:
 			_begin_pick_candidates(room, ROLE_POOL_BASE, 三选一候选数)
 
 
-## 收客户端的 PickBan（选角结果），路由到当前房间的选将状态
+## 收客户端的 PickBan（选角结果）
 func _on_pick_ban(room: Dictionary, pid: int, data: Dictionary) -> void:
 	if not room.has("pick") or pid == GConst.GUEST:
 		return
-	var 模式: String = str((room["pick"] as Dictionary).get("mode", ""))
-	if 模式 == "bp":
-		_on_pick_ban_bp(room, pid, data)
-	elif 模式 == "cm":
-		_on_pick_ban_cm(room, pid, data)
-	else:
-		_on_pick_ban_candidates(room, pid, data)
+	_on_pick_ban_candidates(room, pid, data)
 
 
 ## 31 / 61 / Any：服务端 StateRoleStrategy31(331-372) 与 StateRoleStrategyAny(374-407)
@@ -391,7 +377,6 @@ func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> vo
 			候选 = pool.duplicate()
 		候选表[pid] = 候选
 	room["pick"] = {
-		"mode": "candidate",
 		"candidates": 候选表,
 		"pool": pool.duplicate(),
 		"picked": {},
@@ -402,6 +387,9 @@ func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> vo
 			"id": pid,
 			"strategy": GConst.RoleStrategy.Strategy31,
 			"role_ids": 候选表[pid],
+			# 选角倒计时：客户端据此画进度条（本地扩展字段，见 proto_schema 的 RoleReq）
+			"wait_ms": PICK_TIMEOUT_MS,
+			"wait_total_ms": PICK_TIMEOUT_MS,
 			"args": [],
 			"opration": 0,
 		})
@@ -475,423 +463,20 @@ func _finish_pick_candidates(room: Dictionary) -> void:
 	_start_battle(room, 角色表)
 
 
-## CM（颜色对抗）：服务端 StateRoleStrategyCM(GrailState.cpp:520-749)
-## 步骤：1 = 红队队长禁 1 个；2、3 = 蓝队队长各禁 1 个；4..9 = 红蓝交替选
-##   （每个选择步先由对方队长决定是否「额外禁用」一次，再由本方队长为序位队友指定角色）。
-## 候选与「每张候选对应的操作」用 args 同步给全员（服务端 727-735 的全量快照）。
-## 简化说明：服务端队长由 StateLeaderElection（BECOME_LEADER_REQ 竞选）产生，
-##   本引擎取每队座位序最前者为队长；时长上限 9 步，双方各 3 次额外禁用各仅可用一次。
-func _begin_pick_cm(room: Dictionary) -> void:
-	var battle: BattleEngine = room["battle"]
-	battle.balance_colors()
-	var 人数: int = battle.order.size()
-	if 人数 < 4 or 人数 > 8 or 人数 % 2 != 0:
-		# 人数无法套用 BP_ALTERNATIVE_NUM：退回 31（三选一），避免卡死
-		_begin_pick_candidates(room, ROLE_POOL_BASE, 三选一候选数)
-		return
-	var 候选数: int = int(BP_ALTERNATIVE_NUM[人数 / 2 - 2])
-	var 池: Array = ROLE_POOL_BASE.duplicate()
-	池.shuffle()
-	var 候选: Array = []
-	for _i: int in range(候选数):
-		if 池.is_empty():
-			池 = ROLE_POOL_BASE.duplicate()
-			池.shuffle()
-		候选.append(int(池.pop_back()))
-	var 选项: Array = []
-	选项.resize(候选数)
-	选项.fill(0)
-	var 红方: Array = []
-	var 蓝方: Array = []
-	for pid: int in battle.order:
-		if battle.players[pid].color == GConst.RED:
-			红方.append(pid)
-		else:
-			蓝方.append(pid)
-	while 红方.size() > 人数 / 2:
-		var 转蓝: int = int(红方.pop_back())
-		battle.players[转蓝].color = GConst.BLUE
-		蓝方.append(转蓝)
-	while 蓝方.size() > 人数 / 2:
-		var 转红: int = int(蓝方.pop_back())
-		battle.players[转红].color = GConst.RED
-		红方.append(转红)
-	room["pick"] = {
-		"mode": "cm",
-		"alternative": 候选,
-		"options": 选项,
-		"red": 红方,
-		"blue": 蓝方,
-		"idr": int(红方[0]) if not 红方.is_empty() else -1,
-		"idb": int(蓝方[0]) if not 蓝方.is_empty() else -1,
-		"ibb": 1,          # 蓝方额外禁用是否仍可用
-		"ibr": 1,          # 红方额外禁用是否仍可用
-		"decided": false,  # 当前步是否已由对方用过额外禁用（本步不再选人）
-		"step": 1,
-		"phase": "ask",
-		"step_picker": -1, # 本步的选人者（服务端 id1）
-		"step_other": -1,  # 本步的额外禁用者（服务端 id2）
-		"await_pid": -1,
-		"role_map": {},
-		"deadline": 0,
-	}
-	# 开局先广播一次全量候选（服务端 step 0：setCMRoles(-1, ...) + CM_NULL）
-	_cm_broadcast(room, -1)
-	_cm_prompt_step(room)
-
-
-## CM 全量快照：idn 为「刚行动者」，供客户端显示高亮
-func _cm_broadcast(room: Dictionary, idn: int) -> void:
-	var pick: Dictionary = room["pick"]
-	_engine_send(int(room["id"]), -1, GConst.Msg.RoleReq, {
-		"id": idn,
-		"strategy": GConst.RoleStrategy.CM,
-		"role_ids": (pick["alternative"] as Array).duplicate(),
-		"args": (pick["options"] as Array).duplicate(),
-		"opration": GConst.CmOperation.Null,
-	})
-
-
-## 推进当前 CM 步：决定本步询问谁、问哪种操作
-func _cm_prompt_step(room: Dictionary) -> void:
-	var pick: Dictionary = room["pick"]
-	var battle: BattleEngine = room["battle"]
-	var 步: int = int(pick["step"])
-	if 步 > 9:
-		_finish_pick_cm(room)
-		return
-	var 操作: int = GConst.CmOperation.Null
-	var 行动者: int = -1
-	if 步 == 1:
-		操作 = GConst.CmOperation.RedBan
-		行动者 = int(pick["idr"])
-		pick["step_picker"] = 行动者
-		pick["step_other"] = int(pick["idb"])
-	elif 步 == 2 or 步 == 3:
-		操作 = GConst.CmOperation.BlueBan
-		行动者 = int(pick["idb"])
-		pick["step_picker"] = 行动者
-		pick["step_other"] = int(pick["idr"])
-	else:
-		var 颜色: int = 步 % 2
-		var 序号: int = (步 - 4) / 2
-		var 本方: Array = pick["red"] if 颜色 == 0 else pick["blue"]
-		var 队长: int = int(pick["idr"]) if 颜色 == 0 else int(pick["idb"])
-		var 对方队长: int = int(pick["idb"]) if 颜色 == 0 else int(pick["idr"])
-		var 对方可禁: int = int(pick["ibb"]) if 颜色 == 0 else int(pick["ibr"])
-		pick["step_picker"] = 队长
-		pick["step_other"] = 对方队长
-		if 序号 >= 本方.size():
-			行动者 = -1
-		elif 对方可禁 == 1 and not bool(pick["decided"]):
-			# 先问对方队长是否额外禁用（服务端 631-697）
-			操作 = GConst.CmOperation.BlueInsertBan if 颜色 == 0 else GConst.CmOperation.RedInsertBan
-			行动者 = 对方队长
-		else:
-			操作 = GConst.CmOperation.RedPick if 颜色 == 0 else GConst.CmOperation.BluePick
-			行动者 = 队长
-	pick["phase"] = "ask"
-	pick["await_pid"] = 行动者
-	if 行动者 < 0 or not battle.players.has(行动者):
-		# 无人可行动（人数变化/掉线）：按跳过处理，避免卡死
-		_cm_resolve(room, 行动者, 0)
-		return
-	pick["deadline"] = Time.get_ticks_msec() + PICK_TIMEOUT_MS
-	_engine_send(int(room["id"]), 行动者, GConst.Msg.RoleReq, {
-		"id": 行动者,
-		"strategy": GConst.RoleStrategy.CM,
-		"role_ids": (pick["alternative"] as Array).duplicate(),
-		"args": (pick["options"] as Array).duplicate(),
-		"opration": 操作,
-	})
-
-
-func _on_pick_ban_cm(room: Dictionary, pid: int, data: Dictionary) -> void:
-	var pick: Dictionary = room["pick"]
-	if int(pick.get("await_pid", -1)) != pid:
-		return
-	var 提交: Array = data.get("role_ids", [])
-	_cm_resolve(room, pid, int(提交[0]) if not 提交.is_empty() else 0)
-
-
-## 结算一次 CM 询问，并推进（服务端 574-741）
-## 超时/无人应答按「跳过该次操作」处理（服务端会直接 GE_TIMEOUT 卡住整局）
-func _cm_resolve(room: Dictionary, pid: int, 选中角色: int) -> void:
-	var pick: Dictionary = room["pick"]
-	var 步: int = int(pick["step"])
-	var 候选: Array = pick["alternative"]
-	var 选项: Array = pick["options"]
-	var 索引: int = -1
-	for i: int in range(候选.size()):
-		if int(候选[i]) == 选中角色 and int(选项[i]) == 0:
-			索引 = i
-			break
-	pick["await_pid"] = -1
-	pick["deadline"] = 0
-	var 额外禁: bool = 步 > 3 and int(pick["step_other"]) == pid
-	if 步 == 1:
-		if 索引 >= 0:
-			选项[索引] = GConst.CmOperation.RedBan
-	elif 步 == 2 or 步 == 3:
-		if 索引 >= 0:
-			选项[索引] = GConst.CmOperation.BlueBan
-	elif 额外禁:
-		# 额外禁用：不论是否真的禁用，本步都转入「选人」（服务端 640/672：decided = true）
-		pick["decided"] = true
-		if 选中角色 != GConst.CM_CANCEL_ROLE_ID and 索引 >= 0:
-			if 步 % 2 == 0:
-				选项[索引] = GConst.CmOperation.BlueInsertBan
-				pick["ibb"] = 0
-			else:
-				选项[索引] = GConst.CmOperation.RedInsertBan
-				pick["ibr"] = 0
-	else:
-		# 选人：由本方队长为序位队友指定角色
-		pick["decided"] = false
-		var 颜色: int = 步 % 2
-		var 序号: int = (步 - 4) / 2
-		var 本方: Array = pick["red"] if 颜色 == 0 else pick["blue"]
-		if 序号 < 本方.size():
-			var 对象: int = int(本方[序号])
-			var 记录: int = GConst.CmOperation.RedPick if 颜色 == 0 else GConst.CmOperation.BluePick
-			if 索引 >= 0:
-				选项[索引] = 记录
-				(pick["role_map"] as Dictionary)[对象] = 选中角色
-			else:
-				# 超时/掉线/非法提交：自动取第一个未被占用的候选（服务端会卡死，这里保证推进）
-				for i2: int in range(候选.size()):
-					if int(选项[i2]) == 0:
-						选项[i2] = 记录
-						(pick["role_map"] as Dictionary)[对象] = int(候选[i2])
-						break
-	var idn: int = int(pick["step_picker"])
-	if 步 <= 3:
-		idn = int(pick["idr"]) if 步 == 1 else int(pick["idb"])
-	elif bool(pick["decided"]):
-		idn = int(pick["step_other"])
-	_cm_broadcast(room, idn)
-	if not bool(pick["decided"]):
-		pick["step"] = 步 + 1
-	_cm_prompt_step(room)
-
-
-func _finish_pick_cm(room: Dictionary) -> void:
-	var pick: Dictionary = room["pick"]
-	var battle: BattleEngine = room["battle"]
-	if battle.order.size() < 2:
-		room.erase("pick")
-		return
-	var 角色表: Dictionary = (pick["role_map"] as Dictionary).duplicate()
-	var 候选: Array = pick["alternative"]
-	var 选项: Array = pick["options"]
-	# 人数中途变化可能让个别玩家没被指定：用未占用的候选补齐
-	for pid: int in battle.order:
-		if 角色表.has(pid):
-			continue
-		for i: int in range(候选.size()):
-			if int(选项[i]) == 0:
-				选项[i] = GConst.CmOperation.RedPick
-				角色表[pid] = int(候选[i])
-				break
-	room.erase("pick")
-	_start_battle(room, 角色表)
-
-
-## BP：服务端 StateRoleStrategyBP(409-518)
-## 步进完全按服务端 446-454 行：color = step % 2（1=红 0=蓝）、index = (step-1)/4、
-## isPick = ((step-1)/2) % 2（0=BAN 1=PICK）；每步只向行动者发 BP_BAN / BP_PICK，
-## 该步结束后再用 BP_NULL 给全员发「候选 + 每张候选对应步号」的全量快照（服务端 507-510）。
-func _begin_pick_bp(room: Dictionary) -> void:
-	var battle: BattleEngine = room["battle"]
-	# BP 按红蓝各半推导行动者，服务端由布座阶段保证人数均衡，这里先配平
-	battle.balance_colors()
-	var 人数: int = battle.order.size()
-	if 人数 < 4 or 人数 > 8 or 人数 % 2 != 0:
-		# 人数无法套用 BP_ALTERNATIVE_NUM（服务端会 GE_FATAL_ERROR）：退回 31（三选一），避免卡死
-		_begin_pick_candidates(room, ROLE_POOL_BASE, 三选一候选数)
-		return
-	var 候选数: int = int(BP_ALTERNATIVE_NUM[人数 / 2 - 2])
-	var 池: Array = ROLE_POOL_BASE.duplicate()
-	池.shuffle()
-	var 候选: Array = []
-	for _i: int in range(候选数):
-		if 池.is_empty():
-			池 = ROLE_POOL_BASE.duplicate()
-			池.shuffle()
-		候选.append(int(池.pop_back()))
-	var 选项: Array = []
-	选项.resize(候选数)
-	选项.fill(0)
-	var 红方: Array = []
-	var 蓝方: Array = []
-	for pid: int in battle.order:
-		if battle.players[pid].color == GConst.RED:
-			红方.append(pid)
-		else:
-			蓝方.append(pid)
-	while 红方.size() > 人数 / 2:
-		var 转蓝: int = int(红方.pop_back())
-		battle.players[转蓝].color = GConst.BLUE
-		蓝方.append(转蓝)
-	while 蓝方.size() > 人数 / 2:
-		var 转红: int = int(蓝方.pop_back())
-		battle.players[转红].color = GConst.RED
-		红方.append(转红)
-	room["pick"] = {
-		"mode": "bp",
-		"candidates": {},
-		"pool": [],
-		"picked": {},
-		"alternative": 候选,
-		"options": 选项,
-		"red": 红方,
-		"blue": 蓝方,
-		"step": 1,
-		"await_pid": -1,
-		"await_is_pick": false,
-		"role_map": {},
-		"deadline": 0,
-	}
-	# 开局先广播一次全量候选（服务端 435-443：setAlternativeRoles(-1, ...) + BP_NULL）
-	_engine_send(int(room["id"]), -1, GConst.Msg.RoleReq, {
-		"id": -1,
-		"strategy": GConst.RoleStrategy.BP,
-		"role_ids": 候选.duplicate(),
-		"args": 选项.duplicate(),
-		"opration": BP_NULL,
-	})
-	_bp_prompt_step(room)
-
-
-## 推进当前 BP 步：给行动者发询问（服务端 while 循环内的 waitForOne）
-func _bp_prompt_step(room: Dictionary) -> void:
-	var pick: Dictionary = room["pick"]
-	var battle: BattleEngine = room["battle"]
-	var 步: int = int(pick["step"])
-	if 步 > battle.order.size() * 2:
-		_finish_pick_bp(room)
-		return
-	var 颜色: int = 步 % 2
-	var 序号: int = (步 - 1) / 4
-	var 是选: bool = ((步 - 1) / 2) % 2 == 1
-	var 方: Array = pick["red"] if 颜色 == 1 else pick["blue"]
-	var 行动者: int = int(方[序号]) if 序号 < 方.size() else -1
-	pick["await_pid"] = 行动者
-	pick["await_is_pick"] = 是选
-	if 行动者 < 0 or not battle.players.has(行动者):
-		# 该步无人可行动（人数变化/掉线）：按超时跳过，避免卡死
-		_bp_resolve_step(room, 行动者, 0)
-		return
-	pick["deadline"] = Time.get_ticks_msec() + PICK_TIMEOUT_MS
-	_engine_send(int(room["id"]), 行动者, GConst.Msg.RoleReq, {
-		"id": 行动者,
-		"strategy": GConst.RoleStrategy.BP,
-		"role_ids": (pick["alternative"] as Array).duplicate(),
-		"args": (pick["options"] as Array).duplicate(),
-		"opration": BP_PICK if 是选 else BP_BAN,
-	})
-
-
-func _on_pick_ban_bp(room: Dictionary, pid: int, data: Dictionary) -> void:
-	var pick: Dictionary = room["pick"]
-	if int(pick.get("await_pid", -1)) != pid:
-		return
-	var 提交: Array = data.get("role_ids", [])
-	if 提交.is_empty():
-		return
-	_bp_resolve_step(room, pid, int(提交[0]))
-
-
-## 结算一步：把该角色记到第 步（options[i] = step），PICK 步记归行动者；随后广播全量快照并推进。
-## 服务端在 BP 超时时直接 return GE_TIMEOUT（整个状态不再推进、房间会卡住）；
-## 这里按「不要让房间卡死」的要求改为跳过该步：BAN 步不记录，PICK 步自动取第一个未被占用的候选。
-func _bp_resolve_step(room: Dictionary, pid: int, 选中角色: int) -> void:
-	var pick: Dictionary = room["pick"]
-	var 步: int = int(pick["step"])
-	var 是选: bool = bool(pick["await_is_pick"])
-	var 候选: Array = pick["alternative"]
-	var 选项: Array = pick["options"]
-	var 实际角色: int = 0
-	if 选中角色 > 0:
-		for i: int in range(候选.size()):
-			if int(候选[i]) == 选中角色:
-				if int(选项[i]) == 0:
-					选项[i] = 步
-					实际角色 = 选中角色
-				break
-	if 实际角色 <= 0 and 是选:
-		for i2: int in range(候选.size()):
-			if int(选项[i2]) == 0:
-				选项[i2] = 步
-				实际角色 = int(候选[i2])
-				break
-	if 是选 and 实际角色 > 0:
-		(pick["role_map"] as Dictionary)[pid] = 实际角色
-	if 实际角色 > 0:
-		_engine_send(int(room["id"]), -1, GConst.Msg.RoleReq, {
-			"id": pid,
-			"strategy": GConst.RoleStrategy.BP,
-			"role_ids": 候选.duplicate(),
-			"args": 选项.duplicate(),
-			"opration": BP_NULL,
-		})
-	pick["step"] = 步 + 1
-	pick["await_pid"] = -1
-	pick["deadline"] = 0
-	_bp_prompt_step(room)
-
-
-func _finish_pick_bp(room: Dictionary) -> void:
-	var pick: Dictionary = room["pick"]
-	var battle: BattleEngine = room["battle"]
-	if battle.order.size() < 2:
-		room.erase("pick")
-		return
-	var 角色表: Dictionary = (pick["role_map"] as Dictionary).duplicate()
-	# 人数中途变化可能让个别玩家没轮到 PICK：用未占用的候选补齐，避免开局缺角色
-	var 候选: Array = pick["alternative"]
-	var 选项: Array = pick["options"]
-	for pid: int in battle.order:
-		if 角色表.has(pid):
-			continue
-		for i: int in range(候选.size()):
-			if int(选项[i]) == 0:
-				选项[i] = int(pick["step"])
-				角色表[pid] = int(候选[i])
-				break
-	room.erase("pick")
-	_start_battle(room, 角色表)
-
-
-## 选将超时（poll 中调用）：31/Any 到点全体收尾；BP / CM 当前步跳过
+## 选将超时（poll 中调用）：到点全体收尾（没提交的取候选第 1 个）
 func _check_pick_timeout(room: Dictionary) -> void:
 	var pick: Dictionary = room["pick"]
 	var 截止: int = int(pick.get("deadline", 0))
 	if 截止 <= 0 or Time.get_ticks_msec() < 截止:
 		return
-	var 模式: String = str(pick.get("mode", ""))
-	if 模式 == "bp":
-		_bp_resolve_step(room, int(pick.get("await_pid", -1)), 0)
-	elif 模式 == "cm":
-		_cm_resolve(room, int(pick.get("await_pid", -1)), 0)
-	else:
-		_finish_pick_candidates(room)
+	_finish_pick_candidates(room)
 
 
-## 选将期间玩家掉线：按超时处理（31/Any 由收尾兜底；BP 若正轮到他就跳过该步）
+## 选将期间玩家掉线：未提交的人由收尾兜底；都提交完就直接收尾
 func _on_pick_player_left(room: Dictionary, pid: int) -> void:
 	if not room.has("pick"):
 		return
 	var pick: Dictionary = room["pick"]
-	var 模式: String = str(pick.get("mode", ""))
-	if 模式 == "bp":
-		if int(pick.get("await_pid", -1)) == pid:
-			_bp_resolve_step(room, pid, 0)
-		return
-	if 模式 == "cm":
-		if int(pick.get("await_pid", -1)) == pid:
-			_cm_resolve(room, pid, 0)
-		return
 	if (pick["candidates"] as Dictionary).has(pid) and _pick_candidates_done(room):
 		_finish_pick_candidates(room)
 

@@ -194,6 +194,9 @@ const TABLE: Dictionary = {
 		3: {"n": "role_ids", "t": "u32", "r": true},
 		4: {"n": "args", "t": "i32", "r": true},
 		5: {"n": "opration", "t": "u32"},
+		# 6/7 是本地扩展（原协议没有）：选角倒计时，客户端据此画进度条
+		6: {"n": "wait_ms", "t": "u32"},
+		7: {"n": "wait_total_ms", "t": "u32"},
 	},
 	GConst.Msg.PickBan: {
 		1: {"n": "strategy", "t": "u32"},

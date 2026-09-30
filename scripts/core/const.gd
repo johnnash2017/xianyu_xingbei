@@ -51,8 +51,6 @@ enum Msg {
 enum RoleStrategy {
 	Random = 1,
 	Strategy31 = 2,
-	BP = 3,
-	CM = 4,
 	Any = 5,
 	## 六选一：与 31 同一套候选流程，只是每人候选发 6 个（取自服务端不用的 RANK_SOLO 值）
 	Strategy61 = 6,
@@ -171,13 +169,6 @@ enum SpecialAction {
 	Extract = 2,
 }
 
-# 角色选择操作（BP / CM）
-enum BpOperation {
-	Null = 1,
-	Ban = 2,
-	Pick = 3,
-}
-
 ## 技能询问时的选牌来源（ask_skill 的 card_source）
 enum CardSource {
 	Hand = 0,        # 只能选自己的手牌
@@ -185,19 +176,6 @@ enum CardSource {
 	HandOrCover = 2, # 手牌或盖牌皆可（由角色的选项决定具体用哪种）
 	BasicEffect = 3, # 只能选场上基础效果牌（如【封印破碎】把任意一张基础效果牌收入手中）
 }
-
-enum CmOperation {
-	Null = 1,
-	RedBan = 2,
-	RedInsertBan = 3,
-	RedPick = 4,
-	BlueBan = 5,
-	BlueInsertBan = 6,
-	BluePick = 7,
-}
-
-## CM「取消额外禁用」的哨兵角色 id（服务端按 chosen != 100 判定）
-const CM_CANCEL_ROLE_ID: int = 100
 
 # ============================================================
 # 错误码（GrailError）

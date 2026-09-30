@@ -23,22 +23,16 @@ const 刷新间隔: float = 0.5
 ## 创建房间弹层
 @export var 创建层: Control
 @export var 房名输入: LineEdit
-@export var 人数选项: OptionButton
-@export var 选将选项: OptionButton
+## 创建房间的人数单选组（每个按钮的 metadata/people = 人数）
+@export var 人数组: ButtonGroup
+## 创建房间的选角单选组（每个按钮的 metadata/strategy = GConst.RoleStrategy 值）
+@export var 选角组: ButtonGroup
 @export var 创建按钮: Button
 @export var 取消创建按钮: Button
 
 var _room_ids: Array[int] = []
 var _刷新计时: float = 0.0
 var _发现的房主: Array = []
-## 选将模式下拉项对应的 RoleStrategy 值（顺序与场景里 add_item 的顺序一致）
-var _选将值: Array[int] = [
-	GConst.RoleStrategy.Random,
-	GConst.RoleStrategy.Strategy31,
-	GConst.RoleStrategy.Strategy61,
-	GConst.RoleStrategy.BP,
-	GConst.RoleStrategy.CM,
-]
 
 
 func _ready() -> void:
@@ -163,7 +157,10 @@ func _on_create_pressed() -> void:
 		房名 = "%s 的房间" % Cfg.nickname
 	创建层.visible = false
 	设状态("正在创建房间…")
-	Logic.create_room(房名, 人数选项.selected + 2, _选将值[选将选项.selected])
+	# 人数 / 选角都是单选组，直接读被按下那个按钮上标的数值（ButtonGroup 不允许全部松开，必定有一个）
+	var 人数: int = int(人数组.get_pressed_button().get_meta("people"))
+	var 选角: int = int(选角组.get_pressed_button().get_meta("strategy"))
+	Logic.create_room(房名, 人数, 选角)
 
 
 # ============================================================
