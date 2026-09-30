@@ -13,6 +13,9 @@ const CONTINUE: int = 0
 const WAIT: int = 1
 const SUSPEND: int = 2
 
+## 引擎里要单独处理的技能号（就是「技能表#N」的 N）
+const 技能_天使之墙: int = 701
+
 enum Phase { Idle, Playing, Over }
 
 ## 回复超时（毫秒）：普通玩家 60s；已掉线玩家 5s（避免队友长时间干等）
@@ -634,11 +637,11 @@ func _find_basic_card(p0: BattlePlayer, name_enum: int) -> int:
 	return -1
 
 
-## 按特技名查找基础效果牌（如【天使之墙】）
-func _find_basic_card_by_tag(p0: BattlePlayer, tag: String) -> int:
+## 按技能号查找基础效果牌（如【天使之墙】= 701）
+func _find_basic_card_by_skill(p0: BattlePlayer, 技能号: int) -> int:
 	for be: Dictionary in p0.basic_effects:
 		var c: GCard = Data.get_card(int(be["card"]))
-		if c != null and c.has_speciality_name(tag):
+		if c != null and c.has_skill_id(技能号):
 			return int(be["card"])
 	return -1
 
@@ -1056,8 +1059,8 @@ class SAttackedAsk:
 				var shield_card: int = -1
 				if dst.check_basic_effect_name(GConst.CardName.Shield):
 					shield_card = e._find_basic_card(dst, GConst.CardName.Shield)
-				elif dst.check_basic_effect_tag("天使之墙"):
-					shield_card = e._find_basic_card_by_tag(dst, "天使之墙")
+				elif dst.check_basic_effect_skill(技能_天使之墙):
+					shield_card = e._find_basic_card_by_skill(dst, 技能_天使之墙)
 				if shield_card >= 0:
 					dst.remove_basic_effect(shield_card)
 					e.to_discard([shield_card])
@@ -1588,8 +1591,8 @@ func _missile_block_by_basic(target_id: int) -> bool:
 	var cid: int = -1
 	if dst.check_basic_effect_name(GConst.CardName.Shield):
 		cid = _find_basic_card(dst, GConst.CardName.Shield)
-	elif dst.check_basic_effect_tag("天使之墙"):
-		cid = _find_basic_card_by_tag(dst, "天使之墙")
+	elif dst.check_basic_effect_skill(技能_天使之墙):
+		cid = _find_basic_card_by_skill(dst, 技能_天使之墙)
 	if cid < 0:
 		return false
 	remove_basic_effect(target_id, cid, GConst.CAUSE_MISSILE)

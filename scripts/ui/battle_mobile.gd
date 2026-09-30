@@ -656,9 +656,10 @@ func _on_hurt(msg: Dictionary) -> void:
 func _on_skill(msg: Dictionary) -> void:
 	var src: int = int(msg.get("src_id", -1))
 	var p: GPlayer = Data.get_player_by_id(src)
-	_日志追加("%s 发动【%s】" % [
+	# 技能全称带分类，如「发动【独有技·响应】疾风技」（对照设计表「技能表」的派系/类型列）
+	_日志追加("%s 发动%s" % [
 		p.nickname if p != null else str(src),
-		GConst.skill_name(int(msg.get("skill_id", 0))),
+		GConst.skill_title(int(msg.get("skill_id", 0))),
 	])
 
 

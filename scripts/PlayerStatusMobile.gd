@@ -17,6 +17,17 @@ signal 基础效果牌点击(玩家id: int, 牌id: int)
 ## 原来这里有一份 `const Msg := preload(...)`，与全局类重名会被 Godot 报
 ## SHADOWED_GLOBAL_IDENTIFIER，删掉后 Msg.T.Xxx 的写法照常可用。
 
+## 面板图标要区分的技能号（就是「技能表#N」的 N，卡表「技能1/技能2」引用的也是这些号）
+## 对照：天使之墙=701、迅捷赐福=1601、威力赐福=1602、五系封印=401~405（风/水/火/地/雷）
+const 技能_天使之墙: int = 701
+const 技能_迅捷赐福: int = 1601
+const 技能_威力赐福: int = 1602
+const 技能_风之封印: int = 401
+const 技能_水之封印: int = 402
+const 技能_火之封印: int = 403
+const 技能_地之封印: int = 404
+const 技能_雷之封印: int = 405
+
 ## 对应 C# [SerializeField] private Image redTeam;  （场景里 TeamBG/Red、TeamBG_2/Red_2 …）
 @onready var redTeam: TextureRect = _find_variant("Red") as TextureRect
 ## 对应 C# [SerializeField] private Image blueTeam;  （场景里 TeamBG/Blue、TeamBG_2/Blue_2 …）
@@ -420,7 +431,7 @@ func set_Knelt(value: bool) -> void:
 	if knelt == null:
 		return
 	if value:
-		# 每个角色的形态图标不同：表在 Art.ROLE_TAP（逐行对照原客户端 data/Player.cpp 的 tapSource）
+		# 每个角色的形态图标不同：配在「角色表」的「形态图」列（Art.role_tap 去取）
 		var tex: Texture2D = Art.role_tap(角色号)
 		if tex != null:
 			knelt.texture = tex
@@ -521,38 +532,41 @@ func set_基础牌可点(value: bool) -> void:
 	_刷新状态图标()
 
 ## 对应 C# BasicAndExCards setter 里的一长串 if/else 贴图名映射
+## 卡名用 CardName 枚举判断；技能用技能号判断（号来自卡表「技能1/技能2」的引用）
 func _basic_card_sprite(card: Card) -> String:
-	var cname := card.card_name
-	if cname == "中毒":
-		return "du"
-	if cname == "圣盾" or card.has_skill("天使之墙"):
+	match card.card_name_enum():
+		GConst.CardName.Poison:
+			return "du"
+		GConst.CardName.Shield:
+			return "dun"
+		GConst.CardName.Weaken:
+			return "xu"
+		GConst.CardName.WuXingShuFu:
+			return "shufu"
+		GConst.CardName.TiaoXin:
+			return "tiaoxin"
+		GConst.CardName.LingHunLianJie:
+			return "lianjie"
+		GConst.CardName.TongShengGongSi:
+			return "tongsheng"
+		GConst.CardName.YongHengYueZhang:
+			return "yuezhang"
+	if card.has_skill_id(技能_天使之墙):
 		return "dun"
-	if cname == "虚弱":
-		return "xu"
-	if card.has_skill("威力赐福"):
+	if card.has_skill_id(技能_威力赐福):
 		return "wei"
-	if card.has_skill("迅捷赐福"):
+	if card.has_skill_id(技能_迅捷赐福):
 		return "xun"
-	if card.has_skill("地之封印"):
+	if card.has_skill_id(技能_地之封印):
 		return "difeng"
-	if card.has_skill("火之封印"):
+	if card.has_skill_id(技能_火之封印):
 		return "huofeng"
-	if card.has_skill("水之封印"):
+	if card.has_skill_id(技能_水之封印):
 		return "shuifeng"
-	if card.has_skill("风之封印"):
+	if card.has_skill_id(技能_风之封印):
 		return "fengfeng"
-	if card.has_skill("雷之封印"):
+	if card.has_skill_id(技能_雷之封印):
 		return "leifeng"
-	if cname == "五行束缚":
-		return "shufu"
-	if cname == "挑衅":
-		return "tiaoxin"
-	if cname == "灵魂链接":
-		return "lianjie"
-	if cname == "同生共死":
-		return "tongsheng"
-	if cname == "永恒乐章":
-		return "yuezhang"
 	return ""
 
 ## 对应 C# public KeyValuePair<uint,uint> Energy 的 setter（Key=宝石, Value=水晶）

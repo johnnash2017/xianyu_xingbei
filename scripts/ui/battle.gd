@@ -556,7 +556,7 @@ func _make_card_node(card: GCard) -> Control:
 	tex.size = Vector2(CARD_W, CARD_H)
 	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tex.stretch_mode = TextureRect.STRETCH_SCALE
-	var path: String = card.texture_path()
+	var path: String = card.sprite_path()
 	if path != "" and ResourceLoader.exists(path):
 		tex.texture = load(path)
 	node.add_child(tex)

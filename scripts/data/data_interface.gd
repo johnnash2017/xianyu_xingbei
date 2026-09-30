@@ -4,12 +4,10 @@ extends Node
 
 # ---------------- 卡牌与角色数据 ----------------
 var card_db: Array[GCard] = []
-var role_list: Dictionary = {}          # roleID -> 角色名
+var role_list: Dictionary = {}          # roleID -> 显示名（「[剑圣]」这种，取自角色表的显示名列）
 var role_skill_db: Dictionary = {}      # roleID -> 技能文本
 var role_property_db: Dictionary = {}   # roleID -> 派系（技 / 血 / 幻 / 咏 / 圣）
-var button_db: Dictionary = {}          # 技能名 -> 按钮说明
-## 角色表（角色 id / 角色名 / 简称 / 派系…），第 13 列是派系
-const HERO_INFO_PATH: String = "res://assets/data/heroInfo.txt"
+var role_tokens_db: Dictionary = {}     # roleID -> { 槽位: {name, max} }（取自角色表的指示物列）
 
 # ---------------- 对局视图状态 ----------------
 var player_list: Array[GPlayer] = []
@@ -35,75 +33,95 @@ func _ready() -> void:
 	_load_role_list()
 	_load_role_skill_db()
 	_load_role_property()
-	_load_button_db()
+	_load_role_tokens()
 
 
 # ============================================================
-# 数据加载
+# 数据加载（全部取自 Table/TableScripts/DataTables.gd，由 设计表.xlsx 生成）
 # ============================================================
+## 卡牌：数据来自 DataTables.gd 的「卡面表」（资源名交给 AssetIndex 解析到 assets/textures/card/）
 func _load_card_db() -> void:
 	card_db.clear()
-	for line: String in _read_lines("res://数据/cardDB.txt"):
-		var cells: PackedStringArray = line.split("\t")
-		if cells.size() < 8 or cells[0] == "":
+	for key: String in 数据表格.卡面表.keys():
+		var row: Array = 数据表格.卡面表[key]
+		if row.size() < 7:
 			continue
+		# GCard.from_row 要的是「id + 其余各列」，这里把字典键里的 id 补回去
+		var cells: PackedStringArray = PackedStringArray([key.get_slice("#", 1)])
+		for v: Variant in row:
+			cells.append(str(v))
 		card_db.append(GCard.from_row(cells))
 
 
 func _load_role_list() -> void:
-	role_list = {
-		0: "角色", 1: "[剑圣]", 2: "[狂战士]", 3: "[弓之女神]", 4: "[封印师]",
-		5: "[暗杀者]", 6: "[圣女]", 7: "[天使]", 8: "[魔导师]", 9: "[魔剑]",
-		10: "[圣枪]", 11: "[元素师]", 12: "[冒险家]", 13: "[死灵法师]", 14: "[仲裁者]",
-		15: "[神官]", 16: "[祈祷师]", 17: "[贤者]", 18: "[灵符师]", 19: "[剑帝]",
-		20: "[格斗家]", 21: "[勇者]", 22: "[灵魂术士]", 23: "[巫女]", 24: "[蝶舞者]",
-		25: "[女武神]", 26: "[魔弓]", 27: "[英灵人形]", 28: "[红莲骑士]", 29: "[魔枪]",
-		30: "[苍炎魔女]", 31: "[吟游诗人]", 32: "[精灵射手]", 33: "[阴阳师]", 34: "[血色剑灵]",
-		35: "[月之女神]", 36: "[兽灵武士]", 37: "[圣弓]", 108: "[sp魔导师]",
-	}
+	role_list.clear()
+	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
+	var 显示列: int = int(列索引["显示名"])
+	var 名列: int = int(列索引["角色名"])
+	for key: String in 数据表格.角色表.keys():
+		var row: Array = 数据表格.角色表[key]
+		var 名: String = str(row[显示列]).strip_edges()
+		if 名 == "":
+			名 = str(row[名列]).strip_edges()
+		role_list[int(key.get_slice("#", 1))] = 名
 
 
+## 技能表「派系」列的取值 → 界面上的分段标题；数组顺序即显示顺序
+const 技能分段顺序: Array[String] = ["普通", "独有技", "专属技", "必杀技"]
+const 技能分段标题: Dictionary = {"普通": "普通技", "独有技": "独有技", "专属技": "专属技", "必杀技": "必杀技"}
+
+
+## 角色技能文本：按「角色表」的「技能」引用逐条拼装（角色ID -> 技能文本）
+## 分段标题取技能表的「派系」列；同一说明只留一条（历史上一个技能会占多个槽）
 func _load_role_skill_db() -> void:
 	role_skill_db.clear()
-	for line: String in _read_lines("res://数据/skillDB.txt"):
-		var cells: PackedStringArray = line.split("\t")
-		if cells.size() < 2 or cells[0] == "":
+	var 列索引: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
+	var 分段列: int = int(列索引["派系"])
+	var 说明列: int = int(列索引["说明"])
+	for key: String in 数据表格.角色表.keys():
+		var 角色号: int = int(key.get_slice("#", 1))
+		var 分组: Dictionary = {}
+		for 技能号: int in role_skills(角色号):
+			var row: Array = 数据表格.技能表.get("技能表#%d" % 技能号, [])
+			if row.is_empty():
+				continue
+			var 说明: String = str(row[说明列]).strip_edges()
+			if 说明 == "":
+				continue
+			var 分段: String = str(row[分段列])
+			if not 分组.has(分段):
+				分组[分段] = []
+			var 本段行: Array = 分组[分段]
+			if not 本段行.has(说明):
+				本段行.append(说明)
+		role_skill_db[角色号] = _拼技能文本(分组)
+
+
+## 把某角色的分段字典拼成一段文本：分段标题一行，该段每条说明各占一行
+func _拼技能文本(段字典: Dictionary) -> String:
+	var 行列表: Array[String] = []
+	for 分段: String in 技能分段顺序:
+		if not 段字典.has(分段):
 			continue
-		role_skill_db[int(cells[0])] = cells[1].replace("#", "\n")
+		行列表.append(str(技能分段标题.get(分段, 分段)))
+		var 本段行: Array = 段字典[分段]
+		for 说明: String in 本段行:
+			# 说明里的 # 是换行标记（与卡表/按钮说明同一约定）
+			for 行: String in 说明.split("#"):
+				var 文本: String = 行.strip_edges()
+				if 文本 != "":
+					行列表.append(文本)
+	return "\n".join(行列表)
 
 
-## 角色派系（技 / 血 / 幻 / 咏 / 圣）：取自角色表第 13 列（同参考工程 RoleBase.RoleProperty）
+## 角色派系（技 / 血 / 幻 / 咏 / 圣）：取自「角色表」的派系列（同参考工程 RoleBase.RoleProperty）
 func _load_role_property() -> void:
 	role_property_db.clear()
-	for line: String in _read_lines(HERO_INFO_PATH):
-		var cells: PackedStringArray = line.split("\t")
-		if cells.size() < 13 or cells[0] == "":
-			continue
-		role_property_db[int(cells[0])] = cells[12].strip_edges()
-
-
-func _load_button_db() -> void:
-	button_db.clear()
-	for line: String in _read_lines("res://数据/buttonDB.txt"):
-		var cells: PackedStringArray = line.split("\t")
-		if cells.size() < 2 or cells[0] == "":
-			continue
-		button_db[cells[0]] = cells[1].replace("#", "\n")
-
-
-func _read_lines(path: String) -> PackedStringArray:
-	if not FileAccess.file_exists(path):
-		push_error("Data: 找不到数据文件 %s" % path)
-		return PackedStringArray()
-	var f: FileAccess = FileAccess.open(path, FileAccess.READ)
-	var lines: PackedStringArray = []
-	while not f.eof_reached():
-		var line: String = f.get_line()
-		if line.strip_edges() == "":
-			continue
-		lines.append(line)
-	f.close()
-	return lines
+	# 列下标按列名从表元数据取，改表结构时这里不用跟着改数字
+	var 派系列: int = int(数据表格.表元数据["角色表"]["列索引"]["派系"])
+	for key: String in 数据表格.角色表.keys():
+		var row: Array = 数据表格.角色表[key]
+		role_property_db[int(key.get_slice("#", 1))] = str(row[派系列]).strip_edges()
 
 
 # ============================================================
@@ -113,38 +131,71 @@ func role_name(rid: int) -> String:
 	return role_list.get(rid, "角色")
 
 
+## 角色表里某角色那一行（「除 id 以外的各列」）；没有这个角色就返回空数组
+func _角色行(rid: int) -> Array:
+	return 数据表格.角色表.get("角色表#%d" % rid, [])
+
+
+## 该角色引用的技能号（角色表的「技能」列，形如 "技能表#101,技能表#102"）
+func role_skills(rid: int) -> Array[int]:
+	var 结果: Array[int] = []
+	var row: Array = _角色行(rid)
+	if row.is_empty():
+		return 结果
+	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
+	for 引用: String in str(row[int(列索引["技能"])]).split(","):
+		var 文本: String = 引用.strip_edges()
+		if 文本 != "":
+			结果.append(int(文本.get_slice("#", 1)))
+	return 结果
+
+
+## 该角色的战斗实现脚本路径（角色表的「脚本」列）；空串 = 未移植，按通用规则结算
+func role_script(rid: int) -> String:
+	var row: Array = _角色行(rid)
+	if row.is_empty():
+		return ""
+	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
+	return str(row[int(列索引["脚本"])]).strip_edges()
+
+
+## 该角色的形态图资源名（角色表的「形态图」列）；空串 = 没有形态图
+func role_tap(rid: int) -> String:
+	var row: Array = _角色行(rid)
+	if row.is_empty():
+		return ""
+	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
+	return str(row[int(列索引["形态图"])]).strip_edges()
+
+
 ## 角色派系（技 / 血 / 幻 / 咏 / 圣）；角色表里没有的角色返回空串（界面据此不显示派系图标）
 func role_property(rid: int) -> String:
 	return role_property_db.get(rid, "")
 
 
-## 角色专属指示物定义（槽位 → {name, max}），逐行对照原客户端 data/Player.cpp 的 addToken
-const ROLE_TOKENS: Dictionary = {
-	11: {0: {"name": "元素", "max": 3}},
-	14: {0: {"name": "审判", "max": 4}},
-	16: {0: {"name": "符文", "max": 3}},
-	18: {2: {"name": "妖力", "max": 2}},
-	19: {0: {"name": "剑气", "max": 5}, 2: {"name": "剑魂", "max": 3}},
-	20: {0: {"name": "斗气", "max": 6}},
-	21: {0: {"name": "怒气", "max": 4}, 1: {"name": "知性", "max": 4}},
-	22: {0: {"name": "黄魂", "max": 6}, 1: {"name": "蓝魂", "max": 6}},
-	24: {0: {"name": "蛹", "max": 99}, 2: {"name": "茧", "max": 8}},
-	26: {2: {"name": "充能", "max": 8}},
-	27: {0: {"name": "战纹", "max": 3}, 1: {"name": "魔纹", "max": 3}},
-	28: {0: {"name": "血印", "max": 2}},
-	30: {0: {"name": "重生", "max": 4}},
-	31: {0: {"name": "灵感", "max": 4}},
-	32: {2: {"name": "祝福", "max": 3}},
-	33: {0: {"name": "鬼火", "max": 3}},
-	34: {0: {"name": "鲜血", "max": 3}},
-	35: {0: {"name": "新月", "max": 2}, 1: {"name": "石化", "max": 3}, 2: {"name": "暗月", "max": 99}},
-	36: {0: {"name": "残心", "max": 4}, 1: {"name": "兽魂", "max": 2}},
-	37: {0: {"name": "信仰", "max": 10}},
-}
+## 角色专属指示物：「角色表」的「指示物」列，写法 `槽位:名称:上限`，多个用 `;` 隔开
+## 例：「0:重生:4」「0:剑气:5;2:剑魂:3」（原客户端 data/Player.cpp 的 addToken）
+func _load_role_tokens() -> void:
+	role_tokens_db.clear()
+	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
+	var 指示物列: int = int(列索引["指示物"])
+	for key: String in 数据表格.角色表.keys():
+		var row: Array = 数据表格.角色表[key]
+		var 配置: String = str(row[指示物列]).strip_edges()
+		if 配置 == "":
+			continue
+		var 槽字典: Dictionary = {}
+		for 段: String in 配置.split(";"):
+			var 项: PackedStringArray = 段.strip_edges().split(":")
+			if 项.size() < 3:
+				continue
+			槽字典[int(项[0])] = {"name": 项[1], "max": int(项[2])}
+		if not 槽字典.is_empty():
+			role_tokens_db[int(key.get_slice("#", 1))] = 槽字典
 
 
 func role_token_def(role_id: int, slot: int) -> Dictionary:
-	var m: Dictionary = ROLE_TOKENS.get(role_id, {})
+	var m: Dictionary = role_tokens_db.get(role_id, {})
 	return m.get(slot, {})
 
 
@@ -152,8 +203,13 @@ func role_skill_info(rid: int) -> String:
 	return role_skill_db.get(rid, "")
 
 
-func button_info(skill: String) -> String:
-	return button_db.get(skill, skill)
+## 技能按钮说明：技能号 → 文本（技能表的「按钮说明」列就是正文）
+func button_info(skill_id: int) -> String:
+	var 技能行: Array = 数据表格.技能表.get("技能表#%d" % skill_id, [])
+	if 技能行.is_empty():
+		return ""
+	var 技能列: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
+	return str(技能行[int(技能列["按钮说明"])]).replace("#", "\n")
 
 
 func get_card(cid: int) -> GCard:

@@ -30,8 +30,8 @@ func 打开(角色号: int) -> void:
 	var 派系: String = Data.role_property(角色号)
 	RoleProperty.texture = _贴图(派系图目录 + 派系 + ".png") if 派系 != "" else null
 	RoleProperty.visible = RoleProperty.texture != null
-	# 技能说明用数据表里该角色的那一段：这一段就是原客户端「角色技能」界面的原文，
-	# 每条前头自带一个空格（数据源格式），这里逐行去掉，免得换行后看着参差不齐
+	# 技能说明由「技能表」拼装（分段标题一行 + 该段每条技能各一行），
+	# 这里逐行去掉首尾空白，免得某些行自带空格、换行后参差不齐
 	var 行列表: Array = []
 	for 行文本: String in Data.role_skill_info(角色号).split("\n"):
 		行列表.append(行文本.strip_edges())

@@ -134,10 +134,10 @@ func clean_basic_status() -> void:
 	basic_status_list.clear()
 
 
-## 是否拥有某个基础效果（按特技名判定）
-func has_status_name(tag: String) -> bool:
+## 是否拥有某个基础效果（按该效果牌带的技能号判定）
+func has_status_skill(技能号: int) -> bool:
 	for s: BasicStatus in basic_status_list:
-		if s.card != null and s.card.has_speciality_name(tag):
+		if s.card != null and s.card.has_skill_id(技能号):
 			return true
 	return false
 

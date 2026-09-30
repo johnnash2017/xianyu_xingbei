@@ -7,7 +7,7 @@ const 非角色ID: Array[int] = [0]
 const 已知缺立绘: Array[int] = [37]
 ## 代码里会用到的界面 wav 音效（Art.play_sfx 的入参）
 const 界面音效: Array[String] = ["Equip", "Skill", "It's your turn", "TurnBegin"]
-const 卡面目录: String = "res://资源/卡面/"
+const 卡面目录: String = "res://assets/textures/card/"
 const 音效目录: String = "res://资源/音效/"
 
 
@@ -17,7 +17,7 @@ func _init() -> void:
 
 func 跑() -> void:
 	await 等帧()
-	检(not Data.card_db.is_empty(), "卡表为空（数据/cardDB.txt 没读到）")
+	检(not Data.card_db.is_empty(), "卡表为空（DataTables.gd 的卡面表没读到）")
 	检(not Data.role_list.is_empty(), "角色表为空（数据/角色表 没读到）")
 
 	var 缺卡面: Array[String] = []

@@ -18,9 +18,6 @@ const LIU_XUE: int = 2306
 const XUE_ZHI_ZU_ZHOU: int = 2351
 const XUE_ZHI_ZU_ZHOU_QI_PAI: int = 2352
 
-## 血之悲鸣牌的牌面特技标签
-const TAG_XUE_ZHI_BEI_MING: String = "血之悲鸣"
-
 
 ## 【同生共死】的目标（-1 表示未放置）
 var tong_sheng_id: int = -1
@@ -39,7 +36,7 @@ func available_skills() -> Array:
 	if player.tap and player.hand_cards.size() >= 2:
 		# 逆流任意 2 张手牌都可弃，无牌类限制，故不下发 cards
 		out.append({"type": GConst.ActionType.MagicSkill, "id": NI_LIU, "need_card": 2, "need_target": 0})
-	var 悲鸣牌: Array[int] = hand_ids_with_speciality(TAG_XUE_ZHI_BEI_MING)
+	var 悲鸣牌: Array[int] = hand_ids_with_skill(XUE_ZHI_BEI_MING)
 	if not 悲鸣牌.is_empty():
 		# 血之悲鸣只能弃带【血之悲鸣】特技的牌（v_magic_skill 校验同一条）；
 		# v_magic_skill 允许 args[0] 取 1~3，执行体对目标与自己各造成该点数的法术伤害，
@@ -278,7 +275,7 @@ func v_magic_skill(action: Dictionary) -> int:
 			return GConst.GE_INVALID_CARDID
 		var cid: int = int(cards[0])
 		var card: GCard = Data.get_card(cid)
-		if not player.has_hand_card(cid) or card == null or not card.has_speciality_name(TAG_XUE_ZHI_BEI_MING):
+		if not player.has_hand_card(cid) or card == null or not card.has_skill_id(XUE_ZHI_BEI_MING):
 			return GConst.GE_INVALID_ACTION
 		if not args.is_empty() and (int(args[0]) < 1 or int(args[0]) > 3):
 			return GConst.GE_INVALID_ACTION

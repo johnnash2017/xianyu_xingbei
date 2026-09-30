@@ -7,9 +7,6 @@ const XUE_XING_PAO_XIAO: int = 202
 const KUANG_HUA: int = 203
 const SI_LIE: int = 205
 
-const TAG_KUANG_DAO: String = "血影狂刀"
-const TAG_PAO_XIAO: String = "血腥咆哮"
-
 
 ## 攻击宣告后（timeline_1）：血影狂刀 → 血腥咆哮
 func p_timeline_1(ctx: Dictionary) -> int:
@@ -61,7 +58,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 # ============================================================
 func _xue_ying_kuang_dao(ctx: Dictionary) -> int:
 	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if card == null or not card.has_speciality_name(TAG_KUANG_DAO) or not bool(ctx.get("is_active", false)):
+	if card == null or not card.has_skill_id(XUE_YING_KUANG_DAO) or not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null:
@@ -82,7 +79,7 @@ func _xue_ying_kuang_dao(ctx: Dictionary) -> int:
 
 func _xue_xing_pao_xiao(ctx: Dictionary) -> int:
 	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if card == null or not card.has_speciality_name(TAG_PAO_XIAO) or not bool(ctx.get("is_active", false)):
+	if card == null or not card.has_skill_id(XUE_XING_PAO_XIAO) or not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null or dst.cross_num != 2:

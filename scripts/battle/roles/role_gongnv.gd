@@ -10,15 +10,12 @@ const JU_JI: int = 303
 const SHAN_DIAN_JIAN: int = 304
 const GUAN_CHUAN_SHE_JI: int = 305
 
-const TAG_JING_ZHUN: String = "精准射击"
-const TAG_SHAN_GUANG: String = "闪光陷阱"
-
 
 func available_skills() -> Array:
 	var out: Array = []
 	# 闪光陷阱：只有手中带【闪光陷阱】的牌可作发动牌，下发给界面把其余手牌置灰
-	# （v_magic_skill 校验同一张牌：须在手且带该特技）
-	var 闪光牌: Array[int] = hand_ids_with_speciality(TAG_SHAN_GUANG)
+	# （v_magic_skill 校验同一张牌：须在手且带此特技）
+	var 闪光牌: Array[int] = hand_ids_with_skill(SHAN_GUANG_XIAN_JING)
 	if not 闪光牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHAN_GUANG_XIAN_JING, "need_card": 1, "need_target": 1,
 			"cards": 闪光牌})
@@ -60,7 +57,7 @@ func _shan_dian_jian(ctx: Dictionary) -> void:
 ## 精准射击：攻击牌带此特技时可选，强制命中但伤害 -1
 func _jing_zhun_she_ji(ctx: Dictionary) -> int:
 	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if card == null or not card.has_speciality_name(TAG_JING_ZHUN):
+	if card == null or not card.has_skill_id(JING_ZHUN_SHE_JI):
 		return SUCCESS
 	if not engine.has_reply():
 		engine.ask_skill(player.id, JING_ZHUN_SHE_JI, 0, 0)
@@ -128,7 +125,7 @@ func v_magic_skill(action: Dictionary) -> int:
 			return GConst.GE_INVALID_CARDID
 		var cid: int = int(cards[0])
 		var card: GCard = Data.get_card(cid)
-		if not player.has_hand_card(cid) or card == null or not card.has_speciality_name(TAG_SHAN_GUANG):
+		if not player.has_hand_card(cid) or card == null or not card.has_skill_id(SHAN_GUANG_XIAN_JING):
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	if aid == JU_JI:

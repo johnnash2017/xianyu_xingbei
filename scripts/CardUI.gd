@@ -24,7 +24,7 @@ var card: GCard = null
 ## 当前是否可用：可用的牌亮起并显示发光框，不可用的置灰且点不动
 var isEnable: bool = false
 
-## 卡图原始尺寸（资源/卡面/*.png，267×400）
+## 卡图原始尺寸（assets/textures/card/*.png，267×400）
 const CARD_ART_SIZE: Vector2 = Vector2(267.0, 400.0)
 ## 发光框贴图尺寸（b02_selected_card.png / b02_selected_card_y.png）
 const GLOW_TEX_SIZE: Vector2 = Vector2(166.0, 230.0)
@@ -90,11 +90,11 @@ func OnCardClick() -> void:
 func _画卡面(c: GCard) -> void:
 	if btn != null:
 		btn.icon = Art.card_face(c)
-	# 卡面底部那两格技能名：Skill1 放卡名（新卡面本身也印了名字，这里作为可读的补充）
+	# 卡面底部那两格：印这张牌带的技能名（照搬参照工程 CardUI 的 Skill1/Skill2）
 	if txtSkill1 != null:
-		txtSkill1.text = c.card_name
+		txtSkill1.text = c.skill_names[0] if c.skill_names.size() >= 1 else ""
 	if txtSkill2 != null:
-		txtSkill2.text = ""
+		txtSkill2.text = c.skill_names[1] if c.skill_names.size() >= 2 else ""
 
 
 ## 命格（血/技/幻/咏/圣）与元素（earth/wind/water/fire/thunder）小图标：

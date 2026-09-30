@@ -162,9 +162,9 @@ func hand_ids_where(条件: Callable) -> Array[int]:
 	return out
 
 
-## 手中带指定特技标签的牌 id（如封印师的【地之封印】）
-func hand_ids_with_speciality(标签: String) -> Array[int]:
-	return hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.has_speciality_name(标签))
+## 手中带指定技能的牌 id（技能号见 技能表，如封印师的【地之封印】= 404）
+func hand_ids_with_skill(技能号: int) -> Array[int]:
+	return hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.has_skill_id(技能号))
 
 
 ## 场上所有对手的 id（需要指定多名对手的技能，available_skills 的 "targets" 用它）
@@ -301,44 +301,5 @@ static func create(role_id: int, p: BattlePlayer, e: BattleEngine) -> BattleRole
 
 
 static func _script_of(role_id: int) -> String:
-	# 只登记已移植的角色；未移植的返回空（按通用规则结算）
-	match role_id:
-		1: return "res://scripts/battle/roles/role_jiansheng.gd"
-		2: return "res://scripts/battle/roles/role_kuangzhan.gd"
-		3: return "res://scripts/battle/roles/role_gongnv.gd"
-		4: return "res://scripts/battle/roles/role_fengyin.gd"
-		5: return "res://scripts/battle/roles/role_ansha.gd"
-		6: return "res://scripts/battle/roles/role_shengnv.gd"
-		7: return "res://scripts/battle/roles/role_tianshi.gd"
-		8: return "res://scripts/battle/roles/role_modao.gd"
-		9: return "res://scripts/battle/roles/role_mojian.gd"
-		10: return "res://scripts/battle/roles/role_shengqiang.gd"
-		11: return "res://scripts/battle/roles/role_yuansu.gd"
-		12: return "res://scripts/battle/roles/role_maoxian.gd"
-		13: return "res://scripts/battle/roles/role_siling.gd"
-		14: return "res://scripts/battle/roles/role_zhongcai.gd"
-		15: return "res://scripts/battle/roles/role_shenguan.gd"
-		16: return "res://scripts/battle/roles/role_qidao.gd"
-		17: return "res://scripts/battle/roles/role_xianzhe.gd"
-		18: return "res://scripts/battle/roles/role_lingfu.gd"
-		19: return "res://scripts/battle/roles/role_jiandi.gd"
-		20: return "res://scripts/battle/roles/role_gedou.gd"
-		21: return "res://scripts/battle/roles/role_yongzhe.gd"
-		22: return "res://scripts/battle/roles/role_linghun.gd"
-		23: return "res://scripts/battle/roles/role_wunu.gd"
-		24: return "res://scripts/battle/roles/role_diewu.gd"
-		25: return "res://scripts/battle/roles/role_nvwushen.gd"
-		26: return "res://scripts/battle/roles/role_mogong.gd"
-		27: return "res://scripts/battle/roles/role_yinglingrenxing.gd"
-		28: return "res://scripts/battle/roles/role_honglian.gd"
-		29: return "res://scripts/battle/roles/role_moqiang.gd"
-		30: return "res://scripts/battle/roles/role_monv.gd"
-		31: return "res://scripts/battle/roles/role_shiren.gd"
-		32: return "res://scripts/battle/roles/role_jinglingsheshou.gd"
-		33: return "res://scripts/battle/roles/role_yinyang.gd"
-		34: return "res://scripts/battle/roles/role_xuejian.gd"
-		35: return "res://scripts/battle/roles/role_yuenv.gd"
-		36: return "res://scripts/battle/roles/role_shouling.gd"
-		37: return "res://scripts/battle/roles/role_shenggong.gd"
-		108: return "res://scripts/battle/roles/role_spmodao.gd"
-	return ""
+	# 角色实现脚本写在「角色表」的「脚本」列；表里没有（未移植）时返回空，按通用规则结算
+	return Data.role_script(role_id)

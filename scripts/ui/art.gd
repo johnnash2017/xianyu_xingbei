@@ -2,7 +2,6 @@ extends Node
 ## 资源索引（autoload 名：Art）
 ## 统一从 资源/ 目录按名取贴图与音效，带缓存；对照原客户端 data/Player.cpp 的 tapSource 表与 resource/ 目录结构。
 
-const DIR_CARD: String = "res://资源/卡面/"
 const DIR_ROLE: String = "res://资源/角色/"
 ## 选角大立绘（260x363，搬自参照工程 assets/textures/hero/middle）
 const DIR_ROLE_BIG: String = "res://资源/角色大图/"
@@ -11,15 +10,6 @@ const DIR_TAP: String = "res://资源/界面/tap/"
 const DIR_BP: String = "res://资源/界面/bp/"
 const DIR_UI: String = "res://资源/界面/"
 const DIR_SFX: String = "res://资源/音效/"
-
-## 角色「横置/形态」图标（逐行对照原客户端 data/Player.cpp 的 tapSource）
-const ROLE_TAP: Dictionary = {
-	5: "QianXing", 6: "LianMin", 9: "AnYing", 14: "ShenPan", 16: "QiDao",
-	20: "BaiShi", 21: "JingPiLiJie", 23: "LiuXue", 24: "DiaoLing",
-	25: "YingLingXingTai", 27: "XuSiBengFa", 28: "ReXueFeiTeng", 29: "HuanYing",
-	30: "LieYan", 31: "ShiShen", 32: "ZhuFu", 33: "ShiShen", 34: "QiangWei",
-	35: "AnYue", 36: "QianXing", 37: "AnYue",
-}
 
 ## 基础效果卡名 → status 图标名（对照 资源/界面/status 下的文件名）
 const STATUS_ICON: Dictionary = {
@@ -67,7 +57,7 @@ func tex(path: String) -> Texture2D:
 func card_face(card: GCard) -> Texture2D:
 	if card == null:
 		return null
-	return tex(card.texture_path())
+	return tex(card.sprite_path())
 
 
 func role_avatar(role_id: int) -> Texture2D:
@@ -85,9 +75,11 @@ func role_hero(role_id: int) -> Texture2D:
 
 
 func role_tap(role_id: int) -> Texture2D:
-	if not ROLE_TAP.has(role_id):
+	# 形态图资源名配在「角色表」的「形态图」列（原客户端 data/Player.cpp 的 tapSource）
+	var 形态名: String = Data.role_tap(role_id)
+	if 形态名 == "":
 		return null
-	return tex("%s%s.png" % [DIR_TAP, str(ROLE_TAP[role_id])])
+	return tex("%s%s.png" % [DIR_TAP, 形态名])
 
 
 func status_icon(card_name: String) -> Texture2D:

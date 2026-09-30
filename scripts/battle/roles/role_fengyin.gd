@@ -22,12 +22,6 @@ const FA_SHU_JI_DANG: int = 406
 const WU_XI_SHU_FU: int = 407
 const FENG_YIN_PO_SUI: int = 408
 
-const TAG_SEAL_WIND: String = "风之封印"
-const TAG_SEAL_WATER: String = "水之封印"
-const TAG_SEAL_FIRE: String = "火之封印"
-const TAG_SEAL_EARTH: String = "地之封印"
-const TAG_SEAL_THUNDER: String = "雷之封印"
-
 const SEAL_HARM_POINT: int = 3      # 封印触发时的法术伤害
 const WU_XI_DRAW_BASE: int = 2      # 五系束缚基础摸牌数
 const WU_XI_DRAW_MAX: int = 4       # 五系束缚摸牌上限（场上封印数最高按 2 计）
@@ -44,13 +38,13 @@ func available_skills() -> Array:
 	var out: Array = []
 	for sid: int in [FENG_ZHI_FENG_YIN, SHUI_ZHI_FENG_YIN, HUO_ZHI_FENG_YIN, DI_ZHI_FENG_YIN, LEI_ZHI_FENG_YIN]:
 		# 只有手里带对应【X之封印】的牌才能发动，下发给界面用来把其余手牌置灰（v_magic_skill 校验同一条）
-		var 封印牌: Array[int] = hand_ids_with_speciality(_seal_tag(sid))
+		var 封印牌: Array[int] = hand_ids_with_skill(sid)
 		if not 封印牌.is_empty():
 			# 目标须非同色、且身上没有同种封印（v_magic_skill：dst.color == player.color
-			# 或 dst.check_basic_effect_tag(_seal_tag(aid)) 为真时拒收）
+			# 或 dst.check_basic_effect_skill(aid) 为真时拒收）
 			out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 1,
 				"cards": 封印牌,
-				"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.color != player.color and not p.check_basic_effect_tag(_seal_tag(sid)))})
+				"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.color != player.color and not p.check_basic_effect_skill(sid))})
 	if player.get_energy() > 0:
 		# 五系束缚：目标须为对手（v_magic_skill：dst.color == player.color 时拒收）
 		out.append({"type": GConst.ActionType.MagicSkill, "id": WU_XI_SHU_FU, "need_card": 0, "need_target": 1,
@@ -166,10 +160,10 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_CARDID
 			var cid: int = int(cards[0])
 			var card: GCard = Data.get_card(cid)
-			if not player.has_hand_card(cid) or card == null or not card.has_speciality_name(_seal_tag(aid)):
+			if not player.has_hand_card(cid) or card == null or not card.has_skill_id(aid):
 				return GConst.GE_INVALID_ACTION
 			var dst: BattlePlayer = engine.p(int(dsts[0]))
-			if dst == null or dst.color == player.color or dst.check_basic_effect_tag(_seal_tag(aid)):
+			if dst == null or dst.color == player.color or dst.check_basic_effect_skill(aid):
 				return GConst.GE_INVALID_PLAYERID
 		WU_XI_SHU_FU:
 			if dsts.is_empty():
@@ -256,17 +250,6 @@ func _consume_one_energy() -> void:
 ## 是否是封印牌（攻击牌 + 幻命格，与服务端 TYPE_ATTACK + PROPERTY_PHANTOM 一致）
 func _is_seal_card(card: GCard) -> bool:
 	return card.is_attack() and card.property_enum() == GConst.CardProperty.Phantom
-
-
-## 技能号 → 封印特技标签
-func _seal_tag(skill_id: int) -> String:
-	match skill_id:
-		FENG_ZHI_FENG_YIN: return TAG_SEAL_WIND
-		SHUI_ZHI_FENG_YIN: return TAG_SEAL_WATER
-		HUO_ZHI_FENG_YIN: return TAG_SEAL_FIRE
-		DI_ZHI_FENG_YIN: return TAG_SEAL_EARTH
-		LEI_ZHI_FENG_YIN: return TAG_SEAL_THUNDER
-	return ""
 
 
 ## 元素 → 对应的封印技能号（服务端 getMapping）

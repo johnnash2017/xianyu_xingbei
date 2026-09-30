@@ -15,9 +15,6 @@ const GUANG_HUI_XIN_YANG: int = 1604 # 光辉信仰（法术技能）
 const QI_HEI_XIN_YANG: int = 1605    # 漆黑信仰（法术技能）
 const FA_LI_CHAO_XI: int = 1606      # 法力潮汐（额外行动）
 
-const TAG_XUN_JIE: String = "迅捷赐福"
-const TAG_WEI_LI: String = "威力赐福"
-
 const TOKEN_QI_DAO_FU_WEN: int = 0   # 「符文」指示物下标
 const TOKEN_QI_DAO_FU_WEN_MAX: int = 3
 
@@ -42,18 +39,18 @@ func available_skills() -> Array:
 		# 光辉信仰不校验发动牌（v_magic_skill 对 GUANG_HUI_XIN_YANG 只判形态与符文），故 need_card 为 0
 		out.append({"type": GConst.ActionType.MagicSkill, "id": GUANG_HUI_XIN_YANG, "need_card": 0, "need_target": 1})
 		out.append({"type": GConst.ActionType.MagicSkill, "id": QI_HEI_XIN_YANG, "need_card": 0, "need_target": 1})
-	# 迅捷赐福/威力赐福：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
-	# （v_magic_skill 校验同一张牌：须在手、带该特技；目标面前已有同类赐福时拒收，见 _check_ci_fu_target）
-	var 迅捷牌: Array[int] = hand_ids_with_speciality(TAG_XUN_JIE)
+	# 迅捷赐福/威力赐福：只有手中带对应技能的牌可作发动牌，下发给界面把其余手牌置灰
+	# （v_magic_skill 校验同一张牌：须在手、带该技能；目标面前已有同类赐福时拒收，见 _check_ci_fu_target）
+	var 迅捷牌: Array[int] = hand_ids_with_skill(XUN_JIE_CI_FU)
 	if not 迅捷牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": XUN_JIE_CI_FU, "need_card": 1, "need_target": 1,
 			"cards": 迅捷牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return _find_effect_card(p, TAG_XUN_JIE) < 0)})
-	var 威力牌: Array[int] = hand_ids_with_speciality(TAG_WEI_LI)
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return _find_effect_card(p, XUN_JIE_CI_FU) < 0)})
+	var 威力牌: Array[int] = hand_ids_with_skill(WEI_LI_CI_FU)
 	if not 威力牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": WEI_LI_CI_FU, "need_card": 1, "need_target": 1,
 			"cards": 威力牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return _find_effect_card(p, TAG_WEI_LI) < 0)})
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return _find_effect_card(p, WEI_LI_CI_FU) < 0)})
 	return out
 
 
@@ -128,7 +125,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var attacker: BattlePlayer = engine.p(attacker_id)
 	if attacker == null:
 		return SUCCESS
-	var effect_card: int = _find_effect_card(attacker, TAG_WEI_LI)
+	var effect_card: int = _find_effect_card(attacker, WEI_LI_CI_FU)
 	if effect_card < 0:
 		return SUCCESS
 	if not engine.has_reply():
@@ -189,7 +186,7 @@ func _xun_jie_effect(pid: int) -> void:
 	for a: Dictionary in target.additional_actions:
 		if int(a.get("cause", 0)) == XUN_JIE_CI_FU:
 			return
-	if _find_effect_card(target, TAG_XUN_JIE) < 0:
+	if _find_effect_card(target, XUN_JIE_CI_FU) < 0:
 		return
 	target.add_action(GConst.ActionType.Attack, XUN_JIE_CI_FU)
 
@@ -209,7 +206,7 @@ func _fa_li_chao_xi() -> void:
 # ============================================================
 func v_additional_action(cause: int) -> int:
 	if cause == XUN_JIE_CI_FU:
-		if _find_effect_card(player, TAG_XUN_JIE) < 0:
+		if _find_effect_card(player, XUN_JIE_CI_FU) < 0:
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	if cause == FA_LI_CHAO_XI:
@@ -230,7 +227,7 @@ func p_additional_action(ctx: Dictionary) -> int:
 		# 迅捷赐福：由持有该赐福牌的玩家选择该额外行动时移除并弃置
 		var target: BattlePlayer = engine.p(pid)
 		if target != null:
-			var effect_card: int = _find_effect_card(target, TAG_XUN_JIE)
+			var effect_card: int = _find_effect_card(target, XUN_JIE_CI_FU)
 			if effect_card >= 0:
 				engine.remove_basic_effect(pid, effect_card, XUN_JIE_CI_FU)
 				engine.to_discard([effect_card])
@@ -260,14 +257,13 @@ func v_magic_skill(action: Dictionary) -> int:
 			return GConst.GE_SUCCESS
 		return GConst.GE_INVALID_ACTION
 	if aid == XUN_JIE_CI_FU or aid == WEI_LI_CI_FU:
-		var tag: String = TAG_XUN_JIE if aid == XUN_JIE_CI_FU else TAG_WEI_LI
-		if not _check_ci_fu_target(action, tag):
+		if not _check_ci_fu_target(action, aid):
 			return GConst.GE_INVALID_ACTION
 		if cards.is_empty():
 			return GConst.GE_INVALID_CARDID
 		var cid: int = int(cards[0])
 		var card: GCard = Data.get_card(cid)
-		if not player.has_hand_card(cid) or card == null or not card.has_speciality_name(tag):
+		if not player.has_hand_card(cid) or card == null or not card.has_skill_id(aid):
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
@@ -280,9 +276,9 @@ func p_magic_skill(action: Dictionary) -> int:
 		QI_HEI_XIN_YANG:
 			return _qi_hei_xin_yang(action)
 		XUN_JIE_CI_FU:
-			return _place_ci_fu(action, XUN_JIE_CI_FU, TAG_XUN_JIE)
+			return _place_ci_fu(action, XUN_JIE_CI_FU)
 		WEI_LI_CI_FU:
-			return _place_ci_fu(action, WEI_LI_CI_FU, TAG_WEI_LI)
+			return _place_ci_fu(action, WEI_LI_CI_FU)
 	return GConst.GE_INVALID_ACTION
 
 
@@ -329,8 +325,8 @@ func _qi_hei_xin_yang(action: Dictionary) -> int:
 	return URGENT
 
 
-## 威力赐福 / 迅捷赐福：将牌放置于目标队友面前作为基础效果
-func _place_ci_fu(action: Dictionary, cause: int, tag: String) -> int:
+## 威力赐福 / 迅捷赐福：将牌放置于目标队友面前作为基础效果（cause 即该技能的技能号）
+func _place_ci_fu(action: Dictionary, cause: int) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
 	if cards.is_empty() or dsts.is_empty():
@@ -338,7 +334,7 @@ func _place_ci_fu(action: Dictionary, cause: int, tag: String) -> int:
 	var cid: int = int(cards[0])
 	var dst_id: int = int(dsts[0])
 	var card: GCard = Data.get_card(cid)
-	if card == null or not card.has_speciality_name(tag) or not player.has_hand_card(cid):
+	if card == null or not card.has_skill_id(cause) or not player.has_hand_card(cid):
 		return GConst.GE_INVALID_ACTION
 	notice_skill(cause, [dst_id])
 	engine.broadcast(GConst.Msg.Card, {
@@ -355,7 +351,7 @@ func _place_ci_fu(action: Dictionary, cause: int, tag: String) -> int:
 # 工具
 # ============================================================
 ## 判断目标面前是否已有同类赐福（返回 true 表示可放置）
-func _check_ci_fu_target(action: Dictionary, tag: String) -> bool:
+func _check_ci_fu_target(action: Dictionary, 技能号: int) -> bool:
 	var dsts: Array = action.get("dst_ids", [])
 	if dsts.is_empty():
 		return false
@@ -364,14 +360,14 @@ func _check_ci_fu_target(action: Dictionary, tag: String) -> bool:
 		return false
 	for be: Dictionary in dst.basic_effects:
 		var c: GCard = Data.get_card(int(be["card"]))
-		if c != null and c.has_speciality_name(tag):
+		if c != null and c.has_skill_id(技能号):
 			return false
 	return true
 
 
-func _find_effect_card(target: BattlePlayer, tag: String) -> int:
+func _find_effect_card(target: BattlePlayer, 技能号: int) -> int:
 	for be: Dictionary in target.basic_effects:
 		var c: GCard = Data.get_card(int(be["card"]))
-		if c != null and c.has_speciality_name(tag):
+		if c != null and c.has_skill_id(技能号):
 			return int(be["card"])
 	return -1

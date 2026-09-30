@@ -26,9 +26,6 @@ const LING_HUN_JING_XIANG: int = 2207        # 灵魂镜像
 const LING_HUN_LIAN_JIE: int = 2208          # 灵魂链接
 const LING_HUN_LIAN_JIE_REACT: int = 2209    # 灵魂链接·转移
 
-const TAG_ZHEN_BAO: String = "灵魂震爆"
-const TAG_CI_YU: String = "灵魂赐予"
-
 const TOKEN_HUANG: int = 0                   # 黄魂（tokens[0]）
 const TOKEN_LAN: int = 1                     # 蓝魂（tokens[1]）
 const TOKEN_MAX: int = 6
@@ -59,11 +56,11 @@ func available_skills() -> Array:
 			"card_max": 3})
 	# 灵魂震爆/灵魂赐予：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
 	# （v_magic_skill 校验同一张牌：须在手且带该特技）
-	var 震爆牌: Array[int] = hand_ids_with_speciality(TAG_ZHEN_BAO)
+	var 震爆牌: Array[int] = hand_ids_with_skill(LING_HUN_ZHEN_BAO)
 	if _huang() >= 3 and not 震爆牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHEN_BAO, "need_card": 1, "need_target": 1,
 			"cards": 震爆牌})
-	var 赐予牌: Array[int] = hand_ids_with_speciality(TAG_CI_YU)
+	var 赐予牌: Array[int] = hand_ids_with_skill(LING_HUN_CI_YU)
 	if _lan() >= 3 and not 赐予牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_CI_YU, "need_card": 1, "need_target": 1,
 			"cards": 赐予牌})
@@ -307,7 +304,7 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_ACTION
 			var cid: int = int(cards[0])
 			var card: GCard = Data.get_card(cid)
-			if not player.has_hand_card(cid) or card == null or not card.has_speciality_name(TAG_CI_YU) or _lan() < 3:
+			if not player.has_hand_card(cid) or card == null or not card.has_skill_id(LING_HUN_CI_YU) or _lan() < 3:
 				return GConst.GE_INVALID_ACTION
 		LING_HUN_ZHEN_BAO:
 			if cards.is_empty():
@@ -316,7 +313,7 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_ACTION
 			var cid2: int = int(cards[0])
 			var card2: GCard = Data.get_card(cid2)
-			if not player.has_hand_card(cid2) or card2 == null or not card2.has_speciality_name(TAG_ZHEN_BAO) or _huang() < 3:
+			if not player.has_hand_card(cid2) or card2 == null or not card2.has_skill_id(LING_HUN_ZHEN_BAO) or _huang() < 3:
 				return GConst.GE_INVALID_ACTION
 		LING_HUN_JING_XIANG:
 			if _huang() < 2:

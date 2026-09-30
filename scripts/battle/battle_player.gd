@@ -102,11 +102,11 @@ func check_basic_effect_name(card_name: int) -> bool:
 	return false
 
 
-## 是否拥有某个特技标签的基础效果
-func check_basic_effect_tag(tag: String) -> bool:
+## 是否拥有带某个技能的基础效果（技能号见 技能表，如【天使之墙】= 701）
+func check_basic_effect_skill(技能号: int) -> bool:
 	for e: Dictionary in basic_effects:
 		var c: GCard = Data.get_card(int(e["card"]))
-		if c != null and c.has_speciality_name(tag):
+		if c != null and c.has_skill_id(技能号):
 			return true
 	return false
 

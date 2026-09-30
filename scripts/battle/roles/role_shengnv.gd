@@ -10,9 +10,6 @@ const BING_SHUANG_DAO_YAN: int = 603
 const LIAN_MIN: int = 604
 const SHENG_LIAO: int = 605
 
-const TAG_ZHI_LIAO: String = "治疗术"
-const TAG_ZHI_YU: String = "治愈之光"
-
 var used_sheng_liao: bool = false
 
 
@@ -20,11 +17,11 @@ func available_skills() -> Array:
 	var out: Array = []
 	# 治疗术/治愈之光：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
 	# （v_magic_skill 校验同一张牌：须在手且带该特技）
-	var 治疗牌: Array[int] = hand_ids_with_speciality(TAG_ZHI_LIAO)
+	var 治疗牌: Array[int] = hand_ids_with_skill(ZHI_LIAO_SHU)
 	if not 治疗牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_LIAO_SHU, "need_card": 1, "need_target": 1,
 			"cards": 治疗牌})
-	var 治愈牌: Array[int] = hand_ids_with_speciality(TAG_ZHI_YU)
+	var 治愈牌: Array[int] = hand_ids_with_skill(ZHI_YU_ZHI_GUANG)
 	if not 治愈牌.is_empty():
 		# v_magic_skill：dsts 至少 1 名、至多 3 名（dsts.size() > 3 直接拒），故放开目标上限
 		out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_YU_ZHI_GUANG, "need_card": 1, "need_target": 1,
@@ -118,14 +115,14 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_CARDID
 			var cid: int = int(cards[0])
 			var card: GCard = Data.get_card(cid)
-			if not player.has_hand_card(cid) or card == null or not card.has_speciality_name(TAG_ZHI_LIAO):
+			if not player.has_hand_card(cid) or card == null or not card.has_skill_id(ZHI_LIAO_SHU):
 				return GConst.GE_INVALID_ACTION
 		ZHI_YU_ZHI_GUANG:
 			if cards.is_empty():
 				return GConst.GE_INVALID_CARDID
 			var cid2: int = int(cards[0])
 			var card2: GCard = Data.get_card(cid2)
-			if not player.has_hand_card(cid2) or card2 == null or not card2.has_speciality_name(TAG_ZHI_YU):
+			if not player.has_hand_card(cid2) or card2 == null or not card2.has_skill_id(ZHI_YU_ZHI_GUANG):
 				return GConst.GE_INVALID_ACTION
 			if dsts.is_empty() or dsts.size() > 3:
 				return GConst.GE_INVALID_ACTION

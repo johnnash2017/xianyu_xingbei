@@ -20,8 +20,6 @@ const TIAN_SHI_JI_BAN: int = 704
 const TIAN_SHI_ZHI_GE: int = 705
 const SHEN_ZHI_BI_HU: int = 706
 
-const TAG_TIAN_SHI_ZHI_QIANG: String = "天使之墙"
-
 
 func available_skills() -> Array:
 	var out: Array = []
@@ -34,11 +32,11 @@ func available_skills() -> Array:
 			"cards": 风系牌, "arg_choices": 洁净选项})
 	# 天使之墙：只有手中带【天使之墙】的牌可作发动牌（v_magic_skill 校验同一张牌）
 	# 目标已有【圣盾】或【天使之墙】基础效果时服务端拒收（v_magic_skill + v_shield）
-	var 墙牌: Array[int] = hand_ids_with_speciality(TAG_TIAN_SHI_ZHI_QIANG)
+	var 墙牌: Array[int] = hand_ids_with_skill(TIAN_SHI_ZHI_QIANG)
 	if not 墙牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHI_QIANG, "need_card": 1, "need_target": 1,
 			"cards": 墙牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return not p.check_basic_effect_name(GConst.CardName.Shield) and not _has_basic_tag(p, TAG_TIAN_SHI_ZHI_QIANG))})
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return not p.check_basic_effect_name(GConst.CardName.Shield) and not p.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG))})
 	# 天使祝福：只有水系手牌可作发动牌（v_magic_skill 校验同一条）
 	# 服务端允许 1~2 名目标（v_magic_skill：dsts.size() > 2 时拒收）
 	var 水系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water)
@@ -80,7 +78,7 @@ func v_shield(dst_id: int, players: Dictionary) -> int:
 	if base != GConst.GE_SUCCESS:
 		return base
 	var dst: BattlePlayer = players.get(dst_id)
-	if _has_basic_tag(dst, TAG_TIAN_SHI_ZHI_QIANG):
+	if dst.check_basic_effect_name(GConst.CardName.Shield) or dst.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG):
 		return GConst.GE_BASIC_EFFECT_ALREADY_EXISTS
 	return GConst.GE_SUCCESS
 
@@ -147,7 +145,7 @@ func p_basic_effect_change(ctx: Dictionary) -> int:
 	var card: GCard = Data.get_card(int(ctx.get("card", -1)))
 	if card == null:
 		return SUCCESS
-	if not card.has_speciality_name(TAG_TIAN_SHI_ZHI_QIANG) and card.card_name_enum() != GConst.CardName.Shield:
+	if not card.has_skill_id(TIAN_SHI_ZHI_QIANG) and card.card_name_enum() != GConst.CardName.Shield:
 		return SUCCESS
 	return _tian_shi_ji_ban()
 
@@ -183,12 +181,12 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_CARDID
 			var cid: int = int(cards[0])
 			var card: GCard = Data.get_card(cid)
-			if not player.has_hand_card(cid) or card == null or not card.has_speciality_name(TAG_TIAN_SHI_ZHI_QIANG):
+			if not player.has_hand_card(cid) or card == null or not card.has_skill_id(TIAN_SHI_ZHI_QIANG):
 				return GConst.GE_INVALID_ACTION
 			var dst: BattlePlayer = engine.p(int(dsts[0]))
 			if dst == null:
 				return GConst.GE_INVALID_PLAYERID
-			if dst.check_basic_effect_name(GConst.CardName.Shield) or _has_basic_tag(dst, TAG_TIAN_SHI_ZHI_QIANG):
+			if dst.check_basic_effect_name(GConst.CardName.Shield) or dst.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG):
 				return GConst.GE_INVALID_ACTION
 		FENG_ZHI_JIE_JING:
 			if cards.is_empty() or dsts.is_empty():
@@ -380,15 +378,6 @@ func _pick_cards(target: BattlePlayer, ids: Array, n: int) -> Array:
 		if not out.has(cid2):
 			out.append(cid2)
 	return out
-
-
-## 目标是否拥有带某特技的基础效果（天使之墙）
-func _has_basic_tag(target: BattlePlayer, tag: String) -> bool:
-	for e: Dictionary in target.basic_effects:
-		var c: GCard = Data.get_card(int(e["card"]))
-		if c != null and c.has_speciality_name(tag):
-			return true
-	return false
 
 
 ## 目标是否拥有指定的基础效果牌

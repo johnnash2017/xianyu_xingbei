@@ -15,12 +15,6 @@ const YUAN_SU_DIAN_RAN: int = 1106  # 元素点燃
 const YUE_GUANG: int = 1107         # 月光
 const YUAN_SU_XI_SHOU: int = 1108   # 元素吸收（被动）
 
-const TAG_FENG_REN: String = "风刃"
-const TAG_BING_DONG: String = "冰冻"
-const TAG_HUO_QIU: String = "火球"
-const TAG_YUN_SHI: String = "陨石"
-const TAG_LEI_JI: String = "雷击"
-
 const TOKEN_ELEMENT: int = 0        # 「元素」指示物下标
 const TOKEN_ELEMENT_MAX: int = 3
 
@@ -37,9 +31,9 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	# 陨石/风刃/火球/雷击/冰冻：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
-	# （v_magic_skill 用 _skill_tag 校验同一张牌：须在手且带该特技）
+	# （v_magic_skill 用技能号校验同一张牌：须在手且带该技能）
 	for sid: int in [YUN_SHI, FENG_REN, HUO_QIU, LEI_JI, BING_DONG]:
-		var 法术牌: Array[int] = hand_ids_with_speciality(_skill_tag(sid))
+		var 法术牌: Array[int] = hand_ids_with_skill(sid)
 		if not 法术牌.is_empty():
 			# 冰冻必须指定 2 名角色（v_magic_skill：dsts.size() < 2 拒绝），其余法术只需 1 名
 			var 目标下限: int = 2 if sid == BING_DONG else 1
@@ -50,17 +44,6 @@ func available_skills() -> Array:
 	if player.gem > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": YUE_GUANG, "need_card": 0, "need_target": 1})
 	return out
-
-
-## 技能号 → 对应牌上的特技标签
-func _skill_tag(aid: int) -> String:
-	match aid:
-		YUN_SHI: return TAG_YUN_SHI
-		FENG_REN: return TAG_FENG_REN
-		HUO_QIU: return TAG_HUO_QIU
-		LEI_JI: return TAG_LEI_JI
-		BING_DONG: return TAG_BING_DONG
-	return ""
 
 
 # ============================================================
@@ -113,7 +96,7 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_CARDID
 			var cid: int = int(cards[0])
 			var card: GCard = Data.get_card(cid)
-			if not player.has_hand_card(cid) or card == null or not card.has_speciality_name(_skill_tag(aid)):
+			if not player.has_hand_card(cid) or card == null or not card.has_skill_id(aid):
 				return GConst.GE_INVALID_ACTION
 			if cards.size() > 1:
 				var cid2: int = int(cards[1])
