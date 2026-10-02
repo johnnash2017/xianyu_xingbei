@@ -16,8 +16,6 @@ const LIAN_XU_JI: int = 103
 const SHENG_JIAN: int = 104
 const JIAN_YING: int = 105
 
-const 技能_天使之墙: int = 701
-
 var used_lian_xu_ji: bool = false
 var used_jian_ying: bool = false
 var using_lian_xu_ji: bool = false
@@ -65,7 +63,7 @@ func _lie_feng_ji(ctx: Dictionary) -> int:
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null:
 		return SUCCESS
-	if not dst.check_basic_effect_name(GConst.CardName.Shield) and not dst.check_basic_effect_skill(技能_天使之墙):
+	if not dst.check_basic_effect_name(GConst.CardName.Shield) and not dst.check_basic_effect_skill(GConst.技能_天使之墙):
 		return SUCCESS
 	if not engine.has_reply():
 		engine.ask_skill(player.id, LIE_FENG_JI, 0, 0)

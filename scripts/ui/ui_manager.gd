@@ -5,8 +5,6 @@ extends Node
 
 const SCENE_ENTER: String = "res://scenes/enter.tscn"
 const SCENE_LOBBY: String = "res://scenes/lobby.tscn"
-## 旧的桌面战斗界面：房间等待阶段已经改用 ReadyRoom，这个界面现在只被自检用例使用
-const SCENE_BATTLE: String = "res://scenes/battle.tscn"
 ## 房间准备室：进房后、开局前的界面（参照工程的 ReadyRoom 搬过来）
 const SCENE_READY_ROOM: String = "res://scenes/ReadyRoom.tscn"
 ## 对局进行中用参考工程搬来的那套：res://scenes/BattleUIMobile.tscn
@@ -18,10 +16,7 @@ var 界面层: Control = null
 
 
 func _ready() -> void:
-	# 默认字体不含中文字形，改用系统字体（宋体/Microsoft YaHei）
-	var f: SystemFont = SystemFont.new()
-	f.font_names = PackedStringArray(["Microsoft YaHei", "SimSun", "SimHei", "sans-serif"])
-	ThemeDB.fallback_font = f
+	# 字体统一用引擎默认字体（缺的中文字形由系统的字体回退补上）
 	# 设计基准 1920x1080：没单独指定字号的地方按 20 号（原 16 号是 1152x680 时的默认）
 	ThemeDB.fallback_font_size = 20
 
@@ -65,10 +60,6 @@ func goto(scene_path: String, 播放主界面音乐: bool = true) -> Node:
 
 func goto_lobby() -> Node:
 	return goto(SCENE_LOBBY)
-
-
-func goto_battle() -> Node:
-	return goto(SCENE_BATTLE)
 
 
 ## 房间准备室（进房后、开局前）

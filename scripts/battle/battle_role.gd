@@ -274,9 +274,11 @@ func cast_missile_fusion(action: Dictionary) -> int:
 	var cid: int = int(cards[0])
 	var dst_id: int = int(dsts[0])
 	notice_skill(MISSILE_FUSION_SKILL, [dst_id])
+	# 地/火牌这次是当【魔弹】打出去的：card_ids 仍放真正打出的牌（客户端要展示它），
+	# 另用 as_card_id 说明这次出牌在系统里视为【魔弹】——音效/特效与后续魔弹相关逻辑都按它走
 	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": dst_id,
-		"card_ids": [cid], "is_real": true,
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id,
+		"card_ids": [cid], "is_real": true, "as_card_id": engine.missile_as_card(cid),
 	})
 	engine.take_from_hand(player.id, [cid])
 	engine.to_discard([cid])

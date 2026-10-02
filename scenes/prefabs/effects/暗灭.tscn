@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://dhapumibove0t"]
 
 [ext_resource type="Script" uid="uid://cmelax4n6gqjx" path="res://scripts/effects/斩击2D.gd" id="1_wrap"]
-[ext_resource type="Texture2D" uid="uid://cwl6mdfa4r2v8" path="res://光点.png" id="2_gy0yi"]
+[ext_resource type="Texture2D" uid="uid://cwl6mdfa4r2v8" path="res://scenes/prefabs/effects/贴图/光点.png" id="2_gy0yi"]
 [ext_resource type="PackedScene" uid="uid://buvd1s2fre7li" path="res://scenes/prefabs/effects/斩击3D/暗灭.tscn" id="2_vfx"]
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_add"]

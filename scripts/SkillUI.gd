@@ -33,6 +33,9 @@ func 设置技能(id: int, 名: String) -> void:
 		skillName.text = 名
 	if selectBorder != null:
 		selectBorder.visible = false
+	# 悬浮说明直接取技能表的「按钮说明」列（对应原客户端 buttonDB.txt 的 setToolTip）；没有就退回技能名
+	var 说明: String = Data.button_info(id)
+	tooltip_text = 说明 if 说明 != "" else 名
 
 
 ## 是否处于「已选中」

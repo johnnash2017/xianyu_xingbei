@@ -6,7 +6,6 @@
 [ext_resource type="Texture2D" uid="uid://bylbt510762dk" path="res://assets/textures/battle/b02_chara_light_g.png" id="10_b02charalightgpng"]
 [ext_resource type="Texture2D" uid="uid://bsstg2lsg8wkx" path="res://assets/textures/battle/b02_selected.png" id="11_b02selectedpng"]
 [ext_resource type="Texture2D" uid="uid://bn4j2t812c7v2" path="res://assets/textures/hero/large/0L.png" id="12_0Lpng"]
-[ext_resource type="FontFile" uid="uid://cr6kjp0jbhifv" path="res://assets/fonts/FZDBSJW.ttf" id="13_FZDBSJWttf"]
 [ext_resource type="Texture2D" uid="uid://d4dm3vwkme0y1" path="res://assets/textures/battle/b01_status_0.png" id="14_b01status0png"]
 [ext_resource type="Texture2D" uid="uid://bv6rskm345axg" path="res://assets/textures/battle/1x1.png" id="15_1x1png"]
 [ext_resource type="Texture2D" uid="uid://dftdkji7lrsah" path="res://assets/textures/battle/b08_chatpoo3.png" id="16_b08chatpoo3png"]
@@ -169,7 +168,6 @@ grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(50, 50)
 theme_override_colors/font_color = Color(1, 0, 0, 1)
-theme_override_fonts/font = ExtResource("13_FZDBSJWttf")
 theme_override_font_sizes/font_size = 50
 text = "0"
 horizontal_alignment = 1

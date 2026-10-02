@@ -1,7 +1,7 @@
 extends Control
 ## 选角界面（弹层）
 ## 由 Logic 收到服务端 RoleReq 后实例化并叠在当前界面之上。
-## 版面照搬参照工程的 RoleChoose31：全屏压黑遮罩 + 屏幕正中的候选面板（大立绘卡，一行 3 张、多的换行）
+## 版面照搬参照工程的 RoleChoose31：全屏压黑遮罩 + 屏幕正中的候选面板（大立绘卡，一行 6 张、多的换行）
 ## + 面板上方的标题 + 面板下方的提示条（ui_notice 底图）。
 ## 点一下立绘即选定（参照工程就是这么做的，没有「确定」按钮）；选定后只留自己选中的那张卡。
 ## 遮罩/面板/标题/提示条等结构都在 role_pick.tscn 里（可所见即所得地改），
@@ -11,7 +11,7 @@ extends Control
 const ROLE_BTN_W: float = 260.0
 const ROLE_BTN_H: float = 363.0
 ## 一行摆几张、面板最多显示几行（多于这个行数就滚动）
-const 每行张数: int = 3
+const 每行张数: int = 6
 const 可见行数: int = 2
 ## 面板宽（一行 每行张数 张卡正好铺满）
 const 面板宽: float = ROLE_BTN_W * 每行张数
@@ -115,6 +115,7 @@ func _refresh() -> void:
 	for i: int in range(张数):
 		var btn: Button = _build_role_button(_role_ids[i])
 		卡片区.add_child(btn)
+		@warning_ignore("integer_division")
 		var 行: int = i / 每行张数
 		var 本行张数: int = mini(每行张数, 张数 - 行 * 每行张数)
 		btn.position = Vector2(
@@ -177,8 +178,9 @@ func _座次贴图名(队: int, 是我: bool) -> String:
 
 
 ## 一张角色卡：整张立绘（无边框、无名字，角色名与技能在 tooltip 上）
+## 按钮用 富文本提示按钮：技能说明带 BBCode 颜色，普通 Button 的提示框是纯文本、会把颜色代码露出来
 func _build_role_button(rid: int) -> Button:
-	var btn: Button = Button.new()
+	var btn: 富文本提示按钮 = 富文本提示按钮.new()
 	btn.custom_minimum_size = Vector2(ROLE_BTN_W, ROLE_BTN_H)
 	btn.size = Vector2(ROLE_BTN_W, ROLE_BTN_H)
 	btn.flat = true
@@ -186,11 +188,12 @@ func _build_role_button(rid: int) -> Button:
 	btn.pressed.connect(_on_role_pressed.bind(rid))
 	btn.disabled = not _interactive
 
-	var tip_text: String = "%d.%s" % [rid, Data.role_name(rid)]
+	var tip_text: String = Data.role_name(rid)
 	var info: String = Data.role_skill_info(rid)
 	if info != "":
 		tip_text += "\n" + info
-	btn.tooltip_text = tip_text
+	# 提示文本里含 BBCode 颜色，由 富文本提示按钮 的 _make_custom_tooltip 用 RichTextLabel 渲染
+	btn.tooltip_text = 英雄详情窗口.上色(tip_text)
 
 	var face_size: Vector2 = Vector2(ROLE_BTN_W, ROLE_BTN_H)
 	var face_tex: Texture2D = Art.role_hero(rid)
@@ -199,7 +202,7 @@ func _build_role_button(rid: int) -> Button:
 		face.texture = face_tex
 		face.size = face_size
 		face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		# 大立绘（260x363）正好铺满；参照工程没收录的角色用小立绘，按比例放大裁切填满
+		# 大立绘（260x363）正好铺满；按比例放大裁切填满
 		face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		# 还没轮到自己时把立绘压暗，表示点不动

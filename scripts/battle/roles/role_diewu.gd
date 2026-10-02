@@ -252,7 +252,8 @@ func _jing_hua_shui_yue(harm: Dictionary) -> int:
 	if int(harm.get("point", 0)) != 2 or player.cover_cards.size() < 2:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, JING_HUA_SHUI_YUE, 2, 0, GConst.CardSource.Cover)
+		# 恰好 2 张，且必须互异系：让客户端只让与已选牌异系的【茧】可点
+		engine.ask_skill(player.id, JING_HUA_SHUI_YUE, 2, 0, GConst.CardSource.Cover, [], 0, "diff")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])

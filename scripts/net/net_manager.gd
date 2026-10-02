@@ -24,7 +24,6 @@ func _ready() -> void:
 	client.message_received.connect(func(t: int, d: Dictionary) -> void: message_received.emit(t, d))
 	client.connected.connect(_on_connected)
 	client.disconnected.connect(func() -> void: disconnected.emit())
-	discovery.host_found.connect(_on_host_found)
 
 
 func _process(delta: float) -> void:
@@ -106,7 +105,7 @@ func send(msg_type: int, fields: Dictionary) -> bool:
 
 
 func is_connected_to_host() -> bool:
-	return client.is_connected
+	return client.link_up
 
 
 # ============================================================
@@ -116,7 +115,3 @@ func _on_connected() -> void:
 	# 连上后补发一次「登录」：去登录后它只用于上报昵称与进程身份，服务端据此登记身份
 	client.send(GConst.Msg.LoginReq, {"as_guest": true, "user_id": Cfg.nickname, "version": 161001, "client_id": Cfg.client_id})
 	connected.emit()
-
-
-func _on_host_found(address: String, port: int, room_count: int, host_name: String) -> void:
-	pass

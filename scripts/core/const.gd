@@ -114,32 +114,12 @@ enum GossipType {
 	Notice = 2,
 }
 
-# 轮询类型
-enum PollingType {
-	ForceWait = 1,
-	LegalLeave = 2,
-	Mvp = 3,
-}
-
 # 队伍/阵营
 const RED: int = 1
 const BLUE: int = 0
 const TEAM_NONE: int = -1
 # 观战者（房间满员时的 playerId）
 const GUEST: int = 9
-# 无目标玩家
-const PLAYER_NONE_ID: int = 100000
-
-# ============================================================
-# 牌区（DECK）
-# ============================================================
-enum Deck {
-	Pile = 1,
-	Discard = 2,
-	Hand = 4,
-	BasicEffect = 5,
-	Cover = 6,
-}
 
 # 伤害类型
 enum HarmType {
@@ -181,35 +161,16 @@ enum CardSource {
 # 错误码（GrailError）
 # ============================================================
 const GE_SUCCESS: int = 0
-const GE_TIMEOUT: int = 1
-const GE_URGENT: int = 2
 const GE_EMPTY_HANDLE: int = 3
-const GE_DECK_OVERFLOW: int = 4
 const GE_CARD_NOT_ENOUGH: int = 5
-const GE_USERID_NOT_FOUND: int = 6
 const GE_HANDCARD_NOT_FOUND: int = 7
-const GE_BASIC_EFFECT_NOT_FOUND: int = 8
 const GE_BASIC_EFFECT_ALREADY_EXISTS: int = 9
-const GE_EXCLUSIVE_EFFECT_NOT_FOUND: int = 10
-const GE_COVERCARD_NOT_FOUND: int = 11
-const GE_MOVECARD_FAILED: int = 12
-const GE_INCONSISTENT_STATE: int = 13
-const GE_FATAL_ERROR: int = 14
 const GE_INVALID_TABLEID: int = 15
 const GE_INVALID_PLAYERID: int = 16
 const GE_INVALID_CARDID: int = 17
-const GE_INVALID_ROLEID: int = 18
 const GE_INVALID_ACTION: int = 19
-const GE_INVALID_STEP: int = 20
-const GE_INVALID_EXCLUSIVE_EFFECT: int = 21
 const GE_INVALID_ARGUMENT: int = 22
-const GE_NO_STATE: int = 23
-const GE_NO_CONTEXT: int = 24
-const GE_NO_REPLY: int = 25
-const GE_INTERRUPTED: int = 26
-const GE_NOT_SUPPORTED: int = 27
 const GE_PLAYER_FULL: int = 28
-const GE_GUEST_FULL: int = 29
 const GE_DISCONNECTED: int = 30
 const GE_NOT_WELCOME: int = 31
 const GE_WRONG_PASSWORD: int = 32
@@ -218,24 +179,15 @@ const GE_VIP_ONLY: int = 33
 # ============================================================
 # 伤害/效果来源（CAUSE 常用子集）
 # ============================================================
-const CAUSE_DEFAULT: int = 0
 const CAUSE_OVERLOAD: int = 1
 const CAUSE_USE: int = 2
 const CAUSE_ATTACK: int = 3
 const CAUSE_POISON: int = 4
-const CAUSE_WEAKEN: int = 5
 const CAUSE_MISSILE: int = 6
-const CAUSE_BUY: int = 7
-const CAUSE_SYNTHESIZE: int = 8
 
 # ============================================================
-# 卡牌类型 / 元素 / 命格 / 卡名（CardEntity.h）
+# 卡牌元素 / 命格 / 卡名（CardEntity.h）
 # ============================================================
-enum CardType {
-	Attack = 1,
-	Magic = 2,
-}
-
 enum CardElement {
 	Wind = 1,
 	Water = 2,
@@ -287,7 +239,6 @@ enum Exclusive {
 # ============================================================
 const CARDSUM: int = 150          # 牌库总数
 const MAX_PLAYER: int = 8         # 最大玩家数
-const MAX_ROLES: int = 20
 const HAND_CARDS_MAX: int = 6     # 默认手牌上限
 const CROSS_MAX: int = 2          # 默认治疗上限
 const ENERGY_MAX: int = 3         # 默认个人能量上限
@@ -297,7 +248,6 @@ const MORALE_8P: int = 18         # 士气上限（8 人局）
 const GRAIL_WIN: int = 5          # 星杯获胜数
 const START_HAND: int = 4         # 开局每人手牌
 const EXCLUSIVE_NUM: int = 5
-const COVER_CARDS_MAX_DEFAULT: int = 0  # 盖牌上限由角色决定
 
 # 服务器默认端口（DiceServerConfig.xml）
 const DEFAULT_PORT: int = 11111
@@ -306,15 +256,27 @@ const DISCOVERY_PORT: int = 11112
 # 多开槽位占用端口基数（仅绑回环地址）
 const SLOT_PORT_BASE: int = 11130
 const MAX_SLOT: int = 8
-# 心跳
-const HEARTBEAT_INTERVAL: float = 5.0
+
+
+# ============================================================
+# 代码里要按号判断的跨角色技能（号 = 「技能表#N」的 N）
+# 集中一处，避免同一个号在多个脚本里各写一份
+# ============================================================
+const 技能_风之封印: int = 401
+const 技能_水之封印: int = 402
+const 技能_火之封印: int = 403
+const 技能_地之封印: int = 404
+const 技能_雷之封印: int = 405
+const 技能_天使之墙: int = 701
+const 技能_迅捷赐福: int = 1601
+const 技能_威力赐福: int = 1602
 
 
 # ============================================================
 # 技能名与分类（全部取自设计表「技能表」，技能号就是 技能表#N 的 N）
 # ============================================================
 static func skill_name(skill_id: int) -> String:
-	var row: Array = _技能行(skill_id)
+	var row: Array = 技能行(skill_id)
 	if row.is_empty():
 		return "技能%d" % skill_id
 	return str(row[_技能列("技能名")]).strip_edges()
@@ -322,7 +284,7 @@ static func skill_name(skill_id: int) -> String:
 
 ## 技能的分类标签（派系·类型，如「独有技·响应」）；技能表里查不到就返回空串
 static func skill_tag(skill_id: int) -> String:
-	var row: Array = _技能行(skill_id)
+	var row: Array = 技能行(skill_id)
 	if row.is_empty():
 		return ""
 	var 派系: String = str(row[_技能列("派系")]).strip_edges()
@@ -337,8 +299,28 @@ static func skill_tag(skill_id: int) -> String:
 	return "%s·%s" % [派系, 类型]
 
 
-static func _技能行(skill_id: int) -> Array:
-	return 数据表格.技能表.get("技能表#%d" % skill_id, [])
+## 技能表的 id 是名字型（如「技能#地之封印」）；脚本判断用的技能号另存在「脚本号」列，
+## 下面两个函数负责两边互查：技能 id → 技能号、技能号 → 技能行。
+static func 技能号(技能id: String) -> int:
+	var row: Array = 数据表格.技能表.get(技能id.strip_edges(), [])
+	if row.is_empty():
+		return 0
+	return int(row[_技能列("脚本号")])
+
+
+## 技能号 → 技能表那一行（首次访问时按「脚本号」列建索引）；查不到返回空数组
+static func 技能行(skill_id: int) -> Array:
+	if _技能号到行.is_empty():
+		for key: String in 数据表格.技能表.keys():
+			var row: Array = 数据表格.技能表[key]
+			var 号: int = int(row[_技能列("脚本号")])
+			if 号 != 0:
+				_技能号到行[号] = row
+	return _技能号到行.get(skill_id, [])
+
+
+## 技能号 → 技能行 的索引（懒建一次；技能表是启动时生成的静态数据，不会中途变）
+static var _技能号到行: Dictionary = {}
 
 
 static func _技能列(字段: String) -> int:

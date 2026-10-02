@@ -1,23 +1,25 @@
-﻿# 星杯传说 · 三窗口端到端联机测试
+# 星杯传说 · 端到端联机测试
 #
 # 作用：拉起 N 个客户端窗口跑一遍「登录 → 大厅 → 建房/进房 → 准备 → 开局 → 出牌」，
 #       汇总各窗口的结论与脚本报错。窗口由 res://tests/联机.tscn（tests/联机.gd）驱动，
 #       跑完自己退出；日志写在工程外的 _联调日志 下，每次运行前清空。
 #       多开时只有当前聚焦的那个窗口出声，失焦的窗口由 audio.gd 自动静音。
 #
+# 注意：窗口数要和建房时选中的人数一致（大厅默认 4 人），否则人数永远凑不齐、开不了局。
+#
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File tests\跑联机.ps1
 #   powershell -ExecutionPolicy Bypass -File tests\跑联机.ps1 -窗口数 2
 #
 # 参数：
-#   -窗口数      同时拉起的客户端数量（默认 3）
+#   -窗口数      同时拉起的客户端数量（默认 4，对应大厅默认的 4 人房）
 #   -端口        这批窗口共用的端口（默认 32717；被占用时会自动往后找空闲端口）
 #   -秒          等待秒数（默认 45）
 #   -EnginePath  Godot 可执行文件路径
 #   -ProjectPath Godot 工程目录（含 project.godot）
 
 param(
-    [int]$窗口数 = 3,
+    [int]$窗口数 = 4,
     [int]$端口 = 32717,
     [int]$秒 = 45,
     [string]$EnginePath = "D:\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe",

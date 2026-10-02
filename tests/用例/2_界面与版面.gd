@@ -1,12 +1,6 @@
 extends 自检用例
 ## 用例 2：主场景 / 界面切换 / 版面（设计基准 1920×1080）
 
-## 战斗界面里应当整块落在视口内的区域
-const 战斗区域: Array[String] = [
-	"_tip", "_players_root", "_hand_root", "_cover_box", "_decision_box",
-	"_action_box", "_waiting_box", "_log", "_chat_edit", "_chat_btn",
-]
-
 
 func _init() -> void:
 	名称 = "界面与版面"
@@ -34,26 +28,27 @@ func 跑() -> void:
 	await 等帧(2)
 	检(UI.current.name == "Lobby", "切大厅后当前界面是 %s" % str(UI.current.name))
 	检(_界面层名单().size() == 1, "进大厅后界面层：%s" % str(_界面层名单()))
-	var 战: Node = UI.goto_battle()
+	var 战: Node = UI.goto_battle_mobile()
 	await 等帧(2)
-	检(UI.current.name == "Battle", "切战斗后当前界面是 %s" % str(UI.current.name))
+	检(UI.current.name == "BattleUIMobile", "切战斗后当前界面是 %s" % str(UI.current.name))
 	检(_界面层名单().size() == 1, "进战斗后界面层：%s" % str(_界面层名单()))
 
-	# 战斗界面各区域都在视口内
-	for 名: String in 战斗区域:
-		var 区: Control = 战.get(名)
-		var r: Rect2 = 区.get_global_rect()
-		检(r.position.x >= -1.0 and r.position.y >= -1.0 and r.end.x <= 视口.x + 1.0 and r.end.y <= 视口.y + 1.0,
-			"战斗界面 %s 超出视口：%s（视口 %s）" % [名, str(r), str(视口)])
+	# 战斗界面根节点必须是带实体尺寸的 Control（它是 1280×720 设计、整体缩放适配，不与视口等大）
+	var 战根: Control = 战 as Control
+	检(战根 != null and 战根.size.x > 0.0 and 战根.size.y > 0.0,
+		"战斗界面根节点异常：%s" % str(战根))
 
-	# 大厅建房弹层：默认人数 4、房名光标在末尾
+	# 大厅建房弹层：人数沿用共享配置里上次开房记下的值（从没开过房时才是场景默认的 4 人）、房名光标在末尾
 	var 厅: Node = UI.goto_lobby()
 	await 等帧(2)
 	检(not (厅.get("创建层") as Control).visible, "建房弹层默认不该显示")
 	厅.call("_on_open_create_pressed")
 	await 等帧(2)
 	检((厅.get("创建层") as Control).visible, "点了「创建房间」弹层没显示")
-	检(int((厅.get("人数组") as ButtonGroup).get_pressed_button().get_meta("people")) == 4, "房间人数默认不是 4 人")
+	# 键名与 lobby.gd 的 共享键_人数 一致
+	var 记下的人数: int = int(Cfg.shared_get("room_max_player", 4))
+	检(int((厅.get("人数组") as ButtonGroup).get_pressed_button().get_meta("people")) == 记下的人数,
+		"房间人数不是上次开房记下的 %d 人" % 记下的人数)
 	var 房名框: LineEdit = 厅.get("房名输入")
 	检(房名框.caret_column == 房名框.text.length(),
 		"房名光标不在末尾（%d / %d）" % [房名框.caret_column, 房名框.text.length()])

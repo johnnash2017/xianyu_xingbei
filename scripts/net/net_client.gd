@@ -13,7 +13,7 @@ signal message_received(msg_type: int, data: Dictionary)
 const MAX_RECONNECT_ATTEMPTS: int = 3
 const RECONNECT_INTERVAL: float = 1.0
 
-var is_connected: bool = false
+var link_up: bool = false
 var auto_reconnect: bool = false
 var target_host: String = "127.0.0.1"
 var target_port: int = GConst.DEFAULT_PORT
@@ -57,7 +57,7 @@ func close() -> void:
 	if _tcp != null:
 		_tcp.disconnect_from_host()
 	_tcp = null
-	is_connected = false
+	link_up = false
 	_ever_connected = false
 	_decoder = Framing.FrameDecoder.new()
 
@@ -92,8 +92,8 @@ func poll(delta: float) -> void:
 ## 依据底层状态更新内部标志：连上只通知一次；断开则清连接并进入重连
 func _apply_status(st: int) -> void:
 	if st == StreamPeerTCP.STATUS_CONNECTED:
-		if not is_connected:
-			is_connected = true
+		if not link_up:
+			link_up = true
 			_ever_connected = true
 			reconnect_attempts = 0
 			connected.emit()
@@ -104,8 +104,8 @@ func _apply_status(st: int) -> void:
 
 
 func _on_lost() -> void:
-	var was_live: bool = is_connected or _ever_connected
-	is_connected = false
+	var was_live: bool = link_up or _ever_connected
+	link_up = false
 	_ever_connected = false
 	_tcp = null
 	_decoder = Framing.FrameDecoder.new()

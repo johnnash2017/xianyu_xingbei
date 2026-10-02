@@ -4,16 +4,8 @@ extends RefCounted
 ## 房主进程内运行；承载房间列表、建房/进房/退房、选边、准备，以及权威战斗引擎。
 ## 去登录：客户端连上后由服务端自动登记身份，客户端只用登录消息上报昵称。
 
-const ROLE_POOL_BASE: Array = [
-	1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-	18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-]
-
-## 全部已实现角色（Any 策略用，对照服务端 GameGrailCommon.h 的 SUMMON）
-const ROLE_POOL_ANY: Array = [
-	1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-	20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 108,
-]
+## 选角 / 随机分配的角色池 = 角色表「启用」列打开的那些（Data.role_pool）。
+## 启用或停用一个角色：改角色表那一行的「启用」（1 开 / 0 关），再导出一次 TableScripts/DataTables.gd。
 
 ## 候选制选将每人发几个候选：三选一发 3 个、六选一发 6 个，都只从中选 1 个
 const 三选一候选数: int = 3
@@ -313,7 +305,7 @@ func ready_for_game(conn_id: int, type: int) -> void:
 	if int(room["role_strategy"]) == GConst.RoleStrategy.Random:
 		# Random 策略保持原样：不发询问、直接随机分配（自动测试依赖这条零交互路径）
 		room["started"] = true
-		battle.start(ROLE_POOL_BASE.duplicate())
+		battle.start(Data.role_pool.duplicate())
 		rooms_changed.emit()
 		return
 	# 选将前先把队伍配平：没提前选边的人在这里定下蓝/红（对照参照工程开局前先 balance_colors），
@@ -327,7 +319,6 @@ func _talk(conn_id: int, txt: String) -> void:
 	if txt.strip_edges() == "":
 		return
 	var room: Dictionary = _room_of(conn_id)
-	var nick: String = str(_sessions.get(conn_id, {}).get("nickname", ""))
 	if room.is_empty():
 		return
 	_broadcast_raw(room, GConst.Msg.Gossip, {"type": GConst.GossipType.Talk, "txt": txt, "id": int(_sessions[conn_id]["player_id"])})
@@ -337,16 +328,15 @@ func _talk(conn_id: int, txt: String) -> void:
 # 选将阶段（对照服务端 DiceGameServer/GrailState.cpp）
 # ============================================================
 ## 开局前入口：按房间策略进入选将流程。选将状态保存在 room["pick"]，由 poll() 推进超时。
+## 候选池统一是角色表「启用」列打开的角色（Data.role_pool）；Random 不走这里，它在 ready_for_game 直接随机分配。
+## 三选一抽 3 个候选、六选一抽 6 个（服务端 StateRoleStrategy31）；任选（Any/All）候选数 0 = 整池下发。
 func _begin_role_pick(room: Dictionary) -> void:
-	match int(room["role_strategy"]):
-		GConst.RoleStrategy.Any, GConst.RoleStrategy.All:
-			# Any 与大厅用的 All：候选人 = 全部已实现角色（服务端 StateRoleStrategyAny 直接下发 SUMMON 全表）
-			_begin_pick_candidates(room, ROLE_POOL_ANY, 0)
-		GConst.RoleStrategy.Strategy61:
-			_begin_pick_candidates(room, ROLE_POOL_BASE, 六选一候选数)
-		_:
-			# 31（三选一）。Random 不走这里：它在 ready_for_game 里直接随机分配
-			_begin_pick_candidates(room, ROLE_POOL_BASE, 三选一候选数)
+	var 候选数: int = 三选一候选数
+	if int(room["role_strategy"]) == GConst.RoleStrategy.Strategy61:
+		候选数 = 六选一候选数
+	elif _任选模式(room):
+		候选数 = 0
+	_begin_pick_candidates(room, Data.role_pool, 候选数)
 
 
 ## 收客户端的 PickBan（选角结果）
@@ -385,7 +375,7 @@ func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> vo
 	for pid: int in battle.order:
 		_engine_send(int(room["id"]), pid, GConst.Msg.RoleReq, {
 			"id": pid,
-			"strategy": GConst.RoleStrategy.Strategy31,
+			"strategy": int(room["role_strategy"]),
 			"role_ids": 候选表[pid],
 			# 选角倒计时：客户端据此画进度条（本地扩展字段，见 proto_schema 的 RoleReq）
 			"wait_ms": PICK_TIMEOUT_MS,
@@ -429,24 +419,33 @@ func _pick_candidates_done(room: Dictionary) -> bool:
 
 ## 收尾 31/Any：超时或掉线者取候选第 1 个（服务端 messages[i]->role_ids(0)，GrailState.cpp:362）；
 ## 若该角色已被先提交者占用（Any 可能出现），改为该玩家候选里第一个未被占用的角色，保证全局不重复。
+## 例外：任选（Any/All）允许全场重复选同一个角色 —— 它的候选本来就是全部启用角色，
+## 再强行去重会把「大家都想玩同一个角色」改成随机补位，反而不符合任选的本意。
 func _finish_pick_candidates(room: Dictionary) -> void:
 	var pick: Dictionary = room["pick"]
 	var battle: BattleEngine = room["battle"]
 	if battle.order.size() < 2:
 		room.erase("pick")
 		return
-	var 候选表: Dictionary = pick["candidates"]
-	var 已选: Dictionary = pick["picked"]
-	var 全池: Array = pick["pool"]
+	var 角色表: Dictionary = _分配角色(
+		battle.order, pick["candidates"], pick["picked"], pick["pool"], _任选模式(room))
+	room.erase("pick")
+	_start_battle(room, 角色表)
+
+
+## 把各玩家的提交落成最终角色分配（顺序: 座位序；已选: pid -> 提交的角色号）。
+## 候选制（31/61）保证全局不重复：撞车或没提交的人，取自己候选里第一个还没被占的角色，
+## 候选全被占就从整池补一个。任选（Any/All）允许重复，提交什么就是什么。
+func _分配角色(顺序: Array, 候选表: Dictionary, 已选: Dictionary, 全池: Array, 允许重复: bool) -> Dictionary:
 	var 已用: Array = []
 	var 角色表: Dictionary = {}
-	for pid: int in battle.order:
+	for pid: int in 顺序:
 		var 选定: int = int(已选.get(pid, 0))
-		if 选定 <= 0 or 已用.has(选定):
+		if 选定 <= 0 or (not 允许重复 and 已用.has(选定)):
 			var 该候选: Array = 候选表.get(pid, [])
 			选定 = 0
 			for c: Variant in 该候选:
-				if not 已用.has(int(c)):
+				if 允许重复 or not 已用.has(int(c)):
 					选定 = int(c)
 					break
 		if 选定 <= 0:
@@ -459,8 +458,13 @@ func _finish_pick_candidates(room: Dictionary) -> void:
 			continue
 		已用.append(选定)
 		角色表[pid] = 选定
-	room.erase("pick")
-	_start_battle(room, 角色表)
+	return 角色表
+
+
+## 是否「任选」策略：候选是整张角色表，允许多人选同一个角色
+func _任选模式(room: Dictionary) -> bool:
+	var 策略: int = int(room.get("role_strategy", 0))
+	return 策略 == GConst.RoleStrategy.Any or 策略 == GConst.RoleStrategy.All
 
 
 ## 选将超时（poll 中调用）：到点全体收尾（没提交的取候选第 1 个）

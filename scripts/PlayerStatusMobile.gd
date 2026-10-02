@@ -17,16 +17,8 @@ signal 基础效果牌点击(玩家id: int, 牌id: int)
 ## 原来这里有一份 `const Msg := preload(...)`，与全局类重名会被 Godot 报
 ## SHADOWED_GLOBAL_IDENTIFIER，删掉后 Msg.T.Xxx 的写法照常可用。
 
-## 面板图标要区分的技能号（就是「技能表#N」的 N，卡表「技能1/技能2」引用的也是这些号）
-## 对照：天使之墙=701、迅捷赐福=1601、威力赐福=1602、五系封印=401~405（风/水/火/地/雷）
-const 技能_天使之墙: int = 701
-const 技能_迅捷赐福: int = 1601
-const 技能_威力赐福: int = 1602
-const 技能_风之封印: int = 401
-const 技能_水之封印: int = 402
-const 技能_火之封印: int = 403
-const 技能_地之封印: int = 404
-const 技能_雷之封印: int = 405
+## 面板图标要区分的技能号统一放在 GConst（技能_天使之墙 / 技能_迅捷赐福 / 技能_威力赐福 /
+## 技能_风之封印 ~ 技能_雷之封印），这里不再各写一份
 
 ## 对应 C# [SerializeField] private Image redTeam;  （场景里 TeamBG/Red、TeamBG_2/Red_2 …）
 @onready var redTeam: TextureRect = _find_variant("Red") as TextureRect
@@ -181,9 +173,6 @@ var WaitProgress: float = -1.0:
 
 ## 预制体缓存（替代 AssetBundleManager.LoadAsset("battle", "Xxx")）
 const PREFAB_DIR := "res://scenes/prefabs/battlemobile/"
-## 派系图标目录：对应 C# LoadAsset<Sprite>("battle_texture", RoleProperty)。
-## 不走 AssetIndex —— assets/textures/skill 下另有一套同名图，按基名索引会撞车。
-const 派系图目录: String = "res://assets/textures/battle/"
 static var _prefab_cache: Dictionary = {}
 
 ## 对应 C# private bool isShowCovered 等效的「上一次的显示状态」——本类只维护自己的状态
@@ -377,8 +366,7 @@ func set_RoleID(value: int) -> void:
 ## 也看不到背景板」）。头像直接换 HeroIcon 的贴图就够了，不需要隐藏任何东西。
 	# 派系（技 / 血 / 幻 / 咏 / 圣）图标贴到名牌左侧的 HeroProperty 上
 	# （对照参考工程 PlayerStatusMobile 里 role.get_role_property() 那段）
-	var 派系路径: String = 派系图目录 + Data.role_property(value) + ".png"
-	var 派系图: Texture2D = load(派系路径) if ResourceLoader.exists(派系路径) else null
+	var 派系图: Texture2D = Art.role_property_icon(Data.role_property(value))
 	if propertyImage != null:
 		propertyImage.texture = 派系图
 		propertyImage.visible = 派系图 != null
@@ -487,7 +475,7 @@ func _刷新状态图标() -> void:
 	if ps == null:
 		return
 	for item: Variant in _状态基础牌:
-		var card := Card.get_card(int(item))
+		var card: GCard = Data.get_card(int(item))
 		if card == null:
 			continue
 		var sprite_name := _basic_card_sprite(card)
@@ -533,7 +521,7 @@ func set_基础牌可点(value: bool) -> void:
 
 ## 对应 C# BasicAndExCards setter 里的一长串 if/else 贴图名映射
 ## 卡名用 CardName 枚举判断；技能用技能号判断（号来自卡表「技能1/技能2」的引用）
-func _basic_card_sprite(card: Card) -> String:
+func _basic_card_sprite(card: GCard) -> String:
 	match card.card_name_enum():
 		GConst.CardName.Poison:
 			return "du"
@@ -551,21 +539,21 @@ func _basic_card_sprite(card: Card) -> String:
 			return "tongsheng"
 		GConst.CardName.YongHengYueZhang:
 			return "yuezhang"
-	if card.has_skill_id(技能_天使之墙):
+	if card.has_skill_id(GConst.技能_天使之墙):
 		return "dun"
-	if card.has_skill_id(技能_威力赐福):
+	if card.has_skill_id(GConst.技能_威力赐福):
 		return "wei"
-	if card.has_skill_id(技能_迅捷赐福):
+	if card.has_skill_id(GConst.技能_迅捷赐福):
 		return "xun"
-	if card.has_skill_id(技能_地之封印):
+	if card.has_skill_id(GConst.技能_地之封印):
 		return "difeng"
-	if card.has_skill_id(技能_火之封印):
+	if card.has_skill_id(GConst.技能_火之封印):
 		return "huofeng"
-	if card.has_skill_id(技能_水之封印):
+	if card.has_skill_id(GConst.技能_水之封印):
 		return "shuifeng"
-	if card.has_skill_id(技能_风之封印):
+	if card.has_skill_id(GConst.技能_风之封印):
 		return "fengfeng"
-	if card.has_skill_id(技能_雷之封印):
+	if card.has_skill_id(GConst.技能_雷之封印):
 		return "leifeng"
 	return ""
 
@@ -745,11 +733,11 @@ func _rec_updata_card(cards: Array) -> void:
 	for card_id in cards:
 		var go := ps.instantiate()
 		recHandArea.add_child(go)
-		var card = Card.get_card(int(card_id))
-		# CardUI 里的 CardData 是**属性**、不是方法：has_method("set_CardData") 恒为 false，
-		# 原来这一行永远跳过 → 别人亮出的手牌连数据都没设上，是空白牌（battle_audit B-7）。
-		# 与 BattleUIMobile.showCard 的写法一致，直接 set 属性。
-		go.set("CardData", card)
+		var card: GCard = Data.get_card(int(card_id))
+		# CardUI 对外只有「设置卡牌(new_card, 可用)」这一个入口，用 call 调它。
+		# （原来写的是 go.set("CardData", card)：CardUI 没有这个属性，set 静默失效，
+		# 别人亮出的手牌连数据都没设上，是空白牌。）
+		go.call("设置卡牌", card, false)
 		cardUIs.append(go)
 
 ## 对应 C# public void TurnBegin()
@@ -784,8 +772,9 @@ func Hurted() -> void:
 ## 能量区 / 状态图标区自己算坐标（这两个区域在场景里是 Control）：
 ## 原版 Unity 的 GridLayoutGroup 是「第一枚贴底、后加的往上长」，而 Godot 的 GridContainer 只认
 ## 「左上角起、一行行往下排」，行不满时还排不出原版的形状，所以这里直接按格子摆。
-## 列数 = 排几列；每列格数 <= 0 表示一列到底；图标比格子小时在格子里居中（20×20 的图标落在 30×30 格里）。
-func _摆图标(容器: Control, 列数: int, 每列格数: int) -> void:
+## 每列格数 <= 0 表示一列到底；图标比格子小时在格子里居中（20×20 的图标落在 30×30 格里）。
+## （列数 只保留原版 C# 的签名，实际排几列由 每列格数 决定。）
+func _摆图标(容器: Control, _列数: int, 每列格数: int) -> void:
 	if 容器 == null:
 		return
 	var 可见: Array[Control] = []
@@ -799,6 +788,7 @@ func _摆图标(容器: Control, 列数: int, 每列格数: int) -> void:
 	# 容器底边钉住不动，顶边按内容高度往上退 —— 于是后加的图标是「往上长」而不是往下
 	容器.offset_top = 容器.offset_bottom - float(高格数) * 图标格.y
 	for i: int in range(可见.size()):
+		@warning_ignore("integer_division")
 		var 列号: int = i / 一列
 		var 行号: int = i % 一列
 		var 格位: Vector2 = Vector2(float(列号) * 图标格.x, float(高格数 - 1 - 行号) * 图标格.y)

@@ -216,7 +216,9 @@ func 跑() -> void:
 	var 详情窗: Control = 窗.get("英雄详情窗") as Control
 	检(详情窗 != null and 详情窗.visible, "点玩家头像没有弹出角色技能说明")
 	if 详情窗 != null:
-		检(str((详情窗.get("HeroName") as Label).text) != "" and str((详情窗.get("SkillText") as Label).text).length() > 10,
+		var 技能文本: RichTextLabel = 详情窗.get("SkillText") as RichTextLabel
+		检(技能文本 != null and 技能文本.bbcode_enabled, "技能说明窗的文本控件没开 BBCode，类型颜色显示不出来")
+		检(str((详情窗.get("HeroName") as Label).text) != "" and str(技能文本.text).length() > 10,
 			"技能说明窗里没有角色名或技能文本")
 		(详情窗.get("BtnClose") as Button).pressed.emit()
 		await 等帧(2)

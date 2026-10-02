@@ -14,7 +14,6 @@ signal hit_received(src_id: int, dst_id: int, hit: int)
 signal card_shown(msg: Dictionary)
 signal hurt_received(msg: Dictionary)
 signal skill_received(msg: Dictionary)
-signal game_over(winner: int)
 signal role_pick_required(data: Dictionary)
 signal role_pick_submitted(strategy: int, role_ids: Array)
 

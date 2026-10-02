@@ -256,6 +256,7 @@ text = "选角"
 vertical_alignment = 1
 
 [node name="选角_随机" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
+custom_minimum_size = Vector2(110, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 toggle_mode = true
@@ -265,6 +266,7 @@ metadata/strategy = 1
 text = "随机"
 
 [node name="选角_三选一" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
+custom_minimum_size = Vector2(110, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 toggle_mode = true
@@ -273,12 +275,22 @@ metadata/strategy = 2
 text = "三选一"
 
 [node name="选角_六选一" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
+custom_minimum_size = Vector2(110, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 toggle_mode = true
 button_group = SubResource("ButtonGroup_strategy")
 metadata/strategy = 6
 text = "六选一"
+
+[node name="选角_任选" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_group = SubResource("ButtonGroup_strategy")
+metadata/strategy = 5
+text = "任选"
 
 [node name="按钮行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容" unique_id=1846027509]
 layout_mode = 2

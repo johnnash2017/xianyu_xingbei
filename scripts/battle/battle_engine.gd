@@ -13,8 +13,7 @@ const CONTINUE: int = 0
 const WAIT: int = 1
 const SUSPEND: int = 2
 
-## 引擎里要单独处理的技能号（就是「技能表#N」的 N）
-const 技能_天使之墙: int = 701
+## 引擎里要单独处理的技能号见 GConst.技能_天使之墙
 
 enum Phase { Idle, Playing, Over }
 
@@ -139,9 +138,9 @@ func balance_colors() -> void:
 
 func _rebuild_links() -> void:
 	for i: int in range(order.size()):
-		var p: BattlePlayer = players[order[i]]
-		p.pre_id = order[(i - 1 + order.size()) % order.size()]
-		p.post_id = order[(i + 1) % order.size()]
+		var 玩家: BattlePlayer = players[order[i]]
+		玩家.pre_id = order[(i - 1 + order.size()) % order.size()]
+		玩家.post_id = order[(i + 1) % order.size()]
 	if not order.is_empty():
 		first_id = order[0]
 
@@ -171,11 +170,11 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 	team_crystal = [0, 0]
 	team_grail = [0, 0]
 	for pid: int in order:
-		var p: BattlePlayer = players[pid]
-		p.hand_cards.clear()
-		p.cover_cards.clear()
-		p.basic_effects.clear()
-		p.ready = true
+		var 玩家: BattlePlayer = players[pid]
+		玩家.hand_cards.clear()
+		玩家.cover_cards.clear()
+		玩家.basic_effects.clear()
+		玩家.ready = true
 	if role_map.is_empty():
 		_assign_roles(role_pool)
 	else:
@@ -505,6 +504,8 @@ func ask_action(pid: int, action_type: int) -> void:
 				# arg_choices 非空时，客户端把每项渲染成一个按钮，点哪个就用当前已选的牌/目标提交该项 args
 				# （如【冒险者天堂】选要用哪些星石）
 				"arg_choices": sk.get("arg_choices", []),
+				# card_rule 非空时客户端按系别限制可点牌（same＝必须同系 / diff＝必须互异系）
+				"card_rule": str(sk.get("card_rule", "")),
 				# args = [技能号, 最少选牌, 最少选目标, 最多选目标, 选牌来源]
 				"args": [int(sk.get("id", 0)), int(sk.get("need_card", 0)), int(sk.get("need_target", 0)),
 					int(sk.get("target_max", 0)), int(sk.get("card_source", GConst.CardSource.Hand))],
@@ -534,7 +535,10 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## options 非空时客户端改为渲染「选项按钮」，点击即以该项的 value 作为回复的 args[0]
 ## 编码约定（客户端解析）：args = [need_card, need_target, card_source, 选项数, 选项值…]，
 ## 选项文案放在同一条命令的 notes 里，与选项值一一对应
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = []) -> void:
+## card_max 给点选上限（省略或 0＝刚好 need_card 张，如【法术反弹】可弃 1~N 张同系牌）
+## card_rule 给选牌系别规则（""＝不限 / "same"＝必须同系 / "diff"＝必须互异系）
+## cards 给合法牌白名单（非空时客户端只让这几张牌可点，如【魔能反转】只能弃法术牌）
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = []) -> void:
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
 	for o: Dictionary in options:
@@ -544,8 +548,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		"respond_id": skill_id,
 		"src_id": pid,
 		"dst_ids": [],
-		"card_ids": [],
+		"card_ids": cards,
 		"args": args,
+		"card_max": maxi(need_card, card_max),
+		"card_rule": card_rule,
 	}
 	if not notes.is_empty():
 		cmd["notes"] = notes
@@ -1059,8 +1065,8 @@ class SAttackedAsk:
 				var shield_card: int = -1
 				if dst.check_basic_effect_name(GConst.CardName.Shield):
 					shield_card = e._find_basic_card(dst, GConst.CardName.Shield)
-				elif dst.check_basic_effect_skill(技能_天使之墙):
-					shield_card = e._find_basic_card_by_skill(dst, 技能_天使之墙)
+				elif dst.check_basic_effect_skill(GConst.技能_天使之墙):
+					shield_card = e._find_basic_card_by_skill(dst, GConst.技能_天使之墙)
 				if shield_card >= 0:
 					dst.remove_basic_effect(shield_card)
 					e.to_discard([shield_card])
@@ -1123,7 +1129,6 @@ class SMissileAsk:
 				# （方向是出弹时定下的：顺时针打出＝顺向，被魔导用【魔弹掌握】逆向打出＝逆向，传递者不改方向）
 				e.take_from_hand(holder, [cid])
 				e.to_discard([cid])
-				e.broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": holder, "dst_id": holder, "card_ids": [cid], "is_real": true})
 				var 顺: int = e._next_missile_target(holder, post_dir, used)
 				var nxt: int = 顺
 				var nxt_dir: bool = post_dir
@@ -1135,6 +1140,14 @@ class SMissileAsk:
 						if 逆 >= 0 and int(回复选[0]) == 逆:
 							nxt = 逆
 							nxt_dir = not post_dir
+				# 打出的是【魔弹】继续传递：dst_id 必须给下一个落点，客户端才知道魔弹要从自己飞向谁；
+				# 没人能再接（nxt < 0）就仍写自己，动画落在自己身上。
+				# 魔导/特殊魔导也可以拿地系、火系牌传递：这次出牌同样视为【魔弹】
+				e.broadcast(GConst.Msg.Card, {
+					"type": GConst.CardMsgType.Use, "src_id": holder,
+					"dst_id": nxt if nxt >= 0 else holder,
+					"card_ids": [cid], "is_real": true, "as_card_id": e.missile_as_card(cid),
+				})
 				if nxt >= 0:
 					used.append(nxt)
 					e.push(SMissileAsk.new(nxt, holder, point + 1, nxt_dir, used))
@@ -1591,13 +1604,24 @@ func _missile_block_by_basic(target_id: int) -> bool:
 	var cid: int = -1
 	if dst.check_basic_effect_name(GConst.CardName.Shield):
 		cid = _find_basic_card(dst, GConst.CardName.Shield)
-	elif dst.check_basic_effect_skill(技能_天使之墙):
-		cid = _find_basic_card_by_skill(dst, 技能_天使之墙)
+	elif dst.check_basic_effect_skill(GConst.技能_天使之墙):
+		cid = _find_basic_card_by_skill(dst, GConst.技能_天使之墙)
 	if cid < 0:
 		return false
 	remove_basic_effect(target_id, cid, GConst.CAUSE_MISSILE)
 	to_discard([cid])
 	return true
+
+
+## 这次打出的牌在系统里该「视为」哪张牌用，返回视为的牌号；牌本身就是它时返回 0。
+## 目前只有【魔弹】有这种用法：地/火牌当【魔弹】打出去（【魔弹融合】发起、响应魔弹时拿地/火牌
+## 继续传递）→ 返回【魔弹】牌号。出牌音效/特效、以及后续任何「这次是不是魔弹」的判断都按它走；
+## 真正打出的那张地/火牌仍写在 card_ids 里（要展示、也确实进了弃牌堆）。
+func missile_as_card(card_id: int) -> int:
+	var 牌: GCard = Data.get_card(card_id)
+	if 牌 != null and 牌.card_name_enum() == GConst.CardName.Missile:
+		return 0
+	return Data.card_id_by_name_enum(GConst.CardName.Missile)
 
 
 func _do_special(cur: BattlePlayer, data: Dictionary) -> int:

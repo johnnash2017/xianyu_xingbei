@@ -2,7 +2,7 @@ extends Node
 ## 音频（autoload 名：Audio）
 ## 只搬参考项目（D:\星杯传说工程\星杯传说）的音乐与战斗音效 —— 资源/音频 下的 ogg：
 ##   * 主界面音乐 lobby、战斗音乐 battle1~6（随机且不与上一首重复）、胜负 win/lose
-##   * 出牌 atk-<系别> / spell-<卡名>、命中与受伤 sys-hit / sys-hurt（听感与文件名相反，见 battle.gd）、
+##   * 出牌 atk-<系别> / spell-<卡名>、命中 sys-hit（攻击 / 魔弹命中）、受伤 sys-hurt（法术 / 技能伤害）、
 ##     治疗 sys-heal、士气 sys-morale、宝石水晶 sys-energy、选将 sys-turn
 ##   * 角色语音 <角色id>（1~36、108）：轮到该角色回合时播他自己的那条
 ## 对照脚本：参考项目 scripts/game/AudioManager.gd

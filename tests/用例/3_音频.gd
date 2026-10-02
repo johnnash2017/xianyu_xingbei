@@ -40,7 +40,7 @@ func 跑() -> void:
 	UI.goto_lobby()
 	await 等帧(2)
 	检(_当前曲() == "lobby.ogg", "大厅音乐不是 lobby：%s" % _当前曲())
-	UI.goto_battle()
+	UI.goto_ready_room()
 	await 等帧(2)
 	检(_当前曲() == "lobby.ogg", "进房间（还没开打）就换音乐了：%s" % _当前曲())
 

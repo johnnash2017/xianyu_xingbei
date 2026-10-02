@@ -1,9 +1,7 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://bhua7wjov5nub"]
 
-[ext_resource type="Script" path="res://scripts/ui/choose_args_ui.gd" id="1_ChooseArgsUIgd"]
+[ext_resource type="Script" uid="uid://cgvjj0q50oa5e" path="res://scripts/ui/choose_args_ui.gd" id="1_ChooseArgsUIgd"]
 [ext_resource type="Texture2D" uid="uid://6cawbt7k51tn" path="res://assets/textures/battle/b05_sys_cancel.png" id="123_b05syscancelpng"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 24.0
@@ -21,7 +19,9 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
-[node name="ChooseArgsUI" type="Control" node_paths=PackedStringArray("Title", "OptionsBox", "BtnBack")]
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
+
+[node name="ChooseArgsUI" type="Control" unique_id=715030097 node_paths=PackedStringArray("Title", "OptionsBox", "BtnBack")]
 visible = false
 layout_mode = 3
 anchors_preset = 15
@@ -74,10 +74,10 @@ custom_minimum_size = Vector2(256, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 focus_mode = 0
-icon = ExtResource("123_b05syscancelpng")
 theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("123_b05syscancelpng")
 expand_icon = true

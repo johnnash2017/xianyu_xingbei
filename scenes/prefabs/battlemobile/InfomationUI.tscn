@@ -123,11 +123,12 @@ grow_vertical = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 
-[node name="SkillText" type="Label" parent="Root/SkillView" unique_id=413411837]
+[node name="SkillText" type="RichTextLabel" parent="Root/SkillView" unique_id=413411837]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 20
-vertical_alignment = 0
+theme_override_font_sizes/normal_font_size = 20
+bbcode_enabled = true
+fit_content = true
 autowrap_mode = 3
 
 [node name="BtnClose" type="Button" parent="Root" unique_id=1396743606]

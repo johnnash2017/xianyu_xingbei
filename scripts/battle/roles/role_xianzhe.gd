@@ -22,12 +22,14 @@ func available_skills() -> Array:
 	var out: Array = []
 	if player.gem > 0:
 		if _max_different_elements() >= 2:
-			out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAO_FA_DIAN, "need_card": 2, "need_target": 1})
+			# 弃 X 张互异系牌（X≥2）：上限放到手牌数，并让客户端只让「与已选牌异系」的牌可点
+			out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAO_FA_DIAN, "need_card": 2, "need_target": 1,
+				"card_max": player.hand_count(), "card_rule": "diff"})
 		if _max_different_elements() >= 3:
 			# 圣洁法典要弃 X 张两两异系的牌（v_magic_skill：cards.size() >= 3 且全异系）：
-			# 最少 3 张，最多只能选到手牌里不同元素的种数，界面据此放开点选上限
+			# 最少 3 张，最多只能选到手牌里不同元素的种数，界面据此放开点选上限并限制选异系牌
 			out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_JIE_FA_DIAN, "need_card": 3, "need_target": 1,
-				"card_max": _max_different_elements()})
+				"card_max": _max_different_elements(), "card_rule": "diff"})
 	return out
 
 
@@ -73,7 +75,8 @@ func _fa_shu_fan_tan() -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, FA_SHU_FAN_TAN, 1, 1)
+		# 弃 X 张同系牌（X 可大于 1）：上限放到手牌数，并让客户端只让同系牌可点
+		engine.ask_skill(player.id, FA_SHU_FAN_TAN, 1, 1, GConst.CardSource.Hand, [], player.hand_count(), "same")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

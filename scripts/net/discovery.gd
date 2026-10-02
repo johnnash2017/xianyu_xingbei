@@ -167,7 +167,7 @@ func probe_local(port: int) -> void:
 	for a: String in addrs:
 		var tcp: StreamPeerTCP = StreamPeerTCP.new()
 		tcp.connect_to_host(a, port)
-		_tcp_probes.append({"tcp": tcp, "addr": a, "port": port, "age": 0.0, "done": false})
+		_tcp_probes.append({"tcp": tcp, "port": port, "age": 0.0, "done": false})
 
 
 func _tcp_probes_poll(delta: float) -> void:
@@ -183,7 +183,6 @@ func _tcp_probes_poll(delta: float) -> void:
 		var st: int = tcp.get_status()
 		if st == StreamPeerTCP.STATUS_CONNECTED:
 			tcp.disconnect_from_host()
-			var addr: String = str(pr["addr"])
 			# 地址归一化：网卡地址折算为回环地址，避免同一个房主被算成两个房间
 			var norm: String = "127.0.0.1"
 			var key: String = "%s:%d" % [norm, int(pr["port"])]

@@ -21,18 +21,33 @@ var local: ConfigFile = ConfigFile.new()
 var _slot_server: TCPServer = null
 ## 服务端口（房主监听端口，可被启动参数覆盖）
 var server_port: int = GConst.DEFAULT_PORT
+## 自动开局（启动参数 --auto）：启动后自动「进入游戏 → 房主建房 / 其余窗口进同一间房 → 准备」，
+## 给多开脚本用（按 F10 那种）；不带这个参数时一切照旧，全是手动点。
+var 自动开局: bool = false
 ## 本进程的稳定身份标识：断线重连时用它让服务端认出「还是同一个人」，从而回到原座位。
 ## 仅在本进程生命周期内稳定——重启客户端即视为新玩家，不会抢占旧座位。
 var client_id: String = ""
+## 本进程启动时刻（秒）：用来认出「同一批」多开出来的窗口
+var 启动时刻: float = 0.0
+## 是否处于多开状态：只有多开才做同批联动（关窗一起关、最小化一起切），单开不去影响别的窗口
+var 多开: bool = false
 
 
 func _ready() -> void:
 	client_id = "%d_%d" % [OS.get_process_id(), randi()]
+	启动时刻 = Time.get_unix_time_from_system()
+	_清理关窗标记()
 	_parse_cmdline()
 	_claim_slot()
 	_load_configs()
 	_ensure_nickname()
-	_apply_layout()
+	if slot_source == "启动参数":
+		# 多开脚本显式指定了槽位与窗口数：立刻按宫格摆位
+		_apply_layout(int(shared_get("layout_count", 默认摆位列数 * 默认摆位行数)))
+	else:
+		# 编辑器「运行多个实例」不带 --slot：先看看一共开了几个窗口，再决定要不要摆位
+		_watch_instances()
+	_watch_peers()
 	print("[Cfg] 槽位=%d（%s）昵称=%s 服务端口=%d" % [slot, slot_source, nickname, server_port])
 
 
@@ -57,6 +72,8 @@ func _parse_cmdline() -> void:
 		elif a == "--port" and i + 1 < args.size():
 			server_port = int(args[i + 1])
 			i += 1
+		elif a == "--auto":
+			自动开局 = true
 		i += 1
 	if slot < 0 or slot >= GConst.MAX_SLOT:
 		slot = 0
@@ -67,6 +84,13 @@ func _parse_cmdline() -> void:
 # ============================================================
 func _claim_slot() -> void:
 	if slot_source == "启动参数":
+		# 显式指定的槽位也占住端口：别的窗口数槽位端口时能数到它（多开脚本与编辑器实例混跑时更准），
+		# 同时也避免这个槽位被自动认领的窗口抢走
+		var srv: TCPServer = TCPServer.new()
+		if srv.listen(GConst.SLOT_PORT_BASE + slot, "127.0.0.1") == OK:
+			_slot_server = srv
+		else:
+			push_warning("[Cfg] 槽位 %d 的端口已被占用（可能有同名多开还在跑）" % slot)
 		return
 	for k: int in range(GConst.MAX_SLOT):
 		var srv: TCPServer = TCPServer.new()
@@ -123,48 +147,218 @@ func shared_get(key: String, default_value: Variant) -> Variant:
 
 
 # ============================================================
-# 窗口摆位（每个窗口自己算，不需协调）
+# 窗口摆位（每个窗口自己算，只需一份共享的宫格参数）
 # ============================================================
-func _apply_layout() -> void:
-	var cols: int = int(local.get_value("layout", "cols", 0))
-	var rows: int = int(local.get_value("layout", "rows", 0))
-	var fill: bool = bool(local.get_value("layout", "fill", true))
-	var w_percent: float = float(local.get_value("layout", "width_percent", 0.0))
-	var h_percent: float = float(local.get_value("layout", "height_percent", 0.0))
-	var fixed_w: int = int(local.get_value("layout", "fixed_width", 0))
+## 多开摆位的宫格：按屏幕均分成 列数 × 行数。参数写在共享配置 shared.cfg 里
+## （key: layout_cols / layout_rows），所有窗口读同一份 —— 早先这组参数是按槽位存在
+## 各自的 config_N.cfg 里，一旦某个槽位的历史值不同（比如 2×2 与 3×2 混着），
+## 同一批多开出来的窗口就会被摆成不同大小（表现为「偶尔有一个窗口特别小」）。
+## 默认 2×2（4 格，对应 2v2 的 4 人局，正好铺满屏幕）；开超过 4 个时宫格不缩，
+## 多出来的窗口绕回已有格子、按整格的 90% 缩小后错位叠上去。
+const 默认摆位列数: int = 2
+const 默认摆位行数: int = 2
+## 同一格里叠多个窗口时，窗口按整格的这个比例缩一点（留出边距，便于看清叠放层次）
+const 叠放缩放: float = 0.9
+## 同一格里叠多个窗口时，每多一个往下错开这么多像素（要能露出上一个窗口的标题栏）
+const 错位间距: int = 40
+## 轮询窗口数的间隔；没带 --slot 时（编辑器多开）最多轮询这么多次，等几个窗口都抢完槽位
+const 探测间隔: float = 0.3
+const 探测次数: int = 20
+
+
+## 数一数当前有几个窗口占着槽位端口（含本进程自己的）——不依赖 --slot，用来判断是不是多开
+func _instance_count() -> int:
+	var 数量: int = 0
+	for k: int in range(GConst.MAX_SLOT):
+		var srv: TCPServer = TCPServer.new()
+		if srv.listen(GConst.SLOT_PORT_BASE + k, "127.0.0.1") == OK:
+			srv.stop()
+		else:
+			数量 += 1
+	return 数量
+
+
+## 编辑器「运行多个实例」不带 --slot，只能靠端口认领槽位：启动时还不知道一共开了几个窗口，
+## 于是轮询一小段时间，窗口数一变就按新的数量重新摆位。
+## 全程只有自己一个（单开）就完全不动窗口。
+func _watch_instances() -> void:
+	var 上次数量: int = 0
+	for i: int in range(探测次数):
+		await get_tree().create_timer(探测间隔).timeout
+		var 数量: int = _instance_count()
+		if 数量 >= 2 and 数量 != 上次数量:
+			_apply_layout(数量)
+		上次数量 = 数量
+
+
+# ============================================================
+# 关窗联动：一个窗口被关掉，同一批的其它窗口一起关掉
+# ============================================================
+## 关窗标记：每个槽位一个文件，放在 user:// 下，退出时写下自己的启动时刻。
+## 为什么用文件而不是「数槽位端口少没少」：端口占用会被无关进程、启动时序、
+## listen 偶发抢占等干扰，数字偶然少一个就会把整批窗口莫名其妙一起关掉；
+## 文件标记则只在窗口真的退出时才出现。
+const 关窗标记前缀: String = "多开_关闭_"
+## 认作「同一批」的启动时刻差（秒）：只和启动时刻相近的窗口联动，
+## 避免误伤从编辑器单独跑的实例、或更早批次留下的标记
+const 同批秒数: float = 10.0
+## 检查关窗标记的间隔（秒）
+const 联动间隔: float = 0.2
+
+
+func _关窗标记路径(槽位: int) -> String:
+	return "%s%s%d.txt" % [CONFIG_DIR, 关窗标记前缀, 槽位]
+
+
+## 启动时清掉上一次多开留下的关窗标记：否则新一批窗口一启动就会看到旧标记而一起退出
+func _清理关窗标记() -> void:
+	var 目录: DirAccess = DirAccess.open(CONFIG_DIR)
+	for 名: String in 目录.get_files():
+		if 名.begins_with(关窗标记前缀):
+			目录.remove(名)
+
+
+## 守着其它槽位（每 0.2 秒看一次）：
+## 1) 同批的某个窗口关掉了 → 跟着退出；
+## 2) 我的最小化被点了 → 喊同批窗口一起切；别人喊的时候我也跟着切。
+func _watch_peers() -> void:
+	while true:
+		await get_tree().create_timer(联动间隔).timeout
+		if not 多开:
+			continue
+		for k: int in range(GConst.MAX_SLOT):
+			if k == slot:
+				continue
+			var 路径: String = _关窗标记路径(k)
+			if not FileAccess.file_exists(路径):
+				continue
+			if absf(FileAccess.get_file_as_string(路径).to_float() - 启动时刻) > 同批秒数:
+				continue
+			get_tree().quit()
+			return
+		_同步最小化状态()
+
+
+## 退出时留下关窗标记，让同批的其它窗口一起退出。
+## 放在 _exit_tree 是为了不管走哪条退出路径（点关闭按钮、程序自己 quit）都能留下标记。
+func _exit_tree() -> void:
+	if not 多开:
+		return
+	var 文件: FileAccess = FileAccess.open(_关窗标记路径(slot), FileAccess.WRITE)
+	if 文件 != null:
+		文件.store_string("%f" % 启动时刻)
+
+
+# ============================================================
+# 最小化联动：点最小化，同批窗口一起最小化；取消最小化，一起取消
+# ============================================================
+## 状态请求文件：内容「发起窗口的启动时刻 请求时刻 目标(1=最小化 / 0=取消最小化)」。
+## 跨进程读不到别的窗口，就用这个文件喊话：谁的最小化状态被点了，写一份，同批的窗口看到就照做。
+## 带启动时刻是为了认「同一批」：上一批留下的请求不会被当真。
+const 状态请求文件: String = "多开_窗口状态.txt"
+## 请求的有效期（秒）：过期没人理的请求不再响应
+const 状态请求秒数: float = 5.0
+
+## 上一次轮询到的自身最小化状态（也就是「我现在是不是最小化着」）
+var _上次最小化: bool = false
+## 已处理过的请求（请求时刻）：同一份请求只响应一次，
+## 否则它还在有效期内时，我再被点一次最小化 / 恢复就会被它立刻弹回去
+var _已处理状态请求: float = 0.0
+
+
+## 每 0.2 秒看一眼自己的最小化状态：
+## 自己这一下被点了最小化 / 取消最小化 → 喊同批窗口一起；顺便看看别人有没有在喊我
+func _同步最小化状态() -> void:
+	var 现在最小化: bool = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_MINIMIZED
+	if 现在最小化 != _上次最小化:
+		_上次最小化 = 现在最小化
+		_请求集体切换(现在最小化)
+	_响应状态请求()
+
+
+## 喊同批窗口切换状态：写一份请求，目标是「我现在的状态」
+func _请求集体切换(最小化: bool) -> void:
+	var 文件: FileAccess = FileAccess.open(CONFIG_DIR + 状态请求文件, FileAccess.WRITE)
+	if 文件 != null:
+		文件.store_string("%f %f %d" % [启动时刻, Time.get_unix_time_from_system(), 1 if 最小化 else 0])
+
+
+## 看有没有同批窗口在喊切换状态：有就跟着切成同样的状态（同一份请求只响应一次）
+func _响应状态请求() -> void:
+	var 路径: String = CONFIG_DIR + 状态请求文件
+	if not FileAccess.file_exists(路径):
+		return
+	var 片: PackedStringArray = FileAccess.get_file_as_string(路径).strip_edges().split(" ")
+	if 片.size() != 3:
+		return
+	var 发起启动时刻: float = 片[0].to_float()
+	var 请求时刻: float = 片[1].to_float()
+	var 目标最小化: bool = int(片[2]) == 1
+	if absf(发起启动时刻 - 启动时刻) > 同批秒数:
+		return
+	if 请求时刻 <= _已处理状态请求 or Time.get_unix_time_from_system() - 请求时刻 > 状态请求秒数:
+		return
+	_已处理状态请求 = 请求时刻
+	if 目标最小化 == _上次最小化:
+		return   # 本来就是这个状态（多半是我自己喊的那份，或别人已经跟上了）
+	DisplayServer.window_set_mode(
+		DisplayServer.WINDOW_MODE_MINIMIZED if 目标最小化 else DisplayServer.WINDOW_MODE_WINDOWED)
+
+
+func _apply_layout(实例数: int) -> void:
+	实例数 = maxi(实例数, slot + 1)
+	多开 = 实例数 >= 2
+	var cols: int = int(shared_get("layout_cols", 默认摆位列数))
+	var rows: int = int(shared_get("layout_rows", 默认摆位行数))
 	if cols <= 0 or rows <= 0:
 		return
 	var screen: int = DisplayServer.window_get_current_screen()
 	var usable: Rect2i = DisplayServer.screen_get_usable_rect(screen)
 	var cell_w: float = float(usable.size.x) / float(cols)
 	var cell_h: float = float(usable.size.y) / float(rows)
-	var col: int = slot % cols
-	var row: int = slot / cols
+	var 格数: int = cols * rows
+	var 格号: int = slot % 格数
+	@warning_ignore("integer_division")
+	var 组内序: int = slot / 格数
+	# 一格要叠几个窗口（槽位最多 8 个 → 一格最多 2 个）
+	var 组内人数: int = maxi(1, int(ceil(float(实例数) / float(格数))))
+	var col: int = 格号 % cols
+	@warning_ignore("integer_division")
+	var row: int = 格号 / cols
+	# 窗口装饰（标题栏 + 两侧边框）：设置/读取窗口自身尺寸用的是逻辑像素，屏幕信息是物理像素，
+	# 要把装饰尺寸乘上屏幕缩放系数，才能从物理格子里正确扣除；否则标题栏会被顶出屏幕外。
+	var 缩放: float = DisplayServer.screen_get_scale(screen)
+	var 装饰: Vector2i = DisplayServer.window_get_size_with_decorations() - DisplayServer.window_get_size()
+	var 边框: int = int(round(float(装饰.x) * 缩放 / 2.0))
+	var 标题栏: int = int(round(float(装饰.y) * 缩放)) - 边框
+	# 一格一人时窗口铺满整格（保持设计比例 16:9，宽或高总有一条顶满）；一格多人时缩到整格的 90%
+	var 占格比: float = 叠放缩放 if 组内人数 > 1 else 1.0
+	var 可用客户宽: float = (cell_w - float(边框 * 2)) * 占格比
+	var 可用客户高: float = (cell_h - float(标题栏 + 边框)) * 占格比
+	if 可用客户宽 <= 0.0 or 可用客户高 <= 0.0:
+		return
+	var design_ratio: float = 设计宽 / 设计高
 	var w: int = 0
 	var h: int = 0
-	if fill:
-		# 等比铺满格子：保持设计比例（16:9）
-		var design_ratio: float = 设计宽 / 设计高
-		var avail_w: float = cell_w - 8.0
-		var avail_h: float = cell_h - 40.0
-		if avail_w / avail_h > design_ratio:
-			h = int(avail_h)
-			w = int(h * design_ratio)
-		else:
-			w = int(avail_w)
-			h = int(w / design_ratio)
-	elif w_percent > 0.0:
-		w = int(usable.size.x * w_percent)
-		h = int(usable.size.y * h_percent)
-	if fixed_w > 0:
-		w = fixed_w
-		h = int(fixed_w * 设计高 / 设计宽)
+	if 可用客户宽 / 可用客户高 > design_ratio:
+		h = int(可用客户高)
+		w = int(h * design_ratio)
+	else:
+		w = int(可用客户宽)
+		h = int(w / design_ratio)
 	if w <= 0 or h <= 0:
 		return
-	# 先摆位置、后改尺寸；坐标不能为负
-	var px: int = int(usable.position.x + cell_w * col + (cell_w - w) / 2.0)
-	var py: int = int(usable.position.y + cell_h * row + (cell_h - h) / 2.0)
-	px = maxi(px, 0)
-	py = maxi(py, 0)
-	DisplayServer.window_set_position(Vector2i(px, py))
+	var 外框宽: int = w + 边框 * 2
+	var 外框高: int = h + 标题栏 + 边框
+	# 外框水平居中；一格一人时垂直居中，一格多人时从格顶起、每多一个往下错开「错位间距」，
+	# 这样上面那个窗口的标题栏始终露在外面，点它能把它提到最前。
+	var 外框x: int = usable.position.x + int(cell_w * col + (cell_w - 外框宽) / 2.0)
+	var 外框y: int = usable.position.y + int(cell_h * row)
+	if 组内人数 <= 1:
+		外框y += int((cell_h - 外框高) / 2.0)
+	else:
+		外框y += 组内序 * 错位间距
+	# 先摆位置、后改尺寸；window_set_position 摆的是客户区左上角，所以加上装饰偏移；
+	# 坐标不能为负，给负数窗口会被系统甩到极远处。
+	DisplayServer.window_set_position(Vector2i(maxi(外框x + 边框, 0), maxi(外框y + 标题栏, 0)))
 	DisplayServer.window_set_size(Vector2i(w, h))

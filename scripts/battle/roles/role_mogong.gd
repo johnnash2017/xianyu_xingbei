@@ -473,7 +473,8 @@ func _mo_yan() -> int:
 ## 充能改牌 / 魔眼改牌：把至多 max_n 张手牌作为【充能】
 func _gai_pai(skill_id: int, max_n: int) -> int:
 	if not engine.has_reply():
-		engine.ask_skill(player.id, skill_id, 1, 0)
+		# 至多 max_n 张：把点选上限放宽到 max_n（默认只会按 need_card 限 1 张）
+		engine.ask_skill(player.id, skill_id, 1, 0, GConst.CardSource.Hand, [], max_n)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])

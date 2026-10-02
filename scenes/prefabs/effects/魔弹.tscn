@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://bvbdap6m3sqh8"]
 
 [ext_resource type="Script" uid="uid://dh2gwdvr34wse" path="res://scripts/effects/魔弹2D.gd" id="1_wrap"]
-[ext_resource type="Texture2D" uid="uid://cwl6mdfa4r2v8" path="res://光点.png" id="2_7k4of"]
+[ext_resource type="Texture2D" uid="uid://cwl6mdfa4r2v8" path="res://scenes/prefabs/effects/贴图/光点.png" id="2_7k4of"]
 [ext_resource type="PackedScene" uid="uid://clhepsamj2k7v" path="res://scenes/prefabs/effects/魔弹3D/魔弹.tscn" id="2_vfx"]
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_add"]

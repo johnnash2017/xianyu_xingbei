@@ -148,7 +148,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 ## 战纹碎击：翻转 1 个战纹，弃 X 张同系牌，本次伤害 +(X-1)（可额外翻转 Y 个战纹，再 +Y）
 func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
 	if not engine.has_reply():
-		engine.ask_skill(player.id, ZHAN_WEN_SUI_JI, 2, 0)
+		# 弃 X 张同系牌（X≥2）：上限放到手牌数，并让客户端只让同系牌可点
+		engine.ask_skill(player.id, ZHAN_WEN_SUI_JI, 2, 0, GConst.CardSource.Hand, [], player.hand_count(), "same")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -208,10 +209,11 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 func _nu_huo_mo_wen(ctx: Dictionary) -> int:
 	var dst_id: int = int(ctx.get("dst", -1))
 	if not engine.has_reply():
+		# 分支 2（魔纹融合）要弃 X 张互异系牌（X≥2）：上限放到手牌数，并让客户端只让异系牌可点
 		engine.ask_skill(player.id, NU_HUO_MO_WEN, 2, 0, GConst.CardSource.Hand, [
 			{"value": CHOICE_NU_HUO_YA_ZHI, "label": "怒火压制"},
 			{"value": CHOICE_MO_WEN_RONG_HE, "label": "魔纹融合"},
-		])
+		], player.hand_count(), "diff")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])

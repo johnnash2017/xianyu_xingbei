@@ -5,7 +5,7 @@ extends Control
 ##  * 被搬过来的容器脚本 scripts/BattleUIMobile.gd 是参考工程原件，依赖 BattleData / Dialog /
 ##    Lobby / UIManager / GameManager / MessageSystem 等本工程不存在的单例，本脚本不再使用它，
 ##    只把它当作「控件结构与参考行为」的参考。
-##  * 数据映射照本工程在用的 scripts/ui/battle.gd 抄：监听 Logic 的信号，读 Data.player_list 与
+##  * 数据映射照参考工程搬来的桌面战斗界面抄：监听 Logic 的信号，读 Data.player_list 与
 ##    Logic.last_info 刷新界面。
 ##  * 本步骤只做「显示」。手牌区/出牌/选目标/技能/应战等交互是下一步（脚本里以「第三步」留白），
 ##    音频也下一步统一搬。
@@ -43,6 +43,7 @@ extends Control
 @export var ChatRoot: Control          # 聊天面板根（展开/收起用）
 # ---- 交互层用到的控件（第三步） ----
 @export var HandArea: Control        # 我的手牌区（Root/HandArea；一行手排，位置由 刷新手牌 算）
+@export var ShowCardArea: Control      # 屏幕中间的展示卡牌区（Root/ShowCardArea；出牌/展示时把牌摊出来）
 @export var SkillArea: Control         # 技能区底图（Root/SkillArea）
 @export var ChildrenSkillArea: GridContainer  # 技能按钮容器（Root/ChildrenSkillArea）
 @export var ChooseArea: Control        # 盖牌选择区（Root/ChooseArea）
@@ -79,6 +80,8 @@ const 卡牌预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Car
 const 技能预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Skill.tscn")
 ## 手牌卡面尺寸（参考脚本 showCard 用的 136×190，这里略窄一点好让 6 张能排下）
 const 手牌尺寸: Vector2 = Vector2(130.0, 192.0)
+## 选中的手牌往上抽出来的距离（视觉上「已拿出、等确定」）
+const 选中上浮像素: float = 46.0
 ## 手牌排布：牌少时彼此贴着排（空隙 0）并整体居中；一行放不下才压缩，压到负数就是相邻两张叠着放
 const 手牌最多重叠比例: float = 0.45
 ## 盖牌缩略尺寸（盖牌选择区里手排用）
@@ -121,13 +124,13 @@ var _当前提示token: int = 0
 var _已开局: bool = false
 ## 胜负是否已结算：公告与终局信号可能重复，只结算一次
 var _胜负已定: bool = false
-## 数值快照：判断士气 / 宝石水晶 / 治疗的变化并播对应音效（同 battle.gd）
+## 数值快照：判断士气 / 宝石水晶 / 治疗的变化并播对应音效
 var _上次士气: Array[int] = [0, 0]
 var _上次宝石: Array[int] = [0, 0]
 var _上次水晶: Array[int] = [0, 0]
 var _上次治疗: int = 0
 
-# ---------------- 交互状态（与旧界面 battle.gd 同构） ----------------
+# ---------------- 交互状态 ----------------
 ## 0 空闲 / 1 行动 / 2 响应 / 3 技能询问 / 4 发动技能
 var _mode: int = 0
 ## 当前 CMD_REQ 的单条命令
@@ -165,6 +168,8 @@ var _skill_targets: Array[int] = []
 var _skill_cards: Array[int] = []
 ## 本次发动技能的点选上限（服务端在技能上给的 card_max，≥ 需牌数；如【欺诈】可弃 2~3 张）
 var _skill_card_max: int = 0
+## 本次发动技能的选牌系别规则（服务端给的 card_rule：""＝不限 / "same"＝必须同系 / "diff"＝必须互异系）
+var _skill_card_rule: String = ""
 ## 本次发动技能的目标数上限（服务端在技能上给的 target_max，≥ 需目标数；省略＝刚好需目标数）
 var _skill_target_max: int = 0
 ## 本次发动技能的选牌来源（GConst.CardSource：手牌 / 盖牌区 / 场上基础效果牌）
@@ -190,7 +195,6 @@ func _ready() -> void:
 	Logic.hit_received.connect(_on_hit)
 	Logic.hurt_received.connect(_on_hurt)
 	Logic.skill_received.connect(_on_skill)
-	Logic.game_over.connect(_on_game_over)
 	Logic.gossip_received.connect(_on_gossip)
 	Logic.notice_received.connect(_on_notice)
 	Logic.error_received.connect(_on_error)
@@ -204,7 +208,7 @@ func _ready() -> void:
 	ChatRoot.visible = false
 	# ---- 交互层（第三步）：接收询问 + 确定/取消/盖牌/特殊行动/放弃行动 ----
 	Logic.command_received.connect(_on_command)
-	# 让「操作无效」（ErrorInput）能回调到本界面（同旧界面 battle.gd 的做法）
+	# 让「操作无效」（ErrorInput）能回调到本界面
 	Logic.battle = self
 	BtnOK.pressed.connect(_on_ok)
 	BtnCancel.pressed.connect(_on_cancel)
@@ -242,7 +246,7 @@ func _exit_tree() -> void:
 
 
 # ============================================================
-# 刷新（数据映射照 battle.gd）
+# 刷新
 # ============================================================
 ## 对局快照 → 刷新队伍数值、房间号、玩家面板
 func _on_game_info(info: Dictionary) -> void:
@@ -251,7 +255,7 @@ func _on_game_info(info: Dictionary) -> void:
 	var 之前已开局: bool = _已开局
 	if started and not _已开局:
 		_已开局 = true
-		# 房间等待阶段仍是大厅音乐，真开打才换战斗曲（同旧界面 battle.gd）
+		# 房间等待阶段仍是大厅音乐，真开打才换战斗曲
 		Audio.播放音乐(Audio.场景战斗)
 		_日志追加("[房间 %d] 对局开始" % int(info.get("room_id", 0)))
 	_播音效_数值变化(info, 之前已开局 and started)
@@ -263,7 +267,7 @@ func _on_game_info(info: Dictionary) -> void:
 	_刷新交互()
 
 
-## 等待提示：读「正在等谁回复、还剩多久」，照 battle.gd 的 _读取等待 / _刷新等待提示
+## 等待提示：读「正在等谁回复、还剩多久」
 func _读取等待(info: Dictionary) -> void:
 	_等待方 = int(info.get("wait_pid", -1))
 	_等待总时长 = float(info.get("wait_total_ms", 0)) / 1000.0
@@ -326,7 +330,7 @@ func _播音效_数值变化(info: Dictionary, 生效: bool) -> void:
 	_上次治疗 = 治疗
 
 
-## 士气 / 宝石 / 水晶 / 星杯（读 Logic.last_info 的绝对值，同 battle.gd 的 _refresh_team_bar）
+## 士气 / 宝石 / 水晶 / 星杯（读 Logic.last_info 的绝对值）
 func _刷新队伍(info: Dictionary) -> void:
 	BlueMorale.text = str(int(info.get("blue_morale", 0)))
 	RedMorale.text = str(int(info.get("red_morale", 0)))
@@ -445,7 +449,7 @@ func _on_turn(player_id: int, round_id: int) -> void:
 	TxtTurn.text = str(round_id)
 	_高亮玩家(player_id)
 	var p: GPlayer = Data.get_player_by_id(player_id)
-	# 轮到这个角色就放他自己的语音（同 battle.gd）；没有语音的角色（如 37 号）沿用界面提示音
+	# 轮到这个角色就放他自己的语音；没有语音的角色（如 37 号）沿用界面提示音
 	if p != null and Audio.有声效(str(p.role_id)):
 		Audio.播音效(str(p.role_id))
 	else:
@@ -513,6 +517,42 @@ func _on_error(_err_id: int, msg: String) -> void:
 
 
 # ============================================================
+# 屏幕中间的展示卡牌区（Root/ShowCardArea）
+# ============================================================
+## 展示停留秒数，到点自动收起
+const 展示停留秒数: float = 1.6
+## 卡牌视图预制体：和手牌同一个 Card.tscn（卡图 + 左上角命格/元素 + 底部字形与技能名1/2）
+const 卡牌视图预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Card.tscn")
+
+
+## 把这几张牌摊到屏幕中间给所有人看；连着来第二拨时先把上一拨收掉
+func _展示卡牌(卡号表: Array) -> void:
+	_收起展示卡牌()
+	for cid: Variant in 卡号表:
+		var 卡: GCard = Data.get_card(int(cid))
+		if 卡 == null:
+			continue
+		var 视图: Control = 卡牌视图预制.instantiate()
+		# Card.tscn 的根节点本身是 0 尺寸的（手牌区是代码给尺寸的），
+		# 塞进 GridContainer 必须显式给尺寸，否则列宽被算成 0、卡图就不画了
+		视图.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		视图.custom_minimum_size = 手牌尺寸
+		视图.size = 手牌尺寸
+		ShowCardArea.add_child(视图)
+		# 「可用」传 true 才是正常亮度（false 会把整张牌置灰）；展示只是给人看，顺手关掉「可选」发光框
+		视图.call("设置卡牌", 卡, true)
+		(视图.get("canSelectBorder") as TextureRect).visible = false
+	await get_tree().create_timer(展示停留秒数).timeout
+	_收起展示卡牌()
+
+
+## 收掉当前摊出来的牌
+func _收起展示卡牌() -> void:
+	for 旧: Node in ShowCardArea.get_children():
+		旧.queue_free()
+
+
+# ============================================================
 # 广播消息 → 日志 / 聊天
 # ============================================================
 func _on_card(msg: Dictionary) -> void:
@@ -529,14 +569,21 @@ func _on_card(msg: Dictionary) -> void:
 			names.append(c.card_name)
 			if 首张 == null:
 				首张 = c
-	# 出牌音效（对照参考项目 AudioManager 的 CARDMSG 分支）：攻击牌 atk-<系别>，法术牌 spell-<卡名>
-	if 首张 != null and not 是展示:
-		if 首张.is_attack():
-			Audio.播音效("atk-" + 首张.element)
+	# 出牌音效（对照参考项目 AudioManager 的 CARDMSG 分支）：攻击牌 atk-<系别>，法术牌 spell-<卡名>。
+	# 这次出牌「视为」另一张牌时（msg.as_card_id，如地/火牌当【魔弹】打）按那张牌出声；
+	# 摊牌与日志仍用真正打出的牌（card_ids）。
+	var 表现牌: GCard = _视为牌(msg)
+	if 表现牌 == null:
+		表现牌 = 首张
+	if 表现牌 != null and not 是展示:
+		if 表现牌.is_attack():
+			Audio.播音效("atk-" + 表现牌.element)
 		else:
-			Audio.播音效("spell-" + 首张.card_name)
+			Audio.播音效("spell-" + 表现牌.card_name)
 	var 谁: String = p.nickname if p != null else str(src)
 	var 目标: GPlayer = Data.get_player_by_id(dst)
+	# 屏幕中间把牌摊出来（自己和其他人都看得到）
+	_展示卡牌(msg.get("card_ids", []))
 	if 是展示:
 		_日志追加("%s 展示：%s" % [谁, ", ".join(names)])
 		return
@@ -575,8 +622,21 @@ const 特效预制表: Dictionary = {
 }
 
 
-## 这条 Card 消息里有没有「要放特效」的牌，有就返回其牌号，没有返回 -1
+## 这次出牌「视为」的那张牌（Card 消息的 as_card_id）：值为 0 或查不到时返回 null。
+## 地/火牌当【魔弹】打出去时这里是【魔弹】——音效、特效按它走；摊牌与日志仍用 card_ids。
+func _视为牌(msg: Dictionary) -> GCard:
+	var 视为号: int = int(msg.get("as_card_id", 0))
+	if 视为号 <= 0:
+		return null
+	return Data.get_card(视为号)
+
+
+## 这条 Card 消息该放哪张牌的特效：这次出牌「视为」另一张牌时放那张牌的特效
+## （如地/火牌当【魔弹】打 → 放【魔弹】特效）；否则按打出的牌找。没有匹配返回 -1
 func _特效牌号(msg: Dictionary) -> int:
+	var 视为: GCard = _视为牌(msg)
+	if 视为 != null and 特效预制表.has(视为.card_name_enum()):
+		return 视为.id
 	for raw: Variant in msg.get("card_ids", []):
 		var 牌: GCard = Data.get_card(int(raw))
 		if 牌 != null and 特效预制表.has(牌.card_name_enum()):
@@ -624,9 +684,9 @@ func _玩家面板(player_id: int) -> 战斗玩家面板:
 
 
 func _on_hit(src_id: int, dst_id: int, hit: int) -> void:
-	# 命中判定：只在真命中时响（未命中不出声）；这两条 ogg 听感与文件名相反，故取 sys-hurt
+	# 命中音（斩击 / 魔弹命中）：只在真命中时响（未命中不出声）
 	if hit == 1:
-		Audio.播音效("sys-hurt")
+		Audio.播音效("sys-hit")
 	var s: GPlayer = Data.get_player_by_id(src_id)
 	var d: GPlayer = Data.get_player_by_id(dst_id)
 	_日志追加("%s 对 %s 的攻击%s" % [
@@ -637,10 +697,13 @@ func _on_hit(src_id: int, dst_id: int, hit: int) -> void:
 
 
 func _on_hurt(msg: Dictionary) -> void:
-	# 受击音效：攻击伤害在 _on_hit（命中判定）里响过一次，法术伤害没有命中判定，这里补上同样的一声
-	if int(msg.get("type", 0)) == GConst.HarmType.Magic:
+	var cause: int = int(msg.get("cause", 0))
+	# 攻击命中 / 魔弹命中只响「命中音」sys-hit，不再叠受伤音：攻击命中的那声在 _on_hit 里播过，
+	# 魔弹没有命中判定，在这里补；其余来源（法术 / 技能）没有命中判定，响「受伤音」sys-hurt
+	if cause == GConst.CAUSE_MISSILE:
+		Audio.播音效("sys-hit")
+	elif cause != GConst.CAUSE_ATTACK:
 		Audio.播音效("sys-hurt")
-	Audio.播音效("sys-hit")   # 同 _on_hit：两条音按听感对调
 	var dst: int = int(msg.get("dst_id", -1))
 	var src: int = int(msg.get("src_id", -1))
 	var d: GPlayer = Data.get_player_by_id(dst)
@@ -702,12 +765,7 @@ func _日志追加(t: String) -> void:
 # ============================================================
 # 结算 / 返回
 # ============================================================
-func _on_game_over(winner: int) -> void:
-	_结算(winner)
-
-
-## 从公告里识别终局：本项目没有单独的终局信号（Logic.game_over 从未 emit），
-## 旧界面 battle.gd 也是从公告文本里认「获胜」两个字
+## 从公告文本里认「获胜」两个字：本项目没有单独的终局信号
 func _判胜负(txt: String) -> void:
 	if _胜负已定 or not txt.contains("获胜"):
 		return
@@ -733,7 +791,7 @@ func _结算(胜方: int) -> void:
 	_日志追加("游戏结束：%s" % ("红队获胜" if 胜方 == GConst.RED else "蓝队获胜"))
 
 
-## 返回大厅（同 battle.gd 的 _on_leave）
+## 返回大厅
 func _on_back() -> void:
 	Logic.leave_room()
 	UI.goto_lobby()
@@ -768,7 +826,7 @@ func _展开聊天() -> void:
 
 # ============================================================
 # 第三步：交互层（手牌 / 选目标 / 确定 / 取消 / 放弃 / 技能）
-# 状态机与判定照旧界面 scripts/ui/battle.gd，渲染换成新界面的控件。
+# 状态机与判定照参考工程搬来的桌面战斗界面，渲染换成新界面的控件。
 # 音频仍下一步统一搬。
 # ============================================================
 
@@ -826,6 +884,7 @@ func _进入待选() -> void:
 	英雄详情窗.visible = false
 	_skill_targets.clear()
 	_skill_cards.clear()
+	_skill_card_rule = ""
 	_mode = 0
 	var respond_id: int = int(_pending.get("respond_id", 0))
 	var args: Array = _pending.get("args", [])
@@ -877,8 +936,16 @@ func _进入技能询问() -> void:
 	_skill_ask_need_card = int(args[0]) if args.size() > 0 else 0
 	_skill_ask_need_target = int(args[1]) if args.size() > 1 else 0
 	_skill_ask_card_source = int(args[2]) if args.size() > 2 else GConst.CardSource.Hand
-	# need_card 为需要选出的牌数（1 或 2），复用 _need_cards 驱动点选上限与「确定」可用性
-	_need_cards = _skill_ask_need_card
+	# card_max 给了就放宽点选上限（如【法术反弹】弃 1~N 张同系牌）；没给就是刚好 need_card 张
+	_skill_card_max = maxi(_skill_ask_need_card, int(_pending.get("card_max", 0)))
+	_skill_card_rule = str(_pending.get("card_rule", ""))
+	_skill_card_source = _skill_ask_card_source
+	# 服务端给了合法牌白名单就只让这几张可点（如【魔能反转】只能弃法术牌）
+	_skill_cards.clear()
+	for 合法牌id: Variant in _pending.get("card_ids", []):
+		_skill_cards.append(int(合法牌id))
+	# 复用 _need_cards 驱动点选上限与「确定」可用性
+	_need_cards = _skill_card_max
 	_need_players = _skill_ask_need_target
 	var 选项数: int = int(args[3]) if args.size() > 3 else 0
 	_skill_options.clear()
@@ -951,6 +1018,7 @@ func _构建技能按钮(cmds: Array) -> void:
 		var 合法牌: Array = c.get("card_ids", [])
 		var 最多牌: int = int(c.get("card_max", 0))
 		var 参数选项: Array = c.get("arg_choices", [])
+		_skill_card_rule = str(c.get("card_rule", ""))
 		var go: Node = 技能预制.instantiate()
 		if go is Control:
 			(go as Control).custom_minimum_size = 技能尺寸
@@ -1024,7 +1092,7 @@ func _on_player_clicked(player_id: int) -> void:
 	_更新按键()
 
 
-## 这张牌此刻能不能点选（照 battle.gd 的 _on_card_clicked 判定）
+## 这张牌此刻能不能点选
 ## 同一条判定同时决定「是否置灰」与「点击是否响应」，两者不会不一致
 func _卡牌能点(card_id: int) -> bool:
 	# 技能询问里不要求选牌的（need_card <= 0）才整片置灰；需要选 2 张的技能同样要能点
@@ -1050,8 +1118,9 @@ func _卡牌能点(card_id: int) -> bool:
 	# 行动阶段：只有能主动出手的牌可点（【圣光】只作响应，回合内置灰点不动）
 	if _mode == 1:
 		return _可主动使用牌(card_id)
-	# 发动技能：按服务端给的选牌来源过滤（手牌 / 盖牌区 / 场上基础效果牌），再看合法牌白名单
-	if _mode == 4:
+	# 发动技能 / 技能询问：按服务端给的选牌来源过滤（手牌 / 盖牌区 / 场上基础效果牌），
+	# 再看合法牌白名单与选牌系别规则（如【魔道法典】只能选互异系、【法术反弹】只能选同系）
+	if _mode == 4 or _mode == 3:
 		match _skill_card_source:
 			GConst.CardSource.Cover:
 				if not _is_my_cover(card_id):
@@ -1062,10 +1131,33 @@ func _卡牌能点(card_id: int) -> bool:
 			_:
 				if _is_my_cover(card_id):
 					return false
-		return _skill_cards.is_empty() or _skill_cards.has(card_id)
+		if not _skill_cards.is_empty() and not _skill_cards.has(card_id):
+			return false
+		return _符合选牌规则(card_id)
 	# 特殊行动（购买/合成/提炼）期间不点牌
 	if _mode == 5 or _mode == 6:
 		return false
+	return true
+
+
+## 按选牌系别规则过滤可点牌（服务端给的 card_rule）：
+## "same"＝只能选与已选牌同系的；"diff"＝只能选与已选牌互异系的；""＝不限。
+## 服务端只做最终校验，这里先一步把不合规的牌置灰，免得玩家点了一堆却被判「操作无效」。
+func _符合选牌规则(card_id: int) -> bool:
+	if _skill_card_rule == "" or _sel_cards.is_empty():
+		return true
+	var 牌: GCard = Data.get_card(card_id)
+	if 牌 == null:
+		return true
+	for c: Variant in _sel_cards:
+		var 已选: GCard = Data.get_card(int(c))
+		if 已选 == null:
+			continue
+		var 同系: bool = 已选.element_enum() == 牌.element_enum()
+		if _skill_card_rule == "same" and not 同系:
+			return false
+		if _skill_card_rule == "diff" and 同系:
+			return false
 	return true
 
 
@@ -1559,7 +1651,7 @@ func on_invalid_input(_data: Dictionary) -> void:
 	_日志追加("操作无效，请重新选择")
 
 
-# ---------------- 规则判定（照 battle.gd 抄） ----------------
+# ---------------- 规则判定 ----------------
 ## 本次应战询问是否允许应战（args[0] = 命中率：非普通命中率不允许应战）
 func _可应战() -> bool:
 	var args: Array = _pending.get("args", [])
@@ -1747,9 +1839,12 @@ func 刷新手牌() -> void:
 	for i: int in range(张数):
 		var card: GCard = Data.hand_cards[i]
 		var go: Node = _加卡牌(HandArea, card, 手牌尺寸, _卡牌能点(card.id))
-		go.call("设置选中", _sel_cards.has(card.id))
+		var 选中: bool = _sel_cards.has(card.id)
+		go.call("设置选中", 选中)
 		var ctl: Control = go as Control
-		ctl.position = Vector2(起点 + 间距 * float(i), (HandArea.size.y - 手牌尺寸.y) * 0.5)
+		# 选中的牌往上抽出一截：表示「已经拿出来，等你按确定」
+		var 上浮: float = 选中上浮像素 if 选中 else 0.0
+		ctl.position = Vector2(起点 + 间距 * float(i), (HandArea.size.y - 手牌尺寸.y) * 0.5 - 上浮)
 
 
 ## 我的盖牌渲染进 ChooseArea（它不是布局容器，所以这里手工排成一行）。
@@ -1912,8 +2007,10 @@ func _确定不可用() -> bool:
 	if _mode == 3:
 		if _skill_ask_id < 100:
 			return true
-		var 牌够: bool = _sel_cards.size() == _skill_ask_need_card if _skill_ask_need_card > 0 else true
-		var 目标够: bool = _sel_players.size() == _skill_ask_need_target if _skill_ask_need_target > 0 else true
+		# need_card 是「最少要选几张」，点选上限另由 _skill_card_max 管（如【法术反弹】可弃 1~N 张同系牌），
+		# 所以这里用 ≥ 而不是 ==，否则多选了反而点不动「确定」
+		var 牌够: bool = _sel_cards.size() >= _skill_ask_need_card if _skill_ask_need_card > 0 else true
+		var 目标够: bool = _sel_players.size() >= _skill_ask_need_target if _skill_ask_need_target > 0 else true
 		# 有选项时「确定」始终不可用，由选项按钮提交
 		return true if not _skill_options.is_empty() else not (牌够 and 目标够)
 	if _mode == 4:

@@ -13,7 +13,7 @@ dest_files=["res://.godot/imported/sys-hurt.ogg-1cfce5e6df1cbfe0d2f923970a9a3f7f
 [params]
 
 loop=false
-loop_offset=0
-bpm=0
+loop_offset=0.0
+bpm=0.0
 beat_count=0
 bar_beats=4

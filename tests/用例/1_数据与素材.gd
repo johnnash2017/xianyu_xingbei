@@ -17,11 +17,13 @@ func _init() -> void:
 
 func 跑() -> void:
 	await 等帧()
-	检(not Data.card_db.is_empty(), "卡表为空（DataTables.gd 的卡面表没读到）")
+	检(not Data.card_db.is_empty(), "卡表为空（DataTables.gd 的卡表没读到）")
 	检(not Data.role_list.is_empty(), "角色表为空（数据/角色表 没读到）")
 
 	var 缺卡面: Array[String] = []
 	for 卡: GCard in Data.card_db:
+		if 卡.is_virtual:
+			continue   # 虚拟牌（五行束缚/挑衅/灵魂链接/同生共死/永恒乐章）本来就没有卡面
 		if Art.card_face(卡) == null:
 			缺卡面.append("%d号" % 卡.id)
 	检(缺卡面.is_empty(), "缺卡面：%s" % str(缺卡面))
@@ -30,7 +32,7 @@ func 跑() -> void:
 	for rid: Variant in Data.role_list.keys():
 		if int(rid) in 非角色ID or int(rid) in 已知缺立绘:
 			continue
-		if Art.role_avatar(int(rid)) == null:
+		if Art.role_hero(int(rid)) == null:
 			缺立绘.append("%d(%s)" % [int(rid), Data.role_name(int(rid))])
 	检(缺立绘.is_empty(), "缺立绘：%s" % str(缺立绘))
 

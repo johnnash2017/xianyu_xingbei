@@ -55,6 +55,20 @@ const SUB: Dictionary = {
 		5: {"n": "args", "t": "u32", "r": true},
 		# 技能询问的可选项按钮文案（与 args 里紧随的选项值一一对应）
 		6: {"n": "notes", "t": "str", "r": true},
+		# 点选上限（如【欺诈】弃 2~3 张；0 表示就按最少张数选）
+		7: {"n": "card_max", "t": "u32"},
+		# 技能参数选项：每项渲染成一个按钮（如【欺诈】选本次视为哪种攻击、【冒险者天堂】用哪些星石）
+		8: {"n": "arg_choices", "t": "msg", "r": true, "s": "ArgChoice"},
+		# 选牌的系别规则（""＝不限；"same"＝必须同系，如【法术反弹】；"diff"＝必须互异系，如【魔道法典】）
+		9: {"n": "card_rule", "t": "str"},
+	},
+	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
+	"ArgChoice": {
+		1: {"n": "text", "t": "str"},
+		2: {"n": "args", "t": "u32", "r": true},
+		3: {"n": "need_card", "t": "u32"},
+		4: {"n": "need_target", "t": "u32"},
+		5: {"n": "targets", "t": "u32", "r": true},
 	},
 }
 
@@ -242,6 +256,11 @@ const TABLE: Dictionary = {
 		3: {"n": "dst_id", "t": "u32"},
 		4: {"n": "card_ids", "t": "u32", "r": true},
 		5: {"n": "is_real", "t": "bool"},
+		# 这次出牌「视为」哪张牌用（0 = 就是 card_ids 里那张）。
+		# 例：地/火牌当【魔弹】打出去（【魔弹融合】803、响应魔弹继续传递）时值为【魔弹】牌号：
+		# 出牌音效/特效、以及后续任何「这次是不是魔弹」的判断都按它走；
+		# card_ids 仍是真正打出的那张牌（要展示、也确实进了弃牌堆）。
+		6: {"n": "as_card_id", "t": "u32"},
 	},
 	GConst.Msg.Hurt: {
 		1: {"n": "src_id", "t": "u32"},

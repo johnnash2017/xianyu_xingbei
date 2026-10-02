@@ -204,20 +204,21 @@ func _reset_particles():
 	for p in _get_particles():
 		p.restart()
 
-func _set_shader_params(name : String, value) -> void:
+func _set_shader_params(参数名 : String, value) -> void:
 	for p in _get_particles():
 		if is_instance_valid(p):
 			if p.material_override is ShaderMaterial:
-				p.material_override.set("shader_parameter/" + name, value)
+				p.material_override.set("shader_parameter/" + 参数名, value)
 	for m in _get_meshinstances():
 		if is_instance_valid(m):
 			if m.material_override is ShaderMaterial:
-				m.material_override.set("shader_parameter/" + name, value)
+				m.material_override.set("shader_parameter/" + 参数名, value)
 
 func _set_mesh_resolutions(value : int) -> void:
 	for m in _get_meshes(): if is_instance_valid(m):
 		if m is SphereMesh:
 			m.radial_segments = value
+			@warning_ignore("integer_division")
 			m.rings = value/2
 		if m is CylinderMesh:
 			m.radial_segments = value

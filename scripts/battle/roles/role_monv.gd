@@ -231,7 +231,13 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 	if step != MO_NENG_FAN_ZHUAN:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, MO_NENG_FAN_ZHUAN, 2, 1)
+		# 弃 X 张法术牌（X≥2）：上限放到法术牌张数，并让客户端只让法术牌可点
+		var 法术牌: Array = []
+		for cid: int in player.hand_cards:
+			var c: GCard = Data.get_card(cid)
+			if c != null and c.is_magic():
+				法术牌.append(cid)
+		engine.ask_skill(player.id, MO_NENG_FAN_ZHUAN, 2, 1, GConst.CardSource.Hand, [], 法术牌.size(), "", 法术牌)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

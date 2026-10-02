@@ -8,6 +8,13 @@ extends Control
 
 const 刷新间隔: float = 0.5
 
+## 上次开房选的人数 / 选角，记在共享配置里（Cfg.shared_set / shared_get）：
+## 多开的几个窗口共用同一份，重开也还在。键名与摆位参数（layout_*）同一段，都在 [shared]。
+const 共享键_人数: String = "room_max_player"
+const 共享键_选角: String = "room_role_strategy"
+## 共享配置里没记录过时的取值：人数与选角的合法值都 ≥ 1，所以用 0 表示「没记过」
+const 未记录: int = 0
+
 # ---- 场景里的界面节点 ----
 @export var 标题栏: Label
 @export var 房间列表: ItemList
@@ -56,6 +63,7 @@ func _ready() -> void:
 	连接按钮.pressed.connect(func() -> void: _点了(_on_connect_ip_pressed))
 	创建按钮.pressed.connect(func() -> void: _点了(_on_create_pressed))
 	取消创建按钮.pressed.connect(func() -> void: _点了(_on_close_create_pressed))
+	_恢复建房选项()
 	Logic.request_room_list()
 	设状态("双击房间或点「进入选中房间」加入；没有房间就点「创建房间」")
 
@@ -160,7 +168,29 @@ func _on_create_pressed() -> void:
 	# 人数 / 选角都是单选组，直接读被按下那个按钮上标的数值（ButtonGroup 不允许全部松开，必定有一个）
 	var 人数: int = int(人数组.get_pressed_button().get_meta("people"))
 	var 选角: int = int(选角组.get_pressed_button().get_meta("strategy"))
+	# 记住这次选的：写共享配置，多开共用一份，下次启动直接沿用
+	Cfg.shared_set(共享键_人数, 人数)
+	Cfg.shared_set(共享键_选角, 选角)
 	Logic.create_room(房名, 人数, 选角)
+
+
+# ============================================================
+# 建房选项的记忆（人数 / 选角）
+# ============================================================
+## 按共享配置把人数 / 选角拨回上次选的项（没记过就保持场景里的默认）
+func _恢复建房选项() -> void:
+	_选中按元数据(人数组, "people", int(Cfg.shared_get(共享键_人数, 未记录)))
+	_选中按元数据(选角组, "strategy", int(Cfg.shared_get(共享键_选角, 未记录)))
+
+
+## 在单选组里选中 metadata[键] == 值 的那个按钮；「未记录」或没有对应按钮时保持原样
+func _选中按元数据(组: ButtonGroup, 键: String, 值: int) -> void:
+	if 值 == 未记录:
+		return
+	for 钮: BaseButton in 组.get_buttons():
+		if int(钮.get_meta(键, 未记录)) == 值:
+			钮.button_pressed = true
+			return
 
 
 # ============================================================

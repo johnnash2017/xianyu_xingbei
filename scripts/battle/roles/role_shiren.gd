@@ -269,9 +269,6 @@ func _sheng_li_jiao_xiang_shi() -> int:
 	if holder == null:
 		return SUCCESS
 	var color: int = holder.color
-	var choice: int = 2
-	if engine.team_energy(color) > 0:
-		choice += 1
 	if not engine.has_reply():
 		engine.ask_skill(engine.current_id, SHENG_LI_JIAO_XIANG_SHI_2, 0, 0)
 		return WAIT
@@ -325,7 +322,9 @@ func p_harm_end(ctx: Dictionary) -> int:
 			step = STEP_DONE
 			return SUCCESS
 		if not engine.has_reply():
-			engine.ask_skill(player.id, CHEN_LUN_XIE_ZOU_QU, 1, 1)
+			# 要弃 2 张同系手牌（校验里 cards.size() != 2 且两张必须同系）：
+			# need_card 必须是 2，并让客户端只让同系牌可点
+			engine.ask_skill(player.id, CHEN_LUN_XIE_ZOU_QU, 2, 1, GConst.CardSource.Hand, [], 0, "same")
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		step = STEP_DONE

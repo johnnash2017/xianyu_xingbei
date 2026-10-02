@@ -43,8 +43,6 @@ var tokens: Array = [null, null, null]
 var ready: bool = false
 var leader: bool = false
 var online: bool = true
-var face_source: String = ""        # 角色立绘路径
-var tap_source: String = ""         # 形态图标路径
 
 
 func _init(pid: int = 0, c: int = GConst.TEAM_NONE, nick: String = "") -> void:
@@ -64,9 +62,6 @@ func set_nickname(n: String) -> void:
 func set_role(role: int) -> void:
 	role_id = role
 	role_name = Data.role_name(role)
-	face_source = "res://资源/角色/%d.png" % role
-	if not ResourceLoader.exists(face_source):
-		face_source = ""
 
 
 func set_hand_cards_max(v: int) -> void:
