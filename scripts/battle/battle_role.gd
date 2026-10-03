@@ -57,24 +57,38 @@ func p_timeline_6(_ctx: Dictionary) -> int: return SUCCESS
 func p_timeline_6_drawn(_ctx: Dictionary) -> int: return SUCCESS
 func p_harm_end(_ctx: Dictionary) -> int: return SUCCESS
 func p_before_lose_morale(_ctx: Dictionary) -> int: return SUCCESS
+func p_xin_yue(_ctx: Dictionary) -> int: return SUCCESS
 func p_lose_morale(_ctx: Dictionary) -> int: return SUCCESS
+func p_fix_morale(_ctx: Dictionary) -> int: return SUCCESS
 func p_true_lose_morale(_ctx: Dictionary) -> int: return SUCCESS
-# 说明：服务端的 p_cover_change / p_hand_change（盖牌/手牌变动时对全体触发）在本引擎没有通用触发点，
-# 相关角色的效果改由各自的显式触发点处理（如蝶舞在移除【茧】处调用凋灵、巫女在多个结算点检查脱形态），
-# 因此这里不再保留同名空钩子，避免被误当成「已接入」。
+## 盖牌变动（对照服务端 PlayerEntity::p_cover_change）：任意盖牌的加入/移出都会对全体触发一次。
+## ctx: {dst 变动归属者, direction 见 GConst.CHANGE_*, howMany, cards, doer 发起者, cause}
+func p_cover_change(_ctx: Dictionary) -> int: return SUCCESS
 func p_show_hand(_ctx: Dictionary) -> int: return SUCCESS
 func p_tap(_ctx: Dictionary) -> int: return SUCCESS
+## 手牌数量变化（对照服务端 PlayerEntity::p_hand_change）：任何来源的加/减手牌后对全体触发一次
+## ctx: {player 手牌变化者}
+func p_hand_change(_ctx: Dictionary) -> int: return SUCCESS
+## 回合开始的基础效果检查（对照服务端 FengYin::WuXiShuFu_Effect）：引擎在虚弱询问前对全体角色调用，
+## 角色若判定当前回合玩家身上有自己的效果（如【五系束缚】），把它消耗掉并把应摸牌数加进 ctx["how_many"]
+## ctx: {player 当前回合玩家, how_many 累加值}
+func p_check_basic_effect(_ctx: Dictionary) -> int: return SUCCESS
 func p_basic_effect_change(_ctx: Dictionary) -> int: return SUCCESS
 func p_additional_action(_ctx: Dictionary) -> int: return SUCCESS
 func p_turn_end(_ctx: Dictionary) -> int: return SUCCESS
 func p_after_turn_end(_ctx: Dictionary) -> int: return SUCCESS
+## 应战成立后（对照服务端 PlayerEntity::p_reattack）：可把应战打出的这张牌「视为」另一张。
+## ctx: {card_id 打出的牌, doer 应战者, target 反击目标, 改用 视为哪张牌, real 是否实体牌}
+## 角色也可设置 ctx["block"] = true，把这次应战当作「格挡」（本次攻击落空、不反击），如阴阳师光系应战
+func p_reattack(_ctx: Dictionary) -> int: return SUCCESS
 
 
 # ============================================================
 # 牌类校验覆写（返回 V_NOT_OVERRIDE 表示不覆写，退回通用实现）
 # 想「通用校验 + 追加限制」时，先调 player.base_v_xxx(...) 再判断
 # ============================================================
-func v_allow_action(_action_type: int, _args: Array) -> int: return V_NOT_OVERRIDE
+func v_allow_action(_action_type: int, _args: Array, _allow: int, _can_give_up: bool) -> int: return V_NOT_OVERRIDE
+func v_unactional() -> int: return V_NOT_OVERRIDE
 func v_attack(_card_id: int, _dst_id: int, _players: Dictionary) -> int: return V_NOT_OVERRIDE
 func v_reattack(_card_id: int, _attack_card_id: int) -> int: return V_NOT_OVERRIDE
 func v_block(_card_id: int) -> int: return V_NOT_OVERRIDE
@@ -117,10 +131,28 @@ func call_hook(hook: String, ctx: Dictionary) -> int:
 # ============================================================
 # 常用工具
 # ============================================================
-## 询问本角色是否发动某技能（对应客户端「确定/取消」），返回 WAIT
-func ask_self_skill(skill_id: int) -> int:
-	engine.ask_skill(player.id, skill_id)
-	return WAIT
+## 取技能表「提示」列的第 序号 条并填好占位符：{src}=自己（发起者）、{n}=要交/弃的张数、
+## {dst}=收牌人（「我交给别人」的场合才给）。同一个技能的多个询问各读哪一条，
+## 由角色脚本自己按顺序定（如 #0 = 叫别人交牌、#1 = 自己交牌）。
+## 表里没配就返回空串，客户端会退回默认文案（「是否发动【X】？」）
+func 提示(skill_id: int, 序号: int = 0, 张数: int = 0, 收牌人id: int = -1) -> String:
+	return GConst.提示文本(skill_id, 序号, engine._称号(player), 张数, _收牌人称号(收牌人id))
+
+
+## 收牌人称号（{dst} 用；没收牌人就返回空串）
+func _收牌人称号(收牌人id: int) -> String:
+	return engine._称号(engine.p(收牌人id)) if 收牌人id >= 0 else ""
+
+
+## 询问某玩家（自己或别人）选牌 / 是否发动：参数与 engine.ask_skill 一致，只是「提示」文案
+## 不用每个调用点手写 —— 自动取技能表「提示」列的第 序号 条，并把 {src}=本技能发起者（自己）、
+## {n}=要交/弃的张数、{dst}=收牌人 填好（收牌人id 只在「我交给别人」的场合给）。
+## 同一个技能有多次询问且要不同文案时，靠 序号 区分；表里没配就退回默认文案（「是否发动【X】？」）
+func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = []) -> void:
+	# 提示里的 {n}：need_card 为 0 表示「可弃可不弃」，这时取上限（card_max）才说得通，
+	# 否则文案会变成「弃 0 张」
+	engine.ask_skill(pid, skill_id, need_card, need_target, card_source, options, card_max, card_rule, cards, can_cancel,
+		提示(skill_id, 序号, need_card if need_card > 0 else card_max, 收牌人id), targets)
 
 
 ## 读取技能询问回复：返回 true=发动、false=放弃
@@ -138,6 +170,17 @@ func take_skill_reply_full() -> Dictionary:
 ## 广播技能发动
 func notice_skill(skill_id: int, dst_ids: Array = []) -> void:
 	engine.broadcast(GConst.Msg.Skill, {"skill_id": skill_id, "src_id": player.id, "dst_ids": dst_ids})
+
+
+## 施加治疗：一律经引擎入口（写日志，按输出量记、并带上施术者），不要直接调 add_cross_num
+func 施加治疗(dst_id: int, amount: int) -> void:
+	engine.add_cross(dst_id, amount, player.id)
+
+
+## 施加治疗（无视目标治疗上限版）：【神圣契约】这类「突破上限」的技能用；
+## 封顶 > 0 时治疗后不超过它（如最高到 4）。普通加治疗仍用 施加治疗()。
+func 施加治疗_突破(dst_id: int, amount: int, 封顶: int) -> void:
+	engine.add_cross_pierce(dst_id, amount, player.id, 封顶)
 
 
 ## 手牌里的法术牌牌号（不少技能要求「弃 N 张法术牌」，available_skills 的 "cards" 用它，
@@ -187,13 +230,13 @@ func ally_ids() -> Array[int]:
 	return out
 
 
-## 场上满足条件的玩家 id（不含自己：默认只挑「别人」，确实允许指向自己的技能才把自己并进白名单；
-## 需要按条件过滤目标的技能，available_skills 的 "targets" 用它）
-func player_ids_where(条件: Callable) -> Array[int]:
+## 场上满足条件的玩家 id（默认不含自己：只挑「别人」；确实允许指向自己的技能传 含自己 = true）。
+## 需要按条件过滤目标的技能，available_skills 的 "targets" 用它
+func player_ids_where(条件: Callable, 含自己: bool = false) -> Array[int]:
 	var out: Array[int] = []
 	for pid: int in engine.order:
 		var p0: BattlePlayer = engine.p(pid)
-		if p0 != null and p0.id != player.id and bool(条件.call(p0)):
+		if p0 != null and (含自己 or p0.id != player.id) and bool(条件.call(p0)):
 			out.append(pid)
 	return out
 
@@ -217,7 +260,8 @@ func nearest_enemy_id(from_id: int, post_dir: bool) -> int:
 # ============================================================
 # 【魔弹掌握】（802）—— 魔导的落点选择
 # 技能原文：「你主动使用【魔弹】时可以选择逆向传递」。
-# 这里按需求放宽到「响应【魔弹】继续传递时也能选方向」，其它角色不受影响。
+# 只作用于「主动打出【魔弹】」这一步（见 missile_targets）；魔弹一旦打出，
+# 后续的传递方向就由出弹时定下，任何角色在传递时都不能改向（见 BattleEngine.SMissileAsk）。
 # ============================================================
 ## 本角色是否拥有【魔弹掌握】（默认为否，魔导覆写为 true）
 func has_missile_mastery() -> bool:

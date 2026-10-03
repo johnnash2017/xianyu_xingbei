@@ -120,6 +120,11 @@ func _on_client_message(conn_id: int, msg_type: int, data: Dictionary) -> void:
 			if not room.is_empty():
 				var battle: BattleEngine = room["battle"]
 				battle.on_message(int(s["player_id"]), msg_type, data)
+		GConst.Msg.DebugReq:
+			# 测试用：按连接认人，谁按的键就以谁的名义做
+			var 测试房: Dictionary = _room_of(conn_id)
+			if not 测试房.is_empty():
+				(测试房["battle"] as BattleEngine).debug_key(int(s["player_id"]), int(data.get("kind", 1)))
 
 
 # ============================================================

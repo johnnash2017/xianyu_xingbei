@@ -17,6 +17,9 @@ const YING_LING_ZHAO_HUAN: int = 2505
 ## 本回合是否已授予过「神圣追击」（服务端 added_SHEN_SHENG_ZHUI_JI）
 var added_shen_sheng_zhui_ji: bool = false
 
+## 军神威光的第二段子步骤：step 为 0 时选效果，到它以后改为选「移除哪两颗星石」
+const JUN_SHEN_WEI_GUANG_XUAN_XING_SHI: int = 25042
+
 
 func available_skills() -> Array:
 	# 秩序之印无消耗，随时可用
@@ -28,37 +31,84 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 【军神威光】的推进阶段（0＝还没开始 / JUN_SHEN_WEI_GUANG_XUAN_XING_SHI＝在问移除哪两颗星石）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合开始且处于横置（p_turn_begin）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _jun_shen_step: int = 0
+
+
 # ============================================================
 # 回合开始：军神威光（仅自身回合且处于横置形态时询问）
+# 直接弹选项窗问「发动哪个效果」，取消＝不发动，没有多余的「是否发动」一步。
+# 选「移除 2 星石」时再弹第二段问移除哪两颗（对照原版 JunShenWeiGuang → JunShenWeiGuang2）
 # ============================================================
 func p_turn_begin(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id or not player.tap:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _jun_shen_step >= STEP_DONE:
 		return SUCCESS
+	# 第一段：选发动哪个效果
+	if _jun_shen_step < JUN_SHEN_WEI_GUANG_XUAN_XING_SHI:
+		if not engine.has_reply():
+			询问(player.id, JUN_SHEN_WEI_GUANG, 0, 0, GConst.CardSource.Hand, _jun_shen_wei_guang_choices())
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		var args: Array = r.get("args", [])
+		var choice: int = int(args[0]) if not args.is_empty() else 0
+		if choice == 1:
+			_jun_shen_step = 0
+			notice_skill(JUN_SHEN_WEI_GUANG, [player.id])
+			施加治疗(player.id, 1)
+			engine._broadcast_game()
+			return SUCCESS
+		if choice != 2:
+			# 取消 / 超时：不发动
+			_jun_shen_step = 0
+			return SUCCESS
+		_jun_shen_step = JUN_SHEN_WEI_GUANG_XUAN_XING_SHI
+	# 第二段：选移除哪两颗星石（取消＝不发动）
 	if not engine.has_reply():
-		engine.ask_skill(player.id, JUN_SHEN_WEI_GUANG, 0, 0)
+		询问(player.id, JUN_SHEN_WEI_GUANG, 0, 0, GConst.CardSource.Hand, _jun_shen_wei_guang_energy_choices(), 0, "", [], true, 1)
 		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
-	var args: Array = r.get("args", [])
-	if args.is_empty():
+	var r2: Dictionary = take_skill_reply_full()
+	_jun_shen_step = 0
+	var args2: Array = r2.get("args", [])
+	var 组合: int = int(args2[0]) if not args2.is_empty() else 0
+	if 组合 < 1 or 组合 > 3:
 		return SUCCESS
-	var choice: int = int(args[0])
-	if choice != 1 and choice != 2:
-		return SUCCESS
+	# 1＝两水晶 / 2＝一宝石一水晶 / 3＝两宝石
+	var use_gem: int = 组合 - 1
 	notice_skill(JUN_SHEN_WEI_GUANG, [player.id])
-	if choice == 1:
-		player.add_cross_num(1)
-	else:
-		# 放弃 +1 治疗：扣团队宝石/水晶，换 +2 治疗（服务端 addCrossNum(2,-2)，无视上限）
-		var use_gem: int = int(args[1]) if args.size() > 1 else 0
-		var use_crystal: int = int(args[2]) if args.size() > 2 else 0
-		engine.set_team_gem(player.color, engine.team_gem[player.color] - use_gem)
-		engine.set_team_crystal(player.color, engine.team_crystal[player.color] - use_crystal)
-		player.cross_num = player.cross_num + 2
+	engine.set_team_gem(player.color, engine.team_gem[player.color] - use_gem)
+	engine.set_team_crystal(player.color, engine.team_crystal[player.color] - (2 - use_gem))
+	# 无视上限 +2 治疗：走与普通加治疗同一入口（会写战斗日志，且超过上限时只加不减）
+	施加治疗_突破(player.id, 2, 0)
 	engine._broadcast_game()
 	return SUCCESS
+
+
+## 军神威光第一段选项：+1 治疗，或（团队能量 > 1 时）移除 2 星石换无视上限 +2 治疗
+func _jun_shen_wei_guang_choices() -> Array:
+	var 选项: Array = [{"value": 1, "label": "你 +1【治疗】"}]
+	if engine.team_gem[player.color] + engine.team_crystal[player.color] > 1:
+		选项.append({"value": 2, "label": "移除我方【战绩区】2 星石，无视上限 +2【治疗】"})
+	return 选项
+
+
+## 军神威光第二段选项：按战绩区现有的星石列出可行的两颗组合
+## （value 1＝两水晶 / 2＝一宝石一水晶 / 3＝两宝石，与服务端的换算一一对应）
+func _jun_shen_wei_guang_energy_choices() -> Array:
+	var 宝石: int = engine.team_gem[player.color]
+	var 水晶: int = engine.team_crystal[player.color]
+	var 选项: Array = []
+	if 水晶 >= 2:
+		选项.append({"value": 1, "label": "移除 2 个【水晶】"})
+	if 宝石 >= 1 and 水晶 >= 1:
+		选项.append({"value": 2, "label": "移除 1 个【宝石】和 1 个【水晶】"})
+	if 宝石 >= 2:
+		选项.append({"value": 3, "label": "移除 2 个【宝石】"})
+	return 选项
 
 
 # ============================================================
@@ -76,7 +126,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 自身攻击命中后：英灵召唤（耗 1 能量横置，伤害 +1，可弃 1 张法术牌再 +1）
+# 自身攻击命中后：英灵召唤（耗 1 能量横置，伤害 +1，可弃 0~1 张法术牌再 +1）
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
@@ -85,7 +135,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, YING_LING_ZHAO_HUAN, 1, 0)
+		# 弃牌是可选的：need_card=0（一张不弃也能发动）、最多 1 张、只让法术牌可点
+		询问(player.id, YING_LING_ZHAO_HUAN, 0, 0, GConst.CardSource.Hand, [], 1, "magic")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -99,19 +150,20 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		player.set_gem(player.gem - 1)
 	player.tap = true
 	harm["point"] = int(harm.get("point", 0)) + 1
-	if args.size() > 1 and int(args[1]) == 1:
-		var cards: Array = r.get("card_ids", [])
-		if not cards.is_empty():
-			var cid: int = int(cards[0])
-			var card: GCard = Data.get_card(cid)
-			if card != null and card.is_magic() and player.has_hand_card(cid):
-				harm["point"] = int(harm["point"]) + 1
-				engine.broadcast(GConst.Msg.Card, {
-					"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-					"card_ids": [cid], "is_real": true,
-				})
-				engine.take_from_hand(player.id, [cid])
-				engine.to_discard([cid])
+	# 额外弃 1 张法术牌再 +1：客户端把「玩家选中的牌」放在 card_ids，
+	# 技能询问不回 args[1] 这一维（原版客户端是每条技能自己拼 [发动, 是否弃牌] 的）
+	var cards: Array = r.get("card_ids", [])
+	if not cards.is_empty():
+		var cid: int = int(cards[0])
+		var card: GCard = Data.get_card(cid)
+		if card != null and card.is_magic() and player.has_hand_card(cid):
+			harm["point"] = int(harm["point"]) + 1
+			engine.broadcast(GConst.Msg.Card, {
+				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+				"card_ids": [cid], "is_real": true,
+			})
+			engine.take_from_hand(player.id, [cid])
+			engine.to_discard([cid])
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -171,7 +223,7 @@ func p_magic_skill(action: Dictionary) -> int:
 	notice_skill(ZHI_XU_ZHI_YIN, [player.id])
 	# 服务端先压入「摸 2 张」状态（URGENT），再执行 +1 治疗 +1 水晶
 	engine.draw(player.id, 2)
-	player.add_cross_num(1)
+	施加治疗(player.id, 1)
 	player.set_crystal(player.crystal + 1)
 	engine._broadcast_game()
 	return SUCCESS

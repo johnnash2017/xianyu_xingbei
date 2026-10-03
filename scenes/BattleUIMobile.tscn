@@ -30,7 +30,7 @@
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "TxtTurn", "TxtRID", "TxtHint", "Hint", "Content_2", "ShowCardArea", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign")]
+[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign")]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 1280.0
@@ -54,6 +54,7 @@ TxtTurn = NodePath("Root/Status/TxtTurn")
 TxtRID = NodePath("Root/Status/TxtRID")
 TxtHint = NodePath("Root/Hint/TxtHint")
 Hint = NodePath("Root/Hint")
+"测试提示" = NodePath("Root/测试提示")
 Content_2 = NodePath("Root/LogRoot/MsgRoot/Viewport_2/Content_2")
 ShowCardArea = NodePath("Root/ShowCardArea")
 Content = NodePath("Root/ChatRoot_/ChatRoot/ScrollView/Viewport/Content")
@@ -616,7 +617,6 @@ columns = 5
 
 [node name="ChooseArea" type="TextureRect" parent="Root" unique_id=62792194]
 visible = false
-modulate = Color(0, 0, 0, 0.503)
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 1.0
@@ -741,10 +741,13 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="Content_2" type="Label" parent="Root/LogRoot/MsgRoot/Viewport_2" unique_id=677482167]
+[node name="Content_2" type="RichTextLabel" parent="Root/LogRoot/MsgRoot/Viewport_2" unique_id=677482167]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 25
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+theme_override_font_sizes/normal_font_size = 25
 autowrap_mode = 3
 script = ExtResource("43_AutoClearLoggd")
 
@@ -1056,7 +1059,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 0
 
-[node name="Content_3" type="Label" parent="Root/movelog/Viewport_3" unique_id=1369320591]
+[node name="Content_3" type="RichTextLabel" parent="Root/movelog/Viewport_3" unique_id=1369320591]
 visible = false
 layout_mode = 0
 anchor_top = 1.0
@@ -1066,8 +1069,10 @@ offset_bottom = -27.03106
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(0, 27.03106)
-theme_override_font_sizes/font_size = 25
-vertical_alignment = 1
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+theme_override_font_sizes/normal_font_size = 25
 autowrap_mode = 3
 script = ExtResource("43_AutoClearLoggd")
 
@@ -1647,6 +1652,27 @@ text = "有玩家掉线了"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
+
+[node name="测试提示" type="Label" parent="Root"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -248.0
+offset_top = -150.0
+offset_right = -8.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 0
+vertical_alignment = 2
 
 [connection signal="pressed" from="Root/BtnHide" to="." method="onBtnHideClick"]
 [connection signal="pressed" from="Root/BtnHide/GiveUpBoard/Button/Agree" to="." method="onBtnGiveUpClick"]

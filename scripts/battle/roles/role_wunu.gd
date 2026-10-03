@@ -16,8 +16,6 @@ const XUE_ZHI_AI_SHANG: int = 2303
 const NI_LIU: int = 2304
 const LIU_XUE: int = 2306
 const XUE_ZHI_ZU_ZHOU: int = 2351
-const XUE_ZHI_ZU_ZHOU_QI_PAI: int = 2352
-
 
 ## 【同生共死】的目标（-1 表示未放置）
 var tong_sheng_id: int = -1
@@ -88,7 +86,12 @@ func p_boot(_ctx: Dictionary) -> int:
 		ai_shang_dst = -1
 	if ai_shang_phase == 1:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, XUE_ZHI_AI_SHANG, 0, 1)
+			# 两条分支各做成一个选项（value 1=转移给选定目标、2=移除），
+			# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
+			询问(player.id, XUE_ZHI_AI_SHANG, 0, 1, GConst.CardSource.Hand, [
+				{"value": 1, "label": "转移【同生共死】给选定目标"},
+				{"value": 2, "label": "移除【同生共死】"},
+			])
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
@@ -143,22 +146,13 @@ func p_timeline_4(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 脱流血形态（服务端 p_hand_change）：手牌 < 3 时强制重置形态
-# 引擎无「手牌变化」状态，故在这些常用检查点补充触发
+# 脱流血形态（服务端 WuNv::p_hand_change）：任何时候手牌不足 3 张就强制重置形态
+# 引擎在「手牌数量变化」后统一触发 p_hand_change（见 battle_engine._check_hand_change），
+# 因此被他人技能逼着弃牌也会立刻脱形态
 # ============================================================
-func p_harm_end(_ctx: Dictionary) -> int:
-	return _to_normal_form()
-
-
-func p_after_attack(_ctx: Dictionary) -> int:
-	return _to_normal_form()
-
-
-func p_after_magic(_ctx: Dictionary) -> int:
-	return _to_normal_form()
-
-
-func p_after_special(_ctx: Dictionary) -> int:
+func p_hand_change(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
 	return _to_normal_form()
 
 
@@ -191,8 +185,8 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 	# 服务端要求本次掉士气由伤害造成（con->harm.type != HARM_NONE）
 	if int(ctx.get("type", 0)) == GConst.HarmType.None:
 		return SUCCESS
-	player.tap = true
-	player.add_cross_num(1)
+	engine.set_tap(player.id, true)
+	施加治疗(player.id, 1)
 	if tong_sheng_id != -1:
 		if tong_sheng_id == player.id:
 			player.hand_cards_max += 3
@@ -336,7 +330,8 @@ func _ni_liu(action: Dictionary) -> int:
 	notice_skill(NI_LIU, [player.id])
 	engine.take_from_hand(player.id, use)
 	engine.to_discard(use)
-	player.add_cross_num(1)
+	engine._log_discard(player.id, use)
+	施加治疗(player.id, 1)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -370,45 +365,21 @@ func _xue_zhi_bei_ming(action: Dictionary) -> int:
 	return URGENT
 
 
-## 血之诅咒：耗 1 宝石，对目标角色 2 点法术伤害，随后弃最多 3 张牌（弃牌先于伤害结算）
+## 血之诅咒：耗 1 宝石，对目标角色 2 点法术伤害，随后弃最多 3 张牌
+## 服务端顺序：先造成 2 点法术伤害，再弃牌（弃牌排在伤害之后）
 func _xue_zhi_zu_zhou(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
-	if step == 0:
-		step = XUE_ZHI_ZU_ZHOU
-		notice_skill(XUE_ZHI_ZU_ZHOU, [dst_id])
-		player.set_gem(player.gem - 1)
-		engine._broadcast_game()
-		if player.hand_cards.size() > 0:
-			engine.ask_skill(player.id, XUE_ZHI_ZU_ZHOU_QI_PAI, 1, 0)
-			return WAIT
+	if step != 0:
+		return SUCCESS
 	step = STEP_DONE
-	var chosen: Array = []
-	if engine.has_reply():
-		var r: Dictionary = take_skill_reply_full()
-		chosen = r.get("card_ids", [])
-	_discard_count(mini(player.hand_cards.size(), 3), chosen)
+	notice_skill(XUE_ZHI_ZU_ZHOU, [dst_id])
+	player.set_gem(player.gem - 1)
+	# 压栈顺序：弃牌 → 伤害，LIFO 弹出即「先伤害、后弃牌」
+	engine.push(BattleEngine.SRequestDiscard.new(player.id, mini(player.hand_cards.size(), 3), -1, XUE_ZHI_ZU_ZHOU))
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": 2,
 		"cause": XUE_ZHI_ZU_ZHOU, "type": GConst.HarmType.Magic,
 	})
 	engine._broadcast_game()
 	return URGENT
-
-
-## 从手牌弃 n 张牌：优先使用客户端给出的牌，不足时自动补齐
-func _discard_count(n: int, chosen: Array) -> void:
-	var over: int = mini(n, player.hand_cards.size())
-	if over <= 0:
-		return
-	var use: Array = []
-	for c: Variant in chosen:
-		if use.size() < over and player.has_hand_card(int(c)) and not use.has(int(c)):
-			use.append(int(c))
-	for cid: int in player.hand_cards:
-		if use.size() >= over:
-			break
-		if not use.has(cid):
-			use.append(cid)
-	engine.take_from_hand(player.id, use)
-	engine.to_discard(use)

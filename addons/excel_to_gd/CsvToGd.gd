@@ -1,6 +1,12 @@
 # 文件名: CsvToGd.gd
 # 功能: 将合法 CSV 文件夹转换为单例数据表脚本（纯净表字典 + 表元数据）
 # 版本: 16.0 (增量生成优化)
+#
+# 分布式 list（表里一格只放一条，免得挤在一个格子里配）：
+#   主体列类型写 list(string)#distributed  —— 该列自己一格配一条；
+#   其它列类型写 list(string)#distributed(主体列名) —— 分列，也是一格配一条；
+#   转表时把「主体列 + 各分列」按列从左到右并成一份正常的 list(string)，存到主体列名下，
+#   分列不导出。
 class_name CsvToGd
 
 # ==================== 多线程相关变量 ====================
@@ -813,6 +819,9 @@ func _解析类型定义(类型定义字符串: String) -> Variant:
 	
 	var 默认值: Variant = null
 	var 分隔符: Variant = null
+	# 分布式 list：主体列（#distributed）与分列（#distributed(主体列名)）的标记
+	var 分布式主: bool = false
+	var 分布式主列名: String = ""
 	var 核心类型定义: String = 处理后字符串
 	
 	var 后缀开始位置: int = 核心类型定义.find("#")
@@ -841,6 +850,7 @@ func _解析类型定义(类型定义字符串: String) -> Variant:
 					嵌套括号深度 -= 1
 				elif 当前字符2 == "#" and 嵌套括号深度 == 0:
 					break
+				# 走到下一个 # 或字符串末尾为止（原来这行缩进在 break 之后，永远不执行 = 死循环）
 				后缀结束位置 += 1
 			var 后缀内容: String = 核心类型定义.substr(后缀开始位置, 后缀结束位置 - 后缀开始位置)
 			var 小写后缀内容: String = 后缀内容.to_lower()
@@ -851,6 +861,14 @@ func _解析类型定义(类型定义字符串: String) -> Variant:
 			elif 小写后缀内容.begins_with("#sep(") and 后缀内容.ends_with(")"):
 				var 分隔符内容: String = 后缀内容.substr(5, 后缀内容.length()-6)
 				分隔符 = 分隔符内容
+				核心类型定义 = 核心类型定义.erase(后缀开始位置, 后缀结束位置-后缀开始位置)
+			elif 小写后缀内容.begins_with("#distributed("):
+				# 分列：#distributed(主体列名)；一格配一条，转表时并进主体列
+				var 左括号位置: int = 后缀内容.find("(")
+				分布式主列名 = 后缀内容.substr(左括号位置 + 1, 后缀内容.length() - 左括号位置 - 2).strip_edges()
+				核心类型定义 = 核心类型定义.erase(后缀开始位置, 后缀结束位置-后缀开始位置)
+			elif 小写后缀内容 == "#distributed":
+				分布式主 = true
 				核心类型定义 = 核心类型定义.erase(后缀开始位置, 后缀结束位置-后缀开始位置)
 			else:
 				break
@@ -927,6 +945,15 @@ func _解析类型定义(类型定义字符串: String) -> Variant:
 		类型描述字典["默认值"] = 默认值
 	if 分隔符 != null:
 		类型描述字典["分隔符"] = 分隔符
+	if 分布式主 or not 分布式主列名.is_empty():
+		# 分布式只支持「单字段」的 list（如 list(string)）：多字段元组没法一格一条地拆开配
+		var 子类型数量: int = (类型描述字典.get("子类型", []) as Array).size()
+		if 类型描述字典.get("类型", "") != "list" or 子类型数量 != 1:
+			return null
+		if 分布式主:
+			类型描述字典["分布式主"] = true
+		else:
+			类型描述字典["分布式主列名"] = 分布式主列名
 	
 	return 类型描述字典
 
@@ -1325,6 +1352,17 @@ func _校验所有表数据完整性() -> Array[String]:
 					}]})
 		
 		var 表有错误 = false
+		
+		# 分布式 list：分列写的主体列名必须真的存在、且那一列标了 #distributed，否则数据会被悄悄丢掉
+		var 主体列集合: Dictionary = {}
+		for 索引 in range(列名数组.size()):
+			if 类型描述数组[索引].get("分布式主", false):
+				主体列集合[列名数组[索引]] = true
+		for 索引 in range(列名数组.size()):
+			var 指定主体列名: String = str(类型描述数组[索引].get("分布式主列名", ""))
+			if not 指定主体列名.is_empty() and not 主体列集合.has(指定主体列名):
+				错误信息列表.append("[错误] %s 列'%s': 分布式分列指定的主体列'%s'不存在（或那一列没写 #distributed）" % [文件路径, 列名数组[索引], 指定主体列名])
+				表有错误 = true
 		for 实体 in 数据行分组结果:
 			var 实体ID = 实体["id"]
 			var 实体行组 = 实体["行组"]
@@ -1723,6 +1761,8 @@ func _生成数据表格脚本() -> String:
 				for 索引 in range(列名数组.size()):
 					if 列名数组[索引] == "id":
 						continue
+					if 类型描述数组[索引].has("分布式主列名"):
+						continue  # 分布式分列不导出（与 _生成单个表 的列索引一致）
 					列索引字典[列名数组[索引]] = 新索引
 					新索引 += 1
 				var 列索引字典字符串: String = _列索引转GDScript字符串(列索引字典)
@@ -1848,6 +1888,8 @@ func _生成单个表(表名称: String, 表信息: Dictionary) -> Dictionary:
 		if 列名数组[索引] == "id":
 			ID列索引 = 索引
 			continue
+		if 类型描述数组[索引].has("分布式主列名"):
+			continue  # 分布式分列只在表里帮忙拆格子，不单独导出
 		列索引字典[列名数组[索引]] = 输出列索引
 		输出列索引 += 1
 	var 列索引字典字符串: String = _列索引转GDScript字符串(列索引字典)
@@ -1870,14 +1912,31 @@ func _生成单个表(表名称: String, 表信息: Dictionary) -> Dictionary:
 			var 行字符串缓冲区: PackedStringArray = PackedStringArray()
 			行字符串缓冲区.append("[")
 			
+			# 分布式 list：主体列自己那一格 + 它各分列的格子，按列从左到右收集
+			var 分布式片段: Dictionary = {}
+			for 列索引 in range(列数):
+				var 片段主列名: String = _片段归属主体列(列名数组[列索引], 类型描述数组[列索引])
+				if 片段主列名.is_empty():
+					continue
+				if not 分布式片段.has(片段主列名):
+					分布式片段[片段主列名] = []
+				分布式片段[片段主列名].append(过滤后单元格数组[列索引])
+			
 			# 跳过 ID 列：ID 由字典键提供，不在行数组中重复存储
 			var 已输出列数: int = 0
 			for 列索引 in range(列数):
 				if 列索引 == ID列索引:
 					continue
+				if 类型描述数组[列索引].has("分布式主列名"):
+					continue  # 分列的格子已经并进主体列
+				var 字面量: String = ""
+				if 类型描述数组[列索引].get("分布式主", false):
+					字面量 = _分布式列表字面量(分布式片段.get(列名数组[列索引], []), 类型描述数组[列索引])
+				else:
+					字面量 = _直接转换单元格为字符串(过滤后单元格数组[列索引], 类型描述数组[列索引])
 				if 已输出列数 > 0:
 					行字符串缓冲区.append(", ")
-				行字符串缓冲区.append(_直接转换单元格为字符串(过滤后单元格数组[列索引], 类型描述数组[列索引]))
+				行字符串缓冲区.append(字面量)
 				已输出列数 += 1
 			
 			行字符串缓冲区.append("]")
@@ -1983,6 +2042,25 @@ func _直接转换单元格为字符串(原始值: String, 类型描述: Diction
 			return _快速转义字符串(转换值)
 		_:
 			return _快速转义字符串(转换值)
+
+## 该列的格子归属于哪个「分布式 list 主体列」：主体列返回自己的列名，分列返回它指的主体列名，其余返回空串
+func _片段归属主体列(列名: String, 类型描述: Dictionary) -> String:
+	if 类型描述.get("分布式主", false):
+		return 列名
+	return str(类型描述.get("分布式主列名", ""))
+
+
+## 分布式 list：把主体列和各分列的格子按列顺序拼成一份正常的 list 字面量（空格子跳过）
+func _分布式列表字面量(片段数组: Array, 类型描述: Dictionary) -> String:
+	var 子类型数组: Array = 类型描述["子类型"]
+	var 元素字符串列表: PackedStringArray = PackedStringArray()
+	for 片段: Variant in 片段数组:
+		var 文本: String = str(片段).strip_edges()
+		if 文本.is_empty():
+			continue
+		元素字符串列表.append("[" + _直接转换单元格为字符串(文本, 子类型数组[0]) + "]")
+	return "[" + ", ".join(元素字符串列表) + "]"
+
 
 func _生成枚举字面量(枚举值: Variant) -> String:
 	if 枚举值 is int or 枚举值 is float:

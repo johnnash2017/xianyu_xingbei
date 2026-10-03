@@ -58,7 +58,8 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, FA_LI_HU_DUN, 1, 0)
+		# 只能弃法术牌（技能原文）：下发 magic 规则，界面把攻击牌等置灰
+		询问(player.id, FA_LI_HU_DUN, 1, 0, GConst.CardSource.Hand, [], 0, "magic")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -143,7 +144,8 @@ func _sp_mo_bao_chong_ji(action: Dictionary) -> int:
 	if step != 1:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(tid, SP_MO_BAO_CHONG_JI, 1, 0)
+		# 目标只能弃法术牌（技能原文）：下发 magic 规则，界面把攻击牌等置灰
+		询问(tid, SP_MO_BAO_CHONG_JI, 1, 0, GConst.CardSource.Hand, [], 0, "magic")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

@@ -75,8 +75,8 @@ var token1: Label = null
 var token2: Label = null
 ## 对应 C# private Animator hurted;  （场景里没有 AnimationPlayer，做空实现）
 var hurted: Node = null
-## 状态图标（基础效果 / 独有效果）的边长：素材都是 20×20
-const 状态图标尺寸: float = 20.0
+## 状态图标（基础效果 / 独有效果）的边长：素材都是 20×20，放大到 36 显示（在 40×40 的格子里居中）
+const 状态图标尺寸: float = 36.0
 ## 「黄魂 / 蓝魂 / 盖牌」指示物的格子边长：素材 token0~2 都是 20×20，
 ## 给 30×40 会把它上下拉伸（容器 BasicAndExCards 每格宽就是 30）
 const 指示物格尺寸: Vector2 = Vector2(30.0, 30.0)
@@ -85,9 +85,11 @@ const 扁平格尺寸: Vector2 = Vector2(33.0, 14.0)
 const 扁平格叠放间距: int = -13
 ## 角色身上的能量：素材 gem / crystal 都是 29×30（近似正方形），竖着一列排
 const 能量格尺寸: Vector2 = Vector2(30.0, 30.0)
-## 能量区 / 状态图标区的格子边长（原版 Unity 的 GridLayoutGroup cellSize 就是 30×30）
-const 图标格: Vector2 = Vector2(30.0, 30.0)
-## 状态图标区排几列：它宽 60、格子 30 → 2 列
+## 能量区的格子边长（原版 Unity 的 GridLayoutGroup cellSize 就是 30×30）
+const 能量区图标格: Vector2 = Vector2(30.0, 30.0)
+## 状态图标区的格子边长：图标放大到 36 后格子同步放大到 40，列/行之间留 4px 间隙避免互相压住
+const 状态图标格: Vector2 = Vector2(40.0, 40.0)
+## 状态图标区排几列：它宽 80、格子 40 → 2 列
 const 状态区列数: int = 2
 ## 状态图标区每列最多几格（原版 GridLayoutGroup 是「固定 4 行」＝一列 4 个，满了再往右一列）
 const 状态区每列格数: int = 4
@@ -396,7 +398,7 @@ func _create_token(prefab_name: String, node_name: String) -> Label:
 		lbl.text = "0"
 	if go is CanvasItem:
 		(go as CanvasItem).visible = false
-	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数)
+	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 	return lbl
 
 ## 对应 C# public Team Team 的 setter（Team: Blue=0, Red=1）
@@ -433,7 +435,7 @@ func set_YellowToken(value: int) -> void:
 		return
 	token0.text = str(value)
 	token0.get_parent().visible = value != 0
-	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数)
+	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 
 ## 对应 C# public uint BlueToken 的 setter
 func set_BlueToken(value: int) -> void:
@@ -441,7 +443,7 @@ func set_BlueToken(value: int) -> void:
 		return
 	token1.text = str(value)
 	token1.get_parent().visible = value != 0
-	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数)
+	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 
 ## 对应 C# public uint Covered 的 setter
 func set_Covered(value: int) -> void:
@@ -449,7 +451,7 @@ func set_Covered(value: int) -> void:
 		return
 	token2.text = str(value)
 	token2.get_parent().visible = value != 0
-	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数)
+	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 
 ## 对应 C# public List<uint> BasicAndExCards 的 setter
 func set_BasicAndExCards(value: Array) -> void:
@@ -487,7 +489,7 @@ func _刷新状态图标() -> void:
 		_加状态图标(ps, _load_sprite(sprite_name), int(item))
 	for idx: Variant in _状态独有效果:
 		_加状态图标(ps, Art.exclusive_icon(int(idx)))
-	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数)
+	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 
 
 ## 往状态图标区加一枚图标（Image 预制体自身是 0×0，不给最小尺寸就什么都看不见）
@@ -568,7 +570,7 @@ func set_Energy(value: Vector2i) -> void:
 		_add_image(energyArea, ps, "gem", 能量格尺寸, false)
 	for _j in range(value.y):
 		_add_image(energyArea, ps, "crystal", 能量格尺寸, false)
-	_摆图标(energyArea, 1, 0)
+	_摆图标(energyArea, 1, 0, 能量区图标格)
 
 ## 对应 C# public KeyValuePair<uint,uint> HandCount 的 setter（Key=手牌上限, Value=当前手牌）
 func set_HandCount(value: Vector2i) -> void:
@@ -774,7 +776,8 @@ func Hurted() -> void:
 ## 「左上角起、一行行往下排」，行不满时还排不出原版的形状，所以这里直接按格子摆。
 ## 每列格数 <= 0 表示一列到底；图标比格子小时在格子里居中（20×20 的图标落在 30×30 格里）。
 ## （列数 只保留原版 C# 的签名，实际排几列由 每列格数 决定。）
-func _摆图标(容器: Control, _列数: int, 每列格数: int) -> void:
+## 格尺寸：不同区域格子大小不同（状态图标区 40、能量区 30），由调用方传入。
+func _摆图标(容器: Control, _列数: int, 每列格数: int, 格尺寸: Vector2) -> void:
 	if 容器 == null:
 		return
 	var 可见: Array[Control] = []
@@ -786,14 +789,14 @@ func _摆图标(容器: Control, _列数: int, 每列格数: int) -> void:
 	var 一列: int = 每列格数 if 每列格数 > 0 else maxi(可见.size(), 1)
 	var 高格数: int = mini(一列, 可见.size())
 	# 容器底边钉住不动，顶边按内容高度往上退 —— 于是后加的图标是「往上长」而不是往下
-	容器.offset_top = 容器.offset_bottom - float(高格数) * 图标格.y
+	容器.offset_top = 容器.offset_bottom - float(高格数) * 格尺寸.y
 	for i: int in range(可见.size()):
 		@warning_ignore("integer_division")
 		var 列号: int = i / 一列
 		var 行号: int = i % 一列
-		var 格位: Vector2 = Vector2(float(列号) * 图标格.x, float(高格数 - 1 - 行号) * 图标格.y)
+		var 格位: Vector2 = Vector2(float(列号) * 格尺寸.x, float(高格数 - 1 - 行号) * 格尺寸.y)
 		var 自身: Vector2 = 可见[i].custom_minimum_size
-		可见[i].position = 格位 + (图标格 - 自身) * 0.5
+		可见[i].position = 格位 + (格尺寸 - 自身) * 0.5
 
 
 ## 对应 C# private void addChildGO(Transform parent, GameObject go)

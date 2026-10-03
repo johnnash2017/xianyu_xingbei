@@ -38,7 +38,7 @@ func available_skills() -> Array:
 		# 死亡之触要求两张同系牌：下发「手里该系至少 2 张」的牌把同系孤张置灰；
 		# 具体选中两张是否同系、移除几点治疗仍由服务端 v_magic_skill 校验
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SI_WANG_ZHI_CHU, "need_card": 2, "need_target": 1,
-			"cards": 同系牌, "arg_choices": _si_wang_choices()})
+			"card_max": 同系牌.size(), "cards": 同系牌, "arg_choices": _si_wang_choices()})
 	if player.gem >= 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": MU_BEI_YUN_LUO, "need_card": 0, "need_target": 0})
 	return out
@@ -47,21 +47,28 @@ func available_skills() -> Array:
 # ============================================================
 # 法术行动结束后：墓碑陨落第二段（+1 治疗）→ 不朽（1301）
 # ============================================================
+## 【墓碑陨落第二段 / 不朽】的推进阶段（0＝还没开始 / BU_XIU＝在问是否发动不朽）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己法术行动结束（p_after_magic）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _after_magic_step: int = 0
+
+
 func p_after_magic(ctx: Dictionary) -> int:
 	# 法术牌走 _do_magic（ctx 用 src），法术技能走 SkillRun（ctx 用 player，含 action_id）
 	var pid: int = int(ctx.get("player", ctx.get("src", -1)))
 	if pid != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _after_magic_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
+	if _after_magic_step == 0:
 		# 墓碑陨落：对其他角色的伤害结算完毕后自身 +1 治疗
 		if pending_mu_bei_cross:
 			pending_mu_bei_cross = false
-			player.add_cross_num(1)
+			施加治疗(player.id, 1)
 			engine._broadcast_game()
-		step = BU_XIU
-	if step == BU_XIU:
+		_after_magic_step = BU_XIU
+	if _after_magic_step == BU_XIU:
 		return _bu_xiu()
 	return SUCCESS
 
@@ -70,16 +77,16 @@ func p_after_magic(ctx: Dictionary) -> int:
 func _bu_xiu() -> int:
 	if used_si_wang_zhi_chu:
 		used_si_wang_zhi_chu = false
-		step = STEP_DONE
+		_after_magic_step = 0
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, BU_XIU, 0, 0)
+		询问(player.id, BU_XIU, 0, 0)
 		return WAIT
-	step = STEP_DONE
+	_after_magic_step = 0
 	if not take_skill_reply():
 		return SUCCESS
 	notice_skill(BU_XIU, [player.id])
-	player.add_cross_num(1)
+	施加治疗(player.id, 1)
 	engine._broadcast_game()
 	return SUCCESS
 

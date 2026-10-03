@@ -99,25 +99,32 @@ func p_boot(_ctx: Dictionary) -> int:
 # ============================================================
 # 主动攻击宣告后：怒吼 → 明镜止水
 # ============================================================
+## 【怒吼 / 明镜止水】的推进阶段（0＝还没开始 / NU_HOU＝在问怒吼 / MING_JING_ZHI_SHUI＝在问明镜止水）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = NU_HOU
-	if step == NU_HOU:
+	if _timeline_1_step == 0:
+		_timeline_1_step = NU_HOU
+	if _timeline_1_step == NU_HOU:
 		var r: int = _nu_hou(ctx)
 		if r == WAIT:
 			return WAIT
-		step = MING_JING_ZHI_SHUI
-	if step == MING_JING_ZHI_SHUI:
+		_timeline_1_step = MING_JING_ZHI_SHUI
+	if _timeline_1_step == MING_JING_ZHI_SHUI:
 		var r2: int = _ming_jing_zhi_shui(ctx)
 		if r2 == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_timeline_1_step = 0
 	return SUCCESS
 
 
@@ -126,7 +133,7 @@ func _nu_hou(ctx: Dictionary) -> int:
 	if _nu_qi() <= 0:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, NU_HOU, 0, 0)
+		询问(player.id, NU_HOU, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -144,7 +151,7 @@ func _ming_jing_zhi_shui(ctx: Dictionary) -> int:
 	if _zhi_xing() != TOKEN_MAX:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, MING_JING_ZHI_SHUI, 0, 0)
+		询问(player.id, MING_JING_ZHI_SHUI, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -158,6 +165,15 @@ func _ming_jing_zhi_shui(ctx: Dictionary) -> int:
 # ============================================================
 # 攻击命中后：禁断之力
 # ============================================================
+## 【禁断之力（命中）】的推进阶段（0＝还没开始 / JIN_DUAN_ZHI_LI＝在问是否发动）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动攻击命中（p_timeline_2_hit）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）。
+## 发动后会返回 URGENT（压入了自伤与精疲力竭），引擎在 URGENT 挂起后会重入本钩子：
+## 这里仍旧借引擎 step 记「本轮已完成」来挡住重入（自有变量已清回 0，不影响这次拦截）。
+var _jin_duan_hit_step: int = 0
+
+
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
@@ -165,19 +181,30 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = JIN_DUAN_ZHI_LI
-	if step == JIN_DUAN_ZHI_LI:
+	if _jin_duan_hit_step == 0:
+		_jin_duan_hit_step = JIN_DUAN_ZHI_LI
+	if _jin_duan_hit_step == JIN_DUAN_ZHI_LI:
 		var r: int = _jin_duan_zhi_li(ctx, true)
 		if r == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_jin_duan_hit_step = 0
 		if r == URGENT:
+			step = STEP_DONE
 			return URGENT
 	return SUCCESS
 
 
 ## 攻击未命中后：怒吼补正 → 禁断之力
+## 【怒吼补正 / 禁断之力（未命中）】的推进阶段（0＝还没开始 / NU_HOU＝怒吼未命中补正 /
+## JIN_DUAN_ZHI_LI＝在问是否发动禁断之力）。用自有变量而不是引擎的 step：
+## 钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，中途一旦被别的钩子轮次
+## （改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动攻击未命中（p_timeline_2_miss）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）。
+## 发动后会返回 URGENT（压入了自伤与精疲力竭），引擎在 URGENT 挂起后会重入本钩子：
+## 这里仍旧借引擎 step 记「本轮已完成」来挡住重入（自有变量已清回 0，不影响这次拦截）。
+var _jin_duan_miss_step: int = 0
+
+
 func p_timeline_2_miss(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
@@ -185,17 +212,18 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = NU_HOU
-	if step == NU_HOU:
+	if _jin_duan_miss_step == 0:
+		_jin_duan_miss_step = NU_HOU
+	if _jin_duan_miss_step == NU_HOU:
 		_nu_hou_miss()
-		step = JIN_DUAN_ZHI_LI
-	if step == JIN_DUAN_ZHI_LI:
+		_jin_duan_miss_step = JIN_DUAN_ZHI_LI
+	if _jin_duan_miss_step == JIN_DUAN_ZHI_LI:
 		var r: int = _jin_duan_zhi_li(ctx, false)
 		if r == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_jin_duan_miss_step = 0
 		if r == URGENT:
+			step = STEP_DONE
 			return URGENT
 	return SUCCESS
 
@@ -216,7 +244,8 @@ func _jin_duan_zhi_li(ctx: Dictionary, hit: bool) -> int:
 	if player.get_energy() <= 0:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, JIN_DUAN_ZHI_LI, 1, 0)
+		# 服务端按客户端回传的全部手牌统计：这里要求玩家选齐所有手牌（弃掉全部手牌）
+		询问(player.id, JIN_DUAN_ZHI_LI, maxi(player.hand_cards.size(), 1), 0)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -263,13 +292,20 @@ func _jin_duan_zhi_li(ctx: Dictionary, hit: bool) -> int:
 ## 精疲力竭：横置，额外 +1 攻击行动，手牌上限恒定为 4
 func _jing_pi_li_jie() -> void:
 	player.hand_cards_max = JING_PI_HAND_MAX
-	player.add_action(GConst.ActionType.Attack, JING_PI_LI_JIE)
+	player.add_action(GConst.ActionType.Attack, JING_PI_LI_JIE, true)
 	engine.set_tap(player.id, true)
 
 
 # ============================================================
 # 承受法术伤害：死斗
 # ============================================================
+## 【死斗】的推进阶段（0＝还没开始 / SI_DOU＝在问是否发动）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己承受法术伤害（p_timeline_6_drawn）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _si_dou_step: int = 0
+
+
 func p_timeline_6_drawn(ctx: Dictionary) -> int:
 	if int(ctx.get("dst", -1)) != player.id:
 		return SUCCESS
@@ -278,22 +314,22 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 		return SUCCESS
 	if player.gem <= 0:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _si_dou_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = SI_DOU
-	if step == SI_DOU:
+	if _si_dou_step == 0:
+		_si_dou_step = SI_DOU
+	if _si_dou_step == SI_DOU:
 		var r: int = _si_dou()
 		if r == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_si_dou_step = 0
 	return SUCCESS
 
 
 ## 死斗：消耗 1 宝石，怒气 +3
 func _si_dou() -> int:
 	if not engine.has_reply():
-		engine.ask_skill(player.id, SI_DOU, 0, 0)
+		询问(player.id, SI_DOU, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -316,24 +352,6 @@ func p_turn_end(ctx: Dictionary) -> int:
 		cur.remove_exclusive_effect(GConst.Exclusive.TiaoXin)
 		engine._broadcast_game()
 	return SUCCESS
-
-
-# ============================================================
-# 攻击校验覆写：面前有【挑衅】时必须攻击勇者
-# 对应服务端 PlayerEntity::v_attack：
-#   若攻击者面前存在【挑衅】独有效果，则目标只能是勇者（roleID 21），否则非法
-# 说明：本钩子由「攻击者的角色」实现，故仅在勇者本人发动攻击时生效；
-#   其他角色被【挑衅】时的同类限制应由通用实现（base_v_attack）承担
-# ============================================================
-func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
-	var base: int = player.base_v_attack(card_id, dst_id, players)
-	if base != GConst.GE_SUCCESS:
-		return base
-	if player.check_exclusive_effect(GConst.Exclusive.TiaoXin):
-		var dst: BattlePlayer = players.get(dst_id)
-		if dst.role_id != 21:
-			return GConst.GE_INVALID_PLAYERID
-	return GConst.GE_SUCCESS
 
 
 # ============================================================

@@ -6,12 +6,9 @@ extends BattleRole
 ##        对其造成 3 点法术伤害并移除该封印牌（在 p_show_hand 中判定）
 ##   法术激荡（406）——【被动】你的法术行动结束时额外 +1 攻击行动（p_after_magic）
 ##   五系束缚（407）——【法术·星石】把【五系束缚】放到目标对手面前；在其下个行动阶段开始前可选择摸
-##        （X+2）张牌取消（X = 场上封印数，最高按 2 计，即最多摸 4 张），否则跳过该行动阶段（p_boot 判定）
+##        （X+2）张牌取消（X = 场上封印数，最高按 2 计，即最多摸 4 张），否则跳过该行动阶段
+##        （与【虚弱】合并成同一次询问，见 p_check_basic_effect）
 ##   封印破碎（408）——【法术·星石】把场上任意一张基础效果牌收入自己手中
-##
-## 引擎限制说明：服务端用一个 StateWeaken 同时结算「虚弱 + 五系束缚」的摸牌/跳过行动阶段；
-## 本引擎 SWeaken 只处理虚弱牌，故五系束缚改在 p_boot 中独立询问，并在拒绝时沿用引擎
-## 自身「跳过行动阶段」的做法（移除本回合行动阶段状态 + 压入回合结束状态）。
 
 const FENG_ZHI_FENG_YIN: int = 401
 const SHUI_ZHI_FENG_YIN: int = 402
@@ -25,10 +22,6 @@ const FENG_YIN_PO_SUI: int = 408
 const SEAL_HARM_POINT: int = 3      # 封印触发时的法术伤害
 const WU_XI_DRAW_BASE: int = 2      # 五系束缚基础摸牌数
 const WU_XI_DRAW_MAX: int = 4       # 五系束缚摸牌上限（场上封印数最高按 2 计）
-
-## 五系束缚询问状态
-var _wu_xi_asking: bool = false
-var _wu_xi_draw: int = 0
 
 
 # ============================================================
@@ -58,33 +51,17 @@ func available_skills() -> Array:
 
 
 # ============================================================
-# 回合开始（p_boot）：五系束缚判定
+# 回合开始的基础效果检查（服务端 FengYin::WuXiShuFu_Effect，由引擎在虚弱询问前调用）
+# 当前回合玩家身上若有【五系束缚】，移除它并把应摸牌数（2 + 场上封印数，上限 4）交给引擎，
+# 与【虚弱】合并成同一次询问
 # ============================================================
-func p_boot(_ctx: Dictionary) -> int:
-	var cur: BattlePlayer = engine.p(engine.current_id)
+func p_check_basic_effect(ctx: Dictionary) -> int:
+	var cur: BattlePlayer = engine.p(int(ctx.get("player", -1)))
 	if cur == null or not cur.check_exclusive_effect(GConst.Exclusive.WuXiShuFu):
 		return SUCCESS
-	if not _wu_xi_asking:
-		_wu_xi_asking = true
-		_wu_xi_draw = mini(WU_XI_DRAW_BASE + _seal_count(), WU_XI_DRAW_MAX)
-		cur.remove_exclusive_effect(GConst.Exclusive.WuXiShuFu)
-		engine._broadcast_game()
-		engine.ask_skill(cur.id, WU_XI_SHU_FU, 0, 0)
-		return WAIT
-	_wu_xi_asking = false
-	notice_skill(WU_XI_SHU_FU, [cur.id])
-	if take_skill_reply():
-		engine.draw(cur.id, _wu_xi_draw)
-		engine._broadcast_game()
-		return SUCCESS
-	_skip_action_phase()
-	engine._broadcast_game()
+	cur.remove_exclusive_effect(GConst.Exclusive.WuXiShuFu)
+	ctx["how_many"] = int(ctx.get("how_many", 0)) + mini(WU_XI_DRAW_BASE + _seal_count(), WU_XI_DRAW_MAX)
 	return SUCCESS
-
-
-## 跳过当前玩家的行动阶段：给引擎打个标记，轮到 SActionPhase 时它自己会直接收尾进回合结束
-func _skip_action_phase() -> void:
-	engine.skip_action_phase = true
 
 
 # ============================================================
@@ -106,9 +83,7 @@ func _feng_yin_effect(player_id: int, cards: Array) -> int:
 		var seal: GCard = Data.get_card(int(e["card"]))
 		if seal == null or not _is_seal_card(seal):
 			continue
-		# 只由布下封印的封印师本人触发（服务端未校验来源，两个封印师同场会重复结算）
-		if int(e["src"]) != player.id:
-			continue
+		# 服务端不校验封印是谁布的：任一封印师都会因同系牌触发（两个封印师同场时各自结算）
 		var seal_elem: int = seal.element_enum()
 		for c: Variant in cards:
 			var shown: GCard = Data.get_card(int(c))
@@ -122,7 +97,7 @@ func _feng_yin_effect(player_id: int, cards: Array) -> int:
 func _trigger_seal(target: BattlePlayer, seal_card: int, element: int) -> void:
 	var cause: int = _seal_cause(element)
 	notice_skill(cause, [target.id])
-	engine.remove_basic_effect(target.id, seal_card, cause)
+	engine.remove_basic_effect(target.id, seal_card, cause, player.id)
 	engine.to_discard([seal_card])
 	engine.push_harm({
 		"src": player.id, "dst": target.id, "point": SEAL_HARM_POINT,
@@ -141,7 +116,7 @@ func p_after_magic(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	step = STEP_DONE
-	player.add_action(GConst.ActionType.Attack, FA_SHU_JI_DANG)
+	player.add_action(GConst.ActionType.Attack, FA_SHU_JI_DANG, true)
 	return SUCCESS
 
 
@@ -230,7 +205,7 @@ func _cast_feng_yin_po_sui(action: Dictionary) -> int:
 	var dst_id: int = int(action.get("dst_ids")[0])
 	notice_skill(FENG_YIN_PO_SUI, [dst_id])
 	_consume_one_energy()
-	engine.remove_basic_effect(dst_id, cid, FENG_YIN_PO_SUI)
+	engine.remove_basic_effect(dst_id, cid, FENG_YIN_PO_SUI, player.id)
 	player.add_hand_cards([cid])
 	engine._broadcast_game()
 	return URGENT

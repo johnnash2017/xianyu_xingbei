@@ -3,7 +3,8 @@ extends BattleRole
 ## 技能：
 ##   天使之墙（701，法术，将带此特技的牌作为基础效果放置于目标面前，视作圣盾）
 ##   天使祝福（702，法术，弃 1 张水系牌：指定 1 名角色→该角色交给你 2 张手牌；
-##                 指定 2 名→各交 1 张。本引擎客户端仅支持单目标 2 张的形态）
+##                 指定 2 名→各交 1 张。目标可以是天使自己，但那样等于把牌转一圈回自己手里，
+##                 所以选自己时跳过「交牌」这一步）
 ##   风之洁净（703，法术，弃 1 张风系牌，移除场上任意一个基础效果）
 ##   天使羁绊（704，自身移除基础效果（703/705）或以【圣盾】/【天使之墙】放置基础效果时，
 ##                 为指定角色 +1 治疗；由 p_basic_effect_change 实现）
@@ -23,20 +24,24 @@ const SHEN_ZHI_BI_HU: int = 706
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 风之洁净：只有风系手牌可作发动牌，下发给界面把其余手牌置灰（v_magic_skill 校验同一条）
-	# 场上没有基础效果可移除时（v_magic_skill 要求 args[0] 是目标身上的基础效果牌），不给出该技能
+	# 风之洁净：只有风系手牌可作发动牌，下发给界面把其余手牌置灰（v_magic_skill 校验同一条）。
+	# 选中目标按「确定」后，客户端把该目标身上的基础效果列出来供玩家选，选中的那张 id 作为 args[0] 回传
+	# （见 CardSource.HandAndBasicEffect），所以合法目标是「面前有基础效果的玩家」；
+	# 场上一个基础效果都没有时不给出该技能（v_magic_skill 要求 args[0] 是目标身上的基础效果牌）
 	var 风系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Wind)
-	var 洁净选项: Array = _feng_zhi_jie_jing_choices()
-	if not 风系牌.is_empty() and not 洁净选项.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_ZHI_JIE_JING, "need_card": 1, "need_target": 1,
-			"cards": 风系牌, "arg_choices": 洁净选项})
+	if not 风系牌.is_empty():
+		var 有基础效果的目标: Array[int] = _有基础效果的目标()
+		if not 有基础效果的目标.is_empty():
+			out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_ZHI_JIE_JING, "need_card": 1, "need_target": 1,
+				"cards": 风系牌, "card_source": GConst.CardSource.HandAndBasicEffect, "targets": 有基础效果的目标})
 	# 天使之墙：只有手中带【天使之墙】的牌可作发动牌（v_magic_skill 校验同一张牌）
-	# 目标已有【圣盾】或【天使之墙】基础效果时服务端拒收（v_magic_skill + v_shield）
+	# 目标已有【圣盾】或【天使之墙】基础效果时服务端拒收（v_magic_skill + v_shield）。
+	# 可以贴给自己（服务端不排除自己，原客户端也可选），故白名单含自己
 	var 墙牌: Array[int] = hand_ids_with_skill(TIAN_SHI_ZHI_QIANG)
 	if not 墙牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHI_QIANG, "need_card": 1, "need_target": 1,
 			"cards": 墙牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return not p.check_basic_effect_name(GConst.CardName.Shield) and not p.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG))})
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return not p.check_basic_effect_name(GConst.CardName.Shield) and not p.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG), true)})
 	# 天使祝福：只有水系手牌可作发动牌（v_magic_skill 校验同一条）
 	# 服务端允许 1~2 名目标（v_magic_skill：dsts.size() > 2 时拒收）
 	var 水系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water)
@@ -46,48 +51,18 @@ func available_skills() -> Array:
 	return out
 
 
-## 风之洁净的选项：场上每张基础效果牌一项，args = [该牌 id]
-## （v_magic_skill：args[0] 必须是目标身上的基础效果牌，即 _has_basic_card(dst2, int(args[0]))）
-func _feng_zhi_jie_jing_choices() -> Array:
-	var out: Array = []
-	for pid: int in engine.order:
-		var p0: BattlePlayer = engine.p(pid)
-		# 自己永远不是可选目标（客户端把「自己」排除在候选目标之外），所以自己身上的基础效果不作选项
-		if p0 == null or p0.id == player.id:
-			continue
-		for e: Dictionary in p0.basic_effects:
-			var cid: int = int(e["card"])
-			var card: GCard = Data.get_card(cid)
-			var 拥有者: GPlayer = Data.get_player_by_id(pid)
-			var 牌名: String = card.card_name if card != null else str(cid)
-			var 人名: String = 拥有者.nickname if 拥有者 != null else str(pid)
-			out.append({"text": "移除 %s 面前的【%s】" % [人名, 牌名], "args": [cid],
-				"need_card": 1, "need_target": 1})
-	return out
-
-
 # ============================================================
-# 圣盾校验覆写：【天使之墙】视作圣盾
-# 对应服务端 PlayerEntity::v_shield：
-#   目标已有【圣盾】或【天使之墙】基础效果时，不可再放置【圣盾】
-# 说明：本钩子由「施放圣盾者的角色」实现，故仅在天师本人施放【圣盾】时追加该判定；
-#   引擎的自动格挡（放弃应战时消耗圣盾）亦识别【天使之墙】特技，视作【圣盾】挡下
-# ============================================================
-func v_shield(dst_id: int, players: Dictionary) -> int:
-	var base: int = player.base_v_shield(dst_id, players)
-	if base != GConst.GE_SUCCESS:
-		return base
-	var dst: BattlePlayer = players.get(dst_id)
-	if dst.check_basic_effect_name(GConst.CardName.Shield) or dst.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG):
-		return GConst.GE_BASIC_EFFECT_ALREADY_EXISTS
-	return GConst.GE_SUCCESS
+# 圣盾校验：【天使之墙】视作圣盾这一条已在通用实现里
+# （battle_player.base_v_shield 同时判【圣盾】与技能 701【天使之墙】，对照服务端
+#  PlayerEntity::v_shield），所以本角色不再覆写 v_shield。
 
 
 # ============================================================
 # 回合开始前：天使之歌（移除场上任意一个基础效果）
 # ============================================================
-## 询问回复约定：args[0] = 使用的能量（1=宝石 0=水晶）、args[1] = 要移除的基础效果牌，
-## dst_ids[0] = 该基础效果的拥有者；args 少于 2 项视为放弃（与服务端一致）。
+## 询问回复约定（对照服务端 TianShi::TianShiZhiGe）：args[0] = 使用的能量（1=宝石 0=水晶）、
+## args[1] = 要移除的基础效果牌，dst_ids[0] = 该基础效果的拥有者；args 少于 2 项或没选目标视为放弃。
+## 交互与【风之洁净】一致：先选目标按「确定」，再由客户端弹出该目标身上的基础效果 + 消耗哪种能量供选。
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
@@ -98,7 +73,8 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, TIAN_SHI_ZHI_GE, 1, 1)
+		询问(player.id, TIAN_SHI_ZHI_GE, 0, 1, GConst.CardSource.HandAndBasicEffect,
+			[], 0, "", [], true, 0, -1, _有基础效果的目标())
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -121,7 +97,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 		player.set_gem(player.gem - 1)
 	else:
 		player.set_crystal(player.crystal - 1)
-	engine.remove_basic_effect(dst_id, effect_cid, TIAN_SHI_ZHI_GE)
+	engine.remove_basic_effect(dst_id, effect_cid, TIAN_SHI_ZHI_GE, player.id)
 	engine.to_discard([effect_cid])
 	engine._broadcast_game()
 	return SUCCESS
@@ -129,18 +105,17 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 # ============================================================
 # 天使羁绊（704）：基础效果发生增/删时，由 天使 指定一名角色 +1 治疗
-# 对应服务端 TianShi::p_basic_effect_change——仅当发动者为 天使 本人，且为
+# 对应服务端 TianShi::p_basic_effect_change——**发动者必须是天使本人**，且为
 #   风之洁净（703）/ 天使之歌（705）移除，或以【圣盾】/【天使之墙】放置基础效果（CAUSE_USE）时触发。
-# 说明：引擎 remove_basic_effect 的 ctx 不含发动者（doer 恒为 -1），但 cause 703/705 为 天使 专属，
-#   故这两支改按 cause 判定；【圣盾】的通用放置路径未走 engine.add_basic_effect，暂不会触发本钩子。
+# 注意：doer 判定要在最前面（与服务端一致），否则别的天使移除基础效果时全场天使都会跟着触发
 # ============================================================
 func p_basic_effect_change(ctx: Dictionary) -> int:
+	if int(ctx.get("doer", -1)) != player.id:
+		return SUCCESS
 	var cause: int = int(ctx.get("cause", -1))
 	if cause == FENG_ZHI_JIE_JING or cause == TIAN_SHI_ZHI_GE:
 		return _tian_shi_ji_ban()
 	if cause != GConst.CAUSE_USE or not bool(ctx.get("add", false)):
-		return SUCCESS
-	if int(ctx.get("doer", -1)) != player.id:
 		return SUCCESS
 	var card: GCard = Data.get_card(int(ctx.get("card", -1)))
 	if card == null:
@@ -153,7 +128,7 @@ func p_basic_effect_change(ctx: Dictionary) -> int:
 ## 天使羁绊结算：询问 天使 指定的一名角色，使其 +1 治疗（未选择目标时默认自己）
 func _tian_shi_ji_ban() -> int:
 	if not engine.has_reply():
-		engine.ask_skill(player.id, TIAN_SHI_JI_BAN, 0, 1)
+		询问(player.id, TIAN_SHI_JI_BAN, 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var dsts: Array = r.get("dst_ids", [])
@@ -161,7 +136,7 @@ func _tian_shi_ji_ban() -> int:
 	notice_skill(TIAN_SHI_JI_BAN, [dst_id])
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst != null:
-		dst.add_cross_num(1)
+		施加治疗(dst.id, 1)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -256,7 +231,7 @@ func _feng_zhi_jie_jing(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.remove_basic_effect(dst.id, effect_cid, FENG_ZHI_JIE_JING)
+	engine.remove_basic_effect(dst.id, effect_cid, FENG_ZHI_JIE_JING, player.id)
 	engine.to_discard([effect_cid])
 	engine.take_from_hand(player.id, [cid])
 	engine.to_discard([cid])
@@ -266,8 +241,8 @@ func _feng_zhi_jie_jing(action: Dictionary) -> int:
 
 ## 天使祝福：弃 1 张水系牌后，向 1~2 名指定角色各索取手牌（单目标 2 张 / 双目标各 1 张），
 ## 索得的牌进入天使手中。对应服务端 TianShi::TianShiZhuFu + StateRequestHand（去向 DECK_HAND）
-## 说明：客户端「发动技能」只支持单选目标，故实践中走单目标 2 张形态；
-##   向目标索取手牌复用「需选牌」的技能询问（与兽灵武士等角色的请求手牌约定一致）。
+## 说明：向目标索取手牌复用「需选牌」的技能询问（与兽灵武士等角色的请求手牌约定一致）；
+##   目标是天使自己时跳过（自己给自己的牌还是自己的，问一遍只会让人看不懂）
 func _tian_shi_zhu_fu(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
@@ -289,20 +264,20 @@ func _tian_shi_zhu_fu(action: Dictionary) -> int:
 		step = STEP_DONE
 		return SUCCESS
 	var t: BattlePlayer = engine.p(int(dsts[idx]))
-	# 目标无手牌：跳过
-	if t == null or t.hand_cards.is_empty():
+	# 目标无手牌：跳过；目标是自己也跳过 —— 自己给自己交牌，牌还是在自己手里（数量不变），
+	# 问一遍只会让玩家看到「请选择 2 张手牌交给 天使[自己]」这种费解提示
+	if t == null or t.id == player.id or t.hand_cards.is_empty():
 		step += 1
 		return _tian_shi_zhu_fu(action)
 	if not engine.has_reply():
-		engine.ask_skill(t.id, TIAN_SHI_ZHU_FU, 1, 0)
+		# 由目标自己挑选要交出的牌（单目标 2 张 / 双目标各 1 张）；提示告诉他交给谁、几张
+		询问(t.id, TIAN_SHI_ZHU_FU, mini(每人张数, t.hand_cards.size()))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var want: int = mini(每人张数, t.hand_cards.size())
 	var chosen: Array = _pick_cards(t, r.get("card_ids", []), want)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": t.id, "dst_id": player.id,
-		"card_ids": chosen, "is_real": true,
-	})
+	# 交牌不公开亮牌：交/接双方在日志里看到具体牌名，其他人只看到张数（与水之神力给牌同一处理）
+	engine._log_give_cards(t.id, player.id, chosen)
 	engine.take_from_hand(t.id, chosen)
 	player.add_hand_cards(chosen)
 	engine._broadcast_game()
@@ -313,8 +288,8 @@ func _tian_shi_zhu_fu(action: Dictionary) -> int:
 # ============================================================
 # 神之庇护（706，服务端 TianShi::p_lose_morale）
 # 我方角色因法术伤害将掉士气时（在超限掉士气的可等待钩子轮次里），
-# 可消耗能量抵消等量士气损失；服务端由客户端分别指定宝石/水晶数量，
-# 本引擎客户端只支持「抵消几点」，故支付顺序固定为「先水晶后宝石」。
+# 可消耗能量抵消等量士气损失；宝石数与水晶数由玩家自己分配
+# （对照服务端 respond->args(0)=宝石数、args(1)=水晶数）
 # ============================================================
 func p_lose_morale(ctx: Dictionary) -> int:
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
@@ -329,34 +304,33 @@ func p_lose_morale(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
+		# 本引擎一次只能回一个值，故把「宝石数 × 水晶数」编码进选项值（宝石*100 + 水晶）。
+		# 客户端会把它们弹成居中的选项窗（含「不抵挡」那项：编码 0 → 下面判总能量 <= 0 直接放弃）
 		var 上限: int = mini(amount, player.get_energy())
-		var options: Array = []
-		for n: int in range(1, 上限 + 1):
-			options.append({"value": n, "label": "抵消 %d 点（耗 %d 能量）" % [n, n]})
-		engine.ask_skill(player.id, SHEN_ZHI_BI_HU, 0, 0, GConst.CardSource.Hand, options)
+		var options: Array = [{"value": 0, "label": "不抵挡（保留星石）"}]
+		for g: int in range(0, player.gem + 1):
+			for c: int in range(0, player.crystal + 1):
+				var 总: int = g + c
+				if 总 <= 0 or 总 > 上限:
+					continue
+				options.append({"value": g * 100 + c, "label": "宝石 %d + 水晶 %d（抵消 %d 点）" % [g, c, 总]})
+		询问(player.id, SHEN_ZHI_BI_HU, 0, 0, GConst.CardSource.Hand, options)
 		return WAIT
 	step = STEP_DONE
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
-	var 支付: int = int(args[0]) if not args.is_empty() else 0
-	支付 = clampi(支付, 0, mini(amount, player.get_energy()))
-	if 支付 <= 0:
+	var 编码: int = int(args[0]) if not args.is_empty() else 0
+	var 用宝石: int = 编码 / 100
+	var 用水晶: int = 编码 % 100
+	var 总能量: int = 用宝石 + 用水晶
+	if 总能量 <= 0 or 用宝石 > player.gem or 用水晶 > player.crystal or 总能量 > amount:
 		return SUCCESS
 	notice_skill(SHEN_ZHI_BI_HU, [dst.id])
-	_consume_energy(支付)
-	ctx["amount"] = amount - 支付
+	player.set_gem(player.gem - 用宝石)
+	player.set_crystal(player.crystal - 用水晶)
+	ctx["amount"] = amount - 总能量
 	engine._broadcast_game()
 	return SUCCESS
-
-
-## 消耗能量：先水晶后宝石
-func _consume_energy(n: int) -> void:
-	var 用水晶: int = mini(player.crystal, n)
-	if 用水晶 > 0:
-		player.set_crystal(player.crystal - 用水晶)
-	var 剩: int = n - 用水晶
-	if 剩 > 0:
-		player.set_gem(player.gem - 剩)
 
 
 # ============================================================
@@ -395,3 +369,9 @@ func _any_player_has_basic_effect() -> bool:
 		if p0 != null and not p0.basic_effects.is_empty():
 			return true
 	return false
+
+
+## 面前有基础效果的玩家（含自己）：【风之洁净】与【天使之歌】的合法目标。
+## 两者都允许移除自己面前的基础效果 —— 场上只有自己有基础效果时也得能选，故白名单含自己
+func _有基础效果的目标() -> Array[int]:
+	return player_ids_where(func(p: BattlePlayer) -> bool: return not p.basic_effects.is_empty(), true)

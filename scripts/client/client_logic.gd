@@ -5,8 +5,13 @@ extends Node
 signal room_list_changed(rooms: Array)
 signal error_received(err_id: int, msg: String)
 signal gossip_received(txt: String)
-## 系统公告（超时 / 掉线 / 重连 / 终局等）：界面只把它写进日志，不进聊天区
-signal notice_received(txt: String)
+## 系统公告（超时 / 掉线 / 重连 / 终局等）：界面只把它写进日志，不进聊天区。
+## kind = GConst.GossipType，界面按它给这行日志上色
+signal notice_received(txt: String, kind: int)
+## 治疗事件（目标 id + 本次治疗点数）：战斗界面据此在目标头像上喷「+」特效
+signal heal_received(pid: int, num: int)
+## 弃牌事件（弃牌者 id + 弃牌张数）：战斗界面据此在他身上播「牌向下飞出并淡出」的弃牌特效
+signal discard_received(pid: int, num: int)
 signal game_info_updated(info: Dictionary)
 signal command_received(data: Dictionary)
 signal turn_changed(player_id: int, round_id: int)
@@ -69,7 +74,14 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 				var who: String = talker.nickname if talker != null else str(pid)
 				gossip_received.emit("%s：%s" % [who, str(data.get("txt", ""))])
 			else:
-				notice_received.emit(str(data.get("txt", "")))
+				var kind: int = int(data.get("type", GConst.GossipType.Notice))
+				# 治疗日志额外发一条事件给战斗界面播「+」特效（日志本身照常走 notice_received）
+				if kind == GConst.GossipType.Heal:
+					heal_received.emit(int(data.get("id", -1)), int(data.get("num", 0)))
+				# 弃牌日志额外发一条事件给战斗界面播弃牌特效（num = 弃牌张数，其余 Discard 类日志不带）
+				elif kind == GConst.GossipType.Discard and int(data.get("num", 0)) > 0:
+					discard_received.emit(int(data.get("id", -1)), int(data.get("num", 0)))
+				notice_received.emit(str(data.get("txt", "")), kind)
 		GConst.Msg.TurnBegin:
 			turn_changed.emit(int(data.get("id", -1)), int(data.get("round", 0)))
 		GConst.Msg.Hit:
@@ -128,7 +140,7 @@ func _on_connected() -> void:
 		return
 	# 每次连接 Net 都会重发 LoginReq（见 net_manager），登录回执到达后再进房
 	_pending_reenter = true
-	notice_received.emit("已重新连接，正在回到房间…")
+	notice_received.emit("已重新连接，正在回到房间…", GConst.GossipType.Notice)
 
 
 ## 登录回执：重连场合下紧接着重新进房（服务端对每条连接都会回一条 LoginRep）
@@ -153,7 +165,7 @@ func _give_up_reconnect(txt: String) -> void:
 	started = false
 	# 先切回大厅再提示：旧界面随即被替换，提示才会落到新大厅上
 	UI.goto_lobby()
-	notice_received.emit(txt)
+	notice_received.emit(txt, GConst.GossipType.Warn)
 
 
 # ============================================================
@@ -247,6 +259,14 @@ func talk(txt: String) -> void:
 	if not Net.is_connected_to_host():
 		return
 	Net.send(GConst.Msg.Talk, {"txt": txt})
+
+
+## 测试用（战斗界面的测试按键）：kind 见 GConst.DebugKey。
+## 服务端按连接认人，所以不用带 player_id。
+func debug_key(kind: int) -> void:
+	if not Net.is_connected_to_host():
+		return
+	Net.send(GConst.Msg.DebugReq, {"kind": kind})
 
 
 func send_action(action_type: int, action_id: int, dst_ids: Array, card_ids: Array, args: Array) -> void:

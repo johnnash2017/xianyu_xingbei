@@ -34,23 +34,28 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 光辉信仰 / 漆黑信仰：仅祈祷形态（横置）且符文 > 0
+	# 光辉信仰 / 黑暗诅咒：仅祈祷形态（横置）且符文 > 0
 	if player.tap and _fu_wen() > 0:
-		# 光辉信仰不校验发动牌（v_magic_skill 对 GUANG_HUI_XIN_YANG 只判形态与符文），故 need_card 为 0
-		out.append({"type": GConst.ActionType.MagicSkill, "id": GUANG_HUI_XIN_YANG, "need_card": 0, "need_target": 1})
+		# 光辉信仰：发动时须弃 min(2, 手牌) 张牌（对照原客户端 GuangHuiXinYang 的 quota = min(2, 手牌)），
+		# 目标限同色队友（原客户端 enableMate，不含自己）
+		out.append({"type": GConst.ActionType.MagicSkill, "id": GUANG_HUI_XIN_YANG,
+			"need_card": mini(2, player.hand_cards.size()), "need_target": 1, "targets": ally_ids()})
+		# 黑暗诅咒：对目标角色与自己各造成 2 点法术伤害（目标任意）
 		out.append({"type": GConst.ActionType.MagicSkill, "id": QI_HEI_XIN_YANG, "need_card": 0, "need_target": 1})
 	# 迅捷赐福/威力赐福：只有手中带对应技能的牌可作发动牌，下发给界面把其余手牌置灰
-	# （v_magic_skill 校验同一张牌：须在手、带该技能；目标面前已有同类赐福时拒收，见 _check_ci_fu_target）
+	# （v_magic_skill 校验同一张牌：须在手、带该技能；目标限同色队友且面前无同类赐福，见 _check_ci_fu_target）
 	var 迅捷牌: Array[int] = hand_ids_with_skill(XUN_JIE_CI_FU)
 	if not 迅捷牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": XUN_JIE_CI_FU, "need_card": 1, "need_target": 1,
 			"cards": 迅捷牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return _find_effect_card(p, XUN_JIE_CI_FU) < 0)})
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool:
+				return p.color == player.color and _find_effect_card(p, XUN_JIE_CI_FU) < 0)})
 	var 威力牌: Array[int] = hand_ids_with_skill(WEI_LI_CI_FU)
 	if not 威力牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": WEI_LI_CI_FU, "need_card": 1, "need_target": 1,
 			"cards": 威力牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return _find_effect_card(p, WEI_LI_CI_FU) < 0)})
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool:
+				return p.color == player.color and _find_effect_card(p, WEI_LI_CI_FU) < 0)})
 	return out
 
 
@@ -67,33 +72,41 @@ func _set_fu_wen(v: int) -> void:
 	t["num"] = clampi(v, 0, int(t["max"]))
 
 
+## 【祈祷】的推进阶段（0＝还没开始 / QI_DAO＝在问是否发动祈祷）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _qi_dao_step: int = 0
+
+
 # ============================================================
 # 启动（自己回合开始）：祈祷
 # ============================================================
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _qi_dao_step >= STEP_DONE:
 		return SUCCESS
-	# 零手牌 / 无宝石 / 已处于祈祷形态 时无需询问
-	if player.hand_cards.is_empty() or player.gem <= 0 or player.tap:
-		step = STEP_DONE
-		return SUCCESS
-	if step == 0:
-		step = QI_DAO
-	if step == QI_DAO:
+	if _qi_dao_step == 0:
+		# 零手牌 / 无宝石 / 已处于祈祷形态 时无需询问
+		# （本流程中途会改掉 tap 与 gem，故这道守卫只在流程起点判一次，避免回复回来后重入被自己挡死）
+		if player.hand_cards.is_empty() or player.gem <= 0 or player.tap:
+			_qi_dao_step = 0
+			return SUCCESS
+		_qi_dao_step = QI_DAO
+	if _qi_dao_step == QI_DAO:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, QI_DAO, 0, 0)
+			询问(player.id, QI_DAO, 0, 0)
 			return WAIT
 		var ok: bool = take_skill_reply()
 		if not ok:
-			step = STEP_DONE
+			_qi_dao_step = 0
 			return SUCCESS
 		notice_skill(QI_DAO, [player.id])
 		player.set_gem(player.gem - 1)
 		# 转为祈祷形态（横置）
 		engine.set_tap(player.id, true)
-		step = STEP_DONE
+		_qi_dao_step = 0
 		engine._broadcast_game()
 		return URGENT
 	return SUCCESS
@@ -129,7 +142,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if effect_card < 0:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(attacker_id, WEI_LI_CI_FU, 0, 0)
+		询问(attacker_id, WEI_LI_CI_FU, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		step = STEP_DONE
@@ -138,7 +151,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	engine.broadcast(GConst.Msg.Skill, {"skill_id": WEI_LI_CI_FU, "src_id": attacker_id, "dst_ids": [attacker_id]})
 	harm["point"] = int(harm.get("point", 0)) + 2
 	# 移除该赐福牌并弃置
-	engine.remove_basic_effect(attacker_id, effect_card, WEI_LI_CI_FU)
+	engine.remove_basic_effect(attacker_id, effect_card, WEI_LI_CI_FU, player.id)
 	engine.to_discard([effect_card])
 	engine._broadcast_game()
 	return URGENT
@@ -229,7 +242,7 @@ func p_additional_action(ctx: Dictionary) -> int:
 		if target != null:
 			var effect_card: int = _find_effect_card(target, XUN_JIE_CI_FU)
 			if effect_card >= 0:
-				engine.remove_basic_effect(pid, effect_card, XUN_JIE_CI_FU)
+				engine.remove_basic_effect(pid, effect_card, XUN_JIE_CI_FU, player.id)
 				engine.to_discard([effect_card])
 				engine._broadcast_game()
 		return SUCCESS
@@ -252,7 +265,11 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	var aid: int = int(action.get("action_id", 0))
 	var cards: Array = action.get("card_ids", [])
-	if aid == GUANG_HUI_XIN_YANG or aid == QI_HEI_XIN_YANG:
+	if aid == GUANG_HUI_XIN_YANG:
+		if not (player.tap and _fu_wen() > 0):
+			return GConst.GE_INVALID_ACTION
+		return _check_guang_hui_xin_yang(action)
+	if aid == QI_HEI_XIN_YANG:
 		if player.tap and _fu_wen() > 0:
 			return GConst.GE_SUCCESS
 		return GConst.GE_INVALID_ACTION
@@ -292,7 +309,7 @@ func _guang_hui_xin_yang(action: Dictionary) -> int:
 	engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst != null:
-		dst.add_cross_num(1)
+		施加治疗(dst.id, 1)
 	if not cards.is_empty():
 		engine.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -350,13 +367,34 @@ func _place_ci_fu(action: Dictionary, cause: int) -> int:
 # ============================================================
 # 工具
 # ============================================================
-## 判断目标面前是否已有同类赐福（返回 true 表示可放置）
+## 光辉信仰的发动校验：目标须为同色队友（不含自己），并须弃 min(2, 手牌) 张牌且都在手里
+func _check_guang_hui_xin_yang(action: Dictionary) -> int:
+	var dsts: Array = action.get("dst_ids", [])
+	if dsts.is_empty():
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(int(dsts[0]))
+	if dst == null or dst.color != player.color or dst.id == player.id:
+		return GConst.GE_INVALID_ACTION
+	var cards: Array = action.get("card_ids", [])
+	# 原客户端 quota = min(2, 手牌)：手牌不足 2 张时按实际张数弃
+	if cards.size() != mini(2, player.hand_cards.size()):
+		return GConst.GE_INVALID_CARDID
+	for cid: Variant in cards:
+		if not player.has_hand_card(int(cid)):
+			return GConst.GE_INVALID_CARDID
+	return GConst.GE_SUCCESS
+
+
+## 判断赐福目标是否合法（返回 true 表示可放置）：须为同色队友（不含自己）且面前无同类赐福
 func _check_ci_fu_target(action: Dictionary, 技能号: int) -> bool:
 	var dsts: Array = action.get("dst_ids", [])
 	if dsts.is_empty():
 		return false
 	var dst: BattlePlayer = engine.p(int(dsts[0]))
 	if dst == null:
+		return false
+	# 原客户端 enableMate()（不含自己）只放同色队友，服务端 v_MAGIC_SKILL 亦拒异色目标
+	if dst.color != player.color or dst.id == player.id:
 		return false
 	for be: Dictionary in dst.basic_effects:
 		var c: GCard = Data.get_card(int(be["card"]))

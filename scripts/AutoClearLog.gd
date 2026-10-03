@@ -1,13 +1,19 @@
 ## 日志行数裁剪 —— 对应 AutoClearLog（Assembly-CSharp 根命名空间）
-## 挂载点：BattleUIMobile.tscn 里 [node name="Content_2" type="Label"]、
-## [node name="Content_3" type="Label"] 等日志 Text 节点（script = ExtResource(10)），
-## 所以 Godot 侧 extends Label（C# 里通过 GetComponent<Text>() 拿同一个节点）。
-extends Label
+## 挂载点：BattleUIMobile.tscn 里 [node name="Content_2"]、[node name="Content_3"] 等日志节点。
+## 端口里把这些节点从 Label 换成了 RichTextLabel：日志要按行上色，只有 RichTextLabel 支持 BBCode。
+extends RichTextLabel
 
 ## 对应 C# private List<string> ContentLines = new List<string>();
 var ContentLines: Array = []
 ## 对应 C# private float CurrentLogPos;
 var CurrentLogPos: float = 0.0
+
+
+func _ready() -> void:
+	# 用 BBCode 给每行上色；高度按内容撑开，滚动交给外面的 ScrollContainer
+	bbcode_enabled = true
+	fit_content = true
+	scroll_active = false
 
 ## 对应 C# public void AutoClearText(string content, int maxLineCount)
 func AutoClearText(content: String, maxLineCount: int) -> void:

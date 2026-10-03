@@ -1,7 +1,7 @@
 extends BattleRole
 ## 元素师（roleID 11）—— 移植自服务端 role/YuanSu.cpp
 ## 技能：元素吸收（被动，自己造成法术伤害时 +1 元素）、
-##       陨石/风刃/火球/雷击/冰冻（独有法术，需手牌带对应特技的牌，命中后按牌数结算）、
+## 陨石/风刃/火球/雷击/冰冻（独有法术，发动牌须是对应系的牌：地/风/火/雷/水；额外弃 1 张同系牌可加伤）、
 ##       元素点燃（法术，移除 3 点【元素】造成 2 点法术伤害并额外 +1 法术行动）、
 ##       月光（法术，1 宝石对目标造成 能量+1 点法术伤害）
 ## 【元素】为元素师专属指示物，放置于 tokens[0]，上限 3。
@@ -18,6 +18,15 @@ const YUAN_SU_XI_SHOU: int = 1108   # 元素吸收（被动）
 const TOKEN_ELEMENT: int = 0        # 「元素」指示物下标
 const TOKEN_ELEMENT_MAX: int = 3
 
+## 各独有法术的发动牌系别（技能原文「若你额外弃 1 张 X 系牌」——第一张也必须是这个系的牌）
+const 法术系别: Dictionary = {
+	FENG_REN: GConst.CardElement.Wind,
+	BING_DONG: GConst.CardElement.Water,
+	HUO_QIU: GConst.CardElement.Fire,
+	YUN_SHI: GConst.CardElement.Earth,
+	LEI_JI: GConst.CardElement.Thunder,
+}
+
 ## 冰冻/雷击的后续结算目标（服务端在 p_magic_skill 二次进入时处理）
 var _bing_dong_heal_dst: int = -1
 var _lei_ji_pending: bool = false
@@ -30,15 +39,22 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 陨石/风刃/火球/雷击/冰冻：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
-	# （v_magic_skill 用技能号校验同一张牌：须在手且带该技能）
+	# 陨石/风刃/火球/雷击/冰冻：第 1 张必须是带该技能的牌（发动牌），
+	# 第 2 张可再弃 1 张对应系的牌加伤 —— 两段条件分别用 card_slot_skill / card_slot_element 下发，
+	# cards 白名单是两者并集（界面只亮这些牌，逐张顺序再由槽位条件卡）
 	for sid: int in [YUN_SHI, FENG_REN, HUO_QIU, LEI_JI, BING_DONG]:
-		var 法术牌: Array[int] = hand_ids_with_skill(sid)
-		if not 法术牌.is_empty():
-			# 冰冻必须指定 2 名角色（v_magic_skill：dsts.size() < 2 拒绝），其余法术只需 1 名
-			var 目标下限: int = 2 if sid == BING_DONG else 1
-			out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 目标下限,
-				"cards": 法术牌})
+		var 技能牌: Array[int] = hand_ids_with_skill(sid)
+		if 技能牌.is_empty():
+			continue
+		var 元素: int = int(法术系别[sid])
+		var 合法牌: Array[int] = 技能牌.duplicate()
+		for cid: int in hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == 元素):
+			if not 合法牌.has(cid):
+				合法牌.append(cid)
+		# 冰冻必须指定 2 名角色（v_magic_skill：dsts.size() < 2 拒绝），其余法术只需 1 名
+		var 目标下限: int = 2 if sid == BING_DONG else 1
+		out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 目标下限,
+			"card_max": 2, "cards": 合法牌, "card_slot_skill": sid, "card_slot_element": 元素})
 	if _element_token() >= TOKEN_ELEMENT_MAX:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": YUAN_SU_DIAN_RAN, "need_card": 0, "need_target": 1})
 	if player.gem > 0:
@@ -96,12 +112,14 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_CARDID
 			var cid: int = int(cards[0])
 			var card: GCard = Data.get_card(cid)
+			# 第 1 张（发动牌）必须是带该技能的牌
 			if not player.has_hand_card(cid) or card == null or not card.has_skill_id(aid):
 				return GConst.GE_INVALID_ACTION
 			if cards.size() > 1:
 				var cid2: int = int(cards[1])
 				var card2: GCard = Data.get_card(cid2)
-				if not player.has_hand_card(cid2) or card2 == null or card2.element_enum() != card.element_enum():
+				# 第 2 张必须是该法术对应系的牌（技能原文「额外弃 1 张 X 系牌【展示】」）
+				if not player.has_hand_card(cid2) or card2 == null or card2.element_enum() != int(法术系别[aid]):
 					return GConst.GE_INVALID_ACTION
 			if aid == BING_DONG and dsts.size() < 2:
 				return GConst.GE_INVALID_ACTION
@@ -122,11 +140,11 @@ func p_magic_skill(action: Dictionary) -> int:
 	match int(action.get("action_id", 0)):
 		FENG_REN:
 			# 风刃：额外 +1 攻击行动
-			player.add_action(GConst.ActionType.Attack, FENG_REN)
+			player.add_action(GConst.ActionType.Attack, FENG_REN, true)
 			return _yuan_su_damage(action)
 		YUN_SHI:
 			# 陨石：额外 +1 法术行动
-			player.add_action(GConst.ActionType.Magic, YUN_SHI)
+			player.add_action(GConst.ActionType.Magic, YUN_SHI, true)
 			return _yuan_su_damage(action)
 		HUO_QIU:
 			return _yuan_su_damage(action)
@@ -175,7 +193,7 @@ func _yuan_su_damage(action: Dictionary) -> int:
 func _bing_dong_cross() -> void:
 	var dst: BattlePlayer = engine.p(_bing_dong_heal_dst)
 	_bing_dong_heal_dst = -1
-	dst.add_cross_num(1)
+	施加治疗(dst.id, 1)
 	engine._broadcast_game()
 
 
@@ -190,7 +208,7 @@ func _lei_ji_gem() -> void:
 func _yuan_su_dian_ran(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
-	player.add_action(GConst.ActionType.Magic, YUAN_SU_DIAN_RAN)
+	player.add_action(GConst.ActionType.Magic, YUAN_SU_DIAN_RAN, true)
 	notice_skill(YUAN_SU_DIAN_RAN, [dst_id])
 	_clear_element_token()
 	engine.push_harm({

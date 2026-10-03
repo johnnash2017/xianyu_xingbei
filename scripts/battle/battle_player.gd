@@ -21,7 +21,16 @@ var energy_max: int = GConst.ENERGY_MAX
 var cross_num: int = 0
 var cross_max: int = GConst.CROSS_MAX
 
-var tap: bool = false
+var _形态: bool = false
+## 形态（横置）：进入/退出的通知统一走 setter —— 写战斗日志 + 触发 p_tap 钩子。
+## 所以任何位置直接写 player.tap = X 都与 engine.set_tap(player.id, X) 等价，不会绕过日志
+var tap: bool:
+	get: return _形态
+	set(v):
+		var 变了: bool = v != _形态
+		_形态 = v
+		if engine != null:
+			engine.形态变更(self, v, 变了)
 var tokens: Array = [null, null, null]      # [{name, max, num}]
 
 var pre_id: int = -1
@@ -33,6 +42,8 @@ var online: bool = true
 
 ## 角色对象（未移植的角色为 null，按通用规则结算）
 var role: BattleRole = null
+## 所属引擎（服务端权威）。tap 的 setter 靠它通知形态变化（写日志 / 触发 p_tap）
+var engine: BattleEngine = null
 
 
 func _init(pid: int = 0, c: int = GConst.BLUE, nm: String = "") -> void:
@@ -51,11 +62,20 @@ func add_hand_cards(cards: Array) -> void:
 
 func remove_hand_cards(cards: Array) -> void:
 	for c: Variant in cards:
-		hand_cards.erase(int(c))
+		var cid: int = int(c)
+		# 精灵射手(32) 可能是从盖牌区打出的（她的盖牌算手牌），手牌里没有就去盖牌里删
+		if hand_cards.has(cid):
+			hand_cards.erase(cid)
+		else:
+			cover_cards.erase(cid)
 
 
+## 手牌里有没有这张牌（对照服务端 PlayerEntity::checkOneHandCard）：
+## 精灵射手(32) 的盖牌同时算手牌 —— 她的【祝福】盖牌可以直接当手牌打出
 func has_hand_card(cid: int) -> bool:
-	return hand_cards.has(cid)
+	if hand_cards.has(cid):
+		return true
+	return role_id == 32 and cover_cards.has(cid)
 
 
 func hand_count() -> int:
@@ -133,20 +153,25 @@ func check_exclusive_effect(idx: int) -> bool:
 # ============================================================
 # 治疗 / 能量
 # ============================================================
+## 加治疗：不超过上限 cross_max；但若当前已因「突破上限」而高于上限，则只加不减 ——
+## 否则超过上限后再加一次治疗会被硬拉回上限（治疗倒退）。所有加治疗都该经这里（或引擎的
+## add_cross / add_cross_pierce），不要直接写 cross_num
 func add_cross_num(v: int) -> void:
-	cross_num = mini(cross_num + v, cross_max)
+	cross_num = maxi(mini(cross_num + v, cross_max), cross_num)
 
 
 func sub_cross_num(v: int) -> void:
 	cross_num = maxi(cross_num - v, 0)
 
 
+## 能量（宝石 / 水晶）：两项之和不超过上限（对照服务端 PlayerEntity::setGem / setCrystal，
+## 原版是「加上另一项再截断」，所以对已有水晶的角色 +宝石会把宝石压到 上限－水晶）
 func set_gem(v: int) -> void:
-	gem = clampi(v, 0, energy_max)
+	gem = clampi(v, 0, maxi(energy_max - crystal, 0))
 
 
 func set_crystal(v: int) -> void:
-	crystal = clampi(v, 0, energy_max)
+	crystal = clampi(v, 0, maxi(energy_max - gem, 0))
 
 
 func get_energy() -> int:
@@ -160,8 +185,12 @@ func get_energy() -> int:
 var reattacker: int = -1
 
 
-func add_action(allow_action: int, cause: int) -> void:
-	additional_actions.append({"allow_action": allow_action, "cause": cause})
+## direct=true 的额外行动不需要询问、也不用玩家再点一次技能按钮：引擎会直接进入它的额外行动阶段
+## （该阶段允许「放弃行动」，想跳过在那里放弃即可）。
+## 判定标准：这份额外行动「被选中」时不额外消耗代价（p_additional_action 无扣费/无移除资源）。
+## 代价在选中时才结算的（如剑圣【剑影】扣能量、剑帝【不屈意志】扣能量）仍要询问，保留玩家「不付代价退出」的权利。
+func add_action(allow_action: int, cause: int, direct: bool = false) -> void:
+	additional_actions.append({"allow_action": allow_action, "cause": cause, "direct": direct})
 
 
 ## 额外行动「被选中」时的二次校验（角色可覆写）
@@ -186,29 +215,34 @@ func clear_additional_action() -> void:
 # 通用实现放在 base_v_*；v_* 先问角色（角色可覆写/追加限制），角色无意见时用通用实现
 # 角色侧通过 BattleRole.V_NOT_OVERRIDE 表示「不覆写」
 # ============================================================
-func v_allow_action(action_type: int, args: Array) -> int:
+func v_allow_action(action_type: int, args: Array, allow: int, can_give_up: bool) -> int:
 	if role != null:
-		var rc: int = role.v_allow_action(action_type, args)
+		var rc: int = role.v_allow_action(action_type, args, allow, can_give_up)
 		if rc != BattleRole.V_NOT_OVERRIDE:
 			return rc
-	return base_v_allow_action(action_type, args)
+	return base_v_allow_action(action_type, args, allow, can_give_up)
 
 
-## 总校验：当前玩家是否被允许执行该类型动作
-func base_v_allow_action(action_type: int, _args: Array) -> int:
-	match action_type:
-		GConst.ActionType.None, GConst.ActionType.Unactional:
-			return GConst.GE_SUCCESS
-		GConst.ActionType.Any:
-			return GConst.GE_SUCCESS
-		GConst.ActionType.Attack, GConst.ActionType.AttackSkill:
-			return GConst.GE_SUCCESS
-		GConst.ActionType.Magic, GConst.ActionType.MagicSkill:
-			return GConst.GE_SUCCESS
-		GConst.ActionType.Special, GConst.ActionType.SpecialSkill:
-			return GConst.GE_SUCCESS
-		GConst.ActionType.AttackMagic:
-			return GConst.GE_SUCCESS
+## 是否允许宣告「无法行动」（对照服务端 PlayerEntity::v_unactional，默认总是允许；角色可覆写）
+func v_unactional() -> int:
+	if role != null:
+		var rc: int = role.v_unactional()
+		if rc != BattleRole.V_NOT_OVERRIDE:
+			return rc
+	return GConst.GE_SUCCESS
+
+
+## 总校验（对照服务端 PlayerEntity::v_allow_action(action, allow, canGiveUp)）：
+## allow = 本行动阶段放行的种类（Any / Attack / AttackMagic …），技能类归入它对应的基础种类；
+## 「无法行动」只有正常行动阶段（allow = Any）能宣告；「放弃行动」只在 can_give_up 时合法
+func base_v_allow_action(action_type: int, _args: Array, allow: int, can_give_up: bool) -> int:
+	if GConst.放行动作(action_type, allow):
+		return GConst.GE_SUCCESS
+	# 只有正常行动阶段能宣告「无法行动」
+	if allow == GConst.ActionType.Any and action_type == GConst.ActionType.Unactional:
+		return v_unactional()
+	if can_give_up and action_type == GConst.ActionType.None:
+		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 
 
@@ -221,13 +255,18 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 	return base_v_attack(card_id, dst_id, players)
 
 
-## 攻击校验通用实现：目标不同队、持有该攻击牌
+## 攻击校验通用实现：面前有【挑衅】时只能打勇者、目标不同队、持有该攻击牌
 func base_v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
+	# 对照服务端 PlayerEntity::v_attack 开头：攻击者面前有【挑衅】时，目标只能是勇者（roleID 21）
+	if check_exclusive_effect(GConst.Exclusive.TiaoXin):
+		var 挑衅目标: BattlePlayer = players.get(dst_id)
+		if 挑衅目标 == null or 挑衅目标.role_id != 21:
+			return GConst.GE_INVALID_PLAYERID
 	var dst: BattlePlayer = players.get(dst_id)
 	if dst == null:
 		return GConst.GE_INVALID_PLAYERID
 	if dst.color == color:
-		return GConst.GE_INVALID_ACTION
+		return GConst.GE_INVALID_PLAYERID
 	if not has_hand_card(card_id):
 		return GConst.GE_HANDCARD_NOT_FOUND
 	var card: GCard = Data.get_card(card_id)
@@ -323,11 +362,13 @@ func v_shield(dst_id: int, players: Dictionary) -> int:
 	return base_v_shield(dst_id, players)
 
 
+## 格挡校验（圣盾）：对照服务端 PlayerEntity::v_shield —— 目标面前已有【圣盾】或
+## 【天使之墙】都不能再放（【天使之墙】视作圣盾）
 func base_v_shield(dst_id: int, players: Dictionary) -> int:
 	var dst: BattlePlayer = players.get(dst_id)
 	if dst == null:
 		return GConst.GE_INVALID_PLAYERID
-	if dst.check_basic_effect_name(GConst.CardName.Shield):
+	if dst.check_basic_effect_name(GConst.CardName.Shield) or dst.check_basic_effect_skill(GConst.技能_天使之墙):
 		return GConst.GE_BASIC_EFFECT_ALREADY_EXISTS
 	return GConst.GE_SUCCESS
 
@@ -359,12 +400,17 @@ func v_buy(args: Array) -> int:
 	return base_v_buy(args)
 
 
+## 购买校验（对照服务端 PlayerEntity::v_buy）：手牌留得下 3 张，宝石、水晶各自最多买 1 点
 func base_v_buy(args: Array) -> int:
 	if hand_cards.size() + 3 > hand_cards_max:
-		return GConst.GE_CARD_NOT_ENOUGH
+		return GConst.GE_INVALID_ACTION
 	if args.size() < 2:
 		return GConst.GE_INVALID_ARGUMENT
-	return GConst.GE_SUCCESS
+	var 买宝石: int = int(args[0])
+	var 买水晶: int = int(args[1])
+	if (买宝石 == 0 or 买宝石 == 1) and (买水晶 == 0 or 买水晶 == 1):
+		return GConst.GE_SUCCESS
+	return GConst.GE_INVALID_ACTION
 
 
 ## 被攻击校验（防守方视角，角色可拒绝被选为目标）
@@ -376,25 +422,29 @@ func v_attacked() -> int:
 	return GConst.GE_SUCCESS
 
 
-## 合成校验
-func v_synthesize(args: Array, team_energy: int) -> int:
+## 合成校验（对照服务端 PlayerEntity::v_synthesize）：
+## 手牌留得下 3 张、队伍能量 ≥ 3，且这次要花的宝石＋水晶正好 3 点、各自不超过队伍存量
+func v_synthesize(args: Array, team_energy: int, team_gem: int, team_crystal: int) -> int:
 	if hand_cards.size() + 3 > hand_cards_max:
-		return GConst.GE_CARD_NOT_ENOUGH
+		return GConst.GE_INVALID_ACTION
 	if team_energy < 3:
-		return GConst.GE_CARD_NOT_ENOUGH
+		return GConst.GE_INVALID_ACTION
 	if args.size() < 2:
 		return GConst.GE_INVALID_ARGUMENT
+	var 花宝石: int = int(args[0])
+	var 花水晶: int = int(args[1])
+	if 花宝石 + 花水晶 != 3 or 花宝石 > team_gem or 花水晶 > team_crystal:
+		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 
 
-## 提炼校验
+## 提炼校验（对照服务端 PlayerEntity::v_extract）：
+## 要提的宝石 / 水晶不超过队伍存量，且自己的能量没满
 func v_extract(args: Array, team_gem: int, team_crystal: int) -> int:
 	if args.size() < 2:
 		return GConst.GE_INVALID_ARGUMENT
-	if get_energy() >= energy_max:
+	if int(args[0]) > team_gem or int(args[1]) > team_crystal or get_energy() >= energy_max:
 		return GConst.GE_INVALID_ACTION
-	if int(args[0]) > team_gem or int(args[1]) > team_crystal:
-		return GConst.GE_CARD_NOT_ENOUGH
 	return GConst.GE_SUCCESS
 
 
@@ -406,6 +456,8 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"role_id": role_id,
 		"hand_count": hand_cards.size(),
 		"heal_count": cross_num,
+		# 治疗上限：角色被动会改（神官 +4 等），客户端按它画治疗格的空位
+		"max_heal": cross_max,
 		"gem": gem,
 		"crystal": crystal,
 		"covered_count": cover_cards.size(),

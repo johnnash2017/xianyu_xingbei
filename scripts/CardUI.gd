@@ -33,6 +33,20 @@ const GLOW_WINDOW_SIZE: Vector2 = Vector2(126.0, 190.0)
 ## 不可用（置灰）时的整体压暗色
 const DISABLED_TINT: Color = Color(0.5, 0.5, 0.5, 1.0)
 
+## Card.tscn 里的装饰（命格图标 / 元素图标 / 技能名）都是**固定像素偏移**，
+## 这套数值是按「设计卡面 126×190」（发光框贴图的透明窗口）标的。
+## 卡面被放大或缩小（手牌 130×192、盖牌 100×150…）时这些装饰要同比例跟着走，
+## 否则小卡上命格图标会跑到卡面外面去。
+const DESIGN_FACE_SIZE: Vector2 = Vector2(126.0, 190.0)
+## 设计尺寸下各装饰的数值（与 Card.tscn 的偏移、字号一一对应）
+const DECOR_PROPERTY_HALF_W: float = 12.5
+const DECOR_PROPERTY_TOP: float = 71.6
+const DECOR_PROPERTY_BOTTOM: float = 96.6
+const DECOR_ELEMENT_SIZE: float = 30.0
+const DECOR_SKILL_W: float = 60.0
+const DECOR_SKILL_H: float = 30.0
+const DECOR_SKILL_FONT: int = 14
+
 
 func _ready() -> void:
 	# 卡面走 btn.icon：先清空各状态 stylebox（去掉默认主题的灰底/内容边距/焦点框），
@@ -44,23 +58,26 @@ func _ready() -> void:
 	# 卡面/发光框这些装饰子图在转换时带着 mouse_filter=STOP，会把点击吃掉，统一放行
 	ConversionFix.ignore_decorations(self)
 	_fit_glow()
+	_fit_decor()
 
 
 func _notification(what: int) -> void:
-	# 卡牌尺寸由手牌区/盖牌区决定，尺寸一变卡面就变，发光框得跟着重算
+	# 卡牌尺寸由手牌区/盖牌区决定，尺寸一变卡面就变，发光框与装饰都得跟着重算
 	if what == NOTIFICATION_RESIZED:
 		_fit_glow()
+		_fit_decor()
 
 
 # ============================================================
 # 对外：塞数据 / 收点击
 # ============================================================
-## 设置这张卡显示什么，以及是否可用（可用=亮起并显示「可选中」发光框，不可用=整体压暗置灰）
-func 设置卡牌(new_card: GCard, 可用: bool) -> void:
+## 设置这张卡显示什么，以及是否可用（可用=亮起并显示「可选中」发光框，不可用=整体压暗置灰）。
+## 可置灰 = false 时即使不可用也保持原色（如只读查看自己的盖牌：不给点，但牌面要看得清）
+func 设置卡牌(new_card: GCard, 可用: bool, 可置灰: bool = true) -> void:
 	card = new_card
 	isEnable = 可用
 	# 置灰走 modulate：会一并压暗卡面、命格元素与发光框，整张牌看起来是一体的
-	modulate = Color.WHITE if 可用 else DISABLED_TINT
+	modulate = DISABLED_TINT if (可置灰 and not 可用) else Color.WHITE
 	if selectBorder != null:
 		selectBorder.visible = false
 	if canSelectBorder != null:
@@ -69,6 +86,7 @@ func 设置卡牌(new_card: GCard, 可用: bool) -> void:
 		return
 	_画卡面(new_card)
 	_画命格元素(new_card)
+	_fit_decor()
 
 
 ## 是否处于「已选中」（黄框）
@@ -133,3 +151,33 @@ func _fit_glow() -> void:
 		c.offset_top = -glow.y * 0.5
 		c.offset_right = glow.x * 0.5
 		c.offset_bottom = glow.y * 0.5
+
+
+## 命格图标 / 元素图标 / 技能名跟着卡面尺寸等比缩放（卡面相对 DESIGN_FACE_SIZE 的比例）。
+## 这三样在预制体里都是写死的像素偏移，卡一变尺寸就错位（盖牌区缩到 100×150 时命格图标会掉到卡外）。
+func _fit_decor() -> void:
+	var s: float = minf(size.x / DESIGN_FACE_SIZE.x, size.y / DESIGN_FACE_SIZE.y)
+	if s <= 0.0:
+		s = 1.0
+	if propertyRoot != null:
+		var 半宽: float = DECOR_PROPERTY_HALF_W * s
+		propertyRoot.offset_left = -半宽
+		propertyRoot.offset_right = 半宽
+		propertyRoot.offset_top = DECOR_PROPERTY_TOP * s
+		propertyRoot.offset_bottom = DECOR_PROPERTY_BOTTOM * s
+	if elementRoot != null:
+		for n: Node in elementRoot.get_children():
+			if n is Control:
+				(n as Control).offset_right = DECOR_ELEMENT_SIZE * s
+				(n as Control).offset_bottom = DECOR_ELEMENT_SIZE * s
+	var 字宽: float = DECOR_SKILL_W * s
+	var 字高: float = DECOR_SKILL_H * s
+	var 字号: int = maxi(1, int(round(float(DECOR_SKILL_FONT) * s)))
+	if txtSkill1 != null:
+		txtSkill1.offset_right = 字宽
+		txtSkill1.offset_top = -字高
+		txtSkill1.add_theme_font_size_override("font_size", 字号)
+	if txtSkill2 != null:
+		txtSkill2.offset_left = -字宽
+		txtSkill2.offset_top = -字高
+		txtSkill2.add_theme_font_size_override("font_size", 字号)

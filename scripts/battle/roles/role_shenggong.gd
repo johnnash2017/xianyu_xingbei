@@ -67,8 +67,11 @@ func available_skills() -> Array:
 	if (_xin_yang() > 1 or player.cross_num > 1) and not player.tap:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_HUANG_MO_SHI, "need_card": 0, "need_target": 0})
 	if player.cross_num > 0 and player.tap:
-		# v_magic_skill 只校验治疗数与横置，不校验任何牌，故不强制选牌
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_BAO_LIE, "need_card": 0, "need_target": 1})
+		# v_magic_skill 只校验治疗数与横置，不校验任何牌，故不强制选牌。
+		# 治疗数与「弃/摸」原本由原版客户端拼成 args=[1或2, 治疗数]，通用客户端点「确定」只回 args=[]，
+		# 故改用 arg_choices：每个候选点数一个按钮，点它即回完整 args（服务端照旧读 args[0]/args[1]）。
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_BAO_LIE, "need_card": 0, "need_target": 1,
+			"arg_choices": _sheng_guang_bao_lie_choices()})
 	# 辉光炮：仅当我方士气低于敌方且信仰足够支付（士气差 + 5）时可选（客户端同此判定）
 	var en_color: int = GConst.BLUE if player.color == GConst.RED else GConst.RED
 	var my_morale: int = engine.team_morale[player.color]
@@ -80,6 +83,17 @@ func available_skills() -> Array:
 				{"text": "敌方士气拉平到我方（提升敌方）", "args": [0]},
 				{"text": "我方士气拉平到敌方（降低我方）", "args": [1]},
 			]})
+	return out
+
+
+## 圣光爆裂的参数选项：治疗数 X（1..当前治疗）各对应「弃 X 张」或「摸 X 张」；
+## args = [1, X] 为弃、[2, X] 为摸，与服务端 _sheng_guang_bao_lie 读取的 args[0]/args[1] 一致。
+## 每项 need_target=1：本技能要选目标，客户端需先选好目标才让点该选项按钮。
+func _sheng_guang_bao_lie_choices() -> Array:
+	var out: Array = []
+	for x: int in range(1, player.cross_num + 1):
+		out.append({"text": "弃 %d 张牌" % x, "args": [1, x], "need_target": 1})
+		out.append({"text": "摸 %d 张牌" % x, "args": [2, x], "need_target": 1})
 	return out
 
 
@@ -168,11 +182,12 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	var target: BattlePlayer = engine.p(pid)
 	if target == null or n <= 0 or target.hand_cards.is_empty():
 		return SUCCESS
+	# 要弃的张数最多到他的手牌数：询问时就按真实张数下发，界面提示里的 {n} 才是真的
+	var want: int = mini(n, target.hand_cards.size())
 	if not engine.has_reply():
-		engine.ask_skill(pid, cause, 1, 0)
+		询问(pid, cause, want)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	var want: int = mini(n, target.hand_cards.size())
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
@@ -204,28 +219,36 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 【天之弓 / 圣流星弹·攻击】的推进阶段（0＝还没开始 / TIAN_ZHI_GONG＝天之弓减伤 /
+## SHENG_LIU_XING_ATK＝在问是否发动圣流星弹·攻击）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
 # ============================================================
 # 攻击宣告后（timeline_1）：天之弓（3701）→ 圣流星弹·攻击（37051）
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = TIAN_ZHI_GONG
-	if step == TIAN_ZHI_GONG:
+	if _timeline_1_step == 0:
+		_timeline_1_step = TIAN_ZHI_GONG
+	if _timeline_1_step == TIAN_ZHI_GONG:
 		# 非【圣】命格的攻击牌：本次伤害 -1
 		var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 		if card != null and card.property_enum() != GConst.CardProperty.Holy:
 			var harm: Dictionary = ctx.get("harm", {})
 			harm["point"] = int(harm.get("point", 0)) - 1
-		step = SHENG_LIU_XING_ATK
-	if step == SHENG_LIU_XING_ATK:
+		_timeline_1_step = SHENG_LIU_XING_ATK
+	if _timeline_1_step == SHENG_LIU_XING_ATK:
 		var r: int = _sheng_liu_xing_atk()
 		if r == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_timeline_1_step = 0
 	return SUCCESS
 
 
@@ -234,7 +257,14 @@ func _sheng_liu_xing_atk() -> int:
 	if not player.tap or (player.cross_num == 0 and _xin_yang() == 0):
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, SHENG_LIU_XING_ATK, 0, 1)
+		# 两条路径做成选项（value 1=耗治疗、2=耗信仰），只列当前真有那种资源的项；
+		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
+		var 选项: Array = []
+		if player.cross_num > 0:
+			选项.append({"value": 1, "label": "移除 1 点治疗，令目标 +1 治疗"})
+		if _xin_yang() > 0:
+			选项.append({"value": 2, "label": "移除 1 点信仰，令目标 +1 治疗"})
+		询问(player.id, SHENG_LIU_XING_ATK, 0, 1, GConst.CardSource.Hand, 选项)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -248,7 +278,7 @@ func _sheng_liu_xing_atk() -> int:
 		_set_token(TOKEN_XIN_YANG, _xin_yang() - 1)
 	var dst: BattlePlayer = engine.p(int(dsts[0]))
 	if dst != null:
-		dst.add_cross_num(1)
+		施加治疗(dst.id, 1)
 	notice_skill(SHENG_LIU_XING_ATK, dsts)
 	engine._broadcast_game()
 	return SUCCESS
@@ -274,24 +304,57 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 # ============================================================
 # 主动攻击未命中后（timeline_2_miss）：圣邪巨胞·未命中（37021）
 # ============================================================
+## 圣邪巨胞·未命中的参数选项：治疗数 X（1..当前治疗）各对应「弃 X 张」或「摸 X 张」。
+## 原版用两维 args（[弃=1/摸=2, 治疗数]），通用客户端只回一维 args，故把「弃/摸 + 张数」编码进选项值：
+## value 1..N＝弃 N 张，value N+1..2N＝摸 N 张（N=当前治疗数），服务端再解码回 choice 与 num。
+func _sheng_xie_miss_choices() -> Array:
+	var out: Array = []
+	var n: int = player.cross_num
+	for x: int in range(1, n + 1):
+		out.append({"value": x, "label": "弃 %d 张牌" % x})
+	for x: int in range(1, n + 1):
+		out.append({"value": n + x, "label": "摸 %d 张牌" % x})
+	return out
+
+
+## 【圣邪巨胞·未命中】的推进阶段（0＝还没开始 / SHENG_XIE_MISS＝在问弃/摸与目标 /
+## SHENG_XIE_MISS_DISCARD＝在请目标弃牌）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次圣邪巨胞未命中（p_timeline_2_miss）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _miss_step: int = 0
+
+
 func p_timeline_2_miss(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _miss_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = SHENG_XIE_MISS
-	if step == SHENG_XIE_MISS:
+	if _miss_step == 0:
+		_miss_step = SHENG_XIE_MISS
+	if _miss_step == SHENG_XIE_MISS:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, SHENG_XIE_MISS, 0, 1)
+			# 序号 1：第 0 条提示是「叫别人弃牌」用的，这步「指定谁弃牌/摸牌」读第 1 条。
+			# 治疗数与「弃/摸」做成选项（见 _sheng_xie_miss_choices），服务端读 args[0] 解码。
+			询问(player.id, SHENG_XIE_MISS, 0, 1, GConst.CardSource.Hand, _sheng_xie_miss_choices(), 0, "", [], true, 1)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
 		var dsts: Array = r.get("dst_ids", [])
-		var choice: int = int(args[0]) if not args.is_empty() else 0
-		var num: int = int(args[1]) if args.size() > 1 else 0
-		if choice <= 0 or num <= 0 or dsts.is_empty():
-			step = STEP_DONE
+		# 选项值解码回「弃/摸」与张数（等价于原版 args=[弃=1/摸=2, 治疗数]）
+		var value: int = int(args[0]) if not args.is_empty() else 0
+		var 治疗数: int = player.cross_num
+		var choice: int = 0
+		var num: int = 0
+		if value > 0 and 治疗数 > 0:
+			if value <= 治疗数:
+				choice = 1
+				num = value
+			else:
+				choice = 2
+				num = value - 治疗数
+		if choice <= 0 or num <= 0 or num > 治疗数 or dsts.is_empty():
+			_miss_step = 0
 			return SUCCESS
 		sheng_xie_miss_dst = int(dsts[0])
 		sheng_xie_miss_num = num
@@ -299,16 +362,16 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		notice_skill(SHENG_XIE_MISS, dsts)
 		engine._broadcast_game()
 		if choice == 1:
-			step = SHENG_XIE_MISS_DISCARD
+			_miss_step = SHENG_XIE_MISS_DISCARD
 		else:
 			engine.draw(sheng_xie_miss_dst, num)
 			engine._broadcast_game()
-			step = STEP_DONE
-	if step == SHENG_XIE_MISS_DISCARD:
+			_miss_step = 0
+	if _miss_step == SHENG_XIE_MISS_DISCARD:
 		var r2: int = _request_discard(sheng_xie_miss_dst, sheng_xie_miss_num, SHENG_XIE_MISS)
 		if r2 == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_miss_step = 0
 	return SUCCESS
 
 
@@ -324,7 +387,7 @@ func p_before_special(ctx: Dictionary) -> int:
 		return SUCCESS
 	notice_skill(SHENG_LIU_XING_DAN, [player.id])
 	player.tap = false
-	player.add_cross_num(1)
+	施加治疗(player.id, 1)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -342,12 +405,31 @@ func p_turn_end(ctx: Dictionary) -> int:
 	if step == 0:
 		step = ZI_DONG_TIAN_CHONG
 	if not engine.has_reply():
-		engine.ask_skill(player.id, ZI_DONG_TIAN_CHONG, 0, 0)
+		# 四种转换各做一个选项（value 1~4，与服务端 match 分支一一对应）；
+		# 「取消」回空 args＝走服务端的超时兜底分支（choice 0）
+		询问(player.id, ZI_DONG_TIAN_CHONG, 0, 0, GConst.CardSource.Hand, [
+			{"value": 1, "label": "1 宝石 → 1 水晶 + 2 信仰"},
+			{"value": 2, "label": "1 宝石 → 1 水晶 + 2 治疗"},
+			{"value": 3, "label": "1 水晶（无则 1 宝石）→ 1 信仰"},
+			{"value": 4, "label": "1 水晶（无则 1 宝石）→ 1 治疗"},
+		])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
 	var args: Array = r.get("args", [])
 	var choice: int = int(args[0]) if not args.is_empty() else 0
+	if choice == 0:
+		# 超时/取消兜底：服务端超时分支（有水晶则 -1 水晶 +1 信仰，否则 -1 宝石 +1 水晶 +2 信仰）
+		notice_skill(ZI_DONG_TIAN_CHONG, [player.id])
+		if player.crystal > 0:
+			player.set_crystal(player.crystal - 1)
+			_set_token(TOKEN_XIN_YANG, _xin_yang() + 1)
+		else:
+			player.set_gem(player.gem - 1)
+			player.set_crystal(player.crystal + 1)
+			_set_token(TOKEN_XIN_YANG, _xin_yang() + 2)
+		engine._broadcast_game()
+		return SUCCESS
 	if choice < 1 or choice > 4:
 		return SUCCESS
 	notice_skill(ZI_DONG_TIAN_CHONG, [player.id])
@@ -359,7 +441,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 		2:
 			player.set_gem(player.gem - 1)
 			player.set_crystal(player.crystal + 1)
-			player.add_cross_num(2)
+			施加治疗(player.id, 2)
 		3:
 			if player.crystal > 0:
 				player.set_crystal(player.crystal - 1)
@@ -371,7 +453,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 				player.set_crystal(player.crystal - 1)
 			else:
 				player.set_gem(player.gem - 1)
-			player.add_cross_num(1)
+			施加治疗(player.id, 1)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -457,7 +539,7 @@ func _sheng_huang_mo_shi(action: Dictionary) -> int:
 	else:
 		_set_token(TOKEN_XIN_YANG, _xin_yang() - 2)
 	player.tap = true
-	player.add_action(GConst.ActionType.Magic, SHENG_HUANG_MO_SHI)
+	player.add_action(GConst.ActionType.Magic, SHENG_HUANG_MO_SHI, true)
 	engine._broadcast_game()
 	return SUCCESS
 

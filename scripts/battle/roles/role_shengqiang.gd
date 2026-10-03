@@ -67,7 +67,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, TIAN_QIANG, 0, 0)
+		询问(player.id, TIAN_QIANG, 0, 0)
 		return WAIT
 	step = STEP_DONE
 	if not take_skill_reply():
@@ -80,24 +80,31 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 【地枪 / 圣击】的推进阶段（0＝还没开始 / DI_QIANG＝在问是否发动地枪 / SHENG_JI＝圣击）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动攻击命中（p_timeline_2_hit）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _hit_step: int = 0
+
+
 # ============================================================
 # 主动攻击命中后（timeline_2_hit）：地枪 → 圣击
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _hit_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = DI_QIANG
-	if step == DI_QIANG:
+	if _hit_step == 0:
+		_hit_step = DI_QIANG
+	if _hit_step == DI_QIANG:
 		var r: int = _di_qiang(ctx)
 		if r == WAIT:
 			return WAIT
-		step = SHENG_JI
-	if step == SHENG_JI:
+		_hit_step = SHENG_JI
+	if _hit_step == SHENG_JI:
 		_sheng_ji(ctx)
-		step = STEP_DONE
+		_hit_step = 0
 	used_tian_qiang = false
 	used_di_qiang = false
 	return SUCCESS
@@ -110,7 +117,13 @@ func _di_qiang(ctx: Dictionary) -> int:
 	if player.cross_num < 1:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, DI_QIANG, 0, 0)
+		# 移除的治疗点数做成选项（1 ~ min(4, 当前治疗)），value 即点数；
+		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
+		var 上限: int = mini(4, player.cross_num)
+		var 选项: Array = []
+		for n: int in range(1, 上限 + 1):
+			选项.append({"value": n, "label": "移除 %d 点治疗，本次伤害 +%d" % [n, n]})
+		询问(player.id, DI_QIANG, 0, 0, GConst.CardSource.Hand, 选项)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -126,12 +139,13 @@ func _di_qiang(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 圣击：被动，攻击命中后 +1 治疗（治疗已达上限 3、或本次已用地枪/天枪时不发动）
+## 圣击：被动，攻击命中后 +1 治疗（本次已用地枪/天枪时不发动）。
+## 治疗已满也照样发动——加不加得上去由加治疗的结算管，这里不判「已满/会超上限」
 func _sheng_ji(ctx: Dictionary) -> void:
-	if player.cross_num >= 3 or used_tian_qiang or used_di_qiang:
+	if used_tian_qiang or used_di_qiang:
 		return
 	notice_skill(SHENG_JI, [int(ctx.get("dst", -1))])
-	player.add_cross_num(1)
+	施加治疗(player.id, 1)
 	engine._broadcast_game()
 
 
@@ -196,8 +210,8 @@ func _hui_yao(action: Dictionary) -> int:
 	for d: Variant in dst_ids:
 		var dp: BattlePlayer = engine.p(int(d))
 		if dp != null:
-			dp.add_cross_num(1)
-	player.add_action(GConst.ActionType.Attack, HUI_YAO)
+			施加治疗(dp.id, 1)
+	player.add_action(GConst.ActionType.Attack, HUI_YAO, true)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -217,8 +231,8 @@ func _cheng_jie(action: Dictionary) -> int:
 	engine.take_from_hand(player.id, [cid])
 	engine.to_discard([cid])
 	dst.sub_cross_num(1)
-	player.add_cross_num(1)
-	player.add_action(GConst.ActionType.Attack, CHENG_JIE)
+	施加治疗(player.id, 1)
+	player.add_action(GConst.ActionType.Attack, CHENG_JIE, true)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -227,8 +241,9 @@ func _cheng_jie(action: Dictionary) -> int:
 func _sheng_guang_qi_yu() -> int:
 	notice_skill(SHENG_GUANG_QI_YU, [player.id])
 	player.set_gem(player.gem - 1)
-	player.cross_num = mini(player.cross_num + 2, 5)
-	player.add_action(GConst.ActionType.Attack, SHENG_GUANG_QI_YU)
+	# 无视上限 +2 治疗、最高到 5：走与普通加治疗同一入口（会写战斗日志，且超过上限时只加不减）
+	施加治疗_突破(player.id, 2, 5)
+	player.add_action(GConst.ActionType.Attack, SHENG_GUANG_QI_YU, true)
 	used_sheng_guang_qi_yu = true
 	engine._broadcast_game()
 	return SUCCESS

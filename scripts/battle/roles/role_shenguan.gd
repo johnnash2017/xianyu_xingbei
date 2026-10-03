@@ -19,6 +19,9 @@ const LING_YU_DISCARD: int = 2        # 神圣领域最多弃 2 张牌
 
 ## 水之神力的交牌子步骤（0 = 尚未弃牌 / 1 = 等待交出 1 张手牌）
 var _shui_shen_phase: int = 0
+## 水之神力第一步选定的队友：第二步「交哪张牌」的询问不带目标，得把它记下来，
+## 否则第二步回包没有 dst_ids，牌会交给自己（等于白交）
+var _shui_shen_dst: int = -1
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -34,23 +37,22 @@ func available_skills() -> Array:
 			"cards": magic_hand_ids()})
 	if _has_water_card():
 		# 水之神力要弃 1 张水系牌：只让手牌里的水系牌可点（v_magic_skill 校验 card2.element_enum() == Water）
-		# 目标须为同色队友（v_magic_skill：dst1.color != player.color 时返回 GE_INVALID_ACTION）
+		# 目标须为同色队友（v_magic_skill：dst1.color != player.color 时返回 GE_INVALID_ACTION）；
+		# 自己与自己是同色，所以也点得动（给牌＝给自己，等价于白洗一张水系牌）
+		var 水牌目标: Array[int] = ally_ids()
+		水牌目标.append(player.id)
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHUI_ZHI_SHEN_LI, "need_card": 1, "need_target": 1,
 			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water),
-			"targets": ally_ids()})
+			"targets": 水牌目标})
 	if player.get_energy() >= 1:
 		# 神圣领域要弃牌：手牌多于 2 张时恰好弃 2 张，否则把手牌弃光（v_magic_skill 同一条）
-		# 两种用法的合法目标不同，所以目标白名单挂在各自选项上：
-		#   mode=0（args[0]==0）目标须同色队友；mode=1（args[0]==1）不限颜色，且自身治疗须 ≥ 1
-		var 领域选项: Array = [{"text": "自己 +2 治疗，目标队友 +1 治疗", "args": [0], "need_target": 1,
-			"targets": ally_ids()}]
-		if player.cross_num >= 1:
-			领域选项.append({"text": "移除自己 1 治疗，对目标造成 2 点法术伤害", "args": [1], "need_target": 1,
-				"targets": player_ids_where(func(_p: BattlePlayer) -> bool: return true)})
+		# 用法不用按钮选，直接由目标决定（客户端按目标我方/敌方定 args）：
+		#   选队友（含自己）＝ 自己 +2、目标 +1 治疗（args[0]==0）；选敌人 ＝ 移除自己 1 治疗、目标受 2 点法术伤害（args[0]==1）
+		# 自己治疗不足时打不出伤害（v_magic_skill 判 cross_num < 1），所以这时敌人整片不亮
 		out.append({
 			"type": GConst.ActionType.MagicSkill, "id": SHEN_SHENG_LING_YU,
 			"need_card": mini(LING_YU_DISCARD, player.hand_cards.size()), "need_target": 1,
-			"arg_choices": 领域选项,
+			"targets": _ling_yu_targets(),
 		})
 	return out
 
@@ -81,6 +83,16 @@ func _has_cards(cards: Array) -> bool:
 	return not cards.is_empty()
 
 
+## 神圣领域的可选目标：治疗够时全场都能点（含自己，因为「队友」这一边含自己）；
+## 自己治疗不足时打不出第一用法（v_magic_skill 判 cross_num < 1），只留队友（含自己）可点
+func _ling_yu_targets() -> Array[int]:
+	var out: Array[int] = ally_ids()
+	out.append(player.id)
+	if player.cross_num >= 1:
+		out.append_array(enemy_ids())
+	return out
+
+
 # ============================================================
 # 圣使守护（被动）：用治疗抵御伤害时最多只能用 1 点治疗
 # 服务端 ShenGuan::ShengShiShouHu 于 p_timeline_4 把 crossAvailable 压到 1（仅当原本可抵御）
@@ -88,8 +100,6 @@ func _has_cards(cards: Array) -> bool:
 func p_timeline_4(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("dst", -1)) != player.id:
-		return SUCCESS
-	if int(harm.get("type", -1)) != GConst.HarmType.Magic:
 		return SUCCESS
 	if int(harm.get("cross_available", 1)) <= 0 or player.cross_num <= 0:
 		return SUCCESS
@@ -101,20 +111,27 @@ func p_timeline_4(ctx: Dictionary) -> int:
 # ============================================================
 # 启动：神圣契约（自己回合开始、有能量且有治疗时询问）
 # ============================================================
+## 【神圣契约】的推进阶段（0＝还没开始 / SHEN_SHENG_QI_YUE＝在问契约如何分配）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _qi_yue_step: int = 0
+
+
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
 	if player.get_energy() == 0 or player.cross_num == 0:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _qi_yue_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = SHEN_SHENG_QI_YUE
-	if step == SHEN_SHENG_QI_YUE:
+	if _qi_yue_step == 0:
+		_qi_yue_step = SHEN_SHENG_QI_YUE
+	if _qi_yue_step == SHEN_SHENG_QI_YUE:
 		var r: int = _shen_sheng_qi_yue()
 		if r == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_qi_yue_step = 0
 	return SUCCESS
 
 
@@ -127,25 +144,58 @@ func _shen_sheng_qi_yue() -> int:
 		if only != null and only.element_enum() == GConst.CardElement.Light:
 			return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, SHEN_SHENG_QI_YUE, 0, 1)
+		询问(player.id, SHEN_SHENG_QI_YUE, 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var dsts: Array = r.get("dst_ids", [])
-	var amount: int = int(args[0]) if not args.is_empty() else 0
-	if amount <= 0 or dsts.is_empty():
+	# 分配规则（每次几点 / 能否分给多个人 / 是否突破上限与封顶）与客户端共用「技能指示器」这一份配置
+	var 配置: Dictionary = GConst.技能指示器.get(SHEN_SHENG_QI_YUE, {})
+	var 每次: int = int(配置.get("每次", 1))
+	var 突破: bool = bool(配置.get("突破上限", false))
+	var 封顶: int = int(配置.get("突破封顶", 0))
+	var 仅队友: bool = bool(配置.get("仅队友", false))
+	if 每次 <= 0:
+		每次 = 1
+	# 先算好这次要转移给谁、各转几点（总量不超过自己当前的治疗）
+	var 计划: Array = []
+	var 剩余: int = player.cross_num
+	for i: int in range(dsts.size()):
+		if 剩余 <= 0:
+			break
+		var dst: BattlePlayer = engine.p(int(dsts[i]))
+		if dst == null:
+			continue
+		if 仅队友 and (dst.color != player.color or dst.id == player.id):
+			continue
+		var amount: int = int(args[i]) if i < args.size() else 每次
+		amount = mini(amount, 剩余)
+		if amount <= 0:
+			continue
+		计划.append({"dst": dst, "amount": amount})
+		剩余 -= amount
+	if 计划.is_empty():
 		return SUCCESS
-	amount = mini(amount, player.cross_num)
-	var dst_id: int = int(dsts[0])
-	var dst: BattlePlayer = engine.p(dst_id)
-	notice_skill(SHEN_SHENG_QI_YUE, [dst_id])
+	var 目标id: Array = []
+	for 项: Dictionary in 计划:
+		目标id.append(int((项["dst"] as BattlePlayer).id))
+	notice_skill(SHEN_SHENG_QI_YUE, 目标id)
+	# 消耗 1 能量：优先扣水晶
 	if player.crystal > 0:
 		player.set_crystal(player.crystal - 1)
 	else:
 		player.set_gem(player.gem - 1)
-	player.sub_cross_num(amount)
-	# 以此法转移的治疗无视目标治疗上限，但其治疗最高为 4
-	dst.cross_num = mini(dst.cross_num + amount, 4)
+	var 实转: int = 0
+	for 项2: Dictionary in 计划:
+		var dst2: BattlePlayer = 项2["dst"]
+		var amount2: int = int(项2["amount"])
+		实转 += amount2
+		# 以此法转移的治疗无视目标治疗上限（突破时按配置的封顶收尾，如最高到 4）
+		if 突破:
+			施加治疗_突破(dst2.id, amount2, 封顶)
+		else:
+			施加治疗(dst2.id, amount2)
+	player.sub_cross_num(实转)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -160,13 +210,13 @@ func p_after_special(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, SHEN_SHENG_QI_SHI, 0, 0)
+		询问(player.id, SHEN_SHENG_QI_SHI, 0, 0)
 		return WAIT
 	step = STEP_DONE
 	if not take_skill_reply():
 		return SUCCESS
 	notice_skill(SHEN_SHENG_QI_SHI, [player.id])
-	player.add_cross_num(1)
+	施加治疗(player.id, 1)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -245,7 +295,7 @@ func _shen_sheng_qi_fu(action: Dictionary) -> int:
 	})
 	engine.take_from_hand(player.id, cards)
 	engine.to_discard(cards)
-	player.add_cross_num(2)
+	施加治疗(player.id, 2)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -254,7 +304,10 @@ func _shen_sheng_qi_fu(action: Dictionary) -> int:
 func _shui_zhi_shen_li(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
-	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
+	# 第二步（交哪张牌）的回包不带目标，沿用第一步记下的队友
+	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else _shui_shen_dst
+	if dst_id < 0:
+		dst_id = player.id
 	var dst: BattlePlayer = engine.p(dst_id)
 	if _shui_shen_phase == 0:
 		var cid: int = int(cards[0])
@@ -266,16 +319,20 @@ func _shui_zhi_shen_li(action: Dictionary) -> int:
 		engine.take_from_hand(player.id, [cid])
 		engine.to_discard([cid])
 		if player.hand_cards.is_empty():
-			player.add_cross_num(1)
-			dst.add_cross_num(1)
+			_shui_shen_dst = -1
+			施加治疗(player.id, 1)
+			施加治疗(dst.id, 1)
 			engine._broadcast_game()
 			return SUCCESS
-		# 仍有手牌：请玩家选择交给队友的牌
+		# 仍有手牌：请玩家选择交给队友的牌（强制交一张，所以不许取消）。
+		# 这一步问的是「你自己」，提示取技能表 1503 那一行「提示」列的第 0 条（{dst}=收牌人）
 		_shui_shen_phase = 1
-		engine.ask_skill(player.id, SHUI_ZHI_SHEN_LI, 1, 0)
+		_shui_shen_dst = dst_id
+		询问(player.id, SHUI_ZHI_SHEN_LI, 1, 0, GConst.CardSource.Hand, [], 0, "", [], false, 0, dst_id)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_shui_shen_phase = 0
+	_shui_shen_dst = -1
 	var picked: Array = r.get("card_ids", [])
 	var give: int = -1
 	if not picked.is_empty() and player.has_hand_card(int(picked[0])):
@@ -284,12 +341,10 @@ func _shui_zhi_shen_li(action: Dictionary) -> int:
 		give = player.hand_cards[0]
 	player.remove_hand_cards([give])
 	dst.add_hand_cards([give])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": dst_id,
-		"card_ids": [give], "is_real": true,
-	})
-	player.add_cross_num(1)
-	dst.add_cross_num(1)
+	# 交牌不发公共亮牌：交/接双方在日志里看到牌名，其他人只看到张数
+	engine._log_give_cards(player.id, dst.id, [give])
+	施加治疗(player.id, 1)
+	施加治疗(dst.id, 1)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -326,7 +381,7 @@ func _shen_sheng_ling_yu(action: Dictionary) -> int:
 		})
 		engine._broadcast_game()
 		return URGENT
-	player.add_cross_num(2)
-	dst.add_cross_num(1)
+	施加治疗(player.id, 2)
+	施加治疗(dst.id, 1)
 	engine._broadcast_game()
 	return SUCCESS

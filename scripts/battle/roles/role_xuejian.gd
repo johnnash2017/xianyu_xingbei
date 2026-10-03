@@ -14,11 +14,6 @@ const XUE_RAN_QIANG_WEI: int = 3403
 const XUE_QI_PING_ZHANG: int = 3404
 const XUE_QIANG_WEI_BOOT: int = 3405
 
-## 引擎 p_timeline_4 无 crossAvailable 字段（服务端用于关闭治疗结算）：
-## 改为「p_timeline_4 临时清空目标治疗，p_timeline_5 还原」，与 role_honglian.gd 共用同一键
-const HARM_NO_CROSS_KEY: String = "no_cross_backup"
-
-
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
 	p.tokens[0] = {"name": "鲜血", "max": 3, "num": 0}
@@ -121,13 +116,18 @@ func p_magic_skill(action: Dictionary) -> int:
 	if not player.tap:
 		return SUCCESS
 	# 横置形态：按座位顺序对每名角色各造成 1 点法术伤害
-	var next: int = player.id
+	# 服务端先收集 [自己, post...] 再 reverse 后压栈（LIFO），实际结算顺序是「自己 → post 顺序」；
+	# 本引擎 push 同样是 LIFO，故这里按反序压栈以还原同一次序
+	var ids: Array[int] = []
+	var nid: int = player.id
 	for _i: int in range(engine.order.size()):
+		ids.append(nid)
+		nid = engine.next_id(nid)
+	for i: int in range(ids.size() - 1, -1, -1):
 		engine.push_harm({
-			"src": player.id, "dst": next, "point": 1,
+			"src": player.id, "dst": ids[i], "point": 1,
 			"cause": XUE_RAN_QIANG_WEI, "type": GConst.HarmType.Magic,
 		})
-		next = engine.next_id(next)
 	engine._broadcast_game()
 	return URGENT
 
@@ -146,7 +146,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, XUE_QI_PING_ZHANG, 0, 1)
+		询问(player.id, XUE_QI_PING_ZHANG, 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -168,37 +168,14 @@ func p_timeline_3(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 血蔷薇庭院：横置形态下关闭治疗结算（服务端 crossAvailable = 0，全场生效）
-# p_timeline_4 临时清空伤害目标治疗，p_timeline_5 还原
+# 血蔷薇庭院：横置形态下关闭本次治疗结算（服务端 XueJian::p_timeline_4：crossAvailable = 0）
 # ============================================================
 func p_timeline_4(ctx: Dictionary) -> int:
 	if not player.tap:
 		return SUCCESS
 	var harm: Dictionary = ctx.get("harm", {})
-	if harm.has(HARM_NO_CROSS_KEY):
-		return SUCCESS
-	var dst: BattlePlayer = engine.p(int(harm.get("dst", -1)))
-	if dst == null or dst.cross_num <= 0:
-		return SUCCESS
-	harm[HARM_NO_CROSS_KEY] = dst.cross_num
-	dst.cross_num = 0
+	harm["cross_available"] = 0
 	return SUCCESS
-
-
-func p_timeline_5(ctx: Dictionary) -> int:
-	var harm: Dictionary = ctx.get("harm", {})
-	_restore_cross(harm)
-	return SUCCESS
-
-
-## 还原被血蔷薇庭院临时清空的治疗
-func _restore_cross(harm: Dictionary) -> void:
-	if not harm.has(HARM_NO_CROSS_KEY):
-		return
-	var dst: BattlePlayer = engine.p(int(harm.get("dst", -1)))
-	if dst != null:
-		dst.cross_num = int(harm[HARM_NO_CROSS_KEY])
-	harm.erase(HARM_NO_CROSS_KEY)
 
 
 # ============================================================
@@ -210,7 +187,12 @@ func p_boot(_ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, XUE_QIANG_WEI_BOOT, 1, 0)
+		# 两个方案（args[0]）：1=宝石、2=水晶（无水晶则 1 宝石）；宝石方案可选要弃的牌
+		询问(player.id, XUE_QIANG_WEI_BOOT, maxi(player.hand_cards.size() - 4, 0), 0,
+			GConst.CardSource.Hand, [
+				{"value": 1, "label": "耗 1 宝石：+2 鲜血并弃牌到 4 张"},
+				{"value": 2, "label": "耗 1 水晶（无则 1 宝石）：+2 鲜血"},
+			])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -263,6 +245,7 @@ func _discard_down_to_4(cards: Array) -> void:
 				chosen.append(cid)
 	engine.take_from_hand(player.id, chosen)
 	engine.to_discard(chosen)
+	engine._log_discard(player.id, chosen)
 	engine._broadcast_game()
 
 

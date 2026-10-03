@@ -71,9 +71,9 @@ func _cang_bai_choices() -> Array:
 
 # ============================================================
 # 新月庇护：因伤害导致手牌超限而掉士气时，把弃牌作为【暗月】免掉本次士气下降
-# 服务端在 p_xin_yue 中处理；本引擎掉士气的钩子为 p_before_lose_morale（仅被掉士气者触发）
+# 对应服务端 StateXinYue 阶段（掉士气链中的 p_xin_yue）
 # ============================================================
-func p_before_lose_morale(ctx: Dictionary) -> int:
+func p_xin_yue(ctx: Dictionary) -> int:
 	if player.tap:
 		return SUCCESS
 	# 服务端要求本次掉士气由伤害造成（con->harm.type != HARM_NONE）
@@ -92,11 +92,18 @@ func p_before_lose_morale(ctx: Dictionary) -> int:
 		if engine.deck.discard.is_empty():
 			break
 		pulled.append(engine.deck.discard.pop_back())
-	player.add_cover_cards(pulled)
+	engine.add_cover(player.id, pulled, player.id, XIN_YUE_BI_HU)
 	player.tap = true
 	ctx["amount"] = 0
 	engine._broadcast_game()
 	return SUCCESS
+
+
+## 【美杜莎之眼】的推进阶段（0＝还没开始 / STEP_MEI_DU_DISCARD＝在等自己弃 1 张牌 / STEP_MEI_DU_END＝收尾移除【暗月】）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次敌方角色的攻击宣告后（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _mei_du_sha_step: int = 0
 
 
 # ============================================================
@@ -111,17 +118,17 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		ctx["hit_rate"] = GConst.HitRate.NoReattack
 		_cang_bai_attack = false
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _mei_du_sha_step >= STEP_DONE:
 		return SUCCESS
 	var attacker: BattlePlayer = engine.p(src)
 	# 只对敌方角色的攻击响应
 	if attacker == null or attacker.color == player.color:
 		return SUCCESS
-	if player.cover_cards.is_empty():
-		return SUCCESS
-	if step == 0:
+	if _mei_du_sha_step == 0:
+		if player.cover_cards.is_empty():
+			return SUCCESS
 		if not engine.has_reply():
-			engine.ask_skill(player.id, MEI_DU_SHA, 1, 1, GConst.CardSource.Cover, [
+			询问(player.id, MEI_DU_SHA, 1, 1, GConst.CardSource.Cover, [
 				{"value": 1, "label": "普通（+1 治疗、+1 暗月）"},
 				{"value": 2, "label": "当作法术牌（弃 1 张牌，追加 1 点法术伤害）"},
 			])
@@ -130,28 +137,28 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		var args: Array = r.get("args", [])
 		var cids: Array = r.get("card_ids", [])
 		if args.is_empty() or int(args[0]) <= 0 or cids.is_empty() or not player.cover_cards.has(int(cids[0])):
-			step = STEP_DONE
+			_mei_du_sha_step = 0
 			return SUCCESS
 		_md_card = int(cids[0])
 		_md_dst = -1
 		notice_skill(MEI_DU_SHA, [src])
-		player.add_cross_num(1)
-		_add_token(0, 1)
+		施加治疗(player.id, 1)
+		_add_token(1, 1)
 		# args[0] == 2 表示移除的【暗月】为法术牌：自己弃 1 张牌并额外造成 1 点法术伤害
 		if int(args[0]) == 2:
 			var dsts: Array = r.get("dst_ids", [])
 			if not dsts.is_empty():
 				_md_dst = int(dsts[0])
-			step = STEP_MEI_DU_DISCARD
+			_mei_du_sha_step = STEP_MEI_DU_DISCARD
 		else:
-			step = STEP_MEI_DU_END
-	if step == STEP_MEI_DU_DISCARD:
+			_mei_du_sha_step = STEP_MEI_DU_END
+	if _mei_du_sha_step == STEP_MEI_DU_DISCARD:
 		var r2: int = _force_discard_one(player.id)
 		if r2 == WAIT:
 			return WAIT
-		step = STEP_MEI_DU_END
-	if step == STEP_MEI_DU_END:
-		step = STEP_DONE
+		_mei_du_sha_step = STEP_MEI_DU_END
+	if _mei_du_sha_step == STEP_MEI_DU_END:
+		_mei_du_sha_step = 0
 		engine.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": [_md_card], "is_real": true,
@@ -181,7 +188,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 	if player.cross_num < 1 and player.cover_cards.is_empty():
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, YUE_ZHI_LUN_HUI, 1, 1, GConst.CardSource.Cover, [
+		询问(player.id, YUE_ZHI_LUN_HUI, 1, 1, GConst.CardSource.Cover, [
 			{"value": 1, "label": "移除 1 张【暗月】：指定角色 +1 治疗"},
 			{"value": 2, "label": "耗 1 点治疗：+1【新月】指示物"},
 		])
@@ -200,7 +207,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 		var dst: BattlePlayer = engine.p(int(dsts[0]))
 		notice_skill(YUE_ZHI_LUN_HUI, [int(dsts[0])])
 		if dst != null:
-			dst.add_cross_num(1)
+			施加治疗(dst.id, 1)
 		_remove_anyue([int(cids[0])])
 		engine._broadcast_game()
 		return SUCCESS
@@ -226,7 +233,7 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, YUE_DU, 0, 1)
+		询问(player.id, YUE_DU, 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -259,7 +266,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, AN_YUE_ZHAN, 1, 0)
+		# 暗月斩移除的是【暗月】（专属盖牌）：选牌来源必须是盖牌区，否则界面会亮手牌却选不出合法的牌
+		询问(player.id, AN_YUE_ZHAN, 1, 0, GConst.CardSource.Cover)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -325,7 +333,7 @@ func p_magic_skill(action: Dictionary) -> int:
 		# 移除 3【石化】：额外 1 次攻击行动（选中该额外行动时置「无法应战」，见 p_additional_action）、
 		# 并获得一个额外回合
 		_add_token(1, -3)
-		player.add_action(GConst.ActionType.Attack, CANG_BAI_ZHI_YUE)
+		player.add_action(GConst.ActionType.Attack, CANG_BAI_ZHI_YUE, true)
 		_cang_bai_add_turn = true
 		engine._broadcast_game()
 		return SUCCESS
@@ -365,10 +373,10 @@ func p_after_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id or not _cang_bai_add_turn:
 		return SUCCESS
 	_cang_bai_add_turn = false
-	# 服务端弹出「回合结束」状态并重新进入自己的回合；本引擎中下家已由 SNextPlayer 推进，
-	# 这里把 current_id 拉回自己，使已压入的回合开始状态作用于自己
-	engine.current_id = player.id
+	# 服务端在这一步弹出「回合结束」状态（于是紧接着的「轮到下家」不再执行）、清掉额外行动，
+	# 广播自己的 TurnBegin 并重开自己的回合开始。本引擎等价做法：告诉 SNextPlayer「下个回合还是我」
 	player.clear_additional_action()
+	engine.额外回合玩家 = player.id
 	engine.broadcast(GConst.Msg.TurnBegin, {"id": player.id, "round": engine.round_id})
 	engine._broadcast_game()
 	return SUCCESS
@@ -388,8 +396,8 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 func _remove_anyue(cards: Array) -> void:
 	if cards.is_empty():
 		return
-	player.remove_cover_cards(cards)
 	engine.to_discard(cards)
+	engine.remove_cover(player.id, cards, player.id, AN_YUE_ZU_ZHOU)
 	engine.lose_morale(player, 1, AN_YUE_ZU_ZHOU)
 	if player.cover_cards.is_empty() and player.tap:
 		player.tap = false
@@ -421,6 +429,7 @@ func _discard_hand_cards(cards: Array, n: int) -> void:
 		return
 	engine.take_from_hand(player.id, chosen)
 	engine.to_discard(chosen)
+	engine._log_discard(player.id, chosen)
 
 
 ## 强制某玩家弃 1 张手牌（对应服务端 StateRequestHand → DECK_DISCARD）
@@ -429,7 +438,8 @@ func _force_discard_one(pid: int) -> int:
 	if tp == null or tp.hand_cards.is_empty():
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_respond(pid, GConst.RespondType.Discard, [pid, GConst.CAUSE_USE, 1], [pid])
+		# cause 写技能号（不是 CAUSE_USE）：客户端据此把提示写成「【美杜莎之眼】：请选择 1 张牌弃掉」
+		engine.ask_respond(pid, GConst.RespondType.Discard, [pid, MEI_DU_SHA, 1], [pid])
 		engine.wait_for(pid, GConst.Msg.Respond)
 		return WAIT
 	var r: Dictionary = engine.take_reply()

@@ -23,12 +23,10 @@ const DIAO_LING: int = 2406
 const YONG_HUA: int = 2407
 const DAO_NI_ZHI_DIE: int = 2408
 
-## 待结算【凋零】的茧（仅法术牌可发动）
+## 待结算【凋零】的茧（每次移除【茧】时逐张询问是否发动）
 var _diao_queue: Array[int] = []
 var _diao_idx: int = 0
 var _diao_harms: Array[Dictionary] = []
-## 倒逆之蝶第三分支：对自己造成 4 点法术伤害
-var _self_harm_4: bool = false
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -60,6 +58,7 @@ func available_skills() -> Array:
 func _dao_ni_choices() -> Array:
 	var out: Array = [
 		{"text": "对目标造成 1 点法术伤害", "args": [1], "need_card": 2, "need_target": 1},
+		{"text": "对自己造成 4 点法术伤害", "args": [0], "need_card": 2},
 	]
 	# 【茧】两两组合，args 里按 id 升序放两张盖牌（服务端从 args(1..2) 读取）
 	var covers: Array = player.cover_cards
@@ -129,7 +128,7 @@ func _wu_dong(action: Dictionary) -> int:
 	else:
 		_discard_hand_cards(action.get("card_ids", []), 1)
 	var top: Array[int] = engine.deck.draw(1)
-	_add_cover(top)
+	_add_cover(top, WU_DONG)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -140,7 +139,7 @@ func _yong_hua() -> int:
 	player.set_gem(player.gem - 1)
 	_set_yong(1)
 	var top: Array[int] = engine.deck.draw(4)
-	_add_cover(top)
+	_add_cover(top, YONG_HUA)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -167,57 +166,53 @@ func _dao_ni_zhi_die(action: Dictionary) -> int:
 			engine._broadcast_game()
 			return URGENT
 		if choice == 2:
-			# ●移除 2 个【茧】（服务端从 args(1..2) 读取）
+			# ●移除 2 个【茧】（服务端从 args(1..2) 读取）；移除本身会在 p_cover_change 里触发【凋零】
 			var cover: Array = _cover_cards_from_args(action, 2)
-			_remove_cover(cover)
-			_begin_diao_ling(cover)
+			_remove_cover(cover, DAO_NI_ZHI_DIE)
 		else:
-			_self_harm_4 = true
-		step = DIAO_LING
-	if step == DIAO_LING:
-		var r: int = _diao_ling_process()
-		if r == WAIT:
-			return WAIT
-		if _self_harm_4:
-			_self_harm_4 = false
+			# ●对自己造成 4 点法术伤害
 			engine.push_harm({
 				"src": player.id, "dst": player.id, "point": 4,
 				"cause": DAO_NI_ZHI_DIE, "type": GConst.HarmType.Magic,
 			})
-			r = URGENT
 		# 移除 1 点【蛹】（服务端的第二阶段）
 		_set_yong(-1)
 		step = STEP_DONE
 		engine._broadcast_game()
-		return r
+		return URGENT
 	return SUCCESS
 
 
+## 【毒粉 / 镜花水月】的推进阶段（0＝还没开始 / DU_FEN＝在问毒粉 / JING_HUA_SHUI_YUE＝在问镜花水月）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次有角色产生法术伤害（p_timeline_5）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _du_fen_step: int = 0
+
+
 # ============================================================
-# 法术伤害结算时（timeline_5）：毒粉 → 镜花水月 → 凋零
+# 法术伤害结算时（timeline_5）：毒粉 → 镜花水月
+# （凋零不在这里：它在「移除【茧】」时由 p_cover_change 触发）
 # ============================================================
 func p_timeline_5(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("type", -1)) != GConst.HarmType.Magic:
 		return SUCCESS
-	if step == 0:
-		step = DU_FEN
-	if step == DU_FEN:
+	if _du_fen_step == 0:
+		_du_fen_step = DU_FEN
+	if _du_fen_step == DU_FEN:
 		var r: int = _du_fen(harm)
 		if r == WAIT:
 			return WAIT
-		step = JING_HUA_SHUI_YUE
-	if step == JING_HUA_SHUI_YUE:
+		_du_fen_step = JING_HUA_SHUI_YUE
+		if r == URGENT:
+			return URGENT
+	if _du_fen_step == JING_HUA_SHUI_YUE:
 		var r2: int = _jing_hua_shui_yue(harm)
 		if r2 == WAIT:
 			return WAIT
-		step = DIAO_LING
-	if step == DIAO_LING:
-		var r3: int = _diao_ling_process()
-		if r3 == WAIT:
-			return WAIT
-		step = STEP_DONE
-		return r3
+		_du_fen_step = 0
+		return r2
 	return SUCCESS
 
 
@@ -226,7 +221,7 @@ func _du_fen(harm: Dictionary) -> int:
 	if int(harm.get("point", 0)) != 1 or player.cover_cards.is_empty():
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, DU_FEN, 1, 0, GConst.CardSource.Cover)
+		询问(player.id, DU_FEN, 1, 0, GConst.CardSource.Cover)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -236,15 +231,12 @@ func _du_fen(harm: Dictionary) -> int:
 	if cid < 0:
 		return SUCCESS
 	notice_skill(DU_FEN, [int(harm.get("dst", -1))])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [cid], "is_real": true,
-	})
-	_remove_cover([cid])
-	_begin_diao_ling([cid])
+	# 服务端移牌 isShown=false：不移牌展示这张【茧】
+	_remove_cover([cid], DU_FEN)
 	harm["point"] = int(harm.get("point", 0)) + 1
 	engine._broadcast_game()
-	return SUCCESS
+	# 服务端移除盖牌后返回 GE_URGENT：让 p_cover_change（凋零）先跑，再回来继续镜花水月
+	return URGENT
 
 
 ## 镜花水月：伤害恰为 2 点时，移除 2 个同系【茧】抵御该伤害，并对伤害目标造成 2 次 1 点法术伤害
@@ -252,8 +244,8 @@ func _jing_hua_shui_yue(harm: Dictionary) -> int:
 	if int(harm.get("point", 0)) != 2 or player.cover_cards.size() < 2:
 		return SUCCESS
 	if not engine.has_reply():
-		# 恰好 2 张，且必须互异系：让客户端只让与已选牌异系的【茧】可点
-		engine.ask_skill(player.id, JING_HUA_SHUI_YUE, 2, 0, GConst.CardSource.Cover, [], 0, "diff")
+		# 恰好 2 张，且必须同系：让客户端只让与已选牌同系的【茧】可点（服务端比较两张牌系别相同）
+		询问(player.id, JING_HUA_SHUI_YUE, 2, 0, GConst.CardSource.Cover, [], 0, "same")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -278,10 +270,16 @@ func _jing_hua_shui_yue(harm: Dictionary) -> int:
 			"src": player.id, "dst": dst_id, "point": 1,
 			"cause": JING_HUA_SHUI_YUE, "type": GConst.HarmType.Magic,
 		})
-	_remove_cover(cards)
-	_begin_diao_ling(cards)
+	_remove_cover(cards, JING_HUA_SHUI_YUE)
 	engine._broadcast_game()
 	return URGENT
+
+
+## 【朝圣】的推进阶段（0＝还没开始 / 处理完本次朝圣后清回 0）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自身承受伤害（p_timeline_6）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _chao_sheng_step: int = 0
 
 
 # ============================================================
@@ -291,38 +289,41 @@ func p_timeline_6(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("dst", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	# 本次朝圣已经处理过就不再重入：末段返回 URGENT 让 p_cover_change（凋零）先跑，
+	# 引擎随后会重入本钩子，靠 ctx 上的标记挡住（原来靠 step = STEP_DONE 挡，已改用自有变量）
+	if bool(ctx.get("chao_sheng_done", false)):
 		return SUCCESS
-	if step == 0:
+	if _chao_sheng_step >= STEP_DONE:
+		return SUCCESS
+	if _chao_sheng_step == 0:
 		if player.cover_cards.is_empty() or int(harm.get("point", 0)) < 1:
-			step = STEP_DONE
+			_chao_sheng_step = 0
 			return SUCCESS
 		if not engine.has_reply():
-			engine.ask_skill(player.id, CHAO_SHENG, 1, 0, GConst.CardSource.Cover)
+			询问(player.id, CHAO_SHENG, 1, 0, GConst.CardSource.Cover)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
 		if args.is_empty() or int(args[0]) != 1:
-			step = STEP_DONE
+			_chao_sheng_step = 0
 			return SUCCESS
 		var cid: int = _chao_sheng_card(r)
 		if cid < 0:
-			step = STEP_DONE
+			_chao_sheng_step = 0
 			return SUCCESS
 		notice_skill(CHAO_SHENG, [player.id])
-		_remove_cover([cid])
-		_begin_diao_ling([cid])
+		# 服务端移牌 isShown=true：展示这张【茧】
+		engine.broadcast(GConst.Msg.Card, {
+			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+			"card_ids": [cid], "is_real": true,
+		})
+		_remove_cover([cid], CHAO_SHENG)
 		# 抵御该来源 1 点伤害
 		harm["point"] = int(harm.get("point", 0)) - 1
-		step = DIAO_LING
-	if step == DIAO_LING:
-		var r2: int = _diao_ling_process()
-		if r2 == WAIT:
-			return WAIT
-		# 引擎在钩子返回 URGENT 后会重入同一钩子（step 归零），为避免【朝圣】重复触发，
-		# 这里返回 SUCCESS；已压入的【凋零】伤害随后仍会执行
-		step = STEP_DONE
-		return SUCCESS
+		ctx["chao_sheng_done"] = true
+		_chao_sheng_step = 0
+		# 服务端移除盖牌后返回 GE_URGENT：让 p_cover_change（凋零）先跑
+		return URGENT
 	return SUCCESS
 
 
@@ -338,8 +339,9 @@ func p_timeline_4(ctx: Dictionary) -> int:
 
 # ============================================================
 # 凋零形态：直到自己下个回合开始前，对方的士气最少为 1
+# 对应服务端 StateFixMorale 阶段（掉士气链中的 p_fix_morale）
 # ============================================================
-func p_before_lose_morale(ctx: Dictionary) -> int:
+func p_fix_morale(ctx: Dictionary) -> int:
 	if not player.tap:
 		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
@@ -369,7 +371,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 func _diao_ling_process() -> int:
 	while _diao_idx < _diao_queue.size():
 		if not engine.has_reply():
-			engine.ask_skill(player.id, DIAO_LING, 0, 1)
+			询问(player.id, DIAO_LING, 0, 1)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
@@ -418,35 +420,29 @@ func _set_yong(delta: int) -> void:
 	player.hand_cards_max = _life_fire_max()
 
 
-## 把牌作为【茧】加入盖牌区；达到上限时替换最早的盖牌（服务端允许溢出替换）
-func _add_cover(cards: Array) -> void:
-	if cards.is_empty():
-		return
-	player.add_cover_cards(cards)
-	if player.cover_cards_max <= 0:
-		return
-	var replaced: Array = []
-	while player.cover_cards.size() > player.cover_cards_max:
-		replaced.append(player.cover_cards[0])
-		player.cover_cards.remove_at(0)
-	if not replaced.is_empty():
-		engine.to_discard(replaced)
+## 把牌作为【茧】加入盖牌区（超限由引擎询问玩家弃哪几张，对照 StateRequestCover）
+func _add_cover(cards: Array, cause: int = 0) -> void:
+	engine.add_cover(player.id, cards, player.id, cause)
 
 
 ## 从盖牌区移除【茧】并弃置
-func _remove_cover(cards: Array) -> void:
+func _remove_cover(cards: Array, cause: int = 0) -> void:
 	if cards.is_empty():
 		return
-	player.remove_cover_cards(cards)
 	engine.to_discard(cards)
+	engine.remove_cover(player.id, cards, player.id, cause)
 
 
-## 登记待发动【凋零】的茧（仅法术牌）
-func _begin_diao_ling(cards: Array) -> void:
-	for c: Variant in cards:
-		var card: GCard = Data.get_card(int(c))
-		if card != null and card.is_magic():
+## 【凋零】触发点（服务端 DieWu::p_cover_change）：每次移除【茧】时对每一张逐一询问是否发动。
+## ctx: {dst, direction, howMany, cards, doer, cause}
+func p_cover_change(ctx: Dictionary) -> int:
+	if int(ctx.get("doer", -1)) != player.id or int(ctx.get("direction", -1)) != GConst.CHANGE_REMOVE:
+		return SUCCESS
+	if not bool(ctx.get("diao_started", false)):
+		ctx["diao_started"] = true
+		for c: Variant in ctx.get("cards", []):
 			_diao_queue.append(int(c))
+	return _diao_ling_process()
 
 
 ## 弃掉至多 n 张手牌（客户端未给出合法牌时从手牌补齐）
@@ -469,6 +465,7 @@ func _discard_hand_cards(cards: Array, n: int) -> void:
 		return
 	engine.take_from_hand(player.id, chosen)
 	engine.to_discard(chosen)
+	engine._log_discard(player.id, chosen)
 
 
 ## 从回复中取第一张合法【茧】

@@ -182,7 +182,7 @@ func _on_send_pressed() -> void:
 
 
 ## 聊天行的显示形如「昵称：内容」，直接把整块重写（RichTextLabel 会自己滚到底）
-func _聊天追加(行: String) -> void:
+func _聊天追加(行: String, _kind: int = 0) -> void:
 	_聊天行.append(行)
 	while _聊天行.size() > 聊天最大行:
 		_聊天行.remove_at(0)

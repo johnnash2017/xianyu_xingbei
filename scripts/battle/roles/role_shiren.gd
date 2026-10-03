@@ -31,11 +31,12 @@ const SHENG_LI_JIAO_XIANG_SHI: int = 3106
 const SHENG_LI_JIAO_XIANG_SHI_2: int = 31061
 const XI_WANG_FU_GE_QU: int = 3107
 
-## 本引擎自有的分步标记（服务端把子步骤实现为压栈状态，此处只用 step 记录进度）
+## 本引擎自有的分步标记（服务端把子步骤实现为压栈状态，此处用角色的自有分步变量记录进度）
 const JI_ANG_DISCARD: int = 31054          # 激昂狂想曲：当前角色弃 2 张牌
+const SHENG_LI_STONE: int = 31062          # 胜利交响诗：选完「提炼星石」后问提炼哪种星石
 
 const TOKEN_LING_GAN: int = 0
-const LING_GAN_MAX: int = 4
+const LING_GAN_MAX: int = 3
 const GE_YONG_HARM: int = 3                # 歌咏天赋：灵感已满时的自伤
 const CHEN_LUN_NEED_KINDS: int = 2         # 沉沦协奏曲：需要命中的敌方角色种类数
 
@@ -112,7 +113,7 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	# 要弃的张数最多到他的手牌数（问超过手牌数会让他永远选不够、只能放弃）
 	var want: int = mini(n, target.hand_cards.size())
 	if not engine.has_reply():
-		engine.ask_skill(pid, cause, want, 0)
+		询问(pid, cause, want)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
@@ -158,16 +159,31 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 # 回合开始：激昂狂想曲（31052）+ 歌咏天赋（3103）
 # （服务端由 p_turn_begin_shiren 触发，本引擎并入 p_turn_begin）
 # ============================================================
+## 【激昂狂想曲 / 歌咏天赋】的推进阶段（0＝还没开始 / JI_ANG_KUANG_XIANG_QU_2＝在问是否发动 /
+## JI_ANG_DISCARD＝等当前角色弃 2 张牌 / GE_YONG_TIAN_FU＝结算歌咏天赋）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合开始（p_turn_begin）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）。
+## 末段会返回 URGENT（歌咏天赋压入了伤害状态），引擎在 URGENT 挂起后会重入本钩子：
+## 这里仍旧借引擎 step 记「本轮已完成」来挡住重入（自有变量已清回 0，不影响这次拦截）。
+var _ji_ang_step: int = 0
+
+
 func p_turn_begin(_ctx: Dictionary) -> int:
 	if engine.current_id != yue_zhang_dst:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = JI_ANG_KUANG_XIANG_QU_2
-	if step == JI_ANG_KUANG_XIANG_QU_2:
+	if _ji_ang_step == 0:
+		_ji_ang_step = JI_ANG_KUANG_XIANG_QU_2
+	if _ji_ang_step == JI_ANG_KUANG_XIANG_QU_2:
 		if not engine.has_reply():
-			engine.ask_skill(engine.current_id, JI_ANG_KUANG_XIANG_QU_2, 0, 1)
+			# 两个分支各做一个选项：1=对两名目标各 1 点法术伤害、2=弃 2 张牌；
+			# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
+			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU_2, 0, 1, GConst.CardSource.Hand, [
+				{"value": 1, "label": "对两名目标各 1 点法术伤害"},
+				{"value": 2, "label": "弃 2 张牌"},
+			])
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
@@ -176,24 +192,25 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 			# 对两名目标各 1 点法术伤害
 			use_yue_zhang = true
 			_ji_ang_harm(r.get("dst_ids", []))
-			step = GE_YONG_TIAN_FU
+			_ji_ang_step = GE_YONG_TIAN_FU
 			return URGENT
 		if choice == 2:
-			step = JI_ANG_DISCARD
+			_ji_ang_step = JI_ANG_DISCARD
 		else:
-			step = STEP_DONE
-	if step == JI_ANG_DISCARD:
+			_ji_ang_step = 0
+	if _ji_ang_step == JI_ANG_DISCARD:
 		# 由当前角色（乐章持有者）弃 2 张牌
 		if _request_discard(engine.current_id, 2, JI_ANG_KUANG_XIANG_QU) == WAIT:
 			return WAIT
 		use_yue_zhang = true
-		step = GE_YONG_TIAN_FU
-	if step == GE_YONG_TIAN_FU:
+		_ji_ang_step = GE_YONG_TIAN_FU
+	if _ji_ang_step == GE_YONG_TIAN_FU:
 		var r2: int = SUCCESS
 		if use_yue_zhang:
 			r2 = _ge_yong_tian_fu()
-		step = STEP_DONE
+		_ji_ang_step = 0
 		if r2 == URGENT:
+			step = STEP_DONE
 			return URGENT
 	return SUCCESS
 
@@ -242,69 +259,135 @@ func _ge_yong_tian_fu() -> int:
 # ============================================================
 # 回合结束：胜利交响诗（31061）+ 歌咏天赋（3103）
 # ============================================================
+## 【胜利交响诗 / 歌咏天赋】的推进阶段（0＝还没开始 / SHENG_LI_JIAO_XIANG_SHI_2＝选发动方式 /
+## SHENG_LI_STONE＝选提炼哪种星石 / GE_YONG_TIAN_FU＝结算歌咏天赋）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合结束（p_turn_end）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）。
+## 末段会返回 URGENT（歌咏天赋压入了伤害状态），引擎在 URGENT 挂起后会重入本钩子：
+## 这里仍旧借引擎 step 记「本轮已完成」来挡住重入（自有变量已清回 0，不影响这次拦截）。
+var _jiao_xiang_step: int = 0
+
+
 func p_turn_end(_ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = SHENG_LI_JIAO_XIANG_SHI_2
-	if step == SHENG_LI_JIAO_XIANG_SHI_2:
+	if _jiao_xiang_step == 0:
+		_jiao_xiang_step = SHENG_LI_JIAO_XIANG_SHI_2
+	if _jiao_xiang_step == SHENG_LI_JIAO_XIANG_SHI_2:
 		if yue_zhang_dst != engine.current_id:
 			return SUCCESS
-		if _sheng_li_jiao_xiang_shi() == WAIT:
+		# 第一步：选发动方式；返回 WAIT（等回复）或下一步的 step
+		var r: int = _jiao_xiang_choose()
+		if r == WAIT:
 			return WAIT
-		step = GE_YONG_TIAN_FU
-	if step == GE_YONG_TIAN_FU:
-		var r: int = SUCCESS
+		_jiao_xiang_step = r
+	if _jiao_xiang_step == SHENG_LI_STONE:
+		# 第二步：选了「提炼星石」后，再问提炼哪种（取消＝不发动，沿用第一步的 step 收尾）
+		if _jiao_xiang_stone() == WAIT:
+			return WAIT
+		_jiao_xiang_step = GE_YONG_TIAN_FU
+	if _jiao_xiang_step == GE_YONG_TIAN_FU:
+		var r2: int = SUCCESS
 		if use_yue_zhang:
-			r = _ge_yong_tian_fu()
-		step = STEP_DONE
-		if r == URGENT:
+			r2 = _ge_yong_tian_fu()
+		_jiao_xiang_step = 0
+		if r2 == URGENT:
+			step = STEP_DONE
 			return URGENT
 	return SUCCESS
 
 
-## 胜利交响诗：提炼我方 1 星石为当前角色能量，或我方 +1 宝石且当前角色 +1 治疗
-func _sheng_li_jiao_xiang_shi() -> int:
+## 胜利交响诗第一步的选项：1＝提炼星石（我方战绩区有星石时才提供）、2＝战绩区 +1 宝石且你 +1 治疗
+func _jiao_xiang_options(color: int) -> Array:
+	var out: Array = []
+	if engine.team_gem[color] + engine.team_crystal[color] > 0:
+		out.append({"value": 1, "label": "将己方【战绩区】的 1 星石提炼为你的能量"})
+	out.append({"value": 2, "label": "己方【战绩区】+1【宝石】，你 +1【治疗】"})
+	return out
+
+
+## 胜利交响诗第二步的选项：1＝水晶、2＝宝石（我方战绩区里有那种星石才提供）
+func _stone_options(color: int) -> Array:
+	var out: Array = []
+	if engine.team_crystal[color] > 0:
+		out.append({"value": 1, "label": "提炼 1 个【水晶】"})
+	if engine.team_gem[color] > 0:
+		out.append({"value": 2, "label": "提炼 1 个【宝石】"})
+	return out
+
+
+## 胜利交响诗第一步：选发动方式。返回 WAIT（等回复）或下一步的 step：
+##   选 1（提炼星石）→ SHENG_LI_STONE（继续问提炼哪种石头）
+##   选 2（战绩区 +1 宝石且你 +1 治疗）/ 取消 → GE_YONG_TIAN_FU
+## 客户端选项约定：点某项回 args=[该项 value]，取消回 args=[0]
+func _jiao_xiang_choose() -> int:
 	var holder: BattlePlayer = engine.p(engine.current_id)
 	if holder == null:
-		return SUCCESS
+		return GE_YONG_TIAN_FU
 	var color: int = holder.color
 	if not engine.has_reply():
-		engine.ask_skill(engine.current_id, SHENG_LI_JIAO_XIANG_SHI_2, 0, 0)
+		询问(engine.current_id, SHENG_LI_JIAO_XIANG_SHI_2, 0, 0, GConst.CardSource.Hand, _jiao_xiang_options(color))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var answer: int = int(args[0]) if not args.is_empty() else 0
 	if answer == 1:
-		var kind: int = int(args[1]) if args.size() > 1 else 0
-		if kind == 1:
-			holder.set_crystal(holder.crystal + 1)
-			engine.set_team_crystal(color, engine.team_crystal[color] - 1)
-		elif kind == 2:
-			holder.set_gem(holder.gem + 1)
-			engine.set_team_gem(color, engine.team_gem[color] - 1)
-		else:
-			answer = 2
+		return SHENG_LI_STONE
 	if answer == 2:
 		engine.set_team_gem(color, engine.team_gem[color] + 1)
-		holder.add_cross_num(1)
+		施加治疗(holder.id, 1)
+		use_yue_zhang = true
+		engine._broadcast_game()
+	# 取消（args[0] <= 0）＝不发动，不置 use_yue_zhang
+	return GE_YONG_TIAN_FU
+
+
+## 胜利交响诗第二步：选提炼哪种星石（1＝水晶、2＝宝石）。取消＝不发动。返回下一步的 step。
+func _jiao_xiang_stone() -> int:
+	var holder: BattlePlayer = engine.p(engine.current_id)
+	if holder == null:
+		return GE_YONG_TIAN_FU
+	var color: int = holder.color
+	if not engine.has_reply():
+		询问(engine.current_id, SHENG_LI_JIAO_XIANG_SHI_2, 0, 0, GConst.CardSource.Hand, _stone_options(color), 0, "", [], true, 1)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var kind: int = int(args[0]) if not args.is_empty() else 0
+	if kind == 1:
+		holder.set_crystal(holder.crystal + 1)
+		engine.set_team_crystal(color, engine.team_crystal[color] - 1)
+	elif kind == 2:
+		holder.set_gem(holder.gem + 1)
+		engine.set_team_gem(color, engine.team_gem[color] - 1)
+	else:
+		# 取消＝不发动，不置 use_yue_zhang
+		return GE_YONG_TIAN_FU
 	use_yue_zhang = true
 	engine._broadcast_game()
-	return SUCCESS
+	return GE_YONG_TIAN_FU
 
 
 # ============================================================
 # 伤害结算后：沉沦协奏曲（3101）
 # ============================================================
+## 【沉沦协奏曲】的推进阶段（0＝还没开始 / CHEN_LUN_XIE_ZOU_QU＝在问是否弃牌发动）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次我方对敌方造成法术伤害并结算后（p_harm_end）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _chen_lun_step: int = 0
+
+
 func p_harm_end(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("type", -1)) != GConst.HarmType.Magic:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _chen_lun_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = CHEN_LUN_XIE_ZOU_QU
-	if step == CHEN_LUN_XIE_ZOU_QU:
+	if _chen_lun_step == 0:
+		_chen_lun_step = CHEN_LUN_XIE_ZOU_QU
+	if _chen_lun_step == CHEN_LUN_XIE_ZOU_QU:
 		var dst_id: int = int(ctx.get("dst", -1))
 		var src_id: int = int(harm.get("src", -1))
 		var dst_p: BattlePlayer = engine.p(dst_id)
@@ -319,15 +402,15 @@ func p_harm_end(ctx: Dictionary) -> int:
 		if not chen_lun_dsts.has(dst_id):
 			chen_lun_dsts.append(dst_id)
 		if chen_lun_dsts.size() < CHEN_LUN_NEED_KINDS:
-			step = STEP_DONE
+			_chen_lun_step = 0
 			return SUCCESS
 		if not engine.has_reply():
 			# 要弃 2 张同系手牌（校验里 cards.size() != 2 且两张必须同系）：
 			# need_card 必须是 2，并让客户端只让同系牌可点
-			engine.ask_skill(player.id, CHEN_LUN_XIE_ZOU_QU, 2, 1, GConst.CardSource.Hand, [], 0, "same")
+			询问(player.id, CHEN_LUN_XIE_ZOU_QU, 2, 1, GConst.CardSource.Hand, [], 0, "same")
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
-		step = STEP_DONE
+		_chen_lun_step = 0
 		var args: Array = r.get("args", [])
 		var dsts: Array = r.get("dst_ids", [])
 		var cards: Array = r.get("card_ids", [])
@@ -362,21 +445,28 @@ func p_harm_end(ctx: Dictionary) -> int:
 # ============================================================
 # 启动（自己回合）：希望赋格曲（3107）
 # ============================================================
+## 【希望赋格曲】的推进阶段（0＝还没开始 / XI_WANG_FU_GE_QU＝在问是否把乐章转移给队友）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _fu_ge_step: int = 0
+
+
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _fu_ge_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = XI_WANG_FU_GE_QU
+	if _fu_ge_step == 0:
+		_fu_ge_step = XI_WANG_FU_GE_QU
 	if not _can_xi_wang():
-		step = STEP_DONE
+		_fu_ge_step = 0
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, XI_WANG_FU_GE_QU, 0, 1)
+		询问(player.id, XI_WANG_FU_GE_QU, 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
+	_fu_ge_step = 0
 	var args: Array = r.get("args", [])
 	var dsts: Array = r.get("dst_ids", [])
 	if args.is_empty() or int(args[0]) != 1 or dsts.is_empty():
@@ -449,11 +539,12 @@ func _bu_xie_he_xian(action: Dictionary) -> int:
 			return SUCCESS
 		bu_xie_phase = 1
 	if bu_xie_phase == 1:
-		if _request_discard(bu_xie_dst, bu_xie_num - 1, BU_XIE_HE_XIAN) == WAIT:
+		# 服务端先压目标弃牌、后压自己弃牌（LIFO）→ 自己先弃，再让目标弃
+		if _request_discard(player.id, bu_xie_num - 1, BU_XIE_HE_XIAN) == WAIT:
 			return WAIT
 		bu_xie_phase = 2
 	if bu_xie_phase == 2:
-		if _request_discard(player.id, bu_xie_num - 1, BU_XIE_HE_XIAN) == WAIT:
+		if _request_discard(bu_xie_dst, bu_xie_num - 1, BU_XIE_HE_XIAN) == WAIT:
 			return WAIT
 		bu_xie_phase = 0
 	return SUCCESS

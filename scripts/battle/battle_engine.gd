@@ -22,8 +22,8 @@ enum Phase { Idle, Playing, Over }
 const RESPONSE_TIMEOUT_MS: int = 60000
 const OFFLINE_TIMEOUT_MS: int = 5000
 
-## 【魔弹】的初始伤害（每被传递一次 +1）
-const MISSILE_BASE_POINT: int = 2
+## 【魔弹】的初始伤害（每被传递一次 +1）——值集中在 GConst.魔弹基础伤害，客户端头像提示读同一处
+const MISSILE_BASE_POINT: int = GConst.魔弹基础伤害
 
 var room_id: int = 0
 ## 房间名与房间设定人数：由服务端建房时写入，随 Game 快照下发，
@@ -53,6 +53,30 @@ var _states: Array = []
 ## 本回合要不要跳过行动阶段（虚弱拒绝 / 五系束缚拒绝）：轮到 SActionPhase 时它自己直接收尾进回合结束。
 ## 用标记而不是「把 SActionPhase 从栈里抠掉再压回合结束」，是为了不打断它上面还有的 p_boot / p_before_action 钩子
 var skip_action_phase: bool = false
+## 本次行动阶段放行的行动种类与是否允许「放弃行动」：对照原版 StateActionPhase(allowAction, canGiveUp)。
+## 普通行动阶段 = Any + 不允许放弃；额外行动阶段 = 该额外行动声明的 allowAction + 允许放弃；
+## 被【挑衅】时 = 只能攻击 + 允许放弃
+var 行动允许: int = GConst.ActionType.Any
+var 行动可放弃: bool = false
+## 本次行动阶段是不是「额外行动」（额外行动阶段允许放弃，与「被挑衅」那种可放弃的普通阶段区分开）
+var 行动额外: bool = false
+## 测试指令「跳过自己回合」（战斗界面按 8）：记下是谁按的，行动阶段轮到他直接收尾（-1 = 无）
+var 测试跳过回合: int = -1
+## 角色的 p_after_turn_end 要求「接下来的回合还是他」时写这里（月女【苍白之月】），
+## 轮到 SNextPlayer 时据此不轮转、直接重开他的回合（对照原版：角色把 StateAfterTurnEnd 弹掉，跳过轮转）
+var 额外回合玩家: int = -1
+## 各玩家上次记录的手牌数量（player_id -> 张数），用于在「手牌变化」时触发 p_hand_change
+var _hand_counts: Dictionary = {}
+## 各玩家上次记录的手牌上限（player_id -> 张数），用于在「手牌上限变化」时写日志
+var _hand_maxes: Dictionary = {}
+## 各玩家上次记录的指示物数量（player_id -> Array[int]），用于在「指示物变化」时写日志
+var _token_counts: Dictionary = {}
+## 各玩家上次记录的星石（player_id -> [宝石, 水晶]），只在「获得」时写日志
+var _gems: Dictionary = {}
+## 各阵营战绩区上次记录的星石（color -> [宝石, 水晶]），只在「获得」时写日志
+var _team_energies: Dictionary = {}
+## 各玩家最后一次下发的行动命令表（player_id -> Array）：快照刷新后重算，只有变了才重发询问
+var _最后行动命令: Dictionary = {}
 var _await_id: int = -1
 var _await_kind: int = -1
 var _reply: Dictionary = {}
@@ -63,9 +87,12 @@ var wait_deadline_ms: int = 0
 var wait_total_ms: int = 0
 ## 掉线玩家标记：player_id -> true
 var offline_players: Dictionary = {}
-## 最近一次 ask_respond 的询问号与参数（超时时据此构造默认回复）
+## 最近一次询问（ask_respond / ask_skill）的询问号与参数（超时时据此构造默认回复）
 var _pending_respond_id: int = 0
 var _pending_args: Array = []
+## 本次询问是不是「是否发动某技能」的技能询问（ask_skill=true / ask_respond=false）：
+## 超时兜底要按它区分「技能询问」与应战、弃牌之类的通用应答，而不是靠询问号的大小去猜
+var _pending_is_skill: bool = false
 var _running: bool = false
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -78,6 +105,8 @@ func add_player(pid: int, color: int, pname: String) -> void:
 	if players.has(pid):
 		return
 	var bp: BattlePlayer = BattlePlayer.new(pid, color, pname)
+	# 绑定引擎：BattlePlayer.tap 的 setter 靠它通知形态变化
+	bp.engine = self
 	players[pid] = bp
 	if not order.has(pid):
 		order.append(pid)
@@ -239,6 +268,12 @@ func run() -> void:
 		var idx: int = _states.size() - 1
 		var st: Variant = _states[idx]
 		var r: int = st.handle(self)
+		if r != SUSPEND:
+			_check_hand_overflow()
+			_check_cover_overflow()
+			_check_hand_change()
+			_check_token_change()
+			_check_energy_change()
 		if r == WAIT:
 			break
 		if r == SUSPEND:
@@ -255,6 +290,257 @@ func run() -> void:
 
 func push(st: Variant) -> void:
 	_states.append(st)
+
+
+## 每个状态跑完后重新结算一次手牌超限。
+## 对照原版：任何「加牌 / 改手牌上限」都会立刻触发超限结算（StateHandChange / setStateChangeMaxHand
+## → setStateHandOverLoad）；这里放在状态边界上兜住角色脚本直接改上限、直接加牌的情况
+## （引擎自己 push 的那几处照旧，重复的会因「栈里已排着一次结算」而跳过）
+func _check_hand_overflow() -> void:
+	for st: Variant in _states:
+		if st is SHandOverflow:
+			return
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp != null and pp.hand_cards.size() > pp.hand_cards_max:
+			push(SHandOverflow.new())
+			return
+
+
+## 摸牌把手牌顶过上限时，带着「本次伤害」的上下文入队结算超限掉士气。
+## 对照服务端 StateTimeline6 → setStateHandOverLoad(con->harm)：这一步不能交给通用的
+## _check_hand_overflow 去补 —— 它创建的超限结算没有伤害上下文，而「最近一次伤害」是全局字段，
+## 连续两人受法术伤害时前一个人的掉士气已经把它清零，后一个人就判不出「因法术伤害掉士气」
+## （表现为【神之庇护】只结算一次）
+func push_overload_with_harm(harm: Dictionary) -> void:
+	var dst: BattlePlayer = players.get(int(harm.get("dst", -1)))
+	if dst == null or dst.hand_cards.size() <= dst.hand_cards_max:
+		return
+	for st: Variant in _states:
+		if st is SHandOverflow:
+			return
+	push(SHandOverflow.new(int(harm.get("cause", 0)), int(harm.get("type", GConst.HarmType.None))))
+
+
+## 每个状态跑完后重新结算一次盖牌超限（对照服务端 StateCoverChange → setStateCoverOverLoad）。
+## 盖牌超限只把超出上限的盖牌弃掉，不掉士气；由盖牌所有者自己选择弃哪几张（SCoverOverflow）。
+func _check_cover_overflow() -> void:
+	for st: Variant in _states:
+		if st is SCoverOverflow:
+			return
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp != null and pp.cover_cards_max > 0 and pp.cover_cards.size() > pp.cover_cards_max:
+			push(SCoverOverflow.new())
+			return
+
+
+## 每个状态跑完后对比各玩家手牌数量：有变化就触发一次 p_hand_change
+## （对照服务端 StateHandChange → PlayerEntity::p_hand_change；巫女【流血形态】靠它判断脱形态）
+func _check_hand_change() -> void:
+	_check_hand_max_change()
+	for st: Variant in _states:
+		if st is SRunHandChange:
+			return
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp == null:
+			continue
+		var now: int = pp.hand_cards.size()
+		if not _hand_counts.has(pid):
+			_hand_counts[pid] = now
+			continue
+		if int(_hand_counts[pid]) != now:
+			push(SRunHandChange.new(pid))
+			return
+
+
+## 每个状态跑完后对比各玩家手牌上限：有变化就往战斗日志写一条（与手牌数量同一类日志）
+func _check_hand_max_change() -> void:
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp == null:
+			continue
+		var 现在: int = pp.hand_cards_max
+		if not _hand_maxes.has(pid):
+			_hand_maxes[pid] = 现在
+			continue
+		if int(_hand_maxes[pid]) == 现在:
+			continue
+		_播手牌日志(pp, "%s 的手牌上限 %d→%d" % [_称号(pp), int(_hand_maxes[pid]), 现在])
+		_hand_maxes[pid] = 现在
+
+
+## 手牌数量 / 上限变化日志（沿用【弃牌】那一类：GossipType.Discard → 日志里的 [卡牌]）
+func _播手牌日志(pp: BattlePlayer, 文案: String) -> void:
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Discard,
+		"txt": 文案,
+		"id": pp.id,
+	})
+
+
+## 每个状态跑完后对比各玩家指示物数量：有变化就往战斗日志写一条（只记录，不改变流程）
+## 注意：tokens 是未类型化的 Array，槽位可能是 null（角色未用到），要按 Variant 取
+func _check_token_change() -> void:
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp == null:
+			continue
+		var 现在: Array[int] = []
+		for t: Variant in pp.tokens:
+			现在.append(int((t as Dictionary).get("num", 0)) if t is Dictionary else 0)
+		if not _token_counts.has(pid):
+			_token_counts[pid] = 现在
+			continue
+		var 上次: Array = _token_counts[pid]
+		if 上次 == 现在:
+			continue
+		var 片段: Array[String] = []
+		for i: int in range(mini(上次.size(), 现在.size())):
+			if int(上次[i]) == 现在[i]:
+				continue
+			var 槽: Variant = pp.tokens[i]
+			var 名: String = str((槽 as Dictionary).get("name", "指示物")) if 槽 is Dictionary else "指示物"
+			片段.append("【%s】%d→%d" % [名, int(上次[i]), 现在[i]])
+		if not 片段.is_empty():
+			broadcast(GConst.Msg.Gossip, {
+				"type": GConst.GossipType.Token,
+				"txt": "%s 的%s" % [_称号(pp), "、".join(片段)],
+				"id": pp.id,
+			})
+		_token_counts[pid] = 现在
+
+
+## 每个状态跑完后对比各玩家与各阵营战绩区的星石：只在「获得」时写一条（消耗不必刷屏）。
+## 个人写「谁获得 x 宝石 x 水晶」；战绩区写「哪一队战绩区 获得 x 宝石 x 水晶」。
+## 只获得其中一类时就只写那一类（由 _星石片段 拼）
+func _check_energy_change() -> void:
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp == null:
+			continue
+		var 个人现在: Array[int] = [pp.gem, pp.crystal]
+		if not _gems.has(pid):
+			_gems[pid] = 个人现在
+			continue
+		var 个人上次: Array = _gems[pid]
+		if 个人上次 == 个人现在:
+			continue
+		var 个人片段: String = _星石片段(个人现在[0] - int(个人上次[0]), 个人现在[1] - int(个人上次[1]))
+		if not 个人片段.is_empty():
+			_播星石日志("%s 获得 %s" % [_称号(pp), 个人片段], pp.id)
+		_gems[pid] = 个人现在
+	for color: int in [GConst.RED, GConst.BLUE]:
+		var 队伍现在: Array[int] = [team_gem[color], team_crystal[color]]
+		if not _team_energies.has(color):
+			_team_energies[color] = 队伍现在
+			continue
+		var 队伍上次: Array = _team_energies[color]
+		if 队伍上次 == 队伍现在:
+			continue
+		var 队伍片段: String = _星石片段(队伍现在[0] - int(队伍上次[0]), 队伍现在[1] - int(队伍上次[1]))
+		if not 队伍片段.is_empty():
+			_播星石日志("%s 战绩区获得 %s" % [_阵营名(color), 队伍片段], -1)
+		_team_energies[color] = 队伍现在
+
+
+## 星石增减的文案片段：只写「获得了」的那一类（个人与战绩区共用）。
+## 两类都没增加（含纯消耗）就返回空串，调用方据此不写日志
+func _星石片段(宝石增量: int, 水晶增量: int) -> String:
+	var 段: Array[String] = []
+	if 宝石增量 > 0:
+		段.append("%d 宝石" % 宝石增量)
+	if 水晶增量 > 0:
+		段.append("%d 水晶" % 水晶增量)
+	return "、".join(段)
+
+
+## 阵营名（战绩区日志用）
+func _阵营名(color: int) -> String:
+	return "红队" if color == GConst.RED else "蓝队"
+
+
+## 星石获得日志：个人与战绩区共用，类别沿用「指示物」
+func _播星石日志(文案: String, 相关玩家: int) -> void:
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Token,
+		"txt": 文案,
+		"id": 相关玩家,
+	})
+
+
+## 施加治疗（角色主动加治疗一律走这里，见 BattleRole.施加治疗）：写日志并按「输出量」记录 ——
+## 即本次打算加多少点就写多少点，括号里给出治疗值的实际变化（目标接近上限时会只加进去一部分，
+## 如上限 2、当前 1、加 2 点 → 日志写「加 2 点（治疗 1→2）」）。
+func add_cross(pid: int, amount: int, src_id: int) -> void:
+	if amount <= 0:
+		return
+	var pp: BattlePlayer = players.get(pid)
+	if pp == null:
+		return
+	var 前: int = pp.cross_num
+	pp.add_cross_num(amount)
+	_播治疗日志(pp, amount, src_id, 前)
+
+
+## 施加治疗（无视目标治疗上限）：封顶 > 0 时治疗后不超过它（<= 0 表示不额外封顶），
+## 目标本来更高时保持不动（只加不减）。用于【神圣契约】这类「突破上限」的转移。
+func add_cross_pierce(pid: int, amount: int, src_id: int, 封顶: int) -> void:
+	if amount <= 0:
+		return
+	var pp: BattlePlayer = players.get(pid)
+	if pp == null:
+		return
+	var 前: int = pp.cross_num
+	var 新: int = 前 + amount
+	if 封顶 > 0:
+		新 = mini(新, 封顶)
+	pp.cross_num = maxi(新, 前)
+	_播治疗日志(pp, amount, src_id, 前)
+
+
+## 治疗日志（按「输出量」记，与是否被上限截断无关）
+func _播治疗日志(pp: BattlePlayer, amount: int, src_id: int, 前: int) -> void:
+	var 来源: String = "自身" if src_id == pp.id else _称号(players.get(src_id))
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Heal,
+		"txt": "%s 获得来自 %s 的 %d 点治疗（治疗 %d→%d）" % [_称号(pp), 来源, amount, 前, pp.cross_num],
+		"id": pp.id,
+		# 点数单独给一份：客户端据此决定头像上冒几个「+」，不必去解析日志文案
+		"num": amount,
+	})
+
+
+## 交牌日志（不公开亮牌的「把牌交给别人」用）：交牌双方在日志里看到具体牌名，
+## 其他人只看到张数 —— 所以按人分别下发，而不是一条广播。
+func _log_give_cards(src_id: int, dst_id: int, cards: Array) -> void:
+	if cards.is_empty():
+		return
+	var 名表: Array[String] = []
+	for c: Variant in cards:
+		var 牌: GCard = Data.get_card(int(c))
+		名表.append("【%s】" % (牌.card_name if 牌 != null else str(int(c))))
+	var 来源: String = _称号(players.get(src_id))
+	var 去处: String = _称号(players.get(dst_id))
+	var 详版: String = "%s 交给 %s %s" % [来源, 去处, "、".join(名表)]
+	var 略版: String = "%s 交给 %s %d 张牌" % [来源, 去处, cards.size()]
+	for pid: int in order:
+		send(pid, GConst.Msg.Gossip, {
+			"type": GConst.GossipType.Discard,
+			"txt": 详版 if (pid == src_id or pid == dst_id) else 略版,
+			"id": src_id,
+		})
+	# 顺带广播一个给牌动效：牌从交牌人飘到收牌人。
+	# 不带 card_ids —— 这条是发给所有人的，带上就等于把牌面公开了（牌面只有交牌双方在日志里看得到）；
+	# 只给张数，客户端据此「交几张就飞几张」
+	broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Give,
+		"src_id": src_id,
+		"dst_id": dst_id,
+		"card_ids": [],
+		"count": cards.size(),
+	})
 
 
 func wait_for(pid: int, kind: int) -> void:
@@ -286,9 +572,6 @@ func take_reply() -> Dictionary:
 
 func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	if _await_id != pid or kind != _await_kind:
-		# 临时诊断：客户端发来的行动/应答被丢掉时打出来（正常收工前删掉这行）
-		print("[战斗诊断] 丢弃消息：来自 %d 类型 %d，当前在等 %d 的类型 %d；内容=%s" % [
-			pid, kind, _await_id, _await_kind, str(data)])
 		return
 	_reply = data
 	_has_reply = true
@@ -311,29 +594,44 @@ func tick() -> void:
 		return
 	var pid: int = _await_id
 	var kind: int = _await_kind
+	var 默认回复: Dictionary = _build_timeout_reply(pid, kind)
+	if 默认回复.is_empty():
+		# 普通行动阶段（canGiveUp=false）没有「放弃」兜底：原版 StateActionPhase 超时只返回 GE_TIMEOUT、
+		# 不推进，但本地对局没有踢人/托管，干等会把整局卡死 —— 直接把这名玩家的行动阶段跳过。
+		if kind == GConst.Msg.Action and not _states.is_empty() and _states[-1] is SActionPhase:
+			(_states[-1] as SActionPhase).跳过 = true
+			_has_reply = false
+			_await_id = -1
+			wait_deadline_ms = 0
+			wait_total_ms = 0
+			_notice_timeout(pid, kind, true)
+			_broadcast_game()
+			run()
+			return
+		# 其余没有超时兜底的询问：不发回复，公告一次后继续等玩家自己操作
+		wait_deadline_ms = 0
+		wait_total_ms = 0
+		_broadcast_game()
+		_notice_timeout(pid, kind, false)
+		return
 	# 构造默认回复（等价客户端点「放弃 / 不发动」）写入，交给状态机继续推进
-	_reply = _build_timeout_reply(pid, kind)
+	_reply = 默认回复
 	_has_reply = true
 	_await_id = -1
 	wait_deadline_ms = 0
 	wait_total_ms = 0
 	_broadcast_game()
-	_notice_timeout(pid, kind)
+	_notice_timeout(pid, kind, true)
 	run()
 
 
-## 构造超时默认回复：与客户端「放弃 / 不发动」等价
+## 构造超时默认回复：与客户端「放弃 / 不发动」等价；返回空字典 = 这个询问不允许超时兜底
 func _build_timeout_reply(pid: int, kind: int) -> Dictionary:
 	if kind == GConst.Msg.Action:
-		# 行动询问（ask_action 下发 CmdReq/Action）
-		var cur: BattlePlayer = players.get(pid)
-		# 规则可能禁止「放弃」（如仲裁者审判满 4 时必须发动末日审判）：
-		# 此时从角色可用技能里挑一个能立即执行的默认动作，避免超时后反复重问造成死循环
-		if cur != null and cur.role != null and cur.v_allow_action(GConst.ActionType.None, []) != GConst.GE_SUCCESS:
-			var 自动动作: Dictionary = _auto_legal_action(cur)
-			if not 自动动作.is_empty():
-				return 自动动作
-		# 默认放弃行动
+		# 行动询问（ask_action 下发 CmdReq/Action）：对照原版 StateActionPhase 的超时分支——
+		# 该阶段允许放弃（被挑衅 / 额外行动阶段）才按「放弃行动」收尾，否则不推进
+		if not 行动可放弃:
+			return {}
 		return {
 			"action_type": GConst.ActionType.None, "action_id": 0,
 			"src_id": pid, "dst_ids": [], "card_ids": [], "args": [],
@@ -341,9 +639,10 @@ func _build_timeout_reply(pid: int, kind: int) -> Dictionary:
 	# 应答询问：按询问号选择默认项
 	var rid: int = _pending_respond_id
 	var args: Array = []
-	if rid >= 100:
-		# 技能询问（ask_skill 以技能号作为询问号）→ 不发动
-		args = [0]
+	if _pending_is_skill:
+		# 技能询问（ask_skill）→ 不发动：回空 args，
+		# 与客户端「取消」一致（0 留给正常的选项值，如【魔女之怒】的「摸 0 张牌」）
+		args = []
 	elif rid == GConst.RespondType.ReplyAttack or rid == GConst.RespondType.Bullet:
 		# 应战 / 魔弹传递 → 放弃（魔弹放弃＝承受伤害，面前有【圣盾】则自动挡下）
 		args = [GConst.Reattack.GiveUp]
@@ -360,48 +659,15 @@ func _build_timeout_reply(pid: int, kind: int) -> Dictionary:
 	}
 
 
-## 超时代打：从玩家当前可用技能中挑一个「能立即执行」的默认动作（无可选时返回空字典）
-## 用于规则禁止「放弃」时（如仲裁者审判满 4），避免超时默认回复被驳回后无限重问
-func _auto_legal_action(cur: BattlePlayer) -> Dictionary:
-	if cur.role == null:
-		return {}
-	for 技能: Dictionary in cur.role.available_skills():
-		var 类型: int = int(技能.get("type", 0))
-		var 技能号: int = int(技能.get("id", 0))
-		# 需要选牌的技能无法自动代打（缺牌信息）
-		if int(技能.get("need_card", 0)) > 0:
-			continue
-		var 目标列表: Array = []
-		if int(技能.get("need_target", 0)) > 0:
-			var 目标: int = _nearest_enemy(cur)
-			if 目标 < 0:
-				continue
-			目标列表 = [目标]
-		var 候选: Dictionary = {
-			"action_type": 类型, "action_id": 技能号, "src_id": cur.id,
-			"dst_ids": 目标列表, "card_ids": [], "args": [],
-		}
-		if cur.v_allow_action(类型, []) != GConst.GE_SUCCESS:
-			continue
-		var 类别: String = ""
-		match 类型:
-			GConst.ActionType.AttackSkill: 类别 = "attack"
-			GConst.ActionType.MagicSkill: 类别 = "magic"
-			GConst.ActionType.SpecialSkill: 类别 = "special"
-		if 类别 == "" or cur.role.call("v_" + 类别 + "_skill", 候选) != GConst.GE_SUCCESS:
-			continue
-		return 候选
-	return {}
-
-
 ## 超时公告
-func _notice_timeout(pid: int, kind: int) -> void:
+func _notice_timeout(pid: int, kind: int, 已处理: bool) -> void:
 	var p0: BattlePlayer = players.get(pid)
-	var pname: String = p0.player_name if p0 != null else str(pid)
+	var pname: String = _称号(p0) if p0 != null else str(pid)
 	var kind_name: String = "行动" if kind == GConst.Msg.Action else "应答"
+	var txt: String = "%s %s超时，已自动处理" % [pname, kind_name] if 已处理 else "%s %s超时，仍在等其操作" % [pname, kind_name]
 	broadcast(GConst.Msg.Gossip, {
-		"type": GConst.GossipType.Notice,
-		"txt": "%s %s超时，已自动处理" % [pname, kind_name],
+		"type": GConst.GossipType.Warn,
+		"txt": txt,
 		"id": 0,
 	})
 
@@ -415,20 +681,20 @@ func set_offline(pid: int, v: bool) -> void:
 	else:
 		offline_players.erase(pid)
 	var p0: BattlePlayer = players.get(pid)
-	var pname: String = p0.player_name if p0 != null else str(pid)
+	var pname: String = _称号(p0) if p0 != null else str(pid)
 	if v:
 		if _await_id == pid and not _has_reply:
 			wait_deadline_ms = Time.get_ticks_msec() + OFFLINE_TIMEOUT_MS
 			wait_total_ms = OFFLINE_TIMEOUT_MS
 			_broadcast_game()
 		broadcast(GConst.Msg.Gossip, {
-			"type": GConst.GossipType.Notice,
+			"type": GConst.GossipType.Warn,
 			"txt": "%s 已掉线，超时将由系统自动代打" % pname,
 			"id": 0,
 		})
 	else:
 		broadcast(GConst.Msg.Gossip, {
-			"type": GConst.GossipType.Notice,
+			"type": GConst.GossipType.Warn,
 			"txt": "%s 已重新上线" % pname,
 			"id": 0,
 		})
@@ -485,14 +751,61 @@ func broadcast(msg_type: int, data: Dictionary) -> void:
 
 
 ## 行动阶段询问（附带角色可选技能）
-func ask_action(pid: int, action_type: int) -> void:
+## can_give_up：本阶段是否允许「放弃行动」（对照原版 Coder::askForAction 的 canGiveUp 分支，
+## 允许时额外下发一条 ACTION_NONE 命令，客户端据此显示「放弃行动」）
+func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bool = false) -> void:
+	var cmds: Array = action_commands(pid, action_type, can_give_up, extra)
+	_最后行动命令[pid] = cmds
+	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Action, "commands": cmds})
+
+
+## 重算「这名玩家此刻能放的技能」，有变化才重发一次行动询问。
+## 手牌、能量、治疗、阵营这些都会影响能放的技能，所以不盯某一个字段，而是跟着对局快照（_broadcast_game）走：
+## 每发一次快照就重算一遍 —— 快照本身很密，算完跟上次一样就不发，界面不会被打断。
+## 只在「正等这名玩家做行动」时生效：别人的回合、或正在结算的时候不动他的界面
+func _刷新技能可用(pid: int) -> void:
+	if _await_id != pid or _await_kind != GConst.Msg.Action:
+		return
+	var cmds: Array = action_commands(pid, 行动允许, 行动可放弃, 行动额外)
+	if str(cmds) == str(_最后行动命令.get(pid, [])):
+		return
+	_最后行动命令[pid] = cmds
+	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Action, "commands": cmds})
+
+
+## 该玩家此刻是否有「已经开始、但还卡在等回复」的技能状态（SkillRun 的 invoked 仍为 false）。
+## 这类状态的进度存在角色的 step 里；中途插进来的钩子轮次（p_hand_change 等）不能把它清零，
+## 否则技能会从第 0 步重跑 —— 例如【天使祝福】指定两名目标时会反复问同一人交牌。
+func _角色技能挂起(pid: int) -> bool:
+	if current_id != pid:
+		return false
+	for st: Variant in _states:
+		if st is SkillRun and not (st as SkillRun).invoked:
+			return true
+	return false
+
+
+## 行动询问的命令表：第 0 项是通用行动（允许放弃时再补一项「放弃」），其余是当前手牌下该角色能放的技能
+func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool = false) -> Array:
 	var cmds: Array = [{
 		"respond_id": action_type, "src_id": pid,
 		"dst_ids": [], "card_ids": [], "args": [],
+		# 额外行动阶段：客户端据此把提示写成「获得额外攻击行动 / 额外法术行动 / 额外行动」
+		"is_extra": extra,
 	}]
+	if can_give_up:
+		cmds.append({
+			"respond_id": GConst.ActionType.None, "src_id": pid,
+			"dst_ids": [], "card_ids": [], "args": [],
+		})
 	var pl: BattlePlayer = players.get(pid)
 	if pl != null and pl.role != null:
 		for sk: Dictionary in pl.role.available_skills():
+			# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时这条技能整条不发。
+			# 空列表在协议/客户端那里等于「不限制」（_玩家可选），会让本该被挡住的人
+			# （如已有【圣盾】/【天使之墙】的目标）反而变成能点，点了又被服务端拒。
+			if sk.has("targets") and (sk.get("targets", []) as Array).is_empty():
+				continue
 			cmds.append({
 				"respond_id": int(sk.get("type", 0)), "src_id": pid,
 				# targets 非空时，客户端只把这几名玩家点亮（如【魔弹融合】的落点固定是右手边最近的对手）
@@ -504,19 +817,28 @@ func ask_action(pid: int, action_type: int) -> void:
 				# arg_choices 非空时，客户端把每项渲染成一个按钮，点哪个就用当前已选的牌/目标提交该项 args
 				# （如【冒险者天堂】选要用哪些星石）
 				"arg_choices": sk.get("arg_choices", []),
-				# card_rule 非空时客户端按系别限制可点牌（same＝必须同系 / diff＝必须互异系）
+				# card_rule 非空时客户端限制可点牌（same＝必须同系 / diff＝必须互异系 /
+				# magic＝只能法术牌 / sameprop＝必须与已选牌同命格）
 				"card_rule": str(sk.get("card_rule", "")),
+				# 目标数上限随已选牌数变化的减数（0＝不适用）：上限 = 已选牌数 - 该值，至少 1 名
+				# （如【圣洁法典】＝弃牌数 - 2；玩家取消一张牌后上限随之变小）
+				"target_max_from_cards": int(sk.get("target_max_from_cards", 0)),
+				# 逐张选牌的条件（0＝不要求）：第 1 张须带某技能 / 第 2 张须为某系
+				# （如元素师独有法术：第 1 张是带该技能的发动牌，第 2 张是加伤的该系牌）
+				"card_slot_skill": int(sk.get("card_slot_skill", 0)),
+				"card_slot_element": int(sk.get("card_slot_element", 0)),
 				# args = [技能号, 最少选牌, 最少选目标, 最多选目标, 选牌来源]
 				"args": [int(sk.get("id", 0)), int(sk.get("need_card", 0)), int(sk.get("need_target", 0)),
 					int(sk.get("target_max", 0)), int(sk.get("card_source", GConst.CardSource.Hand))],
 			})
-	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Action, "commands": cmds})
+	return cmds
 
 
 func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], src_id: int = -1) -> void:
 	# 记录本次询问，供超时构造默认回复
 	_pending_respond_id = respond_id
 	_pending_args = args.duplicate()
+	_pending_is_skill = false
 	send(pid, GConst.Msg.CmdReq, {
 		"cmd_type": GConst.CmdType.Respond,
 		"commands": [{
@@ -536,9 +858,13 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 编码约定（客户端解析）：args = [need_card, need_target, card_source, 选项数, 选项值…]，
 ## 选项文案放在同一条命令的 notes 里，与选项值一一对应
 ## card_max 给点选上限（省略或 0＝刚好 need_card 张，如【法术反弹】可弃 1~N 张同系牌）
-## card_rule 给选牌系别规则（""＝不限 / "same"＝必须同系 / "diff"＝必须互异系）
+## card_rule 给选牌规则（""＝不限 / "same"＝必须同系 / "diff"＝必须互异系 /
+## "magic"＝只能选法术牌 / "sameprop"＝必须与已选牌同命格）
 ## cards 给合法牌白名单（非空时客户端只让这几张牌可点，如【魔能反转】只能弃法术牌）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = []) -> void:
+## can_cancel 为 false 时客户端把「取消」置灰（强制询问，如【水之神力】的交牌）
+## ask_text 非空时客户端改用它当指令条文案：内容取自技能表「提示」列里对应的那一条
+## （问谁、读第几条由角色脚本自己定，如【天使祝福】的「请选择 1 张手牌交给 天使[x]」）
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = []) -> void:
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
 	for o: Dictionary in options:
@@ -547,16 +873,25 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var cmd: Dictionary = {
 		"respond_id": skill_id,
 		"src_id": pid,
-		"dst_ids": [],
+		# 显式标记这是技能询问（客户端据此进入技能询问界面，不用拿询问号大小去猜）
+		"is_skill": true,
+		# targets 非空时客户端只让这几名玩家可点（如【天使之歌】只能选面前有基础效果的人）
+		"dst_ids": targets,
 		"card_ids": cards,
 		"args": args,
 		"card_max": maxi(need_card, card_max),
 		"card_rule": card_rule,
+		# 只有「不能取消」才下发这个字段（客户端拿不到就按可以取消处理）
+		"can_cancel": can_cancel,
 	}
 	if not notes.is_empty():
 		cmd["notes"] = notes
+	# 询问别人的场合（如请人交牌）：下发目标侧文案，客户端优先显示它
+	if not ask_text.is_empty():
+		cmd["ask_text"] = ask_text
 	_pending_respond_id = skill_id
 	_pending_args = args.duplicate()
+	_pending_is_skill = true
 	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Respond, "commands": [cmd]})
 	wait_for(pid, GConst.Msg.Respond)
 
@@ -595,6 +930,8 @@ func game_info(viewer_id: int) -> Dictionary:
 func _broadcast_game() -> void:
 	for pid: int in order:
 		send(pid, GConst.Msg.Game, game_info(pid))
+		# 快照一刷新就顺带重算「他能放哪些技能」（没变不会重发，见 _刷新技能可用）
+		_刷新技能可用(pid)
 
 
 ## 应战的反击目标是否合法（对照服务端 PlayerEntity::v_reattack）：
@@ -624,6 +961,78 @@ func to_discard(cards: Array) -> void:
 	deck.push_discard(cards)
 
 
+## 战斗日志里称呼玩家的统一写法：角色名[玩家名]
+func _称号(pp: BattlePlayer) -> String:
+	if pp == null:
+		return "?"
+	return "%s[%s]" % [Data.role_name(pp.role_id), pp.player_name]
+
+
+## 广播「弃牌」日志：某玩家把手牌 / 盖牌里的若干张送进弃牌堆时，写一条日志（只报张数）。
+## 供玩家主动选牌的弃牌点调用（手牌超限 / 盖牌超限 / 技能要求弃牌）。
+func _log_discard(pid: int, cards: Array) -> void:
+	if cards.is_empty():
+		return
+	var pp: BattlePlayer = players.get(pid)
+	if pp == null:
+		return
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Discard,
+		"txt": "%s 弃掉 %d 张牌" % [_称号(pp), cards.size()],
+		"id": pp.id,
+		# 张数单独给一份：客户端据此播弃牌特效（其余 Discard 类日志不带 num，按 0 处理）
+		"num": cards.size(),
+	})
+
+
+## 广播「基础效果被移除」日志，说清「谁移除了谁面前的什么状态」。
+## doer_id 是发动者（-1 表示引擎内部结算，如【圣盾】挡下攻击、【中毒】结算：没有发动者，只写被移除方）
+func _log_basic_effect_remove(doer_id: int, dst_id: int, card_id: int) -> void:
+	var dst: BattlePlayer = players.get(dst_id)
+	if dst == null:
+		return
+	var 牌: GCard = Data.get_card(card_id)
+	var 牌名: String = 牌.card_name if 牌 != null else str(card_id)
+	var 谁: BattlePlayer = players.get(doer_id)
+	var 文案: String = "%s 面前的【%s】被移除" % [_称号(dst), 牌名]
+	if 谁 != null:
+		文案 = "%s 移除了 %s 面前的【%s】" % [_称号(谁), _称号(dst), 牌名]
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Discard,
+		"txt": 文案,
+		"id": dst_id,
+	})
+
+
+## 盖牌变动入口（对照服务端 StateCoverChange）：立刻加/减盖牌并广播，随后对全体跑
+## p_cover_change（doer 为本次变动发起者，direction 见 GConst.CHANGE_*）。
+## 盖牌超限由状态边界的 _check_cover_overflow 结算。
+func add_cover(dst_id: int, cards: Array, src_id: int, cause: int) -> void:
+	_apply_cover_change(dst_id, GConst.CHANGE_ADD, cards, src_id, cause)
+
+
+func remove_cover(dst_id: int, cards: Array, src_id: int, cause: int) -> void:
+	_apply_cover_change(dst_id, GConst.CHANGE_REMOVE, cards, src_id, cause)
+
+
+func _apply_cover_change(dst_id: int, direction: int, cards: Array, src_id: int, cause: int) -> void:
+	if cards.is_empty():
+		return
+	var dst: BattlePlayer = players.get(dst_id)
+	if dst == null:
+		return
+	if direction == GConst.CHANGE_ADD:
+		dst.add_cover_cards(cards)
+	else:
+		dst.remove_cover_cards(cards)
+	_broadcast_game()
+	push(SHook.new("p_cover_change", {
+		"dst": dst_id, "direction": direction,
+		"howMany": cards.size(), "cards": cards.duplicate(),
+		"doer": src_id, "cause": cause,
+	}, []))
+
+
 func take_from_hand(pid: int, card_ids: Array) -> bool:
 	var p0: BattlePlayer = players.get(pid)
 	if p0 == null:
@@ -633,6 +1042,113 @@ func take_from_hand(pid: int, card_ids: Array) -> bool:
 			return false
 	p0.remove_hand_cards(card_ids)
 	return true
+
+
+## 测试用（战斗界面按 1 / 2 / 9，见 GConst.DebugKey）：清空某玩家手牌、按技能发技能牌、
+## 双方士气 + 全员治疗 + 全员宝石拉满并跳过自己回合。
+## 技能牌 = 卡表里技能属于该角色的牌：角色技能号取自 角色表（Data.role_skills），
+## 卡牌自带技能号（技能1 / 技能2 列）；每个技能随机抽一张，手里已有的不算候选。
+func debug_key(pid: int, kind: int) -> void:
+	if phase != Phase.Playing:
+		return
+	var p0: BattlePlayer = players.get(pid)
+	if p0 == null:
+		return
+	if kind == GConst.DebugKey.Clear:
+		to_discard(p0.hand_cards.duplicate())
+		p0.hand_cards.clear()
+	elif kind == GConst.DebugKey.SkillCards:
+		for 技能号: int in Data.role_skills(p0.role_id):
+			var 候选: Array[int] = []
+			for cid: int in range(GConst.CARDSUM):
+				if p0.has_hand_card(cid):
+					continue
+				var c: GCard = Data.get_card(cid)
+				if c != null and c.has_skill_id(技能号):
+					候选.append(cid)
+			if 候选.is_empty():
+				continue
+			var 抽: int = 候选[_rng.randi_range(0, 候选.size() - 1)]
+			_发一张到手里(p0, 抽)
+	elif kind == GConst.DebugKey.Cards:
+		# 测试用（战斗界面按 3）：3 张随机同系攻击牌（斩）+ 3 张随机不同系别的法术牌
+		_发测试牌(p0, 3, true, true)
+		_发测试牌(p0, 3, false, false)
+	elif kind == GConst.DebugKey.SkipTurn:
+		# 测试用（战斗界面按 0）：跳过自己这一回合。只在「正等自己行动」时有效，
+		# 交给行动阶段自己收尾（不在引擎外直接推动状态栈，免得留下没跑完的旧状态）
+		if _await_id == pid and _await_kind == GConst.Msg.Action:
+			测试跳过回合 = pid
+			run()
+	elif kind == GConst.DebugKey.RandomEnergy:
+		# 测试用（战斗界面按 7）随机填充星石：清空所有角色的星石，再各按星石上限（energy_max）
+		# 逐颗随机填成宝石 / 水晶（总数恰好等于上限，故直接累加，不走 set_gem/set_crystal 的上限夹取）
+		for pid2: int in order:
+			var p3: BattlePlayer = players[pid2]
+			p3.gem = 0
+			p3.crystal = 0
+			for _i: int in range(p3.energy_max):
+				if _rng.randi_range(0, 1) == 0:
+					p3.gem += 1
+				else:
+					p3.crystal += 1
+	elif kind == GConst.DebugKey.CrossClear:
+		# 测试用（战斗界面按 8）：全员治疗清零
+		for pid2: int in order:
+			var p2: BattlePlayer = players[pid2]
+			p2.cross_num = 0
+	elif kind == GConst.DebugKey.MoraleHeal:
+		# 双方士气拉到 99（怎么挨打都还有剩），所有人治疗拉满、能量（宝石）补满（不跳过回合）
+		var 双方: Array[int] = [GConst.RED, GConst.BLUE]
+		for c: int in 双方:
+			set_morale(c, 99)
+		for pid2: int in order:
+			var p2: BattlePlayer = players[pid2]
+			p2.add_cross_num(p2.cross_max)
+			p2.set_gem(p2.energy_max)
+	# 手牌 / 能量 / 治疗一变，这一回合能放的技能也可能跟着变（如【神圣祈福】要 2 张法术牌）：
+	# 快照里会顺带重算一次技能可用性，变了才重发询问
+	_broadcast_game()
+
+
+## 测试发牌：把这张牌从牌堆 / 弃牌堆拿走再加进手里（避免同一张牌凭空多出来）
+func _发一张到手里(p0: BattlePlayer, cid: int) -> void:
+	deck.remove_one(cid)
+	p0.add_hand_cards([cid])
+
+
+## 测试发牌：给某玩家发 count 张牌。
+## 要攻击 = true 发攻击牌（斩）、false 发法术牌；同系 = true 这 count 张要同一种系别，
+## false 则要互不相同的系别。候选只从「手里还没有的牌」里挑。
+func _发测试牌(p0: BattlePlayer, count: int, 要攻击: bool, 同系: bool) -> void:
+	var 分组: Dictionary = {}
+	for cid: int in range(GConst.CARDSUM):
+		if p0.has_hand_card(cid):
+			continue
+		var c: GCard = Data.get_card(cid)
+		if c == null or c.is_attack() != 要攻击:
+			continue
+		var e: int = c.element_enum()
+		if not 分组.has(e):
+			分组[e] = []
+		(分组[e] as Array).append(cid)
+	var 系别表: Array = 分组.keys()
+	系别表.shuffle()
+	var 已发: int = 0
+	for e2: Variant in 系别表:
+		if 已发 >= count:
+			break
+		var 候选: Array = 分组[e2]
+		候选.shuffle()
+		if 同系:
+			if 候选.size() < count:
+				continue
+			for k: int in range(count):
+				_发一张到手里(p0, int(候选[k]))
+			已发 = count
+		else:
+			_发一张到手里(p0, int(候选[0]))
+			已发 += 1
 
 
 func _find_basic_card(p0: BattlePlayer, name_enum: int) -> int:
@@ -673,11 +1189,11 @@ func push_harm(harm: Dictionary) -> void:
 	last_harm_cause = int(harm.get("cause", 0))
 	last_harm_type = int(harm.get("type", GConst.HarmType.None))
 	var hc: Dictionary = harm_ctx(harm)
-	push(SHandOverflow.new())
+	# 手牌超限不在这里压：原版是在「摸牌」那一拍结算（StateTimeline6 → 移动牌 → setStateHandOverLoad），
+	# 引擎每跑完一个状态都会调 _check_hand_overflow()，摸完牌就会补上
 	push(SHook.new("p_harm_end", hc, []))
-	push(SHook.new("p_timeline_6_drawn", hc, []))
-	push(SHarmTimeline6.new(harm))
-	push(SHook.new("p_timeline_6", hc, []))
+	# 对照原版：Timeline5 跑完才决定要不要进 Timeline6（伤害被治疗抵成 0 点时整串不跑）
+	push(SGateTimeline6.new(harm))
 	push(SHook.new("p_timeline_5", hc, []))
 	push(SAskCross.new(harm))
 	push(SHook.new("p_timeline_4", hc, []))
@@ -707,23 +1223,50 @@ func add_basic_effect(dst_id: int, card_id: int, src_id: int, cause: int = 0) ->
 	}, []))
 
 
-func remove_basic_effect(dst_id: int, card_id: int, cause: int = 0) -> void:
+## 移除基础效果；src_id 记发动者（对照服务端 doerID，无人负责的引擎内部移除传 -1）。
+## 天使羁绊要靠它区分「哪个天使移除的」，不能让场上所有天使都触发
+func remove_basic_effect(dst_id: int, card_id: int, cause: int = 0, src_id: int = -1) -> void:
 	var dst: BattlePlayer = players.get(dst_id)
 	if dst == null:
 		return
 	dst.remove_basic_effect(card_id)
+	_log_basic_effect_remove(src_id, dst_id, card_id)
 	push(SHook.new("p_basic_effect_change", {
-		"dst": dst_id, "card": card_id, "doer": -1, "cause": cause, "add": false,
+		"dst": dst_id, "card": card_id, "doer": src_id, "cause": cause, "add": false,
 	}, []))
 
 
-## 横置/重置变更（会触发 p_tap 钩子）
+## 横置/重置（形态进入/退出）。实际通知（写日志 + p_tap 钩子）由 BattlePlayer.tap 的 setter 统一完成，
+## 所以直接写 player.tap = X 与本方法等价
 func set_tap(pid: int, v: bool) -> void:
 	var p0: BattlePlayer = players.get(pid)
 	if p0 == null:
 		return
 	p0.tap = v
-	push(SHook.new("p_tap", {"id": pid, "tap": v}, []))
+
+
+## 形态进入/退出（由 BattlePlayer.tap 的 setter 调用）：真的变化才记日志，并触发 p_tap 钩子
+func 形态变更(p0: BattlePlayer, v: bool, 记日志: bool) -> void:
+	if 记日志:
+		_播形态日志(p0, v)
+	push(SHook.new("p_tap", {"id": p0.id, "tap": v}, []))
+
+
+## 形态日志：形态名取自角色表「横置形态」列，写「X 进入/退出【形态名】」；
+## 表里没配形态名的角色退回「X 横置/重置」
+func _播形态日志(p0: BattlePlayer, 进入: bool) -> void:
+	var 形态列表: Array[String] = Data.role_forms(p0.role_id)
+	var 形态: String = 形态列表[0] if not 形态列表.is_empty() else ""
+	var 文案: String
+	if 形态.is_empty():
+		文案 = "%s %s" % [_称号(p0), "横置" if 进入 else "重置"]
+	else:
+		文案 = "%s %s【%s】" % [_称号(p0), "进入" if 进入 else "退出", 形态]
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Token,
+		"txt": 文案,
+		"id": p0.id,
+	})
 
 
 # ============================================================
@@ -754,10 +1297,14 @@ class SHook:
 		if not _started:
 			_started = true
 			_iter = 0
-			# 每次钩子轮次开始统一重置所有角色的 step
+			# 每次钩子轮次开始统一重置所有角色的 step（但正在等回复的技能状态除外，见 _角色技能挂起）。
+			# 注意：这里**不能**在本轮次结束时把 step 还原回去 —— 那样 step 就成了「粘住的值」：
+			# step 若被某个流程留在 STEP_DONE，会一直被还原成 STEP_DONE，再也不会清回 0，
+			# 于是该角色下一个用 `if step == 0` 起手的技能直接落空（【灵符－雷鸣】第二次施放没伤害就是这么来的）。
+			# 要跨询问推进的钩子流程，请用角色自己的成员变量记进度，别依赖 step 活过一轮钩子。
 			for pid: int in e.order:
 				var r0: BattleRole = e.p(pid).role
-				if r0 != null:
+				if r0 != null and not e._角色技能挂起(pid):
 					r0.step = 0
 		elif not _steps.is_empty():
 			# 从挂起中回来：把 step 还原成本轮次挂起前的值
@@ -819,31 +1366,49 @@ class SPoison:
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
 		for cid: int in cards:
+			# 伤害来源取「施加【中毒】的那名玩家」（对照原版 GameGrail.cpp 的 poisonHarm.srcID = it->srcUser）
+			var 来源: int = 0
+			for be: Dictionary in cur.basic_effects:
+				if int(be["card"]) == cid:
+					来源 = int(be["src"])
+					break
 			cur.remove_basic_effect(cid)
+			e._log_basic_effect_remove(-1, cur.id, cid)
 			e.to_discard([cid])
-			e.push_harm({"src": 0, "dst": cur.id, "point": 1, "cause": GConst.CAUSE_POISON, "type": GConst.HarmType.Magic})
+			e.push_harm({"src": 来源, "dst": cur.id, "point": 1, "cause": GConst.CAUSE_POISON, "type": GConst.HarmType.Magic})
 		e._broadcast_game()
 		return BattleEngine.CONTINUE
 
 
-## 虚弱询问
+## 虚弱 + 五系束缚 合并成一次询问（对照服务端 GameGrail::setStateCheckBasicEffect → StateWeaken）：
+## 摸牌总数 = 五系束缚值（角色通过 p_check_basic_effect 提供）+ 3 × 虚弱牌数；
+## 玩家「确定」＝一次摸走全部，「取消」＝直接结束回合并跳过整个行动阶段。
 class SWeaken:
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
+		# 五系束缚（服务端 FengYin::WuXiShuFu_Effect）：由角色判定并把摸牌数写进 ctx
+		var 束缚摸牌: int = 0
+		for pid: int in e.order:
+			var p0: BattlePlayer = e.p(pid)
+			if p0 != null and p0.role != null:
+				var ctx: Dictionary = {"player": cur.id, "how_many": 0}
+				p0.role.call_hook("p_check_basic_effect", ctx)
+				束缚摸牌 += int(ctx.get("how_many", 0))
 		var weaken_cards: Array[int] = []
 		for be: Dictionary in cur.basic_effects:
 			var c: GCard = Data.get_card(int(be["card"]))
 			if c != null and c.card_name_enum() == GConst.CardName.Weaken:
 				weaken_cards.append(int(be["card"]))
-		if weaken_cards.is_empty():
+		var draw_n: int = 束缚摸牌 + 3 * weaken_cards.size()
+		if draw_n <= 0:
 			return BattleEngine.CONTINUE
-		var draw_n: int = 3 * weaken_cards.size()
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
 			var args: Array = r.get("args", [])
 			var accept: int = int(args[0]) if args.size() > 0 else 0
 			for cid: int in weaken_cards:
 				cur.remove_basic_effect(cid)
+				e._log_basic_effect_remove(-1, cur.id, cid)
 				e.to_discard([cid])
 			if accept == 1:
 				e.draw(cur.id, draw_n)
@@ -860,18 +1425,50 @@ class SWeaken:
 
 
 ## 行动阶段
+## 行动阶段（对照原版 StateActionPhase(allowAction, canGiveUp)）：
+## 允许的行动种类与「能否放弃」由本状态的字段决定；被【挑衅】时强制改成「只能攻击 + 可放弃」
 class SActionPhase:
+	var 允许: int = GConst.ActionType.Any
+	var 可放弃: bool = false
+	## 本阶段是不是「额外行动」（额外行动声明的 allowAction + 允许放弃）
+	var 额外: bool = false
+	## 玩家挂机超时：本阶段已作废，直接收尾（tick 里置位，不替他出牌，也不宣告「无法行动」换手牌）
+	var 跳过: bool = false
+
+	func _init(allow: int = GConst.ActionType.Any, can_give_up: bool = false, extra: bool = false) -> void:
+		允许 = allow
+		可放弃 = can_give_up
+		额外 = extra
+
 	func handle(e: BattleEngine) -> int:
+		# 挂机超时：把这名玩家的行动阶段直接跳过，轮到下家
+		if 跳过:
+			e.push(STurnEnd.new())
+			return BattleEngine.CONTINUE
 		# 虚弱拒绝 / 五系束缚拒绝：本回合没有行动阶段，直接收尾（额外行动由 STurnEnd 照常处理）
 		if e.skip_action_phase:
 			e.skip_action_phase = false
 			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
+		# 测试指令「跳过自己回合」（按 8）：轮到按的那个人就直接收尾，不进标准规则
+		if e.测试跳过回合 == e.current_id:
+			e.测试跳过回合 = -1
+			e.take_reply()
+			e.push(STurnEnd.new())
+			return BattleEngine.CONTINUE
+		var cur: BattlePlayer = e.p(e.current_id)
+		# 被【挑衅】：本回合只能攻击、但允许放弃（对照原版 StateActionPhase::handle 开头）
+		if cur != null and cur.check_exclusive_effect(GConst.Exclusive.TiaoXin):
+			允许 = GConst.ActionType.Attack
+			可放弃 = true
+		e.行动允许 = 允许
+		e.行动可放弃 = 可放弃
+		e.行动额外 = 额外
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
 			var at: int = int(r.get("action_type", GConst.ActionType.None))
 			return e.resolve_action(at, r)
-		e.ask_action(e.current_id, GConst.ActionType.Any)
+		e.ask_action(e.current_id, 允许, 可放弃, 额外)
 		e.wait_for(e.current_id, GConst.Msg.Action)
 		return BattleEngine.WAIT
 
@@ -885,14 +1482,25 @@ class STurnEnd:
 		if cur != null and cur.contains_action():
 			e.push(SAdditionalAction.new())
 			return BattleEngine.CONTINUE
-		e.push(SHook.new("p_after_turn_end", {"player": e.current_id}, []))
-		e.push(SHook.new("p_turn_end", {"player": e.current_id}, [SNextPlayer.new()]))
+		# 对照原版：StateTurnEnd（p_turn_end）→ StateAfterTurnEnd（p_after_turn_end）→ 才 setStateCurrentPlayer(下家)。
+		# 顺序不能反：月女【苍白之月】要在 p_after_turn_end 里把「下一个回合还是我」定下来
+		e.push(SHook.new("p_after_turn_end", {"player": e.current_id}, [SNextPlayer.new()]))
+		e.push(SHook.new("p_turn_end", {"player": e.current_id}, []))
 		return BattleEngine.CONTINUE
 
 
 ## 轮转到下家
 class SNextPlayer:
 	func handle(e: BattleEngine) -> int:
+		if e.额外回合玩家 >= 0:
+			# 角色在 p_after_turn_end 里要求「下一个回合还是他」（月女【苍白之月】）：
+			# 对照原版 —— 角色把 StateAfterTurnEnd 弹掉，于是后面的 setStateCurrentPlayer(下家) 不再执行
+			var 自己: int = e.额外回合玩家
+			e.额外回合玩家 = -1
+			e.current_id = 自己
+			e.broadcast(GConst.Msg.TurnBegin, {"id": e.current_id, "round": e.round_id})
+			e.push(SCheckTurnStart.new())
+			return BattleEngine.CONTINUE
 		var nid: int = e.next_id(e.current_id)
 		if nid == e.first_id:
 			e.round_id += 1
@@ -909,6 +1517,15 @@ class SAdditionalAction:
 		if cur == null or not cur.contains_action():
 			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
+		# 声明了 direct 的额外行动（如圣女【圣疗】）不用先问：直接进入它的额外行动阶段。
+		# 该阶段允许「放弃行动」，想跳过在那里放弃即可，省掉「再点一次技能按钮」这一步。
+		if not e.has_reply():
+			for i: int in range(cur.additional_actions.size()):
+				if not bool(cur.additional_actions[i].get("direct", false)):
+					continue
+				var 直接: int = int(cur.additional_actions[i]["cause"])
+				if cur.v_additional_action(直接) == GConst.GE_SUCCESS:
+					return _进入(e, cur, i, 直接)
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
 			var args: Array = r.get("args", [])
@@ -928,18 +1545,11 @@ class SAdditionalAction:
 				e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, causes2)
 				e.wait_for(cur.id, GConst.Msg.Respond)
 				return BattleEngine.WAIT
-			var found: bool = idx >= 0
-			if found:
-				cur.additional_actions.remove_at(idx)
-			if found:
-				e.broadcast(GConst.Msg.Skill, {"skill_id": chosen, "src_id": cur.id, "dst_ids": []})
-				# 先让角色结算「被选中」的代价（p_additional_action），再进入额外行动阶段
-				e.push(SActionPhase.new())
-				e.push(SHook.new("p_additional_action", {"player": cur.id, "cause": chosen}, []))
-			else:
-				# 放弃/无匹配：清空待办并继续结束回合
-				cur.clear_additional_action()
-				e.push(STurnEnd.new())
+			if idx >= 0:
+				return _进入(e, cur, idx, chosen)
+			# 放弃/无匹配：清空待办并继续结束回合
+			cur.clear_additional_action()
+			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
 		var causes: Array = []
 		for a: Dictionary in cur.additional_actions:
@@ -947,6 +1557,18 @@ class SAdditionalAction:
 		e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, causes)
 		e.wait_for(cur.id, GConst.Msg.Respond)
 		return BattleEngine.WAIT
+
+	## 进入某份额外行动：移除它、广播技能通知，再压入额外行动阶段（允许放弃）与其「被选中」代价钩子
+	func _进入(e: BattleEngine, cur: BattlePlayer, idx: int, cause: int) -> int:
+		var 允许: int = int(cur.additional_actions[idx]["allow_action"])
+		cur.additional_actions.remove_at(idx)
+		e.broadcast(GConst.Msg.Skill, {"skill_id": cause, "src_id": cur.id, "dst_ids": []})
+		# 先让角色结算「被选中」的代价（p_additional_action），再进入额外行动阶段。
+		# 额外行动阶段只放行这份额外行动声明的种类、且允许放弃（对照原版
+		# PlayerEntity::p_additional_action → StateActionPhase(it->allowAction, true)）
+		e.push(SActionPhase.new(允许, true, true))
+		e.push(SHook.new("p_additional_action", {"player": cur.id, "cause": cause}, []))
+		return BattleEngine.CONTINUE
 
 
 ## 一次攻击的入口：先跑 timeline_1 钩子（可改命中率/是否查圣盾），再压入应战询问
@@ -1037,18 +1659,12 @@ class SAttackedAsk:
 					e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, [hit_rate, owner.card, defender.id, owner.src, owner.ctx.get("can_light", 1)])
 					e.wait_for(defender.id, GConst.Msg.Respond)
 					return BattleEngine.WAIT
-				# 应战成立：原攻击落空，应战者以自己的攻击牌对所选目标发起一次新攻击
-				e.take_from_hand(defender.id, [cid])
-				e.to_discard([cid])
-				dst.reattacker = -1
-				e.broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": defender.id, "dst_id": 反击目标, "card_ids": [cid], "is_real": true})
-				var new_harm: Dictionary = {
-					"src": defender.id, "dst": 反击目标, "point": harm["point"],
-					"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack,
-					"reattack": true, "card_id": cid, "is_active": false,
-				}
-				e.push(SAttackCard.new(defender.id, 反击目标, cid, new_harm))
-				e.push(STimeline2Miss.new(harm))
+				# 应战成立：原攻击落空，应战者以自己的攻击牌对所选目标发起一次新攻击。
+				# 对照原版：先跑一轮 p_reattack（角色可把这张牌「视为」另一张，如魔女烈焰形态下的
+				# 虚拟【火焰斩】），再按结果结算（真牌照样进弃牌堆并展示，反击用「视为」的那张）
+				var 应战: Dictionary = {"card_id": cid, "doer": defender.id, "target": 反击目标, "改用": cid, "real": true}
+				e.push(SReattackGo.new(defender, harm, 应战, cid, 反击目标))
+				e.push(SHook.new("p_reattack", 应战, []))
 				return BattleEngine.CONTINUE
 			if choice == GConst.Reattack.Block and not cards.is_empty():
 				var cid2: int = int(cards[0])
@@ -1069,6 +1685,7 @@ class SAttackedAsk:
 					shield_card = e._find_basic_card_by_skill(dst, GConst.技能_天使之墙)
 				if shield_card >= 0:
 					dst.remove_basic_effect(shield_card)
+					e._log_basic_effect_remove(-1, dst.id, shield_card)
 					e.to_discard([shield_card])
 					e._broadcast_game()
 					e.push(STimeline2Miss.new(harm))
@@ -1078,6 +1695,49 @@ class SAttackedAsk:
 		e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, [hit_rate, owner.card, defender.id, owner.src, owner.ctx.get("can_light", 1)])
 		e.wait_for(defender.id, GConst.Msg.Respond)
 		return BattleEngine.WAIT
+
+
+## 应战成立后的结算（对照原版 setStateReattack）：
+## 反击用的是 p_reattack 给出的「视为」牌（可能是虚拟牌，如魔女的虚拟【火焰斩】87）；
+## 真牌一律从手牌进弃牌堆，并广播给所有人看（card_ids 是真牌，「视为」哪张放在 as_card_id）
+class SReattackGo:
+	var defender: BattlePlayer
+	var harm: Dictionary
+	var 应战: Dictionary
+	var 原牌: int
+	var 目标: int
+
+	func _init(d: BattlePlayer, h: Dictionary, s: Dictionary, yuan: int, t: int) -> void:
+		defender = d
+		harm = h
+		应战 = s
+		原牌 = yuan
+		目标 = t
+
+	func handle(e: BattleEngine) -> int:
+		var 用牌: int = int(应战.get("改用", 原牌))
+		var 被攻击者: BattlePlayer = e.p(int(harm["dst"]))
+		if 被攻击者 != null:
+			被攻击者.reattacker = -1
+		e.take_from_hand(defender.id, [原牌])
+		e.to_discard([原牌])
+		e.broadcast(GConst.Msg.Card, {
+			"type": GConst.CardMsgType.Use, "src_id": defender.id, "dst_id": 目标,
+			"card_ids": [原牌], "is_real": true,
+			"as_card_id": 用牌 if 用牌 != 原牌 else 0,
+		})
+		# 角色可把这次应战「视为格挡」（如阴阳师式神形态下用光系牌应战）：本次攻击落空、不反击
+		if bool(应战.get("block", false)):
+			e.push(STimeline2Miss.new(harm))
+			return BattleEngine.CONTINUE
+		var new_harm: Dictionary = {
+			"src": defender.id, "dst": 目标, "point": harm["point"],
+			"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack,
+			"reattack": true, "card_id": 用牌, "is_active": false,
+		}
+		e.push(SAttackCard.new(defender.id, 目标, 用牌, new_harm))
+		e.push(STimeline2Miss.new(harm))
+		return BattleEngine.CONTINUE
 
 
 ## 魔弹传递询问：持有者可以打出【魔弹】继续传递、出【圣光】抵挡，或放弃并承受伤害。
@@ -1125,21 +1785,12 @@ class SMissileAsk:
 				e._broadcast_game()
 				return BattleEngine.CONTINUE
 			if choice == GConst.Reattack.Attack and me.v_remissile(cid) == GConst.GE_SUCCESS:
-				# 继续传递：伤害 +1，沿**当前方向**转给下一个还没参与过的对手
-				# （方向是出弹时定下的：顺时针打出＝顺向，被魔导用【魔弹掌握】逆向打出＝逆向，传递者不改方向）
+				# 继续传递：伤害 +1，沿**当前方向**转给下一个还没参与过的对手。
+				# 方向由出弹时定下（顺时针打出＝顺向，魔导用【魔弹掌握】逆向打出＝逆向）；
+				# 【魔弹掌握】只作用于「主动打出」那一步，传递者一律不能改向
 				e.take_from_hand(holder, [cid])
 				e.to_discard([cid])
-				var 顺: int = e._next_missile_target(holder, post_dir, used)
-				var nxt: int = 顺
-				var nxt_dir: bool = post_dir
-				# 只有【魔弹掌握】802 能在传递时改方向（＝选另一个方向上那个人）
-				if me.role != null and me.role.has_missile_mastery():
-					var 回复选: Array = r.get("dst_ids", [])
-					if not 回复选.is_empty() and int(回复选[0]) != 顺:
-						var 逆: int = e._next_missile_target(holder, not post_dir, used)
-						if 逆 >= 0 and int(回复选[0]) == 逆:
-							nxt = 逆
-							nxt_dir = not post_dir
+				var nxt: int = e._next_missile_target(holder, post_dir, used)
 				# 打出的是【魔弹】继续传递：dst_id 必须给下一个落点，客户端才知道魔弹要从自己飞向谁；
 				# 没人能再接（nxt < 0）就仍写自己，动画落在自己身上。
 				# 魔导/特殊魔导也可以拿地系、火系牌传递：这次出牌同样视为【魔弹】
@@ -1150,7 +1801,7 @@ class SMissileAsk:
 				})
 				if nxt >= 0:
 					used.append(nxt)
-					e.push(SMissileAsk.new(nxt, holder, point + 1, nxt_dir, used))
+					e.push(SMissileAsk.new(nxt, holder, point + 1, post_dir, used))
 				else:
 					# 没人能再接：由当前持有者承受
 					e.push_harm({"src": src, "dst": holder, "point": point, "cause": GConst.CAUSE_MISSILE, "type": GConst.HarmType.Magic})
@@ -1216,11 +1867,13 @@ class SAskCross:
 		harm = h
 	func handle(e: BattleEngine) -> int:
 		var dst: BattlePlayer = e.p(harm["dst"])
-		# 治疗只能抵御法术伤害；角色可在 p_timeline_4 用 harm["cross_available"]=0 关闭治疗结算，
+		# 任何伤害都能用治疗抵御（对照服务端 GrailState.cpp 的 StateTimeline4：crossAvailable 直接取
+		# 玩家治疗数，不看伤害类型；类型只用于给客户端的文案）。
+		# 角色可在 p_timeline_4 用 harm["cross_available"]=0 关闭治疗结算，
 		# 或用 harm["cross_max_point"]=N 把本次可抵御点数限制为 N
 		var cross_ok: bool = int(harm.get("cross_available", 1)) != 0
 		var cap: int = int(harm.get("cross_max_point", 0))
-		var avail: int = dst.cross_num if (harm["type"] == GConst.HarmType.Magic and cross_ok) else 0
+		var avail: int = dst.cross_num if cross_ok else 0
 		if cap > 0:
 			avail = mini(avail, cap)
 		if e.has_reply():
@@ -1228,33 +1881,174 @@ class SAskCross:
 			var args: Array = r.get("args", [])
 			var used: int = int(args[0]) if args.size() > 0 else 0
 			used = clampi(used, 0, avail)
+			var 治疗前: int = dst.cross_num
+			var 伤害前: int = int(harm["point"])
 			dst.sub_cross_num(used)
-			harm["point"] = maxi(int(harm["point"]) - used, 0)
+			harm["point"] = maxi(伤害前 - used, 0)
+			# 日志写清楚这次治疗抵挡各自的变化（只通知、不进聊天区）
+			if used > 0:
+				var 类型名: String = "攻击" if int(harm.get("type", -1)) == GConst.HarmType.Attack else "法术"
+				e.broadcast(GConst.Msg.Gossip, {
+					"type": GConst.GossipType.Combat,
+					"txt": "%s 用 %d 点治疗抵挡 %d 点%s伤害（治疗 %d→%d，伤害 %d→%d）" % [
+						e._称号(dst), used, 伤害前, 类型名,
+						治疗前, dst.cross_num, 伤害前, int(harm["point"])],
+					"id": dst.id,
+				})
 			e._broadcast_game()
 			return BattleEngine.CONTINUE
-		if avail > 0:
-			e.ask_respond(dst.id, GConst.RespondType.Heal, [dst.id, harm["point"], harm["cause"], avail])
+		if int(harm["point"]) > 0 and avail > 0:
+			e.ask_respond(dst.id, GConst.RespondType.Heal, [dst.id, harm["point"], harm["type"], avail])
 			e.wait_for(dst.id, GConst.Msg.Respond)
 			return BattleEngine.WAIT
 		return BattleEngine.CONTINUE
 
 
-## Timeline6：目标按伤害点数摸牌
+## Timeline6 的入口（对照原版 StateTimeline5 的收尾）：
+## 只有伤害点数 > 0 才进 Timeline6 —— 跑 p_timeline_6、按点数摸牌、再跑 p_timeline_6_drawn；
+## 被治疗抵成 0 点时这一串都不跑（原版是 pop 掉 Timeline5 直接接 harm_end）
+class SGateTimeline6:
+	var harm: Dictionary
+	func _init(h: Dictionary) -> void:
+		harm = h
+	func handle(e: BattleEngine) -> int:
+		if int(harm["point"]) <= 0:
+			return BattleEngine.CONTINUE
+		var hc: Dictionary = e.harm_ctx(harm)
+		e.push(SHook.new("p_timeline_6_drawn", hc, []))
+		e.push(SHarmTimeline6.new(harm))
+		e.push(SHook.new("p_timeline_6", hc, []))
+		return BattleEngine.CONTINUE
+
+
+## Timeline6：目标按伤害点数摸牌（进入这里时点数必然 > 0）
 class SHarmTimeline6:
 	var harm: Dictionary
 	func _init(h: Dictionary) -> void:
 		harm = h
 	func handle(e: BattleEngine) -> int:
-		var point: int = int(harm["point"])
-		if point > 0:
-			e.draw(harm["dst"], point)
+		e.draw(harm["dst"], int(harm["point"]))
+		e._broadcast_game()
+		# 摸牌顶过手牌上限：立刻带着本次伤害的上下文结算超限掉士气（对照服务端 StateTimeline6 →
+		# setStateHandOverLoad(con->harm)）；等通用的 _check_hand_overflow 补就会丢掉这份上下文
+		e.push_overload_with_harm(harm)
+		return BattleEngine.CONTINUE
+
+
+## 盖牌超限：超出上限的盖牌由所有者自己选择弃哪几张（每次处理一名玩家）
+## 对照服务端 StateRequestCover：不涉及掉士气，只把选中的盖牌移入弃牌堆
+class SCoverOverflow:
+	func handle(e: BattleEngine) -> int:
+		var target: BattlePlayer = null
+		for pid: int in e.order:
+			var pp: BattlePlayer = e.p(pid)
+			if pp.cover_cards_max > 0 and pp.cover_cards.size() > pp.cover_cards_max:
+				target = pp
+				break
+		if target == null:
+			return BattleEngine.CONTINUE
+		var over: int = target.cover_cards.size() - target.cover_cards_max
+		if e.has_reply():
+			var r: Dictionary = e.take_reply()
+			var cards: Array = r.get("card_ids", [])
+			var chosen: Array = []
+			for c: Variant in cards:
+				if chosen.size() < over and target.cover_cards.has(int(c)) and not chosen.has(int(c)):
+					chosen.append(int(c))
+			if chosen.size() < over:
+				for cid: int in target.cover_cards:
+					if chosen.size() >= over:
+						break
+					if not chosen.has(cid):
+						chosen.append(cid)
+			target.remove_cover_cards(chosen)
+			e.to_discard(chosen)
+			e._log_discard(target.id, chosen)
+			e.push(SCoverOverflow.new())
 			e._broadcast_game()
+			return BattleEngine.CONTINUE
+		e.ask_respond(target.id, GConst.RespondType.DiscardCover, [target.id, GConst.CAUSE_OVERLOAD, over], [target.id])
+		e.wait_for(target.id, GConst.Msg.Respond)
+		return BattleEngine.WAIT
+
+
+## 通用「由玩家选牌弃掉」（对照服务端 StateRequestHand 的简单用法）。
+## 用于把「弃牌」排在其它结算之后执行（如魔女痛苦链接、巫女血之诅咒：先伤害后弃牌）。
+## count >= 0 时弃 count 张；否则按 keep 弃到只剩 keep 张。
+class SRequestDiscard:
+	var pid: int
+	var count: int
+	var keep: int
+	var cause: int
+	func _init(p_id: int, n: int, k: int, c: int) -> void:
+		pid = p_id
+		count = n
+		keep = k
+		cause = c
+	func handle(e: BattleEngine) -> int:
+		var p0: BattlePlayer = e.p(pid)
+		if p0 == null:
+			return BattleEngine.CONTINUE
+		var want: int = mini(count, p0.hand_cards.size()) if count >= 0 else maxi(p0.hand_cards.size() - keep, 0)
+		if want <= 0:
+			return BattleEngine.CONTINUE
+		if e.has_reply():
+			var r: Dictionary = e.take_reply()
+			var chosen: Array = []
+			for c: Variant in r.get("card_ids", []):
+				if chosen.size() < want and p0.has_hand_card(int(c)) and not chosen.has(int(c)):
+					chosen.append(int(c))
+			if chosen.size() < want:
+				for cid: int in p0.hand_cards:
+					if chosen.size() >= want:
+						break
+					if not chosen.has(cid):
+						chosen.append(cid)
+			e.take_from_hand(pid, chosen)
+			e.to_discard(chosen)
+			e._log_discard(pid, chosen)
+			e._broadcast_game()
+			return BattleEngine.CONTINUE
+		e.ask_respond(pid, GConst.RespondType.Discard, [pid, cause, want], [pid])
+		e.wait_for(pid, GConst.Msg.Respond)
+		return BattleEngine.WAIT
+
+
+## 记录某玩家手牌数量的变化，并触发一次 p_hand_change（对照服务端 StateHandChange）
+class SRunHandChange:
+	var pid: int
+	func _init(p_id: int) -> void:
+		pid = p_id
+	func handle(e: BattleEngine) -> int:
+		var p0: BattlePlayer = e.p(pid)
+		if p0 == null:
+			return BattleEngine.CONTINUE
+		var 新: int = p0.hand_cards.size()
+		var 旧: int = int(e._hand_counts.get(pid, 新))
+		if 旧 != 新:
+			# 手牌数量变化日志：谁的手牌从多少变成了多少（与手牌上限同一类：[卡牌]）
+			e._播手牌日志(p0, "%s 的手牌 %d→%d" % [e._称号(p0), 旧, 新])
+		e._hand_counts[pid] = 新
+		e.push(SHook.new("p_hand_change", {"player": pid}, []))
 		return BattleEngine.CONTINUE
 
 
 ## 手牌超限：强制弃牌并掉士气（每次处理一名玩家）
 class SHandOverflow:
+	## 本次超限结算归属的伤害上下文（cause / type），沿链传给下一个人。
+	## 必须由「摸牌那一拍」带着伤害上下文创建（见 push_overload_with_harm）；
+	## 引擎通用的 _check_hand_overflow 建出来的实例没带（-1），只能在 handle 里按最近一次伤害兜底
+	var harm_cause: int = -1
+	var harm_type: int = -1
+
+	func _init(cause: int = -1, htype: int = -1) -> void:
+		harm_cause = cause
+		harm_type = htype
+
 	func handle(e: BattleEngine) -> int:
+		if harm_cause < 0:
+			harm_cause = e.last_harm_cause
+			harm_type = e.last_harm_type
 		var target: BattlePlayer = null
 		for pid: int in e.order:
 			var pp: BattlePlayer = e.p(pid)
@@ -1279,9 +2073,11 @@ class SHandOverflow:
 						chosen.append(cid)
 			e.take_from_hand(target.id, chosen)
 			e.to_discard(chosen)
-			# 先压「继续处理下一个超限玩家」，再压掉士气（后压先执行 → 士气先结算，与服务器一致）
-			e.push(SHandOverflow.new())
-			e.push(SOverloadMorale.new(target.id, over, GConst.CAUSE_OVERLOAD, e.last_harm_cause, e.last_harm_type))
+			e._log_discard(target.id, chosen)
+			# 先压「继续处理下一个超限玩家」，再压掉士气（后压先执行 → 士气先结算，与服务器一致）；
+			# 下一个玩家共用同一份伤害上下文
+			e.push(SHandOverflow.new(harm_cause, harm_type))
+			e.push(SOverloadMorale.new(target.id, over, GConst.CAUSE_OVERLOAD, harm_cause, harm_type))
 			e._broadcast_game()
 			return BattleEngine.CONTINUE
 		e.ask_respond(target.id, GConst.RespondType.Discard, [target.id, GConst.CAUSE_OVERLOAD, over], [target.id])
@@ -1289,8 +2085,9 @@ class SHandOverflow:
 		return BattleEngine.WAIT
 
 
-## 超限掉士气（可等待玩家输入）：依次跑 p_before_lose_morale → p_lose_morale → 扣士气 → p_true_lose_morale
-## 对应服务端 StateBeforeLoseMorale → StateLoseMorale → StateTrueLoseMorale。
+## 超限掉士气（可等待玩家输入）：依次跑完整掉士气链 ——
+## p_before_lose_morale → p_xin_yue → p_lose_morale → p_fix_morale → 扣士气 → p_true_lose_morale
+## 对应服务端 StateBeforeLoseMorale → StateXinYue → StateLoseMorale → StateFixMorale → StateTrueLoseMorale。
 ## 仅在「干净栈位」（SHandOverflow 内）压入，故允许钩子等待玩家输入（如天使的神之庇护 706）；
 ## 由角色在自身钩子中途触发的掉士气仍走同步 lose_morale()（其栈位不能安全等待）。
 class SOverloadMorale:
@@ -1304,10 +2101,12 @@ class SOverloadMorale:
 		if started:
 			return BattleEngine.CONTINUE
 		started = true
-		# 逆序压栈：p_before_lose_morale → p_lose_morale → 扣士气 → p_true_lose_morale
+		# 逆序压栈：p_before → p_xin_yue → p_lose_morale → p_fix_morale → 扣士气 → p_true
 		e.push(SHook.new("p_true_lose_morale", ctx, []))
 		e.push(SApplyOverloadMorale.new(target_id, ctx))
+		e.push(SHook.new("p_fix_morale", ctx, []))
 		e.push(SHook.new("p_lose_morale", ctx, []))
+		e.push(SHook.new("p_xin_yue", ctx, []))
 		e.push(SHook.new("p_before_lose_morale", ctx, []))
 		return BattleEngine.SUSPEND
 
@@ -1385,11 +2184,10 @@ func _reject_action(cur: BattlePlayer) -> int:
 
 func resolve_action(action_type: int, data: Dictionary) -> int:
 	var cur: BattlePlayer = players.get(current_id)
-	# 动作合法性总闸：角色可用 v_allow_action 覆写（如「审判满 4 时该阶段只能发动末日审判」）
-	var 总闸: int = cur.v_allow_action(action_type, data.get("args", [])) if cur != null else GConst.GE_SUCCESS
+	# 行动合法性总闸：对照原版 StateActionPhase → PlayerEntity::v_allow_action(action, allowAction, canGiveUp)。
+	# 角色可覆写 v_allow_action 追加限制（如「审判满 4 时该阶段只能发动末日审判」「暗影抗拒禁用法术牌」）
+	var 总闸: int = cur.v_allow_action(action_type, data.get("args", []), 行动允许, 行动可放弃) if cur != null else GConst.GE_SUCCESS
 	if 总闸 != GConst.GE_SUCCESS:
-		# 临时诊断（收工前删）
-		print("[战斗诊断] 行动被拒：v_allow_action(action_type=%d) 返回 %d" % [action_type, 总闸])
 		return _reject_action(cur)
 	match action_type:
 		GConst.ActionType.None:
@@ -1458,8 +2256,6 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# 防守方角色可拒绝被选为目标（如暗杀者潜行中「不能成为主动攻击的目标」）
 	var dst_p: BattlePlayer = players.get(dst_id)
 	if dst_p != null and dst_p.v_attacked() != GConst.GE_SUCCESS:
-		print("[战斗诊断] 攻击被拒：目标角色 v_attacked 返回 %d" % dst_p.v_attacked())
-		# 临时诊断
 		return _reject_action(cur)
 	push_after_action("p_after_attack", {"player": cur.id, "card_id": cid, "dst": dst_id})
 	take_from_hand(cur.id, [cid])
@@ -1497,26 +2293,31 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		if cur.v_shield(dst_id, players) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
 		take_from_hand(cur.id, [cid])
-		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
-		_broadcast_game()
+		# 先压「行动结束」再压基础效果变更钩子：LIFO 下钩子先跑（对照服务端 basicMagic：
+		# StateAfterMagic 先入栈、随后 setStateUseCard 把 StateBasicEffectChange 压在其上）。
+		# 顺序颠倒会把钩子压在回合结束乃至下家整回合之下，天使羁绊这类钩子实际不会触发
 		push_after_action("p_after_magic", {"src": cur.id, "card_id": cid})
+		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
+		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Weaken:
 		if cur.v_weaken(dst_id, players) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
 		take_from_hand(cur.id, [cid])
-		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
-		_broadcast_game()
+		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
 		push_after_action("p_after_magic", {"src": cur.id, "card_id": cid})
+		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
+		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Poison:
 		take_from_hand(cur.id, [cid])
-		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
-		_broadcast_game()
+		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
 		push_after_action("p_after_magic", {"src": cur.id, "card_id": cid})
+		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
+		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Missile:
 		# 落点默认是右手边最近的对手；有【魔弹掌握】802 的角色可以把落点选成左手边那个
@@ -1560,18 +2361,13 @@ func _nearest_enemy(cur: BattlePlayer) -> int:
 	return -1
 
 
-## 本次可以把魔弹传给谁（候选）：默认只有「当前传递方向上最近、本轮还没接过的对手」；
-## 有【魔弹掌握】802 的角色另一个方向上那个人也能选（方向随之改写）。
+## 本次可以把魔弹传给谁（候选）：只有「当前传递方向上最近、本轮还没接过的对手」。
+## 传递时一律不能改方向（【魔弹掌握】802 只作用于「主动打出」那一步，见 BattleRole.missile_targets）
 func _missile_relay_targets(holder: int, post_dir: bool, used: Array[int]) -> Array[int]:
 	var out: Array[int] = []
 	var 顺: int = _next_missile_target(holder, post_dir, used)
 	if 顺 >= 0:
 		out.append(顺)
-	var h: BattlePlayer = players.get(holder)
-	if h != null and h.role != null and h.role.has_missile_mastery():
-		var 逆: int = _next_missile_target(holder, not post_dir, used)
-		if 逆 >= 0 and not out.has(逆):
-			out.append(逆)
 	return out
 
 
@@ -1644,7 +2440,7 @@ func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
 		push(SHandOverflow.new())
 		return CONTINUE
 	if aid == GConst.SpecialAction.Synthesize:
-		if cur.v_synthesize(args, team_energy(cur.color)) != GConst.GE_SUCCESS:
+		if cur.v_synthesize(args, team_energy(cur.color), team_gem[cur.color], team_crystal[cur.color]) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
 		_spend_team_energy(cur.color, int(args[0]) if args.size() > 0 else 0, int(args[1]) if args.size() > 1 else 0)
 		team_grail[cur.color] += 1
@@ -1702,16 +2498,16 @@ func lose_morale(target: BattlePlayer, amount: int, cause: int) -> void:
 		"dst": target.id, "amount": amount, "cause": cause,
 		"harm_cause": last_harm_cause, "type": last_harm_type,
 	}
-	for pid: int in order:
-		var p0: BattlePlayer = players.get(pid)
-		if p0 != null and p0.role != null:
-			p0.role.call_hook("p_before_lose_morale", ctx)
+	# 对照原版掉士气链：StateBeforeLoseMorale → StateXinYue → StateLoseMorale → StateFixMorale
+	# → StateTrueLoseMorale，全部跑完才真正扣士气（角色在钩子里可以改 ctx["amount"]，
+	# 如天使【神之庇护】抵消、蝶舞【凋灵】把对方士气兜到最少 1）
+	for 钩子: String in ["p_before_lose_morale", "p_xin_yue", "p_lose_morale", "p_fix_morale", "p_true_lose_morale"]:
+		for pid: int in order:
+			var p0: BattlePlayer = players.get(pid)
+			if p0 != null and p0.role != null:
+				p0.role.call_hook(钩子, ctx)
 	amount = int(ctx.get("amount", amount))
 	set_morale(target.color, team_morale[target.color] - amount)
-	for pid2: int in order:
-		var p1: BattlePlayer = players.get(pid2)
-		if p1 != null and p1.role != null:
-			p1.role.call_hook("p_true_lose_morale", ctx)
 	last_harm_cause = 0
 	last_harm_type = 0
 	_check_game_over()

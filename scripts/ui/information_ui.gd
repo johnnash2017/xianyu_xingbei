@@ -30,12 +30,35 @@ const 技能类型颜色: Dictionary = {
 }
 
 
-## 给一段拼好的技能说明上色（一级标题、说明续行原样；正文行首的【类型】套 BBCode 颜色）
-## 详情窗和选角提示都用它，省得两处各写一遍
-static func 上色(技能文本: String) -> String:
+## 技能文本里正文行的前缀（data_interface._拼技能文本 给每条技能正文加的「　　」）；
+## 拿它区分「四个一级标题」（无前缀）与「技能正文」（有前缀）
+const 正文前缀: String = "　　"
+## 详情窗技能正文的字号（与 InfomationUI.tscn 的 SkillText normal_font_size 一致）
+const 详情窗正文字号: int = 18
+## 选角提示框技能正文的字号（与 SkillTooltip.tscn 的 normal_font_size 一致）
+const 提示框正文字号: int = 36
+
+
+## 给一段拼好的技能说明上色并排版：
+##  - 一级标题按 正文字号 的 1.5 倍放大；
+##  - 正文整行用 [indent] 缩进（用 [indent] 而非前缀空格，自动换行的续行也跟着缩进，不再和标题同列）；
+##  - 行首的【类型】套 BBCode 颜色。
+## 行与行之间的间距不在这里处理：改由 RichTextLabel 的 paragraph_separation 主题常量统一给
+## （见 InfomationUI.tscn 的 SkillText 与 SkillTooltip.tscn）。不再往文本里插空行——空行本身会占掉
+## 一整行高，反而没法把间距压小（这正是之前怎么调都不变的原因）。
+## 详情窗和选角提示都用它，省得两处各写一遍。正文字号 0＝除上色外不做排版
+static func 上色(技能文本: String, 正文字号: int = 0) -> String:
+	var 标题字号: int = int(正文字号 * 1.5)
 	var 行列表: Array[String] = []
 	for 行文本: String in 技能文本.split("\n"):
-		行列表.append(_染类型(行文本))
+		if 行文本.begins_with(正文前缀):
+			# 正文：去掉「　　」前缀，改用 [indent] 整体缩进
+			行列表.append("[indent]%s[/indent]" % _染类型(行文本.substr(正文前缀.length())))
+		elif 标题字号 > 0:
+			# 一级标题（普通技 / 独有技 / 专属技 / 必杀技）：放大字号
+			行列表.append("[font_size=%d]%s[/font_size]" % [标题字号, 行文本])
+		else:
+			行列表.append(_染类型(行文本))
 	return "\n".join(行列表)
 
 
@@ -58,7 +81,7 @@ func 打开(角色号: int) -> void:
 	var 派系: String = Data.role_property(角色号)
 	RoleProperty.texture = Art.role_property_icon(派系)
 	RoleProperty.visible = RoleProperty.texture != null
-	SkillText.text = 上色(Data.role_skill_info(角色号))
+	SkillText.text = 上色(Data.role_skill_info(角色号), 详情窗正文字号)
 	visible = true
 
 

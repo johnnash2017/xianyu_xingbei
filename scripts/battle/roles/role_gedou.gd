@@ -54,27 +54,34 @@ func _set_dou_qi(v: int) -> void:
 	t["num"] = clampi(v, 0, int(t["max"]))
 
 
+## 【百式幻龙拳 / 斗神天驱】的推进阶段（0＝还没开始 / BAI_SHI_HUAN_LONG_QUAN＝在问百式 / DOU_SHEN_TIAN_QU＝在问斗神）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _boot_step: int = 0
+
+
 # ============================================================
 # 启动（自己回合开始）：百式幻龙拳 / 斗神天驱
 # ============================================================
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _boot_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
+	if _boot_step == 0:
 		_bai_shi_activated = false
-		step = BAI_SHI_HUAN_LONG_QUAN
-	if step == BAI_SHI_HUAN_LONG_QUAN:
+		_boot_step = BAI_SHI_HUAN_LONG_QUAN
+	if _boot_step == BAI_SHI_HUAN_LONG_QUAN:
 		var r: int = _ask_bai_shi()
 		if r == WAIT:
 			return WAIT
-		step = DOU_SHEN_TIAN_QU if (player.get_energy() > 0 and not _bai_shi_activated) else STEP_DONE
-	if step == DOU_SHEN_TIAN_QU:
+		_boot_step = DOU_SHEN_TIAN_QU if (player.get_energy() > 0 and not _bai_shi_activated) else 0
+	if _boot_step == DOU_SHEN_TIAN_QU:
 		var r2: int = _ask_dou_shen()
 		if r2 == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_boot_step = 0
 	return SUCCESS
 
 
@@ -83,7 +90,7 @@ func _ask_bai_shi() -> int:
 	if _dou_qi() < 3:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, BAI_SHI_HUAN_LONG_QUAN, 0, 0)
+		询问(player.id, BAI_SHI_HUAN_LONG_QUAN, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -101,7 +108,7 @@ func _ask_dou_shen() -> int:
 	if player.get_energy() <= 0:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, DOU_SHEN_TIAN_QU, 1, 0)
+		询问(player.id, DOU_SHEN_TIAN_QU, 1, 0)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -112,7 +119,7 @@ func _ask_dou_shen() -> int:
 		player.set_crystal(player.crystal - 1)
 	else:
 		player.set_gem(player.gem - 1)
-	player.add_cross_num(2)
+	施加治疗(player.id, 2)
 	var over: int = player.hand_cards.size() - DOU_SHEN_KEEP_HAND
 	if over > 0:
 		var chosen: Array = _pick_cards(r.get("card_ids", []), over)
@@ -143,43 +150,50 @@ func _pick_cards(ids: Array, n: int) -> Array:
 	return out
 
 
+## 【蓄力一击 / 苍炎之魂 / 百式幻龙拳】的推进阶段（0＝还没开始 / XU_LI_CANG_YAN＝选蓄力或苍炎 / XU_LI_YI_JI＝在问蓄力 / CANG_YAN_ZHI_HUN＝在问苍炎 / BAI_SHI_HUAN_LONG_QUAN＝结算百式加成）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
 # ============================================================
 # 主动攻击宣告后：蓄力一击 / 苍炎之魂 → 百式幻龙拳加成
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
+	if _timeline_1_step == 0:
 		_xu_li_applied = false
-		step = XU_LI_CANG_YAN
-	if step == XU_LI_CANG_YAN:
+		_timeline_1_step = XU_LI_CANG_YAN
+	if _timeline_1_step == XU_LI_CANG_YAN:
 		if not bool(ctx.get("is_active", false)):
-			step = BAI_SHI_HUAN_LONG_QUAN
+			_timeline_1_step = BAI_SHI_HUAN_LONG_QUAN
 		elif _dou_qi() < TOKEN_DOU_QI_MAX:
-			step = XU_LI_YI_JI
+			_timeline_1_step = XU_LI_YI_JI
 		else:
-			step = CANG_YAN_ZHI_HUN
-	if step == XU_LI_YI_JI:
+			_timeline_1_step = CANG_YAN_ZHI_HUN
+	if _timeline_1_step == XU_LI_YI_JI:
 		var r: int = _xu_li_yi_ji(ctx)
 		if r == WAIT:
 			return WAIT
-		step = BAI_SHI_HUAN_LONG_QUAN if _xu_li_applied else CANG_YAN_ZHI_HUN
-	if step == CANG_YAN_ZHI_HUN:
+		_timeline_1_step = BAI_SHI_HUAN_LONG_QUAN if _xu_li_applied else CANG_YAN_ZHI_HUN
+	if _timeline_1_step == CANG_YAN_ZHI_HUN:
 		var r2: int = _cang_yan_zhi_hun(ctx)
 		if r2 == WAIT:
 			return WAIT
-		step = BAI_SHI_HUAN_LONG_QUAN
-	if step == BAI_SHI_HUAN_LONG_QUAN:
+		_timeline_1_step = BAI_SHI_HUAN_LONG_QUAN
+	if _timeline_1_step == BAI_SHI_HUAN_LONG_QUAN:
 		_bai_shi_harm(ctx)
-		step = STEP_DONE
+		_timeline_1_step = 0
 	return SUCCESS
 
 
 func _xu_li_yi_ji(ctx: Dictionary) -> int:
 	if not engine.has_reply():
-		engine.ask_skill(player.id, XU_LI_YI_JI, 0, 0)
+		询问(player.id, XU_LI_YI_JI, 0, 0)
 		return WAIT
 	_xu_li_applied = take_skill_reply()
 	if not _xu_li_applied:
@@ -201,7 +215,7 @@ func _cang_yan_zhi_hun(ctx: Dictionary) -> int:
 	if _dou_qi() <= 0:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, CANG_YAN_ZHI_HUN, 0, 0)
+		询问(player.id, CANG_YAN_ZHI_HUN, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -295,6 +309,13 @@ func p_after_attack(ctx: Dictionary) -> int:
 	return URGENT
 
 
+## 【念弹】的推进阶段（0＝还没开始 / NIAN_DAN＝正在询问并结算念弹）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己法术行动结束（p_after_magic）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _nian_dan_step: int = 0
+
+
 # ============================================================
 # 法术行动结束后：念弹
 # ============================================================
@@ -302,15 +323,15 @@ func p_after_magic(ctx: Dictionary) -> int:
 	# 法术牌行动传 src，法术技能传 player
 	if int(ctx.get("player", ctx.get("src", -1))) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _nian_dan_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = NIAN_DAN
-	if step == NIAN_DAN:
+	if _nian_dan_step == 0:
+		_nian_dan_step = NIAN_DAN
+	if _nian_dan_step == NIAN_DAN:
 		var r: int = _nian_dan()
 		if r == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_nian_dan_step = 0
 	return SUCCESS
 
 
@@ -318,7 +339,7 @@ func _nian_dan() -> int:
 	if _dou_qi() >= TOKEN_DOU_QI_MAX:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, NIAN_DAN, 0, 1)
+		询问(player.id, NIAN_DAN, 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])

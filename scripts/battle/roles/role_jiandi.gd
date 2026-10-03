@@ -62,27 +62,34 @@ func _cover_card_of(ids: Array) -> int:
 # ============================================================
 # 主动攻击宣告前：天使之魂 / 恶魔之魂（移除 1 张【剑魂】）
 # ============================================================
+## 【天使之魂 / 恶魔之魂】的推进阶段（0＝还没开始 / TIAN_SHI_ZHI_HUN 或 E_MO_ZHI_HUN＝已定形态、等回复）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	if player.cover_count() == 0:
 		return SUCCESS
 	# 同一轮钩子内只询问一次（ctx 在钩子轮次内保持不变）
-	if bool(ctx.get("jian_di_hun_done", false)) or step >= STEP_DONE:
+	if bool(ctx.get("jian_di_hun_done", false)) or _timeline_1_step >= STEP_DONE:
 		return SUCCESS
 	var form: int = _soul_form()
 	if form == 0:
 		return SUCCESS
 	var skill_id: int = TIAN_SHI_ZHI_HUN if form == 1 else E_MO_ZHI_HUN
-	if step == 0:
-		step = skill_id
-	if step != skill_id:
+	if _timeline_1_step == 0:
+		_timeline_1_step = skill_id
+	if _timeline_1_step != skill_id:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, skill_id, 1, 0, GConst.CardSource.Cover)
+		询问(player.id, skill_id, 1, 0, GConst.CardSource.Cover)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
+	_timeline_1_step = 0
 	ctx["jian_di_hun_done"] = true
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
@@ -91,8 +98,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if cid < 0:
 		return SUCCESS
 	notice_skill(skill_id, [int(ctx.get("dst", -1))])
-	player.remove_cover_cards([cid])
 	engine.to_discard([cid])
+	engine.remove_cover(player.id, [cid], player.id, skill_id)
 	if skill_id == TIAN_SHI_ZHI_HUN:
 		used_tian_shi_zhi_hun = true
 	else:
@@ -104,53 +111,67 @@ func p_timeline_1(ctx: Dictionary) -> int:
 # ============================================================
 # 主动攻击命中后：剑气斩 → 恶魔之魂（+1 伤害）→ 天使之魂（+2 治疗）
 # ============================================================
+## 【剑气斩 / 恶魔之魂 / 天使之魂】的推进阶段（0＝还没开始 / JIAN_QI_ZHAN＝在问剑气斩 /
+## E_MO_ZHI_HUN＝结算恶魔之魂 / TIAN_SHI_ZHI_HUN＝结算天使之魂）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动攻击命中（p_timeline_2_hit）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_2_hit_step: int = 0
+
+
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_2_hit_step >= STEP_DONE:
 		return SUCCESS
 	var urgent: bool = false
-	if step == 0:
-		step = JIAN_QI_ZHAN
-	if step == JIAN_QI_ZHAN:
+	if _timeline_2_hit_step == 0:
+		_timeline_2_hit_step = JIAN_QI_ZHAN
+	if _timeline_2_hit_step == JIAN_QI_ZHAN:
 		if int(player.tokens[0]["num"]) <= 0 or bool(ctx.get("jian_di_jqz_done", false)):
-			step = E_MO_ZHI_HUN
+			_timeline_2_hit_step = E_MO_ZHI_HUN
 		else:
 			if not engine.has_reply():
-				engine.ask_skill(player.id, JIAN_QI_ZHAN, 0, 1)
+				# 移除的【剑气】数（原版上限 min(3, 当前剑气)）做成选项：通用客户端只回一维 args，
+				# 原版「args=[1, 数量]」的第二维拿不到，故把数量直接作为选项值，服务端改读 args[0]。
+				# 本技能还要选目标，客户端会先选目标再点选项按钮（回 args=[选项值]，目标在 dst_ids）。
+				var 剑气: int = int(player.tokens[0]["num"])
+				var 选项: Array = []
+				for n: int in range(1, mini(3, 剑气) + 1):
+					选项.append({"value": n, "label": "移除 %d 点【剑气】" % n})
+				询问(player.id, JIAN_QI_ZHAN, 0, 1, GConst.CardSource.Hand, 选项)
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
 			ctx["jian_di_jqz_done"] = true
 			var args: Array = r.get("args", [])
 			var dsts: Array = r.get("dst_ids", [])
-			if not args.is_empty() and int(args[0]) == 1 and not dsts.is_empty():
-				# 服务端 args(1) 为移除的【剑气】数，客户端未提供时按最低 1 点处理
-				var count: int = int(args[1]) if args.size() > 1 else 1
-				count = mini(maxi(count, 0), int(player.tokens[0]["num"]))
-				if count > 0:
-					notice_skill(JIAN_QI_ZHAN, [int(dsts[0])])
-					player.tokens[0]["num"] = int(player.tokens[0]["num"]) - count
-					engine.push_harm({
-						"src": player.id, "dst": int(dsts[0]), "point": count,
-						"cause": JIAN_QI_ZHAN, "type": GConst.HarmType.Magic,
-					})
-					urgent = true
-			step = E_MO_ZHI_HUN
-	if step == E_MO_ZHI_HUN:
+			# 选项值即移除的【剑气】数；<=0（取消/超时）＝不发动
+			var count: int = int(args[0]) if not args.is_empty() else 0
+			count = mini(maxi(count, 0), int(player.tokens[0]["num"]))
+			if count > 0 and not dsts.is_empty():
+				notice_skill(JIAN_QI_ZHAN, [int(dsts[0])])
+				player.tokens[0]["num"] = int(player.tokens[0]["num"]) - count
+				engine.push_harm({
+					"src": player.id, "dst": int(dsts[0]), "point": count,
+					"cause": JIAN_QI_ZHAN, "type": GConst.HarmType.Magic,
+				})
+				urgent = true
+			_timeline_2_hit_step = E_MO_ZHI_HUN
+	if _timeline_2_hit_step == E_MO_ZHI_HUN:
 		if used_e_mo_zhi_hun and not bool(ctx.get("jian_di_emo_done", false)):
 			ctx["jian_di_emo_done"] = true
 			used_e_mo_zhi_hun = false
 			notice_skill(E_MO_ZHI_HUN, [int(harm.get("dst", -1))])
 			harm["point"] = int(harm.get("point", 0)) + 1
-		step = TIAN_SHI_ZHI_HUN
-	if step == TIAN_SHI_ZHI_HUN:
+		_timeline_2_hit_step = TIAN_SHI_ZHI_HUN
+	if _timeline_2_hit_step == TIAN_SHI_ZHI_HUN:
 		if used_tian_shi_zhi_hun and not bool(ctx.get("jian_di_tianshi_done", false)):
 			ctx["jian_di_tianshi_done"] = true
 			used_tian_shi_zhi_hun = false
 			notice_skill(TIAN_SHI_ZHI_HUN, [player.id])
-			player.add_cross_num(2)
-		step = STEP_DONE
+			施加治疗(player.id, 2)
+		_timeline_2_hit_step = 0
 	engine._broadcast_game()
 	return URGENT if urgent else SUCCESS
 
@@ -198,7 +219,7 @@ func _jian_hun_shou_hu(ctx: Dictionary) -> void:
 		return
 	notice_skill(JIAN_HUN_SHOU_HU, [player.id])
 	engine.deck.remove_one(cid)
-	player.add_cover_cards([cid])
+	engine.add_cover(player.id, [cid], player.id, JIAN_HUN_SHOU_HU)
 
 
 ## 天使之魂未命中：我方士气 +1（未达上限时）
@@ -239,4 +260,6 @@ func p_additional_action(ctx: Dictionary) -> int:
 		player.tokens[0]["num"] = int(player.tokens[0]["num"]) + 1
 	engine.draw(player.id, 1)
 	engine._broadcast_game()
+	# 服务端 BuQuYiZhi 结束时复位标记：本次额外攻击结算完后，若仍有能量可再次获得
+	added_bu_qu_yi_zhi = false
 	return SUCCESS

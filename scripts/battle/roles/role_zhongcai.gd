@@ -48,10 +48,13 @@ func available_skills() -> Array:
 # 引擎的钩子不携带 action_id，故此处只按动作类型放行「法术技能」，
 # 非【末日审判】的法术（如判决天平）由 v_magic_skill 中的 token 上限检查继续驳回
 # ============================================================
-func v_allow_action(action_type: int, args: Array) -> int:
-	var base: int = player.base_v_allow_action(action_type, args)
+func v_allow_action(action_type: int, args: Array, allow: int, can_give_up: bool) -> int:
+	var base: int = player.base_v_allow_action(action_type, args, allow, can_give_up)
 	if int(player.tokens[0]["num"]) < TOKEN_MAX:
 		return base
+	# 服务端 ZhongCai::v_allow_action：满审判时仍允许「放弃行动」
+	if can_give_up and action_type == GConst.ActionType.None:
+		return GConst.GE_SUCCESS
 	if action_type == GConst.ActionType.MagicSkill:
 		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
@@ -67,45 +70,53 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 【仲裁仪式 / 仪式中断】的推进阶段（0＝还没开始 / YI_SHI_ZHONG_DUAN＝在问仪式中断 / ZHONG_CAI_YI_SHI＝在问仲裁仪式）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _zhong_cai_boot_step: int = 0
+
+
 # ============================================================
 # 启动：仪式中断（1401）/ 仲裁仪式（1402）
 # ============================================================
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _zhong_cai_boot_step >= STEP_DONE:
 		return SUCCESS
-	if player.tap:
-		if step == 0:
-			step = YI_SHI_ZHONG_DUAN
-		if step == YI_SHI_ZHONG_DUAN:
-			if not engine.has_reply():
-				engine.ask_skill(player.id, YI_SHI_ZHONG_DUAN, 0, 0)
-				return WAIT
-			step = STEP_DONE
-			if not take_skill_reply():
-				return SUCCESS
-			notice_skill(YI_SHI_ZHONG_DUAN, [player.id])
-			engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
-			player.tap = false
-			player.hand_cards_max = HAND_MAX_NORMAL
-			engine._broadcast_game()
+	if _zhong_cai_boot_step == 0:
+		if player.tap:
+			_zhong_cai_boot_step = YI_SHI_ZHONG_DUAN
+		elif player.gem > 0:
+			_zhong_cai_boot_step = ZHONG_CAI_YI_SHI
+		else:
+			return SUCCESS
+	if _zhong_cai_boot_step == YI_SHI_ZHONG_DUAN:
+		if not engine.has_reply():
+			询问(player.id, YI_SHI_ZHONG_DUAN, 0, 0)
+			return WAIT
+		_zhong_cai_boot_step = 0
+		if not take_skill_reply():
+			return SUCCESS
+		notice_skill(YI_SHI_ZHONG_DUAN, [player.id])
+		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
+		player.tap = false
+		player.hand_cards_max = HAND_MAX_NORMAL
+		engine._broadcast_game()
 		return SUCCESS
-	if player.gem > 0:
-		if step == 0:
-			step = ZHONG_CAI_YI_SHI
-		if step == ZHONG_CAI_YI_SHI:
-			if not engine.has_reply():
-				engine.ask_skill(player.id, ZHONG_CAI_YI_SHI, 0, 0)
-				return WAIT
-			step = STEP_DONE
-			if not take_skill_reply():
-				return SUCCESS
-			notice_skill(ZHONG_CAI_YI_SHI, [player.id])
-			player.set_gem(player.gem - 1)
-			player.tap = true
-			player.hand_cards_max = HAND_MAX_TRIAL
-			engine._broadcast_game()
+	if _zhong_cai_boot_step == ZHONG_CAI_YI_SHI:
+		if not engine.has_reply():
+			询问(player.id, ZHONG_CAI_YI_SHI, 0, 0)
+			return WAIT
+		_zhong_cai_boot_step = 0
+		if not take_skill_reply():
+			return SUCCESS
+		notice_skill(ZHONG_CAI_YI_SHI, [player.id])
+		player.set_gem(player.gem - 1)
+		player.tap = true
+		player.hand_cards_max = HAND_MAX_TRIAL
+		engine._broadcast_game()
 	return SUCCESS
 
 
@@ -183,6 +194,7 @@ func _pan_jue_tian_ping(action: Dictionary) -> int:
 		var all_cards: Array = player.hand_cards.duplicate()
 		engine.take_from_hand(player.id, all_cards)
 		engine.to_discard(all_cards)
+		engine._log_discard(player.id, all_cards)
 	else:
 		var need: int = player.hand_cards_max - player.hand_cards.size()
 		if need > 0:

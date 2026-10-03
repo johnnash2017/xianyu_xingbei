@@ -11,10 +11,6 @@ extends BattleRole
 ##                 目标 3 点法术伤害（目标手牌＜3 且手牌上限＞5 时为 5 点））、
 ##       灵魂赐予（2202，法术：弃 1 张带【灵魂赐予】的牌 + 3 蓝魂 → 目标 +2 宝石）、
 ##       灵魂镜像（2207，法术：耗 2 黄魂 → 自身弃最多 3 张牌，目标摸牌最多 3 张（不超其手牌上限））
-##
-## 受限说明：
-## - 灵魂吞噬仅能感知「自己」掉士气：本引擎 lose_morale 只调用伤害承受者本人的 p_true_lose_morale，
-##   队友掉士气时灵魂术士的角色对象不会收到通知（服务端 StateTrueLoseMorale 会遍历全场）。
 
 const LING_HUN_ZHEN_BAO: int = 2201          # 灵魂震爆
 const LING_HUN_CI_YU: int = 2202             # 灵魂赐予
@@ -51,8 +47,9 @@ func available_skills() -> Array:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHAO_HUAN, "need_card": 1, "need_target": 0,
 			"cards": 法术牌, "card_max": 法术牌.size()})
 	if _huang() >= 2:
-		# v_magic_skill 只校验黄魂数与目标；执行体最多弃 3 张（mini(cards.size(), 3)），故放开选牌上限
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_JING_XIANG, "need_card": 1, "need_target": 1,
+		# v_magic_skill 只校验黄魂数与目标；执行体最多弃 3 张（mini(cards.size(), 3)），
+		# 服务端允许一张都不弃（cardNum 可为 0），故 need_card=0、上限放开到 3
+		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_JING_XIANG, "need_card": 0, "need_target": 1,
 			"card_max": 3})
 	# 灵魂震爆/灵魂赐予：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
 	# （v_magic_skill 校验同一张牌：须在手且带该特技）
@@ -126,7 +123,8 @@ func _show_and_discard(cards: Array) -> void:
 # 灵魂吞噬（2204，被动）：我方每损失 1 点士气 → +1 黄魂
 # ============================================================
 func p_true_lose_morale(ctx: Dictionary) -> int:
-	if int(ctx.get("dst", -1)) != player.id:
+	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+	if dst == null or dst.color != player.color:
 		return SUCCESS
 	var amount: int = int(ctx.get("amount", 0))
 	if amount <= 0:
@@ -145,26 +143,33 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 # ============================================================
 # 启动（自己回合）：灵魂增幅（2203）→ 灵魂链接（2208）
 # ============================================================
+## 【灵魂增幅 / 灵魂链接】的推进阶段（0＝还没开始 / LING_HUN_ZENG_FU＝在处理灵魂增幅 / LING_HUN_LIAN_JIE＝在处理灵魂链接）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 自己回合启动（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _boot_step: int = 0
+
+
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _boot_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = LING_HUN_ZENG_FU
-	if step == LING_HUN_ZENG_FU:
+	if _boot_step == 0:
+		_boot_step = LING_HUN_ZENG_FU
+	if _boot_step == LING_HUN_ZENG_FU:
 		var r: int = _zeng_fu()
 		if r == WAIT:
 			return WAIT
 		if _huang() > 0 and _lan() > 0 and not used_lian_jie and not used_zeng_fu:
-			step = LING_HUN_LIAN_JIE
+			_boot_step = LING_HUN_LIAN_JIE
 		else:
-			step = STEP_DONE
-	if step == LING_HUN_LIAN_JIE:
+			_boot_step = 0
+	if _boot_step == LING_HUN_LIAN_JIE:
 		var r2: int = _lian_jie()
 		if r2 == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_boot_step = 0
 	return SUCCESS
 
 
@@ -173,7 +178,7 @@ func _zeng_fu() -> int:
 	if player.gem <= 0:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, LING_HUN_ZENG_FU, 0, 0)
+		询问(player.id, LING_HUN_ZENG_FU, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -192,7 +197,7 @@ func _lian_jie() -> int:
 	if (player.hand_cards.is_empty() and _huang() < 3) or engine.order.size() == 4:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, LING_HUN_LIAN_JIE, 0, 1)
+		询问(player.id, LING_HUN_LIAN_JIE, 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -216,6 +221,13 @@ func _lian_jie() -> int:
 # ============================================================
 # 灵魂转换（2206）：主动攻击宣告后可转换 1 点灵魂颜色
 # ============================================================
+## 【灵魂转换】的推进阶段（0＝还没问 / 处理完本次转换后清回 0）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
@@ -223,13 +235,20 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _huang() <= 0 and _lan() <= 0:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, LING_HUN_ZHUAN_HUAN, 0, 0)
+		# 两个方向各做成一个选项（value 0=黄→蓝、1=蓝→黄），只列当前真有对应灵魂的项；
+		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消，0 才能正常当选项值）
+		var 选项: Array = []
+		if _huang() > 0:
+			选项.append({"value": 0, "label": "黄 → 蓝"})
+		if _lan() > 0:
+			选项.append({"value": 1, "label": "蓝 → 黄"})
+		询问(player.id, LING_HUN_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand, 选项)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
+	_timeline_1_step = 0
 	var args: Array = r.get("args", [])
 	if args.is_empty():
 		return SUCCESS
@@ -253,6 +272,13 @@ func p_timeline_1(ctx: Dictionary) -> int:
 # 灵魂链接·转移（2209）：伤害结算前把 X 点伤害转移给另一端
 # 服务端把转移后的伤害以「目标摸 X 张牌」结算（Timeline6）
 # ============================================================
+## 【灵魂链接·转移】的推进阶段（0＝还没问 / 处理完本次转移后清回 0）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次【灵魂链接】的一端承受伤害（p_timeline_6）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_6_step: int = 0
+
+
 func p_timeline_6(ctx: Dictionary) -> int:
 	if not used_lian_jie:
 		return SUCCESS
@@ -262,13 +288,18 @@ func p_timeline_6(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _lan() < 1 or using_lian_jie or int(harm.get("point", 0)) < 1:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_6_step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, LING_HUN_LIAN_JIE_REACT, 0, 0)
+		# 可转移点数上限＝min(蓝魂数, 本次伤害)：做成选项按钮（服务端会把 con->harm.point 下发给客户端限制）
+		var 上限: int = mini(_lan(), int(harm.get("point", 0)))
+		var options: Array = []
+		for x: int in range(1, 上限 + 1):
+			options.append({"value": x, "label": "转移 %d 点（耗 %d 蓝魂，由另一端摸 %d 张）" % [x, x, x]})
+		询问(player.id, LING_HUN_LIAN_JIE_REACT, 0, 0, GConst.CardSource.Hand, options)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
+	_timeline_6_step = 0
 	var args: Array = r.get("args", [])
 	var howmany: int = int(args[0]) if not args.is_empty() else 0
 	if howmany <= 0 or howmany > _lan():
@@ -384,6 +415,7 @@ func _zhen_bao(action: Dictionary) -> int:
 	})
 	engine.take_from_hand(player.id, [cid])
 	engine.to_discard([cid])
+	engine._log_discard(player.id, [cid])
 	engine._broadcast_game()
 	return URGENT
 

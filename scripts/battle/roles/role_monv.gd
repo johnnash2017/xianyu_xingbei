@@ -20,7 +20,6 @@ const MO_NV_ZHI_NU_DRAW: int = 30032
 const TI_SHEN_WAN_OU: int = 3004
 const YONG_SHENG_YIN_SHI_JI: int = 3005
 const TONG_KU_LIAN_JIE: int = 3006
-const TONG_KU_LIAN_JIE_CARD: int = 30061
 const MO_NENG_FAN_ZHUAN: int = 3007
 
 ## 服务端用以代替任意攻击牌的虚拟卡：火焰斩
@@ -96,6 +95,26 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 	return _get_away_from_fire()
 
 
+# ============================================================
+# 应战：烈焰形态(tap)下，用火系牌应战＝视为打出虚拟【火焰斩】(87)
+# 对应服务端 MoNv::p_reattack → ToFire：cardID=87、realCard=false。
+# 真牌仍然从手牌进弃牌堆并展示（由引擎结算），反击用的是这张虚拟牌
+# ============================================================
+func p_reattack(ctx: Dictionary) -> int:
+	if int(ctx.get("doer", -1)) != player.id or not player.tap:
+		return SUCCESS
+	var c: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+	if c == null or not c.is_attack():
+		return SUCCESS
+	var 系别: int = c.element_enum()
+	# 服务端 MoNv::IsFired：横置形态下「除水/暗/火之外的攻击牌」才视为火系，应战时改用虚拟【火焰斩】
+	if 系别 == GConst.CardElement.Fire or 系别 == GConst.CardElement.Water or 系别 == GConst.CardElement.Darkness:
+		return SUCCESS
+	ctx["改用"] = VIRTUAL_FIRE_SLASH
+	ctx["real"] = false
+	return SUCCESS
+
+
 func _get_away_from_fire() -> int:
 	if not player.tap:
 		return SUCCESS
@@ -108,30 +127,43 @@ func _get_away_from_fire() -> int:
 # ============================================================
 # 启动：魔女之怒（手牌 ≤ 3 时进入【烈焰形态】、摸牌并调整手牌上限）
 # ============================================================
+## 【魔女之怒】的推进阶段（0＝还没开始 / MO_NV_ZHI_NU＝在问摸牌数 / MO_NV_ZHI_NU_DRAW＝结算摸牌与形态）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 自己回合启动（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _boot_step: int = 0
+
+
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id or player.hand_cards.size() > 3:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _boot_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = MO_NV_ZHI_NU
-	if step == MO_NV_ZHI_NU:
+	if _boot_step == 0:
+		_boot_step = MO_NV_ZHI_NU
+	if _boot_step == MO_NV_ZHI_NU:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, MO_NV_ZHI_NU, 0, 0)
+			# 摸牌数做成选项：通用客户端只回一维 args，原版「args=[1, 摸牌数]」的第二维拿不到，
+			# 故直接把摸牌数当选项值（0/1/2 对应摸 0/1/2 张，与原版 box 三档一一对应），服务端读 args[0]。
+			# 「取消」回的是空 args（没有给值），所以 0 可以正常表示「摸 0 张牌」
+			var 选项: Array = []
+			for n: int in range(0, 3):
+				选项.append({"value": n, "label": "摸 %d 张牌" % n})
+			询问(player.id, MO_NV_ZHI_NU, 0, 0, GConst.CardSource.Hand, 选项)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
-		if args.is_empty() or int(args[0]) != 1:
-			step = STEP_DONE
+		# 空 args＝取消/超时，不发动（不进入【烈焰形态】）；否则 args[0] 就是摸牌数
+		if args.is_empty():
+			_boot_step = 0
 			return SUCCESS
-		# 服务端 args(1) 为本回合摸牌数（>3 视为非法）
-		var card_num: int = int(args[1]) if args.size() > 1 else 0
-		mo_nv_zhi_nu_card_num = clampi(card_num, 0, 3)
-		step = MO_NV_ZHI_NU_DRAW
-	if step == MO_NV_ZHI_NU_DRAW:
-		step = STEP_DONE
+		var card_num: int = int(args[0])
+		mo_nv_zhi_nu_card_num = card_num
+		_boot_step = MO_NV_ZHI_NU_DRAW
+	if _boot_step == MO_NV_ZHI_NU_DRAW:
+		_boot_step = 0
 		notice_skill(MO_NV_ZHI_NU, [player.id])
-		player.tap = true
+		engine.set_tap(player.id, true)
 		player.hand_cards_max += int(player.tokens[0]["num"]) - 2
 		if mo_nv_zhi_nu_card_num > 0:
 			engine.draw(player.id, mo_nv_zhi_nu_card_num)
@@ -166,11 +198,18 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 # ============================================================
 # 承受伤害时：替身玩偶（攻击伤害）/ 魔能翻转（法术伤害）
 # ============================================================
+## 【替身玩偶 / 魔能翻转】的推进阶段（0＝还没开始 / TI_SHEN_WAN_OU＝在问替身玩偶 / MO_NENG_FAN_ZHUAN＝在问魔能翻转）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己承受伤害（p_timeline_3）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_3_step: int = 0
+
+
 func p_timeline_3(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("dst", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_3_step >= STEP_DONE:
 		return SUCCESS
 	if int(harm.get("type", -1)) == GConst.HarmType.Attack:
 		return _ti_shen_wan_ou(ctx)
@@ -183,15 +222,16 @@ func p_timeline_3(ctx: Dictionary) -> int:
 func _ti_shen_wan_ou(ctx: Dictionary) -> int:
 	if bool(ctx.get("mo_nv_tswo_done", false)):
 		return SUCCESS
-	if step == 0:
-		step = TI_SHEN_WAN_OU
-	if step != TI_SHEN_WAN_OU:
+	if _timeline_3_step == 0:
+		_timeline_3_step = TI_SHEN_WAN_OU
+	if _timeline_3_step != TI_SHEN_WAN_OU:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, TI_SHEN_WAN_OU, 1, 1)
+		# 只能弃法术牌（card_rule = "magic"）：否则界面会把攻击牌等也点亮
+		询问(player.id, TI_SHEN_WAN_OU, 1, 1, GConst.CardSource.Hand, [], 0, "magic")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
+	_timeline_3_step = 0
 	ctx["mo_nv_tswo_done"] = true
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
@@ -226,9 +266,9 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 		return SUCCESS
 	if player.get_energy() < 1:
 		return SUCCESS
-	if step == 0:
-		step = MO_NENG_FAN_ZHUAN
-	if step != MO_NENG_FAN_ZHUAN:
+	if _timeline_3_step == 0:
+		_timeline_3_step = MO_NENG_FAN_ZHUAN
+	if _timeline_3_step != MO_NENG_FAN_ZHUAN:
 		return SUCCESS
 	if not engine.has_reply():
 		# 弃 X 张法术牌（X≥2）：上限放到法术牌张数，并让客户端只让法术牌可点
@@ -237,10 +277,10 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 			var c: GCard = Data.get_card(cid)
 			if c != null and c.is_magic():
 				法术牌.append(cid)
-		engine.ask_skill(player.id, MO_NENG_FAN_ZHUAN, 2, 1, GConst.CardSource.Hand, [], 法术牌.size(), "", 法术牌)
+		询问(player.id, MO_NENG_FAN_ZHUAN, 2, 1, GConst.CardSource.Hand, [], 法术牌.size(), "", 法术牌)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
+	_timeline_3_step = 0
 	ctx["mo_nv_mnfz_done"] = true
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
@@ -372,6 +412,7 @@ func _cang_yan_fa_dian(action: Dictionary) -> int:
 	})
 	engine.take_from_hand(player.id, [cid])
 	engine.to_discard([cid])
+	engine._log_discard(player.id, [cid])
 	engine._broadcast_game()
 	return URGENT
 
@@ -403,31 +444,26 @@ func _tian_huo_duan_kong(action: Dictionary) -> int:
 	})
 	engine.take_from_hand(player.id, cid_list)
 	engine.to_discard(cid_list)
+	engine._log_discard(player.id, cid_list)
 	engine._broadcast_game()
 	return URGENT
 
 
-## 痛苦链接：耗 1 点能量，对目标对手和自己各 1 点法术伤害，然后弃到 3 张牌（弃牌先结算）
+## 痛苦链接：耗 1 点能量，对目标对手和自己各 1 点法术伤害，然后弃到 3 张牌
+## 服务端顺序：先双方各 1 点法术伤害，再弃到 3 张（弃牌排在伤害之后）
 func _tong_ku_lian_jie(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
-	if step == 0:
-		step = TONG_KU_LIAN_JIE
-		notice_skill(TONG_KU_LIAN_JIE, [dst_id])
-		if player.crystal > 0:
-			player.set_crystal(player.crystal - 1)
-		else:
-			player.set_gem(player.gem - 1)
-		engine._broadcast_game()
-		if player.hand_cards.size() >= 4:
-			engine.ask_skill(player.id, TONG_KU_LIAN_JIE_CARD, 1, 0)
-			return WAIT
+	if step != 0:
+		return SUCCESS
 	step = STEP_DONE
-	var chosen: Array = []
-	if engine.has_reply():
-		var r: Dictionary = take_skill_reply_full()
-		chosen = r.get("card_ids", [])
-	_discard_down_to(3, chosen)
+	notice_skill(TONG_KU_LIAN_JIE, [dst_id])
+	if player.crystal > 0:
+		player.set_crystal(player.crystal - 1)
+	else:
+		player.set_gem(player.gem - 1)
+	# 压栈顺序：弃牌 → 自己 1 点 → 目标 1 点，LIFO 弹出即「目标 → 自己 → 弃牌」
+	engine.push(BattleEngine.SRequestDiscard.new(player.id, -1, 3, TONG_KU_LIAN_JIE))
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": 1,
 		"cause": TONG_KU_LIAN_JIE, "type": GConst.HarmType.Magic,
@@ -438,24 +474,6 @@ func _tong_ku_lian_jie(action: Dictionary) -> int:
 	})
 	engine._broadcast_game()
 	return URGENT
-
-
-## 把手牌弃到 keep 张：优先使用客户端给出的牌，不足时自动补齐
-func _discard_down_to(keep: int, chosen: Array) -> void:
-	var over: int = player.hand_cards.size() - keep
-	if over <= 0:
-		return
-	var use: Array = []
-	for c: Variant in chosen:
-		if use.size() < over and player.has_hand_card(int(c)) and not use.has(int(c)):
-			use.append(int(c))
-	for cid: int in player.hand_cards:
-		if use.size() >= over:
-			break
-		if not use.has(cid):
-			use.append(cid)
-	engine.take_from_hand(player.id, use)
-	engine.to_discard(use)
 
 
 # ============================================================
@@ -477,6 +495,12 @@ func v_attack_skill(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst: BattlePlayer = engine.p(int(dsts[0]) if not dsts.is_empty() else player.id)
 	if dst == null or dst.color == player.color:
+		return GConst.GE_INVALID_PLAYERID
+	# 服务端 MoNv::v_attack_skill 会调 v_attack：补上通用攻击限制
+	# （面前有【挑衅】时目标只能是勇者；目标角色可拒绝被攻击，如暗杀者潜行中）
+	if player.check_exclusive_effect(GConst.Exclusive.TiaoXin) and dst.role_id != 21:
+		return GConst.GE_INVALID_PLAYERID
+	if dst.v_attacked() != GConst.GE_SUCCESS:
 		return GConst.GE_INVALID_PLAYERID
 	return GConst.GE_SUCCESS
 

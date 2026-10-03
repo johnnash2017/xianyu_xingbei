@@ -39,7 +39,9 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	if _has_same_property_pair():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHI_SHEN_JIANG_LIN, "need_card": 2, "need_target": 0})
+		# 式神降临要弃 2 张同命格牌：card_rule="sameprop" 让界面选第 1 张后只亮同命格的牌
+		out.append({"type": GConst.ActionType.MagicSkill, "id": SHI_SHEN_JIANG_LIN, "need_card": 2, "need_target": 0,
+			"card_rule": "sameprop"})
 	if player.get_energy() >= 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_MING_JIE_JIE, "need_card": 0, "need_target": 1})
 	return out
@@ -93,16 +95,19 @@ func _yin_yang_zhuan_huan(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, YIN_YANG_ZHUAN_HUAN, 1, 0)
+		# 选项值＝服务端的 args(0)：1=仅应战 / 2=应战+阴阳转换 / 3=应战+阴阳转换+式神转换
+		询问(player.id, YIN_YANG_ZHUAN_HUAN, 1, 0, GConst.CardSource.Hand, [
+			{"value": 1, "label": "仅应战"},
+			{"value": 2, "label": "应战并发动阴阳转换（脱离式神形态，伤害改为鬼火数）"},
+			{"value": 3, "label": "应战并发动阴阳转换，再发动式神转换（+1 鬼火）"},
+		])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
 	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
-		return SUCCESS
-	var choice: int = int(args[1]) if args.size() > 1 else 1
+	var choice: int = int(args[0]) if not args.is_empty() else 0
 	if choice <= 1:
-		# 仅「应战」：实际应战由引擎常规应战询问处理（v_reattack 已放开同命格应战）
+		# 仅「应战」或放弃：实际应战由引擎常规应战询问处理（v_reattack 已放开同命格应战）
 		return SUCCESS
 	notice_skill(YIN_YANG_ZHUAN_HUAN, [player.id])
 	if player.tap:
@@ -144,6 +149,21 @@ func v_reattack(card_id: int, attack_card_id: int) -> int:
 
 
 # ============================================================
+# 应战成立后：用光系牌应战 → 视作格挡（本次攻击落空、不反击）
+# 对应服务端 YinYangZhuanHuan：应战牌为光系时 setStateTimeline2Miss + setStateUseCard
+# ============================================================
+func p_reattack(ctx: Dictionary) -> int:
+	if int(ctx.get("doer", -1)) != player.id:
+		return SUCCESS
+	var c: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+	if c == null or c.element_enum() != GConst.CardElement.Light:
+		return SUCCESS
+	ctx["block"] = true
+	ctx["real"] = true
+	return SUCCESS
+
+
+# ============================================================
 # 攻击应战阶段：式神咒束（3301）
 # 对应服务端 YinYang::p_attacked 的式神咒束分支 + ShiShenZhouShu：
 # 队友被主动攻击时，支付代价由自己代替其应战；可选同时发动阴阳转换
@@ -170,7 +190,12 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if not _can_pay_shi_shen_cost():
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, SHI_SHEN_ZHOU_SHU, 0, 0)
+		# 选项值＝服务端的 args(0)：1=仅式神咒束 / 2=+阴阳转换 / 3=+阴阳转换+1 鬼火
+		询问(player.id, SHI_SHEN_ZHOU_SHU, 0, 0, GConst.CardSource.Hand, [
+			{"value": 1, "label": "式神咒束：代替队友应战"},
+			{"value": 2, "label": "式神咒束 + 阴阳转换（脱离式神形态，伤害改为鬼火数）"},
+			{"value": 3, "label": "式神咒束 + 阴阳转换 + 式神转换（+1 鬼火）"},
+		])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -219,25 +244,42 @@ func _pay_shi_shen_cost() -> void:
 # ============================================================
 # 回合结束：黑暗祭礼（3302）
 # ============================================================
+## 【黑暗祭礼】的推进阶段（0＝还没开始 / HEI_AN_JI_LI＝已清零鬼火、等回复）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问；
+## 本流程在询问前就把鬼火清零（与服务端一致），若 step 被抹掉会退回第 0 步、被入口条件挡下，
+## 2 点法术伤害与「脱离式神形态」整条不生效。每回合结束都可能触发，收尾清回 0
+var _ji_li_step: int = 0
+
+
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if _gui_huo() < TOKEN_GUI_HUO_MAX:
+	if _ji_li_step >= STEP_DONE:
 		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	if step == 0:
+	# 入口条件（鬼火满）只在第 0 步判：本条流程在询问前就把鬼火清零（与服务端一致），
+	# 之后重入（等回复回来时会再进一次本钩子）不能再用它当门槛，
+	# 否则 2 点法术伤害与「脱离式神形态」整条不生效，回复还会残留
+	if _ji_li_step == 0:
+		if _gui_huo() < TOKEN_GUI_HUO_MAX:
+			return SUCCESS
 		# 服务端在询问前先把鬼火清零
 		_set_gui_huo(0)
 		notice_skill(HEI_AN_JI_LI, [player.id])
 		engine._broadcast_game()
-		step = HEI_AN_JI_LI
-	if step == HEI_AN_JI_LI:
+		_ji_li_step = HEI_AN_JI_LI
+	if _ji_li_step == HEI_AN_JI_LI:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, HEI_AN_JI_LI, 0, 1)
+			# 式神形态下可以选「重置」脱离形态（服务端 respond->args(0) == 2）
+			var 选项: Array = []
+			if player.tap:
+				选项 = [
+					{"value": 1, "label": "对目标造成 2 点法术伤害"},
+					{"value": 2, "label": "造成伤害并脱离式神形态"},
+				]
+			询问(player.id, HEI_AN_JI_LI, 0, 1, GConst.CardSource.Hand, 选项)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
-		step = STEP_DONE
+		_ji_li_step = 0
 		var dsts: Array = r.get("dst_ids", [])
 		var args: Array = r.get("args", [])
 		var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
@@ -317,7 +359,7 @@ func _shi_shen_jiang_lin(action: Dictionary) -> int:
 	var use_cards: Array = [int(cards[0]), int(cards[1])]
 	notice_skill(SHI_SHEN_JIANG_LIN, [player.id])
 	_set_gui_huo(_gui_huo() + 1)
-	player.add_action(GConst.ActionType.Attack, SHI_SHEN_JIANG_LIN)
+	player.add_action(GConst.ActionType.Attack, SHI_SHEN_JIANG_LIN, true)
 	engine.set_tap(player.id, true)
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -342,7 +384,7 @@ func _sheng_ming_jie_jie(action: Dictionary) -> int:
 	_set_gui_huo(_gui_huo() + 1)
 	if dst != null:
 		dst.set_gem(dst.gem + 1)
-		dst.add_cross_num(1)
+		施加治疗(dst.id, 1)
 	var point: int = _gui_huo()
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": point,

@@ -47,6 +47,8 @@ var ni_fan_add_harm: int = 0         # 逆返居合斩额外移除的兽魂数 X
 ## 兽返的中间状态
 var shou_fan_num: int = 0
 var shou_fan_cards: Array = []
+## 兽魂警戒选定的弃牌目标（跨 step 保留）
+var jing_jie_dst: int = -1
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -101,11 +103,12 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	var target: BattlePlayer = engine.p(pid)
 	if target == null or n <= 0 or target.hand_cards.is_empty():
 		return SUCCESS
+	var want: int = mini(n, target.hand_cards.size())
 	if not engine.has_reply():
-		engine.ask_skill(pid, cause, 1, 0)
+		# 由玩家自己挑选要弃的牌（对照服务端 StateRequestHand 让玩家选满）；提示告诉他弃几张
+		询问(pid, cause, want)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	var want: int = mini(n, target.hand_cards.size())
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
@@ -194,7 +197,8 @@ func _ni_fan_zhan(ctx: Dictionary) -> int:
 	if _hand_card_count(dst_id) >= NI_FAN_TARGET_HAND:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, NI_FAN_ZHAN, 0, 0)
+		# 序号 1：这个技能号第 0 条提示是「叫别人弃牌」用的，自己发动这步留空走默认文案
+		询问(player.id, NI_FAN_ZHAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true, 1)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -234,13 +238,18 @@ func _ni_fan_hit(ctx: Dictionary) -> int:
 	if not ni_fan_atk or _shou_hun() < 1:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, NI_FAN_HIT, 0, 0)
+		# 原版让玩家在提示区选「移除几点兽魂」，回 args=[1, 兽魂数]；通用客户端只回一维 args，
+		# 不带 options 时读不到 args[1]。这里把「移除几点兽魂」做成 options（value=兽魂数，1..当前兽魂数）：
+		# 本次询问不选牌不选目标 → 客户端弹居中选项窗，点某项回 args[0]=该值；取消/超时回 args[0]=0（不发动）
+		var options: Array = []
+		for n: int in range(1, _shou_hun() + 1):
+			options.append({"value": n, "label": "移除 %d 点兽魂" % n})
+		询问(player.id, NI_FAN_HIT, 0, 0, GConst.CardSource.Hand, options)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
-		return SUCCESS
-	var howmany: int = int(args[1]) if args.size() > 1 else 0
+	# 选项 value 即要移除的兽魂数；0（取消/超时）视为不发动
+	var howmany: int = int(args[0]) if not args.is_empty() else 0
 	if howmany <= 0:
 		return SUCCESS
 	ni_fan_add_harm = _remove_shou_hun(howmany)
@@ -252,73 +261,106 @@ func _ni_fan_hit(ctx: Dictionary) -> int:
 # ============================================================
 # 伤害结算前（timeline_4）：逆返居合斩改为「目标弃 X＋2 张牌」
 # ============================================================
+## 【逆返居合斩】的推进阶段（0＝还没开始 / NI_FAN_DISCARD＝等目标弃牌）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问；
+## 本流程一开场就把 ni_fan_atk 清掉，若 step 被抹掉会退回第 0 步、被入口条件挡下，
+## 「弃不满掉士气 + 抵御本次伤害」整段不生效。每次攻击都可能触发，收尾清回 0
+var _ni_fan_step: int = 0
+
+
 func p_timeline_4(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
-	if int(harm.get("src", -1)) != player.id or not ni_fan_atk:
+	if int(harm.get("src", -1)) != player.id:
 		return SUCCESS
 	if int(harm.get("type", -1)) != GConst.HarmType.Attack:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _ni_fan_step >= STEP_DONE:
 		return SUCCESS
 	var dst_id: int = int(ctx.get("dst", -1))
-	if step == 0:
+	# 入口条件（本次是逆返居合斩）只在第 0 步判：本条流程一开场就把 ni_fan_atk 清掉，
+	# 之后重入（等回复回来时会再进一次本钩子）不能再用它当门槛，
+	# 否则「弃不满掉士气 + 抵御本次伤害」整段不生效，回复还会残留
+	if _ni_fan_step == 0:
+		if not ni_fan_atk:
+			return SUCCESS
 		ni_fan_atk = false
-		# 目标手牌不足以弃满时，对方士气 -1（服务端在弃牌状态前压入掉士气状态）
-		if _hand_card_count(dst_id) < 2 + ni_fan_add_harm:
-			var dst: BattlePlayer = engine.p(dst_id)
-			if dst != null:
-				engine.lose_morale(dst, 1, NI_FAN_ZHAN)
-		step = NI_FAN_DISCARD
-	if step == NI_FAN_DISCARD:
+		_ni_fan_step = NI_FAN_DISCARD
+	if _ni_fan_step == NI_FAN_DISCARD:
+		# 服务端先压掉士气、后压弃牌（LIFO）→ 先弃牌再掉士气；「弃不满」按弃牌前的手牌数判定
+		var 弃不满: bool = _hand_card_count(dst_id) < 2 + ni_fan_add_harm
 		var r: int = _request_discard(dst_id, 2 + ni_fan_add_harm, NI_FAN_ZHAN)
 		if r == WAIT:
 			return WAIT
+		if 弃不满:
+			var dst: BattlePlayer = engine.p(dst_id)
+			if dst != null:
+				engine.lose_morale(dst, 1, NI_FAN_ZHAN)
 		# 抵御本次攻击伤害（服务端 popGameState 取消后续结算）
 		harm["point"] = 0
 		ni_fan_add_harm = 0
-		step = STEP_DONE
+		_ni_fan_step = 0
 		engine._broadcast_game()
+	return SUCCESS
+
+
+## 攻击未命中（timeline_2_miss）：清掉【逆返居合斩】宣告标记（服务端 ShouLing::p_timeline_2_miss）
+func p_timeline_2_miss(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) == player.id:
+		ni_fan_atk = false
 	return SUCCESS
 
 
 # ============================================================
 # 受到法术伤害时（timeline_3）：兽返（3605）
 # ============================================================
+## 【兽返】的推进阶段（0＝还没开始 / SHOU_FAN＝等选兽魂数 / SHOU_FAN_SELF_DISCARD＝自己弃牌 / SHOU_FAN_TARGET_DISCARD＝等施害者弃牌）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨两次询问，
+## 中间自己弃牌会压入一轮手牌钩子 —— 那一轮开始时 step 被抹掉、流程退回第 0 步，
+## 而兽魂此刻已经用掉，入口条件不成立 → 后半段整条不生效。每次受法术伤害都可能触发，收尾清回 0
+var _shou_fan_step: int = 0
+
+
 func p_timeline_3(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("dst", -1)) != player.id:
 		return SUCCESS
 	if int(harm.get("type", -1)) != GConst.HarmType.Magic:
 		return SUCCESS
-	if _shou_hun() < 1:
+	if _shou_fan_step >= STEP_DONE:
 		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	if step == 0:
-		step = SHOU_FAN
-	if step == SHOU_FAN:
+	# 入口条件（身上还有兽魂）只在第 0 步判：本条流程中途会把兽魂用掉，
+	# 之后重入（等回复回来时会再进一次本钩子）不能再用它当门槛，否则后半段整条不生效
+	if _shou_fan_step == 0:
+		if _shou_hun() < 1:
+			return SUCCESS
+		_shou_fan_step = SHOU_FAN
+	if _shou_fan_step == SHOU_FAN:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, SHOU_FAN, 0, 0)
+			# 原版先选兽魂数、再弃等量手牌，回 args=[1, 兽魂数]。通用客户端只回一维 args，
+			# 不带 options 时读不到 args[1]：把「兽魂数」做成 options（value=兽魂数，1..当前兽魂数）。
+			# need_card=1 让客户端走「技能区选项按钮」而非居中弹窗（玩家要先选好手牌），
+			# 选中的手牌仍由 card_ids 回传；点选项回 args[0]=兽魂数，取消/超时回 args[0]=0（不发动）。
+			# 序号 1：第 0 条提示是「叫别人弃牌」用的，自己发动这步留空走默认文案
+			var options: Array = []
+			for n: int in range(1, _shou_hun() + 1):
+				options.append({"value": n, "label": "移除 %d 点兽魂（弃 %d 张手牌）" % [n, n]})
+			询问(player.id, SHOU_FAN, 1, 0, GConst.CardSource.Hand, options, player.hand_cards.size(), "", [], true, 1)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
-		if args.is_empty() or int(args[0]) != 1:
-			step = STEP_DONE
+		# 选项 value 即要移除的兽魂数（必 ≤ 当前兽魂数）；0（取消/超时）视为不发动
+		var howmany: int = int(args[0]) if not args.is_empty() else 0
+		if howmany <= 0:
+			_shou_fan_step = 0
 			return SUCCESS
-		var howmany: int = int(args[1]) if args.size() > 1 else 0
 		shou_fan_num = _remove_shou_hun(howmany)
 		shou_fan_cards = r.get("card_ids", [])
 		if shou_fan_num <= 0:
-			step = STEP_DONE
+			_shou_fan_step = 0
 			return SUCCESS
-		step = SHOU_FAN_TARGET_DISCARD
-	if step == SHOU_FAN_TARGET_DISCARD:
-		# 施害者弃 1 张牌
-		var r2: int = _request_discard(int(harm.get("src", -1)), 1, SHOU_FAN)
-		if r2 == WAIT:
-			return WAIT
-		step = SHOU_FAN_SELF_DISCARD
-	if step == SHOU_FAN_SELF_DISCARD:
+		# 服务端先压施害者弃牌、后压自己弃牌（LIFO）→ 自己先弃，再让施害者弃
+		_shou_fan_step = SHOU_FAN_SELF_DISCARD
+	if _shou_fan_step == SHOU_FAN_SELF_DISCARD:
 		var want: int = mini(shou_fan_num, player.hand_cards.size())
 		if want > 0:
 			var chosen: Array = _pick_cards(player, shou_fan_cards, want)
@@ -328,8 +370,14 @@ func p_timeline_3(ctx: Dictionary) -> int:
 			})
 			engine.take_from_hand(player.id, chosen)
 			engine.to_discard(chosen)
+		_shou_fan_step = SHOU_FAN_TARGET_DISCARD
+	if _shou_fan_step == SHOU_FAN_TARGET_DISCARD:
+		# 施害者弃 1 张牌
+		var r2: int = _request_discard(int(harm.get("src", -1)), 1, SHOU_FAN)
+		if r2 == WAIT:
+			return WAIT
 		notice_skill(SHOU_FAN, [int(harm.get("src", -1))])
-		step = STEP_DONE
+		_shou_fan_step = 0
 		engine._broadcast_game()
 	return SUCCESS
 
@@ -337,37 +385,51 @@ func p_timeline_3(ctx: Dictionary) -> int:
 # ============================================================
 # 其他角色横置（p_tap）：兽魂警戒（3604）
 # ============================================================
+## 【兽魂警戒】的推进阶段（0＝还没开始 / SHOU_HUN_JING_JIE＝等指定谁弃牌 / SHOU_HUN_JING_JIE_DISCARD＝等目标弃牌）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨两次询问，
+## 中间会把自己横置（压入一轮 p_tap 钩子）—— 那一轮开始时 step 被抹掉、流程退回第 0 步，
+## 入口条件（自己没横置）此刻已不成立 → 「指定目标弃牌」那步整条不生效。每次他人横置都可能触发，收尾清回 0
+var _jing_jie_step: int = 0
+
+
 func p_tap(ctx: Dictionary) -> int:
 	if int(ctx.get("id", -1)) == player.id:
 		return SUCCESS
 	if not bool(ctx.get("tap", false)):
 		return SUCCESS
-	if _shou_hun() < 1 or player.tap:
+	if _jing_jie_step >= STEP_DONE:
 		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	if step == 0:
-		step = SHOU_HUN_JING_JIE
-	if step == SHOU_HUN_JING_JIE:
+	# 入口条件（还有兽魂、自己没横置）只在第 0 步判：本条流程中途会把自己横置，
+	# 之后重入（等回复回来时会再进一次本钩子）不能再用它当门槛，否则「指定目标弃牌」那步整条不生效
+	if _jing_jie_step == 0:
+		if _shou_hun() < 1 or player.tap:
+			return SUCCESS
+		_jing_jie_step = SHOU_HUN_JING_JIE
+	if _jing_jie_step == SHOU_HUN_JING_JIE:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, SHOU_HUN_JING_JIE, 0, 1)
+			# 序号 1：第 0 条提示是「叫别人弃牌」用的，这步「指定谁弃牌」读第 1 条
+			询问(player.id, SHOU_HUN_JING_JIE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true, 1)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
 		var dsts: Array = r.get("dst_ids", [])
 		if args.is_empty() or int(args[0]) != 1 or dsts.is_empty():
-			step = STEP_DONE
+			_jing_jie_step = 0
 			return SUCCESS
 		notice_skill(SHOU_HUN_JING_JIE, dsts)
+		jing_jie_dst = int(dsts[0])
 		player.tap = true
 		_remove_shou_hun(1)
 		engine._broadcast_game()
-		step = SHOU_HUN_JING_JIE_DISCARD
-	if step == SHOU_HUN_JING_JIE_DISCARD:
-		var r2: int = _request_discard(int(ctx.get("id", -1)), 1, SHOU_HUN_JING_JIE)
+		_jing_jie_step = SHOU_HUN_JING_JIE_DISCARD
+	if _jing_jie_step == SHOU_HUN_JING_JIE_DISCARD:
+		# 服务端由玩家指定的目标弃 1 张（不是被横置的那个角色）
+		var 弃牌目标: int = jing_jie_dst if jing_jie_dst >= 0 else int(ctx.get("id", -1))
+		var r2: int = _request_discard(弃牌目标, 1, SHOU_HUN_JING_JIE)
 		if r2 == WAIT:
 			return WAIT
-		step = STEP_DONE
+		jing_jie_dst = -1
+		_jing_jie_step = 0
 	return SUCCESS
 
 
@@ -384,7 +446,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 	if step == WU_ZHE_CAN_XIN:
 		if not used_wu_zhe:
 			if not engine.has_reply():
-				engine.ask_skill(player.id, WU_ZHE_CAN_XIN, 0, 0)
+				询问(player.id, WU_ZHE_CAN_XIN, 0, 0)
 				return WAIT
 			if take_skill_reply():
 				used_wu_zhe = true
@@ -454,34 +516,41 @@ func p_boot(_ctx: Dictionary) -> int:
 	if step == 0:
 		step = YU_HUN_BOOT
 	if not engine.has_reply():
-		engine.ask_skill(player.id, YU_HUN_BOOT, 1, 0)
+		# 原版 box 三项（1 弃 1 张牌、2 摸 1 张牌、3 启动但不调整），回 args=[选择, 数量]。
+		# 通用客户端只回一维 args，不带 options 时读不到 args[1]：把三个分支做成 options（value=分支号），
+		# 点选项回 args[0]=分支号，取消回 args[0]=0（不发动，不扣宝石、不横置）。
+		# need_card=1 让客户端走「技能区选项按钮」（弃牌分支要选 1 张手牌，由 card_ids 回传），
+		# 序号 1（该技能提示列为空）避免 ask_text 抢占提示条、挡掉选项按钮的构建；
+		# 手牌为空时不列「弃牌 / 不调整」两项，避免出现必被服务端补牌的空弃分支
+		var options: Array = []
+		if not player.hand_cards.is_empty():
+			options.append({"value": 1, "label": "弃 1 张手牌"})
+		options.append({"value": 2, "label": "摸 1 张牌"})
+		if not player.hand_cards.is_empty():
+			options.append({"value": 3, "label": "不调整"})
+		询问(player.id, YU_HUN_BOOT, 1, 0, GConst.CardSource.Hand, options, 1, "", [], true, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
 	var args: Array = r.get("args", [])
-	if args.is_empty():
-		return SUCCESS
-	var choose: int = int(args[0])
+	# args[0] 即选项 value（分支号）；0（取消/超时）视为不发动
+	var choose: int = int(args[0]) if not args.is_empty() else 0
 	if choose <= 0:
 		return SUCCESS
-	var howmany: int = int(args[1]) if args.size() > 1 else 0
 	notice_skill(YU_HUN_BOOT, [player.id])
 	player.tap = true
 	player.set_gem(player.gem - 1)
 	_set_token(TOKEN_SHOU_HUN, _shou_hun() + 1)
-	if howmany > 0:
-		if choose == 2:
-			# 摸牌
-			engine.draw(player.id, howmany)
-		else:
-			# 弃牌
-			var want: int = mini(howmany, player.hand_cards.size())
-			var chosen: Array = _pick_cards(player, r.get("card_ids", []), want)
-			engine.broadcast(GConst.Msg.Card, {
-				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-				"card_ids": chosen, "is_real": true,
-			})
-			engine.take_from_hand(player.id, chosen)
-			engine.to_discard(chosen)
+	# 分支 1＝弃 1 张手牌；2＝摸 1 张牌；3＝不调整（数量固定为 1，故不再从 args[1] 取）
+	if choose == 1:
+		var chosen: Array = _pick_cards(player, r.get("card_ids", []), 1)
+		engine.broadcast(GConst.Msg.Card, {
+			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+			"card_ids": chosen, "is_real": true,
+		})
+		engine.take_from_hand(player.id, chosen)
+		engine.to_discard(chosen)
+	elif choose == 2:
+		engine.draw(player.id, 1)
 	engine._broadcast_game()
 	return SUCCESS

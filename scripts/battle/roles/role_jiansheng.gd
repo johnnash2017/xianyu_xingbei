@@ -31,27 +31,34 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 【烈风技 / 疾风技 / 圣剑】的推进阶段（0＝还没开始 / LIE_FENG_JI＝在问烈风技 / JI_FENG_JI＝结算疾风技 / SHENG_JIAN＝结算圣剑）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
 # ============================================================
 # 攻击宣告后（timeline_1）：烈风技 → 疾风技 → 圣剑
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = LIE_FENG_JI
-	if step == LIE_FENG_JI:
+	if _timeline_1_step == 0:
+		_timeline_1_step = LIE_FENG_JI
+	if _timeline_1_step == LIE_FENG_JI:
 		var r: int = _lie_feng_ji(ctx)
 		if r == WAIT:
 			return WAIT
-		step = JI_FENG_JI
-	if step == JI_FENG_JI:
+		_timeline_1_step = JI_FENG_JI
+	if _timeline_1_step == JI_FENG_JI:
 		_ji_feng_ji(ctx)
-		step = SHENG_JIAN
-	if step == SHENG_JIAN:
+		_timeline_1_step = SHENG_JIAN
+	if _timeline_1_step == SHENG_JIAN:
 		_sheng_jian(ctx)
-		step = STEP_DONE
+		_timeline_1_step = 0
 	return SUCCESS
 
 
@@ -66,7 +73,7 @@ func _lie_feng_ji(ctx: Dictionary) -> int:
 	if not dst.check_basic_effect_name(GConst.CardName.Shield) and not dst.check_basic_effect_skill(GConst.技能_天使之墙):
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, LIE_FENG_JI, 0, 0)
+		询问(player.id, LIE_FENG_JI, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -84,7 +91,7 @@ func _ji_feng_ji(ctx: Dictionary) -> void:
 	if not bool(ctx.get("is_active", false)):
 		return
 	notice_skill(JI_FENG_JI, [int(ctx.get("dst", -1))])
-	player.add_action(GConst.ActionType.Attack, JI_FENG_JI)
+	player.add_action(GConst.ActionType.Attack, JI_FENG_JI, true)
 
 
 ## 圣剑：若本次行动阶段的第 3 次主动攻击，则此攻击强制命中
@@ -118,7 +125,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 func _lian_xu_ji() -> void:
 	if player.hand_cards.is_empty() or used_lian_xu_ji or _contains_action(LIAN_XU_JI):
 		return
-	player.add_action(GConst.ActionType.Attack, LIAN_XU_JI)
+	player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true)
 
 
 ## 剑影：回合限定，额外 +1 攻击行动（授予只挂行动，代价在玩家选中时结算）

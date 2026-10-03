@@ -28,15 +28,11 @@ func available_skills() -> Array:
 			"target_max": 3, "cards": 治愈牌})
 	if player.get_energy() >= 1 and not used_sheng_liao:
 		# v_magic_skill 只校验能量与使用标记，不校验目标数/args；
-		# 执行体 _sheng_liao 把 3 点治疗按 args 逐一分配给 dsts（args[i] 为第 i 名目标的治疗量，合计 3），
-		# 至多 3 名目标；用 arg_choices 列出全部 3 点分配方案（按选择顺序对应）
+		# 执行体 _sheng_liao 把 3 点治疗按 args 逐一分配给 dsts（args[i] 为第 i 名目标的治疗量，合计 3）。
+		# 分配过程由客户端做「点头像 +1 治疗」的交互，选满 3 点后把「目标 + 各自点数」一并回传，
+		# 所以这里不再下发 arg_choices 让玩家点选项
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_LIAO, "need_card": 0, "need_target": 1,
-			"target_max": 3, "arg_choices": [
-				{"text": "1 名目标 +3 治疗", "args": [3], "need_target": 1},
-				{"text": "2 名目标 +1/+2 治疗（按选择顺序）", "args": [1, 2], "need_target": 2},
-				{"text": "2 名目标 +2/+1 治疗（按选择顺序）", "args": [2, 1], "need_target": 2},
-				{"text": "3 名目标各 +1 治疗", "args": [1, 1, 1], "need_target": 3},
-			]})
+			"target_max": 3})
 	return out
 
 
@@ -57,7 +53,7 @@ func p_boot(_ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, LIAN_MIN, 0, 0)
+		询问(player.id, LIAN_MIN, 0, 0)
 		return WAIT
 	step = STEP_DONE
 	if not take_skill_reply():
@@ -82,20 +78,24 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, BING_SHUANG_DAO_YAN, 0, 1)
+		询问(player.id, BING_SHUANG_DAO_YAN, 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
 	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
-		return SUCCESS
 	var dsts: Array = r.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
+	if args.is_empty() or int(args[0]) != 1:
+		# 超时/取消兜底：服务端超时分支给自己 +1 治疗
+		notice_skill(BING_SHUANG_DAO_YAN, [player.id])
+		施加治疗(player.id, 1)
+		engine._broadcast_game()
+		return SUCCESS
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst == null:
 		return SUCCESS
 	notice_skill(BING_SHUANG_DAO_YAN, [dst_id])
-	dst.add_cross_num(1)
+	施加治疗(dst_id, 1)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -161,7 +161,7 @@ func _zhi_liao_shu(action: Dictionary) -> int:
 	})
 	engine.take_from_hand(player.id, [cid])
 	engine.to_discard([cid])
-	dst.add_cross_num(2)
+	施加治疗(dst.id, 2)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -181,7 +181,7 @@ func _zhi_yu_zhi_guang(action: Dictionary) -> int:
 	for d: Variant in dsts:
 		var dp: BattlePlayer = engine.p(int(d))
 		if dp != null:
-			dp.add_cross_num(1)
+			施加治疗(dp.id, 1)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -206,9 +206,10 @@ func _sheng_liao(action: Dictionary) -> int:
 		amount = mini(amount, remain)
 		if amount <= 0:
 			continue
-		dp.add_cross_num(amount)
+		施加治疗(dp.id, amount)
 		remain -= amount
 	used_sheng_liao = true
-	player.add_action(GConst.ActionType.AttackMagic, SHENG_LIAO)
+	# direct=true：获得额外行动后不必再点一次【圣疗】按钮，直接进入额外行动阶段（里面可放弃）
+	player.add_action(GConst.ActionType.AttackMagic, SHENG_LIAO, true)
 	engine._broadcast_game()
 	return SUCCESS

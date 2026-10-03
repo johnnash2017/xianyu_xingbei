@@ -22,6 +22,12 @@ var _expose_dsts: Array[int] = []
 var _feng_idx: int = 0
 ## 本次主动攻击是否已发动【百鬼夜行】（引擎在钩子返回 URGENT 后会重入钩子，用于避免重复触发）
 var _bai_gui_done: bool = false
+## 【百鬼夜行】的推进阶段：0＝还没问、1＝已选好效果（等灵力崩解）、2＝该结算了。
+## 不能用引擎的 step：钩子轮次开始会把所有角色的 step 清零（只豁免 SkillRun 型的技能挂起），
+## 而这条技能要跨「百鬼夜行 → 灵力崩解」两次询问等待 —— 中途被别的钩子轮次插进来
+## （选妖力要 remove_cover，会压入一轮 p_cover_change）就会被打回第 0 步：重跑一次选效果、
+## 拿崩解的回复去解析、判定失败 → 整条技能静默不生效。手上没星石时不等崩解，才看不出这个毛病。
+var _bai_gui_phase: int = 0
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -133,7 +139,7 @@ func _nian_zhou() -> int:
 	if player.cover_cards.size() > 1:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, NIAN_ZHOU, 1, 0)
+		询问(player.id, NIAN_ZHOU, 1, 0)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -143,12 +149,11 @@ func _nian_zhou() -> int:
 	if cid < 0:
 		return SUCCESS
 	notice_skill(NIAN_ZHOU, [player.id])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [cid], "is_real": false,
-	})
+	# 【念咒】是把牌「面朝下」当【妖力】盖下（技能原文），不能亮给全场看：
+	# 之前这里发了一条全场广播的「展示」，等于把这张牌公开了。盖牌变动本身会随状态同步刷新，
+	# 对手只能看到盖牌数量变化，看不到是哪张牌
 	engine.take_from_hand(player.id, [cid])
-	player.add_cover_cards([cid])
+	engine.add_cover(player.id, [cid], player.id, NIAN_ZHOU)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -159,7 +164,7 @@ func _ling_li_beng_jie() -> int:
 	if player.get_energy() < 1:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, LING_LI_BENG_JIE, 0, 0)
+		询问(player.id, LING_LI_BENG_JIE, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -194,10 +199,8 @@ func _feng_targets_discard(dsts: Array) -> int:
 			chosen.append(tp.hand_cards[0])
 		engine.take_from_hand(tid, chosen)
 		engine.to_discard(chosen)
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": tid, "dst_id": tid,
-			"card_ids": chosen, "is_real": true,
-		})
+		# 只是「让别人弃牌」，不亮牌：只写一条「弃掉 N 张牌」的日志（客户端据此播弃牌特效）
+		engine._log_discard(tid, chosen)
 		engine._broadcast_game()
 		_feng_idx += 1
 	step = STEP_DONE
@@ -211,6 +214,7 @@ func _feng_targets_discard(dsts: Array) -> int:
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) == player.id:
 		_bai_gui_done = false
+		_bai_gui_phase = 0
 	return SUCCESS
 
 
@@ -220,30 +224,35 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if step >= STEP_DONE or _bai_gui_done:
+	if _bai_gui_done:
 		return SUCCESS
-	if step == 0:
+	if _bai_gui_phase == 0:
 		if player.cover_cards.is_empty():
-			step = STEP_DONE
+			_bai_gui_done = true
 			return SUCCESS
 		if not engine.has_reply():
-			engine.ask_skill(player.id, BAI_GUI_YE_XING, 1, 2, GConst.CardSource.Cover, [
-				{"value": 1, "label": "展示火系【妖力】：指定 2 名角色"},
-				{"value": 0, "label": "不展示：指定 1 名角色"},
-			])
+			# 只有盖牌区里真有火系【妖力】才给「展示」那个选项 —— 没火牌根本展示不了，
+			# 摆出来只会让玩家选了个必然落空的分支
+			var 选项: Array = []
+			if _有火系妖力():
+				选项.append({"value": 1, "label": "展示火系【妖力】：指定 2 名角色"})
+			选项.append({"value": 0, "label": "不展示：指定 1 名角色"})
+			# can_cancel = false：选中攻击命中后【百鬼夜行】必须执行，不给「取消」这条路
+			# （客户端会先在居中弹窗里让玩家选效果，选完再选妖力与目标、按「确定」发动）
+			询问(player.id, BAI_GUI_YE_XING, 1, 2, GConst.CardSource.Cover, 选项, 0, "", [], false)
 			return WAIT
 		if not _bai_gui_cast():
-			step = STEP_DONE
+			_bai_gui_done = true
 			return SUCCESS
-		step = LING_LI_BENG_JIE
-	if step == LING_LI_BENG_JIE:
+		_bai_gui_phase = 1
+	if _bai_gui_phase == 1:
 		var r: int = _ling_li_beng_jie()
 		if r == WAIT:
 			return WAIT
-		step = BAI_GUI_YE_XING
-	if step == BAI_GUI_YE_XING:
-		step = STEP_DONE
+		_bai_gui_phase = 2
+	if _bai_gui_phase == 2:
 		_bai_gui_done = true
+		_bai_gui_phase = 0
 		return _bai_gui_effect()
 	return SUCCESS
 
@@ -276,12 +285,14 @@ func _bai_gui_cast() -> bool:
 	else:
 		return false
 	notice_skill(BAI_GUI_YE_XING, _expose_dsts)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [cid], "is_real": true,
-	})
-	player.remove_cover_cards([cid])
+	if _expose:
+		# 服务端只在「展示火系【妖力】」分支才明牌；选「不展示」时隐藏这张牌
+		engine.broadcast(GConst.Msg.Card, {
+			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+			"card_ids": [cid], "is_real": true,
+		})
 	engine.to_discard([cid])
+	engine.remove_cover(player.id, [cid], player.id, BAI_GUI_YE_XING)
 	engine._broadcast_game()
 	return true
 
@@ -309,6 +320,15 @@ func _bai_gui_effect() -> int:
 # ============================================================
 # 工具
 # ============================================================
+## 盖牌区里有没有火系【妖力】（只有真有火牌才给「展示火系妖力」那个效果）
+func _有火系妖力() -> bool:
+	for cid: int in player.cover_cards:
+		var c: GCard = Data.get_card(cid)
+		if c != null and c.element_enum() == GConst.CardElement.Fire:
+			return true
+	return false
+
+
 ## 取回复中第一张仍在手牌里的牌
 func _first_hand_card(cards: Array) -> int:
 	for c: Variant in cards:

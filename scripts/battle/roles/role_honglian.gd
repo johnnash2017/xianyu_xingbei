@@ -17,11 +17,6 @@ const RE_XUE_FEI_TENG: int = 2807
 const JIE_JIAO_JIE_ZAO: int = 2808
 const XING_HONG_SHI_ZI: int = 2809
 
-## 引擎 p_timeline_4 无 crossAvailable 字段（服务端用于关闭治疗结算）：
-## 改为「p_timeline_4 临时清空目标治疗，p_timeline_5 还原」，与 role_xuejian.gd 共用同一键
-const HARM_NO_CROSS_KEY: String = "no_cross_backup"
-
-
 var used_xing_hong_sheng_yue: bool = false
 
 
@@ -56,6 +51,9 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 # ============================================================
 # 启动：血腥祷言（自身回合且有治疗时询问）
+# 交互走「技能指示器」（const.gd 里 技能_血腥祷言）：客户端点头像把自身治疗分给队友，
+# 回包的 args 与 dst_ids 平行 —— args[i] 就是第 i 名队友分到的治疗点数（取消回 args=[0]）。
+# 因此下面直接按 args[i] 取各目标的点数即可，无需客户端另外拼一维参数。
 # ============================================================
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id or player.cross_num == 0:
@@ -63,7 +61,7 @@ func p_boot(_ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, XUE_XING_DAO_YAN, 0, 1)
+		询问(player.id, XUE_XING_DAO_YAN, 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -81,7 +79,7 @@ func p_boot(_ctx: Dictionary) -> int:
 	for i: int in range(dsts.size()):
 		var dp: BattlePlayer = engine.p(int(dsts[i]))
 		if dp != null:
-			dp.add_cross_num(int(args[i]) if i < args.size() else 0)
+			施加治疗(dp.id, int(args[i]) if i < args.size() else 0)
 	if int(player.tokens[0]["num"]) < 2:
 		player.tokens[0]["num"] = int(player.tokens[0]["num"]) + 1
 	engine.push_harm({
@@ -105,7 +103,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, XING_HONG_SHENG_YUE, 0, 0)
+		询问(player.id, XING_HONG_SHENG_YUE, 0, 0)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -113,7 +111,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
 	notice_skill(XING_HONG_SHENG_YUE, [int(ctx.get("dst", -1))])
-	player.add_cross_num(1)
+	施加治疗(player.id, 1)
 	used_xing_hong_sheng_yue = true
 	engine._broadcast_game()
 	return SUCCESS
@@ -131,7 +129,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, SHA_LU_SHENG_YAN, 0, 0)
+		询问(player.id, SHA_LU_SHENG_YAN, 0, 0)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -150,7 +148,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 腥红信仰：被他人伤害且可用治疗时，关闭治疗结算（p_timeline_4 → p_timeline_5 还原）
+# 腥红信仰：被他人伤害时关闭本次治疗结算（服务端 XingHongXinYang：crossAvailable = 0）
 # ============================================================
 func p_timeline_4(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
@@ -158,28 +156,11 @@ func p_timeline_4(ctx: Dictionary) -> int:
 		return SUCCESS
 	if int(harm.get("src", -1)) == player.id:
 		return SUCCESS
-	if player.cross_num <= 0 or harm.has(HARM_NO_CROSS_KEY):
+	if int(harm.get("cross_available", 1)) == 0:
 		return SUCCESS
+	harm["cross_available"] = 0
 	notice_skill(XING_HONG_XIN_YANG, [player.id])
-	harm[HARM_NO_CROSS_KEY] = player.cross_num
-	player.cross_num = 0
 	return SUCCESS
-
-
-func p_timeline_5(ctx: Dictionary) -> int:
-	var harm: Dictionary = ctx.get("harm", {})
-	_restore_cross(harm)
-	return SUCCESS
-
-
-## 还原被腥红信仰临时清空的治疗
-func _restore_cross(harm: Dictionary) -> void:
-	if not harm.has(HARM_NO_CROSS_KEY):
-		return
-	var dst: BattlePlayer = engine.p(int(harm.get("dst", -1)))
-	if dst != null:
-		dst.cross_num = int(harm[HARM_NO_CROSS_KEY])
-	harm.erase(HARM_NO_CROSS_KEY)
 
 
 # ============================================================
@@ -249,7 +230,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id or not player.tap:
 		return SUCCESS
 	player.tap = false
-	player.add_cross_num(2)
+	施加治疗(player.id, 2)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -299,5 +280,6 @@ func p_magic_skill(action: Dictionary) -> int:
 	})
 	engine.take_from_hand(player.id, cards)
 	engine.to_discard(cards)
+	engine._log_discard(player.id, cards)
 	engine._broadcast_game()
 	return URGENT

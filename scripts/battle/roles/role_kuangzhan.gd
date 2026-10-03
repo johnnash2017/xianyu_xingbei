@@ -8,48 +8,60 @@ const KUANG_HUA: int = 203
 const SI_LIE: int = 205
 
 
-## 攻击宣告后（timeline_1）：血影狂刀 → 血腥咆哮
+## 【血影狂刀 / 血腥咆哮】的推进阶段（0＝还没开始 / XUE_YING_KUANG_DAO＝在问血影狂刀 / XUE_XING_PAO_XIAO＝在问血腥咆哮）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨两次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = XUE_YING_KUANG_DAO
-	if step == XUE_YING_KUANG_DAO:
+	if _timeline_1_step == 0:
+		_timeline_1_step = XUE_YING_KUANG_DAO
+	if _timeline_1_step == XUE_YING_KUANG_DAO:
 		var r: int = _xue_ying_kuang_dao(ctx)
 		if r == WAIT:
 			return WAIT
-		step = XUE_XING_PAO_XIAO
-	if step == XUE_XING_PAO_XIAO:
+		_timeline_1_step = XUE_XING_PAO_XIAO
+	if _timeline_1_step == XUE_XING_PAO_XIAO:
 		var r2: int = _xue_xing_pao_xiao(ctx)
 		if r2 == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_timeline_1_step = 0
 	return SUCCESS
 
 
-## 命中后（timeline_2_hit）：狂化 → 撕裂
+## 【狂化 / 撕裂】的推进阶段（0＝还没开始 / KUANG_HUA＝结算狂化 / SI_LIE＝在问撕裂）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动攻击命中（p_timeline_2_hit）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_2_hit_step: int = 0
+
+
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id:
 		return SUCCESS
 	if harm.get("type", GConst.HarmType.Attack) != GConst.HarmType.Attack:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_2_hit_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = KUANG_HUA
-	if step == KUANG_HUA:
+	if _timeline_2_hit_step == 0:
+		_timeline_2_hit_step = KUANG_HUA
+	if _timeline_2_hit_step == KUANG_HUA:
 		var r: int = _kuang_hua(harm)
 		if r == WAIT:
 			return WAIT
-		step = SI_LIE
-	if step == SI_LIE:
+		_timeline_2_hit_step = SI_LIE
+	if _timeline_2_hit_step == SI_LIE:
 		var r2: int = _si_lie(harm)
 		if r2 == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_timeline_2_hit_step = 0
 	return SUCCESS
 
 
@@ -67,7 +79,7 @@ func _xue_ying_kuang_dao(ctx: Dictionary) -> int:
 	if n < 2 or n > 3:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, XUE_YING_KUANG_DAO)
+		询问(player.id, XUE_YING_KUANG_DAO)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -85,7 +97,7 @@ func _xue_xing_pao_xiao(ctx: Dictionary) -> int:
 	if dst == null or dst.cross_num != 2:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, XUE_XING_PAO_XIAO)
+		询问(player.id, XUE_XING_PAO_XIAO)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -104,7 +116,7 @@ func _si_lie(harm: Dictionary) -> int:
 	if player.gem <= 0:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, SI_LIE)
+		询问(player.id, SI_LIE)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS

@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/effects/给牌2D.gd" id="1_givecard"]
+
+[node name="给牌" type="Node2D"]
+script = ExtResource("1_givecard")
+
+[node name="卡" type="Node2D" parent="."]
+
+[node name="白边" type="Polygon2D" parent="卡"]
+color = Color(0.929412, 0.960784, 1, 1)
+polygon = PackedVector2Array(-28, -42, 28, -42, 28, 42, -28, 42)
+
+[node name="卡面" type="Polygon2D" parent="卡"]
+color = Color(0.109804, 0.168627, 0.329412, 1)
+polygon = PackedVector2Array(-25, -39, 25, -39, 25, 39, -25, 39)
+
+[node name="纹" type="Polygon2D" parent="卡"]
+color = Color(0.619608, 0.780392, 1, 0.901961)
+polygon = PackedVector2Array(0, -16, 12, 0, 0, 16, -12, 0)

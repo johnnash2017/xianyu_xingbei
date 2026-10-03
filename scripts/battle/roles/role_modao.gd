@@ -112,7 +112,9 @@ func _mo_bao_chong_ji(action: Dictionary) -> int:
 	while step >= 1 and step <= _mo_bao_targets.size():
 		var tid: int = _mo_bao_targets[step - 1]
 		if not engine.has_reply():
-			engine.ask_skill(tid, MO_BAO_CHONG_JI, 1, 0)
+			# 只能弃法术牌（card_rule = "magic"）：否则界面会把攻击牌等也点亮，
+			# 玩家点错提交后服务端按「不弃」处理，白白吃 2 点伤害
+			询问(tid, MO_BAO_CHONG_JI, 1, 0, GConst.CardSource.Hand, [], 0, "magic")
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		if not _target_discard_magic(tid, r):
@@ -167,8 +169,9 @@ func v_remissile(card_id: int) -> int:
 # ============================================================
 # 【魔弹掌握】（802）
 # 技能原文：「你主动使用【魔弹】时可以选择逆向传递」（服务端 MoDao.cpp 未实现，按技能原文补上）。
-# 效果＝打【魔弹】时可以选左手边那个对手（逆向），由基类的 missile_targets 统一给出候选；
-# 响应【魔弹】继续传递时同样可以选方向（见 BattleEngine.SMissileAsk）。
+# 效果＝主动打【魔弹】时可以选左手边那个对手（逆向），由基类的 missile_targets 给出候选；
+# 仅限「主动使用」——魔弹一旦打出，后续传递方向就固定了，响应传递时不能改向
+# （见 BattleEngine.SMissileAsk）。
 # ============================================================
 func has_missile_mastery() -> bool:
 	return true

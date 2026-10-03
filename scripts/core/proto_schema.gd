@@ -46,6 +46,8 @@ const SUB: Dictionary = {
 		20: {"n": "leader", "t": "u32"},
 		21: {"n": "online", "t": "bool"},
 		22: {"n": "third_token", "t": "u32"},
+		# 治疗上限（角色被动会改，如神官【圣使守护】+4）：客户端要按它画治疗格的上限
+		23: {"n": "max_heal", "t": "u32"},
 	},
 	"Command": {
 		1: {"n": "respond_id", "t": "u32"},
@@ -61,6 +63,23 @@ const SUB: Dictionary = {
 		8: {"n": "arg_choices", "t": "msg", "r": true, "s": "ArgChoice"},
 		# 选牌的系别规则（""＝不限；"same"＝必须同系，如【法术反弹】；"diff"＝必须互异系，如【魔道法典】）
 		9: {"n": "card_rule", "t": "str"},
+		# 这次询问能不能「取消」（省略＝可以；false 表示强制，界面把「取消」置灰，
+		# 如神官【水之神力】第二次问「交哪张牌给队友」——不选也会随机交一张）
+		10: {"n": "can_cancel", "t": "bool"},
+		# 询问「别人」（不是发起者自己）时的指令条文案，如【天使祝福】的「请选择 1 张手牌交给 天使[x]」
+		11: {"n": "ask_text", "t": "str"},
+		# 这条应答是不是「是否发动某技能」的技能询问（服务端 ask_skill 下发；其余应战/弃牌等通用应答不带）
+		12: {"n": "is_skill", "t": "bool"},
+		# 目标数上限随已选牌数变化的减数（0＝不适用）：上限 = 已选牌数 - 该值，至少 1 名
+		# （如贤者【圣洁法典】＝弃牌数 - 2）。只有静态 target_max 会在玩家取消选牌后漏判
+		13: {"n": "target_max_from_cards", "t": "u32"},
+		# 逐张选牌的条件（0＝不要求）：第 1 张必须带这个技能
+		# （如元素师独有法术：第 1 张是发动牌，第 2 张才是加伤的该系牌）
+		14: {"n": "card_slot_skill", "t": "u32"},
+		# 第 2 张必须是这个系的牌（技能原文「额外弃 1 张 X 系牌【展示】」）
+		15: {"n": "card_slot_element", "t": "u32"},
+		# 这条行动询问是不是「额外行动」阶段（客户端据此改提示文案）
+		16: {"n": "is_extra", "t": "bool"},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {
@@ -184,6 +203,9 @@ const TABLE: Dictionary = {
 		1: {"n": "type", "t": "enum"},
 		2: {"n": "txt", "t": "str"},
 		3: {"n": "id", "t": "u32"},
+		# 附带的数量：治疗类＝治疗点数（客户端据此冒几个「+」）、弃牌类＝弃牌张数（据此播弃牌特效）；
+		# 其余类别不带，按 0 处理
+		4: {"n": "num", "t": "i32"},
 	},
 	GConst.Msg.Error: {
 		1: {"n": "id", "t": "i32"},
@@ -261,6 +283,9 @@ const TABLE: Dictionary = {
 		# 出牌音效/特效、以及后续任何「这次是不是魔弹」的判断都按它走；
 		# card_ids 仍是真正打出的那张牌（要展示、也确实进了弃牌堆）。
 		6: {"n": "as_card_id", "t": "u32"},
+		# 「给牌」（CardMsgType.Give）专用：交了几张。不公开牌面，只给客户端播动效用
+		# （交几张就飞几张卡背）；其他 Card 消息不填
+		7: {"n": "count", "t": "u32"},
 	},
 	GConst.Msg.Hurt: {
 		1: {"n": "src_id", "t": "u32"},
@@ -273,6 +298,10 @@ const TABLE: Dictionary = {
 		1: {"n": "skill_id", "t": "u32"},
 		2: {"n": "src_id", "t": "u32"},
 		3: {"n": "dst_ids", "t": "u32", "r": true},
+	},
+	# 测试用（本项目本地扩展）：按测试按键做的操作，kind 见 GConst.DebugKey
+	GConst.Msg.DebugReq: {
+		1: {"n": "kind", "t": "u32"},
 	},
 }
 

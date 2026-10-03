@@ -245,7 +245,7 @@ func _on_error(err_id: int, msg: String) -> void:
 		Logic.request_room_list()
 
 
-func _on_gossip(txt: String) -> void:
+func _on_gossip(txt: String, _kind: int = 0) -> void:
 	设状态(txt)
 
 

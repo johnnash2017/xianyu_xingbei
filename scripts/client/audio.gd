@@ -5,10 +5,14 @@ extends Node
 ##   * 出牌 atk-<系别> / spell-<卡名>、命中 sys-hit（攻击 / 魔弹命中）、受伤 sys-hurt（法术 / 技能伤害）、
 ##     治疗 sys-heal、士气 sys-morale、宝石水晶 sys-energy、选将 sys-turn
 ##   * 角色语音 <角色id>（1~36、108）：轮到该角色回合时播他自己的那条
+##   * 给牌（交牌动效配的那声，见 battle_mobile._给牌特效）：暂时拿参考工程的 draw.mp3 顶着，
+##     换成正式音效时把 资源/音频/给牌.ogg / 给牌.wav 放进去即可（找文件的顺序是 ogg → wav → mp3）
 ## 对照脚本：参考项目 scripts/game/AudioManager.gd
 ## 说明：界面上的 wav 音效（按钮点击 Equip、轮到你 It's your turn、技能 Skill 等）沿用 Art.play_sfx，
 ##      因为参考项目没有这些界面音（它的音频只有这张 ogg 表）。
-## 多开时只有当前在用的那个窗口出声：窗口失焦就整体静音，回到前台再恢复
+## 多开时只有当前在用的那个窗口出声：窗口失焦就把总音量临时压到 0，回到前台再恢复。
+## 用「音量置 0」而不是「禁音（bus_mute）」或「不播」：音频流水线照常走，切回前台时
+## 本该在播的声音（BGM / 长音效）会接着放，不会因为后台期间被丢掉而断裂。
 
 const 音频目录: String = "res://资源/音频/"
 ## 音量（线性）：与参考项目 PlayerPrefs 里 BGM / SE 的默认值一致
@@ -19,6 +23,8 @@ const 场景主界面: int = 1
 const 场景战斗: int = 2
 ## 焦点轮询间隔（秒）：太短白忙，太长会让切窗口后声音慢半拍
 const 焦点轮询间隔: float = 0.2
+## 失焦时的总音量（dB）：够低就是听不见，但不打断播放
+const 失焦音量db: float = -80.0
 
 var _bgm: AudioStreamPlayer = null
 var _音效池: Array[AudioStreamPlayer] = []
@@ -53,12 +59,13 @@ func _随焦点切声音() -> void:
 	_切声音(DisplayServer.get_name() != "headless" and not DisplayServer.window_is_focused())
 
 
-## 失焦就把整个进程的音频静掉（BGM 与音效，含 Art.play_sfx 的界面 wav）；回到前台恢复
+## 失焦就把总音量临时压到 0（BGM 与音效，含 Art.play_sfx 的界面 wav）；回到前台恢复。
+## 注意不要用 bus_mute，也不要在这里跳过播放：这里只改音量，播放流水线不动。
 func _切声音(静音: bool) -> void:
 	if 静音 == _静音:
 		return
 	_静音 = 静音
-	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), 静音)
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Master"), 失焦音量db if 静音 else 0.0)
 
 
 ## 当前是否静音（联机测试与自检用来核对）
@@ -69,10 +76,9 @@ func 是否静音() -> bool:
 # ============================================================
 # 音效
 # ============================================================
-## 播一次音效；名字对应 资源/音频 下的文件名（不带扩展名），如 "sys-hit" / "spell-圣光"
+## 播放一次音效；名字对应 资源/音频 下的文件名（不带扩展名），如 "sys-hit" / "spell-圣光"
+## 失焦时照常播放（总音量已被压到 0），这样切回前台时还在响的会接着响
 func 播音效(名字: String, 音量: float = 1.0) -> void:
-	if _静音:
-		return
 	var 流: AudioStream = _取音频(名字)
 	if 流 == null:
 		return
@@ -125,7 +131,7 @@ func _取音频(名字: String) -> AudioStream:
 	if _缓存.has(名字):
 		return _缓存[名字]
 	var 流: AudioStream = null
-	for 后缀: String in [".ogg", ".wav"]:
+	for 后缀: String in [".ogg", ".wav", ".mp3"]:
 		var 路径: String = 音频目录 + 名字 + 后缀
 		if ResourceLoader.exists(路径):
 			var 资源: Resource = load(路径)

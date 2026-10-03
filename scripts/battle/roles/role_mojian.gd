@@ -16,6 +16,8 @@ const AN_YING_KANG_JU: int = 904
 const AN_YING_LIU_XING: int = 905
 const HEI_AN_ZHEN_CHAN: int = 906
 const HEI_AN_ZHEN_CHAN_BU_PAI: int = 9061
+## 黑暗震颤：把手牌补到 4 张（服务端硬编码 4）
+const HEI_AN_ZHEN_CHAN_KEEP: int = 4
 
 var used_xiu_luo_lian_zhan: bool = false
 var using_xiu_luo_lian_zhan: bool = false
@@ -51,7 +53,7 @@ func _magic_card_count() -> int:
 # 这里补一个动作总闸 v_allow_action 把整个「法术」行动一并禁掉 —— 法术技能照常可用。
 # ============================================================
 ## 【暗影抗拒】（904）：行动阶段不能用法术牌（法术技能不算）
-func v_allow_action(action_type: int, _args: Array) -> int:
+func v_allow_action(action_type: int, _args: Array, _allow: int, _can_give_up: bool) -> int:
 	if action_type != GConst.ActionType.Magic:
 		return V_NOT_OVERRIDE
 	return GConst.GE_INVALID_ACTION
@@ -106,13 +108,13 @@ func p_boot(_ctx: Dictionary) -> int:
 		step = AN_YING_NING_JU
 	if step == AN_YING_NING_JU:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, AN_YING_NING_JU, 0, 0)
+			询问(player.id, AN_YING_NING_JU, 0, 0)
 			return WAIT
 		step = STEP_DONE
 		if not take_skill_reply():
 			return SUCCESS
 		notice_skill(AN_YING_NING_JU, [player.id])
-		player.tap = true
+		engine.set_tap(player.id, true)
 		engine.push_harm({
 			"src": player.id, "dst": player.id, "point": 1,
 			"cause": AN_YING_NING_JU, "type": GConst.HarmType.Magic,
@@ -125,6 +127,13 @@ func p_boot(_ctx: Dictionary) -> int:
 # ============================================================
 # 主动攻击前（timeline_1）：黑暗震颤（906）
 # ============================================================
+## 【黑暗震颤】的推进阶段（0＝还没问 / 处理完本次询问后清回 0）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
@@ -132,12 +141,12 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if player.gem <= 0 or used_hei_an_zhen_chan:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, HEI_AN_ZHEN_CHAN, 0, 0)
+		询问(player.id, HEI_AN_ZHEN_CHAN, 0, 0)
 		return WAIT
-	step = STEP_DONE
+	_timeline_1_step = 0
 	if not take_skill_reply():
 		return SUCCESS
 	notice_skill(HEI_AN_ZHEN_CHAN, [int(ctx.get("dst", -1))])
@@ -152,43 +161,50 @@ func p_timeline_1(ctx: Dictionary) -> int:
 # ============================================================
 # 主动攻击命中后：暗影之力（903）→ 黑暗震颤补牌（9061）
 # ============================================================
+## 【暗影之力 / 黑暗震颤补牌】的推进阶段（0＝还没开始 / AN_YING_ZHI_LI＝结算暗影之力 /
+## HEI_AN_ZHEN_CHAN_BU_PAI＝结算黑暗震颤补牌（可能跨一次弃牌询问））。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动攻击命中（p_timeline_2_hit）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_2_hit_step: int = 0
+
+
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_2_hit_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = AN_YING_ZHI_LI
-	if step == AN_YING_ZHI_LI:
+	if _timeline_2_hit_step == 0:
+		_timeline_2_hit_step = AN_YING_ZHI_LI
+	if _timeline_2_hit_step == AN_YING_ZHI_LI:
 		if player.tap:
 			notice_skill(AN_YING_ZHI_LI, [int(harm.get("dst", -1))])
 			harm["point"] = int(harm.get("point", 0)) + 1
-		step = HEI_AN_ZHEN_CHAN_BU_PAI
-	if step == HEI_AN_ZHEN_CHAN_BU_PAI:
+		_timeline_2_hit_step = HEI_AN_ZHEN_CHAN_BU_PAI
+	if _timeline_2_hit_step == HEI_AN_ZHEN_CHAN_BU_PAI:
 		return _hei_an_zhen_chan_bu_pai()
 	return SUCCESS
 
 
-## 黑暗震颤补牌：手牌多于上限则弃到上限，少于上限则摸到上限
-## （技能原文「你的手牌直接补到上限」，上限＝player.hand_cards_max，别的角色也这么取）
+## 黑暗震颤补牌：手牌多于 4 张则弃到 4，少于 4 张则摸到 4（服务端硬编码 4，与手牌上限无关）
 func _hei_an_zhen_chan_bu_pai() -> int:
 	if not using_hei_an_zhen_chan:
-		step = STEP_DONE
+		_timeline_2_hit_step = 0
 		return SUCCESS
-	var num: int = player.hand_cards.size() - player.hand_cards_max
+	var num: int = player.hand_cards.size() - HEI_AN_ZHEN_CHAN_KEEP
 	if num > 0:
 		if not engine.has_reply():
-			engine.ask_skill(player.id, HEI_AN_ZHEN_CHAN_BU_PAI, num, 0)
+			询问(player.id, HEI_AN_ZHEN_CHAN_BU_PAI, num, 0)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
-		step = STEP_DONE
+		_timeline_2_hit_step = 0
 		using_hei_an_zhen_chan = false
 		notice_skill(HEI_AN_ZHEN_CHAN_BU_PAI, [player.id])
 		_discard_exact(num, r.get("card_ids", []))
 		engine._broadcast_game()
 		return SUCCESS
-	step = STEP_DONE
+	_timeline_2_hit_step = 0
 	using_hei_an_zhen_chan = false
 	if num < 0:
 		notice_skill(HEI_AN_ZHEN_CHAN_BU_PAI, [player.id])
@@ -216,7 +232,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 	if _contains_action(XIU_LUO_LIAN_ZHAN):
 		return SUCCESS
 	notice_skill(XIU_LUO_LIAN_ZHAN, [player.id])
-	player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN)
+	player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN, true)
 	# 回合限定的 used 标记在玩家选中该额外行动时置位（服务端 p_additional_action）
 	engine._broadcast_game()
 	return SUCCESS
@@ -284,6 +300,7 @@ func p_magic_skill(action: Dictionary) -> int:
 	})
 	engine.take_from_hand(player.id, cards)
 	engine.to_discard(cards)
+	engine._log_discard(player.id, cards)
 	engine._broadcast_game()
 	return URGENT
 
@@ -313,3 +330,4 @@ func _discard_exact(num: int, cards: Array) -> void:
 				chosen.append(cid)
 	engine.take_from_hand(player.id, chosen)
 	engine.to_discard(chosen)
+	engine._log_discard(player.id, chosen)

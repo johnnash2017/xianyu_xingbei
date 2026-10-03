@@ -14,6 +14,7 @@
 [ext_resource type="Script" uid="uid://cojj3ucexnb3j" path="res://scripts/ItemOverlay.gd" id="30_ItemOverlaygd"]
 [ext_resource type="Script" uid="uid://coauheldg4ew6" path="res://scripts/LongPress.gd" id="31_LongPressgd"]
 [ext_resource type="Script" uid="uid://b77bejghr7if1" path="res://scripts/PlayerStatusMobile.gd" id="32_PlayerStatusMobilegd"]
+[ext_resource type="Texture2D" uid="uid://dno7djaa8hkv7" path="res://assets/textures/battle/b02_chara_mask.png" id="33_b02charamaskpng"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_waitbg"]
 bg_color = Color(0, 0, 0, 0)
@@ -116,7 +117,7 @@ texture = ExtResource("19_b02charabluepng")
 expand_mode = 1
 
 [node name="Hero_6" type="TextureRect" parent="TeamBG_6" unique_id=1567052249]
-clip_contents = true
+clip_children = 1
 layout_mode = 0
 anchor_left = 0.5
 anchor_right = 0.5
@@ -128,6 +129,7 @@ grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(90, 90)
 mouse_filter = 0
+texture = ExtResource("33_b02charamaskpng")
 expand_mode = 1
 
 [node name="HeroIcon_5" type="TextureRect" parent="TeamBG_6/Hero_6" unique_id=2086600426]
@@ -365,12 +367,12 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = 57.5
-offset_top = -108.5
-offset_right = 117.5
+offset_top = -148.5
+offset_right = 137.5
 offset_bottom = 11.5
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(30, 60)
+pivot_offset = Vector2(40, 80)
 mouse_filter = 2
 
 [node name="Knelt_6" type="TextureRect" parent="." unique_id=1004752976]

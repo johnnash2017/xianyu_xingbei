@@ -4,11 +4,12 @@
 
 [node name="SkillTooltip" type="RichTextLabel" unique_id=1348651082]
 custom_minimum_size = Vector2(1100, 800)
-theme_override_font_sizes/normal_font_size = 40
+theme_override_font_sizes/normal_font_size = 36
+theme_override_constants/paragraph_separation = 18
 bbcode_enabled = true
 scroll_active = false
 script = ExtResource("1_autosizer")
-_max_size = 40
+_max_size = 36
 _min_size = 16
-_current_font_size = 40
+_current_font_size = 36
 _editor_defaults_set = true

@@ -95,19 +95,27 @@ func v_remissile(_card_id: int) -> int:
 	return GConst.GE_INVALID_CARDID
 
 
+## 【暗之解放 / 幻影星辰】的推进阶段（0＝还没开始 / AN_ZHI_JIE_FANG、HUAN_YING_XING_CHEN＝在问发动哪一个 /
+## HUAN_YING_XING_CHEN_EFFECT＝幻影星辰的自伤已结算，等追加伤害的 URGENT 跑完再收尾）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _boot_step: int = 0
+
+
 # ============================================================
 # 启动：暗之解放（2901）/ 幻影星辰（2902）
 # ============================================================
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _boot_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = HUAN_YING_XING_CHEN if player.tap else AN_ZHI_JIE_FANG
-	if step == AN_ZHI_JIE_FANG or step == HUAN_YING_XING_CHEN:
+	if _boot_step == 0:
+		_boot_step = HUAN_YING_XING_CHEN if player.tap else AN_ZHI_JIE_FANG
+	if _boot_step == AN_ZHI_JIE_FANG or _boot_step == HUAN_YING_XING_CHEN:
 		return _an_zhi_huan_ying()
-	if step == HUAN_YING_XING_CHEN_EFFECT:
+	if _boot_step == HUAN_YING_XING_CHEN_EFFECT:
 		return _huan_ying_xing_chen_effect()
 	return SUCCESS
 
@@ -117,7 +125,14 @@ func _an_zhi_huan_ying() -> int:
 	var need_target: int = 1 if player.tap else 0
 	var skill_id: int = HUAN_YING_XING_CHEN if player.tap else AN_ZHI_JIE_FANG
 	if not engine.has_reply():
-		engine.ask_skill(player.id, skill_id, 0, need_target)
+		# 按当前形态只给对应的一项（value 1=暗之解放、2=幻影星辰，与服务端 choice 分支一致）；
+		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
+		var 选项: Array = []
+		if player.tap:
+			选项.append({"value": 2, "label": GConst.skill_name(HUAN_YING_XING_CHEN)})
+		else:
+			选项.append({"value": 1, "label": GConst.skill_name(AN_ZHI_JIE_FANG)})
+		询问(player.id, skill_id, 0, need_target, GConst.CardSource.Hand, 选项)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -128,29 +143,29 @@ func _an_zhi_huan_ying() -> int:
 		using_an_zhi_jie_fang = true
 		availabel_qi_hei_zhi_qiang = false
 		availabel_chong_ying = false
-		player.tap = true
+		engine.set_tap(player.id, true)
 		player.hand_cards_max = HAND_MAX_ILLUSION
-		step = STEP_DONE
+		_boot_step = 0
 		engine._broadcast_game()
 		return SUCCESS
 	if choice == 2:
 		# 幻影星辰：对自身 2 点法术伤害并脱离[幻影形态]
 		var dsts: Array = r.get("dst_ids", [])
 		if dsts.is_empty():
-			step = STEP_DONE
+			_boot_step = 0
 			return SUCCESS
 		notice_skill(HUAN_YING_XING_CHEN, [int(dsts[0])])
 		hurt_id = int(dsts[0])
 		using_huan_ying_xing_chen = true
 		huan_ying_morale_lost = false
-		step = HUAN_YING_XING_CHEN_EFFECT
+		_boot_step = HUAN_YING_XING_CHEN_EFFECT
 		engine.push_harm({
 			"src": player.id, "dst": player.id, "point": 2,
 			"cause": HUAN_YING_XING_CHEN, "type": GConst.HarmType.Magic,
 		})
 		engine._broadcast_game()
 		return URGENT
-	step = STEP_DONE
+	_boot_step = 0
 	return SUCCESS
 
 
@@ -176,9 +191,10 @@ func _huan_ying_xing_chen_effect() -> int:
 	player.hand_cards_max = HAND_MAX_NORMAL
 	var morale_lost: bool = huan_ying_morale_lost
 	huan_ying_morale_lost = false
-	step = STEP_DONE
 	engine._broadcast_game()
 	if morale_lost or hurt_id < 0:
+		# 追加伤害已结算完（hurt_id 被清 -1）或本就不追加：此刻才是真正的收尾
+		_boot_step = 0
 		return SUCCESS
 	var dst_id: int = hurt_id
 	hurt_id = -1
@@ -187,7 +203,17 @@ func _huan_ying_xing_chen_effect() -> int:
 		"cause": HUAN_YING_XING_CHEN, "type": GConst.HarmType.Magic,
 	})
 	engine._broadcast_game()
+	# 追加伤害走 URGENT：此刻不能清回 0，否则回到 p_boot 会退回第 0 步再问一次暗之解放；
+	# 保持本阶段，等伤害结算完回到这里（hurt_id < 0）再收尾
 	return URGENT
+
+
+## 【暗之解放加伤 / 充盈加伤 / 漆黑之枪】的推进阶段（0＝还没开始 / AN_ZHI_JIE_FANG＝暗之解放加伤 /
+## CHONG_YING＝充盈加伤 / QI_HEI_ZHI_QIANG＝在问是否耗能量发动漆黑之枪）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动攻击命中（p_timeline_2_hit）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _hit_step: int = 0
 
 
 # ============================================================
@@ -197,17 +223,17 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _hit_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = AN_ZHI_JIE_FANG
-	if step == AN_ZHI_JIE_FANG:
+	if _hit_step == 0:
+		_hit_step = AN_ZHI_JIE_FANG
+	if _hit_step == AN_ZHI_JIE_FANG:
 		_an_zhi_jie_fang_effect(ctx)
-		step = CHONG_YING
-	if step == CHONG_YING:
+		_hit_step = CHONG_YING
+	if _hit_step == CHONG_YING:
 		_chong_ying_add_harm(ctx)
-		step = QI_HEI_ZHI_QIANG
-	if step == QI_HEI_ZHI_QIANG:
+		_hit_step = QI_HEI_ZHI_QIANG
+	if _hit_step == QI_HEI_ZHI_QIANG:
 		return _qi_hei_zhi_qiang(ctx)
 	return SUCCESS
 
@@ -240,27 +266,33 @@ func _qi_hei_zhi_qiang(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx["harm"]
 	var dst_p: BattlePlayer = engine.p(int(harm.get("dst", -1)))
 	if dst_p == null or not availabel_qi_hei_zhi_qiang:
-		step = STEP_DONE
+		_hit_step = 0
 		return SUCCESS
 	if dst_p.hand_cards.size() < 1 or dst_p.hand_cards.size() > 2:
-		step = STEP_DONE
+		_hit_step = 0
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)) or using_an_zhi_jie_fang:
-		step = STEP_DONE
+		_hit_step = 0
 		return SUCCESS
 	if not player.tap or player.get_energy() == 0:
-		step = STEP_DONE
+		_hit_step = 0
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, QI_HEI_ZHI_QIANG, 0, 0)
+		# 通用客户端只回一维 args：把「投入能量数」做成 options，args[0] 即选中项的 value
+		# （原版是靠 respond 的第二个参数 args[1] 传能量数，移植版拿不到所以恒为 0、伤害固定 +2）
+		var options: Array = []
+		for n: int in range(1, player.get_energy() + 1):
+			options.append({"value": n, "label": "投入 %d 点能量（伤害 +%d）" % [n, n + 2]})
+		询问(player.id, QI_HEI_ZHI_QIANG, 0, 0, GConst.CardSource.Hand, options)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
+	_hit_step = 0
 	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
+	# args[0] 是所选能量数；取消/超时回 0，此时不发动（不扣能量、不加伤）
+	var use: int = int(args[0]) if not args.is_empty() else 0
+	if use <= 0:
 		return SUCCESS
-	var use: int = int(args[1]) if args.size() > 1 else 0
-	use = clampi(use, 0, player.get_energy())
+	use = clampi(use, 1, player.get_energy())
 	for _i: int in range(use):
 		if player.crystal > 0:
 			player.set_crystal(player.crystal - 1)
@@ -291,7 +323,13 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, AN_ZHI_ZHANG_BI, 1, 0)
+		# 只能弃法术牌或雷系牌：下发白名单让界面把其余手牌置灰；
+		# 一张都没有时就没什么可弃，直接跳过这次询问
+		var 可弃: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_magic() or c.element_enum() == GConst.CardElement.Thunder)
+		if 可弃.is_empty():
+			step = STEP_DONE
+			return SUCCESS
+		询问(player.id, AN_ZHI_ZHANG_BI, 1, 0, GConst.CardSource.Hand, [], 0, "", 可弃)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -385,7 +423,7 @@ func _chong_ying(action: Dictionary) -> int:
 		used_chong_ying = true
 		_chong_targets = _all_ids_from_self()
 		_chong_index = 0
-		player.add_action(GConst.ActionType.Attack, CHONG_YING)
+		player.add_action(GConst.ActionType.Attack, CHONG_YING, true)
 		engine._broadcast_game()
 		step = 1
 	if step == 1:
@@ -396,13 +434,22 @@ func _chong_ying(action: Dictionary) -> int:
 				_chong_index += 1
 				continue
 			if not engine.has_reply():
-				engine.ask_skill(tid, CHONG_YING_DISCARD, 1, 0)
+				if tp.color != player.color:
+					# 服务端对敌方用不可放弃的 StateRequestHand：敌方必须弃 1 张
+					engine.ask_respond(tid, GConst.RespondType.Discard, [tid, CHONG_YING_DISCARD, 1], [tid])
+					engine.wait_for(tid, GConst.Msg.Respond)
+				else:
+					询问(tid, CHONG_YING_DISCARD, 1)
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
 			_chong_index += 1
 			var cs: Array = r.get("card_ids", [])
 			if cs.is_empty():
-				continue
+				# 敌方不允许放弃：没选牌就从其手牌强制取 1 张
+				if tp.color != player.color and not tp.hand_cards.is_empty():
+					cs = [tp.hand_cards[0]]
+				else:
+					continue
 			var ccid: int = int(cs[0])
 			if not tp.has_hand_card(ccid):
 				continue

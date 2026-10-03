@@ -24,24 +24,31 @@ func available_skills() -> Array:
 	return out
 
 
+## 【闪电箭 / 精准射击】的推进阶段（0＝还没开始 / SHAN_DIAN_JIAN＝结算闪电箭 / JING_ZHUN_SHE_JI＝在问精准射击）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
 # ============================================================
 # 攻击宣告后：闪电箭（被动）→ 精准射击（可选）
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
-		step = SHAN_DIAN_JIAN
-	if step == SHAN_DIAN_JIAN:
+	if _timeline_1_step == 0:
+		_timeline_1_step = SHAN_DIAN_JIAN
+	if _timeline_1_step == SHAN_DIAN_JIAN:
 		_shan_dian_jian(ctx)
-		step = JING_ZHUN_SHE_JI
-	if step == JING_ZHUN_SHE_JI:
+		_timeline_1_step = JING_ZHUN_SHE_JI
+	if _timeline_1_step == JING_ZHUN_SHE_JI:
 		var r: int = _jing_zhun_she_ji(ctx)
 		if r == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_timeline_1_step = 0
 	return SUCCESS
 
 
@@ -60,7 +67,7 @@ func _jing_zhun_she_ji(ctx: Dictionary) -> int:
 	if card == null or not card.has_skill_id(JING_ZHUN_SHE_JI):
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, JING_ZHUN_SHE_JI, 0, 0)
+		询问(player.id, JING_ZHUN_SHE_JI, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -71,6 +78,13 @@ func _jing_zhun_she_ji(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 【贯穿射击】的推进阶段（0＝还没开始 / 处理完本次贯穿射击后清回 0）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动攻击未命中（p_timeline_2_miss）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _guan_chuan_step: int = 0
+
+
 # ============================================================
 # 主动攻击未命中后：贯穿射击（可选）
 # ============================================================
@@ -79,13 +93,14 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _guan_chuan_step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, GUAN_CHUAN_SHE_JI, 1, 0)
+		# 只能弃法术牌（card_rule = "magic"）：否则界面会把攻击牌等也点亮
+		询问(player.id, GUAN_CHUAN_SHE_JI, 1, 0, GConst.CardSource.Hand, [], 0, "magic")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
+	_guan_chuan_step = 0
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
@@ -174,7 +189,7 @@ func _ju_ji(action: Dictionary) -> int:
 	else:
 		player.set_gem(player.gem - 1)
 	# 额外一次攻击行动
-	player.add_action(GConst.ActionType.Attack, JU_JI)
+	player.add_action(GConst.ActionType.Attack, JU_JI, true)
 	# 目标手牌补到 5 张
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst != null:

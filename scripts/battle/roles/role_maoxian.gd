@@ -28,7 +28,7 @@ func available_skills() -> Array:
 	# 欺诈：弃 2~3 张同系牌 + 指定敌方目标，虚牌（args[0]）由参数按钮选择
 	if player.hand_cards.size() >= 2:
 		out.append({"type": GConst.ActionType.AttackSkill, "id": QI_ZHA, "need_card": 2, "card_max": 3, "need_target": 1,
-			"targets": enemy_ids(), "arg_choices": _qi_zha_choices()})
+			"targets": enemy_ids(), "arg_choices": _qi_zha_choices(), "card_rule": "same"})
 	if player.get_energy() > 0 and not used_TouTianHuanRi:
 		if engine.team_gem[1 - player.color] >= 1:
 			out.append({"type": GConst.ActionType.MagicSkill, "id": TOU_TIAN_HUAN_RI, "need_card": 0, "need_target": 0})
@@ -83,6 +83,12 @@ func v_attack_skill(action: Dictionary) -> int:
 	var card: GCard = Data.get_card(virtual_card)
 	if card == null or not card.is_attack():
 		return GConst.GE_INVALID_CARDID
+	# 服务端 MaoXian::v_attack_skill 会调 v_attack：补上通用攻击限制
+	# （面前有【挑衅】时目标只能是勇者；目标角色可拒绝被攻击，如暗杀者潜行中）
+	if player.check_exclusive_effect(GConst.Exclusive.TiaoXin) and dst.role_id != 21:
+		return GConst.GE_INVALID_PLAYERID
+	if dst.v_attacked() != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_PLAYERID
 	return GConst.GE_SUCCESS
 
 
@@ -158,7 +164,7 @@ func _tou_tian_huan_ri() -> int:
 	var enemy: int = 1 - player.color
 	engine.set_team_gem(enemy, engine.team_gem[enemy] - 1)
 	engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
-	player.add_action(GConst.ActionType.AttackMagic, TOU_TIAN_HUAN_RI)
+	player.add_action(GConst.ActionType.AttackMagic, TOU_TIAN_HUAN_RI, true)
 	used_TouTianHuanRi = true
 	engine._broadcast_game()
 	return SUCCESS
@@ -171,7 +177,7 @@ func _te_shu_jia_gong() -> int:
 	var crystal_have: int = engine.team_crystal[player.color]
 	engine.set_team_crystal(player.color, 0)
 	engine.set_team_gem(player.color, engine.team_gem[player.color] + crystal_have)
-	player.add_action(GConst.ActionType.AttackMagic, TE_SHU_JIA_GONG)
+	player.add_action(GConst.ActionType.AttackMagic, TE_SHU_JIA_GONG, true)
 	used_TouTianHuanRi = true
 	engine._broadcast_game()
 	return SUCCESS

@@ -86,7 +86,7 @@ const 技能分段标题: Dictionary = {"普通": "普通技", "独有技": "独
 
 ## 角色技能文本：按「角色表」的「技能」引用逐条拼装（角色ID -> 技能文本）
 ## 一级标题取技能表的「派系」列；每条技能一行，技能表里的「说明」已经不带头，
-## 这里把「类型」「技能名」拼回去，成「【响应】疾风技；说明」的样子
+## 这里把「类型」「技能名」拼回去，成「【响应】疾风技：说明」的样子
 func _load_role_skill_db() -> void:
 	role_skill_db.clear()
 	var 列索引: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
@@ -106,7 +106,7 @@ func _load_role_skill_db() -> void:
 			var 说明: String = str(row[说明列]).strip_edges()
 			if 说明 == "":
 				continue
-			var 条目: String = "【%s】%s；%s" % [
+			var 条目: String = "【%s】%s：%s" % [
 				str(row[类型列]).strip_edges(), str(row[名字列]).strip_edges(), 说明]
 			var 分段: String = str(row[分段列])
 			if not 分组.has(分段):
@@ -117,7 +117,8 @@ func _load_role_skill_db() -> void:
 		role_skill_db[角色号] = _拼技能文本(分组)
 
 
-## 把某角色的分段字典拼成一段文本：一级标题（派系）一行，该段每条技能各占一行
+## 把某角色的分段字典拼成一段文本：一级标题（派系）一行，该段每条技能各占一行。
+## 行与行之间的间距不在这里插空行，改由 上色 配合 RichTextLabel 的 paragraph_separation 统一控制
 func _拼技能文本(段字典: Dictionary) -> String:
 	var 行列表: Array[String] = []
 	for 分段: String in 技能分段顺序:
@@ -127,7 +128,7 @@ func _拼技能文本(段字典: Dictionary) -> String:
 		var 本段行: Array = 段字典[分段]
 		for 条目: String in 本段行:
 			# 换行标记有两种：老数据的 #，以及导表器把单元格内换行转义出来的字面 \n；
-			# 只有第一行带「【类型】技能名；」前缀；正文（含说明的续行）整体缩进两格，与一级标题拉开
+			# 只有第一行带「【类型】技能名：」前缀；正文（含说明的续行）整体缩进两格，与一级标题拉开
 			for 行: String in 条目.replace("\\n", "#").split("#"):
 				var 文本: String = 行.strip_edges()
 				if 文本 != "":
@@ -197,6 +198,23 @@ func role_tap(rid: int) -> String:
 		return ""
 	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
 	return str(row[int(列索引["形态图"])]).strip_edges()
+
+
+## 该角色的形态名（角色表「横置形态」列，类型 list(string)；一个角色未来可能有多形态，
+## 目前 tap 只有真假两态，取第一个）。导表器把 list 的每一项都包成一层字段数组，故取每项第 0 格
+func role_forms(rid: int) -> Array[String]:
+	var 结果: Array[String] = []
+	var row: Array = _角色行(rid)
+	if row.is_empty():
+		return 结果
+	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
+	for 项: Array in row[int(列索引["横置形态"])]:
+		if 项.is_empty():
+			continue
+		var 名: String = str(项[0]).strip_edges()
+		if 名 != "":
+			结果.append(名)
+	return 结果
 
 
 ## 角色派系（技 / 血 / 幻 / 咏 / 圣）；角色表里没有的角色返回空串（界面据此不显示派系图标）
@@ -342,6 +360,9 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.online = bool(pi.get("online", true))
 	if pi.has("max_hand"):
 		p.hand_cards_max = int(pi["max_hand"])
+	# 治疗上限：角色被动改过（如神官【圣使守护】+4），按服务端下发的值显示
+	if pi.has("max_heal"):
+		p.set_cross_max(int(pi["max_heal"]))
 	# 基础效果
 	p.clean_basic_status()
 	for cid: Variant in pi.get("basic_cards", []):

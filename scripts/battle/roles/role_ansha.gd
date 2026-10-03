@@ -18,6 +18,12 @@ const QIAN_XING: int = 503
 
 const QIAN_XING_HAND_MINUS: int = 1
 
+## 【潜行】的推进阶段（0＝还没开始 / QIAN_XING＝正在询问是否启动潜行）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _qian_xing_step: int = 0
+
 
 # ============================================================
 # 回合开始（p_boot）：结束上一次潜行，再决定是否重新潜行
@@ -25,18 +31,18 @@ const QIAN_XING_HAND_MINUS: int = 1
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _qian_xing_step >= STEP_DONE:
 		return SUCCESS
-	if step == 0:
+	if _qian_xing_step == 0:
 		# 潜行持续到「你的下个行动阶段开始」，即此刻先结束
 		if player.tap:
 			_qian_xing_end()
-		step = QIAN_XING
-	if step == QIAN_XING:
+		_qian_xing_step = QIAN_XING
+	if _qian_xing_step == QIAN_XING:
 		var r: int = _qian_xing()
 		if r == WAIT:
 			return WAIT
-		step = STEP_DONE
+		_qian_xing_step = 0
 	return SUCCESS
 
 
@@ -45,7 +51,7 @@ func _qian_xing() -> int:
 	if player.gem <= 0:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, QIAN_XING, 0, 0)
+		询问(player.id, QIAN_XING, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -100,6 +106,13 @@ func v_attacked() -> int:
 	return GConst.GE_SUCCESS
 
 
+## 【水影】的推进阶段（0＝还没开始 / 处理完本次水影后清回 0）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己承受伤害（p_timeline_3）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _shui_ying_step: int = 0
+
+
 # ============================================================
 # 承受伤害（p_timeline_3）：水影（弃 X 张水系牌抵御 X 点伤害）
 # ============================================================
@@ -108,13 +121,15 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not _has_water_card():
 		return SUCCESS
-	if step >= STEP_DONE:
+	if _shui_ying_step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		engine.ask_skill(player.id, SHUI_YING, 1, 0)
+		# 只能弃水系手牌（技能原文）：下发白名单把其余手牌置灰，免得点了别的系提交后落空
+		询问(player.id, SHUI_YING, 1, 0, GConst.CardSource.Hand, [], 0, "",
+			hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
+	_shui_ying_step = 0
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
@@ -128,8 +143,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	})
 	engine.take_from_hand(player.id, cards)
 	engine.to_discard(cards)
-	var harm: Dictionary = ctx.get("harm", {})
-	harm["point"] = maxi(int(harm.get("point", 0)) - cards.size(), 0)
+	# 服务端 ShuiYing 只展示并弃掉水系手牌，不抵消本次伤害
 	engine._broadcast_game()
 	return SUCCESS
 
