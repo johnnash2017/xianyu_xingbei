@@ -16,7 +16,7 @@ extends Node2D
 @export var BG: Sprite2D
 
 ## 飞完全程的时长（秒）
-@export var 飞行时长: float = 0.5
+@export var 飞行时长: float = 0.65
 
 ## 出场倍速：3D 特效的「出现」动画（斩痕淡入，原速 0.6 秒）播放多快。
 ## 调大就能一出手就看到完整斩痕（1.0 = 不加速，按原始淡入速度）

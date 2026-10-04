@@ -48,6 +48,8 @@ const SUB: Dictionary = {
 		22: {"n": "third_token", "t": "u32"},
 		# 治疗上限（角色被动会改，如神官【圣使守护】+4）：客户端要按它画治疗格的上限
 		23: {"n": "max_heal", "t": "u32"},
+		# 能量上限（角色被动会改，如贤者 +1）：客户端判「星石已满 / 还有空位」要用它
+		24: {"n": "max_energy", "t": "u32"},
 	},
 	"Command": {
 		1: {"n": "respond_id", "t": "u32"},
@@ -59,7 +61,7 @@ const SUB: Dictionary = {
 		6: {"n": "notes", "t": "str", "r": true},
 		# 点选上限（如【欺诈】弃 2~3 张；0 表示就按最少张数选）
 		7: {"n": "card_max", "t": "u32"},
-		# 技能参数选项：每项渲染成一个按钮（如【欺诈】选本次视为哪种攻击、【冒险者天堂】用哪些星石）
+		# 技能参数选项：每项渲染成一个按钮（如【冒险者天堂】选要用哪些星石）
 		8: {"n": "arg_choices", "t": "msg", "r": true, "s": "ArgChoice"},
 		# 选牌的系别规则（""＝不限；"same"＝必须同系，如【法术反弹】；"diff"＝必须互异系，如【魔道法典】）
 		9: {"n": "card_rule", "t": "str"},
@@ -257,6 +259,8 @@ const TABLE: Dictionary = {
 		3: {"n": "dst_ids", "t": "u32", "r": true},
 		4: {"n": "card_ids", "t": "u32", "r": true},
 		5: {"n": "args", "t": "u32", "r": true},
+		# 分步应答标记（如【剑气斩】先在弹窗选好剑气数）：只报「这一步选好的值」，不算本次询问的最终回复
+		6: {"n": "partial", "t": "bool"},
 	},
 	GConst.Msg.CmdReq: {
 		1: {"n": "cmd_type", "t": "enum"},

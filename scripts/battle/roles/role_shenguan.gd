@@ -293,7 +293,7 @@ func _shen_sheng_qi_fu(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, cards)
+	engine.take_from_hand(player.id, cards, true)
 	engine.to_discard(cards)
 	施加治疗(player.id, 2)
 	engine._broadcast_game()
@@ -316,7 +316,7 @@ func _shui_zhi_shen_li(action: Dictionary) -> int:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": [cid], "is_real": true,
 		})
-		engine.take_from_hand(player.id, [cid])
+		engine.take_from_hand(player.id, [cid], true)
 		engine.to_discard([cid])
 		if player.hand_cards.is_empty():
 			_shui_shen_dst = -1
@@ -366,19 +366,16 @@ func _shen_sheng_ling_yu(action: Dictionary) -> int:
 	var use_cards: Array = []
 	for i: int in range(mini(limit, cards.size())):
 		use_cards.append(int(cards[i]))
-	if not use_cards.is_empty():
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": use_cards, "is_real": true,
-		})
-		engine.take_from_hand(player.id, use_cards)
-		engine.to_discard(use_cards)
 	if mode == 1:
 		player.sub_cross_num(1)
 		engine.push_harm({
 			"src": player.id, "dst": dst_id, "point": 2,
 			"cause": SHEN_SHENG_LING_YU, "type": GConst.HarmType.Magic,
 		})
+	if not use_cards.is_empty():
+		engine.take_from_hand(player.id, use_cards)
+		engine.to_discard(use_cards)
+	if mode == 1:
 		engine._broadcast_game()
 		return URGENT
 	施加治疗(player.id, 2)

@@ -42,11 +42,15 @@ func available_skills() -> Array:
 		# 五系束缚：目标须为对手（v_magic_skill：dst.color == player.color 时拒收）
 		out.append({"type": GConst.ActionType.MagicSkill, "id": WU_XI_SHU_FU, "need_card": 0, "need_target": 1,
 			"targets": enemy_ids()})
-		if _any_basic_effect_on_field():
-			# 封印破碎：发动牌是目标面前的基础效果牌，不是手牌
-			# （v_magic_skill 用 _has_basic_card(dst3, cards[0]) 校验目标身上的基础效果牌）
-			out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_YIN_PO_SUI, "need_card": 1, "need_target": 1,
-				"card_source": GConst.CardSource.BasicEffect})
+		# 封印破碎：合法目标限定为「面前有基础效果牌」的玩家（对照原客户端 FengYinPoSui 的 enablePlayerItem）。
+		# 交互与天使【风之洁净】一致（CardSource.HandAndBasicEffect）：先点一名目标、按「确定」，
+		# 客户端再列出该目标面前的基础效果供选，选中的那张牌 id 由 args[0] 回传
+		# （v_magic_skill 用 _has_basic_card(dst3, args[0]) 校验）。
+		# 一个基础效果都没有时不给出该技能
+		var 有基础效果的目标: Array[int] = _有基础效果的目标()
+		if not 有基础效果的目标.is_empty():
+			out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_YIN_PO_SUI, "need_card": 0, "need_target": 1,
+				"card_source": GConst.CardSource.HandAndBasicEffect, "targets": 有基础效果的目标})
 	return out
 
 
@@ -68,19 +72,24 @@ func p_check_basic_effect(ctx: Dictionary) -> int:
 # 展示手牌（p_show_hand）：封印触发
 # ============================================================
 func p_show_hand(ctx: Dictionary) -> int:
-	# 命中封印后返回 URGENT，引擎跑完伤害结算会重新进入本钩子，从而依次触发同一玩家身上的多个封印
-	var r: int = _feng_yin_effect(int(ctx.get("player", -1)), ctx.get("cards", []))
+	# 命中封印后返回 URGENT，引擎跑完伤害结算会重新进入本钩子，从而依次触发同一玩家身上的多个封印。
+	# ctx 全程是同一个字典：用「本次已触发的封印牌」记一笔，重入时跳过已触发的，避免同一张封印被触发两次
+	var r: int = _feng_yin_effect(int(ctx.get("player", -1)), ctx.get("cards", []), ctx)
 	if r == URGENT:
 		return URGENT
 	return SUCCESS
 
 
-func _feng_yin_effect(player_id: int, cards: Array) -> int:
+func _feng_yin_effect(player_id: int, cards: Array, ctx: Dictionary) -> int:
 	var target: BattlePlayer = engine.p(player_id)
 	if target == null:
 		return SUCCESS
+	var 已触发: Array = ctx.get("seals_triggered", [])
 	for e: Dictionary in target.basic_effects:
-		var seal: GCard = Data.get_card(int(e["card"]))
+		var 封印牌: int = int(e["card"])
+		if 已触发.has(封印牌):
+			continue
+		var seal: GCard = Data.get_card(封印牌)
 		if seal == null or not _is_seal_card(seal):
 			continue
 		# 服务端不校验封印是谁布的：任一封印师都会因同系牌触发（两个封印师同场时各自结算）
@@ -89,7 +98,9 @@ func _feng_yin_effect(player_id: int, cards: Array) -> int:
 			var shown: GCard = Data.get_card(int(c))
 			if shown == null or shown.element_enum() != seal_elem:
 				continue
-			_trigger_seal(target, int(e["card"]), seal_elem)
+			_trigger_seal(target, 封印牌, seal_elem)
+			已触发.append(封印牌)
+			ctx["seals_triggered"] = 已触发
 			return URGENT
 	return SUCCESS
 
@@ -149,12 +160,16 @@ func v_magic_skill(action: Dictionary) -> int:
 			if dst2 == null or dst2.color == player.color:
 				return GConst.GE_INVALID_PLAYERID
 		FENG_YIN_PO_SUI:
-			if cards.is_empty() or dsts.is_empty():
-				return GConst.GE_INVALID_CARDID
+			if dsts.is_empty():
+				return GConst.GE_INVALID_PLAYERID
 			if player.get_energy() <= 0:
 				return GConst.GE_INVALID_ACTION
+			# 要拿走的基础效果牌由 args[0] 回传（与天使【风之洁净】同一套交互）
+			var args: Array = action.get("args", [])
+			if args.is_empty():
+				return GConst.GE_INVALID_ARGUMENT
 			var dst3: BattlePlayer = engine.p(int(dsts[0]))
-			if dst3 == null or not _has_basic_card(dst3, int(cards[0])):
+			if dst3 == null or not _has_basic_card(dst3, int(args[0])):
 				return GConst.GE_INVALID_ACTION
 		_:
 			return GConst.GE_INVALID_ACTION
@@ -182,8 +197,8 @@ func _cast_seal(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": dst_id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
 	engine.add_basic_effect(dst_id, cid, player.id, aid)
+	engine.take_from_hand(player.id, [cid], true)
 	engine._broadcast_game()
 	return URGENT
 
@@ -201,7 +216,7 @@ func _cast_wu_xi_shu_fu(action: Dictionary) -> int:
 
 ## 封印破碎：消耗 1 能量（优先水晶），把场上任意一张基础效果牌收入自己手中
 func _cast_feng_yin_po_sui(action: Dictionary) -> int:
-	var cid: int = int(action.get("card_ids")[0])
+	var cid: int = int(action.get("args")[0])
 	var dst_id: int = int(action.get("dst_ids")[0])
 	notice_skill(FENG_YIN_PO_SUI, [dst_id])
 	_consume_one_energy()
@@ -252,13 +267,10 @@ func _seal_count() -> int:
 	return n
 
 
-## 场上是否有任意基础效果（封印破碎的前提）
-func _any_basic_effect_on_field() -> bool:
-	for pid: int in engine.order:
-		var p0: BattlePlayer = engine.p(pid)
-		if p0 != null and not p0.basic_effects.is_empty():
-			return true
-	return false
+## 面前有基础效果的玩家（含自己）：【封印破碎】的合法目标
+## （对照原客户端 FengYinPoSui 里对 hasStatus() 的 playerArea->enablePlayerItem）
+func _有基础效果的目标() -> Array[int]:
+	return player_ids_where(func(p: BattlePlayer) -> bool: return not p.basic_effects.is_empty(), true)
 
 
 ## 目标是否拥有指定的基础效果牌

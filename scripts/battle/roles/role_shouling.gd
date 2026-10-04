@@ -110,11 +110,15 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
-		"card_ids": chosen, "is_real": true,
-	})
-	engine.take_from_hand(pid, chosen)
+	# 服务端这几处的 isShown：兽返 / 兽魂警戒 公开（顺带触发展示手牌钩子），
+	# 逆返居合斩的目标弃牌是面朝下的（false），不能一起公开
+	var 公开: bool = cause == SHOU_FAN or cause == SHOU_HUN_JING_JIE
+	if 公开:
+		engine.broadcast(GConst.Msg.Card, {
+			"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
+			"card_ids": chosen, "is_real": true,
+		})
+	engine.take_from_hand(pid, chosen, 公开)
 	engine.to_discard(chosen)
 	if (cause == SHOU_HUN_JING_JIE or cause == SHOU_FAN) and not chosen.is_empty():
 		var c: GCard = Data.get_card(int(chosen[0]))
@@ -364,10 +368,6 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		var want: int = mini(shou_fan_num, player.hand_cards.size())
 		if want > 0:
 			var chosen: Array = _pick_cards(player, shou_fan_cards, want)
-			engine.broadcast(GConst.Msg.Card, {
-				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-				"card_ids": chosen, "is_real": true,
-			})
 			engine.take_from_hand(player.id, chosen)
 			engine.to_discard(chosen)
 		_shou_fan_step = SHOU_FAN_TARGET_DISCARD
@@ -544,10 +544,6 @@ func p_boot(_ctx: Dictionary) -> int:
 	# 分支 1＝弃 1 张手牌；2＝摸 1 张牌；3＝不调整（数量固定为 1，故不再从 args[1] 取）
 	if choose == 1:
 		var chosen: Array = _pick_cards(player, r.get("card_ids", []), 1)
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": chosen, "is_real": true,
-		})
 		engine.take_from_hand(player.id, chosen)
 		engine.to_discard(chosen)
 	elif choose == 2:

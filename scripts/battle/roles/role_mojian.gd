@@ -4,9 +4,9 @@ extends BattleRole
 ## 技能：修罗连斩（901，响应：[攻击行动]结束时追加 1 次火系攻击行动）、
 ##       暗影凝聚（902，启动：对自身 1 点法术伤害，进入[暗影形态]）、
 ##       暗影之力（903，被动：仅[暗影形态]下，自身发动的攻击伤害 +1）、
-##       暗影抗拒（904，被动：你的行动阶段始终不能使用法术牌，由 v_missile/v_shield/v_weaken 覆写实现）、
+##       暗影抗拒（904，被动：你的行动阶段始终不能使用法术牌，含【圣光】—— 由 v_allow_action / v_block 覆写实现）、
 ##       暗影流星（905，法术：仅[暗影形态]下，弃 2 张法术牌[展示]，对目标 2 点法术伤害）、
-##       黑暗震颤（906，响应：主动攻击前耗 1 宝石，本次攻击对方无法应战；
+##       黄泉震颤（906，响应：主动攻击前耗 1 宝石，本次攻击对方无法应战；
 ##                 若命中则手牌补到上限（9061，多则弃、少则摸））
 
 const XIU_LUO_LIAN_ZHAN: int = 901
@@ -16,8 +16,6 @@ const AN_YING_KANG_JU: int = 904
 const AN_YING_LIU_XING: int = 905
 const HEI_AN_ZHEN_CHAN: int = 906
 const HEI_AN_ZHEN_CHAN_BU_PAI: int = 9061
-## 黑暗震颤：把手牌补到 4 张（服务端硬编码 4）
-const HEI_AN_ZHEN_CHAN_KEEP: int = 4
 
 var used_xiu_luo_lian_zhan: bool = false
 var using_xiu_luo_lian_zhan: bool = false
@@ -59,6 +57,22 @@ func v_allow_action(action_type: int, _args: Array, _allow: int, _can_give_up: b
 	return GConst.GE_INVALID_ACTION
 
 
+## 【暗影抗拒】（904）：在自己的行动阶段，他连【圣光】也不能用来抵挡/格挡
+## （对照参考客户端 MoJian::attacked 的 if(isMyTurn) handArea->disableMagic()）。
+## 被攻击时把下发给界面的 can_light 置 0，界面就会把【圣光】置灰、点不动
+func p_attacked(ctx: Dictionary) -> int:
+	if engine.current_id == player.id and int(ctx.get("dst", -1)) == player.id:
+		ctx["can_light"] = false
+	return SUCCESS
+
+
+## 【暗影抗拒】（904）：同上，服务端兜底拒绝用【圣光】抵挡（格挡攻击与抵挡魔弹都走 v_block）
+func v_block(_card_id: int) -> int:
+	if engine.current_id == player.id:
+		return GConst.GE_INVALID_CARDID
+	return V_NOT_OVERRIDE
+
+
 func v_missile(_card_id: int, _dst_id: int) -> int:
 	return GConst.GE_INVALID_CARDID
 
@@ -81,6 +95,23 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 		if card.element_enum() != GConst.CardElement.Fire:
 			return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
+
+
+## 【修罗连斩】的额外攻击行动期间只能出火系攻击牌：给界面一份合法手牌白名单，其余牌置灰
+func action_card_ids(action_type: int) -> Array:
+	if not using_xiu_luo_lian_zhan or action_type != GConst.ActionType.Attack:
+		return []
+	return _fire_attack_card_ids()
+
+
+## 手里能用于【修罗连斩】的火系攻击牌（一张都没有就发不出这次额外攻击）
+func _fire_attack_card_ids() -> Array:
+	var out: Array = []
+	for cid: int in player.hand_cards:
+		var c: GCard = Data.get_card(cid)
+		if c != null and c.is_attack() and c.element_enum() == GConst.CardElement.Fire:
+			out.append(cid)
+	return out
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
@@ -125,9 +156,9 @@ func p_boot(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 主动攻击前（timeline_1）：黑暗震颤（906）
+# 主动攻击前（timeline_1）：黄泉震颤（906）
 # ============================================================
-## 【黑暗震颤】的推进阶段（0＝还没问 / 处理完本次询问后清回 0）。
+## 【黄泉震颤】的推进阶段（0＝还没问 / 处理完本次询问后清回 0）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
 ## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
@@ -159,10 +190,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 主动攻击命中后：暗影之力（903）→ 黑暗震颤补牌（9061）
+# 主动攻击命中后：暗影之力（903）→ 黄泉震颤补牌（9061）
 # ============================================================
-## 【暗影之力 / 黑暗震颤补牌】的推进阶段（0＝还没开始 / AN_YING_ZHI_LI＝结算暗影之力 /
-## HEI_AN_ZHEN_CHAN_BU_PAI＝结算黑暗震颤补牌（可能跨一次弃牌询问））。
+## 【暗影之力 / 黄泉震颤补牌】的推进阶段（0＝还没开始 / AN_YING_ZHI_LI＝结算暗影之力 /
+## HEI_AN_ZHEN_CHAN_BU_PAI＝结算黄泉震颤补牌（可能跨一次弃牌询问））。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
 ## 每次自己主动攻击命中（p_timeline_2_hit）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
@@ -187,12 +218,12 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 黑暗震颤补牌：手牌多于 4 张则弃到 4，少于 4 张则摸到 4（服务端硬编码 4，与手牌上限无关）
+## 黄泉震颤补牌：命中后把手牌补到上限（多于上限则弃、少于上限则摸）
 func _hei_an_zhen_chan_bu_pai() -> int:
 	if not using_hei_an_zhen_chan:
 		_timeline_2_hit_step = 0
 		return SUCCESS
-	var num: int = player.hand_cards.size() - HEI_AN_ZHEN_CHAN_KEEP
+	var num: int = player.hand_cards.size() - player.hand_cards_max
 	if num > 0:
 		if not engine.has_reply():
 			询问(player.id, HEI_AN_ZHEN_CHAN_BU_PAI, num, 0)
@@ -227,13 +258,13 @@ func p_after_attack(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	step = STEP_DONE
-	if player.hand_cards.is_empty() or used_xiu_luo_lian_zhan:
+	if used_xiu_luo_lian_zhan:
 		return SUCCESS
 	if _contains_action(XIU_LUO_LIAN_ZHAN):
 		return SUCCESS
-	notice_skill(XIU_LUO_LIAN_ZHAN, [player.id])
-	player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN, true)
-	# 回合限定的 used 标记在玩家选中该额外行动时置位（服务端 p_additional_action）
+	# 不以「直接」方式授予：回合结束时统一询问玩家是否发动（对照服务端 addAction 不带直接标志）。
+	# 手里有没有火系牌都照问，发动后由 v_attack 限定只能出火系攻击牌
+	player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -246,6 +277,9 @@ func v_additional_action(cause: int) -> int:
 	if cause != XIU_LUO_LIAN_ZHAN:
 		return V_NOT_OVERRIDE
 	if used_xiu_luo_lian_zhan:
+		return GConst.GE_INVALID_ACTION
+	# 手里没有火系攻击牌：发动了也出不了牌 —— 让界面把「确定」置灰（「取消」仍可跳过）
+	if _fire_attack_card_ids().is_empty():
 		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 
@@ -298,9 +332,10 @@ func p_magic_skill(action: Dictionary) -> int:
 		"src": player.id, "dst": dst_id, "point": 2,
 		"cause": AN_YING_LIU_XING, "type": GConst.HarmType.Magic,
 	})
-	engine.take_from_hand(player.id, cards)
+	engine.take_from_hand(player.id, cards, true)
 	engine.to_discard(cards)
-	engine._log_discard(player.id, cards)
+	# 牌已在上面展示过：只写日志、不播弃牌特效
+	engine._log_discard(player.id, cards, false)
 	engine._broadcast_game()
 	return URGENT
 

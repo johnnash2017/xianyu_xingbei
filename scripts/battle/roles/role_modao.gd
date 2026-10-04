@@ -94,19 +94,21 @@ func p_magic_skill(action: Dictionary) -> int:
 func _mo_bao_chong_ji(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
+	var cid: int = int(cards[0])
 	if step == 0:
+		# 逐个问目标要牌的次序＝玩家点选顺序
 		_mo_bao_targets.clear()
 		for d: Variant in dsts:
 			_mo_bao_targets.append(int(d))
 		_mo_bao_damage.clear()
 		_mo_bao_gem = false
-		var cid: int = int(cards[0])
-		notice_skill(MO_BAO_CHONG_JI, _mo_bao_targets)
+		notice_skill(MO_BAO_CHONG_JI, dsts)
 		engine.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": [cid], "is_real": true,
 		})
-		engine.take_from_hand(player.id, [cid])
+		# 代价牌当场弃掉：这一步之后还要逐个问目标要牌，手牌一直留着会和「已打出」的表现对不上
+		engine.take_from_hand(player.id, [cid], true)
 		engine.to_discard([cid])
 		step = 1
 	while step >= 1 and step <= _mo_bao_targets.size():
@@ -124,9 +126,10 @@ func _mo_bao_chong_ji(action: Dictionary) -> int:
 	step = STEP_DONE
 	if _mo_bao_gem:
 		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
-	for tid2: int in _mo_bao_damage:
+	# _mo_bao_damage 已按玩家点选顺序；伤害状态是栈（后压先算）→ 逆序压栈
+	for i: int in range(_mo_bao_damage.size() - 1, -1, -1):
 		engine.push_harm({
-			"src": player.id, "dst": tid2, "point": MO_BAO_HARM_POINT,
+			"src": player.id, "dst": _mo_bao_damage[i], "point": MO_BAO_HARM_POINT,
 			"cause": MO_BAO_CHONG_JI, "type": GConst.HarmType.Magic,
 		})
 	engine._broadcast_game()
@@ -140,9 +143,10 @@ func _hui_mie_feng_bao(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	notice_skill(HUI_MIE_FENG_BAO, dsts)
 	player.set_gem(player.gem - 1)
-	for d: Variant in dsts:
+	# 2 名目标按玩家点选顺序结算；伤害状态是栈（后压先算）→ 逆序压栈
+	for i: int in range(dsts.size() - 1, -1, -1):
 		engine.push_harm({
-			"src": player.id, "dst": int(d), "point": HUI_MIE_HARM_POINT,
+			"src": player.id, "dst": int(dsts[i]), "point": HUI_MIE_HARM_POINT,
 			"cause": HUI_MIE_FENG_BAO, "type": GConst.HarmType.Magic,
 		})
 	engine._broadcast_game()
@@ -211,7 +215,7 @@ func _target_discard_magic(tid: int, r: Dictionary) -> bool:
 		"type": GConst.CardMsgType.Show, "src_id": tid, "dst_id": tid,
 		"card_ids": [gid], "is_real": true,
 	})
-	engine.take_from_hand(tid, [gid])
+	engine.take_from_hand(tid, [gid], true)
 	engine.to_discard([gid])
 	engine._broadcast_game()
 	return true

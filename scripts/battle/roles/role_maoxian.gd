@@ -1,21 +1,18 @@
 extends BattleRole
 ## 冒险家（roleID 12）—— 移植自服务端 role/MaoXian.cpp
 ## 技能：欺诈（响应/攻击技能 1201：弃 2~3 张同系牌，视为一次主动攻击，虚牌系别由此决定）、
-##       冒险者天堂（法术技能 1202：将提炼出的宝石/水晶交给任意一名队友）、
+##       冒险者天堂（1202：提炼后、星石还没移动时询问是否改给一名队友；不占技能栏）、
 ##       偷天换日（必杀法术技能 1203：将对方战绩区 1 宝石转移到我方，额外 +1 攻击或法术行动）、
 ##       特殊加工（必杀法术技能 1204：我方水晶全部替换为宝石，额外 +1 攻击或法术行动）
 ## 被动：强运（每发动欺诈 +1 水晶）、地下法则（购买时改为战绩区 +2 宝石）
 
 const QI_ZHA: int = 1201                     # 欺诈（攻击技能）
-const MAO_XIAN_ZHE_TIAN_TANG: int = 1202     # 冒险者天堂（特殊技能）
+const MAO_XIAN_ZHE_TIAN_TANG: int = 1202     # 冒险者天堂（提炼时的询问号）
 const TOU_TIAN_HUAN_RI: int = 1203           # 偷天换日（法术技能）
 const TE_SHU_JIA_GONG: int = 1204            # 特殊加工（法术技能）
 
 ## 偷天换日 / 特殊加工 的回合限定标记（两者互斥）
 var used_TouTianHuanRi: bool = false
-
-## 欺诈的虚牌 id（原客户端固定这 6 张攻击牌，顺序照抄）
-const QI_ZHA_VIRTUAL_CARDS: Array[int] = [66, 133, 87, 45, 110, 39]
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
@@ -25,20 +22,30 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 欺诈：弃 2~3 张同系牌 + 指定敌方目标，虚牌（args[0]）由参数按钮选择
-	if player.hand_cards.size() >= 2:
+	# 欺诈：弃 2~3 张同系牌 + 指定敌方目标；点「确定」后再弹窗选要改成哪种系别的攻击（见 p_attack_skill）
+	# 手里至少要有一对同系牌才放行（对照原客户端 MaoXian::normal 的两两比较）
+	if _has_same_element_pair():
 		out.append({"type": GConst.ActionType.AttackSkill, "id": QI_ZHA, "need_card": 2, "card_max": 3, "need_target": 1,
-			"targets": enemy_ids(), "arg_choices": _qi_zha_choices(), "card_rule": "same"})
+			"targets": enemy_ids(), "card_rule": "same"})
 	if player.get_energy() > 0 and not used_TouTianHuanRi:
 		if engine.team_gem[1 - player.color] >= 1:
 			out.append({"type": GConst.ActionType.MagicSkill, "id": TOU_TIAN_HUAN_RI, "need_card": 0, "need_target": 0})
 		out.append({"type": GConst.ActionType.MagicSkill, "id": TE_SHU_JIA_GONG, "need_card": 0, "need_target": 0})
-	# 冒险者天堂：把战绩区能量交给队友（目标限队友，给出量由参数按钮选择）
-	var 队友: Array[int] = ally_ids()
-	if engine.team_gem[player.color] + engine.team_crystal[player.color] > 0 and not 队友.is_empty():
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": MAO_XIAN_ZHE_TIAN_TANG, "need_card": 0, "need_target": 1,
-			"targets": 队友, "arg_choices": _tian_tang_choices()})
 	return out
+
+
+## 手里是否有至少一对同系牌（欺诈的发动前提，对照原客户端 MaoXian::normal 的两两比较）
+func _has_same_element_pair() -> bool:
+	var 已有系: Dictionary[int, bool] = {}
+	for cid: int in player.hand_cards:
+		var c: GCard = Data.get_card(cid)
+		if c == null:
+			continue
+		var e: int = c.element_enum()
+		if 已有系.has(e):
+			return true
+		已有系[e] = true
+	return false
 
 
 # ============================================================
@@ -58,6 +65,7 @@ func v_buy(args: Array) -> int:
 
 # ============================================================
 # 欺诈（攻击技能）：弃 2~3 张同系牌，虚牌视为一次主动攻击
+# 虚牌（改成哪种系别的攻击）在提交后由一次询问决定，见 p_attack_skill
 # ============================================================
 func v_attack_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
@@ -70,19 +78,14 @@ func v_attack_skill(action: Dictionary) -> int:
 	for c: Variant in cards:
 		if not player.has_hand_card(int(c)):
 			return GConst.GE_HANDCARD_NOT_FOUND
-	var args: Array = action.get("args", [])
 	var dsts: Array = action.get("dst_ids", [])
-	if args.is_empty() or dsts.is_empty():
+	if dsts.is_empty():
 		return GConst.GE_INVALID_ARGUMENT
-	var virtual_card: int = int(args[0])
 	var dst: BattlePlayer = engine.p(int(dsts[0]))
 	if dst == null:
 		return GConst.GE_INVALID_PLAYERID
 	if dst.color == player.color:
 		return GConst.GE_INVALID_PLAYERID
-	var card: GCard = Data.get_card(virtual_card)
-	if card == null or not card.is_attack():
-		return GConst.GE_INVALID_CARDID
 	# 服务端 MaoXian::v_attack_skill 会调 v_attack：补上通用攻击限制
 	# （面前有【挑衅】时目标只能是勇者；目标角色可拒绝被攻击，如暗杀者潜行中）
 	if player.check_exclusive_effect(GConst.Exclusive.TiaoXin) and dst.role_id != 21:
@@ -95,14 +98,27 @@ func v_attack_skill(action: Dictionary) -> int:
 func p_attack_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != QI_ZHA:
 		return GConst.GE_INVALID_ACTION
-	return _qi_zha(action)
-
-
-func _qi_zha(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
-	var args: Array = action.get("args", [])
+	if not engine.has_reply():
+		# 选完牌与目标后（客户端按「确定」提交），弹窗问要改成哪种系别的攻击：
+		# 3 张同系可视为任意系别，2 张同系不能视为暗系（选项里直接不给暗）。
+		# 不能取消（牌与目标已经提交），弹窗期间超时由下面自动选（有暗灭选暗灭，否则随机）
+		engine.ask_skill(player.id, QI_ZHA, 0, 0, GConst.CardSource.Hand, _qi_zha_options(cards.size()),
+			0, "", [], false)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var virtual_card: int = int(args[0]) if not args.is_empty() else -1
+	var 合法: Array[int] = _qi_zha_virtual_cards(cards.size())
+	# 选了非法值（或超时没选）：有暗灭选暗灭，没暗灭随机选
+	if not 合法.has(virtual_card):
+		virtual_card = _qi_zha_default_virtual(合法)
+	return _qi_zha(action, virtual_card)
+
+
+func _qi_zha(action: Dictionary, virtual_card: int) -> int:
+	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
-	var virtual_card: int = int(args[0])
 	var dst_id: int = int(dsts[0])
 	notice_skill(QI_ZHA, [dst_id])
 	# 强运：+1 水晶
@@ -112,8 +128,6 @@ func _qi_zha(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, cards)
-	engine.to_discard(cards)
 	# 虚牌视为一次主动攻击（非真实牌，不移动）
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id,
@@ -125,6 +139,8 @@ func _qi_zha(action: Dictionary) -> int:
 		"type": GConst.HarmType.Attack, "card_id": virtual_card, "is_active": true,
 	}
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, virtual_card, harm))
+	engine.take_from_hand(player.id, cards, true)
+	engine.to_discard(cards)
 	return URGENT
 
 
@@ -184,87 +200,65 @@ func _te_shu_jia_gong() -> int:
 
 
 # ============================================================
-# 冒险者天堂（特殊技能）：将战绩区能量交给队友
+# 冒险者天堂：提炼时把星石改给队友（校验空位按队友算）
 # ============================================================
-func v_special_skill(action: Dictionary) -> int:
-	if int(action.get("src_id", -1)) != player.id:
-		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) != MAO_XIAN_ZHE_TIAN_TANG:
-		return GConst.GE_INVALID_ACTION
-	var args: Array = action.get("args", [])
-	var dsts: Array = action.get("dst_ids", [])
-	if args.size() < 2 or dsts.is_empty():
+## dst_id >= 0＝【冒险者天堂】把提炼出的星石给该队友：按队友的剩余空位校验；
+## dst_id < 0＝常规提炼给自己，退回通用校验
+func v_extract(args: Array, team_gem: int, team_crystal: int, dst_id: int) -> int:
+	if dst_id < 0:
+		return V_NOT_OVERRIDE
+	if args.size() < 2:
 		return GConst.GE_INVALID_ARGUMENT
-	var dst: BattlePlayer = engine.p(int(dsts[0]))
-	if dst == null or dst.color != player.color:
+	var 目标: BattlePlayer = engine.p(dst_id)
+	if 目标 == null or 目标.color != player.color or 目标.id == player.id:
 		return GConst.GE_INVALID_PLAYERID
-	var gem: int = int(args[0])
-	var crystal: int = int(args[1])
-	if gem > engine.team_gem[player.color] or crystal > engine.team_crystal[player.color]:
-		return GConst.GE_INVALID_ACTION
-	if gem + crystal + dst.get_energy() > dst.energy_max:
+	var g: int = int(args[0])
+	var c: int = int(args[1])
+	if g > team_gem or c > team_crystal or g + c > 目标.energy_max - 目标.get_energy():
 		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 
 
-func p_special_skill(action: Dictionary) -> int:
-	var args: Array = action.get("args", [])
-	var dsts: Array = action.get("dst_ids", [])
-	var gem: int = int(args[0])
-	var crystal: int = int(args[1])
-	var dst_id: int = int(dsts[0])
-	notice_skill(MAO_XIAN_ZHE_TIAN_TANG, [dst_id])
-	var dst: BattlePlayer = engine.p(dst_id)
-	if dst != null:
-		if crystal > 0:
-			dst.set_crystal(dst.crystal + crystal)
-		if gem > 0:
-			dst.set_gem(dst.gem + gem)
-	engine.set_team_gem(player.color, engine.team_gem[player.color] - gem)
-	engine.set_team_crystal(player.color, engine.team_crystal[player.color] - crystal)
-	engine._broadcast_game()
+## 提炼改给队友后：广播【冒险者天堂】的发动通知（对照服务端 MaoXian::p_special_skill 的 noticeSkill）
+func p_extract_to(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	notice_skill(MAO_XIAN_ZHE_TIAN_TANG, [int(ctx.get("dst", -1))])
 	return SUCCESS
 
 
 # ============================================================
 # 工具
 # ============================================================
-## 欺诈的参数选项：虚牌（攻击牌）决定本次视为哪种攻击（服务端校验 args[0] 为攻击牌）
-func _qi_zha_choices() -> Array:
-	var out: Array = []
-	for cid: int in QI_ZHA_VIRTUAL_CARDS:
-		out.append({"text": Data.get_card(cid).card_name, "args": [cid], "need_card": 2, "need_target": 1})
+## 欺诈虚牌：各系别对应的一张【圣】命格攻击牌（顺序照原客户端：风 / 水 / 火 / 地 / 雷 / 暗灭）
+const QI_ZHA_CARDS: Array[int] = [66, 133, 87, 45, 110, 39]
+## 欺诈虚牌里的【暗灭】：2 张同系不能视为暗系，不放进可选
+const QI_ZHA_AN_MIE: int = 39
+
+
+## 欺诈可选的虚牌 id：风 / 水 / 火 / 地 / 雷；3 张同系时再补【暗灭】
+func _qi_zha_virtual_cards(同系数: int) -> Array[int]:
+	var out: Array[int] = []
+	for cid: int in QI_ZHA_CARDS:
+		if cid == QI_ZHA_AN_MIE and 同系数 < 3:
+			continue
+		out.append(cid)
 	return out
 
 
-## 冒险者天堂的参数选项：把战绩区能量交给队友。
-## 组合照抄原客户端（最多 5 项：两个宝石 / 两个水晶 / 一宝石一水晶 / 一个宝石 / 一个水晶），
-## 每项只让「还放得下这么多能量」的队友可点（v_special_skill：gem + crystal + dst 现有能量 > 上限即拒）
-func _tian_tang_choices() -> Array:
+## 欺诈虚牌弹窗的选项：value = 虚牌 id，label = 牌名
+func _qi_zha_options(同系数: int) -> Array:
 	var out: Array = []
-	var 宝石数: int = engine.team_gem[player.color]
-	var 水晶数: int = engine.team_crystal[player.color]
-	if 宝石数 >= 2:
-		out.append(_tian_tang_choice(2, 0, 2))
-	if 水晶数 >= 2:
-		out.append(_tian_tang_choice(0, 2, 2))
-	if 宝石数 >= 1 and 水晶数 >= 1:
-		out.append(_tian_tang_choice(1, 1, 2))
-	if 宝石数 >= 1:
-		out.append(_tian_tang_choice(1, 0, 1))
-	if 水晶数 >= 1:
-		out.append(_tian_tang_choice(0, 1, 1))
+	for cid: int in _qi_zha_virtual_cards(同系数):
+		out.append({"value": cid, "label": Data.get_card(cid).card_name})
 	return out
 
 
-## 一条「冒险者天堂」选项：args = [宝石, 水晶]，目标限定为能给得起的队友
-func _tian_tang_choice(宝石: int, 水晶: int, 需要容量: int) -> Dictionary:
-	return {
-		"text": "我方 -%d 宝石 -%d 水晶，队友 +%d 宝石 +%d 水晶" % [宝石, 水晶, 宝石, 水晶],
-		"args": [宝石, 水晶], "need_target": 1,
-		"targets": player_ids_where(func(p: BattlePlayer) -> bool:
-			return p.color == player.color and p.energy_max - p.get_energy() >= 需要容量),
-	}
+## 欺诈弹窗超时（或收到非法值）的默认虚牌：有暗灭选暗灭，没暗灭随机选
+func _qi_zha_default_virtual(合法: Array[int]) -> int:
+	if 合法.has(QI_ZHA_AN_MIE):
+		return QI_ZHA_AN_MIE
+	return 合法[randi_range(0, 合法.size() - 1)]
 
 
 ## 消耗 1 点个人能量（优先扣水晶，与服务端一致）

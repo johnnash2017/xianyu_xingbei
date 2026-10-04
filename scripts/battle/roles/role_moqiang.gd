@@ -186,14 +186,21 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 
 ## 服务端 HuanYingXingChen_Effect：脱离形态；若自伤未造成士气下降则对目标 2 点法术伤害
 func _huan_ying_xing_chen_effect() -> int:
+	if hurt_id < 0:
+		# 追加伤害已结算完（URGENT 回来时 hurt_id 已被清 -1）：此处只收尾。
+		# 不再重复「脱离形态 + 广播」（首次进入时已做过，重做会多发一次广播/动画）
+		huan_ying_morale_lost = false
+		_boot_step = 0
+		return SUCCESS
+	# 首次进入：脱离[幻影形态]
 	player.tap = false
 	using_huan_ying_xing_chen = false
 	player.hand_cards_max = HAND_MAX_NORMAL
 	var morale_lost: bool = huan_ying_morale_lost
 	huan_ying_morale_lost = false
 	engine._broadcast_game()
-	if morale_lost or hurt_id < 0:
-		# 追加伤害已结算完（hurt_id 被清 -1）或本就不追加：此刻才是真正的收尾
+	if morale_lost:
+		# 自伤已造成士气下降：不追加伤害，直接收尾
 		_boot_step = 0
 		return SUCCESS
 	var dst_id: int = hurt_id
@@ -352,7 +359,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": chosen, "is_real": true,
 	})
-	engine.take_from_hand(player.id, chosen)
+	engine.take_from_hand(player.id, chosen, true)
 	engine.to_discard(chosen)
 	engine._broadcast_game()
 	return SUCCESS
@@ -417,7 +424,7 @@ func _chong_ying(action: Dictionary) -> int:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": [cid], "is_real": true,
 		})
-		engine.take_from_hand(player.id, [cid])
+		engine.take_from_hand(player.id, [cid], true)
 		engine.to_discard([cid])
 		card_count = 0
 		used_chong_ying = true
@@ -462,7 +469,7 @@ func _chong_ying(action: Dictionary) -> int:
 				"type": GConst.CardMsgType.Show, "src_id": tid, "dst_id": tid,
 				"card_ids": [ccid], "is_real": true,
 			})
-			engine.take_from_hand(tid, [ccid])
+			engine.take_from_hand(tid, [ccid], true)
 			engine.to_discard([ccid])
 			if counted and tid != player.id:
 				card_count += 1
@@ -502,8 +509,10 @@ func _other_ids_from_self() -> Array[int]:
 	return ids
 
 
-## 从下家开始按座位序绕回自己（充盈：所有人各弃 1 张，含自己）
+## 充盈的处理顺序（含自己）：自己最先，再下家起按座位序绕一圈。
+## 服务端把其他人从自己上家起反向压栈、最后压自己（LIFO → 自己最先被问到）
 func _all_ids_from_self() -> Array[int]:
-	var ids: Array[int] = _other_ids_from_self()
+	var ids: Array[int] = []
 	ids.append(player.id)
+	ids.append_array(_other_ids_from_self())
 	return ids

@@ -21,15 +21,6 @@ func _ready() -> void:
 	visible = false
 
 
-## 技能正文行首的「【类型】」按类型上色（连同方括号一起）；只认这四种，其余原样
-const 技能类型颜色: Dictionary = {
-	"被动": "4a9eff",   # 蓝
-	"响应": "8a4fdd",   # 深紫
-	"法术": "ff5ad2",   # 洋红
-	"启动": "ffab40",   # 橙
-}
-
-
 ## 技能文本里正文行的前缀（data_interface._拼技能文本 给每条技能正文加的「　　」）；
 ## 拿它区分「四个一级标题」（无前缀）与「技能正文」（有前缀）
 const 正文前缀: String = "　　"
@@ -66,11 +57,11 @@ static func 上色(技能文本: String, 正文字号: int = 0) -> String:
 static func _染类型(行文本: String) -> String:
 	var 缩进: String = 行文本.substr(0, 行文本.length() - 行文本.lstrip("　 ").length())
 	var 正文: String = 行文本.substr(缩进.length())
-	for 类型: String in 技能类型颜色:
+	for 类型: String in GConst.技能类型颜色:
 		var 前缀: String = "【%s】" % 类型
 		if 正文.begins_with(前缀):
 			return "%s[color=#%s]%s[/color]%s" % [
-				缩进, 技能类型颜色[类型], 前缀, 正文.substr(前缀.length())]
+				缩进, (GConst.技能类型颜色[类型] as Color).to_html(false), 前缀, 正文.substr(前缀.length())]
 	return 行文本
 
 

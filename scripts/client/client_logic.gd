@@ -282,16 +282,21 @@ func send_action(action_type: int, action_id: int, dst_ids: Array, card_ids: Arr
 	})
 
 
-func send_respond(respond_id: int, dst_ids: Array, card_ids: Array, args: Array) -> void:
+func send_respond(respond_id: int, dst_ids: Array, card_ids: Array, args: Array, partial: bool = false) -> void:
 	if not Net.is_connected_to_host():
 		return
-	Net.send(GConst.Msg.Respond, {
+	var 消息: Dictionary = {
 		"respond_id": respond_id,
 		"src_id": my_player_id,
 		"dst_ids": dst_ids,
 		"card_ids": card_ids,
 		"args": args,
-	})
+	}
+	# partial = 分步应答：只报「这一步选好的值」（如【剑气斩】弹窗里选好剑气数），
+	# 不算本次询问的最终回复；服务端超时兜底时才拿它继续
+	if partial:
+		消息["partial"] = true
+	Net.send(GConst.Msg.Respond, 消息)
 
 
 # ============================================================

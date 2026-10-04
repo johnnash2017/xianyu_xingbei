@@ -54,7 +54,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			return WAIT
 		_timeline_1_step = JI_FENG_JI
 	if _timeline_1_step == JI_FENG_JI:
-		_ji_feng_ji(ctx)
+		var r: int = _ji_feng_ji(ctx)
+		if r == WAIT:
+			return WAIT
 		_timeline_1_step = SHENG_JIAN
 	if _timeline_1_step == SHENG_JIAN:
 		_sheng_jian(ctx)
@@ -83,15 +85,22 @@ func _lie_feng_ji(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 疾风技：作为主动攻击打出时，额外 +1 攻击行动
-func _ji_feng_ji(ctx: Dictionary) -> void:
+## 疾风技：作为主动攻击打出时询问是否发动，发动则额外 +1 攻击行动
+## （额外行动本身设 direct：直接进入额外攻击阶段，不再二次追问，想跳过在那里「放弃行动」）
+func _ji_feng_ji(ctx: Dictionary) -> int:
 	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if card == null or not card.has_skill_id(JI_FENG_JI):
-		return
+		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
-		return
+		return SUCCESS
+	if not engine.has_reply():
+		询问(player.id, JI_FENG_JI, 0, 0)
+		return WAIT
+	if not take_skill_reply():
+		return SUCCESS
 	notice_skill(JI_FENG_JI, [int(ctx.get("dst", -1))])
 	player.add_action(GConst.ActionType.Attack, JI_FENG_JI, true)
+	return SUCCESS
 
 
 ## 圣剑：若本次行动阶段的第 3 次主动攻击，则此攻击强制命中
@@ -121,11 +130,13 @@ func p_after_attack(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 连续技：回合限定，额外 +1 攻击行动（授予只挂行动，代价在玩家选中时结算）
+## 风怒追击（103）：回合限定，额外 +1 攻击行动。
+## 只挂行动、不置 direct —— 好让引擎在攻击行动结束后统一问「是否发动」；
+## 能不能发动（手里有没有风系攻击牌）由 v_additional_action 判定，客户端据此把「确定」置灰
 func _lian_xu_ji() -> void:
-	if player.hand_cards.is_empty() or used_lian_xu_ji or _contains_action(LIAN_XU_JI):
+	if used_lian_xu_ji or _contains_action(LIAN_XU_JI):
 		return
-	player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true)
+	player.add_action(GConst.ActionType.Attack, LIAN_XU_JI)
 
 
 ## 剑影：回合限定，额外 +1 攻击行动（授予只挂行动，代价在玩家选中时结算）
@@ -143,7 +154,8 @@ func _jian_ying() -> void:
 # ============================================================
 func v_additional_action(cause: int) -> int:
 	if cause == LIAN_XU_JI:
-		if used_lian_xu_ji:
+		# 回合限定一次；且手里要有风系攻击牌才可发动（客户端据此把「确定」置灰）
+		if used_lian_xu_ji or not _has_wind_attack_card():
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	if cause == JIAN_YING:
@@ -197,5 +209,14 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 func _contains_action(cause: int) -> bool:
 	for a: Dictionary in player.additional_actions:
 		if int(a.get("cause", -1)) == cause:
+			return true
+	return false
+
+
+## 手上是否有风系攻击牌（风怒追击的额外攻击只能用风系攻击牌，见 v_attack）
+func _has_wind_attack_card() -> bool:
+	for cid: int in player.hand_cards:
+		var card: GCard = Data.get_card(cid)
+		if card != null and card.is_attack() and card.element_enum() == GConst.CardElement.Wind:
 			return true
 	return false

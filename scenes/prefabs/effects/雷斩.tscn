@@ -20,7 +20,7 @@ VFX = NodePath("视口容器/视口/特效位/特效")
 BG = NodePath("背景")
 
 [node name="背景" type="Sprite2D" parent="." unique_id=1915307674]
-modulate = Color(0.20031899, 6.899543e-05, 0.23129678, 1)
+modulate = Color(0.2784314, 0, 0.4745098, 0.627451)
 position = Vector2(-127, 1.999999)
 scale = Vector2(2.2866642, 2.029886)
 texture = ExtResource("2_rekfk")

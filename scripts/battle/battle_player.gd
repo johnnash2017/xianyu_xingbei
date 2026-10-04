@@ -438,9 +438,18 @@ func v_synthesize(args: Array, team_energy: int, team_gem: int, team_crystal: in
 	return GConst.GE_SUCCESS
 
 
+## 提炼校验（角色可覆写，如冒险家【冒险者天堂】把提炼出的星石给队友时按队友空位算）
+func v_extract(args: Array, team_gem: int, team_crystal: int, dst_id: int = -1) -> int:
+	if role != null:
+		var rc: int = role.v_extract(args, team_gem, team_crystal, dst_id)
+		if rc != BattleRole.V_NOT_OVERRIDE:
+			return rc
+	return base_v_extract(args, team_gem, team_crystal)
+
+
 ## 提炼校验（对照服务端 PlayerEntity::v_extract）：
 ## 要提的宝石 / 水晶不超过队伍存量，且自己的能量没满
-func v_extract(args: Array, team_gem: int, team_crystal: int) -> int:
+func base_v_extract(args: Array, team_gem: int, team_crystal: int) -> int:
 	if args.size() < 2:
 		return GConst.GE_INVALID_ARGUMENT
 	if int(args[0]) > team_gem or int(args[1]) > team_crystal or get_energy() >= energy_max:
@@ -458,6 +467,8 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"heal_count": cross_num,
 		# 治疗上限：角色被动会改（神官 +4 等），客户端按它画治疗格的空位
 		"max_heal": cross_max,
+		# 能量上限：角色被动会改（如贤者 +1），客户端判「星石已满 / 还有空位」要用它
+		"max_energy": energy_max,
 		"gem": gem,
 		"crystal": crystal,
 		"covered_count": cover_cards.size(),

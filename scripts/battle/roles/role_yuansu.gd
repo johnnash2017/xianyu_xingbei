@@ -179,12 +179,12 @@ func _yuan_su_damage(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": use_cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, use_cards)
-	engine.to_discard(use_cards)
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": point,
 		"cause": aid, "type": GConst.HarmType.Magic,
 	})
+	engine.take_from_hand(player.id, use_cards, true)
+	engine.to_discard(use_cards)
 	engine._broadcast_game()
 	return URGENT
 

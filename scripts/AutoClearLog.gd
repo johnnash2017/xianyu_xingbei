@@ -36,11 +36,10 @@ func AutoClearText(content: String, maxLineCount: int) -> void:
 	# 对应 C# GetComponent<Text>().text = text;
 	self.text = out_text
 	# 场景里这个 Label 的高度是 0（只写了 anchor_bottom=1、offset 全是 0），父节点又是
-	# clip_contents 的 ScrollContainer —— 不按内容撑高的话日志文字被整个裁掉，点开日志面板
-	# 一片空白（battle_audit A-6）。这里按文本自身的最小高度把 custom_minimum_size 撑起来。
-	var need_h := get_minimum_size().y
-	if need_h > custom_minimum_size.y:
-		custom_minimum_size = Vector2(custom_minimum_size.x, need_h)
+	# clip_contents 的 ScrollContainer —— 不按内容撑高的话日志文字会被整个裁掉（battle_audit A-6）。
+	# 高度要严格贴着文本：原来写成「只增不减」后，布局早期宽度还是 0 时自动换行会把每行拆成
+	# 许多截、量出的超大高度会一直留着，日志下方就多出一大片用不到的空白。
+	custom_minimum_size = Vector2(0.0, get_minimum_size().y)
 
 ## 对应 C# private void UpdateContentLines(string[] fixedDatas)
 func UpdateContentLines(fixedDatas: Array) -> void:

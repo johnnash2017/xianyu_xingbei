@@ -451,9 +451,5 @@ func _force_discard_one(pid: int) -> int:
 		chosen.append(tp.hand_cards[0])
 	engine.take_from_hand(pid, chosen)
 	engine.to_discard(chosen)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
-		"card_ids": chosen, "is_real": true,
-	})
 	engine._broadcast_game()
 	return SUCCESS

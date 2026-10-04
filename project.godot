@@ -27,13 +27,13 @@ Art="*res://scripts/ui/art.gd"
 Audio="*res://scripts/client/audio.gd"
 AssetIndex="*res://scripts/framework/AssetIndex.gd"
 MessageSystem="*res://scripts/framework/MessageSystem.gd"
+ClickDust="*res://scripts/effects/点击星屑.gd"
 
 [display]
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
 
 [editor_plugins]
 

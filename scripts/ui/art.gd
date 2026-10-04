@@ -19,8 +19,8 @@ const STATUS_ICON: Dictionary = {
 	"灵魂链接": "LianJie", "同生共死": "TongSheng", "永恒乐章": "YueZhang",
 }
 
-## 独有效果索引 → status 图标名（GConst.Exclusive 的顺序）
-const EXCLUSIVE_ICON: Array[String] = ["token0", "TiaoXin", "LianJie", "TongSheng", "YueZhang"]
+## 独有效果索引 → status 图标名（GConst.Exclusive 的顺序，对照原客户端 widget/PlayerItem.cpp 的 StatusItem）
+const EXCLUSIVE_ICON: Array[String] = ["ShuFu", "TiaoXin", "LianJie", "TongSheng", "YueZhang"]
 
 ## 指示物槽位 → status 图标名
 const TOKEN_ICON: Array[String] = ["token0", "token1", "token2"]

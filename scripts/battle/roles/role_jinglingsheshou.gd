@@ -178,7 +178,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		"card_ids": [cid], "is_real": true,
 	})
 	if choice == 1:
-		engine.take_from_hand(player.id, [cid])
+		engine.take_from_hand(player.id, [cid], true)
 	else:
 		engine.remove_cover(player.id, [cid], player.id, YUAN_SU_SHE_JI)
 	engine.to_discard([cid])
@@ -286,10 +286,6 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 		if cid < 0:
 			# 取消/超时：服务端 canGiveUp = false，必须交出，故自动取首张
 			cid = int(t.hand_cards[0])
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": t.id, "dst_id": t.id,
-			"card_ids": [cid], "is_real": true,
-		})
 		engine.take_from_hand(t.id, [cid])
 		engine.to_discard([cid])
 		engine._broadcast_game()

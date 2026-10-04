@@ -124,9 +124,11 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	if _shui_ying_step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		# 只能弃水系手牌（技能原文）：下发白名单把其余手牌置灰，免得点了别的系提交后落空
-		询问(player.id, SHUI_YING, 1, 0, GConst.CardSource.Hand, [], 0, "",
-			hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water))
+		# 可以弃任意张水系手牌（X＝1~手里的水系牌数）：need_card=1 保证至少弃 1 张，
+		# card_max=水系牌数 放宽点选上限（不给就默认「恰好 1 张」，只能弃 1 张）；
+		# 下发白名单把其余手牌置灰，免得点了别的系提交后落空
+		var 水牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water)
+		询问(player.id, SHUI_YING, 1, 0, GConst.CardSource.Hand, [], 水牌.size(), "", 水牌)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_shui_ying_step = 0
@@ -141,7 +143,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, cards)
+	engine.take_from_hand(player.id, cards, true)
 	engine.to_discard(cards)
 	# 服务端 ShuiYing 只展示并弃掉水系手牌，不抵消本次伤害
 	engine._broadcast_game()

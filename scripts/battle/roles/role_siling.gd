@@ -171,13 +171,16 @@ func _wen_yi(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
-	engine.to_discard([cid])
-	for d: Variant in dst_ids:
+	# 结算顺序＝从下家（自己右手边第一个）起、按行动顺序绕一圈。引擎的伤害状态是栈（LIFO，
+	# 后压的先算），所以这里要「逆序压栈」，下家才会最先结算
+	# （对照服务端 SiLing::WenYi：目标表先 reverse() 再逐个 setStateTimeline3）
+	for i: int in range(dst_ids.size() - 1, -1, -1):
 		engine.push_harm({
-			"src": player.id, "dst": int(d), "point": 1,
+			"src": player.id, "dst": int(dst_ids[i]), "point": 1,
 			"cause": WEN_YI, "type": GConst.HarmType.Magic,
 		})
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
 	engine._broadcast_game()
 	return URGENT
 
@@ -196,12 +199,12 @@ func _si_wang_zhi_chu(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, cards)
-	engine.to_discard(cards)
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": cards.size() + cross_used - 3,
 		"cause": SI_WANG_ZHI_CHU, "type": GConst.HarmType.Magic,
 	})
+	engine.take_from_hand(player.id, cards, true)
+	engine.to_discard(cards)
 	engine._broadcast_game()
 	return URGENT
 
@@ -211,9 +214,11 @@ func _mu_bei_yun_luo(_action: Dictionary) -> int:
 	var dst_ids: Array = _all_other_ids_from_self()
 	notice_skill(MU_BEI_YUN_LUO, dst_ids)
 	player.set_gem(player.gem - 1)
-	for d: Variant in dst_ids:
+	# 同【瘟疫】：伤害状态是栈，逆序压栈才会从下家（右手边第一个）开始结算
+	# （对照服务端 SiLing::MuBeiYunLuo：目标表先 reverse() 再逐个 setStateTimeline3）
+	for i: int in range(dst_ids.size() - 1, -1, -1):
 		engine.push_harm({
-			"src": player.id, "dst": int(d), "point": 2,
+			"src": player.id, "dst": int(dst_ids[i]), "point": 2,
 			"cause": MU_BEI_YUN_LUO, "type": GConst.HarmType.Magic,
 		})
 	pending_mu_bei_cross = true
@@ -241,11 +246,12 @@ func _same_element_hand_ids() -> Array[int]:
 	return out
 
 
-## 死亡之触的参数选项：移除 n 点治疗（n 从 2 到自己当前治疗，服务端 args[0] 需 ≤ cross_num）
+## 死亡之触的参数选项：消耗 n 点治疗（n 从 2 到自己当前治疗，服务端 args[0] 需 ≤ cross_num）。
+## 点技能后由客户端用居中弹窗问「消耗多少治疗」，选完再选牌 / 选目标
 func _si_wang_choices() -> Array:
 	var out: Array = []
 	for n: int in range(2, player.cross_num + 1):
-		out.append({"text": "造成 %d 点法术伤害" % n, "args": [n], "need_card": 2, "need_target": 1})
+		out.append({"text": "消耗 %d 点治疗" % n, "args": [n], "need_card": 2, "need_target": 1})
 	return out
 
 

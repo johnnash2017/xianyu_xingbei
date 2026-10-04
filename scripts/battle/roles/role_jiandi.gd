@@ -59,6 +59,29 @@ func _cover_card_of(ids: Array) -> int:
 	return -1
 
 
+## 剑气斩的可选目标：除「本次攻击目标」外的所有角色（对照原客户端 playerArea->enableAll + disablePlayerItem(本次目标)）
+func _可选目标(本次目标: int) -> Array:
+	var out: Array = []
+	for pid: int in engine.players:
+		if pid != 本次目标:
+			out.append(pid)
+	return out
+
+
+## 剑气斩超时自动选取的目标：优先「本次攻击目标」以外的一名敌方；没有就取第一个不是本次攻击目标的角色
+func _超时自动目标(本次目标: int) -> int:
+	var 备选: int = -1
+	for pid: int in engine.players:
+		if pid == 本次目标:
+			continue
+		var p: BattlePlayer = engine.players[pid]
+		if p != null and p.color != player.color:
+			return pid
+		if 备选 < 0:
+			备选 = pid
+	return 备选
+
+
 # ============================================================
 # 主动攻击宣告前：天使之魂 / 恶魔之魂（移除 1 张【剑魂】）
 # ============================================================
@@ -70,7 +93,9 @@ var _timeline_1_step: int = 0
 
 
 func p_timeline_1(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+	if int(ctx.get("src", -1)) != player.id:
+		return SUCCESS
+	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	if player.cover_count() == 0:
 		return SUCCESS
@@ -132,22 +157,34 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		if int(player.tokens[0]["num"]) <= 0 or bool(ctx.get("jian_di_jqz_done", false)):
 			_timeline_2_hit_step = E_MO_ZHI_HUN
 		else:
+			# 原版上限 min(3, 当前剑气)；通用客户端只回一维 args，原版「args=[1, 数量]」的第二维拿不到，
+			# 故把数量直接作为选项值，服务端改读 args[0]
+			var 上限: int = mini(3, int(player.tokens[0]["num"]))
 			if not engine.has_reply():
-				# 移除的【剑气】数（原版上限 min(3, 当前剑气)）做成选项：通用客户端只回一维 args，
-				# 原版「args=[1, 数量]」的第二维拿不到，故把数量直接作为选项值，服务端改读 args[0]。
-				# 本技能还要选目标，客户端会先选目标再点选项按钮（回 args=[选项值]，目标在 dst_ids）。
-				var 剑气: int = int(player.tokens[0]["num"])
+				# 先弹居中窗选「移除几点【剑气】」（指示器配了「先弹选项 / 选项提示」），
+				# 选完再点目标头像、头像上写「X 法术伤害」。
+				# 目标只能是「本次攻击目标」以外的角色（对照原客户端 playerArea->disablePlayerItem(本次目标)）；
+				# 弹窗带「取消」，点「取消」＝这次不发动
 				var 选项: Array = []
-				for n: int in range(1, mini(3, 剑气) + 1):
+				for n: int in range(1, 上限 + 1):
 					选项.append({"value": n, "label": "移除 %d 点【剑气】" % n})
-				询问(player.id, JIAN_QI_ZHAN, 0, 1, GConst.CardSource.Hand, 选项)
+				询问(player.id, JIAN_QI_ZHAN, 0, 1, GConst.CardSource.Hand, 选项, 0, "", [], true,
+					0, -1, _可选目标(int(ctx.get("dst", -1))))
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
 			ctx["jian_di_jqz_done"] = true
 			var args: Array = r.get("args", [])
 			var dsts: Array = r.get("dst_ids", [])
-			# 选项值即移除的【剑气】数；<=0（取消/超时）＝不发动
 			var count: int = int(args[0]) if not args.is_empty() else 0
+			if count <= 0 or dsts.is_empty():
+				if bool(r.get("is_timeout", false)) and count > 0:
+					# 选好剑气数、选目标时超时：自动挑一名目标，按选好的数量释放
+					var 自动: int = _超时自动目标(int(ctx.get("dst", -1)))
+					if 自动 >= 0:
+						dsts = [自动]
+				else:
+					# 弹窗还没选就超时（空回复），或玩家点了「取消」：这次不发动
+					count = 0
 			count = mini(maxi(count, 0), int(player.tokens[0]["num"]))
 			if count > 0 and not dsts.is_empty():
 				notice_skill(JIAN_QI_ZHAN, [int(dsts[0])])

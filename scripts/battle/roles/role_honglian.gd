@@ -278,8 +278,9 @@ func p_magic_skill(action: Dictionary) -> int:
 		"src": player.id, "dst": player.id, "point": 4,
 		"cause": XING_HONG_SHI_ZI, "type": GConst.HarmType.Magic,
 	})
-	engine.take_from_hand(player.id, cards)
+	engine.take_from_hand(player.id, cards, true)
 	engine.to_discard(cards)
-	engine._log_discard(player.id, cards)
+	# 牌已在上面展示过：只写日志、不播弃牌特效
+	engine._log_discard(player.id, cards, false)
 	engine._broadcast_game()
 	return URGENT

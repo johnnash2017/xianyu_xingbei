@@ -117,10 +117,6 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
-		"card_ids": chosen, "is_real": true,
-	})
 	engine.take_from_hand(pid, chosen)
 	engine.to_discard(chosen)
 	engine._broadcast_game()
@@ -215,22 +211,14 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 激昂狂想曲的伤害：从当前角色的上家开始按座位序绕一圈
+## 激昂狂想曲的伤害：按玩家点选顺序结算
 func _ji_ang_harm(dsts: Array) -> void:
-	var holder: BattlePlayer = engine.p(engine.current_id)
-	if holder == null:
-		return
-	var cur: int = holder.pre_id
-	for _i: int in range(engine.order.size()):
-		var cp: BattlePlayer = engine.p(cur)
-		if cp == null:
-			break
-		if dsts.has(cur):
-			engine.push_harm({
-				"src": player.id, "dst": cur, "point": 1,
-				"cause": JI_ANG_KUANG_XIANG_QU, "type": GConst.HarmType.Magic,
-			})
-		cur = cp.pre_id
+	# 伤害状态是栈（后压先算）→ 逆序压栈，点选顺序才会最先
+	for i: int in range(dsts.size() - 1, -1, -1):
+		engine.push_harm({
+			"src": player.id, "dst": int(dsts[i]), "point": 1,
+			"cause": JI_ANG_KUANG_XIANG_QU, "type": GConst.HarmType.Magic,
+		})
 	engine._broadcast_game()
 
 
@@ -429,15 +417,15 @@ func p_harm_end(ctx: Dictionary) -> int:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": use_cards, "is_real": true,
 		})
-		engine.take_from_hand(player.id, use_cards)
-		engine.to_discard(use_cards)
-		engine._broadcast_game()
 		if c0.is_magic() or c1.is_magic():
 			engine.push_harm({
 				"src": player.id, "dst": int(dsts[0]), "point": 1,
 				"cause": CHEN_LUN_XIE_ZOU_QU, "type": GConst.HarmType.Magic,
 			})
-			engine._broadcast_game()
+		engine.take_from_hand(player.id, use_cards, true)
+		engine.to_discard(use_cards)
+		engine._broadcast_game()
+		if c0.is_magic() or c1.is_magic():
 			return URGENT
 	return SUCCESS
 

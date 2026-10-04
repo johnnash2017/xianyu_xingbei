@@ -41,6 +41,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _timeline_1_step == 0:
 		_timeline_1_step = SHAN_DIAN_JIAN
+		# 新一次主动攻击：清掉上一击遗留的「贯穿射击已处理」标记，
+		# 否则上一击把它留在 STEP_DONE 后，这一击未命中就不再询问（见 _guan_chuan_step）
+		_guan_chuan_step = 0
 	if _timeline_1_step == SHAN_DIAN_JIAN:
 		_shan_dian_jian(ctx)
 		_timeline_1_step = JING_ZHUN_SHE_JI
@@ -78,10 +81,11 @@ func _jing_zhun_she_ji(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 【贯穿射击】的推进阶段（0＝还没开始 / 处理完本次贯穿射击后清回 0）。
+## 【贯穿射击】的推进阶段（0＝本次未命中还没处理 / STEP_DONE＝本次已处理）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己主动攻击未命中（p_timeline_2_miss）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+## 处理完置 STEP_DONE：结算会压入新状态并返回 URGENT，SHook 随后会「挂起后重跑同一钩子」，
+## 用 STEP_DONE 挡住那次重入，否则同一击会问两遍（下一次主动攻击在 p_timeline_1 清回 0）
 var _guan_chuan_step: int = 0
 
 
@@ -100,7 +104,8 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		询问(player.id, GUAN_CHUAN_SHE_JI, 1, 0, GConst.CardSource.Hand, [], 0, "magic")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	_guan_chuan_step = 0
+	# 本次未命中已处理：置 STEP_DONE 挡住 URGENT 回来时的重入；下一次攻击在 p_timeline_1 清回 0
+	_guan_chuan_step = STEP_DONE
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
@@ -117,12 +122,12 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
-	engine.to_discard([cid])
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": 2,
 		"cause": GUAN_CHUAN_SHE_JI, "type": GConst.HarmType.Magic,
 	})
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
 	engine._broadcast_game()
 	return URGENT
 
@@ -169,12 +174,12 @@ func _shan_guang_xian_jing(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
-	engine.to_discard([cid])
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": 2,
 		"cause": SHAN_GUANG_XIAN_JING, "type": GConst.HarmType.Magic,
 	})
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
 	engine._broadcast_game()
 	return URGENT
 

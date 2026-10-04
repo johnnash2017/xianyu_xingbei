@@ -123,9 +123,10 @@ func _lei_ming(action: Dictionary) -> int:
 		step = LING_LI_BENG_JIE
 	if step == LING_LI_BENG_JIE:
 		var point: int = 2 if _beng_jie else 1
-		for d: Variant in dsts:
+		# 2 名目标按玩家点选顺序结算；伤害状态是栈（后压先算）→ 逆序压栈
+		for i: int in range(dsts.size() - 1, -1, -1):
 			engine.push_harm({
-				"src": player.id, "dst": int(d), "point": point,
+				"src": player.id, "dst": int(dsts[i]), "point": point,
 				"cause": LEI_MING, "type": GConst.HarmType.Magic,
 			})
 		step = STEP_DONE
@@ -178,7 +179,7 @@ func _ling_li_beng_jie() -> int:
 	return SUCCESS
 
 
-## 风行：由座次靠前的目标开始，逐个强制弃 1 张手牌
+## 风行：按玩家点选顺序，逐个强制弃 1 张手牌
 func _feng_targets_discard(dsts: Array) -> int:
 	while _feng_idx < dsts.size():
 		var tid: int = int(dsts[_feng_idx])
@@ -301,11 +302,15 @@ func _bai_gui_cast() -> bool:
 func _bai_gui_effect() -> int:
 	var point: int = 2 if _beng_jie else 1
 	if _expose:
+		# 展示火系妖力：除指定 2 名角色外全体各受 1 点（含自己）。按服务端座位序（自己/下家先）
+		var 全体: Array = []
 		for pid: int in engine.order:
-			if pid == _expose_dsts[0] or pid == _expose_dsts[1]:
-				continue
+			if pid != _expose_dsts[0] and pid != _expose_dsts[1]:
+				全体.append(pid)
+		var 顺序: Array[int] = 结算顺序(全体)
+		for i: int in range(顺序.size() - 1, -1, -1):
 			engine.push_harm({
-				"src": player.id, "dst": pid, "point": point,
+				"src": player.id, "dst": 顺序[i], "point": point,
 				"cause": BAI_GUI_YE_XING, "type": GConst.HarmType.Magic,
 			})
 	elif not _expose_dsts.is_empty():
@@ -343,6 +348,6 @@ func _discard_played(cid: int) -> void:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
+	engine.take_from_hand(player.id, [cid], true)
 	engine.to_discard([cid])
 	engine._broadcast_game()

@@ -211,9 +211,9 @@ func _tian_shi_zhi_qiang(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
 	# 走引擎方法以触发 p_basic_effect_change（天使羁绊 704）；cause 与服务端一致为 CAUSE_USE
 	engine.add_basic_effect(dst_id, cid, player.id, GConst.CAUSE_USE)
+	engine.take_from_hand(player.id, [cid], true)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -233,7 +233,7 @@ func _feng_zhi_jie_jing(action: Dictionary) -> int:
 	})
 	engine.remove_basic_effect(dst.id, effect_cid, FENG_ZHI_JIE_JING, player.id)
 	engine.to_discard([effect_cid])
-	engine.take_from_hand(player.id, [cid])
+	engine.take_from_hand(player.id, [cid], true)
 	engine.to_discard([cid])
 	engine._broadcast_game()
 	return SUCCESS
@@ -256,10 +256,11 @@ func _tian_shi_zhu_fu(action: Dictionary) -> int:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": [use_cid], "is_real": true,
 		})
-		engine.take_from_hand(player.id, [use_cid])
+		engine.take_from_hand(player.id, [use_cid], true)
 		engine.to_discard([use_cid])
 		engine._broadcast_game()
 	var idx: int = step - TIAN_SHI_ZHU_FU
+	# 逐个索取的次序＝玩家点选顺序
 	if idx >= dsts.size():
 		step = STEP_DONE
 		return SUCCESS

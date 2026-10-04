@@ -108,14 +108,17 @@ func _pick_cards(ids: Array, n: int) -> Array:
 	return out
 
 
-func _show_and_discard(cards: Array) -> void:
+## 展示并弃掉这些手牌。展示 = false 时改为面朝下弃掉（不亮牌、也不触发展示手牌钩子）——
+## 服务端【灵魂镜像】的这步 isShown=false，只有【灵魂赐予】【灵魂召还】才是公开的。
+func _show_and_discard(cards: Array, 展示: bool = true) -> void:
 	if cards.is_empty():
 		return
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": cards, "is_real": true,
-	})
-	engine.take_from_hand(player.id, cards)
+	if 展示:
+		engine.broadcast(GConst.Msg.Card, {
+			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+			"card_ids": cards, "is_real": true,
+		})
+	engine.take_from_hand(player.id, cards, 展示)
 	engine.to_discard(cards)
 
 
@@ -413,9 +416,10 @@ func _zhen_bao(action: Dictionary) -> int:
 		"src": player.id, "dst": dst_id, "point": point,
 		"cause": LING_HUN_ZHEN_BAO, "type": GConst.HarmType.Magic,
 	})
-	engine.take_from_hand(player.id, [cid])
+	engine.take_from_hand(player.id, [cid], true)
 	engine.to_discard([cid])
-	engine._log_discard(player.id, [cid])
+	# 牌已在上面展示过：只写日志、不播弃牌特效
+	engine._log_discard(player.id, [cid], false)
 	engine._broadcast_game()
 	return URGENT
 
@@ -438,7 +442,8 @@ func _jing_xiang(action: Dictionary) -> int:
 		# 对自己使用时先弃牌再摸牌（服务端 drawNum 按弃牌后的手牌计算）
 		draw_num = 3 if (current - card_num + 3) < max_hand else (max_hand - (current - card_num))
 	if card_num > 0:
-		_show_and_discard(_pick_cards(cards, card_num))
+		# 服务端【灵魂镜像】这一步 isShown=false：面朝下弃牌
+		_show_and_discard(_pick_cards(cards, card_num), false)
 	if draw_num > 0:
 		engine.draw(dst_id, draw_num)
 	engine._broadcast_game()

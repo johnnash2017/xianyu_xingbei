@@ -100,6 +100,80 @@ alpha_curve = SubResource("CurveTexture_cksi3")
 size = Vector2(1, 2)
 orientation = 0
 
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_277kj"]
+noise_type = 2
+fractal_type = 3
+fractal_octaves = 2
+cellular_distance_function = 3
+cellular_return_type = 6
+domain_warp_enabled = true
+domain_warp_frequency = 0.0
+domain_warp_fractal_octaves = 1
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_etk7l"]
+noise = SubResource("FastNoiseLite_277kj")
+seamless = true
+invert = true
+seamless_blend_skirt = 0.2
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_blmix"]
+render_priority = 0
+shader = ExtResource("2_ilr8t")
+shader_parameter/primary_color = Color(0.7137255, 0.9490196, 0.35686275, 1)
+shader_parameter/secondary_color = Color(0.4, 1, 0.2, 1)
+shader_parameter/tertiary_color = Color(0.24313726, 0.43137255, 0.15294118, 1)
+shader_parameter/emission = 4.0
+shader_parameter/noise_texture = SubResource("NoiseTexture2D_etk7l")
+shader_parameter/noise_scale = Vector2(0.7, 1)
+shader_parameter/noise_scroll = Vector2(1, 0)
+shader_parameter/noise_shape = 2.0
+shader_parameter/align_noise = true
+shader_parameter/use_icon = true
+shader_parameter/icon_texture = ExtResource("3_3sdqi")
+shader_parameter/edge_position = 0.0
+shader_parameter/edge_hardness = 0.0
+
+[sub_resource type="Curve" id="Curve_tqirh"]
+_data = [Vector2(0, 0), 0.0, 7.5355353, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), -2.6613095, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_uye28"]
+curve = SubResource("Curve_tqirh")
+
+[sub_resource type="Gradient" id="Gradient_3qexg"]
+colors = PackedColorArray(0, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_it2do"]
+gradient = SubResource("Gradient_3qexg")
+
+[sub_resource type="Curve" id="Curve_eiko4"]
+_data = [Vector2(0, 1), 0.0, 0.11526213, 0, 0, Vector2(1, 0), -2.4136317, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_pnfjb"]
+curve = SubResource("Curve_eiko4")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_d043o"]
+particle_flag_align_y = true
+particle_flag_rotate_y = true
+emission_shape_scale = Vector3(1, 0.1, 1)
+emission_shape = 1
+emission_sphere_radius = 1.5
+angle_min = -720.0
+angle_max = 720.0
+direction = Vector3(-1, 0, 0)
+spread = 0.0
+initial_velocity_min = 4.0
+initial_velocity_max = 8.0
+gravity = Vector3(0, 0, 0)
+scale_curve = SubResource("CurveTexture_pnfjb")
+color_initial_ramp = SubResource("GradientTexture1D_it2do")
+alpha_curve = SubResource("CurveTexture_uye28")
+
+[sub_resource type="QuadMesh" id="QuadMesh_2xct3"]
+size = Vector2(0.4, 0.4)
+orientation = 1
+
 [sub_resource type="Animation" id="Animation_ay6cf"]
 length = 0.001
 tracks/0/type = "value"
@@ -237,6 +311,16 @@ lifetime = 0.7
 local_coords = true
 process_material = SubResource("ParticleProcessMaterial_e74uv")
 draw_pass_1 = SubResource("QuadMesh_0hd1o")
+
+[node name="Particles2" type="GPUParticles3D" parent="." unique_id=1653250143]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.8, 0, 0)
+visible = false
+material_override = SubResource("ShaderMaterial_blmix")
+amount = 32
+lifetime = 0.7
+local_coords = true
+process_material = SubResource("ParticleProcessMaterial_d043o")
+draw_pass_1 = SubResource("QuadMesh_2xct3")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=854729329]
 libraries/ = SubResource("AnimationLibrary_edjed")

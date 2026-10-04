@@ -9,7 +9,7 @@ class_name 弃牌2D
 extends Node2D
 
 ## 从起点飞完全程的时长（秒）
-@export var 飞行时长: float = 0.6
+@export var 飞行时长: float = 0.75
 ## 起飞前的等待（秒）：弃多张时靠它错开，一张接一张飞
 @export var 延迟时长: float = 0.0
 ## 起飞点相对角色中心的散布范围（±像素）

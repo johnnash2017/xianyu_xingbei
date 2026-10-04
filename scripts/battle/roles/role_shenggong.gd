@@ -169,10 +169,6 @@ func _discard_own(ids: Array, n: int) -> void:
 	if want <= 0:
 		return
 	var chosen: Array = _pick_cards(player, ids, want)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": chosen, "is_real": true,
-	})
 	engine.take_from_hand(player.id, chosen)
 	engine.to_discard(chosen)
 
@@ -189,17 +185,14 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
-		"card_ids": chosen, "is_real": true,
-	})
 	engine.take_from_hand(pid, chosen)
 	engine.to_discard(chosen)
 	engine._broadcast_game()
 	return SUCCESS
 
 
-## 从自己开始顺时针的全部角色 id，再反转（顺位处理顺序）
+## 辉光炮的处理顺序：从自己开始、沿行动顺序绕一圈（自己最先）
+## 服务端把目标 reverse 后逐个压栈，而状态是栈（LIFO）又把它翻回原序，实际就是「自己 → 下家 → …」
 func _ids_from_self() -> Array:
 	var ids: Array = []
 	var cur: int = player.id
@@ -210,7 +203,6 @@ func _ids_from_self() -> Array:
 		guard -= 1
 		if cur == player.id:
 			break
-	ids.reverse()
 	return ids
 
 
@@ -517,14 +509,14 @@ func _sheng_xie_ju_bao(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": use_cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, use_cards)
-	engine.to_discard(use_cards)
 	var harm: Dictionary = {
 		"src": player.id, "dst": dst_id, "point": ATTACK_BASE_POINT,
 		"cause": SHENG_XIE_JU_BAO, "type": GConst.HarmType.Attack,
 		"card_id": virtual_card, "is_active": true,
 	}
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, virtual_card, harm))
+	engine.take_from_hand(player.id, use_cards, true)
+	engine.to_discard(use_cards)
 	engine._broadcast_game()
 	return URGENT
 

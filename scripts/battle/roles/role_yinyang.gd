@@ -254,6 +254,9 @@ var _ji_li_step: int = 0
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
+	# 本次黑暗祭礼已结算：URGENT 回来后引擎会用同一 ctx 再进本钩子，直接挡掉，别重复询问/重复伤害
+	if bool(ctx.get("ji_li_settled", false)):
+		return SUCCESS
 	if _ji_li_step >= STEP_DONE:
 		return SUCCESS
 	# 入口条件（鬼火满）只在第 0 步判：本条流程在询问前就把鬼火清零（与服务端一致），
@@ -280,6 +283,8 @@ func p_turn_end(ctx: Dictionary) -> int:
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		_ji_li_step = 0
+		# 标记本次已结算，挡住 URGENT 回来时的重入（同一 ctx）
+		ctx["ji_li_settled"] = true
 		var dsts: Array = r.get("dst_ids", [])
 		var args: Array = r.get("args", [])
 		var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
@@ -365,7 +370,7 @@ func _shi_shen_jiang_lin(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": use_cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, use_cards)
+	engine.take_from_hand(player.id, use_cards, true)
 	engine.to_discard(use_cards)
 	engine._broadcast_game()
 	return URGENT

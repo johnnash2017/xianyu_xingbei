@@ -74,7 +74,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, cards)
+	engine.take_from_hand(player.id, cards, true)
 	engine.to_discard(cards)
 	var harm: Dictionary = ctx.get("harm", {})
 	harm["point"] = maxi(int(harm.get("point", 0)) - cards.size(), 0)
@@ -128,17 +128,18 @@ func _sp_mo_bao_chong_ji(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
 	var tid: int = int(dsts[0])
+	var cid: int = int(cards[0])
 	if step == 0:
-		var cid: int = int(cards[0])
 		notice_skill(SP_MO_BAO_CHONG_JI, [tid])
 		engine.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": [cid], "is_real": true,
 		})
-		engine.take_from_hand(player.id, [cid])
-		engine.to_discard([cid])
 		# 不论目标是否弃牌，我方战绩区都 +1 宝石
 		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
+		# 代价牌当场弃掉，别拖到目标应答之后（否则这段询问期间它还在手上）
+		engine.take_from_hand(player.id, [cid], true)
+		engine.to_discard([cid])
 		engine._broadcast_game()
 		step = 1
 	if step != 1:
@@ -164,9 +165,10 @@ func _hui_mie_feng_bao(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	notice_skill(HUI_MIE_FENG_BAO, dsts)
 	player.set_gem(player.gem - 1)
-	for d: Variant in dsts:
+	# 2 名目标按玩家点选顺序结算；伤害状态是栈（后压先算）→ 逆序压栈
+	for i: int in range(dsts.size() - 1, -1, -1):
 		engine.push_harm({
-			"src": player.id, "dst": int(d), "point": HUI_MIE_HARM_POINT,
+			"src": player.id, "dst": int(dsts[i]), "point": HUI_MIE_HARM_POINT,
 			"cause": HUI_MIE_FENG_BAO, "type": GConst.HarmType.Magic,
 		})
 	engine._broadcast_game()
@@ -224,7 +226,7 @@ func _target_discard_magic(tid: int, r: Dictionary) -> bool:
 		"type": GConst.CardMsgType.Show, "src_id": tid, "dst_id": tid,
 		"card_ids": [gid], "is_real": true,
 	})
-	engine.take_from_hand(tid, [gid])
+	engine.take_from_hand(tid, [gid], true)
 	engine.to_discard([gid])
 	engine._broadcast_game()
 	return true

@@ -359,7 +359,7 @@ func _xue_zhi_bei_ming(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
+	engine.take_from_hand(player.id, [cid], true)
 	engine.to_discard([cid])
 	engine._broadcast_game()
 	return URGENT

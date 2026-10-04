@@ -97,6 +97,7 @@ func v_weaken(_dst_id: int, _players: Dictionary) -> int: return V_NOT_OVERRIDE
 func v_missile(_card_id: int, _dst_id: int) -> int: return V_NOT_OVERRIDE
 func v_remissile(_card_id: int) -> int: return V_NOT_OVERRIDE
 func v_buy(_args: Array) -> int: return V_NOT_OVERRIDE
+func v_extract(_args: Array, _team_gem: int, _team_crystal: int, _dst_id: int) -> int: return V_NOT_OVERRIDE
 func v_attacked() -> int: return V_NOT_OVERRIDE
 func v_additional_action(_cause: int) -> int: return V_NOT_OVERRIDE
 
@@ -118,6 +119,19 @@ func p_special_skill(_action: Dictionary) -> int: return EMPTY_HANDLE
 ##   "targets": [合法目标 id]（可省；给了就只让这几名玩家亮，如【魔弹融合】的固定落点）、
 ##   "cards": [合法手牌 id]（可省；给了就只让这几张牌可点，如只能弃法术牌的技能） }
 func available_skills() -> Array:
+	return []
+
+
+## 该主动技能是否属于「启动」：发动后不消耗本回合行动，行动阶段照旧继续
+## （如格斗家【百式幻龙拳】【斗神天驱】：原版在回合开始的 p_boot 里询问，不占用行动）。
+## 引擎在技能结算完后据此决定进入回合结束还是重新进入行动阶段
+func is_free_skill(_skill_id: int) -> bool:
+	return false
+
+
+## 本阶段「普通行动」（非技能，如直接打出手牌）能用的手牌白名单（空＝不限制）。
+## 如【修罗连斩】的额外攻击行动期间只能出火系攻击牌，界面据此把其余牌置灰
+func action_card_ids(_action_type: int) -> Array:
 	return []
 
 
@@ -255,6 +269,23 @@ func nearest_enemy_id(from_id: int, post_dir: bool) -> int:
 			return nid
 		nid = pp.post_id if post_dir else pp.pre_id
 	return -1
+
+
+## 群伤结算顺序：服务端对多名目标一贯「从自己上家起、沿座位逆序」逐个压栈（状态是栈，LIFO →
+## 从自己/下家起正序结算）。这里返回正序结算顺序 ＝ 从自己起沿行动顺序绕一圈、只保留「目标集合」里的人：
+##   自己在集合里就排第一个，否则第一个就是下家（自己右手边第一个）。
+## 因为伤害状态是栈（后压先算），调用方要**逆序**遍历本结果来压栈，自己/下家才会最先结算。
+## 对照服务端：SiLing::WenYi、MoDao::HuiMieFengBao / MoBaoChongJi、LingFu::LeiMing_Effect 等
+## 都是「从 getPre() 反向压栈」。
+func 结算顺序(目标集合: Array) -> Array[int]:
+	var 集合: Array = 目标集合.duplicate()
+	var out: Array[int] = []
+	var cur: int = player.id
+	for _i: int in range(engine.order.size()):
+		if 集合.has(cur):
+			out.append(cur)
+		cur = engine.next_id(cur)
+	return out
 
 
 # ============================================================

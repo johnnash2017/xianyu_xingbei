@@ -254,7 +254,7 @@ func _ti_shen_wan_ou(ctx: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
+	engine.take_from_hand(player.id, [cid], true)
 	engine.to_discard([cid])
 	engine._broadcast_game()
 	return SUCCESS
@@ -313,7 +313,7 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": use, "is_real": true,
 	})
-	engine.take_from_hand(player.id, use)
+	engine.take_from_hand(player.id, use, true)
 	engine.to_discard(use)
 	engine._broadcast_game()
 	return URGENT
@@ -410,9 +410,10 @@ func _cang_yan_fa_dian(action: Dictionary) -> int:
 		"src": player.id, "dst": dst_id, "point": 2,
 		"cause": CANG_YAN_FA_DIAN, "type": GConst.HarmType.Magic,
 	})
-	engine.take_from_hand(player.id, [cid])
+	engine.take_from_hand(player.id, [cid], true)
 	engine.to_discard([cid])
-	engine._log_discard(player.id, [cid])
+	# 牌已在上面展示过：只写日志、不播弃牌特效
+	engine._log_discard(player.id, [cid], false)
 	engine._broadcast_game()
 	return URGENT
 
@@ -442,9 +443,10 @@ func _tian_huo_duan_kong(action: Dictionary) -> int:
 		"src": player.id, "dst": dst_id, "point": harm_point,
 		"cause": TIAN_HUO_DUAN_KONG, "type": GConst.HarmType.Magic,
 	})
-	engine.take_from_hand(player.id, cid_list)
+	engine.take_from_hand(player.id, cid_list, true)
 	engine.to_discard(cid_list)
-	engine._log_discard(player.id, cid_list)
+	# 牌已在上面展示过：只写日志、不播弃牌特效
+	engine._log_discard(player.id, cid_list, false)
 	engine._broadcast_game()
 	return URGENT
 
@@ -517,14 +519,14 @@ func p_attack_skill(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
-	engine.to_discard([cid])
 	# 与 _do_attack 一致：以虚拟【火焰斩】(87) 进入完整攻击流程（应战 / 命中 / 各钩子）
 	var harm: Dictionary = {
 		"src": player.id, "dst": dst_id, "point": 2, "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": VIRTUAL_FIRE_SLASH, "is_active": true,
 	}
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, VIRTUAL_FIRE_SLASH, harm))
-	engine.push_show_hand(player.id, [cid])
+	# 打出的牌是公开的：带 已展示 触发「展示手牌」钩子；放在 push 之后，钩子才压在这次攻击之上先结算
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
 	engine._broadcast_game()
 	return URGENT

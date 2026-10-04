@@ -363,6 +363,9 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	# 治疗上限：角色被动改过（如神官【圣使守护】+4），按服务端下发的值显示
 	if pi.has("max_heal"):
 		p.set_cross_max(int(pi["max_heal"]))
+	# 能量上限：角色被动改过（如贤者 +1），判「星石已满 / 还有空位」用它
+	if pi.has("max_energy"):
+		p.set_energy_max(int(pi["max_energy"]))
 	# 基础效果
 	p.clean_basic_status()
 	for cid: Variant in pi.get("basic_cards", []):

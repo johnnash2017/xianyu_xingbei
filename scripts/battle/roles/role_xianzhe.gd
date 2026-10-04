@@ -101,8 +101,6 @@ func _fa_shu_fan_tan() -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, cards)
-	engine.to_discard(cards)
 	# 对自己造成 X 点法术伤害
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": cards.size(),
@@ -113,6 +111,8 @@ func _fa_shu_fan_tan() -> int:
 		"src": player.id, "dst": dst_id, "point": cards.size() - 1,
 		"cause": FA_SHU_FAN_TAN, "type": GConst.HarmType.Magic,
 	})
+	engine.take_from_hand(player.id, cards, true)
+	engine.to_discard(cards)
 	engine._broadcast_game()
 	return URGENT
 
@@ -165,8 +165,6 @@ func _mo_dao_fa_dian(action: Dictionary) -> int:
 		"card_ids": cards, "is_real": true,
 	})
 	player.set_gem(player.gem - 1)
-	engine.take_from_hand(player.id, cards)
-	engine.to_discard(cards)
 	var point: int = cards.size() - 1
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": point,
@@ -176,6 +174,8 @@ func _mo_dao_fa_dian(action: Dictionary) -> int:
 		"src": player.id, "dst": dst_id, "point": point,
 		"cause": MO_DAO_FA_DIAN, "type": GConst.HarmType.Magic,
 	})
+	engine.take_from_hand(player.id, cards, true)
+	engine.to_discard(cards)
 	engine._broadcast_game()
 	return URGENT
 
@@ -190,12 +190,12 @@ func _sheng_jie_fa_dian(action: Dictionary) -> int:
 		"card_ids": cards, "is_real": true,
 	})
 	player.set_gem(player.gem - 1)
-	engine.take_from_hand(player.id, cards)
-	engine.to_discard(cards)
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": cards.size() - 1,
 		"cause": SHENG_JIE_FA_DIAN, "type": GConst.HarmType.Magic,
 	})
+	engine.take_from_hand(player.id, cards, true)
+	engine.to_discard(cards)
 	for d: Variant in dsts:
 		var dp: BattlePlayer = engine.p(int(d))
 		if dp != null:

@@ -205,7 +205,7 @@ func _hui_yao(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
+	engine.take_from_hand(player.id, [cid], true)
 	engine.to_discard([cid])
 	for d: Variant in dst_ids:
 		var dp: BattlePlayer = engine.p(int(d))
@@ -228,7 +228,7 @@ func _cheng_jie(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
+	engine.take_from_hand(player.id, [cid], true)
 	engine.to_discard([cid])
 	dst.sub_cross_num(1)
 	施加治疗(player.id, 1)

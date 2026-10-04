@@ -1,92 +1,155 @@
-[gd_scene load_steps=33 format=3]
+[gd_scene format=3 uid="uid://bndmx8l0q1xj"]
 
-[ext_resource type="Texture2D" path="res://assets/textures/battle/b05_new_argsItem.png" id="1_b05newargsItempng"]
-[ext_resource type="Texture2D" path="res://assets/textures/hero/head/0h.png" id="3_0hpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/card/diLieZhan.png" id="5_diLieZhanpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected_card.png" id="6_b02selectedcardpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected_cardy.png" id="7_b02selectedcardypng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-12.png" id="8_UI612png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-13.png" id="9_UI613png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-14.png" id="10_UI614png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-15.png" id="11_UI615png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-16.png" id="12_UI616png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/01 earth.png" id="13_01earthpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/04 wind.png" id="14_04windpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/02 water.png" id="15_02waterpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/03 fire.png" id="16_03firepng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/05 thunder.png" id="17_05thunderpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/heal.png" id="21_healpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/b02_chara_red.png" id="22_b02chararedpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/hero/small/0S.png" id="23_0Spng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/b02_chara_light_g.png" id="24_b02charalightgpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected.png" id="25_b02selectedpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/skilltag.png" id="26_skilltagpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/血.png" id="27_png"]
-[ext_resource type="Texture2D" path="res://assets/textures/skill/灵符-雷鸣.png" id="29_png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/playerSelected.png" id="30_playerSelectedpng"]
-[ext_resource type="Script" path="res://scripts/SkillUI.gd" id="31_SkillUIgd"]
+[ext_resource type="Texture2D" uid="uid://cvu0b03r4cyus" path="res://assets/textures/battle/playerSelected.png" id="30_playerSelectedpng"]
+[ext_resource type="Script" uid="uid://ngllurng1dxy" path="res://scripts/SkillUI.gd" id="31_SkillUIgd"]
+[ext_resource type="Shader" path="res://scripts/effects/技能按钮凸起.gdshader" id="32_btnbevel"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="Skill" type="Button" node_paths=PackedStringArray("skillName", "selectBorder")]
-anchor_left = 0
-anchor_top = 1
-anchor_right = 0
-anchor_bottom = 1
-offset_left = -55
-offset_top = -45
-offset_right = 55
-offset_bottom = 45
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bevel"]
+resource_local_to_scene = true
+shader = ExtResource("32_btnbevel")
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_yv4dp"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.8196546, 0.8196545, 0.8196545, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.13501206, 0.13501206, 0.13501206, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ykrkf"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.43712005, 0.43712005, 0.43712005, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ne71q"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(1, 1, 1, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_mdat8"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.43529412, 0.43529412, 0.43529412, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_x3c57"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.25021347, 0.25021344, 0.25021344, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="Skill" type="Button" unique_id=245982258 node_paths=PackedStringArray("plateButton", "skillName", "selectBorder")]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -55.0
+offset_top = -45.0
+offset_right = 55.0
+offset_bottom = 45.0
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(55, 45)
-icon = ExtResource("29_png")
-theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
-expand_icon = true
 focus_mode = 0
+mouse_filter = 2
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
 script = ExtResource("31_SkillUIgd")
+plateButton = NodePath("背景板")
 skillName = NodePath("SkillName")
 selectBorder = NodePath("SelectBorder")
 
-[node name="SkillName" type="Label" parent="."]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 1
-anchor_bottom = 1
-offset_left = 4.4491
-offset_top = 36.9487
-offset_right = -4.4491
-offset_bottom = 75.2513
+[node name="背景板" type="Button" parent="." unique_id=651677558]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 23.0
+offset_bottom = -23.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(-4.4491, -19.1513)
-text = "灵符-雷鸣"
-horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 25
+material = SubResource("ShaderMaterial_bevel")
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxFlat_yv4dp")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_ykrkf")
+theme_override_styles/hover = SubResource("StyleBoxFlat_ne71q")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_mdat8")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_x3c57")
+
+[node name="SkillName" type="Label" parent="." unique_id=465010874]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
-autowrap_mode = 3
-mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+text = "灵符-雷鸣"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="SelectBorder" type="TextureRect" parent="."]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 1
-anchor_bottom = 1
-offset_left = 0
-offset_top = 0
-offset_right = 0
-offset_bottom = 0
+[node name="SelectBorder" type="TextureRect" parent="." unique_id=42846854]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
+mouse_filter = 2
 texture = ExtResource("30_playerSelectedpng")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0

@@ -10,7 +10,7 @@
 class_name 战斗玩家面板
 extends Button
 
-## 点了面板上的某枚基础效果图标（发动【封印破碎】这类「从场上基础效果牌里选一张」的技能时用）
+## 点了面板上的某枚基础效果图标（选牌来源为 CardSource.BasicEffect、从场上基础效果牌里选一张的技能用它）
 signal 基础效果牌点击(玩家id: int, 牌id: int)
 
 ## 消息类型枚举走全局 class_name Msg（见 scripts/framework/Msg.gd）。
@@ -83,6 +83,13 @@ const 指示物格尺寸: Vector2 = Vector2(30.0, 30.0)
 ## 手牌 / 治疗那排扁平小方块：素材 handcard / heal 都是 33×14，照原版横排、负间距互相叠着
 const 扁平格尺寸: Vector2 = Vector2(33.0, 14.0)
 const 扁平格叠放间距: int = -13
+## 补牌动画（秒）：新补进手牌的格子先盖一层橙块，保持 补牌橙色时长 秒后，
+## 再用 补牌渐变时长 秒淡出、露出下面的绿块（前面一直橙、只在最后一段渐变）
+const 补牌橙色时长: float = 4.5
+const 补牌渐变时长: float = 0.5
+## 橙块的颜色：盖的那层用的是红色素材 handcardfull，靠这个 modulate 把它调成橙色
+## （绿通道乘 >1 提亮、蓝通道乘 <1 压暗，红通道保持不动）
+const 补牌橙色: Color = Color(1.28, 1.73, 0.47)
 ## 角色身上的能量：素材 gem / crystal 都是 29×30（近似正方形），竖着一列排
 const 能量格尺寸: Vector2 = Vector2(30.0, 30.0)
 ## 能量区的格子边长（原版 Unity 的 GridLayoutGroup cellSize 就是 30×30）
@@ -95,7 +102,7 @@ const 状态区列数: int = 2
 const 状态区每列格数: int = 4
 ## 状态图标区当前要显示的基础效果牌 / 独有效果下标（两个 setter 合成一次渲染，见 _刷新状态图标）
 var _状态基础牌: Array = []
-## 面板上的基础效果图标此刻是否可以点（由战斗界面在发动【封印破碎】这类技能时打开）
+## 面板上的基础效果图标此刻是否可以点（选牌来源为 CardSource.BasicEffect 的技能期间打开）
 var _基础牌可点: bool = false
 var _状态独有效果: Array = []
 ## 对应 C# private RoleBase role = RoleFactory.Create(RoleID.Blank);
@@ -287,6 +294,9 @@ func _ready() -> void:
 				recHandArea = c
 				break
 	AnimationPos = self
+	# 手牌 / 治疗那两排方块的受击描边材质（受击时把描边染红再淡回，见 Hurted）
+	_手牌描边 = _造描边材质()
+	_治疗描边 = _造描边材质()
 	# 参考工程在这里 role = RoleFactory.create(0)（技能系统）；本步骤不接。第三步：技能系统。
 	# 对应 C# MessageSystem<MessageType>.Regist(AgentSelectPlayer / RecHandChange, this)
 	MessageSystem.regist(Msg.T.AgentSelectPlayer, self, Callable(self, "on_event_trigger"))
@@ -514,7 +524,7 @@ func _on_基础牌图标输入(event: InputEvent, 基础牌id: int) -> void:
 		基础效果牌点击.emit(ID, 基础牌id)
 
 
-## 打开/关闭「面板上的基础效果图标可点」（发动【封印破碎】这类技能时由战斗界面打开）
+## 打开/关闭「面板上的基础效果图标可点」（选牌来源为 CardSource.BasicEffect 的技能期间由战斗界面打开）
 func set_基础牌可点(value: bool) -> void:
 	if _基础牌可点 == value:
 		return
@@ -572,10 +582,33 @@ func set_Energy(value: Vector2i) -> void:
 		_add_image(energyArea, ps, "crystal", 能量格尺寸, false)
 	_摆图标(energyArea, 1, 0, 能量区图标格)
 
+## 手牌那一排每格的「补牌起点」（毫秒），下标从左到右、长度＝当前手牌数；
+## -1 表示这一格早就补好了、不用播橙变绿。
+var _手牌格起点: Array[int] = []
+## 是否已经收到过一次手牌数（区分「进场首次显示」（不播动画）与「之后补牌」）
+var _手牌已初始化: bool = false
+
+
 ## 对应 C# public KeyValuePair<uint,uint> HandCount 的 setter（Key=手牌上限, Value=当前手牌）
 func set_HandCount(value: Vector2i) -> void:
 	if handArea == null:
 		return
+	# 手牌数变化：新增的格子记下「现在」作为橙变绿的起点；减少（弃牌）时丢最左边的旧牌，
+	# 保住右边那几格正在播放的橙变绿动画不被中途打断。
+	var 手牌数: int = value.y
+	var 旧数: int = _手牌格起点.size()
+	if not _手牌已初始化:
+		# 进场第一次显示：已有的手牌当作早就补好，不播橙变绿
+		_手牌已初始化 = true
+		for _i: int in range(手牌数):
+			_手牌格起点.append(-1)
+	elif 手牌数 > 旧数:
+		var 现在: int = Time.get_ticks_msec()
+		for _j: int in range(手牌数 - 旧数):
+			_手牌格起点.append(现在)
+	elif 手牌数 < 旧数:
+		for _k: int in range(旧数 - 手牌数):
+			_手牌格起点.remove_at(0)
 	for c in handArea.get_children():
 		c.queue_free()
 	var ps := _load_prefab("Image")
@@ -592,11 +625,35 @@ func set_HandCount(value: Vector2i) -> void:
 	var total := maxi(value.x, value.y)
 	for j in range(total):
 		if j >= value.x:
-			_add_image(handArea, ps, "handcardfull", 扁平格尺寸, true)
+			_add_image(handArea, ps, "handcardfull", 扁平格尺寸, true, _手牌描边)
 		elif j < value.y:
-			_add_image(handArea, ps, "handcard", 扁平格尺寸, true)
+			_加当前手牌格(ps, _手牌格起点[j])
 		else:
-			_add_image(handArea, ps, "handcardempty", 扁平格尺寸, true)
+			_add_image(handArea, ps, "handcardempty", 扁平格尺寸, true, _手牌描边)
+
+
+## 一格「当前手牌」：绿块打底；若是刚补上来的（补牌起点 >= 0 且动画还没走完），
+## 上面再盖一层橙块 —— 先整块橙保持 补牌橙色时长 秒，最后 补牌渐变时长 秒才淡出露出绿块。
+func _加当前手牌格(ps: PackedScene, 补牌起点: int) -> void:
+	var 绿块: Control = _add_image(handArea, ps, "handcard", 扁平格尺寸, true, _手牌描边)
+	if 绿块 == null or 补牌起点 < 0:
+		return
+	var 已过: float = float(Time.get_ticks_msec() - 补牌起点) / 1000.0
+	if 已过 >= 补牌橙色时长 + 补牌渐变时长:
+		return
+	var 橙块: TextureRect = ps.instantiate() as TextureRect
+	橙块.texture = _load_sprite("handcardfull")
+	橙块.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	绿块.add_child(橙块)
+	橙块.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# 前 补牌橙色时长 秒整块橙、不动；只有最后 补牌渐变时长 秒才淡出露出绿块
+	var 渐变已过: float = maxf(已过 - 补牌橙色时长, 0.0)
+	橙块.modulate = Color(补牌橙色.r, 补牌橙色.g, 补牌橙色.b, 1.0 - 渐变已过 / 补牌渐变时长)
+	var 淡出: Tween = 橙块.create_tween()
+	if 已过 < 补牌橙色时长:
+		淡出.tween_interval(补牌橙色时长 - 已过)
+	淡出.tween_property(橙块, "modulate:a", 0.0, 补牌渐变时长 - 渐变已过)
+	淡出.tween_callback(橙块.queue_free)
 
 ## 对应 C# public uint HealCount 的 setter
 func set_HealCount(value: int) -> void:
@@ -614,17 +671,20 @@ func set_HealCount(value: int) -> void:
 	if 玩家 != null:
 		max_heal = 玩家.cross_max
 	for _j in range(value):
-		_add_image(healArea, ps, "heal", 扁平格尺寸, true)
+		_add_image(healArea, ps, "heal", 扁平格尺寸, true, _治疗描边)
 	for _k in range(maxi(max_heal - value, 0)):
-		_add_image(healArea, ps, "handcardempty", 扁平格尺寸, true)
+		_add_image(healArea, ps, "handcardempty", 扁平格尺寸, true, _治疗描边)
 
-func _add_image(parent: Node, ps: PackedScene, sprite_name: String, 格尺寸: Vector2, 横向叠放: bool) -> void:
+func _add_image(parent: Node, ps: PackedScene, sprite_name: String, 格尺寸: Vector2, 横向叠放: bool, 材质: Material = null) -> Control:
 	if ps == null or parent == null:
-		return
+		return null
 	var go := ps.instantiate()
 	var tex := _load_sprite(sprite_name)
 	if tex != null and go is TextureRect:
 		(go as TextureRect).texture = tex
+	# 手牌 / 治疗那一排的方块挂上「受击描边」材质，受击时整排的深色描边一起染红
+	if 材质 != null and go is CanvasItem:
+		(go as CanvasItem).material = 材质
 	# 从 Unity 转过来的 Image 预制体尺寸是 0×0（RectTransform 没带过来），名牌下方那排
 	# 斜方块（手牌数/治疗/能量）因此全都看不见 —— 这里按素材的真实比例补尺寸与排布：
 	#   手牌 / 治疗：原版 GridLayoutGroup cellSize 33×14、spacing −13（负间距 → 方块互相
@@ -638,6 +698,8 @@ func _add_image(parent: Node, ps: PackedScene, sprite_name: String, 格尺寸: V
 		gc.add_theme_constant_override("h_separation", 扁平格叠放间距 if 横向叠放 else 0)
 		gc.add_theme_constant_override("v_separation", 0)
 	_add_child_go(parent, go)
+	return go as Control
+
 
 ## 对应 C# public string Chat 的 setter
 func set_Chat(value: String) -> void:
@@ -742,6 +804,17 @@ func _rec_updata_card(cards: Array) -> void:
 		go.call("设置卡牌", card, false)
 		cardUIs.append(go)
 
+## 头像背后那个魔法阵（Turn 那圈金色法阵，b02_sys_turn）的自转角速度：每秒 15°，
+## 负值 = 屏幕上向左转（逆时针）；节点的 pivot 已在预制体里钉在正中，绕中心转
+const 魔法阵角速度: float = -15.0
+
+
+## 头像背后的魔法阵持续左转（只有轮到本玩家时才显示这圈法阵）
+func _process(delta: float) -> void:
+	if turn != null and turn.visible:
+		turn.rotation += deg_to_rad(魔法阵角速度) * delta
+
+
 ## 对应 C# public void TurnBegin()
 func TurnBegin() -> void:
 	# 对应 C# Turn = true;
@@ -764,12 +837,143 @@ func TurnBegin() -> void:
 		var tw2 := create_tween()
 		tw2.tween_property(turn, "scale", Vector2(1.2, 1.2), 1.5)
 
-## 对应 C# public void Hurted()
-func Hurted() -> void:
-	print("hurted animation")
+# ============================================================
+# 受击反馈：泛红 + 抖动 + 画面扭曲震荡波 + 卡肉 —— 都放在本面板里，方便在这个预制体上调参
+# ============================================================
+## 受击泛红色与泛红时长（秒）：命中瞬间点亮，再淡回常态
+const 受击泛红色: Color = Color(1.0, 0.675, 0.675)
+const 受击泛红时长: float = 1.0
+## 受击抖动：初始幅度（像素）、单次时长（秒）、来回次数（幅度逐次衰减）
+const 受击抖动幅度: float = 10.0
+const 受击抖动单次时长: float = 0.1
+const 受击抖动次数: int = 5
+## 受击画面扭曲震荡波（着色器见 scripts/effects/受击震荡波.gdshader）：
+## 时长（秒）、最大半径 / 波带厚度 / 波内位移强度（按屏幕高算的 UV 单位）
+const 受击震荡波着色器: Shader = preload("res://scripts/effects/受击震荡波.gdshader")
+const 震荡波时长: float = 0.60
+const 震荡波半径: float = 0.60
+const 震荡波波宽: float = 0.055
+const 震荡波强度: float = 0.010
+## 卡肉时长（秒）：命中瞬间把整个战斗界面冻住一小会儿，增强打击感
+const 受击卡肉时长: float = 0.07
+## 受击描边：把手牌 / 治疗方块贴图自带的深色描边染红，再用 受击描边时长 淡回原色
+const 受击描边着色器: Shader = preload("res://scripts/effects/受击描边.gdshader")
+const 受击描边时长: float = 2.0
+
+## 头像初始位置：首次受击时记下，之后每次抖动都围绕它 —— 连续受击也不会把头像越抖越偏
+var _头像原位: Vector2 = Vector2.ZERO
+var _头像原位已记: bool = false
+## 手牌 / 治疗那两排方块的受击描边材质（_ready 里建好；同一排共用一个，才会整排一起红）
+var _手牌描边: ShaderMaterial = null
+var _治疗描边: ShaderMaterial = null
+## 描边淡回的补间：连续受击时先把旧的杀掉，免得两个补间抢同一个参数
+var _描边淡出: Tween = null
+
+## 对应 C# public void Hurted()：受击表现。
+## 播放震荡波 = true 时额外叠一圈画面扭曲（只在「斩命中 / 魔弹命中」时由调用方传入）；
+## 泛红、抖动、卡肉则每次受击都播。
+func Hurted(播放震荡波: bool = false) -> void:
+	if hero == null:
+		return
 	# 对应 C# hurted.SetTrigger("Hurt")
 	if hurted != null and hurted is AnimationPlayer:
 		(hurted as AnimationPlayer).play("Hurt")
+	if not _头像原位已记:
+		_头像原位 = hero.position
+		_头像原位已记 = true
+	hero.modulate = 受击泛红色
+	var 红: Tween = hero.create_tween()
+	红.tween_property(hero, "modulate", Color.WHITE, 受击泛红时长)
+	var 抖: Tween = hero.create_tween()
+	for i: int in range(受击抖动次数):
+		var 幅度: float = 受击抖动幅度 * (1.0 - float(i) / float(受击抖动次数))
+		var 方向: float = 1.0 if i % 2 == 0 else -1.0
+		抖.tween_property(hero, "position", _头像原位 + Vector2(方向 * 幅度, 0.0), 受击抖动单次时长)
+	抖.tween_property(hero, "position", _头像原位, 受击抖动单次时长)
+	_闪受击描边()
+	if 播放震荡波:
+		_播放受击震荡波()
+	_卡肉()
+
+
+## 建一份受击描边材质（描边染色强度初始为 0＝原色）
+func _造描边材质() -> ShaderMaterial:
+	var 材质: ShaderMaterial = ShaderMaterial.new()
+	材质.shader = 受击描边着色器
+	材质.set_shader_parameter("mix_amount", 0.0)
+	return 材质
+
+
+## 受击时把手牌 / 治疗两排方块的深色描边一起染红，再用 受击描边时长 淡回原色
+func _闪受击描边() -> void:
+	if _手牌描边 == null and _治疗描边 == null:
+		return
+	if _描边淡出 != null and _描边淡出.is_valid():
+		_描边淡出.kill()
+	if _手牌描边 != null:
+		_手牌描边.set_shader_parameter("mix_amount", 1.0)
+	if _治疗描边 != null:
+		_治疗描边.set_shader_parameter("mix_amount", 1.0)
+	_描边淡出 = create_tween()
+	_描边淡出.set_parallel(true)
+	if _手牌描边 != null:
+		_描边淡出.tween_method(_设描边强度.bind(_手牌描边), 1.0, 0.0, 受击描边时长)
+	if _治疗描边 != null:
+		_描边淡出.tween_method(_设描边强度.bind(_治疗描边), 1.0, 0.0, 受击描边时长)
+
+
+func _设描边强度(值: float, 材质: ShaderMaterial) -> void:
+	材质.set_shader_parameter("mix_amount", 值)
+
+
+## 在战斗界面根节点上叠一块铺满屏幕的透明 ColorRect，跑一圈从本面板中心扩散出去的画面扭曲。
+## 面板在场景里是战斗界面根节点（Root）的直接子节点，故用 get_parent() 拿它；
+## 波挂在 Root 下才铺得满整屏，并且卡肉冻 Root 时会跟着停在起手那一帧。
+func _播放受击震荡波() -> void:
+	var 根: Control = get_parent() as Control
+	if 根 == null or 根.size.x <= 0.0 or 根.size.y <= 0.0:
+		return
+	var 波: ColorRect = ColorRect.new()
+	波.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var 材质: ShaderMaterial = ShaderMaterial.new()
+	材质.shader = 受击震荡波着色器
+	波.material = 材质
+	根.add_child(波)
+	波.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	材质.set_shader_parameter("center_uv", get_rect().get_center() / 根.size)
+	材质.set_shader_parameter("aspect", 根.size.x / 根.size.y)
+	材质.set_shader_parameter("radius", 震荡波半径)
+	材质.set_shader_parameter("band", 震荡波波宽)
+	材质.set_shader_parameter("strength", 震荡波强度)
+	材质.set_shader_parameter("progress", 0.0)
+	材质.set_shader_parameter("fade", 1.0)
+	var t: Tween = 波.create_tween()
+	t.set_parallel(true)
+	t.tween_method(_设震荡波进度.bind(材质), 0.0, 1.0, 震荡波时长)
+	# 前 40% 保持不透明（波还没走远），之后再淡出
+	t.tween_method(_设震荡波淡出.bind(材质), 1.0, 0.0, 震荡波时长 * 0.6).set_delay(震荡波时长 * 0.4)
+	t.chain().tween_callback(波.queue_free)
+
+
+func _设震荡波进度(值: float, 材质: ShaderMaterial) -> void:
+	材质.set_shader_parameter("progress", 值)
+
+
+func _设震荡波淡出(值: float, 材质: ShaderMaterial) -> void:
+	材质.set_shader_parameter("fade", 值)
+
+
+## 卡肉：把整个战斗界面（Root 子树）冻结一小会儿再放开。
+## 只冻界面本身，不影响服务端逻辑与倒计时；界面里的 Tween / 粒子会停在起手那一帧，
+## 看起来就是「打上去顿了一下」（泛红、抖动、震荡波都从那一帧起步）。
+func _卡肉() -> void:
+	var 根: Control = get_parent() as Control
+	if 根 == null:
+		return
+	根.process_mode = Node.PROCESS_MODE_DISABLED
+	await get_tree().create_timer(受击卡肉时长).timeout
+	if is_instance_valid(根):
+		根.process_mode = Node.PROCESS_MODE_INHERIT
 
 ## 能量区 / 状态图标区自己算坐标（这两个区域在场景里是 Control）：
 ## 原版 Unity 的 GridLayoutGroup 是「第一枚贴底、后加的往上长」，而 Godot 的 GridContainer 只认

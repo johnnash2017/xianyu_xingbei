@@ -28,7 +28,8 @@ func _ready() -> void:
 	visible = false
 
 
-## 打开窗口：选项列表每一项是 {"text": 条目文字, "args": 选中后要提交的参数}。
+## 打开窗口：选项列表每一项是 {"text": 条目文字, "args": 选中后要提交的参数, "可用": 可选，默认 true}。
+## 「可用」为 false 时该选项按钮置灰（如手里没风系攻击牌时的【风怒追击】）。
 ## 可取消 = false 时藏掉「取消」按钮（这类询问必须先选一项，如【百鬼夜行】的效果选择）
 func 打开(标题文本: String, 选项列表: Array, 可取消: bool = true) -> void:
 	Title.text = 标题文本
@@ -36,15 +37,16 @@ func 打开(标题文本: String, 选项列表: Array, 可取消: bool = true) -
 	_清空选项()
 	for 项: Variant in 选项列表:
 		var d: Dictionary = 项
-		_加选项按钮(str(d.get("text", "")), d.get("args", []))
+		_加选项按钮(str(d.get("text", "")), d.get("args", []), bool(d.get("可用", true)))
 	visible = true
 
 
-func _加选项按钮(文案: String, 参数: Array) -> void:
+func _加选项按钮(文案: String, 参数: Array, 可用: bool = true) -> void:
 	var b: Button = Button.new()
 	b.text = 文案
 	b.custom_minimum_size = 选项按钮尺寸
 	b.add_theme_font_size_override("font_size", 选项字号)
+	b.disabled = not 可用
 	b.pressed.connect(_on_option_pressed.bind(参数))
 	OptionsBox.add_child(b)
 	_选项按钮.append(b)

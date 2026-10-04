@@ -1,8 +1,8 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://dyqri5rb0iplw"]
 
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="1_jckfy"]
-[ext_resource type="Script" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_q6c3c"]
-[ext_resource type="Shader" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="3_i1kyp"]
+[ext_resource type="Shader" uid="uid://b5o40v2ekd53a" path="res://scenes/prefabs/effects/斩击3D/着色器/斩击.gdshader" id="1_jckfy"]
+[ext_resource type="Script" uid="uid://bl8hvxnm485jw" path="res://scripts/effects/3D/斩击特效3D.gd" id="1_q6c3c"]
+[ext_resource type="Shader" uid="uid://w5jia5wnqkw" path="res://scenes/prefabs/effects/斩击3D/着色器/攻击粒子.gdshader" id="3_i1kyp"]
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_06fer"]
 noise_type = 2
@@ -54,6 +54,9 @@ shader_parameter/noise_scale = Vector2(0.5, 1)
 shader_parameter/noise_scroll = Vector2(0.5, 0)
 shader_parameter/noise_shape = 1.0
 shader_parameter/align_noise = true
+shader_parameter/use_icon = false
+shader_parameter/edge_position = 0.0
+shader_parameter/edge_hardness = 0.0
 
 [sub_resource type="Curve" id="Curve_i1kyp"]
 _data = [Vector2(0, 0), 0.0, 7.5355353, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), -2.6613095, 0.0, 0, 0]

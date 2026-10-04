@@ -283,7 +283,7 @@ func _jin_duan_zhi_li(ctx: Dictionary, hit: bool) -> int:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": cards, "is_real": true,
 		})
-		engine.take_from_hand(player.id, cards)
+		engine.take_from_hand(player.id, cards, true)
 		engine.to_discard(cards)
 	engine._broadcast_game()
 	return URGENT

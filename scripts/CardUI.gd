@@ -32,6 +32,12 @@ const GLOW_TEX_SIZE: Vector2 = Vector2(166.0, 230.0)
 const GLOW_WINDOW_SIZE: Vector2 = Vector2(126.0, 190.0)
 ## 不可用（置灰）时的整体压暗色
 const DISABLED_TINT: Color = Color(0.5, 0.5, 0.5, 1.0)
+## 「可选」发光框的换色着色器与默认色（与贴图同色：绿）。
+## 贴图是纯绿，靠 modulate 变不出红色，弃牌时由容器调 设置发光色 换成红光。
+const 发光框着色器: Shader = preload("res://scripts/effects/卡牌发光框.gdshader")
+const 发光色_默认: Color = Color(0.0, 1.0, 0.024)
+## 可选发光框的材质（每个卡牌自己一份，颜色互不影响）
+var _发光材质: ShaderMaterial = null
 
 ## Card.tscn 里的装饰（命格图标 / 元素图标 / 技能名）都是**固定像素偏移**，
 ## 这套数值是按「设计卡面 126×190」（发光框贴图的透明窗口）标的。
@@ -57,6 +63,12 @@ func _ready() -> void:
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	# 卡面/发光框这些装饰子图在转换时带着 mouse_filter=STOP，会把点击吃掉，统一放行
 	ConversionFix.ignore_decorations(self)
+	# 「可选」发光框挂换色材质（默认绿；弃牌时容器改成红）
+	if canSelectBorder != null:
+		_发光材质 = ShaderMaterial.new()
+		_发光材质.shader = 发光框着色器
+		_发光材质.set_shader_parameter("glow_color", 发光色_默认)
+		canSelectBorder.material = _发光材质
 	_fit_glow()
 	_fit_decor()
 
@@ -87,6 +99,12 @@ func 设置卡牌(new_card: GCard, 可用: bool, 可置灰: bool = true) -> void
 	_画卡面(new_card)
 	_画命格元素(new_card)
 	_fit_decor()
+
+
+## 设置「可选」发光框的颜色（默认绿；弃牌询问由容器改成红，和「打出」区分开）
+func 设置发光色(色: Color) -> void:
+	if _发光材质 != null:
+		_发光材质.set_shader_parameter("glow_color", 色)
 
 
 ## 是否处于「已选中」（黄框）

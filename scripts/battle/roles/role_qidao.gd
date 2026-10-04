@@ -1,7 +1,7 @@
 extends BattleRole
 ## 祈祷师（roleID 16）—— 移植自服务端 role/QiDao.cpp
 ## 技能：祈祷（启动 1603：横置并消耗 1 宝石进入祈祷形态）、
-##       光辉信仰（法术 1604：祈祷形态下移除 1 符文，弃牌，我方 +1 宝石，目标队友 +1 治疗）、
+##       光辉信仰（法术 1604：祈祷形态下移除 1 符文，弃 min(2, 手牌) 张牌，我方 +1 宝石，目标队友 +1 治疗）、
 ##       漆黑信仰（法术 1605：祈祷形态下移除 1 符文，对目标与自己各造成 2 点法术伤害）、
 ##       威力赐福（法术 1601：放置于队友面前，其攻击命中时可移除此牌使本次伤害 +2）、
 ##       迅捷赐福（法术 1602：放置于队友面前，其行动结束时可移除此牌获得 +1 攻击行动）、
@@ -36,7 +36,7 @@ func available_skills() -> Array:
 	var out: Array = []
 	# 光辉信仰 / 黑暗诅咒：仅祈祷形态（横置）且符文 > 0
 	if player.tap and _fu_wen() > 0:
-		# 光辉信仰：发动时须弃 min(2, 手牌) 张牌（对照原客户端 GuangHuiXinYang 的 quota = min(2, 手牌)），
+		# 光辉信仰：发动时须弃 min(2, 手牌) 张牌（手牌不足 2 张就按实际张数弃，0 张也能发动）；
 		# 目标限同色队友（原客户端 enableMate，不含自己）
 		out.append({"type": GConst.ActionType.MagicSkill, "id": GUANG_HUI_XIN_YANG,
 			"need_card": mini(2, player.hand_cards.size()), "need_target": 1, "targets": ally_ids()})
@@ -299,7 +299,7 @@ func p_magic_skill(action: Dictionary) -> int:
 	return GConst.GE_INVALID_ACTION
 
 
-## 光辉信仰：移除 1 符文，弃牌，我方 +1 宝石，目标队友 +1 治疗
+## 光辉信仰：移除 1 符文，弃 min(2, 手牌) 张牌（不展示），我方 +1 宝石，目标队友 +1 治疗
 func _guang_hui_xin_yang(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var cards: Array = action.get("card_ids", [])
@@ -311,12 +311,9 @@ func _guang_hui_xin_yang(action: Dictionary) -> int:
 	if dst != null:
 		施加治疗(dst.id, 1)
 	if not cards.is_empty():
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": cards, "is_real": true,
-		})
 		engine.take_from_hand(player.id, cards)
 		engine.to_discard(cards)
+		engine._log_discard(player.id, cards)
 		engine._broadcast_game()
 		return URGENT
 	engine._broadcast_game()
@@ -358,8 +355,8 @@ func _place_ci_fu(action: Dictionary, cause: int) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
 	})
-	engine.take_from_hand(player.id, [cid])
 	engine.add_basic_effect(dst_id, cid, player.id, cause)
+	engine.take_from_hand(player.id, [cid], true)
 	engine._broadcast_game()
 	return URGENT
 
@@ -376,7 +373,7 @@ func _check_guang_hui_xin_yang(action: Dictionary) -> int:
 	if dst == null or dst.color != player.color or dst.id == player.id:
 		return GConst.GE_INVALID_ACTION
 	var cards: Array = action.get("card_ids", [])
-	# 原客户端 quota = min(2, 手牌)：手牌不足 2 张时按实际张数弃
+	# 原客户端 quota = min(2, 手牌)：手牌不足 2 张时按实际张数弃，0 张也合法
 	if cards.size() != mini(2, player.hand_cards.size()):
 		return GConst.GE_INVALID_CARDID
 	for cid: Variant in cards:

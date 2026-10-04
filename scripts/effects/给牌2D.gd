@@ -6,7 +6,7 @@ class_name 给牌2D
 extends Node2D
 
 ## 飞完全程的时长（秒）
-@export var 飞行时长: float = 0.45
+@export var 飞行时长: float = 0.75
 ## 起飞前的等待（秒）：交多张时靠它错开，一张接一张飞
 @export var 延迟时长: float = 0.0
 ## 弧线拱高的基准值 = 起止直线距离 × 这个比例（实际拱高在此基础上随机浮动，方向也随机）

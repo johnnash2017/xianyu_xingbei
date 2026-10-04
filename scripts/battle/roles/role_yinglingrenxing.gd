@@ -202,7 +202,7 @@ func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": cards, "is_real": true,
 	})
-	engine.take_from_hand(player.id, cards)
+	engine.take_from_hand(player.id, cards, true)
 	engine.to_discard(cards)
 	var harm: Dictionary = ctx.get("harm", {})
 	harm["point"] = int(harm.get("point", 0)) + cards.size() - 1 + addition
@@ -291,12 +291,12 @@ func _nu_huo_mo_wen(ctx: Dictionary) -> int:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": cards, "is_real": true,
 		})
-		engine.take_from_hand(player.id, cards)
-		engine.to_discard(cards)
 		engine.push_harm({
 			"src": player.id, "dst": dst_id, "point": cards.size() - 1 + addition,
 			"cause": MO_WEN_RONG_HE, "type": GConst.HarmType.Magic,
 		})
+		engine.take_from_hand(player.id, cards, true)
+		engine.to_discard(cards)
 		engine._broadcast_game()
 		return URGENT
 	return SUCCESS
