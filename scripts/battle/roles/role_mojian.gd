@@ -1,6 +1,6 @@
 extends BattleRole
 ## 魔剑（roleID 9）—— 移植自服务端 role/MoJian.cpp
-## 形态：tap = [暗影形态]（回合开始时询问「暗影凝聚」进入，下个行动阶段开始时解除）
+## 形态：tap = [暗影形态]（行动阶段点技能栏【暗影凝聚】进入，下个行动阶段开始时解除）
 ## 技能：修罗连斩（901，响应：[攻击行动]结束时追加 1 次火系攻击行动）、
 ##       暗影凝聚（902，启动：对自身 1 点法术伤害，进入[暗影形态]）、
 ##       暗影之力（903，被动：仅[暗影形态]下，自身发动的攻击伤害 +1）、
@@ -25,6 +25,9 @@ var using_hei_an_zhen_chan: bool = false
 
 func available_skills() -> Array:
 	var out: Array = []
+	# 暗影凝聚（启动）：未处于[暗影形态]（未横置）时可发动
+	if not player.tap:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": AN_YING_NING_JU, "need_card": 0, "need_target": 0})
 	# 暗影流星（905）：仅[暗影形态]（tap）下可用，代价是弃 2 张法术牌（服务端 v_magic_skill 也按 2 张校验）
 	if player.tap and _magic_card_count() >= 2:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": AN_YING_LIU_XING, "need_card": 2, "need_target": 1,
@@ -123,36 +126,50 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 启动：暗影凝聚（902）
+# 回合开始（p_boot）：解除[暗影形态]
 # 服务端在 p_before_action 里解除[暗影形态]（MoJian::p_before_action）；
 # 本实现仍并入 p_boot 首段——引擎中 p_boot 先于 p_before_action 执行，两者都在行动阶段之前，行为等价
 # ============================================================
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	if step == 0:
-		if player.tap:
-			player.tap = false
-			engine._broadcast_game()
-		step = AN_YING_NING_JU
-	if step == AN_YING_NING_JU:
-		if not engine.has_reply():
-			询问(player.id, AN_YING_NING_JU, 0, 0)
-			return WAIT
-		step = STEP_DONE
-		if not take_skill_reply():
-			return SUCCESS
-		notice_skill(AN_YING_NING_JU, [player.id])
-		engine.set_tap(player.id, true)
-		engine.push_harm({
-			"src": player.id, "dst": player.id, "point": 1,
-			"cause": AN_YING_NING_JU, "type": GConst.HarmType.Magic,
-		})
+	if player.tap:
+		player.tap = false
 		engine._broadcast_game()
-		return URGENT
 	return SUCCESS
+
+
+# ============================================================
+# 启动技能（行动阶段按钮）：暗影凝聚（902）
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验技能自身条件）
+# ============================================================
+## 暗影凝聚为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == AN_YING_NING_JU
+
+
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != AN_YING_NING_JU:
+		return GConst.GE_INVALID_ACTION
+	# 已处于[暗影形态]（横置）：不能发动
+	if player.tap:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+## 暗影凝聚：横置进入[暗影形态]，并对自己造成 1 点法术伤害
+func p_special_skill(_action: Dictionary) -> int:
+	notice_skill(AN_YING_NING_JU, [player.id])
+	player.boot_skill_used = true
+	engine.set_tap(player.id, true)
+	engine.push_harm({
+		"src": player.id, "dst": player.id, "point": 1,
+		"cause": AN_YING_NING_JU, "type": GConst.HarmType.Magic,
+	})
+	engine._broadcast_game()
+	return URGENT
 
 
 # ============================================================

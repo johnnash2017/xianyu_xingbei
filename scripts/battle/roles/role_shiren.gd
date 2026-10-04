@@ -61,7 +61,17 @@ func available_skills() -> Array:
 	if _ling_gan() > 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": BU_XIE_HE_XIAN, "need_card": 0, "need_target": 1,
 			"arg_choices": _bu_xie_choices()})
+	# 希望赋格曲（启动）：满足条件时把【永恒乐章】转移给一名队友（合法目标＝队友白名单）；
+	# 声明了 targets 后一个合法队友都没有时引擎会整条不发
+	if _can_xi_wang():
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": XI_WANG_FU_GE_QU,
+			"need_card": 0, "need_target": 1, "targets": ally_ids()})
 	return out
+
+
+## 【希望赋格曲】为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == XI_WANG_FU_GE_QU
 
 
 # ============================================================
@@ -431,38 +441,38 @@ func p_harm_end(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 启动（自己回合）：希望赋格曲（3107）
+# 启动技能（行动阶段按钮）：希望赋格曲（3107）
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验本技能自己的条件）
 # ============================================================
-## 【希望赋格曲】的推进阶段（0＝还没开始 / XI_WANG_FU_GE_QU＝在问是否把乐章转移给队友）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
-var _fu_ge_step: int = 0
-
-
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id:
-		return SUCCESS
-	if _fu_ge_step >= STEP_DONE:
-		return SUCCESS
-	if _fu_ge_step == 0:
-		_fu_ge_step = XI_WANG_FU_GE_QU
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != XI_WANG_FU_GE_QU:
+		return GConst.GE_INVALID_ACTION
 	if not _can_xi_wang():
-		_fu_ge_step = 0
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, XI_WANG_FU_GE_QU, 0, 1)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	_fu_ge_step = 0
-	var args: Array = r.get("args", [])
-	var dsts: Array = r.get("dst_ids", [])
-	if args.is_empty() or int(args[0]) != 1 or dsts.is_empty():
-		return SUCCESS
+		return GConst.GE_INVALID_ACTION
+	var dsts: Array = action.get("dst_ids", [])
+	if dsts.is_empty():
+		return GConst.GE_INVALID_ACTION
 	var dst: BattlePlayer = engine.p(int(dsts[0]))
-	if dst == null or dst.color != player.color:
-		return SUCCESS
+	# 只能把乐章转移给一名队友（不能是自己）
+	if dst == null or dst.id == player.id or dst.color != player.color:
+		return GConst.GE_INVALID_PLAYERID
+	return GConst.GE_SUCCESS
+
+
+func p_special_skill(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) != XI_WANG_FU_GE_QU:
+		return GConst.GE_INVALID_ACTION
+	_apply_xi_wang_fu_ge_qu(action)
+	return SUCCESS
+
+
+## 希望赋格曲：耗 1 能量，把【永恒乐章】转移到所选队友面前
+func _apply_xi_wang_fu_ge_qu(action: Dictionary) -> void:
+	var dst: BattlePlayer = engine.p(int((action.get("dst_ids", []) as Array)[0]))
 	notice_skill(XI_WANG_FU_GE_QU, [dst.id])
+	player.boot_skill_used = true
 	if player.crystal > 0:
 		player.set_crystal(player.crystal - 1)
 	else:
@@ -474,7 +484,6 @@ func p_boot(_ctx: Dictionary) -> int:
 	yue_zhang_dst = dst.id
 	dst.add_exclusive_effect(GConst.Exclusive.YongHengYueZhang)
 	engine._broadcast_game()
-	return SUCCESS
 
 
 # ============================================================

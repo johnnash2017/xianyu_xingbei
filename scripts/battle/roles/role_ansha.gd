@@ -4,7 +4,7 @@ extends BattleRole
 ##   反噬（501）——【被动】你承受攻击伤害时，攻击你的对手摸 1 张牌【强制】（p_timeline_6_drawn）
 ##   水影（502）——【响应】任何人对你造成伤害时（③），弃 X 张水系牌【展示】以抵御 X 点该次伤害（p_timeline_3）
 ##   潜行（503）——【启动·宝石】持续到你的下个行动阶段开始：手牌上限 -1；你的主动攻击对方无法应战
-##        且伤害额外 +X（X 为你剩余的能量数）（p_boot 启动、p_timeline_1 无法应战、p_timeline_2_hit 加伤）
+##        且伤害额外 +X（X 为你剩余的能量数）（行动阶段点技能栏【潜行】启动、p_timeline_1 无法应战、p_timeline_2_hit 加伤）
 ##
 ## 引擎限制说明：服务端潜行的「你不能成为主动攻击的目标」由 PlayerEntity.v_attack 调用 dst->v_attacked()
 ## 实现；本引擎已提供 v_attacked() 钩子，故该条已实现（见文件末尾）。
@@ -18,44 +18,54 @@ const QIAN_XING: int = 503
 
 const QIAN_XING_HAND_MINUS: int = 1
 
-## 【潜行】的推进阶段（0＝还没开始 / QIAN_XING＝正在询问是否启动潜行）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
-var _qian_xing_step: int = 0
+# ============================================================
+# 行动阶段可发动的技能：潜行（503）为「启动」，不消耗行动
+# （is_free_skill 认可，发动后引擎重新进入行动阶段让玩家继续本回合行动）
+# ============================================================
+func available_skills() -> Array:
+	var out: Array = []
+	# 潜行：有宝石且未横置（未处于潜行形态）时才能发动（耗 1 宝石并横置）
+	if player.gem > 0 and not player.tap:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": QIAN_XING, "need_card": 0, "need_target": 0})
+	return out
+
+
+## 【潜行】为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == QIAN_XING
 
 
 # ============================================================
-# 回合开始（p_boot）：结束上一次潜行，再决定是否重新潜行
+# 回合开始（p_boot）：结束上一次潜行
 # ============================================================
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
-	if _qian_xing_step >= STEP_DONE:
-		return SUCCESS
-	if _qian_xing_step == 0:
-		# 潜行持续到「你的下个行动阶段开始」，即此刻先结束
-		if player.tap:
-			_qian_xing_end()
-		_qian_xing_step = QIAN_XING
-	if _qian_xing_step == QIAN_XING:
-		var r: int = _qian_xing()
-		if r == WAIT:
-			return WAIT
-		_qian_xing_step = 0
+	# 潜行持续到「你的下个行动阶段开始」，即此刻先结束
+	if player.tap:
+		_qian_xing_end()
 	return SUCCESS
 
 
-## 潜行启动（消耗 1 宝石）
-func _qian_xing() -> int:
-	if player.gem <= 0:
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, QIAN_XING, 0, 0)
-		return WAIT
-	if not take_skill_reply():
-		return SUCCESS
+# ============================================================
+# 启动技能（行动阶段按钮）：潜行（503）
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验技能自身条件）
+# ============================================================
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != QIAN_XING:
+		return GConst.GE_INVALID_ACTION
+	# 无宝石或已处于潜行形态：不能发动
+	if player.gem <= 0 or player.tap:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+## 潜行：耗 1 宝石并横置，进入潜行形态（手牌上限 -1）
+func p_special_skill(_action: Dictionary) -> int:
 	notice_skill(QIAN_XING, [player.id])
+	player.boot_skill_used = true
 	player.tap = true
 	player.set_gem(player.gem - 1)
 	player.hand_cards_max = maxi(player.hand_cards_max - QIAN_XING_HAND_MINUS, 0)

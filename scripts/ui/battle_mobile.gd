@@ -1564,7 +1564,7 @@ func _构建技能按钮(cmds: Array) -> void:
 		ChildrenSkillArea.add_child(go)
 		go.call("设置技能", 技能号)
 		go.connect("点击", _选择技能.bind(技能类型, 需牌, 需目标, 合法目标, 合法牌, 最多牌,
-			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项))
+			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go))
 		_技能按钮.append(go)
 		_显示技能区()
 
@@ -2371,8 +2371,9 @@ func _回到行动阶段() -> void:
 func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: int, 合法目标: Array = [], 合法牌: Array = [],
 		最多牌: int = 0, 最多目标: int = 0, 目标上限减牌数: int = 0,
 		选牌来源: int = GConst.CardSource.Hand, 选牌规则: String = "",
-		首张技能: int = 0, 次张系别: int = 0, 参数选项: Array = []) -> void:
+		首张技能: int = 0, 次张系别: int = 0, 参数选项: Array = [], 按钮: Node = null) -> void:
 	_mode = 4
+	_标记选中技能(按钮)
 	# 重新点技能按钮＝从头来一遍：先前为某技能弹出的效果选择窗一并关掉，免得留着上一轮的选项
 	参数选择窗.visible = false
 	_参数选择_技能 = false
@@ -3686,6 +3687,14 @@ func _显示技能区() -> void:
 func _隐藏技能区() -> void:
 	SkillArea.visible = false
 	ChildrenSkillArea.visible = false
+
+
+## 点中的技能按钮亮起黄色外发光，其余熄灭。
+## 取消 / 提交行动都会 _清空技能按钮（或重建），发光随之复位，不用额外清。
+func _标记选中技能(按钮: Node) -> void:
+	for b: Node in _技能按钮:
+		if b is 技能按钮:
+			(b as 技能按钮).设置选中(b == 按钮)
 
 
 func _清空技能按钮() -> void:

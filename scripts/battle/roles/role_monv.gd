@@ -16,7 +16,6 @@ const CANG_YAN_FA_DIAN: int = 3001
 const TIAN_HUO_DUAN_KONG: int = 3002
 const MO_NV_ZHI_NU: int = 3003
 const MO_NV_ZHI_NU_ATTACK: int = 30031
-const MO_NV_ZHI_NU_DRAW: int = 30032
 const TI_SHEN_WAN_OU: int = 3004
 const YONG_SHENG_YIN_SHI_JI: int = 3005
 const TONG_KU_LIAN_JIE: int = 3006
@@ -24,10 +23,6 @@ const MO_NENG_FAN_ZHUAN: int = 3007
 
 ## 服务端用以代替任意攻击牌的虚拟卡：火焰斩
 const VIRTUAL_FIRE_SLASH: int = 87
-
-
-## 魔女之怒本回合要摸的牌数（服务端 cardNum）
-var mo_nv_zhi_nu_card_num: int = 0
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -56,7 +51,20 @@ func available_skills() -> Array:
 		out.append({"type": GConst.ActionType.AttackSkill, "id": MO_NV_ZHI_NU_ATTACK, "need_card": 1, "need_target": 1,
 			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack()),
 			"targets": enemy_ids()})
+	if player.hand_cards.size() <= 3:
+		# 启动：进入【烈焰形态】并摸 0~2 张牌（摸牌数由 arg_choices 选择）
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_NV_ZHI_NU, "need_card": 0, "need_target": 0,
+			"arg_choices": [
+				{"text": "摸 0 张牌", "args": [0]},
+				{"text": "摸 1 张牌", "args": [1]},
+				{"text": "摸 2 张牌", "args": [2]},
+			]})
 	return out
+
+
+## 【魔女之怒】为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == MO_NV_ZHI_NU
 
 
 ## 烈焰形态下，除水系、暗系外的攻击牌均视为火系（服务端 getCardElement）
@@ -125,50 +133,30 @@ func _get_away_from_fire() -> int:
 
 
 # ============================================================
-# 启动：魔女之怒（手牌 ≤ 3 时进入【烈焰形态】、摸牌并调整手牌上限）
+# 启动技能（行动阶段按钮）：魔女之怒（进入【烈焰形态】、摸牌并调整手牌上限）
+# （「每回合只能发动一个启动技能」由引擎统一把关；离开形态的逻辑见 p_turn_begin）
 # ============================================================
-## 【魔女之怒】的推进阶段（0＝还没开始 / MO_NV_ZHI_NU＝在问摸牌数 / MO_NV_ZHI_NU_DRAW＝结算摸牌与形态）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 自己回合启动（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
-var _boot_step: int = 0
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != MO_NV_ZHI_NU:
+		return GConst.GE_INVALID_ACTION
+	if player.hand_cards.size() > 3:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
 
 
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id or player.hand_cards.size() > 3:
-		return SUCCESS
-	if _boot_step >= STEP_DONE:
-		return SUCCESS
-	if _boot_step == 0:
-		_boot_step = MO_NV_ZHI_NU
-	if _boot_step == MO_NV_ZHI_NU:
-		if not engine.has_reply():
-			# 摸牌数做成选项：通用客户端只回一维 args，原版「args=[1, 摸牌数]」的第二维拿不到，
-			# 故直接把摸牌数当选项值（0/1/2 对应摸 0/1/2 张，与原版 box 三档一一对应），服务端读 args[0]。
-			# 「取消」回的是空 args（没有给值），所以 0 可以正常表示「摸 0 张牌」
-			var 选项: Array = []
-			for n: int in range(0, 3):
-				选项.append({"value": n, "label": "摸 %d 张牌" % n})
-			询问(player.id, MO_NV_ZHI_NU, 0, 0, GConst.CardSource.Hand, 选项)
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		# 空 args＝取消/超时，不发动（不进入【烈焰形态】）；否则 args[0] 就是摸牌数
-		if args.is_empty():
-			_boot_step = 0
-			return SUCCESS
-		var card_num: int = int(args[0])
-		mo_nv_zhi_nu_card_num = card_num
-		_boot_step = MO_NV_ZHI_NU_DRAW
-	if _boot_step == MO_NV_ZHI_NU_DRAW:
-		_boot_step = 0
-		notice_skill(MO_NV_ZHI_NU, [player.id])
-		engine.set_tap(player.id, true)
-		player.hand_cards_max += int(player.tokens[0]["num"]) - 2
-		if mo_nv_zhi_nu_card_num > 0:
-			engine.draw(player.id, mo_nv_zhi_nu_card_num)
-			mo_nv_zhi_nu_card_num = 0
-		engine._broadcast_game()
+func p_special_skill(action: Dictionary) -> int:
+	var args: Array = action.get("args", [])
+	# args[0] 为摸牌数（arg_choices 提供 0/1/2 三档）
+	var card_num: int = int(args[0]) if not args.is_empty() else 0
+	notice_skill(MO_NV_ZHI_NU, [player.id])
+	player.boot_skill_used = true
+	engine.set_tap(player.id, true)
+	player.hand_cards_max += int(player.tokens[0]["num"]) - 2
+	if card_num > 0:
+		engine.draw(player.id, card_num)
+	engine._broadcast_game()
 	return SUCCESS
 
 

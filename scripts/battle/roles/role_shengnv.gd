@@ -33,6 +33,9 @@ func available_skills() -> Array:
 		# 所以这里不再下发 arg_choices 让玩家点选项
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_LIAO, "need_card": 0, "need_target": 1,
 			"target_max": 3})
+	# 怜悯（启动）：有宝石且未横置时可发动 —— 耗 1 宝石转怜悯形态（手牌上限恒为 7）
+	if player.gem > 0 and not player.tap:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": LIAN_MIN, "need_card": 0, "need_target": 0})
 	return out
 
 
@@ -43,22 +46,29 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 启动类：怜悯（自身回合开始、有宝石且未横置时询问）
+# 启动技能（行动阶段按钮）：怜悯（604）
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验技能自身条件）
 # ============================================================
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id:
-		return SUCCESS
-	if player.gem == 0 or player.tap:
-		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, LIAN_MIN, 0, 0)
-		return WAIT
-	step = STEP_DONE
-	if not take_skill_reply():
-		return SUCCESS
+## 怜悯为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == LIAN_MIN
+
+
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != LIAN_MIN:
+		return GConst.GE_INVALID_ACTION
+	# 无宝石或已横置：不能发动
+	if player.gem <= 0 or player.tap:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+## 怜悯：耗 1 宝石并横置（进入怜悯形态，手牌上限恒为 7）
+func p_special_skill(_action: Dictionary) -> int:
 	notice_skill(LIAN_MIN, [player.id])
+	player.boot_skill_used = true
 	player.tap = true
 	player.set_gem(player.gem - 1)
 	player.hand_cards_max = 7

@@ -15,7 +15,6 @@ extends BattleRole
 
 const AN_ZHI_JIE_FANG: int = 2901
 const HUAN_YING_XING_CHEN: int = 2902
-const HUAN_YING_XING_CHEN_EFFECT: int = 29021
 const HEI_AN_SHU_FU: int = 2903
 const AN_ZHI_ZHANG_BI: int = 2904
 const CHONG_YING: int = 2905
@@ -63,7 +62,22 @@ func available_skills() -> Array:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": CHONG_YING, "need_card": 1, "need_target": 0,
 			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool:
 				return c.is_magic() or c.element_enum() == GConst.CardElement.Thunder)})
+	# 启动（由 is_free_skill 认可）：按当前形态只给对应的那一条，避免出现不可发动的那项
+	# （每回合只能发动一个启动技能由引擎统一过滤，这里不重复判）
+	if not player.tap:
+		# 未横置：[暗之解放]
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": AN_ZHI_JIE_FANG,
+			"need_card": 0, "need_target": 0})
+	else:
+		# 横置[幻影形态]：[幻影星辰]，须选 1 名对手为追加伤害目标
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": HUAN_YING_XING_CHEN,
+			"need_card": 0, "need_target": 1, "targets": enemy_ids()})
 	return out
+
+
+## 【暗之解放】【幻影星辰】为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == AN_ZHI_JIE_FANG or skill_id == HUAN_YING_XING_CHEN
 
 
 # ============================================================
@@ -95,78 +109,68 @@ func v_remissile(_card_id: int) -> int:
 	return GConst.GE_INVALID_CARDID
 
 
-## 【暗之解放 / 幻影星辰】的推进阶段（0＝还没开始 / AN_ZHI_JIE_FANG、HUAN_YING_XING_CHEN＝在问发动哪一个 /
-## HUAN_YING_XING_CHEN_EFFECT＝幻影星辰的自伤已结算，等追加伤害的 URGENT 跑完再收尾）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
-var _boot_step: int = 0
+# ============================================================
+# 启动技能（行动阶段按钮）：暗之解放（2901）/ 幻影星辰（2902）
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验各技能自己的条件）
+# ============================================================
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	match int(action.get("action_id", 0)):
+		AN_ZHI_JIE_FANG:
+			# 已在[幻影形态]（横置）中：不能再发动暗之解放
+			if player.tap:
+				return GConst.GE_INVALID_ACTION
+		HUAN_YING_XING_CHEN:
+			# 仅[幻影形态]（横置）下可发动，且必须指定一名对手作为追加伤害目标
+			if not player.tap:
+				return GConst.GE_INVALID_ACTION
+			var dsts: Array = action.get("dst_ids", [])
+			if dsts.is_empty():
+				return GConst.GE_INVALID_ARGUMENT
+			if not enemy_ids().has(int(dsts[0])):
+				return GConst.GE_INVALID_PLAYERID
+		_:
+			return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
 
 
-# ============================================================
-# 启动：暗之解放（2901）/ 幻影星辰（2902）
-# ============================================================
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id:
-		return SUCCESS
-	if _boot_step >= STEP_DONE:
-		return SUCCESS
-	if _boot_step == 0:
-		_boot_step = HUAN_YING_XING_CHEN if player.tap else AN_ZHI_JIE_FANG
-	if _boot_step == AN_ZHI_JIE_FANG or _boot_step == HUAN_YING_XING_CHEN:
-		return _an_zhi_huan_ying()
-	if _boot_step == HUAN_YING_XING_CHEN_EFFECT:
-		return _huan_ying_xing_chen_effect()
+func p_special_skill(action: Dictionary) -> int:
+	match int(action.get("action_id", 0)):
+		AN_ZHI_JIE_FANG:
+			_apply_an_zhi_jie_fang()
+		HUAN_YING_XING_CHEN:
+			return _apply_huan_ying_xing_chen(action)
 	return SUCCESS
 
 
-## 服务端 AnZhiHuanYing：按当前形态询问暗之解放或幻影星辰
-func _an_zhi_huan_ying() -> int:
-	var need_target: int = 1 if player.tap else 0
-	var skill_id: int = HUAN_YING_XING_CHEN if player.tap else AN_ZHI_JIE_FANG
-	if not engine.has_reply():
-		# 按当前形态只给对应的一项（value 1=暗之解放、2=幻影星辰，与服务端 choice 分支一致）；
-		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
-		var 选项: Array = []
-		if player.tap:
-			选项.append({"value": 2, "label": GConst.skill_name(HUAN_YING_XING_CHEN)})
-		else:
-			选项.append({"value": 1, "label": GConst.skill_name(AN_ZHI_JIE_FANG)})
-		询问(player.id, skill_id, 0, need_target, GConst.CardSource.Hand, 选项)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var choice: int = int(args[0]) if not args.is_empty() else 0
-	if choice == 1:
-		# 暗之解放：转[幻影形态]，手牌上限 5；本回合下次主动攻击 +2，禁用漆黑之枪与充盈
-		notice_skill(AN_ZHI_JIE_FANG, [player.id])
-		using_an_zhi_jie_fang = true
-		availabel_qi_hei_zhi_qiang = false
-		availabel_chong_ying = false
-		engine.set_tap(player.id, true)
-		player.hand_cards_max = HAND_MAX_ILLUSION
-		_boot_step = 0
-		engine._broadcast_game()
-		return SUCCESS
-	if choice == 2:
-		# 幻影星辰：对自身 2 点法术伤害并脱离[幻影形态]
-		var dsts: Array = r.get("dst_ids", [])
-		if dsts.is_empty():
-			_boot_step = 0
-			return SUCCESS
-		notice_skill(HUAN_YING_XING_CHEN, [int(dsts[0])])
-		hurt_id = int(dsts[0])
-		using_huan_ying_xing_chen = true
-		huan_ying_morale_lost = false
-		_boot_step = HUAN_YING_XING_CHEN_EFFECT
-		engine.push_harm({
-			"src": player.id, "dst": player.id, "point": 2,
-			"cause": HUAN_YING_XING_CHEN, "type": GConst.HarmType.Magic,
-		})
-		engine._broadcast_game()
-		return URGENT
-	_boot_step = 0
-	return SUCCESS
+## 暗之解放：转[幻影形态]，手牌上限 5；本回合下次主动攻击 +2，禁用漆黑之枪与充盈
+func _apply_an_zhi_jie_fang() -> void:
+	notice_skill(AN_ZHI_JIE_FANG, [player.id])
+	player.boot_skill_used = true
+	using_an_zhi_jie_fang = true
+	availabel_qi_hei_zhi_qiang = false
+	availabel_chong_ying = false
+	engine.set_tap(player.id, true)
+	player.hand_cards_max = HAND_MAX_ILLUSION
+	engine._broadcast_game()
+
+
+## 幻影星辰：对自身 2 点法术伤害（脱离[幻影形态]与追加伤害见 p_harm_end）
+func _apply_huan_ying_xing_chen(action: Dictionary) -> int:
+	var dsts: Array = action.get("dst_ids", [])
+	var dst_id: int = int(dsts[0])
+	notice_skill(HUAN_YING_XING_CHEN, [dst_id])
+	player.boot_skill_used = true
+	hurt_id = dst_id
+	using_huan_ying_xing_chen = true
+	huan_ying_morale_lost = false
+	engine.push_harm({
+		"src": player.id, "dst": player.id, "point": 2,
+		"cause": HUAN_YING_XING_CHEN, "type": GConst.HarmType.Magic,
+	})
+	engine._broadcast_game()
+	return URGENT
 
 
 ## 幻影星辰：因该技能自伤造成士气下降时置位（服务端 MoQiang::p_true_lose_morale）
@@ -184,34 +188,33 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 服务端 HuanYingXingChen_Effect：脱离形态；若自伤未造成士气下降则对目标 2 点法术伤害
-func _huan_ying_xing_chen_effect() -> int:
-	if hurt_id < 0:
-		# 追加伤害已结算完（URGENT 回来时 hurt_id 已被清 -1）：此处只收尾。
-		# 不再重复「脱离形态 + 广播」（首次进入时已做过，重做会多发一次广播/动画）
-		huan_ying_morale_lost = false
-		_boot_step = 0
+## 幻影星辰自伤结算完成（p_harm_end 在整条伤害流水线末尾触发）：脱离[幻影形态]、恢复手牌上限；
+## 若自伤未造成士气下降，则再对目标角色 2 点法术伤害
+func p_harm_end(ctx: Dictionary) -> int:
+	if not using_huan_ying_xing_chen:
 		return SUCCESS
-	# 首次进入：脱离[幻影形态]
-	player.tap = false
+	if int(ctx.get("dst", -1)) != player.id:
+		return SUCCESS
+	var harm: Dictionary = ctx.get("harm", {})
+	if int(harm.get("cause", -1)) != HUAN_YING_XING_CHEN:
+		return SUCCESS
+	# 脱离[幻影形态]
 	using_huan_ying_xing_chen = false
+	player.tap = false
 	player.hand_cards_max = HAND_MAX_NORMAL
 	var morale_lost: bool = huan_ying_morale_lost
 	huan_ying_morale_lost = false
-	engine._broadcast_game()
-	if morale_lost:
-		# 自伤已造成士气下降：不追加伤害，直接收尾
-		_boot_step = 0
-		return SUCCESS
 	var dst_id: int = hurt_id
 	hurt_id = -1
+	engine._broadcast_game()
+	if morale_lost:
+		# 自伤已造成士气下降：不追加伤害
+		return SUCCESS
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": 2,
 		"cause": HUAN_YING_XING_CHEN, "type": GConst.HarmType.Magic,
 	})
 	engine._broadcast_game()
-	# 追加伤害走 URGENT：此刻不能清回 0，否则回到 p_boot 会退回第 0 步再问一次暗之解放；
-	# 保持本阶段，等伤害结算完回到这里（hurt_id < 0）再收尾
 	return URGENT
 
 

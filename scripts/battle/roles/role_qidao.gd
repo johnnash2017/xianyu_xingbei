@@ -34,6 +34,9 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 func available_skills() -> Array:
 	var out: Array = []
+	# 祈祷（启动）：手牌非空、有宝石且未处于祈祷形态时可发动（耗 1 宝石横置进入祈祷形态）
+	if not player.hand_cards.is_empty() and player.gem > 0 and not player.tap:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": QI_DAO, "need_card": 0, "need_target": 0})
 	# 光辉信仰 / 黑暗诅咒：仅祈祷形态（横置）且符文 > 0
 	if player.tap and _fu_wen() > 0:
 		# 光辉信仰：发动时须弃 min(2, 手牌) 张牌（手牌不足 2 张就按实际张数弃，0 张也能发动）；
@@ -72,44 +75,35 @@ func _set_fu_wen(v: int) -> void:
 	t["num"] = clampi(v, 0, int(t["max"]))
 
 
-## 【祈祷】的推进阶段（0＝还没开始 / QI_DAO＝在问是否发动祈祷）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
-var _qi_dao_step: int = 0
+# ============================================================
+# 启动技能（行动阶段按钮）：祈祷（1603）
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验技能自身条件）
+# ============================================================
+## 祈祷为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == QI_DAO
 
 
-# ============================================================
-# 启动（自己回合开始）：祈祷
-# ============================================================
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id:
-		return SUCCESS
-	if _qi_dao_step >= STEP_DONE:
-		return SUCCESS
-	if _qi_dao_step == 0:
-		# 零手牌 / 无宝石 / 已处于祈祷形态 时无需询问
-		# （本流程中途会改掉 tap 与 gem，故这道守卫只在流程起点判一次，避免回复回来后重入被自己挡死）
-		if player.hand_cards.is_empty() or player.gem <= 0 or player.tap:
-			_qi_dao_step = 0
-			return SUCCESS
-		_qi_dao_step = QI_DAO
-	if _qi_dao_step == QI_DAO:
-		if not engine.has_reply():
-			询问(player.id, QI_DAO, 0, 0)
-			return WAIT
-		var ok: bool = take_skill_reply()
-		if not ok:
-			_qi_dao_step = 0
-			return SUCCESS
-		notice_skill(QI_DAO, [player.id])
-		player.set_gem(player.gem - 1)
-		# 转为祈祷形态（横置）
-		engine.set_tap(player.id, true)
-		_qi_dao_step = 0
-		engine._broadcast_game()
-		return URGENT
-	return SUCCESS
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != QI_DAO:
+		return GConst.GE_INVALID_ACTION
+	# 手牌为空 / 无宝石 / 已处于祈祷形态：不能发动
+	if player.hand_cards.is_empty() or player.gem <= 0 or player.tap:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+## 祈祷：耗 1 宝石并横置进入祈祷形态
+func p_special_skill(_action: Dictionary) -> int:
+	notice_skill(QI_DAO, [player.id])
+	player.boot_skill_used = true
+	player.set_gem(player.gem - 1)
+	# 转为祈祷形态（横置）
+	engine.set_tap(player.id, true)
+	engine._broadcast_game()
+	return URGENT
 
 
 # ============================================================

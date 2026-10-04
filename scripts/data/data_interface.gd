@@ -222,6 +222,20 @@ func role_property(rid: int) -> String:
 	return role_property_db.get(rid, "")
 
 
+## 状态标签底板色（角色表「状态底色」列，写 #RRGGBB / #RRGGBBAA）。
+## 该列要在设计表里加好并重新生成数据表后才有；列不存在或没填时用默认深色
+const 状态底色默认: Color = Color(0.13, 0.16, 0.24, 0.95)
+
+func role_status_bg(rid: int) -> Color:
+	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
+	var 列: int = int(列索引.get("状态底色", -1))
+	var row: Array = _角色行(rid)
+	if 列 < 0 or row.is_empty() or 列 >= row.size():
+		return 状态底色默认
+	var 文本: String = str(row[列]).strip_edges()
+	return Color.from_string(文本, 状态底色默认) if 文本 != "" else 状态底色默认
+
+
 ## 角色专属指示物：「角色表」的「指示物」列，写法 `槽位:名称:上限`，多个用 `;` 隔开
 ## 例：「0:重生:4」「0:剑气:5;2:剑魂:3」（原客户端 data/Player.cpp 的 addToken）
 func _load_role_tokens() -> void:

@@ -8,6 +8,7 @@ extends BattleRole
 ##                  不能攻击上次的目标且伤害 -1
 ## 【启动】充能（2604）：耗 1 能量，弃到四张、摸 X 张牌，可将至多 X 张手牌作为【充能】
 ## 【启动】魔眼（2605）：耗 1 宝石，目标角色弃 1 张牌或自己摸 3 张牌，然后将 1 张手牌作为【充能】，+1 水晶
+## 两者均为「启动」：显示为技能栏按钮，点了才发动，不消耗本回合行动
 ## 【充能】为专属盖牌，上限 8
 
 const MO_GUAN_CHONG_JI: int = 2601
@@ -19,14 +20,11 @@ const CHONG_NENG: int = 2604
 const CHONG_NENG_GAI_PAI: int = 26041
 const MO_YAN: int = 2605
 const MO_YAN_GAI_PAI: int = 26051
-const CHONG_NENG_MO_YAN: int = 2606
 
 ## 【多重射击】使用的虚拟攻击牌（服务端 virtualCardID = 39，重击）
 const VIRTUAL_DUO_CHONG_CARD: int = 39
 
-## 本回合是否发动过【充能】/【魔眼】/【魔贯冲击】/【多重射击】
-var _using_chong_neng: bool = false
-var _using_mo_yan: bool = false
+## 本回合是否发动过【魔贯冲击】/【多重射击】
 var _using_mo_guan: bool = false
 var _using_duo_chong: bool = false
 ## 本回合是否还能发动【魔贯冲击】/【雷光散射】/【多重射击】
@@ -51,6 +49,11 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
+	# 充能 / 魔眼：「启动」技能，显示为技能栏按钮，点了才发动且不消耗本回合行动
+	if player.get_energy() > 0:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": CHONG_NENG, "need_card": 0, "need_target": 0})
+	if player.gem > 0:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_YAN, "need_card": 0, "need_target": 0})
 	if _available_lei_guang:
 		# 雷光散射：只从盖牌区选雷系牌（服务端 v_magic_skill 校验盖牌区存在雷系牌）
 		var 雷系盖牌: Array[int] = _cover_ids_of_element(GConst.CardElement.Thunder)
@@ -64,12 +67,15 @@ func available_skills() -> Array:
 	return out
 
 
+## 充能 / 魔眼 为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == CHONG_NENG or skill_id == MO_YAN
+
+
 # ============================================================
 # 回合开始：重置本回合限用标记（服务端在 p_before_turn_begin 无条件重置）
 # ============================================================
 func p_before_turn_begin(_ctx: Dictionary) -> int:
-	_using_chong_neng = false
-	_using_mo_yan = false
 	_using_mo_guan = false
 	_using_duo_chong = false
 	_available_mo_guan = true
@@ -372,66 +378,77 @@ func p_additional_action(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 回合开始（boot）：充能 / 魔眼
+# 启动技能（技能栏按钮）：充能 / 魔眼
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验各技能自己的条件）
 # ============================================================
-## 【充能】/【魔眼】的推进阶段（0＝还没问 / CHONG_NENG_MO_YAN＝等选择 / CHONG_NENG·MO_YAN＝选好了 / *_GAI_PAI＝等改牌）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨两次询问
-## （「充能/魔眼」选择 → 改牌）；【充能】中途会摸牌弃牌、压入一轮手牌钩子，那一轮开始时就把 step 抹掉了
-## → 流程退回第 0 步、拿改牌的回复当第一次选择解析（表现为重复弹「充能/魔眼」）。
-## 注意 p_boot 每回合都会跑，所以收尾必须清回 0（留 STEP_DONE 会让第二回合起整个技能不再发动）
+## 【充能】/【魔眼】的推进阶段（0＝还没开始 / CHONG_NENG·MO_YAN＝在多段询问中 / *_GAI_PAI＝在问改牌）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨多次询问
+## （【充能】弃牌+摸牌数 → 改牌；【魔眼】选目标 → 改牌），中途一旦被别的钩子轮次插进来，step 就被抹掉。
+## 每次发动收尾清回 0（留 STEP_DONE 会让下一回合起整个技能不再发动）
 var _boot_step: int = 0
 
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id:
-		return SUCCESS
-	if _boot_step >= STEP_DONE:
-		return SUCCESS
-	if player.get_energy() > 0 and _boot_step == 0:
-		_boot_step = CHONG_NENG_MO_YAN
-	if _boot_step == CHONG_NENG_MO_YAN:
-		if not engine.has_reply():
-			# 两个分支各做一个选项（value 1=充能、2=魔眼，与服务端 choice 分支一致）；
-			# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
-			询问(player.id, CHONG_NENG_MO_YAN, 0, 0, GConst.CardSource.Hand, [
-				{"value": 1, "label": GConst.skill_name(CHONG_NENG)},
-				{"value": 2, "label": GConst.skill_name(MO_YAN)},
-			])
+
+## 校验：充能需 1 能量（优先水晶），魔眼需 1 宝石
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	match int(action.get("action_id", 0)):
+		CHONG_NENG:
+			if player.get_energy() <= 0:
+				return GConst.GE_INVALID_ACTION
+		MO_YAN:
+			if player.gem <= 0:
+				return GConst.GE_INVALID_ACTION
+		_:
+			return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+func p_special_skill(action: Dictionary) -> int:
+	match int(action.get("action_id", 0)):
+		CHONG_NENG:
+			return _run_chong_neng()
+		MO_YAN:
+			return _run_mo_yan()
+	return SUCCESS
+
+
+## 充能：耗 1 能量，弃到四张、摸 X 张牌，然后把至多 X 张手牌作为【充能】
+func _run_chong_neng() -> int:
+	if _boot_step == 0:
+		_boot_step = CHONG_NENG
+	if _boot_step == CHONG_NENG:
+		var r: int = _chong_neng()
+		if r == WAIT:
 			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		var choice: int = int(args[0]) if not args.is_empty() else 0
-		if choice == 1:
-			_using_chong_neng = true
-		elif choice == 2:
-			_using_mo_yan = true
-		if _using_chong_neng:
-			_boot_step = CHONG_NENG
-		elif _using_mo_yan:
-			_boot_step = MO_YAN
-		else:
+		# 玩家取消：未实际发动（不扣能量、不置 boot_skill_used），直接结束
+		if not player.boot_skill_used:
 			_boot_step = 0
 			return SUCCESS
-	if _boot_step == CHONG_NENG:
-		var r2: int = _chong_neng()
+		_boot_step = CHONG_NENG_GAI_PAI
+	if _boot_step == CHONG_NENG_GAI_PAI:
+		var r2: int = _gai_pai(CHONG_NENG_GAI_PAI, _chong_neng_num)
 		if r2 == WAIT:
 			return WAIT
-		_boot_step = CHONG_NENG_GAI_PAI
+		_boot_step = 0
+	return SUCCESS
+
+
+## 魔眼：耗 1 宝石、+1 水晶；目标角色弃 1 张牌或自己摸 3 张牌，然后把 1 张手牌作为【充能】
+func _run_mo_yan() -> int:
+	if _boot_step == 0:
+		_boot_step = MO_YAN
 	if _boot_step == MO_YAN:
-		var r3: int = _mo_yan()
-		if r3 == WAIT:
+		var r: int = _mo_yan()
+		if r == WAIT:
 			return WAIT
-		if _mo_yan_dst >= 0:
+		if not player.boot_skill_used:
+			_boot_step = 0
 			return SUCCESS
 		_boot_step = MO_YAN_GAI_PAI
-	if _boot_step == CHONG_NENG_GAI_PAI:
-		var r4: int = _gai_pai(CHONG_NENG_GAI_PAI, _chong_neng_num)
-		if r4 == WAIT:
-			return WAIT
-		_boot_step = 0
-		return SUCCESS
 	if _boot_step == MO_YAN_GAI_PAI:
-		var r5: int = _gai_pai(MO_YAN_GAI_PAI, 1)
-		if r5 == WAIT:
+		var r2: int = _gai_pai(MO_YAN_GAI_PAI, 1)
+		if r2 == WAIT:
 			return WAIT
 		_boot_step = 0
 	return SUCCESS
@@ -458,9 +475,9 @@ func _chong_neng() -> int:
 	var draw_n: int = clampi(int(args[0]), 1, 4)
 	var discard_n: int = r.get("card_ids", []).size()
 	notice_skill(CHONG_NENG, [player.id])
+	player.boot_skill_used = true
 	_available_mo_guan = false
 	_available_lei_guang = false
-	_using_chong_neng = true
 	_chong_neng_num = draw_n
 	if player.crystal > 0:
 		player.set_crystal(player.crystal - 1)
@@ -492,9 +509,9 @@ func _mo_yan() -> int:
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
 	notice_skill(MO_YAN, [player.id])
+	player.boot_skill_used = true
 	player.set_gem(player.gem - 1)
 	player.set_crystal(player.crystal + 1)
-	_using_mo_yan = true
 	var dsts: Array = r.get("dst_ids", [])
 	if not dsts.is_empty():
 		_mo_yan_dst = int(dsts[0])
@@ -502,7 +519,6 @@ func _mo_yan() -> int:
 		return _force_discard_one(_mo_yan_dst)
 	# 未选择目标角色：自己摸 3 张牌
 	engine.draw(player.id, 3)
-	_chong_neng_num = 1
 	engine._broadcast_game()
 	return SUCCESS
 

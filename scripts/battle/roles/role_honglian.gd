@@ -31,6 +31,10 @@ func available_skills() -> Array:
 	if player.get_energy() >= 1 and int(player.tokens[0]["num"]) >= 1 and _magic_card_count() >= 2:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": XING_HONG_SHI_ZI, "need_card": 2, "need_target": 1,
 			"cards": magic_hand_ids()})
+	# 【血腥祷言】为「启动」：有治疗时可发动，把自身治疗分给队友（不消耗本回合行动）
+	if player.cross_num > 0:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_XING_DAO_YAN,
+			"need_card": 0, "need_target": 1, "targets": ally_ids()})
 	return out
 
 
@@ -50,36 +54,48 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 启动：血腥祷言（自身回合且有治疗时询问）
+# 启动：血腥祷言（技能栏按钮，有治疗时可发动）
 # 交互走「技能指示器」（const.gd 里 技能_血腥祷言）：客户端点头像把自身治疗分给队友，
-# 回包的 args 与 dst_ids 平行 —— args[i] 就是第 i 名队友分到的治疗点数（取消回 args=[0]）。
-# 因此下面直接按 args[i] 取各目标的点数即可，无需客户端另外拼一维参数。
+# 回包的 dst_ids / args 平行 —— args[i] 就是第 i 名队友分到的治疗点数。
 # ============================================================
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id or player.cross_num == 0:
-		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, XUE_XING_DAO_YAN, 0, 1)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
-	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) == 0:
-		return SUCCESS
-	var dsts: Array = r.get("dst_ids", [])
-	var total: int = 0
-	for i: int in range(dsts.size()):
-		total += int(args[i]) if i < args.size() else 0
-	if total <= 0 or player.cross_num < total:
-		return SUCCESS
-	notice_skill(XUE_XING_DAO_YAN, dsts)
-	player.sub_cross_num(total)
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == XUE_XING_DAO_YAN
+
+
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != XUE_XING_DAO_YAN:
+		return GConst.GE_INVALID_ACTION
+	if player.cross_num <= 0:
+		return GConst.GE_INVALID_ACTION
+	var dsts: Array = action.get("dst_ids", [])
+	var args: Array = action.get("args", [])
+	if dsts.is_empty() or args.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
 	for i: int in range(dsts.size()):
 		var dp: BattlePlayer = engine.p(int(dsts[i]))
-		if dp != null:
-			施加治疗(dp.id, int(args[i]) if i < args.size() else 0)
+		if dp == null:
+			return GConst.GE_INVALID_PLAYERID
+		# 只能分给队友（不含自己）
+		if dp.color != player.color or dp.id == player.id:
+			return GConst.GE_INVALID_ACTION
+	var total: int = _分配点数(dsts, args)
+	if total <= 0 or player.cross_num < total:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+## 血腥祷言：移除自身 total 点治疗，分给各队友，自身受 total 点法术伤害并 +1【血印】
+func p_special_skill(action: Dictionary) -> int:
+	var dsts: Array = action.get("dst_ids", [])
+	var args: Array = action.get("args", [])
+	var total: int = _分配点数(dsts, args)
+	notice_skill(XUE_XING_DAO_YAN, dsts)
+	player.boot_skill_used = true
+	player.sub_cross_num(total)
+	for i: int in range(dsts.size()):
+		施加治疗(int(dsts[i]), int(args[i]) if i < args.size() else 0)
 	if int(player.tokens[0]["num"]) < 2:
 		player.tokens[0]["num"] = int(player.tokens[0]["num"]) + 1
 	engine.push_harm({
@@ -88,6 +104,14 @@ func p_boot(_ctx: Dictionary) -> int:
 	})
 	engine._broadcast_game()
 	return URGENT
+
+
+## 各目标分到的点数之和（dst_ids 与 args 平行）
+func _分配点数(dsts: Array, args: Array) -> int:
+	var total: int = 0
+	for i: int in range(dsts.size()):
+		total += int(args[i]) if i < args.size() else 0
+	return total
 
 
 # ============================================================

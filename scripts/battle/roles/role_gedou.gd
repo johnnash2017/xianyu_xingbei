@@ -23,10 +23,6 @@ var xu_li_used: bool = false
 var qi_jue_used: bool = false
 var bai_shi_used: bool = false
 var bai_shi_target: int = -1
-## 本回合是否已发动过「启动」技能：规则是启动阶段每回合只能发动一个启动技能，
-## 发动过任意一个启动技能后，本回合其余启动技能都不再出现。
-## 原版在回合开始的 p_boot 里只给一次启动机会，移到技能栏后必须自己记住，否则同回合能各发动一次
-var boot_skill_activated: bool = false
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -38,12 +34,13 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 ## （is_free_skill 认可，发动后引擎重新进入行动阶段让玩家继续本回合行动）
 func available_skills() -> Array:
 	var out: Array = []
-	# 百式幻龙拳：本回合还没发动过启动技能、未横置（不在形态里）且斗气 ≥ 3 时才能发动（移除 3 斗气并横置）
-	if not boot_skill_activated and not player.tap and _dou_qi() >= 3:
+	# （「本回合是否已发动过启动技能」由引擎统一过滤，这里只判各技能自己的条件）
+	# 百式幻龙拳：未横置（不在形态里）且斗气 ≥ 3 时才能发动（移除 3 斗气并横置）
+	if not player.tap and _dou_qi() >= 3:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": BAI_SHI_HUAN_LONG_QUAN,
 			"need_card": 0, "need_target": 0})
-	# 斗神天驱：本回合还没发动过启动技能、有能量（水晶/宝石）时才能发动（耗 1 能量、+2 治疗、弃到 3 张手牌）
-	if not boot_skill_activated and player.get_energy() > 0:
+	# 斗神天驱：有能量（水晶/宝石）时才能发动（耗 1 能量、+2 治疗、弃到 3 张手牌）
+	if player.get_energy() > 0:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": DOU_SHEN_TIAN_QU,
 			"need_card": maxi(player.hand_cards.size() - DOU_SHEN_KEEP_HAND, 0), "need_target": 0})
 	# 蓄力一击 / 气绝崩击：选一张攻击牌 + 一名对手，直接完成一次带加成的主动攻击
@@ -78,22 +75,12 @@ func _set_dou_qi(v: int) -> void:
 
 
 # ============================================================
-# 回合开始：重置「本回合已发动启动技能」标记
-# ============================================================
-func p_before_turn_begin(_ctx: Dictionary) -> int:
-	boot_skill_activated = false
-	return SUCCESS
-
-
-# ============================================================
 # 启动技能（行动阶段按钮）：百式幻龙拳 / 斗神天驱
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验各技能自己的条件）
 # ============================================================
 func v_special_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
-	# 规则：启动阶段每回合只能发动一个启动技能，本回合已发动过任意一个就不能再发动
-	if boot_skill_activated:
-		return GConst.GE_INVALID_ACTION
 	match int(action.get("action_id", 0)):
 		BAI_SHI_HUAN_LONG_QUAN:
 			# 已在形态里（横置）/ 斗气不足 3 点：不能发动
@@ -119,7 +106,7 @@ func p_special_skill(action: Dictionary) -> int:
 ## 百式幻龙拳：移除 3 点斗气并横置（进入形态）
 func _apply_bai_shi() -> void:
 	notice_skill(BAI_SHI_HUAN_LONG_QUAN, [player.id])
-	boot_skill_activated = true
+	player.boot_skill_used = true
 	bai_shi_used = true
 	_set_dou_qi(_dou_qi() - 3)
 	player.tap = true
@@ -130,7 +117,7 @@ func _apply_bai_shi() -> void:
 func _apply_dou_shen(action: Dictionary) -> void:
 	var 弃牌数: int = maxi(player.hand_cards.size() - DOU_SHEN_KEEP_HAND, 0)
 	notice_skill(DOU_SHEN_TIAN_QU, [player.id])
-	boot_skill_activated = true
+	player.boot_skill_used = true
 	if player.crystal > 0:
 		player.set_crystal(player.crystal - 1)
 	else:

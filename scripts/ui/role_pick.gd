@@ -11,8 +11,9 @@ extends Control
 const ROLE_BTN_W: float = 260.0
 const ROLE_BTN_H: float = 363.0
 ## 一行摆几张、面板最多显示几行（多于这个行数就滚动）
+## 可见行数故意取小数（2.2）：填满时多露出第三行顶部，提示玩家还能向下滚动
 const 每行张数: int = 6
-const 可见行数: int = 2
+const 可见行数: float = 2.2
 ## 面板宽（一行 每行张数 张卡正好铺满）
 const 面板宽: float = ROLE_BTN_W * 每行张数
 ## 顶部座位条上的座位格尺寸（与 SeatMain.png / SeatBlue.png 一致）
@@ -110,7 +111,7 @@ func _refresh() -> void:
 	# 摆不下就滚动：可见区域最多 可见行数 行高，面板宽度固定。
 	var 张数: int = _role_ids.size()
 	var 行数: int = maxi(1, ceili(float(张数) / 每行张数))
-	滚动.custom_minimum_size = Vector2(面板宽, mini(行数, 可见行数) * ROLE_BTN_H)
+	滚动.custom_minimum_size = Vector2(面板宽, minf(float(行数), 可见行数) * ROLE_BTN_H)
 	卡片区.custom_minimum_size = Vector2(面板宽, 行数 * ROLE_BTN_H)
 	for i: int in range(张数):
 		var btn: Button = _build_role_button(_role_ids[i])

@@ -824,6 +824,9 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		if not 行动牌.is_empty():
 			cmds[0]["card_ids"] = 行动牌
 		for sk: Dictionary in pl.role.available_skills():
+			# 「启动」技能每回合只能发动一个：本回合已发动过就整条不再下发
+			if pl.boot_skill_used and pl.role.is_free_skill(int(sk.get("id", 0))):
+				continue
 			# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时这条技能整条不发。
 			# 空列表在协议/客户端那里等于「不限制」（_玩家可选），会让本该被挡住的人
 			# （如已有【圣盾】/【天使之墙】的目标）反而变成能点，点了又被服务端拒。
@@ -1387,6 +1390,8 @@ class SCheckTurnStart:
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
 		cur.clear_additional_action()
+		# 「启动」技能每回合只能发动一个：新回合开始清零
+		cur.boot_skill_used = false
 		e.skip_action_phase = false
 		var poison_cards: Array[int] = []
 		for be: Dictionary in cur.basic_effects:
@@ -2228,6 +2233,11 @@ class SkillRun:
 			e.push(SActionPhase.new())
 			return BattleEngine.CONTINUE
 		if not checked:
+			# 「启动」技能每回合只能发动一个：本回合已发动过就直接驳回（客户端漏网点了也会被挡）
+			if cur.boot_skill_used and cur.role.is_free_skill(int(action.get("action_id", 0))):
+				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
+				e.push(SActionPhase.new())
+				return BattleEngine.CONTINUE
 			var rc: int = cur.role.call("v_" + kind + "_skill", action)
 			if rc != GConst.GE_SUCCESS:
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})

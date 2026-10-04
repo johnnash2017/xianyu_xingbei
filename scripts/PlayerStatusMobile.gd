@@ -39,8 +39,8 @@ signal 基础效果牌点击(玩家id: int, 牌id: int)
 @onready var hero: TextureRect = _find_variant("Hero") as TextureRect
 ## 对应 C# [SerializeField] private Image property;  （场景里的 HeroProperty）
 @onready var propertyImage: TextureRect = _find_variant("HeroProperty") as TextureRect
-## 对应 C# [SerializeField] private Image knelt;
-@onready var knelt: TextureRect = _find_variant("Knelt") as TextureRect
+## 对应 C# [SerializeField] private Image knelt;（本工程改成 Label：状态名文字 + 自带底板）
+@onready var knelt: Label = _find_variant("Knelt") as Label
 ## 对应 C# [SerializeField] private Text playerName;  （MainPlayer 是 Name/TxtName，其余是 PlayerName/Name_N）
 @onready var playerName: Label = _find_label_under("PlayerName")
 ## 对应 C# [SerializeField] private Text chat;  （ChatPurple/ChatText、ChatPurple_2/ChatText_2 …）
@@ -426,18 +426,16 @@ func set_Team(value: int) -> void:
 func set_Turn(value: bool) -> void:
 	if turn != null:
 		turn.visible = value
-## 对应 C# public bool Knelt 的 setter —— 形态图标（如魔剑士的【暗影形态】）
+## 对应 C# public bool Knelt 的 setter —— 形态名（如魔剑士的【暗影形态】）。
+## 原来是往头像上贴一张「形态图」，现改成名牌正上方的一块文字底板：
+## 文本取「角色表」的「横置形态」列，底板色取「状态底色」列（见 Data.role_status_bg），文字固定白。
 func set_Knelt(value: bool) -> void:
-	if knelt == null:
+	knelt.visible = value
+	if not value:
 		return
-	if value:
-		# 每个角色的形态图标不同：配在「角色表」的「形态图」列（Art.role_tap 去取）
-		var tex: Texture2D = Art.role_tap(角色号)
-		if tex != null:
-			knelt.texture = tex
-		knelt.visible = true
-	else:
-		knelt.visible = false
+	var 形态列表: Array[String] = Data.role_forms(角色号)
+	knelt.text = 形态列表[0] if not 形态列表.is_empty() else "横置"
+	(knelt.get_theme_stylebox("normal") as StyleBoxFlat).bg_color = Data.role_status_bg(角色号)
 
 ## 对应 C# public uint YellowToken 的 setter
 func set_YellowToken(value: int) -> void:

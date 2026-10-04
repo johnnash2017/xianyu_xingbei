@@ -15,6 +15,7 @@
 [ext_resource type="Script" uid="uid://coauheldg4ew6" path="res://scripts/LongPress.gd" id="31_LongPressgd"]
 [ext_resource type="Script" uid="uid://b77bejghr7if1" path="res://scripts/PlayerStatusMobile.gd" id="32_PlayerStatusMobilegd"]
 [ext_resource type="Texture2D" uid="uid://dno7djaa8hkv7" path="res://assets/textures/battle/b02_chara_mask.png" id="33_b02charamaskpng"]
+[ext_resource type="PackedScene" path="res://scenes/prefabs/battlemobile/StatusName.tscn" id="34_statusname"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_waitbg"]
 bg_color = Color(0, 0, 0, 0)
@@ -34,6 +35,18 @@ corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_d7cq3"]
+resource_local_to_scene = true
+content_margin_left = 10.0
+content_margin_top = 3.0
+content_margin_right = 10.0
+content_margin_bottom = 3.0
+bg_color = Color(0.13, 0.16, 0.24, 0.95)
+corner_radius_top_left = 90
+corner_radius_top_right = 90
+corner_radius_bottom_right = 90
+corner_radius_bottom_left = 90
 
 [node name="PlayerOtherPanel" type="Button" unique_id=1312225494]
 self_modulate = Color(1, 1, 1, 0)
@@ -375,20 +388,21 @@ grow_vertical = 2
 pivot_offset = Vector2(40, 80)
 mouse_filter = 2
 
-[node name="Knelt_6" type="TextureRect" parent="." unique_id=1004752976]
-visible = false
-layout_mode = 0
+[node name="Knelt_6" parent="." unique_id=57905868 instance=ExtResource("34_statusname")]
+layout_mode = 1
+anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_top = -117.0
-offset_right = 100.0
-offset_bottom = -97.0
+offset_left = -3.0
+offset_top = -110.5
+offset_right = 18.0
+offset_bottom = -84.5
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(50, 10)
-mouse_filter = 0
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_d7cq3")
 
 [node name="ChatPurple_6" type="TextureRect" parent="." unique_id=348714845]
 visible = false

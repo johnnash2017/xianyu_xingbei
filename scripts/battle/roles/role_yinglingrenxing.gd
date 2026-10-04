@@ -15,7 +15,6 @@ const MO_WEN_RONG_HE: int = 2704      # 魔纹融合（宣告号）
 const CHOICE_NU_HUO_YA_ZHI: int = 1
 const CHOICE_MO_WEN_RONG_HE: int = 2
 const FU_WEN_GAI_ZAO: int = 2705      # 符文改造（启动）
-const FU_WEN_GAI_ZAO_TOKEN: int = 27051 # 符文改造·重排指示物
 const SHUANG_CHONG_HUI_XIANG: int = 2706 # 双重回响（响应）
 
 const TOKEN_ZHAN_WEN: int = 0         # 「战纹」指示物下标
@@ -34,8 +33,21 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	p.tokens[TOKEN_MO_WEN] = {"name": "魔纹", "max": TOKEN_MAX, "num": 0}
 
 
+## 行动阶段可发动的技能：【符文改造】为「启动」，不消耗行动
+## （is_free_skill 认可，发动后引擎重新进入行动阶段让玩家继续本回合行动）
 func available_skills() -> Array:
-	return []
+	var out: Array = []
+	# 符文改造：有宝石时才能发动（耗 1 宝石并横置进入蓄势迸发形态、手牌上限 +2、摸 2 张）；
+	# 重排【战纹】/【魔纹】的取值做成参数按钮，点哪个即以该值作为 args[0] 提交
+	if player.gem > 0:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": FU_WEN_GAI_ZAO,
+			"need_card": 0, "need_target": 0, "arg_choices": _fu_wen_gai_zao_choices()})
+	return out
+
+
+## 【符文改造】为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == FU_WEN_GAI_ZAO
 
 
 # ============================================================
@@ -58,80 +70,60 @@ func _set_mo_wen(v: int) -> void:
 
 
 # ============================================================
-# 回合开始 / 启动：符文改造
+# 回合开始
 # ============================================================
 func p_turn_begin(_ctx: Dictionary) -> int:
 	shuangChongHuiXiangUsed = false
 	return SUCCESS
 
 
-## 【符文改造 / 重排指示物】的推进阶段（0＝还没开始 / FU_WEN_GAI_ZAO＝在问是否发动 /
-## FU_WEN_GAI_ZAO_TOKEN＝在问重排【战纹】与【魔纹】）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨两次询问
-## （发动 → 重排），中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，
-## step 就被抹掉、流程退回第 0 步。每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
-var _fu_wen_step: int = 0
+## 符文改造的重排【战纹】/【魔纹】选项（两者之和为 3）：每项一个按钮，
+## 点哪个即以该项 args[0]（要保留的【战纹】数）作为技能参数提交
+func _fu_wen_gai_zao_choices() -> Array:
+	var out: Array = []
+	for n: int in range(0, TOKEN_MAX + 1):
+		out.append({"text": "【战纹】%d / 【魔纹】%d" % [n, TOKEN_MAX - n], "args": [n]})
+	return out
 
 
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id:
-		return SUCCESS
-	if _fu_wen_step >= STEP_DONE:
-		return SUCCESS
-	if _fu_wen_step == 0:
-		_fu_wen_step = FU_WEN_GAI_ZAO
-	if _fu_wen_step == FU_WEN_GAI_ZAO:
-		var r: int = _fu_wen_gai_zao()
-		if r == WAIT:
-			return WAIT
-		if r == URGENT:
-			_fu_wen_step = FU_WEN_GAI_ZAO_TOKEN
-			return URGENT
-		_fu_wen_step = 0
-	if _fu_wen_step == FU_WEN_GAI_ZAO_TOKEN:
-		var r2: int = _fu_wen_gai_zao_token()
-		if r2 == WAIT:
-			return WAIT
-		_fu_wen_step = 0
+# ============================================================
+# 启动技能（行动阶段按钮）：符文改造
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验本技能自己的条件）
+# ============================================================
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != FU_WEN_GAI_ZAO:
+		return GConst.GE_INVALID_ACTION
+	# 宝石不足 1 点：不能发动
+	if player.gem < 1:
+		return GConst.GE_INVALID_ACTION
+	var args: Array = action.get("args", [])
+	if args.is_empty() or int(args[0]) < 0 or int(args[0]) > TOKEN_MAX:
+		return GConst.GE_INVALID_ARGUMENT
+	return GConst.GE_SUCCESS
+
+
+func p_special_skill(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) != FU_WEN_GAI_ZAO:
+		return GConst.GE_INVALID_ACTION
+	_apply_fu_wen_gai_zao(action)
 	return SUCCESS
 
 
-## 符文改造：消耗 1 宝石转为蓄势迸发形态，手牌上限 +2 并摸 2 张牌
-func _fu_wen_gai_zao() -> int:
-	if player.gem < 1:
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, FU_WEN_GAI_ZAO, 0, 0)
-		return WAIT
-	if not take_skill_reply():
-		return SUCCESS
+## 符文改造：消耗 1 宝石转为蓄势迸发形态，手牌上限 +2 并摸 2 张牌，再按所选值重排【战纹】/【魔纹】
+func _apply_fu_wen_gai_zao(action: Dictionary) -> void:
+	var args: Array = action.get("args", [])
+	var num: int = int(args[0])
 	notice_skill(FU_WEN_GAI_ZAO, [player.id])
+	player.boot_skill_used = true
 	player.set_gem(player.gem - 1)
 	player.hand_cards_max += FU_WEN_HAND_ADD
 	engine.draw(player.id, 2)
 	engine.set_tap(player.id, true)
-	engine._broadcast_game()
-	return URGENT
-
-
-## 符文改造·重排：任意调整【战纹】与【魔纹】（两者之和为 3）
-## 重排数量做成选项按钮（客户端点选项即以该值作为回复 args[0]）
-func _fu_wen_gai_zao_token() -> int:
-	if not engine.has_reply():
-		var 选项: Array = []
-		for n: int in range(0, TOKEN_MAX + 1):
-			选项.append({"value": n, "label": "【战纹】%d / 【魔纹】%d" % [n, TOKEN_MAX - n]})
-		询问(player.id, FU_WEN_GAI_ZAO_TOKEN, 0, 0, GConst.CardSource.Hand, 选项)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var num: int = int(args[0]) if not args.is_empty() else 1
-	if num < 0 or num > TOKEN_MAX:
-		num = 1
 	_set_zhan_wen(num)
 	_set_mo_wen(TOKEN_MAX - _zhan_wen())
 	engine._broadcast_game()
-	return SUCCESS
 
 
 # ============================================================

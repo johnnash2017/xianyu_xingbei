@@ -1,7 +1,7 @@
 extends BattleRole
 ## 神官（roleID 15）—— 移植自服务端 role/ShenGuan.cpp
 ## 被动：圣使守护（治疗上限 +4；每次用治疗抵御伤害最多只能用 1 点，见 p_timeline_4）
-## 启动：神圣契约（回合开始，1 能量 + 转移 X 治疗给队友，无视其治疗上限但最高为 4）
+## 启动：神圣契约（技能栏按钮发动，1 能量 + 转移 X 治疗给队友，无视其治疗上限但最高为 4）
 ## 法术：神圣祈福（弃 2 张法术牌，自己 +2 治疗）、
 ##       水之神力（弃 1 张水系牌，给目标队友 1 张手牌，双方各 +1 治疗）、
 ##       神圣领域（1 能量，弃 min(2, 手牌) 张牌：移除 1 治疗对目标造成 2 点法术伤害，或自己 +2 / 队友 +1 治疗）
@@ -54,6 +54,10 @@ func available_skills() -> Array:
 			"need_card": mini(LING_YU_DISCARD, player.hand_cards.size()), "need_target": 1,
 			"targets": _ling_yu_targets(),
 		})
+	# 【神圣契约】为「启动」：有能量且有治疗时可发动，把治疗转移给队友（不消耗本回合行动）
+	if player.get_energy() >= 1 and player.cross_num > 0:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": SHEN_SHENG_QI_YUE,
+			"need_card": 0, "need_target": 1, "targets": ally_ids()})
 	return out
 
 
@@ -109,92 +113,69 @@ func p_timeline_4(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 启动：神圣契约（自己回合开始、有能量且有治疗时询问）
+# 启动：神圣契约（技能栏按钮，有能量且有治疗时可发动）
+# 交互走「技能指示器」（const.gd 里 技能_神圣契约）：客户端点头像把自身治疗分给队友，
+# 回包的 dst_ids / args 平行 —— args[i] 就是第 i 名队友分到的治疗点数。
 # ============================================================
-## 【神圣契约】的推进阶段（0＝还没开始 / SHEN_SHENG_QI_YUE＝在问契约如何分配）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
-var _qi_yue_step: int = 0
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == SHEN_SHENG_QI_YUE
 
 
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id:
-		return SUCCESS
-	if player.get_energy() == 0 or player.cross_num == 0:
-		return SUCCESS
-	if _qi_yue_step >= STEP_DONE:
-		return SUCCESS
-	if _qi_yue_step == 0:
-		_qi_yue_step = SHEN_SHENG_QI_YUE
-	if _qi_yue_step == SHEN_SHENG_QI_YUE:
-		var r: int = _shen_sheng_qi_yue()
-		if r == WAIT:
-			return WAIT
-		_qi_yue_step = 0
-	return SUCCESS
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != SHEN_SHENG_QI_YUE:
+		return GConst.GE_INVALID_ACTION
+	if player.get_energy() <= 0 or player.cross_num <= 0:
+		return GConst.GE_INVALID_ACTION
+	var dsts: Array = action.get("dst_ids", [])
+	var args: Array = action.get("args", [])
+	if dsts.is_empty() or args.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	var 合计: int = 0
+	for i: int in range(dsts.size()):
+		var dst: BattlePlayer = engine.p(int(dsts[i]))
+		if dst == null:
+			return GConst.GE_INVALID_PLAYERID
+		# 只能把治疗转移给队友（不含自己）
+		if dst.color != player.color or dst.id == player.id:
+			return GConst.GE_INVALID_ACTION
+		合计 += int(args[i]) if i < args.size() else 0
+	if 合计 <= 0 or 合计 > player.cross_num:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
 
 
-func _shen_sheng_qi_yue() -> int:
-	# 1 能量且空手牌 / 唯一手牌为光系：无需发动
-	if player.hand_cards.size() == 0 and player.get_energy() == 1:
-		return SUCCESS
-	if player.get_energy() == 1 and player.hand_cards.size() == 1:
-		var only: GCard = Data.get_card(player.hand_cards[0])
-		if only != null and only.element_enum() == GConst.CardElement.Light:
-			return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, SHEN_SHENG_QI_YUE, 0, 1)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var dsts: Array = r.get("dst_ids", [])
-	# 分配规则（每次几点 / 能否分给多个人 / 是否突破上限与封顶）与客户端共用「技能指示器」这一份配置
+## 神圣契约：消耗 1 能量，把自己的 X 治疗转移给队友（无视其治疗上限、最高到 4）
+func p_special_skill(action: Dictionary) -> int:
+	var dsts: Array = action.get("dst_ids", [])
+	var args: Array = action.get("args", [])
+	# 分配规则（每次几点 / 是否突破上限与封顶）与客户端共用「技能指示器」这一份配置
 	var 配置: Dictionary = GConst.技能指示器.get(SHEN_SHENG_QI_YUE, {})
 	var 每次: int = int(配置.get("每次", 1))
 	var 突破: bool = bool(配置.get("突破上限", false))
 	var 封顶: int = int(配置.get("突破封顶", 0))
-	var 仅队友: bool = bool(配置.get("仅队友", false))
 	if 每次 <= 0:
 		每次 = 1
-	# 先算好这次要转移给谁、各转几点（总量不超过自己当前的治疗）
-	var 计划: Array = []
-	var 剩余: int = player.cross_num
-	for i: int in range(dsts.size()):
-		if 剩余 <= 0:
-			break
-		var dst: BattlePlayer = engine.p(int(dsts[i]))
-		if dst == null:
-			continue
-		if 仅队友 and (dst.color != player.color or dst.id == player.id):
-			continue
-		var amount: int = int(args[i]) if i < args.size() else 每次
-		amount = mini(amount, 剩余)
-		if amount <= 0:
-			continue
-		计划.append({"dst": dst, "amount": amount})
-		剩余 -= amount
-	if 计划.is_empty():
-		return SUCCESS
-	var 目标id: Array = []
-	for 项: Dictionary in 计划:
-		目标id.append(int((项["dst"] as BattlePlayer).id))
-	notice_skill(SHEN_SHENG_QI_YUE, 目标id)
+	notice_skill(SHEN_SHENG_QI_YUE, dsts)
+	player.boot_skill_used = true
 	# 消耗 1 能量：优先扣水晶
 	if player.crystal > 0:
 		player.set_crystal(player.crystal - 1)
 	else:
 		player.set_gem(player.gem - 1)
 	var 实转: int = 0
-	for 项2: Dictionary in 计划:
-		var dst2: BattlePlayer = 项2["dst"]
-		var amount2: int = int(项2["amount"])
-		实转 += amount2
+	for i: int in range(dsts.size()):
+		var dst: BattlePlayer = engine.p(int(dsts[i]))
+		var amount: int = int(args[i]) if i < args.size() else 每次
+		if amount <= 0:
+			continue
+		实转 += amount
 		# 以此法转移的治疗无视目标治疗上限（突破时按配置的封顶收尾，如最高到 4）
 		if 突破:
-			施加治疗_突破(dst2.id, amount2, 封顶)
+			施加治疗_突破(dst.id, amount, 封顶)
 		else:
-			施加治疗(dst2.id, amount2)
+			施加治疗(dst.id, amount)
 	player.sub_cross_num(实转)
 	engine._broadcast_game()
 	return SUCCESS

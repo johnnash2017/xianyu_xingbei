@@ -61,7 +61,18 @@ func available_skills() -> Array:
 	if _lan() >= 3 and not 赐予牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_CI_YU, "need_card": 1, "need_target": 1,
 			"cards": 赐予牌})
+	# 启动技能（每回合只能发动一个，由引擎统一下发/校验）
+	if player.gem > 0 and not used_zeng_fu:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_ZENG_FU, "need_card": 0, "need_target": 0})
+	if _can_lian_jie():
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_LIAN_JIE, "need_card": 0, "need_target": 1,
+			"targets": ally_ids()})
 	return out
+
+
+## 【灵魂增幅】【灵魂链接】为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == LING_HUN_ZENG_FU or skill_id == LING_HUN_LIAN_JIE
 
 
 # ============================================================
@@ -144,73 +155,56 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 启动（自己回合）：灵魂增幅（2203）→ 灵魂链接（2208）
+# 启动技能（行动阶段按钮）：灵魂增幅（2203）/ 灵魂链接（2208）
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验各自条件）
 # ============================================================
-## 【灵魂增幅 / 灵魂链接】的推进阶段（0＝还没开始 / LING_HUN_ZENG_FU＝在处理灵魂增幅 / LING_HUN_LIAN_JIE＝在处理灵魂链接）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 自己回合启动（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
-var _boot_step: int = 0
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	match int(action.get("action_id", 0)):
+		LING_HUN_ZENG_FU:
+			if player.gem <= 0 or used_zeng_fu:
+				return GConst.GE_INVALID_ACTION
+		LING_HUN_LIAN_JIE:
+			if not _can_lian_jie():
+				return GConst.GE_INVALID_ACTION
+			var dsts: Array = action.get("dst_ids", [])
+			if dsts.is_empty():
+				return GConst.GE_INVALID_ACTION
+			var dst: BattlePlayer = engine.p(int(dsts[0]))
+			if dst == null or dst.color != player.color or dst.id == player.id:
+				return GConst.GE_INVALID_ACTION
+		_:
+			return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
 
 
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id:
-		return SUCCESS
-	if _boot_step >= STEP_DONE:
-		return SUCCESS
-	if _boot_step == 0:
-		_boot_step = LING_HUN_ZENG_FU
-	if _boot_step == LING_HUN_ZENG_FU:
-		var r: int = _zeng_fu()
-		if r == WAIT:
-			return WAIT
-		if _huang() > 0 and _lan() > 0 and not used_lian_jie and not used_zeng_fu:
-			_boot_step = LING_HUN_LIAN_JIE
-		else:
-			_boot_step = 0
-	if _boot_step == LING_HUN_LIAN_JIE:
-		var r2: int = _lian_jie()
-		if r2 == WAIT:
-			return WAIT
-		_boot_step = 0
+func p_special_skill(action: Dictionary) -> int:
+	match int(action.get("action_id", 0)):
+		LING_HUN_ZENG_FU:
+			_apply_zeng_fu()
+		LING_HUN_LIAN_JIE:
+			_apply_lian_jie(action)
 	return SUCCESS
 
 
 ## 灵魂增幅：耗 1 宝石 → +2 黄魂 +2 蓝魂
-func _zeng_fu() -> int:
-	if player.gem <= 0:
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, LING_HUN_ZENG_FU, 0, 0)
-		return WAIT
-	if not take_skill_reply():
-		return SUCCESS
-	used_zeng_fu = true
+func _apply_zeng_fu() -> void:
 	notice_skill(LING_HUN_ZENG_FU, [player.id])
+	player.boot_skill_used = true
+	used_zeng_fu = true
 	player.set_gem(player.gem - 1)
 	_set_token(TOKEN_HUANG, _huang() + 2)
 	_set_token(TOKEN_LAN, _lan() + 2)
 	engine._broadcast_game()
-	return SUCCESS
 
 
 ## 灵魂链接：耗 1 黄魂 +1 蓝魂，双方获得【灵魂链接】独有效果
-func _lian_jie() -> int:
-	# 服务端：手牌为 0 且黄魂＜3 时不发动；4 人局不发动
-	if (player.hand_cards.is_empty() and _huang() < 3) or engine.order.size() == 4:
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, LING_HUN_LIAN_JIE, 0, 1)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var dsts: Array = r.get("dst_ids", [])
-	if args.is_empty() or int(args[0]) != 1 or dsts.is_empty():
-		return SUCCESS
+func _apply_lian_jie(action: Dictionary) -> void:
+	var dsts: Array = action.get("dst_ids", [])
 	var dst: BattlePlayer = engine.p(int(dsts[0]))
-	if dst == null:
-		return SUCCESS
 	notice_skill(LING_HUN_LIAN_JIE, [dst.id])
+	player.boot_skill_used = true
 	dst.add_exclusive_effect(GConst.Exclusive.LingHunLianJie)
 	player.add_exclusive_effect(GConst.Exclusive.LingHunLianJie)
 	_set_token(TOKEN_HUANG, _huang() - 1)
@@ -218,7 +212,17 @@ func _lian_jie() -> int:
 	connect_id = dst.id
 	used_lian_jie = true
 	engine._broadcast_game()
-	return SUCCESS
+
+
+## 灵魂链接的发动条件：黄魂/蓝魂各 ≥1 且未放置过；手牌为 0 时黄魂须 ≥3；4 人局不发动
+func _can_lian_jie() -> bool:
+	if used_lian_jie or _huang() <= 0 or _lan() <= 0:
+		return false
+	if player.hand_cards.is_empty() and _huang() < 3:
+		return false
+	if engine.order.size() == 4:
+		return false
+	return true
 
 
 # ============================================================

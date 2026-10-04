@@ -37,6 +37,11 @@ var pre_id: int = -1
 var post_id: int = -1
 var additional_actions: Array[Dictionary] = []   # [{allow_action:int, cause:int}]
 
+## 本回合是否已发动过「启动」技能（角色 is_free_skill 认可的那些）：
+## 规则是每回合所有启动技能里只能发动一个，发动后其余启动技能不再下发、再点也会被拒。
+## 由引擎在回合开始清零（SCheckTurnStart），发动成功时由角色把它置 true
+var boot_skill_used: bool = false
+
 var ready: bool = false
 var online: bool = true
 

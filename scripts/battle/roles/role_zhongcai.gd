@@ -39,7 +39,17 @@ func available_skills() -> Array:
 				{"text": "弃光手牌", "args": [0]},
 				{"text": "补满手牌，我方 +1 宝石", "args": [1]},
 			]})
+	# 启动技能：按形态二选一（每回合只能发动一个，由引擎统一下发/校验）
+	if player.tap:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": YI_SHI_ZHONG_DUAN, "need_card": 0, "need_target": 0})
+	elif player.gem > 0:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": ZHONG_CAI_YI_SHI, "need_card": 0, "need_target": 0})
 	return out
+
+
+## 【仪式中断】【仲裁仪式】为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == YI_SHI_ZHONG_DUAN or skill_id == ZHONG_CAI_YI_SHI
 
 
 # ============================================================
@@ -57,6 +67,11 @@ func v_allow_action(action_type: int, args: Array, allow: int, can_give_up: bool
 		return GConst.GE_SUCCESS
 	if action_type == GConst.ActionType.MagicSkill:
 		return GConst.GE_SUCCESS
+	# 【仪式中断】【仲裁仪式】是「启动」技能，原版在行动阶段之前询问、不受满审判限制
+	# （【仪式中断】还是脱离审判形态的唯一手段），故这里放行 SpecialSkill；
+	# 具体哪个技能能不能发动由 v_special_skill 按技能号继续把关
+	if action_type == GConst.ActionType.SpecialSkill:
+		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 
 
@@ -70,54 +85,54 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 【仲裁仪式 / 仪式中断】的推进阶段（0＝还没开始 / YI_SHI_ZHONG_DUAN＝在问仪式中断 / ZHONG_CAI_YI_SHI＝在问仲裁仪式）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己回合开始（p_boot）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
-var _zhong_cai_boot_step: int = 0
+# ============================================================
+# 启动技能（行动阶段按钮）：仪式中断（1401）/ 仲裁仪式（1402）
+# （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验各自的形态/资源条件）
+# ============================================================
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	match int(action.get("action_id", 0)):
+		YI_SHI_ZHONG_DUAN:
+			# 仅【审判形态】（横置）下可发动
+			if not player.tap:
+				return GConst.GE_INVALID_ACTION
+		ZHONG_CAI_YI_SHI:
+			# 未横置（不在形态里）且有宝石时可发动
+			if player.tap or player.gem <= 0:
+				return GConst.GE_INVALID_ACTION
+		_:
+			return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
 
 
-# ============================================================
-# 启动：仪式中断（1401）/ 仲裁仪式（1402）
-# ============================================================
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id:
-		return SUCCESS
-	if _zhong_cai_boot_step >= STEP_DONE:
-		return SUCCESS
-	if _zhong_cai_boot_step == 0:
-		if player.tap:
-			_zhong_cai_boot_step = YI_SHI_ZHONG_DUAN
-		elif player.gem > 0:
-			_zhong_cai_boot_step = ZHONG_CAI_YI_SHI
-		else:
-			return SUCCESS
-	if _zhong_cai_boot_step == YI_SHI_ZHONG_DUAN:
-		if not engine.has_reply():
-			询问(player.id, YI_SHI_ZHONG_DUAN, 0, 0)
-			return WAIT
-		_zhong_cai_boot_step = 0
-		if not take_skill_reply():
-			return SUCCESS
-		notice_skill(YI_SHI_ZHONG_DUAN, [player.id])
-		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
-		player.tap = false
-		player.hand_cards_max = HAND_MAX_NORMAL
-		engine._broadcast_game()
-		return SUCCESS
-	if _zhong_cai_boot_step == ZHONG_CAI_YI_SHI:
-		if not engine.has_reply():
-			询问(player.id, ZHONG_CAI_YI_SHI, 0, 0)
-			return WAIT
-		_zhong_cai_boot_step = 0
-		if not take_skill_reply():
-			return SUCCESS
-		notice_skill(ZHONG_CAI_YI_SHI, [player.id])
-		player.set_gem(player.gem - 1)
-		player.tap = true
-		player.hand_cards_max = HAND_MAX_TRIAL
-		engine._broadcast_game()
+func p_special_skill(action: Dictionary) -> int:
+	match int(action.get("action_id", 0)):
+		YI_SHI_ZHONG_DUAN:
+			_apply_yi_shi_zhong_duan()
+		ZHONG_CAI_YI_SHI:
+			_apply_zhong_cai_yi_shi()
 	return SUCCESS
+
+
+## 仪式中断：脱离【审判形态】，我方战绩区 +1 宝石，手牌上限恢复
+func _apply_yi_shi_zhong_duan() -> void:
+	notice_skill(YI_SHI_ZHONG_DUAN, [player.id])
+	player.boot_skill_used = true
+	engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
+	player.tap = false
+	player.hand_cards_max = HAND_MAX_NORMAL
+	engine._broadcast_game()
+
+
+## 仲裁仪式：耗 1 宝石，横置进入【审判形态】，手牌上限固定为 5
+func _apply_zhong_cai_yi_shi() -> void:
+	notice_skill(ZHONG_CAI_YI_SHI, [player.id])
+	player.boot_skill_used = true
+	player.set_gem(player.gem - 1)
+	player.tap = true
+	player.hand_cards_max = HAND_MAX_TRIAL
+	engine._broadcast_game()
 
 
 # ============================================================

@@ -19,8 +19,8 @@ const XUE_ZHI_ZU_ZHOU: int = 2351
 
 ## 【同生共死】的目标（-1 表示未放置）
 var tong_sheng_id: int = -1
-## 血之哀伤流程：0 未开始 / 1 已询问 / 2 已造成伤害待结算转移
-var ai_shang_phase: int = 0
+## 血之哀伤：已选的分支（1=转移、2=移除）与转移目标；
+## 先对自己造成 2 点法术伤害，伤害结算完由 p_after_special 落实转移 / 移除
 var ai_shang_choose: int = 0
 var ai_shang_dst: int = -1
 ## 本回合是否已在回合开始结算过流血伤害
@@ -47,11 +47,17 @@ func available_skills() -> Array:
 			]})
 	if player.gem >= 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_ZU_ZHOU, "need_card": 0, "need_target": 1})
+	# 【血之哀伤】为「启动」：自己场上有【同生共死】时可发动（二选一：转移 / 移除）
+	if tong_sheng_id != -1:
+		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG, "need_card": 0, "need_target": 1,
+			"arg_choices": [
+				{"text": "转移【同生共死】给选定目标", "args": [1], "need_card": 0, "need_target": 1},
+				{"text": "移除【同生共死】", "args": [2], "need_card": 0, "need_target": 0},
+			]})
 	return out
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
-	ai_shang_phase = 0
 	ai_shang_choose = 0
 	ai_shang_dst = -1
 	liu_xue_done = false
@@ -75,48 +81,62 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 启动：血之哀伤（对自己 2 点法术伤害，然后转移或移除【同生共死】）
+# 启动：血之哀伤（技能栏按钮，自己场上有【同生共死】时可发动）
+# 二选一（转移【同生共死】给选定目标 / 移除【同生共死】），随后对自己造成 2 点法术伤害
 # ============================================================
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id or tong_sheng_id == -1:
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == XUE_ZHI_AI_SHANG
+
+
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != XUE_ZHI_AI_SHANG:
+		return GConst.GE_INVALID_ACTION
+	if tong_sheng_id == -1:
+		return GConst.GE_INVALID_ACTION
+	var args: Array = action.get("args", [])
+	var choice: int = int(args[0]) if not args.is_empty() else 0
+	if choice != 1 and choice != 2:
+		return GConst.GE_INVALID_ACTION
+	if choice == 1:
+		var dsts: Array = action.get("dst_ids", [])
+		if dsts.is_empty():
+			return GConst.GE_INVALID_ARGUMENT
+		if engine.p(int(dsts[0])) == null:
+			return GConst.GE_INVALID_PLAYERID
+	return GConst.GE_SUCCESS
+
+
+## 血之哀伤：记下所选分支与转移目标，先对自己造成 2 点法术伤害；
+## 伤害结算完由 p_after_special 落实转移 / 移除（与服务端「先伤害、后动【同生共死】」顺序一致）
+func p_special_skill(action: Dictionary) -> int:
+	var args: Array = action.get("args", [])
+	ai_shang_choose = int(args[0])
+	ai_shang_dst = -1
+	if ai_shang_choose == 1:
+		var dsts: Array = action.get("dst_ids", [])
+		ai_shang_dst = int(dsts[0])
+	notice_skill(XUE_ZHI_AI_SHANG, [player.id])
+	player.boot_skill_used = true
+	engine.push_harm({
+		"src": player.id, "dst": player.id, "point": 2,
+		"cause": XUE_ZHI_AI_SHANG, "type": GConst.HarmType.Magic,
+	})
+	engine._broadcast_game()
+	return URGENT
+
+
+## 血之哀伤结算完（伤害已落地）：转移 / 移除【同生共死】
+func p_after_special(ctx: Dictionary) -> int:
+	if int(ctx.get("action_id", 0)) != XUE_ZHI_AI_SHANG or ai_shang_choose == 0:
 		return SUCCESS
-	if ai_shang_phase == 0:
-		ai_shang_phase = 1
-		ai_shang_choose = 0
-		ai_shang_dst = -1
-	if ai_shang_phase == 1:
-		if not engine.has_reply():
-			# 两条分支各做成一个选项（value 1=转移给选定目标、2=移除），
-			# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
-			询问(player.id, XUE_ZHI_AI_SHANG, 0, 1, GConst.CardSource.Hand, [
-				{"value": 1, "label": "转移【同生共死】给选定目标"},
-				{"value": 2, "label": "移除【同生共死】"},
-			])
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		var choice: int = int(args[0]) if not args.is_empty() else 0
-		if choice != 1 and choice != 2:
-			ai_shang_phase = 0
-			return SUCCESS
-		ai_shang_choose = choice
-		if choice == 1:
-			var dsts: Array = r.get("dst_ids", [])
-			ai_shang_dst = int(dsts[0]) if not dsts.is_empty() else player.id
-		ai_shang_phase = 2
-		notice_skill(XUE_ZHI_AI_SHANG, [player.id])
-		engine.push_harm({
-			"src": player.id, "dst": player.id, "point": 2,
-			"cause": XUE_ZHI_AI_SHANG, "type": GConst.HarmType.Magic,
-		})
-		engine._broadcast_game()
-		return URGENT
-	# 伤害结算后再转移 / 移除【同生共死】
 	if ai_shang_choose == 1:
 		_transfer_tong_sheng(ai_shang_dst)
-	elif ai_shang_choose == 2:
+	else:
 		_remove_tong_sheng()
-	ai_shang_phase = 0
+	ai_shang_choose = 0
+	ai_shang_dst = -1
 	engine._broadcast_game()
 	return SUCCESS
 

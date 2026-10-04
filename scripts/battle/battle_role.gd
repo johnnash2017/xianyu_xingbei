@@ -122,9 +122,10 @@ func available_skills() -> Array:
 	return []
 
 
-## 该主动技能是否属于「启动」：发动后不消耗本回合行动，行动阶段照旧继续
-## （如格斗家【百式幻龙拳】【斗神天驱】：原版在回合开始的 p_boot 里询问，不占用行动）。
-## 引擎在技能结算完后据此决定进入回合结束还是重新进入行动阶段
+## 该主动技能是否属于「启动」：原版在回合开始的 p_boot 里询问，不占用行动。
+## 改到技能栏后：引擎据此决定「结算完重新进入行动阶段」而不是回合结束；
+## 同时受「每回合只能发动一个启动技能」限制（player.boot_skill_used，引擎统一下发/校验）。
+## 发动成功的角色要在自己的结算里把 player.boot_skill_used 置 true
 func is_free_skill(_skill_id: int) -> bool:
 	return false
 

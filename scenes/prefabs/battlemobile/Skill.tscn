@@ -2,13 +2,45 @@
 
 [ext_resource type="Texture2D" uid="uid://cvu0b03r4cyus" path="res://assets/textures/battle/playerSelected.png" id="30_playerSelectedpng"]
 [ext_resource type="Script" uid="uid://ngllurng1dxy" path="res://scripts/SkillUI.gd" id="31_SkillUIgd"]
-[ext_resource type="Shader" path="res://scripts/effects/技能按钮凸起.gdshader" id="32_btnbevel"]
+[ext_resource type="Shader" uid="uid://dr760vicokpvn" path="res://scripts/effects/技能按钮凸起.gdshader" id="32_btnbevel"]
+[ext_resource type="Shader" uid="uid://bi4pdpskahb0v" path="res://scripts/effects/技能按钮选中发光.gdshader" id="33_selectedglow"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
+
+[sub_resource type="Gradient" id="Gradient_bevel"]
+offsets = PackedFloat32Array(0, 0.35901162, 0.7093023, 1)
+colors = PackedColorArray(0.7413847, 0.7413847, 0.7413844, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.84532875, 0.8453288, 0.84532857, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_bevel"]
+gradient = SubResource("Gradient_bevel")
+
+[sub_resource type="Gradient" id="Gradient_bevel_v"]
+offsets = PackedFloat32Array(0, 0.4883721, 0.6133721, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0.81960785, 0.81960785, 0.81960785, 1, 0.8196545, 0.8196545, 0.8196543, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_bevel_v"]
+gradient = SubResource("Gradient_bevel_v")
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_bevel"]
 resource_local_to_scene = true
 shader = ExtResource("32_btnbevel")
+shader_parameter/rect_size = Vector2(110, 46)
+shader_parameter/button_color = Color(1, 1, 1, 1)
+shader_parameter/lighten = 0.150000007125
+shader_parameter/gradient_strength = 0.330000015675
+shader_parameter/gradient = SubResource("GradientTexture1D_bevel")
+shader_parameter/gradient_v_strength = 1.0
+shader_parameter/gradient_v = SubResource("GradientTexture1D_bevel_v")
+shader_parameter/edge_px = 10.0000004275
+shader_parameter/light_strength = 0.5
+shader_parameter/shade_strength = 0.5
+shader_parameter/flip_light = false
+shader_parameter/honeycomb = true
+shader_parameter/hex_slant = 15.0000007125
+shader_parameter/honeycomb_softness = 6.0
+shader_parameter/corner_radius = 8.0
+shader_parameter/outline_px = 3.0000001425
+shader_parameter/outline_color = Color(1, 1, 1, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_yv4dp"]
 content_margin_left = 12.0
@@ -16,11 +48,6 @@ content_margin_top = 8.0
 content_margin_right = 12.0
 content_margin_bottom = 8.0
 bg_color = Color(0.8196546, 0.8196545, 0.8196545, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.13501206, 0.13501206, 0.13501206, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
@@ -32,11 +59,6 @@ content_margin_top = 6.0
 content_margin_right = 10.0
 content_margin_bottom = 6.0
 bg_color = Color(0.43712005, 0.43712005, 0.43712005, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
@@ -48,11 +70,6 @@ content_margin_top = 8.0
 content_margin_right = 12.0
 content_margin_bottom = 8.0
 bg_color = Color(1, 1, 1, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
@@ -64,11 +81,6 @@ content_margin_top = 6.0
 content_margin_right = 10.0
 content_margin_bottom = 6.0
 bg_color = Color(0.43529412, 0.43529412, 0.43529412, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
@@ -80,15 +92,20 @@ content_margin_top = 8.0
 content_margin_right = 12.0
 content_margin_bottom = 8.0
 bg_color = Color(0.25021347, 0.25021344, 0.25021344, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.13333334, 0.13333334, 0.13333334, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_selectedglow"]
+resource_local_to_scene = true
+shader = ExtResource("33_selectedglow")
+shader_parameter/rect_size = Vector2(110, 44)
+shader_parameter/glow_px = 12.0
+shader_parameter/corner_radius = 8.0
+shader_parameter/honeycomb = true
+shader_parameter/hex_slant = 22.0
+shader_parameter/glow_color = Color(1, 0.858824, 0.247059, 1)
 
 [node name="Skill" type="Button" unique_id=245982258 node_paths=PackedStringArray("plateButton", "skillName", "selectBorder")]
 anchors_preset = 2
@@ -114,6 +131,7 @@ skillName = NodePath("SkillName")
 selectBorder = NodePath("SelectBorder")
 
 [node name="背景板" type="Button" parent="." unique_id=651677558]
+material = SubResource("ShaderMaterial_bevel")
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -121,13 +139,26 @@ offset_top = 23.0
 offset_bottom = -23.0
 grow_horizontal = 2
 grow_vertical = 2
-material = SubResource("ShaderMaterial_bevel")
 focus_mode = 0
 theme_override_styles/normal = SubResource("StyleBoxFlat_yv4dp")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_ykrkf")
 theme_override_styles/hover = SubResource("StyleBoxFlat_ne71q")
 theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_mdat8")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_x3c57")
+
+[node name="选中发光" type="ColorRect" parent="背景板" unique_id=1948073562]
+visible = false
+material = SubResource("ShaderMaterial_selectedglow")
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -12.0
+offset_top = -12.0
+offset_right = 12.0
+offset_bottom = 12.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="SkillName" type="Label" parent="." unique_id=465010874]
 layout_mode = 0
