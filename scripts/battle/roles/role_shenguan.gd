@@ -356,6 +356,7 @@ func _shen_sheng_ling_yu(action: Dictionary) -> int:
 	if not use_cards.is_empty():
 		engine.take_from_hand(player.id, use_cards)
 		engine.to_discard(use_cards)
+		engine._log_discard(player.id, use_cards)
 	if mode == 1:
 		engine._broadcast_game()
 		return URGENT

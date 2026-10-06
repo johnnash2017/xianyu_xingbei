@@ -7,7 +7,7 @@ extends BattleRole
 ##       不谐和弦（3102，法术：移除 X 点灵感（X＞1）→ 你与目标各摸 X－1 张牌，或各弃 X－1 张牌）、
 ##       歌咏天赋（3103，被动：永恒乐章被触发后 +1 灵感并把乐章收回；
 ##                 若灵感已达上限则横置并对自己造成 3 点法术伤害）、
-##       暴风前奏曲（3104，服务端仅有枚举、无任何实现，故未移植）、
+##       暴风前奏曲（3104，响应：回合开始前移除 1 点【灵感】→ 本回合无视【歌咏天赋】）、
 ##       激昂狂想曲（31052，响应：回合开始时若当前角色持有永恒乐章 →
 ##                 对两名目标各 1 点法术伤害，或弃 2 张牌）、
 ##       胜利交响诗（31061，响应：回合结束时若当前角色持有永恒乐章 →
@@ -32,6 +32,7 @@ const SHENG_LI_JIAO_XIANG_SHI_2: int = 31061
 const XI_WANG_FU_GE_QU: int = 3107
 
 ## 本引擎自有的分步标记（服务端把子步骤实现为压栈状态，此处用角色的自有分步变量记录进度）
+const JI_ANG_PICK_TARGET: int = 31053      # 激昂狂想曲：伤害分支选 2 名对手
 const JI_ANG_DISCARD: int = 31054          # 激昂狂想曲：当前角色弃 2 张牌
 const SHENG_LI_STONE: int = 31062          # 胜利交响诗：选完「提炼星石」后问提炼哪种星石
 
@@ -42,6 +43,7 @@ const CHEN_LUN_NEED_KINDS: int = 2         # 沉沦协奏曲：需要命中的�
 
 var yue_zhang_dst: int = -1                # 永恒乐章当前所在角色（-1 表示不在任何人面前）
 var use_yue_zhang: bool = false            # 本次触发是否使用了永恒乐章
+var ignore_ge_yong: bool = false           # 暴风前奏曲：本回合无视【歌咏天赋】
 var chen_lun_used: bool = false            # 本回合是否已发动沉沦协奏曲
 var chen_lun_dsts: Array = []              # 本回合我方法术伤害命中的敌方角色
 
@@ -129,6 +131,7 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
 	engine.take_from_hand(pid, chosen)
 	engine.to_discard(chosen)
+	engine._log_discard(pid, chosen)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -154,10 +157,36 @@ func _can_xi_wang() -> bool:
 	return true
 
 
+## 某名玩家的对手 id（激昂狂想曲的伤害分支只能选对手）
+func _enemies_of(pid: int) -> Array[int]:
+	var out: Array[int] = []
+	var actor: BattlePlayer = engine.p(pid)
+	if actor == null:
+		return out
+	for other_id: int in engine.order:
+		var other: BattlePlayer = engine.p(other_id)
+		if other != null and other.color != actor.color:
+			out.append(other_id)
+	return out
+
+
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	chen_lun_used = false
 	chen_lun_dsts.clear()
 	use_yue_zhang = false
+	ignore_ge_yong = false
+	# 暴风前奏曲（3104）：回合开始前，移除 1 点【灵感】可让本回合无视【歌咏天赋】。
+	# 只有「本回合【永恒乐章】确实会被触发」（乐章在当前回合角色面前）时才询问，否则没有意义
+	if engine.current_id != yue_zhang_dst or _ling_gan() < 1:
+		return SUCCESS
+	if not engine.has_reply():
+		询问(player.id, BAO_FENG_QIAN_ZOU_QU, 0, 0)
+		return WAIT
+	if take_skill_reply():
+		_set_ling_gan(_ling_gan() - 1)
+		ignore_ge_yong = true
+		notice_skill(BAO_FENG_QIAN_ZOU_QU, [player.id])
+		engine._broadcast_game()
 	return SUCCESS
 
 
@@ -184,9 +213,10 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 		_ji_ang_step = JI_ANG_KUANG_XIANG_QU_2
 	if _ji_ang_step == JI_ANG_KUANG_XIANG_QU_2:
 		if not engine.has_reply():
-			# 两个分支各做一个选项：1=对两名目标各 1 点法术伤害、2=弃 2 张牌；
-			# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
-			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU_2, 0, 1, GConst.CardSource.Hand, [
+			# 先选分支（此时不选目标）：1=对两名目标各 1 点法术伤害、2=弃 2 张牌；
+			# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）。
+			# 伤害分支要 2 名目标、弃牌分支不要目标，故目标留到下一步按分支再选
+			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU_2, 0, 0, GConst.CardSource.Hand, [
 				{"value": 1, "label": "对两名目标各 1 点法术伤害"},
 				{"value": 2, "label": "弃 2 张牌"},
 			])
@@ -195,14 +225,28 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 		var args: Array = r.get("args", [])
 		var choice: int = int(args[0]) if not args.is_empty() else 0
 		if choice == 1:
-			# 对两名目标各 1 点法术伤害
-			use_yue_zhang = true
-			_ji_ang_harm(r.get("dst_ids", []))
-			_ji_ang_step = GE_YONG_TIAN_FU
-			return URGENT
-		if choice == 2:
+			_ji_ang_step = JI_ANG_PICK_TARGET
+		elif choice == 2:
 			_ji_ang_step = JI_ANG_DISCARD
 		else:
+			_ji_ang_step = 0
+	if _ji_ang_step == JI_ANG_PICK_TARGET:
+		# 伤害分支：选 2 名对手（说明：对两名目标对手各造成 1 点法术伤害）
+		var 敌方: Array[int] = _enemies_of(engine.current_id)
+		if 敌方.size() < 2:
+			# 场上不足 2 名对手，该分支打不出，视为不发动
+			_ji_ang_step = 0
+		elif not engine.has_reply():
+			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU_2, 0, 2, GConst.CardSource.Hand, [], 0, "", [], true, 1, -1, 敌方)
+			return WAIT
+		else:
+			var r3: Dictionary = take_skill_reply_full()
+			var dsts3: Array = r3.get("dst_ids", [])
+			if dsts3.size() >= 2:
+				use_yue_zhang = true
+				_ji_ang_harm(dsts3)
+				_ji_ang_step = GE_YONG_TIAN_FU
+				return URGENT
 			_ji_ang_step = 0
 	if _ji_ang_step == JI_ANG_DISCARD:
 		# 由当前角色（乐章持有者）弃 2 张牌
@@ -234,6 +278,10 @@ func _ji_ang_harm(dsts: Array) -> void:
 
 ## 歌咏天赋：乐章被触发后 +1 灵感并收回乐章；灵感已满则横置并自伤 3 点
 func _ge_yong_tian_fu() -> int:
+	# 暴风前奏曲：本回合无视【歌咏天赋】（乐章不收回、不加灵感、不自伤）
+	if ignore_ge_yong:
+		use_yue_zhang = false
+		return SUCCESS
 	notice_skill(GE_YONG_TIAN_FU, [player.id])
 	use_yue_zhang = false
 	if _ling_gan() < LING_GAN_MAX:

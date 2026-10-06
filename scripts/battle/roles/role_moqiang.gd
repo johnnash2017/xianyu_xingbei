@@ -7,7 +7,7 @@ extends BattleRole
 ##                 若没有因此造成士气下降，则对目标角色 2 点法术伤害）、
 ##       黑暗束缚（2903，被动：始终不能使用法术牌，由 v_missile/v_shield/v_weaken 覆写实现；
 ##                 圣光格挡与反魔弹由 v_block/v_remissile 覆写实现）、
-##       暗之障壁（2904，响应：任何人对你造成伤害时，弃 X 张法术牌或雷系牌[展示]）、
+##       暗之障壁（2904，响应：任何人对你造成伤害时，二选一：弃 X 张法术牌 或 弃 X 张雷系牌[展示]）、
 ##       充盈（2905，法术：弃 1 张法术牌或雷系牌[展示]，所有人各弃 1 张牌，
 ##             除你以外每有人弃法术牌或雷系牌则本回合下次主动攻击伤害 +1，额外 +1 攻击行动）、
 ##       漆黑之枪（2906，响应：仅[幻影形态]下，主动攻击命中手牌 1~2 的对手后，
@@ -332,29 +332,49 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
+	# 说明：法术牌 / 雷系牌 二选一，弃任意 X 张（X＝1~手里的合法牌数）。
+	# 白名单给两类牌的并集，card_rule="an_zhi" 让界面以「先选的牌」为基准，把与它不共享类别的牌置灰；
+	# card_max=合法牌数 放宽点选上限（不给就默认「恰好 1 张」）；
+	# 两类都没有时就没什么可弃，直接跳过这次询问。
+	# 可弃 在函数作用域声明：结算时还要用它复核玩家回传的牌
+	var 可弃: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_magic() or c.element_enum() == GConst.CardElement.Thunder)
 	if not engine.has_reply():
-		# 只能弃法术牌或雷系牌：下发白名单让界面把其余手牌置灰；
-		# 一张都没有时就没什么可弃，直接跳过这次询问
-		var 可弃: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_magic() or c.element_enum() == GConst.CardElement.Thunder)
 		if 可弃.is_empty():
 			step = STEP_DONE
 			return SUCCESS
-		询问(player.id, AN_ZHI_ZHANG_BI, 1, 0, GConst.CardSource.Hand, [], 0, "", 可弃)
+		询问(player.id, AN_ZHI_ZHANG_BI, 1, 0, GConst.CardSource.Hand, [], 可弃.size(), "an_zhi", 可弃)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
+	# 所选牌必须同属「法术」或「雷系」中的同一类（既是法术又是雷系的牌两边都算）。
+	# 取覆盖所选牌最多的那一类作为本次组合，只保留属于该类的牌。
+	# 全是「两类都属」的牌时两类计数相等（无多数派），此时取法术类也不会丢牌（这些牌本就属法术）
 	var cards: Array = r.get("card_ids", [])
-	var chosen: Array = []
+	var 候选: Array[int] = []
 	for c: Variant in cards:
 		var cid: int = int(c)
-		if not player.has_hand_card(cid):
+		if not player.has_hand_card(cid) or not 可弃.has(cid):
 			continue
-		var card: GCard = Data.get_card(cid)
-		if card != null and (card.element_enum() == GConst.CardElement.Thunder or card.is_magic()):
-			chosen.append(cid)
+		if Data.get_card(cid) != null:
+			候选.append(cid)
+	var 法术数: int = 0
+	var 雷系数: int = 0
+	for cid2: int in 候选:
+		var c2: GCard = Data.get_card(cid2)
+		if c2.is_magic():
+			法术数 += 1
+		if c2.element_enum() == GConst.CardElement.Thunder:
+			雷系数 += 1
+	var 取法术: bool = 法术数 >= 雷系数
+	var chosen: Array = []
+	for cid3: int in 候选:
+		var c3: GCard = Data.get_card(cid3)
+		var 属于该类: bool = c3.is_magic() if 取法术 else c3.element_enum() == GConst.CardElement.Thunder
+		if 属于该类:
+			chosen.append(cid3)
 	if chosen.is_empty():
 		return SUCCESS
 	notice_skill(AN_ZHI_ZHANG_BI, [player.id])

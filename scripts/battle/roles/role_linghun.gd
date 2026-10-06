@@ -61,6 +61,18 @@ func available_skills() -> Array:
 	if _lan() >= 3 and not 赐予牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_CI_YU, "need_card": 1, "need_target": 1,
 			"cards": 赐予牌})
+	# 灵魂转换：选一张攻击牌 + 一名对手，直接发起一次主动攻击，并在宣告后转换 1 点灵魂颜色。
+	# 转换方向做成 arg_choices，只列当前真有对应灵魂的方向（value 0=黄→蓝、1=蓝→黄）
+	if _huang() > 0 or _lan() > 0:
+		var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
+		if not 攻击牌.is_empty():
+			var 方向选项: Array = []
+			if _huang() > 0:
+				方向选项.append({"text": "黄 → 蓝", "args": [0], "need_card": 1, "need_target": 1})
+			if _lan() > 0:
+				方向选项.append({"text": "蓝 → 黄", "args": [1], "need_card": 1, "need_target": 1})
+			out.append({"type": GConst.ActionType.AttackSkill, "id": LING_HUN_ZHUAN_HUAN, "need_card": 1, "need_target": 1,
+				"cards": 攻击牌, "targets": enemy_ids(), "arg_choices": 方向选项})
 	# 启动技能（每回合只能发动一个，由引擎统一下发/校验）
 	if player.gem > 0 and not used_zeng_fu:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_ZENG_FU, "need_card": 0, "need_target": 0})
@@ -131,6 +143,8 @@ func _show_and_discard(cards: Array, 展示: bool = true) -> void:
 		})
 	engine.take_from_hand(player.id, cards, 展示)
 	engine.to_discard(cards)
+	# 已亮过牌的不再播弃牌特效（只补一条文字日志），面朝下弃的才播
+	engine._log_discard(player.id, cards, not 展示)
 
 
 # ============================================================
@@ -226,7 +240,9 @@ func _can_lian_jie() -> bool:
 
 
 # ============================================================
-# 灵魂转换（2206）：主动攻击宣告后可转换 1 点灵魂颜色
+# 灵魂转换（2206）：选一张攻击牌 + 一名对手发起主动攻击，并在宣告后转换 1 点灵魂颜色
+# 支持两种用法：技能栏按钮在发起攻击前预选（预选命中→直接结算，不再弹窗询问）；
+# 普通出牌攻击（预选为 0）→ 按原版弹窗询问是否转换及方向
 # ============================================================
 ## 【灵魂转换】的推进阶段（0＝还没问 / 处理完本次转换后清回 0）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
@@ -234,12 +250,95 @@ func _can_lian_jie() -> bool:
 ## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
 var _timeline_1_step: int = 0
 
+## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）与转换方向（0＝黄→蓝、1＝蓝→黄）：
+## 由 p_attack_skill 在发起攻击前写入，p_timeline_1 据此直接结算，用完即清
+var _预选攻击技能: int = 0
+var _预选转换方向: int = -1
 
+
+## 攻击技能：灵魂转换（2206）—— 选一张攻击牌 + 一名对手，直接发起一次主动攻击
+func v_attack_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != LING_HUN_ZHUAN_HUAN:
+		return GConst.GE_INVALID_ACTION
+	# 前置：黄魂或蓝魂至少有一点才能转换
+	if _huang() <= 0 and _lan() <= 0:
+		return GConst.GE_INVALID_ACTION
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
+	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_PLAYERID
+	# 转换方向必须当前可行：黄→蓝须有黄魂、蓝→黄须有蓝魂
+	var args: Array = action.get("args", [])
+	var 方向: int = int(args[0]) if not args.is_empty() else -1
+	if 方向 != 0 and 方向 != 1:
+		return GConst.GE_INVALID_ARGUMENT
+	if 方向 == 0 and _huang() <= 0:
+		return GConst.GE_INVALID_ARGUMENT
+	if 方向 == 1 and _lan() <= 0:
+		return GConst.GE_INVALID_ARGUMENT
+	return GConst.GE_SUCCESS
+
+
+## 灵魂转换：打出所选攻击牌发起一次主动攻击；宣告后 p_timeline_1 依据预选方向直接转换 1 点灵魂
+func p_attack_skill(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var args: Array = action.get("args", [])
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	_预选攻击技能 = LING_HUN_ZHUAN_HUAN
+	_预选转换方向 = int(args[0]) if not args.is_empty() else -1
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
+	}
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
+	})
+	return URGENT
+
+
+## 主动攻击宣告后：本次攻击由技能栏的【灵魂转换】发起（预选命中）时按预选方向直接转换 1 点灵魂、不再弹窗；
+## 普通出牌攻击（预选为 0）时恢复原版询问流程，让玩家选择是否转换以及方向
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
+	# 本次主动攻击预选的响应技能号 / 转换方向：只在本次宣告后处理一次，读完即清
+	var 预选: int = _预选攻击技能
+	_预选攻击技能 = 0
+	var 方向: int = _预选转换方向
+	_预选转换方向 = -1
+	if 预选 == LING_HUN_ZHUAN_HUAN:
+		# 技能栏按钮路径：按预选方向直接结算，不再询问
+		if 方向 == 0 and _huang() > 0:
+			# 黄 → 蓝
+			_set_token(TOKEN_HUANG, _huang() - 1)
+			_set_token(TOKEN_LAN, _lan() + 1)
+		elif 方向 == 1 and _lan() > 0:
+			# 蓝 → 黄
+			_set_token(TOKEN_HUANG, _huang() + 1)
+			_set_token(TOKEN_LAN, _lan() - 1)
+		else:
+			return SUCCESS
+		notice_skill(LING_HUN_ZHUAN_HUAN, [player.id])
+		engine._broadcast_game()
+		return SUCCESS
+	# 普通出牌攻击：恢复原版询问流程
 	if _huang() <= 0 and _lan() <= 0:
 		return SUCCESS
 	if _timeline_1_step >= STEP_DONE:

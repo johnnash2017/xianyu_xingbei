@@ -30,7 +30,7 @@ extends Control
 @export var TxtRID: Label
 @export var TxtHint: Label
 @export var Hint: Control
-## 屏幕右下角的测试指令提示（测试用，仅显示键位说明）
+## 屏幕左上角的测试指令提示（测试用，仅显示键位说明）
 @export var 测试提示: Label
 @export var Content_2: RichTextLabel    # 日志控件（场景里挂着 AutoClearLog.gd；RichTextLabel 才能按行上色）
 @export var MsgRoot: ScrollContainer    # 日志滚动区（展开日志时滚到最新一条）
@@ -233,10 +233,15 @@ var _mode: int = 0
 ## 本次行动询问是否允许「放弃行动」：服务端下发了 ACTION_NONE 命令才置真
 ## （对照原版 canGiveUp：普通行动阶段不容许放弃，被挑衅 / 额外行动阶段才容许）
 var _可放弃行动: bool = false
+## 本次行动阶段是否「不可行动」（非额外行动阶段、技能栏没技能、手牌全打不出去）：
+## 置真时提示玩家点「确定」把手牌全弃掉摸 4 张（服务端 Unactional）
+var _不可行动: bool = false
 ## 本次行动阶段放行动作的种类（GConst.ActionType：Any / Attack / AttackMagic / Magic…），
 ## 由服务端的行动询问下发。额外攻击行动（如女武神【神圣追击】）只给 Attack，
 ## 界面据此把法术牌置灰——不放行还亮着的话点了必被服务端拒
 var _行动允许: int = GConst.ActionType.Any
+## 本阶段是否禁止特殊行动（发动过「启动」技能后：只能再攻击 / 法术）
+var _行动禁特殊: bool = false
 ## 当前 CMD_REQ 的单条命令
 var _pending: Dictionary = {}
 ## 当前询问的类型（GConst.Msg.Action / Msg.Respond）
@@ -328,6 +333,9 @@ var _skill_slot_skill: int = 0
 var _skill_slot_element: int = 0
 ## 本次发动技能的选牌来源（GConst.CardSource：手牌 / 盖牌区 / 场上基础效果牌）
 var _skill_card_source: int = GConst.CardSource.Hand
+## 手牌 + 盖牌混选时要求其中几张必须是盖牌（服务端给的 cover_need；0＝不要求，
+## 如【魔贯冲击】：1 张手牌攻击牌 + 1 张火系【充能】）
+var _skill_cover_need: int = 0
 ## 本次发动技能的参数选项（服务端在技能上给的 arg_choices：每项一个按钮，点它就用当前已选的牌/目标提交）
 var _skill_arg_choices: Array = []
 ## 参数选项按钮 [{按钮, 需牌, 需目标}]：选项可以要求先选够牌/目标，没选够就压灰
@@ -340,6 +348,9 @@ var _行动命令: Array = []
 const 冒险家角色号: int = 12
 ## 【冒险者天堂】的技能号：冒险家提炼前先问把星石给谁（对照 role_maoxian）
 const 冒险者天堂技能号: int = 1202
+## 这几个技能要从盖牌区选【充能】作代价：进入选牌界面时先把可选的最大张数全选上，
+## 玩家要改再自己点掉（雷光散射＝全选雷系、魔贯冲击＝1 张火系、多重射击＝1 张风系）
+const 自动选盖牌技能: Array[int] = [2601, 2602, 2603]
 
 
 func _ready() -> void:
@@ -394,7 +405,7 @@ func _ready() -> void:
 	_隐藏技能区()
 	# 手牌是按 HandArea 的实际宽度手排成一行的，尺寸一变（窗口缩放）就重排
 	HandArea.resized.connect(刷新手牌)
-	# 测试指令提示（测试用，挂在屏幕右下角；清单见 测试指令表）
+	# 测试指令提示（测试用，挂在屏幕左上角；清单见 测试指令表）
 	var 说明行: Array[String] = []
 	for 项: Array in 测试指令表:
 		说明行.append("%s %s" % [OS.get_keycode_string(int(项[0])), str(项[1])])
@@ -423,6 +434,7 @@ const 测试指令表: Array = [
 	[KEY_7, "随机填充双方战绩区星石"],
 	[KEY_8, "清空治疗"],
 	[KEY_9, "治疗/宝石拉满"],
+	[KEY_QUOTELEFT, "给自己发 4 张圣光"],
 ]
 
 
@@ -464,6 +476,9 @@ func _测试指令(键: int) -> void:
 			Logic.debug_key(GConst.DebugKey.CrossClear)
 		KEY_9:
 			Logic.debug_key(GConst.DebugKey.HealEnergy)
+		KEY_QUOTELEFT:
+			# `~`（数字 1 左边）：给自己发 4 张【圣光】
+			Logic.debug_key(GConst.DebugKey.GiveHolyLight)
 
 
 # ============================================================
@@ -763,20 +778,29 @@ const 卡牌视图预制: PackedScene = preload("res://scenes/prefabs/battlemobi
 ## 把这几张牌摊到屏幕中间给所有人看；连着来第二拨时先把上一拨收掉
 func _展示卡牌(卡号表: Array) -> void:
 	_收起展示卡牌()
+	var 视图表: Array[Control] = []
 	for cid: Variant in 卡号表:
 		var 卡: GCard = Data.get_card(int(cid))
 		if 卡 == null:
 			continue
 		var 视图: Control = 卡牌视图预制.instantiate()
-		# Card.tscn 的根节点本身是 0 尺寸的（手牌区是代码给尺寸的），
-		# 塞进 GridContainer 必须显式给尺寸，否则列宽被算成 0、卡图就不画了
+		# Card.tscn 的根节点本身是 0 尺寸的（手牌区是代码给尺寸的），得显式给尺寸才画得出来
 		视图.set_anchors_preset(Control.PRESET_TOP_LEFT)
 		视图.custom_minimum_size = 手牌尺寸
 		视图.size = 手牌尺寸
+		视图.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		ShowCardArea.add_child(视图)
 		# 「可用」传 true 才是正常亮度（false 会把整张牌置灰）；展示只是给人看，顺手关掉「可选」发光框
 		视图.call("设置卡牌", 卡, true)
 		(视图.get("canSelectBorder") as TextureRect).visible = false
+		视图表.append(视图)
+	# 排成一行并水平居中：位置够就摊开，牌多了就像手牌一样挤在一起（同一套间距算法），绝不换行
+	var 排布: Array = _单行间距与起点(视图表.size(), ShowCardArea.size.x, 手牌尺寸, 手牌最多重叠比例)
+	var 间距: float = float(排布[0])
+	var 起点: float = float(排布[1])
+	var 行y: float = (ShowCardArea.size.y - 手牌尺寸.y) * 0.5
+	for i: int in range(视图表.size()):
+		视图表[i].position = Vector2(起点 + 间距 * float(i), 行y)
 	await get_tree().create_timer(展示停留秒数).timeout
 	_收起展示卡牌()
 
@@ -1163,6 +1187,7 @@ func _on_command(data: Dictionary) -> void:
 	_skill_card_max = 0
 	_skill_card_rule = ""
 	_skill_card_source = GConst.CardSource.Hand
+	_skill_cover_need = 0
 	_skill_cards.clear()
 	_skill_targets.clear()
 	_selecting_cover = false
@@ -1178,6 +1203,8 @@ func _on_command(data: Dictionary) -> void:
 		# 允许「放弃行动」时服务端会额外下发一条 ACTION_NONE 命令（被挑衅 / 额外行动阶段）
 		_行动允许 = respond_id
 		_可放弃行动 = false
+		# 发动过「启动」技能后：本阶段禁止特殊行动（服务端在命令里标 no_special）
+		_行动禁特殊 = bool(cmd.get("no_special", false))
 		for c: Dictionary in cmds:
 			if int(c.get("respond_id", 0)) == GConst.ActionType.None:
 				_可放弃行动 = true
@@ -1229,6 +1256,7 @@ func _进入待选() -> void:
 	_弹窗标题 = ""
 	_mode = 0
 	_selecting_cover = false
+	_不可行动 = false
 	var respond_id: int = int(_pending.get("respond_id", 0))
 	var args: Array = _pending.get("args", [])
 	if _pending_type == GConst.Msg.Action:
@@ -1246,7 +1274,14 @@ func _进入待选() -> void:
 				_:
 					_指令提示("获得额外行动")
 		else:
-			_指令提示("轮到你行动了")
+			# 非额外行动阶段：技能栏没有可用技能、手牌也全部打不出去、且特殊行动也做不了 → 不可行动，
+			# 提示玩家点「确定」把手牌全弃掉、摸 4 张（服务端 Unactional）
+			_不可行动 = _行动允许 == GConst.ActionType.Any and _无可用技能() \
+					and _手里没有能用的牌() and not _可特殊行动()
+			if _不可行动:
+				_指令提示("你不可行动，点「确定」将手牌弃掉抽到 4 张牌。")
+			else:
+				_指令提示("轮到你行动了")
 	else:
 		match respond_id:
 			GConst.RespondType.ReplyAttack:
@@ -1255,9 +1290,15 @@ func _进入待选() -> void:
 				# 应战要指定「反击目标」（敌方、且不是原攻击者）
 				_need_players = 1
 				if _可应战():
-					_指令提示("打出同系斩应战 或 【圣光】抵挡，或取消放弃")
+					if _可圣光抵挡():
+						_指令提示("打出同系斩应战 或 【圣光】抵挡，或取消放弃")
+					else:
+						_指令提示("打出同系斩应战，或取消放弃")
 				else:
-					_指令提示("无法应战：出【圣光】抵挡，或取消放弃")
+					if _可圣光抵挡():
+						_指令提示("无法应战：出【圣光】抵挡，或取消放弃")
+					else:
+						_指令提示("无法应战：点「取消」放弃")
 			GConst.RespondType.Discard:
 				_mode = 2
 				_need_cards = int(args[2]) if args.size() > 2 else 1
@@ -1336,6 +1377,8 @@ func _进入技能询问() -> void:
 	_skill_card_max = maxi(_skill_ask_need_card, int(_pending.get("card_max", 0)))
 	_skill_card_rule = str(_pending.get("card_rule", ""))
 	_skill_card_source = _skill_ask_card_source
+	# 询问这条通道没有「手牌+盖牌混选」的需盖牌数（那是技能按钮才有的），清零免得串味
+	_skill_cover_need = 0
 	# 「目标上限随选牌数变化」与「逐张选牌条件」只用于发动技能（mode 4）；询问这条通道不认它们，清零免得串味
 	_skill_target_max_from_cards = 0
 	_skill_slot_skill = 0
@@ -1362,6 +1405,8 @@ func _进入技能询问() -> void:
 	_sel_cards.clear()
 	_sel_players.clear()
 	_重置治疗分配()
+	# 多重射击这类从盖牌区选【充能】作代价的询问：进来先按最大张数全选上，玩家要改再自己点
+	_自动选盖牌(_skill_ask_id)
 	_清空技能按钮()
 	# 只选一个参数、不用选牌选目标的询问（如【神之庇护】抵消几点）改用居中的参数选择窗：
 	# 在技能区摆一排按钮看着像在问「是否发动」，弹窗才说得清「在问什么、有哪些选择」
@@ -1558,13 +1603,14 @@ func _构建技能按钮(cmds: Array) -> void:
 		var 首张技能: int = int(c.get("card_slot_skill", 0))
 		var 次张系别: int = int(c.get("card_slot_element", 0))
 		var 参数选项: Array = c.get("arg_choices", [])
+		var 盖牌需数: int = int(c.get("cover_need", 0))
 		var go: Node = 技能预制.instantiate()
 		if go is Control:
 			(go as Control).custom_minimum_size = 技能尺寸
 		ChildrenSkillArea.add_child(go)
 		go.call("设置技能", 技能号)
 		go.connect("点击", _选择技能.bind(技能类型, 需牌, 需目标, 合法目标, 合法牌, 最多牌,
-			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go))
+			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go, 盖牌需数))
 		_技能按钮.append(go)
 		_显示技能区()
 
@@ -1580,6 +1626,9 @@ func _on_card_clicked(card_id: int) -> void:
 		if _need_cards > 0 and _sel_cards.size() >= _need_cards:
 			_sel_cards.clear()
 		_sel_cards.append(card_id)
+	# 「牌或人」型（如【魔眼】）：选了牌就取消已选的人（二选一）
+	if _模式牌或人():
+		_sel_players.clear()
 	# 换了牌，先前选中的目标可能不再合法（例如法术→攻击牌后队友不能再打），顺手清掉。
 	# 但「点头像分配」型指示器技能的目标由分配自己管（如【辉耀】进场就全员选中、【惩戒】点头像选），
 	# 不随牌变化，别在这里清掉（否则选完牌指示器就暗了）；
@@ -1632,6 +1681,10 @@ func _on_player_clicked(player_id: int) -> void:
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet:
 		_发送应答(GConst.RespondType.Bullet, [player_id], _sel_cards, [GConst.Reattack.Attack])
 		return
+	# 「牌或人」型（如【魔眼】）：选了人就取消已选的牌（二选一）
+	if _模式牌或人():
+		_sel_cards.clear()
+		刷新手牌()
 	if _sel_players.has(player_id):
 		_sel_players.erase(player_id)
 	elif _need_players > 1:
@@ -1710,6 +1763,9 @@ func _卡牌能点(card_id: int) -> bool:
 			GConst.CardSource.BasicEffect:
 				if not _是场上基础效果牌(card_id):
 					return false
+			GConst.CardSource.HandOrCover:
+				# 手牌 + 盖牌混选（如【魔贯冲击】）：两边都收，具体由白名单与 cover_need 约束
+				pass
 			_:
 				if _is_my_cover(card_id):
 					return false
@@ -1724,7 +1780,8 @@ func _卡牌能点(card_id: int) -> bool:
 
 ## 按选牌规则过滤可点牌（服务端给的 card_rule）：
 ## "same"＝只能选与已选牌同系的；"diff"＝只能选与已选牌互异系的；
-## "sameprop"＝只能选与已选牌同命格的（如【式神降临】）；""＝不限。
+## "sameprop"＝只能选与已选牌同命格的（如【式神降临】）；
+## "an_zhi"＝暗之障壁：所选牌须同属「法术 / 雷系」中的同一类（两类都属的牌不锁类别）；""＝不限。
 ## 服务端只做最终校验，这里先一步把不合规的牌置灰，免得玩家点了一堆却被判「操作无效」。
 func _符合选牌规则(card_id: int) -> bool:
 	# 已选中的牌随时能点掉（取消选择）；否则下面按「第 1 张 / 第 2 张」分的槽位条件会把已选的牌反手卡住
@@ -1742,6 +1799,9 @@ func _符合选牌规则(card_id: int) -> bool:
 	var 牌: GCard = Data.get_card(card_id)
 	if 牌 == null:
 		return true
+	# 暗之障壁（2904）：所选牌须同属「法术 / 雷系」中的同一类
+	if _skill_card_rule == "an_zhi":
+		return _暗之障壁可同组(_sel_cards, 牌)
 	for c: Variant in _sel_cards:
 		var 已选号: int = int(c)
 		# 跳过自己：一张牌与自己当然「同系」，不跳过就会被 diff 规则判成不合规，
@@ -1762,6 +1822,24 @@ func _符合选牌规则(card_id: int) -> bool:
 		if _skill_card_rule == "diff" and 同系:
 			return false
 	return true
+
+
+## 暗之障壁：所选牌必须同属「法术」或「雷系」中的同一类。
+## 先看已选牌 + 新牌能否被「法术」或「雷系」中的某一类整体覆盖（两类都属的牌两边都算、不锁类别）：
+## 只选了雷系法术牌时两类都还行；一旦选了纯雷系牌，就只剩雷系可选，纯法术牌随即置灰（反之亦然）。
+## 已选牌全是「两类都属」的牌时没有多数派，两类都仍可选，直到补入一张纯雷系 / 纯法术牌才定下类别。
+func _暗之障壁可同组(已选: Array, 牌: GCard) -> bool:
+	var 可法术: bool = 牌.is_magic()
+	var 可雷系: bool = 牌.element_enum() == GConst.CardElement.Thunder
+	for c: Variant in 已选:
+		var 已: GCard = Data.get_card(int(c))
+		if 已 == null:
+			continue
+		if not 已.is_magic():
+			可法术 = false
+		if 已.element_enum() != GConst.CardElement.Thunder:
+			可雷系 = false
+	return 可法术 or 可雷系
 
 
 ## 逐张牌的合法条件（服务端给的槽位规则：第 1 张须带某技能 / 第 2 张须为某系）。
@@ -1802,6 +1880,27 @@ func _可主动使用牌(card_id: int) -> bool:
 			return GConst.放行动作(GConst.ActionType.Magic, _行动允许)
 		_:
 			return false
+
+
+## 本次行动里技能栏有没有可用的技能（行动询问里第 1 项起就是技能；第 0 项是通用行动）
+func _无可用技能() -> bool:
+	for i: int in range(1, _行动命令.size()):
+		var c: Dictionary = _行动命令[i]
+		var 技能类型: int = int(c.get("respond_id", 0))
+		if not GConst.放行动作(技能类型, _行动允许):
+			continue
+		if (c.get("args", []) as Array).is_empty():
+			continue
+		return false
+	return true
+
+
+## 手里的牌是不是一张都打不出去（全部无法在行动阶段主动使用）
+func _手里没有能用的牌() -> bool:
+	for card: GCard in Data.hand_cards:
+		if card != null and _可主动使用牌(card.id):
+			return false
+	return true
 
 
 ## 仲裁者（14）审判满上限时，本回合只能发动【末日审判】：手牌与特殊行动都锁死。
@@ -1852,8 +1951,13 @@ func _可应战牌(card_id: int) -> bool:
 	return 牌.element_enum() == 攻击牌.element_enum() or 牌.element_enum() == GConst.CardElement.Darkness
 
 
-## 本次攻击能否用【圣光】抵挡（args[4] = can_light，有技能会让对方无法抵挡）
+## 本次攻击能否用【圣光】抵挡：
+##   args[4] = can_light（有技能会让本次攻击无法抵挡，如魔剑士【暗影抗拒】）；
+##   魔枪【黑暗束缚】（魔弹全禁角色）：始终不能用【圣光】格挡，这里也一并置灰（对照 role_moqiang 的 v_block）。
 func _可圣光抵挡() -> bool:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 我 != null and 魔弹全禁角色.has(我.role_id):
+		return false
 	var args: Array = _pending.get("args", [])
 	return int(args[4]) != 0 if args.size() > 4 else true
 
@@ -1906,6 +2010,10 @@ func _on_ok() -> void:
 		_发送行动(_pending_skill_type, _pending_skill_id, _sel_players, _sel_cards, _已选参数 if _先弹选项 else [])
 		return
 	if _pending_type == GConst.Msg.Action:
+		# 不可行动：确定＝把手牌全弃掉、摸 4 张
+		if _不可行动:
+			_发送行动(GConst.ActionType.Unactional, 0, [], [], [])
+			return
 		if _sel_cards.is_empty():
 			_指令提示("请先选择一张手牌")
 			return
@@ -2067,17 +2175,40 @@ func _进入特殊行动() -> void:
 		return
 	_mode = 5
 	_清空技能按钮()
-	var 战绩: GTeam = Data.team_of(我.color)
-	var 星石: int = 战绩.gem + 战绩.crystal
-	var 放得下: bool = 我.hand_cards_num + 3 <= 我.hand_cards_max
-	var 可提炼: bool = 星石 > 0 and (我.get_energy() < 我.energy_max \
-			or (我.role_id == 冒险家角色号 and _有队友可收星石()))
-	特殊行动窗.打开(放得下, 放得下 and 星石 >= 3, 可提炼)
+	var 可用: Array[bool] = _特殊行动可用()
+	特殊行动窗.打开(可用[0], 可用[1], 可用[2])
 	# 窗口自带标题和三个写着「购买/合成/提炼」的大按钮，战斗界面的提示条要收起来：
 	# 提示条就在窗口标题那一行上，不收就会两段文字叠在一起
 	_收起提示()
 	刷新选中面板()
 	_更新按键()
+
+
+## 特殊行动（购买 / 合成 / 提炼）此刻各自可不可用，返回 [购买, 合成, 提炼]。
+## 判定逐条对照原客户端 Role::normal / buy / synthetize / extract：
+##   购买 = 手牌放得下 3 张；合成 = 放得下且我方战绩区星石 ≥ 3；
+##   提炼 = 战绩区有星石，且自己（或冒险家【冒险者天堂】时任一有空的队友）还收得下
+func _特殊行动可用() -> Array[bool]:
+	var 结果: Array[bool] = [false, false, false]
+	# 本阶段不放行特殊行动（额外行动只放行攻击/法术），或发动过「启动」技能后禁特殊 → 全都不可用
+	if _行动禁特殊 or not GConst.放行动作(GConst.ActionType.Special, _行动允许):
+		return 结果
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 我 == null or 我.color == GConst.TEAM_NONE:
+		return 结果
+	var 战绩: GTeam = Data.team_of(我.color)
+	var 星石: int = 战绩.gem + 战绩.crystal
+	结果[0] = 我.hand_cards_num + 3 <= 我.hand_cards_max
+	结果[1] = 结果[0] and 星石 >= 3
+	结果[2] = 星石 > 0 and (我.get_energy() < 我.energy_max \
+			or (我.role_id == 冒险家角色号 and _有队友可收星石()))
+	return 结果
+
+
+## 此刻能不能做特殊行动（三种里有任意一种可用）
+func _可特殊行动() -> bool:
+	var 可用: Array[bool] = _特殊行动可用()
+	return 可用[0] or 可用[1] or 可用[2]
 
 
 ## 特殊行动窗口里选中了一种行动：先关窗，再进入「用哪些星石」那一层（或直接提交）
@@ -2352,6 +2483,9 @@ func _回到行动阶段() -> void:
 	_已选参数.clear()
 	_参数选择_技能 = false
 	_目标锁死 = false
+	# 退回行动阶段就不再选盖牌了：不关掉会把盖牌区一直亮着、挡住界面（如取消【雷光散射】）
+	_selecting_cover = false
+	_skill_cover_need = 0
 	_清空技能按钮()
 	if not _行动命令.is_empty():
 		_构建技能按钮(_行动命令)
@@ -2371,7 +2505,7 @@ func _回到行动阶段() -> void:
 func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: int, 合法目标: Array = [], 合法牌: Array = [],
 		最多牌: int = 0, 最多目标: int = 0, 目标上限减牌数: int = 0,
 		选牌来源: int = GConst.CardSource.Hand, 选牌规则: String = "",
-		首张技能: int = 0, 次张系别: int = 0, 参数选项: Array = [], 按钮: Node = null) -> void:
+		首张技能: int = 0, 次张系别: int = 0, 参数选项: Array = [], 按钮: Node = null, 盖牌需数: int = 0) -> void:
 	_mode = 4
 	_标记选中技能(按钮)
 	# 重新点技能按钮＝从头来一遍：先前为某技能弹出的效果选择窗一并关掉，免得留着上一轮的选项
@@ -2385,6 +2519,8 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	_skill_target_max = maxi(需目标, 最多目标)
 	_skill_target_max_from_cards = 目标上限减牌数
 	_skill_card_source = 选牌来源
+	# 手牌 + 盖牌混选（如【魔贯冲击】）：其中若干张必须是盖牌
+	_skill_cover_need = 盖牌需数
 	# 选牌规则随技能一起带过来（不能沿用「建技能按钮」时循环残留的那个，否则多技能角色会串味）
 	_skill_card_rule = 选牌规则
 	_skill_slot_skill = 首张技能
@@ -2402,8 +2538,12 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	_sel_cards.clear()
 	_sel_players.clear()
 	_重置治疗分配()
-	# 盖牌来源才让盖牌区亮起来；基础效果牌由玩家面板上的图标直接点
-	_selecting_cover = 选牌来源 == GConst.CardSource.Cover
+	# 盖牌来源才让盖牌区亮起来；手牌+盖牌混选（盖牌需数>0）也要亮；
+	# 基础效果牌由玩家面板上的图标直接点
+	_selecting_cover = 选牌来源 == GConst.CardSource.Cover \
+		or 选牌来源 == GConst.CardSource.HandOrCover or 盖牌需数 > 0
+	# 雷光散射 / 魔贯冲击这类要选盖牌作代价的技能：进来先按最大张数全选上，玩家要改再自己点
+	_自动选盖牌(技能号)
 	var 指示配置: Dictionary = GConst.技能指示器.get(技能号, {})
 	# 「自动选」的技能（【辉耀】自动选全体、【圣光祈愈】自动选自己）：不用点头像，
 	# 进场即把目标选中并画「N 治疗」
@@ -2464,10 +2604,25 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 			GConst.skill_name(技能号), _需选牌提示(需牌), _需选目标提示(需目标), _基础效果动作(技能号),
 		])
 	else:
+		# 技能按钮自带自定义选牌提示时用它（如【充能】的代价是「弃到 4 张牌」，说「从手牌中选 4 张」不准确）
+		var 选牌提示: String = _技能自定义选牌提示(技能号)
+		if 选牌提示.is_empty():
+			选牌提示 = _需选牌提示(需牌)
 		_指令提示("发动【%s】：%s%s点「确定」" % [
-			GConst.skill_name(技能号), _需选牌提示(需牌), _需选目标提示(需目标),
+			GConst.skill_name(技能号), 选牌提示, _需选目标提示(需目标),
 		])
 	_刷新交互()
+
+
+## 技能按钮自带的选牌提示（action_commands 里的 card_prompt，如【充能】的「弃到 4 张牌，」）：
+## 非空时替代默认的「从手牌中选 N 张」
+func _技能自定义选牌提示(技能号: int) -> String:
+	for i: int in range(1, _行动命令.size()):
+		var c: Dictionary = _行动命令[i]
+		var args: Array = c.get("args", [])
+		if not args.is_empty() and int(args[0]) == 技能号:
+			return str(c.get("card_prompt", ""))
+	return ""
 
 
 ## 「要选几张牌」的提示文案（含来源：手牌 / 盖牌 / 场上基础效果牌）
@@ -2860,6 +3015,8 @@ func _清空待选() -> void:
 	_skill_ask_need_target = 0
 	_skill_ask_card_source = 0
 	_selecting_cover = false
+	_不可行动 = false
+	_行动禁特殊 = false
 	_skill_options.clear()
 	_弹窗选项.clear()
 	_弹窗标题 = ""
@@ -2873,6 +3030,7 @@ func _清空待选() -> void:
 	_skill_slot_skill = 0
 	_skill_slot_element = 0
 	_skill_card_source = GConst.CardSource.Hand
+	_skill_cover_need = 0
 	_skill_arg_choices.clear()
 	_skill_ask_can_cancel = true
 	_本地询问 = false
@@ -3080,6 +3238,24 @@ func _is_my_cover(card_id: int) -> bool:
 	return false
 
 
+## 进入技能选牌界面时，若本技能在「自动选盖牌」名单里，就把盖牌区能选的最大张数先全选上
+## （玩家想少用几张，自己把多出来的点掉即可）
+func _自动选盖牌(技能号: int) -> void:
+	if not _selecting_cover or not 自动选盖牌技能.has(技能号):
+		return
+	# 能选几张：手牌+盖牌混选型看「需盖牌数」（如魔贯冲击＝1），纯盖牌型看点选上限（如雷光散射＝全部雷系）
+	var 上限: int = _skill_cover_need if _skill_cover_need > 0 else _skill_card_max
+	if 上限 <= 0:
+		return
+	for 牌: GCard in Data.cover_cards:
+		if 牌 == null:
+			continue
+		if _sel_cards.size() >= 上限:
+			break
+		if _卡牌能点(牌.id):
+			_sel_cards.append(牌.id)
+
+
 # ============================================================
 # 渲染：手牌 / 盖牌 / 玩家面板选中 / 按钮
 # ============================================================
@@ -3107,6 +3283,22 @@ func _on_基础牌点击(玩家id: int, 牌id: int) -> void:
 	_更新按键()
 
 
+## 单行排列的「相邻两张左边的距离（间距）」与「首张左边的 x（起点）」：
+## 位置够就贴着排（相邻空隙 0），一行放不下才把空隙压成负数（叠着放、最多重叠 最多重叠比例）。
+## 手牌区与展示卡牌区共用这一套算法
+func _单行间距与起点(张数: int, 可用宽: float, 尺寸: Vector2, 最多重叠比例: float) -> Array:
+	if 张数 <= 0:
+		return [尺寸.x, 0.0]
+	# 相邻两张之间的空隙：牌少时贴着排（0 是最好的），一行放不下才压成负数（叠着放）
+	var 空隙: float = 0.0
+	if 张数 > 1:
+		空隙 = clampf((可用宽 - 尺寸.x * float(张数)) / float(张数 - 1), -尺寸.x * 最多重叠比例, 0.0)
+	# 两牌「左边」的距离 = 牌宽 + 空隙
+	var 间距: float = 尺寸.x + 空隙
+	var 起点: float = (可用宽 - (尺寸.x * float(张数) + 空隙 * float(张数 - 1))) * 0.5
+	return [间距, 起点]
+
+
 ## 我的手牌：固定排成一行并水平居中；位置够就摊开，不够才压间距（压到负数会叠着放），绝不换行
 ## 每张牌按 _卡牌能点 单独判定：够格的亮起来，其余的置灰且点不动
 func 刷新手牌() -> void:
@@ -3115,15 +3307,9 @@ func 刷新手牌() -> void:
 	var 张数: int = Data.hand_cards.size()
 	if 张数 == 0:
 		return
-	var 可用宽: float = HandArea.size.x
-	# 相邻两张之间的空隙：牌少时贴着排（0 是最好的），一行放不下才压成负数（叠着放）
-	var 空隙: float = 0.0
-	if 张数 > 1:
-		空隙 = clampf((可用宽 - 手牌尺寸.x * float(张数)) / float(张数 - 1),
-			-手牌尺寸.x * 手牌最多重叠比例, 0.0)
-	# 两牌「左边」的距离 = 牌宽 + 空隙
-	var 间距: float = 手牌尺寸.x + 空隙
-	var 起点: float = (可用宽 - (手牌尺寸.x * float(张数) + 空隙 * float(张数 - 1))) * 0.5
+	var 排布: Array = _单行间距与起点(张数, HandArea.size.x, 手牌尺寸, 手牌最多重叠比例)
+	var 间距: float = float(排布[0])
+	var 起点: float = float(排布[1])
 	var 现在: int = Time.get_ticks_msec()
 	var 还在手: Array[int] = []
 	for i: int in range(张数):
@@ -3223,15 +3409,17 @@ func _加卡牌(父: Node, card: GCard, 尺寸: Vector2, 可用: bool, 可置灰
 	return go
 
 
-## 当前这次选牌是不是「弃牌」：应答式弃牌（手牌超限 / 被令弃牌），或技能询问的文案里提到弃。
-## 「可选」发光框据此改用红光；出牌 / 应战 / 选目标仍用默认绿光。
+## 当前这次选牌是不是「手牌 / 盖牌溢出、被迫弃牌」：只有这种才把「可选」发光框改成红光。
+## 技能代价等主动弃牌（暗之障壁 / 充盈 / 被令弃牌…）不算溢出，仍用默认绿光。
 func _正在弃牌() -> bool:
-	if _mode == 2:
-		var 应答号: int = int(_pending.get("respond_id", 0))
-		return 应答号 == GConst.RespondType.Discard or 应答号 == GConst.RespondType.DiscardCover
-	if _mode == 3:
-		return str(_pending.get("ask_text", "")).contains("弃")
-	return false
+	if _mode != 2:
+		return false
+	var 应答号: int = int(_pending.get("respond_id", 0))
+	if 应答号 != GConst.RespondType.Discard and 应答号 != GConst.RespondType.DiscardCover:
+		return false
+	# args = [目标, 原因, 张数]；只有溢出原因（CAUSE_OVERLOAD）才标红
+	var 参数: Array = _pending.get("args", [])
+	return 参数.size() > 1 and int(参数[1]) == GConst.CAUSE_OVERLOAD
 
 
 ## 玩家面板：选中的目标染黄；当前可选的目标保持常色并亮起「可选中」光圈；
@@ -3252,15 +3440,37 @@ func 刷新选中面板() -> void:
 	_刷新头像提示()
 
 
+## 当前正在操作的技能号（发动技能 mode 4 / 技能询问 mode 3），没有则 -1
+func _当前技能号() -> int:
+	if _mode == 4:
+		return _pending_skill_id
+	if _mode == 3:
+		return _skill_ask_id
+	return -1
+
+
+## 「目标随牌」配置（技能指示器）：已选牌数达到该值时，才需要（且才允许）选 1 名目标
+## （如【雷光散射】选超过 1 张雷系【充能】时才指定额外受伤的那名对手）。返回 0＝本技能没配这条规则
+func _目标随牌阈值() -> int:
+	var 技能号: int = _当前技能号()
+	if 技能号 < 0:
+		return 0
+	return int(GConst.技能指示器.get(技能号, {}).get("目标随牌", 0))
+
+
+## 当前界面是不是「选牌或选人」型（技能指示器「牌或人」，如【魔眼】）。
+## 只在「发动技能」（mode 4）这条通道生效 —— 【魔眼】后续那次「把手牌作【充能】」的询问
+## 是同一个技能号，但走 mode 3，不能再套这套「点牌 / 点人 二选一」。
+## 点牌取消已选的人、点人取消已选的牌，必须选其一才能确定
+func _模式牌或人() -> bool:
+	return _mode == 4 and bool(_指示器配置().get("牌或人", false))
+
+
 ## 当前技能的「展示型」指示器配置（配了「文案」才算）：选中目标后把一句话画到他们头像上。
 ## 分配型由 _刷新治疗分配 自己画，不走这里。发动技能（mode 4）与技能询问（mode 3）两条通道都认。
 ## 「选项提示」型的技能按弹窗里选定的效果取对应那份子配置（如【百鬼夜行】展示 / 不展示各一套）
 func _头像提示配置() -> Dictionary:
-	var 技能号: int = -1
-	if _mode == 4:
-		技能号 = _pending_skill_id
-	elif _mode == 3:
-		技能号 = _skill_ask_id
+	var 技能号: int = _当前技能号()
 	if 技能号 < 0:
 		return {}
 	var 配置: Dictionary = GConst.技能指示器.get(技能号, {})
@@ -3314,6 +3524,10 @@ func _刷新头像提示() -> void:
 	var 动态提示: Dictionary = _魔弹头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _念弹头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _雷光散射头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _魔眼头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
 	for 旧: int in _动态提示过的头像:
 		if not 动态提示.has(旧):
@@ -3408,6 +3622,37 @@ func _念弹头像提示() -> Dictionary:
 	return out
 
 
+## 魔弓【雷光散射】的指示器（现算，写不进静态表 —— 要画在「所有敌方」而不是选中的目标身上）：
+## 每名对手各 1 点法术伤害；已选雷系【充能】超过 1 张时，被指定的那名对手改为受「已选张数」点
+func _雷光散射头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_雷光散射:
+		return out
+	var 张数: int = _sel_cards.size()
+	var 指定: int = int(_sel_players[0]) if not _sel_players.is_empty() else -1
+	for 面板: 战斗玩家面板 in _面板列表:
+		if 面板.ID < 0:
+			continue
+		# 只画在合法目标（敌方）身上；服务端的合法目标白名单写在技能声明里
+		if not (_skill_targets.is_empty() or _skill_targets.has(面板.ID)):
+			continue
+		out[面板.ID] = "%d 法术伤害" % (张数 if (面板.ID == 指定 and 张数 > 1) else 1)
+	return out
+
+
+## 魔弓【魔眼】的指示器（现算，只在发动它那次 mode 4 的界面画）：
+## 点别人＝他弃 1 张牌，点自己＝自己摸 3 张牌（也可以不点人、改点一张手牌弃掉）
+func _魔眼头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_魔眼:
+		return out
+	for 面板: 战斗玩家面板 in _面板列表:
+		if 面板.ID < 0:
+			continue
+		out[面板.ID] = "摸 3 张牌" if 面板.ID == Logic.my_player_id else "弃 1 张牌"
+	return out
+
+
 ## 我的【斗气】数（格斗专有指示物，槽 0；对应角色表的「0:斗气:6」）
 func _斗气数() -> int:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
@@ -3431,6 +3676,10 @@ func _目标数合法() -> bool:
 	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：当前这批就是全部目标，不再按数量校验
 	if _目标锁死:
 		return true
+	# 「目标随牌」的技能（如【雷光散射】）：够阈值必须正好 1 名目标，不够则一名也不选
+	var 随牌阈值: int = _目标随牌阈值()
+	if 随牌阈值 > 0:
+		return _sel_players.size() == (1 if _sel_cards.size() >= 随牌阈值 else 0)
 	if _skill_need_target <= 0:
 		return _sel_players.is_empty()
 	if _sel_players.size() < _skill_need_target:
@@ -3515,6 +3764,13 @@ func _玩家可选(player_id: int) -> bool:
 	if _mode == 4:
 		if bool(_分配配置().get("仅队友", false)) and not _是队友(player_id):
 			return false
+		# 「牌或人」型（如【魔眼】）：点人或点牌二选一，头像始终可点（按白名单）
+		if _模式牌或人():
+			return _skill_targets.is_empty() or _skill_targets.has(player_id)
+		# 「目标随牌」的技能（如【雷光散射】）：已选牌数够阈值时才点亮目标（选 1 张时不选目标）
+		var 随牌阈值: int = _目标随牌阈值()
+		if 随牌阈值 > 0:
+			return _sel_cards.size() >= 随牌阈值 and (_skill_targets.is_empty() or _skill_targets.has(player_id))
 		if _skill_need_target <= 0 and _skill_target_max <= 0:
 			return false
 		# 参数选项带了各自的目标白名单时，按它们的并集点亮（如【神圣领域】两种用法打不同的人）
@@ -3564,6 +3820,9 @@ func _确定不可用() -> bool:
 	if 参数选择窗.visible:
 		return true
 	if _mode == 1:
+		# 不可行动：手牌要全弃掉换 4 张，只等玩家点「确定」
+		if _不可行动:
+			return false
 		# 【圣盾】：目标只能点人头像来定（点谁就把盾贴在谁面前，自己也不例外，点自己头像即可）。
 		# 不给目标提交时服务端默认就是对自己施放，按「确定」很容易误把自己贴成目标 —— 所以直接灰掉
 		if _选中是圣盾牌():
@@ -3599,6 +3858,21 @@ func _确定不可用() -> bool:
 		# 有参数选项时「确定」始终不可用，由选项按钮提交（「先弹选项」型是弹窗里选、再按「确定」，除外）
 		if not _skill_arg_choices.is_empty() and not _先弹选项:
 			return true
+		# 「牌或人」型（如【魔眼】）：选 1 张手牌 或 选 1 名角色，二选一，必须选其一才能确定
+		if _模式牌或人():
+			return not ((_sel_cards.size() == 1 and _sel_players.is_empty())
+				or (_sel_cards.is_empty() and _sel_players.size() == 1))
+		# 手牌 + 盖牌混选型（如【魔贯冲击】：1 张攻击牌 + 1 张火系【充能】）：
+		# 分别校验手牌数与盖牌数，不能只数总张数（否则选两张手牌也能按「确定」，提交后才被服务端拒）
+		if _skill_cover_need > 0:
+			var 盖选中: int = 0
+			for c: Variant in _sel_cards:
+				if _is_my_cover(int(c)):
+					盖选中 += 1
+			var 手选中: int = _sel_cards.size() - 盖选中
+			if 手选中 < _skill_need_card - _skill_cover_need or 盖选中 < _skill_cover_need:
+				return true
+			return not _目标数合法()
 		# 需牌是最少张数（如【暗影流星】要弃 2 张、【欺诈】可弃 2~3 张），选够才让点「确定」
 		# need_card==0 表示「一张都不选也可以」（如【灵魂镜像】最多弃 3 张、也可不弃），
 		# 点选上限另由 card_max 管，故这里直接放行
@@ -3639,7 +3913,7 @@ func _模式可放弃行动() -> bool:
 ## 本阶段不放行特殊行动时不show：额外行动阶段只放行它声明的种类（如【特殊加工】给的是
 ## 「攻击/法术行动」，见 GConst.放行动作），被【挑衅】时也只放行攻击，都不该出现特殊行动按钮
 func _按钮是特殊行动() -> bool:
-	return _mode == 1 and GConst.放行动作(GConst.ActionType.Special, _行动允许)
+	return _mode == 1 and not _行动禁特殊 and GConst.放行动作(GConst.ActionType.Special, _行动允许)
 
 
 ## 场景 BtnSpecila 在魔弹传递的询问里仍是「放弃」（沿用旧用法；应战时的放弃已挪给「取消」）

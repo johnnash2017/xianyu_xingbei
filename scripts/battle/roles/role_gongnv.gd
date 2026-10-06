@@ -21,6 +21,13 @@ func available_skills() -> Array:
 			"cards": 闪光牌})
 	if player.crystal > 0 or player.gem > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": JU_JI, "need_card": 0, "need_target": 1})
+	# 精准射击：只有手中带 301 特技的攻击牌可作发动牌，直接发起一次主动攻击
+	# （攻击宣告后 p_timeline_1 依据预选直接结算「强制命中但伤害 -1」）
+	var 精准牌: Array[int] = hand_ids_where(
+		func(_cid: int, c: GCard) -> bool: return c.is_attack() and c.has_skill_id(JING_ZHUN_SHE_JI))
+	if not 精准牌.is_empty():
+		out.append({"type": GConst.ActionType.AttackSkill, "id": JING_ZHUN_SHE_JI, "need_card": 1, "need_target": 1,
+			"cards": 精准牌, "targets": enemy_ids()})
 	return out
 
 
@@ -64,21 +71,83 @@ func _shan_dian_jian(ctx: Dictionary) -> void:
 	notice_skill(SHAN_DIAN_JIAN, [int(ctx.get("dst", -1))])
 
 
-## 精准射击：攻击牌带此特技时可选，强制命中但伤害 -1
+## 精准射击：攻击牌带此特技时可选，强制命中但伤害 -1。
+## 技能栏按钮发起（预选命中）→ 直接结算；普通出牌攻击 → 原版弹窗询问
 func _jing_zhun_she_ji(ctx: Dictionary) -> int:
+	var 预选: int = _预选攻击技能
+	_预选攻击技能 = 0
 	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if card == null or not card.has_skill_id(JING_ZHUN_SHE_JI):
+		return SUCCESS
+	if 预选 == JING_ZHUN_SHE_JI:
+		_应用精准射击(ctx)
 		return SUCCESS
 	if not engine.has_reply():
 		询问(player.id, JING_ZHUN_SHE_JI, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
+	_应用精准射击(ctx)
+	return SUCCESS
+
+
+## 精准射击的结算：本次攻击强制命中，伤害 -1
+func _应用精准射击(ctx: Dictionary) -> void:
 	notice_skill(JING_ZHUN_SHE_JI, [int(ctx.get("dst", -1))])
 	ctx["hit_rate"] = GConst.HitRate.NoMiss
 	var harm: Dictionary = ctx["harm"]
 	harm["point"] = int(harm["point"]) - 1
-	return SUCCESS
+
+
+## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，p_timeline_1 用完即清
+var _预选攻击技能: int = 0
+
+
+# ============================================================
+# 精准射击（301，攻击技能）：选一张带 301 特技的攻击牌 + 一名对手，直接发起一次主动攻击
+# ============================================================
+func v_attack_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != JING_ZHUN_SHE_JI:
+		return GConst.GE_INVALID_ACTION
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	# 所选牌必须是手里的攻击牌且带 301 特技
+	var card: GCard = Data.get_card(cid)
+	if card == null or not card.is_attack() or not card.has_skill_id(JING_ZHUN_SHE_JI):
+		return GConst.GE_INVALID_ACTION
+	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
+	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_PLAYERID
+	return GConst.GE_SUCCESS
+
+
+## 精准射击：打出所选攻击牌发起一次主动攻击；攻击宣告后 p_timeline_1 依据预选直接结算
+func p_attack_skill(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	_预选攻击技能 = JING_ZHUN_SHE_JI
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
+	}
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
+	})
+	return URGENT
 
 
 ## 【贯穿射击】的推进阶段（0＝本次未命中还没处理 / STEP_DONE＝本次已处理）。

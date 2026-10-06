@@ -163,11 +163,12 @@ func _收牌人称号(收牌人id: int) -> String:
 ## 不用每个调用点手写 —— 自动取技能表「提示」列的第 序号 条，并把 {src}=本技能发起者（自己）、
 ## {n}=要交/弃的张数、{dst}=收牌人 填好（收牌人id 只在「我交给别人」的场合给）。
 ## 同一个技能有多次询问且要不同文案时，靠 序号 区分；表里没配就退回默认文案（「是否发动【X】？」）
-func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = []) -> void:
+func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = [], 张数: int = -1) -> void:
 	# 提示里的 {n}：need_card 为 0 表示「可弃可不弃」，这时取上限（card_max）才说得通，
-	# 否则文案会变成「弃 0 张」
+	# 否则文案会变成「弃 0 张」。需要「可弃可不弃、但文案要显式给出张数」时用 张数 覆盖。
+	var n: int = 张数 if 张数 >= 0 else (need_card if need_card > 0 else card_max)
 	engine.ask_skill(pid, skill_id, need_card, need_target, card_source, options, card_max, card_rule, cards, can_cancel,
-		提示(skill_id, 序号, need_card if need_card > 0 else card_max, 收牌人id), targets)
+		提示(skill_id, 序号, n, 收牌人id), targets)
 
 
 ## 读取技能询问回复：返回 true=发动、false=放弃

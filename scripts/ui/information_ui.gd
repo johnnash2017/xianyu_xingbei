@@ -26,8 +26,12 @@ func _ready() -> void:
 const 正文前缀: String = "　　"
 ## 详情窗技能正文的字号（与 InfomationUI.tscn 的 SkillText normal_font_size 一致）
 const 详情窗正文字号: int = 18
-## 选角提示框技能正文的字号（与 SkillTooltip.tscn 的 normal_font_size 一致）
-const 提示框正文字号: int = 36
+## 选角提示框技能正文的字号（原 36 的一半）
+const 提示框正文字号: int = 18
+## 选角提示框里角色名的字号（原 72 的一半）
+const 提示框姓名行字号: int = 36
+## 选角提示框里「普通技 / 独有技 / 专属技 / 必杀技」这些分段标题的字号（原 54 的一半）
+const 提示框标题字号: int = 27
 
 
 ## 给一段拼好的技能说明上色并排版：
@@ -37,17 +41,21 @@ const 提示框正文字号: int = 36
 ## 行与行之间的间距不在这里处理：改由 RichTextLabel 的 paragraph_separation 主题常量统一给
 ## （见 InfomationUI.tscn 的 SkillText 与 SkillTooltip.tscn）。不再往文本里插空行——空行本身会占掉
 ## 一整行高，反而没法把间距压小（这正是之前怎么调都不变的原因）。
-## 详情窗和选角提示都用它，省得两处各写一遍。正文字号 0＝除上色外不做排版
-static func 上色(技能文本: String, 正文字号: int = 0) -> String:
-	var 标题字号: int = int(正文字号 * 1.5)
+## 详情窗和选角提示都用它，省得两处各写一遍。正文字号 0＝除上色外不做排版；
+## 标题字号 >0 时用它替代默认的「正文字号 × 1.5」来放大一级标题（选角提示框据此把分段标题做小）
+static func 上色(技能文本: String, 正文字号: int = 0, 标题字号: int = 0) -> String:
+	var 用标题字号: int = 标题字号 if 标题字号 > 0 else int(正文字号 * 1.5)
 	var 行列表: Array[String] = []
 	for 行文本: String in 技能文本.split("\n"):
 		if 行文本.begins_with(正文前缀):
-			# 正文：去掉「　　」前缀，改用 [indent] 整体缩进
-			行列表.append("[indent]%s[/indent]" % _染类型(行文本.substr(正文前缀.length())))
-		elif 标题字号 > 0:
+			# 正文：去掉「　　」前缀，改用 [indent] 整体缩进；正文字号 >0 时整行套 [font_size]
+			var 正文行: String = "[indent]%s[/indent]" % _染类型(行文本.substr(正文前缀.length()))
+			if 正文字号 > 0:
+				正文行 = "[font_size=%d]%s[/font_size]" % [正文字号, 正文行]
+			行列表.append(正文行)
+		elif 用标题字号 > 0:
 			# 一级标题（普通技 / 独有技 / 专属技 / 必杀技）：放大字号
-			行列表.append("[font_size=%d]%s[/font_size]" % [标题字号, 行文本])
+			行列表.append("[font_size=%d]%s[/font_size]" % [用标题字号, 行文本])
 		else:
 			行列表.append(_染类型(行文本))
 	return "\n".join(行列表)

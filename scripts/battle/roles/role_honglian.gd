@@ -1,7 +1,7 @@
 extends BattleRole
 ## 红莲骑士（roleID 28）—— 移植自服务端 role/HongLian.cpp
 ## 形态：tap（血印形态）+ 血印指示物（上限 2）；cross_max = 4
-## 技能：腥红圣约（2801，主动攻击宣告后可选：治疗未满且本回合未用 → +1 治疗）、
+## 技能：腥红圣约（2801，攻击技能：治疗未满且本回合未用 → 选牌攻击时 +1 治疗）、
 ##       腥红信仰（2802，被动：被他人伤害且可治疗时，放弃治疗结算）、
 ##       血腥祷言（2803，启动：把治疗转移给其他角色，转移一次 +1 血印，自身承受等量法术伤害）、
 ##       杀戮盛宴（2806，主动攻击命中后可选：耗 1 血印，伤害 +2，自身受 4 点法术伤害）、
@@ -19,6 +19,15 @@ const XING_HONG_SHI_ZI: int = 2809
 
 var used_xing_hong_sheng_yue: bool = false
 
+## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
+## p_timeline_1 据此结算腥红圣约，用完即清
+var _预选攻击技能: int = 0
+
+## 【腥红圣约（普通出牌攻击询问）】的推进阶段：0＝还没开始 / T1_ASK＝在问是否发动，收尾清回 0。
+## 用自有变量推进而不是引擎 step：钩子轮次开始会把 step 清零，而这条流程要跨一次询问。
+var _timeline_1_step: int = 0
+const T1_ASK: int = 1
+
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
@@ -35,6 +44,12 @@ func available_skills() -> Array:
 	if player.cross_num > 0:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_XING_DAO_YAN,
 			"need_card": 0, "need_target": 1, "targets": ally_ids()})
+	# 【腥红圣约】为攻击技能（回合限定）：选一张攻击牌 + 一名对手发起攻击，攻击前 +1 治疗
+	if not used_xing_hong_sheng_yue and player.cross_num < player.cross_max:
+		var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
+		if not 攻击牌.is_empty():
+			out.append({"type": GConst.ActionType.AttackSkill, "id": XING_HONG_SHENG_YUE, "need_card": 1, "need_target": 1,
+				"cards": 攻击牌, "targets": enemy_ids()})
 	return out
 
 
@@ -115,30 +130,95 @@ func _分配点数(dsts: Array, args: Array) -> int:
 
 
 # ============================================================
-# 攻击宣告后：腥红圣约（主动攻击可选，治疗未满上限时 +1 治疗）
+# 攻击技能（技能栏）：腥红圣约（选一张攻击牌 + 一名对手发起攻击，攻击前 +1 治疗）
+# ============================================================
+func v_attack_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != XING_HONG_SHENG_YUE:
+		return GConst.GE_INVALID_ACTION
+	# 回合限定：治疗未达上限且本回合未发动过
+	if used_xing_hong_sheng_yue or player.cross_num >= player.cross_max:
+		return GConst.GE_INVALID_ACTION
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
+	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_PLAYERID
+	return GConst.GE_SUCCESS
+
+
+## 腥红圣约：打出所选攻击牌发起一次主动攻击。
+## 攻击宣告后 p_timeline_1 会依据 _预选攻击技能 直接结算 +1 治疗（不再弹窗询问）
+func p_attack_skill(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	_预选攻击技能 = XING_HONG_SHENG_YUE
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
+	}
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
+	})
+	return URGENT
+
+
+# ============================================================
+# 攻击宣告后：腥红圣约（治疗未满上限且本回合未发动时 +1 治疗）
+# 两条路径：
+#   · 技能栏按钮（_预选攻击技能 == 2801）：直接结算，不再弹窗询问；
+#   · 普通出牌攻击（_预选攻击技能 == 0）：恢复原版弹窗询问。
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
+	if _timeline_1_step == 0:
+		var 预选: int = _预选攻击技能
+		_预选攻击技能 = 0
+		if 预选 == XING_HONG_SHENG_YUE:
+			# 技能栏按钮：直接结算（不再弹窗询问）
+			_发动腥红圣约(ctx)
+			return SUCCESS
+		# 普通出牌攻击：恢复原版前提前置条件（治疗未满上限且本回合未发动），满足才问
+		if player.cross_num >= player.cross_max or used_xing_hong_sheng_yue:
+			return SUCCESS
+		_timeline_1_step = T1_ASK
+	if _timeline_1_step == T1_ASK:
+		if not engine.has_reply():
+			询问(player.id, XING_HONG_SHENG_YUE, 0, 0)
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		_timeline_1_step = 0
+		var args: Array = r.get("args", [])
+		if args.is_empty() or int(args[0]) != 1:
+			return SUCCESS
+		_发动腥红圣约(ctx)
+	return SUCCESS
+
+
+## 腥红圣约：治疗未满上限且本回合未发动时，+1 治疗并把本回合标记为已发动
+func _发动腥红圣约(ctx: Dictionary) -> void:
 	if player.cross_num >= player.cross_max or used_xing_hong_sheng_yue:
-		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, XING_HONG_SHENG_YUE, 0, 0)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
-	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
-		return SUCCESS
+		return
 	notice_skill(XING_HONG_SHENG_YUE, [int(ctx.get("dst", -1))])
 	施加治疗(player.id, 1)
 	used_xing_hong_sheng_yue = true
 	engine._broadcast_game()
-	return SUCCESS
 
 
 # ============================================================

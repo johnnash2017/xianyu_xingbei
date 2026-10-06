@@ -127,6 +127,7 @@ func _apply_dou_shen(action: Dictionary) -> void:
 		var chosen: Array = _pick_cards(action.get("card_ids", []), 弃牌数)
 		engine.take_from_hand(player.id, chosen)
 		engine.to_discard(chosen)
+		engine._log_discard(player.id, chosen)
 	engine._broadcast_game()
 
 

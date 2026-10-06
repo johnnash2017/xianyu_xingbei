@@ -440,8 +440,12 @@ func p_cover_change(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("diao_started", false)):
 		ctx["diao_started"] = true
+		# 说明：只有被移除的【茧】是法术牌时才能展示并发动【凋零】，其余牌不入队
 		for c: Variant in ctx.get("cards", []):
-			_diao_queue.append(int(c))
+			var cid: int = int(c)
+			var card: GCard = Data.get_card(cid)
+			if card != null and card.is_magic():
+				_diao_queue.append(cid)
 	return _diao_ling_process()
 
 

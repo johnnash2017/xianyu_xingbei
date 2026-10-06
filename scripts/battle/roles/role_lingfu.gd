@@ -18,8 +18,6 @@ var _beng_jie: bool = false
 ## 百鬼夜行：是否展示了火系妖力（对除指定 2 名角色外的所有角色造成伤害）
 var _expose: bool = false
 var _expose_dsts: Array[int] = []
-## 灵符－风行：当前正被要求弃牌的目标下标
-var _feng_idx: int = 0
 ## 本次主动攻击是否已发动【百鬼夜行】（引擎在钩子返回 URGENT 后会重入钩子，用于避免重复触发）
 var _bai_gui_done: bool = false
 ## 【百鬼夜行】的推进阶段：0＝还没问、1＝已选好效果（等灵力崩解）、2＝该结算了。
@@ -95,7 +93,6 @@ func _feng_xing(action: Dictionary) -> int:
 		var r: int = _nian_zhou()
 		if r == WAIT:
 			return WAIT
-		_feng_idx = 0
 		step = 2
 	if step == 2:
 		return _feng_targets_discard(dsts)
@@ -180,32 +177,13 @@ func _ling_li_beng_jie() -> int:
 
 
 ## 风行：按玩家点选顺序，逐个强制弃 1 张手牌
+## 直接复用引擎通用的「按要求弃牌」状态：手牌为空的目标会被自动跳过（want=0）
 func _feng_targets_discard(dsts: Array) -> int:
-	while _feng_idx < dsts.size():
-		var tid: int = int(dsts[_feng_idx])
-		var tp: BattlePlayer = engine.p(tid)
-		if tp == null or tp.hand_cards.is_empty():
-			_feng_idx += 1
-			continue
-		if not engine.has_reply():
-			engine.ask_respond(tid, GConst.RespondType.Discard, [tid, FENG_XING, 1], [tid])
-			engine.wait_for(tid, GConst.Msg.Respond)
-			return WAIT
-		var r: Dictionary = engine.take_reply()
-		var chosen: Array = []
-		for c: Variant in r.get("card_ids", []):
-			if chosen.size() < 1 and tp.has_hand_card(int(c)):
-				chosen.append(int(c))
-		if chosen.is_empty():
-			chosen.append(tp.hand_cards[0])
-		engine.take_from_hand(tid, chosen)
-		engine.to_discard(chosen)
-		# 只是「让别人弃牌」，不亮牌：只写一条「弃掉 N 张牌」的日志（客户端据此播弃牌特效）
-		engine._log_discard(tid, chosen)
-		engine._broadcast_game()
-		_feng_idx += 1
+	# 引擎状态栈是后进先出 → 逆序压入，实际按点选顺序依次结算
+	for i: int in range(dsts.size() - 1, -1, -1):
+		engine.push(BattleEngine.SRequestDiscard.new(int(dsts[i]), 1, 0, FENG_XING))
 	step = STEP_DONE
-	return SUCCESS
+	return URGENT
 
 
 # ============================================================

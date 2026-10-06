@@ -127,22 +127,20 @@ grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(345.5, 95)
 
-[node name="ShowCardArea" type="GridContainer" parent="Root" unique_id=1585281306]
+[node name="ShowCardArea" type="Control" parent="Root" unique_id=1585281306]
 layout_mode = 0
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = 0.0
-offset_top = 0.0
-offset_right = 0.0
-offset_bottom = 0.0
+offset_left = -390.0
+offset_top = -96.0
+offset_right = 390.0
+offset_bottom = 96.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/h_separation = 4
-theme_override_constants/v_separation = 4
-columns = 6
+mouse_filter = 2
 
 [node name="SkillArea" type="TextureRect" parent="Root" unique_id=519657714]
 layout_mode = 0
@@ -623,10 +621,10 @@ anchor_left = 0.0
 anchor_top = 1.0
 anchor_right = 0.0
 anchor_bottom = 1.0
-offset_left = 0.0
-offset_top = -450.0
-offset_right = 691.0
-offset_bottom = -250.0
+offset_left = 90.0
+offset_top = -485.0
+offset_right = 781.0
+offset_bottom = -285.0
 grow_horizontal = 1
 grow_vertical = 2
 pivot_offset = Vector2(345.5, 100)
@@ -1656,24 +1654,20 @@ autowrap_mode = 3
 
 [node name="测试提示" type="Label" parent="Root"]
 layout_mode = 1
-anchors_preset = 3
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -248.0
-offset_top = -150.0
-offset_right = -8.0
-offset_bottom = -24.0
-grow_horizontal = 0
-grow_vertical = 0
+anchors_preset = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 248.0
+offset_bottom = 240.0
+grow_horizontal = 1
+grow_vertical = 1
 mouse_filter = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 0
-vertical_alignment = 2
+vertical_alignment = 0
 
 [connection signal="pressed" from="Root/BtnHide" to="." method="onBtnHideClick"]
 [connection signal="pressed" from="Root/BtnHide/GiveUpBoard/Button/Agree" to="." method="onBtnGiveUpClick"]

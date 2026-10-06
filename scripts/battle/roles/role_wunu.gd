@@ -35,8 +35,8 @@ func available_skills() -> Array:
 		# 逆流任意 2 张手牌都可弃，无牌类限制，故不下发 cards
 		out.append({"type": GConst.ActionType.MagicSkill, "id": NI_LIU, "need_card": 2, "need_target": 0})
 	var 悲鸣牌: Array[int] = hand_ids_with_skill(XUE_ZHI_BEI_MING)
-	if not 悲鸣牌.is_empty():
-		# 血之悲鸣只能弃带【血之悲鸣】特技的牌（v_magic_skill 校验同一条）；
+	if player.tap and not 悲鸣牌.is_empty():
+		# 血之悲鸣仅【流血形态】（横置）下可发动；只能弃带【血之悲鸣】特技的牌（v_magic_skill 校验同一条）；
 		# v_magic_skill 允许 args[0] 取 1~3，执行体对目标与自己各造成该点数的法术伤害，
 		# 故用 arg_choices 让玩家在选好牌与目标后选定伤害点数
 		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_BEI_MING, "need_card": 1, "need_target": 1,
@@ -285,6 +285,8 @@ func v_magic_skill(action: Dictionary) -> int:
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	if aid == XUE_ZHI_BEI_MING:
+		if not player.tap:
+			return GConst.GE_INVALID_ACTION
 		if cards.is_empty():
 			return GConst.GE_INVALID_CARDID
 		var cid: int = int(cards[0])

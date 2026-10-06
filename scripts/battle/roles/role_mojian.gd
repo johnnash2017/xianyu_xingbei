@@ -6,7 +6,7 @@ extends BattleRole
 ##       暗影之力（903，被动：仅[暗影形态]下，自身发动的攻击伤害 +1）、
 ##       暗影抗拒（904，被动：你的行动阶段始终不能使用法术牌，含【圣光】—— 由 v_allow_action / v_block 覆写实现）、
 ##       暗影流星（905，法术：仅[暗影形态]下，弃 2 张法术牌[展示]，对目标 2 点法术伤害）、
-##       黄泉震颤（906，响应：主动攻击前耗 1 宝石，本次攻击对方无法应战；
+##       黄泉震颤（906，攻击技能：选一张攻击牌+一名对手直接发起攻击，耗 1 宝石，本次攻击对方无法应战；
 ##                 若命中则手牌补到上限（9061，多则弃、少则摸））
 
 const XIU_LUO_LIAN_ZHAN: int = 901
@@ -32,6 +32,12 @@ func available_skills() -> Array:
 	if player.tap and _magic_card_count() >= 2:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": AN_YING_LIU_XING, "need_card": 2, "need_target": 1,
 			"cards": magic_hand_ids()})
+	# 黄泉震颤（906，攻击技能）：宝石 ≥ 1 且本回合未发动过时，
+	# 选一张攻击牌 + 一名对手，直接完成一次带「无法应战」的主动攻击
+	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
+	if not 攻击牌.is_empty() and player.gem >= 1 and not used_hei_an_zhen_chan:
+		out.append({"type": GConst.ActionType.AttackSkill, "id": HEI_AN_ZHEN_CHAN, "need_card": 1, "need_target": 1,
+			"cards": 攻击牌, "targets": enemy_ids()})
 	return out
 
 
@@ -173,6 +179,59 @@ func p_special_skill(_action: Dictionary) -> int:
 
 
 # ============================================================
+# 黄泉震颤（906，攻击技能）：选一张攻击牌 + 一名对手，直接发起一次主动攻击
+# ============================================================
+## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
+## p_timeline_1 据此直接结算黄泉震颤，用完即清
+var _预选攻击技能: int = 0
+
+
+func v_attack_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != HEI_AN_ZHEN_CHAN:
+		return GConst.GE_INVALID_ACTION
+	# 技能自身条件：宝石 ≥ 1 且本回合未发动过
+	if player.gem <= 0 or used_hei_an_zhen_chan:
+		return GConst.GE_INVALID_ACTION
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
+	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_PLAYERID
+	return GConst.GE_SUCCESS
+
+
+## 黄泉震颤：打出所选攻击牌发起一次主动攻击。
+## 回合结束由引擎的技能行动入栈（与普通技能一致），这里只补这次攻击本身；
+## 攻击宣告后 p_timeline_1 会依据 _预选攻击技能 直接结算（不再弹窗询问）
+func p_attack_skill(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	_预选攻击技能 = HEI_AN_ZHEN_CHAN
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
+	}
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
+	})
+	return URGENT
+
+
+# ============================================================
 # 主动攻击前（timeline_1）：黄泉震颤（906）
 # ============================================================
 ## 【黄泉震颤】的推进阶段（0＝还没问 / 处理完本次询问后清回 0）。
@@ -182,11 +241,30 @@ func p_special_skill(_action: Dictionary) -> int:
 var _timeline_1_step: int = 0
 
 
+## 结算【黄泉震颤】：耗 1 宝石，本次攻击对方无法应战，并置本回合/本次发动标记
+func _huang_quan_zhen_chan(ctx: Dictionary) -> void:
+	notice_skill(HEI_AN_ZHEN_CHAN, [int(ctx.get("dst", -1))])
+	player.set_gem(player.gem - 1)
+	used_hei_an_zhen_chan = true
+	using_hei_an_zhen_chan = true
+	ctx["hit_rate"] = GConst.HitRate.NoReattack
+	engine._broadcast_game()
+
+
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
+	# 本次主动攻击是否由技能栏【黄泉震颤】发起（预选命中）：是则直接结算，不再弹窗询问
+	var 预选: int = _预选攻击技能
+	_预选攻击技能 = 0
+	if 预选 == HEI_AN_ZHEN_CHAN:
+		if player.gem <= 0 or used_hei_an_zhen_chan:
+			return SUCCESS
+		_huang_quan_zhen_chan(ctx)
+		return SUCCESS
+	# 普通出牌攻击（预选为 0）：询问是否发动【黄泉震颤】
 	if player.gem <= 0 or used_hei_an_zhen_chan:
 		return SUCCESS
 	if _timeline_1_step >= STEP_DONE:
@@ -197,12 +275,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	_timeline_1_step = 0
 	if not take_skill_reply():
 		return SUCCESS
-	notice_skill(HEI_AN_ZHEN_CHAN, [int(ctx.get("dst", -1))])
-	player.set_gem(player.gem - 1)
-	used_hei_an_zhen_chan = true
-	using_hei_an_zhen_chan = true
-	ctx["hit_rate"] = GConst.HitRate.NoReattack
-	engine._broadcast_game()
+	_huang_quan_zhen_chan(ctx)
 	return SUCCESS
 
 

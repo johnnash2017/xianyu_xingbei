@@ -63,6 +63,9 @@ var 行动允许: int = GConst.ActionType.Any
 var 行动可放弃: bool = false
 ## 本次行动阶段是不是「额外行动」（额外行动阶段允许放弃，与「被挑衅」那种可放弃的普通阶段区分开）
 var 行动额外: bool = false
+## 本次行动阶段是否禁止「特殊行动」（购买/合成/提炼）。发动过「启动」技能后，行动阶段照旧继续，
+## 但只能再攻击 / 法术，不能再走特殊行动（启动技与特殊行动互斥）
+var 行动禁特殊: bool = false
 ## 测试指令「跳过自己回合」（战斗界面按 8）：记下是谁按的，行动阶段轮到他直接收尾（-1 = 无）
 var 测试跳过回合: int = -1
 ## 角色的 p_after_turn_end 要求「接下来的回合还是他」时写这里（月女【苍白之月】），
@@ -771,8 +774,8 @@ func broadcast(msg_type: int, data: Dictionary) -> void:
 ## 行动阶段询问（附带角色可选技能）
 ## can_give_up：本阶段是否允许「放弃行动」（对照原版 Coder::askForAction 的 canGiveUp 分支，
 ## 允许时额外下发一条 ACTION_NONE 命令，客户端据此显示「放弃行动」）
-func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bool = false) -> void:
-	var cmds: Array = action_commands(pid, action_type, can_give_up, extra)
+func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bool = false, no_special: bool = false) -> void:
+	var cmds: Array = action_commands(pid, action_type, can_give_up, extra, no_special)
 	_最后行动命令[pid] = cmds
 	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Action, "commands": cmds})
 
@@ -784,7 +787,7 @@ func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bo
 func _刷新技能可用(pid: int) -> void:
 	if _await_id != pid or _await_kind != GConst.Msg.Action:
 		return
-	var cmds: Array = action_commands(pid, 行动允许, 行动可放弃, 行动额外)
+	var cmds: Array = action_commands(pid, 行动允许, 行动可放弃, 行动额外, 行动禁特殊)
 	if str(cmds) == str(_最后行动命令.get(pid, [])):
 		return
 	_最后行动命令[pid] = cmds
@@ -804,12 +807,14 @@ func _角色技能挂起(pid: int) -> bool:
 
 
 ## 行动询问的命令表：第 0 项是通用行动（允许放弃时再补一项「放弃」），其余是当前手牌下该角色能放的技能
-func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool = false) -> Array:
+func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool = false, no_special: bool = false) -> Array:
 	var cmds: Array = [{
 		"respond_id": action_type, "src_id": pid,
 		"dst_ids": [], "card_ids": [], "args": [],
 		# 额外行动阶段：客户端据此把提示写成「获得额外攻击行动 / 额外法术行动 / 额外行动」
 		"is_extra": extra,
+		# 禁止特殊行动（发动过「启动」技能后）：客户端据此把「特殊行动」按钮收掉
+		"no_special": no_special,
 	}]
 	if can_give_up:
 		cmds.append({
@@ -846,6 +851,9 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				# card_rule 非空时客户端限制可点牌（same＝必须同系 / diff＝必须互异系 /
 				# magic＝只能法术牌 / sameprop＝必须与已选牌同命格）
 				"card_rule": str(sk.get("card_rule", "")),
+				# card_prompt 非空时客户端用它替代默认的「从手牌中选 N 张」发动提示
+				# （如【充能】的发动代价是「弃到 4 张牌」，说「选 4 张」不准确）
+				"card_prompt": str(sk.get("card_prompt", "")),
 				# 目标数上限随已选牌数变化的减数（0＝不适用）：上限 = 已选牌数 - 该值，至少 1 名
 				# （如【圣洁法典】＝弃牌数 - 2；玩家取消一张牌后上限随之变小）
 				"target_max_from_cards": int(sk.get("target_max_from_cards", 0)),
@@ -853,6 +861,8 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				# （如元素师独有法术：第 1 张是带该技能的发动牌，第 2 张是加伤的该系牌）
 				"card_slot_skill": int(sk.get("card_slot_skill", 0)),
 				"card_slot_element": int(sk.get("card_slot_element", 0)),
+				# 手牌 + 盖牌混选时，要求其中几张必须是盖牌（如【魔贯冲击】：1 张攻击牌 + 1 张火系【充能】）
+				"cover_need": int(sk.get("cover_need", 0)),
 				# args = [技能号, 最少选牌, 最少选目标, 最多选目标, 选牌来源]
 				"args": [int(sk.get("id", 0)), int(sk.get("need_card", 0)), int(sk.get("need_target", 0)),
 					int(sk.get("target_max", 0)), int(sk.get("card_source", GConst.CardSource.Hand))],
@@ -1156,6 +1166,18 @@ func debug_key(pid: int, kind: int) -> void:
 			var p2: BattlePlayer = players[pid2]
 			p2.add_cross_num(p2.cross_max)
 			p2.set_gem(p2.energy_max)
+	elif kind == GConst.DebugKey.GiveHolyLight:
+		# 测试用（战斗界面按 ~）：给自己发 4 张【圣光】（挑 4 张不同牌号的，免得手里出现重复牌号）
+		var 候选: Array[int] = []
+		for cid: int in range(GConst.CARDSUM):
+			if p0.has_hand_card(cid):
+				continue
+			var c: GCard = Data.get_card(cid)
+			if c != null and c.card_name_enum() == GConst.CardName.HolyLight:
+				候选.append(cid)
+		候选.shuffle()
+		for i: int in range(mini(4, 候选.size())):
+			_发一张到手里(p0, 候选[i])
 	# 手牌 / 能量 / 治疗一变，这一回合能放的技能也可能跟着变（如【神圣祈福】要 2 张法术牌）：
 	# 快照里会顺带重算一次技能可用性，变了才重发询问
 	_broadcast_game()
@@ -1496,13 +1518,16 @@ class SActionPhase:
 	var 可放弃: bool = false
 	## 本阶段是不是「额外行动」（额外行动声明的 allowAction + 允许放弃）
 	var 额外: bool = false
+	## 本阶段是否禁止特殊行动（发动过「启动」技能后：只能再攻击 / 法术）
+	var 禁特殊: bool = false
 	## 玩家挂机超时：本阶段已作废，直接收尾（tick 里置位，不替他出牌，也不宣告「无法行动」换手牌）
 	var 跳过: bool = false
 
-	func _init(allow: int = GConst.ActionType.Any, can_give_up: bool = false, extra: bool = false) -> void:
+	func _init(allow: int = GConst.ActionType.Any, can_give_up: bool = false, extra: bool = false, no_special: bool = false) -> void:
 		允许 = allow
 		可放弃 = can_give_up
 		额外 = extra
+		禁特殊 = no_special
 
 	func handle(e: BattleEngine) -> int:
 		# 挂机超时：把这名玩家的行动阶段直接跳过，轮到下家
@@ -1528,11 +1553,12 @@ class SActionPhase:
 		e.行动允许 = 允许
 		e.行动可放弃 = 可放弃
 		e.行动额外 = 额外
+		e.行动禁特殊 = 禁特殊
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
 			var at: int = int(r.get("action_type", GConst.ActionType.None))
 			return e.resolve_action(at, r)
-		e.ask_action(e.current_id, 允许, 可放弃, 额外)
+		e.ask_action(e.current_id, 允许, 可放弃, 额外, 禁特殊)
 		e.wait_for(e.current_id, GConst.Msg.Action)
 		return BattleEngine.WAIT
 
@@ -2276,6 +2302,9 @@ func resolve_action(action_type: int, data: Dictionary) -> int:
 	var 总闸: int = cur.v_allow_action(action_type, data.get("args", []), 行动允许, 行动可放弃) if cur != null else GConst.GE_SUCCESS
 	if 总闸 != GConst.GE_SUCCESS:
 		return _reject_action(cur)
+	# 发动过「启动」技能后本阶段禁止特殊行动（购买/合成/提炼）：客户端已把按钮收掉，这里兜底驳回
+	if 行动禁特殊 and (action_type == GConst.ActionType.Special or action_type == GConst.ActionType.SpecialSkill):
+		return _reject_action(cur)
 	match action_type:
 		GConst.ActionType.None:
 			push(STurnEnd.new())
@@ -2308,27 +2337,30 @@ func _进入技能行动(cur: BattlePlayer, kind: String, data: Dictionary) -> v
 	var 技能号: int = int(data.get("action_id", 0))
 	var 启动: bool = 技能号 > 0 and cur != null and cur.role != null and cur.role.is_free_skill(技能号)
 	if 启动:
-		push(SActionPhase.new(行动允许, 行动可放弃, 行动额外))
+		# 「启动」技能不消耗本回合行动，发动后行动阶段照旧继续；但只能再攻击 / 法术，
+		# 不能再走特殊行动（启动技与特殊行动互斥）
+		push(SActionPhase.new(行动允许, 行动可放弃, 行动额外, true))
 	else:
 		push(STurnEnd.new())
 	push(SkillRun.new(kind, data))
 
 
+## 无法行动：把手里的牌全部弃掉（亮出牌面 + 弃牌动画）再摸 4 张。不消耗本回合行动，
+## 换完手牌重新进入行动阶段让玩家拿新牌继续行动。
+## 客户端在「技能栏没可用技能、手牌全打不出去、特殊行动也做不了」时提示玩家点「确定」触发
 func _do_unactional(cur: BattlePlayer) -> int:
-	push(STurnEnd.new())
-	if cur.hand_cards.is_empty():
-		set_morale(cur.color, 0)
-		_broadcast_game()
-		_check_game_over()
-		return CONTINUE
+	# 不结束回合：换完手牌重新进入行动阶段
+	push(SActionPhase.new())
 	var old: Array = cur.hand_cards.duplicate()
-	var new_cards: Array[int] = deck.draw(old.size())
-	cur.hand_cards.clear()
-	cur.add_hand_cards(new_cards)
-	to_discard(old)
-	broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Show, "src_id": cur.id, "dst_id": cur.id, "card_ids": old, "is_real": true})
+	if not old.is_empty():
+		take_from_hand(cur.id, old)
+		to_discard(old)
+		_log_discard(cur.id, old)
+		# 把弃掉的牌亮出来给所有人看
+		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Show, "src_id": cur.id, "dst_id": cur.id, "card_ids": old, "is_real": true})
+	draw(cur.id, 4)
 	_broadcast_game()
-	push_show_hand(cur.id, old, true)
+	# 摸 4 张一般不会超上限，但手牌上限小于 4 的角色仍要照常结算爆牌
 	push(SHandOverflow.new())
 	return CONTINUE
 

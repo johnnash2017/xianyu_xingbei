@@ -59,6 +59,28 @@ func _cover_card_of(ids: Array) -> int:
 	return -1
 
 
+## 行动阶段可发动的技能：天使之魂 / 恶魔之魂
+##（用一张手牌攻击牌发起主动攻击，并把 1 张【剑魂】从盖牌区移除弃置作为代价）。
+## 形态由当前能量单双决定，一次只会出对应的那一个按钮；对照原版只要盖牌区还有【剑魂】，
+## 同一回合的每一次主动攻击都可以再发动（受剑魂数量限制），故这里不按 used_ 标记收口
+func available_skills() -> Array:
+	var out: Array = []
+	var form: int = _soul_form()
+	if form == 0 or player.cover_cards.is_empty():
+		return out
+	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
+	var 目标: Array[int] = enemy_ids()
+	if 攻击牌.is_empty() or 目标.is_empty():
+		return out
+	if form == 1:
+		out.append({"type": GConst.ActionType.AttackSkill, "id": TIAN_SHI_ZHI_HUN, "need_card": 1, "need_target": 1,
+			"cards": 攻击牌, "targets": 目标})
+	elif form == 2:
+		out.append({"type": GConst.ActionType.AttackSkill, "id": E_MO_ZHI_HUN, "need_card": 1, "need_target": 1,
+			"cards": 攻击牌, "targets": 目标})
+	return out
+
+
 ## 剑气斩的可选目标：除「本次攻击目标」外的所有角色（对照原客户端 playerArea->enableAll + disablePlayerItem(本次目标)）
 func _可选目标(本次目标: int) -> Array:
 	var out: Array = []
@@ -85,16 +107,102 @@ func _超时自动目标(本次目标: int) -> int:
 # ============================================================
 # 主动攻击宣告前：天使之魂 / 恶魔之魂（移除 1 张【剑魂】）
 # ============================================================
-## 【天使之魂 / 恶魔之魂】的推进阶段（0＝还没开始 / TIAN_SHI_ZHI_HUN 或 E_MO_ZHI_HUN＝已定形态、等回复）。
+## 本次主动攻击预选的「天使之魂 / 恶魔之魂」技能号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
+## p_timeline_1 据此判断本次攻击是否由技能栏按钮发起（是则直接置 used 标记，不再弹窗），用完即清
+var _预选攻击技能: int = 0
+
+## 普通出牌攻击的询问流程推进阶段（0＝还没开始 / TIAN_SHI_ZHI_HUN 或 E_MO_ZHI_HUN＝已定形态、等回复）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
 ## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
 var _timeline_1_step: int = 0
 
 
+# ============================================================
+# 天使之魂 / 恶魔之魂（攻击技能）：选一张【剑魂】（盖牌区）+ 一名对手，发起一次主动攻击
+# ============================================================
+func v_attack_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	var aid: int = int(action.get("action_id", 0))
+	if aid != TIAN_SHI_ZHI_HUN and aid != E_MO_ZHI_HUN:
+		return GConst.GE_INVALID_ACTION
+	# 形态必须与技能匹配（能量奇数＝天使之魂 / 偶数＝恶魔之魂）；对照原版不做「本回合已发动」限制
+	var form: int = _soul_form()
+	if aid == TIAN_SHI_ZHI_HUN:
+		if form != 1:
+			return GConst.GE_INVALID_ACTION
+	elif form != 2:
+		return GConst.GE_INVALID_ACTION
+	# 代价：盖牌区必须有【剑魂】可移除
+	if player.cover_cards.is_empty():
+		return GConst.GE_INVALID_ACTION
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	# 攻击牌来自手牌：通用攻击校验（含持有该牌、目标不同队、被挑衅限制）
+	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_PLAYERID
+	return GConst.GE_SUCCESS
+
+
+## 天使之魂 / 恶魔之魂：打出所选手牌攻击牌发起一次主动攻击，并把 1 张【剑魂】从盖牌区移除弃置作为代价。
+## 攻击宣告后 p_timeline_1 依据 _预选攻击技能 直接置 used 标记（不再弹窗询问）
+func p_attack_skill(action: Dictionary) -> int:
+	var aid: int = int(action.get("action_id", 0))
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	# 代价：【剑魂】只存在于盖牌区且彼此等价，直接取第一张
+	var 剑魂: int = int(player.cover_cards[0])
+	_预选攻击技能 = aid
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
+	}
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
+	# 攻击牌从手牌打出
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
+	# 【剑魂】作为代价从盖牌区移除并弃置
+	engine.to_discard([剑魂])
+	engine.remove_cover(player.id, [剑魂], player.id, aid)
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
+	})
+	return URGENT
+
+
+# ============================================================
+# 主动攻击宣告后：天使之魂 / 恶魔之魂
+# (A) 技能栏按钮发起（_预选攻击技能 命中 1905/1906）：代价已在 p_attack_skill 付掉，这里只置 used 标记；
+# (B) 普通出牌攻击（_预选攻击技能 == 0）：按 _soul_form() 弹窗询问是否发动，并从盖牌区选 1 张【剑魂】作代价
+# ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
+	var 预选: int = _预选攻击技能
+	_预选攻击技能 = 0
+	# (A) 技能栏按钮发起：直接置 used 标记，不再弹窗
+	if 预选 == TIAN_SHI_ZHI_HUN or 预选 == E_MO_ZHI_HUN:
+		if not bool(ctx.get("is_active", false)):
+			return SUCCESS
+		if 预选 == TIAN_SHI_ZHI_HUN:
+			used_tian_shi_zhi_hun = true
+			notice_skill(TIAN_SHI_ZHI_HUN, [int(ctx.get("dst", -1))])
+		else:
+			used_e_mo_zhi_hun = true
+			notice_skill(E_MO_ZHI_HUN, [int(ctx.get("dst", -1))])
+		engine._broadcast_game()
+		return SUCCESS
+	# (B) 普通出牌攻击：恢复原版询问流程
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	if player.cover_count() == 0:

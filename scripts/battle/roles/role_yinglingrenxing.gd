@@ -99,7 +99,8 @@ func v_special_skill(action: Dictionary) -> int:
 	if player.gem < 1:
 		return GConst.GE_INVALID_ACTION
 	var args: Array = action.get("args", [])
-	if args.is_empty() or int(args[0]) < 0 or int(args[0]) > TOKEN_MAX:
+	# 对照原版 FuWenGaiZaoToken 的超时分支：没给重排值（超时）按 1 处理，发动照旧成立
+	if not args.is_empty() and (int(args[0]) < 0 or int(args[0]) > TOKEN_MAX):
 		return GConst.GE_INVALID_ARGUMENT
 	return GConst.GE_SUCCESS
 
@@ -114,7 +115,8 @@ func p_special_skill(action: Dictionary) -> int:
 ## 符文改造：消耗 1 宝石转为蓄势迸发形态，手牌上限 +2 并摸 2 张牌，再按所选值重排【战纹】/【魔纹】
 func _apply_fu_wen_gai_zao(action: Dictionary) -> void:
 	var args: Array = action.get("args", [])
-	var num: int = int(args[0])
+	# 对照原版：重排值缺省（超时）时按 1 处理
+	var num: int = int(args[0]) if not args.is_empty() else 1
 	notice_skill(FU_WEN_GAI_ZAO, [player.id])
 	player.boot_skill_used = true
 	player.set_gem(player.gem - 1)
@@ -165,7 +167,8 @@ func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 弃 X 张同系牌（X≥2）：上限放到手牌数，并让客户端只让同系牌可点
 		# 额外翻转的【战纹】数做成选项按钮：value = 1 + Y（Y=0 表示不额外翻转）
-		var 可额外: int = maxi(_zhan_wen() - 1, 0)
+		# 额外翻转（说明：仅【蓄势迸发形态】（横置）下才可额外翻转 Y 个【战纹】）
+		var 可额外: int = maxi(_zhan_wen() - 1, 0) if player.tap else 0
 		var 选项: Array = []
 		for y: int in range(0, 可额外 + 1):
 			var 名: String = "翻转 1 个【战纹】" if y == 0 else "翻转 1 个【战纹】，并额外翻转 %d 个（伤害 +%d）" % [y, y]
@@ -245,7 +248,8 @@ func _nu_huo_mo_wen(ctx: Dictionary) -> int:
 		var 选项: Array = [
 			{"value": CHOICE_NU_HUO_YA_ZHI, "label": "怒火压制：翻转 1 个【战纹】为【魔纹】"},
 		]
-		var 可额外: int = maxi(mini(_mo_wen() - 1, TOKEN_MAX - _zhan_wen() - 1), 0)
+		# 额外翻转（说明：仅【蓄势迸发形态】（横置）下才可额外翻转 Y 个【魔纹】）
+		var 可额外: int = maxi(mini(_mo_wen() - 1, TOKEN_MAX - _zhan_wen() - 1), 0) if player.tap else 0
 		for y: int in range(0, 可额外 + 1):
 			var 名: String = "魔纹融合" if y == 0 else "魔纹融合（额外翻转 %d 个【魔纹】，伤害 +%d）" % [y, y]
 			选项.append({"value": CHOICE_MO_WEN_RONG_HE + y, "label": 名})

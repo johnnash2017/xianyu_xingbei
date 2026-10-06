@@ -1,8 +1,8 @@
 extends BattleRole
 ## 勇者（roleID 21）—— 移植自服务端 role/YongZhe.cpp
 ## 技能：挑衅（专属法术 2101：移除 1 怒气，将【挑衅】放到目标对手面前，自己 +1 知性）、
-##       怒吼（响应 2103：主动攻击前移除 1 怒气，本次伤害 +2；未命中则 +1 知性）、
-##       明镜止水（响应 2104：主动攻击前移除 4 知性，本次攻击对方无法应战）、
+##       怒吼（攻击技能 2103：移除 1 怒气，本次主动攻击伤害 +2；未命中则 +1 知性）、
+##       明镜止水（攻击技能 2104：知性满 4 时清零，本次主动攻击对方无法应战）、
 ##       禁断之力（必杀响应 2102：主动攻击命中/未命中后，能量 ×1，弃掉所有手牌）、
 ##       精疲力竭（被动 2106：发动禁断之力后强制横置，额外 +1 攻击行动、手牌上限恒定为 4）、
 ##       死斗（响应 2105：每当你承受法术伤害时，宝石 ×1，怒气 +3）
@@ -40,6 +40,15 @@ func available_skills() -> Array:
 	var out: Array = []
 	if _nu_qi() > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAO_XIN, "need_card": 0, "need_target": 1})
+	# 怒吼 / 明镜止水：同在「攻击前①」，各出一个按钮；发动其中一个后会再问是否一并发动另一个
+	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
+	if not 攻击牌.is_empty():
+		if _nu_qi() >= 1:
+			out.append({"type": GConst.ActionType.AttackSkill, "id": NU_HOU, "need_card": 1, "need_target": 1,
+				"cards": 攻击牌, "targets": enemy_ids()})
+		if _zhi_xing() == TOKEN_MAX:
+			out.append({"type": GConst.ActionType.AttackSkill, "id": MING_JING_ZHI_SHUI, "need_card": 1, "need_target": 1,
+				"cards": 攻击牌, "targets": enemy_ids()})
 	return out
 
 
@@ -97,13 +106,21 @@ func p_boot(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 主动攻击宣告后：怒吼 → 明镜止水
+# 主动攻击宣告后：怒吼 / 明镜止水
+# 两条路径：
+#   · 技能栏按钮（_预选攻击技能 命中 2103/2104）：直接结算预选的那个，再问一次是否一并发动另一个（T1_ASK_OTHER）；
+#   · 普通出牌攻击（_预选攻击技能 == 0）：恢复原版询问链，先问怒吼、再问明镜止水（T1_ASK_NU_HOU → T1_ASK_MING）。
+# 用自有变量推进而不是引擎 step：钩子轮次开始会把 step 清零，而这条流程要跨若干次询问。
 # ============================================================
-## 【怒吼 / 明镜止水】的推进阶段（0＝还没开始 / NU_HOU＝在问怒吼 / MING_JING_ZHI_SHUI＝在问明镜止水）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，用完即清
+var _预选攻击技能: int = 0
+## 本次攻击已经发动的那个技能号（0＝普通出牌攻击，用于区分两条路径并判断按钮路径的"另一个"是哪个）
+var _本次已发动: int = 0
+## 推进阶段：0＝还没开始；普通出牌攻击走 T1_ASK_NU_HOU → T1_ASK_MING；技能栏按钮走 T1_ASK_OTHER。收尾清回 0
 var _timeline_1_step: int = 0
+const T1_ASK_NU_HOU: int = 1  # 普通出牌攻击：在问怒吼
+const T1_ASK_MING: int = 2     # 普通出牌攻击：在问明镜止水
+const T1_ASK_OTHER: int = 3    # 技能栏按钮：在问「另一个」是否一并发动
 
 
 func p_timeline_1(ctx: Dictionary) -> int:
@@ -111,25 +128,116 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if _timeline_1_step >= STEP_DONE:
-		return SUCCESS
 	if _timeline_1_step == 0:
-		_timeline_1_step = NU_HOU
-	if _timeline_1_step == NU_HOU:
-		var r: int = _nu_hou(ctx)
+		_本次已发动 = _预选攻击技能
+		_预选攻击技能 = 0
+		if _本次已发动 == 0:
+			# 普通出牌攻击：恢复原版询问链（先问怒吼、再问明镜止水）
+			_timeline_1_step = T1_ASK_NU_HOU
+		else:
+			# 技能栏按钮：直接结算预选的那个技能，再问另一个是否一并发动
+			if _本次已发动 == NU_HOU:
+				_发动怒吼(ctx)
+			else:
+				_发动明镜止水(ctx)
+			_timeline_1_step = T1_ASK_OTHER
+	# 普通出牌攻击：先问怒吼
+	if _timeline_1_step == T1_ASK_NU_HOU:
+		var r: int = _询问怒吼(ctx)
 		if r == WAIT:
 			return WAIT
-		_timeline_1_step = MING_JING_ZHI_SHUI
-	if _timeline_1_step == MING_JING_ZHI_SHUI:
-		var r2: int = _ming_jing_zhi_shui(ctx)
+		_timeline_1_step = T1_ASK_MING
+	# 普通出牌攻击：再问明镜止水
+	if _timeline_1_step == T1_ASK_MING:
+		var r2: int = _询问明镜止水(ctx)
 		if r2 == WAIT:
 			return WAIT
+		_timeline_1_step = 0
+		return SUCCESS
+	# 技能栏按钮：问「另一个」
+	if _timeline_1_step == T1_ASK_OTHER:
+		# 另一个技能仍在可发动条件内时，问一次是否一并发动
+		# （对照原实现：怒吼与明镜止水可以先后连发，只是一次攻击里最后一个发动的决定攻击属性）
+		var 另一个: int = MING_JING_ZHI_SHUI if _本次已发动 == NU_HOU else NU_HOU
+		if (另一个 == NU_HOU and _nu_qi() >= 1) or (另一个 == MING_JING_ZHI_SHUI and _zhi_xing() == TOKEN_MAX):
+			if not engine.has_reply():
+				询问(player.id, 另一个, 0, 0)
+				return WAIT
+			if take_skill_reply():
+				if 另一个 == NU_HOU:
+					_发动怒吼(ctx)
+				else:
+					_发动明镜止水(ctx)
 		_timeline_1_step = 0
 	return SUCCESS
 
 
-## 怒吼：移除 1 怒气，本次攻击伤害 +2
-func _nu_hou(ctx: Dictionary) -> int:
+# ============================================================
+# 攻击技能（技能栏）：怒吼 / 明镜止水
+# 选一张攻击牌 + 一名对手，直接发起一次带加成的主动攻击
+# ============================================================
+func v_attack_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	var aid: int = int(action.get("action_id", 0))
+	if aid != NU_HOU and aid != MING_JING_ZHI_SHUI:
+		return GConst.GE_INVALID_ACTION
+	# 技能自身条件：怒吼要求至少 1 点怒气（要移除 1 点）；明镜止水要求知性恰好满 4 点（要清零）
+	if aid == NU_HOU and _nu_qi() < 1:
+		return GConst.GE_INVALID_ACTION
+	if aid == MING_JING_ZHI_SHUI and _zhi_xing() != TOKEN_MAX:
+		return GConst.GE_INVALID_ACTION
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
+	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_PLAYERID
+	return GConst.GE_SUCCESS
+
+
+## 怒吼 / 明镜止水：打出所选攻击牌发起一次主动攻击。
+## 攻击宣告后 p_timeline_1 会依据 _预选攻击技能 直接结算对应加成（不再弹窗询问）
+func p_attack_skill(action: Dictionary) -> int:
+	var aid: int = int(action.get("action_id", 0))
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	_预选攻击技能 = aid
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
+	}
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
+	})
+	return URGENT
+
+
+## 怒吼（直接结算）：移除 1 怒气，本次攻击伤害 +2（未命中补正见 _nu_hou_miss）
+func _发动怒吼(ctx: Dictionary) -> void:
+	if _nu_qi() <= 0:
+		return
+	notice_skill(NU_HOU, [int(ctx.get("dst", -1))])
+	_set_nu_qi(_nu_qi() - 1)
+	using_NuHou = true
+	var harm: Dictionary = ctx.get("harm", {})
+	harm["point"] = int(harm.get("point", 0)) + 2
+	engine._broadcast_game()
+
+
+## 怒吼（原版询问）：普通出牌攻击时弹窗询问是否发动
+func _询问怒吼(ctx: Dictionary) -> int:
 	if _nu_qi() <= 0:
 		return SUCCESS
 	if not engine.has_reply():
@@ -137,17 +245,22 @@ func _nu_hou(ctx: Dictionary) -> int:
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
-	notice_skill(NU_HOU, [int(ctx.get("dst", -1))])
-	_set_nu_qi(_nu_qi() - 1)
-	using_NuHou = true
-	var harm: Dictionary = ctx.get("harm", {})
-	harm["point"] = int(harm.get("point", 0)) + 2
-	engine._broadcast_game()
+	_发动怒吼(ctx)
 	return SUCCESS
 
 
-## 明镜止水：移除 4 知性，本次攻击对方无法应战
-func _ming_jing_zhi_shui(ctx: Dictionary) -> int:
+## 明镜止水（直接结算）：知性满 4 时清零，本次攻击对方无法应战
+func _发动明镜止水(ctx: Dictionary) -> void:
+	if _zhi_xing() != TOKEN_MAX:
+		return
+	notice_skill(MING_JING_ZHI_SHUI, [int(ctx.get("dst", -1))])
+	_set_zhi_xing(0)
+	ctx["hit_rate"] = GConst.HitRate.NoReattack
+	engine._broadcast_game()
+
+
+## 明镜止水（原版询问）：普通出牌攻击时弹窗询问是否发动
+func _询问明镜止水(ctx: Dictionary) -> int:
 	if _zhi_xing() != TOKEN_MAX:
 		return SUCCESS
 	if not engine.has_reply():
@@ -155,10 +268,7 @@ func _ming_jing_zhi_shui(ctx: Dictionary) -> int:
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
-	notice_skill(MING_JING_ZHI_SHUI, [int(ctx.get("dst", -1))])
-	_set_zhi_xing(0)
-	ctx["hit_rate"] = GConst.HitRate.NoReattack
-	engine._broadcast_game()
+	_发动明镜止水(ctx)
 	return SUCCESS
 
 

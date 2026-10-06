@@ -4,7 +4,7 @@ extends BattleRole
 ##   辉耀（1001，法术，弃 1 张水系牌，所有人各 +1 治疗，额外 +1 攻击行动）
 ##   惩戒（1002，法术，弃 1 张法术牌，将一名其他角色的 1 点治疗转移给你，额外 +1 攻击行动）
 ##   圣光祈愈（1003，法术，消耗 1 宝石，无视治疗上限 +2 治疗（最高 5），额外 +1 攻击行动；本回合不能发动天枪）
-##   天枪（1004，主动攻击前，移除 2 点治疗，本次攻击对方无法应战；不能与圣击同时发动）
+##   天枪（1004，攻击技能：选一张攻击牌+一名对手直接发起攻击，移除 2 点治疗，本次攻击对方无法应战；不能与圣击同时发动）
 ##   地枪（1005，主动攻击命中后，移除 X 点治疗（X<5），本次攻击伤害 +X；不能与圣击同时发动）
 ##   神圣信仰（1006，被动，[治疗] 上限 +1）
 ##   圣击（1007，被动，攻击命中后 +1 治疗）
@@ -51,32 +51,112 @@ func available_skills() -> Array:
 			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.cross_num > 0)})
 	if player.gem >= 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_QI_YU, "need_card": 0, "need_target": 0})
+	# 天枪（1004，攻击技能）：治疗 ≥ 2 且本回合未发动过【圣光祈愈】时，
+	# 选一张攻击牌 + 一名对手，直接完成一次带「无法应战」的主动攻击
+	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
+	if not 攻击牌.is_empty() and player.cross_num >= 2 and not used_sheng_guang_qi_yu:
+		out.append({"type": GConst.ActionType.AttackSkill, "id": TIAN_QIANG, "need_card": 1, "need_target": 1,
+			"cards": 攻击牌, "targets": enemy_ids()})
 	return out
+
+
+# ============================================================
+# 天枪（1004，攻击技能）：选一张攻击牌 + 一名对手，直接发起一次主动攻击
+# ============================================================
+## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
+## p_timeline_1 据此直接结算天枪，用完即清
+var _预选攻击技能: int = 0
+
+
+func v_attack_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != TIAN_QIANG:
+		return GConst.GE_INVALID_ACTION
+	# 技能自身条件：治疗 ≥ 2 且本回合未发动过【圣光祈愈】
+	if player.cross_num < 2 or used_sheng_guang_qi_yu:
+		return GConst.GE_INVALID_ACTION
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
+	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_PLAYERID
+	return GConst.GE_SUCCESS
+
+
+## 天枪：打出所选攻击牌发起一次主动攻击。
+## 回合结束由引擎的技能行动入栈（与普通技能一致），这里只补这次攻击本身；
+## 攻击宣告后 p_timeline_1 会依据 _预选攻击技能 直接结算（不再弹窗询问）
+func p_attack_skill(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	_预选攻击技能 = TIAN_QIANG
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
+	}
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
+	})
+	return URGENT
 
 
 # ============================================================
 # 主动攻击前（timeline_1）：天枪
 # ============================================================
-func p_timeline_1(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) != player.id:
-		return SUCCESS
-	if not bool(ctx.get("is_active", false)):
-		return SUCCESS
-	if player.cross_num < 2 or used_sheng_guang_qi_yu:
-		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, TIAN_QIANG, 0, 0)
-		return WAIT
-	step = STEP_DONE
-	if not take_skill_reply():
-		return SUCCESS
+## 【天枪】的推进阶段（0＝还没问 / 处理完本次询问后清回 0）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
+## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+var _timeline_1_step: int = 0
+
+
+## 结算【天枪】：移除 2 点治疗，本次攻击对方无法应战，并置本次发动标记
+func _tian_qiang(ctx: Dictionary) -> void:
 	notice_skill(TIAN_QIANG, [int(ctx.get("dst", -1))])
 	player.sub_cross_num(2)
 	ctx["hit_rate"] = GConst.HitRate.NoReattack
 	used_tian_qiang = true
 	engine._broadcast_game()
+
+
+func p_timeline_1(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) != player.id:
+		return SUCCESS
+	if not bool(ctx.get("is_active", false)):
+		return SUCCESS
+	# 本次主动攻击是否由技能栏【天枪】发起（预选命中）：是则直接结算，不再弹窗询问
+	var 预选: int = _预选攻击技能
+	_预选攻击技能 = 0
+	if 预选 == TIAN_QIANG:
+		if player.cross_num < 2 or used_sheng_guang_qi_yu:
+			return SUCCESS
+		_tian_qiang(ctx)
+		return SUCCESS
+	# 普通出牌攻击（预选为 0）：询问是否发动【天枪】
+	if player.cross_num < 2 or used_sheng_guang_qi_yu:
+		return SUCCESS
+	if _timeline_1_step >= STEP_DONE:
+		return SUCCESS
+	if not engine.has_reply():
+		询问(player.id, TIAN_QIANG, 0, 0)
+		return WAIT
+	_timeline_1_step = 0
+	if not take_skill_reply():
+		return SUCCESS
+	_tian_qiang(ctx)
 	return SUCCESS
 
 

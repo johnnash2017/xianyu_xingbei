@@ -1,7 +1,7 @@
 extends BattleRole
 ## 剑圣（roleID 1）—— 移植自服务端 role/JianSheng.cpp
 ## 技能：
-##   疾风技（101，主动攻击牌带此特技时，额外 +1 攻击行动）
+##   疾风技（101，攻击技能：选一张带此特技的攻击牌发起主动攻击，发动后额外 +1 攻击行动）
 ##   烈风技（102，攻击目标拥有圣盾或天使之墙时，无视其圣盾效果且对方无法应战）
 ##   连续技（103，回合限定，攻击行动结束时额外 +1 攻击行动）
 ##   圣剑（104，本回合第 3 次主动攻击强制命中）
@@ -22,6 +22,31 @@ var using_lian_xu_ji: bool = false
 var attack_count: int = 0
 
 
+## 行动阶段可发动的技能：【疾风技】【烈风技】为「攻击技能」——选一张带对应特技的攻击牌 + 一名对手，
+## 直接发起这次主动攻击（攻击宣告后 p_timeline_1 依据预选直接结算，不再弹窗询问）
+func available_skills() -> Array:
+	var out: Array = []
+	var 疾风技牌: Array[int] = hand_ids_where(
+		func(_cid: int, c: GCard) -> bool: return c.is_attack() and c.has_skill_id(JI_FENG_JI))
+	if not 疾风技牌.is_empty():
+		out.append({"type": GConst.ActionType.AttackSkill, "id": JI_FENG_JI, "need_card": 1, "need_target": 1,
+			"cards": 疾风技牌, "targets": enemy_ids()})
+	# 烈风技：只有带 102 特技的攻击牌、且对手身上有【圣盾】（或视作圣盾的【天使之墙】）时才出按钮
+	var 烈风技牌: Array[int] = hand_ids_where(
+		func(_cid: int, c: GCard) -> bool: return c.is_attack() and c.has_skill_id(LIE_FENG_JI))
+	var 圣盾目标: Array[int] = []
+	if not 烈风技牌.is_empty():
+		for pid: int in enemy_ids():
+			var p: BattlePlayer = engine.p(pid)
+			if p != null and (p.check_basic_effect_name(GConst.CardName.Shield)
+					or p.check_basic_effect_skill(GConst.技能_天使之墙)):
+				圣盾目标.append(pid)
+	if not 圣盾目标.is_empty():
+		out.append({"type": GConst.ActionType.AttackSkill, "id": LIE_FENG_JI, "need_card": 1, "need_target": 1,
+			"cards": 烈风技牌, "targets": 圣盾目标})
+	return out
+
+
 ## 每回合开始：重置回合限定标记与圣剑计数
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_lian_xu_ji = false
@@ -36,6 +61,11 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
 ## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
 var _timeline_1_step: int = 0
+
+## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
+## p_timeline_1 的【疾风技】一段据此判断是否发动（101），用完即清。
+## 与 _timeline_1_step 相互独立：后者推进 102→101→104 的链，前者只标记本次攻击是否由技能栏发起。
+var _预选攻击技能: int = 0
 
 
 # ============================================================
@@ -64,7 +94,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 烈风技：目标拥有圣盾或天使之墙时，无视其圣盾效果且此攻击对方无法应战
+## 烈风技：目标拥有圣盾或天使之墙时，无视其圣盾效果且此攻击对方无法应战。
+## 技能栏按钮发起（预选命中）→ 直接结算；普通出牌攻击 → 原版弹窗询问
 func _lie_feng_ji(ctx: Dictionary) -> int:
 	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if card == null or not card.has_skill_id(LIE_FENG_JI):
@@ -74,24 +105,39 @@ func _lie_feng_ji(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not dst.check_basic_effect_name(GConst.CardName.Shield) and not dst.check_basic_effect_skill(GConst.技能_天使之墙):
 		return SUCCESS
+	if _预选攻击技能 == LIE_FENG_JI:
+		_应用烈风技(ctx, dst)
+		return SUCCESS
 	if not engine.has_reply():
 		询问(player.id, LIE_FENG_JI, 0, 0)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
-	notice_skill(LIE_FENG_JI, [dst.id])
-	ctx["hit_rate"] = GConst.HitRate.NoReattack
-	ctx["check_shield"] = false
+	_应用烈风技(ctx, dst)
 	return SUCCESS
 
 
-## 疾风技：作为主动攻击打出时询问是否发动，发动则额外 +1 攻击行动
+## 烈风技的结算：本次攻击无视目标圣盾，且对方无法应战
+func _应用烈风技(ctx: Dictionary, dst: BattlePlayer) -> void:
+	notice_skill(LIE_FENG_JI, [dst.id])
+	ctx["hit_rate"] = GConst.HitRate.NoReattack
+	ctx["check_shield"] = false
+
+
+## 疾风技：本次主动攻击由技能栏的【疾风技】按钮发起（预选 == 101）时直接结算，额外 +1 攻击行动；
+## 普通出牌攻击（预选为 0）则按原版流程弹窗询问是否发动，同意才加额外攻击行动。
 ## （额外行动本身设 direct：直接进入额外攻击阶段，不再二次追问，想跳过在那里「放弃行动」）
 func _ji_feng_ji(ctx: Dictionary) -> int:
+	var 预选: int = _预选攻击技能
+	_预选攻击技能 = 0
 	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if card == null or not card.has_skill_id(JI_FENG_JI):
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
+		return SUCCESS
+	if 预选 == JI_FENG_JI:
+		notice_skill(JI_FENG_JI, [int(ctx.get("dst", -1))])
+		player.add_action(GConst.ActionType.Attack, JI_FENG_JI, true)
 		return SUCCESS
 	if not engine.has_reply():
 		询问(player.id, JI_FENG_JI, 0, 0)
@@ -111,6 +157,60 @@ func _sheng_jian(ctx: Dictionary) -> void:
 	if attack_count == 3:
 		notice_skill(SHENG_JIAN, [int(ctx.get("dst", -1))])
 		ctx["hit_rate"] = GConst.HitRate.NoMiss
+
+
+# ============================================================
+# 疾风技（101，攻击技能）：选一张带 101 特技的攻击牌 + 一名对手，直接发起一次主动攻击
+# ============================================================
+func v_attack_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	var aid: int = int(action.get("action_id", 0))
+	if aid != JI_FENG_JI and aid != LIE_FENG_JI:
+		return GConst.GE_INVALID_ACTION
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	# 所选牌必须是手里的攻击牌且带对应特技（101 疾风技 / 102 烈风技）
+	var card: GCard = Data.get_card(cid)
+	if card == null or not card.is_attack() or not card.has_skill_id(aid):
+		return GConst.GE_INVALID_ACTION
+	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
+	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
+		return GConst.GE_INVALID_PLAYERID
+	# 烈风技：目标身上必须有【圣盾】或视作圣盾的【天使之墙】
+	if aid == LIE_FENG_JI and not dst.check_basic_effect_name(GConst.CardName.Shield) \
+			and not dst.check_basic_effect_skill(GConst.技能_天使之墙):
+		return GConst.GE_INVALID_PLAYERID
+	return GConst.GE_SUCCESS
+
+
+## 疾风技 / 烈风技：打出所选攻击牌发起一次主动攻击。
+## 回合结束由引擎的技能行动入栈（与普通技能一致），这里只补这次攻击本身；
+## 攻击宣告后 p_timeline_1 的对应一段会依据 _预选攻击技能 直接结算（不再弹窗询问）
+func p_attack_skill(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var cid: int = int(cards[0])
+	var dst_id: int = int(dsts[0])
+	_预选攻击技能 = int(action.get("action_id", 0))
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
+	}
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
+	})
+	return URGENT
 
 
 # ============================================================
