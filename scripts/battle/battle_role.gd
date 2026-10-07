@@ -122,8 +122,8 @@ func available_skills() -> Array:
 	return []
 
 
-## 该主动技能是否属于「启动」：原版在回合开始的 p_boot 里询问，不占用行动。
-## 改到技能栏后：引擎据此决定「结算完重新进入行动阶段」而不是回合结束；
+## 该主动技能是不是「启动」：引擎只在**特殊技能**这一类上问它（见 battle_engine），
+## 认定后决定「结算完重新进入行动阶段」而不是回合结束，
 ## 同时受「每回合只能发动一个启动技能」限制（player.boot_skill_used，引擎统一下发/校验）。
 ## 发动成功的角色要在自己的结算里把 player.boot_skill_used 置 true
 func is_free_skill(_skill_id: int) -> bool:
@@ -150,8 +150,8 @@ func call_hook(hook: String, ctx: Dictionary) -> int:
 ## {dst}=收牌人（「我交给别人」的场合才给）。同一个技能的多个询问各读哪一条，
 ## 由角色脚本自己按顺序定（如 #0 = 叫别人交牌、#1 = 自己交牌）。
 ## 表里没配就返回空串，客户端会退回默认文案（「是否发动【X】？」）
-func 提示(skill_id: int, 序号: int = 0, 张数: int = 0, 收牌人id: int = -1) -> String:
-	return GConst.提示文本(skill_id, 序号, engine._称号(player), 张数, _收牌人称号(收牌人id))
+func 提示(skill_id: int, 序号: int = 0, 张数: int = 0, 收牌人id: int = -1, 额外: Dictionary = {}) -> String:
+	return GConst.提示文本(skill_id, 序号, engine._称号(player), 张数, _收牌人称号(收牌人id), 额外)
 
 
 ## 收牌人称号（{dst} 用；没收牌人就返回空串）
@@ -163,12 +163,13 @@ func _收牌人称号(收牌人id: int) -> String:
 ## 不用每个调用点手写 —— 自动取技能表「提示」列的第 序号 条，并把 {src}=本技能发起者（自己）、
 ## {n}=要交/弃的张数、{dst}=收牌人 填好（收牌人id 只在「我交给别人」的场合给）。
 ## 同一个技能有多次询问且要不同文案时，靠 序号 区分；表里没配就退回默认文案（「是否发动【X】？」）
-func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = [], 张数: int = -1) -> void:
+## 预览基准 见 engine.ask_skill：客户端现算头像提示要用到的数值（如【战纹碎击】本次攻击原本的伤害）
+func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = [], 张数: int = -1, 额外: Dictionary = {}, 预览基准: int = 0) -> void:
 	# 提示里的 {n}：need_card 为 0 表示「可弃可不弃」，这时取上限（card_max）才说得通，
 	# 否则文案会变成「弃 0 张」。需要「可弃可不弃、但文案要显式给出张数」时用 张数 覆盖。
 	var n: int = 张数 if 张数 >= 0 else (need_card if need_card > 0 else card_max)
 	engine.ask_skill(pid, skill_id, need_card, need_target, card_source, options, card_max, card_rule, cards, can_cancel,
-		提示(skill_id, 序号, n, 收牌人id), targets)
+		提示(skill_id, 序号, n, 收牌人id, 额外), targets, 预览基准)
 
 
 ## 读取技能询问回复：返回 true=发动、false=放弃

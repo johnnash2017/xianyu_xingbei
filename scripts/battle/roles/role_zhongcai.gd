@@ -36,8 +36,8 @@ func available_skills() -> Array:
 	if t < TOKEN_MAX and player.get_energy() > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": PAN_JUE_TIAN_PING, "need_card": 0, "need_target": 0,
 			"arg_choices": [
-				{"text": "弃光手牌", "args": [0]},
-				{"text": "补满手牌，我方 +1 宝石", "args": [1]},
+				{"text": 提示(PAN_JUE_TIAN_PING, 0), "args": [0]},
+				{"text": 提示(PAN_JUE_TIAN_PING, 1), "args": [1]},
 			]})
 	# 启动技能：按形态二选一（每回合只能发动一个，由引擎统一下发/校验）
 	if player.tap:

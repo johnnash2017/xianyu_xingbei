@@ -1,8 +1,7 @@
 shader_type canvas_item;
 
 // 技能按钮「凸起」：底色由着色器上色 —— 技能类型色（button_color，代码传入）× 样式灰度（常态 / 悬停 / 按下），
-// 可选把它整体减淡，并叠两层亮度渐变（横向 gradient、纵向 gradient_v，都取 GradientTexture1D 的亮度做叠乘，不覆盖类型色），
-// 再沿受光边叠高光、背光边叠暗边，做出立体按钮的观感；还可沿按钮边界内侧画一圈白描边。
+// 可选把它整体减淡；再沿受光边叠高光、背光边叠暗边，做出立体按钮的观感；还可沿按钮边界内侧画一圈白描边。
 //
 // 两种形状：
 //   普通：圆角矩形，用「上/左受光、下/右背光」的轴对齐打光；
@@ -15,10 +14,6 @@ shader_type canvas_item;
 uniform vec2 rect_size = vec2(110.0, 46.0);                   // 按钮尺寸（像素），由 SkillUI.gd 随尺寸刷新
 uniform vec4 button_color : source_color = vec4(1.0, 1.0, 1.0, 1.0); // 按钮底色 = 技能类型色，由 SkillUI.gd 传入
 uniform float lighten : hint_range(0.0, 1.0) = 0.0;           // 减淡：底色向白混合的比例（0 = 不动，1 = 全白）
-uniform float gradient_strength : hint_range(0.0, 1.0) = 0.0; // 横向（左→右）亮度渐变叠加的强度（0 = 不叠）
-uniform sampler2D gradient : hint_default_white;              // 横向亮度渐变（GradientTexture1D，只取亮度，不染色调）
-uniform float gradient_v_strength : hint_range(0.0, 1.0) = 0.0; // 纵向（上→下）亮度渐变叠加的强度
-uniform sampler2D gradient_v : hint_default_white;            // 纵向亮度渐变（GradientTexture1D，只取亮度）
 uniform float edge_px : hint_range(1.0, 24.0) = 6.0;          // 高光 / 暗边的带宽（像素）
 uniform float light_strength : hint_range(0.0, 1.0) = 0.5;    // 受光面加亮
 uniform float shade_strength : hint_range(0.0, 1.0) = 0.5;    // 背光面压暗
@@ -45,11 +40,6 @@ float rounded_box(vec2 p, vec2 b, float r) {
 	return min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;
 }
 
-// 相对亮度（Rec.709）：把颜色折算成一个亮度值，用于「只调明暗、不改色调」
-float brightness(vec3 c) {
-	return dot(c, vec3(0.2126, 0.7152, 0.0722));
-}
-
 // 平滑取小（多项式）：k 越大过渡越圆滑，k→0 退化成 min。
 // 蜂窝形用它合并各边的距离，顶点附近距离场连续，法线不突跳 → 没有折痕
 float smin(float a, float b, float k) {
@@ -63,20 +53,6 @@ void fragment() {
 	vec4 base = vec4(button_color.rgb * lum, COLOR.a);
 	// 减淡：底色向白混合；乘 base.a 使形状外的透明像素保持不变
 	base.rgb = mix(base.rgb, vec3(1.0), lighten * base.a);
-
-	// 横向亮度渐变：按当前 x 取渐变，只取它的亮度做「叠乘」调明暗，不改色调、也不覆盖技能类型色
-	if (gradient_strength > 0.0) {
-		float t = clamp(local_pos.x / max(rect_size.x, 0.001), 0.0, 1.0);
-		float grad_lum = brightness(texture(gradient, vec2(t, 0.5)).rgb);
-		base.rgb *= mix(1.0, grad_lum, gradient_strength);
-	}
-
-	// 纵向亮度渐变：按当前 y 取渐变，同样只取亮度叠乘，做上下明暗
-	if (gradient_v_strength > 0.0) {
-		float t = clamp(local_pos.y / max(rect_size.y, 0.001), 0.0, 1.0);
-		float grad_lum = brightness(texture(gradient_v, vec2(t, 0.5)).rgb);
-		base.rgb *= mix(1.0, grad_lum, gradient_v_strength);
-	}
 
 	if (honeycomb) {
 		// 六边形 6 条边「到边的有符号距离」（内部为正）。都用真正的垂直距离（斜边除以法线长度），

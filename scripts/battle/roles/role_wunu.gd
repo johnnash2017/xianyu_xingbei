@@ -41,9 +41,9 @@ func available_skills() -> Array:
 		# 故用 arg_choices 让玩家在选好牌与目标后选定伤害点数
 		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_BEI_MING, "need_card": 1, "need_target": 1,
 			"cards": 悲鸣牌, "arg_choices": [
-				{"text": "对目标与自身各造成 1 点法术伤害", "args": [1], "need_card": 1, "need_target": 1},
-				{"text": "对目标与自身各造成 2 点法术伤害", "args": [2], "need_card": 1, "need_target": 1},
-				{"text": "对目标与自身各造成 3 点法术伤害", "args": [3], "need_card": 1, "need_target": 1},
+				{"text": 提示(XUE_ZHI_BEI_MING, 0), "args": [1], "need_card": 1, "need_target": 1},
+				{"text": 提示(XUE_ZHI_BEI_MING, 1), "args": [2], "need_card": 1, "need_target": 1},
+				{"text": 提示(XUE_ZHI_BEI_MING, 2), "args": [3], "need_card": 1, "need_target": 1},
 			]})
 	if player.gem >= 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_ZU_ZHOU, "need_card": 0, "need_target": 1})
@@ -51,8 +51,8 @@ func available_skills() -> Array:
 	if tong_sheng_id != -1:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG, "need_card": 0, "need_target": 1,
 			"arg_choices": [
-				{"text": "转移【同生共死】给选定目标", "args": [1], "need_card": 0, "need_target": 1},
-				{"text": "移除【同生共死】", "args": [2], "need_card": 0, "need_target": 0},
+				{"text": 提示(XUE_ZHI_AI_SHANG, 1), "args": [1], "need_card": 0, "need_target": 1},
+				{"text": 提示(XUE_ZHI_AI_SHANG, 2), "args": [2], "need_card": 0, "need_target": 0},
 			]})
 	return out
 

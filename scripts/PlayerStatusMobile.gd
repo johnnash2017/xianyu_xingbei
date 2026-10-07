@@ -1,6 +1,8 @@
 ## 战斗中的玩家状态面板 —— 对应 AGrail.PlayerStatusMobile
 ## 转换后的 scenes/BattleUIMobile.tscn 中，MainPlayer / PlayerStatusMobileL/UL/U/UR/R
-## 这几个节点类型都是 Button，因此这里 extends Button。
+## 这几个节点类型都是 Button，因此这里继承 Button。
+## 角色技能说明不走 Godot 自带的 tooltip：本面板只把 悬停 / 离开悬停 报给容器，
+## 由容器用统一的说明框摆在面板正上方（自带 tooltip 的大小、位置都不受控）。
 ##
 ## 待办：节点引用改成 @export 绑定（下面 @onready 里那批 _find_variant / _find_label_under /
 ## _find_child_script 仍是参考工程搬过来的按名查找写法，本步骤先保留）。
@@ -12,6 +14,9 @@ extends Button
 
 ## 点了面板上的某枚基础效果图标（选牌来源为 CardSource.BasicEffect、从场上基础效果牌里选一张的技能用它）
 signal 基础效果牌点击(玩家id: int, 牌id: int)
+## 鼠标指向 / 离开这名玩家的面板（容器据此在面板上方显示 / 收起角色技能说明）
+signal 悬停(面板: 战斗玩家面板)
+signal 离开悬停()
 
 ## 消息类型枚举走全局 class_name Msg（见 scripts/framework/Msg.gd）。
 ## 原来这里有一份 `const Msg := preload(...)`，与全局类重名会被 Godot 报
@@ -77,9 +82,9 @@ var token2: Label = null
 var hurted: Node = null
 ## 状态图标（基础效果 / 独有效果）的边长：素材都是 20×20，放大到 36 显示（在 40×40 的格子里居中）
 const 状态图标尺寸: float = 36.0
-## 「黄魂 / 蓝魂 / 盖牌」指示物的格子边长：素材 token0~2 都是 20×20，
-## 给 30×40 会把它上下拉伸（容器 BasicAndExCards 每格宽就是 30）
-const 指示物格尺寸: Vector2 = Vector2(30.0, 30.0)
+## 「黄魂 / 蓝魂 / 盖牌」指示物也按状态图标看待，尺寸与基础效果图标对齐
+## （素材 token0~2 是 20×20，拉伸到 36 显示，格子也是 36，图标之间不留缝）
+const 指示物格尺寸: Vector2 = Vector2(状态图标尺寸, 状态图标尺寸)
 ## 手牌 / 治疗那排扁平小方块：素材 handcard / heal 都是 33×14，照原版横排、负间距互相叠着
 const 扁平格尺寸: Vector2 = Vector2(33.0, 14.0)
 const 扁平格叠放间距: int = -13
@@ -90,16 +95,33 @@ const 补牌渐变时长: float = 0.5
 ## 橙块的颜色：盖的那层用的是红色素材 handcardfull，靠这个 modulate 把它调成橙色
 ## （绿通道乘 >1 提亮、蓝通道乘 <1 压暗，红通道保持不动）
 const 补牌橙色: Color = Color(1.28, 1.73, 0.47)
+## 新到手的宝石闪白时长（秒）：越短闪得越快
+const 宝石闪白时长: float = 1.0
+## 闪白的起始强度：不从纯白（1.0）开始，而是 75% 白再往下淡
+const 宝石闪白起始强度: float = 0.75
 ## 角色身上的能量：素材 gem / crystal 都是 29×30（近似正方形），竖着一列排
 const 能量格尺寸: Vector2 = Vector2(30.0, 30.0)
 ## 能量区的格子边长（原版 Unity 的 GridLayoutGroup cellSize 就是 30×30）
 const 能量区图标格: Vector2 = Vector2(30.0, 30.0)
-## 状态图标区的格子边长：图标放大到 36 后格子同步放大到 40，列/行之间留 4px 间隙避免互相压住
-const 状态图标格: Vector2 = Vector2(40.0, 40.0)
-## 状态图标区排几列：它宽 80、格子 40 → 2 列
+## 状态图标区的格子边长：就取图标本身的大小，图标之间不留缝（原来格子 40、图标 36，四周会空 4 像素）
+const 状态图标格: Vector2 = Vector2(状态图标尺寸, 状态图标尺寸)
+## 状态图标区排几列：它宽 80、格子 36 → 2 列
 const 状态区列数: int = 2
 ## 状态图标区每列最多几格（原版 GridLayoutGroup 是「固定 4 行」＝一列 4 个，满了再往右一列）
 const 状态区每列格数: int = 4
+## 状态图标「弹出」动画（秒）：新挂上的状态图标先放大 状态弹出放大 倍，再缩回原大小
+const 状态弹出时长: float = 0.35
+const 状态弹出放大: float = 1.4
+## 状态图标「弹出」起点表：键＝图标标识（"b:基础牌id" / "e:独有效果下标"），
+## 值＝该标识各个实例的起点（毫秒，-1＝不播）。跨重建保留：同一帧可能刷新多次，
+## 只挂一次性 tween 会被下一次重建连根清掉（同宝石闪白的做法）
+var _状态弹出起点: Dictionary = {}
+## 是否已经渲染过一次状态图标（进场第一次不播弹出动画）
+var _状态已初始化: bool = false
+## 状态图标的白描边材质（所有图标共用一份，参数一样）
+var _状态描边材质: ShaderMaterial = null
+## 三个指示物槽上一次的数值（-1＝还没设过）：用来判断这次是不是「变多」了
+var _指示物数值: Array[int] = [-1, -1, -1]
 ## 状态图标区当前要显示的基础效果牌 / 独有效果下标（两个 setter 合成一次渲染，见 _刷新状态图标）
 var _状态基础牌: Array = []
 ## 面板上的基础效果图标此刻是否可以点（选牌来源为 CardSource.BasicEffect 的技能期间打开）
@@ -257,6 +279,9 @@ func _ready() -> void:
 	# 这里让按钮**始终可点**，「能不能选他」改由 is_selectable 判断（见 onClick / set_IsEnable）。
 	btnPlayer.disabled = false
 	btnPlayer.pressed.connect(onClick)
+	# 鼠标指向 / 离开：报给容器（容器用和点头像同一份说明框弹在面板正上方）
+	mouse_entered.connect(func() -> void: 悬停.emit(self))
+	mouse_exited.connect(func() -> void: 离开悬停.emit())
 	# 这个面板自己就是那个 Button，而预制体里的队色底/头像/名牌都是它的子图、且带着
 	# 转换时写死的 mouse_filter=STOP（Unity 里这些 Image 的 raycastTarget 是关的）——
 	# 它们会把点击吃掉，表现就是「点在大头像中间没反应，只有点面板边缘才算点到」。
@@ -297,6 +322,9 @@ func _ready() -> void:
 	# 手牌 / 治疗那两排方块的受击描边材质（受击时把描边染红再淡回，见 Hurted）
 	_手牌描边 = _造描边材质()
 	_治疗描边 = _造描边材质()
+	# 状态图标的白描边（只沿轮廓勾一圈白，见 scripts/effects/白描边.gdshader）
+	_状态描边材质 = ShaderMaterial.new()
+	_状态描边材质.shader = 状态描边着色器
 	# 参考工程在这里 role = RoleFactory.create(0)（技能系统）；本步骤不接。第三步：技能系统。
 	# 对应 C# MessageSystem<MessageType>.Regist(AgentSelectPlayer / RecHandChange, this)
 	MessageSystem.regist(Msg.T.AgentSelectPlayer, self, Callable(self, "on_event_trigger"))
@@ -321,12 +349,19 @@ func _find_child_script(script_basename: String) -> Node:
 func set_IsEnable(value: bool) -> void:
 	is_selectable = value
 	# 只记状态、**不**给按钮设 disabled：Godot 的 disabled 会让按钮连 pressed 都不发，
-	# 于是「点不可选的头像看角色信息」这条就永远走不到。面板按钮自身是 alpha=0 的透明按钮
+	# 而「点可选的敌方头像直接出手」靠的就是 pressed。面板按钮自身是 alpha=0 的透明按钮
 	# （预制体里 self_modulate 的 a 是 0），没有 hover/disabled 外观，所以这样做看不出差别。
 	if canSelect != null:
 		canSelect.visible = value
 	# 参考工程按 BattleData.Agent.FSM 的当前状态决定是否把面板压灰（0.5）；本工程暂无该交互层，
 	# 本步骤只控制「可选中」箭头，不压灰。第三步：出牌/选目标交互层。
+
+
+## 「是否已被选中」：可选时亮绿框（canSelect），选中后绿框收掉、改亮黄框（select）——
+## 两块贴图本身都是纯绿，黄色由 select 上的换色材质负责
+func 设置已选中(值: bool) -> void:
+	select.visible = 值
+	canSelect.visible = is_selectable and not 值
 
 ## 对应 C# public string NickName 的 setter
 func set_NickName(value: String) -> void:
@@ -403,6 +438,8 @@ func _create_token(prefab_name: String, node_name: String) -> Label:
 	# 不给最小尺寸的话 token 数字与它上面的 Text 都看不见。
 	if go is Control:
 		(go as Control).custom_minimum_size = 指示物格尺寸
+		# 指示物也算状态图标：套同一份白描边
+		(go as Control).material = _状态描边材质
 	var lbl: Label = go.find_child("Text", true, false) as Label
 	if lbl != null:
 		lbl.text = "0"
@@ -441,25 +478,34 @@ func set_Knelt(value: bool) -> void:
 func set_YellowToken(value: int) -> void:
 	if token0 == null:
 		return
-	token0.text = str(value)
-	token0.get_parent().visible = value != 0
+	_设指示物(token0, 0, value)
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 
 ## 对应 C# public uint BlueToken 的 setter
 func set_BlueToken(value: int) -> void:
 	if token1 == null:
 		return
-	token1.text = str(value)
-	token1.get_parent().visible = value != 0
+	_设指示物(token1, 1, value)
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 
 ## 对应 C# public uint Covered 的 setter
 func set_Covered(value: int) -> void:
 	if token2 == null:
 		return
-	token2.text = str(value)
-	token2.get_parent().visible = value != 0
+	_设指示物(token2, 2, value)
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
+
+
+## 指示物数字同样算状态图标：刷新文字与显隐；数字变大（获得／叠层增加）时播一次「放大→缩回」
+func _设指示物(标签: Label, 槽: int, 值: int) -> void:
+	var 旧值: int = _指示物数值[槽]
+	_指示物数值[槽] = 值
+	标签.text = str(值)
+	var 底板: Control = 标签.get_parent() as Control
+	底板.visible = 值 != 0
+	# 进场第一次（旧值 -1）不播；只有变多才算「获得 / 叠层增加」
+	if 旧值 >= 0 and 值 > 旧值:
+		_播状态弹出(底板)
 
 ## 对应 C# public List<uint> BasicAndExCards 的 setter
 func set_BasicAndExCards(value: Array) -> void:
@@ -484,6 +530,8 @@ func _刷新状态图标() -> void:
 	var ps := _load_prefab("Image")
 	if ps == null:
 		return
+	# 这次渲染后各图标的新起点表（键＝图标标识，值＝该标识各实例的起点），渲染完整体换掉旧的
+	var 新起点: Dictionary = {}
 	for item: Variant in _状态基础牌:
 		var card: GCard = Data.get_card(int(item))
 		if card == null:
@@ -494,15 +542,19 @@ func _刷新状态图标() -> void:
 			# 全部标记（圣盾/封印…）一起丢掉（battle_audit C-2）。
 			push_error("Basic card is error! CardID = %s" % str(item))
 			continue
-		_加状态图标(ps, _load_sprite(sprite_name), int(item))
+		_加状态图标(ps, _load_sprite(sprite_name), "b:%d" % int(item), 新起点, int(item))
 	for idx: Variant in _状态独有效果:
-		_加状态图标(ps, Art.exclusive_icon(int(idx)))
+		_加状态图标(ps, Art.exclusive_icon(int(idx)), "e:%d" % int(idx), 新起点)
+	_状态已初始化 = true
+	_状态弹出起点 = 新起点
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 
 
-## 往状态图标区加一枚图标（Image 预制体自身是 0×0，不给最小尺寸就什么都看不见）
+## 往状态图标区加一枚图标（Image 预制体自身是 0×0，不给最小尺寸就什么都看不见）。
+## 图标统一套白描边材质；新挂上的（含状态叠层多出来的那几枚）播一次「放大→缩回」，
+## 起点记在 起点表 里跨重建续播（同一帧可能刷新多次，一次性 tween 会被下一次重建清掉）。
 ## 基础效果牌（基础牌id >= 0）在「基础牌可点」时变成可点的，点一下就上报给战斗界面
-func _加状态图标(ps: PackedScene, tex: Texture2D, 基础牌id: int = -1) -> void:
+func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary, 基础牌id: int = -1) -> void:
 	if tex == null:
 		return
 	var go := ps.instantiate()
@@ -512,7 +564,35 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 基础牌id: int = -1) ->
 		if 基础牌id >= 0 and _基础牌可点:
 			(go as TextureRect).mouse_filter = Control.MOUSE_FILTER_STOP
 			(go as TextureRect).gui_input.connect(_on_基础牌图标输入.bind(基础牌id))
+	var 起点: int = -1
+	if go is Control:
+		(go as Control).material = _状态描边材质
+		var 旧列表: Array = _状态弹出起点.get(标识, [])
+		var 本组: Array = 起点表.get(标识, [])
+		var 序号: int = 本组.size()
+		# 同一枚标识的第 n 个实例：上次还在就沿用它的起点（动画接着播），新出现的才记「现在」；
+		# 进场第一次全记 -1（已有的状态当作早就挂上，不播）
+		起点 = int(旧列表[序号]) if 序号 < 旧列表.size() \
+				else (-1 if not _状态已初始化 else Time.get_ticks_msec())
+		本组.append(起点)
+		起点表[标识] = 本组
+	# 必须先入树再播动画：_add_child_go 会把 scale 重置成 1，先摆好的放大态会被它抹掉
 	_add_child_go(basicAndExCardArea, go)
+	if go is Control and 起点 >= 0:
+		var 图标: Control = go as Control
+		var 已过: float = float(Time.get_ticks_msec() - 起点) / 1000.0
+		_播状态弹出(图标, 已过)
+
+
+## 状态图标「弹出」：先摆成放大态，再缩回原大小。
+## 已过 是这一枚动画已经走过的时间（跨重建续播用），已经走完就不再播
+func _播状态弹出(节点: Control, 已过: float = 0.0) -> void:
+	if 节点 == null or 已过 >= 状态弹出时长:
+		return
+	节点.pivot_offset = Vector2(状态图标尺寸, 状态图标尺寸) * 0.5
+	节点.scale = Vector2.ONE * lerpf(状态弹出放大, 1.0, 已过 / 状态弹出时长)
+	var 缩回: Tween = 节点.create_tween()
+	缩回.tween_property(节点, "scale", Vector2.ONE, 状态弹出时长 - 已过)
 
 
 ## 点了场上的一枚基础效果图标：把「谁的、哪张牌」报给战斗界面
@@ -571,18 +651,61 @@ func _basic_card_sprite(card: GCard) -> String:
 func set_Energy(value: Vector2i) -> void:
 	if energyArea == null:
 		return
+	# 宝石数变化：新到手的几格记下「现在」作为闪白起点；少了就丢最左边的（同手牌格的做法）
+	var 旧数: int = _上次宝石数
+	if 旧数 < 0:
+		# 进场第一次：已有的宝石当作早就到手，不闪
+		for _init: int in range(value.x):
+			_宝石闪白起点.append(-1)
+	elif value.x > 旧数:
+		var 现在: int = Time.get_ticks_msec()
+		for _add: int in range(value.x - 旧数):
+			_宝石闪白起点.append(现在)
+	elif value.x < 旧数:
+		for _del: int in range(旧数 - value.x):
+			_宝石闪白起点.remove_at(0)
 	for c in energyArea.get_children():
 		c.queue_free()
 	var ps := _load_prefab("Image")
 	for _i in range(value.x):
-		_add_image(energyArea, ps, "gem", 能量格尺寸, false)
+		var 宝石格: Control = _add_image(energyArea, ps, "gem", 能量格尺寸, false)
+		_加闪白层(宝石格, _宝石闪白起点[_i] if _i < _宝石闪白起点.size() else -1)
 	for _j in range(value.y):
 		_add_image(energyArea, ps, "crystal", 能量格尺寸, false)
+	_上次宝石数 = value.x
 	_摆图标(energyArea, 1, 0, 能量区图标格)
+
+
+## 新到手宝石的闪白：给这一格套上闪白材质，按剩余时间把强度淡到 0。
+## 用着色器只把「图形本身」推白，透明处不受影响 —— 直接铺一层白色方块会把整格都染白
+func _加闪白层(格: Control, 闪白起点: int) -> void:
+	if 格 == null or 闪白起点 < 0:
+		return
+	var 已过: float = float(Time.get_ticks_msec() - 闪白起点) / 1000.0
+	if 已过 >= 宝石闪白时长:
+		return
+	var 强度: float = 宝石闪白起始强度 * (1.0 - 已过 / 宝石闪白时长)
+	# 每格一份自己的材质：强度各不相同，共用一份会互相覆盖
+	var 材质: ShaderMaterial = ShaderMaterial.new()
+	材质.shader = 闪白着色器
+	材质.set_shader_parameter("flash", 强度)
+	格.material = 材质
+	var 淡出: Tween = 格.create_tween()
+	淡出.tween_method(_设闪白强度.bind(材质), 强度, 0.0, 宝石闪白时长 - 已过)
+
+
+func _设闪白强度(值: float, 材质: ShaderMaterial) -> void:
+	材质.set_shader_parameter("flash", 值)
 
 ## 手牌那一排每格的「补牌起点」（毫秒），下标从左到右、长度＝当前手牌数；
 ## -1 表示这一格早就补好了、不用播橙变绿。
 var _手牌格起点: Array[int] = []
+## 上一次显示的宝石数（-1＝还没显示过）：用来认出这次哪几格宝石是新到手的
+var _上次宝石数: int = -1
+## 宝石格「闪白起点」（毫秒），下标从左到右、长度＝当前宝石数；-1 表示这一格不用闪。
+## 和手牌格的补牌起点一样，起点要跨「重建」留着：能量区同一帧可能被刷新好几次，
+## 每次都清空重建，只挂一个一次性 tween 会被下一次重建连根清掉（那样就看不到闪白）
+var _宝石闪白起点: Array[int] = []
 ## 是否已经收到过一次手牌数（区分「进场首次显示」（不播动画）与「之后补牌」）
 var _手牌已初始化: bool = false
 
@@ -746,7 +869,7 @@ func set_WaitProgress(value: float) -> void:
 
 ## 对应 C# private void onClick()
 func onClick() -> void:
-	# 参考工程在这里通过 BattleData.Agent 选 / 取消选择目标（也支持点头像看角色信息）。
+	# 参考工程在这里通过 BattleData.Agent 选 / 取消选择目标。
 	# 本工程交互层下一步再接。第三步：出牌/选目标技能交互层。
 	pass
 
@@ -757,8 +880,8 @@ func onMinusClick() -> void:
 
 ## 对应 C# private void onLongPress()
 func onLongPress() -> void:
-	# 参考工程在这里 push_window(InfomationUI, ..., role) 弹「角色信息」窗；本工程没有该窗口与
-	# 技能系统，本步骤不弹。第三步：技能系统。
+	# 参考工程在这里长按弹「角色信息」窗；本工程已改成鼠标指向头像（或点头像）即显示技能说明
+	# （面板只报 悬停 / 离开悬停，说明框由容器 battle_mobile 摆），长按不再另做处理。
 	pass
 
 ## 对应 C# public void OnEventTrigger(MessageType eventType, params object[] parameters)
@@ -857,6 +980,10 @@ const 受击卡肉时长: float = 0.07
 ## 受击描边：把手牌 / 治疗方块贴图自带的深色描边染红，再用 受击描边时长 淡回原色
 const 受击描边着色器: Shader = preload("res://scripts/effects/受击描边.gdshader")
 const 受击描边时长: float = 2.0
+## 宝石闪白着色器：只把图形本身推白、透明处不动（见 scripts/effects/闪白.gdshader）
+const 闪白着色器: Shader = preload("res://scripts/effects/闪白.gdshader")
+## 状态图标的白描边着色器：沿 alpha 轮廓扩一圈白边（见 scripts/effects/白描边.gdshader）
+const 状态描边着色器: Shader = preload("res://scripts/effects/白描边.gdshader")
 
 ## 头像初始位置：首次受击时记下，之后每次抖动都围绕它 —— 连续受击也不会把头像越抖越偏
 var _头像原位: Vector2 = Vector2.ZERO
@@ -978,7 +1105,7 @@ func _卡肉() -> void:
 ## 「左上角起、一行行往下排」，行不满时还排不出原版的形状，所以这里直接按格子摆。
 ## 每列格数 <= 0 表示一列到底；图标比格子小时在格子里居中（20×20 的图标落在 30×30 格里）。
 ## （列数 只保留原版 C# 的签名，实际排几列由 每列格数 决定。）
-## 格尺寸：不同区域格子大小不同（状态图标区 40、能量区 30），由调用方传入。
+## 格尺寸：不同区域格子大小不同（状态图标区 36、能量区 30），由调用方传入。
 func _摆图标(容器: Control, _列数: int, 每列格数: int, 格尺寸: Vector2) -> void:
 	if 容器 == null:
 		return

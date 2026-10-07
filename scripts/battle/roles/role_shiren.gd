@@ -8,9 +8,9 @@ extends BattleRole
 ##       歌咏天赋（3103，被动：永恒乐章被触发后 +1 灵感并把乐章收回；
 ##                 若灵感已达上限则横置并对自己造成 3 点法术伤害）、
 ##       暴风前奏曲（3104，响应：回合开始前移除 1 点【灵感】→ 本回合无视【歌咏天赋】）、
-##       激昂狂想曲（31052，响应：回合开始时若当前角色持有永恒乐章 →
+##       激昂狂想曲（3105，响应：回合开始时若当前角色持有永恒乐章 →
 ##                 对两名目标各 1 点法术伤害，或弃 2 张牌）、
-##       胜利交响诗（31061，响应：回合结束时若当前角色持有永恒乐章 →
+##       胜利交响诗（3106，响应：回合结束时若当前角色持有永恒乐章 →
 ##                 将我方 1 星石提炼为自身能量，或我方 +1 宝石且自身 +1 治疗）、
 ##       希望赋格曲（3107，启动：耗 1 能量把永恒乐章转移到一名队友面前）
 ##
@@ -26,9 +26,7 @@ const BU_XIE_HE_XIAN: int = 3102
 const GE_YONG_TIAN_FU: int = 3103
 const BAO_FENG_QIAN_ZOU_QU: int = 3104
 const JI_ANG_KUANG_XIANG_QU: int = 3105
-const JI_ANG_KUANG_XIANG_QU_2: int = 31052
 const SHENG_LI_JIAO_XIANG_SHI: int = 3106
-const SHENG_LI_JIAO_XIANG_SHI_2: int = 31061
 const XI_WANG_FU_GE_QU: int = 3107
 
 ## 本引擎自有的分步标记（服务端把子步骤实现为压栈状态，此处用角色的自有分步变量记录进度）
@@ -93,9 +91,9 @@ func _set_ling_gan(v: int) -> void:
 func _bu_xie_choices() -> Array:
 	var out: Array = []
 	for num: int in range(2, _ling_gan() + 1):
-		out.append({"text": "移除 %d 点灵感，双方各摸 %d 张牌" % [num, num - 1],
+		out.append({"text": 提示(BU_XIE_HE_XIAN, 1, num, -1, {"n2": num - 1}),
 			"args": [num, 1], "need_target": 1})
-		out.append({"text": "移除 %d 点灵感，双方各弃 %d 张牌" % [num, num - 1],
+		out.append({"text": 提示(BU_XIE_HE_XIAN, 2, num, -1, {"n2": num - 1}),
 			"args": [num, 2], "need_target": 1})
 	return out
 
@@ -191,10 +189,10 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 回合开始：激昂狂想曲（31052）+ 歌咏天赋（3103）
+# 回合开始：激昂狂想曲（3105）+ 歌咏天赋（3103）
 # （服务端由 p_turn_begin_shiren 触发，本引擎并入 p_turn_begin）
 # ============================================================
-## 【激昂狂想曲 / 歌咏天赋】的推进阶段（0＝还没开始 / JI_ANG_KUANG_XIANG_QU_2＝在问是否发动 /
+## 【激昂狂想曲 / 歌咏天赋】的推进阶段（0＝还没开始 / JI_ANG_KUANG_XIANG_QU＝在问是否发动 /
 ## JI_ANG_DISCARD＝等当前角色弃 2 张牌 / GE_YONG_TIAN_FU＝结算歌咏天赋）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
@@ -210,16 +208,16 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if _ji_ang_step == 0:
-		_ji_ang_step = JI_ANG_KUANG_XIANG_QU_2
-	if _ji_ang_step == JI_ANG_KUANG_XIANG_QU_2:
+		_ji_ang_step = JI_ANG_KUANG_XIANG_QU
+	if _ji_ang_step == JI_ANG_KUANG_XIANG_QU:
 		if not engine.has_reply():
 			# 先选分支（此时不选目标）：1=对两名目标各 1 点法术伤害、2=弃 2 张牌；
 			# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）。
 			# 伤害分支要 2 名目标、弃牌分支不要目标，故目标留到下一步按分支再选
-			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU_2, 0, 0, GConst.CardSource.Hand, [
-				{"value": 1, "label": "对两名目标各 1 点法术伤害"},
-				{"value": 2, "label": "弃 2 张牌"},
-			])
+			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU, 0, 0, GConst.CardSource.Hand, [
+				{"value": 1, "label": 提示(JI_ANG_KUANG_XIANG_QU, 2)},
+				{"value": 2, "label": 提示(JI_ANG_KUANG_XIANG_QU, 3)},
+			], 0, "", [], true, 1)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
@@ -237,7 +235,7 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 			# 场上不足 2 名对手，该分支打不出，视为不发动
 			_ji_ang_step = 0
 		elif not engine.has_reply():
-			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU_2, 0, 2, GConst.CardSource.Hand, [], 0, "", [], true, 1, -1, 敌方)
+			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU, 0, 2, GConst.CardSource.Hand, [], 0, "", [], true, 2, -1, 敌方)
 			return WAIT
 		else:
 			var r3: Dictionary = take_skill_reply_full()
@@ -303,9 +301,9 @@ func _ge_yong_tian_fu() -> int:
 
 
 # ============================================================
-# 回合结束：胜利交响诗（31061）+ 歌咏天赋（3103）
+# 回合结束：胜利交响诗（3106）+ 歌咏天赋（3103）
 # ============================================================
-## 【胜利交响诗 / 歌咏天赋】的推进阶段（0＝还没开始 / SHENG_LI_JIAO_XIANG_SHI_2＝选发动方式 /
+## 【胜利交响诗 / 歌咏天赋】的推进阶段（0＝还没开始 / SHENG_LI_JIAO_XIANG_SHI＝选发动方式 /
 ## SHENG_LI_STONE＝选提炼哪种星石 / GE_YONG_TIAN_FU＝结算歌咏天赋）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
@@ -319,8 +317,8 @@ func p_turn_end(_ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if _jiao_xiang_step == 0:
-		_jiao_xiang_step = SHENG_LI_JIAO_XIANG_SHI_2
-	if _jiao_xiang_step == SHENG_LI_JIAO_XIANG_SHI_2:
+		_jiao_xiang_step = SHENG_LI_JIAO_XIANG_SHI
+	if _jiao_xiang_step == SHENG_LI_JIAO_XIANG_SHI:
 		if yue_zhang_dst != engine.current_id:
 			return SUCCESS
 		# 第一步：选发动方式；返回 WAIT（等回复）或下一步的 step
@@ -348,8 +346,8 @@ func p_turn_end(_ctx: Dictionary) -> int:
 func _jiao_xiang_options(color: int) -> Array:
 	var out: Array = []
 	if engine.team_gem[color] + engine.team_crystal[color] > 0:
-		out.append({"value": 1, "label": "将己方【战绩区】的 1 星石提炼为你的能量"})
-	out.append({"value": 2, "label": "己方【战绩区】+1【宝石】，你 +1【治疗】"})
+		out.append({"value": 1, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 1)})
+	out.append({"value": 2, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 2)})
 	return out
 
 
@@ -357,9 +355,9 @@ func _jiao_xiang_options(color: int) -> Array:
 func _stone_options(color: int) -> Array:
 	var out: Array = []
 	if engine.team_crystal[color] > 0:
-		out.append({"value": 1, "label": "提炼 1 个【水晶】"})
+		out.append({"value": 1, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 3)})
 	if engine.team_gem[color] > 0:
-		out.append({"value": 2, "label": "提炼 1 个【宝石】"})
+		out.append({"value": 2, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 4)})
 	return out
 
 
@@ -373,7 +371,7 @@ func _jiao_xiang_choose() -> int:
 		return GE_YONG_TIAN_FU
 	var color: int = holder.color
 	if not engine.has_reply():
-		询问(engine.current_id, SHENG_LI_JIAO_XIANG_SHI_2, 0, 0, GConst.CardSource.Hand, _jiao_xiang_options(color))
+		询问(engine.current_id, SHENG_LI_JIAO_XIANG_SHI, 0, 0, GConst.CardSource.Hand, _jiao_xiang_options(color))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -396,7 +394,7 @@ func _jiao_xiang_stone() -> int:
 		return GE_YONG_TIAN_FU
 	var color: int = holder.color
 	if not engine.has_reply():
-		询问(engine.current_id, SHENG_LI_JIAO_XIANG_SHI_2, 0, 0, GConst.CardSource.Hand, _stone_options(color), 0, "", [], true, 1)
+		询问(engine.current_id, SHENG_LI_JIAO_XIANG_SHI, 0, 0, GConst.CardSource.Hand, _stone_options(color), 0, "", [], true, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])

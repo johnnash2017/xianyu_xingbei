@@ -22,11 +22,12 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 欺诈：弃 2~3 张同系牌 + 指定敌方目标；点「确定」后再弹窗选要改成哪种系别的攻击（见 p_attack_skill）
+	# 欺诈：先在二级技能栏里选要用哪张虚牌（「先弹选项」，选完才让选牌 / 选目标），
+	# 再弃 2~3 张同系牌 + 指定敌方目标，最后点一次「确定」提交（不再中途问第二次）。
 	# 手里至少要有一对同系牌才放行（对照原客户端 MaoXian::normal 的两两比较）
 	if _has_same_element_pair():
 		out.append({"type": GConst.ActionType.AttackSkill, "id": QI_ZHA, "need_card": 2, "card_max": 3, "need_target": 1,
-			"targets": enemy_ids(), "card_rule": "same"})
+			"targets": enemy_ids(), "card_rule": "same", "arg_choices": _qi_zha_options()})
 	if player.get_energy() > 0 and not used_TouTianHuanRi:
 		if engine.team_gem[1 - player.color] >= 1:
 			out.append({"type": GConst.ActionType.MagicSkill, "id": TOU_TIAN_HUAN_RI, "need_card": 0, "need_target": 0})
@@ -65,7 +66,7 @@ func v_buy(args: Array) -> int:
 
 # ============================================================
 # 欺诈（攻击技能）：弃 2~3 张同系牌，虚牌视为一次主动攻击
-# 虚牌（改成哪种系别的攻击）在提交后由一次询问决定，见 p_attack_skill
+# 虚牌（改成哪种系别的攻击）由客户端二级技能栏的选项随行动一起提交（args[0] = 虚牌 id）
 # ============================================================
 func v_attack_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
@@ -75,6 +76,12 @@ func v_attack_skill(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	if cards.size() != 2 and cards.size() != 3:
 		return GConst.GE_INVALID_CARDID
+	# 虚牌必须是这张数下真能选的（【暗灭】要 3 张同系）
+	var args: Array = action.get("args", [])
+	if args.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	if not _qi_zha_virtual_cards(cards.size()).has(int(args[0])):
+		return GConst.GE_INVALID_ACTION
 	for c: Variant in cards:
 		if not player.has_hand_card(int(c)):
 			return GConst.GE_HANDCARD_NOT_FOUND
@@ -95,22 +102,15 @@ func v_attack_skill(action: Dictionary) -> int:
 	return GConst.GE_SUCCESS
 
 
+## 欺诈：虚牌由客户端二级技能栏的选项一并提交（args[0]），这里直接按它结算，不再中途问一次。
+## 万一收到非法值（正常不该发生）：有暗灭选暗灭、没暗灭随机选。
 func p_attack_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != QI_ZHA:
 		return GConst.GE_INVALID_ACTION
 	var cards: Array = action.get("card_ids", [])
-	if not engine.has_reply():
-		# 选完牌与目标后（客户端按「确定」提交），弹窗问要改成哪种系别的攻击：
-		# 3 张同系可视为任意系别，2 张同系不能视为暗系（选项里直接不给暗）。
-		# 不能取消（牌与目标已经提交），弹窗期间超时由下面自动选（有暗灭选暗灭，否则随机）
-		engine.ask_skill(player.id, QI_ZHA, 0, 0, GConst.CardSource.Hand, _qi_zha_options(cards.size()),
-			0, "", [], false)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var virtual_card: int = int(args[0]) if not args.is_empty() else -1
+	var args: Array = action.get("args", [])
 	var 合法: Array[int] = _qi_zha_virtual_cards(cards.size())
-	# 选了非法值（或超时没选）：有暗灭选暗灭，没暗灭随机选
+	var virtual_card: int = int(args[0]) if not args.is_empty() else -1
 	if not 合法.has(virtual_card):
 		virtual_card = _qi_zha_default_virtual(合法)
 	return _qi_zha(action, virtual_card)
@@ -246,11 +246,16 @@ func _qi_zha_virtual_cards(同系数: int) -> Array[int]:
 	return out
 
 
-## 欺诈虚牌弹窗的选项：value = 虚牌 id，label = 牌名
-func _qi_zha_options(同系数: int) -> Array:
+## 欺诈的虚牌选项（二级技能栏里先选，选完才让选牌 / 选目标）：
+## value / args = 虚牌 id，label = 牌名；【暗灭】要 3 张同系，故那一项自带 need_card 3 ——
+## 客户端据此要求选满 3 张才让点「确定」，与服务端的 v_attack_skill 校验一致
+func _qi_zha_options() -> Array:
 	var out: Array = []
-	for cid: int in _qi_zha_virtual_cards(同系数):
-		out.append({"value": cid, "label": Data.get_card(cid).card_name})
+	for cid: int in QI_ZHA_CARDS:
+		var 项: Dictionary = {"text": Data.get_card(cid).card_name, "args": [cid]}
+		if cid == QI_ZHA_AN_MIE:
+			项["need_card"] = 3
+		out.append(项)
 	return out
 
 

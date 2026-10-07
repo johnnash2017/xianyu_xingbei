@@ -189,13 +189,8 @@ func _build_role_button(rid: int) -> Button:
 	btn.pressed.connect(_on_role_pressed.bind(rid))
 	btn.disabled = not _interactive
 
-	var 提示文本: String = "[font_size=%d]%s[/font_size]" % [英雄详情窗口.提示框姓名行字号, Data.role_name(rid)]
-	var info: String = Data.role_skill_info(rid)
-	if info != "":
-		# 技能段单独上色并排版（分段标题按 提示框标题字号 缩小、正文缩进、间距由 上色 统一给）；角色名那行单独给字号，不上色
-		提示文本 += "\n" + 英雄详情窗口.上色(info, 英雄详情窗口.提示框正文字号, 英雄详情窗口.提示框标题字号)
-	# 提示文本里含 BBCode，由 富文本提示按钮 的 _make_custom_tooltip 用 RichTextLabel 渲染
-	btn.tooltip_text = 提示文本
+	# 悬浮说明（角色名一行 + 技能说明，含 BBCode）由 富文本提示按钮 的 _make_custom_tooltip 渲染
+	btn.tooltip_text = 角色技能提示.悬浮提示(rid)
 
 	var face_size: Vector2 = Vector2(ROLE_BTN_W, ROLE_BTN_H)
 	var face_tex: Texture2D = Art.role_hero(rid)

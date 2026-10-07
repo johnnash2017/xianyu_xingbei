@@ -67,23 +67,19 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	# 充能 / 魔眼：「启动」技能，显示为技能栏按钮，点了才发动且不消耗本回合行动。
-	# 【充能】把「弃到 4 张」作为发动代价写进 need_card（同格斗家【斗神天驱】）：
-	# 点技能时手牌就能选、选够才按得动「确定」；确定后服务端再问「摸几张」
-	# （那次询问不选牌不选目标＝纯选项，客户端自动用居中弹窗渲染）
+	# 【充能】「弃到 4 张」是发动代价，写进 need_card（同格斗家【斗神天驱】）；
+	# 摸几张由 arg_choices 在二级技能栏里选 —— 点技能后弃牌与摸牌数一起选，最后按一次「确定」，
+	# 不再先确定、再由服务端补问一次摸牌数
 	if player.get_energy() > 0:
 		var 需弃: int = maxi(player.hand_cards.size() - CHONG_NENG_KEEP_HAND, 0)
-		# card_prompt：客户端的发动提示改说代价的真实含义「弃到 4 张牌」（保留 4 张，
-		# 不是「从手牌中选 X 张」，也不是要弃的张数），手牌本来 ≤ 4 张则无需这段
-		var 弃牌提示: String = ""
-		if 需弃 > 0:
-			弃牌提示 = "弃到 %d 张牌，" % CHONG_NENG_KEEP_HAND
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": CHONG_NENG, "need_card": 需弃, "need_target": 0,
-			"card_prompt": 弃牌提示})
+			"arg_choices": _chong_neng_choices()})
 	if player.gem > 0:
-		# 魔眼：点技能时就要「点一名角色 或 点一张手牌」二选一（客户端按技能指示器的「牌或人」处理），
-		# card_max=1 让手牌可点且最多选 1 张，选好直接确定发动（服务端不再补一次询问）
+		# 魔眼：点技能后先在二级技能栏里二选一（对照原服务端 MoGong::MoYan）——
+		# 「自己摸 3 张牌」不点目标；「指定一名角色弃 1 张牌」再点 1 名角色（可点自己）。
+		# need_target 给 0、不给 target_max：目标数完全由选项自带（选了要目标的那项客户端才放开点头像）
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_YAN, "need_card": 0, "need_target": 0,
-			"card_max": 1})
+			"arg_choices": _mo_yan_choices()})
 	if _available_lei_guang:
 		# 雷光散射：从盖牌区选雷系牌（至少 1 张、可多选）。选超过 1 张时可指定一名对手额外受伤，
 		# 目标限敌方（白名单下发界面；「选超过 1 张才需要选目标」由技能指示器的「目标随牌」规则定）
@@ -107,7 +103,8 @@ func available_skills() -> Array:
 			out.append({"type": GConst.ActionType.AttackSkill, "id": MO_GUAN_CHONG_JI,
 				"need_card": 2, "need_target": 1, "card_source": GConst.CardSource.HandOrCover,
 				"cover_need": 1, "cards": 可点牌, "targets": 可攻目标,
-				"card_prompt": "选 1 张攻击牌和 1 张火系【充能】，"})
+				# 选牌提示取技能表「提示」列第 2 条，改文案不用动代码
+				"card_prompt": 提示(MO_GUAN_CHONG_JI, 2)})
 	return out
 
 
@@ -520,6 +517,12 @@ func v_special_skill(action: Dictionary) -> int:
 		MO_YAN:
 			if player.gem <= 0:
 				return GConst.GE_INVALID_ACTION
+			# 二级技能栏里选了「指定一名角色弃 1 张牌」那一项时，必须带一个真实存在的目标
+			var 魔眼参数: Array = action.get("args", [])
+			if not 魔眼参数.is_empty() and int(魔眼参数[0]) == 1:
+				var 魔眼目标: Array = action.get("dst_ids", [])
+				if 魔眼目标.is_empty() or engine.p(int(魔眼目标[0])) == null:
+					return GConst.GE_INVALID_ARGUMENT
 		_:
 			return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
@@ -555,10 +558,8 @@ func p_after_special(ctx: Dictionary) -> int:
 ## 盖牌不在这里问，而是挂到 p_after_special：摸牌顶过手牌上限时，
 ## 引擎会先结算爆牌 + 掉士气，再回来问盖牌（顺序：弃牌 → 摸牌 → 爆牌 → 盖牌）
 func _run_chong_neng(action: Dictionary) -> int:
-	var r: int = _chong_neng(action)
-	if r == WAIT:
-		return WAIT
-	# 玩家取消摸牌数：未实际发动，直接结束
+	_chong_neng(action)
+	# 没实际发动（没给摸牌数）：直接结束，连盖牌步骤也不挂
 	if not player.boot_skill_used:
 		return SUCCESS
 	_待盖牌技能 = CHONG_NENG
@@ -566,7 +567,17 @@ func _run_chong_neng(action: Dictionary) -> int:
 	return SUCCESS
 
 
-## 魔眼：先结算「点牌 / 点人」的效果（别人弃 1 张 / 自己摸 3 张 / 自己弃 1 张），
+## 充能的摸牌数选项（二级技能栏）：1~4 张各一颗，文案取技能表「提示」列第 4 条（"摸 {n} 张"）。
+## 注意：序号 2（技能表「提示2」列那条「弃到 {n} 张牌，」）现在没有代码在读，但**不能删** ——
+## 客户端按「第几个非空提示」取文案，删掉它序号会整体前移，这里的「摸 {n} 张」就取不到了
+func _chong_neng_choices() -> Array:
+	var out: Array = []
+	for i: int in range(1, 5):
+		out.append({"text": 提示(CHONG_NENG, 3, i), "args": [i]})
+	return out
+
+
+## 魔眼：先结算二级技能栏里选的那一项（自己摸 3 张 / 指定一名角色弃 1 张），
 ## 再把盖牌挂到 p_after_special —— 摸 3 张若顶过手牌上限，引擎会先结算爆牌 + 掉士气，
 ## 之后才回来问盖牌（和【充能】同一条路，避免先问盖牌、后爆牌）
 func _run_mo_yan(action: Dictionary) -> int:
@@ -576,19 +587,12 @@ func _run_mo_yan(action: Dictionary) -> int:
 	return r
 
 
-## 充能：耗 1 能量（优先水晶）→ 问摸几张 → 摸牌 → 爆牌 / 掉士气（引擎在状态边界补）→ 盖牌。
-## 「弃到 4 张」的牌是发动代价，随行动一起过来（张数已在 v_special_skill 复核），这里直接用。
-## 这次询问不选牌不选目标＝纯选项，客户端会用居中弹窗渲染（通用客户端只回一维 args，args[0] 即摸牌数）
+## 充能：耗 1 能量（优先水晶）→ 摸牌 → 爆牌 / 掉士气（引擎在状态边界补）→ 盖牌。
+## 「弃到 4 张」的牌与「摸几张」都由客户端随这次行动一起提交
+## （args[0] = 摸牌数，已由二级技能栏的选项选定；弃牌张数已在 v_special_skill 复核）
 func _chong_neng(action: Dictionary) -> int:
-	if not engine.has_reply():
-		var 摸牌选项: Array = []
-		for i: int in range(1, 5):
-			摸牌选项.append({"value": i, "label": "摸 %d 张" % i})
-		询问(player.id, CHONG_NENG, 0, 0, GConst.CardSource.Hand, 摸牌选项)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	# args[0] 是「摸牌数」选项的 value（1~4）；取消/超时回 0，此时不发动、连能量也不扣
+	var args: Array = action.get("args", [])
+	# args[0] 是「摸牌数」选项的 value（1~4）；没带（正常到不了）视为不发动、连能量也不扣
 	if args.is_empty() or int(args[0]) <= 0:
 		return SUCCESS
 	var draw_n: int = clampi(int(args[0]), 1, 4)
@@ -616,41 +620,38 @@ func _chong_neng(action: Dictionary) -> int:
 	return SUCCESS
 
 
-## 魔眼：耗 1 宝石、+1 水晶。玩家点技能时已二选一（都在 action 里带过来）：
-##   · 点 1 张自己的手牌 —— 自己弃掉那一张；
-##   · 点 1 名角色 —— 别人则他弃 1 张牌，自己则自己摸 3 张牌。
-## 「点牌 / 点人 二选一」的界面交互由客户端按技能指示器的「牌或人」处理
+## 魔眼的两个选项（二级技能栏二选一，对照原服务端 MoGong::MoYan）：
+## args[0]=0 不指定目标 → 自己摸 3 张牌；args[0]=1 指定一名角色 → 该角色弃 1 张牌。
+## 「指定」那项的白名单是全场（含自己，对照原版 playerArea->enableAll），所以点自己＝自己弃 1 张
+func _mo_yan_choices() -> Array:
+	return [
+		{"text": 提示(MO_YAN, 2), "args": [0]},
+		{"text": 提示(MO_YAN, 3), "args": [1], "need_target": 1, "targets": _all_player_ids()},
+	]
+
+
+## 场内所有玩家 id（含自己）：魔眼「指定一名角色」的目标白名单用它
+func _all_player_ids() -> Array[int]:
+	return player_ids_where(func(_p: BattlePlayer) -> bool: return true, true)
+
+
+## 魔眼：耗 1 宝石、+1 水晶。效果由二级技能栏里选的那一项决定：
+##   · args[0]=0 不指定目标 —— 自己摸 3 张牌；
+##   · args[0]=1 指定一名角色 —— 该角色弃 1 张牌（含自己；手里没牌就不弃）。
+## 「把手牌作【充能】」的盖牌步骤不在这里，挂在 p_after_special（见 _run_mo_yan）
 func _mo_yan(action: Dictionary) -> int:
 	notice_skill(MO_YAN, [player.id])
 	player.boot_skill_used = true
 	player.set_gem(player.gem - 1)
 	player.set_crystal(player.crystal + 1)
-	# 先看点没点手牌（点了牌＝自己弃掉那一张）
-	var 弃牌: Array = []
-	for c: Variant in action.get("card_ids", []):
-		if 弃牌.size() >= 1:
-			break
-		if player.has_hand_card(int(c)):
-			弃牌.append(int(c))
-	if not 弃牌.is_empty():
-		engine.take_from_hand(player.id, 弃牌)
-		engine.to_discard(弃牌)
-		engine._log_discard(player.id, 弃牌)
-		engine._broadcast_game()
-		return SUCCESS
-	# 没点牌：看点了谁（别人＝他弃 1 张；自己＝自己摸 3 张）
+	var args: Array = action.get("args", [])
 	var dsts: Array = action.get("dst_ids", [])
-	if not dsts.is_empty():
-		var dst_id: int = int(dsts[0])
-		if dst_id == player.id:
-			engine.draw(player.id, 3)
-			engine._broadcast_game()
-			return SUCCESS
-		# 让别人弃 1 张：走引擎通用的弃牌状态（它自己记弃牌日志，客户端据此播弃牌动画）
-		engine.push(BattleEngine.SRequestDiscard.new(dst_id, 1, 0, MO_YAN))
+	# 选了「指定一名角色」：走引擎通用的弃牌状态（它自己记弃牌日志，客户端据此播弃牌动画）
+	if not args.is_empty() and int(args[0]) == 1 and not dsts.is_empty():
+		engine.push(BattleEngine.SRequestDiscard.new(int(dsts[0]), 1, 0, MO_YAN))
 		engine._broadcast_game()
 		return URGENT
-	# 既没点牌也没点人（界面会挡住，正常到不了这里）：按「自己摸 3 张」兜底
+	# 其余（选「自己摸 3 张牌」，或异常没带目标）：自己摸 3 张
 	engine.draw(player.id, 3)
 	engine._broadcast_game()
 	return SUCCESS

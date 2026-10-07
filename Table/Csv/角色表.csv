@@ -3,7 +3,7 @@ id,enabled,role_index,heal_max,energy_max,yellow_max,blue_max,covered_max,flags,
 string,"enum(禁用:0,启用:1)",int,int,int,int,int,int,string,string,string,string,list(string),string,string,string,string,string,list(技能表)
 角色#白板,禁用,0,2,3,0,0,0,,,,,,白板,技,,,,
 角色#风之剑圣,启用,1,2,3,0,0,0,,,,,,风之剑圣,技,风之剑圣,,res://scripts/battle/roles/role_jiansheng.gd,技能#疾风技;技能#烈风技;技能#风怒追击;技能#圣剑;技能#剑影
-角色#狂战士,启用,2,2,3,0,0,0,,,,,,狂战士,血,狂战士,,res://scripts/battle/roles/role_kuangzhan.gd,技能#血影狂刀;技能#血腥咆哮;技能#狂化;技能#血影狂刀_204;技能#撕裂
+角色#狂战士,启用,2,2,3,0,0,0,,,,,,狂战士,血,狂战士,,res://scripts/battle/roles/role_kuangzhan.gd,技能#血影狂刀;技能#血腥咆哮;技能#狂化;技能#撕裂
 角色#神箭手,启用,3,2,3,0,0,0,,,,,,神箭手,技,神箭手,,res://scripts/battle/roles/role_gongnv.gd,技能#精准射击;技能#闪光陷阱;技能#狙击;技能#闪电箭;技能#贯穿射击
 角色#封印师,启用,4,2,3,0,0,0,,,,,,封印师,幻,封印师,,res://scripts/battle/roles/role_fengyin.gd,技能#风之封印;技能#水之封印;技能#火之封印;技能#地之封印;技能#雷之封印;技能#法术激荡;技能#五系束缚;技能#封印破碎
 角色#暗杀者,启用,5,2,3,0,0,0,2,QianXing,QianXing,#44D647,潜行,暗杀者,技,暗杀者,,res://scripts/battle/roles/role_ansha.gd,技能#反噬;技能#水影;技能#潜行
@@ -23,12 +23,12 @@ string,"enum(禁用:0,启用:1)",int,int,int,int,int,int,string,string,string,st
 角色#剑帝,启用,19,2,3,5,3,0,,,,,,剑帝,技,剑帝,0:剑气:5;2:剑魂:3,res://scripts/battle/roles/role_jiandi.gd,技能#剑魂守护;技能#佯攻;技能#剑气斩;技能#天使与恶魔;技能#天使之魂;技能#恶魔之魂;技能#不屈意志
 角色#格斗,启用,20,2,3,6,0,0,,BaiShi,BaiShi,#44D647,百式幻龙拳,格斗,技,格斗,0:斗气:6,res://scripts/battle/roles/role_gedou.gd,技能#念气力场;技能#蓄力一击;技能#念弹;技能#百式幻龙拳;技能#气绝崩击;技能#斗神天驱
 角色#勇者,启用,21,2,3,4,4,0,"3,6",JingPiLiJie,JingPiLiJie,#FA2727,精疲力竭,勇者,血,勇者,0:怒气:4;1:知性:4,res://scripts/battle/roles/role_yongzhe.gd,技能#挑衅;技能#禁断之力;技能#怒吼;技能#明镜止水;技能#死斗;技能#精疲力竭;技能#勇者之心
-角色#灵魂术士,启用,22,2,3,6,6,0,,,,,,灵魂术士,幻,灵魂术士,0:黄魂:6;1:蓝魂:6,res://scripts/battle/roles/role_linghun.gd,技能#灵魂震爆;技能#灵魂赐予;技能#灵魂增幅;技能#灵魂吞噬;技能#灵魂召还;技能#灵魂转换;技能#灵魂镜像;技能#灵魂链接;技能#灵魂链接响应
-角色#血之巫女,启用,23,2,3,0,0,0,,LiuXue,LiuXue,#FA2727,流血形态,血之巫女,血,血之巫女,,res://scripts/battle/roles/role_wunu.gd,技能#血之悲鸣;技能#同生共死;技能#血之哀伤;技能#逆流;技能#流血;技能#血之诅咒;技能#血之诅咒弃牌
+角色#灵魂术士,启用,22,2,3,6,6,0,,,,,,灵魂术士,幻,灵魂术士,0:黄魂:6;1:蓝魂:6,res://scripts/battle/roles/role_linghun.gd,技能#灵魂震爆;技能#灵魂赐予;技能#灵魂增幅;技能#灵魂吞噬;技能#灵魂召还;技能#灵魂转换;技能#灵魂镜像;技能#灵魂链接
+角色#血之巫女,启用,23,2,3,0,0,0,,LiuXue,LiuXue,#FA2727,流血形态,血之巫女,血,血之巫女,,res://scripts/battle/roles/role_wunu.gd,技能#血之悲鸣;技能#同生共死;技能#血之哀伤;技能#逆流;技能#流血;技能#血之诅咒
 角色#蝶舞者,启用,24,2,3,0,99,8,,DiaoLing,DiaoLing,#9E9E9E,凋零形态,蝶舞者,咏,蝶舞者,0:蛹:99;2:茧:8,res://scripts/battle/roles/role_diewu.gd,技能#生命之火;技能#舞动;技能#毒粉;技能#朝圣;技能#镜花水月;技能#凋零;技能#蛹化;技能#倒逆之蝶
 角色#女武神,启用,25,2,3,0,0,0,,YingLingXingTai,YingLingXingTai,#0060FF,英灵形态,女武神,圣,女武神,,res://scripts/battle/roles/role_nvwushen.gd,技能#神圣追击;技能#秩序之印;技能#和平行者;技能#军神威光;技能#英灵召唤
 角色#魔弓,启用,26,2,3,0,0,8,,,,,,魔弓,幻,魔弓,2:充能:8,res://scripts/battle/roles/role_mogong.gd,技能#魔贯冲击;技能#雷光散射;技能#多重射击;技能#充能;技能#魔眼
-角色#英灵人形,启用,27,2,3,3,3,0,7,XuShiBengFa,XuSiBengFa,#FF531E,蓄势迸发形态,英灵人形,咏,英灵人形,0:战纹:3;1:魔纹:3,res://scripts/battle/roles/role_yinglingrenxing.gd,技能#怒火压制&魔纹融合;技能#怒火压制;技能#战纹碎击;技能#魔纹融合;技能#符文改造;技能#双重回响;技能#战纹掌控
+角色#英灵人形,启用,27,2,3,3,3,0,7,XuShiBengFa,XuSiBengFa,#FF531E,蓄势迸发形态,英灵人形,咏,英灵人形,0:战纹:3;1:魔纹:3,res://scripts/battle/roles/role_yinglingrenxing.gd,技能#战纹掌控;技能#怒火压制;技能#战纹碎击;技能#魔纹融合;技能#符文改造;技能#双重回响
 角色#红莲骑士,启用,28,4,3,2,0,0,,ReXueFeiTeng,ReXueFeiTeng,#FA2727,热血沸腾形态,红莲骑士,血,红莲骑士,0:血印:2,res://scripts/battle/roles/role_honglian.gd,技能#猩红圣约;技能#猩红信仰;技能#血腥祷言;技能#杀戮盛宴;技能#热血沸腾;技能#戒骄戒躁;技能#猩红十字
 角色#魔枪,启用,29,2,3,0,0,0,"5,8",HuanYing,HuanYing,#672E77,幻影形态,魔枪,幻,魔枪,,res://scripts/battle/roles/role_moqiang.gd,技能#暗之解放;技能#幻影星辰;技能#黑暗束缚;技能#暗之障壁;技能#充盈;技能#漆黑之枪
 角色#苍炎魔女,启用,30,2,3,4,0,0,9,LieYan,LieYan,#FA2727,烈焰形态,苍炎魔女,血,苍炎魔女,0:重生:4,res://scripts/battle/roles/role_monv.gd,技能#苍炎法典;技能#天火断空;技能#魔女之怒;技能#替身玩偶;技能#永生银时计;技能#痛苦链接;技能#魔能反转

@@ -214,8 +214,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			# 摆出来只会让玩家选了个必然落空的分支
 			var 选项: Array = []
 			if _有火系妖力():
-				选项.append({"value": 1, "label": "展示火系【妖力】：指定 2 名角色"})
-			选项.append({"value": 0, "label": "不展示：指定 1 名角色"})
+				选项.append({"value": 1, "label": 提示(BAI_GUI_YE_XING, 1)})
+			选项.append({"value": 0, "label": 提示(BAI_GUI_YE_XING, 2)})
 			# can_cancel = false：选中攻击命中后【百鬼夜行】必须执行，不给「取消」这条路
 			# （客户端会先在居中弹窗里让玩家选效果，选完再选妖力与目标、按「确定」发动）
 			询问(player.id, BAI_GUI_YE_XING, 1, 2, GConst.CardSource.Cover, 选项, 0, "", [], false)

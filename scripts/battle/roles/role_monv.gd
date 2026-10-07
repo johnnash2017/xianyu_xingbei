@@ -4,8 +4,8 @@ extends BattleRole
 ## 技能：苍炎法典（3001，法术：弃 1 张火系牌，对目标角色和自己各造成 2 点法术伤害）、
 ##       天火断空（3002，法术：弃 2 张火系牌，非烈焰形态再移除 1 点【重生】，
 ##                 对目标角色和自己各造成 3（敌方士气更高时为 4）点法术伤害）、
-##       魔女之怒（3003，启动：手牌 ≤ 3 时进入【烈焰形态】、摸 0~3 张牌并调整手牌上限；30031 为该形态下
-##                 弃 1 张攻击牌、以虚拟【火焰斩】(87) 发起一次攻击）、
+##       魔女之怒（3003，启动：手牌 ≤ 3 时进入【烈焰形态】、摸 0~3 张牌并调整手牌上限；
+##                 该形态下同一个技能号另有一个攻击入口：弃 1 张攻击牌、以虚拟【火焰斩】(87) 发起一次攻击）、
 ##       替身玩偶（3004，响应：受攻击伤害时弃 1 张法术牌，指定同队角色摸 1 张牌）、
 ##       永生银时计（3005，被动：因承受法术伤害掉士气时 +1【重生】）、
 ##       痛苦链接（3006，法术：耗 1 点能量，对目标对手和自己各 1 点法术伤害，然后弃到 3 张牌）、
@@ -15,7 +15,6 @@ extends BattleRole
 const CANG_YAN_FA_DIAN: int = 3001
 const TIAN_HUO_DUAN_KONG: int = 3002
 const MO_NV_ZHI_NU: int = 3003
-const MO_NV_ZHI_NU_ATTACK: int = 30031
 const TI_SHEN_WAN_OU: int = 3004
 const YONG_SHENG_YIN_SHI_JI: int = 3005
 const TONG_KU_LIAN_JIE: int = 3006
@@ -48,16 +47,16 @@ func available_skills() -> Array:
 	if player.tap and not player.hand_cards.is_empty():
 		# 只能弃攻击牌（v_attack_skill 校验同一条）
 		# 目标须为对手（v_attack_skill：dst.color == player.color 时返回 GE_INVALID_PLAYERID）
-		out.append({"type": GConst.ActionType.AttackSkill, "id": MO_NV_ZHI_NU_ATTACK, "need_card": 1, "need_target": 1,
+		out.append({"type": GConst.ActionType.AttackSkill, "id": MO_NV_ZHI_NU, "need_card": 1, "need_target": 1,
 			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack()),
 			"targets": enemy_ids()})
 	if player.hand_cards.size() <= 3:
 		# 启动：进入【烈焰形态】并摸 0~2 张牌（摸牌数由 arg_choices 选择）
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_NV_ZHI_NU, "need_card": 0, "need_target": 0,
 			"arg_choices": [
-				{"text": "摸 0 张牌", "args": [0]},
-				{"text": "摸 1 张牌", "args": [1]},
-				{"text": "摸 2 张牌", "args": [2]},
+				{"text": 提示(MO_NV_ZHI_NU, 0), "args": [0]},
+				{"text": 提示(MO_NV_ZHI_NU, 1), "args": [1]},
+				{"text": 提示(MO_NV_ZHI_NU, 2), "args": [2]},
 			]})
 	return out
 
@@ -472,7 +471,7 @@ func _tong_ku_lian_jie(action: Dictionary) -> int:
 func v_attack_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) != MO_NV_ZHI_NU_ATTACK:
+	if int(action.get("action_id", 0)) != MO_NV_ZHI_NU:
 		return GConst.GE_INVALID_ACTION
 	var cards: Array = action.get("card_ids", [])
 	if cards.is_empty():
@@ -496,13 +495,13 @@ func v_attack_skill(action: Dictionary) -> int:
 
 
 func p_attack_skill(action: Dictionary) -> int:
-	if int(action.get("action_id", 0)) != MO_NV_ZHI_NU_ATTACK:
+	if int(action.get("action_id", 0)) != MO_NV_ZHI_NU:
 		return GConst.GE_INVALID_ACTION
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
 	var cid: int = int(cards[0])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
-	notice_skill(MO_NV_ZHI_NU_ATTACK, [dst_id])
+	notice_skill(MO_NV_ZHI_NU, [dst_id])
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,

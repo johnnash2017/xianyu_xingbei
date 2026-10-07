@@ -7,39 +7,39 @@
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[sub_resource type="Gradient" id="Gradient_bevel"]
-offsets = PackedFloat32Array(0, 0.35901162, 0.7093023, 1)
-colors = PackedColorArray(0.7413847, 0.7413847, 0.7413844, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.84532875, 0.8453288, 0.84532857, 1)
+[sub_resource type="Gradient" id="Gradient_fade"]
+offsets = PackedFloat32Array(0.16117217, 0.44688645, 0.6025641, 1)
+colors = PackedColorArray(1, 1, 1, 0.9254902, 1, 1, 1, 0.26548332, 1, 1, 1, 0.10994035, 1, 1, 1, 0)
 
-[sub_resource type="GradientTexture1D" id="GradientTexture1D_bevel"]
-gradient = SubResource("Gradient_bevel")
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_fade"]
+gradient = SubResource("Gradient_fade")
 
-[sub_resource type="Gradient" id="Gradient_bevel_v"]
-offsets = PackedFloat32Array(0, 0.4883721, 0.6133721, 1)
-colors = PackedColorArray(1, 1, 1, 1, 0.81960785, 0.81960785, 0.81960785, 1, 0.8196545, 0.8196545, 0.8196543, 1, 1, 1, 1, 1)
-
-[sub_resource type="GradientTexture1D" id="GradientTexture1D_bevel_v"]
-gradient = SubResource("Gradient_bevel_v")
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_selectedglow"]
+resource_local_to_scene = true
+shader = ExtResource("33_selectedglow")
+shader_parameter/rect_size = Vector2(110, 44)
+shader_parameter/glow_px = 20.0
+shader_parameter/corner_radius = 8.0
+shader_parameter/honeycomb = true
+shader_parameter/hex_slant = 15.0000007125
+shader_parameter/glow_color = Color(1, 0.8901961, 0, 1)
+shader_parameter/fade_curve = SubResource("GradientTexture1D_fade")
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_bevel"]
 resource_local_to_scene = true
 shader = ExtResource("32_btnbevel")
-shader_parameter/rect_size = Vector2(110, 46)
-shader_parameter/button_color = Color(1, 1, 1, 1)
-shader_parameter/lighten = 0.150000007125
-shader_parameter/gradient_strength = 0.330000015675
-shader_parameter/gradient = SubResource("GradientTexture1D_bevel")
-shader_parameter/gradient_v_strength = 1.0
-shader_parameter/gradient_v = SubResource("GradientTexture1D_bevel_v")
+shader_parameter/rect_size = Vector2(110, 44)
+shader_parameter/button_color = Color(1, 0, 1, 1)
+shader_parameter/lighten = 0.0
 shader_parameter/edge_px = 10.0000004275
 shader_parameter/light_strength = 0.5
 shader_parameter/shade_strength = 0.5
 shader_parameter/flip_light = false
 shader_parameter/honeycomb = true
 shader_parameter/hex_slant = 15.0000007125
-shader_parameter/honeycomb_softness = 6.0
+shader_parameter/honeycomb_softness = 24.0
 shader_parameter/corner_radius = 8.0
-shader_parameter/outline_px = 3.0000001425
+shader_parameter/outline_px = 3.50000016625
 shader_parameter/outline_color = Color(1, 1, 1, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_yv4dp"]
@@ -97,17 +97,7 @@ corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_selectedglow"]
-resource_local_to_scene = true
-shader = ExtResource("33_selectedglow")
-shader_parameter/rect_size = Vector2(110, 44)
-shader_parameter/glow_px = 12.0
-shader_parameter/corner_radius = 8.0
-shader_parameter/honeycomb = true
-shader_parameter/hex_slant = 22.0
-shader_parameter/glow_color = Color(1, 0.858824, 0.247059, 1)
-
-[node name="Skill" type="Button" unique_id=245982258 node_paths=PackedStringArray("plateButton", "skillName", "selectBorder")]
+[node name="Skill" type="Button" unique_id=245982258 node_paths=PackedStringArray("plateButton", "selectedGlow", "skillName", "selectBorder")]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
@@ -127,38 +117,40 @@ theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
 script = ExtResource("31_SkillUIgd")
 plateButton = NodePath("背景板")
+selectedGlow = NodePath("选中发光")
 skillName = NodePath("SkillName")
 selectBorder = NodePath("SelectBorder")
 
+[node name="选中发光" type="ColorRect" parent="." unique_id=1948073562]
+visible = false
+material = SubResource("ShaderMaterial_selectedglow")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -19.0
+offset_top = 4.0
+offset_right = 21.0
+offset_bottom = -2.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.98, 0.98)
+mouse_filter = 2
+
 [node name="背景板" type="Button" parent="." unique_id=651677558]
 material = SubResource("ShaderMaterial_bevel")
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_top = 23.0
 offset_bottom = -23.0
-grow_horizontal = 2
-grow_vertical = 2
 focus_mode = 0
 theme_override_styles/normal = SubResource("StyleBoxFlat_yv4dp")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_ykrkf")
 theme_override_styles/hover = SubResource("StyleBoxFlat_ne71q")
 theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_mdat8")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_x3c57")
-
-[node name="选中发光" type="ColorRect" parent="背景板" unique_id=1948073562]
-visible = false
-material = SubResource("ShaderMaterial_selectedglow")
-layout_mode = 0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -12.0
-offset_top = -12.0
-offset_right = 12.0
-offset_bottom = 12.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
 
 [node name="SkillName" type="Label" parent="." unique_id=465010874]
 layout_mode = 0

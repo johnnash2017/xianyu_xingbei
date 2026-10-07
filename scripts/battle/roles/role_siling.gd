@@ -251,7 +251,7 @@ func _same_element_hand_ids() -> Array[int]:
 func _si_wang_choices() -> Array:
 	var out: Array = []
 	for n: int in range(2, player.cross_num + 1):
-		out.append({"text": "消耗 %d 点治疗" % n, "args": [n], "need_card": 2, "need_target": 1})
+		out.append({"text": 提示(SI_WANG_ZHI_CHU, 0, n), "args": [n], "need_card": 2, "need_target": 1})
 	return out
 
 

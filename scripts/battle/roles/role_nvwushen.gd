@@ -90,9 +90,9 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 
 ## 军神威光第一段选项：+1 治疗，或（团队能量 > 1 时）移除 2 星石换无视上限 +2 治疗
 func _jun_shen_wei_guang_choices() -> Array:
-	var 选项: Array = [{"value": 1, "label": "你 +1【治疗】"}]
+	var 选项: Array = [{"value": 1, "label": 提示(JUN_SHEN_WEI_GUANG, 1)}]
 	if engine.team_gem[player.color] + engine.team_crystal[player.color] > 1:
-		选项.append({"value": 2, "label": "移除我方【战绩区】2 星石，无视上限 +2【治疗】"})
+		选项.append({"value": 2, "label": 提示(JUN_SHEN_WEI_GUANG, 2)})
 	return 选项
 
 
@@ -103,11 +103,11 @@ func _jun_shen_wei_guang_energy_choices() -> Array:
 	var 水晶: int = engine.team_crystal[player.color]
 	var 选项: Array = []
 	if 水晶 >= 2:
-		选项.append({"value": 1, "label": "移除 2 个【水晶】"})
+		选项.append({"value": 1, "label": 提示(JUN_SHEN_WEI_GUANG, 3)})
 	if 宝石 >= 1 and 水晶 >= 1:
-		选项.append({"value": 2, "label": "移除 1 个【宝石】和 1 个【水晶】"})
+		选项.append({"value": 2, "label": 提示(JUN_SHEN_WEI_GUANG, 4)})
 	if 宝石 >= 2:
-		选项.append({"value": 3, "label": "移除 2 个【宝石】"})
+		选项.append({"value": 3, "label": 提示(JUN_SHEN_WEI_GUANG, 5)})
 	return 选项
 
 

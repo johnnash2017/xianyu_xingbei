@@ -16,6 +16,7 @@
 [ext_resource type="Script" uid="uid://b77bejghr7if1" path="res://scripts/PlayerStatusMobile.gd" id="32_PlayerStatusMobilegd"]
 [ext_resource type="Texture2D" uid="uid://dno7djaa8hkv7" path="res://assets/textures/battle/b02_chara_mask.png" id="33_b02charamaskpng"]
 [ext_resource type="PackedScene" path="res://scenes/prefabs/battlemobile/StatusName.tscn" id="34_statusname"]
+[ext_resource type="Material" uid="uid://bgxhrqx7w23sp" path="res://scripts/effects/头像选中发光.tres" id="35_selectglow"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_waitbg"]
 bg_color = Color(0, 0, 0, 0)
@@ -36,7 +37,7 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_d7cq3"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vhe14"]
 resource_local_to_scene = true
 content_margin_left = 10.0
 content_margin_top = 3.0
@@ -199,6 +200,7 @@ expand_mode = 1
 
 [node name="Select_6" type="TextureRect" parent="." unique_id=630221780]
 visible = false
+material = ExtResource("35_selectglow")
 layout_mode = 0
 anchor_top = 1.0
 anchor_bottom = 1.0
@@ -402,7 +404,7 @@ offset_bottom = -84.5
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 14
-theme_override_styles/normal = SubResource("StyleBoxFlat_d7cq3")
+theme_override_styles/normal = SubResource("StyleBoxFlat_vhe14")
 
 [node name="ChatPurple_6" type="TextureRect" parent="." unique_id=348714845]
 visible = false

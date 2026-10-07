@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/_临时说明框变大.gd" id="1_bigbox"]
+
+[node name="临时说明框变大" type="Node"]
+script = ExtResource("1_bigbox")

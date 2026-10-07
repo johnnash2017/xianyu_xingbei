@@ -44,7 +44,8 @@ func available_skills() -> Array:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": DOU_SHEN_TIAN_QU,
 			"need_card": maxi(player.hand_cards.size() - DOU_SHEN_KEEP_HAND, 0), "need_target": 0})
 	# 蓄力一击 / 气绝崩击：选一张攻击牌 + 一名对手，直接完成一次带加成的主动攻击
-	# （一次主动攻击只能带其中一个，故各是一个独立按钮）
+	# （一次主动攻击只能带其中一个，故各是一个独立按钮）。
+	# 另外，玩家用普通攻击（打出攻击牌）时也会由 p_timeline_1 问一次是否发动它们 —— 两条路都留着
 	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
 	if not 攻击牌.is_empty():
 		if _dou_qi() < TOKEN_DOU_QI_MAX:
@@ -157,12 +158,12 @@ enum 攻击阶段 { 未开始, 判定, 百式 }
 var _攻击阶段: int = 攻击阶段.未开始
 
 ## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
-## p_timeline_1 据此直接结算蓄力一击 / 气绝崩击的加成，用完即清
+## p_timeline_1 据此直接结算蓄力一击 / 气绝崩击的加成（这条来路不再询问），用完即清
 var _预选攻击技能: int = 0
 
 
 # ============================================================
-# 主动攻击宣告后：蓄力一击 / 气绝崩击加成 → 百式幻龙拳加成
+# 主动攻击宣告后：先问「蓄力一击 / 气绝崩击」→ 百式幻龙拳加成
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
@@ -170,8 +171,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if _攻击阶段 == 攻击阶段.未开始:
 		_攻击阶段 = 攻击阶段.判定
 	if _攻击阶段 == 攻击阶段.判定:
-		# 本次主动攻击是否由技能栏的「蓄力一击 / 气绝崩击」发起：是则直接结算对应加成，不再弹窗询问。
-		# 普通攻击（_预选攻击技能 为 0）与应战反击都直接进入百式加成结算。
+		# 两种来路：
+		#   ① 玩家直接点了技能栏的【蓄力一击 / 气绝崩击】：加成已经选好，直接结算，不再问；
+		#   ② 普通攻击（打出攻击牌）：按原版问一次「要发动蓄力一击 / 气绝崩击吗」。
+		# 应战反击两条都不走（原版只问主动攻击）。正在等答复时 _攻击阶段 停在 判定，下次进本钩子继续
 		var 预选: int = _预选攻击技能
 		_预选攻击技能 = 0
 		if bool(ctx.get("is_active", false)):
@@ -179,11 +182,71 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				_结算蓄力一击(ctx)
 			elif 预选 == QI_JUE_BENG_JI:
 				_结算气绝崩击(ctx)
+			else:
+				var r: int = _询问攻击加成(ctx)
+				if r == WAIT:
+					return WAIT
 		_攻击阶段 = 攻击阶段.百式
 	if _攻击阶段 == 攻击阶段.百式:
 		_bai_shi_harm(ctx)
 		_攻击阶段 = 攻击阶段.未开始
 	return SUCCESS
+
+
+## 主动攻击宣告后的询问（对照原版客户端 GeDouJia::XuLiCangYan 的「请选择要发动的技能」）：
+## 斗气未满才可给【蓄力一击】、斗气 ≥ 1 才可给【气绝崩击】，两个都给不了就不问（照旧只算百式加成）。
+## 只有一个可发动时直接问「是否发动【X】？」；两个都可发动时才进二级技能栏二选一。
+## 点「取消」＝不发动。选中了就地下结算加成（_结算蓄力一击 / _结算气绝崩击）。
+## 返回 WAIT 表示正在等玩家答复。
+func _询问攻击加成(ctx: Dictionary) -> int:
+	var 可蓄力: bool = _dou_qi() < TOKEN_DOU_QI_MAX
+	var 可气绝: bool = _dou_qi() >= 1
+	if 可蓄力 and not 可气绝:
+		return _问单项加成(XU_LI_YI_JI, ctx)
+	if 可气绝 and not 可蓄力:
+		return _问单项加成(QI_JUE_BENG_JI, ctx)
+	if not 可蓄力 and not 可气绝:
+		return SUCCESS
+	# 两个都能发动：进二级技能栏二选一。选项本身就是两颗技能，
+	# 故不再摆「技能本体」那一颗（见 const.技能指示器「无父技能」）
+	if not engine.has_reply():
+		engine.ask_skill(player.id, XU_LI_YI_JI, 0, 0, GConst.CardSource.Hand, _攻击加成选项(), 0, "", [], true,
+			"主动攻击：请选择要发动的技能（点「取消」＝都不发动）")
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var 选: int = int(args[0]) if not args.is_empty() else 0
+	if 选 == XU_LI_YI_JI:
+		_结算蓄力一击(ctx)
+	elif 选 == QI_JUE_BENG_JI:
+		_结算气绝崩击(ctx)
+	return SUCCESS
+
+
+## 只有一个可发动时的直接询问：不打二级技能栏，一问一答（确定＝发动、取消＝不发动）
+func _问单项加成(技能号: int, ctx: Dictionary) -> int:
+	if not engine.has_reply():
+		engine.ask_skill(player.id, 技能号, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			"是否发动【%s】？" % GConst.skill_name(技能号))
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	if args.is_empty() or int(args[0]) != 1:
+		return SUCCESS
+	if 技能号 == XU_LI_YI_JI:
+		_结算蓄力一击(ctx)
+	else:
+		_结算气绝崩击(ctx)
+	return SUCCESS
+
+
+## 二级技能栏里的两个选项（供两技能都可发动时二选一用）。
+## 带上 skill_id：这两项本身就是技能，客户端鼠标指向选项按钮时据此弹技能说明
+func _攻击加成选项() -> Array:
+	return [
+		{"value": XU_LI_YI_JI, "label": GConst.skill_name(XU_LI_YI_JI), "skill_id": XU_LI_YI_JI},
+		{"value": QI_JUE_BENG_JI, "label": GConst.skill_name(QI_JUE_BENG_JI), "skill_id": QI_JUE_BENG_JI},
+	]
 
 
 # ============================================================
@@ -217,7 +280,7 @@ func v_attack_skill(action: Dictionary) -> int:
 
 ## 蓄力一击 / 气绝崩击：打出所选攻击牌发起一次主动攻击。
 ## 回合结束由引擎的技能行动入栈（与普通技能一致），这里只补这次攻击本身；
-## 攻击宣告后 p_timeline_1 会依据 _预选攻击技能 直接结算对应加成（不再弹窗询问）
+## 攻击宣告后 p_timeline_1 会依据 _预选攻击技能 直接结算对应加成（这条来路不再询问玩家）
 func p_attack_skill(action: Dictionary) -> int:
 	var aid: int = int(action.get("action_id", 0))
 	var cards: Array = action.get("card_ids", [])

@@ -4,8 +4,8 @@ extends BattleRole
 ## 技能：灵魂吞噬（2204，被动：我方每损失 1 点士气 → +1 黄魂）、
 ##       灵魂增幅（2203，启动：耗 1 宝石 → +2 黄魂 +2 蓝魂）、
 ##       灵魂链接（2208，启动：耗 1 黄魂 +1 蓝魂，把【灵魂链接】放置于一名队友面前）、
-##       灵魂链接·转移（2209，响应：移除 X 点蓝魂，把 X 点伤害转移给另一人）、
-##       灵魂转换（2206，主动攻击宣告后：黄魂与蓝魂互转 1 点）、
+##       灵魂链接·转移（2208 的响应半段：移除 X 点蓝魂，把 X 点伤害转移给另一人）、
+##       灵魂转换（2206，攻击技能：选攻击牌与对手 → 按确定后询问方向 → 互转 1 点并攻击）、
 ##       灵魂召还（2205，法术：弃 X 张法术牌 → +（X＋1）蓝魂）、
 ##       灵魂震爆（2201，法术：弃 1 张带【灵魂震爆】的牌 + 3 黄魂 →
 ##                 目标 3 点法术伤害（目标手牌＜3 且手牌上限＞5 时为 5 点））、
@@ -20,16 +20,14 @@ const LING_HUN_ZHAO_HUAN: int = 2205         # 灵魂召还
 const LING_HUN_ZHUAN_HUAN: int = 2206        # 灵魂转换
 const LING_HUN_JING_XIANG: int = 2207        # 灵魂镜像
 const LING_HUN_LIAN_JIE: int = 2208          # 灵魂链接
-const LING_HUN_LIAN_JIE_REACT: int = 2209    # 灵魂链接·转移
 
 const TOKEN_HUANG: int = 0                   # 黄魂（tokens[0]）
 const TOKEN_LAN: int = 1                     # 蓝魂（tokens[1]）
 const TOKEN_MAX: int = 6
 
 var used_zeng_fu: bool = false               # 本回合是否已用【灵魂增幅】
-var used_lian_jie: bool = false              # 整局是否已放置【灵魂链接】
 var using_lian_jie: bool = false             # 本次伤害流程是否正在转移
-var connect_id: int = -1                     # 灵魂链接的另一端
+var connect_id: int = -1                     # 灵魂链接的另一端（-1＝当前没有链接）
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -61,18 +59,13 @@ func available_skills() -> Array:
 	if _lan() >= 3 and not 赐予牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_CI_YU, "need_card": 1, "need_target": 1,
 			"cards": 赐予牌})
-	# 灵魂转换：选一张攻击牌 + 一名对手，直接发起一次主动攻击，并在宣告后转换 1 点灵魂颜色。
-	# 转换方向做成 arg_choices，只列当前真有对应灵魂的方向（value 0=黄→蓝、1=蓝→黄）
+	# 灵魂转换：选一张攻击牌 + 一名对手，直接发起一次主动攻击。
+	# 转换方向不在发动前选，等选完牌与目标按「确定」后再询问（见 p_attack_skill）
 	if _huang() > 0 or _lan() > 0:
 		var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
 		if not 攻击牌.is_empty():
-			var 方向选项: Array = []
-			if _huang() > 0:
-				方向选项.append({"text": "黄 → 蓝", "args": [0], "need_card": 1, "need_target": 1})
-			if _lan() > 0:
-				方向选项.append({"text": "蓝 → 黄", "args": [1], "need_card": 1, "need_target": 1})
 			out.append({"type": GConst.ActionType.AttackSkill, "id": LING_HUN_ZHUAN_HUAN, "need_card": 1, "need_target": 1,
-				"cards": 攻击牌, "targets": enemy_ids(), "arg_choices": 方向选项})
+				"cards": 攻击牌, "targets": enemy_ids()})
 	# 启动技能（每回合只能发动一个，由引擎统一下发/校验）
 	if player.gem > 0 and not used_zeng_fu:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_ZENG_FU, "need_card": 0, "need_target": 0})
@@ -213,35 +206,39 @@ func _apply_zeng_fu() -> void:
 	engine._broadcast_game()
 
 
-## 灵魂链接：耗 1 黄魂 +1 蓝魂，双方获得【灵魂链接】独有效果
+## 灵魂链接：耗 1 黄魂 +1 蓝魂，双方获得【灵魂链接】独有效果。
+## 可以重复发动：重放时先把旧链接摘掉（含旧队友身上那张），再连到新目标
 func _apply_lian_jie(action: Dictionary) -> void:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst: BattlePlayer = engine.p(int(dsts[0]))
 	notice_skill(LING_HUN_LIAN_JIE, [dst.id])
 	player.boot_skill_used = true
+	if connect_id >= 0:
+		var 旧队友: BattlePlayer = engine.p(connect_id)
+		if 旧队友 != null:
+			旧队友.remove_exclusive_effect(GConst.Exclusive.LingHunLianJie)
+		player.remove_exclusive_effect(GConst.Exclusive.LingHunLianJie)
 	dst.add_exclusive_effect(GConst.Exclusive.LingHunLianJie)
 	player.add_exclusive_effect(GConst.Exclusive.LingHunLianJie)
 	_set_token(TOKEN_HUANG, _huang() - 1)
 	_set_token(TOKEN_LAN, _lan() - 1)
 	connect_id = dst.id
-	used_lian_jie = true
 	engine._broadcast_game()
 
 
-## 灵魂链接的发动条件：黄魂/蓝魂各 ≥1 且未放置过；手牌为 0 时黄魂须 ≥3；4 人局不发动
+## 灵魂链接的发动条件：黄魂/蓝魂各 ≥1；手牌为 0 时黄魂须 ≥3（已连过也能再发动，见 _apply_lian_jie）。
+## 没有队友时不用在这里拦：available_skills 的 targets 会是空列表，引擎会整条不下发
 func _can_lian_jie() -> bool:
-	if used_lian_jie or _huang() <= 0 or _lan() <= 0:
+	if _huang() <= 0 or _lan() <= 0:
 		return false
 	if player.hand_cards.is_empty() and _huang() < 3:
-		return false
-	if engine.order.size() == 4:
 		return false
 	return true
 
 
 # ============================================================
 # 灵魂转换（2206）：选一张攻击牌 + 一名对手发起主动攻击，并在宣告后转换 1 点灵魂颜色
-# 支持两种用法：技能栏按钮在发起攻击前预选（预选命中→直接结算，不再弹窗询问）；
+# 支持两种用法：技能栏按钮（选完牌与目标按「确定」→ 询问方向 → 预选命中，宣告后直接结算、不再弹窗）；
 # 普通出牌攻击（预选为 0）→ 按原版弹窗询问是否转换及方向
 # ============================================================
 ## 【灵魂转换】的推进阶段（0＝还没问 / 处理完本次转换后清回 0）。
@@ -251,7 +248,7 @@ func _can_lian_jie() -> bool:
 var _timeline_1_step: int = 0
 
 ## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）与转换方向（0＝黄→蓝、1＝蓝→黄）：
-## 由 p_attack_skill 在发起攻击前写入，p_timeline_1 据此直接结算，用完即清
+## 由 p_attack_skill 在「确定」后的询问里拿到方向时写入，p_timeline_1 据此直接结算，用完即清
 var _预选攻击技能: int = 0
 var _预选转换方向: int = -1
 
@@ -277,27 +274,40 @@ func v_attack_skill(action: Dictionary) -> int:
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
 		return GConst.GE_INVALID_PLAYERID
-	# 转换方向必须当前可行：黄→蓝须有黄魂、蓝→黄须有蓝魂
-	var args: Array = action.get("args", [])
-	var 方向: int = int(args[0]) if not args.is_empty() else -1
-	if 方向 != 0 and 方向 != 1:
-		return GConst.GE_INVALID_ARGUMENT
-	if 方向 == 0 and _huang() <= 0:
-		return GConst.GE_INVALID_ARGUMENT
-	if 方向 == 1 and _lan() <= 0:
-		return GConst.GE_INVALID_ARGUMENT
+	# 转换方向不在这里校验：它由 p_attack_skill 在「确定」之后询问玩家
 	return GConst.GE_SUCCESS
 
 
-## 灵魂转换：打出所选攻击牌发起一次主动攻击；宣告后 p_timeline_1 依据预选方向直接转换 1 点灵魂
+## 灵魂转换：选完攻击牌与对手、按「确定」后先问转换方向（黄→蓝 / 蓝→黄），选定即打出该牌发起攻击；
+## 转换本身仍由 p_timeline_1 在攻击宣告后按预选方向结算。
+## 「确定之后再询问」的写法对照冒险家【欺诈】的 p_attack_skill
 func p_attack_skill(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
-	var args: Array = action.get("args", [])
 	var cid: int = int(cards[0])
 	var dst_id: int = int(dsts[0])
+	if not engine.has_reply():
+		# 牌与目标已经提交；两个方向各一个按钮，只列当前真有对应灵魂的项。
+		# 可以取消：取消＝这次不发动、退回行动阶段（见 取消技能行动），不白用掉本回合的行动
+		var 选项: Array = []
+		if _huang() > 0:
+			选项.append({"value": 0, "label": 提示(LING_HUN_ZHUAN_HUAN, 1)})
+		if _lan() > 0:
+			选项.append({"value": 1, "label": 提示(LING_HUN_ZHUAN_HUAN, 2)})
+		engine.ask_skill(player.id, LING_HUN_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	if args.is_empty():
+		# 取消（或超时没选）：不发动，退回行动阶段重新来
+		engine.取消技能行动()
+		return SUCCESS
+	var 方向: int = int(args[0])
+	# 选了当前不可行的方向（异常情况）：退到真能转的一边，保证选了一定执行
+	if (方向 != 0 and 方向 != 1) or (方向 == 0 and _huang() <= 0) or (方向 == 1 and _lan() <= 0):
+		方向 = 0 if _huang() > 0 else 1
 	_预选攻击技能 = LING_HUN_ZHUAN_HUAN
-	_预选转换方向 = int(args[0]) if not args.is_empty() else -1
+	_预选转换方向 = 方向
 	var harm: Dictionary = {
 		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
@@ -348,9 +358,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消，0 才能正常当选项值）
 		var 选项: Array = []
 		if _huang() > 0:
-			选项.append({"value": 0, "label": "黄 → 蓝"})
+			选项.append({"value": 0, "label": 提示(LING_HUN_ZHUAN_HUAN, 1)})
 		if _lan() > 0:
-			选项.append({"value": 1, "label": "蓝 → 黄"})
+			选项.append({"value": 1, "label": 提示(LING_HUN_ZHUAN_HUAN, 2)})
 		询问(player.id, LING_HUN_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand, 选项)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
@@ -375,7 +385,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 灵魂链接·转移（2209）：伤害结算前把 X 点伤害转移给另一端
+# 灵魂链接·转移（2208 的响应半段）：伤害结算前把 X 点伤害转移给另一端
 # 服务端把转移后的伤害以「目标摸 X 张牌」结算（Timeline6）
 # ============================================================
 ## 【灵魂链接·转移】的推进阶段（0＝还没问 / 处理完本次转移后清回 0）。
@@ -386,7 +396,7 @@ var _timeline_6_step: int = 0
 
 
 func p_timeline_6(ctx: Dictionary) -> int:
-	if not used_lian_jie:
+	if connect_id < 0:
 		return SUCCESS
 	var harm: Dictionary = ctx.get("harm", {})
 	var dst_id: int = int(harm.get("dst", -1))
@@ -399,10 +409,12 @@ func p_timeline_6(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 可转移点数上限＝min(蓝魂数, 本次伤害)：做成选项按钮（服务端会把 con->harm.point 下发给客户端限制）
 		var 上限: int = mini(_lan(), int(harm.get("point", 0)))
+		# 选项文案分两种视角：自己受伤＝让队友替我扛（提示表第 4 条）；队友受伤＝我替他扛（第 3 条）
+		var 文案序号: int = 3 if dst_id == player.id else 2
 		var options: Array = []
 		for x: int in range(1, 上限 + 1):
-			options.append({"value": x, "label": "转移 %d 点（耗 %d 蓝魂，由另一端摸 %d 张）" % [x, x, x]})
-		询问(player.id, LING_HUN_LIAN_JIE_REACT, 0, 0, GConst.CardSource.Hand, options)
+			options.append({"value": x, "label": 提示(LING_HUN_LIAN_JIE, 文案序号, x)})
+		询问(player.id, LING_HUN_LIAN_JIE, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_timeline_6_step = 0
@@ -411,7 +423,7 @@ func p_timeline_6(ctx: Dictionary) -> int:
 	if howmany <= 0 or howmany > _lan():
 		return SUCCESS
 	var other_id: int = connect_id if dst_id == player.id else player.id
-	notice_skill(LING_HUN_LIAN_JIE_REACT, [other_id])
+	notice_skill(LING_HUN_LIAN_JIE, [other_id])
 	using_lian_jie = true
 	_set_token(TOKEN_LAN, _lan() - howmany)
 	harm["point"] = int(harm.get("point", 0)) - howmany
@@ -493,7 +505,7 @@ func _ci_yu(action: Dictionary) -> int:
 	notice_skill(LING_HUN_CI_YU, [dst_id])
 	_set_token(TOKEN_LAN, _lan() - 3)
 	if dst != null:
-		dst.set_gem(dst.gem + 2)
+		dst.set_gem(dst.gem + GConst.灵魂赐予宝石)
 	_show_and_discard([cid])
 	engine._broadcast_game()
 	return URGENT
@@ -547,6 +559,9 @@ func _jing_xiang(action: Dictionary) -> int:
 	if card_num > 0:
 		# 服务端【灵魂镜像】这一步 isShown=false：面朝下弃牌
 		_show_and_discard(_pick_cards(cards, card_num), false)
+		# 弃牌后先广播一次：客户端得先后看到手牌减少，接着摸牌补回来才会触发「补牌橙→绿」的动画。
+		# 只在最后广播一次的话，弃几张摸几张时手牌数没变，动画就永远不出现
+		engine._broadcast_game()
 	if draw_num > 0:
 		engine.draw(dst_id, draw_num)
 	engine._broadcast_game()

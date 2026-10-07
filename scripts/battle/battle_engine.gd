@@ -830,7 +830,9 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			cmds[0]["card_ids"] = 行动牌
 		for sk: Dictionary in pl.role.available_skills():
 			# 「启动」技能每回合只能发动一个：本回合已发动过就整条不再下发
-			if pl.boot_skill_used and pl.role.is_free_skill(int(sk.get("id", 0))):
+			# （「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不受这条限制）
+			if pl.boot_skill_used and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
+					and pl.role.is_free_skill(int(sk.get("id", 0))):
 				continue
 			# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时这条技能整条不发。
 			# 空列表在协议/客户端那里等于「不限制」（_玩家可选），会让本该被挡住的人
@@ -891,9 +893,11 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 询问某玩家是否发动某技能（客户端表现为「确定/取消」）
 ## need_card/need_target 告诉客户端本技能需要选出几张牌 / 几个目标
 ## card_source 为 GConst.CardSource：选牌来源（手牌 / 盖牌 / 两者皆可），如蝶舞的毒粉需指定一张【茧】
-## options 非空时客户端改为渲染「选项按钮」，点击即以该项的 value 作为回复的 args[0]
+## options 非空时客户端改为渲染「选项按钮」，点击即以该项的 value 作为回复的 args[0]。
+## 选项项还可带 "skill_id"（>0 表示这一项本身就是个技能，如【蓄力一击】/【风怒追击】）：
+## 客户端鼠标指向该选项按钮时按它弹技能说明（同普通技能按钮）
 ## 编码约定（客户端解析）：args = [need_card, need_target, card_source, 选项数, 选项值…]，
-## 选项文案放在同一条命令的 notes 里，与选项值一一对应
+## 选项文案放在同一条命令的 notes 里，与选项值一一对应；选项技能号放在 option_skill_ids 里（同序）
 ## card_max 给点选上限（省略或 0＝刚好 need_card 张，如【法术反弹】可弃 1~N 张同系牌）
 ## card_rule 给选牌规则（""＝不限 / "same"＝必须同系 / "diff"＝必须互异系 /
 ## "magic"＝只能选法术牌 / "sameprop"＝必须与已选牌同命格）
@@ -901,12 +905,20 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## can_cancel 为 false 时客户端把「取消」置灰（强制询问，如【水之神力】的交牌）
 ## ask_text 非空时客户端改用它当指令条文案：内容取自技能表「提示」列里对应的那一条
 ## （问谁、读第几条由角色脚本自己定，如【天使祝福】的「请选择 1 张手牌交给 天使[x]」）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = []) -> void:
+## targets 非空时客户端只让这几名玩家可点（need_target 为 0 时头像本来就点不动，
+## 这时它只当「这次伤害落在谁身上」用，如【魔纹融合】/【战纹碎击】把伤害数写在目标头像上）
+## 预览基准 非 0 时随询问下发（preview_base）：客户端现算头像提示要用到的数值
+## （如【战纹碎击】里本次攻击原本的伤害、【双重回响】要复制的那份伤害）
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0) -> void:
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
+	var 选项技能号: Array = []
+	var 选项需牌: Array = []
 	for o: Dictionary in options:
 		args.append(int(o.get("value", 0)))
 		notes.append(str(o.get("label", "")))
+		选项技能号.append(int(o.get("skill_id", 0)))
+		选项需牌.append(int(o.get("need_card", 0)))
 	var cmd: Dictionary = {
 		"respond_id": skill_id,
 		"src_id": pid,
@@ -923,6 +935,16 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	}
 	if not notes.is_empty():
 		cmd["notes"] = notes
+	# 有「本身就是技能」的选项时才下发（如【蓄力一击】/【气绝崩击】），客户端据此让这些选项悬停弹技能说明
+	if not 选项技能号.is_empty() and 选项技能号.max() > 0:
+		cmd["option_skill_ids"] = 选项技能号
+	# 有「选中后要弃牌」的选项时才下发（如【魔纹融合】）：客户端选到该项才放出手牌可选
+	if not 选项需牌.is_empty() and 选项需牌.max() > 0:
+		cmd["option_need_cards"] = 选项需牌
+	# 客户端现算头像提示要用的基准数值（如【战纹碎击】要显示「原伤害 + 弃牌加伤」、
+	# 【双重回响】要显示它复制出来的那份伤害）
+	if 预览基准 > 0:
+		cmd["preview_base"] = 预览基准
 	# 询问别人的场合（如请人交牌）：下发目标侧文案，客户端优先显示它
 	if not ask_text.is_empty():
 		cmd["ask_text"] = ask_text
@@ -1565,8 +1587,15 @@ class SActionPhase:
 
 ## 回合结束：先处理额外行动，否则轮转到下家
 class STurnEnd:
+	## 技能行动被取消（见 BattleEngine.取消技能行动）：本回合不结束，改为重新进入行动阶段
+	var 回行动阶段: bool = false
+
 	func handle(e: BattleEngine) -> int:
 		if e.phase == BattleEngine.Phase.Over:
+			return BattleEngine.CONTINUE
+		if 回行动阶段:
+			回行动阶段 = false
+			e.push(SActionPhase.new(e.行动允许, e.行动可放弃, e.行动额外, e.行动禁特殊))
 			return BattleEngine.CONTINUE
 		var cur: BattlePlayer = e.p(e.current_id)
 		if cur != null and cur.contains_action():
@@ -2260,7 +2289,9 @@ class SkillRun:
 			return BattleEngine.CONTINUE
 		if not checked:
 			# 「启动」技能每回合只能发动一个：本回合已发动过就直接驳回（客户端漏网点了也会被挡）
-			if cur.boot_skill_used and cur.role.is_free_skill(int(action.get("action_id", 0))):
+			# （「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不受这条限制）
+			if cur.boot_skill_used and kind == "special" \
+					and cur.role.is_free_skill(int(action.get("action_id", 0))):
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
 				e.push(SActionPhase.new())
 				return BattleEngine.CONTINUE
@@ -2335,7 +2366,9 @@ func resolve_action(action_type: int, data: Dictionary) -> int:
 ## 【百式幻龙拳】【斗神天驱】）不消耗行动，结算完重新进入行动阶段让玩家继续本回合行动
 func _进入技能行动(cur: BattlePlayer, kind: String, data: Dictionary) -> void:
 	var 技能号: int = int(data.get("action_id", 0))
-	var 启动: bool = 技能号 > 0 and cur != null and cur.role != null and cur.role.is_free_skill(技能号)
+	# 「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不算启动（如苍炎魔女【魔女之怒】的启动与攻击入口同号）
+	var 启动: bool = kind == "special" and 技能号 > 0 and cur != null and cur.role != null \
+			and cur.role.is_free_skill(技能号)
 	if 启动:
 		# 「启动」技能不消耗本回合行动，发动后行动阶段照旧继续；但只能再攻击 / 法术，
 		# 不能再走特殊行动（启动技与特殊行动互斥）
@@ -2343,6 +2376,18 @@ func _进入技能行动(cur: BattlePlayer, kind: String, data: Dictionary) -> v
 	else:
 		push(STurnEnd.new())
 	push(SkillRun.new(kind, data))
+
+
+## 技能行动取消（角色在技能询问里点了「取消」，如【灵魂转换】的方向询问）：
+## 让「技能用完即结束行动」的那个收尾改成重新进入行动阶段，玩家改做别的。
+## 不这么做的话，取消＝本回合的行动白白用掉，回合直接结束。
+## 只能在栈里就地设标记：run() 拿「状态下标还是不是自己」判断该状态是否自移除，
+## 若在这里增删栈里非栈顶的状态（比如直接把 STurnEnd 抽掉），下标就错位、状态机当轮直接停摆
+func 取消技能行动() -> void:
+	for i: int in range(_states.size() - 1, -1, -1):
+		if _states[i] is STurnEnd:
+			(_states[i] as STurnEnd).回行动阶段 = true
+			return
 
 
 ## 无法行动：把手里的牌全部弃掉（亮出牌面 + 弃牌动画）再摸 4 张。不消耗本回合行动，

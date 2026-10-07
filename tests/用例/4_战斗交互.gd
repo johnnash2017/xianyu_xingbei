@@ -210,19 +210,12 @@ func 跑() -> void:
 	检(int(窗.get("_mode")) == 0, "放弃行动后没有回到等待态：%d" % int(窗.get("_mode")))
 	检(not 确定.visible, "回到等待态后「确定」还显示着")
 
-	# 平时（不选目标的等待态）点玩家头像 → 弹出他的角色技能说明（搬自参考工程 InfomationUI）
-	(窗.get("MainPlayer") as Button).pressed.emit()
-	await 等帧(2)
-	var 详情窗: Control = 窗.get("英雄详情窗") as Control
-	检(详情窗 != null and 详情窗.visible, "点玩家头像没有弹出角色技能说明")
-	if 详情窗 != null:
-		var 技能文本: RichTextLabel = 详情窗.get("SkillText") as RichTextLabel
-		检(技能文本 != null and 技能文本.bbcode_enabled, "技能说明窗的文本控件没开 BBCode，类型颜色显示不出来")
-		检(str((详情窗.get("HeroName") as Label).text) != "" and str(技能文本.text).length() > 10,
-			"技能说明窗里没有角色名或技能文本")
-		(详情窗.get("BtnClose") as Button).pressed.emit()
-		await 等帧(2)
-		检(not 详情窗.visible, "技能说明窗没关掉")
+	# 平时（不选目标的等待态）鼠标指向玩家头像 → 就地弹出他的角色技能说明
+	# （与选角界面同款：面板是 富文本提示按钮，说明文本写在 tooltip_text 里，由引擎悬停触发）
+	var 头像面板: 战斗玩家面板 = 窗.get("MainPlayer") as 战斗玩家面板
+	检(头像面板 is 富文本提示按钮, "玩家头像面板没走富文本悬浮提示")
+	检(str(头像面板.tooltip_text).length() > 10 and str(头像面板.tooltip_text).find("[color=") >= 0,
+		"玩家头像的悬浮说明没有内容或没上色（BBCode）")
 
 	# ================= 2) 应答询问（被攻击，应战） =================
 	# 拿手牌里那张非暗系攻击牌当「本次攻击的牌」，它自己就是合法的应战牌

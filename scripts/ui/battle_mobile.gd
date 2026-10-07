@@ -61,17 +61,8 @@ var 特殊行动窗: 特殊行动窗口 = null
 ## 参数选择窗口（特殊行动的第二层「用哪些星石」，搬自参考工程 ChooseArgsUI）
 const 参数选择窗预制: PackedScene = preload("res://scenes/prefabs/battlemobile/ChooseArgsUI.tscn")
 var 参数选择窗: 参数选择窗口 = null
-## 英雄详情窗（技能说明，搬自参考工程 InfomationUI）：平时点一名玩家的头像就弹它
-const 英雄详情窗预制: PackedScene = preload("res://scenes/prefabs/battlemobile/InfomationUI.tscn")
-var 英雄详情窗: 英雄详情窗口 = null
 ## 参数选择窗口是为哪个特殊行动打开的（选完星石要按它提交）
 var _待定特殊行动: int = GConst.SpecialAction.Buy
-## 参数选择窗口这次是给「发动技能」用的（如【风之洁净】确定后列出目标身上的基础效果供选）：
-## true 时选中的 args 按当前待发动技能提交，点「取消」也只是关窗、回到原来的选牌/选目标状态
-var _参数选择_技能: bool = false
-## 参数选择窗口这次是给「多份额外行动」用的（如剑圣【风怒追击】+【剑影】）：
-## 在窗里选一项＝发动它，点窗里的「取消」＝跳过（与单份的「取消」等价）
-var _参数选择_额外行动: bool = false
 ## 本地询问（不经服务端）：冒险家【冒险者天堂】提炼前先问把星石给谁
 var _本地询问: bool = false
 ## 【冒险者天堂】选定的队友（-1＝没选，星石给自己）
@@ -116,6 +107,10 @@ const 补牌落下时长: float = 0.3
 const 手牌最多重叠比例: float = 0.45
 ## 盖牌尺寸（盖牌选择区里手排用；与手牌同尺寸＝正常卡牌大小）
 const 盖牌尺寸: Vector2 = 手牌尺寸
+## 盖牌区里实际渲染的缩放：点「盖牌」按钮看自己的盖牌、以及要选盖牌时都按它缩一档
+const 盖牌显示缩放: float = 0.7
+## 盖牌区里整行相对「区正中」再往下偏这么多像素（微调它和上下别的元素之间的空隙）
+const 盖牌显示下移: float = 40.0
 ## 盖牌之间的默认空隙；一行放不下时压缩（可以为负＝叠着放），见 刷新盖牌
 const 盖牌间距: float = 8.0
 ## 技能按钮最小尺寸（Skill.tscn 根按钮的实际尺寸是 110×90）
@@ -153,6 +148,7 @@ const 日志标签色: Dictionary = {
 	"治疗": "#8FC7FF",     # 治疗 / 恢复
 	"卡牌": "#B9B4C7",     # 出牌 / 弃牌 / 交牌 / 资源消耗 / 手牌数量与上限变化
 	"指示物": "#C6A6FF",   # 指示物变化
+	"士气": "#E8A0D8",     # 队伍士气升降
 	"提示": "#FFB27A",     # 超时 / 掉线 / 无效操作 / 错误
 	"聊天": "#8FE0D8",     # 玩家发言
 }
@@ -226,6 +222,9 @@ var _上次士气: Array[int] = [0, 0]
 var _上次宝石: Array[int] = [0, 0]
 var _上次水晶: Array[int] = [0, 0]
 var _上次治疗: int = 0
+## 所有玩家手上的宝石总数：除队伍宝石池之外再记一份 —— 【灵魂赐予】这类
+## 「直接给玩家宝石」的变动只动个人宝石，队伍池不变，只有它看得出来
+var _上次个人宝石: int = 0
 
 # ---------------- 交互状态 ----------------
 ## 0 空闲 / 1 行动 / 2 响应 / 3 技能询问 / 4 发动技能
@@ -277,6 +276,8 @@ var _额外行动单选: int = -1
 ## 上面那份额外行动此刻能不能发动（引擎在询问的 dst_ids 里下发「可发动」列表）：
 ## 不能发动时「确定」置灰、只能「取消」跳过（如手里没有风系攻击牌时的【风怒追击】）
 var _额外行动可选: bool = true
+## 这次「多份额外行动」是用二级技能栏列的（选中哪项就把 _额外行动单选 设成它，交给「确定」发动）
+var _额外行动用二级栏: bool = false
 var _skill_ask_need_card: int = 0
 var _skill_ask_need_target: int = 0
 ## 技能询问的选牌来源（GConst.CardSource）
@@ -289,15 +290,10 @@ var _selecting_cover: bool = false
 var _查看盖牌: bool = false
 ## 技能询问的可选项值（非空时渲染选项按钮）
 var _skill_options: Array[int] = []
-## 当前询问要用的「居中参数选择窗」选项（非空＝这次询问改用弹窗渲染；
-## 如【神之庇护】抵消几点、治疗抵挡几点——只选参数、不用选牌选目标）
-var _弹窗选项: Array = []
-## 上面那个弹窗的标题
-var _弹窗标题: String = ""
-## 「先弹选项」型询问（技能指示器配了「先弹选项」，如灵符师【百鬼夜行】）：
-## 进入询问先弹居中的效果选择窗，窗里只记下选了哪一项，选完再选牌 / 选目标，按「确定」才提交
+## 「先弹选项」型（技能指示器配了「先弹选项」，如灵符师【百鬼夜行】）：在二级技能栏里选效果之前
+## 不让点牌 / 点目标（需牌 / 目标数临时清零），选完效果在 _应用选项目标数 里还原 / 收紧
 var _先弹选项: bool = false
-## 上面那个弹窗里已选定的效果 args（原样随「确定」上交；没选之前「确定」不可用）
+## 二级技能栏里已选定的效果 args（原样随「确定」上交；没选之前「确定」不可用）
 var _已选参数: Array = []
 ## 「先弹选项」型询问里服务端原本给的目标数：选完效果后若「选项目标数」没配该效果，用它还原
 ## （如【剑气斩】：没配「选项目标数」，选完剑气数后仍要能选 1 名目标）
@@ -338,8 +334,16 @@ var _skill_card_source: int = GConst.CardSource.Hand
 var _skill_cover_need: int = 0
 ## 本次发动技能的参数选项（服务端在技能上给的 arg_choices：每项一个按钮，点它就用当前已选的牌/目标提交）
 var _skill_arg_choices: Array = []
-## 参数选项按钮 [{按钮, 需牌, 需目标}]：选项可以要求先选够牌/目标，没选够就压灰
-var _参数按钮: Array = []
+## 二级技能栏：点「带选项的技能」后，技能区只留被点的技能（最左）+ 它的选项（紧挨它右边、同样用技能按钮显示），
+## 其余技能暂时隐藏；选项先选中（亮黄），点「确定」才提交、点「取消」才退出（退出后恢复原来的技能栏）。
+var _二级栏: bool = false
+## 二级栏里的选项按钮 [{按钮: 技能按钮, 参数: Array, 需牌: int, 需目标: int, 目标白名单: Array}]
+var _二级选项: Array = []
+## 当前选中的选项下标（-1＝还没选）
+var _二级选中: int = -1
+## 二级栏最左那颗「被点的技能」按钮（没有就是 null）。目标变化后要重填选项时沿用它，
+## 免得重造一颗、把玩家刚点的那颗藏起来（见 _刷新基础效果选项）
+var _二级栏父按钮: 技能按钮 = null
 ## 技能区当前渲染出来的按钮（行动阶段技能 / 选项 / 额外行动 / 特殊行动共用）
 var _技能按钮: Array[Node] = []
 ## 本次行动询问下发的全部命令（取消技能/特殊行动时用它把技能按钮摆回来）
@@ -396,11 +400,12 @@ func _ready() -> void:
 	add_child(参数选择窗)
 	参数选择窗.选择了.connect(_on_参数选择)
 	参数选择窗.取消了.connect(_on_参数选择取消)
-	英雄详情窗 = 英雄详情窗预制.instantiate()
-	add_child(英雄详情窗)
 	for 面板: 战斗玩家面板 in _面板列表:
 		面板.pressed.connect(_on_player_pressed.bind(面板))
 		面板.基础效果牌点击.connect(_on_基础牌点击)
+		# 鼠标指向头像：用和点头像同一份说明框弹在面板正上方
+		面板.悬停.connect(_显示角色说明)
+		面板.离开悬停.connect(_隐藏角色说明)
 	ChooseArea.visible = false
 	_隐藏技能区()
 	# 手牌是按 HandArea 的实际宽度手排成一行的，尺寸一变（窗口缩放）就重排
@@ -494,7 +499,7 @@ func _on_game_info(info: Dictionary) -> void:
 		# 房间等待阶段仍是大厅音乐，真开打才换战斗曲
 		Audio.播放音乐(Audio.场景战斗)
 		_日志追加("房间 %d 对局开始" % int(info.get("room_id", 0)), "系统")
-	_播音效_数值变化(info, 之前已开局 and started)
+	_处理数值变化(info, 之前已开局 and started)
 	_刷新队伍(info)
 	_刷新玩家面板()
 	_读取等待(info)
@@ -542,18 +547,22 @@ func _刷新等待条() -> void:
 		面板.WaitProgress = 比例 if 面板.ID == _等待方 else -1.0
 
 
-## 数值变化音效（对照参考项目 MoraleChange / GemChange / CrystalChange / PlayerHealChange）
-func _播音效_数值变化(info: Dictionary, 生效: bool) -> void:
+## 数值变化（对照参考项目 MoraleChange / GemChange / CrystalChange / PlayerHealChange）：
+## 播对应音效；队伍士气变了还额外写一条战斗日志（服务端只给绝对值，升降由上一次快照算出来）
+func _处理数值变化(info: Dictionary, 生效: bool) -> void:
 	var 士气: Array[int] = [int(info.get("red_morale", 0)), int(info.get("blue_morale", 0))]
 	var 宝石: Array[int] = [int(info.get("red_gem", 0)), int(info.get("blue_gem", 0))]
 	var 水晶: Array[int] = [int(info.get("red_crystal", 0)), int(info.get("blue_crystal", 0))]
 	var 治疗: int = 0
+	var 个人宝石: int = 0
 	for p: GPlayer in Data.player_list:
 		治疗 += p.cross_num
+		个人宝石 += p.gem
 	if 生效:
 		if 士气 != _上次士气:
 			Audio.播音效("sys-morale")
-		elif 宝石 != _上次宝石 or 水晶 != _上次水晶:
+			_写士气日志(士气)
+		elif _宝石水晶有动静(宝石, 水晶, 个人宝石):
 			Audio.播音效("sys-energy")
 		if 治疗 != _上次治疗:
 			Audio.播音效("sys-heal")
@@ -561,6 +570,25 @@ func _播音效_数值变化(info: Dictionary, 生效: bool) -> void:
 	_上次宝石 = 宝石
 	_上次水晶 = 水晶
 	_上次治疗 = 治疗
+	_上次个人宝石 = 个人宝石
+
+
+## 该不该响「宝石 / 水晶」那一声（对照参考项目 GemChange / CrystalChange / PlayerHealChange）：
+## 队伍宝石池「增加」不算 —— 买牌这类白给的收益一直响太吵；
+## 队伍宝石被花掉（减少）、水晶变动、玩家手上宝石变动，这些都照旧响
+func _宝石水晶有动静(宝石: Array[int], 水晶: Array[int], 个人宝石: int) -> bool:
+	if 水晶 != _上次水晶 or 个人宝石 != _上次个人宝石:
+		return true
+	return 宝石[0] < _上次宝石[0] or 宝石[1] < _上次宝石[1]
+
+
+## 队伍士气变化写进战斗日志：逐个队写「旧值 → 新值」
+## 快照里红在前、蓝在后（见 _处理数值变化），所以下标 0 是红队、1 是蓝队
+func _写士气日志(新士气: Array[int]) -> void:
+	if 新士气[0] != _上次士气[0]:
+		_日志追加("红队士气%d → %d" % [_上次士气[0], 新士气[0]], "士气")
+	if 新士气[1] != _上次士气[1]:
+		_日志追加("蓝队士气%d → %d" % [_上次士气[1], 新士气[1]], "士气")
 
 
 ## 士气 / 宝石 / 水晶 / 星杯（读 Logic.last_info 的绝对值）
@@ -1167,13 +1195,9 @@ func _on_command(data: Dictionary) -> void:
 		return
 	# 每次询问先清掉上一轮的技能按钮，避免残留
 	_清空技能按钮()
-	# 上一条询问可能已经作废（典型的：弹窗还开着的时候自己超时，服务端径自跳过）：
-	# 先把居中选项窗关掉再处理新询问，等同于点「取消」——旧询问不再提交
+	# 上一条询问可能已经作废（典型的：特殊行动选星石的窗还开着，服务端径自跳过）：
+	# 先把那个窗关掉再处理新询问，等同于点「取消」——旧询问不再提交
 	参数选择窗.visible = false
-	_参数选择_技能 = false
-	_参数选择_额外行动 = false
-	_弹窗选项.clear()
-	_弹窗标题 = ""
 	# 上一条询问的选牌约束也一并复位：新询问若根本不用选牌（如额外行动询问【神圣追击】），
 	# 不能沿用上一条的「最多 1 张 / 只能选法术牌」（【英灵召唤】），否则手牌会亮错。
 	# 需要选牌的分支（技能询问 / 发动技能 / 点选行动）都会自己把这几项重新设好
@@ -1247,13 +1271,9 @@ func _进入待选() -> void:
 	_sel_cards.clear()
 	_sel_players.clear()
 	_重置治疗分配()
-	# 来了新询问：技能说明窗先收起来，别盖住操作
-	英雄详情窗.visible = false
 	_skill_targets.clear()
 	_skill_cards.clear()
 	_skill_card_rule = ""
-	_弹窗选项.clear()
-	_弹窗标题 = ""
 	_mode = 0
 	_selecting_cover = false
 	_不可行动 = false
@@ -1328,14 +1348,15 @@ func _进入待选() -> void:
 				var 类型名: String = "攻击" if 伤害类型 == GConst.HarmType.Attack else "法术"
 				var 抵: int = mini(伤害点数, 抵御上限)
 				_skill_ask_id = respond_id
-				_弹窗选项.clear()
-				_弹窗标题 = ""
 				if 抵 > 0:
-					# 用居中弹窗列出「不抵挡 / 用几点治疗抵挡」：与【神之庇护】同一套交互
-					_弹窗标题 = "用几点治疗抵挡本次 %d 点%s伤害？（最多 %d 点）" % [伤害点数, 类型名, 抵]
-					_弹窗选项.append({"text": "不用治疗（承受全部伤害）", "args": [0]})
+					# 二级技能栏列出「不抵挡 / 挡几点」：和其它技能选项同一套交互（选中再点「确定」）。
+					# 文案刻意短 —— 这一排可能有十来颗（抵几点就有几颗），长了会从技能区溢出去
+					var 选项: Array = [{"text": "不抵挡", "args": [0]}]
 					for n: int in range(1, 抵 + 1):
-						_弹窗选项.append({"text": "用 %d 点治疗抵挡" % n, "args": [n]})
+						选项.append({"text": "挡 %d 点" % n, "args": [n]})
+					_进入二级技能栏(0, null, _选项项(选项), 二级选项底色_治疗)
+					_指令提示("用几点治疗抵挡本次 %d 点%s伤害？（最多 %d 点）在技能栏里选一个，再点「确定」"
+						% [伤害点数, 类型名, 抵])
 				else:
 					_指令提示("是否用治疗抵挡本次 %d 点%s伤害？（点「确定」使用）" % [伤害点数, 类型名])
 			GConst.RespondType.Bullet:
@@ -1346,9 +1367,6 @@ func _进入待选() -> void:
 				_mode = 2
 				_need_cards = 0
 	_刷新交互()
-	# 这次询问若是「弹窗型」（治疗抵挡几点），进完状态就把居中的选项窗弹出来
-	if not _弹窗选项.is_empty():
-		_弹出参数选项(_弹窗标题, _弹窗选项)
 
 
 ## 被要求弃牌时的指令提示：按原因（应答 args[1] = cause）说清为什么弃牌。
@@ -1408,56 +1426,71 @@ func _进入技能询问() -> void:
 	# 多重射击这类从盖牌区选【充能】作代价的询问：进来先按最大张数全选上，玩家要改再自己点
 	_自动选盖牌(_skill_ask_id)
 	_清空技能按钮()
-	# 只选一个参数、不用选牌选目标的询问（如【神之庇护】抵消几点）改用居中的参数选择窗：
-	# 在技能区摆一排按钮看着像在问「是否发动」，弹窗才说得清「在问什么、有哪些选择」
-	_弹窗选项.clear()
-	_弹窗标题 = ""
-	if not _skill_options.is_empty() and _skill_ask_need_card <= 0 and _skill_ask_need_target <= 0:
-		_弹窗标题 = "【%s】请选择" % GConst.skill_name(_skill_ask_id)
-		var notes: Array = _pending.get("notes", [])
-		for i: int in range(_skill_options.size()):
-			var 名: String = str(notes[i]) if i < notes.size() and str(notes[i]) != "" else str(_skill_options[i])
-			_弹窗选项.append({"text": 名, "args": [int(_skill_options[i])]})
-	# 「先弹选项」型（技能指示器配了「先弹选项」，如【百鬼夜行】）：先把居中的效果选择窗弹出来。
-	# 窗里只记下选了哪一项效果、不提交；选完再选牌 / 选目标，按「确定」才把该项 args 一起上交。
-	# 选效果之前目标数按 0 处理（头像点不动），选完再按「选项目标数」重设目标数
+	# 带选项的询问（如英灵人形【怒火压制/魔纹融合】的二选一、【百鬼夜行】的展示与否）：
+	# 进「二级技能栏」—— 技能区只留这个技能（最左）+ 它的选项（紧挨右侧，同样用技能按钮显示），
+	# 选项先选中（亮黄），按「确定」才提交、按「取消」放弃。
 	var 指示配置: Dictionary = GConst.技能指示器.get(_skill_ask_id, {})
-	_先弹选项 = bool(指示配置.get("先弹选项", false)) \
-			and not _skill_options.is_empty() and _弹窗选项.is_empty()
+	_先弹选项 = bool(指示配置.get("先弹选项", false)) and not _skill_options.is_empty()
 	_已选参数.clear()
 	if _先弹选项:
 		# 选效果之前头像点不动（目标数按 0 处理）；服务端原本给的目标数先记下，选完效果再还原
 		_选项原始目标数 = _skill_ask_need_target
 		_skill_ask_need_target = 0
 		_need_players = 0
+		# 牌同理：要弃几张由选中那一项决定，选效果之前先不让点牌，选完在 _应用选项目标数 里还原
+		_选项原始需牌 = _skill_ask_need_card
+		_选项原始最多牌 = _skill_card_max
+		_skill_ask_need_card = 0
+		_skill_card_max = 0
+		_need_cards = 0
+	if not _skill_options.is_empty():
+		var notes: Array = _pending.get("notes", [])
+		# 服务端标了「这一项本身就是技能」时（如【蓄力一击】/【气绝崩击】），选项按钮绑上技能号，
+		# 鼠标指向它就同普通技能按钮一样弹技能说明（见 技能按钮.设置选项 / _显示技能说明）
+		var 选项技能号: Array = _pending.get("option_skill_ids", [])
+		# 服务端标了这一项「选中后要弃几张牌」时（如【魔纹融合】弃 ≥2 张、【怒火压制】一张不用）
+		# 记下来，选中它才放出手牌可选（见 _应用选项目标数）
+		var 选项需牌: Array = _pending.get("option_need_cards", [])
+		var 项们: Array = []
+		for i: int in range(_skill_options.size()):
+			var 名: String = str(notes[i]) if i < notes.size() and str(notes[i]) != "" else str(_skill_options[i])
+			var 项: Dictionary = {"文本": 名, "参数": [int(_skill_options[i])]}
+			if i < 选项技能号.size():
+				项["技能号"] = int(选项技能号[i])
+			if i < 选项需牌.size():
+				项["需牌"] = int(选项需牌[i])
+			项们.append(项)
+		# 「无父技能」型（格斗【蓄力一击 / 气绝崩击】这条询问）：选项本身就是技能，
+		# 这一排只摆选项，不摆「被问的技能」那颗本体（否则会多出一颗与选项同名的按钮）
+		var 父技能号: int = 0 if bool(指示配置.get("无父技能", false)) else _skill_ask_id
+		_进入二级技能栏(父技能号, null, 项们)
+	elif _skill_ask_card_source == GConst.CardSource.HandAndBasicEffect:
+		# 【天使之歌】：询问一到就把二级技能栏摆出来（此刻只有技能本体一颗），
+		# 选完目标再由 _刷新基础效果选项 把该目标面前的基础效果填进去 —— 不用先按一次「确定」
+		_进入二级技能栏(_skill_ask_id, null, [])
 	# 技能询问同时写一行日志：它只挂在提示条上，错过就会一直等（看着像「点了确定没反应」）
 	# 被问的人看到的应是「要我做什么」：服务端下发了技能表「提示」列里对应的那一条
 	# （谁交给谁、几张）就直接用它，否则才退回「是否发动【X】？」
-	# 弹窗型询问（【军神威光】/【神之庇护】）例外：弹出选项只代表「要你选一个效果」，
+	# 带选项的询问（【军神威光】/【神之庇护】这类）例外：列出选项只代表「要你选一个效果」，
 	# 选中之前都还没发动，日志里不能写「发动【X】」——那句要等服务端广播技能通知时才出现
 	var 询问文案: String = str(_pending.get("ask_text", ""))
-	if not _弹窗选项.is_empty() or _先弹选项:
-		_日志追加("【%s】请在弹出的选项里选择" % GConst.skill_name(_skill_ask_id), "行动")
+	if not _skill_options.is_empty():
+		_日志追加(询问文案 if not 询问文案.is_empty() else "【%s】请在技能栏里选一个效果" % GConst.skill_name(_skill_ask_id), "行动")
 	elif not 询问文案.is_empty():
 		_日志追加(询问文案, "行动")
 	else:
 		_日志追加("【%s】等你决定" % GConst.skill_name(_skill_ask_id), "行动")
-	var 指示提示: String = str(指示配置.get("提示", ""))
-	if _先弹选项:
-		_指令提示("【%s】请先在弹窗里选择效果" % GConst.skill_name(_skill_ask_id))
-	elif not _弹窗选项.is_empty():
-		_指令提示(_弹窗标题)
-	elif not 询问文案.is_empty():
+	var 指示提示: String = _发动提示(_skill_ask_id)
+	if not 询问文案.is_empty():
 		_指令提示(询问文案)
+	elif not _skill_options.is_empty():
+		_刷新二级栏提示()
 	elif not 指示提示.is_empty():
 		_指令提示(指示提示)
-	elif not _skill_options.is_empty():
-		var 选牌提示: String = "先选好需要的牌/目标，再点下面的选项"
-		if _selecting_cover:
-			选牌提示 += "（盖牌在盖牌区可点选）"
-		_指令提示("【%s】：%s" % [GConst.skill_name(_skill_ask_id), 选牌提示])
 	elif _skill_ask_card_source == GConst.CardSource.HandAndBasicEffect:
-		_指令提示("【%s】：点一名面前有基础效果的角色，按「确定」后选择要移除的效果" % GConst.skill_name(_skill_ask_id))
+		_指令提示("【%s】：点一名面前有基础效果的角色，技能栏里就会列出可%s的效果" % [
+			GConst.skill_name(_skill_ask_id), _基础效果动作(_skill_ask_id),
+		])
 	elif _selecting_cover:
 		_指令提示("【%s】：请从盖牌区中选择一张" % GConst.skill_name(_skill_ask_id))
 	elif not _skill_ask_can_cancel:
@@ -1473,35 +1506,9 @@ func _进入技能询问() -> void:
 			"（需选目标）" if _skill_ask_need_target > 0 else "",
 		])
 	_刷新交互()
-	# 选项按钮与上面的提示分支不互斥：技能表给这个技能配了「提示」文案时也要把按钮摆出来，
-	# 否则玩家只看到一句提示、没有可点的地方（只剩「确定」）。
-	# 「先弹选项」型的选项摆在弹窗里，不用再在技能区摆一排
-	if _弹窗选项.is_empty() and not _先弹选项 and not _skill_options.is_empty():
-		_构建选项按钮(_skill_options, _pending.get("notes", []))
-	# 弹窗型询问（【神之庇护】抵消几点）：把居中的选项窗弹出来。
-	# 独立于上面的提示分支——技能表配了「提示」文案时提示条会被它占用，弹窗照样要出来
-	if not _弹窗选项.is_empty():
-		_弹出参数选项(_弹窗标题, _弹窗选项)
-	elif _先弹选项:
-		_弹出效果选项()
 
 
-## 「先弹选项」型询问（如【百鬼夜行】）的效果选择窗：选项文案取服务端 notes、值取服务端下发的那串选项。
-## 窗里选一项只记下效果，不提交；关窗后由玩家选牌 / 选目标，再按「确定」把这项 args 一起上交。
-## 这类询问是否显示「取消」按服务端下发的 can_cancel：不可取消的（如【百鬼夜行】）必须选一项；
-## 可取消的（如【剑气斩】）点「取消」＝这次不发动
-func _弹出效果选项() -> void:
-	var notes: Array = _pending.get("notes", [])
-	var 选项: Array = []
-	for i: int in range(_skill_options.size()):
-		var 名: String = str(notes[i]) if i < notes.size() and str(notes[i]) != "" else str(_skill_options[i])
-		选项.append({"text": 名, "args": [int(_skill_options[i])]})
-	_参数选择_技能 = true
-	参数选择窗.打开("【%s】请选择效果" % GConst.skill_name(_skill_ask_id), 选项, _skill_ask_can_cancel)
-	_更新按键()
-
-
-## 「先弹选项」型：效果选定后把该项要求的目标数放进本次询问（【百鬼夜行】展示＝2 人、不展示＝1 人），
+## 「先弹选项」型：在二级技能栏里选定效果后，把该项要求的目标数放进本次询问（【百鬼夜行】展示＝2 人、不展示＝1 人），
 ## 并刷新提示与可点状态 —— 之后玩家选牌 / 选目标，按「确定」提交。
 ## 发动技能（mode 4，如【死亡之触】）还要还原选效果前临时清零的需牌 / 目标数
 func _应用选项目标数() -> void:
@@ -1513,26 +1520,50 @@ func _应用选项目标数() -> void:
 	if not _已选参数.is_empty() and 表.has(int(_已选参数[0])):
 		目标数 = int(表[int(_已选参数[0])])
 	if _mode == 4:
+		# 选中的那一项若自带「需目标」（如魔弓【魔眼】的「指定一名角色弃 1 张牌」），目标数按它给；
+		# 选的是不要目标的那项时它本来就没有目标数、技能级也是 0，这里保持 0（谁都不亮，也就点不动）
+		var 项: Dictionary = _二级选中项()
+		if not 项.is_empty():
+			目标数 = maxi(目标数, int(项["需目标"]))
 		_skill_need_card = _选项原始需牌
 		_skill_card_max = _选项原始最多牌
 		_need_cards = _skill_card_max
 		_skill_need_target = 目标数
 		_skill_target_max = maxi(目标数, _选项原始最多目标)
 		_need_players = 目标数
+		# 该项自带「需牌」时（如冒险家【欺诈】选【暗灭】要 3 张同系牌），提示按它说，别少说一张
+		var 提示需牌: int = _skill_need_card
+		if not 项.is_empty():
+			提示需牌 = maxi(提示需牌, int(项["需牌"]))
 		_指令提示("发动【%s】：%s%s点「确定」" % [
-			GConst.skill_name(技能号), _需选牌提示(_skill_need_card), _需选目标提示(_skill_need_target),
+			GConst.skill_name(技能号), _需选牌提示(提示需牌), _需选目标提示(_skill_need_target),
 		])
 		_刷新交互()
 		return
+	_skill_ask_need_card = _选项原始需牌
+	_skill_card_max = _选项原始最多牌
+	_need_cards = _skill_card_max
 	_skill_ask_need_target = 目标数
 	_need_players = _skill_ask_need_target
+	# 选中的那一项若自带「需牌」（如英灵人形【魔纹融合】要弃 ≥2 张异系牌），牌数按它给
+	var 选中项: Dictionary = _二级选中项()
+	if not 选中项.is_empty():
+		_skill_ask_need_card = maxi(_skill_ask_need_card, int(选中项["需牌"]))
 	var 片段: Array[String] = []
 	if _skill_ask_need_card > 0:
 		片段.append("选%d张盖牌" % _skill_ask_need_card if _skill_ask_card_source == GConst.CardSource.Cover
 			else "选%d张牌" % _skill_ask_need_card)
 	if _skill_ask_need_target > 0:
 		片段.append("选%d名目标" % _skill_ask_need_target)
-	_指令提示("【%s】：%s，选好后点「确定」发动" % [GConst.skill_name(_skill_ask_id), "、".join(片段)])
+	# 选项本身就是技能时（如【怒火压制】/【魔纹融合】二选一），提示条写选中的那一颗的名字：
+	# 这次询问挂在魔纹融合名下，照它写会把「选了怒火压制」也说成魔纹融合
+	var 说话技能号: int = _skill_ask_id
+	if not 选中项.is_empty() and int(选中项.get("技能号", 0)) > 0:
+		说话技能号 = int(选中项["技能号"])
+	if 片段.is_empty():
+		_指令提示("【%s】已选好，点「确定」发动" % GConst.skill_name(说话技能号))
+	else:
+		_指令提示("【%s】：%s，选好后点「确定」发动" % [GConst.skill_name(说话技能号), "、".join(片段)])
 	_刷新交互()
 
 
@@ -1555,26 +1586,184 @@ func _进入额外行动(causes: Array, 可发动: Array) -> void:
 		_额外行动可选 = 可发动.has(_额外行动单选)
 		_指令提示("是否发动【%s】？" % GConst.skill_name(_额外行动单选))
 	else:
-		# 多份额外行动（如剑圣【风怒追击】+【剑影】）：弹居中的选择窗来问，不在技能区摆两个按钮
+		# 多份额外行动（如剑圣【风怒追击】+【剑影】）：用二级技能栏列出这几颗，选中再按「确定」发动。
+		# 这次没有「被点的技能」，所以最左不放技能本体，这一排就是那几个额外行动
 		var 选项: Array = []
 		for cause: Variant in causes:
 			var c: int = int(cause)
-			选项.append({"text": GConst.skill_name(c), "args": [c], "可用": 可发动.has(c)})
-		_参数选择_额外行动 = true
-		参数选择窗.打开("请选择要发动的额外行动", 选项)
-		_指令提示("有额外行动可用，请选择")
+			# 发不动的（如手里没风系攻击牌时的【风怒追击】）直接不列 —— 列出来点了也是白点
+			if not 可发动.has(c):
+				continue
+			# skill_id：这几项本身就是技能，鼠标指向选项按钮时据此弹技能说明
+			选项.append({"text": GConst.skill_name(c), "args": [c], "skill_id": c})
+		_额外行动单选 = -1
+		_进入二级技能栏(0, null, _选项项(选项))
+		# 这面标记必须在进二级栏「之后」设：_进入二级技能栏 开头会 _清空二级选项()，那里会把它清回 false，
+		# 先设就被抹掉，选中选项后 _选中二级选项 认不出这条通道，「确定」会一直灰着点不动
+		_额外行动用二级栏 = true
+		_刷新二级栏提示()
 	_刷新交互()
 
 
-## 技能询问的选项按钮：每个可选值一个按钮，点击即回复该值
-## （留在技能区，适用于还要同时选牌/选目标的询问；纯选参数的询问走 _弹出参数选项）
-## 提示条文案由调用方决定（技能表配了「提示」就用它），这里只管摆按钮
-func _构建选项按钮(values: Array[int], labels: Array) -> void:
-	_清空技能按钮()
-	for i: int in range(values.size()):
-		var v: int = values[i]
-		var label: String = str(labels[i]) if i < labels.size() and str(labels[i]) != "" else GConst.skill_name(v)
-		_加文本按钮(label, _选择技能选项.bind(v))
+## 说明框：技能按钮的「技能说明」与角色头像的「角色技能说明」共用这一份，鼠标指到谁就显示谁。
+## 技能区贴着屏幕最底，Godot 自带的 tooltip 跟着光标走、会顶出可视区，所以这里自己摆一个。整局一份就够。
+var _说明框: PanelContainer = null
+## 说明框里的富文本（【类型】要上色，普通 Label 会把颜色码原样显示出来）
+var _说明文本: RichTextLabel = null
+## 此刻鼠标指着的技能按钮（null＝没指着；用来区分「移到另一个按钮」与「真的离开了」）
+var _悬停技能按钮: 技能按钮 = null
+## 此刻鼠标指着的玩家面板（null＝没指着）
+var _悬停角色面板: 战斗玩家面板 = null
+## 说明框的两种排版：技能说明就一行多点，窄一点、字小一点，像个提示而不是一条横幅；
+## 角色说明是整块文本，宽一点少折行
+const 技能说明宽度: float = 400.0
+const 技能说明字号: int = 14
+const 角色说明宽度: float = 684.0
+const 角色说明字号: int = 16
+## 角色说明的文字整块再压到 90%（角色名 36→32、标题 27→24、正文 18→16）
+const 角色说明字号缩放: float = 0.9
+
+
+## 行距减半用的「压到多紧」：默认那截空隙本来就是 0 时（间距全来自字体行高），
+## 往回压这么多像素，保证「减半」看得出效果。想再紧/再松就调它。
+const 说明行距下限: int = -3
+
+
+## 把一段现有行距折半；现有值是 0（没额外空隙）就退到下限
+func _折半行距(原值: int) -> int:
+	if 原值 == 0:
+		return 说明行距下限
+	return int(round(float(原值) * 0.5))
+
+
+## 懒建说明框：深色圆角底 + BBCode 富文本
+func _确保说明框() -> void:
+	if _说明框 != null:
+		return
+	_说明框 = PanelContainer.new()
+	_说明框.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_说明框.visible = false
+	var 样式: StyleBoxFlat = StyleBoxFlat.new()
+	样式.bg_color = Color(0.05, 0.06, 0.08, 0.94)
+	样式.set_corner_radius_all(10)
+	样式.set_content_margin_all(16.0)
+	样式.set_border_width_all(2)
+	样式.border_color = Color(1.0, 1.0, 1.0, 0.22)
+	_说明框.add_theme_stylebox_override("panel", 样式)
+	_说明文本 = RichTextLabel.new()
+	_说明文本.bbcode_enabled = true
+	_说明文本.fit_content = true
+	_说明文本.scroll_active = false
+	_说明文本.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 行距：RichTextLabel 在字体行高之外还会加一截空隙（行间 line_separation、段落间 paragraph_separation）。
+	# 这里把它折半 —— 行高本身压不掉（那是字形的上伸下延），能压的就是加出来的这截。
+	_说明文本.add_theme_constant_override("line_separation",
+		_折半行距(_说明文本.get_theme_constant("line_separation")))
+	_说明文本.add_theme_constant_override("paragraph_separation",
+		_折半行距(_说明文本.get_theme_constant("paragraph_separation")))
+	# 宽 / 字号由 _显示说明 按「技能说明 / 角色说明」分别给（见上面的常量）
+	_说明框.add_child(_说明文本)
+	add_child(_说明框)
+
+
+## 把一段说明摆在「锚点（视图坐标，取左上角）」的正上方 —— 技能按钮 / 玩家面板都走这里
+func _显示说明(文本: String, 锚点: Vector2, 宽度: float, 字号: int) -> void:
+	if 文本.is_empty():
+		return
+	_确保说明框()
+	_说明文本.custom_minimum_size.x = 宽度
+	_说明文本.add_theme_font_size_override("normal_font_size", 字号)
+	_说明文本.text = 文本
+	_说明框.visible = true
+	_摆说明框(锚点)
+	# 换过文本后框的最终尺寸要等这帧布局完才算得准：下一帧再摆一次，免得第一帧位置偏
+	get_tree().process_frame.connect(_摆说明框.bind(锚点), CONNECT_ONE_SHOT)
+
+
+## 鼠标指向技能按钮：把该技能的说明摆在按钮正上方
+func _显示技能说明(按钮: 技能按钮) -> void:
+	if 按钮 == null:
+		return
+	var 文本: String = 角色技能提示.单个技能(按钮.技能号)
+	if 文本.is_empty():
+		return
+	_悬停角色面板 = null
+	_悬停技能按钮 = 按钮
+	_显示说明(文本, 按钮.global_position, 技能说明宽度, 技能说明字号)
+
+
+## 鼠标离开技能按钮（或点了按钮）：延后一帧再收 —— 从一个按钮移到另一个时引擎会先报「离开」，
+## 新的「指向」马上又把框摆好了，这时不能把框收掉
+func _隐藏技能说明() -> void:
+	_悬停技能按钮 = null
+	_收说明框.call_deferred()
+
+
+## 此刻点头像是不是「有选取含义」（选目标 / 点头像分配，由技能指示器驱动）：任一头像亮着就算。
+## 这种时候鼠标指向头像不弹角色技能说明 —— 选目标时玩家看的是头像上的伤害/治疗提示，
+## 再飘一块说明上来会把它们挡住，还会跟「点他去选他」这件事打架。
+func _正在选目标() -> bool:
+	for 面板: 战斗玩家面板 in _面板列表:
+		if 面板 != null and _玩家可选(面板.ID):
+			return true
+	return false
+
+
+## 鼠标指向玩家面板：把该角色的技能说明摆到面板正上方
+func _显示角色说明(面板: 战斗玩家面板) -> void:
+	if 面板 == null or _正在选目标():
+		return
+	var 文本: String = _角色说明文本(面板)
+	if 文本.is_empty():
+		return
+	_悬停技能按钮 = null
+	_悬停角色面板 = 面板
+	_显示说明(文本, 面板.global_position, 角色说明宽度, 角色说明字号)
+
+
+## 鼠标离开玩家面板：同上，延后一帧再收（先看新的「指向」有没有接手）
+func _隐藏角色说明() -> void:
+	_悬停角色面板 = null
+	_收说明框.call_deferred()
+
+
+## 某名玩家的角色技能说明文本（鼠标指向他的头像时弹这一份）
+func _角色说明文本(面板: 战斗玩家面板) -> String:
+	var 玩家: GPlayer = Data.get_player_by_id(面板.ID)
+	if 玩家 == null:
+		return ""
+	return 角色技能提示.悬浮提示(玩家.role_id, 角色说明字号缩放)
+
+
+func _收说明框() -> void:
+	if _悬停技能按钮 != null or _悬停角色面板 != null:
+		return
+	if _说明框 != null:
+		_说明框.visible = false
+
+
+## 收掉所有说明：新一轮询问 / 收起技能区的时候用 —— 状态一变，挂着的说明就不该再留着
+func _收起所有说明() -> void:
+	_悬停技能按钮 = null
+	_悬停角色面板 = null
+	if _说明框 != null:
+		_说明框.visible = false
+
+
+## 摆在锚点正上方并夹在屏幕内。位置按「本界面根节点的本地坐标」算：
+## 根节点是 1280×720 再缩放 1.5 适配 1920×1080，拿视图坐标当本地坐标会偏 1.5 倍
+func _摆说明框(锚点: Vector2) -> void:
+	if _说明框 == null or not _说明框.visible or not is_inside_tree():
+		return
+	# 换成更短的说明时 size 不会自己缩：Godot 只保证 size ≥ 最小尺寸，最小尺寸变小它不动。
+	# 先按当前内容重置回最小尺寸，再量 —— 否则先看过（高的）角色说明，再指技能，框会一直那么大。
+	_说明框.reset_size()
+	var 尺寸: Vector2 = _说明框.get_combined_minimum_size()
+	var 锚本地: Vector2 = get_global_transform().affine_inverse() * 锚点
+	var 位置: Vector2 = Vector2(锚本地.x, 锚本地.y - 尺寸.y - 10.0)
+	位置.x = clampf(位置.x, 8.0, maxf(size.x - 尺寸.x - 8.0, 8.0))
+	位置.y = clampf(位置.y, 8.0, maxf(size.y - 尺寸.y - 8.0, 8.0))
+	_说明框.position = 位置
 
 
 ## 行动询问里附带的技能 → 生成技能按钮
@@ -1604,15 +1793,188 @@ func _构建技能按钮(cmds: Array) -> void:
 		var 次张系别: int = int(c.get("card_slot_element", 0))
 		var 参数选项: Array = c.get("arg_choices", [])
 		var 盖牌需数: int = int(c.get("cover_need", 0))
-		var go: Node = 技能预制.instantiate()
-		if go is Control:
-			(go as Control).custom_minimum_size = 技能尺寸
-		ChildrenSkillArea.add_child(go)
-		go.call("设置技能", 技能号)
+		var go: 技能按钮 = _新技能按钮(技能号)
 		go.connect("点击", _选择技能.bind(技能类型, 需牌, 需目标, 合法目标, 合法牌, 最多牌,
 			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go, 盖牌需数))
-		_技能按钮.append(go)
-		_显示技能区()
+		# 点下去就把挂着的技能说明收掉，别挡着选牌选目标（悬停 / 离开悬停由 _新技能按钮 统一接）
+		go.connect("点击", func(_技能号: int) -> void: _隐藏技能说明())
+	# 技能全排一行：技能多的角色（如元素师 7 个技能）不能被场景里配的 6 列折到第二行去
+	_排技能区一行()
+
+
+## 造一颗技能按钮挂进技能区（只 Instantiate + 设置技能 + 接悬停说明，点击回调由调用方做）
+func _新技能按钮(技能号: int) -> 技能按钮:
+	var go: Node = 技能预制.instantiate()
+	if go is Control:
+		(go as Control).custom_minimum_size = 技能尺寸
+	ChildrenSkillArea.add_child(go)
+	go.call("设置技能", 技能号)
+	# 鼠标指向技能按钮：把它的技能说明摆到按钮正上方（点下去收起另接）。
+	# 接在这里而不是各调用点：二级技能栏里现造的「父技能」与「本身就是技能」的选项按钮都要有这一份；
+	# 技能号为 0 的纯参数选项查不到说明，悬停自然不弹
+	go.connect("悬停", _显示技能说明)
+	go.connect("离开悬停", _隐藏技能说明)
+	_技能按钮.append(go)
+	_显示技能区()
+	return go as 技能按钮
+
+
+## 技能区永远只排一行：把 GridContainer 的列数设成「当下可见的按钮数」。
+## 场景里配的是 6 列，技能多的角色（如元素师 7 个技能）第 7 颗会折到第二行，
+## 从只有一行高的技能区里溢出去。GridContainer 会跳过隐藏的子节点，所以按可见数算正好 ——
+## 二级技能栏里其余技能是藏着的，也一并适用（见 _进入二级技能栏）
+func _排技能区一行() -> void:
+	var 可见数: int = 0
+	for b: Node in _技能按钮:
+		if is_instance_valid(b) and b is Control and (b as Control).visible:
+			可见数 += 1
+	ChildrenSkillArea.columns = maxi(1, 可见数)
+
+
+# ---------------- 二级技能栏 ----------------
+## 把服务端下发的 arg_choices 归一成二级栏的选项项
+## （键名统一成 文本 / 参数 / 需牌 / 需目标 / 目标白名单 / 技能号）
+func _选项项(参数选项: Array) -> Array:
+	var out: Array = []
+	for 项: Variant in 参数选项:
+		var d: Dictionary = 项
+		out.append({
+			"文本": str(d.get("text", "")),
+			"参数": d.get("args", []),
+			"需牌": int(d.get("need_card", 0)),
+			"需目标": int(d.get("need_target", 0)),
+			"目标白名单": d.get("targets", []),
+			# >0＝这一项本身就是个技能（如【风怒追击】/【剑影】），选项按钮据此绑技能号、悬停弹说明
+			"技能号": int(d.get("skill_id", 0)),
+		})
+	return out
+
+
+## 二级技能栏里纯参数选项按钮统一的底色（黑灰）：这类选项只是「参数」，不跟技能类型色走 ——
+## 一排五颜六色反而看不出哪个是被点的技能，黑灰也让它们和左边那颗真技能按钮一眼分得开。
+## （选项「本身就是技能」时不走这个底色，改用技能自己的类型色，见 技能按钮.设置选项）
+const 二级选项底色: Color = Color(0.24, 0.24, 0.26)
+## 「治疗抵挡」那几个选项用蓝色，和黑灰的技能选项区分开
+const 二级选项底色_治疗: Color = Color("3b82f6")
+## 本次二级栏最左那颗「被点的技能」（0＝这一排只有选项，如多份额外行动 / 治疗抵挡）：提示条据此写名字
+var _二级栏父技能号: int = 0
+
+
+## 进入二级技能栏：把「父技能」摆到最左，其余技能先藏起来，选项用技能按钮紧挨着排在它右边。
+## 选项项：{"文本": 按钮上的字, "参数": 提交用的 args, "需牌": N, "需目标": N, "目标白名单": [...],
+##          "技能号": 该项本身就是技能时给它的技能号}
+## 父按钮为 null 且父技能号 > 0 时（技能询问那条通道没有现成的按钮）按父技能号现造一颗；
+## 两者都空（如「多份额外行动」那种没有点击本体的场合）＝这一排只有选项。
+## 选项底色默认为统一的黑灰；「治疗抵挡」那条通道传蓝色，让治疗所属的选项一眼可辨。
+## 选项「本身就是技能」时（带技能号）不用这个底色，改用技能自己的类型色，见 技能按钮.设置选项
+func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: Array,
+		选项底色: Color = 二级选项底色) -> void:
+	_清空二级选项()
+	# 父按钮要现造时（技能询问那条通道没有现成的按钮）：那颗只是「这次在问哪个技能」的牌子，
+	# 不接点击 —— 响应弹出的询问不该有「再点一下就回退」，只能走右下角的「确定 / 取消」
+	var 父: 技能按钮 = 父按钮
+	if 父 == null and 父技能号 > 0:
+		父 = _新技能按钮(父技能号)
+	for b: Node in _技能按钮:
+		if b is Control:
+			(b as Control).visible = b == 父
+	if 父 != null:
+		ChildrenSkillArea.move_child(父, 0)
+		父.设置选中(true)
+	for i: int in range(选项.size()):
+		var d: Dictionary = 选项[i]
+		var 按钮: 技能按钮 = _新技能按钮(0)
+		# 该项本身就是技能时绑上技能号：鼠标指向它就和普通技能按钮一样弹技能说明
+		按钮.设置选项(str(d.get("文本", "")), 选项底色, int(d.get("技能号", 0)))
+		按钮.connect("点击", _选中二级选项.bind(i))
+		_二级选项.append({
+			"按钮": 按钮,
+			"参数": d.get("参数", []),
+			"技能号": int(d.get("技能号", 0)),
+			"需牌": int(d.get("需牌", 0)),
+			"需目标": int(d.get("需目标", 0)),
+			"目标白名单": d.get("目标白名单", []),
+		})
+	# 技能本体 + 选项全排一行（按当下可见的按钮数定列数，选项多了也不折行）
+	_排技能区一行()
+	_二级栏父技能号 = 父技能号 if 父 != null else 0
+	_二级栏父按钮 = 父
+	_二级栏 = true
+	_二级选中 = -1
+	_已选参数.clear()
+	_显示技能区()
+	_更新按键()
+
+
+## 清掉二级栏的状态与选项按钮（技能本体按钮与其余技能由 _清空技能按钮 统一收）
+func _清空二级选项() -> void:
+	for 项: Dictionary in _二级选项:
+		var b: Node = 项["按钮"]
+		if is_instance_valid(b):
+			_技能按钮.erase(b)
+			b.queue_free()
+	_二级选项.clear()
+	_二级栏 = false
+	_二级选中 = -1
+	_二级栏父技能号 = 0
+	_二级栏父按钮 = null
+	_额外行动用二级栏 = false
+
+
+## 点了二级栏里的某个选项：记下它的 args 并点亮它，其余选项熄灭（选好再按「确定」才提交）
+func _选中二级选项(_技能号: int, 序号: int) -> void:
+	if 序号 < 0 or 序号 >= _二级选项.size():
+		return
+	_二级选中 = 序号
+	_已选参数 = (_二级选项[序号]["参数"] as Array).duplicate()
+	for i: int in range(_二级选项.size()):
+		var b: 技能按钮 = _二级选项[i]["按钮"]
+		if is_instance_valid(b):
+			b.设置选中(i == 序号)
+	# 「多份额外行动」这条：选项就是几个可发的额外行动，选中＝把「确定」要发的那一个记下来
+	# （这条通道没有技能本体，提交走的是 _选择额外行动，直接发应答，不经过 _已选参数）
+	if _额外行动用二级栏 and not _已选参数.is_empty():
+		_额外行动单选 = int(_已选参数[0])
+		_额外行动可选 = true
+	# 「先弹选项」型（如【百鬼夜行】）：选完效果才按它还原 / 收紧需牌与目标数；
+	# 技能询问这条通道顺手把这步选择报给服务端（partial）：后面选目标时若超时，服务端据此自动结算
+	# （如【剑气斩】自动释放），而还没选效果就超时＝取消
+	if _先弹选项:
+		# 改了效果＝上一次的点选作废：原先选的目标未必还是新效果的合法目标
+		# （如【神圣领域】先点了队友、又改成敌人用法），清掉重选
+		_重置治疗分配()
+		_刷新治疗分配()
+		_应用选项目标数()
+		if _mode == 3:
+			Logic.send_respond(_skill_ask_id, [], [], _已选参数, true)
+	_刷新二级栏提示()
+	_刷新交互()
+
+
+## 二级栏里当前选中那一项（还没选就是空字典）
+func _二级选中项() -> Dictionary:
+	if _二级选中 < 0 or _二级选中 >= _二级选项.size():
+		return {}
+	return _二级选项[_二级选中]
+
+
+## 二级栏的指令条：还没选效果就说「先选」，选好了就说清还差什么才能确定。
+## 没有技能本体（多份额外行动 / 治疗抵挡）时不写「【】」那一截，「发动」也换成中性说法
+func _刷新二级栏提示() -> void:
+	var 前缀: String = "【%s】：" % GConst.skill_name(_二级栏父技能号) if _二级栏父技能号 > 0 else ""
+	var 动作: String = "发动" if _二级栏父技能号 > 0 else ""
+	if _二级选中 < 0:
+		_指令提示("%s请在技能栏里选一个选项" % 前缀)
+		return
+	var 需牌: int = _skill_need_card if _mode == 4 else _skill_ask_need_card
+	var 需目标: int = _skill_need_target if _mode == 4 else _skill_ask_need_target
+	var 片段: String = _需选牌提示(需牌)
+	if 需目标 > 0:
+		片段 += "选%d名目标，" % 需目标
+	if 片段.is_empty():
+		_指令提示("%s选项已选好，点「确定」%s" % [前缀, 动作])
+		return
+	_指令提示("%s%s选好后点「确定」%s" % [前缀, 片段, 动作])
 
 
 # ---------------- 点选 ----------------
@@ -1626,9 +1988,6 @@ func _on_card_clicked(card_id: int) -> void:
 		if _need_cards > 0 and _sel_cards.size() >= _need_cards:
 			_sel_cards.clear()
 		_sel_cards.append(card_id)
-	# 「牌或人」型（如【魔眼】）：选了牌就取消已选的人（二选一）
-	if _模式牌或人():
-		_sel_players.clear()
 	# 换了牌，先前选中的目标可能不再合法（例如法术→攻击牌后队友不能再打），顺手清掉。
 	# 但「点头像分配」型指示器技能的目标由分配自己管（如【辉耀】进场就全员选中、【惩戒】点头像选），
 	# 不随牌变化，别在这里清掉（否则选完牌指示器就暗了）；
@@ -1649,17 +2008,13 @@ func _on_player_pressed(面板: 战斗玩家面板) -> void:
 
 
 ## 点玩家面板：只有亮起（_玩家可选）的玩家点得动；攻击 / 应战选中即出手，其余先累积选择再按「确定」。
-## 点不动的时候（不是该选目标的时机 / 他不是合法目标）＝看他这名角色的技能说明
-## （对照参考工程 PlayerStatusMobile.onClick：不可选就走 onLongPress → 打开英雄详情窗）
+## 点不动的时候（不是该选目标的时机 / 他不是合法目标）什么都不做。
+## 想看某人的角色技能说明：鼠标指向他的头像即可（说明框由容器摆，见 _显示角色说明）
 func _on_player_clicked(player_id: int) -> void:
-	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：点头像什么都不做，也不弹角色说明
+	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：点头像什么都不做
 	if _目标锁死:
 		return
 	if not _玩家可选(player_id):
-		# 效果选择窗（【百鬼夜行】）还开着时点谁都不弹角色说明：先把效果选完
-		if _先弹选项 and _已选参数.is_empty():
-			return
-		_弹出角色技能说明(player_id)
 		return
 	# 点头像分配型：点一次给该角色加「每次」点治疗（配置允许时可重复点同一人），分满后确定
 	if not _分配配置().is_empty():
@@ -1681,10 +2036,6 @@ func _on_player_clicked(player_id: int) -> void:
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet:
 		_发送应答(GConst.RespondType.Bullet, [player_id], _sel_cards, [GConst.Reattack.Attack])
 		return
-	# 「牌或人」型（如【魔眼】）：选了人就取消已选的牌（二选一）
-	if _模式牌或人():
-		_sel_cards.clear()
-		刷新手牌()
 	if _sel_players.has(player_id):
 		_sel_players.erase(player_id)
 	elif _need_players > 1:
@@ -1696,6 +2047,10 @@ func _on_player_clicked(player_id: int) -> void:
 		_sel_players = [player_id]
 	刷新选中面板()
 	_更新按键()
+	# 「基础效果牌」这类（【封印破碎】/【风之洁净】/【天使之歌】）：目标一变就把技能栏里的
+	# 「基础效果」选项跟着换（取消选中目标＝清空）
+	if _二级栏 and (_技能是基础效果牌型()):
+		_刷新基础效果选项()
 
 
 ## 这张牌此刻能不能点选
@@ -1966,10 +2321,6 @@ func _可圣光抵挡() -> bool:
 func _on_ok() -> void:
 	var respond_id: int = int(_pending.get("respond_id", 0))
 	var args: Array = _pending.get("args", [])
-	# 弹窗型询问（【神之庇护】/ 治疗抵挡）：点「确定」＝把选项窗重新弹出来（选项窗被关掉后还能再开）
-	if not _弹窗选项.is_empty():
-		_弹出参数选项(_弹窗标题, _弹窗选项)
-		return
 	# 是否发动技能的询问
 	if _mode == 3:
 		# 本地询问（【冒险者天堂】选给谁）：选定后继续走提炼
@@ -1989,25 +2340,19 @@ func _on_ok() -> void:
 		if not _分配配置().is_empty():
 			_发送治疗分配()
 			return
-		# 「手牌 + 场上基础效果牌」的技能询问（如【天使之歌】）：确定后弹出目标身上的效果 + 用哪种能量供选
-		if _skill_ask_card_source == GConst.CardSource.HandAndBasicEffect:
-			_弹出基础效果选择()
-			return
 		if _是技能询问:
-			# 「先弹选项」型（【百鬼夜行】）提交的是弹窗里选定的那个效果值；普通询问固定回 [1]（发动）
-			_发送应答(_skill_ask_id, _sel_players, _sel_cards, _已选参数 if _先弹选项 else [1])
+			# 二级技能栏提交的是技能栏里选定的那个效果值（【天使之歌】的选项在选完目标时就填进技能栏了）；
+			# 普通询问固定回 [1]（发动）
+			_发送应答(_skill_ask_id, _sel_players, _sel_cards, _已选参数 if _二级栏 else [1])
 		return
 	# 发动技能
 	if _mode == 4:
 		if not _分配配置().is_empty():
 			_发送治疗分配()
 			return
-		# 「手牌 + 场上基础效果牌」的技能（如【风之洁净】）：确定后弹出目标身上的基础效果供选
-		if _skill_card_source == GConst.CardSource.HandAndBasicEffect:
-			_弹出基础效果选择()
-			return
-		# 「先弹选项」型（【死亡之触】）提交的是弹窗里选定的那个效果值
-		_发送行动(_pending_skill_type, _pending_skill_id, _sel_players, _sel_cards, _已选参数 if _先弹选项 else [])
+		# 二级技能栏提交的是技能栏里选定的那个效果值（没选项的技能 _已选参数 本来就是空的）；
+		# 「基础效果牌」这类（【封印破碎】/【风之洁净】）选项在选完目标时就填进技能栏了，这里直接提交
+		_发送行动(_pending_skill_type, _pending_skill_id, _sel_players, _sel_cards, _已选参数)
 		return
 	if _pending_type == GConst.Msg.Action:
 		# 不可行动：确定＝把手牌全弃掉、摸 4 张
@@ -2031,6 +2376,10 @@ func _on_ok() -> void:
 			if dst.is_empty():
 				dst = [Logic.my_player_id]
 			_发送行动(GConst.ActionType.Magic, 0, dst, _sel_cards, [])
+		return
+	# 二级技能栏里选好了（应答这条通道只有「治疗抵挡几点」）：确定＝把选的那点数交上去
+	if _二级栏 and _二级选中 >= 0:
+		_发送应答(respond_id, [], [], _已选参数)
 		return
 	match respond_id:
 		GConst.RespondType.ReplyAttack:
@@ -2135,14 +2484,6 @@ func _on_cover_view() -> void:
 	刷新盖牌()
 
 
-## 弹出某名玩家的角色技能说明（点头像点不动时走这条：不是该选目标的时机 / 他不是合法目标）
-func _弹出角色技能说明(player_id: int) -> void:
-	var p: GPlayer = Data.get_player_by_id(player_id)
-	if p == null or p.role_id <= 0:
-		return
-	英雄详情窗.打开(p.role_id)
-
-
 ## 放弃行动（场景里的 BtnResign；对照参考工程 RoleBase 的 ResignAction → ACTION_NONE）
 func _on_resign() -> void:
 	_发送行动(GConst.ActionType.None, 0, [], [], [])
@@ -2223,44 +2564,48 @@ func _on_special_action_cancelled() -> void:
 	_回到行动阶段()
 
 
-## 用居中的参数选择窗弹出若干选项（每项 {"text":..., "args":[...]}）：选中就按当前询问/技能提交 args。
-## 用于「只需选一个参数、不用选牌选目标」的询问（【神之庇护】抵消几点、治疗抵挡几点）
-func _弹出参数选项(标题: String, 选项: Array) -> void:
-	_参数选择_技能 = true
-	参数选择窗.打开(标题, 选项, _skill_ask_can_cancel)
-	_更新按键()
-
-
 ## 基础效果选择窗 / 提示里用的动词：按技能号从技能指示器取，取不到就是「移除」
 ## （【封印破碎】是「拿走」进自己手牌，天使【风之洁净】/【天使之歌】是「移除」弃掉）
 func _基础效果动作(技能号: int) -> String:
 	return str(GConst.技能指示器.get(技能号, {}).get("基础效果动作", "移除"))
 
 
-## 【风之洁净】【天使之歌】【封印破碎】这类「选目标 → 场上基础效果牌」的技能：按下「确定」后，
-## 按已选目标身上现有的基础效果列出选项（args 里带该效果牌 id），选哪张就处理哪张。对应原客户端
+## 本次要选的是不是「选目标 → 场上基础效果牌」那类技能（【封印破碎】/【风之洁净】/【天使之歌】）：
+## 发动技能与技能询问两条通道各看自己的选牌来源
+func _技能是基础效果牌型() -> bool:
+	if _mode == 4:
+		return _skill_card_source == GConst.CardSource.HandAndBasicEffect
+	if _mode == 3:
+		return _skill_ask_card_source == GConst.CardSource.HandAndBasicEffect
+	return false
+
+
+## 【风之洁净】【天使之歌】【封印破碎】这类「选目标 → 场上基础效果牌」技能的选项：
+## 按已选目标身上现有的基础效果列出（args 里带该效果牌 id），选哪张就处理哪张。对应原客户端
 ## 选中目标后在提示区列出该玩家全部基础效果、再点其一确定的做法。
 ## 【天使之歌】还要额外消耗 1 点能量（对照服务端 TianShi::TianShiZhiGe：args[0] = 用宝石?），
 ## 所以它的选项再带上「用宝石 / 用水晶」，且只列当前真有那种能量的项（能量不足的会被服务端拒）；
-## 【封印破碎】不用手牌也不用在这里选能量（能量由服务端自动扣），只是把动词显示成「拿走」
-func _弹出基础效果选择() -> void:
+## 【封印破碎】不用手牌也不用在这里选能量（能量由服务端自动扣），只是把动词显示成「拿走」。
+## 没选目标 / 该目标面前没有可处理的效果时返回空数组
+func _基础效果选项() -> Array:
 	if _sel_players.is_empty():
-		return
+		return []
 	var 目标: GPlayer = Data.get_player_by_id(int(_sel_players[0]))
 	if 目标 == null:
-		return
-	# 能量组合：[{args 前缀, 文案前缀}]；只有技能询问（天使之歌）才带能量
-	var 能量组合: Array = [{"args": [], "文案": ""}]
+		return []
+	# 能量组合：[{args 前缀, 文案后缀}]；只有技能询问（天使之歌）才带能量。
+	# 后缀写得短（·宝石 / ·水晶）：选项要挤在一行技能按钮里，长了会从技能区溢出
+	var 能量组合: Array = [{"args": [], "后缀": ""}]
 	if _mode == 3:
 		能量组合 = []
 		var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 		if 我 != null:
 			if 我.gem > 0:
-				能量组合.append({"args": [1], "文案": "用宝石 "})
+				能量组合.append({"args": [1], "后缀": "·宝石"})
 			if 我.crystal > 0:
-				能量组合.append({"args": [0], "文案": "用水晶 "})
+				能量组合.append({"args": [0], "后缀": "·水晶"})
 		if 能量组合.is_empty():
-			return
+			return []
 	# 显示动词按技能号取（【封印破碎】是「拿走」进自己手牌，天使【风之洁净】/【天使之歌】是「移除」弃掉）
 	var 技能号: int = _pending_skill_id if _mode == 4 else _skill_ask_id
 	var 动作: String = _基础效果动作(技能号)
@@ -2270,73 +2615,36 @@ func _弹出基础效果选择() -> void:
 			continue
 		for 组合: Dictionary in 能量组合:
 			选项.append({
-				"text": "%s%s【%s】" % [str(组合["文案"]), 动作, 效果.card.card_name],
+				"text": "%s【%s】%s" % [动作, 效果.card.card_name, str(组合["后缀"])],
 				"args": (组合["args"] as Array) + [效果.card.id],
 			})
-	if 选项.is_empty():
-		_指令提示("该目标面前没有可%s的基础效果" % 动作)
-		return
-	_参数选择_技能 = true
-	参数选择窗.打开("选择要%s的基础效果" % 动作, 选项)
-	_指令提示("请选择要%s的基础效果" % 动作)
-	_更新按键()
+	return 选项
 
 
-## 参数选择窗口里选好了一项：特殊行动按当初选的那个提交；技能询问回的是应答、发动技能回的是行动
+## 【封印破碎】/【风之洁净】/【天使之歌】：选完目标就地重填技能栏里的基础效果选项
+## （技能本体那颗按钮沿用原来那颗，不重造）。没选目标 / 该目标没有可处理的效果时只剩技能本体一颗
+func _刷新基础效果选项() -> void:
+	var 技能号: int = _pending_skill_id if _mode == 4 else _skill_ask_id
+	var 动作: String = _基础效果动作(技能号)
+	var 父: 技能按钮 = _二级栏父按钮
+	_进入二级技能栏(技能号, 父, _选项项(_基础效果选项()))
+	if _二级选项.is_empty():
+		_指令提示("【%s】：点一名面前有基础效果的角色，技能栏里就会列出可%s的基础效果" % [
+			GConst.skill_name(技能号), 动作,
+		])
+	else:
+		_指令提示("选择要%s的基础效果：在技能栏里选一个，再点「确定」" % 动作)
+
+
+## 参数选择窗口（只剩特殊行动选星石这一处用它）里选好了一项：按当初那个特殊行动提交
 func _on_参数选择(参数: Array) -> void:
-	if _参数选择_额外行动:
-		# 多份额外行动的选择窗：选中一项＝发动它
-		_参数选择_额外行动 = false
-		if not 参数.is_empty():
-			_选择额外行动(int(参数[0]))
-		return
-	if _参数选择_技能:
-		# 「先弹选项」型（【百鬼夜行】/【剑气斩】）：窗里只记下选了哪一项效果，等玩家选好牌 / 目标再按「确定」提交；
-		# 顺手把这步选择报给服务端（partial）：选目标阶段若超时，服务端据此自动结算（【剑气斩】自动释放），
-		# 而弹窗还没选就超时＝取消
-		if _先弹选项:
-			参数选择窗.visible = false
-			_参数选择_技能 = false
-			_已选参数 = 参数.duplicate()
-			# 技能询问（如【百鬼夜行】）顺手把这步报给服务端（partial）：选目标阶段若超时，服务端据此自动结算；
-			# 发动技能（如【死亡之触】）只本地记住，等服务端收到那条 Action 才知道
-			if _mode == 3:
-				Logic.send_respond(_skill_ask_id, [], [], _已选参数, true)
-			_应用选项目标数()
-			return
-		_参数选择_技能 = false
-		# 这条询问回「应答」还是「行动」按当初那条命令的类型定（不再按 mode 猜）：
-		# 技能询问 / 治疗抵挡走应答，发动技能参数选项走行动
-		if _pending_type == GConst.Msg.Respond:
-			_发送应答(_skill_ask_id, _sel_players, _sel_cards, 参数)
-		else:
-			_发送行动(_pending_skill_type, _pending_skill_id, _sel_players, _sel_cards, 参数)
-		return
 	if 参数.size() < 2:
 		return
 	_发送特殊行动(_待定特殊行动, int(参数[0]), int(参数[1]))
 
 
-## 参数选择窗口里点了取消：
-##   弹窗型询问（【神之庇护】抵消几点 / 治疗抵挡几点）与「先弹选项」型（【剑气斩】）＝这次询问的
-##     「取消」本身，直接放弃，不再让玩家回头补按一次界面上的「取消」；
-##   先选牌选目标、确定后才弹窗的（【风之洁净】/【天使之歌】）＝只关窗，保留选牌 / 选目标状态让玩家改选；
-##   特殊行动退回上一层「购买 / 合成 / 提炼」三选一
+## 参数选择窗口里点了取消：特殊行动退回上一层「购买 / 合成 / 提炼」三选一
 func _on_参数选择取消() -> void:
-	if _参数选择_额外行动:
-		# 多份额外行动的选择窗：取消＝跳过本次额外行动
-		_参数选择_额外行动 = false
-		Logic.send_respond(GConst.RespondType.AdditionalAction, [], [], [])
-		_清空待选()
-		return
-	if _参数选择_技能:
-		_参数选择_技能 = false
-		if _先弹选项 or not _弹窗选项.is_empty():
-			_先弹选项 = false
-			_on_cancel()
-			return
-		_更新按键()
-		return
 	_进入特殊行动()
 
 
@@ -2451,7 +2759,6 @@ func _选特殊行动(action_id: int, 提炼目标: int = -2) -> void:
 		var d: Dictionary = 项
 		选项.append({"text": str(d["text"]), "args": [int(d["gem"]), int(d["crystal"])]})
 	_待定特殊行动 = action_id
-	_参数选择_技能 = false
 	# 合成 / 提炼是从战绩区把星石花掉，标题写「消耗能量」；购买是往战绩区加星石，写「选择能量」
 	var 标题: String = "选择能量" if action_id == GConst.SpecialAction.Buy else "消耗能量"
 	参数选择窗.打开(标题, 选项)
@@ -2474,14 +2781,12 @@ func _回到行动阶段() -> void:
 	_mode = 1
 	特殊行动窗.visible = false
 	参数选择窗.visible = false
-	英雄详情窗.visible = false
 	_sel_cards.clear()
 	_sel_players.clear()
 	_重置治疗分配()
-	# 取消「先弹选项」型技能（如【死亡之触】）时把弹窗那套状态一并清掉
+	# 取消「先弹选项」型技能（如【死亡之触】）时把二级栏里选定的那个效果一并清掉
 	_先弹选项 = false
 	_已选参数.clear()
-	_参数选择_技能 = false
 	_目标锁死 = false
 	# 退回行动阶段就不再选盖牌了：不关掉会把盖牌区一直亮着、挡住界面（如取消【雷光散射】）
 	_selecting_cover = false
@@ -2506,11 +2811,17 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		最多牌: int = 0, 最多目标: int = 0, 目标上限减牌数: int = 0,
 		选牌来源: int = GConst.CardSource.Hand, 选牌规则: String = "",
 		首张技能: int = 0, 次张系别: int = 0, 参数选项: Array = [], 按钮: Node = null, 盖牌需数: int = 0) -> void:
+	# 二级栏正开着、点的又是它最左那颗父技能按钮：这一下＝收起二级栏，等同「取消」本次技能选择。
+	# 只有「玩家自己点技能开出来的二级栏」走这条；响应弹出的询问（技能询问那条通道）没有回退，
+	# 那颗父技能牌只当牌子用，只能靠右下角的「确定 / 取消」
+	if _二级栏 and 按钮 != null and 按钮 == _二级栏父按钮:
+		_on_cancel()
+		return
 	_mode = 4
 	_标记选中技能(按钮)
 	# 重新点技能按钮＝从头来一遍：先前为某技能弹出的效果选择窗一并关掉，免得留着上一轮的选项
+	# （上次留下的二级栏选项由下面带选项时重进二级栏的 _清空二级选项 收掉）
 	参数选择窗.visible = false
-	_参数选择_技能 = false
 	_pending_skill_type = 技能类型
 	_pending_skill_id = 技能号
 	_skill_need_card = 需牌
@@ -2566,8 +2877,9 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		"全体":
 			for 玩家: GPlayer in Data.player_list:
 				_sel_players.append(玩家.id)
-	# 「先弹选项」型（如【死亡之触】）：点技能立刻弹出居中的效果选择窗（问消耗多少治疗），
-	# 窗里只记下选了哪一项、不提交；选完再选牌 / 选目标，按「确定」才把该项 args 一起上交
+	# 带选项的技能（arg_choices）：进「二级技能栏」—— 被点的技能留在最左，选项用技能按钮排在它右边，
+	# 选项先选中（亮黄），按「确定」才提交、按「取消」退回行动阶段。
+	# 「先弹选项」型只是多一步：选效果之前不让点牌 / 点目标
 	_先弹选项 = bool(指示配置.get("先弹选项", false)) and not 参数选项.is_empty()
 	_已选参数.clear()
 	if _先弹选项:
@@ -2582,25 +2894,24 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		_skill_need_target = 0
 		_skill_target_max = 0
 		_need_players = 0
-		var 弹窗选项: Array = []
-		for 项: Variant in 参数选项:
-			var d: Dictionary = 项
-			弹窗选项.append({"text": str(d.get("text", "")), "args": d.get("args", [])})
-		_参数选择_技能 = true
+	if not 参数选项.is_empty():
+		_进入二级技能栏(技能号, 按钮 as 技能按钮, _选项项(参数选项))
+	elif 选牌来源 == GConst.CardSource.HandAndBasicEffect:
+		# 【封印破碎】/【风之洁净】：进技能就把二级技能栏摆出来（此刻只有技能本体一颗），
+		# 选完目标再由 _刷新基础效果选项 把该目标面前的基础效果填进去 —— 不用先按一次「确定」
+		_进入二级技能栏(技能号, 按钮 as 技能按钮, [])
+	var 指示提示: String = _发动提示(技能号)
+	if not 参数选项.is_empty():
+		# 效果选择窗标题配了就用它（如【死亡之触】的「消耗多少治疗？」），否则说「先选一个效果」
 		var 选项窗标题: String = str(指示配置.get("选项窗标题", ""))
-		参数选择窗.打开(选项窗标题 if not 选项窗标题.is_empty() else "【%s】请选择效果" % GConst.skill_name(技能号), 弹窗选项)
-	var 指示提示: String = str(指示配置.get("提示", ""))
-	if _先弹选项:
-		_指令提示("【%s】请先在弹窗里选择效果" % GConst.skill_name(技能号))
+		if not 选项窗标题.is_empty():
+			_指令提示(选项窗标题)
+		else:
+			_刷新二级栏提示()
 	elif not 指示提示.is_empty():
 		_指令提示(指示提示)
-	elif not 参数选项.is_empty():
-		_构建技能参数按钮()
-		_指令提示("发动【%s】：%s%s再点下面的选项" % [
-			GConst.skill_name(技能号), _需选牌提示(需牌), _需选目标提示(需目标),
-		])
 	elif 选牌来源 == GConst.CardSource.HandAndBasicEffect:
-		_指令提示("发动【%s】：%s%s按「确定」后选择要%s的基础效果" % [
+		_指令提示("发动【%s】：%s%s再在技能栏里选要%s的基础效果" % [
 			GConst.skill_name(技能号), _需选牌提示(需牌), _需选目标提示(需目标), _基础效果动作(技能号),
 		])
 	else:
@@ -2646,25 +2957,6 @@ func _需选目标提示(需目标: int) -> String:
 	return "选%d名目标，" % 需目标
 
 
-## 把服务端给的参数选项（arg_choices）渲染成按钮：点哪个就用当前已选的牌/目标提交该项 args
-## 每项可带 need_card / need_target：要求先选够牌或目标才让点（如「对目标造成伤害」「弃光手牌」）
-func _构建技能参数按钮() -> void:
-	_清空技能按钮()
-	for 项: Variant in _skill_arg_choices:
-		var d: Dictionary = 项
-		_加文本按钮(str(d.get("text", "")), _提交技能参数.bind(d.get("args", [])))
-		_参数按钮.append({
-			"按钮": _技能按钮[_技能按钮.size() - 1],
-			"需牌": int(d.get("need_card", 0)),
-			"需目标": int(d.get("need_target", 0)),
-			"目标白名单": d.get("targets", []),
-		})
-
-
-func _提交技能参数(参数: Array) -> void:
-	_发送行动(_pending_skill_type, _pending_skill_id, _sel_players, _sel_cards, 参数)
-
-
 ## 当前技能的「技能指示器」配置（展示键 + 交互键的统一表），没有则空字典。
 ## 发动技能（mode 4，看 _pending_skill_id）与技能询问（mode 3，看 _skill_ask_id）两条通道都认
 func _指示器配置() -> Dictionary:
@@ -2676,6 +2968,18 @@ func _指示器配置() -> Dictionary:
 	if 技能号 < 0:
 		return {}
 	return GConst.技能指示器.get(技能号, {})
+
+
+## 技能「发动提示」：优先用技能指示器里的「提示」（直接写死）；没写就按「提示序号」
+## 取技能表「提示」列的第 N 条（魔弓【雷光散射】/【魔眼】的台词放在技能表，改文案不用动代码）
+func _发动提示(技能号: int) -> String:
+	var 配置: Dictionary = GConst.技能指示器.get(技能号, {})
+	var 写死: String = str(配置.get("提示", ""))
+	if not 写死.is_empty():
+		return 写死
+	if 配置.has("提示序号"):
+		return GConst.提示文本(技能号, int(配置.get("提示序号", 0)), "", 0)
+	return ""
 
 
 ## 只取「点头像分配」型的那份配置（配了「每次」才算）：它接管目标选取与提交
@@ -2956,7 +3260,8 @@ func _发送治疗分配() -> void:
 	var 阵营表: Dictionary = _分配配置().get("阵营效果", {})
 	if not 阵营表.is_empty():
 		var 目标: int = int(_治疗分配[0]) if not _治疗分配.is_empty() else -1
-		var 用法: int = 1 if _阵营键(目标) == "敌人" else 0
+		# 用法以二级技能栏里选定那一项为准（【神圣领域】第一步的二选一）；没走过二级栏才按目标我方/敌方推
+		var 用法: int = int(_已选参数[0]) if not _已选参数.is_empty() else (1 if _阵营键(目标) == "敌人" else 0)
 		if _mode == 3:
 			_发送应答(_skill_ask_id, [目标], _sel_cards, [用法])
 		else:
@@ -2980,11 +3285,6 @@ func _发送治疗分配() -> void:
 		_发送行动(_pending_skill_type, _pending_skill_id, 目标表, _sel_cards, 点数表)
 
 
-## 选择某技能选项：连同已选目标/卡牌一并回传
-func _选择技能选项(值: int) -> void:
-	_发送应答(_skill_ask_id, _sel_players, _sel_cards, [值])
-
-
 func _选择额外行动(cause: int) -> void:
 	Logic.send_respond(GConst.RespondType.AdditionalAction, [], [], [cause])
 	_清空待选()
@@ -3005,7 +3305,6 @@ func _清空待选() -> void:
 	_pending = {}
 	_pending_type = -1
 	_mode = 0
-	英雄详情窗.visible = false
 	_行动命令.clear()
 	_skill_ask_id = -1
 	_是技能询问 = false
@@ -3018,8 +3317,6 @@ func _清空待选() -> void:
 	_不可行动 = false
 	_行动禁特殊 = false
 	_skill_options.clear()
-	_弹窗选项.clear()
-	_弹窗标题 = ""
 	_先弹选项 = false
 	_已选参数.clear()
 	_目标锁死 = false
@@ -3038,8 +3335,6 @@ func _清空待选() -> void:
 	_查看盖牌 = false
 	特殊行动窗.visible = false
 	参数选择窗.visible = false
-	_参数选择_技能 = false
-	_参数选择_额外行动 = false
 	_sel_cards.clear()
 	_sel_players.clear()
 	_重置治疗分配()
@@ -3371,11 +3666,13 @@ func 刷新盖牌() -> void:
 	if 张数 == 0:
 		ChooseArea.visible = false
 		return
+	# 盖牌区里的牌比手牌小一档（见 盖牌显示缩放）：整行更容易挤进 ChooseArea，也不至于压到别处
+	var 尺寸: Vector2 = 盖牌尺寸 * 盖牌显示缩放
 	var 间距: float = 盖牌间距
 	if 张数 > 1:
-		间距 = clampf((ChooseArea.size.x - 盖牌尺寸.x * float(张数)) / float(张数 - 1),
-			-盖牌尺寸.x * 手牌最多重叠比例, 盖牌间距)
-	var 总宽: float = 盖牌尺寸.x * float(张数) + 间距 * float(张数 - 1)
+		间距 = clampf((ChooseArea.size.x - 尺寸.x * float(张数)) / float(张数 - 1),
+			-尺寸.x * 手牌最多重叠比例, 盖牌间距)
+	var 总宽: float = 尺寸.x * float(张数) + 间距 * float(张数 - 1)
 	var 序: int = 0
 	for cc: GCard in Data.cover_cards:
 		if cc == null:
@@ -3383,11 +3680,11 @@ func 刷新盖牌() -> void:
 		var 可点: bool = _selecting_cover and _卡牌能点(cc.id)
 		# 只是「点盖牌按钮查看」时一律保持原色（只读、不给点，但牌面要看得清）；
 		# 只有在「要选盖牌」的询问里选不了的那几张才置灰
-		var go: Node = _加卡牌(ChooseArea, cc, 盖牌尺寸, 可点, _selecting_cover)
+		var go: Node = _加卡牌(ChooseArea, cc, 尺寸, 可点, _selecting_cover)
 		if go is Control:
 			(go as Control).position = Vector2(
-				(ChooseArea.size.x - 总宽) * 0.5 + float(序) * (盖牌尺寸.x + 间距),
-				(ChooseArea.size.y - 盖牌尺寸.y) * 0.5)
+				(ChooseArea.size.x - 总宽) * 0.5 + float(序) * (尺寸.x + 间距),
+				(ChooseArea.size.y - 尺寸.y) * 0.5 + 盖牌显示下移)
 		go.call("设置选中", _sel_cards.has(cc.id))
 		序 += 1
 	ChooseArea.visible = _selecting_cover or _查看盖牌
@@ -3436,6 +3733,8 @@ func 刷新选中面板() -> void:
 		else:
 			面板.modulate = 面板常态色
 		面板.set("IsEnable", 可选)
+		# 绿框＝还能选，黄框＝已经选中
+		面板.设置已选中(_sel_players.has(pid))
 	# 选中目标后顺带把提示画到他们头像上（配了「展示型」指示器的技能才有，如「给 X 张牌」「2 法术伤害」）
 	_刷新头像提示()
 
@@ -3458,23 +3757,15 @@ func _目标随牌阈值() -> int:
 	return int(GConst.技能指示器.get(技能号, {}).get("目标随牌", 0))
 
 
-## 当前界面是不是「选牌或选人」型（技能指示器「牌或人」，如【魔眼】）。
-## 只在「发动技能」（mode 4）这条通道生效 —— 【魔眼】后续那次「把手牌作【充能】」的询问
-## 是同一个技能号，但走 mode 3，不能再套这套「点牌 / 点人 二选一」。
-## 点牌取消已选的人、点人取消已选的牌，必须选其一才能确定
-func _模式牌或人() -> bool:
-	return _mode == 4 and bool(_指示器配置().get("牌或人", false))
-
-
 ## 当前技能的「展示型」指示器配置（配了「文案」才算）：选中目标后把一句话画到他们头像上。
 ## 分配型由 _刷新治疗分配 自己画，不走这里。发动技能（mode 4）与技能询问（mode 3）两条通道都认。
-## 「选项提示」型的技能按弹窗里选定的效果取对应那份子配置（如【百鬼夜行】展示 / 不展示各一套）
+## 「选项提示」型的技能按二级技能栏里选定的效果取对应那份子配置（如【百鬼夜行】展示 / 不展示各一套）
 func _头像提示配置() -> Dictionary:
 	var 技能号: int = _当前技能号()
 	if 技能号 < 0:
 		return {}
 	var 配置: Dictionary = GConst.技能指示器.get(技能号, {})
-	# 「先弹选项」型还没在弹窗里选效果时不画任何头像提示
+	# 「先弹选项」型还没在二级技能栏里选效果时不画任何头像提示
 	if bool(配置.get("先弹选项", false)) and _已选参数.is_empty():
 		return {}
 	var 分效果: Dictionary = 配置.get("选项提示", {})
@@ -3496,7 +3787,7 @@ func _显示数值(配置: Dictionary) -> int:
 
 ## 展示型提示的数值，按配置挑一种算法：
 ##   每牌   —— 每牌 × 已选牌数 + 偏移（如【魔道法典】伤害＝弃牌数 - 1）；一张牌都没选时无意义，按 0 处理。
-##              再配「加参数」＝把弹窗里选定的效果值也算进来（如【死亡之触】伤害＝消耗治疗 + 弃牌数 - 3）
+##              再配「加参数」＝把二级技能栏里选定的效果值也算进来（如【死亡之触】伤害＝消耗治疗 + 弃牌数 - 3）
 ##   每能量 —— 每能量 × 自己当前星石总数（宝石 + 水晶）+ 偏移（如元素师【月光】）
 ##   其余   —— 用固定值（「每目标」或「总数 ÷ 选中人数」）
 func _提示数值(配置: Dictionary, 固定值: int) -> int:
@@ -3528,6 +3819,18 @@ func _刷新头像提示() -> void:
 		动态提示 = _雷光散射头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _魔眼头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _灵魂镜像头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _灵魂震爆头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _灵魂赐予头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _魔纹融合头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _战纹碎击头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _双重回响头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
 	for 旧: int in _动态提示过的头像:
 		if not 动态提示.has(旧):
@@ -3641,15 +3944,131 @@ func _雷光散射头像提示() -> Dictionary:
 
 
 ## 魔弓【魔眼】的指示器（现算，只在发动它那次 mode 4 的界面画）：
-## 点别人＝他弃 1 张牌，点自己＝自己摸 3 张牌（也可以不点人、改点一张手牌弃掉）
+## 只有二级技能栏里选了「指定一名角色弃 1 张牌」那一项、并且真点了某名角色时，
+## 才在那名角色头像上写「弃 1 张牌」；选「自己摸 3 张牌」或还没点目标时谁都不写
 func _魔眼头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 4 or _pending_skill_id != GConst.技能_魔眼:
 		return out
-	for 面板: 战斗玩家面板 in _面板列表:
-		if 面板.ID < 0:
+	if _已选参数.is_empty() or int(_已选参数[0]) != 1 or _sel_players.is_empty():
+		return out
+	out[int(_sel_players[0])] = "弃 1 张牌"
+	return out
+
+
+## 【魔纹融合】二级技能栏里选项值的基准：值 1＝【怒火压制】（不弃牌），值 2+Y＝【魔纹融合】
+## （额外翻转 Y 个【魔纹】）。与服务端 role_yinglingrenxing.gd 的 CHOICE_MO_WEN_RONG_HE 对应
+const 魔纹融合_选项基准: int = 2
+
+
+## 英灵人形【魔纹融合】的指示器（现算，写不进静态指示器表）：
+## 伤害＝弃牌数 - 1 + 额外翻转数，随玩家选 / 退牌实时变；画在这次攻击的目标头像上
+## （这次询问问的是「自己弃几张」，目标不由玩家点选，故用服务端下发的 _skill_targets，
+##  而不是自己点出来的 _sel_players）。选了【怒火压制】那一档不造成伤害，什么都不画
+func _魔纹融合头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_魔纹融合 or _已选参数.is_empty():
+		return out
+	var 额外翻转: int = int(_已选参数[0]) - 魔纹融合_选项基准
+	if 额外翻转 < 0 or _skill_targets.is_empty():
+		return out
+	var 伤害: int = _sel_cards.size() - 1 + 额外翻转
+	if 伤害 <= 0:
+		return out
+	for 目标id: int in _skill_targets:
+		out[目标id] = "%d 法术伤害" % 伤害
+	return out
+
+
+## 英灵人形【战纹碎击】的指示器（现算，写不进静态指示器表）：
+## 伤害＝本次攻击原本的伤害 + 弃牌加伤（张数 - 1）+ 额外翻转数，随玩家选 / 退牌实时变；
+## 画在这次攻击的目标头像上（这次询问问的是「弃几张」，目标不由玩家点选，故用服务端下发的 _skill_targets）。
+## 原本的伤害只有服务端算得出来，随询问下发（preview_base）；还没选效果时按不额外翻转算
+func _战纹碎击头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_战纹碎击 or _skill_targets.is_empty():
+		return out
+	# 选项值 = 1 + Y：值 1 是不额外翻转（Y = 0）；还没选效果时也按不额外翻转算
+	var 额外翻转: int = int(_已选参数[0]) - 1 if not _已选参数.is_empty() else 0
+	# 弃牌加伤那部分是「张数 - 1」，还没选够 2 张时按 0 算（此时显示的就是原本的伤害）
+	var 伤害: int = int(_pending.get("preview_base", 0)) + maxi(_sel_cards.size() - 1, 0) + 额外翻转
+	if 伤害 <= 0:
+		return out
+	for 目标id: int in _skill_targets:
+		out[目标id] = "%d 攻击伤害" % 伤害
+	return out
+
+
+## 英灵人形【双重回响】的指示器（现算，写不进静态指示器表）：
+## 伤害＝本次伤害点数与 3 取小，画在玩家点选的那名目标头像上（这次询问就是让他点一个目标）
+func _双重回响头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_双重回响 or _sel_players.is_empty():
+		return out
+	# 伤害值随询问下发（preview_base），客户端不重复算「与 3 取小」
+	var 伤害: int = int(_pending.get("preview_base", 0))
+	if 伤害 <= 0:
+		return out
+	for 目标id: int in _sel_players:
+		out[int(目标id)] = "%d 法术伤害" % 伤害
+	return out
+
+
+## 灵魂术士【灵魂镜像】的指示器（现算）：在选中的目标头像上写他「会摸几张」——
+## 摸牌数被他的手牌上限卡住，目标是自己的话还随「弃几张」变动，写不进静态指示器表
+func _灵魂镜像头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_灵魂镜像 or _sel_players.is_empty():
+		return out
+	for 目标id: int in _sel_players:
+		var 目标: GPlayer = Data.get_player_by_id(目标id)
+		if 目标 == null:
 			continue
-		out[面板.ID] = "摸 3 张牌" if 面板.ID == Logic.my_player_id else "弃 1 张牌"
+		out[目标id] = "摸 %d 张牌" % _灵魂镜像摸牌数(目标)
+	return out
+
+
+## 【灵魂镜像】会让这名目标摸几张：最多 3 张、且不超他的手牌上限；
+## 目标是自己时先弃掉已选的牌再摸，按弃牌后的手牌数算（与服务端 LingHun::_jing_xiang 一致）
+func _灵魂镜像摸牌数(目标: GPlayer) -> int:
+	# 手牌数用 hand_cards_num：别人的手牌内容不下发，只有这个数量是准的
+	var 现有: int = 目标.hand_cards_num
+	if 目标.id == Logic.my_player_id:
+		现有 -= mini(_sel_cards.size(), 3)
+	return clampi(目标.hand_cards_max - 现有, 0, 3)
+
+
+## 灵魂术士【灵魂震爆】的指示器（现算）：在选中的目标头像上写他「会挨几点法术伤害」——
+## 目标手牌少于 3 张、且手牌上限高于 5 时是 5 点，否则 3 点，写不进静态指示器表
+func _灵魂震爆头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_灵魂震爆 or _sel_players.is_empty():
+		return out
+	for 目标id: int in _sel_players:
+		var 目标: GPlayer = Data.get_player_by_id(目标id)
+		if 目标 == null:
+			continue
+		out[目标id] = "%d 法术伤害" % _灵魂震爆伤害(目标)
+	return out
+
+
+## 【灵魂震爆】对这名目标造成的法术伤害：手牌 <3 且手牌上限 >5 时 5 点，否则 3 点
+## （与服务端 LingHun::_zhen_bao 的判定保持一致）
+func _灵魂震爆伤害(目标: GPlayer) -> int:
+	if 目标.hand_cards_num < 3 and 目标.hand_cards_max > 5:
+		return 5
+	return 3
+
+
+## 灵魂术士【灵魂赐予】的指示器：在选中的目标头像上写「N 宝石」，告诉玩家会给他多少宝石
+func _灵魂赐予头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_灵魂赐予 or _sel_players.is_empty():
+		return out
+	for 目标id: int in _sel_players:
+		if Data.get_player_by_id(目标id) == null:
+			continue
+		out[目标id] = "%d 宝石" % GConst.灵魂赐予宝石
 	return out
 
 
@@ -3703,8 +4122,14 @@ func _目标在白名单(白名单: Array) -> bool:
 	return true
 
 
-## 参数选项各自目标白名单的并集：不同选项允许的目标可能不同（如【神圣领域】给队友加血 / 打敌方）
+## 参数选项各自目标白名单：已经选定某个选项时就只按那一项自己的白名单
+## （如【神圣领域】选了「打敌人」就只点敌人）；还没选（或那一项没带白名单）就退回所有选项的并集
 func _参数选项目标白名单() -> Array:
+	var 选中项: Dictionary = _二级选中项()
+	if not 选中项.is_empty():
+		var 单选: Array = 选中项.get("目标白名单", [])
+		if not 单选.is_empty():
+			return 单选
 	var out: Array = []
 	for 项: Variant in _skill_arg_choices:
 		var 单: Array = (项 as Dictionary).get("targets", [])
@@ -3764,9 +4189,6 @@ func _玩家可选(player_id: int) -> bool:
 	if _mode == 4:
 		if bool(_分配配置().get("仅队友", false)) and not _是队友(player_id):
 			return false
-		# 「牌或人」型（如【魔眼】）：点人或点牌二选一，头像始终可点（按白名单）
-		if _模式牌或人():
-			return _skill_targets.is_empty() or _skill_targets.has(player_id)
 		# 「目标随牌」的技能（如【雷光散射】）：已选牌数够阈值时才点亮目标（选 1 张时不选目标）
 		var 随牌阈值: int = _目标随牌阈值()
 		if 随牌阈值 > 0:
@@ -3797,26 +4219,13 @@ func _更新按键() -> void:
 	BtnSpecila.visible = 特殊可用
 	# 仲裁者审判满时「特殊行动」也锁死：按钮留着但灰掉
 	BtnSpecila.disabled = not 特殊可用 or (_按钮是特殊行动() and _末日审判锁死行动())
-	# 参数选项按钮：选够它要求的牌/目标、且目标落在它自己的白名单里才让点
-	for 项: Variant in _参数按钮:
-		var d: Dictionary = 项
-		var b: Button = d["按钮"] as Button
-		if not is_instance_valid(b):
-			continue
-		var 缺: bool = _sel_cards.size() < int(d["需牌"]) or _sel_players.size() < int(d["需目标"])
-		if not 缺 and not _目标在白名单(d["目标白名单"]):
-			缺 = true
-		b.disabled = 缺
 
 
 func _确定不可用() -> bool:
 	# 特殊行动（购买/合成/提炼）没有「确定」，由菜单里的按钮直接提交
 	if _mode == 5 or _mode == 6:
 		return true
-	# 弹窗型询问（【神之庇护】/ 治疗抵挡）：确定＝把居中的选项窗重新弹出来
-	if not _弹窗选项.is_empty():
-		return false
-	# 参数选择窗开着时（【风之洁净】/【天使之歌】确定后弹出的选择）不再重复弹，等玩家选完
+	# 参数选择窗开着时（特殊行动选星石）不再重复弹，等玩家选完
 	if 参数选择窗.visible:
 		return true
 	if _mode == 1:
@@ -3842,26 +4251,26 @@ func _确定不可用() -> bool:
 		# 所以这里用 ≥ 而不是 ==，否则多选了反而点不动「确定」
 		var 牌够: bool = _sel_cards.size() >= _skill_ask_need_card if _skill_ask_need_card > 0 else true
 		var 目标够: bool = _sel_players.size() >= _skill_ask_need_target if _skill_ask_need_target > 0 else true
-		# 「先弹选项」型（【百鬼夜行】）：效果已在弹窗里选好，这里跟普通询问同一条判定 —— 选够牌 / 目标才让点
-		if _先弹选项:
-			return not (牌够 and 目标够 and not _已选参数.is_empty())
-		# 有选项时「确定」始终不可用，由选项按钮提交
-		return true if not _skill_options.is_empty() else not (牌够 and 目标够)
+		# 二级技能栏：先在技能栏里选一个效果，再选够牌 / 目标，才让点「确定」
+		if _二级栏:
+			return not (牌够 and 目标够 and _二级选中 >= 0)
+		return not (牌够 and 目标够)
 	if _mode == 4:
 		# 分配型指示器（如圣疗 / 治愈之光 / 治疗术 / 神圣领域）：选够治疗点、且要选牌时选够牌才让「确定」
 		if not _分配配置().is_empty():
 			var 治疗牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
 			return not (治疗牌够 and _分配已满())
-		# 「先弹选项」型（【死亡之触】）：还没在弹窗里选效果时不能确定；选完后跟普通技能同一条判定
-		if _先弹选项 and _已选参数.is_empty():
-			return true
-		# 有参数选项时「确定」始终不可用，由选项按钮提交（「先弹选项」型是弹窗里选、再按「确定」，除外）
-		if not _skill_arg_choices.is_empty() and not _先弹选项:
-			return true
-		# 「牌或人」型（如【魔眼】）：选 1 张手牌 或 选 1 名角色，二选一，必须选其一才能确定
-		if _模式牌或人():
-			return not ((_sel_cards.size() == 1 and _sel_players.is_empty())
-				or (_sel_cards.is_empty() and _sel_players.size() == 1))
+		# 二级技能栏：得先在技能栏里选一个效果，且选够它要求的牌 / 目标，才让点「确定」
+		# （「先弹选项」型的需牌 / 目标已在选效果时由 _应用选项目标数 还原 / 收紧）
+		if _二级栏:
+			var 项: Dictionary = _二级选中项()
+			if 项.is_empty():
+				return true
+			var 需牌: int = maxi(_skill_need_card, int(项["需牌"]))
+			var 需目标: int = maxi(_skill_need_target, int(项["需目标"]))
+			var 牌够: bool = _sel_cards.size() >= 需牌 if 需牌 > 0 else true
+			var 目标够: bool = _sel_players.size() >= 需目标 if 需目标 > 0 else true
+			return not (牌够 and 目标够 and _目标在白名单(项["目标白名单"]) and _目标数合法())
 		# 手牌 + 盖牌混选型（如【魔贯冲击】：1 张攻击牌 + 1 张火系【充能】）：
 		# 分别校验手牌数与盖牌数，不能只数总张数（否则选两张手牌也能按「确定」，提交后才被服务端拒）
 		if _skill_cover_need > 0:
@@ -3940,19 +4349,6 @@ func _取消可用() -> bool:
 
 
 # ---------------- 技能区 ----------------
-## 加一个纯文字按钮（技能选项 / 额外行动 / 特殊行动用；技能本体走 Skill.tscn）
-func _加文本按钮(文本: String, 回调: Callable, 可用: bool = true) -> void:
-	var b: Button = Button.new()
-	b.text = 文本
-	b.custom_minimum_size = Vector2(164.0, 44.0)
-	b.add_theme_font_size_override("font_size", 22)
-	b.disabled = not 可用
-	b.pressed.connect(回调)
-	ChildrenSkillArea.add_child(b)
-	_技能按钮.append(b)
-	_显示技能区()
-
-
 func _显示技能区() -> void:
 	SkillArea.visible = true
 	ChildrenSkillArea.visible = true
@@ -3961,10 +4357,13 @@ func _显示技能区() -> void:
 func _隐藏技能区() -> void:
 	SkillArea.visible = false
 	ChildrenSkillArea.visible = false
+	# 技能区一收，说明框也跟着收（技能按钮多半马上就被清掉了，收不到 mouse_exited）
+	_收起所有说明()
 
 
 ## 点中的技能按钮亮起黄色外发光，其余熄灭。
-## 取消 / 提交行动都会 _清空技能按钮（或重建），发光随之复位，不用额外清。
+## 取消 / 提交行动都会 _清空技能按钮（或重建），发光随之复位，不用额外清；
+## 二级技能栏里被点的父技能也保持发光（见 _进入二级技能栏）。
 func _标记选中技能(按钮: Node) -> void:
 	for b: Node in _技能按钮:
 		if b is 技能按钮:
@@ -3972,9 +4371,10 @@ func _标记选中技能(按钮: Node) -> void:
 
 
 func _清空技能按钮() -> void:
+	# 二级技能栏的选项按钮也登记在 _技能按钮 里，先按二级栏那本账把它们摘掉
+	_清空二级选项()
 	for b: Node in _技能按钮:
 		if is_instance_valid(b):
 			b.queue_free()
 	_技能按钮.clear()
-	_参数按钮.clear()
 	_隐藏技能区()

@@ -1,344 +1,255 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene format=3 uid="uid://c466cnimfagkp"]
 
-[ext_resource type="Texture2D" path="res://assets/textures/battle/b05_new_argsItem.png" id="1_b05newargsItempng"]
-[ext_resource type="Texture2D" path="res://assets/textures/hero/head/0h.png" id="3_0hpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/card/diLieZhan.png" id="5_diLieZhanpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected_card.png" id="6_b02selectedcardpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected_cardy.png" id="7_b02selectedcardypng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-12.png" id="8_UI612png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-13.png" id="9_UI613png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-14.png" id="10_UI614png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-15.png" id="11_UI615png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/UI6-16.png" id="12_UI616png"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/01 earth.png" id="13_01earthpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/04 wind.png" id="14_04windpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/02 water.png" id="15_02waterpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/03 fire.png" id="16_03firepng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/05 thunder.png" id="17_05thunderpng"]
-[ext_resource type="Script" path="res://scripts/CardUI.gd" id="18_CardUIgd"]
+[ext_resource type="Texture2D" uid="uid://dw66acijh6ist" path="res://assets/textures/card/diLieZhan.png" id="5_diLieZhanpng"]
+[ext_resource type="Texture2D" uid="uid://dwuexrv1a8bne" path="res://assets/textures/battle/b02_selected_card.png" id="6_b02selectedcardpng"]
+[ext_resource type="Texture2D" uid="uid://2nbbe64xvjl3" path="res://assets/textures/battle/b02_selected_cardy.png" id="7_b02selectedcardypng"]
+[ext_resource type="Texture2D" uid="uid://ews20xmbiisf" path="res://assets/textures/battle/UI6-12.png" id="8_UI612png"]
+[ext_resource type="Texture2D" uid="uid://ng55xbevfqff" path="res://assets/textures/battle/UI6-13.png" id="9_UI613png"]
+[ext_resource type="Texture2D" uid="uid://cy0i7fk1d4ugi" path="res://assets/textures/battle/UI6-14.png" id="10_UI614png"]
+[ext_resource type="Texture2D" uid="uid://mdwhaat2vupb" path="res://assets/textures/battle/UI6-15.png" id="11_UI615png"]
+[ext_resource type="Texture2D" uid="uid://hxplfqt1j6gc" path="res://assets/textures/battle/UI6-16.png" id="12_UI616png"]
+[ext_resource type="Texture2D" uid="uid://tg3uj5ce38rh" path="res://assets/textures/battle/01 earth.png" id="13_01earthpng"]
+[ext_resource type="Texture2D" uid="uid://fgmal3vpxy5c" path="res://assets/textures/battle/04 wind.png" id="14_04windpng"]
+[ext_resource type="Texture2D" uid="uid://tvy8wmee0nw2" path="res://assets/textures/battle/02 water.png" id="15_02waterpng"]
+[ext_resource type="Texture2D" uid="uid://dtb7ym2oyvgtj" path="res://assets/textures/battle/03 fire.png" id="16_03firepng"]
+[ext_resource type="Texture2D" uid="uid://3gdsajtrctsp" path="res://assets/textures/battle/05 thunder.png" id="17_05thunderpng"]
+[ext_resource type="Script" uid="uid://f7lm38adaxb1" path="res://scripts/CardUI.gd" id="18_CardUIgd"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="Card" type="Control" node_paths=PackedStringArray("btn", "txtSkill1", "txtSkill2", "propertyRoot", "elementRoot", "selectBorder", "canSelectBorder")]
-anchor_left = 0
-anchor_top = 1
-anchor_right = 0
-anchor_bottom = 1
-offset_left = 0
-offset_top = 0
-offset_right = 0
-offset_bottom = 0
+[node name="Card" type="Control" unique_id=1595026165 node_paths=PackedStringArray("btn", "txtSkill1", "txtSkill2", "propertyRoot", "elementRoot", "selectBorder", "canSelectBorder")]
+layout_mode = 3
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
 script = ExtResource("18_CardUIgd")
 btn = NodePath("Root")
 txtSkill1 = NodePath("Root/Skill1")
 txtSkill2 = NodePath("Root/Skill2")
 propertyRoot = NodePath("Root/Property")
 elementRoot = NodePath("Root/Element")
-selectBorder = NodePath("Root/SelectBorder")
-canSelectBorder = NodePath("Root/CanSelectBorder")
+selectBorder = NodePath("SelectBorder")
+canSelectBorder = NodePath("CanSelectBorder")
 
-[node name="Root" type="Button" parent="."]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 1
-anchor_bottom = 1
-offset_left = 0
-offset_top = 0
-offset_right = 0
-offset_bottom = 0
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-focus_mode = 0
-icon = ExtResource("5_diLieZhanpng")
-theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
-expand_icon = true
-
-[node name="Skill1" type="Label" parent="Root"]
-anchor_left = 0
-anchor_top = 1
-anchor_right = 0
-anchor_bottom = 1
-offset_left = 0
-offset_top = -30
-offset_right = 60
-offset_bottom = 0
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(0, 30)
-text = ""
-horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.19608, 0.19608, 0.19608, 1)
-autowrap_mode = 3
-mouse_filter = 2
-
-[node name="Skill2" type="Label" parent="Root"]
-anchor_left = 1
-anchor_top = 1
-anchor_right = 1
-anchor_bottom = 1
-offset_left = -60
-offset_top = -30
-offset_right = 0
-offset_bottom = 0
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(60, 30)
-text = ""
-horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.19608, 0.19608, 0.19608, 1)
-autowrap_mode = 3
-mouse_filter = 2
-
-[node name="CanSelectBorder" type="TextureRect" parent="Root"]
+[node name="CanSelectBorder" type="TextureRect" parent="." unique_id=60238750]
+layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -83
-offset_top = -115
-offset_right = 83
-offset_bottom = 115
+offset_left = -83.0
+offset_top = -115.0
+offset_right = 83.0
+offset_bottom = 115.0
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(83, 115)
+mouse_filter = 0
 texture = ExtResource("6_b02selectedcardpng")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="SelectBorder" type="TextureRect" parent="Root"]
+[node name="SelectBorder" type="TextureRect" parent="." unique_id=794585997]
+layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -83
-offset_top = -115
-offset_right = 83
-offset_bottom = 115
+offset_left = -83.0
+offset_top = -115.0
+offset_right = 83.0
+offset_bottom = 115.0
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(83, 115)
+mouse_filter = 0
 texture = ExtResource("7_b02selectedcardypng")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="Property" type="Control" parent="Root"]
+[node name="Root" type="Button" parent="." unique_id=241656388]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("5_diLieZhanpng")
+expand_icon = true
+
+[node name="Skill1" type="Label" parent="Root" unique_id=1275449768]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -2.5
+offset_top = -30.0
+offset_right = 57.5
+pivot_offset = Vector2(0, 30)
+theme_override_colors/font_color = Color(0.6955032, 0.6955031, 0.6955031, 1)
+theme_override_colors/font_outline_color = Color(0.19607843, 0.19607843, 0.19607843, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 11
+text = "321312"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Skill2" type="Label" parent="Root" unique_id=431161559]
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -57.5
+offset_top = -30.0
+offset_right = 2.5
+pivot_offset = Vector2(60, 30)
+theme_override_colors/font_color = Color(0.6627451, 1, 0, 1)
+theme_override_colors/font_outline_color = Color(0.19607843, 0.19607843, 0.19607843, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 11
+text = "123132"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Property" type="Control" parent="Root" unique_id=525092272]
+layout_mode = 1
+anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -12.5
-offset_top = 71.6
+offset_top = 66.600006
 offset_right = 12.5
-offset_bottom = 96.6
+offset_bottom = 91.600006
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(12.5, 12.5)
 
-[node name="圣" type="TextureRect" parent="Root/Property"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 1
-anchor_bottom = 1
-offset_left = 0
-offset_top = 0
-offset_right = 0
-offset_bottom = 0
+[node name="圣" type="TextureRect" parent="Root/Property" unique_id=1135958072]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-visible = false
+mouse_filter = 0
 texture = ExtResource("8_UI612png")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="技" type="TextureRect" parent="Root/Property"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 1
-anchor_bottom = 1
-offset_left = 0
-offset_top = 0
-offset_right = 0
-offset_bottom = 0
+[node name="技" type="TextureRect" parent="Root/Property" unique_id=2087146370]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-visible = false
+mouse_filter = 0
 texture = ExtResource("9_UI613png")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="血" type="TextureRect" parent="Root/Property"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 1
-anchor_bottom = 1
-offset_left = 0
-offset_top = 0
-offset_right = 0
-offset_bottom = 0
+[node name="血" type="TextureRect" parent="Root/Property" unique_id=370233716]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-visible = false
+mouse_filter = 0
 texture = ExtResource("10_UI614png")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="幻" type="TextureRect" parent="Root/Property"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 1
-anchor_bottom = 1
-offset_left = 0
-offset_top = 0
-offset_right = 0
-offset_bottom = 0
+[node name="幻" type="TextureRect" parent="Root/Property" unique_id=243243491]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-visible = false
+mouse_filter = 0
 texture = ExtResource("11_UI615png")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="咏" type="TextureRect" parent="Root/Property"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 1
-anchor_bottom = 1
-offset_left = 0
-offset_top = 0
-offset_right = 0
-offset_bottom = 0
+[node name="咏" type="TextureRect" parent="Root/Property" unique_id=1108499975]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-visible = false
+mouse_filter = 0
 texture = ExtResource("12_UI616png")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="Element" type="Control" parent="Root"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 1
-anchor_bottom = 1
-offset_left = 0
-offset_top = 0
-offset_right = 0
-offset_bottom = 0
+[node name="Element" type="Control" parent="Root" unique_id=708988465]
+anchors_preset = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
+scale = Vector2(1.35, 1.35)
 
-[node name="earth" type="TextureRect" parent="Root/Element"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 0
-anchor_bottom = 0
-offset_left = 0
-offset_top = 0
-offset_right = 30
-offset_bottom = 30
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(0, 0)
+[node name="earth" type="TextureRect" parent="Root/Element" unique_id=180708703]
 visible = false
+layout_mode = 0
+offset_right = 30.0
+offset_bottom = 30.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
 texture = ExtResource("13_01earthpng")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="wind" type="TextureRect" parent="Root/Element"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 0
-anchor_bottom = 0
-offset_left = 0
-offset_top = 0
-offset_right = 30
-offset_bottom = 30
+[node name="wind" type="TextureRect" parent="Root/Element" unique_id=1091305890]
+visible = false
+layout_mode = 0
+offset_right = 30.0
+offset_bottom = 30.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-visible = false
+mouse_filter = 0
 texture = ExtResource("14_04windpng")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="water" type="TextureRect" parent="Root/Element"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 0
-anchor_bottom = 0
-offset_left = 0
-offset_top = 0
-offset_right = 30
-offset_bottom = 30
+[node name="water" type="TextureRect" parent="Root/Element" unique_id=1057271008]
+visible = false
+layout_mode = 0
+offset_right = 30.0
+offset_bottom = 30.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-visible = false
+mouse_filter = 0
 texture = ExtResource("15_02waterpng")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="fire" type="TextureRect" parent="Root/Element"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 0
-anchor_bottom = 0
-offset_left = 0
-offset_top = 0
-offset_right = 30
-offset_bottom = 30
+[node name="fire" type="TextureRect" parent="Root/Element" unique_id=1513941426]
+visible = false
+layout_mode = 0
+offset_right = 30.0
+offset_bottom = 30.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-visible = false
+mouse_filter = 0
 texture = ExtResource("16_03firepng")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
-[node name="thunder" type="TextureRect" parent="Root/Element"]
-anchor_left = 0
-anchor_top = 0
-anchor_right = 0
-anchor_bottom = 0
-offset_left = 0
-offset_top = 0
-offset_right = 30
-offset_bottom = 30
+[node name="thunder" type="TextureRect" parent="Root/Element" unique_id=97581491]
+visible = false
+layout_mode = 0
+offset_right = 30.0
+offset_bottom = 30.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(0, 0)
-visible = false
+mouse_filter = 0
 texture = ExtResource("17_05thunderpng")
 expand_mode = 1
-stretch_mode = 0
-mouse_filter = 0
 
 [connection signal="pressed" from="Root" to="." method="OnCardClick"]

@@ -308,13 +308,13 @@ func p_lose_morale(ctx: Dictionary) -> int:
 		# 本引擎一次只能回一个值，故把「宝石数 × 水晶数」编码进选项值（宝石*100 + 水晶）。
 		# 客户端会把它们弹成居中的选项窗（含「不抵挡」那项：编码 0 → 下面判总能量 <= 0 直接放弃）
 		var 上限: int = mini(amount, player.get_energy())
-		var options: Array = [{"value": 0, "label": "不抵挡（保留星石）"}]
+		var options: Array = [{"value": 0, "label": 提示(SHEN_ZHI_BI_HU, 1)}]
 		for g: int in range(0, player.gem + 1):
 			for c: int in range(0, player.crystal + 1):
 				var 总: int = g + c
 				if 总 <= 0 or 总 > 上限:
 					continue
-				options.append({"value": g * 100 + c, "label": "宝石 %d + 水晶 %d（抵消 %d 点）" % [g, c, 总]})
+				options.append({"value": g * 100 + c, "label": 提示(SHEN_ZHI_BI_HU, 2, g, -1, {"n2": c, "n3": 总})})
 		询问(player.id, SHEN_ZHI_BI_HU, 0, 0, GConst.CardSource.Hand, options)
 		return WAIT
 	step = STEP_DONE

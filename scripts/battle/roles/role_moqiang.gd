@@ -18,7 +18,6 @@ const HUAN_YING_XING_CHEN: int = 2902
 const HEI_AN_SHU_FU: int = 2903
 const AN_ZHI_ZHANG_BI: int = 2904
 const CHONG_YING: int = 2905
-const CHONG_YING_DISCARD: int = 29051
 const QI_HEI_ZHI_QIANG: int = 2906
 
 const HAND_MAX_ILLUSION: int = 5
@@ -292,7 +291,7 @@ func _qi_hei_zhi_qiang(ctx: Dictionary) -> int:
 		# （原版是靠 respond 的第二个参数 args[1] 传能量数，移植版拿不到所以恒为 0、伤害固定 +2）
 		var options: Array = []
 		for n: int in range(1, player.get_energy() + 1):
-			options.append({"value": n, "label": "投入 %d 点能量（伤害 +%d）" % [n, n + 2]})
+			options.append({"value": n, "label": 提示(QI_HEI_ZHI_QIANG, 0, n, -1, {"n2": n + 2})})
 		询问(player.id, QI_HEI_ZHI_QIANG, 0, 0, GConst.CardSource.Hand, options)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
@@ -466,10 +465,10 @@ func _chong_ying(action: Dictionary) -> int:
 			if not engine.has_reply():
 				if tp.color != player.color:
 					# 服务端对敌方用不可放弃的 StateRequestHand：敌方必须弃 1 张
-					engine.ask_respond(tid, GConst.RespondType.Discard, [tid, CHONG_YING_DISCARD, 1], [tid])
+					engine.ask_respond(tid, GConst.RespondType.Discard, [tid, CHONG_YING, 1], [tid])
 					engine.wait_for(tid, GConst.Msg.Respond)
 				else:
-					询问(tid, CHONG_YING_DISCARD, 1)
+					询问(tid, CHONG_YING, 1)
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
 			_chong_index += 1
@@ -487,7 +486,7 @@ func _chong_ying(action: Dictionary) -> int:
 			if c2 == null:
 				continue
 			var counted: bool = c2.is_magic() or c2.element_enum() == GConst.CardElement.Thunder
-			notice_skill(CHONG_YING_DISCARD, [tid])
+			notice_skill(CHONG_YING, [tid])
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": tid, "dst_id": tid,
 				"card_ids": [ccid], "is_real": true,
