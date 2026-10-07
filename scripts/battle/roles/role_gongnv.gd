@@ -83,7 +83,9 @@ func _jing_zhun_she_ji(ctx: Dictionary) -> int:
 		_应用精准射击(ctx)
 		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, JING_ZHUN_SHE_JI, 0, 0)
+		# 目标与发动前的伤害一并下发：客户端据此在目标头像上现算「本次攻击伤害」
+		询问(player.id, JING_ZHUN_SHE_JI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			0, -1, [int(ctx.get("dst", -1))], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS

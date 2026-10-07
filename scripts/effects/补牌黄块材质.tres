@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://bdjmci7d8wui1"]
+
+[ext_resource type="Shader" uid="uid://h0y2g6pagmmj" path="res://scripts/effects/受击描边.gdshader" id="1_outline"]
+
+[resource]
+shader = ExtResource("1_outline")
+shader_parameter/outline_color = Color(1, 0.25, 0.25, 1)
+shader_parameter/mix_amount = 0.50000002375
+shader_parameter/tint = Color(1, 1, 0.101960786, 1)
+shader_parameter/tint_amount = 1.0

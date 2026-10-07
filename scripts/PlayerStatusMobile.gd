@@ -88,13 +88,14 @@ const 指示物格尺寸: Vector2 = Vector2(状态图标尺寸, 状态图标尺�
 ## 手牌 / 治疗那排扁平小方块：素材 handcard / heal 都是 33×14，照原版横排、负间距互相叠着
 const 扁平格尺寸: Vector2 = Vector2(33.0, 14.0)
 const 扁平格叠放间距: int = -13
-## 补牌动画（秒）：新补进手牌的格子先盖一层橙块，保持 补牌橙色时长 秒后，
-## 再用 补牌渐变时长 秒淡出、露出下面的绿块（前面一直橙、只在最后一段渐变）
-const 补牌橙色时长: float = 3.5
+## 补牌动画（秒）：新补进手牌的格子先盖一层黄块，保持 补牌黄色时长 秒后，
+## 再用 补牌渐变时长 秒淡出、露出下面的绿块（前面一直黄、只在最后一段渐变）
+const 补牌黄色时长: float = 3.5
 const 补牌渐变时长: float = 0.5
-## 橙块的颜色：盖的那层用的是红色素材 handcardfull，靠这个 modulate 把它调成橙色
-## （绿通道乘 >1 提亮、蓝通道乘 <1 压暗，红通道保持不动）
-const 补牌橙色: Color = Color(1.28, 1.73, 0.47)
+## 补牌黄块：素材、形状、颜色都收在预制体与它的材质里 —— 想调效果直接开这两个文件。
+## 材质用的是「受击描边」着色器 + tint：只把素材里的绿色换成 tint 色，描边与明暗都保留
+const 补牌黄块预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/补牌黄块.tscn")
+const 补牌黄块材质: ShaderMaterial = preload("res://scripts/effects/补牌黄块材质.tres")
 ## 新到手的宝石闪白时长（秒）：越短闪得越快
 const 宝石闪白时长: float = 1.0
 ## 闪白的起始强度：不从纯白（1.0）开始，而是 75% 白再往下淡
@@ -714,8 +715,8 @@ var _手牌已初始化: bool = false
 func set_HandCount(value: Vector2i) -> void:
 	if handArea == null:
 		return
-	# 手牌数变化：新增的格子记下「现在」作为橙变绿的起点；减少（弃牌）时丢最左边的旧牌，
-	# 保住右边那几格正在播放的橙变绿动画不被中途打断。
+	# 手牌数变化：新增的格子记下「现在」作为黄变绿的起点；减少（弃牌）时丢最左边的旧牌，
+	# 保住右边那几格正在播放的黄变绿动画不被中途打断。
 	var 手牌数: int = value.y
 	var 旧数: int = _手牌格起点.size()
 	if not _手牌已初始化:
@@ -754,27 +755,28 @@ func set_HandCount(value: Vector2i) -> void:
 
 
 ## 一格「当前手牌」：绿块打底；若是刚补上来的（补牌起点 >= 0 且动画还没走完），
-## 上面再盖一层橙块 —— 先整块橙保持 补牌橙色时长 秒，最后 补牌渐变时长 秒才淡出露出绿块。
+## 上面再盖一层黄块 —— 用与绿块同一张素材，只覆盖绿块的图形区域，
+## 先整块黄保持 补牌黄色时长 秒，最后 补牌渐变时长 秒才淡出露出绿块。
 func _加当前手牌格(ps: PackedScene, 补牌起点: int) -> void:
 	var 绿块: Control = _add_image(handArea, ps, "handcard", 扁平格尺寸, true, _手牌描边)
 	if 绿块 == null or 补牌起点 < 0:
 		return
 	var 已过: float = float(Time.get_ticks_msec() - 补牌起点) / 1000.0
-	if 已过 >= 补牌橙色时长 + 补牌渐变时长:
+	if 已过 >= 补牌黄色时长 + 补牌渐变时长:
 		return
-	var 橙块: TextureRect = ps.instantiate() as TextureRect
-	橙块.texture = _load_sprite("handcardfull")
-	橙块.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	绿块.add_child(橙块)
-	橙块.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# 前 补牌橙色时长 秒整块橙、不动；只有最后 补牌渐变时长 秒才淡出露出绿块
-	var 渐变已过: float = maxf(已过 - 补牌橙色时长, 0.0)
-	橙块.modulate = Color(补牌橙色.r, 补牌橙色.g, 补牌橙色.b, 1.0 - 渐变已过 / 补牌渐变时长)
-	var 淡出: Tween = 橙块.create_tween()
-	if 已过 < 补牌橙色时长:
-		淡出.tween_interval(补牌橙色时长 - 已过)
-	淡出.tween_property(橙块, "modulate:a", 0.0, 补牌渐变时长 - 渐变已过)
-	淡出.tween_callback(橙块.queue_free)
+	# 黄块整个来自预制体（素材 / 材质 / 尺寸设置都在里面）
+	var 黄块: TextureRect = 补牌黄块预制体.instantiate() as TextureRect
+	绿块.add_child(黄块)
+	黄块.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# 前 补牌黄色时长 秒整块黄、不动；只有最后 补牌渐变时长 秒才淡出露出绿块。
+	# 颜色来自材质，这里只用 modulate 的 a 通道做淡出
+	var 渐变已过: float = maxf(已过 - 补牌黄色时长, 0.0)
+	黄块.modulate = Color(1.0, 1.0, 1.0, 1.0 - 渐变已过 / 补牌渐变时长)
+	var 淡出: Tween = 黄块.create_tween()
+	if 已过 < 补牌黄色时长:
+		淡出.tween_interval(补牌黄色时长 - 已过)
+	淡出.tween_property(黄块, "modulate:a", 0.0, 补牌渐变时长 - 渐变已过)
+	淡出.tween_callback(黄块.queue_free)
 
 ## 对应 C# public uint HealCount 的 setter
 func set_HealCount(value: int) -> void:
@@ -1039,12 +1041,15 @@ func _闪受击描边() -> void:
 		_手牌描边.set_shader_parameter("mix_amount", 1.0)
 	if _治疗描边 != null:
 		_治疗描边.set_shader_parameter("mix_amount", 1.0)
+	# 正在播的补牌黄块：描边也是同一套着色器，跟着一起红、一起淡回
+	补牌黄块材质.set_shader_parameter("mix_amount", 1.0)
 	_描边淡出 = create_tween()
 	_描边淡出.set_parallel(true)
 	if _手牌描边 != null:
 		_描边淡出.tween_method(_设描边强度.bind(_手牌描边), 1.0, 0.0, 受击描边时长)
 	if _治疗描边 != null:
 		_描边淡出.tween_method(_设描边强度.bind(_治疗描边), 1.0, 0.0, 受击描边时长)
+	_描边淡出.tween_method(_设描边强度.bind(补牌黄块材质), 1.0, 0.0, 受击描边时长)
 
 
 func _设描边强度(值: float, 材质: ShaderMaterial) -> void:

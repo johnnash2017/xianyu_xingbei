@@ -219,7 +219,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if _timeline_1_step != skill_id:
 		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, skill_id, 1, 0, GConst.CardSource.Cover)
+		# 目标与发动前的伤害一并下发：客户端据此在目标头像上现算「本次攻击伤害」
+		询问(player.id, skill_id, 1, 0, GConst.CardSource.Cover, [], 0, "", [], true,
+			0, -1, [int(ctx.get("dst", -1))], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_timeline_1_step = 0

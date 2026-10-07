@@ -8,7 +8,7 @@ extends BattleRole
 ##                 普通形态双方手牌上限各 -2，流血形态各 +1）、
 ##       逆流（2304，法术：仅【流血形态】下，弃 2 张牌并 +1 治疗）、
 ##       血之悲鸣（2301，法术：对目标角色和自己各造成 1~3 点法术伤害）、
-##       血之诅咒（2351，法术：耗 1 宝石，对目标角色造成 2 点法术伤害并弃最多 3 张牌）
+##       血之诅咒（2351，法术：耗 1 宝石，对目标角色造成 2 点法术伤害并弃 3 张牌）
 
 const XUE_ZHI_BEI_MING: int = 2301
 const TONG_SHENG_GONG_SI: int = 2302
@@ -46,7 +46,11 @@ func available_skills() -> Array:
 				{"text": 提示(XUE_ZHI_BEI_MING, 2), "args": [3], "need_card": 1, "need_target": 1},
 			]})
 	if player.gem >= 1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_ZU_ZHOU, "need_card": 0, "need_target": 1})
+		# 血之诅咒：耗 1 宝石，对目标 2 点法术伤害，并弃 3 张牌（手牌不足就全弃；手牌为空时不用弃）
+		# 弃哪几张在「选目标」这一步一起选（need_card/card_max 同为该张数），不再提交后单独问一次
+		var 需弃: int = mini(player.hand_cards.size(), 3)
+		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_ZU_ZHOU,
+			"need_card": 需弃, "card_max": 需弃, "need_target": 1})
 	# 【血之哀伤】为「启动」：自己场上有【同生共死】时可发动（二选一：转移 / 移除）
 	if tong_sheng_id != -1:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG, "need_card": 0, "need_target": 1,
@@ -299,6 +303,12 @@ func v_magic_skill(action: Dictionary) -> int:
 	if aid == XUE_ZHI_ZU_ZHOU:
 		if player.gem < 1:
 			return GConst.GE_INVALID_ACTION
+		# 随目标一起提交的弃牌：正好 3 张（手牌不足则全弃），且都得在手里
+		if cards.size() != mini(player.hand_cards.size(), 3):
+			return GConst.GE_INVALID_ACTION
+		for c: Variant in cards:
+			if not player.has_hand_card(int(c)):
+				return GConst.GE_INVALID_CARDID
 		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 
@@ -387,8 +397,9 @@ func _xue_zhi_bei_ming(action: Dictionary) -> int:
 	return URGENT
 
 
-## 血之诅咒：耗 1 宝石，对目标角色 2 点法术伤害，随后弃最多 3 张牌
-## 服务端顺序：先造成 2 点法术伤害，再弃牌（弃牌排在伤害之后）
+## 血之诅咒：耗 1 宝石，对目标角色 2 点法术伤害，随后弃 3 张牌（手牌不足则全弃）
+## 弃哪几张与目标在同一次询问里选好（不再提交后另问一次）；
+## 服务端顺序不变：先造成 2 点法术伤害，再弃牌
 func _xue_zhi_zu_zhou(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
@@ -398,7 +409,7 @@ func _xue_zhi_zu_zhou(action: Dictionary) -> int:
 	notice_skill(XUE_ZHI_ZU_ZHOU, [dst_id])
 	player.set_gem(player.gem - 1)
 	# 压栈顺序：弃牌 → 伤害，LIFO 弹出即「先伤害、后弃牌」
-	engine.push(BattleEngine.SRequestDiscard.new(player.id, mini(player.hand_cards.size(), 3), -1, XUE_ZHI_ZU_ZHOU))
+	engine.push(BattleEngine.SDiscardChosen.new(player.id, action.get("card_ids", [])))
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": 2,
 		"cause": XUE_ZHI_ZU_ZHOU, "type": GConst.HarmType.Magic,

@@ -2151,6 +2151,33 @@ class SRequestDiscard:
 		return BattleEngine.WAIT
 
 
+## 直接弃掉「玩家已经选好」的几张牌（不再另发一次弃牌询问）：
+## 给「选目标时同时选弃牌」的技能用（如血之巫女【血之诅咒】：弃牌与目标一起提交，
+## 结算时先造成伤害、再弃这几张）。伤害结算期间手牌可能变过，只弃还在手里的
+class SDiscardChosen:
+	var pid: int
+	var cards: Array
+	func _init(p_id: int, c: Array) -> void:
+		pid = p_id
+		cards = c
+	func handle(e: BattleEngine) -> int:
+		var p0: BattlePlayer = e.p(pid)
+		if p0 == null:
+			return BattleEngine.CONTINUE
+		var chosen: Array = []
+		for c: Variant in cards:
+			var cid: int = int(c)
+			if p0.has_hand_card(cid) and not chosen.has(cid):
+				chosen.append(cid)
+		if chosen.is_empty():
+			return BattleEngine.CONTINUE
+		e.take_from_hand(pid, chosen)
+		e.to_discard(chosen)
+		e._log_discard(pid, chosen)
+		e._broadcast_game()
+		return BattleEngine.CONTINUE
+
+
 ## 记录某玩家手牌数量的变化，并触发一次 p_hand_change（对照服务端 StateHandChange）
 class SRunHandChange:
 	var pid: int

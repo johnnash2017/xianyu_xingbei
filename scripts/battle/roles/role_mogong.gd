@@ -254,9 +254,11 @@ func _mo_guan_chong_ji(ctx: Dictionary) -> int:
 	if not _cover_has_element(GConst.CardElement.Fire):
 		return SUCCESS
 	if not engine.has_reply():
-		# 只能移除火系【充能】：下发火系盖牌白名单，界面把其余盖牌置灰
+		# 只能移除火系【充能】：下发火系盖牌白名单，界面把其余盖牌置灰；
+		# 顺带下发攻击目标与发动前的伤害，客户端据此在目标头像上现算「本次攻击伤害」
 		询问(player.id, MO_GUAN_CHONG_JI, 1, 0, GConst.CardSource.Cover, [], 0, "",
-			_cover_ids_of_element(GConst.CardElement.Fire))
+			_cover_ids_of_element(GConst.CardElement.Fire), true, 0, -1, [dst.id], -1, {},
+			int(ctx.get("harm", {}).get("point", 0)))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -374,10 +376,12 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		_mo_guan_hit_step = PHASE_ASK_EXTRA
 	if _mo_guan_hit_step == PHASE_ASK_EXTRA:
 		# 对照原版 MoGuanChongJi_Hit：命中后询问是否追加发动，发动则由玩家选 1 张火系【充能】移除
-		# （序号 1 = 技能表「提示2」列的「发动【魔贯冲击】：再移除 {n} 个火系【充能】」）
+		# （序号 1 = 技能表「提示2」列的「发动【魔贯冲击】：再移除 {n} 个火系【充能】」）；
+		# 同样下发攻击目标与当前伤害，客户端据此在目标头像上写「再 +1 后」的伤害
 		if not engine.has_reply():
 			询问(player.id, MO_GUAN_CHONG_JI, 1, 0, GConst.CardSource.Cover, [], 0, "",
-				_cover_ids_of_element(GConst.CardElement.Fire), true, 1)
+				_cover_ids_of_element(GConst.CardElement.Fire), true, 1,
+				-1, [int(ctx.get("dst", -1))], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])

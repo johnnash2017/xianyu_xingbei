@@ -22,9 +22,9 @@ string,"enum(禁用:0,启用:1)",int,int,int,int,int,int,string,string,string,st
 角色#灵符师,启用,18,2,3,0,0,2,,,,,,灵符师,咏,灵符师,2:妖力:2,res://scripts/battle/roles/role_lingfu.gd,技能#灵符-风行;技能#灵符-雷鸣;技能#念咒;技能#百鬼夜行;技能#灵力崩解
 角色#剑帝,启用,19,2,3,5,3,0,,,,,,剑帝,技,剑帝,0:剑气:5;2:剑魂:3,res://scripts/battle/roles/role_jiandi.gd,技能#剑魂守护;技能#佯攻;技能#剑气斩;技能#天使与恶魔;技能#天使之魂;技能#恶魔之魂;技能#不屈意志
 角色#格斗,启用,20,2,3,6,0,0,,BaiShi,BaiShi,#44D647,百式幻龙拳,格斗,技,格斗,0:斗气:6,res://scripts/battle/roles/role_gedou.gd,技能#念气力场;技能#蓄力一击;技能#念弹;技能#百式幻龙拳;技能#气绝崩击;技能#斗神天驱
-角色#勇者,启用,21,2,3,4,4,0,"3,6",JingPiLiJie,JingPiLiJie,#FA2727,精疲力竭,勇者,血,勇者,0:怒气:4;1:知性:4,res://scripts/battle/roles/role_yongzhe.gd,技能#挑衅;技能#禁断之力;技能#怒吼;技能#明镜止水;技能#死斗;技能#精疲力竭;技能#勇者之心
+角色#勇者,启用,21,2,3,4,4,0,"3,6",JingPiLiJie,JingPiLiJie,#FA2727,精疲力竭,勇者,血,勇者,0:怒气:4;1:知性:4,res://scripts/battle/roles/role_yongzhe.gd,技能#勇者之心;技能#怒吼;技能#精疲力竭;技能#明镜止水;技能#挑衅;技能#禁断之力;技能#死斗
 角色#灵魂术士,启用,22,2,3,6,6,0,,,,,,灵魂术士,幻,灵魂术士,0:黄魂:6;1:蓝魂:6,res://scripts/battle/roles/role_linghun.gd,技能#灵魂震爆;技能#灵魂赐予;技能#灵魂增幅;技能#灵魂吞噬;技能#灵魂召还;技能#灵魂转换;技能#灵魂镜像;技能#灵魂链接
-角色#血之巫女,启用,23,2,3,0,0,0,,LiuXue,LiuXue,#FA2727,流血形态,血之巫女,血,血之巫女,,res://scripts/battle/roles/role_wunu.gd,技能#血之悲鸣;技能#同生共死;技能#血之哀伤;技能#逆流;技能#流血;技能#血之诅咒
+角色#血之巫女,启用,23,2,3,0,0,0,,LiuXue,LiuXue,#FA2727,流血形态,血之巫女,血,血之巫女,,res://scripts/battle/roles/role_wunu.gd,技能#血之悲鸣;技能#逆流;技能#流血;技能#血之哀伤;技能#同生共死;技能#血之诅咒
 角色#蝶舞者,启用,24,2,3,0,99,8,,DiaoLing,DiaoLing,#9E9E9E,凋零形态,蝶舞者,咏,蝶舞者,0:蛹:99;2:茧:8,res://scripts/battle/roles/role_diewu.gd,技能#生命之火;技能#舞动;技能#毒粉;技能#朝圣;技能#镜花水月;技能#凋零;技能#蛹化;技能#倒逆之蝶
 角色#女武神,启用,25,2,3,0,0,0,,YingLingXingTai,YingLingXingTai,#0060FF,英灵形态,女武神,圣,女武神,,res://scripts/battle/roles/role_nvwushen.gd,技能#神圣追击;技能#秩序之印;技能#和平行者;技能#军神威光;技能#英灵召唤
 角色#魔弓,启用,26,2,3,0,0,8,,,,,,魔弓,幻,魔弓,2:充能:8,res://scripts/battle/roles/role_mogong.gd,技能#魔贯冲击;技能#雷光散射;技能#多重射击;技能#充能;技能#魔眼

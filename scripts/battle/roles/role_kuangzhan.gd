@@ -185,7 +185,9 @@ func _xue_ying_kuang_dao(ctx: Dictionary, 是否询问: bool) -> int:
 		return SUCCESS
 	if 是否询问:
 		if not engine.has_reply():
-			询问(player.id, XUE_YING_KUANG_DAO)
+			# 目标与发动前的伤害一并下发：客户端据此在目标头像上现算「本次攻击伤害」
+			询问(player.id, XUE_YING_KUANG_DAO, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+				0, -1, [dst.id], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
 			return WAIT
 		if not take_skill_reply():
 			return SUCCESS

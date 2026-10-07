@@ -233,7 +233,11 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, SHA_LU_SHENG_YAN, 0, 0)
+		# 目标与「这次攻击原本的伤害」一并下发：客户端在敌人头像上现算「原伤害 + 2」，
+		# 并在自己头像上写自身要吃的 4 点法术伤害
+		var dst: int = int(harm.get("dst", -1))
+		询问(player.id, SHA_LU_SHENG_YAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			0, -1, [dst] if dst > 0 else [], -1, {}, int(harm.get("point", 0)))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

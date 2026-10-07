@@ -2866,10 +2866,12 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 			_治疗分配.append(Logic.my_player_id)
 	if not _治疗分配.is_empty():
 		_刷新治疗分配()
-	# 「自动选目标」型（【瘟疫】/【剧毒新星】：对除自己外所有人）：进场即把该打的人全选中并锁死，
-	# 点头像也改不了（只能靠「取消」退出）；被选中的头像上直接画即将受到的伤害
+	# 「自动选目标」型（【瘟疫】/【剧毒新星】：对除自己外所有人；【逆流】：只有自己）：
+	# 进场即把目标选中并锁死，点头像也改不了（只能靠「取消」退出）；被选中的头像上直接画效果
 	_目标锁死 = str(指示配置.get("自动选目标", "")) != ""
 	match str(指示配置.get("自动选目标", "")):
+		"自己":
+			_sel_players.append(Logic.my_player_id)
 		"他人":
 			for 玩家: GPlayer in Data.player_list:
 				if 玩家.id != Logic.my_player_id:
@@ -3059,11 +3061,17 @@ func _刷新治疗分配() -> void:
 		_刷新阵营提示(阵营表)
 	else:
 		var 每次: int = int(配置.get("每次", 1))
+		# 【血腥祷言】这类：转出去多少点治疗，自己就吃等量法术伤害（配置「转出反噬」），
+		# 那句写在自己头像上 —— 自己不在分配名单里，所以单独画一句
+		var 反噬: int = _治疗分配.size() * 每次 if bool(配置.get("转出反噬", false)) else 0
 		for 面板: 战斗玩家面板 in _面板列表:
 			var 次数: int = 0
 			for id: int in _治疗分配:
 				if id == 面板.ID:
 					次数 += 1
+			if 面板.ID == Logic.my_player_id and 反噬 > 0:
+				_刷治疗提示(面板, 次数 * 每次, 反噬)
+				continue
 			if 次数 <= 0:
 				continue
 			_刷治疗提示(面板, 次数 * 每次, 0)
@@ -3757,7 +3765,8 @@ func _目标随牌阈值() -> int:
 	return int(GConst.技能指示器.get(技能号, {}).get("目标随牌", 0))
 
 
-## 当前技能的「展示型」指示器配置（配了「文案」才算）：选中目标后把一句话画到他们头像上。
+## 当前技能的「展示型」指示器配置（配了「文案」/「分目标」/「自身」才算）：选中目标后把一句话画到他们头像上
+## （只配「自身」的如【血之哀伤】：那句永远画在自己头像上，不看有没有选目标）。
 ## 分配型由 _刷新治疗分配 自己画，不走这里。发动技能（mode 4）与技能询问（mode 3）两条通道都认。
 ## 「选项提示」型的技能按二级技能栏里选定的效果取对应那份子配置（如【百鬼夜行】展示 / 不展示各一套）
 func _头像提示配置() -> Dictionary:
@@ -3773,7 +3782,7 @@ func _头像提示配置() -> Dictionary:
 		if _已选参数.is_empty():
 			return {}
 		return 分效果.get(int(_已选参数[0]), {})
-	return 配置 if 配置.has("文案") or 配置.has("分目标") else {}
+	return 配置 if 配置.has("文案") or 配置.has("分目标") or 配置.has("自身") else {}
 
 
 ## 一句展示提示的最终数值：先取它自己的固定值（「每目标」或「总数 ÷ 选中人数」），
@@ -3831,6 +3840,12 @@ func _刷新头像提示() -> void:
 		动态提示 = _战纹碎击头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _双重回响头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _血之悲鸣头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _杀戮盛宴头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _攻击加成头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
 	for 旧: int in _动态提示过的头像:
 		if not 动态提示.has(旧):
@@ -4012,6 +4027,102 @@ func _双重回响头像提示() -> Dictionary:
 	for 目标id: int in _sel_players:
 		out[int(目标id)] = "%d 法术伤害" % 伤害
 	return out
+
+
+## 血之巫女【血之悲鸣】的指示器（现算，数值就是选中的那一档）：
+## 对目标与自己各造成「所选点数」法术伤害 —— 自己那句一选好档位就画在自己头像上，
+## 目标那句等选好目标再画到目标头像上（两边同一个数）。
+## 目标选的就是自己时，两下都落在自己身上，自己头像上写两行
+func _血之悲鸣头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_血之悲鸣 or _已选参数.is_empty():
+		return out
+	var 点数: int = int(_已选参数[0])
+	if 点数 <= 0:
+		return out
+	var 句: String = "%d 法术伤害" % 点数
+	out[Logic.my_player_id] = 句
+	for 目标id: int in _sel_players:
+		if int(目标id) == Logic.my_player_id:
+			out[Logic.my_player_id] = "%s\n%s" % [句, 句]
+		else:
+			out[int(目标id)] = 句
+	return out
+
+
+## 红莲骑士【杀戮盛宴】的指示器（现算）：发动后这次攻击的伤害 +2，所以敌人头像上写
+## 「原伤害 + 2」（原伤害只有服务端算得出来，随询问下发 preview_base）；
+## 自己还要吃 4 点法术伤害，那句写在自己头像上
+func _杀戮盛宴头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_杀戮盛宴:
+		return out
+	var 伤害: int = int(_pending.get("preview_base", 0)) + 2
+	for 目标id: int in _skill_targets:
+		out[int(目标id)] = "%d 物理伤害" % 伤害
+	out[Logic.my_player_id] = "4 法术伤害"
+	return out
+
+
+## 「攻击宣告阶段响应、会改变本次攻击伤害」的技能的指示器（现算，规则见 GConst.攻击提示加成）：
+## 在目标头像上写「本次攻击伤害」＝基础伤害 + 技能加成。两种入口都算 ——
+## 被询问时（技能询问）＝服务端随询问下发的发动前伤害；从技能栏点它发起攻击时（发动技能）
+## ＝主动攻击基础伤害。如【怒吼】+2、【精准射击】-1、【血影狂刀】按目标手牌数算
+func _攻击加成头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	var 技能号: int = _当前技能号()
+	var 规则: Variant = GConst.攻击提示加成.get(技能号, null)
+	if 规则 == null:
+		return out
+	# 格斗【蓄力一击 / 气绝崩击】共用一条二选一询问：只有选中【蓄力一击】那档才加这 1 点
+	if 技能号 == GConst.技能_蓄力一击 and not _选中蓄力一击():
+		return out
+	var 基础: int = 0
+	var 目标们: Array[int] = []
+	if _mode == 3:
+		基础 = int(_pending.get("preview_base", 0))
+		for 目标id: int in _skill_targets:
+			目标们.append(int(目标id))
+	elif _mode == 4:
+		基础 = BattleEngine.ATTACK_BASE_POINT
+		for 目标id: int in _sel_players:
+			目标们.append(int(目标id))
+	else:
+		return out
+	# 角色被动（如狂战士【狂化】）对所有主动攻击都加成，与具体技能无关
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	var 被动: int = int(GConst.攻击提示角色加成.get(我.role_id, 0))
+	for 目标id: int in 目标们:
+		out[目标id] = "%d 攻击伤害" % maxi(基础 + 被动 + _攻击加成值(规则, 目标id), 0)
+	return out
+
+
+## 本技能对某名目标的实际加成（规则见 GConst.攻击提示加成 的取值说明）
+func _攻击加成值(规则: Variant, 目标id: int) -> int:
+	if 规则 is int:
+		return int(规则)
+	# "目标手牌"：【血影狂刀】目标手牌 2 张 +2、3 张 +1，其余张数不加
+	var 目标: GPlayer = Data.get_player_by_id(目标id)
+	if 目标 == null:
+		return 0
+	# 客户端玩家视图只有手牌「张数」（hand_cards_num），没有服务端那套 hand_count()
+	var 张数: int = 目标.hand_cards_num
+	if 张数 == 2:
+		return 2
+	if 张数 == 3:
+		return 1
+	return 0
+
+
+## 格斗的加成询问里，当前要发动的（二级技能栏选中的 / 技能栏点的 / 单项直接问的）是不是【蓄力一击】
+## （选【气绝崩击】、或直接问【气绝崩击】时不改伤害，不画攻击伤害提示）
+func _选中蓄力一击() -> bool:
+	if _mode == 4:
+		return _pending_skill_id == GConst.技能_蓄力一击
+	# 只有一个可发动时走「一问一答」，这次询问没有选项：问的就是【蓄力一击】自己
+	if _二级选项.is_empty():
+		return _skill_ask_id == GConst.技能_蓄力一击
+	return int(_二级选中项().get("技能号", 0)) == GConst.技能_蓄力一击
 
 
 ## 灵魂术士【灵魂镜像】的指示器（现算）：在选中的目标头像上写他「会摸几张」——

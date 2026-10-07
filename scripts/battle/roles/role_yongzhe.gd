@@ -161,7 +161,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		var 另一个: int = MING_JING_ZHI_SHUI if _本次已发动 == NU_HOU else NU_HOU
 		if (另一个 == NU_HOU and _nu_qi() >= 1) or (另一个 == MING_JING_ZHI_SHUI and _zhi_xing() == TOKEN_MAX):
 			if not engine.has_reply():
-				询问(player.id, 另一个, 0, 0)
+				if 另一个 == NU_HOU:
+					_问怒吼(ctx)
+				else:
+					询问(player.id, 另一个, 0, 0)
 				return WAIT
 			if take_skill_reply():
 				if 另一个 == NU_HOU:
@@ -232,8 +235,16 @@ func _发动怒吼(ctx: Dictionary) -> void:
 	_set_nu_qi(_nu_qi() - 1)
 	using_NuHou = true
 	var harm: Dictionary = ctx.get("harm", {})
-	harm["point"] = int(harm.get("point", 0)) + 2
+	harm["point"] = int(harm.get("point", 0)) + GConst.怒吼加伤
 	engine._broadcast_game()
+
+
+## 弹询问是否发动怒吼：把本次攻击的目标与「发动前的伤害」一并下发，
+## 客户端据此在目标头像上现算「原伤害 + 怒吼加伤」
+func _问怒吼(ctx: Dictionary) -> void:
+	var dst: int = int(ctx.get("dst", -1))
+	询问(player.id, NU_HOU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+		0, -1, [dst] if dst > 0 else [], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
 
 
 ## 怒吼（原版询问）：普通出牌攻击时弹窗询问是否发动
@@ -241,7 +252,7 @@ func _询问怒吼(ctx: Dictionary) -> int:
 	if _nu_qi() <= 0:
 		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, NU_HOU, 0, 0)
+		_问怒吼(ctx)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
