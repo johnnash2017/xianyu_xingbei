@@ -51,12 +51,7 @@ func available_skills() -> Array:
 			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.cross_num > 0)})
 	if player.gem >= 1:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_QI_YU, "need_card": 0, "need_target": 0})
-	# 天枪（1004，攻击技能）：治疗 ≥ 2 且本回合未发动过【圣光祈愈】时，
-	# 选一张攻击牌 + 一名对手，直接完成一次带「无法应战」的主动攻击
-	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
-	if not 攻击牌.is_empty() and player.cross_num >= 2 and not used_sheng_guang_qi_yu:
-		out.append({"type": GConst.ActionType.AttackSkill, "id": TIAN_QIANG, "need_card": 1, "need_target": 1,
-			"cards": 攻击牌, "targets": enemy_ids()})
+	# 【天枪】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
 	return out
 
 

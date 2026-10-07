@@ -21,13 +21,7 @@ func available_skills() -> Array:
 			"cards": 闪光牌})
 	if player.crystal > 0 or player.gem > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": JU_JI, "need_card": 0, "need_target": 1})
-	# 精准射击：只有手中带 301 特技的攻击牌可作发动牌，直接发起一次主动攻击
-	# （攻击宣告后 p_timeline_1 依据预选直接结算「强制命中但伤害 -1」）
-	var 精准牌: Array[int] = hand_ids_where(
-		func(_cid: int, c: GCard) -> bool: return c.is_attack() and c.has_skill_id(JING_ZHUN_SHE_JI))
-	if not 精准牌.is_empty():
-		out.append({"type": GConst.ActionType.AttackSkill, "id": JING_ZHUN_SHE_JI, "need_card": 1, "need_target": 1,
-			"cards": 精准牌, "targets": enemy_ids()})
+	# 【精准射击】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
 	return out
 
 

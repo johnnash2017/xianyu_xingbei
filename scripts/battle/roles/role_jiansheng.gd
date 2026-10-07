@@ -24,27 +24,8 @@ var attack_count: int = 0
 
 ## 行动阶段可发动的技能：【疾风技】【烈风技】为「攻击技能」——选一张带对应特技的攻击牌 + 一名对手，
 ## 直接发起这次主动攻击（攻击宣告后 p_timeline_1 依据预选直接结算，不再弹窗询问）
-func available_skills() -> Array:
-	var out: Array = []
-	var 疾风技牌: Array[int] = hand_ids_where(
-		func(_cid: int, c: GCard) -> bool: return c.is_attack() and c.has_skill_id(JI_FENG_JI))
-	if not 疾风技牌.is_empty():
-		out.append({"type": GConst.ActionType.AttackSkill, "id": JI_FENG_JI, "need_card": 1, "need_target": 1,
-			"cards": 疾风技牌, "targets": enemy_ids()})
-	# 烈风技：只有带 102 特技的攻击牌、且对手身上有【圣盾】（或视作圣盾的【天使之墙】）时才出按钮
-	var 烈风技牌: Array[int] = hand_ids_where(
-		func(_cid: int, c: GCard) -> bool: return c.is_attack() and c.has_skill_id(LIE_FENG_JI))
-	var 圣盾目标: Array[int] = []
-	if not 烈风技牌.is_empty():
-		for pid: int in enemy_ids():
-			var p: BattlePlayer = engine.p(pid)
-			if p != null and (p.check_basic_effect_name(GConst.CardName.Shield)
-					or p.check_basic_effect_skill(GConst.技能_天使之墙)):
-				圣盾目标.append(pid)
-	if not 圣盾目标.is_empty():
-		out.append({"type": GConst.ActionType.AttackSkill, "id": LIE_FENG_JI, "need_card": 1, "need_target": 1,
-			"cards": 烈风技牌, "targets": 圣盾目标})
-	return out
+## 【疾风技 / 烈风技】不再提供技能栏按钮：只能在主动攻击时响应发动（原版如此），
+## 故这里不再覆写 available_skills（基类默认返回空）
 
 
 ## 每回合开始：重置回合限定标记与圣剑计数

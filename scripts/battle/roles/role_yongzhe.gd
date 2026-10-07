@@ -8,7 +8,7 @@ extends BattleRole
 ##       死斗（响应 2105：每当你承受法术伤害时，宝石 ×1，怒气 +3）
 ## 被动：勇者之心（游戏初始 +2 水晶）。
 ## 【怒气】tokens[0]、【知性】tokens[1]，上限各为 4；【精疲力竭】用 tap 表示。
-## 覆写校验：v_attack——面前有【挑衅】时只能攻击勇者（服务端 PlayerEntity::v_attack）
+## 挑衅的限制在服务端 BattlePlayer.base_v_attack：被挑衅的人只能主动攻击「放挑衅的那个玩家」
 
 const TIAO_XIN: int = 2101           # 挑衅（法术技能）
 const JIN_DUAN_ZHI_LI: int = 2102    # 禁断之力（响应）
@@ -40,15 +40,7 @@ func available_skills() -> Array:
 	var out: Array = []
 	if _nu_qi() > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAO_XIN, "need_card": 0, "need_target": 1})
-	# 怒吼 / 明镜止水：同在「攻击前①」，各出一个按钮；发动其中一个后会再问是否一并发动另一个
-	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
-	if not 攻击牌.is_empty():
-		if _nu_qi() >= 1:
-			out.append({"type": GConst.ActionType.AttackSkill, "id": NU_HOU, "need_card": 1, "need_target": 1,
-				"cards": 攻击牌, "targets": enemy_ids()})
-		if _zhi_xing() == TOKEN_MAX:
-			out.append({"type": GConst.ActionType.AttackSkill, "id": MING_JING_ZHI_SHUI, "need_card": 1, "need_target": 1,
-				"cards": 攻击牌, "targets": enemy_ids()})
+	# 【怒吼 / 明镜止水】不再提供技能栏按钮：它们只能在主动攻击宣告时响应发动
 	return out
 
 
@@ -243,8 +235,9 @@ func _发动怒吼(ctx: Dictionary) -> void:
 ## 客户端据此在目标头像上现算「原伤害 + 怒吼加伤」
 func _问怒吼(ctx: Dictionary) -> void:
 	var dst: int = int(ctx.get("dst", -1))
+	# 座位号从 0 起：0 号也是合法对手，判「没取到」只能用 < 0
 	询问(player.id, NU_HOU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-		0, -1, [dst] if dst > 0 else [], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
+		0, -1, [dst] if dst >= 0 else [], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
 
 
 ## 怒吼（原版询问）：普通出牌攻击时弹窗询问是否发动
@@ -365,8 +358,14 @@ func _jin_duan_zhi_li(ctx: Dictionary, hit: bool) -> int:
 	if player.get_energy() <= 0:
 		return SUCCESS
 	if not engine.has_reply():
-		# 服务端按客户端回传的全部手牌统计：这里要求玩家选齐所有手牌（弃掉全部手牌）
-		询问(player.id, JIN_DUAN_ZHI_LI, maxi(player.hand_cards.size(), 1), 0)
+		# 服务端按客户端回传的全部手牌统计：这里要求玩家选齐所有手牌（弃掉全部手牌）。
+		# 命中那条会因弃火系牌加伤并反噬自己，故把攻击目标与「发动前伤害」（已含怒吼等）下发：
+		# 客户端据此在敌人头像现算「本次攻击伤害」、在自己头像现算反噬的法术伤害。未命中那条不发。
+		var dst: int = int(ctx.get("dst", -1))
+		var 攻击目标: Array = [dst] if hit and dst >= 0 else []
+		var 发动前伤害: int = int(ctx.get("harm", {}).get("point", 0)) if hit else 0
+		询问(player.id, JIN_DUAN_ZHI_LI, maxi(player.hand_cards.size(), 1), 0,
+			GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, 攻击目标, -1, {}, 发动前伤害)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -497,7 +496,8 @@ func p_magic_skill(action: Dictionary) -> int:
 	_set_zhi_xing(_zhi_xing() + 1)
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst != null:
-		dst.add_exclusive_effect(GConst.Exclusive.TiaoXin)
+		# 记下「是谁放的」：被挑衅的人只能主动攻击放牌者本人（多勇者时也锁死他，见 base_v_attack）
+		dst.add_exclusive_effect(GConst.Exclusive.TiaoXin, player.id)
 	notice_skill(TIAO_XIN, [dst_id])
 	engine._broadcast_game()
 	return SUCCESS

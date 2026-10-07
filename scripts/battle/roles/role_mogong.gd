@@ -88,23 +88,7 @@ func available_skills() -> Array:
 			out.append({"type": GConst.ActionType.MagicSkill, "id": LEI_GUANG_SAN_SHE, "need_card": 1,
 				"card_source": GConst.CardSource.Cover, "cards": 雷系盖牌, "card_max": 雷系盖牌.size(),
 				"targets": enemy_ids()})
-	# 魔贯冲击：用一张手牌攻击牌发起主动攻击，并移除 1 张火系【充能】使本次伤害 +1；
-	# 不能攻击手牌已达上限的对手
-	if _available_mo_guan:
-		var 火系盖牌: Array[int] = _cover_ids_of_element(GConst.CardElement.Fire)
-		var 可攻目标: Array[int] = player_ids_where(_mo_guan_dst_ok)
-		var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
-		if not 火系盖牌.is_empty() and not 可攻目标.is_empty() and not 攻击牌.is_empty():
-			# 点技能栏时一次性选好：1 张手牌攻击牌（攻击牌）＋ 1 张火系【充能】（代价），再选攻击目标。
-			# 两类牌混在同一个选牌界面里（card_source = HandOrCover），由 cover_need 约束其中 1 张必须是盖牌
-			var 可点牌: Array[int] = []
-			可点牌.append_array(攻击牌)
-			可点牌.append_array(火系盖牌)
-			out.append({"type": GConst.ActionType.AttackSkill, "id": MO_GUAN_CHONG_JI,
-				"need_card": 2, "need_target": 1, "card_source": GConst.CardSource.HandOrCover,
-				"cover_need": 1, "cards": 可点牌, "targets": 可攻目标,
-				# 选牌提示取技能表「提示」列第 2 条，改文案不用动代码
-				"card_prompt": 提示(MO_GUAN_CHONG_JI, 2)})
+	# 【魔贯冲击】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
 	return out
 
 
@@ -223,7 +207,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		# 多重射击：暗系攻击，对方无法应战且伤害 -1
 		ctx["hit_rate"] = GConst.HitRate.NoReattack
 		var h0: Dictionary = ctx.get("harm", {})
-		h0["point"] = int(h0.get("point", 0)) - 1
+		h0["point"] = int(h0.get("point", 0)) - GConst.多重射击减伤
 		_using_duo_chong = false
 		return SUCCESS
 	if 预选 == MO_GUAN_CHONG_JI:
@@ -493,8 +477,9 @@ func _duo_chong_dst_ok(p0: BattlePlayer) -> bool:
 		return false
 	if p0.id == _last_target:
 		return false
-	# 面前有【挑衅】时只能打勇者
-	if player.check_exclusive_effect(GConst.Exclusive.TiaoXin) and p0.role_id != 21:
+	# 面前有【挑衅】时只能打放牌者
+	if player.check_exclusive_effect(GConst.Exclusive.TiaoXin) \
+			and p0.id != player.exclusive_owner(GConst.Exclusive.TiaoXin):
 		return false
 	return p0.v_attacked() == GConst.GE_SUCCESS
 

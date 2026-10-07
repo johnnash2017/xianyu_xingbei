@@ -59,13 +59,7 @@ func available_skills() -> Array:
 	if _lan() >= 3 and not 赐予牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_CI_YU, "need_card": 1, "need_target": 1,
 			"cards": 赐予牌})
-	# 灵魂转换：选一张攻击牌 + 一名对手，直接发起一次主动攻击。
-	# 转换方向不在发动前选，等选完牌与目标按「确定」后再询问（见 p_attack_skill）
-	if _huang() > 0 or _lan() > 0:
-		var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
-		if not 攻击牌.is_empty():
-			out.append({"type": GConst.ActionType.AttackSkill, "id": LING_HUN_ZHUAN_HUAN, "need_card": 1, "need_target": 1,
-				"cards": 攻击牌, "targets": enemy_ids()})
+	# 【灵魂转换】不再提供技能栏按钮：它只能在主动攻击时响应发动，故不在这里列按钮
 	# 启动技能（每回合只能发动一个，由引擎统一下发/校验）
 	if player.gem > 0 and not used_zeng_fu:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_ZENG_FU, "need_card": 0, "need_target": 0})

@@ -38,6 +38,8 @@ var color: int = GConst.TEAM_NONE   # 1 红 / 0 蓝 / -1 未分队
 var role_id: int = 0
 var tap: bool = false               # 横置/锁定
 var specials: Array[bool] = [false, false, false, false, false]  # 独有效果 ex_cards
+## 与 specials 一一对应：每张专属牌是谁放的（-1＝没记）；【挑衅】靠它只放行放牌者那个头像
+var specials_from: Array[int] = [-1, -1, -1, -1, -1]
 var basic_status_list: Array[BasicStatus] = []
 var tokens: Array = [null, null, null]
 var ready: bool = false
@@ -101,6 +103,18 @@ func get_special(idx: int) -> bool:
 	if idx >= 0 and idx < GConst.EXCLUSIVE_NUM:
 		return specials[idx]
 	return false
+
+
+func set_special_from(idx: int, from_id: int) -> void:
+	if idx >= 0 and idx < GConst.EXCLUSIVE_NUM:
+		specials_from[idx] = from_id
+
+
+## 某张专属牌是谁放的（没挂或没记 → -1）
+func get_special_from(idx: int) -> int:
+	if idx >= 0 and idx < GConst.EXCLUSIVE_NUM:
+		return specials_from[idx]
+	return -1
 
 
 func set_token(idx: int, token) -> void:

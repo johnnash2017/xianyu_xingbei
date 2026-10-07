@@ -44,12 +44,7 @@ func available_skills() -> Array:
 	if player.cross_num > 0:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_XING_DAO_YAN,
 			"need_card": 0, "need_target": 1, "targets": ally_ids()})
-	# 【腥红圣约】为攻击技能（回合限定）：选一张攻击牌 + 一名对手发起攻击，攻击前 +1 治疗
-	if not used_xing_hong_sheng_yue and player.cross_num < player.cross_max:
-		var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
-		if not 攻击牌.is_empty():
-			out.append({"type": GConst.ActionType.AttackSkill, "id": XING_HONG_SHENG_YUE, "need_card": 1, "need_target": 1,
-				"cards": 攻击牌, "targets": enemy_ids()})
+	# 【腥红圣约】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
 	return out
 
 
@@ -236,8 +231,9 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		# 目标与「这次攻击原本的伤害」一并下发：客户端在敌人头像上现算「原伤害 + 2」，
 		# 并在自己头像上写自身要吃的 4 点法术伤害
 		var dst: int = int(harm.get("dst", -1))
+		# 座位号从 0 起：0 号也是合法对手，判「没取到」只能用 < 0
 		询问(player.id, SHA_LU_SHENG_YAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [dst] if dst > 0 else [], -1, {}, int(harm.get("point", 0)))
+			0, -1, [dst] if dst >= 0 else [], -1, {}, int(harm.get("point", 0)))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

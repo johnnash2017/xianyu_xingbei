@@ -8,36 +8,8 @@ const KUANG_HUA: int = 203
 const SI_LIE: int = 205
 
 
-## 行动阶段可发动的技能：【血影狂刀 / 血腥咆哮】是「主动攻击前」的响应技能，
-## 改成技能栏按钮：选一张带对应特技的攻击牌 + 一名符合条件的对手，直接发起这次主动攻击，
-## 攻击宣告后由 p_timeline_1 直接结算（不再弹窗询问）
-func available_skills() -> Array:
-	var out: Array = []
-	# 血影狂刀（201）：目标手牌数为 2 或 3 时才能发动（本次伤害 +2 / +1）
-	var 血影刀: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack() and c.has_skill_id(XUE_YING_KUANG_DAO))
-	if not 血影刀.is_empty():
-		var 刀目标: Array[int] = _enemy_ids_where(func(d: BattlePlayer) -> bool: return d.hand_cards.size() >= 2 and d.hand_cards.size() <= 3)
-		if not 刀目标.is_empty():
-			out.append({"type": GConst.ActionType.AttackSkill, "id": XUE_YING_KUANG_DAO, "need_card": 1, "need_target": 1,
-				"cards": 血影刀, "targets": 刀目标})
-	# 血腥咆哮（202）：目标【治疗】恰好为 2 时才能发动（本次攻击强制命中）
-	var 咆哮: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack() and c.has_skill_id(XUE_XING_PAO_XIAO))
-	if not 咆哮.is_empty():
-		var 咆哮目标: Array[int] = _enemy_ids_where(func(d: BattlePlayer) -> bool: return d.cross_num == 2)
-		if not 咆哮目标.is_empty():
-			out.append({"type": GConst.ActionType.AttackSkill, "id": XUE_XING_PAO_XIAO, "need_card": 1, "need_target": 1,
-				"cards": 咆哮, "targets": 咆哮目标})
-	return out
-
-
-## 场上满足条件的对手 id（available_skills 的 "targets" 用它；条件必须与 v_attack_skill 里的目标校验完全一致）
-func _enemy_ids_where(条件: Callable) -> Array[int]:
-	var out: Array[int] = []
-	for pid: int in enemy_ids():
-		var d: BattlePlayer = engine.p(pid)
-		if bool(条件.call(d)):
-			out.append(pid)
-	return out
+## 【血影狂刀 / 血腥咆哮】不再提供技能栏按钮：只能作为主动攻击打出时响应发动（原版如此），
+## 故这里不再覆写 available_skills（基类默认返回空）
 
 
 ## 【血影狂刀 / 血腥咆哮】的推进阶段（0＝还没开始 / XUE_YING_KUANG_DAO＝处理血影狂刀 / XUE_XING_PAO_XIAO＝处理血腥咆哮）。

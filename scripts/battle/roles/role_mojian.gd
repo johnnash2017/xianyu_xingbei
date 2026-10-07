@@ -32,12 +32,6 @@ func available_skills() -> Array:
 	if player.tap and _magic_card_count() >= 2:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": AN_YING_LIU_XING, "need_card": 2, "need_target": 1,
 			"cards": magic_hand_ids()})
-	# 黄泉震颤（906，攻击技能）：宝石 ≥ 1 且本回合未发动过时，
-	# 选一张攻击牌 + 一名对手，直接完成一次带「无法应战」的主动攻击
-	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
-	if not 攻击牌.is_empty() and player.gem >= 1 and not used_hei_an_zhen_chan:
-		out.append({"type": GConst.ActionType.AttackSkill, "id": HEI_AN_ZHEN_CHAN, "need_card": 1, "need_target": 1,
-			"cards": 攻击牌, "targets": enemy_ids()})
 	return out
 
 

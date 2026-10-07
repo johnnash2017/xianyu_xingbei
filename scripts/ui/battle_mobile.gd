@@ -3841,9 +3841,13 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _双重回响头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _多重射击头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _血之悲鸣头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _杀戮盛宴头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _禁断之力头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _攻击加成头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
@@ -4029,6 +4033,19 @@ func _双重回响头像提示() -> Dictionary:
 	return out
 
 
+## 魔弓【多重射击】的指示器（现算）：这次额外攻击是暗系、伤害 -1，
+## 所以在点选的敌人头像上写「本次攻击伤害」＝主动攻击基础 − 多重射击减伤。
+## 目标由玩家在这次询问里点选，故用 _sel_players（不是服务端那张合法目标白名单）。
+func _多重射击头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_多重射击 or _sel_players.is_empty():
+		return out
+	var 伤害: int = BattleEngine.ATTACK_BASE_POINT - GConst.多重射击减伤
+	for 目标id: int in _sel_players:
+		out[int(目标id)] = "%d 攻击伤害" % 伤害
+	return out
+
+
 ## 血之巫女【血之悲鸣】的指示器（现算，数值就是选中的那一档）：
 ## 对目标与自己各造成「所选点数」法术伤害 —— 自己那句一选好档位就画在自己头像上，
 ## 目标那句等选好目标再画到目标头像上（两边同一个数）。
@@ -4061,6 +4078,29 @@ func _杀戮盛宴头像提示() -> Dictionary:
 	for 目标id: int in _skill_targets:
 		out[int(目标id)] = "%d 物理伤害" % 伤害
 	out[Logic.my_player_id] = "4 法术伤害"
+	return out
+
+
+## 勇者【禁断之力】的指示器（现算，写不进静态指示器表）：命中后发动时弃牌加伤 ——
+## 敌人头像写「本次攻击伤害」＝发动前伤害（已含怒吼等）+ 已选火系牌数；
+## 自己头像写弃掉的火系牌会造成的等量法术伤害。数值随选 / 退牌实时变。
+## 这次询问问的是「弃哪些牌」，目标不由玩家点选，故用服务端下发的 _skill_targets；
+## 未命中那条（服务端不发 targets）谁都不画。
+func _禁断之力头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_禁断之力 or _skill_targets.is_empty():
+		return out
+	var 火系数: int = 0
+	for cid: int in _sel_cards:
+		var 牌: GCard = Data.get_card(cid)
+		if 牌 != null and 牌.element_enum() == GConst.CardElement.Fire:
+			火系数 += 1
+	var 攻击伤害: int = int(_pending.get("preview_base", 0)) + 火系数
+	if 攻击伤害 > 0:
+		for 目标id: int in _skill_targets:
+			out[int(目标id)] = "%d 攻击伤害" % 攻击伤害
+	if 火系数 > 0:
+		out[Logic.my_player_id] = "%d 法术伤害" % 火系数
 	return out
 
 
@@ -4278,7 +4318,14 @@ func _玩家可选(player_id: int) -> bool:
 		# 攻击牌只能打敌方（服务端 v_attack 对同队直接拒）；法术按 _do_magic 的分支判
 		if 牌.is_attack():
 			# 暗杀者潜行（横置）期间不能被主动攻击选中（否则点亮后点了会被服务端拒，客户端闪一下没反应）
-			return _是敌方(player_id) and not _潜行中(player_id)
+			if not (_是敌方(player_id) and not _潜行中(player_id)):
+				return false
+			# 我面前有【挑衅】时，本回合必须且只能主动攻击「放挑衅的那个玩家」（对照卡表【挑衅】；
+			# 服务端 base_v_attack 同样校验，这里把其余敌人置灰，别让玩家白点）
+			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+			if 我 != null and 我.get_special(GConst.Exclusive.TiaoXin):
+				return player_id == 我.get_special_from(GConst.Exclusive.TiaoXin)
+			return true
 		return _可作法术目标(牌, player_id)
 	if _mode == 2:
 		var rid: int = int(_pending.get("respond_id", 0))

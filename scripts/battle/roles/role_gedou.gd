@@ -43,17 +43,7 @@ func available_skills() -> Array:
 	if player.get_energy() > 0:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": DOU_SHEN_TIAN_QU,
 			"need_card": maxi(player.hand_cards.size() - DOU_SHEN_KEEP_HAND, 0), "need_target": 0})
-	# 蓄力一击 / 气绝崩击：选一张攻击牌 + 一名对手，直接完成一次带加成的主动攻击
-	# （一次主动攻击只能带其中一个，故各是一个独立按钮）。
-	# 另外，玩家用普通攻击（打出攻击牌）时也会由 p_timeline_1 问一次是否发动它们 —— 两条路都留着
-	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
-	if not 攻击牌.is_empty():
-		if _dou_qi() < TOKEN_DOU_QI_MAX:
-			out.append({"type": GConst.ActionType.AttackSkill, "id": XU_LI_YI_JI, "need_card": 1, "need_target": 1,
-				"cards": 攻击牌, "targets": enemy_ids()})
-		if _dou_qi() >= 1:
-			out.append({"type": GConst.ActionType.AttackSkill, "id": QI_JUE_BENG_JI, "need_card": 1, "need_target": 1,
-				"cards": 攻击牌, "targets": enemy_ids()})
+	# 【蓄力一击 / 气绝崩击】不再提供技能栏按钮：它们只能在主动攻击宣告时响应发动
 	return out
 
 

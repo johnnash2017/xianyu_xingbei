@@ -14,6 +14,9 @@ var cover_cards: Array[int] = []
 var cover_cards_max: int = 0
 var basic_effects: Array[Dictionary] = []   # [{card:int, src:int}]
 var exclusive_effects: Array[bool] = [false, false, false, false, false]
+## 与 exclusive_effects 一一对应：每张专属牌是谁放的（-1＝没记）。
+## 【挑衅】要靠它知道「被挑衅的人只能主动攻击哪个玩家」（见 exclusive_owner / base_v_attack）
+var exclusive_owners: Array[int] = [-1, -1, -1, -1, -1]
 
 var gem: int = 0
 var crystal: int = 0
@@ -139,20 +142,30 @@ func check_basic_effect_skill(技能号: int) -> bool:
 # ============================================================
 # 独有效果
 # ============================================================
-func add_exclusive_effect(idx: int) -> void:
+func add_exclusive_effect(idx: int, 放牌者: int = -1) -> void:
 	if idx >= 0 and idx < GConst.EXCLUSIVE_NUM:
 		exclusive_effects[idx] = true
+		exclusive_owners[idx] = 放牌者
 
 
 func remove_exclusive_effect(idx: int) -> void:
 	if idx >= 0 and idx < GConst.EXCLUSIVE_NUM:
 		exclusive_effects[idx] = false
+		exclusive_owners[idx] = -1
 
 
 func check_exclusive_effect(idx: int) -> bool:
 	if idx >= 0 and idx < GConst.EXCLUSIVE_NUM:
 		return exclusive_effects[idx]
 	return false
+
+
+## 某张专属牌是谁放的（没挂或没记 → -1）。
+## 【挑衅】用它锁定「被挑衅的人只能主动攻击哪个玩家」（多勇者时也锁死放牌者本人，见 base_v_attack）
+func exclusive_owner(idx: int) -> int:
+	if idx >= 0 and idx < GConst.EXCLUSIVE_NUM:
+		return exclusive_owners[idx]
+	return -1
 
 
 # ============================================================
@@ -260,13 +273,13 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 	return base_v_attack(card_id, dst_id, players)
 
 
-## 攻击校验通用实现：面前有【挑衅】时只能打勇者、目标不同队、持有该攻击牌
+## 攻击校验通用实现：面前有【挑衅】时只能打放牌者、目标不同队、持有该攻击牌
 func base_v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
-	# 对照服务端 PlayerEntity::v_attack 开头：攻击者面前有【挑衅】时，目标只能是勇者（roleID 21）
-	if check_exclusive_effect(GConst.Exclusive.TiaoXin):
-		var 挑衅目标: BattlePlayer = players.get(dst_id)
-		if 挑衅目标 == null or 挑衅目标.role_id != 21:
-			return GConst.GE_INVALID_PLAYERID
+	# 对照服务端 PlayerEntity::v_attack 开头：攻击者面前有【挑衅】时，目标只能是「放挑衅的那个玩家」
+	# （按放牌者判，不是按勇者角色号 —— 场上允许同角色重复，多勇者时也要锁死放牌者本人）
+	if check_exclusive_effect(GConst.Exclusive.TiaoXin) \
+			and dst_id != exclusive_owner(GConst.Exclusive.TiaoXin):
+		return GConst.GE_INVALID_PLAYERID
 	var dst: BattlePlayer = players.get(dst_id)
 	if dst == null:
 		return GConst.GE_INVALID_PLAYERID
@@ -489,10 +502,14 @@ func to_proto(viewer_id: int) -> Dictionary:
 		bas.append(int(e["card"]))
 	d["basic_cards"] = bas
 	var exs: Array = []
+	var ex_from: Array = []
 	for i: int in range(GConst.EXCLUSIVE_NUM):
 		if exclusive_effects[i]:
 			exs.append(i)
+			# 与 ex_cards 一一对应：这张专属牌是谁放的（-1＝没记）
+			ex_from.append(exclusive_owners[i])
 	d["ex_cards"] = exs
+	d["ex_from"] = ex_from
 	# 只有本人能看到自己的手牌/盖牌
 	if viewer_id == id:
 		d["hands"] = hand_cards.duplicate()

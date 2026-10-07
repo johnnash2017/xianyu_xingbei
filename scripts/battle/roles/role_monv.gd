@@ -486,8 +486,9 @@ func v_attack_skill(action: Dictionary) -> int:
 	if dst == null or dst.color == player.color:
 		return GConst.GE_INVALID_PLAYERID
 	# 服务端 MoNv::v_attack_skill 会调 v_attack：补上通用攻击限制
-	# （面前有【挑衅】时目标只能是勇者；目标角色可拒绝被攻击，如暗杀者潜行中）
-	if player.check_exclusive_effect(GConst.Exclusive.TiaoXin) and dst.role_id != 21:
+	# （面前有【挑衅】时目标只能是放牌者；目标角色可拒绝被攻击，如暗杀者潜行中）
+	if player.check_exclusive_effect(GConst.Exclusive.TiaoXin) \
+			and dst.id != player.exclusive_owner(GConst.Exclusive.TiaoXin):
 		return GConst.GE_INVALID_PLAYERID
 	if dst.v_attacked() != GConst.GE_SUCCESS:
 		return GConst.GE_INVALID_PLAYERID

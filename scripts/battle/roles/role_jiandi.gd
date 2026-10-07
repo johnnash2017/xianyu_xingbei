@@ -61,24 +61,8 @@ func _cover_card_of(ids: Array) -> int:
 
 ## 行动阶段可发动的技能：天使之魂 / 恶魔之魂
 ##（用一张手牌攻击牌发起主动攻击，并把 1 张【剑魂】从盖牌区移除弃置作为代价）。
-## 形态由当前能量单双决定，一次只会出对应的那一个按钮；对照原版只要盖牌区还有【剑魂】，
-## 同一回合的每一次主动攻击都可以再发动（受剑魂数量限制），故这里不按 used_ 标记收口
-func available_skills() -> Array:
-	var out: Array = []
-	var form: int = _soul_form()
-	if form == 0 or player.cover_cards.is_empty():
-		return out
-	var 攻击牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack())
-	var 目标: Array[int] = enemy_ids()
-	if 攻击牌.is_empty() or 目标.is_empty():
-		return out
-	if form == 1:
-		out.append({"type": GConst.ActionType.AttackSkill, "id": TIAN_SHI_ZHI_HUN, "need_card": 1, "need_target": 1,
-			"cards": 攻击牌, "targets": 目标})
-	elif form == 2:
-		out.append({"type": GConst.ActionType.AttackSkill, "id": E_MO_ZHI_HUN, "need_card": 1, "need_target": 1,
-			"cards": 攻击牌, "targets": 目标})
-	return out
+## 【天使之魂 / 恶魔之魂】不再提供技能栏按钮：只能在主动攻击时响应发动（原版如此），
+## 故这里不再覆写 available_skills（基类默认返回空）
 
 
 ## 剑气斩的可选目标：除「本次攻击目标」外的所有角色（对照原客户端 playerArea->enableAll + disablePlayerItem(本次目标)）

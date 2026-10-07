@@ -180,7 +180,8 @@ func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
 		# 「原伤害 + 弃牌加伤」，随玩家选 / 退牌实时变（本次 need_target 是 0，头像本来就点不动）
 		var dst: int = int(ctx.get("dst", -1))
 		var 本次伤害: Dictionary = ctx.get("harm", {})
-		var 伤害目标: Array = [dst] if dst > 0 else []
+		# 座位号从 0 起：0 号也是合法目标，判「没取到」只能用 < 0
+		var 伤害目标: Array = [dst] if dst >= 0 else []
 		询问(player.id, ZHAN_WEN_SUI_JI, 2, 0, GConst.CardSource.Hand, 选项, player.hand_count(), "same",
 			[], true, 0, -1, 伤害目标, -1, {}, int(本次伤害.get("point", 0)))
 		return WAIT
@@ -281,7 +282,8 @@ func _nu_huo_xuan(ctx: Dictionary) -> int:
 		# 照搬会显示成「弃 0 张异系牌」
 		# 顺带把这次攻击的目标下发：客户端在它头像上现算「弃几张 + 这一档」出来的伤害
 		# （本次 need_target 是 0，头像本来就点不动，这里只是当「伤害落在谁身上」用）
-		var 伤害目标: Array = [dst_id] if dst_id > 0 else []
+		# 座位号从 0 起：0 号也是合法目标，判「没取到」只能用 < 0
+		var 伤害目标: Array = [dst_id] if dst_id >= 0 else []
 		engine.ask_skill(player.id, MO_WEN_RONG_HE, 0, 0, GConst.CardSource.Hand, 选项,
 			0, "diff", [], true, "选择发动【怒火压制】或【魔纹融合】", 伤害目标)
 		return WAIT

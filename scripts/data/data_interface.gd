@@ -389,8 +389,14 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	# 独有效果
 	for idx: int in range(GConst.EXCLUSIVE_NUM):
 		p.specials[idx] = false
-	for ex: Variant in pi.get("ex_cards", []):
+		p.specials_from[idx] = -1
+	var 专属: Array = pi.get("ex_cards", [])
+	for ex: Variant in 专属:
 		p.set_special(int(ex), true)
+	# 独有效果的放牌者：ex_from 与 ex_cards 一一对应（【挑衅】靠它知道被挑衅的人只能攻击谁）
+	var 专属来源: Array = pi.get("ex_from", [])
+	for i: int in range(mini(专属.size(), 专属来源.size())):
+		p.set_special_from(int(专属[i]), int(专属来源[i]))
 	# 指示物：槽0→third_token、槽1→yellow_token、槽2→blue_token；名称/上限取角色专属定义
 	p.tokens[0] = null
 	p.tokens[1] = null
