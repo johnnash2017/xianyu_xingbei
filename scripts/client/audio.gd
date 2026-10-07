@@ -15,9 +15,15 @@ extends Node
 ## 本该在播的声音（BGM / 长音效）会接着放，不会因为后台期间被丢掉而断裂。
 
 const 音频目录: String = "res://资源/音频/"
-## 音量（线性）：与参考项目 PlayerPrefs 里 BGM / SE 的默认值一致
-const 音乐音量: float = 0.5
-const 音效音量: float = 0.5
+## 音量（线性 0~1）：默认值与参考项目 PlayerPrefs 里 BGM / SE 的默认值一致；
+## 启动时从本地配置读回上次调的值，设置窗里可随时改（见 设置音乐音量 / 设置音效音量）
+const 默认音乐音量: float = 0.5
+const 默认音效音量: float = 0.5
+## 本地配置键名（存在 Cfg 那份 config[_N].cfg 的 [设置] 段）
+const 键_音乐音量: String = "bgm_volume"
+const 键_音效音量: String = "se_volume"
+var 音乐音量: float = 默认音乐音量
+var 音效音量: float = 默认音效音量
 ## 场景号（对照参考项目 GameManager 的 current_scene_index）
 const 场景主界面: int = 1
 const 场景战斗: int = 2
@@ -39,6 +45,9 @@ var _静音: bool = false
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_随机.randomize()
+	# 读回上次在设置窗里调好的音量（没存过就用默认 0.5）
+	音乐音量 = clampf(float(Cfg.get_setting(键_音乐音量, 默认音乐音量)), 0.0, 1.0)
+	音效音量 = clampf(float(Cfg.get_setting(键_音效音量, 默认音效音量)), 0.0, 1.0)
 	_bgm = AudioStreamPlayer.new()
 	_bgm.name = "BGM"
 	_bgm.volume_db = linear_to_db(音乐音量)
@@ -94,6 +103,27 @@ func 播音效(名字: String, 音量: float = 1.0) -> void:
 ## 是否存在该音效（角色语音等并非每个角色都有，调用前先问一下）
 func 有声效(名字: String) -> bool:
 	return _取音频(名字) != null
+
+
+# ============================================================
+# 音量（设置窗调用）
+# ============================================================
+## 调背景音乐音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存音量设置
+func 设置音乐音量(v: float) -> void:
+	音乐音量 = clampf(v, 0.0, 1.0)
+	if _bgm != null:
+		_bgm.volume_db = linear_to_db(音乐音量)
+
+
+## 调效果音音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存音量设置
+func 设置音效音量(v: float) -> void:
+	音效音量 = clampf(v, 0.0, 1.0)
+
+
+## 把当前音量写进本地配置（设置窗收起时调一次，避免拖动过程频繁写盘）
+func 保存音量设置() -> void:
+	Cfg.set_setting(键_音乐音量, 音乐音量)
+	Cfg.set_setting(键_音效音量, 音效音量)
 
 
 # ============================================================

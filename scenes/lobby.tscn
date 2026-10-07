@@ -6,7 +6,7 @@
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_strategy"]
 
-[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "创建按钮", "取消创建按钮")]
+[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "设置按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "创建按钮", "取消创建按钮")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -22,6 +22,7 @@ script = ExtResource("1_5gu6x")
 "创建房间按钮" = NodePath("主列/按钮行/创建房间按钮")
 "搜索按钮" = NodePath("主列/按钮行/搜索按钮")
 "返回登录按钮" = NodePath("主列/按钮行/返回登录按钮")
+"设置按钮" = NodePath("主列/按钮行/设置按钮")
 "跨机IP输入" = NodePath("主列/跨机行/跨机IP输入")
 "连接按钮" = NodePath("主列/跨机行/连接按钮")
 "房主列表" = NodePath("主列/房主列表")
@@ -91,6 +92,12 @@ custom_minimum_size = Vector2(192, 64)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "返回登录"
+
+[node name="设置按钮" type="Button" parent="主列/按钮行" unique_id=1072185296]
+custom_minimum_size = Vector2(128, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "设置"
 
 [node name="跨机行" type="HBoxContainer" parent="主列" unique_id=1285522029]
 layout_mode = 2

@@ -1,0 +1,103 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/settings.gd" id="1_settings"]
+
+[node name="Settings" type="Control" node_paths=PackedStringArray("音乐滑杆", "音效滑杆", "关闭按钮")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_settings")
+"音乐滑杆" = NodePath("居中/面板/边距/内容/音乐行/音乐滑杆")
+"音效滑杆" = NodePath("居中/面板/边距/内容/音效行/音效滑杆")
+"关闭按钮" = NodePath("居中/面板/边距/内容/关闭按钮")
+
+[node name="遮罩" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="居中" type="CenterContainer" parent="."]
+mouse_filter = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="面板" type="PanelContainer" parent="居中"]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+
+[node name="边距" type="MarginContainer" parent="居中/面板"]
+layout_mode = 2
+theme_override_constants/margin_left = 40
+theme_override_constants/margin_top = 32
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 32
+
+[node name="内容" type="VBoxContainer" parent="居中/面板/边距"]
+layout_mode = 2
+theme_override_constants/separation = 26
+
+[node name="标题" type="Label" parent="居中/面板/边距/内容"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 40
+text = "设置"
+horizontal_alignment = 1
+
+[node name="分隔线" type="HSeparator" parent="居中/面板/边距/内容"]
+layout_mode = 2
+
+[node name="音乐行" type="HBoxContainer" parent="居中/面板/边距/内容"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="音乐标签" type="Label" parent="居中/面板/边距/内容/音乐行"]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "背景音乐"
+vertical_alignment = 1
+
+[node name="音乐滑杆" type="HSlider" parent="居中/面板/边距/内容/音乐行"]
+custom_minimum_size = Vector2(320, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 1.0
+step = 0.01
+value = 0.5
+
+[node name="音效行" type="HBoxContainer" parent="居中/面板/边距/内容"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="音效标签" type="Label" parent="居中/面板/边距/内容/音效行"]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "效果音"
+vertical_alignment = 1
+
+[node name="音效滑杆" type="HSlider" parent="居中/面板/边距/内容/音效行"]
+custom_minimum_size = Vector2(320, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 1.0
+step = 0.01
+value = 0.5
+
+[node name="关闭按钮" type="Button" parent="居中/面板/边距/内容"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "关闭"

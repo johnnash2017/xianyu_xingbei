@@ -15,7 +15,7 @@
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="ReadyRoom" type="Control" unique_id=77114633 node_paths=PackedStringArray("Title", "Seats", "BtnReady", "BtnExit", "BtnChooseTeam", "ChooseTeamPanel", "BtnRedTeam", "BtnBlueTeam", "BtnRandomTeam", "ChatLog", "ChatInput", "BtnSend", "Ring", "Star")]
+[node name="ReadyRoom" type="Control" unique_id=77114633 node_paths=PackedStringArray("Title", "Seats", "BtnReady", "BtnExit", "BtnChooseTeam", "设置按钮", "ChooseTeamPanel", "BtnRedTeam", "BtnBlueTeam", "BtnRandomTeam", "ChatLog", "ChatInput", "BtnSend", "Ring", "Star")]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 1280.0
@@ -27,6 +27,7 @@ Seats = [NodePath("Root/Player0"), NodePath("Root/Player1"), NodePath("Root/Play
 BtnReady = NodePath("Root/BtnReady")
 BtnExit = NodePath("Root/BtnExit")
 BtnChooseTeam = NodePath("Root/BtnChooseTeam")
+"设置按钮" = NodePath("设置按钮")
 ChooseTeamPanel = NodePath("Root/ChooseTeamPanel")
 BtnRedTeam = NodePath("Root/ChooseTeamPanel/BtnRedTeam")
 BtnBlueTeam = NodePath("Root/ChooseTeamPanel/BtnBlueTeam")
@@ -622,6 +623,19 @@ theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
 icon = ExtResource("7_btnteampng")
 expand_icon = true
+
+[node name="设置按钮" type="Button" parent="." unique_id=1932475108]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -176.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = 88.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 28
+text = "设置"
 
 [node name="ChooseTeamPanel" type="ColorRect" parent="Root" unique_id=1236608274]
 visible = false

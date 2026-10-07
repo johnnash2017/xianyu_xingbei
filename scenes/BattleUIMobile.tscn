@@ -30,7 +30,7 @@
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign")]
+[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign", "BtnSetting")]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 1280.0
@@ -77,6 +77,7 @@ BtnCancel = NodePath("Root/BtnCancel")
 BtnCovered = NodePath("Root/BtnCovered")
 BtnSpecila = NodePath("Root/BtnSpecila")
 BtnResign = NodePath("Root/BtnResign")
+BtnSetting = NodePath("Root/BtnSetting")
 
 [node name="PlayerAgentUI" type="Control" parent="." unique_id=561347129]
 visible = false
@@ -183,13 +184,13 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -340.0
+offset_left = -408.0
 offset_top = -240.0
-offset_right = 340.0
+offset_right = 408.0
 offset_bottom = -210.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(340, 15)
+pivot_offset = Vector2(408, 15)
 mouse_filter = 0
 texture = ExtResource("33_uinoticepng")
 expand_mode = 1

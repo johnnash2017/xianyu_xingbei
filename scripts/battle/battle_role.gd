@@ -81,6 +81,12 @@ func p_after_turn_end(_ctx: Dictionary) -> int: return SUCCESS
 ## ctx: {card_id 打出的牌, doer 应战者, target 反击目标, 改用 视为哪张牌, real 是否实体牌}
 ## 角色也可设置 ctx["block"] = true，把这次应战当作「格挡」（本次攻击落空、不反击），如阴阳师光系应战
 func p_reattack(_ctx: Dictionary) -> int: return SUCCESS
+## 攻击「预告加伤」：本次攻击在**命中时**还会追加多少伤害（对照各角色 p_timeline_2_hit 里对
+## harm["point"] 的追加）。引擎发「应战询问」时把它加上去一起告诉被攻击者 —— **只用于显示，
+## 不改变实际结算**，默认 0。用它补「客户端算不出的角色状态类」加伤（如魔剑士【暗影之力】+1、
+## 魔枪【暗之解放】+2）；客户端能自己算的角色被动（狂战士【狂化】）走 GConst.攻击提示角色加成。
+## ctx 与 p_timeline_1 同形（src / dst / is_active / harm / hit_rate…）。
+func p_attack_preview(_ctx: Dictionary) -> int: return 0
 
 
 # ============================================================

@@ -220,6 +220,8 @@ const TABLE: Dictionary = {
 		# 房名与房间设定人数：房间准备室据此显示房名、并从一开始就把所有空座位摆出来
 		18: {"n": "room_name", "t": "str"},
 		19: {"n": "max_player", "t": "i32"},
+		# 正在等谁做什么（如「等待应战响应」）：客户端写在被等玩家的头像上
+		20: {"n": "wait_text", "t": "str"},
 	},
 	GConst.Msg.Talk: {
 		1: {"n": "txt", "t": "str"},

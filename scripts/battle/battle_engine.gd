@@ -85,6 +85,9 @@ var _team_energies: Dictionary = {}
 var _最后行动命令: Dictionary = {}
 var _await_id: int = -1
 var _await_kind: int = -1
+## 当前行动询问允许的行动种类（ask_action 写入）：快照里据此给客户端下发
+## 「等待行动 / 等待攻击行动 / 等待法术行动」这类头像文案
+var _pending_action_type: int = 0
 var _reply: Dictionary = {}
 var _has_reply: bool = false
 ## 当前等待的截止时刻（Time.get_ticks_msec() 口径，0 表示当前没有在等）
@@ -775,6 +778,7 @@ func broadcast(msg_type: int, data: Dictionary) -> void:
 ## can_give_up：本阶段是否允许「放弃行动」（对照原版 Coder::askForAction 的 canGiveUp 分支，
 ## 允许时额外下发一条 ACTION_NONE 命令，客户端据此显示「放弃行动」）
 func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bool = false, no_special: bool = false) -> void:
+	_pending_action_type = action_type
 	var cmds: Array = action_commands(pid, action_type, can_give_up, extra, no_special)
 	_最后行动命令[pid] = cmds
 	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Action, "commands": cmds})
@@ -956,6 +960,35 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	wait_for(pid, GConst.Msg.Respond)
 
 
+## 当前等待的说明文案：给「被等的那名玩家」写在头像上，说明大家正在等他做什么
+## （对照参考工程 PlayerActionChange 的文案；没有在等任何人时返回空串）
+func _等待文案() -> String:
+	if _await_id < 0:
+		return ""
+	# 行动询问：按允许的行动种类区分「等待行动 / 等待攻击行动 / 等待法术行动」
+	if _await_kind == GConst.Msg.Action:
+		match _pending_action_type:
+			GConst.ActionType.Attack: return "等待攻击行动"
+			GConst.ActionType.Magic: return "等待法术行动"
+			GConst.ActionType.None: return "等待响应无法行动"
+			_: return "等待行动"
+	# 技能询问：写「等待响应 + 技能名」
+	if _pending_is_skill:
+		return "等待响应" + GConst.skill_name(_pending_respond_id)
+	# 应答询问：按询问号区分应战 / 弃牌 / 弃盖牌 / 治疗 / 虚弱 / 魔弹 / 额外行动
+	match _pending_respond_id:
+		GConst.RespondType.ReplyAttack: return "等待应战响应"
+		GConst.RespondType.Bullet: return "等待魔弹响应"
+		GConst.RespondType.Heal: return "等待治疗响应"
+		GConst.RespondType.Discard: return "等待弃牌响应"
+		GConst.RespondType.Weaken: return "等待虚弱响应"
+		GConst.RespondType.AdditionalAction: return "等待响应额外行动"
+		GConst.RespondType.DiscardCover: return "等待弃盖牌响应"
+		GConst.RespondType.Role: return "等待选择角色"
+		GConst.RespondType.InsertBan: return "等待禁选"
+	return "等待响应"
+
+
 func game_info(viewer_id: int) -> Dictionary:
 	var infos: Array = []
 	for pid: int in order:
@@ -984,6 +1017,7 @@ func game_info(viewer_id: int) -> Dictionary:
 		"wait_pid": _await_id,
 		"wait_ms": 剩余,
 		"wait_total_ms": wait_total_ms,
+		"wait_text": _等待文案(),
 	}
 
 
@@ -1003,6 +1037,15 @@ func _reattack_target_ok(defender: BattlePlayer, dst_id: int, origin_src: int) -
 	if dst == null:
 		return false
 	return dst.color != GConst.TEAM_NONE and dst.color != defender.color
+
+
+## 本次攻击「命中时才会结算」的加伤合计（只用于给被攻击者看提示，不改变实际结算）。
+## 问一遍攻击者的角色（p_attack_preview）：如魔剑士【暗影之力】+1、魔枪【暗之解放】+2。
+func _预告加伤(src: int, ctx: Dictionary) -> int:
+	var 攻击者: BattlePlayer = players.get(src)
+	if 攻击者 == null or 攻击者.role == null:
+		return 0
+	return 攻击者.role.p_attack_preview(ctx)
 
 
 # ============================================================
@@ -1767,6 +1810,11 @@ class SAttackedAsk:
 				# 指向不存在的玩家：清掉脏标记，按常规应战
 				dst.reattacker = -1
 		var hit_rate: int = int(owner.ctx.get("hit_rate", GConst.HitRate.Normal))
+		# 应战询问的参数；末位＝本次攻击伤害：harm["point"]（怒吼 / 精准射击 / 蓄力一击等「宣告阶段」
+		# 已加进去的）＋ 攻击者预告的「命中才结算」加伤（暗影之力 / 暗之解放…，见 p_attack_preview）。
+		# 客户端把它写进提示（「受到 N 伤害攻击：…」），让被攻击者一眼看到这一下要挨多少
+		var 应战询问: Array = [hit_rate, owner.card, defender.id, owner.src,
+			owner.ctx.get("can_light", 1), int(harm.get("point", 0)) + e._预告加伤(owner.src, owner.ctx)]
 		if hit_rate == GConst.HitRate.NoMiss:
 			e.push(STimeline2Hit.new(harm))
 			return BattleEngine.CONTINUE
@@ -1784,7 +1832,7 @@ class SAttackedAsk:
 						or defender.v_reattack(cid, owner.card) != GConst.GE_SUCCESS:
 					# args[2] 必须是「应该由谁来应战」（defender），客户端据此判断这条询问是不是给我的：
 					# 代应战（式神咒束）时 defender 是代替者，不等于被攻击的目标 dst，写成 dst.id 会让代替者的客户端把询问丢掉
-					e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, [hit_rate, owner.card, defender.id, owner.src, owner.ctx.get("can_light", 1)])
+					e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, 应战询问)
 					e.wait_for(defender.id, GConst.Msg.Respond)
 					return BattleEngine.WAIT
 				# 应战成立：原攻击落空，应战者以自己的攻击牌对所选目标发起一次新攻击。
@@ -1826,7 +1874,7 @@ class SAttackedAsk:
 					return BattleEngine.CONTINUE
 			e.push(STimeline2Hit.new(harm))
 			return BattleEngine.CONTINUE
-		e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, [hit_rate, owner.card, defender.id, owner.src, owner.ctx.get("can_light", 1)])
+		e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, 应战询问)
 		e.wait_for(defender.id, GConst.Msg.Respond)
 		return BattleEngine.WAIT
 

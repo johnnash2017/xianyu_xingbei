@@ -24,6 +24,7 @@ const 未记录: int = 0
 @export var 创建房间按钮: Button
 @export var 搜索按钮: Button
 @export var 返回登录按钮: Button
+@export var 设置按钮: Button
 @export var 跨机IP输入: LineEdit
 @export var 连接按钮: Button
 @export var 房主列表: ItemList
@@ -60,6 +61,7 @@ func _ready() -> void:
 	创建房间按钮.pressed.connect(func() -> void: _点了(_on_open_create_pressed))
 	搜索按钮.pressed.connect(func() -> void: _点了(_on_search_pressed))
 	返回登录按钮.pressed.connect(func() -> void: _点了(_on_back_pressed))
+	设置按钮.pressed.connect(func() -> void: _点了(UI.切换设置))
 	连接按钮.pressed.connect(func() -> void: _点了(_on_connect_ip_pressed))
 	创建按钮.pressed.connect(func() -> void: _点了(_on_create_pressed))
 	取消创建按钮.pressed.connect(func() -> void: _点了(_on_close_create_pressed))

@@ -134,6 +134,19 @@ func set_nickname(n: String) -> void:
 	local.save(local_path())
 
 
+# ============================================================
+# 本地设置（设置窗用：背景音乐 / 效果音 音量）
+# 存在各自窗口那份 config[_N].cfg 的 [设置] 段，随窗口槽位走（多开互不影响）
+# ============================================================
+func get_setting(key: String, 默认: Variant) -> Variant:
+	return local.get_value("设置", key, 默认)
+
+
+func set_setting(key: String, value: Variant) -> void:
+	local.set_value("设置", key, value)
+	local.save(local_path())
+
+
 ## 共享配置：写前重新读盘再改，避免覆盖别的窗口刚写入的键
 func shared_set(key: String, value: Variant) -> void:
 	shared.load(SHARED_FILE)

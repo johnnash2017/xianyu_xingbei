@@ -302,6 +302,12 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 攻击预告加伤：暗影形态（横置）下，自己发动的攻击命中时会 +1
+## （对应 p_timeline_2_hit 里的【暗影之力】；只用于被攻击者提示，不改变实际结算）
+func p_attack_preview(_ctx: Dictionary) -> int:
+	return 1 if player.tap else 0
+
+
 ## 黄泉震颤补牌：命中后把手牌补到上限（多于上限则弃、少于上限则摸）
 func _hei_an_zhen_chan_bu_pai() -> int:
 	if not using_hei_an_zhen_chan:

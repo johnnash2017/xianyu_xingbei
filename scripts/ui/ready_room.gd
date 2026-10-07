@@ -27,6 +27,7 @@ const 聊天最大行: int = 200
 @export var BtnReady: Button
 @export var BtnExit: Button
 @export var BtnChooseTeam: Button
+@export var 设置按钮: Button
 ## 选择队伍面板与它的三个按钮
 @export var ChooseTeamPanel: Control
 @export var BtnRedTeam: Button
@@ -55,6 +56,7 @@ func _ready() -> void:
 	BtnReady.pressed.connect(_on_ready_pressed)
 	BtnExit.pressed.connect(_on_exit_pressed)
 	BtnChooseTeam.pressed.connect(_on_choose_team_pressed)
+	设置按钮.pressed.connect(UI.切换设置)
 	BtnRedTeam.pressed.connect(func() -> void: _选队(上行红队))
 	BtnBlueTeam.pressed.connect(func() -> void: _选队(上行蓝队))
 	BtnRandomTeam.pressed.connect(func() -> void: _选队(上行随机))

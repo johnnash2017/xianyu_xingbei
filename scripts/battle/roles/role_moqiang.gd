@@ -247,6 +247,16 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 攻击预告加伤：幻影形态下已启动【暗之解放】、本回合还没用掉时，本次主动攻击命中会 +2
+## （对应 p_timeline_2_hit 里的 _an_zhi_jie_fang_effect；只用于被攻击者提示，不改变实际结算）
+func p_attack_preview(ctx: Dictionary) -> int:
+	if not bool(ctx.get("is_active", false)):
+		return 0
+	if using_an_zhi_jie_fang and not used_an_zhi_jie_fang:
+		return 2
+	return 0
+
+
 ## 暗之解放：仅[幻影形态]下本回合首次主动攻击伤害 +2
 func _an_zhi_jie_fang_effect(ctx: Dictionary) -> void:
 	if not using_an_zhi_jie_fang or used_an_zhi_jie_fang:

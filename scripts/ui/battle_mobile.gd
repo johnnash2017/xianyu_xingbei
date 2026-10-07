@@ -55,6 +55,7 @@ extends Control
 @export var BtnCovered: Button         # 「盖牌」按钮（点开/收起查看自己的盖牌）
 @export var BtnSpecila: Button         # 行动阶段＝「特殊行动」（购买/合成/提炼）；魔弹传递时＝「放弃」
 @export var BtnResign: Button          # 行动阶段＝「放弃行动」（对照参考工程 PlayerAgentUI 的 BtnResign → ResignAction）
+@export var BtnSetting: Button         # 右下角设置：打开设置浮层（调背景音乐 / 效果音音量）
 ## 特殊行动专用窗口（购买/合成/提炼，搬自参考工程 SpecialActionUI）：预制体在 _ready 里挂到本界面最上层
 const 特殊行动窗预制: PackedScene = preload("res://scenes/prefabs/battlemobile/SpecialActionUI.tscn")
 var 特殊行动窗: 特殊行动窗口 = null
@@ -209,6 +210,8 @@ var _等待方: int = -1
 var _等待剩余: float = 0.0
 ## 本次等待的总时长（秒）：进度条按「剩余 / 总时长」画
 var _等待总时长: float = 0.0
+## 本次等待的说明（服务端下发，如「等待应战响应」）：写在被等玩家的头像上
+var _等待文案: String = ""
 ## 提示自动隐藏：token 变了说明来了新提示，旧的倒计时作废（同参考脚本的做法）
 var _提示计时器: Timer = null
 var _提示token: int = 0
@@ -376,6 +379,7 @@ func _ready() -> void:
 	BtnLogExpand.pressed.connect(_展开日志)
 	BtnChatExpand.pressed.connect(_展开聊天)
 	BtnBack.pressed.connect(_on_back)
+	BtnSetting.pressed.connect(UI.切换设置)
 	# 初始收起日志/聊天（同参考脚本 Start 里的处理）
 	LogRoot.visible = false
 	ChatRoot.visible = false
@@ -513,6 +517,7 @@ func _读取等待(info: Dictionary) -> void:
 	_等待方 = int(info.get("wait_pid", -1))
 	_等待总时长 = float(info.get("wait_total_ms", 0)) / 1000.0
 	_等待剩余 = float(info.get("wait_ms", 0)) / 1000.0
+	_等待文案 = str(info.get("wait_text", ""))
 	_刷新等待条()
 	# 服务端已经在等别人了，说明挂在手上那条询问早已作废（最典型的是自己超时后服务端径自往下走）：
 	# 立刻退回等待态 —— 手牌/目标置灰、技能收起，否则会出现「别人的回合我还能点还能选目标」
@@ -538,13 +543,17 @@ func _process(delta: float) -> void:
 	_刷新等待条()
 
 
-## 超时进度条画在「正在被等的那名玩家」的名牌上方，其余面板收起（传负值）
+## 超时进度条画在「正在被等的那名玩家」的名牌上方，其余面板收起（传负值）；
+## 头像上的行动说明（如「等待应战响应」）同样只写给被等的那名「别人」——
+## 自己在等时另有一条「正在等待你的操作…」的提示，写在自己头像上会像在等自己操作
 func _刷新等待条() -> void:
 	var 比例: float = -1.0
 	if _等待方 >= 0 and _等待总时长 > 0.0:
 		比例 = clampf(_等待剩余 / _等待总时长, 0.0, 1.0)
+	var 文案: String = _等待文案 if (_等待方 >= 0 and _等待方 != Logic.my_player_id) else ""
 	for 面板: 战斗玩家面板 in _面板列表:
 		面板.WaitProgress = 比例 if 面板.ID == _等待方 else -1.0
+		面板.WaitAction = 文案 if 面板.ID == _等待方 else ""
 
 
 ## 数值变化（对照参考项目 MoraleChange / GemChange / CrystalChange / PlayerHealChange）：
@@ -1309,16 +1318,24 @@ func _进入待选() -> void:
 				_need_cards = 1
 				# 应战要指定「反击目标」（敌方、且不是原攻击者）
 				_need_players = 1
+				# 本次攻击伤害（服务端随询问下发，args[5]）＋攻击者的角色被动加伤
+				# （如狂战士【狂化】+1 —— 服务端在命中时才结算，这里提前算进去）：
+				# 写在提示最前面，让被攻击者一眼看到不阻止的话要挨多少
+				var 受伤前缀: String = ""
+				if args.size() > 5:
+					var 攻击者: GPlayer = Data.get_player_by_id(_原攻击者())
+					var 被动加伤: int = int(GConst.攻击提示角色加成.get(攻击者.role_id, 0)) if 攻击者 != null else 0
+					受伤前缀 = "受到 %d 伤害攻击：" % (int(args[5]) + 被动加伤)
 				if _可应战():
 					if _可圣光抵挡():
-						_指令提示("打出同系斩应战 或 【圣光】抵挡，或取消放弃")
+						_指令提示(受伤前缀 + "打出同系斩应战 或 【圣光】抵挡，或取消放弃")
 					else:
-						_指令提示("打出同系斩应战，或取消放弃")
+						_指令提示(受伤前缀 + "打出同系斩应战，或取消放弃")
 				else:
 					if _可圣光抵挡():
-						_指令提示("无法应战：出【圣光】抵挡，或取消放弃")
+						_指令提示(受伤前缀 + "无法应战，出【圣光】抵挡，或取消放弃")
 					else:
-						_指令提示("无法应战：点「取消」放弃")
+						_指令提示(受伤前缀 + "无法应战，只能点「取消」放弃")
 			GConst.RespondType.Discard:
 				_mode = 2
 				_need_cards = int(args[2]) if args.size() > 2 else 1
@@ -1362,7 +1379,9 @@ func _进入待选() -> void:
 			GConst.RespondType.Bullet:
 				_mode = 2
 				_need_cards = 1
-				_指令提示("魔弹传递：出【魔弹】继续传递（选好牌后点亮起的敌人头像）、出【圣光】抵挡，或点「取消」承受伤害")
+				# 当前魔弹伤害（服务端随询问下发，args[1]）：写在提示开头，说明放弃传递要挨多少
+				var 魔弹伤害: int = int(args[1]) if args.size() > 1 else GConst.魔弹基础伤害
+				_指令提示("受到 %d 伤害魔弹攻击，出【魔弹】继续传递，或出【圣光】抵挡，或点「取消」承受伤害" % 魔弹伤害)
 			_:
 				_mode = 2
 				_need_cards = 0
