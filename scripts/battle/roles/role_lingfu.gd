@@ -108,7 +108,7 @@ func _lei_ming(action: Dictionary) -> int:
 			return WAIT
 		step = NIAN_ZHOU
 	if step == NIAN_ZHOU:
-		var r2: int = _ling_li_beng_jie()
+		var r2: int = _ling_li_beng_jie(dsts)
 		if r2 == WAIT:
 			return WAIT
 		step = LING_LI_BENG_JIE
@@ -150,13 +150,15 @@ func _nian_zhou() -> int:
 	return SUCCESS
 
 
-## 灵力崩解：耗 1 能量（优先水晶），使本次每次伤害 +1
-func _ling_li_beng_jie() -> int:
+## 灵力崩解：耗 1 能量（优先水晶），使本次每次伤害 +1。
+## dsts ＝ 本次实际会挨打的那几名角色：随询问下发给客户端，由它把这些头像选中并写「2 法术伤害」
+## （基础 1 点在技能表那一侧显示，见 技能_灵符雷鸣 / 技能_百鬼夜行 的指示器）
+func _ling_li_beng_jie(dsts: Array) -> int:
 	_beng_jie = false
 	if player.get_energy() < 1:
 		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, LING_LI_BENG_JIE, 0, 0)
+		询问(player.id, LING_LI_BENG_JIE, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, dsts)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -219,7 +221,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			return SUCCESS
 		_bai_gui_phase = 1
 	if _bai_gui_phase == 1:
-		var r: int = _ling_li_beng_jie()
+		var r: int = _ling_li_beng_jie(_bai_gui_damage_targets())
 		if r == WAIT:
 			return WAIT
 		_bai_gui_phase = 2
@@ -273,25 +275,27 @@ func _bai_gui_cast() -> bool:
 ## 百鬼夜行伤害：展示时为「除指定 2 名角色外的所有角色」，否则为指定的 1 名角色
 func _bai_gui_effect() -> int:
 	var point: int = 2 if _beng_jie else 1
-	if _expose:
-		# 展示火系妖力：除指定 2 名角色外全体各受 1 点（含自己）。按服务端座位序（自己/下家先）
-		var 全体: Array = []
-		for pid: int in engine.order:
-			if pid != _expose_dsts[0] and pid != _expose_dsts[1]:
-				全体.append(pid)
-		var 顺序: Array[int] = 结算顺序(全体)
-		for i: int in range(顺序.size() - 1, -1, -1):
-			engine.push_harm({
-				"src": player.id, "dst": 顺序[i], "point": point,
-				"cause": BAI_GUI_YE_XING, "type": GConst.HarmType.Magic,
-			})
-	elif not _expose_dsts.is_empty():
+	# 按服务端座位序（自己 / 下家先）结算；伤害状态是栈（后压先算）→ 逆序压栈
+	var 顺序: Array[int] = 结算顺序(_bai_gui_damage_targets())
+	for i: int in range(顺序.size() - 1, -1, -1):
 		engine.push_harm({
-			"src": player.id, "dst": _expose_dsts[0], "point": point,
+			"src": player.id, "dst": 顺序[i], "point": point,
 			"cause": BAI_GUI_YE_XING, "type": GConst.HarmType.Magic,
 		})
 	engine._broadcast_game()
 	return URGENT
+
+
+## 本次【百鬼夜行】实际会挨伤害的角色：展示火系妖力＝除指定 2 名角色外全体（含自己）；
+## 不展示＝指定的那 1 名角色。（灵力崩解的询问也拿它当「会挨打的人」下发，见 _ling_li_beng_jie）
+func _bai_gui_damage_targets() -> Array[int]:
+	if not _expose:
+		return [_expose_dsts[0]] if not _expose_dsts.is_empty() else []
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		if not _expose_dsts.has(pid):
+			out.append(pid)
+	return out
 
 
 # ============================================================
