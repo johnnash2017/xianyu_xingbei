@@ -27,10 +27,12 @@
 [ext_resource type="Script" uid="uid://bpg0b6fg4gxdf" path="res://scripts/ui/battle_mobile.gd" id="45_BattleMobilegd"]
 [ext_resource type="PackedScene" uid="uid://c1suqv71vxxev" path="res://scenes/prefabs/battlemobile/PlayerSelfPanel.tscn" id="9001_selfpanel"]
 [ext_resource type="PackedScene" uid="uid://dtx56vhow1f1t" path="res://scenes/prefabs/battlemobile/PlayerOtherPanel.tscn" id="9002_otherpanel"]
+[ext_resource type="Texture2D" uid="uid://dq3t4dj68dol0" path="res://assets/textures/battle/GameWinRed.png" id="50_gamewinredpng"]
+[ext_resource type="Texture2D" uid="uid://b11klxmu6yulv" path="res://assets/textures/battle/GameWinBlue.png" id="51_gamewinbluepng"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign", "BtnSetting")]
+[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "WinImg", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign", "BtnSetting")]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 1280.0
@@ -64,6 +66,7 @@ BtnSubmit = NodePath("Root/ChatRoot_/ChatRoot/InputFiledLayout/BtnSubmit")
 BtnLogExpand = NodePath("Root/BtnLogExpand")
 BtnChatExpand = NodePath("Root/BtnChatExpand")
 WinPanel = NodePath("WinPanel")
+WinImg = NodePath("WinPanel/WinImg")
 EndTxt = NodePath("WinPanel/EndTxt")
 BtnBack = NodePath("WinPanel/BtnBack")
 LogRoot = NodePath("Root/LogRoot")
@@ -1078,13 +1081,21 @@ script = ExtResource("43_AutoClearLoggd")
 
 [node name="WinPanel" type="TextureRect" parent="." unique_id=450394288]
 visible = false
-modulate = Color(0, 0, 0, 0.78431)
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 0
+
+[node name="WinBg" type="ColorRect" parent="WinPanel"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.7)
+mouse_filter = 2
 
 [node name="WinImg" type="TextureRect" parent="WinPanel" unique_id=882423617]
 visible = false
@@ -1094,14 +1105,14 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -250.0
-offset_top = -360.0
+offset_top = -205.0
 offset_right = 250.0
-offset_bottom = -120.0
+offset_bottom = 6.0
 grow_horizontal = 2
 grow_vertical = 2
-pivot_offset = Vector2(250, 120)
+pivot_offset = Vector2(250, 105.5)
 mouse_filter = 0
-texture = ExtResource("15_1x1png")
+texture = ExtResource("50_gamewinredpng")
 expand_mode = 1
 
 [node name="BtnBack" type="Button" parent="WinPanel" unique_id=1410318941]

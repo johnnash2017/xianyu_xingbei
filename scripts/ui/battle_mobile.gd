@@ -40,6 +40,7 @@ extends Control
 @export var BtnLogExpand: Button
 @export var BtnChatExpand: Button
 @export var WinPanel: Control
+@export var WinImg: TextureRect
 @export var EndTxt: Label
 @export var BtnBack: Button
 @export var LogRoot: Control           # 日志面板根（展开/收起用）
@@ -81,6 +82,9 @@ var _提炼水晶: int = 0
 const 预制目录: String = "res://scenes/prefabs/battlemobile/"
 ## 提示显示后自动隐藏的秒数（同参考工程的 Invoke("hideHint", 3f)）
 const 提示停留秒: float = 3.0
+## 结算界面的 VICTORY 横幅：按胜方队伍取图（同参考工程 TipArea::win 的 resource/GameWin*.png）
+const 红队胜利图: Texture2D = preload("res://assets/textures/battle/GameWinRed.png")
+const 蓝队胜利图: Texture2D = preload("res://assets/textures/battle/GameWinBlue.png")
 ## 日志最多保留的行数（同参考工程 AutoClearLog 的裁剪行数）
 const 日志最大行: int = 233
 ## 宝石/水晶/星杯格子的最小尺寸（Unity 转过来的 Image 预制体是 0×0，必须给尺寸）
@@ -1194,9 +1198,12 @@ func _结算(胜方: int) -> void:
 	# 胜负切音乐（对照参考项目 AudioManager：Win/Lose → play_bgm_scene(2, 胜否)）
 	Audio.播放音乐(Audio.场景战斗, 胜)
 	EndTxt.text = "胜利" if 胜 else "失败"
+	# 顶部 VICTORY 横幅按「胜方队伍」取图（参考工程 TipArea::win：红队胜 → GameWinRed，蓝队胜 → GameWinBlue）
+	WinImg.texture = 红队胜利图 if 胜方 == GConst.RED else 蓝队胜利图
 	# WinPanel 及其子节点在场景里都是 visible=false，展开时一并打开
 	# （同参考脚本 _show_win_children 的处理）
 	WinPanel.visible = true
+	WinImg.visible = true
 	EndTxt.visible = true
 	BtnBack.visible = true
 	_日志追加("游戏结束：%s" % ("红队获胜" if 胜方 == GConst.RED else "蓝队获胜"), "系统")
