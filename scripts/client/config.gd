@@ -24,6 +24,9 @@ var server_port: int = GConst.DEFAULT_PORT
 ## 自动开局（启动参数 --auto）：启动后自动「进入游戏 → 房主建房 / 其余窗口进同一间房 → 准备」，
 ## 给多开脚本用（按 F10 那种）；不带这个参数时一切照旧，全是手动点。
 var 自动开局: bool = false
+## 本批多开的窗口数（启动参数 --count=N；0＝没指定）：自动开局建房时按它挑房间人数。
+## 不带这个参数就只能沿用上次记下的人数，六开会被建成上次那个 4 人局（2v2）
+var 多开人数: int = 0
 ## 本进程的稳定身份标识：断线重连时用它让服务端认出「还是同一个人」，从而回到原座位。
 ## 仅在本进程生命周期内稳定——重启客户端即视为新玩家，不会抢占旧座位。
 var client_id: String = ""
@@ -74,6 +77,11 @@ func _parse_cmdline() -> void:
 			i += 1
 		elif a == "--auto":
 			自动开局 = true
+		elif a.begins_with("--count="):
+			多开人数 = int(a.substr(8))
+		elif a == "--count" and i + 1 < args.size():
+			多开人数 = int(args[i + 1])
+			i += 1
 		i += 1
 	if slot < 0 or slot >= GConst.MAX_SLOT:
 		slot = 0

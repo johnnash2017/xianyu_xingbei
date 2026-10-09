@@ -4,7 +4,7 @@ extends BattleRole
 ## 陨石/风刃/火球/雷击/冰冻（独有法术，发动牌须是对应系的牌：地/风/火/雷/水；额外弃 1 张同系牌可加伤）、
 ##       元素点燃（法术，移除 3 点【元素】造成 2 点法术伤害并额外 +1 法术行动）、
 ##       月光（法术，1 宝石对目标造成 能量+1 点法术伤害）
-## 【元素】为元素师专属指示物，放置于 tokens[0]，上限 3。
+## 【元素】为元素师专属指示物，放置于 tokens[0]，上限见角色表。
 
 const FENG_REN: int = 1101          # 风刃
 const BING_DONG: int = 1102         # 冰冻
@@ -16,7 +16,6 @@ const YUE_GUANG: int = 1107         # 月光
 const YUAN_SU_XI_SHOU: int = 1108   # 元素吸收（被动）
 
 const TOKEN_ELEMENT: int = 0        # 「元素」指示物下标
-const TOKEN_ELEMENT_MAX: int = 3
 
 ## 各独有法术的发动牌系别（技能原文「若你额外弃 1 张 X 系牌」——第一张也必须是这个系的牌）
 const 法术系别: Dictionary = {
@@ -30,11 +29,6 @@ const 法术系别: Dictionary = {
 ## 冰冻/雷击的后续结算目标（服务端在 p_magic_skill 二次进入时处理）
 var _bing_dong_heal_dst: int = -1
 var _lei_ji_pending: bool = false
-
-
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	p.tokens[TOKEN_ELEMENT] = {"name": "元素", "max": TOKEN_ELEMENT_MAX, "num": 0}
 
 
 func available_skills() -> Array:
@@ -55,7 +49,7 @@ func available_skills() -> Array:
 		var 目标下限: int = 2 if sid == BING_DONG else 1
 		out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 目标下限,
 			"card_max": 2, "cards": 合法牌, "card_slot_skill": sid, "card_slot_element": 元素})
-	if _element_token() >= TOKEN_ELEMENT_MAX:
+	if _element_token() >= _element_max():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": YUAN_SU_DIAN_RAN, "need_card": 0, "need_target": 1})
 	if player.gem > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": YUE_GUANG, "need_card": 0, "need_target": 1})
@@ -68,6 +62,10 @@ func available_skills() -> Array:
 func _element_token() -> int:
 	var t: Dictionary = player.tokens[TOKEN_ELEMENT]
 	return int(t["num"])
+
+
+func _element_max() -> int:
+	return int(player.tokens[TOKEN_ELEMENT]["max"])
 
 
 func _add_element_token(n: int) -> void:
@@ -126,7 +124,7 @@ func v_magic_skill(action: Dictionary) -> int:
 		YUAN_SU_DIAN_RAN:
 			if dsts.is_empty():
 				return GConst.GE_INVALID_ACTION
-			if _element_token() < TOKEN_ELEMENT_MAX:
+			if _element_token() < _element_max():
 				return GConst.GE_INVALID_ACTION
 		YUE_GUANG:
 			if dsts.is_empty() or player.gem == 0:

@@ -1,12 +1,12 @@
 extends BattleRole
 ## 精灵射手（roleID 32）—— 移植自服务端 role/JingLingSheShou.cpp
-## 形态：tap（【精灵祝福形态】）；盖牌：【祝福】(cover_cards_max = 3)
+## 形态：tap（【精灵祝福形态】）；盖牌：【祝福】(cover_cards_max)，上限见角色表
 ## 技能：元素射击（3201，响应・回合限定：主动攻击时若攻击牌非暗系，弃 1 张法术牌或移除 1 张【祝福】，
 ##                 按攻击牌系别附加元素箭：火 +1 伤害 / 地 命中后额外 1 点法术伤害 /
 ##                 风 攻击行动结束后额外 1 次攻击行动 / 雷 本次攻击无法应战 / 水 命中后目标 +1 治疗）、
 ##       动物伙伴（3202，响应：你对他人造成伤害结算后，指定一名角色弃 1 张牌并摸 1 张牌，
 ##                 目标非自己时需耗 1 点能量）、
-##       精灵秘仪（3203，持续：耗 1 宝石并【横置】转为【精灵祝福形态】，牌库顶 3 张作为【祝福】；
+##       精灵密仪（3203，持续：耗 1 宝石并【横置】转为【精灵祝福形态】，牌库顶 3 张作为【祝福】；
 ##                 回合结束时若没有【祝福】则【重置】脱离该形态，并对目标角色造成 2 点法术伤害）
 
 const YUAN_SU_SHE_JI: int = 3201
@@ -26,18 +26,13 @@ var used_yuan_su_she_ji: bool = false
 var _dw_target: int = -1
 
 
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	p.cover_cards_max = 3
-
-
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_yuan_su_she_ji = false
 	return SUCCESS
 
 
 # ============================================================
-# 启动：精灵秘仪（耗 1 宝石横置转为【精灵祝福形态】，牌库顶 3 张作为【祝福】）
+# 启动：精灵密仪（耗 1 宝石横置转为【精灵祝福形态】，牌库顶 3 张作为【祝福】）
 # ============================================================
 func p_boot(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id or player.gem == 0 or player.tap:
@@ -69,9 +64,9 @@ func p_boot(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 回合结束：精灵秘仪（无【祝福】时脱离形态并对目标角色 2 点法术伤害）
+# 回合结束：精灵密仪（无【祝福】时脱离形态并对目标角色 2 点法术伤害）
 # ============================================================
-## 【精灵秘仪】的推进阶段（0＝还没开始 / JING_LING_MI_YI＝已脱形态、等目标回复）。
+## 【精灵密仪】的推进阶段（0＝还没开始 / JING_LING_MI_YI＝已脱形态、等目标回复）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而本流程一开场就脱形态
 ## （player.tap = false 会压入一轮 p_tap 钩子）—— 那一轮开始把 step 抹掉后，流程退回第 0 步，
 ## 入口条件（要有形态）此刻已不成立 → 2 点法术伤害整条不生效。每回合结束都可能触发，收尾清回 0
@@ -236,9 +231,9 @@ func p_timeline_2_miss(_ctx: Dictionary) -> int:
 # 服务端顺序：先摸 1 张，再由目标自己选 1 张弃掉（StateRequestHand，canGiveUp = false）
 # ============================================================
 ## 【动物伙伴】的推进阶段（0＝还没问 / DONG_WU_HUO_BAN＝等「选谁」/ DONG_WU_HUO_BAN_DISCARD＝等目标弃牌）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨两次询问，
-## 中间还给目标摸 1 张牌（会压入一轮手牌钩子）—— 那一轮开始时 step 被抹掉，流程退回第 0 步，
-## 于是把目标弃牌的回复当成「选谁」的回复解析。每次造成伤害后都可能触发，收尾清回 0
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨两次询问、
+## 中间还为目标摸 1 张牌（走 push_draw，会另起一轮钩子）。弃牌那步放在独立钩子 p_dong_wu_huo_ban_discard
+## 里执行（排在摸牌之后），这样「摸牌前响应（如【水影】）」和「弃牌时含刚摸进来的牌」都成立。收尾清回 0
 var _dw_step: int = 0
 
 
@@ -268,27 +263,36 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 			else:
 				player.set_gem(player.gem - 1)
 		notice_skill(DONG_WU_HUO_BAN, [dst_id])
-		engine.draw(dst_id, 1)
-		engine._broadcast_game()
 		_dw_target = dst_id
 		_dw_step = DONG_WU_HUO_BAN_DISCARD
-	if _dw_step == DONG_WU_HUO_BAN_DISCARD:
-		var t: BattlePlayer = engine.p(_dw_target)
-		if t == null or t.hand_cards.is_empty():
-			_dw_step = 0
-			return SUCCESS
-		if not engine.has_reply():
-			询问(t.id, DONG_WU_HUO_BAN, 1)
-			return WAIT
-		_dw_step = 0
-		var r2: Dictionary = take_skill_reply_full()
-		var cid: int = _hand_card_of(t, r2.get("card_ids", []))
-		if cid < 0:
-			# 取消/超时：服务端 canGiveUp = false，必须交出，故自动取首张
-			cid = int(t.hand_cards[0])
-		engine.take_from_hand(t.id, [cid])
-		engine.to_discard([cid])
 		engine._broadcast_game()
+		# 目标先摸 1 张再弃 1 张：摸牌走 push_draw（先让角色响应，如【水影】）；弃牌另起一轮钩子，
+		# 先压弃牌钩子、后压摸牌（LIFO）→ 先摸牌、后弃牌，弃牌时手里已含刚摸进来的牌
+		engine.push(BattleEngine.SHook.new("p_dong_wu_huo_ban_discard", {"player": dst_id}, []))
+		engine.push_draw(dst_id, 1)
+	return SUCCESS
+
+
+## 动物伙伴：目标摸完 1 张后，从手牌（含刚摸进来的牌）强制弃 1 张（独立钩子轮次，保证「摸」先于「弃」）
+func p_dong_wu_huo_ban_discard(ctx: Dictionary) -> int:
+	if _dw_step != DONG_WU_HUO_BAN_DISCARD or int(ctx.get("player", -1)) != _dw_target:
+		return SUCCESS
+	var t: BattlePlayer = engine.p(_dw_target)
+	if t == null or t.hand_cards.is_empty():
+		_dw_step = 0
+		return SUCCESS
+	if not engine.has_reply():
+		询问(t.id, DONG_WU_HUO_BAN, 1)
+		return WAIT
+	_dw_step = 0
+	var r2: Dictionary = take_skill_reply_full()
+	var cid: int = _hand_card_of(t, r2.get("card_ids", []))
+	if cid < 0:
+		# 取消/超时：服务端 canGiveUp = false，必须交出，故自动取首张
+		cid = int(t.hand_cards[0])
+	engine.take_from_hand(t.id, [cid])
+	engine.to_discard([cid])
+	engine._broadcast_game()
 	return SUCCESS
 
 

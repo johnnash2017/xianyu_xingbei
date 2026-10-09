@@ -1,7 +1,7 @@
 extends BattleRole
 ## 仲裁者（roleID 14）—— 移植自服务端 role/ZhongCai.cpp
 ## 被动：仲裁法则（开局 +2 水晶）、审判浪潮（1404，每承受一次伤害 +1 审判）
-## 指示物：tokens[0] = 审判，上限 4
+## 指示物：tokens[0] = 审判，上限见角色表
 ## 技能：仲裁仪式（1402，启动：1 宝石转[审判形态]，手牌上限恒定为 5；
 ##                 该形态下每次回合开始 +1 审判）、
 ##       仪式中断（1401，启动：仅[审判形态]下发动，脱离该形态，我方战绩区 +1 宝石，手牌上限恢复 6）、
@@ -15,7 +15,6 @@ const MO_RI_SHEN_PAN: int = 1403
 const SHEN_PAN_LANG_CHAO: int = 1404
 const PAN_JUE_TIAN_PING: int = 1405
 
-const TOKEN_MAX: int = 4
 ## 服务端 setHandCardsMaxFixed：普通形态 6，审判形态 5
 const HAND_MAX_NORMAL: int = 6
 const HAND_MAX_TRIAL: int = 5
@@ -25,7 +24,11 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
 	# 仲裁法则：游戏初始时，你 +2 水晶
 	p.set_crystal(2)
-	p.tokens[0] = {"name": "审判", "max": TOKEN_MAX, "num": 0}
+
+
+## 【审判】指示物的上限（以角色表为准）
+func _shen_pan_max() -> int:
+	return int(player.tokens[0]["max"])
 
 
 func available_skills() -> Array:
@@ -33,7 +36,7 @@ func available_skills() -> Array:
 	var t: int = int(player.tokens[0]["num"])
 	if t > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_RI_SHEN_PAN, "need_card": 0, "need_target": 1})
-	if t < TOKEN_MAX and player.get_energy() > 0:
+	if t < _shen_pan_max() and player.get_energy() > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": PAN_JUE_TIAN_PING, "need_card": 0, "need_target": 0,
 			"arg_choices": [
 				{"text": 提示(PAN_JUE_TIAN_PING, 0), "args": [0]},
@@ -60,7 +63,7 @@ func is_free_skill(skill_id: int) -> bool:
 # ============================================================
 func v_allow_action(action_type: int, args: Array, allow: int, can_give_up: bool) -> int:
 	var base: int = player.base_v_allow_action(action_type, args, allow, can_give_up)
-	if int(player.tokens[0]["num"]) < TOKEN_MAX:
+	if int(player.tokens[0]["num"]) < _shen_pan_max():
 		return base
 	# 服务端 ZhongCai::v_allow_action：满审判时仍允许「放弃行动」
 	if can_give_up and action_type == GConst.ActionType.None:
@@ -164,7 +167,7 @@ func v_magic_skill(action: Dictionary) -> int:
 			if action.get("dst_ids", []).is_empty():
 				return GConst.GE_INVALID_ACTION
 		PAN_JUE_TIAN_PING:
-			if token >= TOKEN_MAX or action.get("args", []).is_empty() or player.get_energy() == 0:
+			if token >= _shen_pan_max() or action.get("args", []).is_empty() or player.get_energy() == 0:
 				return GConst.GE_INVALID_ACTION
 		_:
 			return GConst.GE_INVALID_ACTION
@@ -213,7 +216,7 @@ func _pan_jue_tian_ping(action: Dictionary) -> int:
 	else:
 		var need: int = player.hand_cards_max - player.hand_cards.size()
 		if need > 0:
-			engine.draw(player.id, need)
+			engine.push_draw(player.id, need)
 		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 	engine._broadcast_game()
 	return SUCCESS

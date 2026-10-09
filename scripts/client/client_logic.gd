@@ -18,6 +18,8 @@ signal turn_changed(player_id: int, round_id: int)
 signal hit_received(src_id: int, dst_id: int, hit: int)
 signal card_shown(msg: Dictionary)
 signal hurt_received(msg: Dictionary)
+## 受伤飘字：本次伤害点数（含各类加成，尚未经治疗抵挡/抵御扣减）（dst_id、点数、伤害类型）
+signal hurt_float_received(dst_id: int, point: int, harm_type: int)
 signal skill_received(msg: Dictionary)
 signal role_pick_required(data: Dictionary)
 signal role_pick_submitted(strategy: int, role_ids: Array)
@@ -90,6 +92,9 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 			card_shown.emit(data)
 		GConst.Msg.Hurt:
 			hurt_received.emit(data)
+		GConst.Msg.HurtFloat:
+			hurt_float_received.emit(int(data.get("dst_id", -1)), int(data.get("point", 0)),
+				int(data.get("type", 0)))
 		GConst.Msg.Skill:
 			skill_received.emit(data)
 		GConst.Msg.RoleReq:

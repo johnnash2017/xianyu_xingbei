@@ -289,9 +289,17 @@ func _tian_shi_zhu_fu(action: Dictionary) -> int:
 # ============================================================
 # 神之庇护（706，服务端 TianShi::p_lose_morale）
 # 我方角色因法术伤害将掉士气时（在超限掉士气的可等待钩子轮次里），
-# 可消耗能量抵消等量士气损失；宝石数与水晶数由玩家自己分配
-# （对照服务端 respond->args(0)=宝石数、args(1)=水晶数）
+# 可消耗能量抵消等量士气损失（对照服务端 respond->args(0)=宝石数、args(1)=水晶数）
+# 分两步问：先选「不抵挡」或「抵挡几点」；选定点数后再问用哪几颗星石来付
 # ============================================================
+## 推进标记（跨两次询问，不能停在引擎 step 上）：0＝还没问 / 1＝在等「挡几点」 / 2＝在等「花哪几颗星石」
+var _bi_hu_step: int = 0
+## 第一步选定的抵挡点数（第二步按它列凑得出来的付法）
+var _bi_hu_抵挡点数: int = 0
+## 星石组合的选项值编码：宝石数 × 基数 + 水晶数（服务端口径是「各交几颗」，一个值装不下两个数）
+const 星石编码基数: int = 100
+
+
 func p_lose_morale(ctx: Dictionary) -> int:
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null or dst.color != player.color:
@@ -304,34 +312,68 @@ func p_lose_morale(ctx: Dictionary) -> int:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
-	if not engine.has_reply():
-		# 本引擎一次只能回一个值，故把「宝石数 × 水晶数」编码进选项值（宝石*100 + 水晶）。
-		# 客户端会把它们弹成居中的选项窗（含「不抵挡」那项：编码 0 → 下面判总能量 <= 0 直接放弃）
+	if _bi_hu_step == 0:
+		# 第一步：不抵挡 / 抵挡 1..上限 点（上限 = min(本次损失, 手上星石总数)）
+		# 提示里带上本次要损失多少士气（技能表提示写 {损失}，这里用 额外 填进去）
 		var 上限: int = mini(amount, player.get_energy())
-		var options: Array = [{"value": 0, "label": 提示(SHEN_ZHI_BI_HU, 1)}]
-		for g: int in range(0, player.gem + 1):
-			for c: int in range(0, player.crystal + 1):
-				var 总: int = g + c
-				if 总 <= 0 or 总 > 上限:
-					continue
-				options.append({"value": g * 100 + c, "label": 提示(SHEN_ZHI_BI_HU, 2, g, -1, {"n2": c, "n3": 总})})
-		询问(player.id, SHEN_ZHI_BI_HU, 0, 0, GConst.CardSource.Hand, options)
+		var options: Array = [{"value": 0, "label": "不抵挡"}]
+		for x: int in range(1, 上限 + 1):
+			options.append({"value": x, "label": "抵挡 %d 点士气损失" % x})
+		询问(player.id, SHEN_ZHI_BI_HU, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true, 0, -1, [], -1, {"损失": amount})
+		_bi_hu_step = 1
 		return WAIT
+	if _bi_hu_step == 1:
+		var r0: Dictionary = take_skill_reply_full()
+		var args0: Array = r0.get("args", [])
+		# 取消（没回值）与「不抵挡」同义：不消耗星石，士气照掉
+		if args0.is_empty() or int(args0[0]) <= 0:
+			_bi_hu_step = 0
+			step = STEP_DONE
+			return SUCCESS
+		# 第二步：挡几点已定，只挑用哪几颗星石付（宝石 / 水晶各几颗由玩家自己配）；
+		# 提示换成「本次抵挡 X 点」（技能表提示写 {抵挡}）
+		_bi_hu_抵挡点数 = int(args0[0])
+		询问(player.id, SHEN_ZHI_BI_HU, 0, 0, GConst.CardSource.Hand, _bi_hu_组合选项(_bi_hu_抵挡点数),
+			0, "", [], true, 1, -1, [], -1, {"抵挡": _bi_hu_抵挡点数})
+		_bi_hu_step = 2
+		return WAIT
+	var r1: Dictionary = take_skill_reply_full()
+	var args1: Array = r1.get("args", [])
+	var 抵挡点数: int = _bi_hu_抵挡点数
+	_bi_hu_抵挡点数 = 0
+	_bi_hu_step = 0
 	step = STEP_DONE
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var 编码: int = int(args[0]) if not args.is_empty() else 0
-	var 用宝石: int = 编码 / 100
-	var 用水晶: int = 编码 % 100
-	var 总能量: int = 用宝石 + 用水晶
-	if 总能量 <= 0 or 用宝石 > player.gem or 用水晶 > player.crystal or 总能量 > amount:
+	if args1.is_empty():
+		return SUCCESS
+	var 值: int = int(args1[0])
+	var 用宝石: int = 值 / 星石编码基数
+	var 用水晶: int = 值 % 星石编码基数
+	if 用宝石 + 用水晶 != 抵挡点数 or 用宝石 + 用水晶 > amount \
+			or 用宝石 > player.gem or 用水晶 > player.crystal:
 		return SUCCESS
 	notice_skill(SHEN_ZHI_BI_HU, [dst.id])
 	player.set_gem(player.gem - 用宝石)
 	player.set_crystal(player.crystal - 用水晶)
-	ctx["amount"] = amount - 总能量
+	ctx["amount"] = amount - 用宝石 - 用水晶
 	engine._broadcast_game()
 	return SUCCESS
+
+
+## 【神之庇护】第二步的可选项：凑够 总 颗星石的各种付法（宝石 a + 水晶 b，a + b = 总）。
+## 排序「水晶在前、宝石在后」（最少宝石 → 最多宝石）；总 ≤ 手上宝石+水晶，故至少有一项
+func _bi_hu_组合选项(总: int) -> Array:
+	var 最少宝石: int = maxi(0, 总 - player.crystal)
+	var 最多宝石: int = mini(总, player.gem)
+	var out: Array = []
+	for 宝石数: int in range(最少宝石, 最多宝石 + 1):
+		var 水晶数: int = 总 - 宝石数
+		var 明细: String = ""
+		if 水晶数 > 0:
+			明细 = "水晶 %d" % 水晶数
+		if 宝石数 > 0:
+			明细 = ("宝石 %d" % 宝石数) + (" + " + 明细 if 明细 != "" else "")
+		out.append({"value": 宝石数 * 星石编码基数 + 水晶数, "label": 明细})
+	return out
 
 
 # ============================================================

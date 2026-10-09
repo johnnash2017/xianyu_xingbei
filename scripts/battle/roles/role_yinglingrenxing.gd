@@ -4,9 +4,9 @@ extends BattleRole
 ##       魔纹融合（响应 2701：主动攻击未命中时翻转 1 个【魔纹】，弃 X 张异系牌对目标造成 (X-1) 点法术伤害；
 ##         两者在同一次未命中里二选一，不能同时发动）、
 ##       战纹碎击（响应 2703：主动攻击命中时，翻转 1 个【战纹】，弃 X 张同系牌使本次伤害 +(X-1)）、
-##       符文改造（启动 2705：宝石 ×1 转为【蓄势迸发形态】，手牌上限 +2、摸 2 张牌并重排【战纹】/【魔纹】）、
+##       符文改造（启动 2705：宝石 ×1 转为【蓄势迸发形态】，手牌上限 +1、摸 1 张牌并重排【战纹】/【魔纹】）、
 ##       双重回响（响应 2706：对目标造成伤害时，能量 ×1 对另一目标造成等量（最高 3）法术伤害，且不造成士气下降）
-## 【战纹】tokens[0]、【魔纹】tokens[1]，上限之和为 3；【蓄势迸发形态】用 tap 表示。
+## 【战纹】tokens[0]、【魔纹】tokens[1】，上限见角色表；【蓄势迸发形态】用 tap 表示。
 
 const NU_HUO_YA_ZHI: int = 2704       # 怒火压制（响应）
 const MO_WEN_RONG_HE: int = 2701      # 魔纹融合（响应）
@@ -21,8 +21,7 @@ const SHUANG_CHONG_HUI_XIANG: int = 2706 # 双重回响（响应）
 
 const TOKEN_ZHAN_WEN: int = 0         # 「战纹」指示物下标
 const TOKEN_MO_WEN: int = 1           # 「魔纹」指示物下标
-const TOKEN_MAX: int = 3
-const FU_WEN_HAND_ADD: int = 2        # 符文改造期间手牌上限 +2
+const FU_WEN_HAND_ADD: int = 1        # 符文改造期间手牌上限 +1
 
 enum ElementKind { Invalid = 0, AllDifferent = 1, AllSame = 2 }
 
@@ -31,15 +30,15 @@ var shuangChongHuiXiangUsed: bool = false
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
-	p.tokens[TOKEN_ZHAN_WEN] = {"name": "战纹", "max": TOKEN_MAX, "num": 3}
-	p.tokens[TOKEN_MO_WEN] = {"name": "魔纹", "max": TOKEN_MAX, "num": 0}
+	# 【战纹】开局就带 3 点（表里只记上限，初始数量在这里补）
+	p.tokens[TOKEN_ZHAN_WEN]["num"] = 3
 
 
 ## 行动阶段可发动的技能：【符文改造】为「启动」，不消耗行动
 ## （is_free_skill 认可，发动后引擎重新进入行动阶段让玩家继续本回合行动）
 func available_skills() -> Array:
 	var out: Array = []
-	# 符文改造：有宝石时才能发动（耗 1 宝石并横置进入蓄势迸发形态、手牌上限 +2、摸 2 张）；
+	# 符文改造：有宝石时才能发动（耗 1 宝石并横置进入蓄势迸发形态、手牌上限 +1、摸 1 张）；
 	# 重排【战纹】/【魔纹】的取值做成参数按钮，点哪个即以该值作为 args[0] 提交
 	if player.gem > 0:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": FU_WEN_GAI_ZAO,
@@ -63,12 +62,16 @@ func _mo_wen() -> int:
 	return int(player.tokens[TOKEN_MO_WEN]["num"])
 
 
+func _wen_max() -> int:
+	return int(player.tokens[TOKEN_ZHAN_WEN]["max"])
+
+
 func _set_zhan_wen(v: int) -> void:
-	player.tokens[TOKEN_ZHAN_WEN]["num"] = clampi(v, 0, TOKEN_MAX)
+	player.tokens[TOKEN_ZHAN_WEN]["num"] = clampi(v, 0, _wen_max())
 
 
 func _set_mo_wen(v: int) -> void:
-	player.tokens[TOKEN_MO_WEN]["num"] = clampi(v, 0, TOKEN_MAX)
+	player.tokens[TOKEN_MO_WEN]["num"] = clampi(v, 0, _wen_max())
 
 
 # ============================================================
@@ -83,8 +86,8 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 ## 点哪个即以该项 args[0]（要保留的【战纹】数）作为技能参数提交
 func _fu_wen_gai_zao_choices() -> Array:
 	var out: Array = []
-	for n: int in range(0, TOKEN_MAX + 1):
-		out.append({"text": 提示(FU_WEN_GAI_ZAO, 0, n, -1, {"n2": TOKEN_MAX - n}), "args": [n]})
+	for n: int in range(0, _wen_max() + 1):
+		out.append({"text": 提示(FU_WEN_GAI_ZAO, 0, n, -1, {"n2": _wen_max() - n}), "args": [n]})
 	return out
 
 
@@ -102,7 +105,7 @@ func v_special_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	var args: Array = action.get("args", [])
 	# 对照原版 FuWenGaiZaoToken 的超时分支：没给重排值（超时）按 1 处理，发动照旧成立
-	if not args.is_empty() and (int(args[0]) < 0 or int(args[0]) > TOKEN_MAX):
+	if not args.is_empty() and (int(args[0]) < 0 or int(args[0]) > _wen_max()):
 		return GConst.GE_INVALID_ARGUMENT
 	return GConst.GE_SUCCESS
 
@@ -114,7 +117,7 @@ func p_special_skill(action: Dictionary) -> int:
 	return SUCCESS
 
 
-## 符文改造：消耗 1 宝石转为蓄势迸发形态，手牌上限 +2 并摸 2 张牌，再按所选值重排【战纹】/【魔纹】
+## 符文改造：消耗 1 宝石转为蓄势迸发形态，手牌上限 +1 并摸 1 张牌，再按所选值重排【战纹】/【魔纹】
 func _apply_fu_wen_gai_zao(action: Dictionary) -> void:
 	var args: Array = action.get("args", [])
 	# 对照原版：重排值缺省（超时）时按 1 处理
@@ -123,10 +126,10 @@ func _apply_fu_wen_gai_zao(action: Dictionary) -> void:
 	player.boot_skill_used = true
 	player.set_gem(player.gem - 1)
 	player.hand_cards_max += FU_WEN_HAND_ADD
-	engine.draw(player.id, 2)
+	engine.push_draw(player.id, 1)
 	engine.set_tap(player.id, true)
 	_set_zhan_wen(num)
-	_set_mo_wen(TOKEN_MAX - _zhan_wen())
+	_set_mo_wen(_wen_max() - _zhan_wen())
 	engine._broadcast_game()
 
 
@@ -147,8 +150,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	# 弃不出 2 张同系牌时条件不足，不响应（响应了也选不出牌，白弹一次询问）
-	if _zhan_wen() == 0 or not _可弃同系():
+	# 只要还有【战纹】、且手上凑得出 2 张牌就问（同系牌至少要 2 张，手牌不足 2 张根本选不出来）
+	if _zhan_wen() == 0 or player.hand_count() < 2:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
@@ -256,19 +259,17 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 func _nu_huo_xuan(ctx: Dictionary) -> int:
 	var dst_id: int = int(ctx.get("dst", -1))
 	if not engine.has_reply():
-		# 只列当前真能发动的项：怒火压制要 1 个【战纹】；魔纹融合要 1 个【魔纹】、且手牌凑得出
-		# 2 张互异系牌（凑不出就没法弃，弃不出就结算不了）。不满足的不给 —— 给了也是白点
-		# （结算时会被判无效 / 只能取消，看着像「点了没反应」）
+		# 只列当前真有底子的项：怒火压制要 1 个【战纹】；魔纹融合要 1 个【魔纹】且手上凑得出 2 张牌
+		# （弃牌至少 2 张）。凑不出那 2 张就不列这一档 —— 连牌都选不出来，点了只会卡住
 		var 选项: Array = []
 		# need_card：这一项选中之后要弃几张牌（怒火压制一张不用，魔纹融合至少 2 张）；
 		# 客户端据此决定「选中它之后才放出手牌可选」，两项在同一次询问里选完
 		if _zhan_wen() >= 1:
 			选项.append({"value": CHOICE_NU_HUO_YA_ZHI, "label": 提示(NU_HUO_YA_ZHI, 0),
 				"skill_id": NU_HUO_YA_ZHI, "need_card": 0})
-		# 弃不出 2 张互异系牌时这一档条件不足，不列出（凑不出来只能取消，白弹一次询问）
-		if _mo_wen() >= 1 and _可弃异系():
+		if _mo_wen() >= 1 and player.hand_count() >= 2:
 			# 额外翻转（说明：仅【蓄势迸发形态】（横置）下才可额外翻转 Y 个【魔纹】）
-			var 可额外: int = maxi(mini(_mo_wen() - 1, TOKEN_MAX - _zhan_wen() - 1), 0) if player.tap else 0
+			var 可额外: int = maxi(mini(_mo_wen() - 1, _wen_max() - _zhan_wen() - 1), 0) if player.tap else 0
 			for y: int in range(0, 可额外 + 1):
 				var 名: String = 提示(MO_WEN_RONG_HE, 1) if y == 0 else 提示(MO_WEN_RONG_HE, 2, y)
 				选项.append({"value": CHOICE_MO_WEN_RONG_HE + y, "label": 名,
@@ -459,31 +460,3 @@ func _has_cards(cards: Array) -> bool:
 		if not player.has_hand_card(int(c)):
 			return false
 	return true
-
-
-## 手牌按系别归类（系别 → 张数）：战纹碎击要「同系 ≥2 张」、魔纹融合要「互异系 ≥2 张」，
-## 凑不齐时条件不足，就不该弹那条询问（弹了也选不出牌）
-func _手牌系别统计() -> Dictionary:
-	var 统计: Dictionary = {}
-	for cid: int in player.hand_cards:
-		var card: GCard = Data.get_card(cid)
-		if card == null:
-			continue
-		var 系: int = card.element_enum()
-		统计[系] = int(统计.get(系, 0)) + 1
-	return 统计
-
-
-## 手牌能不能凑出 ≥2 张同系牌（战纹碎击的弃牌条件：弃 X 张同系牌，X ≥ 2）
-func _可弃同系() -> bool:
-	var 统计: Dictionary = _手牌系别统计()
-	for 系: Variant in 统计:
-		if int(统计[系]) >= 2:
-			return true
-	return false
-
-
-## 手牌能不能凑出 ≥2 张互异系牌（魔纹融合的弃牌条件：弃 X 张互异系牌，X ≥ 2；
-## 互异系最多 = 手牌里不同系别的种类数，每种只取 1 张）
-func _可弃异系() -> bool:
-	return _手牌系别统计().size() >= 2

@@ -397,7 +397,9 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	var 专属来源: Array = pi.get("ex_from", [])
 	for i: int in range(mini(专属.size(), 专属来源.size())):
 		p.set_special_from(int(专属[i]), int(专属来源[i]))
-	# 指示物：槽0→third_token、槽1→yellow_token、槽2→blue_token；名称/上限取角色专属定义
+	# 指示物：槽0→third_token、槽1→yellow_token、槽2→covered_count；名称/上限取角色专属定义。
+	# 槽 2 是「盖牌」（茧 / 剑魂 / 充能 / 祝福 / 暗月 …）：服务端只把它写进盖牌区（cover_cards），
+	# 从不填 tokens[2]，所以这里必须取 covered_count —— 之前取 blue_token 恒为 0，盖牌数永远显示 0
 	p.tokens[0] = null
 	p.tokens[1] = null
 	p.tokens[2] = null
@@ -406,7 +408,7 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 		match slot:
 			0: 值 = int(pi.get("third_token", 0))
 			1: 值 = int(pi.get("yellow_token", 0))
-			2: 值 = int(pi.get("blue_token", 0))
+			2: 值 = int(pi.get("covered_count", 0))
 		if 值 <= 0:
 			continue
 		var 定义: Dictionary = role_token_def(p.role_id, slot)

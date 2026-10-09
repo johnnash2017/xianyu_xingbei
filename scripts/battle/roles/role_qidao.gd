@@ -2,29 +2,23 @@ extends BattleRole
 ## 祈祷师（roleID 16）—— 移植自服务端 role/QiDao.cpp
 ## 技能：祈祷（启动 1603：横置并消耗 1 宝石进入祈祷形态）、
 ##       光辉信仰（法术 1604：祈祷形态下移除 1 符文，弃 min(2, 手牌) 张牌，我方 +1 宝石，目标队友 +1 治疗）、
-##       漆黑信仰（法术 1605：祈祷形态下移除 1 符文，对目标与自己各造成 2 点法术伤害）、
-##       威力赐福（法术 1601：放置于队友面前，其攻击命中时可移除此牌使本次伤害 +2）、
-##       迅捷赐福（法术 1602：放置于队友面前，其行动结束时可移除此牌获得 +1 攻击行动）、
+##       黑暗诅咒（法术 1605：祈祷形态下移除 1 符文，对目标与自己各造成 2 点法术伤害）、
+##       迅捷赐福（法术 1601：放置于队友面前，其行动结束时可移除此牌获得 +1 攻击行动）、
+##       威力赐福（法术 1602：放置于队友面前，其攻击命中时可移除此牌使本次伤害 +2）、
 ##       法力潮汐（法术行动结束后 1606：消耗 1 能量获得 +1 法术行动，回合限定）
-## 【符文】放置于 tokens[0]，上限 3；【祈祷形态】用 tap 表示。
+## 【符文】放置于 tokens[0]，上限见角色表；【祈祷形态】用 tap 表示。
 
 const XUN_JIE_CI_FU: int = 1601      # 迅捷赐福（法术技能）
 const WEI_LI_CI_FU: int = 1602       # 威力赐福（法术技能）
 const QI_DAO: int = 1603             # 祈祷（启动）
 const GUANG_HUI_XIN_YANG: int = 1604 # 光辉信仰（法术技能）
-const QI_HEI_XIN_YANG: int = 1605    # 漆黑信仰（法术技能）
+const QI_HEI_XIN_YANG: int = 1605    # 黑暗诅咒（法术技能）
 const FA_LI_CHAO_XI: int = 1606      # 法力潮汐（额外行动）
 
 const TOKEN_QI_DAO_FU_WEN: int = 0   # 「符文」指示物下标
-const TOKEN_QI_DAO_FU_WEN_MAX: int = 3
 
 ## 法力潮汐的回合限定标记
 var used_FaLiChaoXi: bool = false
-
-
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	p.tokens[TOKEN_QI_DAO_FU_WEN] = {"name": "符文", "max": TOKEN_QI_DAO_FU_WEN_MAX, "num": 0}
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
@@ -123,6 +117,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 
 # ============================================================
 # 攻击命中后：威力赐福（放在攻击者面前的基础效果）
+# 该钩子对每个玩家的角色各广播一次，故只认「由自己放的」那张赐福牌，
+# 否则同桌另一名祈祷师会就同一张赐福再问同一名攻击者一次
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
@@ -132,7 +128,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var attacker: BattlePlayer = engine.p(attacker_id)
 	if attacker == null:
 		return SUCCESS
-	var effect_card: int = _find_effect_card(attacker, WEI_LI_CI_FU)
+	var effect_card: int = _find_effect_card(attacker, WEI_LI_CI_FU, player.id)
 	if effect_card < 0:
 		return SUCCESS
 	if not engine.has_reply():
@@ -314,7 +310,7 @@ func _guang_hui_xin_yang(action: Dictionary) -> int:
 	return SUCCESS
 
 
-## 漆黑信仰：移除 1 符文，对目标与自己各造成 2 点法术伤害
+## 黑暗诅咒：移除 1 符文，对目标与自己各造成 2 点法术伤害
 func _qi_hei_xin_yang(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
@@ -394,8 +390,11 @@ func _check_ci_fu_target(action: Dictionary, 技能号: int) -> bool:
 	return true
 
 
-func _find_effect_card(target: BattlePlayer, 技能号: int) -> int:
+func _find_effect_card(target: BattlePlayer, 技能号: int, 施术者: int = -1) -> int:
 	for be: Dictionary in target.basic_effects:
+		# 带 施术者 时只认这名角色放的那张（同名赐福牌可由不同祈祷师各放一张）
+		if 施术者 >= 0 and int(be.get("src", -1)) != 施术者:
+			continue
 		var c: GCard = Data.get_card(int(be["card"]))
 		if c != null and c.has_skill_id(技能号):
 			return int(be["card"])

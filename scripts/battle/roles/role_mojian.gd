@@ -5,9 +5,10 @@ extends BattleRole
 ##       暗影凝聚（902，启动：对自身 1 点法术伤害，进入[暗影形态]）、
 ##       暗影之力（903，被动：仅[暗影形态]下，自身发动的攻击伤害 +1）、
 ##       暗影抗拒（904，被动：你的行动阶段始终不能使用法术牌，含【圣光】—— 由 v_allow_action / v_block 覆写实现）、
-##       暗影流星（905，法术：仅[暗影形态]下，弃 2 张法术牌[展示]，对目标 2 点法术伤害）、
-##       黄泉震颤（906，攻击技能：选一张攻击牌+一名对手直接发起攻击，耗 1 宝石，本次攻击对方无法应战；
-##                 若命中则手牌补到上限（9061，多则弃、少则摸））
+##       暗影流星（905，法术：仅[暗影形态]下，弃 2 张法术牌[展示]，对目标 2 点法术伤害；
+##                 可额外移除我方【战绩区】2 星石 → 脱离[暗影形态]并 +1【宝石】）、
+##       黄泉震颤（906，响应：带此特技的攻击牌作为主动攻击打出时可选，耗 1 宝石，本次攻击对方无法应战；
+##                 若命中则手牌补到上限（9061，多则弃、少则摸），随后再弃 2 张牌）
 
 const XIU_LUO_LIAN_ZHAN: int = 901
 const AN_YING_NING_JU: int = 902
@@ -16,6 +17,8 @@ const AN_YING_KANG_JU: int = 904
 const AN_YING_LIU_XING: int = 905
 const HEI_AN_ZHEN_CHAN: int = 906
 const HEI_AN_ZHEN_CHAN_BU_PAI: int = 9061
+## 【黄泉震颤】补牌之后的「再弃 2 张牌」阶段标记（不是独立技能，仅作流程子步骤号）
+const HEI_AN_ZHEN_CHAN_QI_PAI: int = 9062
 
 var used_xiu_luo_lian_zhan: bool = false
 var using_xiu_luo_lian_zhan: bool = false
@@ -101,13 +104,16 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 
 
 ## 【修罗连斩】的额外攻击行动期间只能出火系攻击牌：给界面一份合法手牌白名单，其余牌置灰
+## （同【风怒追击】：一张火系攻击牌都没有时显式发「全禁」白名单，
+##   免得空列表被当成「不限制」、手牌又全亮起来）
 func action_card_ids(action_type: int) -> Array:
 	if not using_xiu_luo_lian_zhan or action_type != GConst.ActionType.Attack:
 		return []
-	return _fire_attack_card_ids()
+	var out: Array = _fire_attack_card_ids()
+	return out if not out.is_empty() else [GConst.手牌白名单_全禁]
 
 
-## 手里能用于【修罗连斩】的火系攻击牌（一张都没有就发不出这次额外攻击）
+## 手里能用于【修罗连斩】的火系攻击牌（一张都没有时这次额外攻击行动出不了任何牌，只能放弃行动）
 func _fire_attack_card_ids() -> Array:
 	var out: Array = []
 	for cid: int in player.hand_cards:
@@ -173,59 +179,6 @@ func p_special_skill(_action: Dictionary) -> int:
 
 
 # ============================================================
-# 黄泉震颤（906，攻击技能）：选一张攻击牌 + 一名对手，直接发起一次主动攻击
-# ============================================================
-## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
-## p_timeline_1 据此直接结算黄泉震颤，用完即清
-var _预选攻击技能: int = 0
-
-
-func v_attack_skill(action: Dictionary) -> int:
-	if int(action.get("src_id", -1)) != player.id:
-		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) != HEI_AN_ZHEN_CHAN:
-		return GConst.GE_INVALID_ACTION
-	# 技能自身条件：宝石 ≥ 1 且本回合未发动过
-	if player.gem <= 0 or used_hei_an_zhen_chan:
-		return GConst.GE_INVALID_ACTION
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	if cards.is_empty() or dsts.is_empty():
-		return GConst.GE_INVALID_ARGUMENT
-	var cid: int = int(cards[0])
-	var dst_id: int = int(dsts[0])
-	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
-	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_ACTION
-	var dst: BattlePlayer = engine.p(dst_id)
-	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_PLAYERID
-	return GConst.GE_SUCCESS
-
-
-## 黄泉震颤：打出所选攻击牌发起一次主动攻击。
-## 回合结束由引擎的技能行动入栈（与普通技能一致），这里只补这次攻击本身；
-## 攻击宣告后 p_timeline_1 会依据 _预选攻击技能 直接结算（不再弹窗询问）
-func p_attack_skill(action: Dictionary) -> int:
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	var cid: int = int(cards[0])
-	var dst_id: int = int(dsts[0])
-	_预选攻击技能 = HEI_AN_ZHEN_CHAN
-	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
-		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
-	}
-	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
-	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
-	})
-	return URGENT
-
-
-# ============================================================
 # 主动攻击前（timeline_1）：黄泉震颤（906）
 # ============================================================
 ## 【黄泉震颤】的推进阶段（0＝还没问 / 处理完本次询问后清回 0）。
@@ -250,21 +203,15 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	# 本次主动攻击是否由技能栏【黄泉震颤】发起（预选命中）：是则直接结算，不再弹窗询问
-	var 预选: int = _预选攻击技能
-	_预选攻击技能 = 0
-	if 预选 == HEI_AN_ZHEN_CHAN:
-		if player.gem <= 0 or used_hei_an_zhen_chan:
-			return SUCCESS
-		_huang_quan_zhen_chan(ctx)
-		return SUCCESS
-	# 普通出牌攻击（预选为 0）：询问是否发动【黄泉震颤】
+	# 普通出牌攻击：询问是否发动【黄泉震颤】
 	if player.gem <= 0 or used_hei_an_zhen_chan:
 		return SUCCESS
 	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, HEI_AN_ZHEN_CHAN, 0, 0)
+		# 这次只问「要不要发动」，用客户端自带的那句「是否发动【黄泉震颤】？」即可 ——
+		# 序号给 1（表里只配了第 1 条提示，留给下面「弃 2 张牌」那次），取不到就退回默认文案
+		询问(player.id, HEI_AN_ZHEN_CHAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true, 1)
 		return WAIT
 	_timeline_1_step = 0
 	if not take_skill_reply():
@@ -298,7 +245,14 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			harm["point"] = int(harm.get("point", 0)) + 1
 		_timeline_2_hit_step = HEI_AN_ZHEN_CHAN_BU_PAI
 	if _timeline_2_hit_step == HEI_AN_ZHEN_CHAN_BU_PAI:
-		return _hei_an_zhen_chan_bu_pai()
+		var r: int = _hei_an_zhen_chan_bu_pai()
+		if r == WAIT:
+			return WAIT
+		if r == URGENT:
+			# 补牌已压进状态栈但还没结算：先让引擎把摸牌（含水影响应）跑完，再回来走「再弃 2 张」
+			return URGENT
+	if _timeline_2_hit_step == HEI_AN_ZHEN_CHAN_QI_PAI:
+		return _hei_an_zhen_chan_qi_pai()
 	return SUCCESS
 
 
@@ -308,7 +262,7 @@ func p_attack_preview(_ctx: Dictionary) -> int:
 	return 1 if player.tap else 0
 
 
-## 黄泉震颤补牌：命中后把手牌补到上限（多于上限则弃、少于上限则摸）
+## 黄泉震颤补牌：命中后把手牌补到上限（多于上限则弃、少于上限则摸），随后进入「再弃 2 张牌」阶段
 func _hei_an_zhen_chan_bu_pai() -> int:
 	if not using_hei_an_zhen_chan:
 		_timeline_2_hit_step = 0
@@ -319,18 +273,35 @@ func _hei_an_zhen_chan_bu_pai() -> int:
 			询问(player.id, HEI_AN_ZHEN_CHAN_BU_PAI, num, 0)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
-		_timeline_2_hit_step = 0
+		_timeline_2_hit_step = HEI_AN_ZHEN_CHAN_QI_PAI
 		using_hei_an_zhen_chan = false
 		notice_skill(HEI_AN_ZHEN_CHAN_BU_PAI, [player.id])
 		_discard_exact(num, r.get("card_ids", []))
 		engine._broadcast_game()
 		return SUCCESS
-	_timeline_2_hit_step = 0
+	_timeline_2_hit_step = HEI_AN_ZHEN_CHAN_QI_PAI
 	using_hei_an_zhen_chan = false
 	if num < 0:
 		notice_skill(HEI_AN_ZHEN_CHAN_BU_PAI, [player.id])
-		engine.draw(player.id, -num)
+		# 先摸牌（push_draw，含【水影】等摸牌前响应）再弃 2 张：这里返回 URGENT，让引擎先把摸牌跑完，
+		# 之后再回到本钩子走 QI_PAI 那一步 —— 摸牌改走 push_draw 后是延迟结算的，
+		# 直接往下走会变成先弃 2 张、最后才补牌
+		engine.push_draw(player.id, -num)
 		engine._broadcast_game()
+		return URGENT
+	return SUCCESS
+
+
+## 黄泉震颤：补手牌至上限之后，再弃 2 张牌（玩家自选，强制弃满 2 张）
+## 文案取技能表【黄泉震颤】「提示」列第 1 条（序号 0）
+func _hei_an_zhen_chan_qi_pai() -> int:
+	if not engine.has_reply():
+		询问(player.id, HEI_AN_ZHEN_CHAN, 2, 0, GConst.CardSource.Hand, [], 0, "", [], false, 0)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	_timeline_2_hit_step = 0
+	_discard_exact(2, r.get("card_ids", []))
+	engine._broadcast_game()
 	return SUCCESS
 
 
@@ -366,10 +337,9 @@ func p_after_attack(ctx: Dictionary) -> int:
 func v_additional_action(cause: int) -> int:
 	if cause != XIU_LUO_LIAN_ZHAN:
 		return V_NOT_OVERRIDE
+	# 只限「本回合一次」；手里有没有火系攻击牌不再拦「确定」——
+	# 没有火系牌时也照样给这一份额外攻击行动（出牌时才由 v_attack 要求火系，没牌就只能放弃行动）
 	if used_xiu_luo_lian_zhan:
-		return GConst.GE_INVALID_ACTION
-	# 手里没有火系攻击牌：发动了也出不了牌 —— 让界面把「确定」置灰（「取消」仍可跳过）
-	if _fire_attack_card_ids().is_empty():
 		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 
@@ -391,6 +361,11 @@ func p_additional_action(ctx: Dictionary) -> int:
 # ============================================================
 # 主动法术技能：暗影流星（905）
 # ============================================================
+## 暗影流星追加效果的推进标记（跨询问，不能停在引擎 step 上）：
+## 0＝还没问 / 1＝在等「要不要移除」 / 2＝在等「移除哪两颗」
+var _liu_xing_step: int = 0
+
+
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
@@ -410,6 +385,38 @@ func v_magic_skill(action: Dictionary) -> int:
 func p_magic_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != AN_YING_LIU_XING:
 		return GConst.GE_INVALID_ACTION
+	# 可选追加：额外移除我方【战绩区】2 星石 → 脱离[暗影形态]并 +1【宝石】（跨两次询问）。
+	# 这两步都是「释放暗影流星」的一部分：任意一步取消（没回值）＝这次不发动暗影流星，
+	# 牌不弃、不造成伤害，直接退回行动阶段重新来（同【不谐和弦】，见 engine.取消技能行动）。
+	# 第一步只问「要不要移除」（第一项固定是「不移除」，选了才继续走原效果；
+	# 一颗可行组合都没有时干脆不问）；选定要移除后第二步再问「移除哪两颗」。
+	if _liu_xing_step == 0:
+		if not _liu_xing_组合选项().is_empty():
+			询问(player.id, AN_YING_LIU_XING, 0, 0, GConst.CardSource.Hand, [
+				{"value": 0, "label": "不移除"},
+				{"value": 1, "label": "扣除 2 个星石（脱离【暗影形态】，+1【宝石】）"},
+			], 0, "", [], true, 0)
+			_liu_xing_step = 1
+			return WAIT
+	elif _liu_xing_step == 1:
+		var r0: Dictionary = take_skill_reply_full()
+		var args0: Array = r0.get("args", [])
+		_liu_xing_step = 0
+		if args0.is_empty():
+			engine.取消技能行动()
+			return SUCCESS
+		if int(args0[0]) == 1:
+			询问(player.id, AN_YING_LIU_XING, 0, 0, GConst.CardSource.Hand, _liu_xing_组合选项(), 0, "", [], true, 1)
+			_liu_xing_step = 2
+			return WAIT
+	else:
+		var r1: Dictionary = take_skill_reply_full()
+		var args1: Array = r1.get("args", [])
+		_liu_xing_step = 0
+		if args1.is_empty():
+			engine.取消技能行动()
+			return SUCCESS
+		_应用暗影流星追加(int(args1[0]))
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
@@ -428,6 +435,39 @@ func p_magic_skill(action: Dictionary) -> int:
 	engine._log_discard(player.id, cards, false)
 	engine._broadcast_game()
 	return URGENT
+
+
+## 【暗影流星】第二步的可选项：按我方【战绩区】现有的星石，列出能凑出的两颗组合
+## （value 1＝两水晶 / 2＝一宝石一水晶 / 3＝两宝石）；一颗可行组合都没有时返回空
+func _liu_xing_组合选项() -> Array:
+	var 宝石: int = engine.team_gem[player.color]
+	var 水晶: int = engine.team_crystal[player.color]
+	var out: Array = []
+	if 水晶 >= 2:
+		out.append({"value": 1, "label": "移除 2 水晶"})
+	if 宝石 >= 1 and 水晶 >= 1:
+		out.append({"value": 2, "label": "移除 1 宝石 + 1 水晶"})
+	if 宝石 >= 2:
+		out.append({"value": 3, "label": "移除 2 宝石"})
+	return out
+
+
+## 结算【暗影流星】的追加效果：按 选择 移除我方【战绩区】两颗星石，脱离[暗影形态]并 +1【宝石】。
+## 选择 不是三种组合之一（玩家在第二步取消 / 回了空值）时什么也不做，只走原效果
+func _应用暗影流星追加(选择: int) -> void:
+	match 选择:
+		1:
+			engine.set_team_crystal(player.color, engine.team_crystal[player.color] - 2)
+		2:
+			engine.set_team_gem(player.color, engine.team_gem[player.color] - 1)
+			engine.set_team_crystal(player.color, engine.team_crystal[player.color] - 1)
+		3:
+			engine.set_team_gem(player.color, engine.team_gem[player.color] - 2)
+		_:
+			return
+	player.tap = false
+	player.set_gem(player.gem + 1)
+	engine._broadcast_game()
 
 
 # ============================================================

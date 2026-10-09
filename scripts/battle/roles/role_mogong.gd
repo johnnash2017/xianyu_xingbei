@@ -12,7 +12,7 @@ extends BattleRole
 ## 【启动】魔眼（2605）：耗 1 宝石。点技能时二选一 —— 点一名角色（别人弃 1 张牌 / 自己摸 3 张牌），
 ##                  或点一张自己的手牌弃掉；然后将 1 张手牌作为【充能】，+1 水晶
 ## 两者均为「启动」：显示为技能栏按钮，点了才发动，不消耗本回合行动
-## 【充能】为专属盖牌，上限 8
+## 【充能】为专属盖牌，上限见角色表
 
 const MO_GUAN_CHONG_JI: int = 2601
 const LEI_GUANG_SAN_SHE: int = 2602
@@ -39,29 +39,18 @@ var _available_mo_guan: bool = true
 var _available_lei_guang: bool = true
 var _available_duo_chong: bool = true
 ## 【魔贯冲击（2601）】的推进阶段（0＝还没开始 / MO_GUAN_CHONG_JI＝在问是否发动，收尾清回 0）。
-## 支持两种用法：技能栏按钮点开时一次性选好「攻击牌 + 火系【充能】+ 目标」（预选命中→直接结算，
-## 代价在 p_attack_skill 里移除）；
-## 普通出牌攻击（预选为 0）→ 按原版弹窗询问是否发动并由玩家选 1 张火系【充能】移除。
+## 带火系【充能】的普通出牌攻击按原版弹窗询问是否发动，发动则由玩家选 1 张火系【充能】移除。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零。
 ## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
 var _timeline_1_step: int = 0
-## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
-## p_timeline_1 据此直接结算【魔贯冲击】的加成，用完即清
-var _预选攻击技能: int = 0
 ## 【充能】的摸牌数（决定【充能改牌】可放入盖牌区的手牌数）
 var _chong_neng_num: int = 0
-## 待办的盖牌步骤（主技能号；0＝无）+ 最多可盖几张。盖牌不紧跟摸牌，而是挂到 p_after_special：
+## 待办的盖牌步骤（主技能号；0＝无）+ 最多可盖几张。盖牌不紧跟摸牌，而是挂在 p_cover_after_skill：
 ## 摸牌若顶过手牌上限，引擎会先结算爆牌 + 掉士气，再回到那里问盖牌（充能＝摸牌数、魔眼＝1）
 var _待盖牌技能: int = 0
 var _待盖牌上限: int = 0
 ## 上次主动攻击的目标（【多重射击】不能攻击同一目标）
 var _last_target: int = -1
-
-
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	# 【充能】为专属盖牌，上限 8（对应服务端 coverCardsMax = 8）
-	p.cover_cards_max = 8
 
 
 func available_skills() -> Array:
@@ -177,23 +166,6 @@ func _lei_guang_san_she(action: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击技能：魔贯冲击（服务端 v_attack_skill / p_attack_skill）
-# ============================================================
-func v_attack_skill(action: Dictionary) -> int:
-	if int(action.get("src_id", -1)) != player.id:
-		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) != MO_GUAN_CHONG_JI:
-		return GConst.GE_INVALID_ACTION
-	return _v_mo_guan_chong_ji(action)
-
-
-func p_attack_skill(action: Dictionary) -> int:
-	if int(action.get("action_id", 0)) != MO_GUAN_CHONG_JI:
-		return GConst.GE_INVALID_ACTION
-	return _p_mo_guan_chong_ji(action)
-
-
-# ============================================================
 # 攻击宣告后：魔贯冲击 / 多重射击的伤害修正
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
@@ -201,8 +173,6 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if src != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	_last_target = int(ctx.get("dst", -1))
-	var 预选: int = _预选攻击技能
-	_预选攻击技能 = 0
 	if _using_duo_chong:
 		# 多重射击：暗系攻击，对方无法应战且伤害 -1
 		ctx["hit_rate"] = GConst.HitRate.NoReattack
@@ -210,11 +180,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		h0["point"] = int(h0.get("point", 0)) - GConst.多重射击减伤
 		_using_duo_chong = false
 		return SUCCESS
-	if 预选 == MO_GUAN_CHONG_JI:
-		# 技能栏按钮路径：代价【充能】已在 p_attack_skill 里选好并移除，这里只结算加成
-		_结算魔贯冲击(ctx)
-		return SUCCESS
-	# 普通出牌攻击：恢复原版询问流程（是否发动【魔贯冲击】，发动则由玩家选 1 张火系【充能】移除）
+	# 普通出牌攻击：按原版询问流程（是否发动【魔贯冲击】，发动则由玩家选 1 张火系【充能】移除）
 	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
 	if _timeline_1_step == 0:
@@ -266,80 +232,10 @@ func _结算魔贯冲击(ctx: Dictionary) -> void:
 	var harm: Dictionary = ctx.get("harm", {})
 	harm["point"] = int(harm.get("point", 0)) + 1
 	_using_mo_guan = true
+	# 每次发动【魔贯冲击】都清空「命中追加」的推进阶段，好让本次命中仍能问一次是否追加
+	_mo_guan_hit_step = 0
 	_available_duo_chong = false
 	engine._broadcast_game()
-
-
-## 魔贯冲击的校验：本回合可用、所选手牌攻击牌与目标合法、火系【充能】代价合法
-func _v_mo_guan_chong_ji(action: Dictionary) -> int:
-	if not _available_mo_guan:
-		return GConst.GE_INVALID_ACTION
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	# 技能栏路径一次交两张：1 张手牌攻击牌 + 1 张火系【充能】
-	if cards.size() != 2 or dsts.is_empty():
-		return GConst.GE_INVALID_ARGUMENT
-	var 攻击牌: int = -1
-	var 充能: int = -1
-	for c: Variant in cards:
-		var v: int = int(c)
-		if player.cover_cards.has(v):
-			充能 = v
-		elif player.has_hand_card(v):
-			攻击牌 = v
-	if 攻击牌 < 0 or 充能 < 0:
-		return GConst.GE_INVALID_CARDID
-	if not _cover_ids_of_element(GConst.CardElement.Fire).has(充能):
-		return GConst.GE_INVALID_CARDID
-	var dst_id: int = int(dsts[0])
-	# 攻击牌来自手牌：通用攻击校验（含持有该牌、目标不同队、被挑衅限制）
-	if player.v_attack(攻击牌, dst_id, engine.players) != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_ACTION
-	var dst: BattlePlayer = engine.p(dst_id)
-	if dst == null or not _mo_guan_dst_ok(dst) or dst.v_attacked() != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_PLAYERID
-	return GConst.GE_SUCCESS
-
-
-## 魔贯冲击：移除所选的 1 张火系【充能】作为代价，再打出所选手牌攻击牌发起主动攻击
-##（伤害 +1 由 p_timeline_1 结算）
-func _p_mo_guan_chong_ji(action: Dictionary) -> int:
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	var dst_id: int = int(dsts[0])
-	# 分牌：盖牌区里那张＝代价【充能】，手牌里那张＝发起攻击的攻击牌
-	var 充能: int = -1
-	var cid: int = -1
-	for c: Variant in cards:
-		var v: int = int(c)
-		if player.cover_cards.has(v):
-			充能 = v
-		elif player.has_hand_card(v):
-			cid = v
-	_mo_guan_hit_step = 0
-	if 充能 >= 0:
-		_预选攻击技能 = MO_GUAN_CHONG_JI
-		_remove_cover([充能], MO_GUAN_CHONG_JI)
-	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
-		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
-	}
-	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
-	# 攻击牌从手牌打出
-	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
-	# 把移除的【充能】和打出的攻击牌放进同一条广播里一起摊牌（客户端据此并排展示两张）；
-	# as_card_id 指向攻击牌，出牌音效与斩击特效都按攻击牌走（否则会按首张【充能】出法术音）
-	var 展示牌: Array[int] = []
-	if 充能 >= 0:
-		展示牌.append(充能)
-	展示牌.append(cid)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id,
-		"card_ids": 展示牌, "as_card_id": cid, "is_real": true,
-	})
-	engine._broadcast_game()
-	return URGENT
 
 
 # ============================================================
@@ -347,7 +243,7 @@ func _p_mo_guan_chong_ji(action: Dictionary) -> int:
 # ============================================================
 ## 【魔贯冲击·命中追加】的推进：0＝还没开始 / PHASE_ASK_EXTRA＝在问是否追加。
 ## 用自有变量而不是引擎 step：钩子轮次开始会把 step 清零，而这条流程要跨一次询问。
-## 每次由 _p_mo_guan_chong_ji 发起攻击时清回 0，收尾置 STEP_DONE
+## 每次发动【魔贯冲击】时由 _结算魔贯冲击 清回 0，收尾置 STEP_DONE
 var _mo_guan_hit_step: int = 0
 
 
@@ -526,9 +422,12 @@ func p_special_skill(action: Dictionary) -> int:
 	return SUCCESS
 
 
-## 【充能】的盖牌步骤推迟到这个钩子：此时摸牌引起的爆牌 / 掉士气已经结算完，
-## 可以按「摸牌之后、爆牌之后」的当前手牌选盖牌的牌
-func p_after_special(ctx: Dictionary) -> int:
+## 【充能】【魔眼】的盖牌步骤挂在独立钩子上：该钩子在摸牌（含【水影】这类摸牌前响应）与
+## 随后的爆牌 / 掉士气之后才跑，故可以按「摸牌之后、爆牌之后」的当前手牌选盖牌的牌。
+## 由 _chong_neng / _mo_yan 在压摸牌（或弃牌）状态**之前**压栈 —— 状态栈后进先出，
+## 先压的钩子才会排在摸牌之后跑（像早期写成 p_after_special 就不行了：摸牌改走 push_draw 之后
+## 它是延迟结算的，而 SkillRun 的 after 钩子后压先跑，会抢在摸牌前面 → 变成先选盖牌再摸牌）
+func p_cover_after_skill(ctx: Dictionary) -> int:
 	if _待盖牌技能 == 0 or int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	# 盖牌上限＝min(摸牌数, 手牌数-1)：盖完必须至少留 1 张手牌，
@@ -544,8 +443,8 @@ func p_after_special(ctx: Dictionary) -> int:
 
 
 ## 充能：耗 1 能量，弃到 4 张（发动时已作为代价选好）、摸 X 张牌，然后把至多 X 张手牌作为【充能】
-## 盖牌不在这里问，而是挂到 p_after_special：摸牌顶过手牌上限时，
-## 引擎会先结算爆牌 + 掉士气，再回来问盖牌（顺序：弃牌 → 摸牌 → 爆牌 → 盖牌）
+## 盖牌不在这里问，而是压在摸牌状态之前、由 p_cover_after_skill 承接：
+## 摸牌顶过手牌上限时，引擎会先结算爆牌 + 掉士气，再回来问盖牌（顺序：弃牌 → 摸牌 → 爆牌 → 盖牌）
 func _run_chong_neng(action: Dictionary) -> int:
 	_chong_neng(action)
 	# 没实际发动（没给摸牌数）：直接结束，连盖牌步骤也不挂
@@ -567,8 +466,8 @@ func _chong_neng_choices() -> Array:
 
 
 ## 魔眼：先结算二级技能栏里选的那一项（自己摸 3 张 / 指定一名角色弃 1 张），
-## 再把盖牌挂到 p_after_special —— 摸 3 张若顶过手牌上限，引擎会先结算爆牌 + 掉士气，
-## 之后才回来问盖牌（和【充能】同一条路，避免先问盖牌、后爆牌）
+## 再把盖牌压在那一项的状态之前、由 p_cover_after_skill 承接 —— 摸 3 张若顶过手牌上限，
+## 引擎会先结算爆牌 + 掉士气，之后才回来问盖牌（和【充能】同一条路，避免先问盖牌、后爆牌）
 func _run_mo_yan(action: Dictionary) -> int:
 	var r: int = _mo_yan(action)
 	_待盖牌技能 = MO_YAN
@@ -602,10 +501,12 @@ func _chong_neng(action: Dictionary) -> int:
 		engine.take_from_hand(player.id, 弃牌)
 		engine.to_discard(弃牌)
 		engine._log_discard(player.id, 弃牌)
-	engine.draw(player.id, draw_n)
+	# 先压盖牌钩子、后压摸牌（状态栈后进先出 → 摸牌与随后的爆牌先跑，再问盖牌）
+	engine.push(BattleEngine.SHook.new("p_cover_after_skill", {"player": player.id}, []))
+	engine.push_draw(player.id, draw_n)
 	engine._broadcast_game()
 	# 摸牌顶过手牌上限不用在这里处理：引擎在每个状态跑完后都会补 _check_hand_overflow()，
-	# 爆牌 + 掉士气会在本技能结束、回到盖牌步骤之前先结算完
+	# 爆牌 + 掉士气会在盖牌步骤之前先结算完
 	return SUCCESS
 
 
@@ -627,7 +528,7 @@ func _all_player_ids() -> Array[int]:
 ## 魔眼：耗 1 宝石、+1 水晶。效果由二级技能栏里选的那一项决定：
 ##   · args[0]=0 不指定目标 —— 自己摸 3 张牌；
 ##   · args[0]=1 指定一名角色 —— 该角色弃 1 张牌（含自己；手里没牌就不弃）。
-## 「把手牌作【充能】」的盖牌步骤不在这里，挂在 p_after_special（见 _run_mo_yan）
+## 「把手牌作【充能】」的盖牌步骤不在这里，压在下面那一项状态之前、由 p_cover_after_skill 承接
 func _mo_yan(action: Dictionary) -> int:
 	notice_skill(MO_YAN, [player.id])
 	player.boot_skill_used = true
@@ -635,13 +536,15 @@ func _mo_yan(action: Dictionary) -> int:
 	player.set_crystal(player.crystal + 1)
 	var args: Array = action.get("args", [])
 	var dsts: Array = action.get("dst_ids", [])
+	# 先压盖牌钩子、后压这一项的状态（状态栈后进先出 → 先结算这一项，再问盖牌）
+	engine.push(BattleEngine.SHook.new("p_cover_after_skill", {"player": player.id}, []))
 	# 选了「指定一名角色」：走引擎通用的弃牌状态（它自己记弃牌日志，客户端据此播弃牌动画）
 	if not args.is_empty() and int(args[0]) == 1 and not dsts.is_empty():
 		engine.push(BattleEngine.SRequestDiscard.new(int(dsts[0]), 1, 0, MO_YAN))
 		engine._broadcast_game()
 		return URGENT
 	# 其余（选「自己摸 3 张牌」，或异常没带目标）：自己摸 3 张
-	engine.draw(player.id, 3)
+	engine.push_draw(player.id, 3)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -676,11 +579,6 @@ func _gai_pai(skill_id: int, max_n: int) -> int:
 # ============================================================
 # 工具
 # ============================================================
-## 【魔贯冲击】的合法目标：手牌未达上限的对手（服务端 hand_cards.size() == hand_cards_max 时不发动）
-func _mo_guan_dst_ok(p0: BattlePlayer) -> bool:
-	return p0.color != player.color and p0.hand_cards.size() != p0.hand_cards_max
-
-
 ## 盖牌区某系别的全部牌 id（雷光散射的 cards 用它限制只能选雷系盖牌）
 func _cover_ids_of_element(elem: int) -> Array[int]:
 	var out: Array[int] = []

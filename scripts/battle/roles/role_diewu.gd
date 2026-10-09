@@ -11,7 +11,7 @@ extends BattleRole
 ## 【法术】蛹化（2407）：耗 1 宝石，+1【蛹】，将牌库顶 4 张作为【茧】
 ## 【法术】倒逆之蝶（2408）：耗 1 能量、弃 2 张手牌，选择：对目标角色造成 1 点不能以治疗抵御的法术伤害；
 ##                  或（移除 2 个【茧】或对自己造成 4 点法术伤害）后移除 1 点【蛹】
-## 【茧】为专属盖牌，上限 8；【蛹】为专属指示物，无上限
+## 【茧】为专属盖牌；【蛹】为专属指示物，上限见角色表
 
 const SHENG_MING_ZHI_HUO: int = 2401
 const WU_DONG: int = 2402
@@ -30,52 +30,47 @@ var _diao_harms: Array[Dictionary] = []
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
-	# 【茧】为专属盖牌，上限 8；【蛹】为专属指示物（无上限，服务端 tokenMax[0] = 99）
-	p.cover_cards_max = 8
-	p.tokens[0] = {"name": "蛹", "max": 99, "num": 0}
 	p.hand_cards_max = _life_fire_max()
 
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 舞动：服务端不校验，args[0]=1 摸 1 张，否则弃 1 张（弃牌时才需选 1 张手牌）
+	# 舞动：args[0]=1 摸 1 张；否则弃 1 张（弃牌才需选 1 张手牌）。
+	# 手牌为空时不给「弃 1 张」这个选项 —— 否则点了也不产生代价，等于白拿一次技能
+	var 舞动选项: Array = [{"text": 提示(WU_DONG, 0), "args": [1]}]
+	if not player.hand_cards.is_empty():
+		舞动选项.append({"text": 提示(WU_DONG, 1), "args": [0], "need_card": 1})
 	out.append({"type": GConst.ActionType.MagicSkill, "id": WU_DONG, "need_card": 0, "need_target": 0,
-		"arg_choices": [
-			{"text": 提示(WU_DONG, 0), "args": [1]},
-			{"text": 提示(WU_DONG, 1), "args": [0], "need_card": 1},
-		]})
+		"arg_choices": 舞动选项})
 	if player.gem > 0:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": YONG_HUA, "need_card": 0, "need_target": 0})
 	if player.get_energy() > 0:
+		# 目标数不由技能本体定，交给各选项自己带：只有「对目标角色 1 点法术伤害」那一项要选目标
 		out.append({"type": GConst.ActionType.MagicSkill, "id": DAO_NI_ZHI_DIE, "need_card": 2, "need_target": 0,
-			"target_max": 1, "arg_choices": _dao_ni_choices()})
+			"arg_choices": _dao_ni_choices()})
 	return out
 
 
-## 倒逆之蝶的参数选项：弃 2 张手牌后选择分支
-## ●choice=1 对目标造成 1 点法术伤害（需目标）；●choice=2 移除一对【茧】（args 带两张盖牌 id）
+## 倒逆之蝶的参数选项：弃 2 张手牌后选一项发动
+## ①对目标角色造成 1 点法术伤害（治疗不可抵御，需选目标）
+## ②移除 2 个【茧】并移除 1 个【蛹】（2 张【茧】在盖牌区点，和 2 张手牌同一步选完）
+## ③对自己造成 4 点法术伤害并移除 1 个【蛹】（该伤害可被治疗抵御）
+## ②③ 都要移除【蛹】，没有【蛹】就整项不发（服务端 v_magic_skill 同样驳回）
 func _dao_ni_choices() -> Array:
 	var out: Array = [
 		{"text": 提示(DAO_NI_ZHI_DIE, 0), "args": [1], "need_card": 2, "need_target": 1},
-		{"text": 提示(DAO_NI_ZHI_DIE, 1), "args": [0], "need_card": 2},
 	]
-	# 【茧】两两组合，args 里按 id 升序放两张盖牌（服务端从 args(1..2) 读取）
-	var covers: Array = player.cover_cards
-	for i: int in range(covers.size()):
-		for j: int in range(i + 1, covers.size()):
-			var a: int = mini(int(covers[i]), int(covers[j]))
-			var b: int = maxi(int(covers[i]), int(covers[j]))
-			out.append({
-				"text": 提示(DAO_NI_ZHI_DIE, 2, 0, -1, {"s1": _cover_name(a), "s2": _cover_name(b)}),
-				"args": [2, a, b], "need_card": 2,
-			})
+	if int(player.tokens[0]["num"]) < 1:
+		return out
+	# 盖牌区不足 2 个【茧】时不给「移除 2 个【茧】」这一项（给了也点不出 2 张）
+	if player.cover_cards.size() >= 2:
+		out.append({
+			"text": 提示(DAO_NI_ZHI_DIE, 1), "args": [2],
+			# 一步选 4 张：2 张手牌 + 盖牌区里的 2 张【茧】，所以来源是「手牌+盖牌」、其中 2 张必须是盖牌
+			"need_card": 4, "card_source": GConst.CardSource.HandOrCover, "cover_need": 2,
+		})
+	out.append({"text": 提示(DAO_NI_ZHI_DIE, 2), "args": [0], "need_card": 2})
 	return out
-
-
-## 取【茧】（盖牌）的卡名，用于参数按钮文案
-func _cover_name(cid: int) -> String:
-	var card: GCard = Data.get_card(cid)
-	return card.card_name if card != null else str(cid)
 
 
 # ============================================================
@@ -96,10 +91,13 @@ func v_magic_skill(action: Dictionary) -> int:
 		DAO_NI_ZHI_DIE:
 			if player.get_energy() == 0:
 				return GConst.GE_INVALID_ACTION
+			# ②③ 两项都要移除【蛹】：没有【蛹】时不能发动（客户端也不下发这两项，见 _dao_ni_choices）
 			var choice: int = int(args[0]) if not args.is_empty() else 0
-			# 服务端：非第一分支时必须拥有【蛹】
 			if choice != 1 and int(player.tokens[0]["num"]) < 1:
 				return GConst.GE_INVALID_ACTION
+			# ② 要在盖牌区点出 2 个【茧】（和 2 张手牌一起交上来）
+			if choice == 2 and _交牌里的茧(action.get("card_ids", [])).size() < 2:
+				return GConst.GE_INVALID_CARDID
 			if action.get("card_ids", []).size() < 2:
 				return GConst.GE_INVALID_CARDID
 			return GConst.GE_SUCCESS
@@ -122,12 +120,22 @@ func _wu_dong(action: Dictionary) -> int:
 	var args: Array = action.get("args", [])
 	var flag: int = int(args[0]) if not args.is_empty() else 0
 	notice_skill(WU_DONG, [player.id])
+	# 先压「取牌库顶作茧」的钩子、后压摸牌（状态栈后进先出 → 先摸牌，再从牌库顶取茧）：
+	# 摸牌改走 push_draw 后是延迟结算的，直接往下取茧会跟玩家摸到的那张牌对调
+	engine.push(BattleEngine.SHook.new("p_wu_dong_cover", {"player": player.id}, []))
 	if flag == 1:
-		engine.draw(player.id, 1)
+		engine.push_draw(player.id, 1)
 	else:
 		_discard_hand_cards(action.get("card_ids", []), 1)
-	var top: Array[int] = engine.deck.draw(1)
-	_add_cover(top, WU_DONG)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 舞动：摸 1 张牌（或弃 1 张牌）结算完之后，再把牌库顶 1 张面朝下作为【茧】
+func p_wu_dong_cover(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	_add_cover(engine.deck.draw(1), WU_DONG)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -143,43 +151,42 @@ func _yong_hua() -> int:
 	return SUCCESS
 
 
-## 倒逆之蝶：弃 2 张手牌、耗 1 能量，随后按分支结算
+## 倒逆之蝶：弃 2 张手牌、耗 1 能量，随后按分支结算。
+## ②「移除 2 个【茧】」的 2 张【茧】和 2 张手牌一起交上来，一步选完（见 _dao_ni_choices）
 func _dao_ni_zhi_die(action: Dictionary) -> int:
 	var args: Array = action.get("args", [])
 	var choice: int = int(args[0]) if not args.is_empty() else 0
 	var dsts: Array = action.get("dst_ids", [])
-	if step == 0:
-		notice_skill(DAO_NI_ZHI_DIE, dsts if choice == 1 else [player.id])
-		_discard_hand_cards(action.get("card_ids", []), 2)
-		if player.crystal > 0:
-			player.set_crystal(player.crystal - 1)
-		else:
-			player.set_gem(player.gem - 1)
-		if choice == 1 and not dsts.is_empty():
-			# ●对目标角色造成 1 点法术伤害（治疗不可抵御，见 p_timeline_4）
-			engine.push_harm({
-				"src": player.id, "dst": int(dsts[0]), "point": 1,
-				"cause": DAO_NI_ZHI_DIE, "type": GConst.HarmType.Magic,
-			})
-			step = STEP_DONE
-			engine._broadcast_game()
-			return URGENT
-		if choice == 2:
-			# ●移除 2 个【茧】（服务端从 args(1..2) 读取）；移除本身会在 p_cover_change 里触发【凋零】
-			var cover: Array = _cover_cards_from_args(action, 2)
-			_remove_cover(cover, DAO_NI_ZHI_DIE)
-		else:
-			# ●对自己造成 4 点法术伤害
-			engine.push_harm({
-				"src": player.id, "dst": player.id, "point": 4,
-				"cause": DAO_NI_ZHI_DIE, "type": GConst.HarmType.Magic,
-			})
-		# 移除 1 点【蛹】（服务端的第二阶段）
-		_set_yong(-1)
-		step = STEP_DONE
+	var 交牌: Array = action.get("card_ids", [])
+	notice_skill(DAO_NI_ZHI_DIE, dsts if choice == 1 else [player.id])
+	# 手牌与盖牌混选：先把【茧】挑出来，剩下的按手牌弃（_discard_hand_cards 只认手牌）
+	var 茧: Array = _交牌里的茧(交牌)
+	_discard_hand_cards(交牌, 2)
+	if player.crystal > 0:
+		player.set_crystal(player.crystal - 1)
+	else:
+		player.set_gem(player.gem - 1)
+	if choice == 1 and not dsts.is_empty():
+		# ●对目标角色造成 1 点法术伤害（治疗不可抵御，见 p_timeline_4）
+		engine.push_harm({
+			"src": player.id, "dst": int(dsts[0]), "point": 1,
+			"cause": DAO_NI_ZHI_DIE, "type": GConst.HarmType.Magic, "no_cross": true,
+		})
 		engine._broadcast_game()
 		return URGENT
-	return SUCCESS
+	if choice == 2:
+		# ●移除 2 个【茧】（移除本身会在 p_cover_change 里触发【凋零】）
+		_remove_cover(茧, DAO_NI_ZHI_DIE)
+	else:
+		# ●对自己造成 4 点法术伤害
+		engine.push_harm({
+			"src": player.id, "dst": player.id, "point": 4,
+			"cause": DAO_NI_ZHI_DIE, "type": GConst.HarmType.Magic,
+		})
+	# 移除 1 点【蛹】
+	_set_yong(-1)
+	engine._broadcast_game()
+	return URGENT
 
 
 ## 【毒粉 / 镜花水月】的推进阶段（0＝还没开始 / DU_FEN＝在问毒粉 / JING_HUA_SHUI_YUE＝在问镜花水月）。
@@ -220,7 +227,9 @@ func _du_fen(harm: Dictionary) -> int:
 	if int(harm.get("point", 0)) != 1 or player.cover_cards.is_empty():
 		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, DU_FEN, 1, 0, GConst.CardSource.Cover)
+		# 把「挨这次伤害的角色」下发给界面：他的头像会被选中并写「本次法术伤害+1」
+		询问(player.id, DU_FEN, 1, 0, GConst.CardSource.Cover, [], 0, "", [], true, 0, -1,
+			[int(harm.get("dst", -1))])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -243,8 +252,10 @@ func _jing_hua_shui_yue(harm: Dictionary) -> int:
 	if int(harm.get("point", 0)) != 2 or player.cover_cards.size() < 2:
 		return SUCCESS
 	if not engine.has_reply():
-		# 恰好 2 张，且必须同系：让客户端只让与已选牌同系的【茧】可点（服务端比较两张牌系别相同）
-		询问(player.id, JING_HUA_SHUI_YUE, 2, 0, GConst.CardSource.Cover, [], 0, "same")
+		# 恰好 2 张，且必须同系：让客户端只让与已选牌同系的【茧】可点（服务端比较两张牌系别相同）。
+		# 同时把「挨这次伤害的角色」下发：他的头像会被选中并锁死（不能改选）
+		询问(player.id, JING_HUA_SHUI_YUE, 2, 0, GConst.CardSource.Cover, [], 0, "same", [], true, 0, -1,
+			[int(harm.get("dst", -1))])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -299,7 +310,11 @@ func p_timeline_6(ctx: Dictionary) -> int:
 			_chao_sheng_step = 0
 			return SUCCESS
 		if not engine.has_reply():
-			询问(player.id, CHAO_SHENG, 1, 0, GConst.CardSource.Cover)
+			# 文案里带上「本次受到几点伤害」（技能表提示列的 {dmg}）；
+			# 头像提示另要「本次伤害」与「其类型」（preview_base / preview_kind）现算两行数字
+			询问(player.id, CHAO_SHENG, 1, 0, GConst.CardSource.Cover, [], 0, "", [], true, 0, -1, [],
+				-1, {"dmg": int(harm.get("point", 0))},
+				int(harm.get("point", 0)), int(harm.get("type", 0)))
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
@@ -327,11 +342,12 @@ func p_timeline_6(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 倒逆之蝶第一分支的伤害不可用治疗抵御（服务端 DaoNiCross）
+# 倒逆之蝶「对目标 1 点」那条分支的伤害不可用治疗抵御（服务端 DaoNiCross）。
+# 只有那条分支的伤害标了 no_cross；「对自己 4 点」按技能描述是可以治疗的。
 # ============================================================
 func p_timeline_4(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
-	if int(harm.get("cause", 0)) == DAO_NI_ZHI_DIE:
+	if bool(harm.get("no_cross", false)):
 		harm["cross_available"] = 0
 	return SUCCESS
 
@@ -490,16 +506,12 @@ func _chao_sheng_card(r: Dictionary) -> int:
 	return -1
 
 
-## 倒逆之蝶：从 args(1..n) 取【茧】
-func _cover_cards_from_args(action: Dictionary, n: int) -> Array:
+## action 交上来的牌里属于盖牌区的那几张（手牌与盖牌混选时用来把两者分开，如【倒逆之蝶】的 2 张【茧】）
+func _交牌里的茧(cards: Array) -> Array:
 	var out: Array = []
-	var args: Array = action.get("args", [])
-	for i: int in range(n):
-		var idx: int = i + 1
-		if idx >= args.size():
-			break
-		if player.cover_cards.has(int(args[idx])) and not out.has(int(args[idx])):
-			out.append(int(args[idx]))
+	for c: Variant in cards:
+		if player.cover_cards.has(int(c)) and not out.has(int(c)):
+			out.append(int(c))
 	return out
 
 

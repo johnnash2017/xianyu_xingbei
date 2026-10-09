@@ -51,12 +51,23 @@ var _interactive: bool = false
 var _已提交: bool = false
 ## 自己提交的角色 id
 var _已选角色: int = -1
+## 角色卡的悬浮说明框：与战斗界面同款（底板 / 排版 / 加宽与缩小兜底都在 说明提示框 里）
+var _说明提示: 说明提示框 = null
 ## 倒计时剩余 / 总时长（毫秒），来自服务端 RoleReq 的 wait_ms / wait_total_ms
 var _剩余毫秒: float = 0.0
 var _总毫秒: float = 0.0
 
 
 func _ready() -> void:
+	# 说明框的宿主：照战斗界面同款坐标系（1280×720、缩放 1.5）——
+	# 说明提示框 里的尺寸常量都是按这套坐标调的，这样选角与战斗的排版、字号完全一致
+	var 说明宿主: Control = Control.new()
+	说明宿主.size = Vector2(1280.0, 720.0)
+	说明宿主.scale = Vector2.ONE * 1.5
+	说明宿主.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(说明宿主)
+	_说明提示 = 说明提示框.new()
+	说明宿主.add_child(_说明提示)
 	# 选将结束后（对局开始）自动关闭
 	Logic.game_info_updated.connect(_on_game_info)
 
@@ -104,6 +115,8 @@ func _refresh() -> void:
 	提示.text = _status_text()
 	_刷新座次()
 
+	# 卡片要重建，挂着的说明先收掉（它按旧卡片的位置摆，留着会飘在空处）
+	_说明提示.收起()
 	for c: Node in 卡片区.get_children():
 		卡片区.remove_child(c)
 		c.queue_free()
@@ -178,10 +191,9 @@ func _座次贴图名(队: int, 是我: bool) -> String:
 	return "SeatRed" if 队 == GConst.RED else "SeatBlue"
 
 
-## 一张角色卡：整张立绘（无边框、无名字，角色名与技能在 tooltip 上）
-## 按钮用 富文本提示按钮：技能说明带 BBCode 颜色，普通 Button 的提示框是纯文本、会把颜色代码露出来
+## 一张角色卡：整张立绘（无边框、无名字，角色名与技能在悬浮说明里）
 func _build_role_button(rid: int) -> Button:
-	var btn: 富文本提示按钮 = 富文本提示按钮.new()
+	var btn: Button = Button.new()
 	btn.custom_minimum_size = Vector2(ROLE_BTN_W, ROLE_BTN_H)
 	btn.size = Vector2(ROLE_BTN_W, ROLE_BTN_H)
 	btn.flat = true
@@ -189,8 +201,10 @@ func _build_role_button(rid: int) -> Button:
 	btn.pressed.connect(_on_role_pressed.bind(rid))
 	btn.disabled = not _interactive
 
-	# 悬浮说明（角色名一行 + 技能说明，含 BBCode）由 富文本提示按钮 的 _make_custom_tooltip 渲染
-	btn.tooltip_text = 角色技能提示.悬浮提示(rid)
+	# 悬停说明（角色名一行 + 技能说明，含 BBCode）走界面自己的 说明提示框 —— 与战斗界面同款；
+	# 不用引擎自带 tooltip：它跟着光标走、贴近屏幕边会顶出去，排版也不好和战斗对齐
+	btn.mouse_entered.connect(_悬停角色卡.bind(btn, rid))
+	btn.mouse_exited.connect(_说明提示.收起)
 
 	var face_size: Vector2 = Vector2(ROLE_BTN_W, ROLE_BTN_H)
 	var face_tex: Texture2D = Art.role_hero(rid)
@@ -214,6 +228,11 @@ func _build_role_button(rid: int) -> Button:
 		hole.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(hole)
 	return btn
+
+
+## 悬停某张角色卡：弹出战斗同款的角色技能说明
+func _悬停角色卡(按钮: Button, rid: int) -> void:
+	_说明提示.显示角色说明(rid, 按钮.get_global_rect())
 
 
 func _mode_title() -> String:

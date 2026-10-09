@@ -1,17 +1,17 @@
 extends BattleRole
 ## 兽灵武士（roleID 36）—— 移植自服务端 role/ShouLing.cpp
-## 指示物：tokens[0] = 残心（上限 4）、tokens[1] = 兽魂（上限 2）
+## 指示物：tokens[0] = 残心、tokens[1] = 兽魂，上限见角色表
 ## 形态：tap（御魂流居合形态）
 ## 技能：武者残心（3601，响应：自己的攻击行动结束后 +1 残心（每回合一次））、
 ##       一击无念（3602，额外攻击行动：残心＞3 时移除 4 点残心，本次攻击无视圣盾与圣光，
-##                 御魂流形态下再 +1 兽魂且技类攻击牌强制命中）、
+##                 御魂流居合形态下再 +1 兽魂且技类攻击牌强制命中）、
 ##       兽魂意念（3603，被动：普通形态下主动攻击命中 +1 兽魂；每移除 1 点兽魂 +1 残心）、
 ##       兽魂警戒（3604，响应：其他角色横置时移除 1 点兽魂 → 横置并 +1 残心，目标弃 1 张牌）、
 ##       兽返（3605，响应：受到法术伤害时移除 X 点兽魂 → 自身弃 X 张牌，施害者弃 1 张牌）、
-##       逆返居合斩（3606，响应：御魂流形态下对攻击前手牌＜4 的对手，命中后移除 X 点兽魂，
+##       逆反居合斩（3606，响应：御魂流居合形态下对攻击前手牌＜4 的对手，命中后移除 X 点兽魂，
 ##                   抵御本次伤害并改为目标弃 X＋2 张手牌，不足则对方士气 -1）、
 ##       御魂流居合式（3607，启动：耗 1 宝石 → 横置进入御魂流居合形态并 +1 兽魂、摸或弃 1 张牌）、
-##       形态附加：御魂流形态下攻击横置目标伤害 +1；造成伤害使其摸牌时脱离形态；回合结束移除 1 点兽魂
+##       形态附加：御魂流居合形态下攻击横置目标伤害 +1；造成伤害使其摸牌时脱离形态；回合结束移除 1 点兽魂
 
 const WU_ZHE_CAN_XIN: int = 3601
 const YI_JI_WU_NIAN: int = 3602
@@ -30,31 +30,23 @@ const YU_HUN_ATK: int = 36071
 const SHOU_HUN_JING_JIE_DISCARD: int = 36041   # 兽魂警戒：请目标弃牌
 const SHOU_FAN_TARGET_DISCARD: int = 36051     # 兽返：请施害者弃牌
 const SHOU_FAN_SELF_DISCARD: int = 36052       # 兽返：自身弃牌
-const NI_FAN_DISCARD: int = 36063              # 逆返居合斩：目标弃牌
+const NI_FAN_DISCARD: int = 36063              # 逆反居合斩：目标弃牌
 
 const TOKEN_CAN_XIN: int = 0     # 残心（tokens[0]）
 const TOKEN_SHOU_HUN: int = 1    # 兽魂（tokens[1]）
-const CAN_XIN_MAX: int = 4
-const SHOU_HUN_MAX: int = 2
 
-const NI_FAN_TARGET_HAND: int = 4    # 逆返居合斩：对手手牌数须小于 4
+const NI_FAN_TARGET_HAND: int = 4    # 逆反居合斩：对手手牌数须小于 4
 
 var used_wu_zhe: bool = false        # 本回合是否已用【武者残心】
 var yi_ji_atk: bool = false          # 本次攻击来自【一击无念】
-var ni_fan_atk: bool = false         # 本次攻击已宣告【逆返居合斩】
-var ni_fan_add_harm: int = 0         # 逆返居合斩额外移除的兽魂数 X
+var ni_fan_atk: bool = false         # 本次攻击已宣告【逆反居合斩】
+var ni_fan_add_harm: int = 0         # 逆反居合斩额外移除的兽魂数 X
 
 ## 兽返的中间状态
 var shou_fan_num: int = 0
 var shou_fan_cards: Array = []
 ## 兽魂警戒选定的弃牌目标（跨 step 保留）
 var jing_jie_dst: int = -1
-
-
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	p.tokens[TOKEN_CAN_XIN] = {"name": "残心", "max": CAN_XIN_MAX, "num": 0}
-	p.tokens[TOKEN_SHOU_HUN] = {"name": "兽魂", "max": SHOU_HUN_MAX, "num": 0}
 
 
 ## 兽灵武士的技能全部由钩子与启动流程触发
@@ -68,6 +60,10 @@ func available_skills() -> Array:
 func _can_xin() -> int:
 	var t: Dictionary = player.tokens[TOKEN_CAN_XIN]
 	return int(t["num"])
+
+
+func _can_xin_max() -> int:
+	return int(player.tokens[TOKEN_CAN_XIN]["max"])
 
 
 func _shou_hun() -> int:
@@ -111,7 +107,7 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
 	# 服务端这几处的 isShown：兽返 / 兽魂警戒 公开（顺带触发展示手牌钩子），
-	# 逆返居合斩的目标弃牌是面朝下的（false），不能一起公开
+	# 逆反居合斩的目标弃牌是面朝下的（false），不能一起公开
 	var 公开: bool = cause == SHOU_FAN or cause == SHOU_HUN_JING_JIE
 	if 公开:
 		engine.broadcast(GConst.Msg.Card, {
@@ -153,7 +149,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击宣告后（timeline_1）：一击无念（3602）→ 御魂流形态伤害 +1 → 逆返居合斩（3606）
+# 攻击宣告后（timeline_1）：一击无念（3602）→ 御魂流居合形态伤害 +1 → 逆反居合斩（3606）
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
@@ -181,7 +177,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 一击无念：本次攻击无视圣盾与圣光；御魂流形态下技类命格攻击牌强制命中
+## 一击无念：本次攻击无视圣盾与圣光；御魂流居合形态下技类命格攻击牌强制命中
 func _yi_ji_wu_nian(ctx: Dictionary) -> void:
 	if not yi_ji_atk:
 		return
@@ -193,7 +189,7 @@ func _yi_ji_wu_nian(ctx: Dictionary) -> void:
 		ctx["hit_rate"] = GConst.HitRate.NoMiss
 
 
-## 逆返居合斩：御魂流形态下对武前手牌＜4 的对手宣告，命中后改为弃牌
+## 逆反居合斩：御魂流居合形态下对武前手牌＜4 的对手宣告，命中后改为弃牌
 func _ni_fan_zhan(ctx: Dictionary) -> int:
 	if not player.tap:
 		return SUCCESS
@@ -213,7 +209,7 @@ func _ni_fan_zhan(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击命中后（timeline_2_hit）：兽魂意念（3603）→ 逆返居合斩·命中（36062）
+# 攻击命中后（timeline_2_hit）：兽魂意念（3603）→ 逆反居合斩·命中（36062）
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
@@ -237,7 +233,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 逆返居合斩·命中：移除 X 点兽魂，本次攻击改为目标弃 X＋2 张手牌
+## 逆反居合斩·命中：移除 X 点兽魂，本次攻击改为目标弃 X＋2 张手牌
 func _ni_fan_hit(ctx: Dictionary) -> int:
 	if not ni_fan_atk or _shou_hun() < 1:
 		return SUCCESS
@@ -263,9 +259,9 @@ func _ni_fan_hit(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 伤害结算前（timeline_4）：逆返居合斩改为「目标弃 X＋2 张牌」
+# 伤害结算前（timeline_4）：逆反居合斩改为「目标弃 X＋2 张牌」
 # ============================================================
-## 【逆返居合斩】的推进阶段（0＝还没开始 / NI_FAN_DISCARD＝等目标弃牌）。
+## 【逆反居合斩】的推进阶段（0＝还没开始 / NI_FAN_DISCARD＝等目标弃牌）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问；
 ## 本流程一开场就把 ni_fan_atk 清掉，若 step 被抹掉会退回第 0 步、被入口条件挡下，
 ## 「弃不满掉士气 + 抵御本次伤害」整段不生效。每次攻击都可能触发，收尾清回 0
@@ -281,7 +277,7 @@ func p_timeline_4(ctx: Dictionary) -> int:
 	if _ni_fan_step >= STEP_DONE:
 		return SUCCESS
 	var dst_id: int = int(ctx.get("dst", -1))
-	# 入口条件（本次是逆返居合斩）只在第 0 步判：本条流程一开场就把 ni_fan_atk 清掉，
+	# 入口条件（本次是逆反居合斩）只在第 0 步判：本条流程一开场就把 ni_fan_atk 清掉，
 	# 之后重入（等回复回来时会再进一次本钩子）不能再用它当门槛，
 	# 否则「弃不满掉士气 + 抵御本次伤害」整段不生效，回复还会残留
 	if _ni_fan_step == 0:
@@ -307,7 +303,7 @@ func p_timeline_4(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 攻击未命中（timeline_2_miss）：清掉【逆返居合斩】宣告标记（服务端 ShouLing::p_timeline_2_miss）
+## 攻击未命中（timeline_2_miss）：清掉【逆反居合斩】宣告标记（服务端 ShouLing::p_timeline_2_miss）
 func p_timeline_2_miss(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) == player.id:
 		ni_fan_atk = false
@@ -456,7 +452,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 		step = YI_JI_WU_NIAN
 	if step == YI_JI_WU_NIAN:
 		# 授予额外攻击行动；移除 4 点残心并开启一击无念改在玩家选择时结算
-		if _can_xin() > CAN_XIN_MAX - 1:
+		if _can_xin() > _can_xin_max() - 1:
 			player.add_action(GConst.ActionType.Attack, YI_JI_WU_NIAN)
 		step = STEP_DONE
 	return SUCCESS
@@ -547,6 +543,6 @@ func p_boot(_ctx: Dictionary) -> int:
 		engine.take_from_hand(player.id, chosen)
 		engine.to_discard(chosen)
 	elif choose == 2:
-		engine.draw(player.id, 1)
+		engine.push_draw(player.id, 1)
 	engine._broadcast_game()
 	return SUCCESS

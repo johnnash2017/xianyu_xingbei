@@ -5,9 +5,9 @@ extends BattleRole
 ##     ——【法术】把手中带对应【X之封印】的牌放到目标对手面前；该对手此后打出或展示出同系牌时强制触发：
 ##        对其造成 3 点法术伤害并移除该封印牌（在 p_show_hand 中判定）
 ##   法术激荡（406）——【被动】你的法术行动结束时额外 +1 攻击行动（p_after_magic）
-##   五系束缚（407）——【法术·星石】把【五系束缚】放到目标对手面前；在其下个行动阶段开始前可选择摸
-##        （X+2）张牌取消（X = 场上封印数，最高按 2 计，即最多摸 4 张），否则跳过该行动阶段
-##        （与【虚弱】合并成同一次询问，见 p_check_basic_effect）
+##   五系束缚（407）——【法术·星石】把【五系束缚】放到目标对手面前：该对手的下个行动阶段开始前，
+##        可选择摸（X+2）张牌【强制】以取消该效果并照常行动（X = 场上封印数，最高按 2 计，最多摸 4 张），
+##        否则跳过该行动阶段；触发后移除【五系束缚】（在行动阶段入口 p_before_action 询问、结算）
 ##   封印破碎（408）——【法术·星石】把场上任意一张基础效果牌收入自己手中
 
 const FENG_ZHI_FENG_YIN: int = 401
@@ -20,8 +20,8 @@ const WU_XI_SHU_FU: int = 407
 const FENG_YIN_PO_SUI: int = 408
 
 const SEAL_HARM_POINT: int = 3      # 封印触发时的法术伤害
-const WU_XI_DRAW_BASE: int = 2      # 五系束缚基础摸牌数
-const WU_XI_DRAW_MAX: int = 4       # 五系束缚摸牌上限（场上封印数最高按 2 计）
+const WU_XI_DRAW_BASE: int = GConst.五系束缚摸牌基数   # 五系束缚基础摸牌数
+const WU_XI_DRAW_MAX: int = GConst.五系束缚摸牌上限   # 五系束缚摸牌上限（场上封印数最高按 2 计）
 
 
 # ============================================================
@@ -55,17 +55,58 @@ func available_skills() -> Array:
 
 
 # ============================================================
-# 回合开始的基础效果检查（服务端 FengYin::WuXiShuFu_Effect，由引擎在虚弱询问前调用）
-# 当前回合玩家身上若有【五系束缚】，移除它并把应摸牌数（2 + 场上封印数，上限 4）交给引擎，
-# 与【虚弱】合并成同一次询问
+# 行动阶段入口（p_before_action）：五系束缚（对照服务端 FengYin::WuXiShuFu_Effect）
+# 当前回合玩家身上若有我放的【五系束缚】：询问他「跳过行动阶段」还是「摸（X+2）张牌继续行动」，
+# 结算后移除该标记（不论选哪一项，触发即移除）。
 # ============================================================
-func p_check_basic_effect(ctx: Dictionary) -> int:
-	var cur: BattlePlayer = engine.p(int(ctx.get("player", -1)))
+func p_before_action(_ctx: Dictionary) -> int:
+	var cur: BattlePlayer = engine.p(engine.current_id)
 	if cur == null or not cur.check_exclusive_effect(GConst.Exclusive.WuXiShuFu):
 		return SUCCESS
+	# 场上可能有多个封印师：只由「放这枚束缚的人」处理，避免重复询问
+	if cur.exclusive_owner(GConst.Exclusive.WuXiShuFu) != player.id:
+		return SUCCESS
+	if step >= STEP_DONE:
+		return SUCCESS
+	# 已因【虚弱】等原因跳过行动阶段：本回合不必再询问，直接移除这枚束缚并返回。
+	# 否则玩家选了「摸牌继续行动」也照样被跳过，还会白拿牌、束缚被消耗掉。
+	if engine.skip_action_phase:
+		cur.remove_exclusive_effect(GConst.Exclusive.WuXiShuFu)
+		engine._broadcast_game()
+		return SUCCESS
+	# 应摸张数只算一次，询问文案与实际摸牌复用同一结果，避免两次计算不一致
+	var 摸数: int = _wu_xi_draw_count()
+	if not engine.has_reply():
+		var options: Array = [
+			{"value": 1, "label": "跳过行动阶段"},
+			{"value": 2, "label": "摸 %d 张牌，继续行动阶段" % 摸数},
+		]
+		# 询问文案取技能表 407 的「提示」列（序号 0），{n} 填应摸张数；两个选项按钮标签保持不变
+		询问(cur.id, WU_XI_SHU_FU, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true, 0, -1, [], 摸数)
+		step = 1
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	step = STEP_DONE
+	var args: Array = r.get("args", [])
+	# 取消 / 超时按「跳过行动阶段」兜底（＝束缚生效）
+	var choose: int = int(args[0]) if not args.is_empty() else 1
+	notice_skill(WU_XI_SHU_FU, [cur.id])
 	cur.remove_exclusive_effect(GConst.Exclusive.WuXiShuFu)
-	ctx["how_many"] = int(ctx.get("how_many", 0)) + mini(WU_XI_DRAW_BASE + _seal_count(), WU_XI_DRAW_MAX)
+	if choose == 2:
+		# 强摸走 push_draw：先让角色响应（如暗杀者【水影】：除特殊行动外、摸牌前发动）；
+		# 摸牌可能把手牌顶过上限 → 配 SHandOverflow 走「强制弃牌 + 掉士气」（对照引擎其它摸牌点）
+		engine.push(BattleEngine.SHandOverflow.new())
+		engine.push_draw(cur.id, 摸数)
+	else:
+		# 跳过行动阶段走引擎通用标记 skip_action_phase（SActionPhase 自己收尾进回合结束）
+		engine.skip_action_phase = true
+	engine._broadcast_game()
 	return SUCCESS
+
+
+## 五系束缚的应摸牌数：2 + 场上封印数（封印数最高按 2 计，故 2~4 张）
+func _wu_xi_draw_count() -> int:
+	return mini(WU_XI_DRAW_BASE + _seal_count(), WU_XI_DRAW_MAX)
 
 
 # ============================================================
@@ -209,7 +250,8 @@ func _cast_wu_xi_shu_fu(action: Dictionary) -> int:
 	var dst: BattlePlayer = engine.p(dst_id)
 	notice_skill(WU_XI_SHU_FU, [dst_id])
 	_consume_one_energy()
-	dst.add_exclusive_effect(GConst.Exclusive.WuXiShuFu)
+	# 记下放牌者（自己）：p_before_action 据此只让放牌的那个封印师处理这枚束缚（多封印师同场时）
+	dst.add_exclusive_effect(GConst.Exclusive.WuXiShuFu, player.id)
 	engine._broadcast_game()
 	return SUCCESS
 

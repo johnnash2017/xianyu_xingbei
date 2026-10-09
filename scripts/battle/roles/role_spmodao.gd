@@ -12,7 +12,7 @@ extends BattleRole
 ##
 ## 牌类校验覆写：服务端 spMoDao.cpp 覆写 v_missile / v_remissile（手中【魔弹】或地系/火系牌
 ## 可当【魔弹】使用与响应），已按服务端移植于本文件。
-## 引擎限制说明：服务端 spMoDao.cpp 并未实现【魔弹掌握】(802)，故本文件不实现该技能（不凭空编造）。
+## 引擎限制说明：服务端 spMoDao.cpp 并未实现【魔弹掌控】(802)，故本文件不实现该技能（不凭空编造）。
 ## 变通说明：服务端用 StateRequestHand 处理「请求手牌」，本引擎改用 ask_skill 逐一询问相关玩家
 ## （回复 args[0]==1 表示照做，card_ids 给出所弃的牌）；「魔弹传递」则复用引擎的 SMissileAsk。
 
@@ -36,7 +36,7 @@ func available_skills() -> Array:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SP_MO_BAO_CHONG_JI, "need_card": 1, "need_target": 1,
 			"targets": enemy_ids(), "cards": magic_hand_ids()})
 	if _hand_has_fire_or_earth() and enemies >= 1:
-		# 落点候选（本角色没有【魔弹掌握】，只有右手边那个）一并发给客户端，界面只亮这些
+		# 落点候选（本角色没有【魔弹掌控】，只有右手边那个）一并发给客户端，界面只亮这些
 		# 可用牌＝手中的地系/火系牌（与 v_missile_fusion 的牌校验同一条），界面据此把其余手牌置灰
 		var 魔弹牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Fire or c.element_enum() == GConst.CardElement.Earth)
 		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAN_RONG_HE, "need_card": 1, "need_target": 1,

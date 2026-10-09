@@ -326,7 +326,9 @@ func p_magic_skill(action: Dictionary) -> int:
 	return GConst.GE_INVALID_ACTION
 
 
-## 同生共死：摸 2 张牌，把独有效果放到目标身上并按形态联动双方手牌上限
+## 同生共死：摸 2 张牌，把独有效果放到目标身上并按形态联动双方手牌上限。
+## 「改上限」必须排在摸牌之后（摸牌顶过上限时按的是旧上限），而摸牌走 push_draw 是延迟结算的 ——
+## 所以把改上限那一段压成钩子、压在摸牌之前（状态栈后进先出 → 先摸牌，再改上限）
 func _tong_sheng_gong_si(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
@@ -334,7 +336,20 @@ func _tong_sheng_gong_si(action: Dictionary) -> int:
 	if dst == null:
 		return GConst.GE_INVALID_PLAYERID
 	notice_skill(TONG_SHENG_GONG_SI, [dst_id])
-	engine.draw(player.id, 2)
+	engine.push(BattleEngine.SHook.new("p_tong_sheng_after_draw", {"player": player.id, "dst": dst_id}, []))
+	engine.push_draw(player.id, 2)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 同生共死：摸完那 2 张牌之后，才挂独有效果并联动双方手牌上限
+func p_tong_sheng_after_draw(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	var dst_id: int = int(ctx.get("dst", -1))
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null:
+		return SUCCESS
 	tong_sheng_id = dst_id
 	dst.add_exclusive_effect(GConst.Exclusive.TongShengGongSi)
 	if dst_id == player.id:

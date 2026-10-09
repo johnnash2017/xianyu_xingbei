@@ -1,15 +1,15 @@
 extends BattleRole
 ## 苍炎魔女（roleID 30）—— 移植自服务端 role/MoNv.cpp
-## 形态：tap（【烈焰形态】）；指示物：【重生】(tokens[0]，上限 4)
+## 形态：tap（【烈焰形态】）；指示物：【重生】(tokens[0])，上限见角色表
 ## 技能：苍炎法典（3001，法术：弃 1 张火系牌，对目标角色和自己各造成 2 点法术伤害）、
 ##       天火断空（3002，法术：弃 2 张火系牌，非烈焰形态再移除 1 点【重生】，
 ##                 对目标角色和自己各造成 3（敌方士气更高时为 4）点法术伤害）、
-##       魔女之怒（3003，启动：手牌 ≤ 3 时进入【烈焰形态】、摸 0~3 张牌并调整手牌上限；
-##                 该形态下同一个技能号另有一个攻击入口：弃 1 张攻击牌、以虚拟【火焰斩】(87) 发起一次攻击）、
+##       魔女之怒（3003，启动：手牌 ≤ 3 时进入【烈焰形态】、摸 0~2 张牌并调整手牌上限；
+##                 该形态下不另设技能按钮：普通「攻击行动」打出的攻击牌一律视为火系【火焰斩】(87)）、
 ##       替身玩偶（3004，响应：受攻击伤害时弃 1 张法术牌，指定同队角色摸 1 张牌）、
 ##       永生银时计（3005，被动：因承受法术伤害掉士气时 +1【重生】）、
 ##       痛苦链接（3006，法术：耗 1 点能量，对目标对手和自己各 1 点法术伤害，然后弃到 3 张牌）、
-##       魔能翻转（3007，响应：受法术伤害且能量 ≥ 1 时，弃 X（X>1）张法术牌对目标对手造成 X-1 点法术伤害）
+##       魔能反转（3007，响应：受法术伤害且能量 ≥ 1 时，弃 X（X>1）张法术牌对目标对手造成 X-1 点法术伤害）
 ## 【烈焰形态】下除水系、暗系外的攻击牌视为火系（服务端 getCardElement / IsFired）。
 
 const CANG_YAN_FA_DIAN: int = 3001
@@ -22,11 +22,6 @@ const MO_NENG_FAN_ZHUAN: int = 3007
 
 ## 服务端用以代替任意攻击牌的虚拟卡：火焰斩
 const VIRTUAL_FIRE_SLASH: int = 87
-
-
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	p.tokens[0] = {"name": "重生", "max": 4, "num": 0}
 
 
 func available_skills() -> Array:
@@ -42,13 +37,6 @@ func available_skills() -> Array:
 	if player.get_energy() >= 1:
 		# 痛苦链接：目标须为对手（v_magic_skill：dst.color == player.color 时返回 GE_INVALID_ACTION）
 		out.append({"type": GConst.ActionType.MagicSkill, "id": TONG_KU_LIAN_JIE, "need_card": 0, "need_target": 1,
-			"targets": enemy_ids()})
-	# 服务端 v_attack_skill 未限制形态；该技能即【烈焰形态】下把攻击牌当作火系【火焰斩】打出
-	if player.tap and not player.hand_cards.is_empty():
-		# 只能弃攻击牌（v_attack_skill 校验同一条）
-		# 目标须为对手（v_attack_skill：dst.color == player.color 时返回 GE_INVALID_PLAYERID）
-		out.append({"type": GConst.ActionType.AttackSkill, "id": MO_NV_ZHI_NU, "need_card": 1, "need_target": 1,
-			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_attack()),
 			"targets": enemy_ids()})
 	if player.hand_cards.size() <= 3:
 		# 启动：进入【烈焰形态】并摸 0~2 张牌（摸牌数由 arg_choices 选择）
@@ -108,18 +96,26 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 # 真牌仍然从手牌进弃牌堆并展示（由引擎结算），反击用的是这张虚拟牌
 # ============================================================
 func p_reattack(ctx: Dictionary) -> int:
-	if int(ctx.get("doer", -1)) != player.id or not player.tap:
+	if int(ctx.get("doer", -1)) != player.id:
 		return SUCCESS
-	var c: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if c == null or not c.is_attack():
+	var 视为: int = _fire_slash_card(Data.get_card(int(ctx.get("card_id", -1))))
+	if 视为 < 0:
 		return SUCCESS
-	var 系别: int = c.element_enum()
-	# 服务端 MoNv::IsFired：横置形态下「除水/暗/火之外的攻击牌」才视为火系，应战时改用虚拟【火焰斩】
-	if 系别 == GConst.CardElement.Fire or 系别 == GConst.CardElement.Water or 系别 == GConst.CardElement.Darkness:
-		return SUCCESS
-	ctx["改用"] = VIRTUAL_FIRE_SLASH
+	ctx["改用"] = 视为
 	ctx["real"] = false
 	return SUCCESS
+
+
+## 烈焰形态下这张牌「视为」哪一张：服务端 MoNv::IsFired —— 横置形态下「除水 / 暗 / 火之外的攻击牌」
+## 才视为火系，改用虚拟【火焰斩】(87)；其余（含本来就火系的牌、非攻击牌、不在此形态）返回 -1＝不换。
+## 应战（p_reattack）与主动攻击（p_attack_card）共用这一条规则
+func _fire_slash_card(card: GCard) -> int:
+	if not player.tap or card == null or not card.is_attack():
+		return -1
+	var 系别: int = card.element_enum()
+	if 系别 == GConst.CardElement.Fire or 系别 == GConst.CardElement.Water or 系别 == GConst.CardElement.Darkness:
+		return -1
+	return VIRTUAL_FIRE_SLASH
 
 
 func _get_away_from_fire() -> int:
@@ -154,7 +150,7 @@ func p_special_skill(action: Dictionary) -> int:
 	engine.set_tap(player.id, true)
 	player.hand_cards_max += int(player.tokens[0]["num"]) - 2
 	if card_num > 0:
-		engine.draw(player.id, card_num)
+		engine.push_draw(player.id, card_num)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -183,9 +179,9 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 承受伤害时：替身玩偶（攻击伤害）/ 魔能翻转（法术伤害）
+# 承受伤害时：替身玩偶（攻击伤害）/ 魔能反转（法术伤害）
 # ============================================================
-## 【替身玩偶 / 魔能翻转】的推进阶段（0＝还没开始 / TI_SHEN_WAN_OU＝在问替身玩偶 / MO_NENG_FAN_ZHUAN＝在问魔能翻转）。
+## 【替身玩偶 / 魔能反转】的推进阶段（0＝还没开始 / TI_SHEN_WAN_OU＝在问替身玩偶 / MO_NENG_FAN_ZHUAN＝在问魔能反转）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
 ## 每次自己承受伤害（p_timeline_3）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
@@ -214,8 +210,9 @@ func _ti_shen_wan_ou(ctx: Dictionary) -> int:
 	if _timeline_3_step != TI_SHEN_WAN_OU:
 		return SUCCESS
 	if not engine.has_reply():
-		# 只能弃法术牌（card_rule = "magic"）：否则界面会把攻击牌等也点亮
-		询问(player.id, TI_SHEN_WAN_OU, 1, 1, GConst.CardSource.Hand, [], 0, "magic")
+		# 只能弃法术牌（card_rule = "magic"）：否则界面会把攻击牌等也点亮；
+		# 目标只给「除自己以外的队友」——结算里也按这条卡（点错会被静默丢掉、白费一次触发）
+		询问(player.id, TI_SHEN_WAN_OU, 1, 1, GConst.CardSource.Hand, [], 0, "magic", [], true, 0, -1, ally_ids())
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_timeline_3_step = 0
@@ -236,7 +233,7 @@ func _ti_shen_wan_ou(ctx: Dictionary) -> int:
 	if mate == null or mate.color != player.color:
 		return SUCCESS
 	notice_skill(TI_SHEN_WAN_OU, [mate_id])
-	engine.draw(mate_id, 1)
+	engine.push_draw(mate_id, 1)
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
@@ -247,7 +244,7 @@ func _ti_shen_wan_ou(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 魔能翻转：弃 X（X>1）张法术牌，对目标对手造成 X-1 点法术伤害
+## 魔能反转：弃 X（X>1）张法术牌，对目标对手造成 X-1 点法术伤害
 func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 	if bool(ctx.get("mo_nv_mnfz_done", false)):
 		return SUCCESS
@@ -264,7 +261,9 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 			var c: GCard = Data.get_card(cid)
 			if c != null and c.is_magic():
 				法术牌.append(cid)
-		询问(player.id, MO_NENG_FAN_ZHUAN, 2, 1, GConst.CardSource.Hand, [], 法术牌.size(), "", 法术牌)
+		# 目标只给「任意敌人」——结算里也按这条卡（点错会被静默丢掉、白费一次触发）
+		询问(player.id, MO_NENG_FAN_ZHUAN, 2, 1, GConst.CardSource.Hand, [], 法术牌.size(), "", 法术牌,
+			true, 0, -1, enemy_ids())
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_timeline_3_step = 0
@@ -466,55 +465,13 @@ func _tong_ku_lian_jie(action: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击技能：魔女之怒（弃 1 张攻击牌，以虚拟【火焰斩】发起一次攻击）
+# 主动攻击的「视为」判定：烈焰形态下除水系、暗系外的攻击牌一律视为火系【火焰斩】
+# （不另设攻击技能按钮 —— 技能原文里这是形态自带的规则，正常走普通「攻击行动」）
 # ============================================================
-func v_attack_skill(action: Dictionary) -> int:
-	if int(action.get("src_id", -1)) != player.id:
-		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) != MO_NV_ZHI_NU:
-		return GConst.GE_INVALID_ACTION
-	var cards: Array = action.get("card_ids", [])
-	if cards.is_empty():
-		return GConst.GE_INVALID_CARDID
-	var cid: int = int(cards[0])
-	var card: GCard = Data.get_card(cid)
-	# 服务端仅校验手牌；此处要求所弃之牌为攻击牌（本技能即把攻击牌当火系打出）
-	if card == null or not player.has_hand_card(cid) or not card.is_attack():
-		return GConst.GE_INVALID_CARDID
-	var dsts: Array = action.get("dst_ids", [])
-	var dst: BattlePlayer = engine.p(int(dsts[0]) if not dsts.is_empty() else player.id)
-	if dst == null or dst.color == player.color:
-		return GConst.GE_INVALID_PLAYERID
-	# 服务端 MoNv::v_attack_skill 会调 v_attack：补上通用攻击限制
-	# （面前有【挑衅】时目标只能是放牌者；目标角色可拒绝被攻击，如暗杀者潜行中）
-	if player.check_exclusive_effect(GConst.Exclusive.TiaoXin) \
-			and dst.id != player.exclusive_owner(GConst.Exclusive.TiaoXin):
-		return GConst.GE_INVALID_PLAYERID
-	if dst.v_attacked() != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_PLAYERID
-	return GConst.GE_SUCCESS
-
-
-func p_attack_skill(action: Dictionary) -> int:
-	if int(action.get("action_id", 0)) != MO_NV_ZHI_NU:
-		return GConst.GE_INVALID_ACTION
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	var cid: int = int(cards[0])
-	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
-	notice_skill(MO_NV_ZHI_NU, [dst_id])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [cid], "is_real": true,
-	})
-	# 与 _do_attack 一致：以虚拟【火焰斩】(87) 进入完整攻击流程（应战 / 命中 / 各钩子）
-	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": 2, "cause": GConst.CAUSE_ATTACK,
-		"type": GConst.HarmType.Attack, "card_id": VIRTUAL_FIRE_SLASH, "is_active": true,
-	}
-	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, VIRTUAL_FIRE_SLASH, harm))
-	# 打出的牌是公开的：带 已展示 触发「展示手牌」钩子；放在 push 之后，钩子才压在这次攻击之上先结算
-	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
-	engine._broadcast_game()
-	return URGENT
+func p_attack_card(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	var 视为: int = _fire_slash_card(Data.get_card(int(ctx.get("card_id", -1))))
+	if 视为 >= 0:
+		ctx["改用"] = 视为
+	return SUCCESS

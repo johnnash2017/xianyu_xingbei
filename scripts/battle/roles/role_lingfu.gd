@@ -1,11 +1,11 @@
 extends BattleRole
 ## 灵符师（roleID 18）—— 移植自服务端 role/LingFu.cpp
-## 【法术】灵符－雷鸣（1802）：弃 1 张雷系手牌，对 2 名角色各造成 1 点法术伤害
-## 【法术】灵符－风行（1801）：弃 1 张风系手牌，指定 2 名角色各弃 1 张手牌
-## 【响应】念咒（1803）：每次发动【灵符】时可将自己 1 张手牌作为【妖力】（盖牌，上限 2）
+## 【法术】灵符-雷鸣（1802）：弃 1 张雷系手牌，对 2 名角色各造成 1 点法术伤害
+## 【法术】灵符-风行（1801）：弃 1 张风系手牌，指定 2 名角色各弃 1 张手牌
+## 【响应】念咒（1803）：每次发动【灵符】时可将自己 1 张手牌作为【妖力】（盖牌，上限见角色表）
 ## 【响应】百鬼夜行（1804）：主动攻击命中后移除 1 个【妖力】，对目标角色造成 1 点法术伤害；
 ##                  若该【妖力】为火系牌可展示，改为指定 2 名角色，对除他们以外的所有角色各 1 点法术伤害
-## 【响应】灵力崩解（1805）：与【灵符－雷鸣】或【百鬼夜行】同时发动，本次每次造成的伤害 +1（耗 1 能量）
+## 【响应】灵力崩解（1805）：与【灵符-雷鸣】或【百鬼夜行】同时发动，本次每次造成的伤害 +1（耗 1 能量）
 
 const FENG_XING: int = 1801
 const LEI_MING: int = 1802
@@ -13,7 +13,7 @@ const NIAN_ZHOU: int = 1803
 const BAI_GUI_YE_XING: int = 1804
 const LING_LI_BENG_JIE: int = 1805
 
-## 本次【灵符－雷鸣】/【百鬼夜行】是否发动了【灵力崩解】（每次伤害 +1）
+## 本次【灵符-雷鸣】/【百鬼夜行】是否发动了【灵力崩解】（每次伤害 +1）
 var _beng_jie: bool = false
 ## 百鬼夜行：是否展示了火系妖力（对除指定 2 名角色外的所有角色造成伤害）
 var _expose: bool = false
@@ -28,15 +28,9 @@ var _bai_gui_done: bool = false
 var _bai_gui_phase: int = 0
 
 
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	# 【妖力】为专属盖牌，上限 2（对应服务端 coverCardsMax = 2）
-	p.cover_cards_max = 2
-
-
 func available_skills() -> Array:
 	var out: Array = []
-	# 灵符－风行/雷鸣：只有对应系别的手牌可作发动牌，下发给界面把其余手牌置灰（v_magic_skill 校验同一条）
+	# 灵符-风行/雷鸣：只有对应系别的手牌可作发动牌，下发给界面把其余手牌置灰（v_magic_skill 校验同一条）
 	var 风系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Wind)
 	if not 风系牌.is_empty():
 		out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_XING, "need_card": 1, "need_target": 2,
@@ -49,7 +43,7 @@ func available_skills() -> Array:
 
 
 # ============================================================
-# 主动法术技能：灵符－风行 / 灵符－雷鸣
+# 主动法术技能：灵符-风行 / 灵符-雷鸣
 # ============================================================
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
@@ -80,7 +74,7 @@ func p_magic_skill(action: Dictionary) -> int:
 	return GConst.GE_INVALID_ACTION
 
 
-## 灵符－风行：弃 1 张风系牌，指定 2 名角色各弃 1 张手牌
+## 灵符-风行：弃 1 张风系牌，指定 2 名角色各弃 1 张手牌
 ## 服务端压栈顺序（后进先出）为：弃掉打出的灵符 → 念咒 → 各目标弃牌
 func _feng_xing(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
@@ -99,7 +93,7 @@ func _feng_xing(action: Dictionary) -> int:
 	return SUCCESS
 
 
-## 灵符－雷鸣：弃 1 张雷系牌，念咒 → 灵力崩解 → 对 2 名角色各造成 1 点法术伤害
+## 灵符-雷鸣：弃 1 张雷系牌，念咒 → 灵力崩解 → 对 2 名角色各造成 1 点法术伤害
 func _lei_ming(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var cid: int = int(action.get("card_ids", [])[0])

@@ -1,8 +1,10 @@
 extends BattleRole
 ## 魔导师（roleID 8）—— 移植自服务端 role/MoDao.cpp
 ## 技能：
-##   魔爆冲击（801）——【法术】弃 1 张法术牌【展示】，指定 2 名对手各弃 1 张法术牌【展示】；
-##        若其中有人不如此做，则对其造成 2 点法术伤害③；只要有对手未弃牌，我方【战绩区】+1【宝石】
+##   魔爆冲击（801）——【法术】弃 1 张法术牌【展示】，我方【战绩区】+1【宝石】（无条件、先结算）；
+##        然后 2 名目标对手各弃 1 张法术牌【展示】；每有一人不如此做就当场结算一次
+##        「对他造成 2 点法术伤害③ → 你弃 1 张牌」，结算完才轮到下一名对手
+##        （不是最后统一结算，也不是无条件弃牌）
 ##   魔弹融合（803）——【响应】你的地系或火系牌可以当【魔弹】使用（打出后成为魔弹，
 ##        落点＝右手边最近的对手；之后由引擎统一的「魔弹传递」询问接手：
 ##        被指向者可打出【魔弹】/地系/火系牌继续传递（每传递一次伤害 +1）、用【圣光】抵挡（效果终止），
@@ -11,7 +13,7 @@ extends BattleRole
 ##
 ## 牌类校验覆写：服务端 MoDao.cpp 覆写 v_missile / v_remissile（手中【魔弹】或地系/火系牌
 ## 可当【魔弹】使用与响应），已按服务端移植于本文件。
-## 引擎限制说明：服务端 MoDao.cpp 未实现【魔弹掌握】(802)，本文件按技能原文（
+## 引擎限制说明：服务端 MoDao.cpp 未实现【魔弹掌控】(802)，本文件按技能原文（
 ## 「你主动使用【魔弹】时可以选择逆向传递」）补上：见 has_missile_mastery。
 ## 变通说明：服务端用 StateRequestHand 处理「请求手牌」，本引擎改用 ask_skill 逐一询问相关玩家
 ## （回复 args[0]==1 表示照做，card_ids 给出所弃的牌）；「魔弹传递」则复用引擎的 SMissileAsk。
@@ -23,10 +25,14 @@ const HUI_MIE_FENG_BAO: int = 804
 const MO_BAO_HARM_POINT: int = 2        # 魔爆冲击：不弃法术牌的对手受到的法术伤害
 const HUI_MIE_HARM_POINT: int = 2       # 毁灭风暴：每名对手受到的法术伤害
 
-## 魔爆冲击的多目标询问进度
+## 魔爆冲击的逐目标进度：钩子会在「伤害 / 自己弃牌」跑完后被再调一次，
+## 故进度记在成员上（钩子轮次会把 step 清零，不能靠它跨询问推进）
 var _mo_bao_targets: Array[int] = []
-var _mo_bao_damage: Array[int] = []
-var _mo_bao_gem: bool = false
+## 下一个要问的目标下标（问完 = 等于 _mo_bao_targets.size()）
+var _mo_bao_index: int = 0
+## 本步的「伤害 → 自己弃牌」是否已压栈、正在等它们跑完：
+## 钩子回头时据此跳过已经消费掉的那次回复，从下一名继续
+var _mo_bao_settling: bool = false
 
 
 # ============================================================
@@ -40,7 +46,7 @@ func available_skills() -> Array:
 		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_BAO_CHONG_JI, "need_card": 1, "need_target": 2,
 			"targets": enemy_ids(), "cards": magic_hand_ids()})
 	if _hand_has_fire_or_earth() and enemies >= 1:
-		# 落点候选（有【魔弹掌握】时左右各一个）一并发给客户端，界面只亮这些
+		# 落点候选（有【魔弹掌控】时左右各一个）一并发给客户端，界面只亮这些
 		# 可用牌＝手中的地系/火系牌（与 v_missile_fusion 的牌校验同一条），界面据此把其余手牌置灰
 		var 魔弹牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Fire or c.element_enum() == GConst.CardElement.Earth)
 		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAN_RONG_HE, "need_card": 1, "need_target": 1,
@@ -90,52 +96,70 @@ func p_magic_skill(action: Dictionary) -> int:
 	return GConst.GE_INVALID_ACTION
 
 
-## 魔爆冲击：弃 1 张法术牌，2 名对手各弃 1 张法术牌，未弃者受 2 点法术伤害；有人未弃则我方 +1 宝石
+## 魔爆冲击：弃 1 张法术牌【展示】；我方【战绩区】+1【宝石】（无条件、先结算）；
+## 2 名对手各弃 1 张法术牌【展示】，每有一人不如此做就当场结算一次
+## （先对他造成 2 点法术伤害、再让自己弃 1 张牌），结算完才轮到下一名对手。
+## 逐目标的「问 → 结算 → 问下一名」由 p_mo_bao_ask 钩子接力：本函数只做准备，
+## 随后把「问第 1 名」压进状态栈并返回 URGENT（状态栈后进先出）。
 func _mo_bao_chong_ji(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
 	var cid: int = int(cards[0])
-	if step == 0:
-		# 逐个问目标要牌的次序＝玩家点选顺序
-		_mo_bao_targets.clear()
-		for d: Variant in dsts:
-			_mo_bao_targets.append(int(d))
-		_mo_bao_damage.clear()
-		_mo_bao_gem = false
-		notice_skill(MO_BAO_CHONG_JI, dsts)
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": [cid], "is_real": true,
-		})
-		# 代价牌当场弃掉：这一步之后还要逐个问目标要牌，手牌一直留着会和「已打出」的表现对不上
-		engine.take_from_hand(player.id, [cid], true)
-		engine.to_discard([cid])
-		step = 1
-	while step >= 1 and step <= _mo_bao_targets.size():
-		var tid: int = _mo_bao_targets[step - 1]
+	# 逐个问目标要牌的次序＝玩家点选顺序
+	_mo_bao_targets.clear()
+	for d: Variant in dsts:
+		_mo_bao_targets.append(int(d))
+	_mo_bao_index = 0
+	_mo_bao_settling = false
+	notice_skill(MO_BAO_CHONG_JI, dsts)
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": [cid], "is_real": true,
+	})
+	# 代价牌当场弃掉：这一步之后还要逐个问目标要牌，手牌一直留着会和「已打出」的表现对不上
+	engine.take_from_hand(player.id, [cid], true)
+	engine.to_discard([cid])
+	# 我方【战绩区】+1【宝石】：无条件、在任何目标询问之前先结算
+	engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
+	engine._broadcast_game()
+	engine.push(BattleEngine.SHook.new("p_mo_bao_ask", {"player": player.id}, []))
+	return URGENT
+
+
+## 魔爆冲击的逐目标推进：问第 _mo_bao_index 名目标「弃 1 张法术牌【展示】」；
+## 没弃就当场结算（先对他造成 2 点法术伤害、再让自己弃 1 张牌），结算完才问下一名。
+## 钩子轮次会对每个玩家的角色各调一次，故必须按 ctx 点名的那名玩家过滤。
+func p_mo_bao_ask(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	# 上一轮把「伤害 → 自己弃牌」压了栈并返回 URGENT：这次回到这里＝那两步跑完了，
+	# 接着问下一名（那次回复已经消费掉，不能重复处理）
+	if _mo_bao_settling:
+		_mo_bao_settling = false
+	while _mo_bao_index < _mo_bao_targets.size():
+		var tid: int = _mo_bao_targets[_mo_bao_index]
 		if not engine.has_reply():
 			# 只能弃法术牌（card_rule = "magic"）：否则界面会把攻击牌等也点亮，
 			# 玩家点错提交后服务端按「不弃」处理，白白吃 2 点伤害
 			询问(tid, MO_BAO_CHONG_JI, 1, 0, GConst.CardSource.Hand, [], 0, "magic")
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
-		if not _target_discard_magic(tid, r):
-			_mo_bao_damage.append(tid)
-			_mo_bao_gem = true
-		step += 1
-	step = STEP_DONE
-	if _mo_bao_gem:
-		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
-	# _mo_bao_damage 已按玩家点选顺序；伤害状态是栈（后压先算）→ 逆序压栈
-	for i: int in range(_mo_bao_damage.size() - 1, -1, -1):
+		_mo_bao_index += 1
+		if _target_discard_magic(tid, r):
+			# 弃了法术牌：本次不结算，接着问下一名
+			continue
+		# 没弃：压入本次结算 —— 后压先算，先压「自己弃 1 张牌」、再压伤害
+		# → 执行顺序＝伤害 → 自己弃牌 → （本钩子被回头再调）问下一名
+		engine.push(BattleEngine.SRequestDiscard.new(player.id, 1, 0, MO_BAO_CHONG_JI))
 		engine.push_harm({
-			"src": player.id, "dst": _mo_bao_damage[i], "point": MO_BAO_HARM_POINT,
+			"src": player.id, "dst": tid, "point": MO_BAO_HARM_POINT,
 			"cause": MO_BAO_CHONG_JI, "type": GConst.HarmType.Magic,
 		})
-	engine._broadcast_game()
-	if _mo_bao_damage.is_empty():
-		return SUCCESS
-	return URGENT
+		_mo_bao_settling = true
+		engine._broadcast_game()
+		return URGENT
+	_mo_bao_index = 0
+	return SUCCESS
 
 
 ## 毁灭风暴：消耗 1 宝石，对 2 名对手各造成 2 点法术伤害
@@ -171,7 +195,7 @@ func v_remissile(card_id: int) -> int:
 
 
 # ============================================================
-# 【魔弹掌握】（802）
+# 【魔弹掌控】（802）
 # 技能原文：「你主动使用【魔弹】时可以选择逆向传递」（服务端 MoDao.cpp 未实现，按技能原文补上）。
 # 效果＝主动打【魔弹】时可以选左手边那个对手（逆向），由基类的 missile_targets 给出候选；
 # 仅限「主动使用」——魔弹一旦打出，后续传递方向就固定了，响应传递时不能改向

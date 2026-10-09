@@ -157,26 +157,26 @@ func 跑() -> void:
 	检((窗.get("_sel_cards") as Array).is_empty() and (窗.get("_sel_players") as Array).is_empty(),
 		"点「取消」没有清空已选的牌与目标")
 
-	# 特殊行动：点 BtnSpecila 应打开专用窗口（购买 / 合成 / 提炼），而不是直接结束行动
+	# 特殊行动：点 BtnSpecila 应进入「购买 / 合成 / 提炼」三选一（选项摆进二级技能栏），而不是直接结束行动
 	(窗.get("BtnSpecila") as Button).pressed.emit()
 	await 等帧(2)
-	检(int(窗.get("_mode")) == 5, "点「特殊行动」没有进入特殊行动（_mode=%d）" % int(窗.get("_mode")))
-	var 行动窗: Control = 窗.get("特殊行动窗") as Control
-	检(行动窗 != null and 行动窗.visible, "特殊行动专用窗口没有打开")
-	if 行动窗 != null:
-		# 三个按钮的节点引用必须绑上（@export 没绑上就是 null，点了不会有反应）
-		var 三选一: Array = [行动窗.get("BtnBuy"), 行动窗.get("BtnSynthesis"), 行动窗.get("BtnExtract")]
-		检(三选一[0] is Button and 三选一[1] is Button and 三选一[2] is Button,
-			"特殊行动窗口的三个按钮没绑上节点引用")
-		检(行动窗.get("Titile") is Label, "特殊行动窗口的标题没绑上节点引用")
-	# 窗口里的取消 → 关窗并退回行动阶段，本回合的技能按钮要摆回来
-	(行动窗.get("BtnBack") as Button).pressed.emit()
+	检(int(窗.get("_本地选项阶段")) == 3,
+		"点「特殊行动」没有进入三选一（阶段=%d）" % int(窗.get("_本地选项阶段")))
+	var 三选一选项: Array = 窗.get("_二级选项") as Array
+	检(三选一选项 != null and 三选一选项.size() == 3, "三选一应始终摆出购买/合成/提炼三项")
+	# 条件不满足的那几项照样摆着，只是点不动（半透明）—— 可点状态要跟着「可用」走
+	for 项: Dictionary in 三选一选项:
+		var 按钮: 技能按钮 = 项["按钮"]
+		检(按钮.plateButton.disabled == (not bool(项["可用"])),
+			"特殊行动选项的可点状态没跟着「可用」走")
+	# 三选一里取消 → 退回行动阶段，本回合的技能按钮要摆回来
+	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 1, "取消特殊行动后没有退回行动阶段：%d" % int(窗.get("_mode")))
-	检(not 行动窗.visible, "取消特殊行动后窗口没关掉")
+	检((窗.get("_二级选项") as Array).is_empty(), "退回行动阶段后二级选项没收掉")
 
-	# 特殊行动的第二层「用哪些星石」：走参数选择窗口（搬自参考工程的 ChooseArgsUI）
-	# 窗口要有选项，战绩区得先有星石（假数据里给蓝方塞 2 宝石 1 水晶）
+	# 特殊行动的第二层「用哪些星石」：也走二级技能栏（本地步骤，不用弹窗）
+	# 选项要有，战绩区得先有星石（假数据里给蓝方塞 2 宝石 1 水晶）
 	var 蓝队: GTeam = Data.team_of(GConst.BLUE)
 	蓝队.gem = 2
 	蓝队.crystal = 1
@@ -184,25 +184,22 @@ func 跑() -> void:
 	await 等帧(2)
 	窗.call("_选特殊行动", GConst.SpecialAction.Extract)
 	await 等帧(2)
-	var 参数窗: Control = 窗.get("参数选择窗") as Control
-	检(参数窗 != null and 参数窗.visible, "选完「提炼」没有打开参数选择窗口")
-	if 参数窗 != null:
-		var 选项区: Node = 参数窗.get("OptionsBox")
-		检(选项区 != null and 选项区.get_child_count() >= 2,
-			"参数选择窗口没列出星石选项按钮（%d 个）" % (选项区.get_child_count() if 选项区 != null else -1))
-		检(str((参数窗.get("Title") as Label).text) == "消耗能量",
-			"消耗能量的特殊行动，选项窗标题应为「消耗能量」：%s" % str((参数窗.get("Title") as Label).text))
-	# 窗口里的取消 → 退回上一层「购买/合成/提炼」三选一
-	(参数窗.get("BtnBack") as Button).pressed.emit()
+	var 二级选项: Array = 窗.get("_二级选项") as Array
+	检(int(窗.get("_本地选项阶段")) == 2, "选完「提炼」没有进入本地选星石步骤")
+	检(二级选项 != null and 二级选项.size() >= 2,
+		"二级技能栏没列出星石选项按钮（%d 个）" % (二级选项.size() if 二级选项 != null else -1))
+	检(str((窗.get("TxtHint") as Label).text) == "选择要提炼的星石",
+		"提炼的提示应为「选择要提炼的星石」：%s" % str((窗.get("TxtHint") as Label).text))
+	# 「取消」→ 退回上一层「购买/合成/提炼」三选一
+	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(2)
-	检(not 参数窗.visible, "参数选择窗口的取消没关掉窗口")
-	检(int(窗.get("_mode")) == 5, "取消星石选择后没有退回三选一：%d" % int(窗.get("_mode")))
-	检(行动窗.visible, "取消星石选择后三选一窗口没有重新打开")
+	检(int(窗.get("_本地选项阶段")) == 3, "取消星石选择后没有退回三选一：%d" % int(窗.get("_本地选项阶段")))
+	检(not (窗.get("_二级选项") as Array).is_empty(), "取消星石选择后三选一的选项没摆出来")
 	# 战斗界面的取消 → 一路退回行动阶段
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 1, "取消特殊行动后没有退回行动阶段：%d" % int(窗.get("_mode")))
-	检(not 行动窗.visible, "退回行动阶段后三选一窗口没关掉")
+	检((窗.get("_二级选项") as Array).is_empty(), "退回行动阶段后二级选项没收掉")
 
 	# 放弃行动（BtnResign）→ 回到等待态
 	(窗.get("BtnResign") as Button).pressed.emit()
@@ -211,11 +208,19 @@ func 跑() -> void:
 	检(not 确定.visible, "回到等待态后「确定」还显示着")
 
 	# 平时（不选目标的等待态）鼠标指向玩家头像 → 就地弹出他的角色技能说明
-	# （与选角界面同款：面板是 富文本提示按钮，说明文本写在 tooltip_text 里，由引擎悬停触发）
+	# （与选角界面同款：都走界面自己的 说明提示框，不用引擎自带的 tooltip）
 	var 头像面板: 战斗玩家面板 = 窗.get("MainPlayer") as 战斗玩家面板
-	检(头像面板 is 富文本提示按钮, "玩家头像面板没走富文本悬浮提示")
-	检(str(头像面板.tooltip_text).length() > 10 and str(头像面板.tooltip_text).find("[color=") >= 0,
-		"玩家头像的悬浮说明没有内容或没上色（BBCode）")
+	var 说明: 说明提示框 = 窗.get("_说明提示") as 说明提示框
+	检(说明 != null, "战斗界面没有说明提示框")
+	头像面板.mouse_entered.emit()
+	# 说明框的宽度是一级一级量出来的（每帧一档），多等几帧等它定好
+	await 等帧(8)
+	检(说明.可见(), "鼠标指向头像后没有弹出角色说明")
+	检(说明.文本.text.length() > 10 and 说明.文本.text.find("[color=") >= 0,
+		"角色说明没有内容或没上色（BBCode）")
+	头像面板.mouse_exited.emit()
+	await 等帧(2)
+	检(not 说明.可见(), "鼠标离开头像后角色说明没有收掉")
 
 	# ================= 2) 应答询问（被攻击，应战） =================
 	# 拿手牌里那张非暗系攻击牌当「本次攻击的牌」，它自己就是合法的应战牌

@@ -1,6 +1,6 @@
 extends BattleRole
 ## 阴阳师（roleID 33）—— 移植自服务端 role/YinYang.cpp
-## 指示物：tokens[0] = 鬼火（上限 3）
+## 指示物：tokens[0] = 鬼火，上限见角色表
 ## 技能：式神咒束（3301，响应：队友被主动攻击时由自己代替其应战）※ 受限，见文末、
 ##       黑暗祭礼（3302，回合结束：鬼火达到上限时清空所有鬼火，对目标造成 2 点法术伤害）、
 ##       式神降临（3303，法术：弃 2 张同命格手牌 → +1 鬼火、横置进入式神形态、额外 +1 攻击行动）、
@@ -26,14 +26,8 @@ const SHI_SHEN_ZHUAN_HUAN: int = 3305
 const YIN_YANG_ZHUAN_HUAN: int = 3306
 
 const TOKEN_GUI_HUO: int = 0
-const TOKEN_GUI_HUO_MAX: int = 3
 
 var gui_huo_atk: bool = false          # 本次应战伤害改为鬼火数
-
-
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	p.tokens[TOKEN_GUI_HUO] = {"name": "鬼火", "max": TOKEN_GUI_HUO_MAX, "num": 0}
 
 
 func available_skills() -> Array:
@@ -53,6 +47,10 @@ func available_skills() -> Array:
 func _gui_huo() -> int:
 	var t: Dictionary = player.tokens[TOKEN_GUI_HUO]
 	return int(t["num"])
+
+
+func _gui_huo_max() -> int:
+	return int(player.tokens[TOKEN_GUI_HUO]["max"])
 
 
 func _set_gui_huo(v: int) -> void:
@@ -263,7 +261,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 	# 之后重入（等回复回来时会再进一次本钩子）不能再用它当门槛，
 	# 否则 2 点法术伤害与「脱离式神形态」整条不生效，回复还会残留
 	if _ji_li_step == 0:
-		if _gui_huo() < TOKEN_GUI_HUO_MAX:
+		if _gui_huo() < _gui_huo_max():
 			return SUCCESS
 		# 服务端在询问前先把鬼火清零
 		_set_gui_huo(0)
@@ -312,7 +310,7 @@ func p_before_lose_morale(ctx: Dictionary) -> int:
 		return SUCCESS
 	if int(ctx.get("harm_cause", 0)) != SHENG_MING_JIE_JIE:
 		return SUCCESS
-	if _gui_huo() != TOKEN_GUI_HUO_MAX:
+	if _gui_huo() != _gui_huo_max():
 		return SUCCESS
 	ctx["amount"] = 0
 	return SUCCESS

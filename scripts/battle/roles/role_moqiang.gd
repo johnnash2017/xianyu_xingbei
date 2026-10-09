@@ -1,12 +1,12 @@
 extends BattleRole
 ## 魔枪（roleID 29）—— 移植自服务端 role/MoQiang.cpp
 ## 形态：tap = [幻影形态]（暗之解放进入，幻影星辰解除；形态下手牌上限恒定为 5，解除后恢复 6）
-## 技能：暗之解放（2901，启动：转[幻影形态]，本回合下次主动攻击伤害 +2；
+## 技能：暗之解放（2901，启动：转[幻影形态]，本回合下次主动攻击伤害 +1；
 ##                 不能发动漆黑之枪和充盈）、
 ##       幻影星辰（2902，启动：仅[幻影形态]下，对自身 2 点法术伤害并脱离[幻影形态]；
 ##                 若没有因此造成士气下降，则对目标角色 2 点法术伤害）、
-##       黑暗束缚（2903，被动：始终不能使用法术牌，由 v_missile/v_shield/v_weaken 覆写实现；
-##                 圣光格挡与反魔弹由 v_block/v_remissile 覆写实现）、
+##       黑暗束缚（2903，被动：你始终不能使用法术牌，由 v_allow_action / v_missile / v_shield / v_weaken /
+##                  v_block / v_remissile 覆写实现）、
 ##       暗之障壁（2904，响应：任何人对你造成伤害时，二选一：弃 X 张法术牌 或 弃 X 张雷系牌[展示]）、
 ##       充盈（2905，法术：弃 1 张法术牌或雷系牌[展示]，所有人各弃 1 张牌，
 ##             除你以外每有人弃法术牌或雷系牌则本回合下次主动攻击伤害 +1，额外 +1 攻击行动）、
@@ -54,7 +54,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 黑暗束缚：始终不能使用法术牌（由 v_missile/v_shield/v_weaken 覆写实现）
+	# 黑暗束缚：始终不能使用法术牌（服务端 v_allow_action 整类驳回，见文件末尾；客户端据此置灰）
 	# 暗之解放后本回合不能发动充盈
 	if availabel_chong_ying and (_hand_has_thunder() or _hand_has_magic()):
 		# 充盈要弃 1 张法术牌或雷系牌：只让这些牌可点（v_magic_skill 校验同一条）
@@ -81,11 +81,20 @@ func is_free_skill(skill_id: int) -> bool:
 
 # ============================================================
 # 牌类校验覆写（对照服务端 MoQiang.cpp）
-# 【黑暗束缚】（2903）：始终不能使用法术牌，服务端恒返回 GE_INVALID_CARDID——
-#   v_missile / v_shield / v_weaken 禁止使用魔弹/圣盾/虚弱；v_block / v_remissile 禁止圣光格挡与反魔弹。
-# 充盈（2905）属法术技能（走 v_magic_skill），不受上述限制。
-# 说明：服务端未覆写中毒等其他法术牌的校验路径，故本引擎同样不拦截。
+# 【黑暗束缚】（2903）：你始终不能使用法术牌——
+#   · 整类「法术」行动由 v_allow_action 一律驳回（法术技能如【充盈】走 ActionType.MagicSkill，不受影响）；
+#   · v_missile / v_shield / v_weaken 另行堵住「魔弹 / 圣盾 / 虚弱」这三张牌自己的校验路径；
+#   · v_block / v_remissile 禁止用【圣光】格挡攻击、反【魔弹】。
+# 对照参考客户端 MoQiang::normal() 的 handArea->disableMagic()：魔枪手里的【法术牌】平时整片置灰，
+# 客户端那份名单见 battle_mobile 的 行动阶段禁用法术牌角色。
 # ============================================================
+## 【黑暗束缚】（2903）：整类「法术」行动直接禁掉（中毒等其它法术牌也不再漏放）
+func v_allow_action(action_type: int, _args: Array, _allow: int, _can_give_up: bool) -> int:
+	if action_type != GConst.ActionType.Magic:
+		return V_NOT_OVERRIDE
+	return GConst.GE_INVALID_ACTION
+
+
 func v_missile(_card_id: int, _dst_id: int) -> int:
 	return GConst.GE_INVALID_CARDID
 
@@ -143,7 +152,7 @@ func p_special_skill(action: Dictionary) -> int:
 	return SUCCESS
 
 
-## 暗之解放：转[幻影形态]，手牌上限 5；本回合下次主动攻击 +2，禁用漆黑之枪与充盈
+## 暗之解放：转[幻影形态]，手牌上限 5；本回合下次主动攻击 +1，禁用漆黑之枪与充盈
 func _apply_an_zhi_jie_fang() -> void:
 	notice_skill(AN_ZHI_JIE_FANG, [player.id])
 	player.boot_skill_used = true
@@ -226,7 +235,7 @@ var _hit_step: int = 0
 
 
 # ============================================================
-# 主动攻击命中后：暗之解放 +2 伤害（2901）→ 充盈加伤（2905）→ 漆黑之枪（2906）
+# 主动攻击命中后：暗之解放 +1 伤害（2901）→ 充盈加伤（2905）→ 漆黑之枪（2906）
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
@@ -247,17 +256,20 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 攻击预告加伤：幻影形态下已启动【暗之解放】、本回合还没用掉时，本次主动攻击命中会 +2
-## （对应 p_timeline_2_hit 里的 _an_zhi_jie_fang_effect；只用于被攻击者提示，不改变实际结算）
+## 攻击预告加伤：幻影形态下已启动【暗之解放】、本回合还没用掉时，本次主动攻击命中会 +1；
+## 或者【充盈】已激活（且非【暗之解放】）时，命中会 +本回合累计的充盈数
+## （对应 p_timeline_2_hit 里的 _an_zhi_jie_fang_effect / _chong_ying_add_harm；只用于被攻击者提示）
 func p_attack_preview(ctx: Dictionary) -> int:
 	if not bool(ctx.get("is_active", false)):
 		return 0
 	if using_an_zhi_jie_fang and not used_an_zhi_jie_fang:
-		return 2
+		return 1
+	if used_chong_ying and not using_an_zhi_jie_fang:
+		return card_count
 	return 0
 
 
-## 暗之解放：仅[幻影形态]下本回合首次主动攻击伤害 +2
+## 暗之解放：仅[幻影形态]下本回合首次主动攻击伤害 +1
 func _an_zhi_jie_fang_effect(ctx: Dictionary) -> void:
 	if not using_an_zhi_jie_fang or used_an_zhi_jie_fang:
 		return
@@ -265,7 +277,7 @@ func _an_zhi_jie_fang_effect(ctx: Dictionary) -> void:
 		return
 	var harm: Dictionary = ctx["harm"]
 	notice_skill(AN_ZHI_JIE_FANG, [int(harm.get("dst", -1))])
-	harm["point"] = int(harm.get("point", 0)) + 2
+	harm["point"] = int(harm.get("point", 0)) + 1
 	used_an_zhi_jie_fang = true
 
 

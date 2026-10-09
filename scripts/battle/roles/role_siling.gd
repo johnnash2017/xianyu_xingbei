@@ -2,10 +2,11 @@ extends BattleRole
 ## 死灵法师（roleID 13）—— 移植自服务端 role/SiLing.cpp
 ## 被动：圣渎（1302，[治疗]上限 +3；[治疗]不能抵御攻击伤害）
 ## 技能：不朽（1301，响应：[法术行动]结束时可选，自身 +1 治疗）、
-##       瘟疫（1303，法术：弃 1 张地系牌[展示]，对其他所有角色各 1 点法术伤害）、
+##       瘟疫（1303，法术：弃 1 张地系牌[展示]，对其他所有角色各 1 点法术伤害；
+##                 若因此造成士气下降，回合结束时自身 +1 治疗）、
 ##       死亡之触（1304，法术：移除 A 点治疗并弃 B 张同系牌（A、B≥2），
 ##                 对目标造成 A+B-3 点法术伤害；不能和不朽同时发动）、
-##       墓碑陨落（1305，必杀技：消耗 1 宝石，对其他所有角色各 2 点法术伤害，自身 +1 治疗）
+##       剧毒新星（1305，必杀技：消耗 1 宝石，对其他所有角色各 2 点法术伤害，自身 +1 治疗）
 ## 说明：服务端无形态与指示物（圣渎为被动、不朽为响应），故本移植不使用 tokens。
 
 const BU_XIU: int = 1301
@@ -14,10 +15,17 @@ const WEN_YI: int = 1303
 const SI_WANG_ZHI_CHU: int = 1304
 const MU_BEI_YUN_LUO: int = 1305
 
-## 服务端 p_after_magic 只做一次询问；墓碑陨落的「+1 治疗」在服务端由 p_magic_skill 重入结算，
+## 服务端 p_after_magic 只做一次询问；剧毒新星的「+1 治疗」在服务端由 p_magic_skill 重入结算，
 ## 本引擎 SkillRun 不重入，故移到 p_after_magic 首段（见 pending_mu_bei_cross）
 var used_si_wang_zhi_chu: bool = false
 var pending_mu_bei_cross: bool = false
+## 【瘟疫】的附带标记之一：本回合由自己发动过瘟疫。
+## 掉士气链（lose_morale / SOverloadMorale）会对每个玩家的角色各广播一次，只按 harm_cause == WEN_YI
+## 判定无法区分是哪名死灵法师发的，故必须再确认这次瘟疫是不是自己发的
+var _wen_yi_cast: bool = false
+## 【瘟疫】的附带标记之二：本次【瘟疫】伤害若造成了士气下降（走掉士气链，ctx.harm_cause == WEN_YI），
+## 置 true；到自己的回合结束（p_turn_end）时 +1 治疗并清回
+var _wen_yi_morale_down: bool = false
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -45,9 +53,9 @@ func available_skills() -> Array:
 
 
 # ============================================================
-# 法术行动结束后：墓碑陨落第二段（+1 治疗）→ 不朽（1301）
+# 法术行动结束后：剧毒新星第二段（+1 治疗）→ 不朽（1301）
 # ============================================================
-## 【墓碑陨落第二段 / 不朽】的推进阶段（0＝还没开始 / BU_XIU＝在问是否发动不朽）。
+## 【剧毒新星第二段 / 不朽】的推进阶段（0＝还没开始 / BU_XIU＝在问是否发动不朽）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
 ## 每次自己法术行动结束（p_after_magic）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
@@ -62,7 +70,7 @@ func p_after_magic(ctx: Dictionary) -> int:
 	if _after_magic_step >= STEP_DONE:
 		return SUCCESS
 	if _after_magic_step == 0:
-		# 墓碑陨落：对其他角色的伤害结算完毕后自身 +1 治疗
+		# 剧毒新星：对其他角色的伤害结算完毕后自身 +1 治疗
 		if pending_mu_bei_cross:
 			pending_mu_bei_cross = false
 			施加治疗(player.id, 1)
@@ -104,6 +112,39 @@ func p_timeline_4(ctx: Dictionary) -> int:
 		return SUCCESS
 	harm["cross_available"] = 0
 	notice_skill(SHENG_DU, [player.id])
+	return SUCCESS
+
+
+# ============================================================
+# 瘟疫的附带：因本次【瘟疫】伤害造成士气下降 → 回合结束时自身 +1 治疗
+# ============================================================
+## 掉士气链的最后一步（SOverloadMorale 链里「扣完士气」之后才跑）。
+## 该钩子对每个玩家的角色各广播一次，故先按 _wen_yi_cast 确认这次瘟疫是自己发的；
+## ctx.harm_cause 是本次掉士气归属的伤害 cause（超限掉士气时由 push_overload_with_harm 带入），
+## 正是【瘟疫】才记一笔；等自己的回合结束再兑现。
+func p_true_lose_morale(ctx: Dictionary) -> int:
+	if not _wen_yi_cast:
+		return SUCCESS
+	if int(ctx.get("harm_cause", 0)) != WEN_YI:
+		return SUCCESS
+	if int(ctx.get("amount", 0)) <= 0:
+		return SUCCESS
+	_wen_yi_morale_down = true
+	return SUCCESS
+
+
+## 回合结束（自己回合）：【瘟疫】曾造成士气下降则 +1 治疗，结算后清标记
+func p_turn_end(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	# 瘟疫的标记只在本回合内有效，回合结束一并清掉（避免留给下一次别人的瘟疫）
+	_wen_yi_cast = false
+	if not _wen_yi_morale_down:
+		return SUCCESS
+	_wen_yi_morale_down = false
+	notice_skill(WEN_YI, [player.id])
+	施加治疗(player.id, 1)
+	engine._broadcast_game()
 	return SUCCESS
 
 
@@ -166,6 +207,7 @@ func _wen_yi(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var cid: int = int(cards[0])
 	var dst_ids: Array = _all_other_ids_from_self()
+	_wen_yi_cast = true
 	notice_skill(WEN_YI, dst_ids)
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -209,7 +251,7 @@ func _si_wang_zhi_chu(action: Dictionary) -> int:
 	return URGENT
 
 
-## 墓碑陨落：消耗 1 宝石，对其他所有角色各 2 点法术伤害，再自身 +1 治疗
+## 剧毒新星：消耗 1 宝石，对其他所有角色各 2 点法术伤害，再自身 +1 治疗
 func _mu_bei_yun_luo(_action: Dictionary) -> int:
 	var dst_ids: Array = _all_other_ids_from_self()
 	notice_skill(MU_BEI_YUN_LUO, dst_ids)

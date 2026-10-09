@@ -1,13 +1,13 @@
 extends BattleRole
 ## 红莲骑士（roleID 28）—— 移植自服务端 role/HongLian.cpp
-## 形态：tap（血印形态）+ 血印指示物（上限 2）；cross_max = 4
-## 技能：腥红圣约（2801，攻击技能：治疗未满且本回合未用 → 选牌攻击时 +1 治疗）、
-##       腥红信仰（2802，被动：被他人伤害且可治疗时，放弃治疗结算）、
-##       血腥祷言（2803，启动：把治疗转移给其他角色，转移一次 +1 血印，自身承受等量法术伤害）、
+## 形态：tap（热血沸腾形态）+ 血印指示物（上限见角色表）；cross_max = 4
+## 技能：猩红圣约（2801，响应：治疗未满且本回合未用时，主动攻击前可选 → +1 治疗）、
+##       猩红信仰（2802，被动：被他人伤害且可治疗时，放弃治疗结算）、
+##       血腥祷言（2803，启动：把治疗转移给 1~2 名队友，转移一次 +1 血印，自身承受等量法术伤害）、
 ##       杀戮盛宴（2806，主动攻击命中后可选：耗 1 血印，伤害 +2，自身受 4 点法术伤害）、
-##       热血沸腾（2807，被动：血印形态下不损失士气；未横置时受伤进入血印形态；回合结束解除并 +2 治疗）、
-##       戒骄戒躁（2808，额外行动：血印形态且能量≥1 时追加一次攻击/法术行动）、
-##       腥红十字（2809，法术技能：弃 2 张法术牌 + 1 能量 + 1 血印，目标 3 点、自身 4 点法术伤害）
+##       热血沸腾（2807，被动：热血沸腾形态下不损失士气；未横置时受伤进入热血沸腾形态；回合结束解除并 +2 治疗）、
+##       戒骄戒躁（2808，额外行动：热血沸腾形态且能量≥1 时追加一次攻击/法术行动）、
+##       猩红十字（2809，法术技能：弃 2 张法术牌 + 1 能量 + 1 血印，目标 3 点、自身 4 点法术伤害）
 
 const XING_HONG_SHENG_YUE: int = 2801
 const XING_HONG_XIN_YANG: int = 2802
@@ -17,13 +17,11 @@ const RE_XUE_FEI_TENG: int = 2807
 const JIE_JIAO_JIE_ZAO: int = 2808
 const XING_HONG_SHI_ZI: int = 2809
 
+const XUE_XING_DAO_YAN_TEAM_MAX: int = 2   # 【血腥祷言】可分配的队友数上限（技能表：1~2 名）
+
 var used_xing_hong_sheng_yue: bool = false
 
-## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
-## p_timeline_1 据此结算腥红圣约，用完即清
-var _预选攻击技能: int = 0
-
-## 【腥红圣约（普通出牌攻击询问）】的推进阶段：0＝还没开始 / T1_ASK＝在问是否发动，收尾清回 0。
+## 【猩红圣约（普通出牌攻击询问）】的推进阶段：0＝还没开始 / T1_ASK＝在问是否发动，收尾清回 0。
 ## 用自有变量推进而不是引擎 step：钩子轮次开始会把 step 清零，而这条流程要跨一次询问。
 var _timeline_1_step: int = 0
 const T1_ASK: int = 1
@@ -32,7 +30,6 @@ const T1_ASK: int = 1
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
 	p.cross_max = 4
-	p.tokens[0] = {"name": "血印", "max": 2, "num": 0}
 
 
 func available_skills() -> Array:
@@ -44,7 +41,7 @@ func available_skills() -> Array:
 	if player.cross_num > 0:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_XING_DAO_YAN,
 			"need_card": 0, "need_target": 1, "targets": ally_ids()})
-	# 【腥红圣约】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
+	# 【猩红圣约】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
 	return out
 
 
@@ -90,6 +87,14 @@ func v_special_skill(action: Dictionary) -> int:
 		# 只能分给队友（不含自己）
 		if dp.color != player.color or dp.id == player.id:
 			return GConst.GE_INVALID_ACTION
+	# 可分配的队友数为 1~2 名（技能表）：同一名队友出现在多次只算一名，超过上限直接驳回
+	if _队友目标数(dsts) > XUE_XING_DAO_YAN_TEAM_MAX:
+		return GConst.GE_INVALID_ACTION
+	# 每一份分配都不允许为负：负值会被 _分配点数 抵消掉正的一份（如 args=[5,-3] 时 total 只有 2），
+	# 却能给前者分到 5 点，凭空多出治疗
+	for i: int in range(args.size()):
+		if int(args[i]) < 0:
+			return GConst.GE_INVALID_ARGUMENT
 	var total: int = _分配点数(dsts, args)
 	if total <= 0 or player.cross_num < total:
 		return GConst.GE_INVALID_ACTION
@@ -106,7 +111,7 @@ func p_special_skill(action: Dictionary) -> int:
 	player.sub_cross_num(total)
 	for i: int in range(dsts.size()):
 		施加治疗(int(dsts[i]), int(args[i]) if i < args.size() else 0)
-	if int(player.tokens[0]["num"]) < 2:
+	if int(player.tokens[0]["num"]) < int(player.tokens[0]["max"]):
 		player.tokens[0]["num"] = int(player.tokens[0]["num"]) + 1
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": total,
@@ -124,58 +129,17 @@ func _分配点数(dsts: Array, args: Array) -> int:
 	return total
 
 
-# ============================================================
-# 攻击技能（技能栏）：腥红圣约（选一张攻击牌 + 一名对手发起攻击，攻击前 +1 治疗）
-# ============================================================
-func v_attack_skill(action: Dictionary) -> int:
-	if int(action.get("src_id", -1)) != player.id:
-		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) != XING_HONG_SHENG_YUE:
-		return GConst.GE_INVALID_ACTION
-	# 回合限定：治疗未达上限且本回合未发动过
-	if used_xing_hong_sheng_yue or player.cross_num >= player.cross_max:
-		return GConst.GE_INVALID_ACTION
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	if cards.is_empty() or dsts.is_empty():
-		return GConst.GE_INVALID_ARGUMENT
-	var cid: int = int(cards[0])
-	var dst_id: int = int(dsts[0])
-	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
-	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_ACTION
-	var dst: BattlePlayer = engine.p(dst_id)
-	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_PLAYERID
-	return GConst.GE_SUCCESS
-
-
-## 腥红圣约：打出所选攻击牌发起一次主动攻击。
-## 攻击宣告后 p_timeline_1 会依据 _预选攻击技能 直接结算 +1 治疗（不再弹窗询问）
-func p_attack_skill(action: Dictionary) -> int:
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	var cid: int = int(cards[0])
-	var dst_id: int = int(dsts[0])
-	_预选攻击技能 = XING_HONG_SHENG_YUE
-	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
-		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
-	}
-	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
-	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
-	})
-	return URGENT
+## dst_ids 里的不同队友数（同一名队友出现在多次只算一名），用于「限 1~2 名队友」的校验
+func _队友目标数(dsts: Array) -> int:
+	var 去重: Dictionary = {}
+	for d: Variant in dsts:
+		去重[int(d)] = true
+	return 去重.size()
 
 
 # ============================================================
-# 攻击宣告后：腥红圣约（治疗未满上限且本回合未发动时 +1 治疗）
-# 两条路径：
-#   · 技能栏按钮（_预选攻击技能 == 2801）：直接结算，不再弹窗询问；
-#   · 普通出牌攻击（_预选攻击技能 == 0）：恢复原版弹窗询问。
+# 攻击宣告后：猩红圣约（治疗未满上限且本回合未发动时 +1 治疗）
+# 普通出牌攻击：恢复原版弹窗询问。
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
@@ -183,13 +147,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	if _timeline_1_step == 0:
-		var 预选: int = _预选攻击技能
-		_预选攻击技能 = 0
-		if 预选 == XING_HONG_SHENG_YUE:
-			# 技能栏按钮：直接结算（不再弹窗询问）
-			_发动腥红圣约(ctx)
-			return SUCCESS
-		# 普通出牌攻击：恢复原版前提前置条件（治疗未满上限且本回合未发动），满足才问
+		# 恢复原版前提前置条件（治疗未满上限且本回合未发动），满足才问
 		if player.cross_num >= player.cross_max or used_xing_hong_sheng_yue:
 			return SUCCESS
 		_timeline_1_step = T1_ASK
@@ -202,12 +160,12 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		var args: Array = r.get("args", [])
 		if args.is_empty() or int(args[0]) != 1:
 			return SUCCESS
-		_发动腥红圣约(ctx)
+		_发动猩红圣约(ctx)
 	return SUCCESS
 
 
-## 腥红圣约：治疗未满上限且本回合未发动时，+1 治疗并把本回合标记为已发动
-func _发动腥红圣约(ctx: Dictionary) -> void:
+## 猩红圣约：治疗未满上限且本回合未发动时，+1 治疗并把本回合标记为已发动
+func _发动猩红圣约(ctx: Dictionary) -> void:
 	if player.cross_num >= player.cross_max or used_xing_hong_sheng_yue:
 		return
 	notice_skill(XING_HONG_SHENG_YUE, [int(ctx.get("dst", -1))])
@@ -252,7 +210,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 腥红信仰：被他人伤害时关闭本次治疗结算（服务端 XingHongXinYang：crossAvailable = 0）
+# 猩红信仰：被他人伤害时关闭本次治疗结算（服务端 XingHongXinYang：crossAvailable = 0）
 # ============================================================
 func p_timeline_4(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
@@ -268,7 +226,7 @@ func p_timeline_4(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击/法术行动结束后：戒骄戒躁（血印形态 + 能量≥1 时追加一次攻击/法术行动）
+# 攻击/法术行动结束后：戒骄戒躁（热血沸腾形态 + 能量≥1 时追加一次攻击/法术行动）
 # ============================================================
 func p_after_attack(ctx: Dictionary) -> int:
 	return _jie_jiao_jie_zao(int(ctx.get("player", -1)))
@@ -287,7 +245,7 @@ func _jie_jiao_jie_zao(pid: int) -> int:
 
 
 # ============================================================
-# 玩家选择额外行动时：戒骄戒躁扣 1 能量（优先水晶）并解除血印形态
+# 玩家选择额外行动时：戒骄戒躁扣 1 能量（优先水晶）并解除热血沸腾形态
 # （引擎已在选中时广播该额外行动的技能宣告，此处不再重复）
 # ============================================================
 func p_additional_action(ctx: Dictionary) -> int:
@@ -303,7 +261,7 @@ func p_additional_action(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 热血沸腾：血印形态下不受士气损失；未横置时因伤害掉士气则进入血印形态；
+# 热血沸腾：热血沸腾形态下不受士气损失；未横置时因伤害掉士气则进入热血沸腾形态；
 # 回合结束解除并 +2 治疗（服务端要求 harm.type != HARM_NONE）
 # ============================================================
 func p_before_lose_morale(ctx: Dictionary) -> int:
@@ -340,7 +298,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 主动法术技能：腥红十字
+# 主动法术技能：猩红十字
 # ============================================================
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:

@@ -29,6 +29,9 @@ signal 离开悬停()
 
 ## 名字左右各留一个字宽的空白（跟按钮字号走，字号改了自动跟着变）
 
+## 选项不可用时的整体透明度（条件不满足的选项仍摆着，但半透明、点不动）
+const 不可用透明度: float = 0.45
+
 ## 这个按钮代表的技能号
 var 技能号: int = 0
 
@@ -81,6 +84,13 @@ func 设置选项(文本: String, 底色: Color, 选项技能号: int = 0) -> vo
 		custom_minimum_size.x = _名字宽度(文本) + _一字宽() * 2.0
 	if selectBorder != null:
 		selectBorder.visible = false
+
+
+## 这根选项能不能点：不能点时整颗按钮半透明（仍然显示，但点不动 —— 交给它自己解释为什么不行）
+func 设置选项可用(值: bool) -> void:
+	plateButton.disabled = not 值
+	# 只调透明度、不染色：底色是着色器给的，被染了会看不出它本来属于哪一类
+	modulate.a = 1.0 if 值 else 不可用透明度
 
 
 ## 名字在按钮字体下的实际渲染宽度（含描边）

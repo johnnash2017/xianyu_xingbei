@@ -37,13 +37,10 @@ func available_skills() -> Array:
 			"cards": magic_hand_ids()})
 	if _has_water_card():
 		# 水之神力要弃 1 张水系牌：只让手牌里的水系牌可点（v_magic_skill 校验 card2.element_enum() == Water）
-		# 目标须为同色队友（v_magic_skill：dst1.color != player.color 时返回 GE_INVALID_ACTION）；
-		# 自己与自己是同色，所以也点得动（给牌＝给自己，等价于白洗一张水系牌）
-		var 水牌目标: Array[int] = ally_ids()
-		水牌目标.append(player.id)
+		# 目标只能是同色队友，不能是自己（v_magic_skill 同样校验），故 targets 只列队友
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHUI_ZHI_SHEN_LI, "need_card": 1, "need_target": 1,
 			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water),
-			"targets": 水牌目标})
+			"targets": ally_ids()})
 	if player.get_energy() >= 1:
 		# 神圣领域要弃牌：手牌多于 2 张时恰好弃 2 张，否则把手牌弃光（v_magic_skill 同一条）
 		# 两种用法改为第一步就在二级技能栏里二选一（arg_choices），选完再选牌 / 选目标：
@@ -241,7 +238,8 @@ func v_magic_skill(action: Dictionary) -> int:
 			if not player.has_hand_card(cid) or card2 == null or card2.element_enum() != GConst.CardElement.Water:
 				return GConst.GE_INVALID_ACTION
 			var dst1: BattlePlayer = engine.p(int(dsts[0]))
-			if dst1 == null or dst1.color != player.color:
+			# 只能给同色队友，不能选自己（自己给自己等于白洗一张水系牌）
+			if dst1 == null or dst1.color != player.color or dst1.id == player.id:
 				return GConst.GE_INVALID_ACTION
 		SHEN_SHENG_LING_YU:
 			if dsts.size() != 1:

@@ -13,7 +13,7 @@ var description: String = ""   # 说明文本（# 已替换为换行）
 var skill_num: int = 0
 var skill_ids: Array[int] = []   # 「技能1/技能2」列引用的技能号（技能表「脚本号」列的值，代码按号判断）
 var skill_names: PackedStringArray = PackedStringArray()   # 由引用解析出的技能名（印在卡面底部两格）
-var is_virtual: bool = false   # 「虚拟牌」列：1 = 虚拟牌（无卡面的特殊牌，如五行束缚/挑衅/灵魂链接/同生共死/永恒乐章）
+var is_virtual: bool = false   # 「虚拟牌」列：1 = 虚拟牌（无卡面的特殊牌，如五系束缚/挑衅/灵魂链接/同生共死/永恒乐章）
 
 
 ## 从「卡表」的一行构造（row 是该行除 id 外的各列，与 表元数据["卡表"]["列索引"] 对齐）

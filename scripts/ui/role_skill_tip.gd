@@ -38,7 +38,7 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0) -> String:
 ## 单个技能的说明文本（技能按钮的悬停提示用）：一行「【类型】技能名：说明」，【类型】按类型上色。
 ## 查不到该技能或没写说明就返回空串（调用方据此不弹提示）。
 static func 单个技能(技能号: int, 正文字号: int = 0) -> String:
-	var 说明: String = GConst.skill_desc(技能号)
+	var 说明: String = 还原换行(GConst.skill_desc(技能号))
 	if 说明 == "":
 		return ""
 	var 行: String = "【%s】%s：%s" % [GConst.skill_type(技能号), GConst.skill_name(技能号), 说明]
@@ -52,7 +52,7 @@ static func 单个技能(技能号: int, 正文字号: int = 0) -> String:
 ##  - 正文整行用 [indent] 缩进（用 [indent] 而非前缀空格，自动换行的续行也跟着缩进，不再和标题同列）；
 ##  - 行首的【类型】套 BBCode 颜色。
 ## 普通的行间距不靠插空行：改由 RichTextLabel 的 paragraph_separation 主题常量统一给
-## （见 battle_mobile._确保说明框）——空行会占掉一整行高，反而没法把间距压小。
+## （见 说明提示框._懒建，tip_box.gd）——空行会占掉一整行高，反而没法把间距压小。
 ## 唯一的例外是分段标题上方的留白：那处普通行距撑不开，见 标题上方留白字号。
 ## 正文字号 0＝除上色外不做排版；
 ## 标题字号 >0 时用它替代默认的「正文字号 × 1.5」来放大一级标题；
@@ -64,7 +64,9 @@ static func 上色(技能文本: String, 正文字号: int = 0, 标题字号: in
 	for 行文本: String in 技能文本.split("\n"):
 		if 行文本.begins_with(正文前缀):
 			# 正文：去掉「　　」前缀，改用 [indent] 整体缩进；正文字号 >0 时整行套 [font_size]
-			var 正文行: String = "[indent]%s[/indent]" % _染类型(行文本.substr(正文前缀.length()))
+			# （先还原说明里写成「\n」的换行，再上色 —— 换行必须在「按前缀分类」之后做，
+			#   否则说明内部的续行会掉进「一级标题」那一档被放大）
+			var 正文行: String = "[indent]%s[/indent]" % _染类型(还原换行(行文本.substr(正文前缀.length())))
 			if 正文字号 > 0:
 				正文行 = "[font_size=%d]%s[/font_size]" % [正文字号, 正文行]
 			行列表.append(正文行)
@@ -77,6 +79,14 @@ static func 上色(技能文本: String, 正文字号: int = 0, 标题字号: in
 		else:
 			行列表.append(_染类型(行文本))
 	return "\n".join(行列表)
+
+
+## 技能表里的说明把换行写成「\n」（反斜杠 + n，Excel 单元格里存不了真换行）。
+## RichTextLabel 不认这个转义，会原样把「\n」两个字画出来 —— 显示前统一换成真换行，
+## 于是悬停提示（富文本）里就能正常断行。注意只在「按前缀分好类」之后做：
+## 说明内部的续行没有正文前缀，提前换行会被当成一级标题放大
+static func 还原换行(文: String) -> String:
+	return 文.replace("\\n", "\n")
 
 
 ## 行首（可带缩进）是「【类型】」时给这截连同方括号一起上色（BBCode）；别的行原样返回

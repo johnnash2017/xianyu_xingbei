@@ -17,6 +17,11 @@ signal 基础效果牌点击(玩家id: int, 牌id: int)
 ## 鼠标指向 / 离开这名玩家的面板（容器据此在面板上方显示 / 收起角色技能说明）
 signal 悬停(面板: 战斗玩家面板)
 signal 离开悬停()
+## 鼠标指向 / 离开某枚状态图标（基础效果牌 / 指示物）：容器据此在图标上方弹提示 ——
+## 指示物＝一行「名字 当前/上限」；基础效果牌＝摊出这张牌的完整卡面 + 一行「卡名（派系·元素）」
+## （牌id >= 0 表示带上了卡牌；容器用图标的矩形摆位，保证提示不压住图标）
+signal 状态图标悬停(图标: Control, 文本: String, 牌id: int)
+signal 状态图标离开悬停()
 
 ## 消息类型枚举走全局 class_name Msg（见 scripts/framework/Msg.gd）。
 ## 原来这里有一份 `const Msg := preload(...)`，与全局类重名会被 Godot 报
@@ -80,10 +85,14 @@ var token1: Label = null
 var token2: Label = null
 ## 对应 C# private Animator hurted;  （场景里没有 AnimationPlayer，做空实现）
 var hurted: Node = null
-## 状态图标（基础效果 / 独有效果）的边长：素材都是 20×20，放大到 36 显示（在 40×40 的格子里居中）
-const 状态图标尺寸: float = 36.0
+## 状态图标（基础效果 / 独有效果）的边长：素材都是 20×20，放大到 28 显示（格子里居中）
+const 状态图标尺寸: float = 28.0
+## 名牌上「等待响应XX」那行字的字号（场景里是 20）与缩放下限：文案带技能名时会一行放不下，
+## 由 _自适应等待字号 逐级缩小，见那里
+const 等待文案基础字号: int = 20
+const 等待文案最小字号: int = 12
 ## 「黄魂 / 蓝魂 / 盖牌」指示物也按状态图标看待，尺寸与基础效果图标对齐
-## （素材 token0~2 是 20×20，拉伸到 36 显示，格子也是 36，图标之间不留缝）
+## （素材 token0~2 是 20×20，拉伸到 28 显示，格子也是 28，图标之间不留缝）
 const 指示物格尺寸: Vector2 = Vector2(状态图标尺寸, 状态图标尺寸)
 ## 手牌 / 治疗那排扁平小方块：素材 handcard / heal 都是 33×14，照原版横排、负间距互相叠着
 const 扁平格尺寸: Vector2 = Vector2(33.0, 14.0)
@@ -97,22 +106,22 @@ const 补牌渐变时长: float = 0.5
 const 补牌黄块预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/补牌黄块.tscn")
 const 补牌黄块材质: ShaderMaterial = preload("res://scripts/effects/补牌黄块材质.tres")
 ## 新到手的宝石闪白时长（秒）：越短闪得越快
-const 宝石闪白时长: float = 1.0
-## 闪白的起始强度：不从纯白（1.0）开始，而是 75% 白再往下淡
-const 宝石闪白起始强度: float = 0.75
+const 宝石闪白时长: float = 0.3
+## 闪白的起始强度：从纯白（1.0）开始往下淡
+const 宝石闪白起始强度: float = 1.0
 ## 角色身上的能量：素材 gem / crystal 都是 29×30（近似正方形），竖着一列排
 const 能量格尺寸: Vector2 = Vector2(30.0, 30.0)
 ## 能量区的格子边长（原版 Unity 的 GridLayoutGroup cellSize 就是 30×30）
 const 能量区图标格: Vector2 = Vector2(30.0, 30.0)
 ## 状态图标区的格子边长：就取图标本身的大小，图标之间不留缝（原来格子 40、图标 36，四周会空 4 像素）
 const 状态图标格: Vector2 = Vector2(状态图标尺寸, 状态图标尺寸)
-## 状态图标区排几列：它宽 80、格子 36 → 2 列
+## 状态图标区排几列：它宽 80、格子 28 → 2 列
 const 状态区列数: int = 2
 ## 状态图标区每列最多几格（原版 GridLayoutGroup 是「固定 4 行」＝一列 4 个，满了再往右一列）
 const 状态区每列格数: int = 4
 ## 状态图标「弹出」动画（秒）：新挂上的状态图标先放大 状态弹出放大 倍，再缩回原大小
 const 状态弹出时长: float = 0.35
-const 状态弹出放大: float = 1.4
+const 状态弹出放大: float = 3.0
 ## 状态图标「弹出」起点表：键＝图标标识（"b:基础牌id" / "e:独有效果下标"），
 ## 值＝该标识各个实例的起点（毫秒，-1＝不播）。跨重建保留：同一帧可能刷新多次，
 ## 只挂一次性 tween 会被下一次重建连根清掉（同宝石闪白的做法）
@@ -424,11 +433,11 @@ func set_RoleID(value: int) -> void:
 
 ## 对应 C# RoleID setter 里创建 token0/1/2 的那段
 func _create_tokens() -> void:
-	token0 = _create_token("Token0", "token0")
-	token1 = _create_token("Token1", "token1")
-	token2 = _create_token("Token2", "token2")
+	token0 = _create_token("Token0", "token0", 0)
+	token1 = _create_token("Token1", "token1", 1)
+	token2 = _create_token("Token2", "token2", 2)
 
-func _create_token(prefab_name: String, node_name: String) -> Label:
+func _create_token(prefab_name: String, node_name: String, 槽: int) -> Label:
 	var ps := _load_prefab(prefab_name)
 	if ps == null or basicAndExCardArea == null:
 		return null
@@ -438,16 +447,58 @@ func _create_token(prefab_name: String, node_name: String) -> Label:
 	# Token 预制体同样是 0×0（expand_mode=1 的 TextureRect 落到 GridContainer 里最小尺寸为 0），
 	# 不给最小尺寸的话 token 数字与它上面的 Text 都看不见。
 	if go is Control:
-		(go as Control).custom_minimum_size = 指示物格尺寸
+		var 图标: Control = go as Control
+		图标.custom_minimum_size = 指示物格尺寸
 		# 指示物也算状态图标：套同一份白描边
-		(go as Control).material = _状态描边材质
+		图标.material = _状态描边材质
+		# 鼠标压上去时报给容器，由容器弹一条「名字 当前/上限」（和角色 / 技能说明同一份提示框）
+		图标.mouse_entered.connect(func() -> void: _报告指示物悬停(槽, 图标))
+		图标.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
 	var lbl: Label = go.find_child("Text", true, false) as Label
 	if lbl != null:
 		lbl.text = "0"
+		# 指示物数字整体右移 5px（原来贴着格子左上角），并勾一圈黑描边，
+		# 让白字叠在浅色底板上也看得清
+		lbl.offset_left += 5.0
+		lbl.offset_right += 5.0
+		lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
+		lbl.add_theme_constant_override("outline_size", 6)
 	if go is CanvasItem:
 		(go as CanvasItem).visible = false
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 	return lbl
+
+## 鼠标指到某枚指示物图标：把「名字 当前/上限」报给容器（上限只在悬浮提示里露面）
+func _报告指示物悬停(槽: int, 图标: Control) -> void:
+	var 定义: Dictionary = Data.role_token_def(角色号, 槽)
+	if 定义.is_empty():
+		return
+	状态图标悬停.emit(图标, "%s %d/%d" % [str(定义["name"]), _指示物数值[槽], int(定义["max"])], -1)
+
+
+## 鼠标指到某枚基础效果牌图标：报出这张牌的 id（容器据此摊出完整卡面）+ 一行
+## 「状态名（派系·元素）」（卡面贴图缺失时兜底用；同一状态有好几版牌，如【圣盾】有幻 / 圣 / 咏）
+func _报告基础效果悬停(牌id: int, 图标: Control) -> void:
+	var 牌: GCard = Data.get_card(牌id)
+	if 牌 == null:
+		return
+	状态图标悬停.emit(图标,
+		"%s（%s·%s）" % [状态名(牌), 牌.property, GConst.element_to_chinese(牌.element_enum())], 牌id)
+
+
+## 这张牌摆在头像上当状态用时，那个状态叫什么。
+## 多数牌牌名就是状态名；少数是「借牌当状态」——同一张【风神斩】放着可能在当【风之封印】、
+## 【圣盾】、【威力赐福】用，这时该按状态叫，不能照牌名报。
+## 判定与图标（_basic_card_sprite）同一套：先拿到图标名，再回 Art.STATUS_ICON 里反查状态名，
+## 两边共用一份对照表，不会各写一份
+func 状态名(牌: GCard) -> String:
+	var 图标名: String = _basic_card_sprite(牌).to_lower()
+	# 比大小写不敏感：两张表的大小写并不一致（Art.STATUS_ICON 写的是资源真名 fengFeng，
+	# _basic_card_sprite 返回的是 fengfeng —— 贴图查找本身忽略大小写，所以一直没暴露）
+	for 名: String in Art.STATUS_ICON:
+		if str(Art.STATUS_ICON[名]).to_lower() == 图标名:
+			return 名
+	return 牌.card_name
 
 ## 对应 C# public Team Team 的 setter（Team: Blue=0, Red=1）
 ## 头像背后那块队伍底色就是同级的 Red/Blue 两张六边形底图，切可见性即可。
@@ -497,13 +548,20 @@ func set_Covered(value: int) -> void:
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 
 
-## 指示物数字同样算状态图标：刷新文字与显隐；数字变大（获得／叠层增加）时播一次「放大→缩回」
+## 指示物数字同样算状态图标：刷新文字与显隐；数字变大（获得／叠层增加）时播一次「放大→缩回」。
+## 数值为 0 时也把图标留着（否则玩家看不到自己有过什么指示物）；图标上只写当前层数，
+## 「名字 当前/上限」放到悬浮提示里（见 _报告指示物悬停）。
+## 角色表里没配这个槽位（＝这角色根本没有该指示物）才整格藏起来
 func _设指示物(标签: Label, 槽: int, 值: int) -> void:
 	var 旧值: int = _指示物数值[槽]
 	_指示物数值[槽] = 值
-	标签.text = str(值)
 	var 底板: Control = 标签.get_parent() as Control
-	底板.visible = 值 != 0
+	var 定义: Dictionary = Data.role_token_def(角色号, 槽)
+	if 定义.is_empty():
+		底板.visible = false
+		return
+	标签.text = str(值)
+	底板.visible = true
 	# 进场第一次（旧值 -1）不播；只有变多才算「获得 / 叠层增加」
 	if 旧值 >= 0 and 值 > 旧值:
 		_播状态弹出(底板)
@@ -514,7 +572,7 @@ func set_BasicAndExCards(value: Array) -> void:
 	_刷新状态图标()
 
 
-## 独有效果（【五行束缚】【挑衅】【灵魂链接】【同生共死】【永恒乐章】）的 setter：
+## 独有效果（【五系束缚】【挑衅】【灵魂链接】【同生共死】【永恒乐章】）的 setter：
 ## 传 GConst.Exclusive 的下标数组，图标由 Art.exclusive_icon 取
 func set_ExclusiveCards(value: Array) -> void:
 	_状态独有效果 = value.duplicate()
@@ -545,17 +603,40 @@ func _刷新状态图标() -> void:
 			continue
 		_加状态图标(ps, _load_sprite(sprite_name), "b:%d" % int(item), 新起点, int(item))
 	for idx: Variant in _状态独有效果:
-		_加状态图标(ps, Art.exclusive_icon(int(idx)), "e:%d" % int(idx), 新起点)
+		# 独有效果没有卡牌对象，报不出「哪一张牌」，提示里只写这个状态做什么；
+		# 【五系束缚】把两个选项和「触发时会摸几张牌」一起写出来，供玩家判断要不要选摸牌继续行动
+		var i: int = int(idx)
+		var 名: String = GConst.独有效果名[i] if 0 <= i and i < GConst.独有效果名.size() else ""
+		var 提示: String = 名
+		if i == GConst.Exclusive.WuXiShuFu:
+			# 状态名和效果说明分两行（提示框是 RichTextLabel，真换行即可）
+			提示 = "%s\n摸 %d 张牌 或 跳过回合" % [名, 五系束缚应摸张数()]
+		_加状态图标(ps, Art.exclusive_icon(i), "e:%d" % i, 新起点, -1, 提示)
 	_状态已初始化 = true
 	_状态弹出起点 = 新起点
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 
 
+## 【五系束缚】触发时会摸几张牌：基数 + 场上封印数（封顶上限，口径同服务端 role_fengyin._wu_xi_draw_count）。
+## 封印＝摆在任意玩家基础效果区的「幻」系攻击牌（同服务端 _is_seal_card），故要遍历全场玩家数；
+## 状态区每次重渲染都会重算，封印增减立刻反映到悬停提示里
+func 五系束缚应摸张数() -> int:
+	var n: int = 0
+	for p: GPlayer in Data.player_list:
+		for st: GPlayer.BasicStatus in p.basic_status_list:
+			var c: GCard = st.card
+			if c != null and c.is_attack() and c.property_enum() == GConst.CardProperty.Phantom:
+				n += 1
+	return mini(GConst.五系束缚摸牌基数 + n, GConst.五系束缚摸牌上限)
+
+
 ## 往状态图标区加一枚图标（Image 预制体自身是 0×0，不给最小尺寸就什么都看不见）。
 ## 图标统一套白描边材质；新挂上的（含状态叠层多出来的那几枚）播一次「放大→缩回」，
 ## 起点记在 起点表 里跨重建续播（同一帧可能刷新多次，一次性 tween 会被下一次重建清掉）。
-## 基础效果牌（基础牌id >= 0）在「基础牌可点」时变成可点的，点一下就上报给战斗界面
-func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary, 基础牌id: int = -1) -> void:
+## 基础效果牌（基础牌id >= 0）在「基础牌可点」时变成可点的，点一下就上报给战斗界面；
+## 提示 是给独有效果用的纯文字提示（它们没有卡牌对象，弹不出卡面）
+func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary,
+		基础牌id: int = -1, 提示: String = "") -> void:
 	if tex == null:
 		return
 	var go := ps.instantiate()
@@ -568,6 +649,14 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 	var 起点: int = -1
 	if go is Control:
 		(go as Control).material = _状态描边材质
+		# 鼠标压上去各报各的：基础效果牌报「卡名（派系·元素）」+ 卡面，独有效果只有名字
+		var 图标: Control = go as Control
+		if 基础牌id >= 0:
+			图标.mouse_entered.connect(func() -> void: _报告基础效果悬停(基础牌id, 图标))
+		elif 提示 != "":
+			图标.mouse_entered.connect(func() -> void: 状态图标悬停.emit(图标, 提示, -1))
+		if 基础牌id >= 0 or 提示 != "":
+			图标.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
 		var 旧列表: Array = _状态弹出起点.get(标识, [])
 		var 本组: Array = 起点表.get(标识, [])
 		var 序号: int = 本组.size()
@@ -620,7 +709,7 @@ func _basic_card_sprite(card: GCard) -> String:
 			return "dun"
 		GConst.CardName.Weaken:
 			return "xu"
-		GConst.CardName.WuXingShuFu:
+		GConst.CardName.WuXiShuFu:
 			return "shufu"
 		GConst.CardName.TiaoXin:
 			return "tiaoxin"
@@ -670,11 +759,29 @@ func set_Energy(value: Vector2i) -> void:
 	var ps := _load_prefab("Image")
 	for _i in range(value.x):
 		var 宝石格: Control = _add_image(energyArea, ps, "gem", 能量格尺寸, false)
+		_接格子提示(宝石格, "星石-宝石")
 		_加闪白层(宝石格, _宝石闪白起点[_i] if _i < _宝石闪白起点.size() else -1)
 	for _j in range(value.y):
-		_add_image(energyArea, ps, "crystal", 能量格尺寸, false)
+		_接格子提示(_add_image(energyArea, ps, "crystal", 能量格尺寸, false), "星石-水晶")
 	_上次宝石数 = value.x
 	_摆图标(energyArea, 1, 0, 能量区图标格)
+
+
+## 面板上那几排小方块（星石 / 手牌 / 治疗）：鼠标指上去弹一行说明（提示框由容器统一摆）。
+## 这些方块都压在头像按钮上，所以不能只顾着收 hover 而把点击吃掉 ——
+## 用 STOP 收 hover，同时把左键转发成面板按钮的 pressed（面板的点击有两个听众：
+## 面板自己的 onClick 和容器的 _on_player_pressed，转发必须走信号而不是直接调方法）。
+## 面板其余图标（基础效果 / 指示物）仍是 IGNORE / STOP 的老样子，本次不动
+func _接格子提示(格: Control, 文本: String) -> void:
+	if 格 == null:
+		return
+	格.mouse_filter = Control.MOUSE_FILTER_STOP
+	格.mouse_entered.connect(func() -> void: 状态图标悬停.emit(格, 文本, -1))
+	格.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
+	格.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
+				and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			pressed.emit())
 
 
 ## 新到手宝石的闪白：给这一格套上闪白材质，按剩余时间把强度淡到 0。
@@ -745,25 +852,28 @@ func set_HandCount(value: Vector2i) -> void:
 	# 之前先判 j < 当前手牌，爆牌时（当前 > 上限）所有格子都落进第一个分支涂成绿色，
 	# 红色的「爆牌」块永远不会出现。
 	var total := maxi(value.x, value.y)
+	# 这一排每格挂同一行悬停提示：「手牌 当前/上限」，空位格也能指（看得到差几张）
+	var 提示: String = "手牌 %d/%d" % [value.y, value.x]
 	for j in range(total):
 		if j >= value.x:
-			_add_image(handArea, ps, "handcardfull", 扁平格尺寸, true, _手牌描边)
+			_接格子提示(_add_image(handArea, ps, "handcardfull", 扁平格尺寸, true, _手牌描边), 提示)
 		elif j < value.y:
-			_加当前手牌格(ps, _手牌格起点[j])
+			_接格子提示(_加当前手牌格(ps, _手牌格起点[j]), 提示)
 		else:
-			_add_image(handArea, ps, "handcardempty", 扁平格尺寸, true, _手牌描边)
+			_接格子提示(_add_image(handArea, ps, "handcardempty", 扁平格尺寸, true, _手牌描边), 提示)
 
 
 ## 一格「当前手牌」：绿块打底；若是刚补上来的（补牌起点 >= 0 且动画还没走完），
 ## 上面再盖一层黄块 —— 用与绿块同一张素材，只覆盖绿块的图形区域，
 ## 先整块黄保持 补牌黄色时长 秒，最后 补牌渐变时长 秒才淡出露出绿块。
-func _加当前手牌格(ps: PackedScene, 补牌起点: int) -> void:
+## 返回打底的绿块（调用方要给它挂悬停提示）
+func _加当前手牌格(ps: PackedScene, 补牌起点: int) -> Control:
 	var 绿块: Control = _add_image(handArea, ps, "handcard", 扁平格尺寸, true, _手牌描边)
 	if 绿块 == null or 补牌起点 < 0:
-		return
+		return 绿块
 	var 已过: float = float(Time.get_ticks_msec() - 补牌起点) / 1000.0
 	if 已过 >= 补牌黄色时长 + 补牌渐变时长:
-		return
+		return 绿块
 	# 黄块整个来自预制体（素材 / 材质 / 尺寸设置都在里面）
 	var 黄块: TextureRect = 补牌黄块预制体.instantiate() as TextureRect
 	绿块.add_child(黄块)
@@ -777,6 +887,7 @@ func _加当前手牌格(ps: PackedScene, 补牌起点: int) -> void:
 		淡出.tween_interval(补牌黄色时长 - 已过)
 	淡出.tween_property(黄块, "modulate:a", 0.0, 补牌渐变时长 - 渐变已过)
 	淡出.tween_callback(黄块.queue_free)
+	return 绿块
 
 ## 对应 C# public uint HealCount 的 setter
 func set_HealCount(value: int) -> void:
@@ -793,10 +904,12 @@ func set_HealCount(value: int) -> void:
 	var 玩家: GPlayer = Data.get_player_by_id(ID)
 	if 玩家 != null:
 		max_heal = 玩家.cross_max
+	# 这一排每格挂同一行悬停提示：「治疗 当前/上限」（上限会随角色被动 / 星杯条件变）
+	var 提示: String = "治疗 %d/%d" % [value, max_heal]
 	for _j in range(value):
-		_add_image(healArea, ps, "heal", 扁平格尺寸, true, _治疗描边)
+		_接格子提示(_add_image(healArea, ps, "heal", 扁平格尺寸, true, _治疗描边), 提示)
 	for _k in range(maxi(max_heal - value, 0)):
-		_add_image(healArea, ps, "handcardempty", 扁平格尺寸, true, _治疗描边)
+		_接格子提示(_add_image(healArea, ps, "handcardempty", 扁平格尺寸, true, _治疗描边), 提示)
 
 func _add_image(parent: Node, ps: PackedScene, sprite_name: String, 格尺寸: Vector2, 横向叠放: bool, 材质: Material = null) -> Control:
 	if ps == null or parent == null:
@@ -851,6 +964,7 @@ func set_WaitAction(value: String) -> void:
 	if waitAction == null:
 		return
 	waitAction.text = value
+	_自适应等待字号()
 	# 场景里这个 Label 自己也是 visible=false（Unity 只关父节点），不显式打开的话
 	# 「等待行动」这行字永远看不到。
 	waitAction.visible = value != ""
@@ -858,6 +972,25 @@ func set_WaitAction(value: String) -> void:
 		waitAction.get_parent().visible = false
 	else:
 		waitAction.get_parent().visible = true
+
+
+## 等待文案（名牌上那行「等待响应XX」）的字号自适应：
+## 文案带着技能名，20 号字常常一行放不下，会折成两行压在头像上（名牌里那段宽度只有 160）。
+## 这里按 Label 的实际宽度逐级缩小字号，尽量保持一行；放得下就还原成基础字号
+## （否则上一条长文案会把后面的短文案也一直缩着）
+func _自适应等待字号() -> void:
+	if waitAction == null:
+		return
+	var 字体: Font = waitAction.get_theme_font("font")
+	if 字体 == null:
+		return
+	var 允许宽: float = maxf(waitAction.size.x - 8.0, 60.0)
+	var 字号: int = 等待文案基础字号
+	while 字号 > 等待文案最小字号 \
+			and 字体.get_string_size(waitAction.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 字号).x > 允许宽:
+		字号 -= 1
+	waitAction.add_theme_font_size_override("font_size", 字号)
+
 
 ## 名牌上方的超时进度条：负值收起，0~1 摆到对应长度
 func set_WaitProgress(value: float) -> void:
@@ -1110,7 +1243,7 @@ func _卡肉() -> void:
 ## 「左上角起、一行行往下排」，行不满时还排不出原版的形状，所以这里直接按格子摆。
 ## 每列格数 <= 0 表示一列到底；图标比格子小时在格子里居中（20×20 的图标落在 30×30 格里）。
 ## （列数 只保留原版 C# 的签名，实际排几列由 每列格数 决定。）
-## 格尺寸：不同区域格子大小不同（状态图标区 36、能量区 30），由调用方传入。
+## 格尺寸：不同区域格子大小不同（状态图标区 28、能量区 30），由调用方传入。
 func _摆图标(容器: Control, _列数: int, 每列格数: int, 格尺寸: Vector2) -> void:
 	if 容器 == null:
 		return

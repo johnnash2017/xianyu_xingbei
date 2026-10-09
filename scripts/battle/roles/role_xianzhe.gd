@@ -1,6 +1,6 @@
 extends BattleRole
 ## 贤者（roleID 17）—— 移植自服务端 role/XianZhe.cpp
-## 被动：智慧法典（能量上限 +1；承受 >3 点法术伤害时 +2 宝石）
+## 被动：智慧法典（能量上限 +1；承受 >3 点法术伤害时 +2 宝石并弃 1 张牌）
 ## 法术：魔道法典（弃 X 张异系牌，对目标与自己各造成 X-1 法术伤害）
 ##       圣洁法典（弃 X 张异系牌，最多 X-2 名角色各 +2 治疗，对自己造成 X-1 法术伤害）
 ## 响应：法术反弹（仅受 1 点法术伤害时，弃 X 张同系牌，对目标造成 X-1、对自己造成 X）
@@ -60,18 +60,25 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 		return SUCCESS
 	var point: int = int(harm.get("point", 0))
 	if point > 3:
-		_zhi_hui_fa_dian()
-		return SUCCESS
+		# step 守卫：弃牌走「压入状态 + URGENT」，本钩子会被再调一次，用 step 防重复结算
+		if step >= STEP_DONE:
+			return SUCCESS
+		step = STEP_DONE
+		return _zhi_hui_fa_dian()
 	if point == 1:
 		return _fa_shu_fan_tan()
 	return SUCCESS
 
 
-## 伤害 >3：+2 宝石
-func _zhi_hui_fa_dian() -> void:
+## 伤害 >3：+2 宝石，并弃 1 张牌（弃哪张由玩家选；手牌为空时不弃）
+func _zhi_hui_fa_dian() -> int:
 	notice_skill(ZHI_HUI_FA_DIAN, [player.id])
 	player.set_gem(player.gem + 2)
 	engine._broadcast_game()
+	if player.hand_cards.is_empty():
+		return SUCCESS
+	engine.push(BattleEngine.SRequestDiscard.new(player.id, 1, 0, ZHI_HUI_FA_DIAN))
+	return URGENT
 
 
 ## 伤害为 1：询问是否法术反弹

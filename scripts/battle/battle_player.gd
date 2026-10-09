@@ -22,6 +22,9 @@ var gem: int = 0
 var crystal: int = 0
 var energy_max: int = GConst.ENERGY_MAX
 var cross_num: int = 0
+## 治疗上限：只限制「之后还能再加到多少」。升、降上限都不回收当前治疗量 ——
+## 上限被降下来时（如圣枪【神圣信仰】星杯数被对方反超），已拥有的治疗照旧留着，不压到新上限。
+## 只有「花掉 / 被移除治疗」才会让 cross_num 下降（sub_cross_num）
 var cross_max: int = GConst.CROSS_MAX
 
 var _形态: bool = false
@@ -194,6 +197,16 @@ func set_crystal(v: int) -> void:
 
 func get_energy() -> int:
 	return gem + crystal
+
+
+## 移除自身 n 点能量（先扣水晶再扣宝石，与服务端消耗能量的顺序一致）。
+## 供【冒险者天堂】提炼时「移除自身 X 能量」用。
+func remove_energy(n: int) -> void:
+	if n <= 0:
+		return
+	var 扣水晶: int = mini(n, crystal)
+	set_crystal(crystal - 扣水晶)
+	set_gem(gem - (n - 扣水晶))
 
 
 # ============================================================
@@ -456,10 +469,10 @@ func v_synthesize(args: Array, team_energy: int, team_gem: int, team_crystal: in
 	return GConst.GE_SUCCESS
 
 
-## 提炼校验（角色可覆写，如冒险家【冒险者天堂】把提炼出的星石给队友时按队友空位算）
-func v_extract(args: Array, team_gem: int, team_crystal: int, dst_id: int = -1) -> int:
+## 提炼校验（角色可覆写，如冒险家【冒险者天堂】把提炼出的星石分给至多 2 名队友时按队友空位算）
+func v_extract(args: Array, team_gem: int, team_crystal: int, dst_ids: Array = []) -> int:
 	if role != null:
-		var rc: int = role.v_extract(args, team_gem, team_crystal, dst_id)
+		var rc: int = role.v_extract(args, team_gem, team_crystal, dst_ids)
 		if rc != BattleRole.V_NOT_OVERRIDE:
 			return rc
 	return base_v_extract(args, team_gem, team_crystal)

@@ -1,16 +1,16 @@
 extends BattleRole
 ## 灵魂术士（roleID 22）—— 移植自服务端 role/LingHun.cpp
-## 指示物：tokens[0] = 黄魂（上限 6）、tokens[1] = 蓝魂（上限 6）
+## 指示物：tokens[0] = 黄魂、tokens[1] = 蓝魂，上限见角色表
 ## 技能：灵魂吞噬（2204，被动：我方每损失 1 点士气 → +1 黄魂）、
 ##       灵魂增幅（2203，启动：耗 1 宝石 → +2 黄魂 +2 蓝魂）、
-##       灵魂链接（2208，启动：耗 1 黄魂 +1 蓝魂，把【灵魂链接】放置于一名队友面前）、
+##       灵魂链接（2208，启动：仅队友数>1 时可发动；耗 1 黄魂 +1 蓝魂，把【灵魂链接】放置于一名队友面前）、
 ##       灵魂链接·转移（2208 的响应半段：移除 X 点蓝魂，把 X 点伤害转移给另一人）、
-##       灵魂转换（2206，攻击技能：选攻击牌与对手 → 按确定后询问方向 → 互转 1 点并攻击）、
-##       灵魂召还（2205，法术：弃 X 张法术牌 → +（X＋1）蓝魂）、
+##       灵魂转换（2206，响应：主动攻击时可选，询问转换方向 → 互转 1 点）、
+##       灵魂召还（2205，法术：弃 X 张法术牌 → +X 蓝魂）、
 ##       灵魂震爆（2201，法术：弃 1 张带【灵魂震爆】的牌 + 3 黄魂 →
 ##                 目标 3 点法术伤害（目标手牌＜3 且手牌上限＞5 时为 5 点））、
 ##       灵魂赐予（2202，法术：弃 1 张带【灵魂赐予】的牌 + 3 蓝魂 → 目标 +2 宝石）、
-##       灵魂镜像（2207，法术：耗 2 黄魂 → 自身弃最多 3 张牌，目标摸牌最多 3 张（不超其手牌上限））
+##       灵魂镜像（2207，法术：移除 2 黄魂 → 自身弃 min(2, 手牌数) 张牌，目标摸牌最多 2 张（不超其手牌上限））
 
 const LING_HUN_ZHEN_BAO: int = 2201          # 灵魂震爆
 const LING_HUN_CI_YU: int = 2202             # 灵魂赐予
@@ -23,32 +23,26 @@ const LING_HUN_LIAN_JIE: int = 2208          # 灵魂链接
 
 const TOKEN_HUANG: int = 0                   # 黄魂（tokens[0]）
 const TOKEN_LAN: int = 1                     # 蓝魂（tokens[1]）
-const TOKEN_MAX: int = 6
 
 var used_zeng_fu: bool = false               # 本回合是否已用【灵魂增幅】
 var using_lian_jie: bool = false             # 本次伤害流程是否正在转移
 var connect_id: int = -1                     # 灵魂链接的另一端（-1＝当前没有链接）
 
 
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	p.tokens[TOKEN_HUANG] = {"name": "黄魂", "max": TOKEN_MAX, "num": 0}
-	p.tokens[TOKEN_LAN] = {"name": "蓝魂", "max": TOKEN_MAX, "num": 0}
-
-
 func available_skills() -> Array:
 	var out: Array = []
 	if _hand_has_magic():
-		# 灵魂召还：弃 X 张法术牌 → +（X＋1）蓝魂。只让手牌里的法术牌可点，上限＝手里的法术牌数
+		# 灵魂召还：弃 X 张法术牌 → +X 蓝魂。只让手牌里的法术牌可点，上限＝手里的法术牌数
 		# （v_magic_skill 校验同一条件）
 		var 法术牌: Array[int] = magic_hand_ids()
 		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHAO_HUAN, "need_card": 1, "need_target": 0,
 			"cards": 法术牌, "card_max": 法术牌.size()})
 	if _huang() >= 2:
-		# v_magic_skill 只校验黄魂数与目标；执行体最多弃 3 张（mini(cards.size(), 3)），
-		# 服务端允许一张都不弃（cardNum 可为 0），故 need_card=0、上限放开到 3
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_JING_XIANG, "need_card": 0, "need_target": 1,
-			"card_max": 3})
+		# 【灵魂镜像】：有牌就得弃 —— 必须尽量弃满 min(2, 手牌数) 张，不是可弃可不弃；
+		# need_card 为张数下限（手牌不足 2 张时按手牌数），card_max 为点选上限 2；v_magic_skill 校验同一张数
+		var 应弃: int = mini(GConst.灵魂镜像张数, player.hand_cards.size())
+		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_JING_XIANG, "need_card": 应弃, "need_target": 1,
+			"card_max": GConst.灵魂镜像张数})
 	# 灵魂震爆/灵魂赐予：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
 	# （v_magic_skill 校验同一张牌：须在手且带该特技）
 	var 震爆牌: Array[int] = hand_ids_with_skill(LING_HUN_ZHEN_BAO)
@@ -220,9 +214,11 @@ func _apply_lian_jie(action: Dictionary) -> void:
 	engine._broadcast_game()
 
 
-## 灵魂链接的发动条件：黄魂/蓝魂各 ≥1；手牌为 0 时黄魂须 ≥3（已连过也能再发动，见 _apply_lian_jie）。
-## 没有队友时不用在这里拦：available_skills 的 targets 会是空列表，引擎会整条不下发
+## 灵魂链接的发动条件（技能表：仅你队友数>1 时可发动）：队友数 > 1；黄魂/蓝魂各 ≥1；
+## 手牌为 0 时黄魂须 ≥3（已连过也能再发动，见 _apply_lian_jie）
 func _can_lian_jie() -> bool:
+	if ally_ids().size() <= 1:
+		return false
 	if _huang() <= 0 or _lan() <= 0:
 		return false
 	if player.hand_cards.is_empty() and _huang() < 3:
@@ -231,9 +227,8 @@ func _can_lian_jie() -> bool:
 
 
 # ============================================================
-# 灵魂转换（2206）：选一张攻击牌 + 一名对手发起主动攻击，并在宣告后转换 1 点灵魂颜色
-# 支持两种用法：技能栏按钮（选完牌与目标按「确定」→ 询问方向 → 预选命中，宣告后直接结算、不再弹窗）；
-# 普通出牌攻击（预选为 0）→ 按原版弹窗询问是否转换及方向
+# 灵魂转换（2206）：带此特技的攻击牌作为主动攻击打出时，在宣告后按玩家选择转换 1 点灵魂颜色
+# 普通出牌攻击按原版弹窗询问是否转换及方向
 # ============================================================
 ## 【灵魂转换】的推进阶段（0＝还没问 / 处理完本次转换后清回 0）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
@@ -241,108 +236,13 @@ func _can_lian_jie() -> bool:
 ## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
 var _timeline_1_step: int = 0
 
-## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）与转换方向（0＝黄→蓝、1＝蓝→黄）：
-## 由 p_attack_skill 在「确定」后的询问里拿到方向时写入，p_timeline_1 据此直接结算，用完即清
-var _预选攻击技能: int = 0
-var _预选转换方向: int = -1
 
-
-## 攻击技能：灵魂转换（2206）—— 选一张攻击牌 + 一名对手，直接发起一次主动攻击
-func v_attack_skill(action: Dictionary) -> int:
-	if int(action.get("src_id", -1)) != player.id:
-		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) != LING_HUN_ZHUAN_HUAN:
-		return GConst.GE_INVALID_ACTION
-	# 前置：黄魂或蓝魂至少有一点才能转换
-	if _huang() <= 0 and _lan() <= 0:
-		return GConst.GE_INVALID_ACTION
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	if cards.is_empty() or dsts.is_empty():
-		return GConst.GE_INVALID_ARGUMENT
-	var cid: int = int(cards[0])
-	var dst_id: int = int(dsts[0])
-	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
-	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_ACTION
-	var dst: BattlePlayer = engine.p(dst_id)
-	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_PLAYERID
-	# 转换方向不在这里校验：它由 p_attack_skill 在「确定」之后询问玩家
-	return GConst.GE_SUCCESS
-
-
-## 灵魂转换：选完攻击牌与对手、按「确定」后先问转换方向（黄→蓝 / 蓝→黄），选定即打出该牌发起攻击；
-## 转换本身仍由 p_timeline_1 在攻击宣告后按预选方向结算。
-## 「确定之后再询问」的写法对照冒险家【欺诈】的 p_attack_skill
-func p_attack_skill(action: Dictionary) -> int:
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	var cid: int = int(cards[0])
-	var dst_id: int = int(dsts[0])
-	if not engine.has_reply():
-		# 牌与目标已经提交；两个方向各一个按钮，只列当前真有对应灵魂的项。
-		# 可以取消：取消＝这次不发动、退回行动阶段（见 取消技能行动），不白用掉本回合的行动
-		var 选项: Array = []
-		if _huang() > 0:
-			选项.append({"value": 0, "label": 提示(LING_HUN_ZHUAN_HUAN, 1)})
-		if _lan() > 0:
-			选项.append({"value": 1, "label": 提示(LING_HUN_ZHUAN_HUAN, 2)})
-		engine.ask_skill(player.id, LING_HUN_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	if args.is_empty():
-		# 取消（或超时没选）：不发动，退回行动阶段重新来
-		engine.取消技能行动()
-		return SUCCESS
-	var 方向: int = int(args[0])
-	# 选了当前不可行的方向（异常情况）：退到真能转的一边，保证选了一定执行
-	if (方向 != 0 and 方向 != 1) or (方向 == 0 and _huang() <= 0) or (方向 == 1 and _lan() <= 0):
-		方向 = 0 if _huang() > 0 else 1
-	_预选攻击技能 = LING_HUN_ZHUAN_HUAN
-	_预选转换方向 = 方向
-	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
-		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
-	}
-	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
-	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
-	})
-	return URGENT
-
-
-## 主动攻击宣告后：本次攻击由技能栏的【灵魂转换】发起（预选命中）时按预选方向直接转换 1 点灵魂、不再弹窗；
-## 普通出牌攻击（预选为 0）时恢复原版询问流程，让玩家选择是否转换以及方向
+## 主动攻击宣告后：普通出牌攻击按原版询问流程，让玩家选择是否转换以及方向
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	# 本次主动攻击预选的响应技能号 / 转换方向：只在本次宣告后处理一次，读完即清
-	var 预选: int = _预选攻击技能
-	_预选攻击技能 = 0
-	var 方向: int = _预选转换方向
-	_预选转换方向 = -1
-	if 预选 == LING_HUN_ZHUAN_HUAN:
-		# 技能栏按钮路径：按预选方向直接结算，不再询问
-		if 方向 == 0 and _huang() > 0:
-			# 黄 → 蓝
-			_set_token(TOKEN_HUANG, _huang() - 1)
-			_set_token(TOKEN_LAN, _lan() + 1)
-		elif 方向 == 1 and _lan() > 0:
-			# 蓝 → 黄
-			_set_token(TOKEN_HUANG, _huang() + 1)
-			_set_token(TOKEN_LAN, _lan() - 1)
-		else:
-			return SUCCESS
-		notice_skill(LING_HUN_ZHUAN_HUAN, [player.id])
-		engine._broadcast_game()
-		return SUCCESS
-	# 普通出牌攻击：恢复原版询问流程
 	if _huang() <= 0 and _lan() <= 0:
 		return SUCCESS
 	if _timeline_1_step >= STEP_DONE:
@@ -421,7 +321,7 @@ func p_timeline_6(ctx: Dictionary) -> int:
 	using_lian_jie = true
 	_set_token(TOKEN_LAN, _lan() - howmany)
 	harm["point"] = int(harm.get("point", 0)) - howmany
-	engine.draw(other_id, howmany)
+	engine.push_draw(other_id, howmany)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -463,8 +363,11 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_ACTION
 			if action.get("dst_ids", []).is_empty():
 				return GConst.GE_INVALID_ACTION
+			# 张数校验：必须尽量弃满 —— 应弃 min(2, 手牌数)（手牌不足 2 张时按实际可弃数），不是可弃可不弃
+			if cards.size() != mini(GConst.灵魂镜像张数, player.hand_cards.size()):
+				return GConst.GE_INVALID_CARDID
 		LING_HUN_ZHAO_HUAN:
-			# 弃 X 张法术牌 → +（X＋1）蓝魂：至少弃 1 张，且每张都得是自己手里的法术牌
+			# 弃 X 张法术牌 → +X 蓝魂：至少弃 1 张，且每张都得是自己手里的法术牌
 			if cards.is_empty():
 				return GConst.GE_INVALID_CARDID
 			for c: Variant in cards:
@@ -533,7 +436,7 @@ func _zhen_bao(action: Dictionary) -> int:
 	return URGENT
 
 
-## 灵魂镜像：耗 2 黄魂，自身弃最多 3 张牌，目标摸牌（不超其手牌上限）
+## 灵魂镜像：移除 2 黄魂，自身弃 min(2, 手牌数) 张牌（有就得弃、尽量弃满），目标摸牌（不超其手牌上限）
 func _jing_xiang(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
@@ -542,14 +445,14 @@ func _jing_xiang(action: Dictionary) -> int:
 	if dst == null:
 		return GConst.GE_INVALID_ACTION
 	_set_token(TOKEN_HUANG, _huang() - 2)
-	var card_num: int = mini(cards.size(), 3)
+	var card_num: int = mini(cards.size(), GConst.灵魂镜像张数)
 	notice_skill(LING_HUN_JING_XIANG, [dst_id])
 	var max_hand: int = dst.hand_cards_max
 	var current: int = dst.hand_cards.size()
-	var draw_num: int = 3 if (current + 3) < max_hand else (max_hand - current)
+	var draw_num: int = GConst.灵魂镜像张数 if (current + GConst.灵魂镜像张数) < max_hand else (max_hand - current)
 	if dst_id == player.id:
 		# 对自己使用时先弃牌再摸牌（服务端 drawNum 按弃牌后的手牌计算）
-		draw_num = 3 if (current - card_num + 3) < max_hand else (max_hand - (current - card_num))
+		draw_num = GConst.灵魂镜像张数 if (current - card_num + GConst.灵魂镜像张数) < max_hand else (max_hand - (current - card_num))
 	if card_num > 0:
 		# 服务端【灵魂镜像】这一步 isShown=false：面朝下弃牌
 		_show_and_discard(_pick_cards(cards, card_num), false)
@@ -557,17 +460,17 @@ func _jing_xiang(action: Dictionary) -> int:
 		# 只在最后广播一次的话，弃几张摸几张时手牌数没变，动画就永远不出现
 		engine._broadcast_game()
 	if draw_num > 0:
-		engine.draw(dst_id, draw_num)
+		engine.push_draw(dst_id, draw_num)
 	engine._broadcast_game()
 	return SUCCESS
 
 
-## 灵魂召还：弃 X 张法术牌 → +（X＋1）蓝魂
+## 灵魂召还：弃 X 张法术牌 → +X 蓝魂
 func _zhao_huan(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var card_num: int = cards.size()
 	notice_skill(LING_HUN_ZHAO_HUAN, [player.id])
-	_set_token(TOKEN_LAN, _lan() + card_num + 1)
+	_set_token(TOKEN_LAN, _lan() + card_num)
 	if card_num > 0:
 		_show_and_discard(_pick_cards(cards, card_num))
 	engine._broadcast_game()

@@ -1,17 +1,17 @@
 extends BattleRole
 ## 圣弓（roleID 37）—— 移植自服务端 role/ShengGong.cpp
-## 指示物：tokens[0] = 信仰（上限 10）；治疗上限 3
+## 指示物：tokens[0] = 信仰（上限见角色表）；治疗上限 3
 ## 技能：天之弓（3701，被动：主动攻击使用的牌非【圣】命格时本次伤害 -1）、
-##       圣邪巨胞（3702，法术：弃 2 张同系牌，以该系【圣】命格攻击牌对目标发起一次攻击）、
-##       圣邪巨胞·未命中（37021，响应：耗 X 治疗，目标弃 X 张牌或摸 X 张牌）、
-##       圣煌魔矢（3703，法术：耗 2 治疗或 2 信仰 → 横置并额外 +1 法术行动）、
+##       圣屑飓暴（3702，法术：弃 2 张同系牌，以该系【圣】命格攻击牌对目标发起一次攻击）、
+##       圣屑飓暴·未命中（37021，响应：耗 X 治疗，目标弃 X 张牌或摸 X 张牌）、
+##       圣煌模式（3703，法术：耗 2 治疗或 2 信仰 → 横置并额外 +1 法术行动）、
 ##       圣光爆裂（3704，法术：耗 X 治疗并 +1 信仰，对目标造成 2 点（＋目标中有治疗者数）
 ##                 攻击伤害，然后自身弃 X 张牌或摸 X 张牌）、
 ##       圣流星弹（3705，响应：特殊行动时若横置则重置并 +1 治疗）、
 ##       圣流星弹·攻击（37051，响应：主动攻击宣告后耗 1 治疗或 1 信仰，目标 +1 治疗）、
 ##       圣流星弹·命中（37052，被动：主动攻击命中且为【圣】命格时 +1 信仰）、
-##       辉光炮（3706，法术：全场手牌调整到 4 张，星杯 +1，并使双方士气相等）、
-##       自动天冲（3707，回合结束：耗 1 能量换成信仰或治疗）
+##       圣煌辉光炮（3706，法术：全场手牌调整到 4 张，星杯 +1，并使双方士气相等）、
+##       自动填充（3707，回合结束：耗 1 能量换成信仰或治疗）
 ##
 ## 说明：
 ## - 圣流星弹（3705）在 p_before_special 中触发（引擎在当前玩家发动特殊行动前调用该钩子；
@@ -30,35 +30,33 @@ const HUI_GUANG_PAO: int = 3706
 const ZI_DONG_TIAN_CHONG: int = 3707
 
 ## 本引擎自有的分步标记（服务端把子步骤实现为压栈状态，此处只用 step 记录进度）
-const SHENG_XIE_MISS_DISCARD: int = 37022   # 圣邪巨胞·未命中：请目标弃牌
+const SHENG_XIE_MISS_DISCARD: int = 37022   # 圣屑飓暴·未命中：请目标弃牌
 
 const TOKEN_XIN_YANG: int = 0
-const TOKEN_XIN_YANG_MAX: int = 10
 const CROSS_MAX_SHENG_GONG: int = 3
 const SHENG_GUANG_BAO_LIE_BASE: int = 2     # 圣光爆裂基础伤害
 const ATTACK_BASE_POINT: int = 2            # 攻击牌基础伤害
-const HUI_GUANG_KEEP: int = 4               # 辉光炮：全场手牌调整到 4 张
-const HUI_GUANG_PAO_COST: int = 5           # 辉光炮：信仰消耗为士气差 + 5
+const HUI_GUANG_KEEP: int = 4               # 圣煌辉光炮：全场手牌调整到 4 张
+const HUI_GUANG_PAO_COST: int = 5           # 圣煌辉光炮：信仰消耗为士气差 + 5
 
-var no_tian_chong: bool = false             # 本回合是否进行过特殊行动（跳过自动天冲）
+var no_tian_chong: bool = false             # 本回合是否进行过特殊行动（跳过自动填充）
 
-## 圣邪巨胞·未命中的中间状态
+## 圣屑飓暴·未命中的中间状态
 var sheng_xie_miss_dst: int = -1
 var sheng_xie_miss_num: int = 0
 
-## 辉光炮的进度（-1 表示未开始；主动法术技能不在钩子轮次内，step 不会被重置）
+## 圣煌辉光炮的进度（-1 表示未开始；主动法术技能不在钩子轮次内，step 不会被重置）
 var hui_guang_index: int = -1
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
-	p.tokens[TOKEN_XIN_YANG] = {"name": "信仰", "max": TOKEN_XIN_YANG_MAX, "num": 0}
 	p.cross_max = CROSS_MAX_SHENG_GONG
 
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 圣邪巨胞要弃 2 张同系牌：只让「手里该系不少于 2 张、且该系有【圣】命格攻击牌」的牌可点，
+	# 圣屑飓暴要弃 2 张同系牌：只让「手里该系不少于 2 张、且该系有【圣】命格攻击牌」的牌可点，
 	# 界面据此把同系孤张与没有虚拟牌的系置灰（与 v_magic_skill 的校验一致）
 	var 同系牌: Array[int] = _sheng_xie_hand_ids()
 	if not 同系牌.is_empty():
@@ -72,7 +70,7 @@ func available_skills() -> Array:
 		# 故改用 arg_choices：每个候选点数一个按钮，点它即回完整 args（服务端照旧读 args[0]/args[1]）。
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_BAO_LIE, "need_card": 0, "need_target": 1,
 			"arg_choices": _sheng_guang_bao_lie_choices()})
-	# 辉光炮：仅当我方士气低于敌方且信仰足够支付（士气差 + 5）时可选（客户端同此判定）
+	# 圣煌辉光炮：仅当我方士气低于敌方且信仰足够支付（士气差 + 5）时可选（客户端同此判定）
 	var en_color: int = GConst.BLUE if player.color == GConst.RED else GConst.RED
 	var my_morale: int = engine.team_morale[player.color]
 	var en_morale: int = engine.team_morale[en_color]
@@ -118,7 +116,7 @@ func _same_element(a: int, b: int) -> bool:
 	return ca.element_enum() == cb.element_enum()
 
 
-## 圣邪巨胞可弃的手牌：该系手里至少有 2 张，且该系存在【圣】命格攻击牌可当虚拟牌用
+## 圣屑飓暴可弃的手牌：该系手里至少有 2 张，且该系存在【圣】命格攻击牌可当虚拟牌用
 func _sheng_xie_hand_ids() -> Array[int]:
 	var out: Array[int] = []
 	for cid: int in player.hand_cards:
@@ -191,7 +189,7 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	return SUCCESS
 
 
-## 辉光炮的处理顺序：从自己开始、沿行动顺序绕一圈（自己最先）
+## 圣煌辉光炮的处理顺序：从自己开始、沿行动顺序绕一圈（自己最先）
 ## 服务端把目标 reverse 后逐个压栈，而状态是栈（LIFO）又把它翻回原序，实际就是「自己 → 下家 → …」
 func _ids_from_self() -> Array:
 	var ids: Array = []
@@ -294,9 +292,9 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 主动攻击未命中后（timeline_2_miss）：圣邪巨胞·未命中（37021）
+# 主动攻击未命中后（timeline_2_miss）：圣屑飓暴·未命中（37021）
 # ============================================================
-## 圣邪巨胞·未命中的参数选项：治疗数 X（1..当前治疗）各对应「弃 X 张」或「摸 X 张」。
+## 圣屑飓暴·未命中的参数选项：治疗数 X（1..当前治疗）各对应「弃 X 张」或「摸 X 张」。
 ## 原版用两维 args（[弃=1/摸=2, 治疗数]），通用客户端只回一维 args，故把「弃/摸 + 张数」编码进选项值：
 ## value 1..N＝弃 N 张，value N+1..2N＝摸 N 张（N=当前治疗数），服务端再解码回 choice 与 num。
 func _sheng_xie_miss_choices() -> Array:
@@ -309,11 +307,11 @@ func _sheng_xie_miss_choices() -> Array:
 	return out
 
 
-## 【圣邪巨胞·未命中】的推进阶段（0＝还没开始 / SHENG_XIE_MISS＝在问弃/摸与目标 /
+## 【圣屑飓暴·未命中】的推进阶段（0＝还没开始 / SHENG_XIE_MISS＝在问弃/摸与目标 /
 ## SHENG_XIE_MISS_DISCARD＝在请目标弃牌）。
 ## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次圣邪巨胞未命中（p_timeline_2_miss）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
+## 每次圣屑飓暴未命中（p_timeline_2_miss）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）
 var _miss_step: int = 0
 
 
@@ -356,7 +354,7 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		if choice == 1:
 			_miss_step = SHENG_XIE_MISS_DISCARD
 		else:
-			engine.draw(sheng_xie_miss_dst, num)
+			engine.push_draw(sheng_xie_miss_dst, num)
 			engine._broadcast_game()
 			_miss_step = 0
 	if _miss_step == SHENG_XIE_MISS_DISCARD:
@@ -368,7 +366,7 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 特殊行动前：圣流星弹（3705）——横置时重置并 +1 治疗，且本回合跳过自动天冲
+# 特殊行动前：圣流星弹（3705）——横置时重置并 +1 治疗，且本回合跳过自动填充
 # ============================================================
 func p_before_special(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
@@ -385,7 +383,7 @@ func p_before_special(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 回合结束：自动天冲（3707）
+# 回合结束：自动填充（3707）
 # ============================================================
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
@@ -497,7 +495,7 @@ func p_magic_skill(action: Dictionary) -> int:
 	return GConst.GE_INVALID_ACTION
 
 
-## 圣邪巨胞：弃 2 张同系牌，用该系【圣】命格攻击牌（虚拟牌）发起一次攻击
+## 圣屑飓暴：弃 2 张同系牌，用该系【圣】命格攻击牌（虚拟牌）发起一次攻击
 func _sheng_xie_ju_bao(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
@@ -521,7 +519,7 @@ func _sheng_xie_ju_bao(action: Dictionary) -> int:
 	return URGENT
 
 
-## 圣煌魔矢：耗 2 治疗或 2 信仰 → 横置并额外 +1 法术行动
+## 圣煌模式：耗 2 治疗或 2 信仰 → 横置并额外 +1 法术行动
 func _sheng_huang_mo_shi(action: Dictionary) -> int:
 	var args: Array = action.get("args", [])
 	var choice: int = int(args[0]) if not args.is_empty() else 0
@@ -567,12 +565,12 @@ func _sheng_guang_bao_lie(action: Dictionary) -> int:
 	if choice == 1:
 		_discard_own(cards, howmany)
 	else:
-		engine.draw(player.id, howmany)
+		engine.push_draw(player.id, howmany)
 	engine._broadcast_game()
 	return URGENT
 
 
-## 辉光炮：全场手牌调整到 4 张，星杯 +1，并使双方士气相等（信仰消耗为士气差 + 5）
+## 圣煌辉光炮：全场手牌调整到 4 张，星杯 +1，并使双方士气相等（信仰消耗为士气差 + 5）
 func _hui_guang_pao(action: Dictionary) -> int:
 	if hui_guang_index < 0:
 		hui_guang_index = 0
@@ -588,7 +586,7 @@ func _hui_guang_pao(action: Dictionary) -> int:
 				continue
 			var diff: int = dp.hand_cards.size() - HUI_GUANG_KEEP
 			if diff < 0:
-				engine.draw(pid, -diff)
+				engine.push_draw(pid, -diff)
 				hui_guang_index += 1
 				continue
 			if diff == 0:

@@ -29,6 +29,21 @@ var step: int = 0
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	player = p
 	engine = e
+	_按表初始化标识物()
+
+
+## 从「角色表」的「指示物」列（写法 `槽位:名称:上限`，多枚用 `;` 分隔）建好专属标识物：
+## 槽 0 / 1 建到 player.tokens，槽 2 是盖牌、写进 player.cover_cards_max。
+## 上限一律以设计表为准，角色脚本不再写死；要改数值改设计表后重新导表即可。
+func _按表初始化标识物() -> void:
+	for 槽: int in [0, 1]:
+		var 定义: Dictionary = Data.role_token_def(player.role_id, 槽)
+		if 定义.is_empty():
+			continue
+		player.tokens[槽] = {"name": str(定义["name"]), "max": int(定义["max"]), "num": 0}
+	var 盖牌: Dictionary = Data.role_token_def(player.role_id, 2)
+	if not 盖牌.is_empty():
+		player.cover_cards_max = int(盖牌["max"])
 
 
 # ============================================================
@@ -69,10 +84,9 @@ func p_tap(_ctx: Dictionary) -> int: return SUCCESS
 ## 手牌数量变化（对照服务端 PlayerEntity::p_hand_change）：任何来源的加/减手牌后对全体触发一次
 ## ctx: {player 手牌变化者}
 func p_hand_change(_ctx: Dictionary) -> int: return SUCCESS
-## 回合开始的基础效果检查（对照服务端 FengYin::WuXiShuFu_Effect）：引擎在虚弱询问前对全体角色调用，
-## 角色若判定当前回合玩家身上有自己的效果（如【五系束缚】），把它消耗掉并把应摸牌数加进 ctx["how_many"]
-## ctx: {player 当前回合玩家, how_many 累加值}
-func p_check_basic_effect(_ctx: Dictionary) -> int: return SUCCESS
+## 摸牌前（引擎把牌发到某玩家手里之前对全体角色调用一次）：角色可在此询问该玩家是否发动响应
+## （如暗杀者【水影】：除【特殊行动】外，当你摸牌前发动）。ctx: {player 摸牌者, count 张数, cause 来源}
+func p_before_draw(_ctx: Dictionary) -> int: return SUCCESS
 func p_basic_effect_change(_ctx: Dictionary) -> int: return SUCCESS
 func p_additional_action(_ctx: Dictionary) -> int: return SUCCESS
 func p_turn_end(_ctx: Dictionary) -> int: return SUCCESS
@@ -81,10 +95,15 @@ func p_after_turn_end(_ctx: Dictionary) -> int: return SUCCESS
 ## ctx: {card_id 打出的牌, doer 应战者, target 反击目标, 改用 视为哪张牌, real 是否实体牌}
 ## 角色也可设置 ctx["block"] = true，把这次应战当作「格挡」（本次攻击落空、不反击），如阴阳师光系应战
 func p_reattack(_ctx: Dictionary) -> int: return SUCCESS
+## 主动攻击宣告时（对照应战那条的 p_reattack）：角色可把本次打出的攻击牌「视为」另一张，
+## 如苍炎魔女【烈焰形态】下除水系 / 暗系外的攻击牌一律视为火系虚拟【火焰斩】。
+## ctx: {player 攻击者, card_id 打出的牌, 改用 视为哪张牌（默认＝card_id）}
+## 真牌照常从手牌进弃牌堆并展示，本次攻击按「改用」的那张结算（系别就是那张牌的系别）
+func p_attack_card(_ctx: Dictionary) -> int: return SUCCESS
 ## 攻击「预告加伤」：本次攻击在**命中时**还会追加多少伤害（对照各角色 p_timeline_2_hit 里对
 ## harm["point"] 的追加）。引擎发「应战询问」时把它加上去一起告诉被攻击者 —— **只用于显示，
 ## 不改变实际结算**，默认 0。用它补「客户端算不出的角色状态类」加伤（如魔剑士【暗影之力】+1、
-## 魔枪【暗之解放】+2）；客户端能自己算的角色被动（狂战士【狂化】）走 GConst.攻击提示角色加成。
+## 魔枪【暗之解放】+1）；客户端能自己算的角色被动（狂战士【狂化】）走 GConst.攻击提示角色加成。
 ## ctx 与 p_timeline_1 同形（src / dst / is_active / harm / hit_rate…）。
 func p_attack_preview(_ctx: Dictionary) -> int: return 0
 
@@ -103,7 +122,7 @@ func v_weaken(_dst_id: int, _players: Dictionary) -> int: return V_NOT_OVERRIDE
 func v_missile(_card_id: int, _dst_id: int) -> int: return V_NOT_OVERRIDE
 func v_remissile(_card_id: int) -> int: return V_NOT_OVERRIDE
 func v_buy(_args: Array) -> int: return V_NOT_OVERRIDE
-func v_extract(_args: Array, _team_gem: int, _team_crystal: int, _dst_id: int) -> int: return V_NOT_OVERRIDE
+func v_extract(_args: Array, _team_gem: int, _team_crystal: int, _dst_ids: Array) -> int: return V_NOT_OVERRIDE
 func v_attacked() -> int: return V_NOT_OVERRIDE
 func v_additional_action(_cause: int) -> int: return V_NOT_OVERRIDE
 
@@ -169,13 +188,15 @@ func _收牌人称号(收牌人id: int) -> String:
 ## 不用每个调用点手写 —— 自动取技能表「提示」列的第 序号 条，并把 {src}=本技能发起者（自己）、
 ## {n}=要交/弃的张数、{dst}=收牌人 填好（收牌人id 只在「我交给别人」的场合给）。
 ## 同一个技能有多次询问且要不同文案时，靠 序号 区分；表里没配就退回默认文案（「是否发动【X】？」）
-## 预览基准 见 engine.ask_skill：客户端现算头像提示要用到的数值（如【战纹碎击】本次攻击原本的伤害）
-func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = [], 张数: int = -1, 额外: Dictionary = {}, 预览基准: int = 0) -> void:
+## 预览基准 / 预览类型 见 engine.ask_skill：客户端现算头像提示要用到的数值与它的伤害类型
+## （如【战纹碎击】本次攻击原本的伤害、【朝圣】本次受到的伤害是法术还是攻击）。
+## 保留倒计时 见 engine.wait_for：同一条询问链上的后续询问传 true，不重新计时
+func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = [], 张数: int = -1, 额外: Dictionary = {}, 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false) -> void:
 	# 提示里的 {n}：need_card 为 0 表示「可弃可不弃」，这时取上限（card_max）才说得通，
 	# 否则文案会变成「弃 0 张」。需要「可弃可不弃、但文案要显式给出张数」时用 张数 覆盖。
 	var n: int = 张数 if 张数 >= 0 else (need_card if need_card > 0 else card_max)
 	engine.ask_skill(pid, skill_id, need_card, need_target, card_source, options, card_max, card_rule, cards, can_cancel,
-		提示(skill_id, 序号, n, 收牌人id, 额外), targets, 预览基准)
+		提示(skill_id, 序号, n, 收牌人id, 额外), targets, 预览基准, 预览类型, 保留倒计时)
 
 
 ## 读取技能询问回复：返回 true=发动、false=放弃
@@ -298,18 +319,18 @@ func 结算顺序(目标集合: Array) -> Array[int]:
 
 
 # ============================================================
-# 【魔弹掌握】（802）—— 魔导的落点选择
+# 【魔弹掌控】（802）—— 魔导的落点选择
 # 技能原文：「你主动使用【魔弹】时可以选择逆向传递」。
 # 只作用于「主动打出【魔弹】」这一步（见 missile_targets）；魔弹一旦打出，
 # 后续的传递方向就由出弹时定下，任何角色在传递时都不能改向（见 BattleEngine.SMissileAsk）。
 # ============================================================
-## 本角色是否拥有【魔弹掌握】（默认为否，魔导覆写为 true）
+## 本角色是否拥有【魔弹掌控】（默认为否，魔导覆写为 true）
 func has_missile_mastery() -> bool:
 	return false
 
 
 ## 本角色打出【魔弹】时的可选落点：默认只有右手边（post）最近的对手；
-## 有【魔弹掌握】时左手边（pre）那个也能选（＝逆向传递）。剔除 -1 与重复
+## 有【魔弹掌控】时左手边（pre）那个也能选（＝逆向传递）。剔除 -1 与重复
 func missile_targets(from_id: int) -> Array[int]:
 	var out: Array[int] = []
 	var 顺: int = nearest_enemy_id(from_id, true)
@@ -325,7 +346,7 @@ func missile_targets(from_id: int) -> Array[int]:
 # ============================================================
 # 【魔弹融合】（803）—— 魔导 / 特殊魔导共通
 # 自己的地系 / 火系牌可以当【魔弹】打出去：落点与【魔弹】完全一致（默认右手边最近的对手，
-# 不接受队友；有【魔弹掌握】802 的角色左右各一个候选，见 missile_targets）。
+# 不接受队友；有【魔弹掌控】802 的角色左右各一个候选，见 missile_targets）。
 # 打出去之后的「继续传递 / 圣光抵挡 / 放弃承受」全部交给引擎统一的魔弹传递询问（SMissileAsk），
 # 与主动打出【魔弹】走同一条链；能不能继续用牌传递由本角色的 v_remissile 覆写决定。
 # ============================================================

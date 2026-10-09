@@ -6,7 +6,7 @@ extends BattleRole
 ##       念弹（法术行动结束时，+1 斗气并对目标造成 1 点法术伤害；若目标治疗为 0 则同时自伤）、
 ##       百式幻龙拳（启动，移除 3 斗气并横置：主动攻击伤害 +2、应战攻击伤害 +1，须连续攻击同一目标）、
 ##       斗神天驱（启动，1 能量：+2 治疗并弃到 3 张牌）
-## 【斗气】为格斗家专属指示物，放置于 tokens[0]，上限 6。
+## 【斗气】为格斗家专属指示物，放置于 tokens[0]，上限见角色表。
 
 const NIAN_QI_LI_CHANG: int = 2001      # 念气力场（被动）
 const XU_LI_YI_JI: int = 2002           # 蓄力一击
@@ -16,18 +16,12 @@ const QI_JUE_BENG_JI: int = 2005        # 气绝崩击
 const DOU_SHEN_TIAN_QU: int = 2006      # 斗神天驱
 
 const TOKEN_DOU_QI: int = 0             # 「斗气」指示物下标
-const TOKEN_DOU_QI_MAX: int = 6
 const DOU_SHEN_KEEP_HAND: int = 3       # 斗神天驱弃到 3 张牌
 
 var xu_li_used: bool = false
 var qi_jue_used: bool = false
 var bai_shi_used: bool = false
 var bai_shi_target: int = -1
-
-
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	p.tokens[TOKEN_DOU_QI] = {"name": "斗气", "max": TOKEN_DOU_QI_MAX, "num": 0}
 
 
 ## 行动阶段可发动的技能：【百式幻龙拳】【斗神天驱】为「启动」，不消耗行动
@@ -58,6 +52,15 @@ func is_free_skill(skill_id: int) -> bool:
 func _dou_qi() -> int:
 	var t: Dictionary = player.tokens[TOKEN_DOU_QI]
 	return int(t["num"])
+
+
+func _dou_qi_max() -> int:
+	return int(player.tokens[TOKEN_DOU_QI]["max"])
+
+
+## 【斗气】是否已达上限：已达上限时不能发动【蓄力一击】/【念弹】（两处条件共用这一个判断）
+func _dou_qi_full() -> bool:
+	return _dou_qi() >= _dou_qi_max()
 
 
 func _set_dou_qi(v: int) -> void:
@@ -147,10 +150,6 @@ enum 攻击阶段 { 未开始, 判定, 百式 }
 ## 每次自己主动宣告攻击（p_timeline_1）触发一次，收尾清回 未开始
 var _攻击阶段: int = 攻击阶段.未开始
 
-## 本次主动攻击预选的「攻击技能」号（0＝普通攻击）：由 p_attack_skill 在发起攻击前写入，
-## p_timeline_1 据此直接结算蓄力一击 / 气绝崩击的加成（这条来路不再询问），用完即清
-var _预选攻击技能: int = 0
-
 
 # ============================================================
 # 主动攻击宣告后：先问「蓄力一击 / 气绝崩击」→ 百式幻龙拳加成
@@ -161,21 +160,12 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if _攻击阶段 == 攻击阶段.未开始:
 		_攻击阶段 = 攻击阶段.判定
 	if _攻击阶段 == 攻击阶段.判定:
-		# 两种来路：
-		#   ① 玩家直接点了技能栏的【蓄力一击 / 气绝崩击】：加成已经选好，直接结算，不再问；
-		#   ② 普通攻击（打出攻击牌）：按原版问一次「要发动蓄力一击 / 气绝崩击吗」。
-		# 应战反击两条都不走（原版只问主动攻击）。正在等答复时 _攻击阶段 停在 判定，下次进本钩子继续
-		var 预选: int = _预选攻击技能
-		_预选攻击技能 = 0
+		# 普通攻击（打出攻击牌）按原版问一次「要发动蓄力一击 / 气绝崩击吗」；
+		# 应战反击不走（原版只问主动攻击）。正在等答复时 _攻击阶段 停在 判定，下次进本钩子继续
 		if bool(ctx.get("is_active", false)):
-			if 预选 == XU_LI_YI_JI:
-				_结算蓄力一击(ctx)
-			elif 预选 == QI_JUE_BENG_JI:
-				_结算气绝崩击(ctx)
-			else:
-				var r: int = _询问攻击加成(ctx)
-				if r == WAIT:
-					return WAIT
+			var r: int = _询问攻击加成(ctx)
+			if r == WAIT:
+				return WAIT
 		_攻击阶段 = 攻击阶段.百式
 	if _攻击阶段 == 攻击阶段.百式:
 		_bai_shi_harm(ctx)
@@ -189,7 +179,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 ## 点「取消」＝不发动。选中了就地下结算加成（_结算蓄力一击 / _结算气绝崩击）。
 ## 返回 WAIT 表示正在等玩家答复。
 func _询问攻击加成(ctx: Dictionary) -> int:
-	var 可蓄力: bool = _dou_qi() < TOKEN_DOU_QI_MAX
+	var 可蓄力: bool = not _dou_qi_full()
 	var 可气绝: bool = _dou_qi() >= 1
 	if 可蓄力 and not 可气绝:
 		return _问单项加成(XU_LI_YI_JI, ctx)
@@ -239,58 +229,6 @@ func _攻击加成选项() -> Array:
 		{"value": XU_LI_YI_JI, "label": GConst.skill_name(XU_LI_YI_JI), "skill_id": XU_LI_YI_JI},
 		{"value": QI_JUE_BENG_JI, "label": GConst.skill_name(QI_JUE_BENG_JI), "skill_id": QI_JUE_BENG_JI},
 	]
-
-
-# ============================================================
-# 蓄力一击 / 气绝崩击（攻击技能）：选一张攻击牌 + 一名对手，直接完成一次带加成的主动攻击
-# ============================================================
-func v_attack_skill(action: Dictionary) -> int:
-	if int(action.get("src_id", -1)) != player.id:
-		return GConst.GE_INVALID_PLAYERID
-	var aid: int = int(action.get("action_id", 0))
-	if aid != XU_LI_YI_JI and aid != QI_JUE_BENG_JI:
-		return GConst.GE_INVALID_ACTION
-	# 技能自身条件：蓄力一击要求斗气未满（要 +1 斗气）；气绝崩击要求至少 1 点斗气（要移除 1 点）
-	if aid == XU_LI_YI_JI and _dou_qi() >= TOKEN_DOU_QI_MAX:
-		return GConst.GE_INVALID_ACTION
-	if aid == QI_JUE_BENG_JI and _dou_qi() < 1:
-		return GConst.GE_INVALID_ACTION
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	if cards.is_empty() or dsts.is_empty():
-		return GConst.GE_INVALID_ARGUMENT
-	var cid: int = int(cards[0])
-	var dst_id: int = int(dsts[0])
-	# 复用通用主动攻击校验（持有该攻击牌、目标不同队、面前【挑衅】限制等）
-	if player.v_attack(cid, dst_id, engine.players) != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_ACTION
-	var dst: BattlePlayer = engine.p(dst_id)
-	if dst == null or dst.v_attacked() != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_PLAYERID
-	return GConst.GE_SUCCESS
-
-
-## 蓄力一击 / 气绝崩击：打出所选攻击牌发起一次主动攻击。
-## 回合结束由引擎的技能行动入栈（与普通技能一致），这里只补这次攻击本身；
-## 攻击宣告后 p_timeline_1 会依据 _预选攻击技能 直接结算对应加成（这条来路不再询问玩家）
-func p_attack_skill(action: Dictionary) -> int:
-	var aid: int = int(action.get("action_id", 0))
-	var cards: Array = action.get("card_ids", [])
-	var dsts: Array = action.get("dst_ids", [])
-	var cid: int = int(cards[0])
-	var dst_id: int = int(dsts[0])
-	_预选攻击技能 = aid
-	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT, "cause": GConst.CAUSE_ATTACK,
-		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
-	}
-	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
-	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true,
-	})
-	return URGENT
 
 
 ## 蓄力一击：+1 斗气、本次伤害 +1；新的主动攻击会打断【百式幻龙拳】
@@ -435,7 +373,7 @@ func _nian_dan() -> int:
 	if not engine.has_reply():
 		# 【法术行动】结束即 +1【斗气】，且要在「选择目标」之前完成：
 		# 念弹的自伤＝斗气数，客户端选目标时的指示器必须按加过 1 的值算；斗气已满则不能发动
-		if _dou_qi() >= TOKEN_DOU_QI_MAX:
+		if _dou_qi_full():
 			return SUCCESS
 		_set_dou_qi(_dou_qi() + 1)
 		engine._broadcast_game()

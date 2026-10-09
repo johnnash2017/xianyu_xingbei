@@ -1,7 +1,7 @@
 extends BattleRole
 ## 圣女（roleID 6）—— 移植自服务端 role/ShengNv.cpp
-## 技能：冰霜祷言（使用水系攻击时可选，目标+1 治疗）、治疗术（法术，目标+2 治疗）、
-##       治愈之光（法术，最多 3 名角色各+1 治疗）、怜悯（启动，1 宝石转怜悯形态，手牌上限恒为 7）、
+## 技能：冰霜祷言（使用水系牌或【圣光】时可选，目标+1 治疗）、治疗术（法术，目标+2 治疗）、
+##       治愈之光（法术，最多 3 名角色各+1 治疗）、怜悯（启动，1 宝石转怜悯形态并 +1 水晶，手牌上限恒为 7）、
 ##       圣疗（必杀技，1 能量任意分配 3 治疗，额外攻/法行动，每回合限一次）
 
 const ZHI_LIAO_SHU: int = 601
@@ -33,7 +33,7 @@ func available_skills() -> Array:
 		# 所以这里不再下发 arg_choices 让玩家点选项
 		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_LIAO, "need_card": 0, "need_target": 1,
 			"target_max": 3})
-	# 怜悯（启动）：有宝石且未横置时可发动 —— 耗 1 宝石转怜悯形态（手牌上限恒为 7）
+	# 怜悯（启动）：有宝石且未横置时可发动 —— 耗 1 宝石转怜悯形态、+1 水晶（手牌上限恒为 7）
 	if player.gem > 0 and not player.tap:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": LIAN_MIN, "need_card": 0, "need_target": 0})
 	return out
@@ -65,27 +65,33 @@ func v_special_skill(action: Dictionary) -> int:
 	return GConst.GE_SUCCESS
 
 
-## 怜悯：耗 1 宝石并横置（进入怜悯形态，手牌上限恒为 7）
+## 怜悯：耗 1 宝石并横置（进入怜悯形态，手牌上限恒为 7），并 +1 水晶
 func p_special_skill(_action: Dictionary) -> int:
 	notice_skill(LIAN_MIN, [player.id])
 	player.boot_skill_used = true
 	player.tap = true
 	player.set_gem(player.gem - 1)
+	player.set_crystal(player.crystal + 1)
 	player.hand_cards_max = 7
 	engine._broadcast_game()
 	return SUCCESS
 
 
 # ============================================================
-# 攻击宣告后：冰霜祷言（水系攻击可选，指定一名角色+1 治疗）
+# 展示手牌（p_show_hand）：冰霜祷言（603）—— 每当你使用水系牌或【圣光】时
+# 引擎里任何「公开打出的牌」都会经 take_from_hand(..., 已展示=true) 触发本钩子（与封印师的封印同源）。
+# 触发口径（策划）：
+#   · 水系牌：公开打出即触发（任意场合）；
+#   · 【圣光】：仅限「用【圣光】抵挡攻击」（应战抵挡）时触发——引擎在该场合把 ctx["格挡攻击"] 置真；
+#            用【圣光】抵挡魔弹、弃牌展示等其它公开打出【圣光】的场合都不算。
 # ============================================================
-func p_timeline_1(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) != player.id:
-		return SUCCESS
-	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if card == null or card.element_enum() != GConst.CardElement.Water:
+func p_show_hand(ctx: Dictionary) -> int:
+	# 钩子对每个角色都会触发一次，只处理自己打出的牌
+	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	if step >= STEP_DONE:
+		return SUCCESS
+	if not _触发冰霜祷言(ctx.get("cards", []), bool(ctx.get("格挡攻击", false))):
 		return SUCCESS
 	if not engine.has_reply():
 		询问(player.id, BING_SHUANG_DAO_YAN, 0, 1)
@@ -108,6 +114,20 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	施加治疗(dst_id, 1)
 	engine._broadcast_game()
 	return SUCCESS
+
+
+## 本次展示的牌里是否含「水系牌」，或含「用于格挡攻击的【圣光】」（冰霜祷言的触发条件）
+## 格挡攻击=false 时【圣光】不计入：区别于抵挡魔弹 / 弃牌展示等其它公开打出【圣光】的场合
+func _触发冰霜祷言(cards: Array, 格挡攻击: bool) -> bool:
+	for c: Variant in cards:
+		var card: GCard = Data.get_card(int(c))
+		if card == null:
+			continue
+		if card.element_enum() == GConst.CardElement.Water:
+			return true
+		if 格挡攻击 and card.card_name_enum() == GConst.CardName.HolyLight:
+			return true
+	return false
 
 
 # ============================================================

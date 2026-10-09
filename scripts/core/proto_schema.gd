@@ -105,6 +105,13 @@ const SUB: Dictionary = {
 		# 原伤害只有服务端算得出来；【双重回响】也用它下发要复制的那份伤害（与 3 取小后的值），
 		# 随这条询问下发（见 _战纹碎击头像提示 / _双重回响头像提示）
 		22: {"n": "preview_base", "t": "u32"},
+		# 上面那个基准数值的「类型」（0＝没有），取 GConst.HarmType（1＝攻击、2＝法术）。
+		# 客户端现算头像提示时用它定措辞与颜色，如蝶舞者【朝圣】要按本次伤害的类型写「法术伤害 / 攻击伤害」
+		23: {"n": "preview_kind", "t": "u32"},
+		# 带选项的询问里，每个选项各自的目标白名单（与 args 里的选项值一一对应，空＝这一项不限制）：
+		# 如吟游诗人【希望赋格曲】二选一 —— 「放置」只能点除自己外的队友、「转移」可以点含自己在内的我方
+		# （除当前持有者）。客户端选中该项后按它收紧可点头像（见 battle_mobile._参数选项目标白名单）
+		24: {"n": "option_targets", "t": "msg", "r": true, "s": "OptionTargets"},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {
@@ -113,6 +120,14 @@ const SUB: Dictionary = {
 		3: {"n": "need_card", "t": "u32"},
 		4: {"n": "need_target", "t": "u32"},
 		5: {"n": "targets", "t": "u32", "r": true},
+		# 该项自带的选牌来源 / 需盖牌数：-1 / 0 ＝ 沿用技能本体的
+		# （如【倒逆之蝶】第 ② 项要在盖牌区点 2 张【茧】）
+		6: {"n": "card_source", "t": "i32"},
+		7: {"n": "cover_need", "t": "u32"},
+	},
+	# 某个选项各自的可点目标（option_targets 的一项）
+	"OptionTargets": {
+		1: {"n": "ids", "t": "u32", "r": true},
 	},
 }
 
@@ -331,6 +346,12 @@ const TABLE: Dictionary = {
 	# 测试用（本项目本地扩展）：按测试按键做的操作，kind 见 GConst.DebugKey
 	GConst.Msg.DebugReq: {
 		1: {"n": "kind", "t": "u32"},
+	},
+	# 受伤飘字（本项目本地扩展）：伤害流水线跑完后广播的最终实际伤害
+	GConst.Msg.HurtFloat: {
+		1: {"n": "dst_id", "t": "u32"},
+		2: {"n": "point", "t": "u32"},
+		3: {"n": "type", "t": "u32"},
 	},
 }
 

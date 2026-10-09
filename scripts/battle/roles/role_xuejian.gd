@@ -14,11 +14,6 @@ const XUE_RAN_QIANG_WEI: int = 3403
 const XUE_QI_PING_ZHANG: int = 3404
 const XUE_QIANG_WEI_BOOT: int = 3405
 
-func setup(p: BattlePlayer, e: BattleEngine) -> void:
-	super.setup(p, e)
-	p.tokens[0] = {"name": "鲜血", "max": 3, "num": 0}
-
-
 func available_skills() -> Array:
 	var out: Array = []
 	if int(player.tokens[0]["num"]) >= 2:
