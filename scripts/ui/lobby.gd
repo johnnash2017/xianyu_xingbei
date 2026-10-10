@@ -37,6 +37,8 @@ const 未记录: int = 0
 @export var 选角组: ButtonGroup
 @export var 创建按钮: Button
 @export var 取消创建按钮: Button
+## 创建房间「指令」行的勾选（界面上写的是「开启作弊」）：勾上后本房间内所有玩家都能用测试指令
+@export var 调试模式: CheckBox
 
 var _room_ids: Array[int] = []
 var _刷新计时: float = 0.0
@@ -152,6 +154,8 @@ func _on_open_create_pressed() -> void:
 	房名输入.grab_focus()
 	# 光标放到文本末尾，打开就能直接接着改（不用先按 End）
 	房名输入.caret_column = 房名输入.text.length()
+	# 调试模式不记忆：每次打开建房面板都从「未勾选」开始（多开脚本 --auto 时已是打开的）
+	调试模式.button_pressed = Cfg.调试模式
 
 
 func _on_close_create_pressed() -> void:
@@ -170,10 +174,12 @@ func _on_create_pressed() -> void:
 	# 人数 / 选角都是单选组，直接读被按下那个按钮上标的数值（ButtonGroup 不允许全部松开，必定有一个）
 	var 人数: int = int(人数组.get_pressed_button().get_meta("people"))
 	var 选角: int = int(选角组.get_pressed_button().get_meta("strategy"))
-	# 记住这次选的：写共享配置，多开共用一份，下次启动直接沿用
+	var 调试: bool = 调试模式.button_pressed
+	# 记住这次选的：写共享配置，多开共用一份，下次启动直接沿用。
+	# 调试模式刻意不记：每次建房都从「未勾选」开始，免得顺手把调试入口带进正常局
 	Cfg.shared_set(共享键_人数, 人数)
 	Cfg.shared_set(共享键_选角, 选角)
-	Logic.create_room(房名, 人数, 选角)
+	Logic.create_room(房名, 人数, 选角, 调试)
 
 
 # ============================================================
@@ -182,12 +188,15 @@ func _on_create_pressed() -> void:
 ## 按共享配置把人数 / 选角拨回上次选的项（没记过就保持场景里的默认）。
 ## 多开脚本带了 --count（本批窗口数）时人数以它为准：否则会沿用上次记下的 4 人，
 ## 六开被建成一间 2v2 房；没有对应按钮的数值（如 1）就保持原样。
+## 调试模式刻意不记忆：每次建房都从「未勾选」开始，只有多开脚本带 --auto
+## （按 F10 / F11 那种）才强制勾上，方便一拉起来就能用测试指令。
 func _恢复建房选项() -> void:
 	var 人数: int = int(Cfg.shared_get(共享键_人数, 未记录))
 	if Cfg.多开人数 > 0:
 		人数 = Cfg.多开人数
 	_选中按元数据(人数组, "people", 人数)
 	_选中按元数据(选角组, "strategy", int(Cfg.shared_get(共享键_选角, 未记录)))
+	调试模式.button_pressed = Cfg.调试模式
 
 
 ## 在单选组里选中 metadata[键] == 值 的那个按钮；「未记录」或没有对应按钮时保持原样

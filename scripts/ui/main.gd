@@ -4,13 +4,27 @@ extends Control
 ## 挂到「界面层」上，一层层叠在这张背景之上。
 
 @export var 界面层: Control
+## 右上角「问题反馈」：一行文字，点一下用系统默认浏览器打开问卷（见 UI.打开反馈问卷）
+@export var 问题反馈: Label
 
 
 func _ready() -> void:
 	UI.attach(界面层)
+	问题反馈.gui_input.connect(_on_问题反馈_gui_input)
 	UI.goto_enter()
 	if Cfg.自动开局:
 		_自动开局()
+
+
+## 点一下右上角的「问题反馈」：左键抬起时用系统默认浏览器打开问卷。
+## 必须用「抬起」而不是「按下」：打开浏览器会让游戏窗口失焦，
+## 若在按下时就打开，抬起事件会被浏览器收走，切回游戏后鼠标会一直停在长按状态。
+func _on_问题反馈_gui_input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var 鼠标: InputEventMouseButton = event as InputEventMouseButton
+	if 鼠标.button_index == MOUSE_BUTTON_LEFT and not 鼠标.pressed:
+		UI.打开反馈问卷()
 
 
 # ============================================================

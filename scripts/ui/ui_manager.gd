@@ -11,6 +11,8 @@ const SCENE_READY_ROOM: String = "res://scenes/ReadyRoom.tscn"
 const SCENE_BATTLE_MOBILE: String = "res://scenes/BattleUIMobile.tscn"
 ## 设置浮层（背景音乐 / 效果音音量）：盖在当前界面之上，各界面都能从设置按钮打开
 const SCENE_SETTINGS: String = "res://scenes/Settings.tscn"
+## 反馈问卷地址：右上角「问题反馈」文字点一下，用系统默认浏览器打开
+const 反馈问卷地址: String = "https://wj.qq.com/s2/28148393/mz1k/"
 
 var current: Node = null
 ## 界面容器：主场景 _ready 时通过 attach() 交过来
@@ -33,6 +35,33 @@ func attach(层: Control) -> void:
 ## 启动场景自报家门
 func register(n: Node) -> void:
 	current = n
+
+
+## 用系统默认浏览器打开反馈问卷（右上角「问题反馈」触发；测试里也可直接调）
+func 打开反馈问卷() -> void:
+	var 结果: Error = OS.shell_open(反馈问卷地址)
+	if 结果 != OK:
+		push_warning("UI: 打开反馈问卷失败（%s），地址：%s" % [error_string(结果), 反馈问卷地址])
+
+
+## 窗口重新拿到焦点时清掉「卡住」的鼠标键：
+## 打开浏览器 / 切到别的程序会让游戏窗口失焦，若抬起事件被对方收走，
+## 游戏里那个键会一直停在按下状态（表现为鼠标一直长按），切回来时补一次抬起。
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		_补发鼠标抬起(MOUSE_BUTTON_LEFT)
+		_补发鼠标抬起(MOUSE_BUTTON_RIGHT)
+		_补发鼠标抬起(MOUSE_BUTTON_MIDDLE)
+
+
+## 该键仍停在按下状态时，补一个抬起事件把状态清掉（没卡住就什么都不做）
+func _补发鼠标抬起(键: MouseButton) -> void:
+	if not Input.is_mouse_button_pressed(键):
+		return
+	var 事件: InputEventMouseButton = InputEventMouseButton.new()
+	事件.button_index = 键
+	事件.pressed = false
+	Input.parse_input_event(事件)
 
 
 ## 进入界面。播放主界面音乐默认打开：登录 / 大厅 / 房间准备室都用主界面曲子（进房间不换曲子）。

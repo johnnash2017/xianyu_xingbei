@@ -33,6 +33,9 @@ var room_id: int = 0
 ## 房间准备界面据此显示房名与「已到 / 应到」人数
 var room_name: String = ""
 var room_max_player: int = 0
+## 房间的「调试模式」：由房主建房时勾选，随 Game 快照下发。
+## 只有开着时，房内玩家才能用测试指令（服务端 DebugReq 也会按它拦一道）
+var room_debug: bool = false
 var players: Dictionary = {}      # id -> BattlePlayer
 var order: Array[int] = []        # 座位顺序（顺时针）
 var deck: BattleDeck = BattleDeck.new()
@@ -1033,6 +1036,7 @@ func game_info(viewer_id: int) -> Dictionary:
 		"room_id": room_id,
 		"room_name": room_name,
 		"max_player": room_max_player,
+		"debug": room_debug,
 		"player_id": viewer_id,
 		"red_morale": team_morale[GConst.RED],
 		"blue_morale": team_morale[GConst.BLUE],

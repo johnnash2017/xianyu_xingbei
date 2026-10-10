@@ -24,6 +24,10 @@ var server_port: int = GConst.DEFAULT_PORT
 ## 自动开局（启动参数 --auto）：启动后自动「进入游戏 → 房主建房 / 其余窗口进同一间房 → 准备」，
 ## 给多开脚本用（按 F10 那种）；不带这个参数时一切照旧，全是手动点。
 var 自动开局: bool = false
+## 调试模式（建房面板「调试模式」勾选项的默认值）：
+## 多开脚本用 --auto 拉起来的那批（F10 / F11 快捷键）默认开着，方便直接测；
+## 手动开游戏时为关，只有房主在「创建房间」里勾上才会开。
+var 调试模式: bool = false
 ## 本批多开的窗口数（启动参数 --count=N；0＝没指定）：自动开局建房时按它挑房间人数。
 ## 不带这个参数就只能沿用上次记下的人数，六开会被建成上次那个 4 人局（2v2）
 var 多开人数: int = 0
@@ -77,6 +81,7 @@ func _parse_cmdline() -> void:
 			i += 1
 		elif a == "--auto":
 			自动开局 = true
+			调试模式 = true
 		elif a.begins_with("--count="):
 			多开人数 = int(a.substr(8))
 		elif a == "--count" and i + 1 < args.size():

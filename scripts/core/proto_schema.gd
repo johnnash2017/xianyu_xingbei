@@ -176,6 +176,8 @@ const TABLE: Dictionary = {
 		8: {"n": "allow_guest", "t": "bool"},
 		9: {"n": "password", "t": "str"},
 		10: {"n": "silence", "t": "bool"},
+		# 调试模式：房主建房时勾选，房内所有人都能用测试指令（见 BattleEngine.room_debug）
+		11: {"n": "debug", "t": "bool"},
 	},
 	GConst.Msg.EnterRoomReq: {
 		1: {"n": "room_id", "t": "i32"},
@@ -237,6 +239,8 @@ const TABLE: Dictionary = {
 		19: {"n": "max_player", "t": "i32"},
 		# 正在等谁做什么（如「等待应战响应」）：客户端写在被等玩家的头像上
 		20: {"n": "wait_text", "t": "str"},
+		# 房间的调试模式：开了客户端才响应测试指令、才显示可拖拽的测试提示
+		21: {"n": "debug", "t": "bool"},
 	},
 	GConst.Msg.Talk: {
 		1: {"n": "txt", "t": "str"},

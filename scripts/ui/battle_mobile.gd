@@ -32,6 +32,13 @@ extends Control
 @export var Hint: Control
 ## 屏幕左上角的测试指令提示（测试用，仅显示键位说明）
 @export var 测试提示: Label
+## 测试提示的常态透明度（取自 .tscn 里设的 modulate；鼠标指上去变不透明，移开恢复）
+var _测试提示常态透明: float = 1.0
+## 拖动测试提示时鼠标相对面板左上角的偏移（零向量 = 当前没在拖）
+var _测试提示拖动偏移: Vector2 = Vector2.ZERO
+## 本房间是否开了调试模式（房主建房时勾选、服务端随 Game 快照下发）：
+## 关着时不响应测试指令，也不显示那个可拖拽的测试提示
+var _调试模式: bool = false
 @export var Content_2: RichTextLabel    # 日志控件（场景里挂着 AutoClearLog.gd；RichTextLabel 才能按行上色）
 @export var MsgRoot: ScrollContainer    # 日志滚动区（展开日志时滚到最新一条）
 @export var Content: GridContainer     # 聊天条目容器
@@ -476,6 +483,7 @@ func _ready() -> void:
 	for 项: Array in 测试指令表:
 		说明行.append("%s %s" % [OS.get_keycode_string(int(项[0])), str(项[1])])
 	测试提示.text = "\n".join(说明行)
+	_接测试提示()
 	# 场景被重新挂上时，可能有已经到达的快照
 	if not Logic.last_info.is_empty():
 		_on_game_info(Logic.last_info)
@@ -486,6 +494,34 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if Logic.battle == self:
 		Logic.battle = null
+
+
+## 测试提示（测试用）：常态半透明、鼠标指上去变不透明、按住左键可以拖到别处，免得挡住画面
+func _接测试提示() -> void:
+	_测试提示常态透明 = 测试提示.modulate.a
+	# 先按「没开调试模式」藏起来：第一条快照到了再按房间设定决定显不显示
+	测试提示.visible = false
+	测试提示.mouse_entered.connect(func() -> void: 测试提示.modulate.a = 1.0)
+	测试提示.mouse_exited.connect(func() -> void: 测试提示.modulate.a = _测试提示常态透明)
+	测试提示.gui_input.connect(_on_测试提示_gui_input)
+
+
+## 应用房间的调试模式：关着时藏起测试提示，同时测试指令也不再响应
+func _应用调试模式(开: bool) -> void:
+	if _调试模式 == 开:
+		return
+	_调试模式 = 开
+	测试提示.visible = 开
+
+
+## 按住测试提示拖动：按下时记下鼠标在面板内的位置，移动时按同样的偏移摆回去（松手结束拖动）
+func _on_测试提示_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var 鼠标: InputEventMouseButton = event as InputEventMouseButton
+		if 鼠标.button_index == MOUSE_BUTTON_LEFT:
+			_测试提示拖动偏移 = 测试提示.get_local_mouse_position() if 鼠标.pressed else Vector2.ZERO
+	elif event is InputEventMouseMotion and _测试提示拖动偏移 != Vector2.ZERO:
+		测试提示.position = 测试提示.get_parent().get_local_mouse_position() - _测试提示拖动偏移
 
 
 ## 测试指令清单：[键位（Key 值）, 说明]。右下角的说明文字与快捷按钮都由它生成，避免两处重复
@@ -504,7 +540,7 @@ const 测试指令表: Array = [
 ]
 
 
-## 测试快捷键（只在战斗界面里生效；键位与 GConst.DebugKey 的取值一致）
+## 测试快捷键（只在战斗界面、且房间开了调试模式时生效；键位与 GConst.DebugKey 的取值一致）
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not (event is InputEventKey):
 		return
@@ -514,8 +550,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	_测试指令(键.keycode)
 
 
-## 执行一条测试指令（键盘按键、右下角快捷按钮点一下，走同一条路）
+## 执行一条测试指令（只在房间开了调试模式时生效；服务端也拦了一道）
 func _测试指令(键: int) -> void:
+	if not _调试模式:
+		return
 	match 键:
 		KEY_0:
 			# 正被询问「是否发动 / 是否应战 / 弃哪几张」等：按 0 = 取消这次询问（不发动），
@@ -552,6 +590,7 @@ func _测试指令(键: int) -> void:
 # ============================================================
 ## 对局快照 → 刷新队伍数值、房间号、玩家面板
 func _on_game_info(info: Dictionary) -> void:
+	_应用调试模式(bool(info.get("debug", false)))
 	var started: bool = bool(info.get("is_started", false))
 	# 留着「上一条快照是否已开局」：开局那一条只做记录，否则士气 0 → 初始值会白响一声
 	var 之前已开局: bool = _已开局
@@ -1732,7 +1771,7 @@ var _悬停角色面板: 战斗玩家面板 = null
 var _悬停状态图标: bool = false
 ## 「正在点头像选目标」（用指示器分配 / 选目标）时指向头像：技能说明要停留这么久才弹（秒）。
 ## 那种场合鼠标会扫过一排头像去点目标，指到就弹的说明框会不停闪、挡住选取；其余场合仍是指到就弹
-const 选目标悬停说明延迟: float = 0.6
+const 选目标悬停说明延迟: float = 1.0
 ## 上面那条延迟的计时器，以及「等的是哪块面板」（详见 _显示角色说明 的三个帮手）
 var _面板说明计时器: Timer = null
 var _待说明面板: 战斗玩家面板 = null
@@ -1806,6 +1845,20 @@ func _隐藏角色说明() -> void:
 	_悬停角色面板 = null
 	_取消面板说明计时()
 	_收说明框.call_deferred()
+
+
+## 选目标时「等弹说明」的倒计时，被鼠标左键一点就重新开始：
+## 玩家在一排头像上点着选目标时，说明框不该趁两次点击之间的空档冒出来挡住头像。
+## 用 _input 而不是 _unhandled_input —— 点头像的事件会被按钮/面板吃掉，收不到。
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var 鼠标: InputEventMouseButton = event as InputEventMouseButton
+	if 鼠标.button_index != MOUSE_BUTTON_LEFT or not 鼠标.pressed:
+		return
+	# 只有「正在等弹说明」的这一轮才重新计时；其余点击跟说明框无关
+	if _待说明面板 != null:
+		_启动面板说明计时器()
 
 
 ## 选目标时的延迟弹出：起一次性计时；重复进入同一块面板就重新计时（＝必须连续停留够久才弹）

@@ -80,13 +80,16 @@ max_length = 12
 
 [node name="设置按钮" type="Button" parent="." unique_id=1538708124]
 layout_mode = 1
-anchors_preset = 1
+anchors_preset = 3
 anchor_left = 1.0
+anchor_top = 1.0
 anchor_right = 1.0
+anchor_bottom = 1.0
 offset_left = -176.0
-offset_top = 24.0
+offset_top = -88.0
 offset_right = -24.0
-offset_bottom = 88.0
+offset_bottom = -24.0
 grow_horizontal = 0
+grow_vertical = 0
 theme_override_font_sizes/font_size = 28
 text = "设置"

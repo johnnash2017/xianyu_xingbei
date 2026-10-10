@@ -6,7 +6,7 @@
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_strategy"]
 
-[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "设置按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "创建按钮", "取消创建按钮")]
+[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "设置按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "创建按钮", "取消创建按钮", "调试模式")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -22,7 +22,7 @@ script = ExtResource("1_5gu6x")
 "创建房间按钮" = NodePath("主列/按钮行/创建房间按钮")
 "搜索按钮" = NodePath("主列/按钮行/搜索按钮")
 "返回登录按钮" = NodePath("主列/按钮行/返回登录按钮")
-"设置按钮" = NodePath("主列/按钮行/设置按钮")
+"设置按钮" = NodePath("设置按钮")
 "跨机IP输入" = NodePath("主列/跨机行/跨机IP输入")
 "连接按钮" = NodePath("主列/跨机行/连接按钮")
 "房主列表" = NodePath("主列/房主列表")
@@ -32,6 +32,7 @@ script = ExtResource("1_5gu6x")
 "选角组" = SubResource("ButtonGroup_strategy")
 "创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/创建按钮")
 "取消创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/取消创建按钮")
+"调试模式" = NodePath("创建层/居中/创建卡片/内容/指令行/调试模式")
 
 [node name="主列" type="VBoxContainer" parent="." unique_id=992213050]
 layout_mode = 1
@@ -92,12 +93,6 @@ custom_minimum_size = Vector2(192, 64)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "返回登录"
-
-[node name="设置按钮" type="Button" parent="主列/按钮行" unique_id=1072185296]
-custom_minimum_size = Vector2(128, 64)
-layout_mode = 2
-theme_override_font_sizes/font_size = 26
-text = "设置"
 
 [node name="跨机行" type="HBoxContainer" parent="主列" unique_id=1285522029]
 layout_mode = 2
@@ -299,6 +294,23 @@ button_group = SubResource("ButtonGroup_strategy")
 metadata/strategy = 5
 text = "任选"
 
+[node name="指令行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="指令标签" type="Label" parent="创建层/居中/创建卡片/内容/指令行"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "指令"
+vertical_alignment = 1
+
+[node name="调试模式" type="CheckBox" parent="创建层/居中/创建卡片/内容/指令行"]
+layout_mode = 2
+tooltip_text = "开启后，本房间内所有玩家都能使用测试指令（数字键 0~9 等）"
+theme_override_font_sizes/font_size = 26
+text = "开启作弊"
+
 [node name="按钮行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容" unique_id=1846027509]
 layout_mode = 2
 theme_override_constants/separation = 16
@@ -315,3 +327,20 @@ custom_minimum_size = Vector2(208, 64)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "取消"
+
+[node name="设置按钮" type="Button" parent="." unique_id=1072185296]
+custom_minimum_size = Vector2(128, 64)
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -152.0
+offset_top = -88.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 26
+text = "设置"

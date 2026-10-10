@@ -121,9 +121,10 @@ func _on_client_message(conn_id: int, msg_type: int, data: Dictionary) -> void:
 				var battle: BattleEngine = room["battle"]
 				battle.on_message(int(s["player_id"]), msg_type, data)
 		GConst.Msg.DebugReq:
-			# 测试用：按连接认人，谁按的键就以谁的名义做
+			# 测试用：按连接认人，谁按的键就以谁的名义做。
+			# 只在房主开了「调试模式」的房间里生效（客户端会隐藏入口，这里再拦一道防改包）
 			var 测试房: Dictionary = _room_of(conn_id)
-			if not 测试房.is_empty():
+			if not 测试房.is_empty() and (测试房["battle"] as BattleEngine).room_debug:
 				(测试房["battle"] as BattleEngine).debug_key(int(s["player_id"]), int(data.get("kind", 1)))
 
 
@@ -176,6 +177,7 @@ func create_room(conn_id: int, data: Dictionary) -> void:
 	}
 	battle.room_name = str(room["name"])
 	battle.room_max_player = int(room["max_player"])
+	battle.room_debug = bool(data.get("debug", false))
 	battle.send_cb = func(target: int, msg_type: int, fields: Dictionary) -> void:
 		_engine_send(rid, target, msg_type, fields)
 	_rooms[rid] = room

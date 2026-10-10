@@ -209,7 +209,7 @@ func request_room_list() -> void:
 	Net.send(GConst.Msg.RoomListReq, {"role_strategy": GConst.RoleStrategy.All})
 
 
-func create_room(room_name: String, max_player: int, role_strategy: int = GConst.RoleStrategy.Random) -> void:
+func create_room(room_name: String, max_player: int, role_strategy: int = GConst.RoleStrategy.Random, debug: bool = false) -> void:
 	if not Net.is_connected_to_host():
 		return
 	Net.send(GConst.Msg.CreateRoomReq, {
@@ -218,6 +218,7 @@ func create_room(room_name: String, max_player: int, role_strategy: int = GConst
 		"role_strategy": role_strategy,
 		"seat_mode": GConst.SeatMode.Random,
 		"allow_guest": true,
+		"debug": debug,
 	})
 
 
