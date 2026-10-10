@@ -27,7 +27,7 @@ Art="*res://scripts/ui/art.gd"
 Audio="*res://scripts/client/audio.gd"
 AssetIndex="*res://scripts/framework/AssetIndex.gd"
 MessageSystem="*res://scripts/framework/MessageSystem.gd"
-ClickDust="*res://scripts/effects/点击星屑.gd"
+ClickDust="*res://scripts/effects/clickStardust.gd"
 
 [display]
 
@@ -41,7 +41,7 @@ enabled=PackedStringArray("res://addons/excel_to_gd/plugin.cfg", "res://addons/g
 
 [gui]
 
-theme/custom="res://资源/界面/ui_theme.tres"
+theme/custom="res://media/ui/ui_theme.tres"
 
 [physics]
 

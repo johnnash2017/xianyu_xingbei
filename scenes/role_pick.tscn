@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://cxlxicnyysgsl"]
 
 [ext_resource type="Script" uid="uid://c4k7kis3hyxuc" path="res://scripts/ui/role_pick.gd" id="1_p4iqs"]
-[ext_resource type="Texture2D" path="res://资源/界面/ui_notice.png" id="2_notice"]
+[ext_resource type="Texture2D" path="res://media/ui/ui_notice.png" id="2_notice"]
 
 [node name="RolePick" type="Control" node_paths=PackedStringArray("标题", "座次条", "提示", "倒计时", "卡片区", "滚动")]
 layout_mode = 3

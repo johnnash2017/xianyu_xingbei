@@ -1,0 +1,251 @@
+[gd_scene format=3 uid="uid://clhepsamj2k7v"]
+
+[ext_resource type="Script" uid="uid://bo76hrgfyk86m" path="res://scripts/effects/3D/effectController3D.gd" id="1_br0i1"]
+[ext_resource type="Material" uid="uid://rew6ftjwmm00" path="res://scenes/prefabs/effects/magicBullet3D/materials/magicBulletWave.tres" id="1_j6vj0"]
+[ext_resource type="Material" uid="uid://b2o2vag58abyu" path="res://scenes/prefabs/effects/magicBullet3D/materials/magicBulletHead.tres" id="2_necqt"]
+[ext_resource type="Material" uid="uid://78ukyvmsmdje" path="res://scenes/prefabs/effects/magicBullet3D/materials/magicBulletCore.tres" id="3_necqt"]
+[ext_resource type="Script" uid="uid://ilkyo5cx2bgx" path="res://scripts/effects/3D/effectLight3D.gd" id="4_3rbsi"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_br0i1"]
+top_radius = 0.3
+bottom_radius = 0.25
+height = 0.9
+rings = 32
+cap_top = false
+cap_bottom = false
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_necqt"]
+top_radius = 0.3
+bottom_radius = 0.1
+height = 1.4
+rings = 32
+cap_top = false
+cap_bottom = false
+
+[sub_resource type="SphereMesh" id="SphereMesh_j6vj0"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="SphereMesh" id="SphereMesh_br0i1"]
+radius = 0.25
+
+[sub_resource type="Animation" id="Animation_e2thh"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Wave_01:material_override:shader_parameter/alpha_multiplier")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Wave_02:material_override:shader_parameter/alpha_multiplier")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Head:material_override:shader_parameter/alpha_multiplier")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Core:material_override:shader_parameter/alpha_multiplier")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Light:light_multiplier")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+
+[sub_resource type="Animation" id="Animation_2xbmx"]
+resource_name = "main"
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Wave_01:material_override:shader_parameter/alpha_multiplier")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Wave_02:material_override:shader_parameter/alpha_multiplier")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Head:material_override:shader_parameter/alpha_multiplier")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Core:material_override:shader_parameter/alpha_multiplier")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+
+[sub_resource type="Animation" id="Animation_dtgg3"]
+resource_name = "oneshot"
+length = 0.6
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Wave_01:material_override:shader_parameter/alpha_multiplier")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 1.0, 0.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Wave_02:material_override:shader_parameter/alpha_multiplier")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.133333, 0.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 1.0, 0.0]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Head:material_override:shader_parameter/alpha_multiplier")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.0666667, 0.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 1.0, 0.0]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Core:material_override:shader_parameter/alpha_multiplier")
+tracks/3/interp = 2
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 1.0, 0.0]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Light:light_multiplier")
+tracks/4/interp = 2
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0, 0.233333, 0.6),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 1.0, 0.0]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_e2thh"]
+_data = {
+&"RESET": SubResource("Animation_e2thh"),
+&"main": SubResource("Animation_2xbmx"),
+&"oneshot": SubResource("Animation_dtgg3")
+}
+
+[node name="魔弹" type="Node3D" unique_id=1152969521]
+script = ExtResource("1_br0i1")
+primary_color = Color(0.8, 0.878431, 1, 1)
+secondary_color = Color(0.5529412, 0.5647059, 1, 1)
+tertiary_color = Color(0.176471, 0.431373, 1, 1)
+light_color = Color(0.411765, 0.752941, 1, 1)
+
+[node name="Wave_01" type="MeshInstance3D" parent="." unique_id=377633359]
+transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.5, 0, 0)
+material_override = ExtResource("1_j6vj0")
+mesh = SubResource("CylinderMesh_br0i1")
+
+[node name="Wave_02" type="MeshInstance3D" parent="." unique_id=1448586980]
+transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.7, 0, 0)
+material_override = ExtResource("1_j6vj0")
+mesh = SubResource("CylinderMesh_necqt")
+
+[node name="Head" type="MeshInstance3D" parent="." unique_id=105479050]
+transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.72, 0, 0)
+material_override = ExtResource("2_necqt")
+mesh = SubResource("SphereMesh_j6vj0")
+
+[node name="Core" type="MeshInstance3D" parent="." unique_id=238491298]
+transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.285, 0, 0)
+material_override = ExtResource("3_necqt")
+mesh = SubResource("SphereMesh_br0i1")
+
+[node name="Light" type="OmniLight3D" parent="." unique_id=477462042]
+light_color = Color(0.411765, 0.752941, 1, 1)
+light_energy = 4.0
+script = ExtResource("4_3rbsi")
+base_energy = 4.0
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=951303352]
+libraries/ = SubResource("AnimationLibrary_e2thh")

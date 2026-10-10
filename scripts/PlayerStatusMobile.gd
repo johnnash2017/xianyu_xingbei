@@ -103,8 +103,8 @@ const 补牌黄色时长: float = 3.5
 const 补牌渐变时长: float = 0.5
 ## 补牌黄块：素材、形状、颜色都收在预制体与它的材质里 —— 想调效果直接开这两个文件。
 ## 材质用的是「受击描边」着色器 + tint：只把素材里的绿色换成 tint 色，描边与明暗都保留
-const 补牌黄块预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/补牌黄块.tscn")
-const 补牌黄块材质: ShaderMaterial = preload("res://scripts/effects/补牌黄块材质.tres")
+const 补牌黄块预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/refillBlock.tscn")
+const 补牌黄块材质: ShaderMaterial = preload("res://scripts/effects/refillBlockMaterial.tres")
 ## 新到手的宝石闪白时长（秒）：越短闪得越快
 const 宝石闪白时长: float = 0.3
 ## 闪白的起始强度：从纯白（1.0）开始往下淡
@@ -332,7 +332,7 @@ func _ready() -> void:
 	# 手牌 / 治疗那两排方块的受击描边材质（受击时把描边染红再淡回，见 Hurted）
 	_手牌描边 = _造描边材质()
 	_治疗描边 = _造描边材质()
-	# 状态图标的白描边（只沿轮廓勾一圈白，见 scripts/effects/白描边.gdshader）
+	# 状态图标的白描边（只沿轮廓勾一圈白，见 scripts/effects/whiteOutline.gdshader）
 	_状态描边材质 = ShaderMaterial.new()
 	_状态描边材质.shader = 状态描边着色器
 	# 参考工程在这里 role = RoleFactory.create(0)（技能系统）；本步骤不接。第三步：技能系统。
@@ -1103,9 +1103,9 @@ const 受击泛红时长: float = 1.0
 const 受击抖动幅度: float = 10.0
 const 受击抖动单次时长: float = 0.1
 const 受击抖动次数: int = 5
-## 受击画面扭曲震荡波（着色器见 scripts/effects/受击震荡波.gdshader）：
+## 受击画面扭曲震荡波（着色器见 scripts/effects/hitShockwave.gdshader）：
 ## 时长（秒）、最大半径 / 波带厚度 / 波内位移强度（按屏幕高算的 UV 单位）
-const 受击震荡波着色器: Shader = preload("res://scripts/effects/受击震荡波.gdshader")
+const 受击震荡波着色器: Shader = preload("res://scripts/effects/hitShockwave.gdshader")
 const 震荡波时长: float = 0.60
 const 震荡波半径: float = 0.60
 const 震荡波波宽: float = 0.055
@@ -1113,12 +1113,12 @@ const 震荡波强度: float = 0.010
 ## 卡肉时长（秒）：命中瞬间把整个战斗界面冻住一小会儿，增强打击感
 const 受击卡肉时长: float = 0.07
 ## 受击描边：把手牌 / 治疗方块贴图自带的深色描边染红，再用 受击描边时长 淡回原色
-const 受击描边着色器: Shader = preload("res://scripts/effects/受击描边.gdshader")
+const 受击描边着色器: Shader = preload("res://scripts/effects/hitOutline.gdshader")
 const 受击描边时长: float = 2.0
-## 宝石闪白着色器：只把图形本身推白、透明处不动（见 scripts/effects/闪白.gdshader）
-const 闪白着色器: Shader = preload("res://scripts/effects/闪白.gdshader")
-## 状态图标的白描边着色器：沿 alpha 轮廓扩一圈白边（见 scripts/effects/白描边.gdshader）
-const 状态描边着色器: Shader = preload("res://scripts/effects/白描边.gdshader")
+## 宝石闪白着色器：只把图形本身推白、透明处不动（见 scripts/effects/flashWhite.gdshader）
+const 闪白着色器: Shader = preload("res://scripts/effects/flashWhite.gdshader")
+## 状态图标的白描边着色器：沿 alpha 轮廓扩一圈白边（见 scripts/effects/whiteOutline.gdshader）
+const 状态描边着色器: Shader = preload("res://scripts/effects/whiteOutline.gdshader")
 
 ## 头像初始位置：首次受击时记下，之后每次抖动都围绕它 —— 连续受击也不会把头像越抖越偏
 var _头像原位: Vector2 = Vector2.ZERO

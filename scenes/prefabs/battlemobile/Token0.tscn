@@ -21,8 +21,8 @@
 [ext_resource type="Texture2D" path="res://assets/textures/battle/b02_chara_light_g.png" id="24_b02charalightgpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected.png" id="25_b02selectedpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/skilltag.png" id="26_skilltagpng"]
-[ext_resource type="Texture2D" path="res://assets/textures/battle/血.png" id="27_png"]
-[ext_resource type="Texture2D" path="res://assets/textures/skill/灵符-雷鸣.png" id="29_png"]
+[ext_resource type="Texture2D" path="res://assets/textures/battle/blood.png" id="27_png"]
+[ext_resource type="Texture2D" path="res://assets/textures/skill/talismanThunder.png" id="29_png"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/playerSelected.png" id="30_playerSelectedpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/token0.png" id="32_token0png"]
 

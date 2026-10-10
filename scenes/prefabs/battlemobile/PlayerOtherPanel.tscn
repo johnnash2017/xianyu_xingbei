@@ -16,7 +16,7 @@
 [ext_resource type="Script" uid="uid://b77bejghr7if1" path="res://scripts/PlayerStatusMobile.gd" id="32_PlayerStatusMobilegd"]
 [ext_resource type="Texture2D" uid="uid://dno7djaa8hkv7" path="res://assets/textures/battle/b02_chara_mask.png" id="33_b02charamaskpng"]
 [ext_resource type="PackedScene" path="res://scenes/prefabs/battlemobile/StatusName.tscn" id="34_statusname"]
-[ext_resource type="Material" uid="uid://bgxhrqx7w23sp" path="res://scripts/effects/头像选中发光.tres" id="35_selectglow"]
+[ext_resource type="Material" uid="uid://bgxhrqx7w23sp" path="res://scripts/effects/avatarSelectedGlow.tres" id="35_selectglow"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_waitbg"]
 bg_color = Color(0, 0, 0, 0)

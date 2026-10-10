@@ -1,6 +1,0 @@
-[gd_scene load_steps=2 format=3]
-
-[ext_resource type="Script" path="res://tests/联机.gd" id="1_lan"]
-
-[node name="联机" type="Node"]
-script = ExtResource("1_lan")

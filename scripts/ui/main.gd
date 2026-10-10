@@ -37,7 +37,7 @@ func _自动开局() -> void:
 		大厅.call("_on_join_pressed")
 	if not await _等到(func() -> bool: return _界面是("ReadyRoom"), 25.0):
 		return
-	# 歇一下再点准备：界面是先出现、玩家数据随后才到的（与 tests/联机.gd 的节奏一致）
+	# 歇一下再点准备：界面是先出现、玩家数据随后才到的（与 tests/lanPlay.gd 的节奏一致）
 	await get_tree().create_timer(0.8).timeout
 	UI.current.call("_on_ready_pressed")
 

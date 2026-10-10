@@ -41,7 +41,7 @@ const 技能字色_有: Color = Color("a9ff00")
 const 技能字色_无: Color = Color("b1b1b1")
 ## 「可选」发光框的换色着色器与默认色（与贴图同色：绿）。
 ## 贴图是纯绿，靠 modulate 变不出红色，弃牌时由容器调 设置发光色 换成红光。
-const 发光框着色器: Shader = preload("res://scripts/effects/卡牌发光框.gdshader")
+const 发光框着色器: Shader = preload("res://scripts/effects/cardGlowFrame.gdshader")
 const 发光色_默认: Color = Color(0.0, 1.0, 0.024)
 ## 可选发光框的材质（每个卡牌自己一份，颜色互不影响）
 var _发光材质: ShaderMaterial = null

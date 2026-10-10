@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://dg521r3l6qk4s"]
+
+[ext_resource type="Script" uid="uid://br6v8iw21npq5" path="res://scripts/effects/dealCard2D.gd" id="1_givecard"]
+
+[node name="给牌" type="Node2D" unique_id=526778831]
+script = ExtResource("1_givecard")
+
+[node name="卡" type="Node2D" parent="." unique_id=1526840017]
+
+[node name="白边" type="Polygon2D" parent="卡" unique_id=1154949629]
+color = Color(0.929412, 0.960784, 1, 1)
+polygon = PackedVector2Array(-28, -42, 28, -42, 28, 42, -28, 42)
+
+[node name="卡面" type="Polygon2D" parent="卡" unique_id=1639779302]
+color = Color(0.109804, 0.168627, 0.329412, 1)
+polygon = PackedVector2Array(-25, -39, 25, -39, 25, 39, -25, 39)
+
+[node name="纹" type="Polygon2D" parent="卡" unique_id=1478364408]
+color = Color(0.619608, 0.780392, 1, 0.901961)
+polygon = PackedVector2Array(0, -16, 12, 0, 0, 16, -12, 0)

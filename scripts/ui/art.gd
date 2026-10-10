@@ -1,14 +1,14 @@
 extends Node
 ## 资源索引（autoload 名：Art）
-## 统一从 资源/ 目录按名取贴图与音效，带缓存；对照原客户端 data/Player.cpp 的 tapSource 表与 resource/ 目录结构。
+## 统一从 media/ 目录按名取贴图与音效，带缓存；对照原客户端 data/Player.cpp 的 tapSource 表与 resource/ 目录结构。
 
 ## 选角大立绘（260x363，搬自参照工程 assets/textures/hero/middle）
-const DIR_ROLE_BIG: String = "res://资源/角色大图/"
+const DIR_ROLE_BIG: String = "res://media/heroPortrait/"
 ## 战斗小图标目录（派系图 + 状态图标，搬自参照工程 assets/textures/battle）
 const DIR_BATTLE: String = "res://assets/textures/battle/"
-const DIR_TAP: String = "res://资源/界面/tap/"
-const DIR_UI: String = "res://资源/界面/"
-const DIR_SFX: String = "res://资源/音效/"
+const DIR_TAP: String = "res://media/ui/tap/"
+const DIR_UI: String = "res://media/ui/"
+const DIR_SFX: String = "res://media/sfx/"
 
 ## 基础效果卡名 → 状态图标名（assets/textures/battle 下的文件名）
 const STATUS_ICON: Dictionary = {
@@ -17,6 +17,11 @@ const STATUS_ICON: Dictionary = {
 	"地之封印": "diFeng", "雷之封印": "leiFeng",
 	"威力赐福": "wei", "迅捷赐福": "xun",
 	"灵魂链接": "LianJie", "同生共死": "TongSheng", "永恒乐章": "YueZhang",
+}
+
+## 派系名（角色表「派系」列：技 / 血 / 幻 / 咏 / 圣）→ 派系图标文件名（assets/textures/battle 下）
+const PROPERTY_ICON: Dictionary = {
+	"技": "skill", "血": "blood", "幻": "illusion", "咏": "chant", "圣": "holy",
 }
 
 ## 独有效果索引 → status 图标名（GConst.Exclusive 的顺序，对照原客户端 widget/PlayerItem.cpp 的 StatusItem）
@@ -77,9 +82,10 @@ func role_tap(role_id: int) -> Texture2D:
 
 ## 角色派系图标（技 / 血 / 幻 / 咏 / 圣）；没派系就返回 null
 func role_property_icon(property_name: String) -> Texture2D:
-	if property_name == "":
+	var 图标名: String = str(PROPERTY_ICON.get(property_name, ""))
+	if 图标名 == "":
 		return null
-	return tex("%s%s.png" % [DIR_BATTLE, property_name])
+	return tex("%s%s.png" % [DIR_BATTLE, 图标名])
 
 
 ## 状态类小图标（基础效果 / 独有效果 / 指示物）：按名交给 AssetIndex（实际在 assets/textures/battle/）
@@ -108,7 +114,7 @@ func ui(图名: String) -> Texture2D:
 # ============================================================
 # 音效
 # ============================================================
-## 播放一次音效（文件名取自 资源/音效，如 "Hit" / "Hurt" / "Cure" / "Skill"）
+## 播放一次音效（文件名取自 media/音效，如 "Hit" / "Hurt" / "Cure" / "Skill"）
 func play_sfx(file_name: String) -> void:
 	if _sfx == null or file_name == "":
 		return

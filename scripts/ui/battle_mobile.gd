@@ -96,11 +96,17 @@ const 卡牌预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Car
 ## 技能按钮预制体（挂 scripts/SkillUI.gd，同上）
 const 技能预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Skill.tscn")
 ## 给牌动效预制体（一张卡背从交牌人飘到收牌人，见 _给牌特效）
-const 给牌预制: PackedScene = preload("res://scenes/prefabs/effects/给牌.tscn")
+const 给牌预制: PackedScene = preload("res://scenes/prefabs/effects/dealCard.tscn")
 ## 交多张给牌动效之间的起飞间隔（秒）：一张接一张，不叠在一起
 const 给牌间隔: float = 0.12
+
+## 法术牌名（卡表卡名）→ 出牌音效后缀名（media/audio 下 spell-<后缀>.ogg）
+const 法术音效后缀: Dictionary = {
+	"圣光": "holyLight", "魔弹": "magicBullet", "圣盾": "holyShield",
+	"中毒": "poison", "虚弱": "weakness",
+}
 ## 弃牌动效预制体（卡背从弃牌者身上飞向画面中心并淡出，见 _弃牌特效）
-const 弃牌预制: PackedScene = preload("res://scenes/prefabs/effects/弃牌.tscn")
+const 弃牌预制: PackedScene = preload("res://scenes/prefabs/effects/discardCard.tscn")
 ## 弃多张时各张之间的起飞间隔（秒）
 const 弃牌间隔: float = 0.09
 ## 手牌卡面尺寸（参考脚本 showCard 用的 136×190，这里略窄一点好让 6 张能排下）
@@ -935,7 +941,9 @@ func _on_card(msg: Dictionary) -> void:
 		if 表现牌.is_attack():
 			Audio.播音效("atk-" + 表现牌.element)
 		else:
-			Audio.播音效("spell-" + 表现牌.card_name)
+			var 后缀: String = str(法术音效后缀.get(表现牌.card_name, ""))
+			if 后缀 != "":
+				Audio.播音效("spell-" + 后缀)
 	var 谁: String = _称号(src)
 	var 目标: GPlayer = Data.get_player_by_id(dst)
 	# 屏幕中间把牌摊出来（自己和其他人都看得到）。
@@ -965,18 +973,18 @@ func _播出手特效(src: int, dst: int, msg: Dictionary) -> void:
 
 
 ## 出手时放专属特效的牌 → 特效预制体（scenes/prefabs/effects/）
-## 斩击类（水 / 火 / 地 / 风 / 雷 / 暗灭）是把 3D 斩击素材经 SubViewport 转成 2D 的预制体，见 scripts/effects/斩击2D.gd；
-## 魔弹同样是把 3D 弹道素材经 SubViewport 转成 2D 的预制体，见 scripts/effects/魔弹2D.gd；
-## 圣光是原生 2D 粒子（GPUParticles2D），见 scripts/effects/粒子特效.gd。
+## 斩击类（水 / 火 / 地 / 风 / 雷 / 暗灭）是把 3D 斩击素材经 SubViewport 转成 2D 的预制体，见 scripts/effects/slash2D.gd；
+## 魔弹同样是把 3D 弹道素材经 SubViewport 转成 2D 的预制体，见 scripts/effects/magicBullet2D.gd；
+## 圣光是原生 2D 粒子（GPUParticles2D），见 scripts/effects/particleEffect.gd。
 const 特效预制表: Dictionary = {
-	GConst.CardName.WaterSlash: preload("res://scenes/prefabs/effects/水斩.tscn"),
-	GConst.CardName.FireSlash: preload("res://scenes/prefabs/effects/火斩.tscn"),
-	GConst.CardName.EarthSlash: preload("res://scenes/prefabs/effects/地斩.tscn"),
-	GConst.CardName.WindSlash: preload("res://scenes/prefabs/effects/风斩.tscn"),
-	GConst.CardName.ThunderSlash: preload("res://scenes/prefabs/effects/雷斩.tscn"),
-	GConst.CardName.DarkSlash: preload("res://scenes/prefabs/effects/暗灭.tscn"),
-	GConst.CardName.Missile: preload("res://scenes/prefabs/effects/魔弹.tscn"),
-	GConst.CardName.HolyLight: preload("res://scenes/prefabs/effects/圣光.tscn"),
+	GConst.CardName.WaterSlash: preload("res://scenes/prefabs/effects/waterSlash.tscn"),
+	GConst.CardName.FireSlash: preload("res://scenes/prefabs/effects/fireSlash.tscn"),
+	GConst.CardName.EarthSlash: preload("res://scenes/prefabs/effects/earthSlash.tscn"),
+	GConst.CardName.WindSlash: preload("res://scenes/prefabs/effects/windSlash.tscn"),
+	GConst.CardName.ThunderSlash: preload("res://scenes/prefabs/effects/thunderSlash.tscn"),
+	GConst.CardName.DarkSlash: preload("res://scenes/prefabs/effects/darkAnnihilation.tscn"),
+	GConst.CardName.Missile: preload("res://scenes/prefabs/effects/magicBullet.tscn"),
+	GConst.CardName.HolyLight: preload("res://scenes/prefabs/effects/holyLight.tscn"),
 }
 
 
@@ -1041,7 +1049,7 @@ func _给牌特效(src_id: int, dst_id: int, 张数: int) -> void:
 	var 终点: 战斗玩家面板 = _玩家面板(dst_id)
 	if 起点 == null or 终点 == null or Root == null:
 		return
-	Audio.播音效("给牌")
+	Audio.播音效("dealCard")
 	var 起: Vector2 = 起点.get_global_rect().get_center()
 	var 止: Vector2 = 终点.get_global_rect().get_center()
 	for i: int in range(maxi(张数, 1)):

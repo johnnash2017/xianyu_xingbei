@@ -2,8 +2,8 @@
 
 [ext_resource type="Texture2D" uid="uid://cvu0b03r4cyus" path="res://assets/textures/battle/playerSelected.png" id="30_playerSelectedpng"]
 [ext_resource type="Script" uid="uid://ngllurng1dxy" path="res://scripts/SkillUI.gd" id="31_SkillUIgd"]
-[ext_resource type="Shader" uid="uid://dr760vicokpvn" path="res://scripts/effects/技能按钮凸起.gdshader" id="32_btnbevel"]
-[ext_resource type="Shader" uid="uid://bi4pdpskahb0v" path="res://scripts/effects/技能按钮选中发光.gdshader" id="33_selectedglow"]
+[ext_resource type="Shader" uid="uid://dr760vicokpvn" path="res://scripts/effects/skillButtonRaise.gdshader" id="32_btnbevel"]
+[ext_resource type="Shader" uid="uid://bi4pdpskahb0v" path="res://scripts/effects/skillButtonSelectedGlow.gdshader" id="33_selectedglow"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 

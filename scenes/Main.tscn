@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://bstarbg00001"]
 
 [ext_resource type="Script" uid="uid://cp7o0rlc5aoij" path="res://scripts/ui/main.gd" id="1_main"]
-[ext_resource type="Shader" uid="uid://d37bq32es8ijy" path="res://资源/界面/ui/star_scroll.gdshader" id="1_rvslj"]
-[ext_resource type="Texture2D" uid="uid://bks2f673hrv1b" path="res://资源/界面/ui/back3.png" id="2_0bbpv"]
+[ext_resource type="Shader" uid="uid://d37bq32es8ijy" path="res://media/ui/ui/star_scroll.gdshader" id="1_rvslj"]
+[ext_resource type="Texture2D" uid="uid://bks2f673hrv1b" path="res://media/ui/ui/back3.png" id="2_0bbpv"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_0bbpv"]
 shader = ExtResource("1_rvslj")
