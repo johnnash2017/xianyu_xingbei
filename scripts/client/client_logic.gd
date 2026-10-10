@@ -41,6 +41,8 @@ var current_room_id: int = -1
 var _ever_connected: bool = false
 ## 重连后已重发登录、正在等待回到原房间（收到 Game 视为成功，收到房间不存在错误视为失败）
 var _pending_reenter: bool = false
+## Steam 模式：正在加入的 Steam 大厅号（加入结果由 SteamNet.进房结果 回调，见 _on_steam_join）
+var _待进房号: int = -1
 
 
 func _ready() -> void:
@@ -48,6 +50,7 @@ func _ready() -> void:
 	Net.disconnected.connect(_on_disconnected)
 	Net.connected.connect(_on_connected)
 	Net.client.reconnect_failed.connect(_on_reconnect_failed)
+	SteamNet.进房结果.connect(_on_steam_join)
 	Data.nick_name = Cfg.nickname
 
 
@@ -112,8 +115,9 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 
 func _on_game(data: Dictionary) -> void:
 	last_info = data
-	# Game 是对局内权威快照：收到即代表已身处房间，记录房间上下文并结束重连等待
-	current_room_id = int(data.get("room_id", current_room_id))
+	# Game 是对局内权威快照：收到即代表已身处房间，记录房间上下文并结束重连等待。
+	# Steam 模式下的房间上下文用 Steam 大厅号（进房请求要的服务端房间号另存于 SteamNet.房主房间号）
+	current_room_id = SteamNet.大厅id if not Cfg.本地模式 else int(data.get("room_id", current_room_id))
 	_pending_reenter = false
 	my_player_id = int(data.get("player_id", -1))
 	Data.id = my_player_id
@@ -207,6 +211,10 @@ func _show_role_pick(data: Dictionary) -> void:
 # 上行操作
 # ============================================================
 func request_room_list() -> void:
+	# Steam 模式：房间列表 = Steam 大厅列表（这时还没连上任何房主，走不了下面那条请求）
+	if not Cfg.本地模式:
+		SteamNet.查询大厅()
+		return
 	if not Net.is_connected_to_host():
 		return
 	Net.send(GConst.Msg.RoomListReq, {"role_strategy": GConst.RoleStrategy.All})
@@ -215,6 +223,9 @@ func request_room_list() -> void:
 func create_room(room_name: String, max_player: int, role_strategy: int = GConst.RoleStrategy.Random, debug: bool = false) -> void:
 	if not Net.is_connected_to_host():
 		return
+	# Steam 模式：本地照旧建服务端房间，另外开一个 Steam 大厅，别的玩家才搜得到
+	if not Cfg.本地模式:
+		SteamNet.建房(room_name, max_player)
 	Net.send(GConst.Msg.CreateRoomReq, {
 		"room_name": room_name,
 		"max_player": max_player,
@@ -237,12 +248,40 @@ func send_pick(strategy: int, role_ids: Array) -> void:
 
 
 func enter_room(room_id: int) -> void:
+	# Steam 模式：列表里的 room_id 是 Steam 大厅号。第一次进要先把 P2P 连接切到房主（见 _on_steam_join）；
+	# 断线重连时大厅已经在里面了，连接也是现成的，直接发进房请求即可
+	if not Cfg.本地模式:
+		if SteamNet.大厅id == room_id and Net.is_connected_to_host():
+			Net.send(GConst.Msg.EnterRoomReq, {"room_id": SteamNet.房主房间号})
+		else:
+			_待进房号 = room_id
+			SteamNet.进房(room_id)
+		return
 	if not Net.is_connected_to_host():
 		return
 	Net.send(GConst.Msg.EnterRoomReq, {"room_id": room_id})
 
 
+## Steam 模式加入大厅的结果：成功了就把客户端连到房主（地址就是房主 SteamID），再发进房请求。
+## 自己开的房不重连 —— 那会把本机房主停掉；本来就连着自己的服务端，直接进房。
+func _on_steam_join(成功: bool, _说明: String) -> void:
+	if not 成功:
+		_待进房号 = -1
+		return
+	var 房号: int = _待进房号
+	_待进房号 = -1
+	if SteamNet.房主steam_id != SteamNet.steam_id:
+		Net.join_game(SteamNet.房主steam_id, 0)
+	# 连接建立时 NetManager 已先补发登录，两条消息在同一条可靠通道上顺序有保证
+	Net.send(GConst.Msg.EnterRoomReq, {"room_id": SteamNet.房主房间号})
+	current_room_id = 房号
+
+
+## 主动离开：清掉 Steam 大厅与待进房状态
 func leave_room() -> void:
+	if not Cfg.本地模式:
+		SteamNet.离开大厅()
+	_待进房号 = -1
 	if Net.is_connected_to_host():
 		Net.send(GConst.Msg.LeaveRoomReq, {})
 	# 主动离开即清除房间上下文：之后断线不再尝试回到该房间

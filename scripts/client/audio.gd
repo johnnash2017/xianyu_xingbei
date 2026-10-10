@@ -10,7 +10,7 @@ extends Node
 ## 对照脚本：参考项目 scripts/game/AudioManager.gd
 ## 说明：界面上的 wav 音效（按钮点击 Equip、轮到你 It's your turn、技能 Skill 等）沿用 Art.play_sfx，
 ##      因为参考项目没有这些界面音（它的音频只有这张 ogg 表）。
-## 多开时只有当前在用的那个窗口出声：窗口失焦就把总音量临时压到 0，回到前台再恢复。
+## 多开时只有当前在用的那个窗口出声：窗口失焦就把声音压到听不见，回到前台再恢复。
 ## 用「音量置 0」而不是「禁音（bus_mute）」或「不播」：音频流水线照常走，切回前台时
 ## 本该在播的声音（BGM / 长音效）会接着放，不会因为后台期间被丢掉而断裂。
 
@@ -19,9 +19,13 @@ const 音频目录: String = "res://media/audio/"
 ## 启动时从本地配置读回上次调的值，设置窗里可随时改（见 设置音乐音量 / 设置音效音量）
 const 默认音乐音量: float = 0.5
 const 默认音效音量: float = 0.5
+## 总音量（整条 Master 总线，BGM 与音效一起受影响）：1 = 不衰减，保持改造前的听感
+const 默认总音量: float = 1.0
 ## 本地配置键名（存在 Cfg 那份 config[_N].cfg 的 [设置] 段）
 const 键_音乐音量: String = "bgm_volume"
 const 键_音效音量: String = "se_volume"
+const 键_总音量: String = "master_volume"
+var 总音量: float = 默认总音量
 var 音乐音量: float = 默认音乐音量
 var 音效音量: float = 默认音效音量
 ## 场景号（对照参考项目 GameManager 的 current_scene_index）
@@ -29,7 +33,7 @@ const 场景主界面: int = 1
 const 场景战斗: int = 2
 ## 焦点轮询间隔（秒）：太短白忙，太长会让切窗口后声音慢半拍
 const 焦点轮询间隔: float = 0.2
-## 失焦时的总音量（dB）：够低就是听不见，但不打断播放
+## 失焦时的音量（dB）：够低就是听不见，但不打断播放
 const 失焦音量db: float = -80.0
 
 var _bgm: AudioStreamPlayer = null
@@ -45,9 +49,11 @@ var _静音: bool = false
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_随机.randomize()
-	# 读回上次在设置窗里调好的音量（没存过就用默认 0.5）
+	# 读回上次在设置窗里调好的音量（没存过就用默认值）
+	总音量 = clampf(float(Cfg.get_setting(键_总音量, 默认总音量)), 0.0, 1.0)
 	音乐音量 = clampf(float(Cfg.get_setting(键_音乐音量, 默认音乐音量)), 0.0, 1.0)
 	音效音量 = clampf(float(Cfg.get_setting(键_音效音量, 默认音效音量)), 0.0, 1.0)
+	_应用总音量()
 	_bgm = AudioStreamPlayer.new()
 	_bgm.name = "BGM"
 	_bgm.volume_db = linear_to_db(音乐音量)
@@ -68,13 +74,20 @@ func _随焦点切声音() -> void:
 	_切声音(DisplayServer.get_name() != "headless" and not DisplayServer.window_is_focused())
 
 
-## 失焦就把总音量临时压到 0（BGM 与音效，含 Art.play_sfx 的界面 wav）；回到前台恢复。
+## 失焦就把声音压到听不见（BGM 与音效，含 Art.play_sfx 的界面 wav）；回到前台恢复。
 ## 注意不要用 bus_mute，也不要在这里跳过播放：这里只改音量，播放流水线不动。
 func _切声音(静音: bool) -> void:
 	if 静音 == _静音:
 		return
 	_静音 = 静音
-	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Master"), 失焦音量db if 静音 else 0.0)
+	_应用总音量()
+
+
+## 把总音量落到 Master 总线上（BGM 与音效一起走这条总线）。
+## 失焦时压到听不见；拉到 0 也用同一档，别让 linear_to_db(0) 的 -inf 进总线。
+func _应用总音量() -> void:
+	var db: float = 失焦音量db if _静音 or 总音量 <= 0.0 else linear_to_db(总音量)
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Master"), db)
 
 
 ## 当前是否静音（联机测试与自检用来核对）
@@ -86,7 +99,7 @@ func 是否静音() -> bool:
 # 音效
 # ============================================================
 ## 播放一次音效；名字对应 media/audio 下的文件名（不带扩展名），如 "sys-hit" / "spell-holyLight"
-## 失焦时照常播放（总音量已被压到 0），这样切回前台时还在响的会接着响
+## 失焦时照常播放（总线音量已被压到听不见），这样切回前台时还在响的会接着响
 func 播音效(名字: String, 音量: float = 1.0) -> void:
 	var 流: AudioStream = _取音频(名字)
 	if 流 == null:
@@ -108,6 +121,12 @@ func 有声效(名字: String) -> bool:
 # ============================================================
 # 音量（设置窗调用）
 # ============================================================
+## 调总音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存音量设置
+func 设置总音量(v: float) -> void:
+	总音量 = clampf(v, 0.0, 1.0)
+	_应用总音量()
+
+
 ## 调背景音乐音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存音量设置
 func 设置音乐音量(v: float) -> void:
 	音乐音量 = clampf(v, 0.0, 1.0)
@@ -122,6 +141,7 @@ func 设置音效音量(v: float) -> void:
 
 ## 把当前音量写进本地配置（设置窗收起时调一次，避免拖动过程频繁写盘）
 func 保存音量设置() -> void:
+	Cfg.set_setting(键_总音量, 总音量)
 	Cfg.set_setting(键_音乐音量, 音乐音量)
 	Cfg.set_setting(键_音效音量, 音效音量)
 

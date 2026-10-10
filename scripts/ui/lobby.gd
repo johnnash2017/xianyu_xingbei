@@ -7,6 +7,10 @@ extends Control
 ## 界面结构全部在 lobby.tscn 里（可在编辑器里所见即所得地改），本脚本只绑节点 + 跑逻辑。
 
 const 刷新间隔: float = 0.5
+## Steam 模式下的刷新间隔：Steam 对大厅查询有限流，别按局域网那个频率刷
+const 刷新间隔_steam: float = 2.0
+## 状态栏默认提示
+const 通用提示: String = "双击房间或点「进入选中房间」加入；没有房间就点「创建房间」"
 
 ## 上次开房选的人数 / 选角，记在共享配置里（Cfg.shared_set / shared_get）：
 ## 多开的几个窗口共用同一份，重开也还在。键名与摆位参数（layout_*）同一段，都在 [shared]。
@@ -19,15 +23,13 @@ const 未记录: int = 0
 @export var 标题栏: Label
 @export var 房间列表: ItemList
 @export var 状态栏: Label
+## 底部的 Steam 连接状态（一直显示、持续刷新）
+@export var Steam状态: Label
 @export var 进入按钮: Button
 @export var 刷新按钮: Button
 @export var 创建房间按钮: Button
-@export var 搜索按钮: Button
 @export var 返回登录按钮: Button
 @export var 设置按钮: Button
-@export var 跨机IP输入: LineEdit
-@export var 连接按钮: Button
-@export var 房主列表: ItemList
 ## 创建房间弹层
 @export var 创建层: Control
 @export var 房名输入: LineEdit
@@ -52,36 +54,58 @@ var _room_reenter: Array[bool] = []
 ## 正在问「是否观战」的房间号（-1 = 没在问）
 var _待观战房间: int = -1
 var _刷新计时: float = 0.0
-var _发现的房主: Array = []
 
 
 func _ready() -> void:
 	UI.register(self)
 	Logic.lobby = self
 	Logic.room_list_changed.connect(_fill)
+	# Steam 模式：大厅列表整理好后同样走 _fill（形状与局域网那套一致），列表 UI 不用改
+	SteamNet.大厅列表已就绪.connect(_fill)
+	SteamNet.进房结果.connect(_on_steam_join)
 	Logic.error_received.connect(_on_error)
 	Logic.gossip_received.connect(_on_gossip)
 	Logic.notice_received.connect(_on_gossip)
-	Net.discovery.host_found.connect(_on_host_found)
 	房间列表.item_activated.connect(_on_room_activated)
-	房主列表.item_activated.connect(_on_host_activated)
-	标题栏.text = "房间列表（局域网）　昵称：%s ｜ 窗口 %d ｜ %s" % [
-		Cfg.nickname, Cfg.slot + 1, "房主" if Net.hosting else "加入方",
+	标题栏.text = "房间列表（%s）　昵称：%s" % [
+		"局域网·本地调试" if Cfg.本地模式 else "Steam",
+		Cfg.nickname,
 	]
 	进入按钮.pressed.connect(func() -> void: _点了(_on_join_pressed))
 	刷新按钮.pressed.connect(func() -> void: _点了(_on_refresh_pressed))
 	创建房间按钮.pressed.connect(func() -> void: _点了(_on_open_create_pressed))
-	搜索按钮.pressed.connect(func() -> void: _点了(_on_search_pressed))
 	返回登录按钮.pressed.connect(func() -> void: _点了(_on_back_pressed))
 	设置按钮.pressed.connect(func() -> void: _点了(UI.切换设置))
-	连接按钮.pressed.connect(func() -> void: _点了(_on_connect_ip_pressed))
 	创建按钮.pressed.connect(func() -> void: _点了(_on_create_pressed))
 	取消创建按钮.pressed.connect(func() -> void: _点了(_on_close_create_pressed))
 	观战是按钮.pressed.connect(func() -> void: _点了(_on_watch_yes_pressed))
 	观战否按钮.pressed.connect(func() -> void: _点了(_on_watch_no_pressed))
 	_恢复建房选项()
 	Logic.request_room_list()
-	设状态("双击房间或点「进入选中房间」加入；没有房间就点「创建房间」")
+	设状态(通用提示)
+	_刷新Steam状态()
+
+
+## 底部 Steam 连接状态：一直摆着、每帧对一次（文本没变就不动标签）。
+## 联机全靠它，所以不管连没连上都写清楚，别让玩家对着空列表猜。
+func _刷新Steam状态() -> void:
+	var 用Steam: bool = not Cfg.本地模式
+	if Steam状态.visible != 用Steam:
+		Steam状态.visible = 用Steam
+	if not 用Steam:
+		return
+	var 文本: String
+	var 颜色: Color
+	if SteamNet.就绪:
+		文本 = "Steam：已连接（%s）" % SteamNet.steam_id
+		颜色 = Color(0.5, 0.9, 0.55, 1.0)
+	else:
+		文本 = "Steam：未登录 —— 请启动并登录 Steam 客户端（登录后会自动重连）"
+		颜色 = Color(1.0, 0.45, 0.4, 1.0)
+	if Steam状态.text == 文本:
+		return
+	Steam状态.text = 文本
+	Steam状态.add_theme_color_override("font_color", 颜色)
 
 
 func _exit_tree() -> void:
@@ -103,9 +127,10 @@ func 设状态(t: String) -> void:
 # 房间列表
 # ============================================================
 func _process(delta: float) -> void:
+	_刷新Steam状态()
 	_刷新计时 -= delta
 	if _刷新计时 <= 0.0:
-		_刷新计时 = 刷新间隔
+		_刷新计时 = 刷新间隔_steam if not Cfg.本地模式 else 刷新间隔
 		Logic.request_room_list()
 
 
@@ -175,6 +200,11 @@ func _on_join_pressed() -> void:
 ## 该下标的房间是不是还留着我的座位（重进直接坐回去，不必问要不要观战）
 func _可重连(idx: int) -> bool:
 	return idx < _room_reenter.size() and _room_reenter[idx]
+
+
+## Steam 模式下的进房结果：Logic 负责把 P2P 连接切到房主（见 Logic._on_steam_join），这里只显示进度
+func _on_steam_join(_成功: bool, 说明: String) -> void:
+	设状态(说明)
 
 
 ## 进房（点房间直接进、确认观战后进，都走这里，保证提示文案一致）
@@ -267,48 +297,6 @@ func _选中按元数据(组: ButtonGroup, 键: String, 值: int) -> void:
 		if int(钮.get_meta(键, 未记录)) == 值:
 			钮.button_pressed = true
 			return
-
-
-# ============================================================
-# 跨机：搜索 / 填 IP
-# ============================================================
-func _on_search_pressed() -> void:
-	_发现的房主.clear()
-	房主列表.clear()
-	房主列表.visible = true
-	设状态("正在搜索局域网房主…")
-	Net.search_lan()
-
-
-func _on_host_found(address: String, port: int, _room_count: int, host_name: String) -> void:
-	var 键: String = "%s:%d" % [address, port]
-	for f: Dictionary in _发现的房主:
-		if f["键"] == 键:
-			return
-	_发现的房主.append({"键": 键, "address": address, "port": port})
-	房主列表.add_item("%s  (%s:%d)　双击连接" % [host_name, address, port])
-	设状态("发现 %d 个房主，双击列表项连接" % _发现的房主.size())
-
-
-func _on_host_activated(index: int) -> void:
-	if index < 0 or index >= _发现的房主.size():
-		return
-	var f: Dictionary = _发现的房主[index]
-	Net.stop_search()
-	_连到房主(str(f["address"]), int(f["port"]))
-
-
-func _on_connect_ip_pressed() -> void:
-	var ip: String = 跨机IP输入.text.strip_edges()
-	if ip == "":
-		ip = "127.0.0.1"
-	_连到房主(ip, Cfg.server_port)
-
-
-func _连到房主(ip: String, port: int) -> void:
-	设状态("正在连接 %s:%d…" % [ip, port])
-	Net.stop_search()
-	Net.join_game(ip, port)
 
 
 # ============================================================

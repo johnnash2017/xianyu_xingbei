@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 Cfg="*res://scripts/client/config.gd"
+SteamNet="*res://scripts/net/steam_net.gd"
 Data="*res://scripts/data/data_interface.gd"
 Net="*res://scripts/net/net_manager.gd"
 Logic="*res://scripts/client/client_logic.gd"

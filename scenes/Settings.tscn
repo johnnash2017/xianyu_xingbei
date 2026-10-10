@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/ui/settings.gd" id="1_settings"]
 
-[node name="Settings" type="Control" node_paths=PackedStringArray("音乐滑杆", "音效滑杆", "退出房间按钮", "关闭按钮")]
+[node name="Settings" type="Control" node_paths=PackedStringArray("总音量滑杆", "音乐滑杆", "音效滑杆", "退出房间按钮", "关闭按钮")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -10,6 +10,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_settings")
+"总音量滑杆" = NodePath("居中/面板/边距/内容/总音量行/总音量滑杆")
 "音乐滑杆" = NodePath("居中/面板/边距/内容/音乐行/音乐滑杆")
 "音效滑杆" = NodePath("居中/面板/边距/内容/音效行/音效滑杆")
 "退出房间按钮" = NodePath("居中/面板/边距/内容/退出房间按钮")
@@ -56,6 +57,26 @@ horizontal_alignment = 1
 
 [node name="分隔线" type="HSeparator" parent="居中/面板/边距/内容"]
 layout_mode = 2
+
+[node name="总音量行" type="HBoxContainer" parent="居中/面板/边距/内容"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="总音量标签" type="Label" parent="居中/面板/边距/内容/总音量行"]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "总音量"
+vertical_alignment = 1
+
+[node name="总音量滑杆" type="HSlider" parent="居中/面板/边距/内容/总音量行"]
+custom_minimum_size = Vector2(320, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 1.0
+step = 0.01
+value = 1.0
 
 [node name="音乐行" type="HBoxContainer" parent="居中/面板/边距/内容"]
 layout_mode = 2

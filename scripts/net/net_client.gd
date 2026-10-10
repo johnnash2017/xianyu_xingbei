@@ -1,20 +1,12 @@
 class_name NetClient
-extends RefCounted
-## 客户端网络节点（对照客户端 client/Client.cpp：QTcpSocket 长连接）
+extends NetworkClient
+## 客户端传输层的局域网 TCP 底座（对照客户端 client/Client.cpp：QTcpSocket 长连接）
 ## 职责：维护一条与「当前房主服务端」的 TCP 长连接；支持自动重连；收包分帧解码后派发。
-
-signal connected
-signal disconnected
-## 连续重连达到上限仍未成功：上层据此提示玩家并返回大厅
-signal reconnect_failed
-signal message_received(msg_type: int, data: Dictionary)
 
 ## 重连上限与间隔
 const MAX_RECONNECT_ATTEMPTS: int = 3
 const RECONNECT_INTERVAL: float = 1.0
 
-var link_up: bool = false
-var auto_reconnect: bool = false
 var target_host: String = "127.0.0.1"
 var target_port: int = GConst.DEFAULT_PORT
 ## 本次断线后已发起的重连次数（连上即清零）

@@ -16,7 +16,7 @@ const PICK_TIMEOUT_MS: int = 30000
 
 signal rooms_changed
 
-var server: NetServer = NetServer.new()
+var server: NetworkServer = null
 var _sessions: Dictionary = {}     # conn_id -> {nickname, room_id, player_id}
 var _rooms: Dictionary = {}        # room_id -> 房间字典
 var _next_room_id: int = 1
@@ -27,6 +27,12 @@ var _next_room_id: int = 1
 # ============================================================
 func start(port: int) -> int:
 	randomize()
+	# 传输底座按启动模式选：多开脚本（本地调试）监听 TCP 端口，常规启动走 Steam P2P
+	# （写成 if/else 而不是三元表达式：两个实现类型不同，三元会被判「分支类型不兼容」）
+	if Cfg.本地模式:
+		server = NetServer.new()
+	else:
+		server = SteamServer.new()
 	var err: int = server.listen(port)
 	if err != OK:
 		return err
@@ -34,6 +40,21 @@ func start(port: int) -> int:
 	server.client_disconnected.connect(_on_client_disconnected)
 	server.client_message.connect(_on_client_message)
 	return OK
+
+
+## 停掉本机服务端：关掉传输底座（会断开所有连接）。
+## 只要关底座就行 —— 调用方（Net.stop_hosting）随即把这个 LocalServer 丢掉。
+func stop() -> void:
+	server.stop()
+
+
+## 让房主自己那一路客户端接上本机服务端（只有 Steam 模式用）。
+## Steam NetworkingMessages 的「发给自己」会被对端当成关闭连接（实测发送返回 35 + 抛会话失败），
+## 房主自己收不到任何下行包、还会被上层当成掉线踢回大厅，所以房主自己一律走进程内直连。
+## 连接号用本机 SteamID（与对端的 SteamID 同一套编号，不会撞）。
+func 接入本地客户端(c: SteamClient, 连接号: int) -> void:
+	(server as SteamServer).接入本地客户端(c, 连接号)
+	c.本机投递 = func(协议号: int, 字段: Dictionary) -> void: _on_client_message(连接号, 协议号, 字段)
 
 
 func poll() -> void:
@@ -58,9 +79,15 @@ func poll() -> void:
 ## 观战者也发（他们的连接质量同样只有服务端看得到），房主自己那条约为 0ms
 func _推房间心跳(room: Dictionary) -> void:
 	var 现在: int = Time.get_ticks_msec()
+	var 掉线: Array[int] = []
 	for cid: int in _房间接收者(room):
 		var s: Dictionary = _sessions.get(cid, {})
 		if s.is_empty():
+			continue
+		# Steam P2P 没有「底层断连」事件，只能靠回声超时判定掉线；
+		# 局域网 TCP 由底座自己发现断连，这里不重复判定
+		if server is SteamServer and 现在 - int(s.get("echo_ms", 现在)) > 掉线超时_ms:
+			掉线.append(cid)
 			continue
 		var 在等回声: int = int(s.get("ping_sent_ms", 0))
 		if 在等回声 > 0:
@@ -72,6 +99,9 @@ func _推房间心跳(room: Dictionary) -> void:
 			s["ping_sent_ms"] = 现在
 			s["ping_last_ms"] = 现在
 			server.send(cid, GConst.Msg.HeartBeat, {})
+	# 掉线的统一在遍历外断开：close_conn 会连锁触发退房，不能在遍历中改房间结构
+	for cid: int in 掉线:
+		server.close_conn(cid)
 
 
 ## 收到心跳回声：算出往返延迟并平滑（旧值权重 2/3），抖动时数字不会乱跳
@@ -79,6 +109,8 @@ func _记心跳回声(conn_id: int) -> void:
 	var s: Dictionary = _sessions.get(conn_id, {})
 	if s.is_empty():
 		return
+	# 收到任何回声都说明这条连接还活着（Steam 侧靠它判定掉线）
+	s["echo_ms"] = Time.get_ticks_msec()
 	var 发出: int = int(s.get("ping_sent_ms", 0))
 	if 发出 <= 0:
 		return
@@ -131,6 +163,7 @@ func _on_client_connected(conn_id: int) -> void:
 		"ping_ms": 0,        # 这一路测出的往返延迟（心跳测量，见 _推房间心跳）
 		"ping_sent_ms": 0,   # 本轮心跳发出时刻；0 = 没有在等回声
 		"ping_last_ms": 0,   # 上一轮心跳发出时刻（控制发送间隔）
+		"echo_ms": Time.get_ticks_msec(),   # 最近一次收到该连接消息的时刻（Steam 掉线判定用）
 	}
 
 
@@ -650,6 +683,8 @@ const 观战推送间隔_ms: int = 250
 ## 心跳间隔 / 等回声的超时（毫秒）：间隔越小连接质量越灵敏，超时到点按最差一档显示
 const 心跳间隔_ms: int = 2000
 const 心跳超时_ms: int = 5000
+## 判定掉线的静默时长（毫秒）：连续这么久没收到回声就断开这条连接（只对 Steam 底座用）
+const 掉线超时_ms: int = 16000
 
 
 ## 请求推一次观战快照（降频：没到点就先记一笔欠着，由 poll() 到点补发，
@@ -687,6 +722,23 @@ func _broadcast_game(room: Dictionary) -> void:
 		server.send(cid, GConst.Msg.Game, battle.game_info(pid))
 	# 观战者看的是观战视角（player_id = GUEST），所有人共用同一份快照
 	_请求观战快照(room)
+	_同步大厅数据(room)
+
+
+## Steam 模式：房主把自己房间的实况写进 Steam 大厅数据，别人在房间列表上就能看到人数与状态，
+## 加入方也靠其中的「房间号」发进房请求（Steam 大厅号与服务端房间号是两回事）。
+## 本地模式不碰 Steam，直接返回。
+func _同步大厅数据(room: Dictionary) -> void:
+	if Cfg.本地模式:
+		return
+	var battle: BattleEngine = room["battle"]
+	SteamNet.同步房间数据(
+		int(room["id"]),
+		_统计在线人数(battle),
+		battle.order.size(),
+		(room["watchers"] as Array).size(),
+		bool(room["started"])
+	)
 
 
 func _room_of(conn_id: int) -> Dictionary:

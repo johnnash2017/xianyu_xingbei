@@ -37,13 +37,19 @@ var 启动时刻: float = 0.0
 
 ## 是否处于多开状态：只有多开才做同批联动（关窗一起关、最小化一起切），单开不去影响别的窗口
 var 多开: bool = false
+## 本地调试模式：只有多开脚本（--slot / --count / --auto，也就是 F9/F10/F11 那三个）拉起来时才为 true，
+## 这种启动走现有的局域网 / 本机房间；**直接（裸）启动则为 false**，走 Steam（大厅 + P2P，见 SteamNet）
+var 本地模式: bool = false
 
 
 ## 客户端身份标识：连上房主时随登录包发过去，服务端靠它认「还是同一个人」，
 ## 断线 / 退出后能认领回原座位（见 LocalServer._reclaim_seat）。
-## 局域网测试阶段直接就用昵称：同机多开时 玩家1/玩家2… 天然区分，而且重启进程也还认得出。
-## 以后上 Steam：这里改成返回 SteamID（Steam.getSteamID() 转字符串）即可，其余代码不用动。
+## - 本地调试（多开脚本）：用昵称，同机多开时 玩家1/玩家2… 天然区分，重启进程也认得出；
+## - Steam 模式：用 SteamID（字符串，64 位过协议不丢精度）；Steam 没连上时退回昵称，
+##   免得所有人共用一个空身份。
 func 身份标识() -> String:
+	if not 本地模式 and SteamNet.就绪:
+		return SteamNet.steam_id
 	return nickname
 
 
@@ -54,6 +60,12 @@ func _ready() -> void:
 	_claim_slot()
 	_load_configs()
 	_ensure_nickname()
+	# 本地调试模式：多开脚本（--slot / --count / --auto，也就是 F9/F10/F11 那三个）拉起来的一律走本地房间，
+	# 裸启动（一个参数都不带）走 Steam。
+	# 注意别用「同批窗口数 ≥ 2」（多开）来判断：
+	#   ① 多开 是在下面 _apply_layout 里才赋值的，放前面读到的永远是初始的 false；
+	#   ② F9 那种只开一个窗口的本地调试，窗口数本来就不到 2，会被误判成裸启动。
+	本地模式 = slot_source == "启动参数" or 自动开局 or 多开人数 > 0
 	if slot_source == "启动参数":
 		# 多开脚本显式指定了槽位与窗口数：立刻按宫格摆位
 		_apply_layout(int(shared_get("layout_count", 默认摆位列数 * 默认摆位行数)))
@@ -61,7 +73,8 @@ func _ready() -> void:
 		# 编辑器「运行多个实例」不带 --slot：先看看一共开了几个窗口，再决定要不要摆位
 		_watch_instances()
 	_watch_peers()
-	print("[Cfg] 槽位=%d（%s）昵称=%s 服务端口=%d" % [slot, slot_source, nickname, server_port])
+	print("[Cfg] 槽位=%d（%s）昵称=%s 服务端口=%d 本地模式=%s" % [
+		slot, slot_source, nickname, server_port, str(本地模式)])
 
 
 # ============================================================

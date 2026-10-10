@@ -6,7 +6,7 @@
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_strategy"]
 
-[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "设置按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "创建按钮", "取消创建按钮", "调试模式", "观战确认层", "观战是按钮", "观战否按钮")]
+[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "Steam状态", "进入按钮", "刷新按钮", "创建房间按钮", "返回登录按钮", "设置按钮", "创建层", "房名输入", "创建按钮", "取消创建按钮", "调试模式", "观战确认层", "观战是按钮", "观战否按钮")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -17,15 +17,12 @@ script = ExtResource("1_5gu6x")
 "标题栏" = NodePath("主列/标题栏")
 "房间列表" = NodePath("主列/房间列表")
 "状态栏" = NodePath("主列/状态栏")
+"Steam状态" = NodePath("主列/Steam状态")
 "进入按钮" = NodePath("主列/按钮行/进入按钮")
 "刷新按钮" = NodePath("主列/按钮行/刷新按钮")
 "创建房间按钮" = NodePath("主列/按钮行/创建房间按钮")
-"搜索按钮" = NodePath("主列/按钮行/搜索按钮")
 "返回登录按钮" = NodePath("主列/按钮行/返回登录按钮")
 "设置按钮" = NodePath("设置按钮")
-"跨机IP输入" = NodePath("主列/跨机行/跨机IP输入")
-"连接按钮" = NodePath("主列/跨机行/连接按钮")
-"房主列表" = NodePath("主列/房主列表")
 "创建层" = NodePath("创建层")
 "房名输入" = NodePath("创建层/居中/创建卡片/内容/房名输入")
 "人数组" = SubResource("ButtonGroup_people")
@@ -85,50 +82,23 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "创建房间"
 
-[node name="搜索按钮" type="Button" parent="主列/按钮行" unique_id=536616621]
-custom_minimum_size = Vector2(272, 64)
-layout_mode = 2
-theme_override_font_sizes/font_size = 26
-text = "搜索局域网房主"
-
 [node name="返回登录按钮" type="Button" parent="主列/按钮行" unique_id=1990566153]
 custom_minimum_size = Vector2(192, 64)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "返回登录"
 
-[node name="跨机行" type="HBoxContainer" parent="主列" unique_id=1285522029]
-layout_mode = 2
-theme_override_constants/separation = 13
-
-[node name="连接提示" type="Label" parent="主列/跨机行" unique_id=33848590]
-layout_mode = 2
-theme_override_font_sizes/font_size = 24
-text = "连接其他机器："
-
-[node name="跨机IP输入" type="LineEdit" parent="主列/跨机行" unique_id=516299558]
-custom_minimum_size = Vector2(0, 52)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 26
-text = "127.0.0.1"
-
-[node name="连接按钮" type="Button" parent="主列/跨机行" unique_id=80773373]
-custom_minimum_size = Vector2(144, 64)
-layout_mode = 2
-theme_override_font_sizes/font_size = 26
-text = "连接"
-
-[node name="房主列表" type="ItemList" parent="主列" unique_id=541978100]
-visible = false
-custom_minimum_size = Vector2(0, 120)
-layout_mode = 2
-theme_override_font_sizes/font_size = 24
-
 [node name="状态栏" type="Label" parent="主列" unique_id=872283274]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
+
+[node name="Steam状态" type="Label" parent="主列"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.9, 0.55, 1)
+theme_override_font_sizes/font_size = 22
+autowrap_mode = 2
 
 [node name="创建层" type="Control" parent="." unique_id=1580318978]
 visible = false
@@ -200,14 +170,6 @@ button_group = SubResource("ButtonGroup_people")
 metadata/people = 2
 text = "2 人"
 
-[node name="人数_3" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 26
-toggle_mode = true
-button_group = SubResource("ButtonGroup_people")
-metadata/people = 3
-text = "3 人"
-
 [node name="人数_4" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
@@ -217,14 +179,6 @@ button_group = SubResource("ButtonGroup_people")
 metadata/people = 4
 text = "4 人"
 
-[node name="人数_5" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 26
-toggle_mode = true
-button_group = SubResource("ButtonGroup_people")
-metadata/people = 5
-text = "5 人"
-
 [node name="人数_6" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
@@ -232,22 +186,6 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_people")
 metadata/people = 6
 text = "6 人"
-
-[node name="人数_7" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 26
-toggle_mode = true
-button_group = SubResource("ButtonGroup_people")
-metadata/people = 7
-text = "7 人"
-
-[node name="人数_8" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 26
-toggle_mode = true
-button_group = SubResource("ButtonGroup_people")
-metadata/people = 8
-text = "8 人"
 
 [node name="选角行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容"]
 layout_mode = 2

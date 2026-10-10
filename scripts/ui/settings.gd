@@ -3,6 +3,7 @@ extends Control
 ## 由 UI.切换设置() 挂到界面层最上面，盖在当前界面之上；点「关闭」收起。
 ## 界面结构全在 scenes/Settings.tscn 里（所见即所得地改），本脚本只绑节点 + 跑逻辑。
 
+@export var 总音量滑杆: HSlider
 @export var 音乐滑杆: HSlider
 @export var 音效滑杆: HSlider
 @export var 关闭按钮: Button
@@ -12,8 +13,10 @@ extends Control
 
 func _ready() -> void:
 	# 先按当前音量摆好滑杆，再挂监听（否则初始化赋值会立刻触发一次回调）
+	总音量滑杆.value = Audio.总音量
 	音乐滑杆.value = Audio.音乐音量
 	音效滑杆.value = Audio.音效音量
+	总音量滑杆.value_changed.connect(Audio.设置总音量)
 	音乐滑杆.value_changed.connect(Audio.设置音乐音量)
 	音效滑杆.value_changed.connect(Audio.设置音效音量)
 	关闭按钮.pressed.connect(UI.关闭设置)

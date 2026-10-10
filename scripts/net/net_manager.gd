@@ -10,17 +10,23 @@ signal message_received(msg_type: int, data: Dictionary)
 signal host_started
 signal host_failed
 
-var client: NetClient = NetClient.new()
+var client: NetworkClient = null
 var server: LocalServer = null
 var discovery: Discovery = Discovery.new()
 var hosting: bool = false
 
-## 当前连接目标（供界面显示）
+## 当前连接目标（供界面显示）。Steam 模式下是房主 SteamID
 var target_host: String = "127.0.0.1"
 var target_port: int = GConst.DEFAULT_PORT
 
 
 func _ready() -> void:
+	# 传输底座按启动模式装配：多开脚本（本地调试）走局域网 TCP，常规启动走 Steam P2P
+	# （写成 if/else 而不是三元表达式：两个实现类型不同，三元会被判「分支类型不兼容」）
+	if Cfg.本地模式:
+		client = NetClient.new()
+	else:
+		client = SteamClient.new()
 	client.message_received.connect(func(t: int, d: Dictionary) -> void: message_received.emit(t, d))
 	client.connected.connect(_on_connected)
 	client.disconnected.connect(func() -> void: disconnected.emit())
@@ -39,20 +45,29 @@ func _process(delta: float) -> void:
 func host_game() -> bool:
 	if hosting:
 		return true
-	var port: int = Cfg.server_port
 	var s: LocalServer = LocalServer.new()
-	var err: int = s.start(port)
+	# 局域网要占端口（同机多开靠端口区分房主）；Steam 模式走 P2P，不占端口
+	var err: int = s.start(Cfg.server_port if Cfg.本地模式 else 0)
 	if err != OK:
-		push_warning("Net: 监听 %d 失败（%d），本机可能已有房主" % [port, err])
+		push_warning("Net: 监听 %d 失败（%d），本机可能已有房主" % [Cfg.server_port, err])
 		host_failed.emit()
 		return false
 	server = s
 	hosting = true
-	discovery.start_responder(port, Cfg.nickname)
-	target_host = "127.0.0.1"
-	target_port = port
 	client.auto_reconnect = true
-	client.connect_to("127.0.0.1", port)
+	if Cfg.本地模式:
+		discovery.start_responder(Cfg.server_port, Cfg.nickname)
+		target_host = "127.0.0.1"
+		target_port = Cfg.server_port
+		client.connect_to("127.0.0.1", Cfg.server_port)
+	else:
+		# Steam 模式：本进程既是房主也是自己的第一个玩家。房主自己这一路不能用 Steam 回环
+		# （实测「发给自己」会被对端当成关闭连接），改走进程内直连（见 LocalServer.接入本地客户端）
+		target_host = SteamNet.steam_id
+		target_port = 0
+		var 本机: SteamClient = client as SteamClient
+		server.接入本地客户端(本机, int(SteamNet.steam_id))
+		本机.connect_to(SteamNet.steam_id, 0)
 	host_started.emit()
 	return true
 
@@ -68,6 +83,7 @@ func stop_hosting() -> void:
 # ============================================================
 # 加入
 # ============================================================
+## 连到指定房主。局域网传 host_addr = IP，Steam 模式传 host_addr = 房主 SteamID（port 无意义）
 func join_game(host_addr: String, port: int) -> void:
 	stop_hosting()
 	target_host = host_addr

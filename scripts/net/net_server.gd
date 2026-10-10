@@ -1,20 +1,13 @@
 class_name NetServer
-extends RefCounted
-## 权威服务端网络节点（对照服务端 base/zTCPServer + zTCPTask + zSocket2）
+extends NetworkServer
+## 服务端传输层的局域网 TCP 底座（对照服务端 base/zTCPServer + zTCPTask + zSocket2）
 ## 职责：监听、接受新连接并登记、统一轮询收包、按帧切分解码、向上层派发。
-
-signal client_connected(conn_id: int)
-signal client_disconnected(conn_id: int)
-signal client_message(conn_id: int, msg_type: int, data: Dictionary)
 
 ## 单条连接
 class Conn:
 	var id: int = 0
 	var tcp: StreamPeerTCP = null
 	var decoder: Framing.FrameDecoder = Framing.FrameDecoder.new()
-
-var listening: bool = false
-var port: int = 0
 
 var _srv: TCPServer = null
 var _conns: Dictionary = {}     # conn_id -> Conn
