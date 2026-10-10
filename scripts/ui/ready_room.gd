@@ -28,6 +28,8 @@ const 聊天最大行: int = 200
 @export var BtnExit: Button
 @export var BtnChooseTeam: Button
 @export var 设置按钮: Button
+## 观战者的等待提示：观战者在准备室没有可操作的东西，只告诉他现在在等什么
+@export var 观战提示: Label
 ## 选择队伍面板与它的三个按钮
 @export var ChooseTeamPanel: Control
 @export var BtnRedTeam: Button
@@ -89,6 +91,16 @@ func _刷新(info: Dictionary) -> void:
 	BtnReady.button_pressed = 我 != null and 我.ready
 	# 顶部只写房名：空座位一开始就全摆出来了，已到几人一眼可见，不必再报人数
 	Title.text = str(info.get("room_name", "房间"))
+	_刷新观战提示(info)
+
+
+## 观战者入房后（可能正赶上等人、也可能正赶上选角）在屏幕中间给一句等待提示；
+## 不是观战者就藏起来 —— 房内玩家的界面本来就有座位/准备/分队，不需要这句
+func _刷新观战提示(info: Dictionary) -> void:
+	观战提示.visible = Logic.my_player_id == GConst.GUEST
+	if not 观战提示.visible:
+		return
+	观战提示.text = "【观战中】正在等待选角…" if bool(info.get("picking", false)) else "【观战中】正在等待开始…"
 
 
 ## 显示前 N 个座位，并把每侧的座位按个数均匀铺开

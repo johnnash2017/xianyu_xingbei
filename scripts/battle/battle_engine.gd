@@ -36,6 +36,11 @@ var room_max_player: int = 0
 ## 房间的「调试模式」：由房主建房时勾选，随 Game 快照下发。
 ## 只有开着时，房内玩家才能用测试指令（服务端 DebugReq 也会按它拦一道）
 var room_debug: bool = false
+## 房间里的观战者昵称：房间级状态，由 LocalServer 维护，随 Game 快照下发给房内所有人
+var room_watchers: Array[String] = []
+## 房间是不是正处于选角（选将）阶段：房间级状态，由 LocalServer 维护，随 Game 快照下发。
+## 准备室的观战提示靠它区分「正在等待选角」和「正在等待开始」
+var room_picking: bool = false
 var players: Dictionary = {}      # id -> BattlePlayer
 var order: Array[int] = []        # 座位顺序（顺时针）
 var deck: BattleDeck = BattleDeck.new()
@@ -546,12 +551,14 @@ func _log_give_cards(src_id: int, dst_id: int, cards: Array) -> void:
 	var 去处: String = _称号(players.get(dst_id))
 	var 详版: String = "%s 交给 %s %s" % [来源, 去处, "、".join(名表)]
 	var 略版: String = "%s 交给 %s %d 张牌" % [来源, 去处, cards.size()]
+	var 略条: Dictionary = {"type": GConst.GossipType.Discard, "txt": 略版, "id": src_id}
 	for pid: int in order:
-		send(pid, GConst.Msg.Gossip, {
-			"type": GConst.GossipType.Discard,
-			"txt": 详版 if (pid == src_id or pid == dst_id) else 略版,
-			"id": src_id,
-		})
+		var 条: Dictionary = 略条.duplicate()
+		if pid == src_id or pid == dst_id:
+			条["txt"] = 详版
+		send(pid, GConst.Msg.Gossip, 条)
+	# 观战者不在 order 里，收不到上面那份：单独补一条「略版」（牌面只有交牌双方看得到）
+	send(GConst.GUEST, GConst.Msg.Gossip, 略条)
 	# 顺带广播一个给牌动效：牌从交牌人飘到收牌人。
 	# 不带 card_ids —— 这条是发给所有人的，带上就等于把牌面公开了（牌面只有交牌双方在日志里看得到）；
 	# 只给张数，客户端据此「交几张就飞几张」
@@ -654,13 +661,20 @@ func tick() -> void:
 		_notice_timeout(pid, kind, false)
 		return
 	# 构造默认回复（等价客户端点「放弃 / 不发动」）写入，交给状态机继续推进
+	_提交默认回复(pid, kind, 默认回复)
+
+
+## 把「默认回复」当成玩家答完了写进去、继续推进（超时兜底与测试键 0 共用）。
+## 公告 = false 时不写「超时」日志（测试键不是超时）
+func _提交默认回复(pid: int, kind: int, 默认回复: Dictionary, 公告: bool = true) -> void:
 	_reply = 默认回复
 	_has_reply = true
 	_await_id = -1
 	wait_deadline_ms = 0
 	wait_total_ms = 0
 	_broadcast_game()
-	_notice_timeout(pid, kind, true)
+	if 公告:
+		_notice_timeout(pid, kind, true)
 	run()
 
 
@@ -726,6 +740,9 @@ func set_offline(pid: int, v: bool) -> void:
 		offline_players.erase(pid)
 	var p0: BattlePlayer = players.get(pid)
 	var pname: String = _称号(p0) if p0 != null else str(pid)
+	# 同步到玩家身上：快照里的 online 就是它（客户端据此把「玩家列表」那一列显示成「掉线」）
+	if p0 != null:
+		p0.online = not v
 	if v:
 		if _await_id == pid and not _has_reply:
 			wait_deadline_ms = Time.get_ticks_msec() + OFFLINE_TIMEOUT_MS
@@ -1037,6 +1054,8 @@ func game_info(viewer_id: int) -> Dictionary:
 		"room_name": room_name,
 		"max_player": room_max_player,
 		"debug": room_debug,
+		"watchers": room_watchers,
+		"picking": room_picking,
 		"player_id": viewer_id,
 		"red_morale": team_morale[GConst.RED],
 		"blue_morale": team_morale[GConst.BLUE],
@@ -1200,8 +1219,8 @@ func take_from_hand(pid: int, card_ids: Array, 已展示: bool = false) -> bool:
 	return true
 
 
-## 测试用（战斗界面里的数字键，见 GConst.DebugKey）：清空手牌、按技能发技能牌、发测试牌、双方士气 99、
-## 全员标识物 / 治疗 / 能量拉满、跳过当前行动玩家的回合等。
+## 测试用（战斗界面里的数字键，见 GConst.DebugKey）：给自己发圣光 / 测试牌、按技能发技能牌、双方士气 99、
+## 自己的标识物 / 治疗 / 宝石开关式拉满、跳过当前行动玩家的回合等。
 ## 技能牌 = 卡表里技能属于该角色的牌：角色技能号取自 角色表（Data.role_skills），
 ## 卡牌自带技能号（技能1 / 技能2 列）；每个技能随机抽一张，手里已有的不算候选。
 func debug_key(pid: int, kind: int) -> void:
@@ -1210,9 +1229,18 @@ func debug_key(pid: int, kind: int) -> void:
 	var p0: BattlePlayer = players.get(pid)
 	if p0 == null:
 		return
-	if kind == GConst.DebugKey.Clear:
-		to_discard(p0.hand_cards.duplicate())
-		p0.hand_cards.clear()
+	if kind == GConst.DebugKey.GiveHolyLight:
+		# 测试用（战斗界面按 1）：给自己发 4 张【圣光】（挑 4 张不同牌号的，免得手里出现重复牌号）
+		var 圣光候选: Array[int] = []
+		for cid: int in range(GConst.CARDSUM):
+			if p0.has_hand_card(cid):
+				continue
+			var c: GCard = Data.get_card(cid)
+			if c != null and c.card_name_enum() == GConst.CardName.HolyLight:
+				圣光候选.append(cid)
+		圣光候选.shuffle()
+		for i: int in range(mini(4, 圣光候选.size())):
+			_发一张到手里(p0, 圣光候选[i])
 	elif kind == GConst.DebugKey.SkillCards:
 		for 技能号: int in Data.role_skills(p0.role_id):
 			var 候选: Array[int] = []
@@ -1226,10 +1254,15 @@ func debug_key(pid: int, kind: int) -> void:
 				continue
 			var 抽: int = 候选[_rng.randi_range(0, 候选.size() - 1)]
 			_发一张到手里(p0, 抽)
-	elif kind == GConst.DebugKey.Cards:
-		# 测试用（战斗界面按 3）：3 张随机同系攻击牌（斩）+ 3 张随机不同系别的法术牌
-		_发测试牌(p0, 3, true, true)
-		_发测试牌(p0, 3, false, false)
+	elif kind == GConst.DebugKey.ToggleCards:
+		# 测试用（战斗界面按 3）：手里有牌就先清空（全部进弃牌堆），空手就发测试牌 ——
+		# 3 张随机同系攻击牌（斩）+ 3 张随机不同系别的法术牌
+		if p0.hand_cards.is_empty():
+			_发测试牌(p0, 3, true, true)
+			_发测试牌(p0, 3, false, false)
+		else:
+			to_discard(p0.hand_cards.duplicate())
+			p0.hand_cards.clear()
 	elif kind == GConst.DebugKey.ShortenWait:
 		# 测试用（战斗界面按 4）：把当前正在进行的询问倒计时压到 1 秒（到点走超时兜底）
 		if _await_id >= 0 and wait_deadline_ms > 0:
@@ -1240,55 +1273,63 @@ func debug_key(pid: int, kind: int) -> void:
 		for c: int in [GConst.RED, GConst.BLUE]:
 			set_morale(c, 99)
 	elif kind == GConst.DebugKey.SkipTurn:
-		# 测试用（战斗界面按 0）：跳过「当前正在行动」的那名玩家这一回合（不限于按键盘的人）。
-		# 只在「正等某人做行动」时有效，交给行动阶段自己收尾
-		# （不在引擎外直接推动状态栈，免得留下没跑完的旧状态）
+		# 测试用（战斗界面按 0）：
+		# 1) 正等某人应答（弃牌 / 应战 / 是否发动…）→ 替他把这次询问取消掉
+		#    （与超时兜底同一条路：能安全放弃或自动补齐的才处理，其余照旧等他自己操作）；
+		# 2) 否则跳过「当前正在行动」的那名玩家这一回合（不限于按键盘的人），只在「正等某人做行动」时有效，
+		#    交给行动阶段自己收尾（不在引擎外直接推动状态栈，免得留下没跑完的旧状态）
+		if _await_id >= 0 and _await_kind == GConst.Msg.Respond:
+			var 被等的人: int = _await_id
+			var 默认回复: Dictionary = _build_timeout_reply(被等的人, _await_kind)
+			if not 默认回复.is_empty():
+				_提交默认回复(被等的人, _await_kind, 默认回复, false)
+				return
 		if _await_id >= 0 and _await_kind == GConst.Msg.Action:
 			测试跳过回合 = _await_id
 			run()
-	elif kind == GConst.DebugKey.MaxTokens:
-		# 测试用（战斗界面按 6）：所有角色的标识物（指示物）加到满
-		for pid2: int in order:
-			var p2: BattlePlayer = players[pid2]
-			for t: Variant in p2.tokens:
-				if t == null:
-					continue
-				var 槽: Dictionary = t
-				槽["num"] = int(槽.get("max", 0))
+	elif kind == GConst.DebugKey.ToggleTokens:
+		# 测试用（战斗界面按 6）：自己的标识物（指示物）拉满 ↔ 再按清空
+		var 已有值: bool = false
+		for t: Variant in p0.tokens:
+			if t != null and int((t as Dictionary).get("num", 0)) > 0:
+				已有值 = true
+				break
+		for t2: Variant in p0.tokens:
+			if t2 == null:
+				continue
+			var 槽2: Dictionary = t2
+			槽2["num"] = 0 if 已有值 else int(槽2.get("max", 0))
 	elif kind == GConst.DebugKey.RandomEnergy:
-		# 测试用（战斗界面按 7）随机填充星石：清空双方战绩区，再各按战绩区上限（TEAM_ENERGY_MAX）
-		# 逐颗随机填成宝石 / 水晶（总数恰好等于上限，故直接累加，不走 set_team_gem/set_team_crystal 的夹取）
+		# 测试用（战斗界面按 7）：战绩区已经有星石 → 再按清空；是空的 → 按战绩区上限逐颗随机填成宝石 / 水晶
+		# （总数恰好等于上限，故直接累加，不走 set_team_gem/set_team_crystal 的夹取）
+		var 已有星石: bool = (
+			team_gem[GConst.RED] > 0
+			or team_crystal[GConst.RED] > 0
+			or team_gem[GConst.BLUE] > 0
+			or team_crystal[GConst.BLUE] > 0
+		)
 		for c: int in [GConst.RED, GConst.BLUE]:
 			team_gem[c] = 0
 			team_crystal[c] = 0
+			if 已有星石:
+				continue
 			for _i: int in range(GConst.TEAM_ENERGY_MAX):
 				if _rng.randi_range(0, 1) == 0:
 					team_gem[c] += 1
 				else:
 					team_crystal[c] += 1
-	elif kind == GConst.DebugKey.CrossClear:
-		# 测试用（战斗界面按 8）：全员治疗清零
-		for pid2: int in order:
-			var p2: BattlePlayer = players[pid2]
-			p2.cross_num = 0
-	elif kind == GConst.DebugKey.HealEnergy:
-		# 全员治疗拉满、能量（宝石）补满（不跳过回合）
-		for pid2: int in order:
-			var p2: BattlePlayer = players[pid2]
-			p2.add_cross_num(p2.cross_max)
-			p2.set_gem(p2.energy_max)
-	elif kind == GConst.DebugKey.GiveHolyLight:
-		# 测试用（战斗界面按 ~）：给自己发 4 张【圣光】（挑 4 张不同牌号的，免得手里出现重复牌号）
-		var 候选: Array[int] = []
-		for cid: int in range(GConst.CARDSUM):
-			if p0.has_hand_card(cid):
-				continue
-			var c: GCard = Data.get_card(cid)
-			if c != null and c.card_name_enum() == GConst.CardName.HolyLight:
-				候选.append(cid)
-		候选.shuffle()
-		for i: int in range(mini(4, 候选.size())):
-			_发一张到手里(p0, 候选[i])
+	elif kind == GConst.DebugKey.ToggleHeal:
+		# 测试用（战斗界面按 8）：自己的治疗拉满 ↔ 再按清零
+		if p0.cross_num > 0:
+			p0.cross_num = 0
+		else:
+			p0.add_cross_num(p0.cross_max)
+	elif kind == GConst.DebugKey.ToggleGem:
+		# 测试用（战斗界面按 9）：自己的宝石补满 ↔ 再按清空
+		if p0.gem > 0:
+			p0.set_gem(0)
+		else:
+			p0.set_gem(p0.energy_max)
 	# 手牌 / 能量 / 治疗一变，这一回合能放的技能也可能跟着变（如【神圣祈福】要 2 张法术牌）：
 	# 快照里会顺带重算一次技能可用性，变了才重发询问
 	_broadcast_game()

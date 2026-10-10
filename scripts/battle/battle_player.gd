@@ -488,6 +488,11 @@ func base_v_extract(args: Array, team_gem: int, team_crystal: int) -> int:
 	return GConst.GE_SUCCESS
 
 
+## 这名玩家到服务端（房主）这一路的往返延迟（毫秒）：由服务端心跳测出后写进来，
+## 跟着快照下发给所有人（观战者也看得到，见「玩家列表」的右侧一列）
+var ping_ms: int = 0
+
+
 ## 序列化为 SinglePlayerInfo 字段字典
 func to_proto(viewer_id: int) -> Dictionary:
 	var d: Dictionary = {
@@ -508,6 +513,7 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"nickname": player_name,
 		"ready": ready,
 		"online": online,
+		"ping": ping_ms,
 		"leader": 0,
 	}
 	var bas: Array = []

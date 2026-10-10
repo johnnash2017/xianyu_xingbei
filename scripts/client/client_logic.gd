@@ -84,6 +84,9 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 				elif kind == GConst.GossipType.Discard and int(data.get("num", 0)) > 0:
 					discard_received.emit(int(data.get("id", -1)), int(data.get("num", 0)))
 				notice_received.emit(str(data.get("txt", "")), kind)
+		GConst.Msg.HeartBeat:
+			# 服务端心跳：原样回一声，服务端按「发包时刻 → 收到回声」算这一路的往返延迟
+			Net.send(GConst.Msg.HeartBeat, {})
 		GConst.Msg.TurnBegin:
 			turn_changed.emit(int(data.get("id", -1)), int(data.get("round", 0)))
 		GConst.Msg.Hit:

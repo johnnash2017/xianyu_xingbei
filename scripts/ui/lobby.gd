@@ -39,8 +39,18 @@ const 未记录: int = 0
 @export var 取消创建按钮: Button
 ## 创建房间「指令」行的勾选（界面上写的是「开启作弊」）：勾上后本房间内所有玩家都能用测试指令
 @export var 调试模式: CheckBox
+## 满员房间的「是否观战」确认层与它的两个按钮（是 / 否）
+@export var 观战确认层: Control
+@export var 观战是按钮: Button
+@export var 观战否按钮: Button
 
 var _room_ids: Array[int] = []
+## 与 _room_ids 一一对应：该房间是不是已满（已满的房间点进去要先问「是否观战」）
+var _room_full: Array[bool] = []
+## 与 _room_ids 一一对应：该房间还留着我的座位吗（对局中退出/掉线会留座，重进直接坐回去）
+var _room_reenter: Array[bool] = []
+## 正在问「是否观战」的房间号（-1 = 没在问）
+var _待观战房间: int = -1
 var _刷新计时: float = 0.0
 var _发现的房主: Array = []
 
@@ -67,6 +77,8 @@ func _ready() -> void:
 	连接按钮.pressed.connect(func() -> void: _点了(_on_connect_ip_pressed))
 	创建按钮.pressed.connect(func() -> void: _点了(_on_create_pressed))
 	取消创建按钮.pressed.connect(func() -> void: _点了(_on_close_create_pressed))
+	观战是按钮.pressed.connect(func() -> void: _点了(_on_watch_yes_pressed))
+	观战否按钮.pressed.connect(func() -> void: _点了(_on_watch_no_pressed))
 	_恢复建房选项()
 	Logic.request_room_list()
 	设状态("双击房间或点「进入选中房间」加入；没有房间就点「创建房间」")
@@ -104,17 +116,32 @@ func _fill(rooms: Array) -> void:
 		上次选中 = int(选中项[0])
 	房间列表.clear()
 	_room_ids.clear()
+	_room_full.clear()
+	_room_reenter.clear()
 	for r: Dictionary in rooms:
 		var rid: int = int(r.get("room_id", 0))
 		_room_ids.append(rid)
 		var 现在: int = int(r.get("now_player", 0))
 		var 上限: int = int(r.get("max_player", 0))
-		var 房间状态: String = "已满" if (上限 > 0 and 现在 >= 上限) else ("进行中" if bool(r.get("playing", false)) else "等待中")
-		房间列表.add_item("%d号房　%s　　%d/%d　　%s" % [rid, str(r.get("room_name", "")), 现在, 上限, 房间状态])
+		var 座位: int = int(r.get("seat_count", 现在))
+		var 观战: int = int(r.get("watchers", 0))
+		# 「满不满」看座位数（对局中退出/掉线的人座位还留着，服务端也按座位放人）；
+		# 显示的人数用在线人数 —— 有人走了列表上立刻看得出来
+		var 已满: bool = 上限 > 0 and 座位 >= 上限
+		var 可重连: bool = bool(r.get("can_reenter", false))
+		_room_full.append(已满)
+		_room_reenter.append(可重连)
+		var 房间状态: String = "可重连" if 可重连 else ("已满" if 已满 else ("进行中" if bool(r.get("playing", false)) else "等待中"))
+		var 掉线: int = 座位 - 现在
+		if 掉线 > 0:
+			房间状态 += "（%d人掉线）" % 掉线
+		房间列表.add_item("%d号房　%s　　%d/%d　观战%d　%s" % [rid, str(r.get("room_name", "")), 现在, 上限, 观战, 房间状态])
 		var idx: int = 房间列表.item_count - 1
-		if 房间状态 == "已满":
+		if 可重连:
+			房间列表.set_item_custom_fg_color(idx, Color(0.55, 0.85, 0.95))
+		elif 已满:
 			房间列表.set_item_custom_fg_color(idx, Color(0.85, 0.55, 0.55))
-		elif 房间状态 == "进行中":
+		elif bool(r.get("playing", false)):
 			房间列表.set_item_custom_fg_color(idx, Color(0.85, 0.8, 0.5))
 	# 刷新后尽量保持原来的选中项（否则列表每 2 秒刷一次会把玩家的选择清掉）
 	if 上次选中 >= 0 and 上次选中 < _room_ids.size():
@@ -136,8 +163,41 @@ func _on_join_pressed() -> void:
 	if not Net.is_connected_to_host():
 		设状态("已与房主断开连接，正在重连…")
 		return
-	设状态("正在进入 %d 号房…" % _room_ids[idx])
-	Logic.enter_room(_room_ids[idx])
+	# 满员的房间：这间房还留着我的座位就直接坐回去（对局中退出/掉线会保留座位），
+	# 没留我的座位才问要不要以观战身份进去
+	if idx < _room_full.size() and _room_full[idx] and not _可重连(idx):
+		_待观战房间 = _room_ids[idx]
+		观战确认层.visible = true
+		return
+	_进入房间(_room_ids[idx])
+
+
+## 该下标的房间是不是还留着我的座位（重进直接坐回去，不必问要不要观战）
+func _可重连(idx: int) -> bool:
+	return idx < _room_reenter.size() and _room_reenter[idx]
+
+
+## 进房（点房间直接进、确认观战后进，都走这里，保证提示文案一致）
+func _进入房间(房间号: int) -> void:
+	设状态("正在进入 %d 号房…" % 房间号)
+	Logic.enter_room(房间号)
+
+
+# ============================================================
+# 满员房间：是否观战
+# ============================================================
+func _on_watch_yes_pressed() -> void:
+	观战确认层.visible = false
+	var 房间号: int = _待观战房间
+	_待观战房间 = -1
+	if 房间号 >= 0:
+		_进入房间(房间号)
+
+
+func _on_watch_no_pressed() -> void:
+	观战确认层.visible = false
+	_待观战房间 = -1
+	设状态("房间已满，已取消进入")
 
 
 func _on_refresh_pressed() -> void:

@@ -11,6 +11,7 @@ const SUB: Dictionary = {
 		1: {"n": "room_id", "t": "i32"},
 		2: {"n": "room_name", "t": "str"},
 		3: {"n": "max_player", "t": "i32"},
+		# 在线玩家数（对局中掉线的人座位还留着，不算进来）：房间列表显示「在线/上限」
 		4: {"n": "now_player", "t": "i32"},
 		5: {"n": "role_strategy", "t": "enum"},
 		6: {"n": "seat_mode", "t": "i32"},
@@ -22,6 +23,12 @@ const SUB: Dictionary = {
 		12: {"n": "sp_mo_dao", "t": "bool"},
 		13: {"n": "playing", "t": "bool"},
 		14: {"n": "silence", "t": "bool"},
+		# 这间房里还留着「我」的座位吗（对局中退出/掉线后重进能直接坐回去）：房间列表据此显示「可重连」
+		15: {"n": "can_reenter", "t": "bool"},
+		# 已占座位数（含掉线保留的座位）：「满不满」看它（服务端也是按座位放人）
+		16: {"n": "seat_count", "t": "i32"},
+		# 观战者人数：房间列表单列一栏显示
+		17: {"n": "watchers", "t": "u32"},
 	},
 	"SinglePlayerInfo": {
 		1: {"n": "id", "t": "u32"},
@@ -53,6 +60,8 @@ const SUB: Dictionary = {
 		# 与 ex_cards 一一对应：每张专属牌是**谁放的**（-1＝没记）。
 		# 【挑衅】靠它知道「被挑衅的人只能主动攻击哪个玩家」（多勇者时也锁死放牌者本人）
 		25: {"n": "ex_from", "t": "i32", "r": true},
+		# 这一路的往返延迟（毫秒，服务端心跳测出）：游戏内「玩家列表」右侧显示连接质量
+		26: {"n": "ping", "t": "u32"},
 	},
 	"Command": {
 		1: {"n": "respond_id", "t": "u32"},
@@ -149,6 +158,7 @@ const TABLE: Dictionary = {
 		2: {"n": "user_id", "t": "str"},
 		3: {"n": "user_password", "t": "str"},
 		4: {"n": "version", "t": "i32"},
+		# 客户端身份标识（局域网测试 = 昵称；以后上 Steam = SteamID）：服务端靠它认领原座位
 		5: {"n": "client_id", "t": "str"},
 	},
 	GConst.Msg.LoginRep: {
@@ -241,6 +251,10 @@ const TABLE: Dictionary = {
 		20: {"n": "wait_text", "t": "str"},
 		# 房间的调试模式：开了客户端才响应测试指令、才显示可拖拽的测试提示
 		21: {"n": "debug", "t": "bool"},
+		# 观战者昵称：游戏内「玩家列表」里单列一段（没人观战就是空数组）
+		22: {"n": "watchers", "t": "str", "r": true},
+		# 是否处于选角阶段：准备室的观战提示据此显示「正在等待选角 / 正在等待开始」
+		23: {"n": "picking", "t": "bool"},
 	},
 	GConst.Msg.Talk: {
 		1: {"n": "txt", "t": "str"},

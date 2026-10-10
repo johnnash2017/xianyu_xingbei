@@ -47,6 +47,68 @@ func poll() -> void:
 		if _is_battle_playing(room):
 			var battle: BattleEngine = room["battle"]
 			battle.tick()
+		# 观战流是降频推的：欠着的快照到点补发，保证最后一次状态变化不会被吃掉
+		if bool(room["watch_dirty"]):
+			_请求观战快照(room)
+		# 连接质量：定期给房内每条连接打一次心跳（玩家的延迟只有服务端测得到）
+		_推房间心跳(room)
+
+
+## 心跳 / 延迟测量：每 心跳间隔_ms 给房内每条连接发一次 HeartBeat，客户端回声后即可算出往返延迟。
+## 观战者也发（他们的连接质量同样只有服务端看得到），房主自己那条约为 0ms
+func _推房间心跳(room: Dictionary) -> void:
+	var 现在: int = Time.get_ticks_msec()
+	for cid: int in _房间接收者(room):
+		var s: Dictionary = _sessions.get(cid, {})
+		if s.is_empty():
+			continue
+		var 在等回声: int = int(s.get("ping_sent_ms", 0))
+		if 在等回声 > 0:
+			if 现在 - 在等回声 > 心跳超时_ms:
+				# 这一轮没回声：按最差一档处理（多半是卡住或刚掉线）
+				s["ping_sent_ms"] = 0
+				s["ping_ms"] = 心跳超时_ms
+		elif 现在 - int(s.get("ping_last_ms", 0)) >= 心跳间隔_ms:
+			s["ping_sent_ms"] = 现在
+			s["ping_last_ms"] = 现在
+			server.send(cid, GConst.Msg.HeartBeat, {})
+
+
+## 收到心跳回声：算出往返延迟并平滑（旧值权重 2/3），抖动时数字不会乱跳
+func _记心跳回声(conn_id: int) -> void:
+	var s: Dictionary = _sessions.get(conn_id, {})
+	if s.is_empty():
+		return
+	var 发出: int = int(s.get("ping_sent_ms", 0))
+	if 发出 <= 0:
+		return
+	s["ping_sent_ms"] = 0
+	var 新值: int = Time.get_ticks_msec() - 发出
+	# 加权平滑：旧值占 2/3、新值占 1/3。毫秒取整就够了（显式忽略「整数除法丢小数」警告）
+	@warning_ignore("integer_division")
+	s["ping_ms"] = (int(s.get("ping_ms", 新值)) * 2 + 新值) / 3
+
+
+## 把各连接测出的延迟写进玩家：快照会带着它一起下发（「玩家列表」右侧那一列）
+func _同步连接质量(room: Dictionary) -> void:
+	var battle: BattleEngine = room["battle"]
+	var conn_of: Dictionary = room["conn_of"]
+	for pid: int in conn_of.keys():
+		if not battle.players.has(pid):
+			continue
+		var s: Dictionary = _sessions.get(int(conn_of[pid]), {})
+		(battle.players[pid] as BattlePlayer).ping_ms = int(s.get("ping_ms", 0))
+
+
+## 在线玩家数：对局中掉线/退出的人座位会保留（状态机还指着他），不能再算进「人数」里，
+## 否则房间列表会一直显示 4/4，看不出人已经走了
+func _统计在线人数(battle: BattleEngine) -> int:
+	var n: int = 0
+	for pid: int in battle.order:
+		var p: BattlePlayer = battle.players.get(pid)
+		if p != null and p.online:
+			n += 1
+	return n
 
 
 ## 该房间是否正处于「进行中的对局」（已开局且未结束）
@@ -66,6 +128,9 @@ func _on_client_connected(conn_id: int) -> void:
 		"room_id": -1,
 		"player_id": -1,
 		"client_id": "",
+		"ping_ms": 0,        # 这一路测出的往返延迟（心跳测量，见 _推房间心跳）
+		"ping_sent_ms": 0,   # 本轮心跳发出时刻；0 = 没有在等回声
+		"ping_last_ms": 0,   # 上一轮心跳发出时刻（控制发送间隔）
 	}
 
 
@@ -96,7 +161,7 @@ func _on_client_message(conn_id: int, msg_type: int, data: Dictionary) -> void:
 				s["client_id"] = cid
 			server.send(conn_id, GConst.Msg.LoginRep, {"state": 6, "nickname": s["nickname"]})
 		GConst.Msg.RoomListReq:
-			server.send(conn_id, GConst.Msg.RoomListRep, {"rooms": _room_infos()})
+			server.send(conn_id, GConst.Msg.RoomListRep, {"rooms": _room_infos(conn_id)})
 		GConst.Msg.CreateRoomReq:
 			create_room(conn_id, data)
 		GConst.Msg.EnterRoomReq:
@@ -110,7 +175,9 @@ func _on_client_message(conn_id: int, msg_type: int, data: Dictionary) -> void:
 		GConst.Msg.Talk:
 			_talk(conn_id, str(data.get("txt", "")))
 		GConst.Msg.HeartBeat:
-			server.send(conn_id, GConst.Msg.HeartBeat, {})
+			# 客户端回的心跳：据此算这一路的往返延迟。
+			# 这里不能再回一声，否则两边会互相回成死循环
+			_记心跳回声(conn_id)
 		GConst.Msg.PickBan:
 			var pick_room: Dictionary = _room_of(conn_id)
 			if not pick_room.is_empty():
@@ -131,7 +198,10 @@ func _on_client_message(conn_id: int, msg_type: int, data: Dictionary) -> void:
 # ============================================================
 # 房间
 # ============================================================
-func _room_infos() -> Array:
+## 房间列表。带 conn_id 时额外告诉这个连接「哪几间房还留着你的座位」——
+## 对局中退出/掉线时座位不会被移除，这些人重进应该直接坐回去，而不是被当成观战
+func _room_infos(conn_id: int = -1) -> Array:
+	var 我的身份: String = str(_sessions.get(conn_id, {}).get("client_id", ""))
 	var out: Array = []
 	for rid: int in _rooms.keys():
 		var r: Dictionary = _rooms[rid]
@@ -140,7 +210,9 @@ func _room_infos() -> Array:
 			"room_id": rid,
 			"room_name": r["name"],
 			"max_player": r["max_player"],
-			"now_player": battle.order.size(),
+			"now_player": _统计在线人数(battle),
+			"seat_count": battle.order.size(),
+			"watchers": (r["watchers"] as Array).size(),
 			"role_strategy": r["role_strategy"],
 			"seat_mode": r["seat_mode"],
 			"role_range": 31,
@@ -151,6 +223,7 @@ func _room_infos() -> Array:
 			"sp_mo_dao": false,
 			"playing": r["started"],
 			"silence": false,
+			"can_reenter": _reclaim_seat(r, 我的身份) >= 0,
 		})
 	return out
 
@@ -172,7 +245,10 @@ func create_room(conn_id: int, data: Dictionary) -> void:
 		"started": false,
 		"host_conn": conn_id,
 		"conn_of": {},          # player_id -> conn_id
-		"client_of": {},        # player_id -> client_id（进程身份，断线重连认领座位用）
+		"client_of": {},        # player_id -> 客户端身份标识（认领座位用；局域网 = 昵称，Steam = SteamID）
+		"watchers": [],         # 观战者 conn_id 列表（满员时进来的人，不占座位，可同时有多个）
+		"watch_next_ms": 0,     # 观战流下次可发送的时刻（降频用）
+		"watch_dirty": false,   # 有没有欠着还没发出去的观战快照
 		"battle": battle,
 	}
 	battle.room_name = str(room["name"])
@@ -194,7 +270,7 @@ func enter_room(conn_id: int, room_id: int) -> void:
 	var s: Dictionary = _sessions[conn_id]
 	if int(s["room_id"]) >= 0:
 		leave_room(conn_id)
-	# 满员则以 GUEST 身份观战
+	# 有座位就落座；满员则作为观战者进来（不占座位，能同时有多个）
 	var pid: int = GConst.GUEST
 	var 认领: int = _reclaim_seat(room, str(s.get("client_id", "")))
 	if 认领 >= 0:
@@ -213,10 +289,17 @@ func enter_room(conn_id: int, room_id: int) -> void:
 		var cid: String = str(s.get("client_id", ""))
 		if cid != "":
 			(room["client_of"] as Dictionary)[pid] = cid
+	else:
+		(room["watchers"] as Array).append(conn_id)
 	s["room_id"] = room_id
 	s["player_id"] = pid
-	# 进入房间（含掉线后重新进入）：清除掉线标记，恢复常规回复超时
-	if pid != GConst.GUEST:
+	if pid == GConst.GUEST:
+		# 观战者：名单跟着广播，房内所有人都能看到谁在观战；
+		# 新来的观战者立刻给一份快照（不等降频的下一拍）
+		_同步观战者名单(room)
+		_推送观战快照(room, Time.get_ticks_msec())
+	else:
+		# 进入房间（含掉线后重新进入）：清除掉线标记，恢复常规回复超时
 		battle.set_offline(pid, false)
 	_broadcast_game(room)
 
@@ -228,7 +311,10 @@ func leave_room(conn_id: int) -> void:
 	var s: Dictionary = _sessions.get(conn_id, {})
 	var pid: int = int(s.get("player_id", -1))
 	var battle: BattleEngine = room["battle"]
-	if pid >= 0 and pid != GConst.GUEST:
+	if pid == GConst.GUEST:
+		# 观战者离席：从观战名单里去掉，不涉及座位
+		(room["watchers"] as Array).erase(conn_id)
+	elif pid >= 0:
 		(room["conn_of"] as Dictionary).erase(pid)
 		if _is_battle_playing(room):
 			# 对局进行中：座位不可移除（引擎状态机与等待对象都指向该玩家），
@@ -242,8 +328,9 @@ func leave_room(conn_id: int) -> void:
 			_on_pick_player_left(room, pid)
 	s["room_id"] = -1
 	s["player_id"] = -1
-	# 房间内已无在线玩家：对局无从继续也无人在看，直接销毁房间
-	if (room["conn_of"] as Dictionary).is_empty():
+	_同步观战者名单(room)
+	# 房间内已无在线玩家、也没有观战者：对局无从继续也无人在看，直接销毁房间
+	if (room["conn_of"] as Dictionary).is_empty() and (room["watchers"] as Array).is_empty():
 		_rooms.erase(int(room["id"]))
 		rooms_changed.emit()
 	else:
@@ -251,7 +338,7 @@ func leave_room(conn_id: int) -> void:
 		rooms_changed.emit()
 
 
-## 断线重连认领座位：找出本房间内属于该 client_id、且当前无连接占用的座位（无则 -1）
+## 断线重连认领座位：找出本房间内属于该身份标识、且当前无连接占用的座位（无则 -1）
 func _reclaim_seat(room: Dictionary, client_id: String) -> int:
 	if client_id == "":
 		return -1
@@ -379,6 +466,8 @@ func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> vo
 		"picked": {},
 		"deadline": Time.get_ticks_msec() + PICK_TIMEOUT_MS,
 	}
+	# 选角开始：标记进快照，准备室的观战提示据此显示「正在等待选角」（观战者收不到 RoleReq）
+	battle.room_picking = true
 	for pid: int in battle.order:
 		_engine_send(int(room["id"]), pid, GConst.Msg.RoleReq, {
 			"id": pid,
@@ -390,6 +479,7 @@ func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> vo
 			"args": [],
 			"opration": 0,
 		})
+	_broadcast_game(room)
 
 
 func _on_pick_ban_candidates(room: Dictionary, pid: int, data: Dictionary) -> void:
@@ -424,8 +514,9 @@ func _pick_candidates_done(room: Dictionary) -> bool:
 	return true
 
 
-## 收尾 31/Any：超时或掉线者取候选第 1 个（服务端 messages[i]->role_ids(0)，GrailState.cpp:362）；
-## 若该角色已被先提交者占用（Any 可能出现），改为该玩家候选里第一个未被占用的角色，保证全局不重复。
+## 收尾 31/Any：超时或掉线者在自己候选里**随机**取一个（原版服务端取候选第 1 个（messages[i]->role_ids(0)，
+## GrailState.cpp:362），这里改成随机，免得每次超时都是同一个角色）；
+## 若该角色已被先提交者占用（Any 可能出现），改为该玩家候选里随机一个未被占用的角色，保证全局不重复。
 ## 例外：任选（Any/All）允许全场重复选同一个角色 —— 它的候选本来就是全部启用角色，
 ## 再强行去重会把「大家都想玩同一个角色」改成随机补位，反而不符合任选的本意。
 func _finish_pick_candidates(room: Dictionary) -> void:
@@ -441,31 +532,35 @@ func _finish_pick_candidates(room: Dictionary) -> void:
 
 
 ## 把各玩家的提交落成最终角色分配（顺序: 座位序；已选: pid -> 提交的角色号）。
-## 候选制（31/61）保证全局不重复：撞车或没提交的人，取自己候选里第一个还没被占的角色，
-## 候选全被占就从整池补一个。任选（Any/All）允许重复，提交什么就是什么。
+## 候选制（31/61）保证全局不重复：没提交（超时 / 掉线）或提交的角色被占了的人，
+## 在自己候选里**随机**挑一个没被占的，候选全被占就从整池里随机补一个。
+## 任选（Any/All）允许重复，提交什么就是什么。
 func _分配角色(顺序: Array, 候选表: Dictionary, 已选: Dictionary, 全池: Array, 允许重复: bool) -> Dictionary:
 	var 已用: Array = []
 	var 角色表: Dictionary = {}
 	for pid: int in 顺序:
 		var 选定: int = int(已选.get(pid, 0))
 		if 选定 <= 0 or (not 允许重复 and 已用.has(选定)):
-			var 该候选: Array = 候选表.get(pid, [])
-			选定 = 0
-			for c: Variant in 该候选:
-				if 允许重复 or not 已用.has(int(c)):
-					选定 = int(c)
-					break
+			选定 = _随机取未占用(候选表.get(pid, []), 已用, 允许重复)
 		if 选定 <= 0:
-			# 候选全被占用：从整池补一个未用角色
-			for c2: Variant in 全池:
-				if not 已用.has(int(c2)):
-					选定 = int(c2)
-					break
+			# 候选全被占用：从整池里随机补一个未用角色
+			选定 = _随机取未占用(全池, 已用, 允许重复)
 		if 选定 <= 0:
 			continue
 		已用.append(选定)
 		角色表[pid] = 选定
 	return 角色表
+
+
+## 在候选里随机挑一个还没被占用的角色号；允许重复时随便挑一个。挑不到（空表 / 全被占）返回 0
+func _随机取未占用(候选: Array, 已用: Array, 允许重复: bool) -> int:
+	var 可选: Array = []
+	for c: Variant in 候选:
+		if 允许重复 or not 已用.has(int(c)):
+			可选.append(int(c))
+	if 可选.is_empty():
+		return 0
+	return int(可选.pick_random())
 
 
 ## 是否「任选」策略：候选是整张角色表，允许多人选同一个角色
@@ -496,6 +591,8 @@ func _on_pick_player_left(room: Dictionary, pid: int) -> void:
 func _start_battle(room: Dictionary, 角色表: Dictionary) -> void:
 	room["started"] = true
 	var battle: BattleEngine = room["battle"]
+	# 选角结束（Random 策略直接开局，压根没进过选角阶段，这里一并归零）
+	battle.room_picking = false
 	battle.start_with_roles(角色表)
 	rooms_changed.emit()
 
@@ -509,24 +606,87 @@ func _engine_send(room_id: int, target: int, msg_type: int, fields: Dictionary) 
 		return
 	if target < 0:
 		_broadcast_raw(room, msg_type, fields)
-	else:
-		var cid: int = int((room["conn_of"] as Dictionary).get(target, -1))
-		if cid >= 0:
-			server.send(cid, msg_type, fields)
+		return
+	# 约定：引擎把 target 填 GUEST = 「只发给观战者」（观战视角那一份，座位表里没有他们）
+	if target == GConst.GUEST:
+		for cid2: Variant in (room["watchers"] as Array):
+			server.send(int(cid2), msg_type, fields)
+		return
+	var cid: int = int((room["conn_of"] as Dictionary).get(target, -1))
+	if cid >= 0:
+		server.send(cid, msg_type, fields)
+	# 引擎发给玩家的对局快照，观战者也得跟着收（按降频推）：
+	# 只走「发给座位玩家」这条路的话，观战画面就一直不动 —— 测试指令、等待倒计时都看不到
+	if msg_type == GConst.Msg.Game:
+		_请求观战快照(room)
 
 
 func _broadcast_raw(room: Dictionary, msg_type: int, fields: Dictionary) -> void:
-	for pid: int in (room["conn_of"] as Dictionary).keys():
-		var cid: int = int((room["conn_of"] as Dictionary)[pid])
+	for cid: int in _房间接收者(room):
 		server.send(cid, msg_type, fields)
+
+
+## 房间广播的收件人：座位上的玩家 + 观战者
+func _房间接收者(room: Dictionary) -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in (room["conn_of"] as Dictionary).keys():
+		out.append(int((room["conn_of"] as Dictionary)[pid]))
+	for cid: Variant in (room["watchers"] as Array):
+		out.append(int(cid))
+	return out
+
+
+## 把观战者名单（昵称）同步给引擎，跟着 Game 快照下发给房内所有人
+func _同步观战者名单(room: Dictionary) -> void:
+	var 名单: Array[String] = []
+	for cid: Variant in (room["watchers"] as Array):
+		var s: Dictionary = _sessions.get(int(cid), {})
+		名单.append(str(s.get("nickname", "观战者")))
+	(room["battle"] as BattleEngine).room_watchers = 名单
+
+
+## 观战流的降频间隔（毫秒）：观战只要能看清场面，4Hz 就够，省主机出口带宽
+const 观战推送间隔_ms: int = 250
+## 心跳间隔 / 等回声的超时（毫秒）：间隔越小连接质量越灵敏，超时到点按最差一档显示
+const 心跳间隔_ms: int = 2000
+const 心跳超时_ms: int = 5000
+
+
+## 请求推一次观战快照（降频：没到点就先记一笔欠着，由 poll() 到点补发，
+## 这样最后一次状态变化一定送得出去，不会停在旧画面）
+func _请求观战快照(room: Dictionary) -> void:
+	if (room["watchers"] as Array).is_empty():
+		room["watch_dirty"] = false
+		return
+	var 现在: int = Time.get_ticks_msec()
+	if 现在 >= int(room["watch_next_ms"]):
+		_推送观战快照(room, 现在)
+	else:
+		room["watch_dirty"] = true
+
+
+## 把观战快照发给所有观战者（共用同一份，观战人数再多也只算一次）
+func _推送观战快照(room: Dictionary, 现在: int) -> void:
+	var 观战者们: Array = room["watchers"]
+	if 观战者们.is_empty():
+		return
+	room["watch_next_ms"] = 现在 + 观战推送间隔_ms
+	room["watch_dirty"] = false
+	_同步连接质量(room)
+	var 快照: Dictionary = (room["battle"] as BattleEngine).game_info(GConst.GUEST)
+	for cid: Variant in 观战者们:
+		server.send(int(cid), GConst.Msg.Game, 快照)
 
 
 ## 广播「按人个性化」的对局信息（只有本人能看到自己的手牌）
 func _broadcast_game(room: Dictionary) -> void:
 	var battle: BattleEngine = room["battle"]
+	_同步连接质量(room)
 	for pid: int in (room["conn_of"] as Dictionary).keys():
 		var cid: int = int((room["conn_of"] as Dictionary)[pid])
 		server.send(cid, GConst.Msg.Game, battle.game_info(pid))
+	# 观战者看的是观战视角（player_id = GUEST），所有人共用同一份快照
+	_请求观战快照(room)
 
 
 func _room_of(conn_id: int) -> Dictionary:

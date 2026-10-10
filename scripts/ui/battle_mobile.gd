@@ -527,16 +527,16 @@ func _on_测试提示_gui_input(event: InputEvent) -> void:
 ## 测试指令清单：[键位（Key 值）, 说明]。右下角的说明文字与快捷按钮都由它生成，避免两处重复
 const 测试指令表: Array = [
 	[KEY_0, "跳过当前行动玩家的回合"],
-	[KEY_1, "清空手牌"],
+	[KEY_1, "给自己发 4 张圣光"],
 	[KEY_2, "发技能牌"],
-	[KEY_3, "发 3 张同系斩 + 3 张异系法术"],
+	[KEY_3, "发 3 张同系斩 + 3 张异系法术；再按清空手牌"],
 	[KEY_4, "当前倒计时压到 1 秒"],
 	[KEY_5, "双方士气拉满到 99"],
-	[KEY_6, "全员标识物拉满"],
-	[KEY_7, "随机填充双方战绩区星石"],
-	[KEY_8, "清空治疗"],
-	[KEY_9, "治疗/宝石拉满"],
-	[KEY_QUOTELEFT, "给自己发 4 张圣光"],
+	[KEY_6, "自己标识物拉满；再按清空"],
+	[KEY_7, "随机填充双方战绩区星石；再按清空"],
+	[KEY_8, "自己治疗拉满；再按清零"],
+	[KEY_9, "自己宝石补满；再按清空"],
+	[KEY_QUOTELEFT, "退出战斗界面并断开本场战斗"],
 ]
 
 
@@ -556,33 +556,30 @@ func _测试指令(键: int) -> void:
 		return
 	match 键:
 		KEY_0:
-			# 正被询问「是否发动 / 是否应战 / 弃哪几张」等：按 0 = 取消这次询问（不发动），
-			# 等价于点「取消」；轮到自己在行动阶段（没有询问）时 = 跳过自己这一回合（测试用）
-			if _mode == 0 or _mode == 1:
-				Logic.debug_key(GConst.DebugKey.SkipTurn)
-			else:
-				_on_cancel()
+			# 跳过当前行动玩家的这一回合；他这时正被询问（弃牌 / 应战 / 是否发动…）的话，
+			# 由服务端替他取消掉，免得卡在询问上（不分是谁按的键，也不动我自己界面上的询问）
+			Logic.debug_key(GConst.DebugKey.SkipTurn)
 		KEY_1:
-			Logic.debug_key(GConst.DebugKey.Clear)
+			Logic.debug_key(GConst.DebugKey.GiveHolyLight)
 		KEY_2:
 			Logic.debug_key(GConst.DebugKey.SkillCards)
 		KEY_3:
-			Logic.debug_key(GConst.DebugKey.Cards)
+			Logic.debug_key(GConst.DebugKey.ToggleCards)
 		KEY_4:
 			Logic.debug_key(GConst.DebugKey.ShortenWait)
 		KEY_5:
 			Logic.debug_key(GConst.DebugKey.MoraleFull)
 		KEY_6:
-			Logic.debug_key(GConst.DebugKey.MaxTokens)
+			Logic.debug_key(GConst.DebugKey.ToggleTokens)
 		KEY_7:
 			Logic.debug_key(GConst.DebugKey.RandomEnergy)
 		KEY_8:
-			Logic.debug_key(GConst.DebugKey.CrossClear)
+			Logic.debug_key(GConst.DebugKey.ToggleHeal)
 		KEY_9:
-			Logic.debug_key(GConst.DebugKey.HealEnergy)
+			Logic.debug_key(GConst.DebugKey.ToggleGem)
 		KEY_QUOTELEFT:
-			# `~`（数字 1 左边）：给自己发 4 张【圣光】
-			Logic.debug_key(GConst.DebugKey.GiveHolyLight)
+			# `~`（数字 1 左边）：退出战斗界面并断开本场战斗（回大厅；服务端会把我从这间房移除）
+			_on_back()
 
 
 # ============================================================
@@ -4506,6 +4503,8 @@ func _头像提示配置() -> Dictionary:
 func _显示数值(配置: Dictionary) -> int:
 	var 固定: int = int(配置.get("每目标", 0))
 	if 固定 <= 0:
+		# 「总数 ÷ 选中人数」本来就要整数（每人几颗），显式忽略整数除法警告
+		@warning_ignore("integer_division")
 		固定 = int(配置.get("总数", 0)) / maxi(_sel_players.size(), 1)
 	return _提示数值(配置, 固定)
 
@@ -5270,11 +5269,12 @@ func _确定不可用() -> bool:
 			for c: Variant in _sel_cards:
 				if _is_my_cover(int(c)):
 					盖选中 += 1
-			var 牌够: bool = _sel_cards.size() >= 需牌 if 需牌 > 0 else true
+			# 不叫「牌够」：同一个函数后面另有一个 牌够，重名会触发 CONFUSABLE_LOCAL_DECLARATION
+			var 本项牌够: bool = _sel_cards.size() >= 需牌 if 需牌 > 0 else true
 			if _skill_cover_need > 0 and 盖选中 < _skill_cover_need:
-				牌够 = false
+				本项牌够 = false
 			var 目标够: bool = _sel_players.size() >= 需目标 if 需目标 > 0 else true
-			return not (牌够 and 目标够 and _目标在白名单(项["目标白名单"]) and _目标数合法())
+			return not (本项牌够 and 目标够 and _目标在白名单(项["目标白名单"]) and _目标数合法())
 		# 手牌 + 盖牌混选型（如【魔贯冲击】：1 张攻击牌 + 1 张火系【充能】）：
 		# 分别校验手牌数与盖牌数，不能只数总张数（否则选两张手牌也能按「确定」，提交后才被服务端拒）
 		if _skill_cover_need > 0:

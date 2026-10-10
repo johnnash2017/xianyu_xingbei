@@ -6,7 +6,7 @@
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_strategy"]
 
-[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "设置按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "创建按钮", "取消创建按钮", "调试模式")]
+[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "进入按钮", "刷新按钮", "创建房间按钮", "搜索按钮", "返回登录按钮", "设置按钮", "跨机IP输入", "连接按钮", "房主列表", "创建层", "房名输入", "创建按钮", "取消创建按钮", "调试模式", "观战确认层", "观战是按钮", "观战否按钮")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -33,6 +33,9 @@ script = ExtResource("1_5gu6x")
 "创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/创建按钮")
 "取消创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/取消创建按钮")
 "调试模式" = NodePath("创建层/居中/创建卡片/内容/指令行/调试模式")
+"观战确认层" = NodePath("观战确认层")
+"观战是按钮" = NodePath("观战确认层/居中/卡片/内容/按钮行/观战是按钮")
+"观战否按钮" = NodePath("观战确认层/居中/卡片/内容/按钮行/观战否按钮")
 
 [node name="主列" type="VBoxContainer" parent="." unique_id=992213050]
 layout_mode = 1
@@ -344,3 +347,60 @@ grow_horizontal = 0
 grow_vertical = 0
 theme_override_font_sizes/font_size = 26
 text = "设置"
+
+[node name="观战确认层" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="遮罩" type="ColorRect" parent="观战确认层"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="居中" type="CenterContainer" parent="观战确认层"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="卡片" type="PanelContainer" parent="观战确认层/居中"]
+custom_minimum_size = Vector2(620, 0)
+layout_mode = 2
+
+[node name="内容" type="VBoxContainer" parent="观战确认层/居中/卡片"]
+layout_mode = 2
+theme_override_constants/separation = 19
+
+[node name="文案" type="Label" parent="观战确认层/居中/卡片/内容"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "房间已满，是否进入观战？"
+horizontal_alignment = 1
+
+[node name="按钮行" type="HBoxContainer" parent="观战确认层/居中/卡片/内容"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="观战是按钮" type="Button" parent="观战确认层/居中/卡片/内容/按钮行"]
+custom_minimum_size = Vector2(208, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "是"
+
+[node name="观战否按钮" type="Button" parent="观战确认层/居中/卡片/内容/按钮行"]
+custom_minimum_size = Vector2(208, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "否"

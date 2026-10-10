@@ -31,17 +31,23 @@ var 调试模式: bool = false
 ## 本批多开的窗口数（启动参数 --count=N；0＝没指定）：自动开局建房时按它挑房间人数。
 ## 不带这个参数就只能沿用上次记下的人数，六开会被建成上次那个 4 人局（2v2）
 var 多开人数: int = 0
-## 本进程的稳定身份标识：断线重连时用它让服务端认出「还是同一个人」，从而回到原座位。
-## 仅在本进程生命周期内稳定——重启客户端即视为新玩家，不会抢占旧座位。
-var client_id: String = ""
 ## 本进程启动时刻（秒）：用来认出「同一批」多开出来的窗口
 var 启动时刻: float = 0.0
+
+
 ## 是否处于多开状态：只有多开才做同批联动（关窗一起关、最小化一起切），单开不去影响别的窗口
 var 多开: bool = false
 
 
+## 客户端身份标识：连上房主时随登录包发过去，服务端靠它认「还是同一个人」，
+## 断线 / 退出后能认领回原座位（见 LocalServer._reclaim_seat）。
+## 局域网测试阶段直接就用昵称：同机多开时 玩家1/玩家2… 天然区分，而且重启进程也还认得出。
+## 以后上 Steam：这里改成返回 SteamID（Steam.getSteamID() 转字符串）即可，其余代码不用动。
+func 身份标识() -> String:
+	return nickname
+
+
 func _ready() -> void:
-	client_id = "%d_%d" % [OS.get_process_id(), randi()]
 	启动时刻 = Time.get_unix_time_from_system()
 	_清理关窗标记()
 	_parse_cmdline()

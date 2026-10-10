@@ -112,6 +112,6 @@ func is_connected_to_host() -> bool:
 # 内部
 # ============================================================
 func _on_connected() -> void:
-	# 连上后补发一次「登录」：去登录后它只用于上报昵称与进程身份，服务端据此登记身份
-	client.send(GConst.Msg.LoginReq, {"as_guest": true, "user_id": Cfg.nickname, "version": 161001, "client_id": Cfg.client_id})
+	# 连上后补发一次「登录」：去登录后它只用于上报昵称与身份标识，服务端据此登记身份
+	client.send(GConst.Msg.LoginReq, {"as_guest": true, "user_id": Cfg.nickname, "version": 161001, "client_id": Cfg.身份标识()})
 	connected.emit()

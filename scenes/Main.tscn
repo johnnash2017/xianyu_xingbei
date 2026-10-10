@@ -11,7 +11,7 @@ shader_parameter/speed = 0.01
 shader_parameter/gain = 1.0000000475
 shader_parameter/fade = 0.18
 
-[node name="Main" type="Control" unique_id=638649211 node_paths=PackedStringArray("界面层", "问题反馈")]
+[node name="Main" type="Control" unique_id=638649211 node_paths=PackedStringArray("界面层", "问题反馈", "玩家列表层", "玩家标题", "玩家网格", "观战标题", "观战网格")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -21,6 +21,11 @@ grow_vertical = 2
 script = ExtResource("1_main")
 "界面层" = NodePath("界面层")
 "问题反馈" = NodePath("问题反馈")
+"玩家列表层" = NodePath("玩家列表层")
+"玩家标题" = NodePath("玩家列表层/居中/卡片/内容/玩家标题")
+"玩家网格" = NodePath("玩家列表层/居中/卡片/内容/玩家网格")
+"观战标题" = NodePath("玩家列表层/居中/卡片/内容/观战标题")
+"观战网格" = NodePath("玩家列表层/居中/卡片/内容/观战网格")
 
 [node name="背景" type="TextureRect" parent="." unique_id=2097367495]
 material = SubResource("ShaderMaterial_0bbpv")
@@ -60,3 +65,73 @@ text = "问题反馈"
 horizontal_alignment = 2
 vertical_alignment = 1
 mouse_filter = 0
+
+[node name="玩家列表层" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="遮罩" type="ColorRect" parent="玩家列表层"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="居中" type="CenterContainer" parent="玩家列表层"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="卡片" type="PanelContainer" parent="玩家列表层/居中"]
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+
+[node name="内容" type="VBoxContainer" parent="玩家列表层/居中/卡片"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="标题" type="Label" parent="玩家列表层/居中/卡片/内容"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "玩家列表"
+horizontal_alignment = 1
+
+[node name="玩家标题" type="Label" parent="玩家列表层/居中/卡片/内容"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "【战斗】0 人"
+horizontal_alignment = 0
+
+[node name="玩家网格" type="GridContainer" parent="玩家列表层/居中/卡片/内容"]
+layout_mode = 2
+theme_override_constants/h_separation = 34
+theme_override_constants/v_separation = 14
+columns = 4
+
+[node name="观战标题" type="Label" parent="玩家列表层/居中/卡片/内容"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "【观战者】无"
+horizontal_alignment = 0
+
+[node name="观战网格" type="GridContainer" parent="玩家列表层/居中/卡片/内容"]
+layout_mode = 2
+theme_override_constants/h_separation = 34
+theme_override_constants/v_separation = 14
+columns = 4
+
+[node name="提示" type="Label" parent="玩家列表层/居中/卡片/内容"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "（松开 TAB 关闭）"
+horizontal_alignment = 1

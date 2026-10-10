@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/ui/settings.gd" id="1_settings"]
 
-[node name="Settings" type="Control" node_paths=PackedStringArray("音乐滑杆", "音效滑杆", "关闭按钮")]
+[node name="Settings" type="Control" node_paths=PackedStringArray("音乐滑杆", "音效滑杆", "退出房间按钮", "关闭按钮")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -12,6 +12,7 @@ grow_vertical = 2
 script = ExtResource("1_settings")
 "音乐滑杆" = NodePath("居中/面板/边距/内容/音乐行/音乐滑杆")
 "音效滑杆" = NodePath("居中/面板/边距/内容/音效行/音效滑杆")
+"退出房间按钮" = NodePath("居中/面板/边距/内容/退出房间按钮")
 "关闭按钮" = NodePath("居中/面板/边距/内容/关闭按钮")
 
 [node name="遮罩" type="ColorRect" parent="."]
@@ -95,6 +96,12 @@ size_flags_vertical = 4
 max_value = 1.0
 step = 0.01
 value = 0.5
+
+[node name="退出房间按钮" type="Button" parent="居中/面板/边距/内容"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "退出房间"
 
 [node name="关闭按钮" type="Button" parent="居中/面板/边距/内容"]
 custom_minimum_size = Vector2(0, 56)

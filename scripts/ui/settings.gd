@@ -6,6 +6,8 @@ extends Control
 @export var 音乐滑杆: HSlider
 @export var 音效滑杆: HSlider
 @export var 关闭按钮: Button
+## 退出房间：玩家和观战者都能用，只在房间里时才显示（登录 / 房间列表里没房间可退）
+@export var 退出房间按钮: Button
 
 
 func _ready() -> void:
@@ -15,6 +17,16 @@ func _ready() -> void:
 	音乐滑杆.value_changed.connect(Audio.设置音乐音量)
 	音效滑杆.value_changed.connect(Audio.设置音效音量)
 	关闭按钮.pressed.connect(UI.关闭设置)
+	退出房间按钮.pressed.connect(_on_exit_room_pressed)
+	退出房间按钮.visible = Logic.in_room
+
+
+## 退出房间：收起设置浮层 → 通知服务端离房 → 回房间列表。
+## 与准备室的「返回大厅」是同一套动作；观战者同样适用（服务端会把它从观战名单里摘掉）
+func _on_exit_room_pressed() -> void:
+	UI.关闭设置()
+	Logic.leave_room()
+	UI.goto_lobby()
 
 
 ## 收起时把音量写进本地配置（拖动过程只实时生效，不频繁落盘）
