@@ -286,6 +286,6 @@ func _只留选中卡() -> void:
 
 func _on_game_info(info: Dictionary) -> void:
 	if bool(info.get("is_started", false)):
-		if Logic.role_pick_layer == self:
-			Logic.role_pick_layer = null
+		if UI.选角层 == self:
+			UI.选角层 = null
 		queue_free()

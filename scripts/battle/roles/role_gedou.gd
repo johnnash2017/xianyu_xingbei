@@ -346,8 +346,7 @@ var _nian_dan_step: int = 0
 # 法术行动结束后：念弹
 # ============================================================
 func p_after_magic(ctx: Dictionary) -> int:
-	# 法术牌行动传 src，法术技能传 player
-	if int(ctx.get("player", ctx.get("src", -1))) != player.id:
+	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	# 本次行动已处理：URGENT 回来后引擎会用同一 ctx 再进本钩子，直接挡掉，别重复询问/重复伤害
 	if bool(ctx.get("nian_dan_done", false)):

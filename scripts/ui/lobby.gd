@@ -83,29 +83,7 @@ func _ready() -> void:
 	_恢复建房选项()
 	Logic.request_room_list()
 	设状态(通用提示)
-	_刷新Steam状态()
-
-
-## 底部 Steam 连接状态：一直摆着、每帧对一次（文本没变就不动标签）。
-## 联机全靠它，所以不管连没连上都写清楚，别让玩家对着空列表猜。
-func _刷新Steam状态() -> void:
-	var 用Steam: bool = not Cfg.本地模式
-	if Steam状态.visible != 用Steam:
-		Steam状态.visible = 用Steam
-	if not 用Steam:
-		return
-	var 文本: String
-	var 颜色: Color
-	if SteamNet.就绪:
-		文本 = "Steam：已连接（%s）" % SteamNet.steam_id
-		颜色 = Color(0.5, 0.9, 0.55, 1.0)
-	else:
-		文本 = "Steam：未登录 —— 请启动并登录 Steam 客户端（登录后会自动重连）"
-		颜色 = Color(1.0, 0.45, 0.4, 1.0)
-	if Steam状态.text == 文本:
-		return
-	Steam状态.text = 文本
-	Steam状态.add_theme_color_override("font_color", 颜色)
+	UI.刷新Steam状态(Steam状态)
 
 
 func _exit_tree() -> void:
@@ -127,7 +105,7 @@ func 设状态(t: String) -> void:
 # 房间列表
 # ============================================================
 func _process(delta: float) -> void:
-	_刷新Steam状态()
+	UI.刷新Steam状态(Steam状态)
 	_刷新计时 -= delta
 	if _刷新计时 <= 0.0:
 		_刷新计时 = 刷新间隔_steam if not Cfg.本地模式 else 刷新间隔

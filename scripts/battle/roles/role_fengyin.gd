@@ -162,8 +162,7 @@ func _trigger_seal(target: BattlePlayer, seal_card: int, element: int) -> void:
 # 法术行动结束（法术激荡）：额外 +1 攻击行动
 # ============================================================
 func p_after_magic(ctx: Dictionary) -> int:
-	# 法术牌行动传 src，法术技能传 player
-	if int(ctx.get("player", ctx.get("src", -1))) != player.id:
+	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS

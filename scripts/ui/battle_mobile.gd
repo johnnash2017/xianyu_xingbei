@@ -455,8 +455,8 @@ func _ready() -> void:
 	Hint.offset_bottom -= 选中上浮像素
 	# ---- 交互层（第三步）：接收询问 + 确定/取消/盖牌/特殊行动/放弃行动 ----
 	Logic.command_received.connect(_on_command)
-	# 让「操作无效」（ErrorInput）能回调到本界面
-	Logic.battle = self
+	# 让「操作无效」（ErrorInput）能回调到本界面（订阅信号，不用反向持有界面引用）
+	Logic.invalid_input_received.connect(on_invalid_input)
 	BtnOK.pressed.connect(_on_ok)
 	BtnCancel.pressed.connect(_on_cancel)
 	BtnCovered.pressed.connect(_on_cover_view)
@@ -489,11 +489,6 @@ func _ready() -> void:
 		_on_game_info(Logic.last_info)
 	else:
 		_刷新交互()
-
-
-func _exit_tree() -> void:
-	if Logic.battle == self:
-		Logic.battle = null
 
 
 ## 测试提示（测试用）：常态半透明、鼠标指上去变不透明、按住左键可以拖到别处，免得挡住画面
@@ -4218,12 +4213,16 @@ func _选中是圣光() -> bool:
 	return card != null and card.card_name_enum() == GConst.CardName.HolyLight
 
 
-## 选中的手牌是否是【圣盾】（行动阶段靠点人头像定目标：点谁贴给谁，点自己头像＝贴给自己）
-func _选中是圣盾牌() -> bool:
+## 选中的手牌是否是「靠点人头像定目标」的法术牌（【圣盾】/【虚弱】/【中毒】）。
+## 这三张不点目标就提交时，服务端默认对自己施放，所以要按下面 _确定不可用 的规则把「确定」灰掉
+func _选中是点头像定目标的牌() -> bool:
 	if _sel_cards.is_empty():
 		return false
 	var card: GCard = Data.get_card(_sel_cards[0])
-	return card != null and card.card_name_enum() == GConst.CardName.Shield
+	if card == null:
+		return false
+	var 名: int = card.card_name_enum()
+	return 名 == GConst.CardName.Shield or 名 == GConst.CardName.Weaken or 名 == GConst.CardName.Poison
 
 
 ## 选中的手牌是不是攻击牌（点目标即出手）
@@ -5006,7 +5005,7 @@ func _灵魂镜像摸牌数(目标: GPlayer) -> int:
 	var 现有: int = 目标.hand_cards_num
 	if 目标.id == Logic.my_player_id:
 		现有 -= mini(_sel_cards.size(), GConst.灵魂镜像张数)
-	return clampi(目标.hand_cards_max - 现有, 0, GConst.灵魂镜像张数)
+	return GConst.灵魂镜像摸牌数(现有, 目标.hand_cards_max)
 
 
 ## 灵魂术士【灵魂震爆】的指示器（现算）：在选中的目标头像上写他「会挨几点法术伤害」——
@@ -5019,16 +5018,8 @@ func _灵魂震爆头像提示() -> Dictionary:
 		var 目标: GPlayer = Data.get_player_by_id(目标id)
 		if 目标 == null:
 			continue
-		out[目标id] = "%d 法术伤害" % _灵魂震爆伤害(目标)
+		out[目标id] = "%d 法术伤害" % GConst.灵魂震爆伤害(目标.hand_cards_num, 目标.hand_cards_max)
 	return out
-
-
-## 【灵魂震爆】对这名目标造成的法术伤害：手牌 <3 且手牌上限 >5 时 5 点，否则 3 点
-## （与服务端 LingHun::_zhen_bao 的判定保持一致）
-func _灵魂震爆伤害(目标: GPlayer) -> int:
-	if 目标.hand_cards_num < 3 and 目标.hand_cards_max > 5:
-		return 5
-	return 3
 
 
 ## 灵魂术士【灵魂赐予】的指示器：在选中的目标头像上写「N 宝石」，告诉玩家会给他多少宝石
@@ -5225,9 +5216,10 @@ func _确定不可用() -> bool:
 		# 不可行动：手牌要全弃掉换 4 张，只等玩家点「确定」
 		if _不可行动:
 			return false
-		# 【圣盾】：目标只能点人头像来定（点谁就把盾贴在谁面前，自己也不例外，点自己头像即可）。
-		# 不给目标提交时服务端默认就是对自己施放，按「确定」很容易误把自己贴成目标 —— 所以直接灰掉
-		if _选中是圣盾牌():
+		# 【圣盾】【虚弱】【中毒】：目标只能点人头像来定（点谁就施加给谁，点自己头像＝施加给自己）。
+		# 不给目标提交时服务端默认就是对自己施放，按「确定」会误把自己当成目标 —— 所以直接灰掉，
+		# 不再允许「按确定给自己施加效果」
+		if _选中是点头像定目标的牌():
 			return true
 		return _sel_cards.is_empty() and _sel_players.is_empty()
 	if _mode == 3:

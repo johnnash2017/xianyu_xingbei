@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://c53hmhd2aksy1" path="res://scripts/ui/enter.gd" id="1_kiq4n"]
 
-[node name="Enter" type="Control" unique_id=1575434935 node_paths=PackedStringArray("昵称输入", "进入按钮", "设置按钮")]
+[node name="Enter" type="Control" unique_id=1575434935 node_paths=PackedStringArray("昵称输入", "进入按钮", "设置按钮", "Steam状态")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -13,6 +13,7 @@ script = ExtResource("1_kiq4n")
 "昵称输入" = NodePath("居中/登录卡片/内容/昵称输入")
 "进入按钮" = NodePath("进入按钮")
 "设置按钮" = NodePath("设置按钮")
+"Steam状态" = NodePath("Steam状态")
 
 [node name="进入按钮" type="Button" parent="." unique_id=235291491]
 self_modulate = Color(1, 1, 1, 0)
@@ -93,3 +94,21 @@ grow_horizontal = 0
 grow_vertical = 0
 theme_override_font_sizes/font_size = 28
 text = "设置"
+
+[node name="Steam状态" type="Label" parent="." unique_id=973154221]
+visible = false
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 58.0
+offset_top = -60.0
+offset_right = -58.0
+offset_bottom = -32.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.5, 0.9, 0.55, 1)
+theme_override_font_sizes/font_size = 22
+autowrap_mode = 2

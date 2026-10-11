@@ -415,9 +415,10 @@ func _zhen_bao(action: Dictionary) -> int:
 	var cid: int = int(cards[0])
 	var dst_id: int = int(dsts[0])
 	var dst: BattlePlayer = engine.p(dst_id)
+	# 伤害规则与客户端头像提示共用 GConst.灵魂震爆伤害，避免两处各写一份阈值判断
 	var point: int = 3
-	if dst != null and dst.hand_cards.size() < 3 and dst.hand_cards_max > 5:
-		point = 5
+	if dst != null:
+		point = GConst.灵魂震爆伤害(dst.hand_cards.size(), dst.hand_cards_max)
 	notice_skill(LING_HUN_ZHEN_BAO, [dst_id])
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -449,10 +450,11 @@ func _jing_xiang(action: Dictionary) -> int:
 	notice_skill(LING_HUN_JING_XIANG, [dst_id])
 	var max_hand: int = dst.hand_cards_max
 	var current: int = dst.hand_cards.size()
-	var draw_num: int = GConst.灵魂镜像张数 if (current + GConst.灵魂镜像张数) < max_hand else (max_hand - current)
 	if dst_id == player.id:
-		# 对自己使用时先弃牌再摸牌（服务端 drawNum 按弃牌后的手牌计算）
-		draw_num = GConst.灵魂镜像张数 if (current - card_num + GConst.灵魂镜像张数) < max_hand else (max_hand - (current - card_num))
+		# 对自己使用时先弃牌再摸牌（摸牌数按弃牌后的手牌计算）
+		current -= card_num
+	# 摸牌数规则与客户端头像提示共用 GConst.灵魂镜像摸牌数
+	var draw_num: int = GConst.灵魂镜像摸牌数(current, max_hand)
 	if card_num > 0:
 		# 服务端【灵魂镜像】这一步 isShown=false：面朝下弃牌
 		_show_and_discard(_pick_cards(cards, card_num), false)

@@ -11,6 +11,8 @@ const SCENE_READY_ROOM: String = "res://scenes/ReadyRoom.tscn"
 const SCENE_BATTLE_MOBILE: String = "res://scenes/BattleUIMobile.tscn"
 ## 设置浮层（背景音乐 / 效果音音量）：盖在当前界面之上，各界面都能从设置按钮打开
 const SCENE_SETTINGS: String = "res://scenes/Settings.tscn"
+## 选将弹层（叠在当前界面上，不参与 goto 切换）
+const SCENE_ROLE_PICK: String = "res://scenes/role_pick.tscn"
 ## 反馈问卷地址：右上角「问题反馈」文字点一下，用系统默认浏览器打开
 const 反馈问卷地址: String = "https://wj.qq.com/s2/28148393/mz1k/"
 
@@ -19,12 +21,16 @@ var current: Node = null
 var 界面层: Control = null
 ## 当前打开着的设置浮层（没开时为空）；切界面时会被一起清掉
 var _设置浮层: Control = null
+## 当前选将弹层（没开时为空）：生命周期由本管理器负责，Logic 只发信号
+var 选角层: Node = null
 
 
 func _ready() -> void:
 	# 字体统一用引擎默认字体（缺的中文字形由系统的字体回退补上）
 	# 设计基准 1920x1080：没单独指定字号的地方按 20 号（原 16 号是 1152x680 时的默认）
 	ThemeDB.fallback_font_size = 20
+	# 选将请求由 Logic 发信号，这里负责弹出弹层（Logic 不再直接操作界面）
+	Logic.role_pick_required.connect(显示选角)
 
 
 ## 主场景把界面容器交过来（此后所有界面都挂到它下面）
@@ -86,8 +92,9 @@ func goto(scene_path: String, 播放主界面音乐: bool = true) -> Node:
 	for c: Node in 界面层.get_children():
 		if c != inst and is_instance_valid(c) and not c.is_queued_for_deletion():
 			c.queue_free()
-	# 设置浮层也在界面层里，会被上面一并清掉，这里同步把引用置空
+	# 设置浮层 / 选将层也在界面层里，会被上面一并清掉，这里同步把引用置空
 	_设置浮层 = null
+	选角层 = null
 	if 播放主界面音乐:
 		Audio.播放音乐(Audio.场景主界面)
 	return inst
@@ -105,6 +112,34 @@ func goto_ready_room() -> Node:
 ## 对局进行中的战斗界面（参考工程那套 BattleUIMobile）：音乐由它自己切，见 goto 的说明
 func goto_battle_mobile() -> Node:
 	return goto(SCENE_BATTLE_MOBILE, false)
+
+
+## 对局快照到达时把界面切到「准备室 / 战斗」：按是否开局决定，已在目标界面则不动。
+## 由 Logic 调用（Logic 不再自己按界面名判断、也不再直接实例化界面）。
+func 确保对局界面(started: bool) -> void:
+	var 目标: String = "BattleUIMobile" if started else "ReadyRoom"
+	if current == null or current.name != 目标:
+		if started:
+			goto_battle_mobile()
+		else:
+			goto_ready_room()
+
+
+## 显示选将弹层：满屏弹层挂在「界面层」（屏幕坐标空间）。不能挂进当前界面：
+## 房间界面是按 1280x720 设计、整体放大 1.5 倍的（见 ReadyRoom.tscn 根节点 scale），
+## 挂进去会跟着放大 1.5 倍，整块版面溢出屏幕。
+## 已有实例时只更新内容，不重复叠层；生命周期由本管理器负责（Logic 只发信号）。
+func 显示选角(data: Dictionary) -> void:
+	if 选角层 != null and is_instance_valid(选角层):
+		选角层.apply_request(data)
+		return
+	var ps: PackedScene = load(SCENE_ROLE_PICK)
+	if ps == null:
+		push_error("UI: 无法加载选将界面 %s" % SCENE_ROLE_PICK)
+		return
+	选角层 = ps.instantiate()
+	界面层.add_child(选角层)
+	选角层.apply_request(data)
 
 
 func goto_enter() -> Node:
@@ -129,3 +164,32 @@ func 关闭设置() -> void:
 	if _设置浮层 != null and is_instance_valid(_设置浮层):
 		_设置浮层.queue_free()
 	_设置浮层 = null
+
+
+# ============================================================
+# Steam 连接状态行（登录界面 / 房间列表底部那行标签共用）
+# ============================================================
+## 已连接 = 绿字带 SteamID；未登录 = 红字（登录后 SteamNet 会自动重连）；本地调试模式 = 整行隐藏。
+## 联机全靠它，所以不管连没连上都写清楚，别让玩家对着空列表猜。
+## 每帧调都行：文本没变就不动标签，不白刷样式。
+func 刷新Steam状态(标签: Label) -> void:
+	var 用Steam: bool = not Cfg.本地模式
+	if 标签.visible != 用Steam:
+		标签.visible = 用Steam
+	if not 用Steam:
+		return
+	var 文本: String
+	var 颜色: Color
+	if SteamNet.就绪:
+		var 名: String = SteamNet.玩家名
+		if 名 == "":
+			名 = SteamNet.steam_id   # Steam 偶尔还没给出昵称，退回 ID，别显示成一个空括号
+		文本 = "Steam：已连接（%s）" % 名
+		颜色 = Color(0.5, 0.9, 0.55, 1.0)
+	else:
+		文本 = "Steam：未登录 —— 请启动并登录 Steam 客户端（登录后会自动重连）"
+		颜色 = Color(1.0, 0.45, 0.4, 1.0)
+	if 标签.text == 文本:
+		return
+	标签.text = 文本
+	标签.add_theme_color_override("font_color", 颜色)

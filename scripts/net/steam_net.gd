@@ -17,6 +17,8 @@ var 就绪: bool = false
 var 失败原因: String = ""
 ## 本机 SteamID（十进制字符串：64 位整数，用字符串过协议不会丢精度）
 var steam_id: String = ""
+## 本机 Steam 昵称（界面上显示用：给玩家看的名字，ID 只用来寻址）
+var 玩家名: String = ""
 ## 掉线检查/重连的间隔（秒）
 const 连接检查间隔: float = 1.0
 var _检查计时: float = 0.0
@@ -78,7 +80,8 @@ func _初始化() -> void:
 	就绪 = true
 	失败原因 = ""
 	steam_id = str(Steam.get_current_steam_id())
-	print("[SteamNet] Steam 已连接，SteamID = %s" % steam_id)
+	玩家名 = str(Steam.getPersonaName())
+	print("[SteamNet] Steam 已连接，%s（SteamID = %s）" % [玩家名, steam_id])
 	_重开大厅()
 
 
@@ -86,6 +89,7 @@ func _初始化() -> void:
 func _标记掉线(原因: String) -> void:
 	就绪 = false
 	steam_id = ""
+	玩家名 = ""
 	大厅id = 0
 	房主steam_id = ""
 	房主房间号 = -1

@@ -45,13 +45,16 @@ Remove-Item -Recurse -Force $日志 -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $日志 | Out-Null
 
 $进程 = @()
+$种子 = Get-Random -Maximum 2147483000
 for ($k = 0; $k -lt $窗口数; $k++) {
     $出 = Join-Path $日志 "窗口$k.out.log"
     $错 = Join-Path $日志 "窗口$k.err.log"
-    # 声音：多开时只有当前聚焦的窗口出声，其余窗口由 audio.gd 按焦点自动静音
+    # headless：测试只看逻辑，不需要渲染窗口。多开时几个窗口一起渲染会把 GPU 压垮
+    # （实测 4 窗口 FPS 只有 1~4，单窗口 60），headless 下进程不画窗口，又快又稳。
+    # --seed：本批共用同一个随机种子，让各窗口选到不同角色、且每批覆盖不同组合。
     $进程 += Start-Process -FilePath $EnginePath `
-        -ArgumentList @("--path", $ProjectPath, "res://tests/lanPlay.tscn", "--", "--slot=$k", "--port=$端口") `
-        -RedirectStandardOutput $出 -RedirectStandardError $错 -PassThru -WindowStyle Normal
+        -ArgumentList @("--headless", "--path", $ProjectPath, "res://tests/lanPlay.tscn", "--", "--slot=$k", "--port=$端口", "--count=$窗口数", "--seed=$种子") `
+        -RedirectStandardOutput $出 -RedirectStandardError $错 -PassThru -WindowStyle Hidden
 }
 "已拉起 $窗口数 个窗口（端口 $端口），等 $秒 秒…"
 Start-Sleep -Seconds $秒
@@ -62,11 +65,21 @@ foreach ($p in $进程) {
 # ---------- 汇总 ----------
 $失败 = 0
 for ($k = 0; $k -lt $窗口数; $k++) {
-    $文本 = Get-Content (Join-Path $日志 "窗口$k.out.log") -Encoding UTF8 -ErrorAction SilentlyContinue
-    $行 = $文本 | Select-String -Pattern "\[联机$k\] 结论=" | Select-Object -First 1
-    if ($行) {
-        $行.Line
-        if ($行.Line -notmatch "结论=通过") { $失败++ }
+    # 结论优先读窗口主动落盘的“结论_k.txt”：stdout 在 Windows 重定向时是块缓冲，
+    # 窗口被强杀会丢内容，落盘文件不受影响；没有该文件时再回退看 out.log
+    $结论文件 = Join-Path $日志 "结论_$k.txt"
+    $行文本 = $null
+    if (Test-Path -LiteralPath $结论文件) {
+        $行文本 = Get-Content -LiteralPath $结论文件 -Encoding UTF8 -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
+    if (-not $行文本) {
+        $文本 = Get-Content (Join-Path $日志 "窗口$k.out.log") -Encoding UTF8 -ErrorAction SilentlyContinue
+        $命中 = $文本 | Select-String -Pattern "\[联机$k\] 结论=" | Select-Object -First 1
+        if ($命中) { $行文本 = $命中.Line }
+    }
+    if ($行文本) {
+        $行文本
+        if ($行文本 -notmatch "结论=通过") { $失败++ }
     } else {
         "[联机$k] 结论=失败：没有输出结论行（窗口可能没起来或提前退出）"
         $失败++

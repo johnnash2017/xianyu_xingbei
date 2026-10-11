@@ -50,6 +50,8 @@ const 原名置灰程度: float = 1
 const 缓存目录: String = "user://gd_alias_cache"
 ## 别名数据文件（存于插件根目录，路径 -> 别名）
 const 数据文件: String = "res://addons/gd_alias/alias_data.json"
+## 场景标签栏查找失败后的重试间隔（帧）：每帧硬找一次全树太费，改成约每秒一次
+const 场景标签重试间隔帧: int = 60
 
 # ========== 成员变量 ==========
 ## 路径 -> 别名 的映射表
@@ -65,6 +67,10 @@ var _item_list: ItemList
 ## 编辑器顶部场景标签栏（TabBar）缓存，以及 场景路径 -> 编辑器原本标题 的备份
 var _scene_tabs: TabBar = null
 var _scene_tab_titles: Dictionary[String, String] = {}
+## 上次尝试查找场景标签栏时的「打开场景」签名（见 _保证场景标签栏，用于限流）
+var _场景标签查找签名: String = ""
+## 下一次允许重试查找场景标签栏的帧号（限流用）
+var _场景标签重试帧: int = 0
 var _menu: PopupMenu
 ## 别名用字体（编辑器默认字体的加粗变体，支持中文），懒加载
 var _alias_font: Font
@@ -98,6 +104,10 @@ var _editor_tree_changed_callback: Callable
 var _script_icon_backup: Dictionary[String, Texture2D] = {}
 ## 路径 -> 别名显示前的条目图标着色（@tool 脚本为强调色），恢复时一并还原
 var _script_tint_backup: Dictionary[String, Color] = {}
+## 磁盘缓存里也没有的别名显示文本 -> true：排队等统一渲染，避免启动时一次性渲染全部
+var _待渲染: Dictionary[String, bool] = {}
+## 待渲染队列是否已排了延迟处理（同一批只排一次）
+var _渲染排队中: bool = false
 
 func _enter_tree() -> void:
 	_file_system = EditorInterface.get_resource_filesystem()
@@ -138,8 +148,12 @@ func _enter_tree() -> void:
 	# 顶部场景标签栏（带 "+" 那条）的标题同样会被编辑器重设，纳入每帧校正
 	get_tree().process_frame.connect(_update_scene_tabs_display)
 	RenderingServer.frame_pre_draw.connect(_update_scene_tabs_display)
-	# 编辑器启动后延迟执行完整刷新（等待文件系统扫描完成）
-	_do_full_refresh.call_deferred()
+	# 启动只把别名数据读进来（几 KB 的 JSON），**不做全量刷新**：
+	# 全量刷新会一次性把全部别名图片解码/渲染出来、再遍历整棵文件树，
+	# 正是编辑器启动变慢的主因。显示交给每帧的幂等校正按需补齐
+	# （别名图片改为懒加载，见 _取别名图片）；要彻底重来一次用
+	# 「项目 → 工具 → 刷新 GD 文件别名显示」。
+	_load_alias_data.call_deferred()
 
 func _exit_tree() -> void:
 	if _ctx_menu != null:
@@ -238,9 +252,10 @@ func _do_full_refresh() -> void:
 	# 数据文件未变化时跳过重读与缓存清理，只刷新显示（保存脚本等高频触发场景）
 	if _load_alias_data():
 		_cleanup_caches()
-	# 首次出现的别名需要异步渲染文本图片，渲染完成后会自动补刷新
-	_render_missing_alias_textures()
+	# 别名图片一律懒加载（见 _取别名图片）：这里不再批量渲染补齐，
+	# 交给每帧的显示校正按「实际显示到的」去补齐，避免一次性解码/渲染全部别名拖住主循环
 	_refresh_display()
+
 
 ## 清理各缓存中已失效的项（仅当别名数据发生变化时调用）：
 ## - 合并图标缓存：路径已不在数据表，或显示文本已变化；
@@ -636,14 +651,16 @@ func _get_combined_icon(path: String, alias: String, tint: Color = Color.WHITE) 
 	var key: String = path + "\n" + display + "\n" + tint.to_html(false)
 	if _combined_cache.has(key):
 		return _combined_cache[key]
-	if not _icon_cache.has(display):
-		# 别名图片尚未渲染完成，暂时保持类型图标，完成后会补刷新
+	var alias_tex: Texture2D = _取别名图片(display)
+	if alias_tex == null:
+		# 图片还没有（磁盘缓存里没有）：排队渲染，本轮先保持类型图标，渲染完成后自动补刷新
+		_排队渲染(display)
 		return null
 	var base_icon: Texture2D = _get_type_icon(path)
 	if base_icon == null:
 		return null
 	var base_img: Image = base_icon.get_image()
-	var alias_img: Image = _icon_cache[display].get_image()
+	var alias_img: Image = alias_tex.get_image()
 	if base_img == null or alias_img == null or base_img.is_empty() or alias_img.is_empty():
 		return null
 	# 只裁剪别名文本图片的上下（前面的类型图标保持完整），文字会上下被切掉一点
@@ -844,11 +861,27 @@ func _update_scene_tabs_display() -> void:
 	if 打开场景.is_empty():
 		return
 	if _scene_tabs == null or not is_instance_valid(_scene_tabs) or _scene_tabs.tab_count != 打开场景.size():
-		_scene_tabs = _find_scene_tabs(打开场景)
-		if _scene_tabs == null:
+		if not _保证场景标签栏(打开场景):
 			return
 	for i: int in range(打开场景.size()):
 		_update_scene_tab(i, 打开场景[i])
+
+## 保证 _scene_tabs 可用；找到返回 true。
+## 编辑器根控件树有几千个节点，find_children 全树查找一次不便宜，而本校正每帧要跑两遍
+## （process_frame + frame_pre_draw），所以「同一批打开场景找不到」时不能每帧硬找：
+## 限流到最多每秒重试一次。下面两种情况立刻重试、不受限流：
+##   - 打开场景变了（签名不同）：标签栏可能才刚被建出来；
+##   - 缓存的控件被编辑器重排销毁了（引用失效）：得马上重新认一个。
+func _保证场景标签栏(打开场景: PackedStringArray) -> bool:
+	var 控件被销毁: bool = _scene_tabs != null and not is_instance_valid(_scene_tabs)
+	var 签名: String = ",".join(打开场景)
+	if not 控件被销毁 and 签名 == _场景标签查找签名 \
+			and Engine.get_process_frames() < _场景标签重试帧:
+		return false
+	_场景标签查找签名 = 签名
+	_场景标签重试帧 = Engine.get_process_frames() + 场景标签重试间隔帧
+	_scene_tabs = _find_scene_tabs(打开场景)
+	return _scene_tabs != null
 
 ## 校正单个场景标签：有别名则显示"别名 原名"，无别名则还原原名
 func _update_scene_tab(index: int, path: String) -> void:
@@ -901,31 +934,46 @@ func _find_scene_tabs(打开场景: PackedStringArray) -> TabBar:
 func _get_display_text(alias: String) -> String:
 	return 显示前缀 + alias + 显示后缀
 
-## 为尚未渲染过纹理的别名启动渲染；已有磁盘缓存的直接加载，避免重复渲染。
-## 多个待渲染别名同时创建 SubViewport，统一等待两帧后一次性读取，
-## 避免逐个串行等待导致首次迁移大量别名时耗时过长。
-func _render_missing_alias_textures() -> void:
-	var 待渲染: Array[String] = []
-	for path: String in _alias_map:
-		var alias: String = _alias_map[path]
-		var display: String = _get_display_text(alias)
-		if _icon_cache.has(display):
-			continue
-		var cached: Texture2D = _load_cached_texture(display)
-		if cached != null:
-			_icon_cache[display] = cached
-		elif not 待渲染.has(display):
-			待渲染.append(display)
-	if 待渲染.is_empty():
+## 取别名的文字图片：内存缓存 → 磁盘缓存。磁盘缓存命中就直接用，一张都不渲染。
+## 懒加载是「启动不卡」的关键：别名可能上百个，但只有真正显示到的才需要读进来。
+func _取别名图片(display: String) -> Texture2D:
+	if _icon_cache.has(display):
+		return _icon_cache[display]
+	var cached: Texture2D = _load_cached_texture(display)
+	if cached != null:
+		_icon_cache[display] = cached
+	return cached
+
+## 别名文字图片连磁盘缓存里都没有时排队等渲染。同一批只排一次延迟处理，
+## 且延迟到本帧的显示校正跑完之后，避免边遍历边渲染。
+func _排队渲染(display: String) -> void:
+	_待渲染[display] = true
+	if _渲染排队中:
 		return
+	_渲染排队中 = true
+	_冲洗待渲染.call_deferred()
+
+## 把排队等渲染的别名一次性渲染出来（渲染完成后自动补刷新显示）
+func _冲洗待渲染() -> void:
+	_渲染排队中 = false
+	if _待渲染.is_empty():
+		return
+	var 名单: Array[String] = []
+	名单.assign(_待渲染.keys())
+	_待渲染.clear()
+	_render_alias_textures(名单)
+
+## 渲染一批别名文本图片：多个别名各建一个 SubViewport，统一等待两帧后一次性读取，
+## 避免逐个串行等待。渲染结果写进内存缓存与磁盘缓存（脚本重载/编辑器重启后直接用缓存）。
+func _render_alias_textures(名单: Array[String]) -> void:
 	var viewports: Array[SubViewport] = []
-	for display: String in 待渲染:
+	for display: String in 名单:
 		viewports.append(_create_alias_viewport(display))
 	# 等待至少两帧，确保所有 SubViewport 完成一次渲染
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
-	for i: int in range(待渲染.size()):
-		var display: String = 待渲染[i]
+	for i: int in range(名单.size()):
+		var display: String = 名单[i]
 		var viewport: SubViewport = viewports[i]
 		if viewport == null or not is_instance_valid(viewport):
 			continue
@@ -1087,5 +1135,3 @@ func _disconnect_script_list() -> void:
 		if _script_list.item_clicked.is_connected(_on_script_list_item_clicked):
 			_script_list.item_clicked.disconnect(_on_script_list_item_clicked)
 	_script_list = null
-
-

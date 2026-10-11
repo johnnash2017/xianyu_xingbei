@@ -233,7 +233,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 
 
 func p_after_magic(ctx: Dictionary) -> int:
-	return _jie_jiao_jie_zao(int(ctx.get("player", ctx.get("src", -1))))
+	return _jie_jiao_jie_zao(int(ctx.get("player", -1)))
 
 
 ## 授予额外行动（服务端 JieJiaoJieZao 仅 addAction，代价改在玩家选择时结算）

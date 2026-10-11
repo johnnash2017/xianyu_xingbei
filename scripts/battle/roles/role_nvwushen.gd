@@ -264,8 +264,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 
 
 func p_after_magic(ctx: Dictionary) -> int:
-	# 法术牌走 _do_magic（ctx 用 src），法术技能走 SkillRun（ctx 用 player）
-	return _shen_sheng_zhui_ji(int(ctx.get("player", ctx.get("src", -1))))
+	return _shen_sheng_zhui_ji(int(ctx.get("player", -1)))
 
 
 ## 神圣追击：攻击/法术结束后治疗≥1 时授予一次额外攻击行动

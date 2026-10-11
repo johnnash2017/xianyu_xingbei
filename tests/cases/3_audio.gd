@@ -5,7 +5,7 @@ const 音频目录: String = "res://media/audio/"
 ## 代码里会播的音频；改接入点时同步维护这里
 const 会播: Array[String] = [
 	"atk-darkness", "atk-earth", "atk-fire", "atk-thunder", "atk-water", "atk-wind",
-	"spell-魔弹", "spell-圣盾", "spell-圣光", "spell-虚弱", "spell-中毒",
+	"spell-magicBullet", "spell-holyShield", "spell-holyLight", "spell-weakness", "spell-poison",
 	"sys-hit", "sys-hurt", "sys-heal", "sys-morale", "sys-energy", "sys-turn",
 	"lobby", "battle1", "battle2", "battle3", "battle4", "battle5", "battle6", "win", "lose",
 ]

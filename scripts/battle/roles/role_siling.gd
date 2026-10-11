@@ -63,8 +63,7 @@ var _after_magic_step: int = 0
 
 
 func p_after_magic(ctx: Dictionary) -> int:
-	# 法术牌走 _do_magic（ctx 用 src），法术技能走 SkillRun（ctx 用 player，含 action_id）
-	var pid: int = int(ctx.get("player", ctx.get("src", -1)))
+	var pid: int = int(ctx.get("player", -1))
 	if pid != player.id:
 		return SUCCESS
 	if _after_magic_step >= STEP_DONE:

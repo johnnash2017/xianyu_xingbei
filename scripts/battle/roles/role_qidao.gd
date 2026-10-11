@@ -164,8 +164,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 func p_after_magic(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
-	# 法术牌行动传 src，法术技能传 player
-	var actor_id: int = int(ctx.get("player", ctx.get("src", -1)))
+	var actor_id: int = int(ctx.get("player", -1))
 	if step == 0:
 		step = XUN_JIE_CI_FU
 	if step == XUN_JIE_CI_FU:

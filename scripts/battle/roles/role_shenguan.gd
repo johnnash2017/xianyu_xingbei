@@ -196,7 +196,7 @@ func p_special_skill(action: Dictionary) -> int:
 # 响应：神圣启示（特殊行动结束时 +1 治疗）
 # ============================================================
 func p_after_special(ctx: Dictionary) -> int:
-	var src_id: int = int(ctx.get("player", ctx.get("src", -1)))
+	var src_id: int = int(ctx.get("player", -1))
 	if src_id != player.id:
 		return SUCCESS
 	if step >= STEP_DONE:

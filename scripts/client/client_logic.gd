@@ -23,18 +23,15 @@ signal hurt_float_received(dst_id: int, point: int, harm_type: int)
 signal skill_received(msg: Dictionary)
 signal role_pick_required(data: Dictionary)
 signal role_pick_submitted(strategy: int, role_ids: Array)
-
-## 选将弹层场景（叠在当前界面上，不参与 UI.goto 切换）
-const SCENE_ROLE_PICK: String = "res://scenes/role_pick.tscn"
+## 服务端驳回当前操作（ErrorInput）：战斗界面据此恢复待选并提示，不再靠反向持有界面引用来回调
+signal invalid_input_received(data: Dictionary)
 
 var lobby: Node = null
-var battle: Node = null
 var my_player_id: int = -1
 var in_room: bool = false
 var started: bool = false
 var last_info: Dictionary = {}
 var last_role_req: Dictionary = {}
-var role_pick_layer: Node = null
 ## 当前所在房间 id；-1 表示不在任何房间（断线重连时据此自动回到原房间）
 var current_room_id: int = -1
 ## 是否成功连上过房主（用于区分「首次连接」与「断线重连」）
@@ -109,8 +106,7 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 			_on_login_rep()
 		GConst.Msg.ErrorInput:
 			gossip_received.emit("操作无效，请重新选择")
-			if battle != null:
-				battle.on_invalid_input(data)
+			invalid_input_received.emit(data)
 
 
 func _on_game(data: Dictionary) -> void:
@@ -128,13 +124,8 @@ func _on_game(data: Dictionary) -> void:
 	if started:
 		Data.init_team(18 if Data.player_max == 8 else 15)
 	in_room = true
-	# 首条对局信息 → 切界面：未开局进「房间准备室」（ReadyRoom），开局切新版战斗界面
-	var 目标界面名: String = "BattleUIMobile" if started else "ReadyRoom"
-	if UI.current == null or UI.current.name != 目标界面名:
-		if started:
-			UI.goto_battle_mobile()
-		else:
-			UI.goto_ready_room()
+	# 首条对局信息 → 交给 UI 管理器切到「房间准备室 / 战斗界面」
+	UI.确保对局界面(started)
 	game_info_updated.emit(data)
 
 
@@ -185,26 +176,8 @@ func _give_up_reconnect(txt: String) -> void:
 # ============================================================
 func _on_role_req(data: Dictionary) -> void:
 	last_role_req = data
+	# 界面（UI 管理器）订阅本信号自行弹出选将层，Logic 不再直接操作界面
 	role_pick_required.emit(data)
-	_show_role_pick(data)
-
-
-## 弹出选将界面；已有实例时只更新内容，不重复叠层
-func _show_role_pick(data: Dictionary) -> void:
-	if role_pick_layer != null and is_instance_valid(role_pick_layer):
-		role_pick_layer.apply_request(data)
-		return
-	var ps: PackedScene = load(SCENE_ROLE_PICK)
-	if ps == null:
-		push_error("Logic: 无法加载选将界面 %s" % SCENE_ROLE_PICK)
-		return
-	var inst: Node = ps.instantiate()
-	role_pick_layer = inst
-	# 选将是满屏弹层，挂到「界面层」（屏幕坐标空间）。不能挂进当前界面：
-	# 房间界面是按 1280x720 设计、整体放大 1.5 倍的（见 ReadyRoom.tscn 根节点 scale），
-	# 挂进去会跟着放大 1.5 倍，整块版面溢出屏幕。
-	UI.界面层.add_child(inst)
-	inst.apply_request(data)
 
 
 # ============================================================

@@ -242,6 +242,7 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 	for pid: int in order:
 		players[pid].add_hand_cards(deck.draw(GConst.START_HAND))
 	_states.clear()
+	_进度表.clear()
 	_broadcast_game()
 	broadcast(GConst.Msg.TurnBegin, {"id": current_id, "round": round_id})
 	push(SCheckTurnStart.new())
@@ -281,6 +282,32 @@ func _shuffle_arr(a: Array) -> void:
 # ============================================================
 # 状态机驱动
 # ============================================================
+## 分步流程的进度：每个「状态实例」（钩子轮次 SHook、主动技能 SkillRun、以及其它状态）
+## 各持一份自己的进度表（键 = player_id），状态新建即从 0 开始。
+## 取代了旧实现里「每轮清零所有角色 step + URGENT 快照 / 恢复 + _角色技能挂起 特判」那套补丁：
+## 轮次之间、轮次与技能之间不再争用同一个 step；等待 / 挂起后回来继续同一实例，进度自然保留；
+## 状态跑完即销毁对应进度。角色自身的持久进度（BattleRole._持久进度）只兜底「不在任何状态里」的调用。
+var _进度表: Dictionary = {}
+var _当前进度槽: Dictionary = {}
+var _在进度流程: bool = false
+
+func 在进度流程中() -> bool:
+	return _在进度流程
+
+func 取当前进度(pid: int) -> int:
+	return int(_当前进度槽.get(pid, 0))
+
+func 设当前进度(pid: int, 值: int) -> void:
+	_当前进度槽[pid] = 值
+
+
+## 取某状态实例的进度表（没有就新建）
+func _进度槽(st: Variant) -> Dictionary:
+	if not _进度表.has(st):
+		_进度表[st] = {}
+	return _进度表[st]
+
+
 func run() -> void:
 	if _running:
 		return
@@ -293,7 +320,11 @@ func run() -> void:
 			break
 		var idx: int = _states.size() - 1
 		var st: Variant = _states[idx]
+		# 分步流程：本次 handle 期间角色的 step 读写落到「本状态实例」的进度上
+		_当前进度槽 = _进度槽(st)
+		_在进度流程 = true
 		var r: int = st.handle(self)
+		_在进度流程 = false
 		if r != SUSPEND:
 			_check_hand_overflow()
 			_check_cover_overflow()
@@ -312,6 +343,15 @@ func run() -> void:
 		else:
 			break
 	_running = false
+	# 本轮推进期间攒下的快照在这里补发一次（见 _broadcast_game）
+	if _快照待发:
+		_快照待发 = false
+		_发送对局快照()
+	# 清掉已不在状态栈里的进度：handle 内部可能直接改动过状态栈，
+	# 统一在这里回收，避免进度表随旧实例累积（规模 = 当前活跃状态数，开销可忽略）
+	for k: Variant in _进度表.keys():
+		if not _states.has(k):
+			_进度表.erase(k)
 
 
 func push(st: Variant) -> void:
@@ -835,18 +875,6 @@ func _刷新技能可用(pid: int) -> void:
 	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Action, "commands": cmds})
 
 
-## 该玩家此刻是否有「已经开始、但还卡在等回复」的技能状态（SkillRun 的 invoked 仍为 false）。
-## 这类状态的进度存在角色的 step 里；中途插进来的钩子轮次（p_hand_change 等）不能把它清零，
-## 否则技能会从第 0 步重跑 —— 例如【天使祝福】指定两名目标时会反复问同一人交牌。
-func _角色技能挂起(pid: int) -> bool:
-	if current_id != pid:
-		return false
-	for st: Variant in _states:
-		if st is SkillRun and not (st as SkillRun).invoked:
-			return true
-	return false
-
-
 ## 行动询问的命令表：第 0 项是通用行动（允许放弃时再补一项「放弃」），其余是当前手牌下该角色能放的技能
 func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool = false, no_special: bool = false) -> Array:
 	var cmds: Array = [{
@@ -1076,7 +1104,21 @@ func game_info(viewer_id: int) -> Dictionary:
 	}
 
 
+## 对局快照广播：一次状态推进里它会被连着调很多次（每改一点数据就调一次）。原地直发的话
+## 一帧能发几十份全量快照，客户端每收到一份就整体重建战斗界面（实测逻辑耗时飙到 300ms+、帧率掉到个位数）。
+## 所以状态机推进期间（_running）只做「待发」标记，等本轮 run 收尾统一发一次；
+## run 之外的调用（tick / 收尾等）仍立即发，行为不变。
+var _快照待发: bool = false
+
+
 func _broadcast_game() -> void:
+	if _running:
+		_快照待发 = true
+		return
+	_发送对局快照()
+
+
+func _发送对局快照() -> void:
 	for pid: int in order:
 		send(pid, GConst.Msg.Game, game_info(pid))
 		# 快照一刷新就顺带重算「他能放哪些技能」（没变不会重发，见 _刷新技能可用）
@@ -1511,8 +1553,6 @@ class SHook:
 	## 本轮次处理到第几个座位
 	var _iter: int = 0
 	var _started: bool = false
-	## 挂起前各角色的 step 快照（键 = player_id）
-	var _steps: Dictionary = {}
 
 	func _init(h: String, c: Dictionary = {}, a: Array = []) -> void:
 		hook = h
@@ -1523,22 +1563,6 @@ class SHook:
 		if not _started:
 			_started = true
 			_iter = 0
-			# 每次钩子轮次开始统一重置所有角色的 step（但正在等回复的技能状态除外，见 _角色技能挂起）。
-			# 注意：这里**不能**在本轮次结束时把 step 还原回去 —— 那样 step 就成了「粘住的值」：
-			# step 若被某个流程留在 STEP_DONE，会一直被还原成 STEP_DONE，再也不会清回 0，
-			# 于是该角色下一个用 `if step == 0` 起手的技能直接落空（【灵符-雷鸣】第二次施放没伤害就是这么来的）。
-			# 要跨询问推进的钩子流程，请用角色自己的成员变量记进度，别依赖 step 活过一轮钩子。
-			for pid: int in e.order:
-				var r0: BattleRole = e.p(pid).role
-				if r0 != null and not e._角色技能挂起(pid):
-					r0.step = 0
-		elif not _steps.is_empty():
-			# 从挂起中回来：把 step 还原成本轮次挂起前的值
-			for pid: int in _steps:
-				var r1: BattleRole = e.p(pid).role
-				if r1 != null:
-					r1.step = int(_steps[pid])
-			_steps.clear()
 		while _iter < e.order.size():
 			var pid2: int = e.order[_iter]
 			var r: BattleRole = e.p(pid2).role
@@ -1547,12 +1571,6 @@ class SHook:
 				if res == BattleRole.WAIT:
 					return BattleEngine.WAIT
 				if res == BattleRole.URGENT:
-					# 角色已压入新状态：先存档 step，让新状态执行，之后再从同一位玩家继续
-					_steps.clear()
-					for pid3: int in e.order:
-						var r2: BattleRole = e.p(pid3).role
-						if r2 != null:
-							_steps[pid3] = r2.step
 					return BattleEngine.SUSPEND
 			_iter += 1
 		# after[0] 应先执行，故逆序压栈
@@ -2675,7 +2693,7 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		# 先压「行动结束」再压基础效果变更钩子：LIFO 下钩子先跑（对照服务端 basicMagic：
 		# StateAfterMagic 先入栈、随后 setStateUseCard 把 StateBasicEffectChange 压在其上）。
 		# 顺序颠倒会把钩子压在回合结束乃至下家整回合之下，天使羁绊这类钩子实际不会触发
-		push_after_action("p_after_magic", {"src": cur.id, "card_id": cid})
+		push_after_action("p_after_magic", {"player": cur.id, "card_id": cid})
 		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
 		_broadcast_game()
 		return CONTINUE
@@ -2685,7 +2703,7 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		take_from_hand(cur.id, [cid], true)
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
-		push_after_action("p_after_magic", {"src": cur.id, "card_id": cid})
+		push_after_action("p_after_magic", {"player": cur.id, "card_id": cid})
 		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
 		_broadcast_game()
 		return CONTINUE
@@ -2693,7 +2711,7 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		take_from_hand(cur.id, [cid], true)
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
-		push_after_action("p_after_magic", {"src": cur.id, "card_id": cid})
+		push_after_action("p_after_magic", {"player": cur.id, "card_id": cid})
 		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
 		_broadcast_game()
 		return CONTINUE
@@ -2717,7 +2735,7 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 			return _reject_action(cur)
 		take_from_hand(cur.id, [cid], true)
 		to_discard([cid])
-		push_after_action("p_after_magic", {"src": cur.id, "card_id": cid})
+		push_after_action("p_after_magic", {"player": cur.id, "card_id": cid})
 		if target >= 0:
 			broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": target, "card_ids": [cid], "is_real": true})
 			# 交给目标自己决定：打出【魔弹】继续传递 / 出【圣光】抵挡 / 放弃并承受伤害。
@@ -2816,7 +2834,7 @@ func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
 		# 【特殊行动】的摸牌不走 push_draw（技能表：水影等响应写明「除【特殊行动】外」）
 		draw(cur.id, 3)
 		_broadcast_game()
-		push_after_action("p_after_special", {"src": cur.id, "card_id": -1})
+		push_after_action("p_after_special", {"player": cur.id, "card_id": -1})
 		push(SHandOverflow.new())
 		return CONTINUE
 	if aid == GConst.SpecialAction.Synthesize:
@@ -2831,7 +2849,7 @@ func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
 		if team_grail[cur.color] >= GConst.GRAIL_WIN:
 			_game_over(cur.color)
 			return CONTINUE
-		push_after_action("p_after_special", {"src": cur.id, "card_id": -1})
+		push_after_action("p_after_special", {"player": cur.id, "card_id": -1})
 		push(SHandOverflow.new())
 		return CONTINUE
 	if aid == GConst.SpecialAction.Extract:
@@ -2875,7 +2893,7 @@ func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
 				目标.set_gem(目标.gem + 给宝石)
 				目标.set_crystal(目标.crystal + (枚 - 给宝石))
 		_broadcast_game()
-		push_after_action("p_after_special", {"src": cur.id, "card_id": -1})
+		push_after_action("p_after_special", {"player": cur.id, "card_id": -1})
 		if 是天堂:
 			# 发动了【冒险者天堂】：给角色一次广播技能通知的机会
 			push(SHook.new("p_extract_to", {"player": cur.id, "dst_ids": dsts}, []))

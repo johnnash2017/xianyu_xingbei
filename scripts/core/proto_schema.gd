@@ -5,6 +5,42 @@ extends RefCounted
 ## 类型取值：i32/u32/i64/u64/bool/enum（变长整数）、str/bytes/msg（长度定界）
 ## 字段定义：{ "n": 字段名, "t": 类型, "r": 可选，repeated, "s": 可选，msg 的子消息名 }
 
+## 玩家信息字段表：SinglePlayerInfo 子消息与 SinglePlayer 独立消息共用同一份，
+## 避免两处各写一份、改一处漏一处导致字段漂移。
+const PLAYER_INFO_FIELDS: Dictionary = {
+	1: {"n": "id", "t": "u32"},
+	2: {"n": "team", "t": "u32"},
+	3: {"n": "role_id", "t": "u32"},
+	4: {"n": "hand_count", "t": "u32"},
+	5: {"n": "heal_count", "t": "u32"},
+	6: {"n": "ex_cards", "t": "u32", "r": true},
+	7: {"n": "basic_cards", "t": "u32", "r": true},
+	8: {"n": "gem", "t": "u32"},
+	9: {"n": "crystal", "t": "u32"},
+	10: {"n": "yellow_token", "t": "u32"},
+	11: {"n": "blue_token", "t": "u32"},
+	12: {"n": "covered_count", "t": "u32"},
+	13: {"n": "is_knelt", "t": "bool"},
+	14: {"n": "hands", "t": "u32", "r": true},
+	15: {"n": "covereds", "t": "u32", "r": true},
+	16: {"n": "max_hand", "t": "u32"},
+	17: {"n": "nickname", "t": "str"},
+	18: {"n": "ready", "t": "bool"},
+	19: {"n": "delete_field", "t": "str", "r": true},
+	20: {"n": "leader", "t": "u32"},
+	21: {"n": "online", "t": "bool"},
+	22: {"n": "third_token", "t": "u32"},
+	# 治疗上限（角色被动会改，如神官【圣使守护】+4）：客户端要按它画治疗格的上限
+	23: {"n": "max_heal", "t": "u32"},
+	# 能量上限（角色被动会改，如贤者 +1）：客户端判「星石已满 / 还有空位」要用它
+	24: {"n": "max_energy", "t": "u32"},
+	# 与 ex_cards 一一对应：每张专属牌是**谁放的**（-1＝没记）。
+	# 【挑衅】靠它知道「被挑衅的人只能主动攻击哪个玩家」（多勇者时也锁死放牌者本人）
+	25: {"n": "ex_from", "t": "i32", "r": true},
+	# 这一路的往返延迟（毫秒，服务端心跳测出）：游戏内「玩家列表」右侧显示连接质量
+	26: {"n": "ping", "t": "u32"},
+}
+
 ## 子消息字段表（作为 msg 类型的 schema）
 const SUB: Dictionary = {
 	"RoomInfo": {
@@ -30,39 +66,7 @@ const SUB: Dictionary = {
 		# 观战者人数：房间列表单列一栏显示
 		17: {"n": "watchers", "t": "u32"},
 	},
-	"SinglePlayerInfo": {
-		1: {"n": "id", "t": "u32"},
-		2: {"n": "team", "t": "u32"},
-		3: {"n": "role_id", "t": "u32"},
-		4: {"n": "hand_count", "t": "u32"},
-		5: {"n": "heal_count", "t": "u32"},
-		6: {"n": "ex_cards", "t": "u32", "r": true},
-		7: {"n": "basic_cards", "t": "u32", "r": true},
-		8: {"n": "gem", "t": "u32"},
-		9: {"n": "crystal", "t": "u32"},
-		10: {"n": "yellow_token", "t": "u32"},
-		11: {"n": "blue_token", "t": "u32"},
-		12: {"n": "covered_count", "t": "u32"},
-		13: {"n": "is_knelt", "t": "bool"},
-		14: {"n": "hands", "t": "u32", "r": true},
-		15: {"n": "covereds", "t": "u32", "r": true},
-		16: {"n": "max_hand", "t": "u32"},
-		17: {"n": "nickname", "t": "str"},
-		18: {"n": "ready", "t": "bool"},
-		19: {"n": "delete_field", "t": "str", "r": true},
-		20: {"n": "leader", "t": "u32"},
-		21: {"n": "online", "t": "bool"},
-		22: {"n": "third_token", "t": "u32"},
-		# 治疗上限（角色被动会改，如神官【圣使守护】+4）：客户端要按它画治疗格的上限
-		23: {"n": "max_heal", "t": "u32"},
-		# 能量上限（角色被动会改，如贤者 +1）：客户端判「星石已满 / 还有空位」要用它
-		24: {"n": "max_energy", "t": "u32"},
-		# 与 ex_cards 一一对应：每张专属牌是**谁放的**（-1＝没记）。
-		# 【挑衅】靠它知道「被挑衅的人只能主动攻击哪个玩家」（多勇者时也锁死放牌者本人）
-		25: {"n": "ex_from", "t": "i32", "r": true},
-		# 这一路的往返延迟（毫秒，服务端心跳测出）：游戏内「玩家列表」右侧显示连接质量
-		26: {"n": "ping", "t": "u32"},
-	},
+	"SinglePlayerInfo": PLAYER_INFO_FIELDS,
 	"Command": {
 		1: {"n": "respond_id", "t": "u32"},
 		2: {"n": "src_id", "t": "u32"},
@@ -201,30 +205,7 @@ const TABLE: Dictionary = {
 	GConst.Msg.ReadyForGameReq: {
 		1: {"n": "type", "t": "enum"},
 	},
-	GConst.Msg.SinglePlayer: {
-		1: {"n": "id", "t": "u32"},
-		2: {"n": "team", "t": "u32"},
-		3: {"n": "role_id", "t": "u32"},
-		4: {"n": "hand_count", "t": "u32"},
-		5: {"n": "heal_count", "t": "u32"},
-		6: {"n": "ex_cards", "t": "u32", "r": true},
-		7: {"n": "basic_cards", "t": "u32", "r": true},
-		8: {"n": "gem", "t": "u32"},
-		9: {"n": "crystal", "t": "u32"},
-		10: {"n": "yellow_token", "t": "u32"},
-		11: {"n": "blue_token", "t": "u32"},
-		12: {"n": "covered_count", "t": "u32"},
-		13: {"n": "is_knelt", "t": "bool"},
-		14: {"n": "hands", "t": "u32", "r": true},
-		15: {"n": "covereds", "t": "u32", "r": true},
-		16: {"n": "max_hand", "t": "u32"},
-		17: {"n": "nickname", "t": "str"},
-		18: {"n": "ready", "t": "bool"},
-		19: {"n": "delete_field", "t": "str", "r": true},
-		20: {"n": "leader", "t": "u32"},
-		21: {"n": "online", "t": "bool"},
-		22: {"n": "third_token", "t": "u32"},
-	},
+	GConst.Msg.SinglePlayer: PLAYER_INFO_FIELDS,
 	GConst.Msg.Game: {
 		1: {"n": "room_id", "t": "i32"},
 		2: {"n": "player_id", "t": "i32"},

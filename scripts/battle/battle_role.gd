@@ -23,7 +23,23 @@ const V_NOT_OVERRIDE: int = -1
 
 var player: BattlePlayer = null
 var engine: BattleEngine = null
-var step: int = 0
+## 钩子轮次之外的持久进度：主动技能（SkillRun）与不经钩子轮次的同步钩子用它记分步进度。
+var _持久进度: int = 0
+## 钩子流程的进度：钩子轮次内由引擎按「本轮钩子」代管（每轮从 0 开始、互不污染），
+## 轮次之外落回本角色自身的持久进度。
+## 归属变更说明：以前这是「角色唯一的进度字段」，引擎要在每轮钩子开始时把它强制清零、
+## 在 URGENT 时快照 / 恢复、还要靠 _角色技能挂起 特判放过正在等回复的技能。
+## 现在进度随「当前钩子轮次」走，那一整套补丁都不再需要。
+var step: int:
+	get:
+		if engine != null and engine.在进度流程中():
+			return engine.取当前进度(player.id)
+		return _持久进度
+	set(值):
+		if engine != null and engine.在进度流程中():
+			engine.设当前进度(player.id, 值)
+		else:
+			_持久进度 = 值
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:

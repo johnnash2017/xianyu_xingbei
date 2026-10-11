@@ -78,6 +78,9 @@ func poll(delta: float) -> void:
 			if res[0] != OK:
 				break
 			_feed(res[1])
+			# _feed 处理的消息可能触发断线（_on_lost 会把 _tcp 置空），此时不能再取可读字节数
+			if _tcp == null:
+				break
 			avail = _tcp.get_available_bytes()
 
 

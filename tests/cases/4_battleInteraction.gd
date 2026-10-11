@@ -266,7 +266,7 @@ func 跑() -> void:
 		Data.hand_cards = 法术手牌
 		Logic.command_received.emit({
 			"cmd_type": GConst.CmdType.Action,
-			"commands": [{"respond_id": GConst.ActionType.Attack, "src_id": Logic.my_player_id, "args": []}],
+			"commands": [{"respond_id": GConst.ActionType.Any, "src_id": Logic.my_player_id, "args": []}],
 		})
 		await 等帧(2)
 		手牌区.get_child(0).call("OnCardClick")
@@ -284,7 +284,7 @@ func 跑() -> void:
 		"cmd_type": GConst.CmdType.Respond,
 		"commands": [{
 			"respond_id": 201, "src_id": Logic.my_player_id, "dst_ids": [], "card_ids": [],
-			"args": [0, 0, GConst.CardSource.Hand, 0],
+			"args": [0, 0, GConst.CardSource.Hand, 0], "is_skill": true,
 		}],
 	})
 	await 等帧(2)
@@ -299,7 +299,7 @@ func 跑() -> void:
 
 	# 出手特效预制体（scenes/prefabs/effects/）：
 	# 【圣光】是原生 2D 粒子；斩击类与【魔弹】是把 3D 素材经 SubViewport 转成 2D 的预制体
-	for 名: String in ["圣光"]:
+	for 名: String in ["holyLight"]:
 		var 根: GPUParticles2D = (load("res://scenes/prefabs/effects/%s.tscn" % 名) as PackedScene).instantiate() as GPUParticles2D
 		if 根 == null:
 			检(false, "粒子特效 %s 的根节点不是 GPUParticles2D（脚本没挂上？）" % 名)
@@ -325,7 +325,7 @@ func 跑() -> void:
 			"3D 魔弹素材缺 Head / AnimationPlayer 节点")
 		弹素材.free()
 
-	for 名: String in ["水斩", "火斩", "地斩", "风斩", "雷斩", "暗灭"]:
+	for 名: String in ["waterSlash", "fireSlash", "earthSlash", "windSlash", "thunderSlash", "darkAnnihilation"]:
 		var 桥: 斩击2D = (load("res://scenes/prefabs/effects/%s.tscn" % 名) as PackedScene).instantiate() as 斩击2D
 		if 桥 == null:
 			检(false, "斩击预制体 %s 加载失败（脚本没挂上？）" % 名)

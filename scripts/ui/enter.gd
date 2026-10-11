@@ -9,6 +9,8 @@ extends Control
 @export var 昵称输入: LineEdit
 @export var 进入按钮: Button
 @export var 设置按钮: Button
+## 底部那行 Steam 连接状态（本地调试模式下整行隐藏）
+@export var Steam状态: Label
 
 ## 防止连点「进入游戏」导致重复开服/连接
 var _进入中: bool = false
@@ -27,6 +29,11 @@ func _ready() -> void:
 	# 看起来像要往名字最前面插字（同 lobby.gd 打开建房时的处理）
 	昵称输入.caret_column = 昵称输入.text.length()
 	_设标题昵称(Cfg.nickname)
+
+
+## 底部那行 Steam 连接状态：每帧对一次（登录界面就能看到连没连上）
+func _process(_delta: float) -> void:
+	UI.刷新Steam状态(Steam状态)
 
 
 func _设标题昵称(名: String) -> void:
