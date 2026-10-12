@@ -1035,8 +1035,10 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## （如【战纹碎击】里本次攻击原本的伤害、【双重回响】要复制的那份伤害）
 ## 预览类型 非 0 时随询问下发（preview_kind）：上面那个数值的类型（GConst.HarmType），
 ## 供客户端按伤害类型措辞 / 上色（如【朝圣】写「法术伤害」还是「攻击伤害」）
+## 预览目标 非空时随询问下发（preview_ids）：现算头像提示要画在哪几名角色身上，
+## 当它与「可点目标（targets）」不是同一批时用（如【英灵召唤】伤害 +1 要写在本次攻击目标头像上）
 ## 保留倒计时=true 时沿用这条链当前那次等待的截止时刻（见 wait_for），用于同一条链上的后续询问
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false) -> void:
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = []) -> void:
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
 	var 选项技能号: Array = []
@@ -1084,6 +1086,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		cmd["preview_base"] = 预览基准
 	if 预览类型 > 0:
 		cmd["preview_kind"] = 预览类型
+	# 头像提示画在这些角色身上（非空时用它，否则沿用 dst_ids）：见 ask_skill 顶部「预览目标」
+	if not 预览目标.is_empty():
+		cmd["preview_ids"] = 预览目标
 	# 询问别人的场合（如请人交牌）：下发目标侧文案，客户端优先显示它
 	if not ask_text.is_empty():
 		cmd["ask_text"] = ask_text

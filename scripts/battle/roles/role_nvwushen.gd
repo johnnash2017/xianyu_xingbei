@@ -214,8 +214,12 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not engine.has_reply():
 		# 一次问齐「是否发动 + 弃不弃那张法术牌 + 治疗给谁」：
-		# 弃牌可选（need_card=0、最多 1 张、只让法术牌可点），目标固定选 1 名（可含自己）
-		询问(player.id, YING_LING_ZHAO_HUAN, 0, 1, GConst.CardSource.Hand, [], 1, "magic", [], true, 0, -1, engine.order)
+		# 弃牌可选（need_card=0、最多 1 张、只让法术牌可点），目标固定选 1 名（可含自己）。
+		# 同时下发本次攻击的「原伤害」（预览基准）与「攻击目标」（预览目标）：客户端在那名敌人头像上
+		# 写两行「原伤害划掉 / +1 后的伤害」（学【灵力崩解】）；治疗那行由静态指示器照常画
+		询问(player.id, YING_LING_ZHAO_HUAN, 0, 1, GConst.CardSource.Hand, [], 1, "magic", [], true, 0, -1, engine.order,
+			-1, {}, int(harm.get("point", 0)), int(harm.get("type", GConst.HarmType.Attack)), false,
+			[int(harm.get("dst", -1))])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])

@@ -1094,7 +1094,7 @@ func TurnBegin() -> void:
 		tw2.tween_property(turn, "scale", Vector2(1.2, 1.2), 1.5)
 
 # ============================================================
-# 受击反馈：泛红 + 抖动 + 画面扭曲震荡波 + 卡肉 —— 都放在本面板里，方便在这个预制体上调参
+# 受击反馈：泛红 + 抖动 + 画面扭曲震荡波 —— 都放在本面板里，方便在这个预制体上调参
 # ============================================================
 ## 受击泛红色与泛红时长（秒）：命中瞬间点亮，再淡回常态
 const 受击泛红色: Color = Color(1.0, 0.675, 0.675)
@@ -1110,8 +1110,6 @@ const 震荡波时长: float = 0.60
 const 震荡波半径: float = 0.60
 const 震荡波波宽: float = 0.055
 const 震荡波强度: float = 0.010
-## 卡肉时长（秒）：命中瞬间把整个战斗界面冻住一小会儿，增强打击感
-const 受击卡肉时长: float = 0.07
 ## 受击描边：把手牌 / 治疗方块贴图自带的深色描边染红，再用 受击描边时长 淡回原色
 const 受击描边着色器: Shader = preload("res://scripts/effects/hitOutline.gdshader")
 const 受击描边时长: float = 2.0
@@ -1131,7 +1129,7 @@ var _描边淡出: Tween = null
 
 ## 对应 C# public void Hurted()：受击表现。
 ## 播放震荡波 = true 时额外叠一圈画面扭曲（只在「斩命中 / 魔弹命中」时由调用方传入）；
-## 泛红、抖动、卡肉则每次受击都播。
+## 泛红、抖动则每次受击都播。
 func Hurted(播放震荡波: bool = false) -> void:
 	if hero == null:
 		return
@@ -1153,7 +1151,6 @@ func Hurted(播放震荡波: bool = false) -> void:
 	_闪受击描边()
 	if 播放震荡波:
 		_播放受击震荡波()
-	_卡肉()
 
 
 ## 建一份受击描边材质（描边染色强度初始为 0＝原色）
@@ -1191,7 +1188,7 @@ func _设描边强度(值: float, 材质: ShaderMaterial) -> void:
 
 ## 在战斗界面根节点上叠一块铺满屏幕的透明 ColorRect，跑一圈从本面板中心扩散出去的画面扭曲。
 ## 面板在场景里是战斗界面根节点（Root）的直接子节点，故用 get_parent() 拿它；
-## 波挂在 Root 下才铺得满整屏，并且卡肉冻 Root 时会跟着停在起手那一帧。
+## 波挂在 Root 下才铺得满整屏。
 ## 震荡波节点与材质「全局共用一份」：画面扭曲要采样整屏，是全屏开销最大的一块 ——
 ## 每次受击都新建、或多人同帧各播一张，就会叠出多张全屏 quad（弱机上明显卡顿）。
 ## 共用后同一时刻最多一次全屏采样，也免去运行期反复分配节点 / 材质与首次编译的卡顿。
@@ -1251,18 +1248,6 @@ func _设震荡波进度(值: float, 材质: ShaderMaterial) -> void:
 func _设震荡波淡出(值: float, 材质: ShaderMaterial) -> void:
 	材质.set_shader_parameter("fade", 值)
 
-
-## 卡肉：把整个战斗界面（Root 子树）冻结一小会儿再放开。
-## 只冻界面本身，不影响服务端逻辑与倒计时；界面里的 Tween / 粒子会停在起手那一帧，
-## 看起来就是「打上去顿了一下」（泛红、抖动、震荡波都从那一帧起步）。
-func _卡肉() -> void:
-	var 根: Control = get_parent() as Control
-	if 根 == null:
-		return
-	根.process_mode = Node.PROCESS_MODE_DISABLED
-	await get_tree().create_timer(受击卡肉时长).timeout
-	if is_instance_valid(根):
-		根.process_mode = Node.PROCESS_MODE_INHERIT
 
 ## 能量区 / 状态图标区自己算坐标（这两个区域在场景里是 Control）：
 ## 原版 Unity 的 GridLayoutGroup 是「第一枚贴底、后加的往上长」，而 Godot 的 GridContainer 只认

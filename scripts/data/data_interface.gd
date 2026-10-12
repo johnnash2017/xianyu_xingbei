@@ -127,9 +127,9 @@ func _拼技能文本(段字典: Dictionary) -> String:
 		行列表.append(str(技能分段标题.get(分段, 分段)))
 		var 本段行: Array = 段字典[分段]
 		for 条目: String in 本段行:
-			# 换行标记有两种：老数据的 #，以及导表器把单元格内换行转义出来的字面 \n；
+			# 换行标记只有一种：导表器把单元格内换行转义出来的字面 \n；
 			# 只有第一行带「【类型】技能名：」前缀；正文（含说明的续行）整体缩进两格，与一级标题拉开
-			for 行: String in 条目.replace("\\n", "#").split("#"):
+			for 行: String in 条目.replace("\\n", "\n").split("\n"):
 				var 文本: String = 行.strip_edges()
 				if 文本 != "":
 					行列表.append("　　" + 文本)
@@ -151,7 +151,7 @@ func _load_role_property() -> void:
 # 查询
 # ============================================================
 func role_name(rid: int) -> String:
-	return role_list.get(rid, "角色")
+	return str(role_list.get(rid, "角色"))
 
 
 ## 角色表里某角色那一行（「除 id 以外的各列」）；没有这个角色就返回空数组
@@ -263,8 +263,9 @@ func role_token_def(role_id: int, slot: int) -> Dictionary:
 	return m.get(slot, {})
 
 
+## 角色技能说明文本。里面的词缀关键字（如「【治疗】」）已换成图标，见 GConst.词缀文本
 func role_skill_info(rid: int) -> String:
-	return role_skill_db.get(rid, "")
+	return GConst.词缀文本(str(role_skill_db.get(rid, "")))
 
 
 ## 技能按钮的悬浮说明：技能号 → 文本（直接取技能表的「按钮说明」列；没有就返回空串）
@@ -274,7 +275,7 @@ func button_info(skill_id: int) -> String:
 	if 行.is_empty():
 		return ""
 	var 技能列: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
-	return str(行[int(技能列["按钮说明"])]).replace("#", "\n")
+	return str(行[int(技能列["按钮说明"])]).replace("\\n", "\n")
 
 
 ## 按卡号取牌（虚拟牌号是 1000+，与数组下标不一致，所以走 id 索引）

@@ -413,10 +413,10 @@ func _tian_huo_duan_kong(action: Dictionary) -> int:
 	})
 	if not player.tap:
 		player.tokens[0]["num"] = maxi(int(player.tokens[0]["num"]) - 1, 0)
-	var harm_point: int = 3
+	var harm_point: int = GConst.天火断空基础伤害
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst != null and engine.team_morale[dst.color] > engine.team_morale[player.color]:
-		harm_point = 4
+		harm_point = GConst.天火断空基础伤害 + GConst.天火断空士气落后加成
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": harm_point,
 		"cause": TIAN_HUO_DUAN_KONG, "type": GConst.HarmType.Magic,

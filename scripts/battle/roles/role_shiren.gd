@@ -507,7 +507,7 @@ func p_harm_end(ctx: Dictionary) -> int:
 		var args: Array = r.get("args", [])
 		var dsts: Array = r.get("dst_ids", [])
 		var cards: Array = r.get("card_ids", [])
-		if args.is_empty() or int(args[0]) != 1 or dsts.is_empty() or cards.size() != 2:
+		if args.is_empty() or int(args[0]) != 1 or cards.size() != 2:
 			return SUCCESS
 		if not player.has_hand_card(int(cards[0])) or not player.has_hand_card(int(cards[1])):
 			return SUCCESS
@@ -516,13 +516,18 @@ func p_harm_end(ctx: Dictionary) -> int:
 		if c0 == null or c1 == null or c0.element_enum() != c1.element_enum():
 			return SUCCESS
 		var use_cards: Array = [int(cards[0]), int(cards[1])]
+		# 弃的牌里有法术牌才有那 1 点法术伤害；有它就必须指定目标（客户端「目标需法术牌」也这么拦），
+		# 没有它时本来就没伤害，不选目标也照旧发动（弃 2 张同系牌、只拿 +1【灵感】）
+		var 有法术牌: bool = c0.is_magic() or c1.is_magic()
+		if 有法术牌 and dsts.is_empty():
+			return SUCCESS
 		chen_lun_used = true
 		notice_skill(CHEN_LUN_XIE_ZOU_QU, dsts)
 		engine.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": use_cards, "is_real": true,
 		})
-		if c0.is_magic() or c1.is_magic():
+		if 有法术牌:
 			engine.push_harm({
 				"src": player.id, "dst": int(dsts[0]), "point": 1,
 				"cause": CHEN_LUN_XIE_ZOU_QU, "type": GConst.HarmType.Magic,
@@ -532,7 +537,7 @@ func p_harm_end(ctx: Dictionary) -> int:
 		# 技能描述：弃完 2 张同系牌【展示】之后「你+1【灵感】」（以描述为准，先加再结算伤害）
 		_set_ling_gan(_ling_gan() + 1)
 		engine._broadcast_game()
-		if c0.is_magic() or c1.is_magic():
+		if 有法术牌:
 			return URGENT
 	return SUCCESS
 

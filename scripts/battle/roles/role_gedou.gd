@@ -270,10 +270,10 @@ func _bai_shi_harm(ctx: Dictionary) -> void:
 			engine._broadcast_game()
 			return
 		notice_skill(BAI_SHI_HUAN_LONG_QUAN, [dst_id])
-		harm["point"] = int(harm.get("point", 0)) + 2
+		harm["point"] = int(harm.get("point", 0)) + GConst.百式幻龙拳主动加成
 	else:
 		notice_skill(BAI_SHI_HUAN_LONG_QUAN, [dst_id])
-		harm["point"] = int(harm.get("point", 0)) + 1
+		harm["point"] = int(harm.get("point", 0)) + GConst.百式幻龙拳应战加成
 
 
 # ============================================================
@@ -299,16 +299,16 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 承受伤害：念气力场（每次伤害最高 4 点）
+# 承受伤害：念气力场（每次伤害最高 GConst.念气力场上限 点，客户端据此画两行飘字）
 # ============================================================
 func p_timeline_3(ctx: Dictionary) -> int:
 	if int(ctx.get("dst", -1)) != player.id:
 		return SUCCESS
 	var harm: Dictionary = ctx.get("harm", {})
-	if int(harm.get("point", 0)) <= 4:
+	if int(harm.get("point", 0)) <= GConst.念气力场上限:
 		return SUCCESS
 	notice_skill(NIAN_QI_LI_CHANG, [player.id])
-	harm["point"] = 4
+	harm["point"] = GConst.念气力场上限
 	return SUCCESS
 
 

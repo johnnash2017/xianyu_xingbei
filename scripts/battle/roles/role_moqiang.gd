@@ -311,10 +311,12 @@ func _qi_hei_zhi_qiang(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 通用客户端只回一维 args：把「投入能量数」做成 options，args[0] 即选中项的 value
 		# （原版是靠 respond 的第二个参数 args[1] 传能量数，移植版拿不到所以恒为 0、伤害固定 +2）
+		# 选项文案取技能表「提示」列第 1 条（「投入 {n} 点能量（伤害 +{n2}）」）；
+		# 本次询问的指令条文案改用第 2 条（「发动【漆黑之枪】：选择投入的能量」），故 序号 传 1
 		var options: Array = []
 		for n: int in range(1, player.get_energy() + 1):
 			options.append({"value": n, "label": 提示(QI_HEI_ZHI_QIANG, 0, n, -1, {"n2": n + 2})})
-		询问(player.id, QI_HEI_ZHI_QIANG, 0, 0, GConst.CardSource.Hand, options)
+		询问(player.id, QI_HEI_ZHI_QIANG, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_hit_step = 0
@@ -355,15 +357,15 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 说明：法术牌 / 雷系牌 二选一，弃任意 X 张（X＝1~手里的合法牌数）。
 	# 白名单给两类牌的并集，card_rule="an_zhi" 让界面以「先选的牌」为基准，把与它不共享类别的牌置灰；
-	# card_max=合法牌数 放宽点选上限（不给就默认「恰好 1 张」）；
-	# 两类都没有时就没什么可弃，直接跳过这次询问。
-	# 可弃 在函数作用域声明：结算时还要用它复核玩家回传的牌
+	# card_max=合法牌数 放宽点选上限（不给就默认「恰好 1 张」）。
+	# 两类都没有「可弃的牌」时也照旧询问（对照原版 MoQiang::AnZhiZhangBi 是无条件 askForSkill）——
+	# 这时手牌里没有合法牌可选，「确定」按不了，玩家点「取消」即可。
+	# 可弃 在函数作用域声明：结算时还要用它复核玩家回传的牌。
+	# 额外把「本次受到的伤害」下发进询问文案（技能表提示列写作「受到 {伤害} 伤害」，见 提示文本 的占位替换）
 	var 可弃: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.is_magic() or c.element_enum() == GConst.CardElement.Thunder)
 	if not engine.has_reply():
-		if 可弃.is_empty():
-			step = STEP_DONE
-			return SUCCESS
-		询问(player.id, AN_ZHI_ZHANG_BI, 1, 0, GConst.CardSource.Hand, [], 可弃.size(), "an_zhi", 可弃)
+		询问(player.id, AN_ZHI_ZHANG_BI, 1, 0, GConst.CardSource.Hand, [], 可弃.size(), "an_zhi", 可弃,
+			true, 0, -1, [], -1, {"伤害": int(harm.get("point", 0))})
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

@@ -577,6 +577,22 @@ const 攻击提示加成: Dictionary = {
 
 ## 狂战士（角色号，见角色表）
 const 角色_狂战士: int = 2
+## 格斗家（角色号，见角色表）
+const 角色_格斗: int = 20
+
+## 格斗家【念气力场】（被动）：所有对自己造成的伤害每次最高 4 点（服务端在 role_gedou.p_timeline_3 结算）。
+## 客户端据此把伤害飘字画成两行：上行原本的伤害划掉、下行压到上限后的新伤害
+const 念气力场上限: int = 4
+
+## 格斗家【百式幻龙拳】的伤害加成（服务端在 role_gedou._bai_shi_harm 结算；客户端画攻击指示器也用它）：
+## 主动攻击 +2、应战攻击 +1。注意【蓄力一击】会脱离该形态，故询问【蓄力一击】时指示器要把这 +2 划掉
+const 百式幻龙拳主动加成: int = 2
+const 百式幻龙拳应战加成: int = 1
+
+## 苍炎魔女【天火断空】的伤害（服务端在 role_monv._tian_huo_duan_kong 结算；客户端画头像指示器也用它）：
+## 基础 3 点；若目标的队伍士气 > 自己的队伍士气，则 +1（4 点）。对目标与自己用的是同一个点数
+const 天火断空基础伤害: int = 3
+const 天火断空士气落后加成: int = 1
 
 ## 角色被动对所有主动攻击的固定加成（客户端头像提示用）：角色号 → 加成。
 ## 狂战士【狂化】：你发动的所有攻击伤害额外 +1（服务端在命中时结算，见 role_kuangzhan._kuang_hua）
@@ -886,8 +902,9 @@ const 技能指示器: Dictionary = {
 	}},
 	# 吟游诗人【沉沦协奏曲】：弃 2 张同系牌【展示】，其中要有【法术】牌，弃完才对目标造成 1 点法术伤害。
 	# 有条件（弃牌里没法术牌就没这 1 点），所以「什么时候画」由客户端现算：
-	# 静态配置只在挑到法术牌时由 battle_mobile._沉沦协奏曲头像提示 取用，这里只留文案与数值
-	技能_沉沦协奏曲: {"每目标": 1, "文案": "%d 法术伤害"},
+	# 静态配置只在挑到法术牌时由 battle_mobile._沉沦协奏曲头像提示 取用，这里只留文案与数值。
+	# 「目标需法术牌」= 已选牌里没挑到法术牌时，目标头像不亮、点不动（见 battle_mobile._玩家可选）
+	技能_沉沦协奏曲: {"每目标": 1, "文案": "%d 法术伤害", "目标需法术牌": true},
 	# 吟游诗人【希望赋格曲】：三步都由服务端问，每步客户端先弹效果窗、关窗后再点头像，
 	# 按「确定」提交（「先弹选项」＝选效果之前不让点头像，效果各自的目标白名单由服务端下发）
 	技能_希望赋格曲: {"先弹选项": true},
@@ -903,11 +920,12 @@ const 技能指示器: Dictionary = {
 # ============================================================
 # 技能名与分类（全部取自设计表「技能表」，技能号就是 技能表#N 的 N）
 # ============================================================
+## 技能名。名字里若写了词缀关键字会换成图标（见 词缀文本）——只在支持 BBCode 的富文本里显示才有意义
 static func skill_name(skill_id: int) -> String:
 	var row: Array = 技能行(skill_id)
 	if row.is_empty():
 		return "技能%d" % skill_id
-	return str(row[_技能列("技能名")]).strip_edges()
+	return 词缀文本(str(row[_技能列("技能名")]).strip_edges())
 
 
 ## 技能表「说明」列的正文（技能按钮的悬停说明用）；查不到返回空串
@@ -915,7 +933,8 @@ static func skill_desc(skill_id: int) -> String:
 	var row: Array = 技能行(skill_id)
 	if row.is_empty():
 		return ""
-	return str(row[_技能列("说明")]).strip_edges()
+	# 说明里写的词缀关键字（如「【治疗】」）换成图标，见 词缀文本
+	return 词缀文本(str(row[_技能列("说明")]).strip_edges())
 
 
 ## 技能的分类标签（派系·类型，如「独有技·响应」）；技能表里查不到就返回空串
@@ -1032,6 +1051,69 @@ static func 提示文本(skill_id: int, 序号: int, 发起者: String, 张数: 
 	for 键: Variant in 额外:
 		文本 = 文本.replace("{%s}" % str(键), str(额外[键]))
 	return 文本
+
+
+# ============================================================
+# 词缀图标（取自设计表「词缀表」）
+# ============================================================
+## 把文本里出现的词缀关键字（如「【治疗】」）按词缀表「替换为」列处理：
+## 不变＝保留原文、空＝删掉、图标＝换成图标（尺寸取「图标尺寸」列）。
+## 只给支持 BBCode 的富文本用（技能说明提示框 / 战斗日志 / 头像提示等）；
+## 普通 Label 不认 BBCode，会把 [img] 原样画出来，别往那儿送。
+static func 词缀文本(文: String) -> String:
+	if 文.is_empty():
+		return 文
+	for 规则: Array in _词缀规则表():
+		var 关键字: String = str(规则[0])
+		if 文.contains(关键字):
+			文 = 文.replace(关键字, str(规则[1]))
+	return 文
+
+
+## 词缀表 → 替换规则（懒建一次）：[[关键字, 替换成的文本], …]
+## 「不变」的条目不入表（原文保持不动），「空」替换成空串，其余按图标串
+static var _词缀规则: Array = []
+
+static func _词缀规则表() -> Array:
+	if not _词缀规则.is_empty():
+		return _词缀规则
+	var 列索引: Dictionary = 数据表格.表元数据["词缀"]["列索引"]
+	var 键列: int = int(列索引["关键字"])
+	var 式列: int = int(列索引["替换为"])
+	var 径列: int = int(列索引["图标路径"])
+	var 寸列: int = int(列索引["图标尺寸"])
+	for key: String in 数据表格.词缀.keys():
+		var row: Array = 数据表格.词缀[key]
+		if row.size() <= maxi(键列, maxi(式列, maxi(径列, 寸列))):
+			continue
+		var 关键字: String = str(row[键列]).strip_edges()
+		if 关键字.is_empty():
+			continue
+		var 模式: int = int(row[式列])
+		if 模式 == 数据表格.词缀_替换为.不变:
+			continue
+		var 换成: String = ""
+		if 模式 == 数据表格.词缀_替换为.图标:
+			var 路径: String = str(row[径列]).strip_edges()
+			if 路径.is_empty():
+				continue
+			var 尺寸: Vector2i = _词缀尺寸(row[寸列])
+			换成 = "[img=%dx%d]%s[/img]" % [尺寸.x, 尺寸.y, 路径]
+		_词缀规则.append([关键字, 换成])
+	return _词缀规则
+
+
+## 「图标尺寸」列的类型是 list(float,float)，导表后形如 [[32, 32]]（每项外还包一层）→ Vector2i；
+## 读不出来就按 32×32 画
+static func _词缀尺寸(格子: Variant) -> Vector2i:
+	var 对: Array = []
+	if 格子 is Array:
+		对 = 格子
+	if not 对.is_empty() and 对[0] is Array:
+		对 = 对[0] as Array
+	if 对.size() >= 2:
+		return Vector2i(int(float(对[0])), int(float(对[1])))
+	return Vector2i(32, 32)
 
 
 ## 日志/提示用的技能全称：「【独有技·响应】疾风技」；查不到分类就退回「【疾风技】」
