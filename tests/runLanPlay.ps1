@@ -22,6 +22,7 @@ param(
     [int]$窗口数 = 4,
     [int]$端口 = 32717,
     [int]$秒 = 45,
+    [string]$指定角色 = "",
     [string]$EnginePath = "D:\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe",
     [string]$ProjectPath = "d:\星杯传说工程\星杯传说2\xianyu_xingbei"
 )
@@ -46,6 +47,9 @@ New-Item -ItemType Directory -Force -Path $日志 | Out-Null
 
 $进程 = @()
 $种子 = Get-Random -Maximum 2147483000
+# 定向补覆盖：指定角色 id（逗号分隔）时，只让机器人从这些角色里选
+$角色参数 = @()
+if ($指定角色 -ne "") { $角色参数 = @("--roles=$指定角色") }
 for ($k = 0; $k -lt $窗口数; $k++) {
     $出 = Join-Path $日志 "窗口$k.out.log"
     $错 = Join-Path $日志 "窗口$k.err.log"
@@ -53,7 +57,7 @@ for ($k = 0; $k -lt $窗口数; $k++) {
     # （实测 4 窗口 FPS 只有 1~4，单窗口 60），headless 下进程不画窗口，又快又稳。
     # --seed：本批共用同一个随机种子，让各窗口选到不同角色、且每批覆盖不同组合。
     $进程 += Start-Process -FilePath $EnginePath `
-        -ArgumentList @("--headless", "--path", $ProjectPath, "res://tests/lanPlay.tscn", "--", "--slot=$k", "--port=$端口", "--count=$窗口数", "--seed=$种子") `
+        -ArgumentList (@("--headless", "--path", $ProjectPath, "res://tests/lanPlay.tscn", "--", "--slot=$k", "--port=$端口", "--count=$窗口数", "--seed=$种子") + $角色参数) `
         -RedirectStandardOutput $出 -RedirectStandardError $错 -PassThru -WindowStyle Hidden
 }
 "已拉起 $窗口数 个窗口（端口 $端口），等 $秒 秒…"

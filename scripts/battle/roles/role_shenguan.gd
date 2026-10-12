@@ -181,6 +181,10 @@ func p_special_skill(action: Dictionary) -> int:
 		var amount: int = int(args[i]) if i < args.size() else 每次
 		if amount <= 0:
 			continue
+		# 突破上限时单个目标最多收到「封顶」点（技能原文「最高到 4 点」）：客户端已按它限制分配，
+		# 这里对提交上来的值再收一道 —— 多报的部分不计，也不会从自己身上白扣（实转只累计真正转出的）
+		if 突破 and 封顶 > 0:
+			amount = mini(amount, 封顶)
 		实转 += amount
 		# 以此法转移的治疗无视目标治疗上限（突破时按配置的封顶收尾，如最高到 4）
 		if 突破:
@@ -193,9 +197,13 @@ func p_special_skill(action: Dictionary) -> int:
 
 
 # ============================================================
-# 响应：神圣启示（特殊行动结束时 +1 治疗）
+# 响应：神圣启示（【特殊行动】结束时 +1 治疗）
+# 只认「购买 / 合成 / 提炼」这类真正的【特殊行动】（引擎的 ctx.special_action）；
+# 【特殊技能】（如自己的【神圣契约】/【神圣领域】等启动类技能）结束时不算，不发动
 # ============================================================
 func p_after_special(ctx: Dictionary) -> int:
+	if not bool(ctx.get("special_action", false)):
+		return SUCCESS
 	var src_id: int = int(ctx.get("player", -1))
 	if src_id != player.id:
 		return SUCCESS
@@ -257,6 +265,11 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_ACTION
 			if mode == 1:
 				if player.cross_num < 1:
+					return GConst.GE_INVALID_ACTION
+				# 伤害用法只能打敌人（技能表：对敌造成伤害）；目标被客户端带错时这里兜住，
+				# 免得把上一个「治疗」用法选好的队友带过来误伤
+				var dstE: BattlePlayer = engine.p(int(dsts[0]))
+				if dstE == null or dstE.color == player.color:
 					return GConst.GE_INVALID_ACTION
 			else:
 				var dst2: BattlePlayer = engine.p(int(dsts[0]))

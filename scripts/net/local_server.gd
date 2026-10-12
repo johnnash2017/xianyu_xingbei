@@ -42,10 +42,13 @@ func start(port: int) -> int:
 	return OK
 
 
-## 停掉本机服务端：关掉传输底座（会断开所有连接）。
-## 只要关底座就行 —— 调用方（Net.stop_hosting）随即把这个 LocalServer 丢掉。
 func stop() -> void:
 	server.stop()
+	for room: Dictionary in _rooms.values():
+		_解绑房间(room)
+	_rooms.clear()
+	_sessions.clear()
+	server = null
 
 
 ## 让房主自己那一路客户端接上本机服务端（只有 Steam 模式用）。
@@ -364,11 +367,23 @@ func leave_room(conn_id: int) -> void:
 	_同步观战者名单(room)
 	# 房间内已无在线玩家、也没有观战者：对局无从继续也无人在看，直接销毁房间
 	if (room["conn_of"] as Dictionary).is_empty() and (room["watchers"] as Array).is_empty():
+		_解绑房间(room)
 		_rooms.erase(int(room["id"]))
 		rooms_changed.emit()
 	else:
 		_broadcast_game(room)
 		rooms_changed.emit()
+
+
+func _解绑房间(room: Dictionary) -> void:
+	var battle: BattleEngine = room["battle"]
+	battle.send_cb = Callable()
+	for 玩家: BattlePlayer in battle.players.values():
+		玩家.解绑()
+	battle.players.clear()
+	battle.order.clear()
+	battle._states.clear()
+	battle._进度表.clear()
 
 
 ## 断线重连认领座位：找出本房间内属于该身份标识、且当前无连接占用的座位（无则 -1）

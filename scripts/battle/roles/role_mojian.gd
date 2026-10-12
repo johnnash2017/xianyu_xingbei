@@ -132,11 +132,12 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 回合开始（p_boot）：解除[暗影形态]
-# 服务端在 p_before_action 里解除[暗影形态]（MoJian::p_before_action）；
-# 本实现仍并入 p_boot 首段——引擎中 p_boot 先于 p_before_action 执行，两者都在行动阶段之前，行为等价
+# 行动阶段入口（p_before_action）：解除[暗影形态]（对照服务端 MoJian::p_before_action）
 # ============================================================
-func p_boot(_ctx: Dictionary) -> int:
+func p_before_action(_ctx: Dictionary) -> int:
+	# 本回合「拒绝虚弱」等已跳过行动阶段：服务端此时不跑 p_before_action，这里同样不解除形态
+	if engine.skip_action_phase:
+		return SUCCESS
 	if engine.current_id != player.id:
 		return SUCCESS
 	if player.tap:

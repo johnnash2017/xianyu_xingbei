@@ -77,14 +77,10 @@ func _fire_like_count() -> int:
 
 
 # ============================================================
-# 回合开始：离开【烈焰形态】（服务端 p_between_weak_and_action；引擎未调用该钩子，
-# 故改在 p_turn_begin 执行，执行顺序仍在 p_boot 之前）
+# 行动阶段之前（p_between_weak_and_action）：离开【烈焰形态】，仅自己回合（对照服务端
+# MoNv::p_between_weak_and_action）
 # ============================================================
 func p_between_weak_and_action(_ctx: Dictionary) -> int:
-	return _get_away_from_fire()
-
-
-func p_turn_begin(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id:
 		return SUCCESS
 	return _get_away_from_fire()
@@ -129,7 +125,7 @@ func _get_away_from_fire() -> int:
 
 # ============================================================
 # 启动技能（行动阶段按钮）：魔女之怒（进入【烈焰形态】、摸牌并调整手牌上限）
-# （「每回合只能发动一个启动技能」由引擎统一把关；离开形态的逻辑见 p_turn_begin）
+# （「每回合只能发动一个启动技能」由引擎统一把关；离开形态的逻辑见 p_between_weak_and_action）
 # ============================================================
 func v_special_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:

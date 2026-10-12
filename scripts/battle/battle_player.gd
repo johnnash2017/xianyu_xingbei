@@ -51,16 +51,34 @@ var boot_skill_used: bool = false
 var ready: bool = false
 var online: bool = true
 
-## 角色对象（未移植的角色为 null，按通用规则结算）
-var role: BattleRole = null
+## 角色对象（未移植的角色为 null，按通用规则结算）。
+## 绑定（setup：写 player/engine、按表初始化标识物、角色自身的开局加成）由 BattleRole.create() 负责，
+## 这里只做「挂上 / 卸下」与旧角色的解绑 —— 再调一次 setup 会让角色加成重复结算（如神官治疗上限 +4 变 +8）
+var _role: BattleRole = null
+var role: BattleRole:
+	get: return _role
+	set(value):
+		if _role != value:
+			if _role != null:
+				_role.player = null
+				_role.engine = null
+			_role = value
 ## 所属引擎（服务端权威）。tap 的 setter 靠它通知形态变化（写日志 / 触发 p_tap）
-var engine: BattleEngine = null
+var _engine_ref: WeakRef = null
+var engine: BattleEngine:
+	get: return _engine_ref.get_ref() as BattleEngine if _engine_ref != null else null
+	set(value): _engine_ref = weakref(value) if value != null else null
 
 
 func _init(pid: int = 0, c: int = GConst.BLUE, nm: String = "") -> void:
 	id = pid
 	color = c
 	player_name = nm
+
+
+func 解绑() -> void:
+	role = null
+	engine = null
 
 
 # ============================================================

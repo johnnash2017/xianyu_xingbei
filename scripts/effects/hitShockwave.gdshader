@@ -3,7 +3,7 @@ shader_type canvas_item;
 // 波带内的像素按「朝外 / 朝内」偏移采样屏幕，看起来像一圈涟漪把画面推出去；
 // 越接近波前越明显，进度越大越弱，最后靠 alpha 淡出。
 // 注：着色器标识符沿用本工程其余 .gdshader 的 ASCII 风格（中文名在 Godot 着色器里不保证可解析）
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform vec2 center_uv = vec2(0.5, 0.5);   // 命中点（屏幕 UV）
 uniform float aspect = 1.7777778;          // 屏幕 宽 / 高：把 UV 距离还原成近似等比，波才是圆的
 uniform float progress = 0.0;              // 0→1：波前从中心推到最大半径

@@ -93,6 +93,12 @@ var _team_energies: Dictionary = {}
 var _最后行动命令: Dictionary = {}
 var _await_id: int = -1
 var _await_kind: int = -1
+## 本次等待「归属」的状态实例（RefCounted）：只有它自己被 handle 时才认这份回复。
+## 防止等待期间被补压在栈顶的新状态（边界检查补压的超限结算等）错取 / 覆盖玩家回复。
+var _await_state: Variant = null
+## 当前正在 handle 的状态实例（run 内逐状态设置）：wait_for 据此登记等待归属，
+## has_reply / take_reply 据此判断「这份回复是不是发给我的」
+var _当前状态: Variant = null
 ## 当前行动询问允许的行动种类（ask_action 写入）：快照里据此给客户端下发
 ## 「等待行动 / 等待攻击行动 / 等待法术行动」这类头像文案
 var _pending_action_type: int = 0
@@ -141,7 +147,17 @@ func add_player(pid: int, color: int, pname: String) -> void:
 
 
 func remove_player(pid: int) -> void:
+	var 玩家: BattlePlayer = players.get(pid)
+	if 玩家 == null:
+		return
+	玩家.解绑()
 	players.erase(pid)
+	_hand_counts.erase(pid)
+	_hand_maxes.erase(pid)
+	_token_counts.erase(pid)
+	_gems.erase(pid)
+	_最后行动命令.erase(pid)
+	offline_players.erase(pid)
 	order.erase(pid)
 	_rebuild_links()
 
@@ -243,6 +259,7 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 		players[pid].add_hand_cards(deck.draw(GConst.START_HAND))
 	_states.clear()
 	_进度表.clear()
+	_清空等待()
 	_broadcast_game()
 	broadcast(GConst.Msg.TurnBegin, {"id": current_id, "round": round_id})
 	push(SCheckTurnStart.new())
@@ -257,8 +274,9 @@ func _assign_roles(role_pool: Array) -> void:
 	for i: int in range(order.size()):
 		var pid: int = order[i]
 		var rid: int = int(pool[i % pool.size()])
-		players[pid].role_id = rid
-		players[pid].role = BattleRole.create(rid, players[pid], self)
+		var 玩家: BattlePlayer = players[pid]
+		玩家.role_id = rid
+		玩家.role = BattleRole.create(rid, 玩家, self)
 
 
 ## 按选将结果分配角色（role_map: player_id -> role_id）
@@ -267,8 +285,9 @@ func _assign_roles_by_map(role_map: Dictionary) -> void:
 		var rid: int = int(role_map.get(pid, 0))
 		if rid <= 0:
 			continue
-		players[pid].role_id = rid
-		players[pid].role = BattleRole.create(rid, players[pid], self)
+		var 玩家: BattlePlayer = players[pid]
+		玩家.role_id = rid
+		玩家.role = BattleRole.create(rid, 玩家, self)
 
 
 func _shuffle_arr(a: Array) -> void:
@@ -315,27 +334,37 @@ func run() -> void:
 	# 安全阀：单次驱动的状态处理上限，避免异常状态链把主线程卡死
 	var budget: int = 20000
 	while not _states.is_empty():
+		# 终局（_game_over 已清空状态栈）后不再推进，也不做边界检查补压新状态
+		if phase == Phase.Over:
+			break
 		budget -= 1
 		if budget <= 0:
 			break
 		var idx: int = _states.size() - 1
 		var st: Variant = _states[idx]
-		# 分步流程：本次 handle 期间角色的 step 读写落到「本状态实例」的进度上
+		# 分步流程：本次 handle 期间角色的 step 读写落到「本状态实例」的进度上；
+		# 同时登记当前状态，供 wait_for 记录等待归属、供回复归属判定
+		_当前状态 = st
 		_当前进度槽 = _进度槽(st)
 		_在进度流程 = true
 		var r: int = st.handle(self)
 		_在进度流程 = false
-		if r != SUSPEND:
-			_check_hand_overflow()
-			_check_cover_overflow()
-			_check_hand_change()
-			_check_token_change()
-			_check_energy_change()
+		_当前状态 = null
+		# 本状态 handle 期间可能已分出胜负，立即停下，不再补压 / 结算
+		if phase == Phase.Over:
+			break
 		if r == WAIT:
+			# 等回复期间不做边界检查：那会在等待者之上补压新状态，
+			# 玩家回复回来时被新状态错取（回复归属见 _await_state）
 			break
 		if r == SUSPEND:
 			# 本状态请求「先执行我压入的新状态，之后再回来继续我」
 			continue
+		_check_hand_overflow()
+		_check_cover_overflow()
+		_check_hand_change()
+		_check_token_change()
+		_check_energy_change()
 		if idx >= _states.size():
 			break
 		if _states[idx] == st:
@@ -355,6 +384,9 @@ func run() -> void:
 
 
 func push(st: Variant) -> void:
+	# 终局后不再受理任何新状态（避免残留流程在清栈后又被压回来）
+	if phase == Phase.Over:
+		return
 	_states.append(st)
 
 
@@ -618,6 +650,8 @@ func _log_give_cards(src_id: int, dst_id: int, cards: Array) -> void:
 func wait_for(pid: int, kind: int, 保留倒计时: bool = false) -> void:
 	_await_id = pid
 	_await_kind = kind
+	# 登记等待归属：这次回复只认「当前正在 handle 的这个状态实例」
+	_await_state = _当前状态
 	_has_reply = false
 	if 保留倒计时 and 链截止_ms > 0:
 		wait_deadline_ms = 链截止_ms
@@ -636,19 +670,40 @@ func wait_for(pid: int, kind: int, 保留倒计时: bool = false) -> void:
 
 
 func has_reply() -> bool:
-	return _has_reply
+	# 只认「等待归属的那个状态」：别的状态（等待期间被补压到栈上的）取不到这份回复
+	return _has_reply and _当前状态 == _await_state
 
 
 func take_reply() -> Dictionary:
+	# 非等待归属者不得读取，更不能顺带清掉这份回复
+	if _当前状态 != _await_state:
+		return {}
 	# 注意：必须先取出引用再清空，否则返回的是空字典
 	var r: Dictionary = _reply
 	_has_reply = false
 	_await_id = -1
+	_await_state = null
 	wait_deadline_ms = 0
 	wait_total_ms = 0
 	_reply = {}
 	_pending_partial = {}
 	return r
+
+
+## 清掉等待 / 回复 / 分步应答 / 查询链倒计时等交互态：终局与新对局开始时统一收尾，
+## 避免残留在这些字段里的回复被后续流程（或下一局复用同一引擎时）误用
+func _清空等待() -> void:
+	_await_id = -1
+	_await_kind = -1
+	_await_state = null
+	_当前状态 = null
+	_has_reply = false
+	_reply = {}
+	_pending_partial = {}
+	wait_deadline_ms = 0
+	wait_total_ms = 0
+	链截止_ms = 0
+	链总时长_ms = 0
 
 
 func on_message(pid: int, kind: int, data: Dictionary) -> void:
@@ -1593,8 +1648,12 @@ class SCheckTurnStart:
 			if c != null and c.card_name_enum() == GConst.CardName.Poison:
 				poison_cards.append(int(be["card"]))
 		e.push(SActionPhase.new())
-		e.push(SHook.new("p_before_action", {}, []))
+		# 行动阶段之前的钩子顺序对照服务端 setStateCheckBasicEffect：
+		#   中毒 → （虚弱询问）→ p_between_weak_and_action → p_before_action → p_boot → 行动阶段
+		# 后压先执行，故这里按「行动阶段 → boot → before_action → between」的顺序压
 		e.push(SHook.new("p_boot", {}, []))
+		e.push(SHook.new("p_before_action", {}, []))
+		e.push(SHook.new("p_between_weak_and_action", {}, []))
 		e.push(SWeaken.new())
 		if not poison_cards.is_empty():
 			e.push(SPoison.new(poison_cards))
@@ -2435,8 +2494,9 @@ class SHandOverflow:
 
 
 ## 超限掉士气（可等待玩家输入）：依次跑完整掉士气链 ——
-## p_before_lose_morale → p_xin_yue → p_lose_morale → p_fix_morale → 扣士气 → p_true_lose_morale
-## 对应服务端 StateBeforeLoseMorale → StateXinYue → StateLoseMorale → StateFixMorale → StateTrueLoseMorale。
+## p_before_lose_morale → p_xin_yue → p_lose_morale → p_fix_morale → p_true_lose_morale → 扣士气
+## 对应服务端 StateBeforeLoseMorale → StateXinYue → StateLoseMorale → StateFixMorale → StateTrueLoseMorale；
+## 服务端 StateTrueLoseMorale 是「先把 p_true 钩子对全体跑完，最后才真正扣士气并判结束」。
 ## 仅在「干净栈位」（SHandOverflow 内）压入，故允许钩子等待玩家输入（如天使的神之庇护 706）；
 ## 由角色在自身钩子中途触发的掉士气仍走同步 lose_morale()（其栈位不能安全等待）。
 class SOverloadMorale:
@@ -2450,9 +2510,9 @@ class SOverloadMorale:
 		if started:
 			return BattleEngine.CONTINUE
 		started = true
-		# 逆序压栈：p_before → p_xin_yue → p_lose_morale → p_fix_morale → 扣士气 → p_true
-		e.push(SHook.new("p_true_lose_morale", ctx, []))
+		# 逆序压栈（后压先执行）：p_before → p_xin_yue → p_lose_morale → p_fix_morale → p_true → 扣士气
 		e.push(SApplyOverloadMorale.new(target_id, ctx))
+		e.push(SHook.new("p_true_lose_morale", ctx, []))
 		e.push(SHook.new("p_fix_morale", ctx, []))
 		e.push(SHook.new("p_lose_morale", ctx, []))
 		e.push(SHook.new("p_xin_yue", ctx, []))
@@ -2834,7 +2894,7 @@ func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
 		# 【特殊行动】的摸牌不走 push_draw（技能表：水影等响应写明「除【特殊行动】外」）
 		draw(cur.id, 3)
 		_broadcast_game()
-		push_after_action("p_after_special", {"player": cur.id, "card_id": -1})
+		push_after_action("p_after_special", {"player": cur.id, "card_id": -1, "special_action": true})
 		push(SHandOverflow.new())
 		return CONTINUE
 	if aid == GConst.SpecialAction.Synthesize:
@@ -2849,7 +2909,7 @@ func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
 		if team_grail[cur.color] >= GConst.GRAIL_WIN:
 			_game_over(cur.color)
 			return CONTINUE
-		push_after_action("p_after_special", {"player": cur.id, "card_id": -1})
+		push_after_action("p_after_special", {"player": cur.id, "card_id": -1, "special_action": true})
 		push(SHandOverflow.new())
 		return CONTINUE
 	if aid == GConst.SpecialAction.Extract:
@@ -2893,7 +2953,7 @@ func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
 				目标.set_gem(目标.gem + 给宝石)
 				目标.set_crystal(目标.crystal + (枚 - 给宝石))
 		_broadcast_game()
-		push_after_action("p_after_special", {"player": cur.id, "card_id": -1})
+		push_after_action("p_after_special", {"player": cur.id, "card_id": -1, "special_action": true})
 		if 是天堂:
 			# 发动了【冒险者天堂】：给角色一次广播技能通知的机会
 			push(SHook.new("p_extract_to", {"player": cur.id, "dst_ids": dsts}, []))
@@ -2940,15 +3000,19 @@ func _log_special(cur: BattlePlayer, aid: int) -> void:
 # ============================================================
 # 士气与结束
 # ============================================================
-## 掉士气（带角色钩子；ctx 含最近一次伤害的 cause/type，供「因伤害掉士气」类技能判定）
+## 掉士气（带角色钩子；ctx 的 cause/harm_cause = 本次掉士气来源，type = 伤害类型）
 ## 与服务器一致：before / true 钩子对「所有玩家」按座位序调用（如蝶舞的凋零形态要限制
 ## 对手的士气下降、月女的新月庇护要响应队友的士气下降），钩子内部按 ctx["dst"] 自行判断是否相关。
 ## 限制：本实现为同步调用，钩子内不能等待玩家输入。超限掉士气走 SOverloadMorale（可等待，见下），
 ## 需要等待支付的技能（如天使的神之庇护 706）在那边实现。
+## 本入口只用于「非伤害」来源（逆反居合斩 / 暗月诅咒）：对照服务端，这类惩罚的 harm.type = HARM_NONE、
+## harm.cause = 技能 cause，不能沿用 last_harm_*（最近一次伤害的上下文）——否则依 type 判定的钩子
+## （新月庇护 / 神之庇护 / 舞女同生 / 蝶舞凋灵…）会把非伤害惩罚误判成「因伤害掉士气」。
+## 因伤害掉士气（手牌超限）走 SOverloadMorale，其 harm 上下文由伤害那一拍显式带入。
 func lose_morale(target: BattlePlayer, amount: int, cause: int) -> void:
 	var ctx: Dictionary = {
 		"dst": target.id, "amount": amount, "cause": cause,
-		"harm_cause": last_harm_cause, "type": last_harm_type,
+		"harm_cause": cause, "type": GConst.HarmType.None,
 	}
 	# 对照原版掉士气链：StateBeforeLoseMorale → StateXinYue → StateLoseMorale → StateFixMorale
 	# → StateTrueLoseMorale，全部跑完才真正扣士气（角色在钩子里可以改 ctx["amount"]，
@@ -2960,8 +3024,6 @@ func lose_morale(target: BattlePlayer, amount: int, cause: int) -> void:
 				p0.role.call_hook(钩子, ctx)
 	amount = int(ctx.get("amount", amount))
 	set_morale(target.color, team_morale[target.color] - amount)
-	last_harm_cause = 0
-	last_harm_type = 0
 	_check_game_over()
 
 
@@ -2978,6 +3040,9 @@ func _game_over(win_color: int) -> void:
 	phase = Phase.Over
 	winner = win_color
 	_states.clear()
+	# 终局后不再受理任何玩家回复：清掉等待 / 回复 / 分步应答 / 查询链倒计时，
+	# 否则残留在这些字段里的回复会被后续流程（或下一次对局复用引擎时）误用
+	_清空等待()
 	_broadcast_game()
 	broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Notice,

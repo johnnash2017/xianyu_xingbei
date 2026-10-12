@@ -625,10 +625,49 @@ func _读取等待(info: Dictionary) -> void:
 
 ## 等待进度条：服务端只在「开始等待 / 等待结束」广播，剩余时间由客户端自己倒数
 func _process(delta: float) -> void:
+	_推进法术伤害队列(delta)
 	if _等待方 < 0:
 		return
 	_等待剩余 = maxf(_等待剩余 - delta, 0.0)
 	_刷新等待条()
+
+
+# ============================================================
+# 法术伤害结算的顺序表现
+# ============================================================
+## 法术伤害结算的表现间隔（秒）：群伤（一次打多名）时服务端同一拍把几条伤害一起发过来，
+## 若同时播出来，几个头像一起泛红、数字一起冒，看不出谁先谁后 —— 排队逐个播：
+## 空闲时第一条立即播，其后每条间隔这么多秒。攻击 / 魔弹伤害不受影响（照旧即时，带震荡波 / 卡肉）
+const 法术结算间隔: float = 0.25
+var _法术待播: Array[Dictionary] = []
+var _法术计时: float = 0.0
+
+
+func _推进法术伤害队列(delta: float) -> void:
+	if _法术待播.is_empty():
+		_法术计时 = 0.0
+		return
+	_法术计时 -= delta
+	if _法术计时 > 0.0:
+		return
+	_法术计时 = 法术结算间隔
+	_播放法术伤害(_法术待播.pop_front())
+
+
+## 播放一条法术伤害的表现：受击音 + 面板泛红抖动 + 日志 + 伤害飘字（顺序与攻击一致：先数字后表现）
+func _播放法术伤害(项: Dictionary) -> void:
+	var dst: int = int(项.get("dst", -1))
+	var src: int = int(项.get("src", -1))
+	var point: int = int(项.get("point", 0))
+	Audio.播音效("sys-hurt")
+	var 受击面板: 战斗玩家面板 = _玩家面板(dst)
+	if 受击面板 != null:
+		受击面板.Hurted(false)
+	_日志追加("%s 对 %s 造成 %d 点法术伤害" % [_称号(src), _称号(dst), point], "伤害")
+	if point > 0:
+		var 中心: Vector2 = _面板中心(dst)
+		if 中心.x >= 0.0:
+			_生成伤害飘字(中心, point, 飘字色_法术伤害)
 
 
 ## 超时进度条画在「正在被等的那名玩家」的名牌上方，其余面板收起（传负值）；
@@ -1111,6 +1150,15 @@ func _on_hit(src_id: int, dst_id: int, hit: int) -> void:
 
 func _on_hurt(msg: Dictionary) -> void:
 	var cause: int = int(msg.get("cause", 0))
+	# 法术伤害：交给队列逐个播（群伤时才有视觉先后）；攻击 / 魔弹 / 其它照旧即时播
+	if int(msg.get("type", GConst.HarmType.None)) == GConst.HarmType.Magic \
+			and cause != GConst.CAUSE_ATTACK and cause != GConst.CAUSE_MISSILE:
+		_法术待播.append({
+			"dst": int(msg.get("dst_id", -1)),
+			"src": int(msg.get("src_id", -1)),
+			"point": int(msg.get("hurt", 0)),
+		})
+		return
 	# 攻击命中 / 魔弹命中只响「命中音」sys-hit，不再叠受伤音：攻击命中的那声在 _on_hit 里播过，
 	# 魔弹没有命中判定，在这里补；其余来源（法术 / 技能）没有命中判定，响「受伤音」sys-hurt
 	if cause == GConst.CAUSE_MISSILE:
@@ -1472,6 +1520,9 @@ func _进入待选() -> void:
 					for n: int in range(1, 抵 + 1):
 						选项.append({"text": "挡 %d 点" % n, "args": [n]})
 					_进入二级技能栏(0, null, _选项项(选项), 二级选项底色_治疗)
+					# 默认选中「挡最多」的那一项（最后一项，抵挡值最大）—— 玩家直接点「确定」就是挡满
+					_先弹选项 = false
+					_选中二级选项(0, _二级选项.size() - 1)
 				_指令提示("用治疗抵挡本次 %d 点%s伤害，「确定」使用" % [伤害点数, 类型名])
 			GConst.RespondType.Bullet:
 				_mode = 2
@@ -1560,16 +1611,17 @@ func _进入技能询问() -> void:
 	_目标锁死 = _套用自动选目标(指示配置)
 	_已选参数.clear()
 	if _先弹选项:
-		# 选效果之前头像点不动（目标数按 0 处理）；服务端原本给的目标数先记下，选完效果再还原
+		# 服务端原本给的目标数 / 需牌先记下，选完效果由 _应用选项目标数 还原 / 收紧
 		_选项原始目标数 = _skill_ask_need_target
-		_skill_ask_need_target = 0
-		_need_players = 0
-		# 牌同理：要弃几张由选中那一项决定，选效果之前先不让点牌，选完在 _应用选项目标数 里还原
 		_选项原始需牌 = _skill_ask_need_card
 		_选项原始最多牌 = _skill_card_max
-		_skill_ask_need_card = 0
-		_skill_card_max = 0
-		_need_cards = 0
+		# 默认选效果前不让点牌 / 点目标（数量按 0 处理）；配了「允许先选牌」的技能不清零
+		if not bool(指示配置.get("允许先选牌", false)):
+			_skill_ask_need_target = 0
+			_need_players = 0
+			_skill_ask_need_card = 0
+			_skill_card_max = 0
+			_need_cards = 0
 	if not _skill_options.is_empty():
 		var notes: Array = _pending.get("notes", [])
 		# 服务端标了「这一项本身就是技能」时（如【蓄力一击】/【气绝崩击】），选项按钮绑上技能号，
@@ -1711,6 +1763,33 @@ func _保留合法目标() -> void:
 		if _玩家可选(pid) and not 保留.has(pid):
 			保留.append(pid)
 	_sel_players = 保留
+
+
+## 切换用法后重校验本次已选的牌与目标：合法的保留、不合法的丢掉。
+## 「点头像分配」型的目标存在 _治疗分配 里（不在 _sel_players），必须单独按新用法的
+## 目标白名单过滤 —— 否则上一个用法选好的队友会被带到「对敌」用法上误伤。
+## 调用前需已按选中项更新过 _skill_need_card / _skill_target_max 等（见 _应用选项目标数）。
+func _换选项后重校验() -> void:
+	# 手牌：按新用法的可点条件（牌系 / 来源 / 白名单…）逐张复检，并受新的点选上限约束
+	var 牌保留: Array[int] = []
+	for cid: Variant in _sel_cards:
+		if 牌保留.size() >= _skill_card_max:
+			break
+		if _卡牌能点(int(cid)) and not 牌保留.has(int(cid)):
+			牌保留.append(int(cid))
+	_sel_cards = 牌保留
+	if not _分配配置().is_empty():
+		# 「点头像分配」型：分配记录按新用法的目标白名单过滤，再整体刷新（顺带重建 _sel_players）
+		var 分配保留: Array[int] = []
+		for pid: int in _治疗分配:
+			if _玩家可选(pid):
+				分配保留.append(pid)
+		_治疗分配 = 分配保留
+		_刷新治疗分配()
+		return
+	_保留合法目标()
+	刷新选中面板()
+	_更新按键()
 
 
 ## 额外行动询问：把每个可选 cause 变成一个按钮
@@ -2149,15 +2228,16 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 	if _先弹选项:
 		if _mode == 4:
 			# 发动技能这条（如【死亡之触】换「消耗多少治疗」）：已经点好的目标保留下来（用户要求），
-			# 换效果后只把不再合法（新效果的目标白名单不收）或超出新目标数上限的裁掉
+			# 换效果后只把不再合法（新效果的目标白名单不收）或超出新目标数上限的裁掉；牌同理
 			_应用选项目标数()
-			_保留合法目标()
+			_换选项后重校验()
 		else:
 			# 技能询问这条：改了效果＝上一次的点选作废 —— 原先选的目标未必还是新效果的合法目标
 			# （如【神圣领域】先点了队友、又改成敌人用法），清掉重选
 			_重置治疗分配()
 			_刷新治疗分配()
 			_应用选项目标数()
+			_换选项后重校验()
 			Logic.send_respond(_skill_ask_id, [], [], _已选参数, true)
 	elif _mode == 4 and not _二级选项.is_empty():
 		# 发动技能时按「选中的效果」收紧本次要选的牌 / 目标：
@@ -2181,10 +2261,9 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		_skill_need_target = maxi(_选项原始目标数, 项需目标)
 		_skill_target_max = maxi(_选项原始最多目标, _skill_need_target)
 		_need_players = _skill_target_max
-		if _sel_cards.size() > _skill_card_max:
-			_sel_cards.clear()
-		if _sel_players.size() > _skill_target_max:
-			_sel_players.clear()
+		# 换了效果后把已选的牌 / 目标按新效果复检：合法的保留、不合法的丢掉
+		# （原先超过上限就整片清掉，把合法的那几张也一起丢了）
+		_换选项后重校验()
 	# 冒险家【冒险者天堂】：选额外提炼数时把「要移除的自身能量」预览在自己头像上；
 	# 最后一步选构成时记下取法，并刷新提示条与头像上的分配
 	if _本地选项阶段 == 1:
@@ -3439,8 +3518,9 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		_选项原始最多目标 = _skill_target_max
 		_选项原始来源 = _skill_card_source
 		_选项原始盖牌需数 = _skill_cover_need
-	if _先弹选项:
-		# 选效果之前不让点牌、不让点目标：把需牌 / 目标数临时清零，选完在 _应用选项目标数 里还原
+	# 「先弹选项」默认在选效果前不让点牌 / 点目标（把需牌 / 目标数临时清零，选完在 _应用选项目标数 里还原）；
+	# 配了「允许先选牌」的技能（神官【神圣领域】）不清零：可以先点要弃的牌，用法仍必须先选
+	if _先弹选项 and not bool(指示配置.get("允许先选牌", false)):
 		_skill_need_card = 0
 		_skill_card_max = 0
 		_need_cards = 0
@@ -3617,6 +3697,17 @@ func _点治疗目标(player_id: int) -> void:
 		return
 	if not bool(配置.get("可重复", false)) and _治疗分配.has(player_id):
 		return
+	# 突破上限的转移有封顶（如神官【神圣契约】「无视其治疗上限、但最高到 4 点」）：
+	# 点到封顶就不再往这个目标加，免得分超了、多出的点数被服务端截掉白费
+	if bool(配置.get("突破上限", false)):
+		var 封顶: int = int(配置.get("突破封顶", 0))
+		if 封顶 > 0:
+			var 目标已有: int = 0
+			for id: int in _治疗分配:
+				if id == player_id:
+					目标已有 += 每次
+			if 目标已有 + 每次 > 封顶:
+				return
 	# 【冒险者天堂】每名队友各有限额（其能量空位）：已装不下的队友再点不再增加
 	if _mode == 3 and _skill_ask_id == 冒险者天堂技能号:
 		var 已有: int = 0
@@ -3861,6 +3952,9 @@ func _生成治疗加号(中心: Vector2) -> void:
 ## 受伤飘字：服务端广播「本次伤害点数（含各类加成，尚未经治疗抵挡/抵御扣减）」—— 在该角色头像中间冒出数字，
 ## 向上飘出并淡掉。法术伤害洋红、攻击伤害红（见 飘字色_*），所有人都看得到
 func _on_hurt_float(dst_id: int, point: int, 类型: int) -> void:
+	# 法术伤害的飘字由 _播放法术伤害 在排队轮到它时生成（与受击表现同一条、有先后），这里不重复飘
+	if 类型 == GConst.HarmType.Magic:
+		return
 	if point <= 0:
 		return
 	var 中心: Vector2 = _面板中心(dst_id)
@@ -4313,12 +4407,15 @@ func _单行间距与起点(张数: int, 可用宽: float, 尺寸: Vector2, 最�
 ## 我的手牌：固定排成一行并水平居中；位置够就摊开，不够才压间距（压到负数会叠着放），绝不换行
 ## 每张牌按 _卡牌能点 单独判定：够格的亮起来，其余的置灰且点不动
 func 刷新手牌() -> void:
+	# 复用同 id 的已有卡牌节点：每份快照都销毁重建整排手牌的话，每张都要重新实例化、重画卡面，
+	# 快照一多客户端就卡（见性能诊断报告）。只新建「新出现的牌」，旧牌原地更新。
+	var 旧: Dictionary = {}
 	for c: Node in HandArea.get_children():
-		c.queue_free()
+		var 旧卡: GCard = c.get("card") as GCard
+		if 旧卡 != null:
+			旧[旧卡.id] = c
 	var 张数: int = Data.hand_cards.size()
-	if 张数 == 0:
-		return
-	var 排布: Array = _单行间距与起点(张数, HandArea.size.x, 手牌尺寸, 手牌最多重叠比例)
+	var 排布: Array = _单行间距与起点(maxi(张数, 1), HandArea.size.x, 手牌尺寸, 手牌最多重叠比例)
 	var 间距: float = float(排布[0])
 	var 起点: float = float(排布[1])
 	var 现在: int = Time.get_ticks_msec()
@@ -4326,24 +4423,37 @@ func 刷新手牌() -> void:
 	for i: int in range(张数):
 		var card: GCard = Data.hand_cards[i]
 		还在手.append(card.id)
-		# 这一轮才补进来的牌：记下起算时刻，接下来按「已经过多久」往下落
-		if not _上次手牌.has(card.id) and not _补牌起点.has(card.id):
-			_补牌起点[card.id] = 现在
-		var go: Node = _加卡牌(HandArea, card, 手牌尺寸, _卡牌能点(card.id))
+		var 可用: bool = _卡牌能点(card.id)
+		var go: Node = 旧.get(card.id)
+		var 是新建: bool = go == null
+		if 是新建:
+			# 这一轮才补进来的牌：记下起算时刻，接下来按「已经过多久」往下落
+			if not _上次手牌.has(card.id) and not _补牌起点.has(card.id):
+				_补牌起点[card.id] = 现在
+			go = _加卡牌(HandArea, card, 手牌尺寸, 可用)
+		else:
+			旧.erase(card.id)
+			# 复用节点也要按最新的可用性重画（省去重新实例化）
+			go.call("设置卡牌", card, 可用, true)
+			go.call("设置发光色", 可选发光_红 if _正在弃牌() else 可选发光_绿)
+		HandArea.move_child(go, i)
 		var 选中: bool = _sel_cards.has(card.id)
 		go.call("设置选中", 选中)
 		var ctl: Control = go as Control
 		# 选中的牌往上抽出一截：表示「已经拿出来，等你按确定」
 		var 上浮: float = 选中上浮像素 if 选中 else 0.0
 		var 目标y: float = (HandArea.size.y - 手牌尺寸.y) * 0.5 - 上浮
-		# 新补的牌从高处向下落回原位。手牌会因为广播反复重建，所以位置按「已过多久」现算，
-		# 重建也接着演，不会中途跳回终点
-		var 落高: float = _补牌落高(card.id, 现在)
-		ctl.position = Vector2(起点 + 间距 * float(i), 目标y - 落高)
-		if 落高 > 0.0:
-			var 剩余: float = maxf(补牌落下时长 * (1.0 - _补牌进度(card.id, 现在)), 0.05)
-			var t: Tween = ctl.create_tween()
-			t.tween_property(ctl, "position:y", 目标y, 剩余).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		ctl.position = Vector2(起点 + 间距 * float(i), 目标y)
+		if 是新建:
+			# 只有新补的牌才从高处落下（复用/重画不重播这个动画）
+			var 落高: float = _补牌落高(card.id, 现在)
+			if 落高 > 0.0:
+				ctl.position.y = 目标y - 落高
+				var 剩余: float = maxf(补牌落下时长 * (1.0 - _补牌进度(card.id, 现在)), 0.05)
+				var t: Tween = ctl.create_tween()
+				t.tween_property(ctl, "position:y", 目标y, 剩余).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	for 废弃: Variant in 旧.values():
+		(废弃 as Node).queue_free()
 	_上次手牌 = 还在手
 	for 记: Variant in _补牌起点.keys():
 		if not 还在手.has(int(记)):
@@ -4373,13 +4483,19 @@ func _补牌落高(card_id: int, 现在: int) -> float:
 ## 「要选盖牌」时可见且可点；点「盖牌」按钮查看时只可见、点不动。
 ## 张数多到一行放不下时压缩间距（可以叠着放），不会溢到区外。
 func 刷新盖牌() -> void:
+	# 与手牌一样复用节点：盖牌没变时不重建（每份快照都重建同样很重）
+	var 旧: Dictionary = {}
 	for c: Node in ChooseArea.get_children():
-		c.queue_free()
+		var 旧卡: GCard = c.get("card") as GCard
+		if 旧卡 != null:
+			旧[旧卡.id] = c
 	var 张数: int = 0
 	for cc: GCard in Data.cover_cards:
 		if cc != null:
 			张数 += 1
 	if 张数 == 0:
+		for 废弃: Variant in 旧.values():
+			(废弃 as Node).queue_free()
 		ChooseArea.visible = false
 		return
 	# 盖牌区里的牌比手牌小一档（见 盖牌显示缩放）：整行更容易挤进 ChooseArea，也不至于压到别处
@@ -4396,13 +4512,25 @@ func 刷新盖牌() -> void:
 		var 可点: bool = _selecting_cover and _卡牌能点(cc.id)
 		# 只是「点盖牌按钮查看」时一律保持原色（只读、不给点，但牌面要看得清）；
 		# 只有在「要选盖牌」的询问里选不了的那几张才置灰
-		var go: Node = _加卡牌(ChooseArea, cc, 尺寸, 可点, _selecting_cover)
+		var go: Node = 旧.get(cc.id)
+		if go == null:
+			go = _加卡牌(ChooseArea, cc, 尺寸, 可点, _selecting_cover)
+		else:
+			旧.erase(cc.id)
+			var 复: Control = go as Control
+			复.custom_minimum_size = 尺寸
+			复.size = 尺寸
+			go.call("设置卡牌", cc, 可点, _selecting_cover)
+			go.call("设置发光色", 可选发光_红 if _正在弃牌() else 可选发光_绿)
+		ChooseArea.move_child(go, 序)
 		if go is Control:
 			(go as Control).position = Vector2(
 				(ChooseArea.size.x - 总宽) * 0.5 + float(序) * (尺寸.x + 间距),
 				(ChooseArea.size.y - 尺寸.y) * 0.5 + 盖牌显示下移)
 		go.call("设置选中", _sel_cards.has(cc.id))
 		序 += 1
+	for 废弃: Variant in 旧.values():
+		(废弃 as Node).queue_free()
 	ChooseArea.visible = _selecting_cover or _查看盖牌
 
 
@@ -5166,6 +5294,10 @@ func _玩家可选(player_id: int) -> bool:
 		# 服务端给了合法目标就只让这几名玩家亮（如【天使之歌】只能选面前有基础效果的人）
 		return _skill_targets.is_empty() or _skill_targets.has(player_id)
 	if _mode == 4:
+		# 「先弹选项」型：还没选用法时不让点目标（如神官【神圣领域】：用法决定打队友还是打敌人、
+		# 目标白名单也不同）。选了某项后 _已选参数 才有值，这时才按它的白名单点亮
+		if _先弹选项 and _已选参数.is_empty():
+			return false
 		if bool(_分配配置().get("仅队友", false)) and not _是队友(player_id):
 			return false
 		# 「目标随牌」的技能（如【雷光散射】）：已选牌数够阈值时才点亮目标（选 1 张时不选目标）
@@ -5229,7 +5361,13 @@ func _确定不可用() -> bool:
 		# 分配型指示器（如冰霜祷言）：选够治疗点、且要选牌时选够牌才让「确定」
 		if not _分配配置().is_empty():
 			var 治疗牌够: bool = _sel_cards.size() >= _skill_ask_need_card if _skill_ask_need_card > 0 else true
-			return not (治疗牌够 and _分配已满())
+			if not (治疗牌够 and _分配已满()):
+				return true
+			# 分配到的目标也必须还在当前用法的白名单里（换了用法后可能已不合法）
+			for pid: int in _治疗分配:
+				if not _玩家可选(pid):
+					return true
+			return false
 		if not _是技能询问:
 			return true
 		# need_card 是「最少要选几张」，点选上限另由 _skill_card_max 管（如【法术反弹】可弃 1~N 张同系牌），
@@ -5247,7 +5385,13 @@ func _确定不可用() -> bool:
 		# 分配型指示器（如圣疗 / 治愈之光 / 治疗术 / 神圣领域）：选够治疗点、且要选牌时选够牌才让「确定」
 		if not _分配配置().is_empty():
 			var 治疗牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
-			return not (治疗牌够 and _分配已满())
+			if not (治疗牌够 and _分配已满()):
+				return true
+			# 分配到的目标也必须还在当前用法的白名单里（换了用法后可能已不合法）
+			for pid: int in _治疗分配:
+				if not _玩家可选(pid):
+					return true
+			return false
 		# 二级技能栏：得先在技能栏里选一个效果，且选够它要求的牌 / 目标，才让点「确定」
 		# （「先弹选项」型的需牌 / 目标已在选效果时由 _应用选项目标数 还原 / 收紧）
 		if _二级栏:

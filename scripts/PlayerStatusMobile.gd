@@ -1192,30 +1192,56 @@ func _设描边强度(值: float, 材质: ShaderMaterial) -> void:
 ## 在战斗界面根节点上叠一块铺满屏幕的透明 ColorRect，跑一圈从本面板中心扩散出去的画面扭曲。
 ## 面板在场景里是战斗界面根节点（Root）的直接子节点，故用 get_parent() 拿它；
 ## 波挂在 Root 下才铺得满整屏，并且卡肉冻 Root 时会跟着停在起手那一帧。
+## 震荡波节点与材质「全局共用一份」：画面扭曲要采样整屏，是全屏开销最大的一块 ——
+## 每次受击都新建、或多人同帧各播一张，就会叠出多张全屏 quad（弱机上明显卡顿）。
+## 共用后同一时刻最多一次全屏采样，也免去运行期反复分配节点 / 材质与首次编译的卡顿。
+static var _共享波: ColorRect = null
+static var _共享波材质: ShaderMaterial = null
+static var _共享波补间: Tween = null
+
+
 func _播放受击震荡波() -> void:
 	var 根: Control = get_parent() as Control
 	if 根 == null or 根.size.x <= 0.0 or 根.size.y <= 0.0:
 		return
-	var 波: ColorRect = ColorRect.new()
-	波.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var 材质: ShaderMaterial = ShaderMaterial.new()
-	材质.shader = 受击震荡波着色器
-	波.material = 材质
-	根.add_child(波)
-	波.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	材质.set_shader_parameter("center_uv", get_rect().get_center() / 根.size)
-	材质.set_shader_parameter("aspect", 根.size.x / 根.size.y)
-	材质.set_shader_parameter("radius", 震荡波半径)
-	材质.set_shader_parameter("band", 震荡波波宽)
-	材质.set_shader_parameter("strength", 震荡波强度)
-	材质.set_shader_parameter("progress", 0.0)
-	材质.set_shader_parameter("fade", 1.0)
-	var t: Tween = 波.create_tween()
-	t.set_parallel(true)
-	t.tween_method(_设震荡波进度.bind(材质), 0.0, 1.0, 震荡波时长)
+	if _共享波 == null or not is_instance_valid(_共享波):
+		_共享波 = ColorRect.new()
+		_共享波.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_共享波材质 = ShaderMaterial.new()
+		_共享波材质.shader = 受击震荡波着色器
+		_共享波.material = _共享波材质
+	if _共享波.get_parent() != 根:
+		if _共享波.get_parent() != null:
+			_共享波.get_parent().remove_child(_共享波)
+		根.add_child(_共享波)
+	# 只铺「波可能扫到的方框」（中心 ± (半径 + 波宽 + 强度)），不再铺满整屏：
+	# 着色器照样按 SCREEN_UV 取屏、扭曲结果不变，但要着色的像素从整屏缩到这一小块
+	var 半径像素: float = (震荡波半径 + 震荡波波宽 + 震荡波强度) * 根.size.y
+	var 中心: Vector2 = get_rect().get_center()
+	_共享波.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_共享波.position = 中心 - Vector2(半径像素, 半径像素)
+	_共享波.size = Vector2(半径像素, 半径像素) * 2.0
+	_共享波材质.set_shader_parameter("center_uv", 中心 / 根.size)
+	_共享波材质.set_shader_parameter("aspect", 根.size.x / 根.size.y)
+	_共享波材质.set_shader_parameter("radius", 震荡波半径)
+	_共享波材质.set_shader_parameter("band", 震荡波波宽)
+	_共享波材质.set_shader_parameter("strength", 震荡波强度)
+	_共享波材质.set_shader_parameter("progress", 0.0)
+	_共享波材质.set_shader_parameter("fade", 1.0)
+	_共享波.visible = true
+	if _共享波补间 != null and _共享波补间.is_valid():
+		_共享波补间.kill()
+	_共享波补间 = _共享波.create_tween()
+	_共享波补间.set_parallel(true)
+	_共享波补间.tween_method(_设震荡波进度.bind(_共享波材质), 0.0, 1.0, 震荡波时长)
 	# 前 40% 保持不透明（波还没走远），之后再淡出
-	t.tween_method(_设震荡波淡出.bind(材质), 1.0, 0.0, 震荡波时长 * 0.6).set_delay(震荡波时长 * 0.4)
-	t.chain().tween_callback(波.queue_free)
+	_共享波补间.tween_method(_设震荡波淡出.bind(_共享波材质), 1.0, 0.0, 震荡波时长 * 0.6).set_delay(震荡波时长 * 0.4)
+	_共享波补间.chain().tween_callback(_收起共享波)
+
+
+func _收起共享波() -> void:
+	if _共享波 != null and is_instance_valid(_共享波):
+		_共享波.visible = false
 
 
 func _设震荡波进度(值: float, 材质: ShaderMaterial) -> void:

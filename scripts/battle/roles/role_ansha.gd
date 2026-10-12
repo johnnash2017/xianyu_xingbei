@@ -47,9 +47,13 @@ func is_free_skill(skill_id: int) -> bool:
 
 
 # ============================================================
-# 回合开始（p_boot）：结束上一次潜行
+# 行动阶段入口（p_before_action）：结束上一次潜行（对照服务端 AnSha::p_before_action）
 # ============================================================
-func p_boot(_ctx: Dictionary) -> int:
+func p_before_action(_ctx: Dictionary) -> int:
+	# 本回合「拒绝虚弱」等已跳过行动阶段：服务端此时不跑 p_before_action，这里同样不结算
+	# （潜行持续到「下个行动阶段开始」，被跳过的回合不算）
+	if engine.skip_action_phase:
+		return SUCCESS
 	if engine.current_id != player.id:
 		return SUCCESS
 	# 潜行持续到「你的下个行动阶段开始」，即此刻先结束

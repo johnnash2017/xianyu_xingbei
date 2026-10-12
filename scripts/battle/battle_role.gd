@@ -6,7 +6,8 @@ extends RefCounted
 ## - 统一签名为 func p_xxx(ctx: Dictionary) -> int，返回 SUCCESS / WAIT / URGENT
 ## - 引擎在对应时机对「每个玩家」调用一次；若某角色返回 WAIT，则整个钩子轮次暂停，
 ##   收到该玩家的回复后从同一位玩家继续调用（因此角色内部用 step 记录进度）
-## - step 由引擎在每次钩子轮次开始时统一重置为 0；角色用 engine.ask_skill() 请求玩家输入
+## - step 现在按「当前钩子轮次的状态实例」隔离，随实例新建（新实例从 0 开始），不再每轮统一清零；
+##   角色用 engine.ask_skill() 请求玩家输入
 ## - 若角色在钩子内压入了新的引擎状态（如 push_harm 造成伤害），应「先把 step 推进过该子技能」
 ##   再返回 URGENT，引擎会先执行新状态、之后再回到本钩子继续
 
@@ -21,8 +22,14 @@ const STEP_DONE: int = 1000000
 ## 牌类校验返回此值表示「角色不覆写」，引擎会退回通用实现
 const V_NOT_OVERRIDE: int = -1
 
-var player: BattlePlayer = null
-var engine: BattleEngine = null
+var _player_ref: WeakRef = null
+var player: BattlePlayer:
+	get: return _player_ref.get_ref() as BattlePlayer if _player_ref != null else null
+	set(value): _player_ref = weakref(value) if value != null else null
+var _engine_ref: WeakRef = null
+var engine: BattleEngine:
+	get: return _engine_ref.get_ref() as BattleEngine if _engine_ref != null else null
+	set(value): _engine_ref = weakref(value) if value != null else null
 ## 钩子轮次之外的持久进度：主动技能（SkillRun）与不经钩子轮次的同步钩子用它记分步进度。
 var _持久进度: int = 0
 ## 钩子流程的进度：钩子轮次内由引擎按「本轮钩子」代管（每轮从 0 开始、互不污染），

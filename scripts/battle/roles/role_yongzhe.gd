@@ -76,9 +76,12 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 精疲力竭的解除时机与挑衅标记（服务端在 p_before_action 中处理；本实现改挂 p_boot，
-## 引擎中 p_boot 先于 p_before_action 执行，两者都在行动阶段之前，行为等价）
-func p_boot(_ctx: Dictionary) -> int:
+## 行动阶段入口（p_before_action）：精疲力竭的解除时机与挑衅标记（对照服务端 YongZhe::p_before_action）
+func p_before_action(_ctx: Dictionary) -> int:
+	# 本回合「拒绝虚弱」等已跳过行动阶段：服务端此时不跑 p_before_action —— 不解除【精疲力竭】、
+	# 也不吃那 3 点自伤，挑衅标记同样留到真正进入行动阶段的那一回合再记
+	if engine.skip_action_phase:
+		return SUCCESS
 	if engine.current_id != player.id:
 		# 记录当前玩家是否带有【挑衅】，供其回合结束时移除
 		var other: BattlePlayer = engine.p(engine.current_id)
