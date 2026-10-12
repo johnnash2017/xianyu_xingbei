@@ -1,0 +1,39 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/tip_box.gd" id="1_tipbox"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+resource_local_to_scene = true
+content_margin_left = 16.0
+content_margin_top = 16.0
+content_margin_right = 16.0
+content_margin_bottom = 16.0
+bg_color = Color(0.05, 0.06, 0.08, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.22)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[node name="说明提示框" type="Control" node_paths=PackedStringArray("框", "文本")]
+layout_mode = 3
+mouse_filter = 2
+script = ExtResource("1_tipbox")
+"框" = NodePath("框")
+"文本" = NodePath("框/文本")
+
+[node name="框" type="PanelContainer" parent="."]
+visible = false
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="文本" type="RichTextLabel" parent="框"]
+layout_mode = 2
+mouse_filter = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false

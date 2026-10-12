@@ -42,7 +42,7 @@ enabled=PackedStringArray("res://addons/excel_to_gd/plugin.cfg", "res://addons/g
 
 [gui]
 
-theme/custom="res://media/ui/ui_theme.tres"
+theme/custom="res://assets/textures/lobby/ui_theme.tres"
 
 [physics]
 

@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://scripts/effects/hitShockwave.gdshader" id="1_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_hit"]
+resource_local_to_scene = true
+shader = ExtResource("1_shader")
+
+[node name="受击震荡波" type="ColorRect"]
+material = SubResource("ShaderMaterial_hit")
+mouse_filter = 2

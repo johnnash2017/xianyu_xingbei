@@ -1,14 +1,13 @@
 extends Node
 ## 资源索引（autoload 名：Art）
-## 统一从 media/ 目录按名取贴图与音效，带缓存；对照原客户端 data/Player.cpp 的 tapSource 表与 resource/ 目录结构。
+## 统一从 assets/media/ 目录按名取贴图与音效，带缓存；对照原客户端 data/Player.cpp 的 tapSource 表与 resource/ 目录结构。
 
-## 选角大立绘（260x363，搬自参照工程 assets/textures/hero/middle）
-const DIR_ROLE_BIG: String = "res://media/heroPortrait/"
+## 选角大立绘（260x363）
+const DIR_ROLE_BIG: String = "res://assets/textures/hero/middle/"
 ## 战斗小图标目录（派系图 + 状态图标，搬自参照工程 assets/textures/battle）
 const DIR_BATTLE: String = "res://assets/textures/battle/"
-const DIR_TAP: String = "res://media/ui/tap/"
-const DIR_UI: String = "res://media/ui/"
-const DIR_SFX: String = "res://media/sfx/"
+const DIR_TAP: String = "res://assets/textures/hero/tap/"
+const DIR_SFX: String = "res://assets/media/sfx/"
 
 ## 基础效果卡名 → 状态图标名（assets/textures/battle 下的文件名）
 const STATUS_ICON: Dictionary = {
@@ -107,14 +106,10 @@ func token_icon(slot: int) -> Texture2D:
 	return tex(AssetIndex.image(TOKEN_ICON[slot]))
 
 
-func ui(图名: String) -> Texture2D:
-	return tex("%s%s.png" % [DIR_UI, 图名])
-
-
 # ============================================================
 # 音效
 # ============================================================
-## 播放一次音效（文件名取自 media/音效，如 "Hit" / "Hurt" / "Cure" / "Skill"）
+## 播放一次音效（文件名取自 assets/media/sfx，如 "Hit" / "Hurt" / "Cure" / "Skill"）
 func play_sfx(file_name: String) -> void:
 	if _sfx == null or file_name == "":
 		return

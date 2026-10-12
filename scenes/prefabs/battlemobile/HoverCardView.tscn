@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/HoverCardView.gd" id="1_hovercard"]
+[ext_resource type="PackedScene" path="res://scenes/prefabs/battlemobile/Card.tscn" id="2_card"]
+
+[node name="悬停卡预览" type="VBoxContainer" node_paths=PackedStringArray("状态名", "卡牌")]
+theme_override_constants/separation = 8
+mouse_filter = 2
+script = ExtResource("1_hovercard")
+"状态名" = NodePath("状态名")
+"卡牌" = NodePath("卡牌")
+
+[node name="状态名" type="Label" parent="."]
+layout_mode = 2
+mouse_filter = 2
+horizontal_alignment = 1
+
+[node name="卡牌" parent="." instance=ExtResource("2_card")]

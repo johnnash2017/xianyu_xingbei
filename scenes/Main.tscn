@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://bstarbg00001"]
 
 [ext_resource type="Script" uid="uid://cp7o0rlc5aoij" path="res://scripts/ui/main.gd" id="1_main"]
-[ext_resource type="Shader" uid="uid://d37bq32es8ijy" path="res://media/ui/ui/star_scroll.gdshader" id="1_rvslj"]
-[ext_resource type="Texture2D" uid="uid://bks2f673hrv1b" path="res://media/ui/ui/back3.png" id="2_0bbpv"]
+[ext_resource type="Shader" uid="uid://d37bq32es8ijy" path="res://assets/textures/lobby/star_scroll.gdshader" id="1_rvslj"]
+[ext_resource type="Texture2D" uid="uid://do1nryhwjauuj" path="res://assets/textures/lobby/back3.png" id="2_0bbpv"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_0bbpv"]
 shader = ExtResource("1_rvslj")
@@ -46,7 +46,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="问题反馈" type="Label" parent="."]
+[node name="问题反馈" type="Label" parent="." unique_id=858518175]
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
@@ -56,6 +56,7 @@ offset_top = 24.0
 offset_right = -24.0
 offset_bottom = 88.0
 grow_horizontal = 0
+mouse_filter = 0
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.72, 0.9, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
@@ -64,9 +65,8 @@ theme_override_font_sizes/font_size = 26
 text = "问题反馈"
 horizontal_alignment = 2
 vertical_alignment = 1
-mouse_filter = 0
 
-[node name="玩家列表层" type="Control" parent="."]
+[node name="玩家列表层" type="Control" parent="." unique_id=530478264]
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -75,7 +75,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="遮罩" type="ColorRect" parent="玩家列表层"]
+[node name="遮罩" type="ColorRect" parent="玩家列表层" unique_id=291739307]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -84,7 +84,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 0.6)
 
-[node name="居中" type="CenterContainer" parent="玩家列表层"]
+[node name="居中" type="CenterContainer" parent="玩家列表层" unique_id=683916231]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -92,45 +92,43 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="卡片" type="PanelContainer" parent="玩家列表层/居中"]
+[node name="卡片" type="PanelContainer" parent="玩家列表层/居中" unique_id=852104574]
 custom_minimum_size = Vector2(560, 0)
 layout_mode = 2
 
-[node name="内容" type="VBoxContainer" parent="玩家列表层/居中/卡片"]
+[node name="内容" type="VBoxContainer" parent="玩家列表层/居中/卡片" unique_id=884799216]
 layout_mode = 2
 theme_override_constants/separation = 18
 
-[node name="标题" type="Label" parent="玩家列表层/居中/卡片/内容"]
+[node name="标题" type="Label" parent="玩家列表层/居中/卡片/内容" unique_id=756979573]
 layout_mode = 2
 theme_override_font_sizes/font_size = 34
 text = "玩家列表"
 horizontal_alignment = 1
 
-[node name="玩家标题" type="Label" parent="玩家列表层/居中/卡片/内容"]
+[node name="玩家标题" type="Label" parent="玩家列表层/居中/卡片/内容" unique_id=1176638448]
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "【战斗】0 人"
-horizontal_alignment = 0
 
-[node name="玩家网格" type="GridContainer" parent="玩家列表层/居中/卡片/内容"]
+[node name="玩家网格" type="GridContainer" parent="玩家列表层/居中/卡片/内容" unique_id=1419621021]
 layout_mode = 2
 theme_override_constants/h_separation = 34
 theme_override_constants/v_separation = 14
 columns = 4
 
-[node name="观战标题" type="Label" parent="玩家列表层/居中/卡片/内容"]
+[node name="观战标题" type="Label" parent="玩家列表层/居中/卡片/内容" unique_id=1215529277]
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "【观战者】无"
-horizontal_alignment = 0
 
-[node name="观战网格" type="GridContainer" parent="玩家列表层/居中/卡片/内容"]
+[node name="观战网格" type="GridContainer" parent="玩家列表层/居中/卡片/内容" unique_id=1481990536]
 layout_mode = 2
 theme_override_constants/h_separation = 34
 theme_override_constants/v_separation = 14
 columns = 4
 
-[node name="提示" type="Label" parent="玩家列表层/居中/卡片/内容"]
+[node name="提示" type="Label" parent="玩家列表层/居中/卡片/内容" unique_id=432078386]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "（松开 TAB 关闭）"

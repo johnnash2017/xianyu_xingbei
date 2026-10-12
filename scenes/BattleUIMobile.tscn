@@ -1,8 +1,7 @@
 [gd_scene format=3 uid="uid://dxw73ymlbrqwj"]
 
-[ext_resource type="Texture2D" uid="uid://c1a6jl776wqay" path="res://assets/resources/agcv3/scene_title/input.png" id="1_inputpng"]
 [ext_resource type="Texture2D" uid="uid://qv27j8yxrrpy" path="res://assets/textures/battle/b05_botton_info.png" id="4_b05bottoninfopng"]
-[ext_resource type="Texture2D" uid="uid://70sve2d7vnyg" path="res://assets/misc/Texture2D/b05_botton_set.png" id="5_b05bottonsetpng"]
+[ext_resource type="Texture2D" uid="uid://70sve2d7vnyg" path="res://assets/textures/battle/b05_botton_set.png" id="5_b05bottonsetpng"]
 [ext_resource type="Texture2D" uid="uid://tya6rvbcu6rp" path="res://assets/textures/battle/b05_botton_sst.png" id="6_b05bottonsstpng"]
 [ext_resource type="Texture2D" uid="uid://bylbt510762dk" path="res://assets/textures/battle/b02_chara_light_g.png" id="10_b02charalightgpng"]
 [ext_resource type="Texture2D" uid="uid://bsstg2lsg8wkx" path="res://assets/textures/battle/b02_selected.png" id="11_b02selectedpng"]
@@ -21,7 +20,6 @@
 [ext_resource type="Texture2D" uid="uid://sfwnplqm25o5" path="res://assets/textures/battle/b05_botton_skip.png" id="37_b05bottonskippng"]
 [ext_resource type="Texture2D" uid="uid://xsyp34kxxe75" path="res://assets/textures/battle/b05_button_log.png" id="38_b05buttonlogpng"]
 [ext_resource type="Texture2D" uid="uid://ci3wvo4id2il" path="res://assets/textures/battle/b05_button_chat.png" id="39_b05buttonchatpng"]
-[ext_resource type="Texture2D" uid="uid://67dwk0sleqoe" path="res://assets/resources/agcv3/scene_banpick/icon_chat.png" id="40_iconchatpng"]
 [ext_resource type="Texture2D" uid="uid://dg1hwyjwei8xd" path="res://assets/textures/battle/b05_sys_btlobby.png" id="41_b05sysbtlobbypng"]
 [ext_resource type="Script" uid="uid://dtkgp5wtb1u4b" path="res://scripts/AutoClearLog.gd" id="43_AutoClearLoggd"]
 [ext_resource type="Script" uid="uid://bpg0b6fg4gxdf" path="res://scripts/ui/battle_mobile.gd" id="45_BattleMobilegd"]
@@ -160,7 +158,6 @@ grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(0, 60)
 mouse_filter = 0
-texture = ExtResource("1_inputpng")
 expand_mode = 1
 
 [node name="ChildrenSkillArea" type="GridContainer" parent="Root" unique_id=2096393800]
@@ -812,7 +809,6 @@ theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
-icon = ExtResource("40_iconchatpng")
 expand_icon = true
 
 [node name="BtnHide" type="Button" parent="Root" unique_id=369609747]
@@ -846,7 +842,6 @@ grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(130.041, 149.3095)
 mouse_filter = 0
-texture = ExtResource("1_inputpng")
 expand_mode = 1
 
 [node name="Text_3" type="Label" parent="Root/BtnHide/GiveUpBoard" unique_id=1530816832]
@@ -897,7 +892,6 @@ theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
-icon = ExtResource("1_inputpng")
 expand_icon = true
 
 [node name="Text_4" type="Label" parent="Root/BtnHide/GiveUpBoard/Button/Agree" unique_id=745469883]
@@ -943,7 +937,6 @@ theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
-icon = ExtResource("1_inputpng")
 expand_icon = true
 
 [node name="Text__1_" type="Label" parent="Root/BtnHide/GiveUpBoard/Button/Decline" unique_id=1923631097]
@@ -1013,7 +1006,6 @@ grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(40, 25)
 mouse_filter = 0
-texture = ExtResource("1_inputpng")
 expand_mode = 1
 
 [node name="text" type="Label" parent="Root/BtnHide" unique_id=1690807128]

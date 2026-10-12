@@ -1,12 +1,12 @@
 extends Node
 ## 音频（autoload 名：Audio）
-## 只搬参考项目（D:\星杯传说工程\星杯传说）的音乐与战斗音效 —— media/音频 下的 ogg：
+## 只搬参考项目（D:\星杯传说工程\星杯传说）的音乐与战斗音效 —— assets/media/audio 下的 ogg：
 ##   * 主界面音乐 lobby、战斗音乐 battle1~6（随机且不与上一首重复）、胜负 win/lose
 ##   * 出牌 atk-<系别> / spell-<卡名>、命中 sys-hit（攻击 / 魔弹命中）、受伤 sys-hurt（法术 / 技能伤害）、
 ##     治疗 sys-heal、士气 sys-morale、宝石水晶 sys-energy、选将 sys-turn
 ##   * 角色语音 <角色id>（1~36、108）：轮到该角色回合时播他自己的那条
 ##   * 给牌（交牌动效配的那声，见 battle_mobile._给牌特效）：暂时拿参考工程的 draw.mp3 顶着，
-##     换成正式音效时把 media/audio/dealCard.ogg / dealCard.wav 放进去即可（找文件的顺序是 ogg → wav → mp3）
+##     换成正式音效时把 assets/media/audio/dealCard.ogg / dealCard.wav 放进去即可（找文件的顺序是 ogg → wav → mp3）
 ## 对照脚本：参考项目 scripts/game/AudioManager.gd
 ## 说明：界面上的 wav 音效（按钮点击 Equip、轮到你 It's your turn、技能 Skill 等）沿用 Art.play_sfx，
 ##      因为参考项目没有这些界面音（它的音频只有这张 ogg 表）。
@@ -14,7 +14,7 @@ extends Node
 ## 用「音量置 0」而不是「禁音（bus_mute）」或「不播」：音频流水线照常走，切回前台时
 ## 本该在播的声音（BGM / 长音效）会接着放，不会因为后台期间被丢掉而断裂。
 
-const 音频目录: String = "res://media/audio/"
+const 音频目录: String = "res://assets/media/audio/"
 ## 音量（线性 0~1）：默认值与参考项目 PlayerPrefs 里 BGM / SE 的默认值一致；
 ## 启动时从本地配置读回上次调的值，设置窗里可随时改（见 设置音乐音量 / 设置音效音量）
 const 默认音乐音量: float = 0.5
@@ -98,7 +98,7 @@ func 是否静音() -> bool:
 # ============================================================
 # 音效
 # ============================================================
-## 播放一次音效；名字对应 media/audio 下的文件名（不带扩展名），如 "sys-hit" / "spell-holyLight"
+## 播放一次音效；名字对应 assets/media/audio 下的文件名（不带扩展名），如 "sys-hit" / "spell-holyLight"
 ## 失焦时照常播放（总线音量已被压到听不见），这样切回前台时还在响的会接着响
 func 播音效(名字: String, 音量: float = 1.0) -> void:
 	var 流: AudioStream = _取音频(名字)

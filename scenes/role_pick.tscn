@@ -1,9 +1,10 @@
-[gd_scene load_steps=3 format=3 uid="uid://cxlxicnyysgsl"]
+[gd_scene format=3 uid="uid://cxlxicnyysgsl"]
 
 [ext_resource type="Script" uid="uid://c4k7kis3hyxuc" path="res://scripts/ui/role_pick.gd" id="1_p4iqs"]
-[ext_resource type="Texture2D" path="res://media/ui/ui_notice.png" id="2_notice"]
+[ext_resource type="Texture2D" uid="uid://nc55vkh08lgi" path="res://assets/textures/lobby/ui_notice.png" id="2_notice"]
+[ext_resource type="PackedScene" path="res://scenes/prefabs/ui/TipBox.tscn" id="3_tipbox"]
 
-[node name="RolePick" type="Control" node_paths=PackedStringArray("标题", "座次条", "提示", "倒计时", "卡片区", "滚动")]
+[node name="RolePick" type="Control" node_paths=PackedStringArray("标题", "座次条", "座位层", "提示", "倒计时", "卡片区", "滚动", "说明提示")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -13,10 +14,12 @@ grow_vertical = 2
 script = ExtResource("1_p4iqs")
 "标题" = NodePath("中间/竖排/标题")
 "座次条" = NodePath("中间/竖排/座次行/座次条")
+"座位层" = NodePath("中间/竖排/座次行/座次条/座位层")
 "提示" = NodePath("中间/竖排/提示条/提示")
 "倒计时" = NodePath("中间/竖排/倒计时")
 "卡片区" = NodePath("中间/竖排/滚动/卡片区")
 "滚动" = NodePath("中间/竖排/滚动")
+"说明提示" = NodePath("说明宿主/说明提示")
 
 [node name="遮罩" type="ColorRect" parent="."]
 layout_mode = 1
@@ -65,6 +68,35 @@ custom_minimum_size = Vector2(420, 37)
 layout_mode = 2
 mouse_filter = 2
 
+[node name="轨道上" type="ColorRect" parent="中间/竖排/座次行/座次条"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 13.0
+offset_bottom = 15.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.78, 0.8, 0.88, 0.6)
+
+[node name="轨道下" type="ColorRect" parent="中间/竖排/座次行/座次条"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 22.0
+offset_bottom = 24.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.78, 0.8, 0.88, 0.6)
+
+[node name="座位层" type="Control" parent="中间/竖排/座次行/座次条"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
 [node name="滚动" type="ScrollContainer" parent="中间/竖排"]
 custom_minimum_size = Vector2(780, 363)
 layout_mode = 2
@@ -99,3 +131,12 @@ size_flags_horizontal = 4
 max_value = 30000.0
 value = 30000.0
 show_percentage = false
+
+[node name="说明宿主" type="Control" parent="."]
+layout_mode = 1
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+scale = Vector2(1.5, 1.5)
+
+[node name="说明提示" parent="说明宿主" instance=ExtResource("3_tipbox")]

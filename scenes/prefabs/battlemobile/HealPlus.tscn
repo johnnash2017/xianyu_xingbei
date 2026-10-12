@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[node name="治疗加号" type="Label"]
+offset_right = 56.0
+offset_bottom = 56.0
+pivot_offset = Vector2(28, 28)
+mouse_filter = 2
+text = "+"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_colors/font_color = Color(0.62, 0.85, 1, 1)
+theme_override_colors/font_outline_color = Color(0.08, 0.26, 0.45, 1)
+theme_override_constants/outline_size = 6

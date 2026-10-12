@@ -98,16 +98,30 @@ const 日志最大行: int = 233
 ## 正方形：贴图本身近似正方形（宝石 29×30、水晶 29×30、星杯 23×23），
 ## 给 30×40 会把它们上下拉伸；队伍条容器高 30、5 列正好 5×30=150
 const 格子最小尺寸: Vector2 = Vector2(30.0, 30.0)
+## 队伍条上星杯格子的悬停提示
+const 星杯提示: String = "星杯 凑齐五个圣杯达成特殊胜利。"
+## 队伍条上士气数字的悬停提示
+const 士气提示: String = "士气 士气归零的一方战斗失败"
 ## 卡牌预制体（挂 scripts/CardUI.gd，已解耦为「塞数据 + 点击回调」）
 const 卡牌预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Card.tscn")
 ## 技能按钮预制体（挂 scripts/SkillUI.gd，同上）
 const 技能预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Skill.tscn")
+## 悬浮说明框预制体（框 + 富文本结构都在场景里，见 说明提示框）
+const 说明框预制: PackedScene = preload("res://scenes/prefabs/ui/TipBox.tscn")
+## 头像提示控件预制体（治疗 / 法术 / 攻击伤害的文字，见 _取治疗提示）
+const 治疗提示预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HealTip.tscn")
+## 头像提示里被划掉的行的粗删除线（见 _铺粗删除线）
+const 删除线预制: PackedScene = preload("res://scenes/prefabs/battlemobile/StrikeLine.tscn")
+## 治疗加号特效（见 _生成治疗加号）
+const 加号预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HealPlus.tscn")
+## 受伤飘字（见 _生成伤害飘字）
+const 飘字预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HurtFloat.tscn")
 ## 给牌动效预制体（一张卡背从交牌人飘到收牌人，见 _给牌特效）
 const 给牌预制: PackedScene = preload("res://scenes/prefabs/effects/dealCard.tscn")
 ## 交多张给牌动效之间的起飞间隔（秒）：一张接一张，不叠在一起
 const 给牌间隔: float = 0.12
 
-## 法术牌名（卡表卡名）→ 出牌音效后缀名（media/audio 下 spell-<后缀>.ogg）
+## 法术牌名（卡表卡名）→ 出牌音效后缀名（assets/media/audio 下 spell-<后缀>.ogg）
 const 法术音效后缀: Dictionary = {
 	"圣光": "holyLight", "魔弹": "magicBullet", "圣盾": "holyShield",
 	"中毒": "poison", "虚弱": "weakness",
@@ -150,20 +164,16 @@ const 面板置灰色: Color = Color(0.5, 0.5, 0.5)
 ## 框高按文案行数现算，见 _贴头像提示（RichTextLabel 会裁掉超出框的内容）
 const 治疗提示宽: float = 140.0
 const 提示行高: float = 34.0
-## 头像提示里被 [zwj] 标记的行，另外压一条这么粗的浅灰线（白与灰之间）。
+## 头像提示里被 [zwj] 标记的行，另外压一条这么粗的浅灰线（颜色在 StrikeLine.tscn 里）。
 ## 不直接用 BBCode 的 [s]：字体自带的那条删除线在 26 号字下只有 1~2px，而且位置偏低，
 ## 所以配置里只留 [zwj]（零宽、自己不渲染）当标记，线整个由 _铺粗删除线 画
-const 删除线色: Color = Color("cccccc")
 const 删除线粗细: float = 3.5
 ## 头像提示的文字配色（BBCode 十六进制）：治疗＝浅蓝、法术伤害＝洋红、攻击伤害 / 物理伤害＝红，见 _提示上色
 const 提示色_治疗: String = "9ED9FF"
 const 提示色_法术伤害: String = "FF3CFF"
 const 提示色_攻击伤害: String = "FF3C3C"
-## 治疗加号特效：单个「+」的占位尺寸、配色与数量区间（见 _播放治疗加号）；
-## 加号色与上面的 提示色_治疗 是同一个浅蓝
+## 治疗加号特效：单个「+」的占位尺寸（配色在 HealPlus.tscn 里，与上面的 提示色_治疗 是同一个浅蓝）
 const 加号尺寸: Vector2 = Vector2(56.0, 56.0)
-const 加号色: Color = Color(0.62, 0.85, 1.0)
-const 加号描边色: Color = Color(0.08, 0.26, 0.45)
 ## 加号特效的散布范围 / 错开延迟 / 上升速度的倍率（1.0 = 原始手感）：
 ## 范围与延迟按需求放大到 3 倍，上升速度保持原速（时长 = 基础 × 时间倍率 ÷ 速度倍率）
 const 加号范围倍率: float = 3.0
@@ -172,10 +182,8 @@ const 加号速度倍率: float = 1.0
 
 ## 受伤飘字（受到的伤害数字）：从头像中间冒出、向上飘出并淡掉（见 _生成伤害飘字）。
 ## 字色与上面的 提示色_法术伤害 / 提示色_攻击伤害 是同一套：法术＝洋红、攻击＝红。
-## 字号是头像提示那档的两倍，时长 1.8 秒（＝上飘距离不变、速度减半）
+## 字号 / 描边在 HurtFloat.tscn 里，时长 1.8 秒（＝上飘距离不变、速度减半）
 const 飘字尺寸: Vector2 = Vector2(240.0, 120.0)
-const 飘字字号: int = 92
-const 飘字描边色: Color = Color(0.0, 0.0, 0.0)
 ## 数字大小的「基准缩放」按本次伤害点数走：1 点最小 0.8 倍、7 点及以上最大 1.5 倍，中间线性过渡
 const 飘字最小缩放: float = 0.8
 const 飘字最大缩放: float = 1.5
@@ -427,7 +435,7 @@ func _ready() -> void:
 	_面板列表 = [MainPlayer, PlayerStatusMobileR, PlayerStatusMobileUR,
 		PlayerStatusMobileU, PlayerStatusMobileUL, PlayerStatusMobileL]
 	# 悬浮说明框挂在界面根节点下：坐标 / 缩放 / 可用范围都按本界面算，盖在所有面板之上
-	_说明提示 = 说明提示框.new()
+	_说明提示 = 说明框预制.instantiate() as 说明提示框
 	add_child(_说明提示)
 	Logic.game_info_updated.connect(_on_game_info)
 	Logic.turn_changed.connect(_on_turn)
@@ -471,9 +479,9 @@ func _ready() -> void:
 		# 鼠标指向状态图标（基础效果牌 / 指示物）：还是同一份说明框，只弹一行短说明
 		面板.状态图标悬停.connect(_显示状态图标说明)
 		面板.状态图标离开悬停.connect(_隐藏状态图标说明)
-	# 队伍条上的士气数字：悬停出一行「士气」
-	_接悬停提示(BlueMorale, "士气")
-	_接悬停提示(RedMorale, "士气")
+	# 队伍条上的士气数字：悬停出提示
+	_接悬停提示(BlueMorale, 士气提示)
+	_接悬停提示(RedMorale, 士气提示)
 	ChooseArea.visible = false
 	_隐藏技能区()
 	# 手牌是按 HandArea 的实际宽度手排成一行的，尺寸一变（窗口缩放）就重排
@@ -730,8 +738,8 @@ func _刷新队伍(info: Dictionary) -> void:
 	RedMorale.text = str(int(info.get("red_morale", 0)))
 	_重建能量(BlueEnergy, int(info.get("blue_gem", 0)), int(info.get("blue_crystal", 0)))
 	_重建能量(RedEnergy, int(info.get("red_gem", 0)), int(info.get("red_crystal", 0)))
-	_重建格子(BlueGrail, int(info.get("blue_grail", 0)), "grail")
-	_重建格子(RedGrail, int(info.get("red_grail", 0)), "grail")
+	_重建格子(BlueGrail, int(info.get("blue_grail", 0)), "grail", 星杯提示)
+	_重建格子(RedGrail, int(info.get("red_grail", 0)), "grail", 星杯提示)
 
 
 ## 能量格：宝石在前、水晶在后（与参考脚本 gemChange / crystalChange 的落位一致）；
@@ -744,11 +752,11 @@ func _重建能量(容器: GridContainer, 宝石数: int, 水晶数: int) -> voi
 		_加格子(容器, "crystal", "星石-水晶")
 
 
-## 单一贴图的格子（星杯）
-func _重建格子(容器: GridContainer, 数量: int, 贴图名: String) -> void:
+## 单一贴图的格子（星杯）；提示 传给每格做悬停说明
+func _重建格子(容器: GridContainer, 数量: int, 贴图名: String, 提示: String = "") -> void:
 	_清空格子(容器)
 	for _i: int in range(maxi(数量, 0)):
-		_加格子(容器, 贴图名)
+		_加格子(容器, 贴图名, 提示)
 
 
 func _清空格子(容器: GridContainer) -> void:
@@ -757,7 +765,7 @@ func _清空格子(容器: GridContainer) -> void:
 
 
 ## 单个格子：用 battlemobile/Image.tscn，贴图交给 AssetIndex 按文件名取。
-## 提示 非空（星石）时这个格子可被鼠标拾取、悬停弹提示；空串（星杯）＝纯装饰、放行点击
+## 提示 非空时这个格子可被鼠标拾取、悬停弹提示；空串＝纯装饰、放行点击
 func _加格子(容器: GridContainer, 贴图名: String, 提示: String = "") -> void:
 	var ps: PackedScene = load(预制目录 + "Image.tscn")
 	if ps == null:
@@ -939,6 +947,8 @@ func _on_error(_err_id: int, msg: String) -> void:
 const 展示停留秒数: float = 1.6
 ## 卡牌视图预制体：和手牌同一个 Card.tscn（卡图 + 左上角命格/元素 + 底部字形与技能名1/2）
 const 卡牌视图预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Card.tscn")
+## 悬停基础效果牌时摊出的「状态名 + 完整卡面」预制体（见 悬停卡预览）
+const 悬停卡预览预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HoverCardView.tscn")
 
 
 ## 把这几张牌摊到屏幕中间给所有人看；连着来第二拨时先把上一拨收掉
@@ -1989,34 +1999,10 @@ func _造悬停卡牌(牌id: int, 状态名: String) -> Control:
 	var 牌: GCard = Data.get_card(牌id)
 	if 牌 == null or Art.card_face(牌) == null:
 		return null
-	var 视图: Control = 卡牌视图预制.instantiate()
-	# Card.tscn 的根节点本身是 0 尺寸的，得显式给尺寸才画得出来（同 _展示卡牌）
-	视图.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	视图.custom_minimum_size = 悬停卡牌尺寸
-	视图.size = 悬停卡牌尺寸
-	# 状态名比卡面宽时让卡面保持原宽、居中，不被拉长
-	视图.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	视图.call("设置卡牌", 牌, true)
-	(视图.get("canSelectBorder") as TextureRect).visible = false
-	var 名: Label = Label.new()
-	名.text = 状态名
-	名.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	名.add_theme_font_size_override("font_size", 状态图标说明字号)
-	var 盒: VBoxContainer = VBoxContainer.new()
-	盒.add_theme_constant_override("separation", 8)
-	盒.add_child(名)
-	盒.add_child(视图)
-	# 预览压在鼠标与图标之间：只要有子控件吃鼠标，图标的 hover 就被掐断、提示一闪一闪
-	_整树忽略鼠标(盒)
-	return 盒
-
-
-## 把一棵子树里的 Control 全部设成「不拾取鼠标」（自己 + 所有后代）
-func _整树忽略鼠标(节点: Node) -> void:
-	if 节点 is Control:
-		(节点 as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for 子: Node in 节点.get_children():
-		_整树忽略鼠标(子)
+	var 视图: 悬停卡预览 = 悬停卡预览预制.instantiate()
+	# 预制体本身就是「状态名一行 + 卡面」的竖排，尺寸 / 字号 / 忽略鼠标都在 悬停卡预览.设置 里
+	视图.设置(牌, 状态名, 悬停卡牌尺寸, 状态图标说明字号)
+	return 视图
 
 
 ## 鼠标离开状态图标：同上，延后一帧再收（先看新的「指向」有没有接手）
@@ -3826,17 +3812,8 @@ func _效果文本(治疗值: int, 伤害值: int) -> String:
 func _取治疗提示(player_id: int) -> RichTextLabel:
 	if _治疗提示表.has(player_id):
 		return _治疗提示表[player_id]
-	var 提示: RichTextLabel = RichTextLabel.new()
-	提示.size = Vector2(治疗提示宽, 提示行高)
-	提示.bbcode_enabled = true
-	提示.scroll_active = false
-	提示.autowrap_mode = TextServer.AUTOWRAP_OFF
-	提示.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	提示.add_theme_font_size_override("normal_font_size", 26)
-	提示.add_theme_color_override("default_color", Color.WHITE)
-	提示.add_theme_color_override("font_outline_color", Color.BLACK)
-	提示.add_theme_constant_override("outline_size", 6)
-	提示.visible = false
+	# 尺寸 / 字号 / 上色 / 描边 / 默认隐藏都在 HealTip.tscn 里
+	var 提示: RichTextLabel = 治疗提示预制.instantiate()
 	Root.add_child(提示)
 	_治疗提示表[player_id] = 提示
 	return 提示
@@ -3898,9 +3875,7 @@ func _铺粗删除线(提示: RichTextLabel, 原文行: PackedStringArray, 纯�
 		if not 原文行[i].contains("[zwj"):
 			continue
 		var 文字宽: float = 字体.get_string_size(纯文行[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x
-		var 条: ColorRect = ColorRect.new()
-		条.color = 删除线色
-		条.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var 条: ColorRect = 删除线预制.instantiate()
 		条.size = Vector2(文字宽, 删除线粗细)
 		条.position = Vector2((提示.size.x - 文字宽) * 0.5,
 			float(i) * 行高 + (行高 - 删除线粗细) * 0.5)
@@ -3924,17 +3899,9 @@ func _播放治疗加号(player_id: int, 点数: int) -> void:
 
 ## 单个「+」：随机起点静置一小会儿，再向上飘走，同时放大并淡出，放完自毁
 func _生成治疗加号(中心: Vector2) -> void:
-	var 加号: Label = Label.new()
-	加号.text = "+"
-	加号.size = 加号尺寸
-	加号.pivot_offset = 加号尺寸 * 0.5
-	加号.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	加号.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	加号.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 文字「+」/ 尺寸 / 居中 / 配色 / 描边都在 HealPlus.tscn 里（字号每颗随机，运行时设）
+	var 加号: Label = 加号预制.instantiate()
 	加号.add_theme_font_size_override("font_size", randi_range(30, 46))
-	加号.add_theme_color_override("font_color", 加号色)
-	加号.add_theme_color_override("font_outline_color", 加号描边色)
-	加号.add_theme_constant_override("outline_size", 6)
 	Root.add_child(加号)
 	var 起点: Vector2 = 中心 + Vector2(randf_range(-40.0, 40.0), randf_range(-26.0, 26.0)) * 加号范围倍率
 	加号.position = 起点 - 加号尺寸 * 0.5
@@ -3969,17 +3936,10 @@ func _飘字基准缩放(点数: int) -> float:
 ## 单个伤害数字：从头像正中冒出（出场先弹出到「基准 × 冒头倍率」，再缩回基准），然后向上飘走并淡出，放完自毁。
 ## 数字大小随伤害点数走（1 点最小、7 点及以上最大），见 _飘字基准缩放
 func _生成伤害飘字(中心: Vector2, 点数: int, 色: Color) -> void:
-	var 飘字: Label = Label.new()
+	# 尺寸 / 居中 / 字号 / 描边都在 HurtFloat.tscn 里（文本与字色随伤害点数走，运行时设）
+	var 飘字: Label = 飘字预制.instantiate()
 	飘字.text = str(点数)
-	飘字.size = 飘字尺寸
-	飘字.pivot_offset = 飘字尺寸 * 0.5
-	飘字.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	飘字.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	飘字.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	飘字.add_theme_font_size_override("font_size", 飘字字号)
 	飘字.add_theme_color_override("font_color", 色)
-	飘字.add_theme_color_override("font_outline_color", 飘字描边色)
-	飘字.add_theme_constant_override("outline_size", 6)
 	Root.add_child(飘字)
 	# 起点是「左上角」，终点必须也从左上角往上抬 —— 原来拿中心点当左上角用，
 	# 于是横向平白多走了半个框宽（240/2＝120px），看着就是横着飘

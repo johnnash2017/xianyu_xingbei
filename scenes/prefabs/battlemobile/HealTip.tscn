@@ -1,0 +1,14 @@
+[gd_scene format=3]
+
+[node name="治疗提示" type="RichTextLabel"]
+visible = false
+offset_right = 140.0
+offset_bottom = 34.0
+mouse_filter = 2
+bbcode_enabled = true
+scroll_active = false
+autowrap_mode = 0
+theme_override_colors/default_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/normal_font_size = 26

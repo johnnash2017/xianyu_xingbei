@@ -1103,9 +1103,9 @@ const 受击泛红时长: float = 1.0
 const 受击抖动幅度: float = 10.0
 const 受击抖动单次时长: float = 0.1
 const 受击抖动次数: int = 5
-## 受击画面扭曲震荡波（着色器见 scripts/effects/hitShockwave.gdshader）：
+## 受击画面扭曲震荡波（节点 + 着色器材质都在 HitShockwave.tscn 里，材质已勾「局部于场景」）：
 ## 时长（秒）、最大半径 / 波带厚度 / 波内位移强度（按屏幕高算的 UV 单位）
-const 受击震荡波着色器: Shader = preload("res://scripts/effects/hitShockwave.gdshader")
+const 受击波预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HitShockwave.tscn")
 const 震荡波时长: float = 0.60
 const 震荡波半径: float = 0.60
 const 震荡波波宽: float = 0.055
@@ -1202,11 +1202,8 @@ func _播放受击震荡波() -> void:
 	if 根 == null or 根.size.x <= 0.0 or 根.size.y <= 0.0:
 		return
 	if _共享波 == null or not is_instance_valid(_共享波):
-		_共享波 = ColorRect.new()
-		_共享波.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_共享波材质 = ShaderMaterial.new()
-		_共享波材质.shader = 受击震荡波着色器
-		_共享波.material = _共享波材质
+		_共享波 = 受击波预制.instantiate() as ColorRect
+		_共享波材质 = _共享波.material as ShaderMaterial
 	if _共享波.get_parent() != 根:
 		if _共享波.get_parent() != null:
 			_共享波.get_parent().remove_child(_共享波)

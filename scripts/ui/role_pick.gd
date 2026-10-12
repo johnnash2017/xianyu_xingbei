@@ -16,17 +16,12 @@ const 每行张数: int = 6
 const 可见行数: float = 2.2
 ## 面板宽（一行 每行张数 张卡正好铺满）
 const 面板宽: float = ROLE_BTN_W * 每行张数
-## 顶部座位条上的座位格尺寸（与 SeatMain.png / SeatBlue.png 一致）
+## 座次格预制体（挂 scripts/ui/SeatCell.gd，三种座位外观在场景里绑定）
+const 座位格预制: PackedScene = preload("res://scenes/prefabs/ui/SeatCell.tscn")
+## 角色卡预制体（挂 scripts/ui/RoleCard.gd）
+const 角色卡预制: PackedScene = preload("res://scenes/prefabs/ui/RoleCard.tscn")
+## 顶部座位条上的座位格宽度（与 SeatCell.tscn 里的格宽一致，算格间距要用）
 const 座次格宽: float = 32.0
-const 座次条高: float = 37.0
-## 座位格里那层小队色菱形的尺寸（SeatBlue.png / SeatRed.png 原始尺寸）
-const 座次内格宽: float = 26.0
-const 座次内格高: float = 30.0
-## 座位条自己画的横轨（照参照工程座位条的双线）：线粗、上下线 y、颜色
-const 轨道线粗: float = 2.0
-const 轨道上线y: float = 13.0
-const 轨道下线y: float = 22.0
-const 轨道色: Color = Color(0.78, 0.8, 0.88, 0.6)
 
 # ---- 当前 RoleReq 数据 ----
 var _strategy: int = 0
@@ -42,32 +37,25 @@ var _interactive: bool = false
 @export var 倒计时: ProgressBar
 ## 顶部「座位顺序」条：座位菱形的容器
 @export var 座次条: Control
+## 座次条里摆座位格的那层（横轨是场景里的静态装饰，不跟着刷新）
+@export var 座位层: Control
 ## 卡片容器：卡片由脚本按行列手动摆放（容器排不出「一行张数不足时居中」）
 @export var 卡片区: Control
 ## 卡片外面的滚动框：高度按候选行数在脚本里改
 @export var 滚动: ScrollContainer
+## 角色卡的悬浮说明框（与战斗界面同款；结构在 TipBox.tscn 里，见 说明提示框）
+@export var 说明提示: 说明提示框
 
 ## 自己是否已经提交过（提交后只留自己选中的那张卡）
 var _已提交: bool = false
 ## 自己提交的角色 id
 var _已选角色: int = -1
-## 角色卡的悬浮说明框：与战斗界面同款（底板 / 排版 / 加宽与缩小兜底都在 说明提示框 里）
-var _说明提示: 说明提示框 = null
 ## 倒计时剩余 / 总时长（毫秒），来自服务端 RoleReq 的 wait_ms / wait_total_ms
 var _剩余毫秒: float = 0.0
 var _总毫秒: float = 0.0
 
 
 func _ready() -> void:
-	# 说明框的宿主：照战斗界面同款坐标系（1280×720、缩放 1.5）——
-	# 说明提示框 里的尺寸常量都是按这套坐标调的，这样选角与战斗的排版、字号完全一致
-	var 说明宿主: Control = Control.new()
-	说明宿主.size = Vector2(1280.0, 720.0)
-	说明宿主.scale = Vector2.ONE * 1.5
-	说明宿主.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(说明宿主)
-	_说明提示 = 说明提示框.new()
-	说明宿主.add_child(_说明提示)
 	# 选将结束后（对局开始）自动关闭
 	Logic.game_info_updated.connect(_on_game_info)
 
@@ -116,7 +104,7 @@ func _refresh() -> void:
 	_刷新座次()
 
 	# 卡片要重建，挂着的说明先收掉（它按旧卡片的位置摆，留着会飘在空处）
-	_说明提示.收起()
+	说明提示.收起()
 	for c: Node in 卡片区.get_children():
 		卡片区.remove_child(c)
 		c.queue_free()
@@ -142,20 +130,13 @@ func _refresh() -> void:
 
 ## 顶部「座位顺序」条：按服务端下发的座位顺序（Game 快照里 player_infos 的顺序）摆座位菱形，
 ## 自己那格用黄框 SeatMain，其余按队伍蓝/红；几个玩家就摆几格，在整条上均匀铺开。
-## 轨道自己画：参照工程那张 b09_seat_1.png 里固定画了 6 个空位菱形，
-## 人数不是 6 时（比如 2V2）会多出空位，所以不用它，改成自画双线横轨 + 只摆在场的玩家。
+## 双线横轨是 role_pick.tscn 里的静态装饰（参照工程那张 b09_seat_1.png 固定画了 6 个空位菱形，
+## 人数不是 6 时（比如 2V2）会多出空位，所以不用它）——这里只往 座位层 里摆在场的玩家。
 func _刷新座次() -> void:
-	for c: Node in 座次条.get_children():
-		座次条.remove_child(c)
+	for c: Node in 座位层.get_children():
+		座位层.remove_child(c)
 		c.queue_free()
 	var 条宽: float = 座次条.custom_minimum_size.x
-	for 线y: float in [轨道上线y, 轨道下线y]:
-		var 轨: ColorRect = ColorRect.new()
-		轨.color = 轨道色
-		轨.position = Vector2(0.0, 线y)
-		轨.size = Vector2(条宽, 轨道线粗)
-		轨.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		座次条.add_child(轨)
 	var infos: Array = Data.game_info.get("player_infos", [])
 	var 人数: int = infos.size()
 	if 人数 <= 0:
@@ -165,74 +146,30 @@ func _刷新座次() -> void:
 		var 数据: Dictionary = infos[i]
 		var 队: int = int(数据.get("team", GConst.TEAM_NONE))
 		var 是我: bool = int(数据.get("id", -1)) == Logic.my_player_id
-		var 格: TextureRect = TextureRect.new()
+		var 格: 座位格 = 座位格预制.instantiate()
 		格.position = Vector2(i * 间距, 0.0)
-		格.size = Vector2(座次格宽, 座次条高)
-		格.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		格.texture = Art.ui(_座次贴图名(队, 是我))
-		if not 是我 and 队 < 0:
-			# 未分队：没有灰色的座位图，借蓝色的形状调灰
-			格.self_modulate = Color(0.6, 0.6, 0.64, 1.0)
-		座次条.add_child(格)
-		if 队 < 0:
-			continue
-		var 内格: TextureRect = TextureRect.new()
-		内格.position = Vector2((座次格宽 - 座次内格宽) * 0.5, (座次条高 - 座次内格高) * 0.5)
-		内格.size = Vector2(座次内格宽, 座次内格高)
-		内格.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		内格.texture = Art.ui(_座次贴图名(队, false))
-		格.add_child(内格)
+		格.设置(队, 是我)
+		座位层.add_child(格)
 
 
-## 座位菱形的贴图名：自己用黄框 SeatMain，其余按队伍蓝/红
-func _座次贴图名(队: int, 是我: bool) -> String:
-	if 是我:
-		return "SeatMain"
-	return "SeatRed" if 队 == GConst.RED else "SeatBlue"
-
-
-## 一张角色卡：整张立绘（无边框、无名字，角色名与技能在悬浮说明里）
+## 一张角色卡（挂 scripts/ui/RoleCard.gd）：整张立绘（无边框、无名字，角色名与技能在悬浮说明里）
 func _build_role_button(rid: int) -> Button:
-	var btn: Button = Button.new()
+	var btn: 角色卡 = 角色卡预制.instantiate()
 	btn.custom_minimum_size = Vector2(ROLE_BTN_W, ROLE_BTN_H)
 	btn.size = Vector2(ROLE_BTN_W, ROLE_BTN_H)
-	btn.flat = true
 	btn.set_meta("role_id", rid)
+	btn.设置外观(Art.role_hero(rid), _interactive)
 	btn.pressed.connect(_on_role_pressed.bind(rid))
-	btn.disabled = not _interactive
-
 	# 悬停说明（角色名一行 + 技能说明，含 BBCode）走界面自己的 说明提示框 —— 与战斗界面同款；
 	# 不用引擎自带 tooltip：它跟着光标走、贴近屏幕边会顶出去，排版也不好和战斗对齐
 	btn.mouse_entered.connect(_悬停角色卡.bind(btn, rid))
-	btn.mouse_exited.connect(_说明提示.收起)
-
-	var face_size: Vector2 = Vector2(ROLE_BTN_W, ROLE_BTN_H)
-	var face_tex: Texture2D = Art.role_hero(rid)
-	if face_tex != null:
-		var face: TextureRect = TextureRect.new()
-		face.texture = face_tex
-		face.size = face_size
-		face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		# 大立绘（260x363）正好铺满；按比例放大裁切填满
-		face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		# 还没轮到自己时把立绘压暗，表示点不动
-		if not _interactive:
-			face.modulate = Color(0.62, 0.62, 0.62, 1.0)
-		btn.add_child(face)
-	else:
-		# 立绘缺失（尚无素材的角色）：用深色占位块，避免格子出现空洞
-		var hole: ColorRect = ColorRect.new()
-		hole.color = Color(0.18, 0.19, 0.24, 1.0)
-		hole.size = face_size
-		hole.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		btn.add_child(hole)
+	btn.mouse_exited.connect(说明提示.收起)
 	return btn
 
 
 ## 悬停某张角色卡：弹出战斗同款的角色技能说明
 func _悬停角色卡(按钮: Button, rid: int) -> void:
-	_说明提示.显示角色说明(rid, 按钮.get_global_rect())
+	说明提示.显示角色说明(rid, 按钮.get_global_rect())
 
 
 func _mode_title() -> String:

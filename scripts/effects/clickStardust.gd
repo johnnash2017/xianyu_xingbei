@@ -9,9 +9,10 @@ extends Node
 const 星屑预制: PackedScene = preload("res://scenes/prefabs/effects/clickStardust.tscn")
 ## 按住不松时每隔这么久再迸一簇（秒）：连起来就是「一直按着、持续冒星屑」
 const 连发间隔: float = 0.08
-## 点击处的小震荡波（复用受击那枚着色器，但参数比受击小得多，只是点一下的涟漪）：
+## 点击处的小震荡波（节点 + 着色器材质在 ClickShockwave.tscn 里；复用受击那枚着色器，
+## 但参数比受击小得多，只是点一下的涟漪）：
 ## 时长（秒）、最大半径 / 波带厚度 / 波内位移强度（按屏幕高算的 UV 单位）
-const 震荡波着色器: Shader = preload("res://scripts/effects/hitShockwave.gdshader")
+const 震荡波预制: PackedScene = preload("res://scenes/prefabs/effects/ClickShockwave.tscn")
 const 震荡波时长: float = 0.26
 const 震荡波半径: float = 0.12
 const 震荡波波宽: float = 0.025
@@ -75,11 +76,8 @@ func _迸震荡波(中心: Vector2) -> void:
 	var 视口: Vector2 = get_viewport().get_visible_rect().size
 	if 视口.x <= 0.0 or 视口.y <= 0.0:
 		return
-	var 波: ColorRect = ColorRect.new()
-	波.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var 材质: ShaderMaterial = ShaderMaterial.new()
-	材质.shader = 震荡波着色器
-	波.material = 材质
+	var 波: ColorRect = 震荡波预制.instantiate()
+	var 材质: ShaderMaterial = 波.material as ShaderMaterial
 	_层.add_child(波)
 	波.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	材质.set_shader_parameter("center_uv", 中心 / 视口)

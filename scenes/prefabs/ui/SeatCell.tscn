@@ -1,0 +1,45 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/SeatCell.gd" id="1_seatcell"]
+[ext_resource type="Texture2D" path="res://assets/textures/lobby/SeatMain.png" id="2_seatmain"]
+[ext_resource type="Texture2D" path="res://assets/textures/lobby/SeatBlue.png" id="3_seatblue"]
+[ext_resource type="Texture2D" path="res://assets/textures/lobby/SeatRed.png" id="4_seatred"]
+
+[node name="座位格" type="Control" node_paths=PackedStringArray("外格", "内格")]
+offset_right = 32.0
+offset_bottom = 37.0
+mouse_filter = 2
+script = ExtResource("1_seatcell")
+"外格" = NodePath("外格")
+"内格" = NodePath("外格/内格")
+"外观_主" = ExtResource("2_seatmain")
+"外观_蓝" = ExtResource("3_seatblue")
+"外观_红" = ExtResource("4_seatred")
+
+[node name="外格" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_seatblue")
+expand_mode = 1
+
+[node name="内格" type="TextureRect" parent="外格"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -13.0
+offset_top = -15.0
+offset_right = 13.0
+offset_bottom = 15.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_seatblue")
+expand_mode = 1

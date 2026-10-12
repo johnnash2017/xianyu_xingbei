@@ -1,11 +1,13 @@
 class_name 说明提示框
-extends Node
+extends Control
 ## 通用悬浮说明框：深色圆角底板 + BBCode 富文本，摆在锚点正上方并夹在宿主控件内。
 ## 战斗界面（悬停头像 / 技能按钮）与选角界面（悬停角色卡）共用同一套外观与排版 ——
 ## 内容太长时先按宿主宽度上限加宽（少折行→更矮），仍塞不下就整框等比缩小兜底，内容永远全在。
 ##
 ## 用法：把它 add_child 到「作为坐标与剪裁基准的宿主控件」下（一般就是界面根节点），
 ## 再调 显示() / 显示角色说明()；框会挂在宿主下，共用宿主的坐标与缩放。
+## 注意：本节点必须是 Control（CanvasItem）——若换成普通 Node，子控件不继承宿主缩放
+## （会落到画布空间），_摆 算出的本地坐标就对不上，提示框会摆到离目标很远的错位处。
 
 ## 角色说明的默认排版（战斗 / 选角共用；要整体调档改这里）
 const 角色说明宽度: float = 684.0
@@ -25,10 +27,10 @@ const 加宽步长: float = 120.0
 ## 往回压这么多像素，保证「减半」看得出效果。
 const 行距下限: int = -3
 
-## 深色圆角底板（懒建）
-var 框: PanelContainer = null
+## 深色圆角底板（结构在 TipBox.tscn 里，可所见即所得地改）
+@export var 框: PanelContainer
 ## 底板里的富文本（【类型】要上色，普通 Label 会把颜色码原样显示出来）
-var 文本: RichTextLabel = null
+@export var 文本: RichTextLabel
 ## 自定义内容节点（如一张完整的卡牌视图，见 显示内容）；非空时文字隐藏，整框改按它的尺寸走
 var 内容: Control = null
 ## 本次说明的「基准整体缩放」（角色说明 0.855）。摆框时若按它仍塞不进宿主，会在它基础上再等比缩小兜底
@@ -45,13 +47,21 @@ var _沉降中: bool = false
 var _沉降轮次: int = 0
 
 
+## 行距：RichTextLabel 在字体行高之外还会加一截空隙（行间 / 段落间各一份），折半，别显得松散。
+## 主题里的原值只有引擎知道，得运行期读出来再覆盖，故放在 _ready
+func _ready() -> void:
+	文本.add_theme_constant_override("line_separation",
+		_折半行距(文本.get_theme_constant("line_separation")))
+	文本.add_theme_constant_override("paragraph_separation",
+		_折半行距(文本.get_theme_constant("paragraph_separation")))
+
+
 ## 显示一段说明：图标矩形取「视图坐标」，框摆在它正上方并夹在宿主内。
 ## 宽度 > 0：按这个宽度折行（角色 / 技能说明）；宽度 ≤ 0：不折行，整框按内容自适应
 ## （指示物那种一行短提示，不该为了填满固定宽度把底板撑大）
 func 显示(说明: String, 图标矩形: Rect2, 宽度: float, 字号: int, 整体缩放: float = 1.0, 可拓宽: bool = false) -> void:
 	if 说明.is_empty():
 		return
-	_懒建()
 	_卸内容()
 	_基缩放 = 整体缩放
 	文本.visible = true
@@ -89,7 +99,6 @@ func 显示角色说明(角色号: int, 图标矩形: Rect2) -> void:
 func 显示内容(内容节点: Control, 图标矩形: Rect2) -> void:
 	if 内容节点 == null:
 		return
-	_懒建()
 	_卸内容()
 	_基缩放 = 1.0
 	内容 = 内容节点
@@ -113,13 +122,12 @@ func _卸内容() -> void:
 ## 收起说明框（状态一变就不该再挂着）
 func 收起() -> void:
 	_轮次 += 1
-	if 框 != null:
-		框.visible = false
+	框.visible = false
 
 
 ## 此刻是否正显示着
 func 可见() -> bool:
-	return 框 != null and 框.visible
+	return 框.visible
 
 
 ## 排一次「下一帧再摆」：同帧多次显示只记最新的图标矩形，回调始终只挂一个。
@@ -153,7 +161,7 @@ func _排沉降() -> void:
 ## 所以这里要显式 reset_size 定回来（子标签此刻已按这一档宽度折行完毕）
 func _沉降显示() -> void:
 	_沉降中 = false
-	if 框 == null or not is_inside_tree() or _沉降轮次 != _轮次:
+	if not is_inside_tree() or _沉降轮次 != _轮次:
 		return
 	框.reset_size()
 	框.visible = true
@@ -185,34 +193,6 @@ func _算角色说明宽度() -> float:
 	return 上限
 
 
-## 懒建：深色圆角底 + BBCode 富文本，挂在宿主下
-func _懒建() -> void:
-	if 框 != null:
-		return
-	框 = PanelContainer.new()
-	框.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	框.visible = false
-	var 样式: StyleBoxFlat = StyleBoxFlat.new()
-	样式.bg_color = Color(0.05, 0.06, 0.08, 0.94)
-	样式.set_corner_radius_all(10)
-	样式.set_content_margin_all(16.0)
-	样式.set_border_width_all(2)
-	样式.border_color = Color(1.0, 1.0, 1.0, 0.22)
-	框.add_theme_stylebox_override("panel", 样式)
-	文本 = RichTextLabel.new()
-	文本.bbcode_enabled = true
-	文本.fit_content = true
-	文本.scroll_active = false
-	文本.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# 行距：RichTextLabel 在字体行高之外还会加一截空隙（行间 / 段落间各一份），折半，别显得松散
-	文本.add_theme_constant_override("line_separation",
-		_折半行距(文本.get_theme_constant("line_separation")))
-	文本.add_theme_constant_override("paragraph_separation",
-		_折半行距(文本.get_theme_constant("paragraph_separation")))
-	框.add_child(文本)
-	宿主().add_child(框)
-
-
 ## 宿主控件：框挂在它下面，坐标 / 缩放 / 可用范围都按它算
 func 宿主() -> Control:
 	return get_parent() as Control
@@ -230,7 +210,7 @@ func _折半行距(原值: int) -> int:
 ## 传进来的是图标自己的矩形（不是左上角一个点）：翻到下方时要从图标的**底边**接着摆，
 ## 不然框会压在图标身上（头像旁那排状态图标只有 36×36，正是靠这条让开）
 func _摆(图标矩形: Rect2) -> void:
-	if 框 == null or not 框.visible or not is_inside_tree():
+	if not 框.visible or not is_inside_tree():
 		return
 	var 主: Control = 宿主()
 	# 换成更短的说明时 size 不会自己缩：Godot 只保证 size ≥ 最小尺寸，最小尺寸变小它不动。

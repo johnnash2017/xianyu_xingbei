@@ -13,6 +13,9 @@ extends Control
 @export var 观战标题: Label
 @export var 观战网格: GridContainer
 
+## 玩家 / 观战网格里的一格文字（预制体见 scenes/prefabs/ui/GridCell.tscn）
+const 网格格预制: PackedScene = preload("res://scenes/prefabs/ui/GridCell.tscn")
+
 
 func _ready() -> void:
 	UI.attach(界面层)
@@ -106,7 +109,7 @@ func _清空网格(网格: GridContainer) -> void:
 
 ## 往网格里加一格文字；字号跟段标题取同一个值（省得两处各写一个数字）
 func _加一格(网格: GridContainer, 文字: String, 颜色: Color) -> void:
-	var 格: Label = Label.new()
+	var 格: Label = 网格格预制.instantiate()
 	格.text = 文字
 	格.add_theme_font_size_override("font_size", 玩家标题.get_theme_font_size("font_size"))
 	格.add_theme_color_override("font_color", 颜色)

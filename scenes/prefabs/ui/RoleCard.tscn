@@ -1,0 +1,33 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/RoleCard.gd" id="1_rolecard"]
+
+[node name="角色卡" type="Button" node_paths=PackedStringArray("立绘", "占位")]
+custom_minimum_size = Vector2(260, 363)
+offset_right = 260.0
+offset_bottom = 363.0
+flat = true
+script = ExtResource("1_rolecard")
+"立绘" = NodePath("立绘")
+"占位" = NodePath("占位")
+
+[node name="占位" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.18, 0.19, 0.24, 1)
+
+[node name="立绘" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6

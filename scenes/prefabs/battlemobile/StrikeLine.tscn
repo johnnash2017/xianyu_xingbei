@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[node name="删除线" type="ColorRect"]
+offset_right = 1.0
+offset_bottom = 1.0
+mouse_filter = 2
+color = Color(0.8, 0.8, 0.8, 1)

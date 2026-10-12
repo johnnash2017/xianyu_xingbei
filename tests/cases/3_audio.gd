@@ -1,7 +1,7 @@
 extends 自检用例
 ## 用例 3：音频（参考项目的音乐与音效是否都接上）
 
-const 音频目录: String = "res://media/audio/"
+const 音频目录: String = "res://assets/media/audio/"
 ## 代码里会播的音频；改接入点时同步维护这里
 const 会播: Array[String] = [
 	"atk-darkness", "atk-earth", "atk-fire", "atk-thunder", "atk-water", "atk-wind",

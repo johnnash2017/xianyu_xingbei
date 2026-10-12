@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://b2m7lyi3rt1pf"]
 
 [ext_resource type="Texture2D" uid="uid://dtncv0kc0pw53" path="res://assets/textures/lobby/ani_ring2.png" id="1_aniring2png"]
-[ext_resource type="Texture2D" uid="uid://dqh07pipe26bg" path="res://assets/textures/login/logo3.png" id="2_logo3png"]
+[ext_resource type="Texture2D" uid="uid://dqh07pipe26bg" path="res://assets/textures/lobby/logo3.png" id="2_logo3png"]
 [ext_resource type="Texture2D" uid="uid://ciiqft1mmpbdy" path="res://assets/textures/lobby/TeamOther.png" id="3_teamotherpng"]
 [ext_resource type="Texture2D" uid="uid://cl1yd1mkm0o1v" path="res://assets/textures/lobby/ui_ready.png" id="4_uireadypng"]
 [ext_resource type="Texture2D" uid="uid://db26mouq2cc3w" path="res://assets/textures/lobby/b05_botton_ready.png" id="5_btnreadypng"]

@@ -8,7 +8,7 @@ const 已知缺立绘: Array[int] = [37]
 ## 代码里会用到的界面 wav 音效（Art.play_sfx 的入参）
 const 界面音效: Array[String] = ["Equip", "Skill", "It's your turn", "TurnBegin"]
 const 卡面目录: String = "res://assets/textures/card/"
-const 音效目录: String = "res://media/sfx/"
+const 音效目录: String = "res://assets/media/sfx/"
 
 
 func _init() -> void:
@@ -35,6 +35,41 @@ func 跑() -> void:
 		if Art.role_hero(int(rid)) == null:
 			缺立绘.append("%d(%s)" % [int(rid), Data.role_name(int(rid))])
 	检(缺立绘.is_empty(), "缺立绘：%s" % str(缺立绘))
+
+	# 形态图：角色表「形态图」列配了资源名的，就要求 tap 目录下有对应 png
+	var 缺形态图: Array[String] = []
+	for rid: Variant in Data.role_list.keys():
+		if int(rid) in 非角色ID or int(rid) in 已知缺立绘:
+			continue
+		if Data.role_tap(int(rid)) != "" and Art.role_tap(int(rid)) == null:
+			缺形态图.append("%d(%s)" % [int(rid), Data.role_name(int(rid))])
+	检(缺形态图.is_empty(), "缺形态图：%s" % str(缺形态图))
+
+	# 表驱动素材（状态图标 / 独有图标 / 指示物 / 派系图标）：名字都配在代码常量或数据表里，
+	# 编辑器引用兜不住，只能在这里逐个查
+	var 缺状态图标: Array[String] = []
+	for 卡名: Variant in Art.STATUS_ICON.keys():
+		if Art.status_icon(str(卡名)) == null:
+			缺状态图标.append(str(卡名))
+	检(缺状态图标.is_empty(), "缺状态图标：%s" % str(缺状态图标))
+
+	var 缺独有图标: Array[String] = []
+	for i: int in range(Art.EXCLUSIVE_ICON.size()):
+		if Art.exclusive_icon(i) == null:
+			缺独有图标.append(Art.EXCLUSIVE_ICON[i])
+	检(缺独有图标.is_empty(), "缺独有图标：%s" % str(缺独有图标))
+
+	var 缺指示物: Array[String] = []
+	for i: int in range(Art.TOKEN_ICON.size()):
+		if Art.token_icon(i) == null:
+			缺指示物.append(Art.TOKEN_ICON[i])
+	检(缺指示物.is_empty(), "缺指示物：%s" % str(缺指示物))
+
+	var 缺派系图标: Array[String] = []
+	for 派系: Variant in Art.PROPERTY_ICON.keys():
+		if Art.role_property_icon(str(派系)) == null:
+			缺派系图标.append(str(派系))
+	检(缺派系图标.is_empty(), "缺派系图标：%s" % str(缺派系图标))
 
 	for 名: String in 界面音效:
 		var 找到: bool = false
