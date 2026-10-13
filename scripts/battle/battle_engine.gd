@@ -41,6 +41,12 @@ var room_watchers: Array[String] = []
 ## 房间是不是正处于选角（选将）阶段：房间级状态，由 LocalServer 维护，随 Game 快照下发。
 ## 准备室的观战提示靠它区分「正在等待选角」和「正在等待开始」
 var room_picking: bool = false
+## 开局倒计时剩余毫秒（0 = 没在倒计时）：房间级状态，由 LocalServer 维护、随 Game 快照下发，
+## 准备室据此显示「N 秒后开始」
+var start_countdown_ms: int = 0
+## 房间的「座位模式」（GConst.SeatMode）：由服务端建房时写入，开局时按它重排座位顺序。
+## 乱序 = 谁坐哪个座位随机；间隔 = 两队沿座位交替（红蓝红蓝…），相邻座位永远是对手
+var seat_mode: int = GConst.SeatMode.Random
 var players: Dictionary = {}      # id -> BattlePlayer
 var order: Array[int] = []        # 座位顺序（顺时针）
 var deck: BattleDeck = BattleDeck.new()
@@ -189,22 +195,90 @@ func all_ready() -> bool:
 	return true
 
 
-## 未选边的玩家自动补到人数少的一边
-func balance_colors() -> void:
-	var red_n: int = 0
-	var blue_n: int = 0
+## 红蓝两队当前的在座人数，下标与 team_morale / team_gem 等一致（0 蓝 / 1 红）
+func team_counts() -> Array[int]:
+	var 人数: Array[int] = [0, 0]
 	for pid: int in order:
 		match players[pid].color:
-			GConst.RED: red_n += 1
-			GConst.BLUE: blue_n += 1
+			GConst.RED: 人数[GConst.RED] += 1
+			GConst.BLUE: 人数[GConst.BLUE] += 1
+	return 人数
+
+
+## 两队人数是否对等。不对等就不该开局：手动选边不受人数约束，而补位只能往人少的一边
+## 加人、补不平，会开出 3 打 1、4 打 0 这种局
+func is_team_balanced() -> bool:
+	var 人数: Array[int] = team_counts()
+	return 人数[GConst.RED] == 人数[GConst.BLUE]
+
+
+## 未选边的玩家自动补到人数少的一边。
+## 补位次序是打散的：谁被补进红队、谁进蓝队不带偏向
+## （若按座位顺序依次补，排在第一位的房主就永远吃红）
+func balance_colors() -> void:
+	var 待补: Array[int] = []
 	for pid: int in order:
 		if players[pid].color == GConst.TEAM_NONE:
-			if red_n <= blue_n:
-				players[pid].color = GConst.RED
-				red_n += 1
-			else:
-				players[pid].color = GConst.BLUE
-				blue_n += 1
+			待补.append(pid)
+	if 待补.is_empty():
+		# 没人没选边：直接返回（开局倒计时期间本函数每帧都会被调到，别白造随机数发生器）
+		return
+	var 人数: Array[int] = team_counts()
+	var 随机: RandomNumberGenerator = RandomNumberGenerator.new()
+	随机.randomize()
+	_shuffle_arr(待补, 随机)
+	for pid: int in 待补:
+		if 人数[GConst.RED] <= 人数[GConst.BLUE]:
+			players[pid].color = GConst.RED
+			人数[GConst.RED] += 1
+		else:
+			players[pid].color = GConst.BLUE
+			人数[GConst.BLUE] += 1
+
+
+## 按房间的座位模式重排座位顺序（order）。
+## 间隔 = 两队沿座位交替，相邻座位永远是对手；其余（乱序）= 谁坐哪个座位随机。
+## 必须在 balance_colors() 之后调用（间隔模式要靠最终确定的队伍色来排），
+## 且一局只调一次：排座会消耗随机数，连调两次会排出两个不同的座位顺序。
+## 调用点在 LocalServer：定完队、进选角之前排一次，这样选角界面顶部的座位条
+## 与实际座位是一致的。
+func arrange_seats() -> void:
+	var 随机: RandomNumberGenerator = RandomNumberGenerator.new()
+	随机.randomize()
+	if seat_mode == GConst.SeatMode.Interlace:
+		_arrange_seats_interlace(随机)
+	else:
+		_shuffle_arr(order, 随机)
+
+
+## 间隔：两队各自随机打散后一红一蓝交替落座（红蓝红蓝…）。
+## 谁坐 0 号座位（先手）随机决定，所以「先手是红还是蓝」两种排法都会出现。
+## 两队人数不等时（玩家自己挑了边、没走 balance_colors 配平）交替维持不住，
+## 多出来的一队接着往后排，不越界。
+func _arrange_seats_interlace(随机: RandomNumberGenerator) -> void:
+	var 红队: Array[int] = []
+	var 蓝队: Array[int] = []
+	for pid: int in order:
+		if players[pid].color == GConst.RED:
+			红队.append(pid)
+		else:
+			蓝队.append(pid)
+	_shuffle_arr(红队, 随机)
+	_shuffle_arr(蓝队, 随机)
+	var 先红: bool = 随机.randi_range(0, 1) == 0
+	var 座位: Array[int] = []
+	for i: int in maxi(红队.size(), 蓝队.size()):
+		if 先红:
+			if i < 红队.size():
+				座位.append(红队[i])
+			if i < 蓝队.size():
+				座位.append(蓝队[i])
+		else:
+			if i < 蓝队.size():
+				座位.append(蓝队[i])
+			if i < 红队.size():
+				座位.append(红队[i])
+	order = 座位
 
 
 func _rebuild_links() -> void:
@@ -225,6 +299,8 @@ func start(role_pool: Array) -> void:
 
 ## 用「选将阶段选定的角色」开局；role_map: player_id -> role_id
 ## 保留 start(pool) 的随机分配入口，二者共用同一套开局初始化
+## 座位顺序不在这里排：调用方（LocalServer）定完队后先调 arrange_seats()，
+## 这里只按已排好的 order 建座位邻接（先手 = order[0]）
 func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 	_rng.randomize()
 	deck = BattleDeck.new()
@@ -268,7 +344,7 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 
 func _assign_roles(role_pool: Array) -> void:
 	var pool: Array = role_pool.duplicate()
-	_shuffle_arr(pool)
+	_shuffle_arr(pool, _rng)
 	if pool.is_empty():
 		return
 	for i: int in range(order.size()):
@@ -290,9 +366,9 @@ func _assign_roles_by_map(role_map: Dictionary) -> void:
 		玩家.role = BattleRole.create(rid, 玩家, self)
 
 
-func _shuffle_arr(a: Array) -> void:
+func _shuffle_arr(a: Array, rng: RandomNumberGenerator) -> void:
 	for i: int in range(a.size() - 1, 0, -1):
-		var j: int = _rng.randi_range(0, i)
+		var j: int = rng.randi_range(0, i)
 		var t: Variant = a[i]
 		a[i] = a[j]
 		a[j] = t
@@ -1161,6 +1237,7 @@ func game_info(viewer_id: int) -> Dictionary:
 		"wait_ms": 剩余,
 		"wait_total_ms": wait_total_ms,
 		"wait_text": _等待文案(),
+		"start_countdown_ms": start_countdown_ms,
 	}
 
 

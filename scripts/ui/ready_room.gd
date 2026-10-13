@@ -17,6 +17,9 @@ const 座位区半高: float = 195.0
 const 座位高: float = 88.0
 ## 聊天区最多保留的行数
 const 聊天最大行: int = 200
+## 开局提示的两种字色：倒计时用暖黄，队伍人数不对等的警告用橙红
+const 倒计时色: Color = Color(1.0, 0.85, 0.4, 1.0)
+const 警告色: Color = Color(1.0, 0.45, 0.4, 1.0)
 
 ## 顶部：房名 + 人数
 @export var Title: Label
@@ -30,6 +33,8 @@ const 聊天最大行: int = 200
 @export var 设置按钮: Button
 ## 观战者的等待提示：观战者在准备室没有可操作的东西，只告诉他现在在等什么
 @export var 观战提示: Label
+## 开局提示：开局倒计时 / 两队人数不对等（摆在观战提示上方）
+@export var 开局提示: Label
 ## 选择队伍面板与它的三个按钮
 @export var ChooseTeamPanel: Control
 @export var BtnRedTeam: Button
@@ -92,6 +97,37 @@ func _刷新(info: Dictionary) -> void:
 	# 顶部只写房名：空座位一开始就全摆出来了，已到几人一眼可见，不必再报人数
 	Title.text = str(info.get("room_name", "房间"))
 	_刷新观战提示(info)
+	_刷新开局提示(info)
+
+
+## 开局提示：开局倒计时（服务端每秒推一次剩余毫秒）或「两队人数不对等」。
+## 判据全在 Game 快照里（倒计时毫秒 + 各玩家的队伍与准备状态），不必另开消息。
+func _刷新开局提示(info: Dictionary) -> void:
+	var 剩余: int = int(info.get("start_countdown_ms", 0))
+	if 剩余 > 0:
+		开局提示.visible = true
+		开局提示.add_theme_color_override("font_color", 倒计时色)
+		开局提示.text = "%d 秒后开始…" % ceili(剩余 / 1000.0)
+		return
+	var 玩家表: Array = info.get("player_infos", [])
+	var 红: int = 0
+	var 蓝: int = 0
+	var 全准备: bool = not 玩家表.is_empty() and 玩家表.size() == int(info.get("max_player", 0))
+	for 数据: Variant in 玩家表:
+		match int((数据 as Dictionary).get("team", GConst.TEAM_NONE)):
+			GConst.RED:
+				红 += 1
+			GConst.BLUE:
+				蓝 += 1
+		if not bool((数据 as Dictionary).get("ready", false)):
+			全准备 = false
+	# 只在「人数已齐、全员准备、两队却配不平」时提示：其余情况没开局是别的原因（人没到齐 /
+	# 有人没准备），说了反而误导；队伍色在座位底色上本来也看得到
+	var 该提示: bool = 全准备 and 红 != 蓝
+	开局提示.visible = 该提示
+	if 该提示:
+		开局提示.add_theme_color_override("font_color", 警告色)
+		开局提示.text = "队伍人数不对等，无法开始对战"
 
 
 ## 观战者入房后（可能正赶上等人、也可能正赶上选角）在屏幕中间给一句等待提示；

@@ -30,14 +30,20 @@ func _scan(dir_path: String) -> void:
 		if d.current_is_dir():
 			_scan(full)
 		else:
-			var base := entry.get_basename().to_lower()
-			var ext := entry.get_extension().to_lower()
+			# 导出后 res:// 目录里只剩 *.import（真实数据在 .godot/imported/），
+			# 编辑器里则是「原始文件 + 同名 .import」。两种形态统一还原成原始文件名再建索引，
+			# 索引值也必须用原始路径——ResourceLoader 会经 .import 里的 path= 解析到实际的 .ctex。
+			var 文件名: String = entry
+			if 文件名.ends_with(".import"):
+				文件名 = 文件名.substr(0, 文件名.length() - ".import".length())
+			var base: String = 文件名.get_basename().to_lower()
+			var ext: String = 文件名.get_extension().to_lower()
 			if ext in ["png", "jpg", "jpeg", "webp"]:
 				if not _images.has(base):
-					_images[base] = full
+					_images[base] = dir_path.path_join(文件名)
 			elif ext in ["ogg", "wav", "mp3"]:
 				if not _audio.has(base):
-					_audio[base] = full
+					_audio[base] = dir_path.path_join(文件名)
 		entry = d.get_next()
 	d.list_dir_end()
 

@@ -15,7 +15,9 @@
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="ReadyRoom" type="Control" unique_id=77114633 node_paths=PackedStringArray("Title", "Seats", "BtnReady", "BtnExit", "BtnChooseTeam", "设置按钮", "观战提示", "ChooseTeamPanel", "BtnRedTeam", "BtnBlueTeam", "BtnRandomTeam", "ChatLog", "ChatInput", "BtnSend", "Ring", "Star")]
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ru26j"]
+
+[node name="ReadyRoom" type="Control" unique_id=77114633 node_paths=PackedStringArray("Title", "Seats", "BtnReady", "BtnExit", "BtnChooseTeam", "设置按钮", "观战提示", "开局提示", "ChooseTeamPanel", "BtnRedTeam", "BtnBlueTeam", "BtnRandomTeam", "ChatLog", "ChatInput", "BtnSend", "Ring", "Star")]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 1280.0
@@ -29,6 +31,7 @@ BtnExit = NodePath("Root/BtnExit")
 BtnChooseTeam = NodePath("Root/BtnChooseTeam")
 "设置按钮" = NodePath("设置按钮")
 "观战提示" = NodePath("观战提示")
+"开局提示" = NodePath("开局提示")
 ChooseTeamPanel = NodePath("Root/ChooseTeamPanel")
 BtnRedTeam = NodePath("Root/ChooseTeamPanel/BtnRedTeam")
 BtnBlueTeam = NodePath("Root/ChooseTeamPanel/BtnBlueTeam")
@@ -573,6 +576,7 @@ theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
 theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover_pressed = SubResource("StyleBoxEmpty_ru26j")
 theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
 toggle_mode = true
@@ -624,43 +628,6 @@ theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
 icon = ExtResource("7_btnteampng")
 expand_icon = true
-
-[node name="设置按钮" type="Button" parent="." unique_id=1932475108]
-layout_mode = 1
-anchors_preset = 3
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -176.0
-offset_top = -88.0
-offset_right = -24.0
-offset_bottom = -24.0
-grow_horizontal = 0
-grow_vertical = 0
-theme_override_font_sizes/font_size = 28
-text = "设置"
-
-[node name="观战提示" type="Label" parent="."]
-visible = false
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -420.0
-offset_top = -44.0
-offset_right = 420.0
-offset_bottom = 44.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 6
-theme_override_font_sizes/font_size = 34
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="ChooseTeamPanel" type="ColorRect" parent="Root" unique_id=1236608274]
 visible = false
@@ -740,6 +707,64 @@ theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
 icon = ExtResource("10_btnrandpng")
 expand_icon = true
 
+[node name="设置按钮" type="Button" parent="." unique_id=1932475108]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -176.0
+offset_top = -88.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 28
+text = "设置"
+
+[node name="开局提示" type="Label" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -460.0
+offset_top = -152.0
+offset_right = 460.0
+offset_bottom = -72.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 34
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="观战提示" type="Label" parent="." unique_id=1529227165]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -420.0
+offset_top = -44.0
+offset_right = 420.0
+offset_bottom = 44.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 34
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="ChatRoot" type="Control" parent="." unique_id=1636606127]
 anchors_preset = 0
 anchor_right = 1.0
@@ -749,13 +774,13 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="ChatBG" type="ColorRect" parent="ChatRoot" unique_id=1543521919]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_top = -300.0
-offset_right = 440.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_right = 370.6667
+grow_vertical = 0
 mouse_filter = 2
 color = Color(0, 0, 0, 0.45)
 
@@ -774,27 +799,27 @@ theme_override_font_sizes/normal_font_size = 20
 scroll_following = true
 
 [node name="ChatInput" type="LineEdit" parent="ChatRoot" unique_id=1061302100]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 10.0
-offset_top = -46.0
-offset_right = 340.0
+offset_top = -56.0
+offset_right = 272.6667
 offset_bottom = -8.0
-grow_horizontal = 2
-grow_vertical = 2
+grow_vertical = 0
 theme_override_font_sizes/font_size = 20
 placeholder_text = "发言…"
 
 [node name="BtnSend" type="Button" parent="ChatRoot" unique_id=1228025769]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 350.0
-offset_top = -46.0
-offset_right = 430.0
-offset_bottom = -8.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_left = 279.33344
+offset_top = -54.666626
+offset_right = 363.33334
+offset_bottom = -9.333313
+grow_vertical = 0
 focus_mode = 0
 text = "发送"

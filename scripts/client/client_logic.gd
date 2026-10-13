@@ -193,7 +193,7 @@ func request_room_list() -> void:
 	Net.send(GConst.Msg.RoomListReq, {"role_strategy": GConst.RoleStrategy.All})
 
 
-func create_room(room_name: String, max_player: int, role_strategy: int = GConst.RoleStrategy.Random, debug: bool = false) -> void:
+func create_room(room_name: String, max_player: int, role_strategy: int = GConst.RoleStrategy.Random, seat_mode: int = GConst.SeatMode.Random, debug: bool = false) -> void:
 	if not Net.is_connected_to_host():
 		return
 	# Steam 模式：本地照旧建服务端房间，另外开一个 Steam 大厅，别的玩家才搜得到
@@ -203,7 +203,7 @@ func create_room(room_name: String, max_player: int, role_strategy: int = GConst
 		"room_name": room_name,
 		"max_player": max_player,
 		"role_strategy": role_strategy,
-		"seat_mode": GConst.SeatMode.Random,
+		"seat_mode": seat_mode,
 		"allow_guest": true,
 		"debug": debug,
 	})

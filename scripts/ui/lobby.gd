@@ -16,6 +16,7 @@ const 通用提示: String = "双击房间或点「进入选中房间」加入�
 ## 多开的几个窗口共用同一份，重开也还在。键名与摆位参数（layout_*）同一段，都在 [shared]。
 const 共享键_人数: String = "room_max_player"
 const 共享键_选角: String = "room_role_strategy"
+const 共享键_座位: String = "room_seat_mode"
 ## 共享配置里没记录过时的取值：人数与选角的合法值都 ≥ 1，所以用 0 表示「没记过」
 const 未记录: int = 0
 
@@ -37,6 +38,8 @@ const 未记录: int = 0
 @export var 人数组: ButtonGroup
 ## 创建房间的选角单选组（每个按钮的 metadata/strategy = GConst.RoleStrategy 值）
 @export var 选角组: ButtonGroup
+## 创建房间的座位单选组（每个按钮的 metadata/seat = GConst.SeatMode 值）
+@export var 座位组: ButtonGroup
 @export var 创建按钮: Button
 @export var 取消创建按钮: Button
 ## 创建房间「指令」行的勾选（界面上写的是「开启作弊」）：勾上后本房间内所有玩家都能用测试指令
@@ -239,23 +242,25 @@ func _on_create_pressed() -> void:
 		房名 = "%s 的房间" % Cfg.nickname
 	创建层.visible = false
 	设状态("正在创建房间…")
-	# 人数 / 选角都是单选组，直接读被按下那个按钮上标的数值（ButtonGroup 不允许全部松开，必定有一个）
+	# 人数 / 选角 / 座位都是单选组，直接读被按下那个按钮上标的数值（ButtonGroup 不允许全部松开，必定有一个）
 	var 人数: int = int(人数组.get_pressed_button().get_meta("people"))
 	var 选角: int = int(选角组.get_pressed_button().get_meta("strategy"))
+	var 座位: int = int(座位组.get_pressed_button().get_meta("seat"))
 	var 调试: bool = 调试模式.button_pressed
 	# 记住这次选的：写共享配置，多开共用一份，下次启动直接沿用。
 	# 调试模式刻意不记：每次建房都从「未勾选」开始，免得顺手把调试入口带进正常局
 	Cfg.shared_set(共享键_人数, 人数)
 	Cfg.shared_set(共享键_选角, 选角)
-	Logic.create_room(房名, 人数, 选角, 调试)
+	Cfg.shared_set(共享键_座位, 座位)
+	Logic.create_room(房名, 人数, 选角, 座位, 调试)
 
 
 # ============================================================
-# 建房选项的记忆（人数 / 选角）
+# 建房选项的记忆（人数 / 选角 / 座位）
 # ============================================================
-## 按共享配置把人数 / 选角拨回上次选的项（没记过就保持场景里的默认）。
+## 按共享配置把人数 / 选角 / 座位拨回上次选的项（没记过就保持场景里的默认）。
 ## 多开脚本带了 --count（本批窗口数）时人数以它为准：否则会沿用上次记下的 4 人，
-## 六开被建成一间 2v2 房；没有对应按钮的数值（如 1）就保持原样。
+## 六开被建成一间 2v2 房；没有对应按钮的数值（如已取消的 2 人）就保持原样。
 ## 调试模式刻意不记忆：每次建房都从「未勾选」开始，只有多开脚本带 --auto
 ## （按 F10 / F11 那种）才强制勾上，方便一拉起来就能用测试指令。
 func _恢复建房选项() -> void:
@@ -264,6 +269,7 @@ func _恢复建房选项() -> void:
 		人数 = Cfg.多开人数
 	_选中按元数据(人数组, "people", 人数)
 	_选中按元数据(选角组, "strategy", int(Cfg.shared_get(共享键_选角, 未记录)))
+	_选中按元数据(座位组, "seat", int(Cfg.shared_get(共享键_座位, 未记录)))
 	调试模式.button_pressed = Cfg.调试模式
 
 

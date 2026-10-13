@@ -240,6 +240,8 @@ const TABLE: Dictionary = {
 		22: {"n": "watchers", "t": "str", "r": true},
 		# 是否处于选角阶段：准备室的观战提示据此显示「正在等待选角 / 正在等待开始」
 		23: {"n": "picking", "t": "bool"},
+		# 开局倒计时剩余毫秒（0 = 没在倒计时）：准备室据此显示「N 秒后开始」
+		24: {"n": "start_countdown_ms", "t": "u32"},
 	},
 	GConst.Msg.Talk: {
 		1: {"n": "txt", "t": "str"},

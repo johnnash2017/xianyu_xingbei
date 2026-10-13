@@ -67,6 +67,8 @@ func poll() -> void:
 		# 推进选将阶段的超时（到点还没提交的按候选第 1 个收尾）
 		if room.has("pick"):
 			_check_pick_timeout(room)
+		# 推进开局倒计时：条件被打断就撤销，到点真正开局
+		_check_start_countdown(room)
 		# 推进对局回复超时：挂机/掉线玩家到点自动代打，避免整局被一个人卡死
 		if _is_battle_playing(room):
 			var battle: BattleEngine = room["battle"]
@@ -290,6 +292,7 @@ func create_room(conn_id: int, data: Dictionary) -> void:
 	battle.room_name = str(room["name"])
 	battle.room_max_player = int(room["max_player"])
 	battle.room_debug = bool(data.get("debug", false))
+	battle.seat_mode = int(room["seat_mode"])
 	battle.send_cb = func(target: int, msg_type: int, fields: Dictionary) -> void:
 		_engine_send(rid, target, msg_type, fields)
 	_rooms[rid] = room
@@ -405,6 +408,9 @@ func join_team(conn_id: int, team: int) -> void:
 	var room: Dictionary = _room_of(conn_id)
 	if room.is_empty():
 		return
+	# 开局后、以及选角开始后，队伍与座位就定死了（选角界面的座位条按它画），不再接受改边
+	if bool(room["started"]) or room.has("pick"):
+		return
 	var s: Dictionary = _sessions[conn_id]
 	var pid: int = int(s["player_id"])
 	var battle: BattleEngine = room["battle"]
@@ -415,7 +421,8 @@ func join_team(conn_id: int, team: int) -> void:
 			battle.set_color(pid, GConst.RED)
 		_:
 			battle.set_color(pid, GConst.TEAM_NONE)
-	_broadcast_game(room)
+	# 选边可能刚好把两队调平：若已满员且全员都准备着，这一刻就该开始倒数（_try_start 会广播）
+	_try_start(room)
 
 
 func ready_for_game(conn_id: int, type: int) -> void:
@@ -434,25 +441,97 @@ func ready_for_game(conn_id: int, type: int) -> void:
 		# （否则「准备 → 广播 Game → 客户端收到 Game 又准备」会形成无限回环，把服务端读循环钉死）
 		return
 	battle.set_ready(pid, 新值)
-	_broadcast_game(room)
+	# 广播 + 开局判定都交给 _try_start（它末尾必定广播一次）
+	_try_start(room)
+
+
+## 开局倒计时时长：条件齐备后先倒数 5 秒再开局（给玩家一点反应时间）
+const 开局倒计时_ms: int = 5000
+
+
+## 开局条件是否齐备：未开始、未进选角、满员、全员准备、两队人数对等。
+## 注意它不只是判断 —— 会先把没选边的人补到人少的一边（balance_colors），
+## 所以「人数是否对等」必须在补位之后才算得准。
+func _开局齐备(room: Dictionary) -> bool:
+	if bool(room["started"]) or room.has("pick"):
+		# 已经开了 / 选角进行中（等各玩家提交）
+		return false
+	var battle: BattleEngine = room["battle"]
 	if not battle.all_ready():
-		return
+		return false
 	if battle.order.size() != int(room["max_player"]):
 		# 人数没坐满不开局：房间设定几人就得几人（2V2 必须凑齐 4 人），
 		# 否则 2V2 的房间里两个人都准备了也会直接开成 1v1
+		return false
+	battle.balance_colors()
+	# 手动选边不受人数约束，补位也补不平时会剩 3 红 1 蓝 / 4 红 0 蓝 —— 这种不对等的局不开
+	return battle.is_team_balanced()
+
+
+## 尝试起开局倒计时。由「准备」与「选边」两条上行共用 ——
+## 队伍刚被调平的那一刻也要能立刻开始倒数；条件被打断则撤销倒计时。
+## 末尾无条件广播一次：补位可能刚改了队伍色，客户端要据此显示「人数不对等」提示。
+func _try_start(room: Dictionary) -> void:
+	var battle: BattleEngine = room["battle"]
+	if _开局齐备(room):
+		# 还没开始倒数就起一个 5 秒倒计时；已经在倒数就别重置时间
+		if int(room.get("start_at", 0)) <= 0:
+			room["start_at"] = Time.get_ticks_msec() + 开局倒计时_ms
+			room["start_shown_sec"] = ceili(开局倒计时_ms / 1000.0)
+			battle.start_countdown_ms = 开局倒计时_ms
+	else:
+		room["start_at"] = 0
+		room["start_shown_sec"] = -1
+		battle.start_countdown_ms = 0
+	_broadcast_game(room)
+
+
+## 撤销开局倒计时（条件被打断时调）：清掉截止时间并广播一次，让客户端收起提示
+func _取消开局倒计时(room: Dictionary) -> void:
+	if int(room.get("start_at", 0)) <= 0:
 		return
-	if room.has("pick"):
-		# 选将进行中，等待各玩家提交
+	room["start_at"] = 0
+	room["start_shown_sec"] = -1
+	var battle: BattleEngine = room["battle"]
+	battle.start_countdown_ms = 0
+	_broadcast_game(room)
+
+
+## 推进开局倒计时（poll 中调用）：条件被打断就撤销，秒数变了才广播，到点真正开局
+func _check_start_countdown(room: Dictionary) -> void:
+	var 截止: int = int(room.get("start_at", 0))
+	if 截止 <= 0:
 		return
+	if not _开局齐备(room):
+		_取消开局倒计时(room)
+		return
+	var 剩余: int = 截止 - Time.get_ticks_msec()
+	var battle: BattleEngine = room["battle"]
+	if 剩余 <= 0:
+		room["start_at"] = 0
+		room["start_shown_sec"] = -1
+		battle.start_countdown_ms = 0
+		_开始本局(room, battle)
+		return
+	battle.start_countdown_ms = 剩余
+	# 只在「显示的秒数」变化时广播：poll 每帧都跑，不拦的话一秒能发几十份全量快照
+	var 秒: int = ceili(剩余 / 1000.0)
+	if 秒 != int(room.get("start_shown_sec", -1)):
+		room["start_shown_sec"] = 秒
+		_broadcast_game(room)
+
+
+## 真正开局：先排座（间隔 / 乱序），再按选角策略直接开局或进选角
+func _开始本局(room: Dictionary, battle: BattleEngine) -> void:
+	# 排座在定完队之后、进选角之前做，且整局只做一次：选角界面顶部的座位条才和实际座位一致
+	battle.arrange_seats()
 	if int(room["role_strategy"]) == GConst.RoleStrategy.Random:
 		# Random 策略保持原样：不发询问、直接随机分配（自动测试依赖这条零交互路径）
 		room["started"] = true
 		battle.start(Data.role_pool.duplicate())
 		rooms_changed.emit()
 		return
-	# 选将前先把队伍配平：没提前选边的人在这里定下蓝/红（对照参照工程开局前先 balance_colors），
-	# 否则选角界面顶部的「座位顺序」全是未分队，看不出谁跟谁一队
-	battle.balance_colors()
+	# 进选角前先广播一次：让选角界面带上刚定下的队伍色与座位顺序
 	_broadcast_game(room)
 	_begin_role_pick(room)
 

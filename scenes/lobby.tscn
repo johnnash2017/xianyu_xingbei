@@ -6,6 +6,8 @@
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_strategy"]
 
+[sub_resource type="ButtonGroup" id="ButtonGroup_seat"]
+
 [node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "Steam状态", "进入按钮", "刷新按钮", "创建房间按钮", "返回登录按钮", "设置按钮", "创建层", "房名输入", "创建按钮", "取消创建按钮", "调试模式", "观战确认层", "观战是按钮", "观战否按钮")]
 layout_mode = 3
 anchors_preset = 15
@@ -27,6 +29,7 @@ script = ExtResource("1_5gu6x")
 "房名输入" = NodePath("创建层/居中/创建卡片/内容/房名输入")
 "人数组" = SubResource("ButtonGroup_people")
 "选角组" = SubResource("ButtonGroup_strategy")
+"座位组" = SubResource("ButtonGroup_seat")
 "创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/创建按钮")
 "取消创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/取消创建按钮")
 "调试模式" = NodePath("创建层/居中/创建卡片/内容/指令行/调试模式")
@@ -162,14 +165,6 @@ theme_override_font_sizes/font_size = 26
 text = "人数"
 vertical_alignment = 1
 
-[node name="人数_2" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 26
-toggle_mode = true
-button_group = SubResource("ButtonGroup_people")
-metadata/people = 2
-text = "2 人"
-
 [node name="人数_4" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
@@ -234,6 +229,36 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_strategy")
 metadata/strategy = 5
 text = "任选"
+
+[node name="座位行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="座位标签" type="Label" parent="创建层/居中/创建卡片/内容/座位行"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "座位"
+vertical_alignment = 1
+
+[node name="座位_乱序" type="Button" parent="创建层/居中/创建卡片/内容/座位行"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_pressed = true
+button_group = SubResource("ButtonGroup_seat")
+metadata/seat = 1
+text = "乱序"
+
+[node name="座位_间隔" type="Button" parent="创建层/居中/创建卡片/内容/座位行"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+toggle_mode = true
+button_group = SubResource("ButtonGroup_seat")
+metadata/seat = 4
+text = "间隔"
 
 [node name="指令行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容"]
 layout_mode = 2
