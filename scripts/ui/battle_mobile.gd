@@ -508,6 +508,8 @@ func _ready() -> void:
 		_on_game_info(Logic.last_info)
 	else:
 		_刷新交互()
+	# 离屏预热出手特效：把各特效的着色器管线在进战斗时一次编好，避免首次出手卡顿（见 _预热出手特效）
+	_预热出手特效()
 
 
 ## 测试提示（测试用）：常态半透明、鼠标指上去变不透明、按住左键可以拖到别处，免得挡住画面
@@ -1126,6 +1128,35 @@ func _粒子特效(src_id: int, dst_id: int, card_id: int, 飞行: bool) -> void
 	var go: Node2D = (特效预制表[牌.card_name_enum()] as PackedScene).instantiate() as Node2D
 	Root.add_child(go)
 	go.call("播放", 起点.get_global_rect().get_center(), 终点.get_global_rect().get_center(), 飞行)
+
+
+## 出手特效是否已预热：着色器管线在同一进程内只编译一次，整个会话预热一次即可
+static var _特效已预热: bool = false
+
+
+## 离屏预热出手特效：把每种特效各实例化一次，放进一个不显示的 SubViewport 里渲染两帧，
+## 让各自的着色器管线在进战斗时一次性编好 —— 导出包用的是 D3D12，管线在首次真正 draw 时才同步编译，
+## 不预热的话第一次出手那一帧就会卡。（编辑器里开发时早编过，所以只有打包后才明显。）
+##
+## 视口必须用 UPDATE_ALWAYS：WHEN_VISIBLE 时离屏不渲染，预热就等于白做。
+## 预热完立即释放；即使用户看得到这段也看不到，因为视口从不显示。
+func _预热出手特效() -> void:
+	if _特效已预热:
+		return
+	_特效已预热 = true
+	var 视口: SubViewport = SubViewport.new()
+	视口.size = Vector2i(512, 512)
+	视口.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(视口)
+	for 预制: PackedScene in 特效预制表.values():
+		var go: Node2D = 预制.instantiate() as Node2D
+		视口.add_child(go)
+		# 原地炸开（飞行=false），起止都给视口中心：落在视口矩形内才不会被 2D 裁剪掉，保证真的画了一帧
+		go.call("播放", Vector2(256, 256), Vector2(256, 256), false)
+	# 等两帧让每种特效都真正渲染过一次（管线编译完成），再整体释放
+	await get_tree().process_frame
+	await get_tree().process_frame
+	视口.queue_free()
 
 
 ## 公用的出牌弹道：从出牌者面板飞一道粒子到目标面板（对照参考工程 BattleUIMobile.actionAnim）
