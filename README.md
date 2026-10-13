@@ -1,2 +1,6 @@
-这是通过修改原版网杯的开源工程（https://github.com/chntujia/CodfiyAsteriatedGrailServer/），进行二次开发的游戏版本。
-新增了斩击特效，修改了技能释放交互、提供了Steam联机功能（还没上线）以防止被黑客攻击、将角色技能更新至 10周年版本。
+原工程地址：https://github.com/chntujia/CodfiyAsteriatedGrailServer/
+这是通过修改原版网杯的开源工程，进行二次开发的游戏版本。
+1.新增了斩击特效
+2.改善了技能释放交互
+3.提供了Steam联机功能（还没上线，正在审核）以防止被黑客攻击
+4.将角色技能更新至 10 周年版本，目前仅开发至基础角色，后面将陆续更新新角色
