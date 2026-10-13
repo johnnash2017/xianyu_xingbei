@@ -249,6 +249,8 @@ const 关窗标记前缀: String = "多开_关闭_"
 const 同批秒数: float = 10.0
 ## 检查关窗标记的间隔（秒）
 const 联动间隔: float = 0.2
+## 正在重启本窗口（本地调试按 ESC）：退出时**不写关窗标记**，否则同批其它窗口会跟着一起退
+var _重启中: bool = false
 
 
 func _关窗标记路径(槽位: int) -> String:
@@ -287,7 +289,8 @@ func _watch_peers() -> void:
 ## 退出时留下关窗标记，让同批的其它窗口一起退出。
 ## 放在 _exit_tree 是为了不管走哪条退出路径（点关闭按钮、程序自己 quit）都能留下标记。
 func _exit_tree() -> void:
-	if not 多开:
+	# 重启本窗口（ESC）时的退出：不写关窗标记，别把同批其它窗口一起带走
+	if not 多开 or _重启中:
 		return
 	var 文件: FileAccess = FileAccess.open(_关窗标记路径(slot), FileAccess.WRITE)
 	if 文件 != null:
@@ -407,3 +410,45 @@ func _apply_layout(实例数: int) -> void:
 	# 坐标不能为负，给负数窗口会被系统甩到极远处。
 	DisplayServer.window_set_position(Vector2i(maxi(外框x + 边框, 0), maxi(外框y + 标题栏, 0)))
 	DisplayServer.window_set_size(Vector2i(w, h))
+
+
+# ============================================================
+# 本地调试：按 ESC 重启本窗口
+# ============================================================
+## 按 ESC 重启本窗口：先关掉自己，再拉起一个同参数的新窗口（槽位 / 端口 / 窗口数 / 摆位照旧），
+## 但**不带 --auto** —— 新窗口停在登录界面、不连任何服务器，是「干净的一个窗口」。
+## 两个前提：
+##   1) 只在本地模式生效（F9/F10/F11 那三个多开脚本拉起来的窗口），正式启动按 ESC 不动；
+##   2) 退出时跳过关窗标记（见 _重启中），否则同批其它窗口会跟着一起退。
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not 本地模式:
+		return
+	var 按键: InputEventKey = event as InputEventKey
+	# 只认「按下且非长按重复」的 ESC：按住不放不会连着重启出一串窗口
+	if 按键 == null or not 按键.pressed or 按键.echo or 按键.keycode != KEY_ESCAPE:
+		return
+	# 走到 _unhandled_ 说明没被界面吃掉（设置 / 选角弹层吃掉 ESC 时就该由它们处理）
+	get_viewport().set_input_as_handled()
+	重启窗口()
+
+
+## 重启本窗口：参数取本进程的原始命令行，只去掉 --auto。
+## 用 set_restart_on_exit 而不是自己 create_process：引擎是在退出收尾的最后才拉起新进程
+## （见 main 结尾），也就是「旧窗口先彻底关掉、新窗口才开始」，不会和旧的抢端口 / 抢槽位。
+func 重启窗口() -> void:
+	var 参数: PackedStringArray = OS.get_cmdline_args()
+	var 用户参数: PackedStringArray = PackedStringArray()
+	for 项: String in OS.get_cmdline_user_args():
+		# --auto 一启动就自动登录 → 建房 / 进房 → 准备，那正是「有连接」：
+		# 按 ESC 要的是一个没连接的干净窗口，所以丢掉它（顺带也回到非调试模式）
+		if 项 == "--auto":
+			continue
+		用户参数.append(项)
+	if not 用户参数.is_empty():
+		# 分隔符要补回来：用户参数（--slot / --port / --count…）不在 get_cmdline_args() 里，
+		# 少了这个 --，重启回来的窗口会丢掉自己的槽位，变成另认一个端口
+		参数.append("--")
+		参数.append_array(用户参数)
+	_重启中 = true
+	OS.set_restart_on_exit(true, 参数)
+	get_tree().quit()

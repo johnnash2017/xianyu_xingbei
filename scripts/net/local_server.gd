@@ -341,6 +341,11 @@ func enter_room(conn_id: int, room_id: int) -> void:
 		# 进入房间（含掉线后重新进入）：清除掉线标记，恢复常规回复超时
 		battle.set_offline(pid, false)
 	_broadcast_game(room)
+	if pid != GConst.GUEST:
+		# 补发必须排在快照之后：客户端是「收到快照 → 切到准备室 / 战斗界面」，
+		# 而切界面会把界面层清一遍（见 UI.goto），弹层要等那之后才建得起来
+		_补发选角请求(room, pid)
+		battle.重发当前询问(pid)
 
 
 func leave_room(conn_id: int) -> void:
@@ -355,16 +360,16 @@ func leave_room(conn_id: int) -> void:
 		(room["watchers"] as Array).erase(conn_id)
 	elif pid >= 0:
 		(room["conn_of"] as Dictionary).erase(pid)
-		if _is_battle_playing(room):
-			# 对局进行中：座位不可移除（引擎状态机与等待对象都指向该玩家），
-			# 保留座位并标记掉线，由引擎按掉线超时自动代打
+		if _is_battle_playing(room) or room.has("pick"):
+			# 对局中 / 选角中：座位不可移除 —— 引擎状态机、等待对象、选角候选表都按座位号指着他，
+			# 保留座位并标记掉线；他回来时凭身份认领回同一个座位（选角能接着选，对局接着打）
 			battle.set_offline(pid, true)
+			# 选角期间掉线：其余人都提交完就直接收尾，别让大家干等满 30 秒
+			_on_pick_player_left(room, pid)
 		else:
 			battle.remove_player(pid)
-			# 未开局时座位被移除，身份绑定一并清除（此前未开局离席即不再保留认领资格）
+			# 准备室里离席：座位与身份绑定一并清除（未开局离席即放弃这个座位，回来重新落座）
 			(room["client_of"] as Dictionary).erase(pid)
-			# 选将期间掉线：立刻按超时处理该玩家，避免房间卡死
-			_on_pick_player_left(room, pid)
 	s["room_id"] = -1
 	s["player_id"] = -1
 	_同步观战者名单(room)
@@ -596,17 +601,37 @@ func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> vo
 	# 选角开始：标记进快照，准备室的观战提示据此显示「正在等待选角」（观战者收不到 RoleReq）
 	battle.room_picking = true
 	for pid: int in battle.order:
-		_engine_send(int(room["id"]), pid, GConst.Msg.RoleReq, {
-			"id": pid,
-			"strategy": int(room["role_strategy"]),
-			"role_ids": 候选表[pid],
-			# 选角倒计时：客户端据此画进度条（本地扩展字段，见 proto_schema 的 RoleReq）
-			"wait_ms": PICK_TIMEOUT_MS,
-			"wait_total_ms": PICK_TIMEOUT_MS,
-			"args": [],
-			"opration": 0,
-		})
+		_发选角请求(room, pid, 候选表[pid], PICK_TIMEOUT_MS)
 	_broadcast_game(room)
+
+
+## 下发选角请求（候选 + 剩余倒计时）：开局时每人发一次；选角中途重新进房的人补发一次
+func _发选角请求(room: Dictionary, pid: int, 候选: Array, 剩余_ms: int) -> void:
+	_engine_send(int(room["id"]), pid, GConst.Msg.RoleReq, {
+		"id": pid,
+		"strategy": int(room["role_strategy"]),
+		"role_ids": 候选,
+		# 选角倒计时：客户端据此画进度条（本地扩展字段，见 proto_schema 的 RoleReq）
+		"wait_ms": 剩余_ms,
+		"wait_total_ms": PICK_TIMEOUT_MS,
+		"args": [],
+		"opration": 0,
+	})
+
+
+## 选角阶段重新进房：把该玩家的选角请求再发一次（带他的候选与剩余倒计时）。
+## 不补发的话客户端手里没有候选、选角层弹不出来，只能干等 —— 就是「选角中途离开再回来没法接着选」
+func _补发选角请求(room: Dictionary, pid: int) -> void:
+	if not room.has("pick"):
+		return
+	var pick: Dictionary = room["pick"]
+	var 候选表: Dictionary = pick["candidates"]
+	if not 候选表.has(pid):
+		return
+	if (pick["picked"] as Dictionary).has(pid):
+		# 已经提交过：不用再弹选角，在准备室等开局即可
+		return
+	_发选角请求(room, pid, 候选表[pid], maxi(int(pick["deadline"]) - Time.get_ticks_msec(), 0))
 
 
 func _on_pick_ban_candidates(room: Dictionary, pid: int, data: Dictionary) -> void:
@@ -631,11 +656,15 @@ func _on_pick_ban_candidates(room: Dictionary, pid: int, data: Dictionary) -> vo
 		_finish_pick_candidates(room)
 
 
-## 31/Any 是否所有在房玩家都已提交（掉线者已从 order 移除，不再计入）
+## 31/Any 是否所有「还在线」的在房玩家都已提交。
+## 掉线的先跳过（座位留着他回来接着选）：只要在线的都提交了就直接收尾，掉线那位由
+## _分配角色 随机兜底 —— 否则一个人掉线，其余人都得干等满 30 秒。
 func _pick_candidates_done(room: Dictionary) -> bool:
 	var battle: BattleEngine = room["battle"]
 	var 已选: Dictionary = room["pick"]["picked"]
 	for pid: int in battle.order:
+		if battle.offline_players.has(pid):
+			continue
 		if not 已选.has(pid):
 			return false
 	return true

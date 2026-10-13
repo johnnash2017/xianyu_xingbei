@@ -97,6 +97,9 @@ var _gems: Dictionary = {}
 var _team_energies: Dictionary = {}
 ## 各玩家最后一次下发的行动命令表（player_id -> Array）：快照刷新后重算，只有变了才重发询问
 var _最后行动命令: Dictionary = {}
+## 各玩家最近一次收到的询问（player_id -> {cmd_type, commands}）：重连回来时原样补发一次 ——
+## 客户端手里没有询问就画不出行动 / 应战界面，只能干等超时被自动代打
+var _最后询问: Dictionary = {}
 var _await_id: int = -1
 var _await_kind: int = -1
 ## 本次等待「归属」的状态实例（RefCounted）：只有它自己被 handle 时才认这份回复。
@@ -989,7 +992,22 @@ func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bo
 	_pending_action_type = action_type
 	var cmds: Array = action_commands(pid, action_type, can_give_up, extra, no_special)
 	_最后行动命令[pid] = cmds
-	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Action, "commands": cmds})
+	_询问(pid, GConst.CmdType.Action, cmds)
+
+
+## 下发一条询问给某玩家，并把它记下来：玩家重连回来时照原样补发（见 重发当前询问）
+func _询问(pid: int, cmd_type: int, commands: Array) -> void:
+	_最后询问[pid] = {"cmd_type": cmd_type, "commands": commands}
+	send(pid, GConst.Msg.CmdReq, {"cmd_type": cmd_type, "commands": commands})
+
+
+## 玩家重新进房：把「正等他的那份询问」补发一次。
+## 不补发的话客户端手里没有询问、画不出操作界面，只能干等到超时被自动代打 —— 等于白掉一次线
+func 重发当前询问(pid: int) -> void:
+	if _await_id != pid or not _最后询问.has(pid):
+		return
+	var 询问: Dictionary = _最后询问[pid]
+	_询问(pid, int(询问["cmd_type"]), 询问["commands"])
 
 
 ## 重算「这名玩家此刻能放的技能」，有变化才重发一次行动询问。
@@ -1003,7 +1021,7 @@ func _刷新技能可用(pid: int) -> void:
 	if str(cmds) == str(_最后行动命令.get(pid, [])):
 		return
 	_最后行动命令[pid] = cmds
-	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Action, "commands": cmds})
+	_询问(pid, GConst.CmdType.Action, cmds)
 
 
 ## 行动询问的命令表：第 0 项是通用行动（允许放弃时再补一项「放弃」），其余是当前手牌下该角色能放的技能
@@ -1078,16 +1096,13 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 	_pending_args = args.duplicate()
 	_pending_is_skill = false
 	_pending_partial = {}
-	send(pid, GConst.Msg.CmdReq, {
-		"cmd_type": GConst.CmdType.Respond,
-		"commands": [{
-			"respond_id": respond_id,
-			"src_id": src_id if src_id >= 0 else pid,
-			"dst_ids": dst_ids,
-			"card_ids": [],
-			"args": args,
-		}],
-	})
+	_询问(pid, GConst.CmdType.Respond, [{
+		"respond_id": respond_id,
+		"src_id": src_id if src_id >= 0 else pid,
+		"dst_ids": dst_ids,
+		"card_ids": [],
+		"args": args,
+	}])
 
 
 ## 询问某玩家是否发动某技能（客户端表现为「确定/取消」）
@@ -1172,7 +1187,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	_pending_args = args.duplicate()
 	_pending_is_skill = true
 	_pending_partial = {}
-	send(pid, GConst.Msg.CmdReq, {"cmd_type": GConst.CmdType.Respond, "commands": [cmd]})
+	_询问(pid, GConst.CmdType.Respond, [cmd])
 	wait_for(pid, GConst.Msg.Respond, 保留倒计时)
 
 
@@ -2830,31 +2845,38 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 	if name_enum == GConst.CardName.Shield:
 		if cur.v_shield(dst_id, players) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
-		take_from_hand(cur.id, [cid], true)
+		take_from_hand(cur.id, [cid])
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 先压「行动结束」再压基础效果变更钩子：LIFO 下钩子先跑（对照服务端 basicMagic：
 		# StateAfterMagic 先入栈、随后 setStateUseCard 把 StateBasicEffectChange 压在其上）。
 		# 顺序颠倒会把钩子压在回合结束乃至下家整回合之下，天使羁绊这类钩子实际不会触发
 		push_after_action("p_after_magic", {"player": cur.id, "card_id": cid})
 		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
+		# 「展示手牌」钩子必须最后压（同 _do_attack 与应战抵挡那条）：压在动作状态之上才先执行。
+		# 跟着 take_from_hand(已展示=true) 在开头就压的话，它会被埋在「回合结束」之下，而栈上又不断
+		# 压入下一回合的状态 —— 这个钩子永远轮不到执行，冰霜祷言这种「公开打出水系牌时发动」的响应
+		# 就从不触发（水系法术牌不触发的根因）
+		push_show_hand(cur.id, [cid])
 		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Weaken:
 		if cur.v_weaken(dst_id, players) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
-		take_from_hand(cur.id, [cid], true)
+		take_from_hand(cur.id, [cid])
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
 		push_after_action("p_after_magic", {"player": cur.id, "card_id": cid})
 		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
+		push_show_hand(cur.id, [cid])
 		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Poison:
-		take_from_hand(cur.id, [cid], true)
+		take_from_hand(cur.id, [cid])
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
 		push_after_action("p_after_magic", {"player": cur.id, "card_id": cid})
 		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
+		push_show_hand(cur.id, [cid])
 		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Missile:
@@ -2875,7 +2897,7 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		# 角色可用 v_missile 禁止使用魔弹（如魔剑/魔枪的牌类禁止）
 		if target >= 0 and cur.v_missile(cid, target) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
-		take_from_hand(cur.id, [cid], true)
+		take_from_hand(cur.id, [cid])
 		to_discard([cid])
 		push_after_action("p_after_magic", {"player": cur.id, "card_id": cid})
 		if target >= 0:
@@ -2884,6 +2906,9 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 			# 即使他手里既没有【魔弹】也没有【圣光】，也要问一次并等他应答（对照服务端 StateMissiled）
 			var used: Array[int] = [cur.id, target]
 			push(SMissileAsk.new(target, cur.id, MISSILE_BASE_POINT, 顺向, used))
+		# 展示手牌钩子最后压：压在动作状态与应战询问之上，先于它们执行（对照服务端 basicMagic 的
+		# StateBeforeMagic → setStateUseCard(展示手牌) → StateMissiled 顺序）；压在开头则永远轮不到
+		push_show_hand(cur.id, [cid])
 		return CONTINUE
 	# 其余法术牌（如【圣光】只作响应）不能主动施放
 	return _reject_action(cur)
