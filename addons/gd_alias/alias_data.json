@@ -14,6 +14,7 @@
 	"res://addons/label_font_auto_sizer/plugin.gd": "自适应插件",
 	"res://addons/label_font_auto_sizer/rich_label_auto_sizer.gd": "富文自适应",
 	"res://addons/resdsp/": "文件显示与双击打开",
+	"res://addons/version_tool/": "版本增长工具",
 	"res://assets/": "素材",
 	"res://assets/fonts/": "字体",
 	"res://assets/media/": "媒体",
