@@ -452,8 +452,14 @@ func ready_for_game(conn_id: int, type: int) -> void:
 	_try_start(room)
 
 
-## 开局倒计时时长：条件齐备后先倒数 5 秒再开局（给玩家一点反应时间）
-const 开局倒计时_ms: int = 5000
+## 开局倒计时时长（毫秒）：本地调试（F9~F11 多开脚本 / --auto）下取 0 —— 准备齐了下一拍立刻开局，
+## 省掉等待、方便快速测试；正常联机仍倒数 默认开局倒计时_ms 再开局，给玩家一点反应时间
+func _开局倒计时毫秒() -> int:
+	return 0 if Cfg.本地模式 else 默认开局倒计时_ms
+
+
+## 默认开局倒计时时长：条件齐备后先倒数 5 秒再开局（给玩家一点反应时间）
+const 默认开局倒计时_ms: int = 5000
 
 
 ## 开局条件是否齐备：未开始、未进选角、满员、全员准备、两队人数对等。
@@ -481,11 +487,12 @@ func _开局齐备(room: Dictionary) -> bool:
 func _try_start(room: Dictionary) -> void:
 	var battle: BattleEngine = room["battle"]
 	if _开局齐备(room):
-		# 还没开始倒数就起一个 5 秒倒计时；已经在倒数就别重置时间
+		# 还没开始倒数就起一个倒计时；已经在倒数就别重置时间
 		if int(room.get("start_at", 0)) <= 0:
-			room["start_at"] = Time.get_ticks_msec() + 开局倒计时_ms
-			room["start_shown_sec"] = ceili(开局倒计时_ms / 1000.0)
-			battle.start_countdown_ms = 开局倒计时_ms
+			var 倒计时: int = _开局倒计时毫秒()
+			room["start_at"] = Time.get_ticks_msec() + 倒计时
+			room["start_shown_sec"] = ceili(倒计时 / 1000.0)
+			battle.start_countdown_ms = 倒计时
 	else:
 		room["start_at"] = 0
 		room["start_shown_sec"] = -1

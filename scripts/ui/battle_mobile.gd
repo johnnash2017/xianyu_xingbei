@@ -130,8 +130,14 @@ const 法术音效后缀: Dictionary = {
 const 弃牌预制: PackedScene = preload("res://scenes/prefabs/effects/discardCard.tscn")
 ## 弃多张时各张之间的起飞间隔（秒）
 const 弃牌间隔: float = 0.09
-## 手牌卡面尺寸（参考脚本 showCard 用的 136×190，这里略窄一点好让 6 张能排下）
-const 手牌尺寸: Vector2 = Vector2(130.0, 192.0)
+## 卡牌基准尺寸（盖牌区、悬停预览沿用）：参考脚本 showCard 用的 136×190，这里略窄一点
+const 卡牌基准尺寸: Vector2 = Vector2(130.0, 192.0)
+## 手牌卡面尺寸；屏幕中间的展示牌同用这一档，比基准缩 12%（略小一点，6 张更好排下）
+const 手牌尺寸: Vector2 = Vector2(114.4, 169.0)
+## 手牌整体下移的像素（原本垂直居中，往下压一点更贴手牌区）
+const 手牌下移像素: float = 15.0
+## 屏幕中间的展示牌整体下移的像素
+const 展示牌下移像素: float = 10.0
 ## 「可选」发光框的颜色：平常绿光；正在弃牌时改红光（更醒目，也和「打出」区分开）
 const 可选发光_绿: Color = Color(0.0, 1.0, 0.024)
 const 可选发光_红: Color = Color(1.0, 0.25, 0.25)
@@ -145,8 +151,8 @@ const 补牌落下高度: float = 92.0
 const 补牌落下时长: float = 0.3
 ## 手牌排布：牌少时彼此贴着排（空隙 0）并整体居中；一行放不下才压缩，压到负数就是相邻两张叠着放
 const 手牌最多重叠比例: float = 0.45
-## 盖牌尺寸（盖牌选择区里手排用；与手牌同尺寸＝正常卡牌大小）
-const 盖牌尺寸: Vector2 = 手牌尺寸
+## 盖牌尺寸（盖牌选择区里手排用；沿用基准尺寸）
+const 盖牌尺寸: Vector2 = 卡牌基准尺寸
 ## 盖牌区里实际渲染的缩放：点「盖牌」按钮看自己的盖牌、以及要选盖牌时都按它缩一档
 const 盖牌显示缩放: float = 0.7
 ## 盖牌区里整行相对「区正中」再往下偏这么多像素（微调它和上下别的元素之间的空隙）
@@ -953,17 +959,25 @@ func _on_error(_err_id: int, msg: String) -> void:
 # ============================================================
 # 屏幕中间的展示卡牌区（Root/ShowCardArea）
 # ============================================================
-## 展示停留秒数，到点自动收起
-const 展示停留秒数: float = 1.6
+## 一拨展示的停留秒数，到点自动收起（下一拨出现会立刻顶掉上一拨）
+const 展示停留秒数: float = 3.2
 ## 卡牌视图预制体：和手牌同一个 Card.tscn（卡图 + 左上角命格/元素 + 底部字形与技能名1/2）
 const 卡牌视图预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Card.tscn")
 ## 悬停基础效果牌时摊出的「状态名 + 完整卡面」预制体（见 悬停卡预览）
 const 悬停卡预览预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HoverCardView.tscn")
 
 
-## 把这几张牌摊到屏幕中间给所有人看；连着来第二拨时先把上一拨收掉
+## 展示代号：每摊出一拨 +1。等待到点后只有「还是当前这一拨」才收起 ——
+## 否则上一拨的计时器到点会把刚摊出来的下一拨一起收掉（表现成展示时间被上一张牌拖短）
+var _展示代号: int = 0
+
+
+## 把这几张牌摊到屏幕中间给所有人看；停了 展示停留秒数 秒后自动收起，
+## 期间若来了新的一拨，立即顶掉（收起由新那拨负责）
 func _展示卡牌(卡号表: Array) -> void:
 	_收起展示卡牌()
+	_展示代号 += 1
+	var 本代号: int = _展示代号
 	var 视图表: Array[Control] = []
 	for cid: Variant in 卡号表:
 		var 卡: GCard = Data.get_card(int(cid))
@@ -984,10 +998,13 @@ func _展示卡牌(卡号表: Array) -> void:
 	var 排布: Array = _单行间距与起点(视图表.size(), ShowCardArea.size.x, 手牌尺寸, 手牌最多重叠比例)
 	var 间距: float = float(排布[0])
 	var 起点: float = float(排布[1])
-	var 行y: float = (ShowCardArea.size.y - 手牌尺寸.y) * 0.5
+	var 行y: float = (ShowCardArea.size.y - 手牌尺寸.y) * 0.5 + 展示牌下移像素
 	for i: int in range(视图表.size()):
 		视图表[i].position = Vector2(起点 + 间距 * float(i), 行y)
 	await get_tree().create_timer(展示停留秒数).timeout
+	# 等待期间又摊出了新的一拨：收起交给新那拨，这里不动
+	if 本代号 != _展示代号:
+		return
 	_收起展示卡牌()
 
 
@@ -4423,7 +4440,7 @@ func 刷新手牌() -> void:
 		var ctl: Control = go as Control
 		# 选中的牌往上抽出一截：表示「已经拿出来，等你按确定」
 		var 上浮: float = 选中上浮像素 if 选中 else 0.0
-		var 目标y: float = (HandArea.size.y - 手牌尺寸.y) * 0.5 - 上浮
+		var 目标y: float = (HandArea.size.y - 手牌尺寸.y) * 0.5 - 上浮 + 手牌下移像素
 		ctl.position = Vector2(起点 + 间距 * float(i), 目标y)
 		if 是新建:
 			# 只有新补的牌才从高处落下（复用/重画不重播这个动画）

@@ -11,7 +11,7 @@ shader_parameter/speed = 0.01
 shader_parameter/gain = 1.0000000475
 shader_parameter/fade = 0.18
 
-[node name="Main" type="Control" unique_id=638649211 node_paths=PackedStringArray("界面层", "问题反馈", "玩家列表层", "玩家标题", "玩家网格", "观战标题", "观战网格")]
+[node name="Main" type="Control" unique_id=638649211 node_paths=PackedStringArray("界面层", "问题反馈", "玩家列表层", "页面标题", "玩家标题", "玩家网格", "观战标题", "观战网格")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -22,6 +22,7 @@ script = ExtResource("1_main")
 "界面层" = NodePath("界面层")
 "问题反馈" = NodePath("问题反馈")
 "玩家列表层" = NodePath("玩家列表层")
+"页面标题" = NodePath("玩家列表层/居中/卡片/内容/标题")
 "玩家标题" = NodePath("玩家列表层/居中/卡片/内容/玩家标题")
 "玩家网格" = NodePath("玩家列表层/居中/卡片/内容/玩家网格")
 "观战标题" = NodePath("玩家列表层/居中/卡片/内容/观战标题")

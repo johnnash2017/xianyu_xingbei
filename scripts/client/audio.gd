@@ -37,6 +37,9 @@ const 焦点轮询间隔: float = 0.2
 const 失焦音量db: float = -80.0
 
 var _bgm: AudioStreamPlayer = null
+## 当前在播的场景号与胜负状态（胜负 null = 常规背景乐）：一首放完时据此决定接哪一首
+var _当前场景: int = -1
+var _当前胜负: Variant = null
 var _音效池: Array[AudioStreamPlayer] = []
 var _缓存: Dictionary = {}
 ## 上一首战斗曲编号：随机时避开它，避免连续两局同一首
@@ -57,6 +60,7 @@ func _ready() -> void:
 	_bgm = AudioStreamPlayer.new()
 	_bgm.name = "BGM"
 	_bgm.volume_db = linear_to_db(音乐音量)
+	_bgm.finished.connect(_on_bgm_finished)
 	add_child(_bgm)
 	# 多开时几个窗口各自是独立进程，只有当前聚焦的那个出声；定时问窗口自己有没有焦点
 	var 轮询: Timer = Timer.new()
@@ -154,6 +158,8 @@ func 保存音量设置() -> void:
 func 播放音乐(场景号: int, 胜负: Variant = null) -> void:
 	if _bgm == null:
 		return
+	_当前场景 = 场景号
+	_当前胜负 = 胜负
 	if 场景号 == 场景战斗:
 		if 胜负 != null:
 			var 胜曲: AudioStream = _取音频("win" if 胜负 else "lose")
@@ -172,6 +178,18 @@ func 播放音乐(场景号: int, 胜负: Variant = null) -> void:
 		if 厅曲 != null and _bgm.stream != 厅曲:
 			_bgm.stream = 厅曲
 			_bgm.play()
+
+
+## 一首背景乐放完：战斗就接着随机下一首（不重复上一首换一首），主界面就把 lobby 重放 ——
+## 少了这一步，一首放完音乐就断了（战斗里最明显：曲子放完就整局没声音）
+## 胜负曲是一次性结算音，放完不再续
+func _on_bgm_finished() -> void:
+	if _当前胜负 != null:
+		return
+	if _当前场景 == 场景战斗:
+		播放音乐(场景战斗)
+	elif _当前场景 == 场景主界面:
+		_bgm.play()
 
 
 # ============================================================

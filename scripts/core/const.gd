@@ -977,6 +977,38 @@ static func skill_type(skill_id: int) -> String:
 	return str(row[_技能列("类型")]).strip_edges()
 
 
+## ---- 文本宽度估算与截断（准备室座位名、战斗面板玩家名共用）----
+## 按显示宽度把文字截断：超出可用宽就用「…」收尾。宽度是估的 —— 汉字 / 全角按 1.05 个字宽、
+## ASCII 按 0.62 个字宽，不去量字体：该字体对中文的测量偏小，照它截往往截不够而溢出。
+## 宁可少显示一个字，也不让文字换行或顶出框。
+static func 截断文字(文本: String, 可用宽: float, 字号: int) -> String:
+	if _估宽(文本, 字号) <= 可用宽:
+		return 文本
+	var 结果: String = ""
+	var 宽: float = 0.0
+	var 省略宽: float = _字宽("…", 字号)
+	for 字: String in 文本:
+		var 单字宽: float = _字宽(字, 字号)
+		if 宽 + 单字宽 + 省略宽 > 可用宽:
+			break
+		宽 += 单字宽
+		结果 += 字
+	return 结果 + "…"
+
+
+## 估一整串文字的显示宽度（见 截断文字）
+static func _估宽(文本: String, 字号: int) -> float:
+	var 宽: float = 0.0
+	for 字: String in 文本:
+		宽 += _字宽(字, 字号)
+	return 宽
+
+
+## 估单个字符的显示宽度：ASCII 约 0.62 个字宽，其余（汉字 / 全角）约 1.05 个字宽
+static func _字宽(字: String, 字号: int) -> float:
+	return float(字号) * (0.62 if 字.unicode_at(0) < 128 else 1.05)
+
+
 ## 技能类型 → 标色（技能说明里【类型】的颜色，技能按钮底色也用它）
 const 技能类型颜色: Dictionary = {
 	"被动": Color(0.29, 0.62, 1.0),    # 蓝 #4a9eff

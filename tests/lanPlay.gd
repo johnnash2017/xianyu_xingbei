@@ -144,7 +144,9 @@ func _ready() -> void:
 		if not await _等到(_有房间, 等房间超时):
 			_结束("房间列表一直是空的")
 			return
-		(大厅.get("房间列表") as ItemList).select(0)
+		# 列表是 Tree：所有房行挂在隐藏的根下，选第一行即可（行序与 _room_ids 一致）
+		var 树: Tree = 大厅.get("房间列表")
+		树.get_root().get_first_child().select(0)
 		大厅.call("_on_join_pressed")
 		_记("已进房")
 		await _等(1.0)

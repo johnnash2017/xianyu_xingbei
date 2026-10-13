@@ -287,6 +287,9 @@ func _load_sprite(asset_name: String) -> Texture2D:
 ## 对应 C# private void Awake()
 func _ready() -> void:
 	btnPlayer = self
+	# 名字只占一行：太长由 set_NickName 按栏宽截成「…」，不要换行撑成两行
+	if playerName != null:
+		playerName.autowrap_mode = TextServer.AUTOWRAP_OFF
 	# 预制体里这个按钮默认是 disabled = true（Unity 里靠 interactable 表达「不可选」），
 	# 而 Godot 的 disabled 按钮不会发 pressed —— 那样「点不可选的头像看角色技能」永远没反应。
 	# 这里让按钮**始终可点**，「能不能选他」改由 is_selectable 判断（见 onClick / set_IsEnable）。
@@ -378,8 +381,11 @@ func 设置已选中(值: bool) -> void:
 
 ## 对应 C# public string NickName 的 setter
 func set_NickName(value: String) -> void:
-	if playerName != null:
-		playerName.text = value
+	if playerName == null:
+		return
+	# 名字栏可用宽 = 标签块宽（锚点都是 0.5，块宽就是偏移之差）；太长用「…」截断，不换行
+	var 可用宽: float = playerName.offset_right - playerName.offset_left
+	playerName.text = GConst.截断文字(value, 可用宽, playerName.get_theme_font_size("font_size"))
 
 ## 对应 C# public uint RoleID 的 setter
 func set_RoleID(value: int) -> void:

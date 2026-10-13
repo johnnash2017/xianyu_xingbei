@@ -8,6 +8,8 @@ extends Control
 @export var 问题反馈: Label
 ## 按住 TAB 显示的「玩家列表」浮层：玩家三列（名字 / 队伍 / 角色）+ 观战者名单
 @export var 玩家列表层: Control
+## 浮层顶部的总标题：写房间名
+@export var 页面标题: Label
 @export var 玩家标题: Label
 @export var 玩家网格: GridContainer
 @export var 观战标题: Label
@@ -69,6 +71,8 @@ func _在房间里() -> bool:
 
 ## 填「玩家列表」：战斗中的玩家（名字 / 队伍 / 角色，自己的名字标橙色）+ 观战者名单
 func _刷新玩家名单() -> void:
+	# 浮层顶部的总标题写房间名（和准备室顶部一致）
+	页面标题.text = str(Data.game_info.get("room_name", "房间"))
 	玩家标题.text = "【战斗】%d 人" % Data.player_list.size()
 	# 常规字色取自段标题：改主题时这里跟着变，不用再抄一个颜色值
 	var 常规色: Color = 玩家标题.get_theme_color("font_color")
@@ -143,7 +147,9 @@ func _自动开局() -> void:
 		# 等房主把房间建出来（房间列表非空）再进第 1 间
 		if not await _等到(func() -> bool: return not (大厅.get("_room_ids") as Array).is_empty(), 25.0):
 			return
-		(大厅.get("房间列表") as ItemList).select(0)
+		# 列表是 Tree：所有房行都挂在隐藏的根下，选第一行即可（行序与 _room_ids 一致）
+		var 树: Tree = 大厅.get("房间列表")
+		树.get_root().get_first_child().select(0)
 		大厅.call("_on_join_pressed")
 	if not await _等到(func() -> bool: return _界面是("ReadyRoom"), 25.0):
 		return

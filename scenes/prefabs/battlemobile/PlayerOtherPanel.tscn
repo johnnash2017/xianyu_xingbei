@@ -270,20 +270,22 @@ texture = ExtResource("22_b01status1png")
 expand_mode = 1
 
 [node name="Name_6" type="Label" parent="PlayerName_5" unique_id=228517178]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -64.8
-offset_top = -6.0
+offset_top = -8.0
 offset_right = 95.2
-offset_bottom = 24.0
+offset_bottom = 22.0
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(80, 15)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
+text = "12312312"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3

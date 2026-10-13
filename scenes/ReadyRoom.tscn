@@ -572,6 +572,9 @@ grow_vertical = 2
 pivot_offset = Vector2(55.8, 45)
 focus_mode = 0
 theme_override_colors/icon_pressed_color = Color(0.45, 1, 0.45, 1)
+; 「已准备」是 toggle 按钮：按下后鼠标再移到上面，按钮会切用 hover_pressed 这一档的图标色，
+; 不一起设就会从绿色跳回默认白 —— 看上去像「一悬停就不绿了」
+theme_override_colors/icon_hover_pressed_color = Color(0.45, 1, 0.45, 1)
 theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
 theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
