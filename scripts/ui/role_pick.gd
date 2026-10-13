@@ -93,6 +93,11 @@ func apply_request(data: Dictionary) -> void:
 	# 只有轮到自己时才提示，避免重发快照反复响（对照参考项目 ChooseRole → sys-turn）
 		Audio.播音效("sys-turn")
 	_refresh()
+	# 重连补发时服务端会带上「我已经选过的角色」（picked_role）：直接进「已选好、等其他人」那一层，
+	# 不用再选一次 —— 否则重连回来只剩准备室，看不出自己已经选过
+	var 已选: int = int(data.get("picked_role", 0))
+	if 已选 > 0:
+		_set_submitted(已选)
 
 
 # ============================================================

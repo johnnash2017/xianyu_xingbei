@@ -197,8 +197,9 @@ func create_room(room_name: String, max_player: int, role_strategy: int = GConst
 	if not Net.is_connected_to_host():
 		return
 	# Steam 模式：本地照旧建服务端房间，另外开一个 Steam 大厅，别的玩家才搜得到
+	# （选角 / 座位 / 作弊也写进大厅数据，房间列表要显示）
 	if not Cfg.本地模式:
-		SteamNet.建房(room_name, max_player)
+		SteamNet.建房(room_name, max_player, role_strategy, seat_mode, debug)
 	Net.send(GConst.Msg.CreateRoomReq, {
 		"room_name": room_name,
 		"max_player": max_player,

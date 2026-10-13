@@ -23,7 +23,6 @@ var blue: GTeam
 var my_team: GTeam
 var other_team: GTeam
 var game_info: Dictionary = {}
-var first_player_id: int = 0
 var myself: GPlayer = null
 var id: int = 0
 var player_max: int = 6
@@ -337,7 +336,6 @@ func build_player_list(info: Dictionary) -> void:
 		var p: GPlayer = GPlayer.new(pid, int(pi.get("team", -1)), str(pi.get("nickname", "")))
 		_apply_player_info(p, pi)
 		player_list.append(p)
-	first_player_id = int(infos[0].get("id", 0)) if infos.size() > 0 else 0
 	myself = player_list[0] if player_list.size() > 0 else null
 	_sync_my_cards(infos, my_pos)
 

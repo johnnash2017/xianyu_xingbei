@@ -253,6 +253,8 @@ func _room_infos(conn_id: int = -1) -> Array:
 			"watchers": (r["watchers"] as Array).size(),
 			"role_strategy": r["role_strategy"],
 			"seat_mode": r["seat_mode"],
+			# 房主勾了「作弊」（调试模式）：房间列表据此显示一段提示（没勾就不显示）
+			"debug": battle.room_debug,
 			"role_range": 31,
 			"allow_guest": r["allow_guest"],
 			"has_password": false,
@@ -606,7 +608,7 @@ func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> vo
 
 
 ## 下发选角请求（候选 + 剩余倒计时）：开局时每人发一次；选角中途重新进房的人补发一次
-func _发选角请求(room: Dictionary, pid: int, 候选: Array, 剩余_ms: int) -> void:
+func _发选角请求(room: Dictionary, pid: int, 候选: Array, 剩余_ms: int, 已选角色: int = 0) -> void:
 	_engine_send(int(room["id"]), pid, GConst.Msg.RoleReq, {
 		"id": pid,
 		"strategy": int(room["role_strategy"]),
@@ -614,13 +616,16 @@ func _发选角请求(room: Dictionary, pid: int, 候选: Array, 剩余_ms: int)
 		# 选角倒计时：客户端据此画进度条（本地扩展字段，见 proto_schema 的 RoleReq）
 		"wait_ms": 剩余_ms,
 		"wait_total_ms": PICK_TIMEOUT_MS,
+		# 非 0 = 这个人已经选过了：客户端据此直接进「已选好、等其他人」那一层
+		"picked_role": 已选角色,
 		"args": [],
 		"opration": 0,
 	})
 
 
-## 选角阶段重新进房：把该玩家的选角请求再发一次（带他的候选与剩余倒计时）。
-## 不补发的话客户端手里没有候选、选角层弹不出来，只能干等 —— 就是「选角中途离开再回来没法接着选」
+## 选角阶段重新进房：把该玩家的选角请求再发一次（带他的候选、剩余倒计时，以及已选好的角色）。
+## 已经提交过的也要发 —— 客户端要靠它弹回「已选好、等其他人」那一层，否则重连回来只剩准备室，
+## 看不出自己已经选过（就是「离开再回来没回到已选择角色的等待界面」那个 bug）
 func _补发选角请求(room: Dictionary, pid: int) -> void:
 	if not room.has("pick"):
 		return
@@ -628,10 +633,9 @@ func _补发选角请求(room: Dictionary, pid: int) -> void:
 	var 候选表: Dictionary = pick["candidates"]
 	if not 候选表.has(pid):
 		return
-	if (pick["picked"] as Dictionary).has(pid):
-		# 已经提交过：不用再弹选角，在准备室等开局即可
-		return
-	_发选角请求(room, pid, 候选表[pid], maxi(int(pick["deadline"]) - Time.get_ticks_msec(), 0))
+	var 已选角色: int = int((pick["picked"] as Dictionary).get(pid, 0))
+	_发选角请求(room, pid, 候选表[pid],
+		maxi(int(pick["deadline"]) - Time.get_ticks_msec(), 0), 已选角色)
 
 
 func _on_pick_ban_candidates(room: Dictionary, pid: int, data: Dictionary) -> void:

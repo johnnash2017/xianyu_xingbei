@@ -22,7 +22,7 @@ const 未记录: int = 0
 
 # ---- 场景里的界面节点 ----
 @export var 标题栏: Label
-@export var 房间列表: ItemList
+@export var 房间列表: Tree
 @export var 状态栏: Label
 ## 底部的 Steam 连接状态（一直显示、持续刷新）
 @export var Steam状态: Label
@@ -69,11 +69,10 @@ func _ready() -> void:
 	Logic.error_received.connect(_on_error)
 	Logic.gossip_received.connect(_on_gossip)
 	Logic.notice_received.connect(_on_gossip)
+	_初始化房间列表()
 	房间列表.item_activated.connect(_on_room_activated)
-	标题栏.text = "房间列表（%s）　昵称：%s" % [
-		"局域网·本地调试" if Cfg.本地模式 else "Steam",
-		Cfg.nickname,
-	]
+	# 昵称只在「本地调试」下标出来（多开时靠它区分窗口）；Steam 模式是正式界面，不显示
+	标题栏.text = ("房间列表（局域网·本地调试）　昵称：%s" % Cfg.nickname) if Cfg.本地模式 else "房间列表"
 	进入按钮.pressed.connect(func() -> void: _点了(_on_join_pressed))
 	刷新按钮.pressed.connect(func() -> void: _点了(_on_refresh_pressed))
 	创建房间按钮.pressed.connect(func() -> void: _点了(_on_open_create_pressed))
@@ -115,55 +114,168 @@ func _process(delta: float) -> void:
 		Logic.request_room_list()
 
 
+## 列表的列：表头文字（顺序即列序）。用 Tree 的列头显示
+const 列表列名: PackedStringArray = ["状态", "人数", "房间名", "观战", "选项"]
+## 「房间名」所在列（吃掉多余空间的就这一列；列头文字、悬停、列宽都按它定位）
+const 列_房间名: int = 2
+
+
+## 房间列表用 Tree：原生带列头、每列各占一块矩形，列宽交给控件算 —— 比手工补空格稳得多，
+## 列头永远和下面的数据对齐。这里只做一次静态配置（列数 / 列头 / 列宽策略 / 配色）
+func _初始化房间列表() -> void:
+	房间列表.columns = 列表列名.size()
+	房间列表.column_titles_visible = true
+	房间列表.hide_root = true
+	房间列表.select_mode = Tree.SELECT_ROW
+	for i: int in range(列表列名.size()):
+		房间列表.set_column_title(i, _列头文字(i))
+		房间列表.set_column_title_alignment(i, HORIZONTAL_ALIGNMENT_CENTER)
+	# 列宽完全跟着内容走：每列的最小宽度由 _调整列宽 按「列头 + 最宽的一格」算出来，
+	# 只有「房间名」吃掉多余空间。列头与每一行都由 Tree 统一排，永远对齐、也不会被裁掉
+	for i: int in range(列表列名.size()):
+		房间列表.set_column_expand(i, i == 列_房间名)
+	# 保住大厅的星空底：Tree 默认那块深色 panel 盖上去会和别处不一致
+	var 空样式: StyleBoxEmpty = StyleBoxEmpty.new()
+	房间列表.add_theme_stylebox_override("panel", 空样式)
+	房间列表.add_theme_stylebox_override("focus", 空样式)
+	var 选中: StyleBoxFlat = StyleBoxFlat.new()
+	选中.bg_color = Color(1.0, 1.0, 1.0, 0.16)
+	房间列表.add_theme_stylebox_override("selected", 选中)
+	房间列表.add_theme_stylebox_override("selected_focus", 选中)
+
+
 func _fill(rooms: Array) -> void:
-	var 上次选中: int = -1
-	var 选中项: Array = 房间列表.get_selected_items()
-	if not 选中项.is_empty():
-		上次选中 = int(选中项[0])
+	# 先记住原来选中的是哪间房（列表每 2 秒刷一次，刷完要还回去）
+	var 上次选中号: int = _选中房号()
 	房间列表.clear()
 	_room_ids.clear()
 	_room_full.clear()
 	_room_reenter.clear()
+	# 先把每间房那一行的数据算出来（建列宽要用到，得先有全部内容）
+	var 各行: Array[Dictionary] = []
 	for r: Dictionary in rooms:
-		var rid: int = int(r.get("room_id", 0))
-		_room_ids.append(rid)
-		var 现在: int = int(r.get("now_player", 0))
-		var 上限: int = int(r.get("max_player", 0))
-		var 座位: int = int(r.get("seat_count", 现在))
-		var 观战: int = int(r.get("watchers", 0))
-		# 「满不满」看座位数（对局中退出/掉线的人座位还留着，服务端也按座位放人）；
-		# 显示的人数用在线人数 —— 有人走了列表上立刻看得出来
-		var 已满: bool = 上限 > 0 and 座位 >= 上限
-		var 可重连: bool = bool(r.get("can_reenter", false))
-		_room_full.append(已满)
-		_room_reenter.append(可重连)
-		var 房间状态: String = "可重连" if 可重连 else ("已满" if 已满 else ("进行中" if bool(r.get("playing", false)) else "等待中"))
-		var 掉线: int = 座位 - 现在
-		if 掉线 > 0:
-			房间状态 += "（%d人掉线）" % 掉线
-		房间列表.add_item("%d号房　%s　　%d/%d　观战%d　%s" % [rid, str(r.get("room_name", "")), 现在, 上限, 观战, 房间状态])
-		var idx: int = 房间列表.item_count - 1
-		if 可重连:
-			房间列表.set_item_custom_fg_color(idx, Color(0.55, 0.85, 0.95))
-		elif 已满:
-			房间列表.set_item_custom_fg_color(idx, Color(0.85, 0.55, 0.55))
-		elif bool(r.get("playing", false)):
-			房间列表.set_item_custom_fg_color(idx, Color(0.85, 0.8, 0.5))
-	# 刷新后尽量保持原来的选中项（否则列表每 2 秒刷一次会把玩家的选择清掉）
-	if 上次选中 >= 0 and 上次选中 < _room_ids.size():
-		房间列表.select(上次选中)
+		各行.append(_房间行(r))
+	_调整列宽(各行)
+	var 根: TreeItem = 房间列表.create_item()   # hide_root=true：根不显示，只当所有房间的父节点
+	for 行: Dictionary in 各行:
+		var 项: TreeItem = 房间列表.create_item(根)
+		var 列: PackedStringArray = 行["列"]
+		for i: int in range(列.size()):
+			项.set_text(i, 列[i])
+			项.set_text_alignment(i, HORIZONTAL_ALIGNMENT_CENTER)
+		项.set_metadata(0, int(行["id"]))
+		var 悬停: String = str(行["悬停"])
+		if 悬停 != "":
+			项.set_tooltip_text(列_房间名, 悬停)
+		if bool(行["可重连"]):
+			_整行着色(项, Color(0.55, 0.85, 0.95))
+		elif bool(行["战斗中"]):
+			_整行着色(项, Color(0.85, 0.8, 0.5))
+		_room_ids.append(int(行["id"]))
+		_room_full.append(bool(行["已满"]))
+		_room_reenter.append(bool(行["可重连"]))
+	if 上次选中号 >= 0:
+		_选中房(上次选中号)
 
 
-func _on_room_activated(_index: int) -> void:
+## 按内容给每列定最小宽度：取「列头文字」与「这一列所有单元格」里最宽的那个。
+## 列头用 title_button_font(_size)，单元格用 font(_size)，两套字体分别量（字号不同）。
+## 多留一点边距给 Tree 的单元格内边距，保证列头和内容都不被裁掉。
+func _调整列宽(各行: Array[Dictionary]) -> void:
+	const 边距: int = 28
+	var 列头字体: Font = 房间列表.get_theme_font("title_button_font")
+	var 列头字号: int = 房间列表.get_theme_font_size("title_button_font_size")
+	var 单元字体: Font = 房间列表.get_theme_font("font")
+	var 单元字号: int = 房间列表.get_theme_font_size("font_size")
+	for i: int in range(列表列名.size()):
+		var 头: String = _列头文字(i)
+		var 最宽: float = 列头字体.get_string_size(头, HORIZONTAL_ALIGNMENT_LEFT, -1, 列头字号).x
+		for 行: Dictionary in 各行:
+			var 列: PackedStringArray = 行["列"]
+			最宽 = maxf(最宽, 单元字体.get_string_size(列[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 单元字号).x)
+		房间列表.set_column_custom_minimum_width(i, int(最宽) + 边距)
+
+
+## 列头文字：与数据行一样每列前后各留一个空格（见 _房间行），保证列头和数据左端对齐
+func _列头文字(列序: int) -> String:
+	return " %s " % 列表列名[列序]
+
+
+## 当前选中的是哪间房（没选中返回 -1）：房号存在首列的 metadata 里
+func _选中房号() -> int:
+	var 项: TreeItem = 房间列表.get_selected()
+	if 项 == null:
+		return -1
+	return int(项.get_metadata(0))
+
+
+## 按房号把对应的行重新选上（列表刷新后还原玩家原来的选择）
+func _选中房(rid: int) -> void:
+	var 项: TreeItem = 房间列表.get_root().get_first_child()
+	while 项 != null:
+		if int(项.get_metadata(0)) == rid:
+			项.select(0)
+			return
+		项 = 项.get_next()
+
+
+## 给整行（所有列）上色
+func _整行着色(项: TreeItem, 色: Color) -> void:
+	for i: int in range(列表列名.size()):
+		项.set_custom_color(i, 色)
+
+
+## 算出一间房在列表里的那一行：各列文字（顺序见 列表列名）、悬停说明、进房要用的状态标记。
+## 状态列只有三种 —— 可重连 / 战斗中 / 等待中；「已满」不当状态显示（座位满含掉线留座，
+## 只用来决定进房时要不要问「观战」，否则一局开打后有人掉线，座位仍占满，会显示成「已满」）
+func _房间行(r: Dictionary) -> Dictionary:
+	var 现在: int = int(r.get("now_player", 0))
+	var 上限: int = int(r.get("max_player", 0))
+	var 座位: int = int(r.get("seat_count", 现在))
+	var 观战: int = int(r.get("watchers", 0))
+	var 已满: bool = 上限 > 0 and 座位 >= 上限
+	var 可重连: bool = bool(r.get("can_reenter", false))
+	var 战斗中: bool = bool(r.get("playing", false))
+	var 房间状态: String = "可重连" if 可重连 else ("战斗中" if 战斗中 else "等待中")
+	# 建房设置：选角模式 / 座位规则 /（开了才有的）作弊。直接空开显示在行尾，
+	# 悬停再给带标签的全称 —— 房间列表每行是单行文本、字号又大，摊开写会把房间名挤出去
+	var 设置: PackedStringArray = PackedStringArray()
+	var 悬停: PackedStringArray = PackedStringArray()
+	var 选角名: String = str(GConst.ROLE_STRATEGY_NAMES.get(int(r.get("role_strategy", 0)), ""))
+	if 选角名 != "":
+		设置.append(选角名)
+		悬停.append("选角：%s" % 选角名)
+	var 座位名: String = str(GConst.SEAT_MODE_NAMES.get(int(r.get("seat_mode", 0)), ""))
+	if 座位名 != "":
+		设置.append(座位名)
+		悬停.append("座位：%s" % 座位名)
+	if bool(r.get("debug", false)):
+		设置.append("作弊")
+		悬停.append("作弊：开")
+	return {
+		"id": int(r.get("room_id", 0)),
+		# 每列前后各留一个空格：列与列之间、以及最外侧与列边之间都有呼吸空间
+		"列": PackedStringArray([
+			" %s " % 房间状态, " %d/%d " % [现在, 上限], " %s " % str(r.get("room_name", "")),
+			" 观战 %d " % 观战, " %s " % "　".join(设置)]),
+		"悬停": "　".join(悬停),
+		"已满": 已满,
+		"可重连": 可重连,
+		"战斗中": 战斗中,
+	}
+
+
+func _on_room_activated() -> void:
 	_on_join_pressed()
 
 
 func _on_join_pressed() -> void:
-	var 选中项: Array = 房间列表.get_selected_items()
-	if 选中项.is_empty():
+	var 项: TreeItem = 房间列表.get_selected()
+	if 项 == null:
 		设状态("请先在列表里点一个房间，再点「进入选中房间」")
 		return
-	var idx: int = int(选中项[0])
+	# 行的下标就是房号（所有房行都挂在隐藏的根下，顺序与 _room_ids 一致）
+	var idx: int = 项.get_index()
 	if idx < 0 or idx >= _room_ids.size():
 		return
 	if not Net.is_connected_to_host():

@@ -70,8 +70,11 @@ func _ready() -> void:
 		# 多开脚本显式指定了槽位与窗口数：立刻按宫格摆位
 		_apply_layout(int(shared_get("layout_count", 默认摆位列数 * 默认摆位行数)))
 	else:
-		# 编辑器「运行多个实例」不带 --slot：先看看一共开了几个窗口，再决定要不要摆位
-		_watch_instances()
+		# 编辑器「运行多个实例」不带 --slot：先看看一共开了几个窗口，再决定要不要摆位。
+		# 只认编辑器里跑起来的实例（F5/F9 那类）：导出的正式包不做这件事 ——
+		# 否则玩家同时开两个客户端，窗口会被自动摆到屏幕格子（角落）里，还固定在那儿
+		if OS.has_feature("editor"):
+			_watch_instances()
 	_watch_peers()
 	print("[Cfg] 槽位=%d（%s）昵称=%s 服务端口=%d 本地模式=%s" % [
 		slot, slot_source, nickname, server_port, str(本地模式)])
@@ -418,10 +421,12 @@ func _apply_layout(实例数: int) -> void:
 ## 按 ESC 重启本窗口：先关掉自己，再拉起一个同参数的新窗口（槽位 / 端口 / 窗口数 / 摆位照旧），
 ## 但**不带 --auto** —— 新窗口停在登录界面、不连任何服务器，是「干净的一个窗口」。
 ## 两个前提：
-##   1) 只在本地模式生效（F9/F10/F11 那三个多开脚本拉起来的窗口），正式启动按 ESC 不动；
+##   1) 只在「编辑器里跑起来的本地测试」生效 —— 既要本地模式（F9/F10/F11 的多开脚本拉起来、
+##      或带 --slot/--count/--auto 的启动），又要求是本进程由编辑器/工具版引擎拉起的
+##      （OS.has_feature("editor")）。导出的正式包即使是本地模式也不给按 ESC 重启；
 ##   2) 退出时跳过关窗标记（见 _重启中），否则同批其它窗口会跟着一起退。
 func _unhandled_key_input(event: InputEvent) -> void:
-	if not 本地模式:
+	if not 本地模式 or not OS.has_feature("editor"):
 		return
 	var 按键: InputEventKey = event as InputEventKey
 	# 只认「按下且非长按重复」的 ESC：按住不放不会连着重启出一串窗口

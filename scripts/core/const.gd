@@ -70,6 +70,21 @@ enum SeatMode {
 	RbbRrb = 5,
 }
 
+## 选角模式的显示名：房间列表用它（没配到的值不显示，如 Steam 大厅那套尚未上报时传 0）。
+## 文字与「创建房间」面板上那几个按钮保持一致
+const ROLE_STRATEGY_NAMES: Dictionary = {
+	RoleStrategy.Random: "随机",
+	RoleStrategy.Strategy31: "三选一",
+	RoleStrategy.Strategy61: "六选一",
+	RoleStrategy.Any: "任选",
+}
+
+## 座位规则的显示名（房间列表用）；同 RoleStrategy，没配到就不显示
+const SEAT_MODE_NAMES: Dictionary = {
+	SeatMode.Random: "乱序",
+	SeatMode.Interlace: "间隔",
+}
+
 # ============================================================
 # 测试用：战斗界面里的测试按键（取值与按键一致；`~` 是客户端本地的「退出战斗」，不下发）
 # ============================================================

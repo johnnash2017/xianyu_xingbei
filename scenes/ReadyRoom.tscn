@@ -32,10 +32,10 @@ BtnChooseTeam = NodePath("Root/BtnChooseTeam")
 "设置按钮" = NodePath("设置按钮")
 "观战提示" = NodePath("观战提示")
 "开局提示" = NodePath("开局提示")
-ChooseTeamPanel = NodePath("Root/ChooseTeamPanel")
-BtnRedTeam = NodePath("Root/ChooseTeamPanel/BtnRedTeam")
-BtnBlueTeam = NodePath("Root/ChooseTeamPanel/BtnBlueTeam")
-BtnRandomTeam = NodePath("Root/ChooseTeamPanel/BtnRandomTeam")
+ChooseTeamPanel = NodePath("ChooseTeamPanel")
+BtnRedTeam = NodePath("ChooseTeamPanel/BtnRedTeam")
+BtnBlueTeam = NodePath("ChooseTeamPanel/BtnBlueTeam")
+BtnRandomTeam = NodePath("ChooseTeamPanel/BtnRandomTeam")
 ChatLog = NodePath("ChatRoot/ChatLog")
 ChatInput = NodePath("ChatRoot/ChatInput")
 BtnSend = NodePath("ChatRoot/BtnSend")
@@ -629,84 +629,6 @@ theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
 icon = ExtResource("7_btnteampng")
 expand_icon = true
 
-[node name="ChooseTeamPanel" type="ColorRect" parent="Root" unique_id=1236608274]
-visible = false
-layout_mode = 0
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0, 0, 0, 0.9)
-
-[node name="BtnRedTeam" type="Button" parent="Root/ChooseTeamPanel" unique_id=1670996946]
-layout_mode = 0
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -430.0
-offset_top = -180.0
-offset_right = -70.0
-offset_bottom = 180.0
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(180, 180)
-focus_mode = 0
-theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
-theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
-icon = ExtResource("8_btnredpng")
-expand_icon = true
-
-[node name="BtnBlueTeam" type="Button" parent="Root/ChooseTeamPanel" unique_id=958912097]
-layout_mode = 0
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = 70.0
-offset_top = -180.0
-offset_right = 430.0
-offset_bottom = 180.0
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(180, 180)
-focus_mode = 0
-theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
-theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
-icon = ExtResource("9_btnbluepng")
-expand_icon = true
-
-[node name="BtnRandomTeam" type="Button" parent="Root/ChooseTeamPanel" unique_id=143765281]
-layout_mode = 0
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -55.8
-offset_top = 195.0
-offset_right = 55.8
-offset_bottom = 285.0
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(55.8, 45)
-focus_mode = 0
-theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
-theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
-icon = ExtResource("10_btnrandpng")
-expand_icon = true
-
 [node name="设置按钮" type="Button" parent="." unique_id=1932475108]
 layout_mode = 1
 anchors_preset = 3
@@ -723,7 +645,7 @@ grow_vertical = 0
 theme_override_font_sizes/font_size = 28
 text = "设置"
 
-[node name="开局提示" type="Label" parent="."]
+[node name="开局提示" type="Label" parent="." unique_id=688793746]
 visible = false
 layout_mode = 1
 anchors_preset = 8
@@ -778,23 +700,24 @@ layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_top = -300.0
+offset_top = -174.0
 offset_right = 370.6667
 grow_vertical = 0
 mouse_filter = 2
 color = Color(0, 0, 0, 0.45)
 
 [node name="ChatLog" type="RichTextLabel" parent="ChatRoot" unique_id=413635575]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 10.0
-offset_top = -292.0
-offset_right = 430.0
-offset_bottom = -52.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
+offset_top = -166.0
+offset_right = 361.33334
+offset_bottom = -62.0
+grow_vertical = 0
+; 必须能收到鼠标事件：RichTextLabel 只有在鼠标过滤不是 IGNORE 时才收得到滚轮，聊天记录才滚得动
+mouse_filter = 0
 theme_override_font_sizes/normal_font_size = 20
 scroll_following = true
 
@@ -823,3 +746,81 @@ offset_bottom = -9.333313
 grow_vertical = 0
 focus_mode = 0
 text = "发送"
+
+[node name="ChooseTeamPanel" type="ColorRect" parent="." unique_id=1156814949]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.9)
+
+[node name="BtnRedTeam" type="Button" parent="ChooseTeamPanel" unique_id=1670996946]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -430.0
+offset_top = -180.0
+offset_right = -70.0
+offset_bottom = 180.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(180, 180)
+focus_mode = 0
+theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("8_btnredpng")
+expand_icon = true
+
+[node name="BtnBlueTeam" type="Button" parent="ChooseTeamPanel" unique_id=958912097]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 70.0
+offset_top = -180.0
+offset_right = 430.0
+offset_bottom = 180.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(180, 180)
+focus_mode = 0
+theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("9_btnbluepng")
+expand_icon = true
+
+[node name="BtnRandomTeam" type="Button" parent="ChooseTeamPanel" unique_id=143765281]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -55.8
+offset_top = 195.0
+offset_right = 55.8
+offset_bottom = 285.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(55.8, 45)
+focus_mode = 0
+theme_override_colors/icon_disabled_color = Color(0.5, 0.5, 0.5, 1)
+theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
+icon = ExtResource("10_btnrandpng")
+expand_icon = true

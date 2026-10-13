@@ -115,6 +115,9 @@ var _reply: Dictionary = {}
 var _has_reply: bool = false
 ## 当前等待的截止时刻（Time.get_ticks_msec() 口径，0 表示当前没有在等）
 var wait_deadline_ms: int = 0
+## 等待序号：每开始一次新的等待 +1。客户端据此只在「确实换了一次等待」时才弹
+## 「正在等待 X 操作…」提示 —— 中途有人进房等触发的快照重发不会让全场重复弹
+var wait_seq: int = 0
 ## 本次等待的总时长（毫秒）：客户端按「剩余/总时长」画进度条
 var wait_total_ms: int = 0
 ## 「查询链」共用的截止时刻与总时长：同一条链（如女武神【军神威光】：二选一 → 选星石+目标）
@@ -252,6 +255,19 @@ func arrange_seats() -> void:
 		_arrange_seats_interlace(随机)
 	else:
 		_shuffle_arr(order, 随机)
+	_转动座位到先手()
+
+
+## 把座位环的起点转到先手（红队第一个行动的人）上：选角界面顶部的座位条按 order 的顺序摆，
+## 于是它就从先手开始排。转的只是「从谁开始数」，环内的相邻关系（pre/post）不受影响。
+func _转动座位到先手() -> void:
+	var 起点: int = order.find(_先手座位())
+	if 起点 <= 0:
+		return
+	var 新序: Array[int] = []
+	for i: int in order.size():
+		新序.append(order[(起点 + i) % order.size()])
+	order = 新序
 
 
 ## 间隔：两队各自随机打散后一红一蓝交替落座（红蓝红蓝…）。
@@ -290,7 +306,18 @@ func _rebuild_links() -> void:
 		玩家.pre_id = order[(i - 1 + order.size()) % order.size()]
 		玩家.post_id = order[(i + 1) % order.size()]
 	if not order.is_empty():
-		first_id = order[0]
+		first_id = _先手座位()
+
+
+## 先手座位：从 0 号座位沿座位顺序往前走，第一个红队玩家 —— 每轮行动固定由红队开始。
+## 分队之前（准备室 / 选角中）谁都还不是红队，此时退回 order[0]（那个阶段用不到先手）
+func _先手座位() -> int:
+	for pid: int in order:
+		# 变量名别用 p：类里有个取玩家的方法也叫 p()（见文件后部），p 作局部名会被判定为遮蔽
+		var p0: BattlePlayer = players.get(pid)
+		if p0 != null and p0.color == GConst.RED:
+			return pid
+	return order[0]
 
 
 # ============================================================
@@ -729,6 +756,8 @@ func _log_give_cards(src_id: int, dst_id: int, cards: Array) -> void:
 func wait_for(pid: int, kind: int, 保留倒计时: bool = false) -> void:
 	_await_id = pid
 	_await_kind = kind
+	# 新的一次等待：序号 +1（客户端据此只在真的换等待时弹提示）
+	wait_seq += 1
 	# 登记等待归属：这次回复只认「当前正在 handle 的这个状态实例」
 	_await_state = _当前状态
 	_has_reply = false
@@ -913,7 +942,10 @@ func set_offline(pid: int, v: bool) -> void:
 	else:
 		offline_players.erase(pid)
 	var p0: BattlePlayer = players.get(pid)
-	var pname: String = _称号(p0) if p0 != null else str(pid)
+	var pname: String = str(pid)
+	if p0 != null:
+		# 还没开局（选角阶段）不带角色名：那会儿对局还没开打，写角色反而让人看不懂
+		pname = _称号(p0) if phase != Phase.Idle else p0.player_name
 	# 同步到玩家身上：快照里的 online 就是它（客户端据此把「玩家列表」那一列显示成「掉线」）
 	if p0 != null:
 		p0.online = not v
@@ -1252,6 +1284,8 @@ func game_info(viewer_id: int) -> Dictionary:
 		"wait_ms": 剩余,
 		"wait_total_ms": wait_total_ms,
 		"wait_text": _等待文案(),
+		# 等待序号：客户端据此判断「是不是开始了新的一次等待」，避免重发快照重复弹提示
+		"wait_seq": wait_seq,
 		"start_countdown_ms": start_countdown_ms,
 	}
 

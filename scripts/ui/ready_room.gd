@@ -185,7 +185,8 @@ func _落座(数据: Dictionary) -> void:
 		return
 	var 座: 准备座位 = Seats[座位号] as 准备座位
 	var 昵称: String = str(数据.get("nickname", ""))
-	座.设置昵称(昵称 + ("（你）" if 座位号 == Logic.my_player_id else ""))
+	# 自己不用加「（你）」后缀，直接把名字标成橙色（见 准备座位.设置昵称）
+	座.设置昵称(昵称, 座位号 == Logic.my_player_id)
 	座.设置队伍(_队伍号(int(数据.get("team", GConst.TEAM_NONE))))
 	座.设置准备(bool(数据.get("ready", false)))
 

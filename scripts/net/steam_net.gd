@@ -137,6 +137,10 @@ const 键_进行中: String = "playing"
 const 键_房主: String = "host"
 ## 服务端房间号：加入方发进房请求要用（Steam 大厅号与服务端房间号是两回事）
 const 键_房间号: String = "server_room"
+## 建房设置（选角模式 / 座位规则 / 是否开作弊）：房间列表要显示这几个，所以也写进大厅数据
+const 键_选角: String = "role_strategy"
+const 键_座位: String = "seat_mode"
+const 键_作弊: String = "debug"
 
 ## 本机所在大厅 id（0 = 不在大厅里）
 var 大厅id: int = 0
@@ -153,6 +157,11 @@ var _查询中: bool = false
 ## 掉线重连后也靠它把大厅重新开出来（见 _重开大厅）
 var _待建房名: String = ""
 var _待建人数: int = 0
+## 建房时暂存的设置（选角 / 座位 / 作弊）：createLobby 是异步的，
+## 等大厅建好（_on_lobby_created）再写进大厅数据；掉线重开大厅（_重开大厅）也沿用它们
+var _待建选角: int = GConst.RoleStrategy.Random
+var _待建座位: int = GConst.SeatMode.Random
+var _待建作弊: bool = false
 
 ## 大厅列表就绪：房间信息的形状与局域网那套一致，房间列表 UI 直接复用
 signal 大厅列表已就绪(房间列表: Array)
@@ -192,20 +201,25 @@ func _on_match_list(lobbies: Array) -> void:
 			"playing": Steam.getLobbyData(id, 键_进行中) == "1",
 			# 大厅数据是所有人共享的，看不出「谁留了座位」；认领座位在 Steam 模式下待接
 			"can_reenter": false,
-			"role_strategy": 0,
-			"seat_mode": 0,
+			"role_strategy": int(Steam.getLobbyData(id, 键_选角)),
+			"seat_mode": int(Steam.getLobbyData(id, 键_座位)),
+			"debug": Steam.getLobbyData(id, 键_作弊) == "1",
 			"allow_guest": true,
 		})
 	大厅列表已就绪.emit(列表)
 
 
 ## 建房（房主）：开一个公开大厅。人数上限只算「战斗玩家」——
-## 观战者不占大厅成员名额，他们只要从大厅数据里拿到房主 SteamID 就能收 P2P 消息
-func 建房(房名: String, 人数上限: int) -> void:
+## 观战者不占大厅成员名额，他们只要从大厅数据里拿到房主 SteamID 就能收 P2P 消息。
+## 选角 / 座位 / 作弊一并带上：大厅数据里有它们，房间列表才能把这几项显示出来
+func 建房(房名: String, 人数上限: int, 选角: int, 座位: int, 作弊: bool) -> void:
 	if not 就绪:
 		return
 	_待建房名 = 房名
 	_待建人数 = 人数上限
+	_待建选角 = 选角
+	_待建座位 = 座位
+	_待建作弊 = 作弊
 	Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, 人数上限)
 
 
@@ -218,6 +232,9 @@ func _on_lobby_created(返回码: int, lobby_id: int) -> void:
 	Steam.setLobbyData(lobby_id, 键_房主, steam_id)
 	Steam.setLobbyData(lobby_id, 键_房名, _待建房名)
 	Steam.setLobbyData(lobby_id, 键_人数上限, str(_待建人数))
+	Steam.setLobbyData(lobby_id, 键_选角, str(_待建选角))
+	Steam.setLobbyData(lobby_id, 键_座位, str(_待建座位))
+	Steam.setLobbyData(lobby_id, 键_作弊, "1" if _待建作弊 else "0")
 	# 房间编号可能比对局广播来得晚（建房是异步的）：这时已经先记在 本房房间号 里，补写一次
 	if 本房房间号 >= 0:
 		Steam.setLobbyData(lobby_id, 键_房间号, str(本房房间号))

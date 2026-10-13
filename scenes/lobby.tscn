@@ -57,11 +57,11 @@ theme_override_font_sizes/font_size = 34
 [node name="分隔线" type="HSeparator" parent="主列" unique_id=322689434]
 layout_mode = 2
 
-[node name="房间列表" type="ItemList" parent="主列" unique_id=1948636468]
+[node name="房间列表" type="Tree" parent="主列" unique_id=1948636468]
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_font_sizes/font_size = 56
-theme_override_constants/v_separation = 8
+theme_override_font_sizes/font_size = 38
+theme_override_font_sizes/title_button_font_size = 30
 
 [node name="按钮行" type="HBoxContainer" parent="主列" unique_id=1014058521]
 layout_mode = 2

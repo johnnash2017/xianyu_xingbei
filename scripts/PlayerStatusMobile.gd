@@ -151,6 +151,9 @@ var seted: bool = false
 var chatTimer: SceneTreeTimer = null
 ## 对应 C# public uint ID { get; set; }
 var ID: int = 0
+## 是不是「自己那块面板」（battle_mobile 里的 MainPlayer）：只有它按大立绘排版、用 heroL；
+## 其余面板都是小图标槽，一律用 heroS
+var 是主面板: bool = false
 
 # ---------------------------------------------------------------------------
 # 属性转发 —— 战斗界面（BattleUIMobile / BattleRecord）是用 Unity 的写法
@@ -386,11 +389,10 @@ func set_RoleID(value: int) -> void:
 	# 角色名与派系图标都直接查数据表。
 	角色名 = Data.role_name(value)
 	角色号 = value
-	var main_id: int = Logic.my_player_id
-	var player_id: int = main_id
-	var first_id: int = Data.first_player_id
-	# 对应 C# 的三元表达式：非自己、或（不是 0 号位、或自己不是观战者）时用 小图 hero_s
-	var use_small: bool = ID != main_id and (ID != first_id or player_id != 9)
+	# 只有「自己那块面板」（MainPlayer）按大立绘排版，用 heroL；其余面板都是小图标槽，用 heroS。
+	# 原版按「是不是自己 / 观战者看 0 号位」来判，是因为原版座位顺序固定；本工程座位会被座位模式
+	# 重排（order[0] 不再是 0 号位），照那个写法会把大立绘塞进小格子里、被裁成一块扭曲的局部
+	var use_small: bool = not 是主面板
 	var tex := _load_sprite("%s%s" % [str(value), "S" if use_small else "L"])
 	# 真正显示头像的是 HeroIcon（就是那个「剪影」占位图所在的节点）。原版是靠代码把真立绘
 	# 写到它上面，端口却写到了外层的 hero/Hero_N（队徽底图那一层），于是 HeroIcon 的剪影

@@ -65,6 +65,8 @@ const SUB: Dictionary = {
 		16: {"n": "seat_count", "t": "i32"},
 		# 观战者人数：房间列表单列一栏显示
 		17: {"n": "watchers", "t": "u32"},
+		# 房主建房时是否勾了「作弊」（调试模式）：房间列表只在开着时把这一段显示出来
+		18: {"n": "debug", "t": "bool"},
 	},
 	"SinglePlayerInfo": PLAYER_INFO_FIELDS,
 	"Command": {
@@ -242,6 +244,8 @@ const TABLE: Dictionary = {
 		23: {"n": "picking", "t": "bool"},
 		# 开局倒计时剩余毫秒（0 = 没在倒计时）：准备室据此显示「N 秒后开始」
 		24: {"n": "start_countdown_ms", "t": "u32"},
+		# 等待序号（本地扩展）：每开始一次新等待 +1，客户端据此避免重发快照重复弹「正在等待 X 操作」
+		25: {"n": "wait_seq", "t": "u32"},
 	},
 	GConst.Msg.Talk: {
 		1: {"n": "txt", "t": "str"},
@@ -280,6 +284,8 @@ const TABLE: Dictionary = {
 		# 6/7 是本地扩展（原协议没有）：选角倒计时，客户端据此画进度条
 		6: {"n": "wait_ms", "t": "u32"},
 		7: {"n": "wait_total_ms", "t": "u32"},
+		# 本地扩展：重连补发时带上「我已经选过的角色」（0 = 还没选），客户端直接显示等待界面
+		8: {"n": "picked_role", "t": "u32"},
 	},
 	GConst.Msg.PickBan: {
 		1: {"n": "strategy", "t": "u32"},

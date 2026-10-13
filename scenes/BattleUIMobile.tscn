@@ -5,7 +5,6 @@
 [ext_resource type="Texture2D" uid="uid://tya6rvbcu6rp" path="res://assets/textures/battle/b05_botton_sst.png" id="6_b05bottonsstpng"]
 [ext_resource type="Texture2D" uid="uid://bylbt510762dk" path="res://assets/textures/battle/b02_chara_light_g.png" id="10_b02charalightgpng"]
 [ext_resource type="Texture2D" uid="uid://bsstg2lsg8wkx" path="res://assets/textures/battle/b02_selected.png" id="11_b02selectedpng"]
-[ext_resource type="Texture2D" uid="uid://bv6rskm345axg" path="res://assets/textures/battle/1x1.png" id="15_1x1png"]
 [ext_resource type="Texture2D" uid="uid://bc33yxox3hjtv" path="res://assets/textures/battle/b02_chara_red.png" id="18_b02chararedpng"]
 [ext_resource type="Texture2D" uid="uid://b2jgdrw8wb2gd" path="res://assets/textures/hero/small/0S.png" id="20_0Spng"]
 [ext_resource type="Texture2D" uid="uid://rk773wcilfl" path="res://assets/textures/battle/b02_team_blue.png" id="23_b02teambluepng"]
@@ -23,10 +22,9 @@
 [ext_resource type="Texture2D" uid="uid://dg1hwyjwei8xd" path="res://assets/textures/battle/b05_sys_btlobby.png" id="41_b05sysbtlobbypng"]
 [ext_resource type="Script" uid="uid://dtkgp5wtb1u4b" path="res://scripts/AutoClearLog.gd" id="43_AutoClearLoggd"]
 [ext_resource type="Script" uid="uid://bpg0b6fg4gxdf" path="res://scripts/ui/battle_mobile.gd" id="45_BattleMobilegd"]
+[ext_resource type="Texture2D" uid="uid://dq3t4dj68dol0" path="res://assets/textures/battle/GameWinRed.png" id="50_gamewinredpng"]
 [ext_resource type="PackedScene" uid="uid://c1suqv71vxxev" path="res://scenes/prefabs/battlemobile/PlayerSelfPanel.tscn" id="9001_selfpanel"]
 [ext_resource type="PackedScene" uid="uid://dtx56vhow1f1t" path="res://scenes/prefabs/battlemobile/PlayerOtherPanel.tscn" id="9002_otherpanel"]
-[ext_resource type="Texture2D" uid="uid://dq3t4dj68dol0" path="res://assets/textures/battle/GameWinRed.png" id="50_gamewinredpng"]
-[ext_resource type="Texture2D" uid="uid://b11klxmu6yulv" path="res://assets/textures/battle/GameWinBlue.png" id="51_gamewinbluepng"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
@@ -57,7 +55,6 @@ Hint = NodePath("Root/Hint")
 "测试提示" = NodePath("Root/测试提示")
 Content_2 = NodePath("Root/LogRoot/MsgRoot/Viewport_2/Content_2")
 MsgRoot = NodePath("Root/LogRoot/MsgRoot")
-ShowCardArea = NodePath("Root/ShowCardArea")
 Content = NodePath("Root/ChatRoot_/ChatRoot/ScrollView/Viewport/Content")
 InputField = NodePath("Root/ChatRoot_/ChatRoot/InputFiledLayout/InputField")
 BtnSubmit = NodePath("Root/ChatRoot_/ChatRoot/InputFiledLayout/BtnSubmit")
@@ -70,6 +67,7 @@ BtnBack = NodePath("WinPanel/BtnBack")
 LogRoot = NodePath("Root/LogRoot")
 ChatRoot = NodePath("Root/ChatRoot_")
 HandArea = NodePath("Root/HandArea")
+ShowCardArea = NodePath("Root/ShowCardArea")
 SkillArea = NodePath("Root/SkillArea")
 ChildrenSkillArea = NodePath("Root/ChildrenSkillArea")
 ChooseArea = NodePath("Root/ChooseArea")
@@ -130,8 +128,7 @@ grow_vertical = 2
 pivot_offset = Vector2(345.5, 95)
 
 [node name="ShowCardArea" type="Control" parent="Root" unique_id=1585281306]
-layout_mode = 0
-anchors_preset = 8
+anchors_preset = 0
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
@@ -208,7 +205,8 @@ vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="Status" type="TextureRect" parent="Root" unique_id=1754816046]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
@@ -216,8 +214,6 @@ anchor_bottom = 1.0
 offset_left = -309.5
 offset_top = -35.0
 offset_right = -50.5
-grow_horizontal = 2
-grow_vertical = 2
 pivot_offset = Vector2(129.5, 17.5)
 mouse_filter = 0
 texture = ExtResource("4_b05bottoninfopng")
@@ -263,25 +259,27 @@ vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="LblRID" type="Label" parent="Root/Status" unique_id=1304739370]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -2.7
+offset_left = -2.699997
 offset_top = -12.5
-offset_right = 57.3
+offset_right = 97.999954
 offset_bottom = 17.5
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(30, 15)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
-text = "房号:"
+text = "房间名字"
 vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="TxtRID" type="Label" parent="Root/Status" unique_id=1578308667]
+visible = false
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5
@@ -296,7 +294,6 @@ grow_vertical = 2
 pivot_offset = Vector2(23.65, 15)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
-text = "8888"
 vertical_alignment = 1
 autowrap_mode = 3
 
@@ -618,15 +615,12 @@ columns = 5
 [node name="ChooseArea" type="TextureRect" parent="Root" unique_id=62792194]
 visible = false
 layout_mode = 0
-anchor_left = 0.0
 anchor_top = 1.0
-anchor_right = 0.0
 anchor_bottom = 1.0
 offset_left = 90.0
 offset_top = -545.0
 offset_right = 781.0
 offset_bottom = -345.0
-grow_horizontal = 1
 grow_vertical = 2
 pivot_offset = Vector2(345.5, 100)
 mouse_filter = 2
@@ -744,11 +738,10 @@ mouse_filter = 2
 [node name="Content_2" type="RichTextLabel" parent="Root/LogRoot/MsgRoot/Viewport_2" unique_id=677482167]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_font_sizes/normal_font_size = 25
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
-theme_override_font_sizes/normal_font_size = 25
-autowrap_mode = 3
 script = ExtResource("43_AutoClearLoggd")
 
 [node name="BtnLogExpand" type="Button" parent="Root" unique_id=729892912]
@@ -1064,12 +1057,24 @@ offset_bottom = -27.03106
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(0, 27.03106)
+theme_override_font_sizes/normal_font_size = 25
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
-theme_override_font_sizes/normal_font_size = 25
-autowrap_mode = 3
 script = ExtResource("43_AutoClearLoggd")
+
+[node name="测试提示" type="Label" parent="Root" unique_id=2102091344]
+modulate = Color(1, 1, 1, 0.35)
+layout_mode = 1
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 248.0
+offset_bottom = 240.0
+mouse_filter = 0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 16
 
 [node name="WinPanel" type="TextureRect" parent="." unique_id=450394288]
 visible = false
@@ -1080,14 +1085,14 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 0
 
-[node name="WinBg" type="ColorRect" parent="WinPanel"]
+[node name="WinBg" type="ColorRect" parent="WinPanel" unique_id=767037170]
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 0.7)
 mouse_filter = 2
+color = Color(0, 0, 0, 0.7)
 
 [node name="WinImg" type="TextureRect" parent="WinPanel" unique_id=882423617]
 visible = false
@@ -1655,24 +1660,6 @@ text = "有玩家掉线了"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
-
-[node name="测试提示" type="Label" parent="Root"]
-layout_mode = 1
-anchors_preset = 0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = 248.0
-offset_bottom = 240.0
-grow_horizontal = 1
-grow_vertical = 1
-modulate = Color(1, 1, 1, 0.35)
-mouse_filter = 0
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 6
-theme_override_font_sizes/font_size = 16
-horizontal_alignment = 0
-vertical_alignment = 0
 
 [connection signal="pressed" from="Root/BtnHide" to="." method="onBtnHideClick"]
 [connection signal="pressed" from="Root/BtnHide/GiveUpBoard/Button/Agree" to="." method="onBtnGiveUpClick"]

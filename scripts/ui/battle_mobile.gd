@@ -279,6 +279,9 @@ var _等待剩余: float = 0.0
 var _等待总时长: float = 0.0
 ## 本次等待的说明（服务端下发，如「等待应战响应」）：写在被等玩家的头像上
 var _等待文案: String = ""
+## 已经弹过提示的「等待序号」（服务端每次开始新等待 +1）：重发的快照序号不变，
+## 据此不再重复弹「正在等待 X 操作…」——只有真的换了一次等待才提示
+var _已提示等待序号: int = -1
 ## 提示自动隐藏：token 变了说明来了新提示，旧的倒计时作废（同参考脚本的做法）
 var _提示计时器: Timer = null
 var _提示token: int = 0
@@ -434,6 +437,8 @@ const 自动选盖牌技能: Array[int] = [2601, 2602, 2603]
 func _ready() -> void:
 	_面板列表 = [MainPlayer, PlayerStatusMobileR, PlayerStatusMobileUR,
 		PlayerStatusMobileU, PlayerStatusMobileUL, PlayerStatusMobileL]
+	# 只有 MainPlayer 是按大立绘排版的（其余面板是小图标槽）：面板据此决定用 heroL 还是 heroS
+	MainPlayer.是主面板 = true
 	# 悬浮说明框挂在界面根节点下：坐标 / 缩放 / 可用范围都按本界面算，盖在所有面板之上
 	_说明提示 = 说明框预制.instantiate() as 说明提示框
 	add_child(_说明提示)
@@ -626,9 +631,14 @@ func _读取等待(info: Dictionary) -> void:
 	# 自己手上正有询问时，提示交给交互层写，别被等待文案盖掉
 	if _mode != 0:
 		return
-	var 名: String = _称号(_等待方)
-	var 文本: String = "正在等待你的操作…" if _等待方 == Logic.my_player_id else "正在等待 %s 操作…" % 名
-	_提示(文本)
+	# 只在「确实开始了一次新等待」时提示：服务端开始新等待会给等待序号 +1，重发的快照序号不变，
+	# 所以有人中途进房触发的快照重发不会让全场再弹一遍「正在等待 X 操作…」
+	var 等待序号: int = int(info.get("wait_seq", -1))
+	if 等待序号 != _已提示等待序号:
+		_已提示等待序号 = 等待序号
+		var 名: String = _称号(_等待方)
+		var 文本: String = "正在等待你的操作…" if _等待方 == Logic.my_player_id else "正在等待 %s 操作…" % 名
+		_提示(文本)
 
 
 ## 等待进度条：服务端只在「开始等待 / 等待结束」广播，剩余时间由客户端自己倒数
