@@ -12,6 +12,7 @@ config_version=5
 
 config/name="星杯传说"
 config/description="局域网联机版：去掉登录，战斗运算内嵌客户端，房主进程内跑权威服务端"
+config/version="1.0.0"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
@@ -29,6 +30,7 @@ Audio="*res://scripts/client/audio.gd"
 AssetIndex="*res://scripts/framework/AssetIndex.gd"
 MessageSystem="*res://scripts/framework/MessageSystem.gd"
 ClickDust="*res://scripts/effects/clickStardust.gd"
+EffectWarmer="*res://scripts/effects/effect_warmer.gd"
 
 [display]
 
@@ -38,7 +40,7 @@ window/stretch/mode="canvas_items"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/excel_to_gd/plugin.cfg", "res://addons/gd_alias/plugin.cfg", "res://addons/godotsteam/plugin.cfg", "res://addons/label_font_auto_sizer/plugin.cfg", "res://addons/resdsp/plugin.cfg")
+enabled=PackedStringArray("res://addons/excel_to_gd/plugin.cfg", "res://addons/gd_alias/plugin.cfg", "res://addons/godotsteam/plugin.cfg", "res://addons/label_font_auto_sizer/plugin.cfg", "res://addons/resdsp/plugin.cfg", "res://addons/version_tool/plugin.cfg")
 
 [gui]
 

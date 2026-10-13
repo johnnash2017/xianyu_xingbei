@@ -53,6 +53,13 @@ func 身份标识() -> String:
 	return nickname
 
 
+## 游戏版本号：唯一来源是 project.godot 的 application/config/version（每次打包前改这一处）。
+## SteamNet 用它派生大厅隔离标记（见 steam_net.gd 的 隔离标记）——版本号一变，
+## 新旧版本写进大厅的标记就不同，互相搜不到。
+func 游戏版本() -> String:
+	return str(ProjectSettings.get_setting("application/config/version", "0.0.0"))
+
+
 func _ready() -> void:
 	启动时刻 = Time.get_unix_time_from_system()
 	_清理关窗标记()

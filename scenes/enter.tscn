@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://c53hmhd2aksy1" path="res://scripts/ui/enter.gd" id="1_kiq4n"]
 
-[node name="Enter" type="Control" unique_id=1575434935 node_paths=PackedStringArray("昵称输入", "进入按钮", "设置按钮", "Steam状态")]
+[node name="Enter" type="Control" unique_id=1575434935 node_paths=PackedStringArray("昵称输入", "进入按钮", "设置按钮", "Steam状态", "版本标签")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -14,6 +14,7 @@ script = ExtResource("1_kiq4n")
 "进入按钮" = NodePath("进入按钮")
 "设置按钮" = NodePath("设置按钮")
 "Steam状态" = NodePath("Steam状态")
+"版本标签" = NodePath("版本")
 
 [node name="进入按钮" type="Button" parent="." unique_id=235291491]
 self_modulate = Color(1, 1, 1, 0)
@@ -112,3 +113,18 @@ mouse_filter = 2
 theme_override_colors/font_color = Color(0.5, 0.9, 0.55, 1)
 theme_override_font_sizes/font_size = 22
 autowrap_mode = 2
+
+[node name="版本" type="Label" parent="." unique_id=2047361029]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 28.0
+offset_top = -46.0
+offset_right = 428.0
+offset_bottom = -18.0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 20
+text = "版本 0.0.0"
+vertical_alignment = 1

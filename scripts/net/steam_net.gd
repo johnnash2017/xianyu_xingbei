@@ -79,9 +79,10 @@ func _初始化() -> void:
 		return
 	就绪 = true
 	失败原因 = ""
+	隔离标记 = 隔离标记前缀 + Cfg.游戏版本()
 	steam_id = str(Steam.get_current_steam_id())
 	玩家名 = str(Steam.getPersonaName())
-	print("[SteamNet] Steam 已连接，%s（SteamID = %s）" % [玩家名, steam_id])
+	print("[SteamNet] Steam 已连接，%s（SteamID = %s，版本 = %s）" % [玩家名, steam_id, Cfg.游戏版本()])
 	_重开大厅()
 
 
@@ -102,7 +103,7 @@ func _标记掉线(原因: String) -> void:
 func _重开大厅() -> void:
 	if 本房房间号 < 0 or _待建房名 == "":
 		return
-	Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, _待建人数)
+	Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, _待建人数 + 观战席)
 
 
 ## 失败原因变了才打日志：掉线期间每秒都会重试，逐次刷屏没意义
@@ -141,7 +142,17 @@ const 键_房间号: String = "server_room"
 const 键_选角: String = "role_strategy"
 const 键_座位: String = "seat_mode"
 const 键_作弊: String = "debug"
+## 本作大厅隔离标记（对照 CyberWS 的 lobbyNameMarker）：房主写进大厅数据，查询时按它过滤。
+## AppID 480 下世界范围里全是别人的开发大厅，只靠「房名非空」会把别的游戏也列进来。
+## 标记值 = 前缀 + 游戏版本（见 隔离标记前缀 与 Cfg.游戏版本），所以版本一变新旧版本就互相搜不到。
+const 键_隔离标记: String = "gametag"
+const 隔离标记前缀: String = "xianyu_xingbei_"
+## 观战席：Steam 大厅成员上限 = 战斗人数上限 + 它。观战者也要进大厅才能读到房主 SteamID，
+## 若上限只按战斗人数算，战斗席一满观战者就会被 Steam 拒之门外（本作观战不占战斗席）。
+const 观战席: int = 16
 
+## 本作当前大厅隔离标记：= 隔离标记前缀 + 游戏版本，Steam 初始化时算一次（见 _初始化）
+var 隔离标记: String = ""
 ## 本机所在大厅 id（0 = 不在大厅里）
 var 大厅id: int = 0
 ## 房主 SteamID（进房时从大厅数据读到）
@@ -178,6 +189,8 @@ func 查询大厅() -> void:
 	_查询中 = true
 	Steam.addRequestLobbyListDistanceFilter(Steam.LOBBY_DISTANCE_FILTER_WORLDWIDE)
 	Steam.addRequestLobbyListResultCountFilter(50)
+	# 只查带本作隔离标记的大厅（AppID 480 下全世界的公共大厅都会混进来）
+	Steam.addRequestLobbyListStringFilter(键_隔离标记, 隔离标记, Steam.LOBBY_COMPARISON_EQUAL)
 	Steam.requestLobbyList()
 
 
@@ -187,8 +200,11 @@ func _on_match_list(lobbies: Array) -> void:
 	var 列表: Array = []
 	for 原始: Variant in lobbies:
 		var id: int = int(原始)
+		# 只认带本作隔离标记的大厅（服务端已按标记过滤；这里再挡一道，防旧版 / 异常数据混入）
+		if Steam.getLobbyData(id, 键_隔离标记) != 隔离标记:
+			continue
 		var 房名: String = Steam.getLobbyData(id, 键_房名)
-		# 靠「有没有房名」筛掉不是本作开的大厅（距离过滤是全世界的，会混进别的游戏）
+		# 房名为空的大厅不显示（正常建房必写房名，这里留个保险）
 		if 房名 == "":
 			continue
 		列表.append({
@@ -209,8 +225,10 @@ func _on_match_list(lobbies: Array) -> void:
 	大厅列表已就绪.emit(列表)
 
 
-## 建房（房主）：开一个公开大厅。人数上限只算「战斗玩家」——
-## 观战者不占大厅成员名额，他们只要从大厅数据里拿到房主 SteamID 就能收 P2P 消息。
+## 建房（房主）：开一个公开大厅，并写上本作隔离标记。
+## 大厅成员上限 = 战斗人数上限 + 观战席（参数仍只传战斗人数）——
+## 观战者也是大厅成员：他们要从大厅数据里拿到房主 SteamID 才能收 P2P 消息，
+## 上限若只按战斗人数算，战斗席一满观战者就会被 Steam 拒。
 ## 选角 / 座位 / 作弊一并带上：大厅数据里有它们，房间列表才能把这几项显示出来
 func 建房(房名: String, 人数上限: int, 选角: int, 座位: int, 作弊: bool) -> void:
 	if not 就绪:
@@ -220,7 +238,7 @@ func 建房(房名: String, 人数上限: int, 选角: int, 座位: int, 作弊:
 	_待建选角 = 选角
 	_待建座位 = 座位
 	_待建作弊 = 作弊
-	Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, 人数上限)
+	Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, 人数上限 + 观战席)
 
 
 func _on_lobby_created(返回码: int, lobby_id: int) -> void:
@@ -230,6 +248,7 @@ func _on_lobby_created(返回码: int, lobby_id: int) -> void:
 	大厅id = lobby_id
 	房主steam_id = steam_id
 	Steam.setLobbyData(lobby_id, 键_房主, steam_id)
+	Steam.setLobbyData(lobby_id, 键_隔离标记, 隔离标记)
 	Steam.setLobbyData(lobby_id, 键_房名, _待建房名)
 	Steam.setLobbyData(lobby_id, 键_人数上限, str(_待建人数))
 	Steam.setLobbyData(lobby_id, 键_选角, str(_待建选角))

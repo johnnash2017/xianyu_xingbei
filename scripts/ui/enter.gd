@@ -11,6 +11,8 @@ extends Control
 @export var 设置按钮: Button
 ## 底部那行 Steam 连接状态（本地调试模式下整行隐藏）
 @export var Steam状态: Label
+## 左下角的版本号（文字在 _ready 里用 Cfg.游戏版本() 填，来源是 project.godot，别在场景里写死）
+@export var 版本标签: Label
 
 ## 防止连点「进入游戏」导致重复开服/连接
 var _进入中: bool = false
@@ -29,6 +31,7 @@ func _ready() -> void:
 	# 看起来像要往名字最前面插字（同 lobby.gd 打开建房时的处理）
 	昵称输入.caret_column = 昵称输入.text.length()
 	_设标题昵称(Cfg.nickname)
+	版本标签.text = "版本 %s" % Cfg.游戏版本()
 
 
 ## 底部那行 Steam 连接状态：每帧对一次（登录界面就能看到连没连上）
