@@ -44,7 +44,7 @@
 | 插件 | 目录 | 作用 |
 | --- | --- | --- |
 | **Excel 转数据表工具** | `addons/excel_to_gd` | 把 `设计表.xlsx` 转成代码可读的数据文件（详见第三节） |
-| **GD 文件别名显示** | `addons/gd_alias` | 在文件系统面板 / 脚本列表里为文件夹显示**中文名（别名）**，实际文件名不变；别名存 `alias_data.json` |
+| **GD 文件别名显示** | `addons/gd_alias` | 在文件系统面板 / 脚本列表里为文件 / 文件夹显示**自定义别名（可中文）**，实际文件名不变；别名存 `alias_data.json` |
 | **ResDsp** | `addons/resdsp` | 让 Godot **不把 CSV 当作语言文件解析**，并支持在编辑器里**双击用系统默认程序打开 CSV / xlsx** |
 | godotsteam | `addons/godotsteam` | Steam 接入（GodotSteam 4.23.1，camelCase 接口） |
 | label_font_auto_sizer | `addons/label_font_auto_sizer` | 字体自适应（辅助用） |
