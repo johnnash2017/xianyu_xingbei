@@ -309,6 +309,11 @@ func enter_room(conn_id: int, room_id: int) -> void:
 	var room: Dictionary = _rooms[room_id]
 	var battle: BattleEngine = room["battle"]
 	var s: Dictionary = _sessions[conn_id]
+	# 已经在这间房里（例如同一条连接又发了一次进房请求）：直接补发快照。
+	# 不能走下面「先退房再进」——退房会把没人的房间销毁掉，随后这次的进房就找不到房间了
+	if int(s["room_id"]) == room_id:
+		_broadcast_game(room)
+		return
 	if int(s["room_id"]) >= 0:
 		leave_room(conn_id)
 	# 有座位就落座；满员则作为观战者进来（不占座位，能同时有多个）
@@ -448,6 +453,7 @@ func ready_for_game(conn_id: int, type: int) -> void:
 		# （否则「准备 → 广播 Game → 客户端收到 Game 又准备」会形成无限回环，把服务端读循环钉死）
 		return
 	battle.set_ready(pid, 新值)
+	print("[房间] 玩家%d %s（房间 %d）" % [pid, "已准备" if 新值 else "取消准备", int(room["id"])])
 	# 广播 + 开局判定都交给 _try_start（它末尾必定广播一次）
 	_try_start(room)
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://do3458bd00xfl"
-path="res://.godot/imported/moDan.jpg-9ea8f42a07441dd2cde826827a9ac8dc.ctex"
+uid="uid://bomycu3j1qcxt"
+path="res://.godot/imported/moDan.png-37b8f2c5b422bcad1d27a5f5cb67c783.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/card/moDan.jpg"
-dest_files=["res://.godot/imported/moDan.jpg-9ea8f42a07441dd2cde826827a9ac8dc.ctex"]
+source_file="res://assets/textures/card/moDan.png"
+dest_files=["res://.godot/imported/moDan.png-37b8f2c5b422bcad1d27a5f5cb67c783.ctex"]
 
 [params]
 

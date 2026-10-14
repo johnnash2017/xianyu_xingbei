@@ -274,6 +274,7 @@ func join_team(team: int) -> void:
 func set_ready(type: int) -> void:
 	if not Net.is_connected_to_host():
 		return
+	print("[Logic] 发送准备：%s" % ("准备" if type == 1 else "取消准备"))
 	Net.send(GConst.Msg.ReadyForGameReq, {"type": type})
 
 

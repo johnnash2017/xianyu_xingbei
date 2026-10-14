@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://c53hmhd2aksy1" path="res://scripts/ui/enter.gd" id="1_kiq4n"]
 
-[node name="Enter" type="Control" unique_id=1575434935 node_paths=PackedStringArray("昵称输入", "进入按钮", "设置按钮", "Steam状态", "版本标签")]
+[node name="Enter" type="Control" unique_id=1575434935 node_paths=PackedStringArray("昵称输入", "进入按钮", "设置按钮", "Steam状态", "版本标签", "提示")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -15,6 +15,7 @@ script = ExtResource("1_kiq4n")
 "设置按钮" = NodePath("设置按钮")
 "Steam状态" = NodePath("Steam状态")
 "版本标签" = NodePath("版本")
+"提示" = NodePath("居中/登录卡片/内容/提示")
 
 [node name="进入按钮" type="Button" parent="." unique_id=235291491]
 self_modulate = Color(1, 1, 1, 0)
@@ -79,6 +80,14 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 32
 placeholder_text = "请输入昵称"
 max_length = 12
+
+[node name="提示" type="Label" parent="居中/登录卡片/内容" unique_id=1102938471]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.45, 0.4, 1)
+theme_override_font_sizes/font_size = 24
+autowrap_mode = 2
+horizontal_alignment = 1
 
 [node name="设置按钮" type="Button" parent="." unique_id=1538708124]
 layout_mode = 1

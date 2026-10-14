@@ -162,6 +162,11 @@ var 房主房间号: int = -1
 ## 房主侧：本房间在服务端里的编号。写进大厅数据用；
 ## 若「对局广播」早于「大厅创建回调」到达，先记在这，等回调回来补写
 var 本房房间号: int = -1
+## 正在建房：createLobby 是异步的，回调回来前挡住重复建房（连点两次会建出两个大厅）
+var _建房中: bool = false
+## 我们主动请求加入的大厅号（0 = 没在等）。createLobby 也会顺带触发一次 lobby_joined，
+## 靠它把「自己建房顺带触发的那次」与「玩家点房间主动进的那次」区分开（见 _on_lobby_joined）
+var _待加入大厅: int = 0
 ## 正在查询大厅列表：Steam 对查询频率有限流，别连点
 var _查询中: bool = false
 ## 建房时暂存，等 lobby_created 回调回来再写进大厅数据；
@@ -176,6 +181,9 @@ var _待建作弊: bool = false
 
 ## 大厅列表就绪：房间信息的形状与局域网那套一致，房间列表 UI 直接复用
 signal 大厅列表已就绪(房间列表: Array)
+## 建房（开 Steam 大厅）结果：房主侧据此在界面上反馈成功 / 失败。
+## 打包后看不到控制台日志，失败必须显式报到界面上，否则只能对着列表干猜。
+signal 建房结果(成功: bool, 说明: String)
 ## 进房结果：加入大厅成功时，上层接着把 P2P 连接切到房主（见 Logic._on_steam_join）
 signal 进房结果(成功: bool, 说明: String)
 ## 与某个对端的 P2P 会话建立失败：客户端底座据此判定掉线并重连
@@ -231,8 +239,14 @@ func _on_match_list(lobbies: Array) -> void:
 ## 上限若只按战斗人数算，战斗席一满观战者就会被 Steam 拒。
 ## 选角 / 座位 / 作弊一并带上：大厅数据里有它们，房间列表才能把这几项显示出来
 func 建房(房名: String, 人数上限: int, 选角: int, 座位: int, 作弊: bool) -> void:
-	if not 就绪:
+	if not 就绪 or _建房中:
 		return
+	# 旧大厅还没退（连点「创建房间」、或没回大厅就又建一次）：先退掉，
+	# 否则它一直留在列表里 —— 就是「房间消不掉、别人进错房」的来源
+	if 大厅id != 0:
+		Steam.leaveLobby(大厅id)
+		大厅id = 0
+	_建房中 = true
 	_待建房名 = 房名
 	_待建人数 = 人数上限
 	_待建选角 = 选角
@@ -242,8 +256,10 @@ func 建房(房名: String, 人数上限: int, 选角: int, 座位: int, 作弊:
 
 
 func _on_lobby_created(返回码: int, lobby_id: int) -> void:
+	_建房中 = false
 	if 返回码 != 1:      # 1 = Steam 的 Result.OK
 		push_warning("[SteamNet] 建大厅失败，Steam 返回 %d" % 返回码)
+		建房结果.emit(false, "建大厅失败（Steam 返回 %d）：别人搜不到这间房" % 返回码)
 		return
 	大厅id = lobby_id
 	房主steam_id = steam_id
@@ -258,6 +274,7 @@ func _on_lobby_created(返回码: int, lobby_id: int) -> void:
 	if 本房房间号 >= 0:
 		Steam.setLobbyData(lobby_id, 键_房间号, str(本房房间号))
 	print("[SteamNet] 已建大厅 %d（%s）" % [lobby_id, _待建房名])
+	建房结果.emit(true, "房间已建好，其他人可以搜到了")
 
 
 ## 房主同步房间实况到大厅数据（进人 / 退房 / 开局时由 LocalServer 调），列表上就能看到人数与状态；
@@ -277,23 +294,40 @@ func 同步房间数据(房间号: int, 在线人数: int, 座位数: int, 观�
 func 进房(大厅号: int) -> void:
 	if not 就绪 or 大厅号 == 0:
 		return
+	# 之前待过的别的大厅先退掉，别让旧大厅残留（同 建房）
+	if 大厅id != 0 and 大厅id != 大厅号:
+		Steam.leaveLobby(大厅id)
+		大厅id = 0
 	Steam.joinLobby(大厅号)
+	_待加入大厅 = 大厅号
+	print("[SteamNet] 请求加入大厅 %d" % 大厅号)
 
 
 func _on_lobby_joined(lobby: int, _permissions: int, _locked: bool, response: int) -> void:
+	# 只认「玩家主动进的那间」：createLobby 成功也会顺带触发一次 lobby_joined（进的是自己刚建的房）。
+	# 那次若当成进房，会让房主对自己刚建好的服务端房间再发一次 EnterRoomReq —— 服务端先退房
+	# （空房间随即被销毁）再进，结果房间没了：房主卡在准备室、别人也进不来。
+	if lobby != _待加入大厅:
+		print("[SteamNet] 忽略非请求的大厅进入 %d（本机建房顺带触发）" % lobby)
+		return
+	_待加入大厅 = 0
 	if response != 1:
+		print("[SteamNet] 加入大厅失败：大厅 %d，Steam 返回 %d" % [lobby, response])
 		进房结果.emit(false, "加入房间失败（Steam 返回 %d）" % response)
 		return
 	大厅id = lobby
 	房主steam_id = Steam.getLobbyData(lobby, 键_房主)
 	房主房间号 = int(Steam.getLobbyData(lobby, 键_房间号))
+	print("[SteamNet] 已加入大厅 %d：房主 SteamID = %s，服务端房间号 = %d" % [lobby, 房主steam_id, 房主房间号])
 	进房结果.emit(true, "已加入房间，正在连接房主…")
 
 
 ## 离开大厅（退出房间时调）
 func 离开大厅() -> void:
 	if 大厅id != 0:
+		print("[SteamNet] 离开大厅 %d" % 大厅id)
 		Steam.leaveLobby(大厅id)
 	大厅id = 0
+	_待加入大厅 = 0
 	房主steam_id = ""
 	房主房间号 = -1

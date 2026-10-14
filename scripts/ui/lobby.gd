@@ -66,6 +66,7 @@ func _ready() -> void:
 	# Steam 模式：大厅列表整理好后同样走 _fill（形状与局域网那套一致），列表 UI 不用改
 	SteamNet.大厅列表已就绪.connect(_fill)
 	SteamNet.进房结果.connect(_on_steam_join)
+	SteamNet.建房结果.connect(_on_steam_host_result)
 	Logic.error_received.connect(_on_error)
 	Logic.gossip_received.connect(_on_gossip)
 	Logic.notice_received.connect(_on_gossip)
@@ -297,6 +298,11 @@ func _可重连(idx: int) -> bool:
 
 ## Steam 模式下的进房结果：Logic 负责把 P2P 连接切到房主（见 Logic._on_steam_join），这里只显示进度
 func _on_steam_join(_成功: bool, 说明: String) -> void:
+	设状态(说明)
+
+
+## 建房结果（只有 Steam 模式会发）：直接显示在状态栏，成功 / 失败都能看到
+func _on_steam_host_result(_成功: bool, 说明: String) -> void:
 	设状态(说明)
 
 

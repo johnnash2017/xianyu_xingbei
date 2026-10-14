@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="杂鱼星杯"
-config/version="1.0.3"
+config/version="1.0.9"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
@@ -39,7 +39,7 @@ window/stretch/mode="canvas_items"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/excel_to_gd/plugin.cfg", "res://addons/gd_alias/plugin.cfg", "res://addons/godotsteam/plugin.cfg", "res://addons/label_font_auto_sizer/plugin.cfg", "res://addons/resdsp/plugin.cfg", "res://addons/version_tool/plugin.cfg")
+enabled=PackedStringArray("res://addons/excel_to_gd/plugin.cfg", "res://addons/gd_alias/plugin.cfg", "res://addons/label_font_auto_sizer/plugin.cfg", "res://addons/resdsp/plugin.cfg", "res://addons/version_tool/plugin.cfg", "res://addons/multi_open/plugin.cfg")
 
 [gui]
 
