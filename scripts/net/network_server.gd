@@ -43,3 +43,15 @@ var port: int = 0
 
 ## 给某条连接发一条消息
 @abstract func send(conn_id: int, msg_type: int, fields: Dictionary) -> void
+
+
+## 接入房主自己那一路客户端（只有 Steam 底座有「本机直连」这回事，见 SteamServer）。
+## 局域网 TCP 底座没有这个概念，默认什么都不做。
+func 接入本地客户端(_c: SteamClient, _conn_id: int) -> void:
+	pass
+
+
+## 这条连接所在底座有没有「底层断连事件」：Steam P2P 没有，只能靠心跳回声超时判掉线；
+## 局域网 TCP 有（底座自己会发现断连），默认返回 false。
+func 靠回声判掉线(_conn_id: int) -> bool:
+	return false

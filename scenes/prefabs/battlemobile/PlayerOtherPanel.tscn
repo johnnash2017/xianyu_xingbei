@@ -7,6 +7,7 @@
 [ext_resource type="Texture2D" uid="uid://dftdkji7lrsah" path="res://assets/textures/battle/b08_chatpoo3.png" id="16_b08chatpoo3png"]
 [ext_resource type="Texture2D" uid="uid://bfsv5s403s0pr" path="res://assets/textures/battle/b02_chara_focus.png" id="17_b02charafocuspng"]
 [ext_resource type="Texture2D" uid="uid://bc33yxox3hjtv" path="res://assets/textures/battle/b02_chara_red.png" id="18_b02chararedpng"]
+[ext_resource type="Texture2D" uid="uid://ds0w6e0co0p38" path="res://assets/textures/battle/signal.png" id="18_cdujc"]
 [ext_resource type="Texture2D" uid="uid://bscftkl5ppp8s" path="res://assets/textures/battle/b02_chara_blue.png" id="19_b02charabluepng"]
 [ext_resource type="Texture2D" uid="uid://b2jgdrw8wb2gd" path="res://assets/textures/hero/small/0S.png" id="20_0Spng"]
 [ext_resource type="Texture2D" uid="uid://b2ckn606g2vp3" path="res://assets/textures/battle/b02_chara_white.png" id="21_b02charawhitepng"]
@@ -17,6 +18,7 @@
 [ext_resource type="Texture2D" uid="uid://dno7djaa8hkv7" path="res://assets/textures/battle/b02_chara_mask.png" id="33_b02charamaskpng"]
 [ext_resource type="PackedScene" path="res://scenes/prefabs/battlemobile/StatusName.tscn" id="34_statusname"]
 [ext_resource type="Material" uid="uid://bgxhrqx7w23sp" path="res://scripts/effects/avatarSelectedGlow.tres" id="35_selectglow"]
+[ext_resource type="Shader" uid="uid://bcyggchx54mux" path="res://scripts/effects/silhouetteOutline.gdshader" id="36_silhouetteoutline"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_waitbg"]
 bg_color = Color(0, 0, 0, 0)
@@ -37,7 +39,7 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vhe14"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_n326b"]
 resource_local_to_scene = true
 content_margin_left = 10.0
 content_margin_top = 3.0
@@ -49,7 +51,12 @@ corner_radius_top_right = 90
 corner_radius_bottom_right = 90
 corner_radius_bottom_left = 90
 
-[node name="PlayerOtherPanel" type="Button" unique_id=1312225494]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_signalOutline"]
+shader = ExtResource("36_silhouetteoutline")
+shader_parameter/outline_color = Color(1, 1, 1, 1)
+shader_parameter/outline_width = 8.00000038
+
+[node name="PlayerOtherPanel" type="Button" unique_id=1312225494 node_paths=PackedStringArray("离线标记")]
 self_modulate = Color(1, 1, 1, 0)
 offset_left = 1029.5
 offset_top = 114.5
@@ -61,6 +68,7 @@ pivot_offset = Vector2(125, 125)
 focus_mode = 0
 disabled = true
 script = ExtResource("32_PlayerStatusMobilegd")
+"离线标记" = NodePath("Ssignal")
 
 [node name="LongPress" type="Control" parent="." unique_id=1413990791]
 visible = false
@@ -406,7 +414,7 @@ offset_bottom = -84.5
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 14
-theme_override_styles/normal = SubResource("StyleBoxFlat_vhe14")
+theme_override_styles/normal = SubResource("StyleBoxFlat_n326b")
 
 [node name="ChatPurple_6" type="TextureRect" parent="." unique_id=348714845]
 visible = false
@@ -498,5 +506,27 @@ theme_override_constants/h_separation = 0
 theme_override_constants/v_separation = 0
 columns = 99
 script = ExtResource("30_ItemOverlaygd")
+
+[node name="Ssignal" type="TextureRect" parent="." unique_id=1206234514]
+modulate = Color(0.999999, 0.85512227, 0.83109176, 1)
+self_modulate = Color(1, 1, 1, 0.4117647)
+material = SubResource("ShaderMaterial_signalOutline")
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -128.5
+offset_top = -163.6
+offset_right = 128.5
+offset_bottom = 93.399994
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.5, 0.5)
+pivot_offset = Vector2(128.5, 128.5)
+mouse_filter = 0
+texture = ExtResource("18_cdujc")
+expand_mode = 1
 
 [connection signal="pressed" from="selectTime_6/minusSelect__4_" to="." method="onMinusClick"]

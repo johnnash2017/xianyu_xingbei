@@ -45,8 +45,8 @@ var tokens: Array = [null, null, null]
 var ready: bool = false
 var leader: bool = false
 var online: bool = true
-## 到房主那一跳的往返延迟（毫秒）：0 = 还没测出来
-var ping: int = 0
+## 到房主那一跳的往返延迟（毫秒）；未测出时是哨兵值 GConst.PING_未测（0ms 是合法值）
+var ping: int = GConst.PING_未测
 
 
 func _init(pid: int = 0, c: int = GConst.TEAM_NONE, nick: String = "") -> void:

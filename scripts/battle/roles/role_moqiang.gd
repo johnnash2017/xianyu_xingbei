@@ -412,24 +412,6 @@ func p_timeline_3(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 幻影星辰自伤结算：手牌为 0 时，治疗最多只能使用 1 点
-# （服务端 crossAvailable 为可抵御点数；本引擎用 harm["cross_max_point"] 限制本次可抵御点数）
-# ============================================================
-func p_timeline_4(ctx: Dictionary) -> int:
-	var harm: Dictionary = ctx.get("harm", {})
-	if int(harm.get("dst", -1)) != player.id:
-		return SUCCESS
-	if int(harm.get("cause", -1)) != HUAN_YING_XING_CHEN:
-		return SUCCESS
-	if int(harm.get("cross_available", 1)) <= 0:
-		return SUCCESS
-	if not player.hand_cards.is_empty() or player.cross_num <= 1:
-		return SUCCESS
-	harm["cross_max_point"] = 1
-	return SUCCESS
-
-
-# ============================================================
 # 主动法术技能：充盈（2905）
 # ============================================================
 func v_magic_skill(action: Dictionary) -> int:

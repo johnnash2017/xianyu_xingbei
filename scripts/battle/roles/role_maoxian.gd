@@ -125,7 +125,6 @@ func v_attack_skill(action: Dictionary) -> int:
 func p_attack_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != QI_ZHA:
 		return GConst.GE_INVALID_ACTION
-	var cards: Array = action.get("card_ids", [])
 	var args: Array = action.get("args", [])
 	var 合法: Array[int] = _qi_zha_virtual_cards()
 	var virtual_card: int = int(args[0]) if not args.is_empty() else -1

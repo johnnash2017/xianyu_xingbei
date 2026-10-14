@@ -371,7 +371,7 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.ready = bool(pi.get("ready", false))
 	p.leader = int(pi.get("leader", 0)) == 1
 	p.online = bool(pi.get("online", true))
-	p.ping = int(pi.get("ping", 0))
+	p.ping = int(pi.get("ping", GConst.PING_未测))
 	if pi.has("max_hand"):
 		p.hand_cards_max = int(pi["max_hand"])
 	# 治疗上限：角色被动改过（如神官【圣使守护】+4），按服务端下发的值显示

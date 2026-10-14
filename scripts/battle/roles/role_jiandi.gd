@@ -18,10 +18,6 @@ const TIAN_SHI_ZHI_HUN: int = 1905
 const E_MO_ZHI_HUN: int = 1906
 const BU_QU_YI_ZHI: int = 1907
 
-## 天使之魂未命中时加士气的上限（服务端硬编码 15）
-const MORALE_LIMIT: int = 15
-
-
 var used_tian_shi_zhi_hun: bool = false
 var used_e_mo_zhi_hun: bool = false
 ## 本回合是否已授予【不屈意志】的额外行动（服务端 added_BU_QU_YI_ZHI）
@@ -273,9 +269,10 @@ func _jian_hun_shou_hu(ctx: Dictionary) -> void:
 	engine.add_cover(player.id, [cid], player.id, JIAN_HUN_SHOU_HU)
 
 
-## 天使之魂未命中：我方士气 +1（未达上限时）
+## 天使之魂未命中：我方士气 +1（未达上限时）。
+## 上限按人数取（4 / 6 人局 15、8 人局 18），统一读引擎那份，别在这写死数字
 func _tian_shi_zhi_hun_miss() -> void:
-	if engine.team_morale[player.color] >= MORALE_LIMIT:
+	if engine.team_morale[player.color] >= engine.士气上限():
 		return
 	notice_skill(TIAN_SHI_ZHI_HUN, [player.id])
 	engine.set_morale(player.color, engine.team_morale[player.color] + 1)

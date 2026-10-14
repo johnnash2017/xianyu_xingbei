@@ -62,6 +62,9 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_CARDID
 	if action.get("dst_ids", []).size() != 2:
 		return GConst.GE_INVALID_PLAYERID
+	# 两名目标必须是不同的人（说明是「2 名角色」）：同一人被点两次不算
+	if _has_duplicate(action.get("dst_ids", [])):
+		return GConst.GE_INVALID_PLAYERID
 	return GConst.GE_SUCCESS
 
 

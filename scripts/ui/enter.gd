@@ -11,7 +11,7 @@ extends Control
 @export var 设置按钮: Button
 ## 底部那行 Steam 连接状态（本地调试模式下整行隐藏）
 @export var Steam状态: Label
-## 左下角的版本号（文字在 _ready 里用 Cfg.游戏版本() 填，来源是 project.godot，别在场景里写死）
+## 画面中间底部的版本号（文字在 _ready 里用 Cfg.游戏版本() 填，来源是 project.godot，别在场景里写死）
 @export var 版本标签: Label
 ## 登录卡片里的提示行（Steam 没连上时点「进入游戏」在这里写原因；平时隐藏）
 @export var 提示: Label
@@ -25,12 +25,21 @@ var _等Steam进入: bool = false
 func _ready() -> void:
 	UI.register(self)
 	Net.connected.connect(_on_connected)
-	Net.client.reconnect_failed.connect(_on_reconnect_failed)
+	Net.reconnect_failed.connect(_on_reconnect_failed)
 	昵称输入.text_submitted.connect(func(_t: String) -> void: _on_enter_pressed())
 	进入按钮.pressed.connect(_on_enter_pressed)
 	设置按钮.pressed.connect(UI.切换设置)
-	if Cfg.本地模式:
-		# 本地调试：昵称必填（用来区分多个窗口），回填上次的昵称并聚焦
+	_应用模式到输入框()
+	_设标题昵称(Cfg.nickname)
+	版本标签.text = "版本 %s" % Cfg.游戏版本()
+
+
+## 昵称输入框按当前模式摆好：不用 Steam 时自己填（它就是身份 / 显示名），Steam 模式只读显示 Steam 昵称
+func _应用模式到输入框() -> void:
+	if Cfg.无Steam():
+		# 昵称必填（局域网联机时它就是身份 / 显示名），回填上次的并聚焦
+		昵称输入.editable = true
+		昵称输入.placeholder_text = "请输入昵称"
 		昵称输入.text = Cfg.nickname
 		昵称输入.grab_focus()
 		# 光标停在昵称末尾：LineEdit 默认把光标放在第 0 列，回填上次昵称后
@@ -42,15 +51,13 @@ func _ready() -> void:
 		昵称输入.editable = false
 		昵称输入.placeholder_text = "正在读取 Steam 昵称…"
 		_同步Steam昵称()
-	_设标题昵称(Cfg.nickname)
-	版本标签.text = "版本 %s" % Cfg.游戏版本()
 
 
 ## 底部那行 Steam 连接状态：每帧对一次（登录界面就能看到连没连上）
 func _process(_delta: float) -> void:
 	UI.刷新Steam状态(Steam状态)
 	# Steam 登录是异步的，玩家名到得晚：到了就补进只读输入框
-	if not Cfg.本地模式:
+	if not Cfg.无Steam():
 		_同步Steam昵称()
 
 
@@ -67,17 +74,17 @@ func _同步Steam昵称() -> void:
 		_on_enter_pressed()
 
 
-## 本次要用的昵称：Steam 模式 = Steam 玩家名（不可手输）；本地调试 = 输入框内容
+## 本次要用的昵称：不用 Steam 时 = 输入框内容（局域网联机时它就是身份）；Steam 模式 = Steam 玩家名
 func _取昵称() -> String:
-	if Cfg.本地模式:
+	if Cfg.无Steam():
 		return 昵称输入.text.strip_edges()
 	return SteamNet.玩家名
 
 
-## 把昵称写进全局：本地调试持久化（下次仍预填），Steam 模式只改本次运行
+## 把昵称写进全局：不用 Steam 时持久化（下次仍预填），Steam 模式只改本次运行
 ## （不覆盖 config 里本地调试用的昵称，免得 F9 多开时预填成 Steam 名）
 func _应用昵称(名: String) -> void:
-	if Cfg.本地模式:
+	if Cfg.无Steam():
 		Cfg.set_nickname(名)
 	else:
 		Cfg.nickname = 名
@@ -93,7 +100,7 @@ func _设标题昵称(名: String) -> void:
 # 「进入游戏」：接上服务端（本机有就连、没有就开一个、端口被占就连本机房主）
 # ============================================================
 func _on_enter_pressed() -> void:
-	if not Cfg.本地模式 and SteamNet.玩家名 == "":
+	if not Cfg.无Steam() and SteamNet.玩家名 == "":
 		# Steam 还没连上：这次不进，给出明确提示；连上后自动补进一次（见 _同步Steam昵称）
 		_等Steam进入 = true
 		提示.text = "未连接 Steam 网络：请先启动并登录 Steam 客户端，连接成功后会自动进入"
@@ -101,7 +108,7 @@ func _on_enter_pressed() -> void:
 		return
 	var 名: String = _取昵称()
 	if 名 == "":
-		if Cfg.本地模式:
+		if Cfg.无Steam():
 			昵称输入.grab_focus()
 		return
 	if _进入中:
@@ -110,6 +117,13 @@ func _on_enter_pressed() -> void:
 	进入按钮.disabled = true
 	_应用昵称(名)
 	_设标题昵称(名)
+	# 局域网联机：不进「自动当房主」那一步，直接进大厅去搜同一网段的房主
+	# （想自己开房就在大厅里点「创建房间」，那时才在本机起服务端并向网段广播）
+	if Cfg.局域网模式:
+		_进入中 = false
+		进入按钮.disabled = false
+		UI.goto_lobby()
+		return
 	# 已经在当房主（例如从大厅返回）：不需要重开，直接等连接
 	if Net.hosting and Net.is_connected_to_host():
 		UI.goto_lobby()

@@ -77,6 +77,8 @@ func send(conn_id: int, msg_type: int, fields: Dictionary) -> void:
 	if not _对端.has(conn_id):
 		return
 	var 帧: PackedByteArray = Framing.pack(msg_type, ProtoCodec.encode(msg_type, fields))
+	if 帧.is_empty():
+		return    # 帧过大：Framing 已报错，这里不发出坏帧
 	# 注意：用 NETWORKING_SEND_RELIABLE（= 8，SteamNetworkingSockets 的发送标志）。
 	# 别用 P2P_SEND_RELIABLE（= 2）—— 那是旧 ISteamNetworking 的枚举，这个 API 不认。
 	Steam.sendMessageToUser(conn_id, 帧, Steam.NETWORKING_SEND_RELIABLE, 发送通道)
@@ -88,9 +90,19 @@ func 关会话(conn_id: int) -> void:
 		Steam.closeSessionWithUser(conn_id)
 
 
+## Steam P2P 没有底层断连事件，这些连接只能靠心跳回声超时判掉线（见 LocalServer._推心跳）
+func 靠回声判掉线(conn_id: int) -> bool:
+	return _对端.has(conn_id)
+
+
 func _断开(conn_id: int) -> void:
 	if not _对端.has(conn_id):
 		return
 	关会话(conn_id)
 	_对端.erase(conn_id)
 	client_disconnected.emit(conn_id)
+	# 房主自己那一路（进程内直连）也把「断开」告诉那个客户端对象：
+	# 它没有 Steam 会话、收不到任何底层断连事件，不告诉它就会一直以为连着（link_up 仍是 true），
+	# 界面上建房 / 准备 / 退出全都没反应，也不会自动重连
+	if conn_id == 本地连接号 and 本地客户端 != null:
+		本地客户端.标记断开()

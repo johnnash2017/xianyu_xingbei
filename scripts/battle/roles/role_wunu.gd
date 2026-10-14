@@ -145,30 +145,6 @@ func p_after_special(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 血之哀伤判定（服务端 WuNv::XueZhiAiShangJudge）：手牌为空且无宝石、或手牌全为光系时，
-## 本次可用于抵御的治疗最多 1 点（服务端把 crossAvailable 压到 1）
-func p_timeline_4(ctx: Dictionary) -> int:
-	var harm: Dictionary = ctx.get("harm", {})
-	if int(harm.get("dst", -1)) != player.id:
-		return SUCCESS
-	if int(harm.get("cause", -1)) != XUE_ZHI_AI_SHANG:
-		return SUCCESS
-	if player.cross_num < 2:
-		return SUCCESS
-	if player.hand_cards.is_empty() and player.gem < 1:
-		harm["cross_max_point"] = 1
-		return SUCCESS
-	var all_light: bool = true
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c == null or c.element_enum() != GConst.CardElement.Light:
-			all_light = false
-			break
-	if all_light:
-		harm["cross_max_point"] = 1
-	return SUCCESS
-
-
 # ============================================================
 # 脱流血形态（服务端 WuNv::p_hand_change）：任何时候手牌不足 3 张就强制重置形态
 # 引擎在「手牌数量变化」后统一触发 p_hand_change（见 battle_engine._check_hand_change），

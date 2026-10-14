@@ -236,12 +236,3 @@ func _element_kind(cards: Array) -> int:
 	if elements.size() == cards.size():
 		return ElementKind.AllDifferent
 	return ElementKind.Invalid
-
-
-func _has_duplicate(ids: Array) -> bool:
-	var seen: Array = []
-	for i: Variant in ids:
-		if seen.has(int(i)):
-			return true
-		seen.append(int(i))
-	return false

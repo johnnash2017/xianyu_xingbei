@@ -165,7 +165,7 @@ const 技能尺寸: Vector2 = Vector2(110.0, 90.0)
 const 面板常态色: Color = Color(1.0, 1.0, 1.0)
 const 面板选中色: Color = Color(1.0, 1.0, 0.55)
 ## 当前不可选的玩家面板整体压暗（视觉上「点不动」，同卡牌那套置灰）
-const 面板置灰色: Color = Color(0.5, 0.5, 0.5)
+const 面板置灰色: Color = GConst.置灰色
 ## 头像提示的框宽与单行高度（挂在 Root 上的独立控件，见 _取治疗提示）；
 ## 框高按文案行数现算，见 _贴头像提示（RichTextLabel 会裁掉超出框的内容）
 const 治疗提示宽: float = 140.0
@@ -842,6 +842,8 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 	# Energy 的入参语义是 (宝石, 水晶)，见 PlayerStatusMobile.set_Energy
 	面板.set("Energy", Vector2i(p.gem, p.crystal))
 	面板.set("Knelt", p.tap)
+	# 掉线标记：只画在别人的面板上（自己的面板没有 Ssignal 节点，set_Online 里允许为空）
+	面板.set("Online", p.online)
 	# 状态图标：基础效果（牌）+ 独有效果（GConst.Exclusive 下标）
 	var 基础牌: Array = []
 	for st: GPlayer.BasicStatus in p.basic_status_list:
@@ -3655,6 +3657,19 @@ func _分配已满() -> bool:
 	return 需要 > 0 and _分配点数() >= 需要
 
 
+## 已分配的这批目标是否还都合法（换了用法后白名单可能变小）。
+## 「自动选」型（【辉耀】自动选全体、【圣光祈愈】自动选自己）直接放行：目标由配置定死、
+## 玩家点不了头像，而这类技能下发时需求目标数是 0 —— 照 _玩家可选 判会把每个目标都当成
+## 「不可选」，于是「确定」永远置灰，技能根本放不出来（见 _确定不可用）
+func _分配目标都合法() -> bool:
+	if str(_分配配置().get("自动选", "")) != "":
+		return true
+	for pid: int in _治疗分配:
+		if not _玩家可选(pid):
+			return false
+	return true
+
+
 ## 本次最多能分几点：配置给了正数就用它；<= 0 表示按自己当前的治疗量（神官【神圣契约】转几分自己定）
 func _分配上限() -> int:
 	var 配置: Dictionary = _分配配置()
@@ -5431,9 +5446,8 @@ func _确定不可用() -> bool:
 			if not (治疗牌够 and _分配已满()):
 				return true
 			# 分配到的目标也必须还在当前用法的白名单里（换了用法后可能已不合法）
-			for pid: int in _治疗分配:
-				if not _玩家可选(pid):
-					return true
+			if not _分配目标都合法():
+				return true
 			return false
 		if not _是技能询问:
 			return true
@@ -5458,10 +5472,10 @@ func _确定不可用() -> bool:
 			var 治疗牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
 			if not (治疗牌够 and _分配已满()):
 				return true
-			# 分配到的目标也必须还在当前用法的白名单里（换了用法后可能已不合法）
-			for pid: int in _治疗分配:
-				if not _玩家可选(pid):
-					return true
+			# 分配到的目标也必须还在当前用法的白名单里（换了用法后可能已不合法）；
+			# 「自动选」型（【辉耀】/【圣光祈愈】）由 _分配目标都合法 直接放行
+			if not _分配目标都合法():
+				return true
 			return false
 		# 二级技能栏：得先在技能栏里选一个效果，且选够它要求的牌 / 目标，才让点「确定」
 		# （「先弹选项」型的需牌 / 目标已在选效果时由 _应用选项目标数 还原 / 收紧）

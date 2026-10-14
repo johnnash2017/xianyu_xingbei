@@ -1,7 +1,6 @@
-[gd_scene load_steps=35 format=3]
+[gd_scene load_steps=33 format=3]
 
 [ext_resource type="Texture2D" path="res://assets/textures/battle/b05_new_argsItem.png" id="1_b05newargsItempng"]
-[ext_resource type="Texture2D" path="res://assets/textures/hero/head/0h.png" id="3_0hpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/card/diLieZhan.png" id="5_diLieZhanpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected_card.png" id="6_b02selectedcardpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected_cardy.png" id="7_b02selectedcardypng"]
@@ -22,7 +21,6 @@
 [ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected.png" id="25_b02selectedpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/skilltag.png" id="26_skilltagpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/blood.png" id="27_png"]
-[ext_resource type="Texture2D" path="res://assets/textures/skill/talismanThunder.png" id="29_png"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/playerSelected.png" id="30_playerSelectedpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/token0.png" id="32_token0png"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/token1.png" id="33_token1png"]

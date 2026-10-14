@@ -6,6 +6,15 @@ extends NetworkClient
 ## 重连上限与间隔
 const MAX_RECONNECT_ATTEMPTS: int = 3
 const RECONNECT_INTERVAL: float = 1.0
+## 「连上房主」的总时限（秒）—— 到这个时刻还没连上就放弃这次连接并通知上层。
+## 分两种情形（期望不同，所以两个值）：
+##   · 首次连接（玩家点一台主机 / 点一间房）：6 秒。这是玩家的等待上限 —— 目标不可达
+##     （对端已经关掉、SYN 被丢）时底层会长时间停在「正在连接」且没有内建超时，
+##     旧写法「单次 6 秒 × 重连 3 次」要干等 20 秒才有结果；
+##   · 掉线后的重连：20 秒。房主只是卡了一下（进程没死）时，玩家应该还连得回去。
+## 两种情形都会保留「秒失败（端口上没人监听 = 连接被直接拒绝）时按 RECONNECT_INTERVAL 重试几次」
+const 首次连接总时限: float = 6.0
+const 重连总时限: float = 20.0
 
 var target_host: String = "127.0.0.1"
 var target_port: int = GConst.DEFAULT_PORT
@@ -16,12 +25,18 @@ var _tcp: StreamPeerTCP = null
 var _decoder: Framing.FrameDecoder = Framing.FrameDecoder.new()
 var _reconnect_timer: float = 0.0
 var _ever_connected: bool = false
+## 本次「连上房主」的起点（毫秒）与本次该用的总时限（毫秒）：
+## connect_to 按首次连接填，掉线时按重连填（见 _on_lost / 标记断开）
+var _连接起始_ms: int = 0
+var _总时限_ms: int = 0
 
 
 func connect_to(host: String, port: int) -> void:
 	target_host = host
 	target_port = port
 	reconnect_attempts = 0
+	_连接起始_ms = Time.get_ticks_msec()
+	_总时限_ms = int(首次连接总时限 * 1000.0)
 	_begin_connect()
 
 
@@ -34,15 +49,28 @@ func _begin_connect() -> void:
 		push_error("NetClient: 连接 %s:%d 失败（%d）" % [target_host, target_port, err])
 
 
-## 重连一次：达到上限仍未成功则放弃自动重连并通知上层
+## 重连一次：次数用尽或已经过了总时限，就放弃这次连接并通知上层
 func _try_reconnect() -> void:
-	if reconnect_attempts >= MAX_RECONNECT_ATTEMPTS:
-		auto_reconnect = false
-		reconnect_failed.emit()
+	if reconnect_attempts >= MAX_RECONNECT_ATTEMPTS or _超时了():
+		_放弃连接()
 		return
 	reconnect_attempts += 1
 	_reconnect_timer = RECONNECT_INTERVAL
 	_begin_connect()
+
+
+## 本次连接是否已经超过总时限（见 首次连接总时限 / 重连总时限）
+func _超时了() -> bool:
+	if _连接起始_ms <= 0 or _总时限_ms <= 0:
+		return false
+	return Time.get_ticks_msec() - _连接起始_ms >= _总时限_ms
+
+
+## 放弃这次连接：断掉半连接、不再自动重连，并通知上层（界面据此提示玩家）
+func _放弃连接() -> void:
+	auto_reconnect = false
+	close()
+	reconnect_failed.emit()
 
 
 func close() -> void:
@@ -70,6 +98,13 @@ func poll(delta: float) -> void:
 		return
 	_tcp.poll()
 	var st: int = _tcp.get_status()
+	# 还在握手：对不可达地址底层可能长时间停在 CONNECTING（没有内建超时），
+	# 超过总时限就当这次连接失败 —— 否则玩家会一直卡在「正在进入房间」，界面上毫无反馈
+	if st == StreamPeerTCP.STATUS_CONNECTING:
+		if _超时了():
+			push_warning("NetClient: 连接 %s:%d 超时（%.1f 秒）" % [target_host, target_port, _总时限_ms / 1000.0])
+			_放弃连接()
+		return    # 握手期间没有数据可收
 	_apply_status(st)
 	if st == StreamPeerTCP.STATUS_CONNECTED:
 		var avail: int = _tcp.get_available_bytes()
@@ -108,6 +143,10 @@ func _on_lost() -> void:
 		disconnected.emit()
 	if auto_reconnect:
 		_reconnect_timer = 0.0
+		# 掉线后的重连另起一段：起点与总时限都换成重连那一档
+		# （否则会拿上一次连接的起点去判超时，一上来就放弃）
+		_连接起始_ms = Time.get_ticks_msec()
+		_总时限_ms = int(重连总时限 * 1000.0)
 
 
 func _feed(data: PackedByteArray) -> void:
@@ -118,11 +157,26 @@ func _feed(data: PackedByteArray) -> void:
 		message_received.emit(msg_type, fields)
 
 
+## 上层判定连接不可用（服务端心跳静默）：断掉底层 TCP 并通知上层，之后由自动重连继续试
+func 标记断开() -> void:
+	var was_live: bool = link_up or _ever_connected
+	close()
+	if was_live:
+		disconnected.emit()
+	if auto_reconnect:
+		_reconnect_timer = 0.0
+		# 同 _on_lost：这一段重连有自己的起点与总时限
+		_连接起始_ms = Time.get_ticks_msec()
+		_总时限_ms = int(重连总时限 * 1000.0)
+
+
 ## 发送一条消息
 func send(msg_type: int, fields: Dictionary) -> bool:
 	if _tcp == null:
 		return false
 	var body: PackedByteArray = ProtoCodec.encode(msg_type, fields)
 	var frame: PackedByteArray = Framing.pack(msg_type, body)
+	if frame.is_empty():
+		return false    # 帧过大：Framing 已报错，这里不发出坏帧
 	var err: int = _tcp.put_data(frame)
 	return err == OK

@@ -13,6 +13,11 @@ extends RefCounted
 signal connected
 @warning_ignore("unused_signal")
 signal disconnected
+## 已经朝目标发出连接请求、可以往外发消息了，但还没真正连上。
+## 只有 Steam 底座会发它：Steam P2P 没有「连上了」这个事件，第一条消息本身才把通道建起来，
+## 上层必须在这一刻就把登录发出去（等 connected 再发就永远等不到，见 SteamClient）
+@warning_ignore("unused_signal")
+signal 连接已发起
 ## 连续重连达到上限仍未成功：上层据此提示玩家并返回大厅
 @warning_ignore("unused_signal")
 signal reconnect_failed
@@ -43,3 +48,8 @@ var auto_reconnect: bool = false
 
 ## 发一条消息；返回是否发出去
 @abstract func send(msg_type: int, fields: Dictionary) -> bool
+
+
+## 上层判定这条连接已经不可用了（服务端心跳静默 / 服务端那侧主动断开）：
+## 各底座负责真正断掉底层连接并通知上层，之后交给自动重连继续试（与「底层掉线」同一条路）
+@abstract func 标记断开() -> void

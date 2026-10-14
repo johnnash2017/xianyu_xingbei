@@ -40,22 +40,45 @@ var 多开: bool = false
 ## 本地调试模式：只有多开脚本（--slot / --count / --auto，也就是 F9/F10/F11 那三个）拉起来时才为 true，
 ## 这种启动走现有的局域网 / 本机房间；**直接（裸）启动则为 false**，走 Steam（大厅 + P2P，见 SteamNet）
 var 本地模式: bool = false
+## 局域网模式：开发测试用（启动参数 --lan 或登录界面那个勾选），正常玩家触及不到 ——
+## 只有调试/测试才会带这个参数，正式启动一律为 false。
+## 与本地模式一样走局域网 TCP、不碰 Steam，区别在「不自动当房主」——
+## 进来先去搜同一局域网里的房主（Steam 房主的房间也搜得到，见 MultiServer），选一台连上去。
+var 局域网模式: bool = false
+
+
+## 是否完全不用 Steam（本地调试 / 局域网联机都算）：底座选型、登陆门槛、房间列表来源全看它。
+## 注意别和「多开」混为一谈：这两种模式都只用于开发调试 / 内网测试（正式玩家走 Steam），
+## 局域网模式不带多开那套槽位 / 摆位逻辑。
+func 无Steam() -> bool:
+	return 本地模式 or 局域网模式
+
+
+## 已经取得过的 SteamID：一旦拿到就固定下来（见 身份标识）
+var _steam身份: String = ""
 
 
 ## 客户端身份标识：连上房主时随登录包发过去，服务端靠它认「还是同一个人」，
 ## 断线 / 退出后能认领回原座位（见 LocalServer._reclaim_seat）。
-## - 本地调试（多开脚本）：用昵称，同机多开时 玩家1/玩家2… 天然区分，重启进程也认得出；
-## - Steam 模式：用 SteamID（字符串，64 位过协议不丢精度）；Steam 没连上时退回昵称，
-##   免得所有人共用一个空身份。
+## - 本地调试（多开脚本）/ 局域网模式：用昵称，同机多开时 玩家1/玩家2… 天然区分，重启进程也认得出。
+##   注意：这是开发调试用的做法 —— 名字相同就被当成同一个人（会互相抢座位），
+##   局域网模式只在内网测试里用，正常玩家走 Steam（那边用 SteamID，不会撞）。
+## - Steam 模式：用 SteamID（字符串，64 位过协议不丢精度）。
+##
+## SteamID 必须「一经取得就固定」：Steam 掉线 / 重新登录期间 steam_id 会被清空（见 SteamNet._标记掉线），
+## 身份若跟着退回昵称，服务端就认不出「还是同一个人」——对局中退出再回来会被当成新玩家，
+## 表现为「明明还留着座位，却被问要不要当观战」。所以这里记住第一次拿到的 SteamID 一直用它。
 func 身份标识() -> String:
-	if not 本地模式 and SteamNet.就绪:
-		return SteamNet.steam_id
+	if _steam身份 == "" and not 无Steam() and SteamNet.就绪 and SteamNet.steam_id != "":
+		_steam身份 = SteamNet.steam_id
+	if _steam身份 != "":
+		return _steam身份
 	return nickname
 
 
 ## 游戏版本号：唯一来源是 project.godot 的 application/config/version（每次打包前改这一处）。
-## SteamNet 用它派生大厅隔离标记（见 steam_net.gd 的 隔离标记）——版本号一变，
-## 新旧版本写进大厅的标记就不同，互相搜不到。
+## 它只用来「显示与放行判断」：大厅隔离标记 / 局域网发现里都带着它，但都刻意不拿它做过滤 ——
+## 新旧版本的房间互相看得见（列表里显示对方版本），只是点进去会被服务端登录校验挡下来。
 func 游戏版本() -> String:
 	return str(ProjectSettings.get_setting("application/config/version", "0.0.0"))
 
@@ -73,6 +96,13 @@ func _ready() -> void:
 	#   ① 多开 是在下面 _apply_layout 里才赋值的，放前面读到的永远是初始的 false；
 	#   ② F9 那种只开一个窗口的本地调试，窗口数本来就不到 2，会被误判成裸启动。
 	本地模式 = slot_source == "启动参数" or 自动开局 or 多开人数 > 0
+	# 本地调试的昵称：每次启动换成新的 10 位随机数（只改内存、不落盘）。
+	# 一是多开时天然不重名 —— 服务端是拿昵称认人的，重名会互相抢座位（之前真踩过）；
+	# 二是不会被「同一批窗口沿用上次配置里的名字」搞混（两个窗口都叫玩家2 之类）。
+	# 位数拆开取（首位 1-9、后 9 位 0-999999999）而不是 randi_range(1000000000, 9999999999)：
+	# 单个随机整数的量级别超过 32 位，避免底层取模把高位吃掉
+	if 本地模式:
+		nickname = "%d%09d" % [randi_range(1, 9), randi_range(0, 999999999)]
 	if slot_source == "启动参数":
 		# 多开脚本显式指定了槽位与窗口数：立刻按宫格摆位
 		_apply_layout(int(shared_get("layout_count", 默认摆位列数 * 默认摆位行数)))
@@ -83,8 +113,8 @@ func _ready() -> void:
 		if OS.has_feature("editor"):
 			_watch_instances()
 	_watch_peers()
-	print("[Cfg] 槽位=%d（%s）昵称=%s 服务端口=%d 本地模式=%s" % [
-		slot, slot_source, nickname, server_port, str(本地模式)])
+	print("[Cfg] 槽位=%d（%s）昵称=%s 服务端口=%d 本地模式=%s 局域网模式=%s" % [
+		slot, slot_source, nickname, server_port, str(本地模式), str(局域网模式)])
 
 
 # ============================================================
@@ -111,6 +141,8 @@ func _parse_cmdline() -> void:
 		elif a == "--auto":
 			自动开局 = true
 			调试模式 = true
+		elif a == "--lan":
+			局域网模式 = true
 		elif a.begins_with("--count="):
 			多开人数 = int(a.substr(8))
 		elif a == "--count" and i + 1 < args.size():

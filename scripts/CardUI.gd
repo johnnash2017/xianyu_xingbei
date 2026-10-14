@@ -36,8 +36,8 @@ const GLOW_WINDOW_SIZE: Vector2 = Vector2(126.0, 190.0)
 ## 发光框现在画在卡面之下（Card.tscn 里排在卡面按钮前面），缩一点点让卡面正好盖住这段暗边，
 ## 光晕就贴着卡牌外缘亮起来（1.0＝不缩，但会露出一圈暗边）
 const GLOW_SHRINK: float = 0.96
-## 不可用（置灰）时的整体压暗色
-const DISABLED_TINT: Color = Color(0.5, 0.5, 0.5, 1.0)
+## 不可用（置灰）时的整体压暗色（与玩家面板、掉线头像共用 GConst.置灰色）
+const DISABLED_TINT: Color = GConst.置灰色
 ## 卡面底部两格技能名的字色：我的角色有这门技能＝亮绿黄，没有＝灰
 const 技能字色_有: Color = Color("a9ff00")
 const 技能字色_无: Color = Color("b1b1b1")

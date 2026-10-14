@@ -30,6 +30,11 @@ signal 状态图标离开悬停()
 ## 面板图标要区分的技能号统一放在 GConst（技能_天使之墙 / 技能_迅捷赐福 / 技能_威力赐福 /
 ## 技能_风之封印 ~ 技能_雷之封印），这里不再各写一份
 
+## 掉线标记（battle/signal.png）：只挂在「其他玩家」那块面板上（PlayerOtherPanel.tscn 的 Ssignal）。
+## 本脚本同时挂在 PlayerSelfPanel 上，那个场景没有这个节点，所以这里允许为空（set_Online 里判空）。
+## 场景里默认隐藏，玩家掉线时由 set_Online(false) 显出来。
+@export var 离线标记: TextureRect
+
 ## 对应 C# [SerializeField] private Image redTeam;  （场景里 TeamBG/Red、TeamBG_2/Red_2 …）
 @onready var redTeam: TextureRect = _find_variant("Red") as TextureRect
 ## 对应 C# [SerializeField] private Image blueTeam;  （场景里 TeamBG/Blue、TeamBG_2/Blue_2 …）
@@ -177,6 +182,10 @@ var Turn: bool = false:
 var Knelt: bool = false:
 	set(value):
 		set_Knelt(value)
+## 掉线（对局快照 GPlayer.online）：false 时在头像上亮出「掉线」标记（见 set_Online）
+var Online: bool = true:
+	set(value):
+		set_Online(value)
 var YellowToken: int = 0:
 	set(value):
 		set_YellowToken(value)
@@ -523,6 +532,19 @@ func set_Team(value: int) -> void:
 func set_Turn(value: bool) -> void:
 	if turn != null:
 		turn.visible = value
+## 对应原客户端「玩家掉线」的显示：掉线亮标记 + 头像置灰，在线恢复原样。
+## 状态来自对局快照（GPlayer.online），每次刷新面板都会重设一遍 ——
+## 所以掉线的人重连回来、以及别人重连后收到的新快照，都会自动跟着变（见 BattleMobile._填面板）
+func set_Online(value: bool) -> void:
+	if 离线标记 != null:
+		离线标记.visible = not value
+	# 头像一并置灰（用工程统一的置灰色，modulate 乘 0.5）。
+	# 立绘节点是 HeroIcon：自己的面板（PlayerSelfPanel.tscn）没有这个节点，所以这里会取到 null，
+	# 那种情况跳过即可（自己也用不到掉线置灰）
+	var 立绘: TextureRect = _find_variant_quiet("HeroIcon") as TextureRect
+	if 立绘 != null:
+		立绘.modulate = Color.WHITE if value else GConst.置灰色
+
 ## 对应 C# public bool Knelt 的 setter —— 形态名（如魔剑士的【暗影形态】）。
 ## 原来是往头像上贴一张「形态图」，现改成名牌正上方的一块文字底板：
 ## 文本取「角色表」的「横置形态」列，底板色取「状态底色」列（见 Data.role_status_bg），文字固定白。

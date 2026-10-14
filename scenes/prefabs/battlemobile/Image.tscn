@@ -1,7 +1,6 @@
-[gd_scene load_steps=22 format=3]
+[gd_scene load_steps=21 format=3]
 
 [ext_resource type="Texture2D" path="res://assets/textures/battle/b05_new_argsItem.png" id="1_b05newargsItempng"]
-[ext_resource type="Texture2D" path="res://assets/textures/hero/head/0h.png" id="3_0hpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/card/diLieZhan.png" id="5_diLieZhanpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected_card.png" id="6_b02selectedcardpng"]
 [ext_resource type="Texture2D" path="res://assets/textures/battle/b02_selected_cardy.png" id="7_b02selectedcardypng"]

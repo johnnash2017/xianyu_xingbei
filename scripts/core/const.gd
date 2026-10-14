@@ -188,6 +188,16 @@ const TEAM_NONE: int = -1
 # 观战者（房间满员时的 playerId）
 const GUEST: int = 9
 
+# 延迟「还没测出来」的哨兵值。
+# 0 不能拿来当「未测」：房主自己那一路走进程内直连，往返真的就是 0ms，
+# 用 0 当未测的话房主会永远显示「测量中」（见 LocalServer._记心跳回声 / UI 的连接质量列）
+const PING_未测: int = 65535
+
+# 「置灰」统一用这个压暗色（不可用 / 掉线）：modulate 乘上去整块变暗。
+# 卡牌（CardUI.DISABLED_TINT）、玩家面板的不可选目标（BattleMobile.面板置灰色）、
+# 掉线玩家的头像都取这里的同一份，别再各写一个 Color(0.5, 0.5, 0.5)
+const 置灰色: Color = Color(0.5, 0.5, 0.5, 1.0)
+
 # 伤害类型
 enum HarmType {
 	None = 0,
@@ -263,6 +273,26 @@ const GE_DISCONNECTED: int = 30
 const GE_NOT_WELCOME: int = 31
 const GE_WRONG_PASSWORD: int = 32
 const GE_VIP_ONLY: int = 33
+## 版本不一致（登录时就被房主拒绝）：对端（发起登录的一方）版本更低 → 提示「版本号过低，请更新游戏」
+const GE_VERSION_PEER_LOW: int = 40
+## 版本不一致：对端版本更高（也就是房主自己更旧）→ 提示「对方版本号过低」
+const GE_VERSION_PEER_HIGH: int = 41
+
+
+## 比较两个「点分数字」版本号（如 1.0.23）：a < b 返回 -1、相等 0、a > b 返回 1。
+## 逐段按整数比，所以 "1.0.9" < "1.0.10" 是对的；段数不同短的补 0（"1.0" == "1.0.0"）；
+## 非数字段按 0 处理（版本号本该是数字，写成别的没法比大小）。
+## 服务端登录校验、客户端「列表里这间是别的版本」的判断共用这一份。
+static func 版本比较(a: String, b: String) -> int:
+	var 甲: PackedStringArray = a.split(".")
+	var 乙: PackedStringArray = b.split(".")
+	for i: int in range(maxi(甲.size(), 乙.size())):
+		var 左: int = int(甲[i]) if i < 甲.size() else 0
+		var 右: int = int(乙[i]) if i < 乙.size() else 0
+		if 左 != 右:
+			return -1 if 左 < 右 else 1
+	return 0
+
 
 # ============================================================
 # 伤害/效果来源（CAUSE 常用子集）

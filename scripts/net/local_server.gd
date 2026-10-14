@@ -14,12 +14,34 @@ const 六选一候选数: int = 6
 ## 选将超时（毫秒），超时按服务端 GE_TIMEOUT 的语义收尾
 const PICK_TIMEOUT_MS: int = 30000
 
+## 观战席上限（与 Steam 大厅的观战席数一致）：观战者不占战斗座位，但也不能无限进
+const 观战者上限: int = 16
+## 入站字符串的服务端长度上限（字符）。必须由服务端自己截断 —— 客户端的输入框限制挡不住改包，
+## 而这些字（昵称 / 房名 / 聊天）会随对局快照广播给全房，太长会让整帧超过 Framing.MAX_FRAME 被静默丢弃
+const 昵称最大字符数: int = 24
+const 房名最大字符数: int = 24
+const 聊天最大字符数: int = 128
+## 身份标识（client_id）的最大长度：它会被写进 Steam 大厅数据，也不该放任超长
+const 身份标识最大字符数: int = 64
+
 signal rooms_changed
 
 var server: NetworkServer = null
 var _sessions: Dictionary = {}     # conn_id -> {nickname, room_id, player_id}
 var _rooms: Dictionary = {}        # room_id -> 房间字典
 var _next_room_id: int = 1
+## 上一次写给 Steam 大厅的数据（拼成一个字符串比对，见 _同步大厅数据）：内容没变就不重复写
+var _大厅已写数据: String = ""
+## 上面那份数据是写进哪个 Steam 大厅的：Steam 掉线重连后会新建大厅（旧数据全没了），
+## 大厅号一变就必须重写一遍，否则「内容没变就不写」会让新大厅一直空着（见 _同步大厅数据）
+var _大厅已写大厅id: int = 0
+## 变化太密、还没到写入间隔的那一份大厅数据（由 poll 到点补写，保证最后一次变化送得出去）
+var _大厅待写: Dictionary = {}
+## 上一次真正写 Steam 大厅的时刻（毫秒）
+var _大厅写入时刻_ms: int = 0
+## Steam 大厅数据的最小写入间隔（毫秒）：对局快照每帧都可能刷新，而 Steam 侧对大厅数据更新有限流，
+## 变化太密时先攒着、由 poll 到点补写（见 _推大厅数据）
+const 大厅写入间隔_ms: int = 1500
 
 
 # ============================================================
@@ -27,12 +49,14 @@ var _next_room_id: int = 1
 # ============================================================
 func start(port: int) -> int:
 	randomize()
-	# 传输底座按启动模式选：多开脚本（本地调试）监听 TCP 端口，常规启动走 Steam P2P
-	# （写成 if/else 而不是三元表达式：两个实现类型不同，三元会被判「分支类型不兼容」）
-	if Cfg.本地模式:
+	# 传输底座按启动模式选（写成 if/else 而不是三元表达式：两个实现类型不同，三元会被判「分支类型不兼容」）：
+	#   本地调试 / 局域网模式 —— 只监听 TCP 端口；
+	#   Steam 模式 —— Steam P2P + 局域网 TCP 双路复用，房间同时向「Steam 大厅」和
+	#   「同一局域网的机器」开放（后者不需要 Steam 账号，见 MultiServer）
+	if Cfg.无Steam():
 		server = NetServer.new()
 	else:
-		server = SteamServer.new()
+		server = MultiServer.new()
 	var err: int = server.listen(port)
 	if err != OK:
 		return err
@@ -55,8 +79,9 @@ func stop() -> void:
 ## Steam NetworkingMessages 的「发给自己」会被对端当成关闭连接（实测发送返回 35 + 抛会话失败），
 ## 房主自己收不到任何下行包、还会被上层当成掉线踢回大厅，所以房主自己一律走进程内直连。
 ## 连接号用本机 SteamID（与对端的 SteamID 同一套编号，不会撞）。
+## Steam 模式下的底座是多路复用的（MultiServer），由它转交给内部的 Steam 底座。
 func 接入本地客户端(c: SteamClient, 连接号: int) -> void:
-	(server as SteamServer).接入本地客户端(c, 连接号)
+	server.接入本地客户端(c, 连接号)
 	c.本机投递 = func(协议号: int, 字段: Dictionary) -> void: _on_client_message(连接号, 协议号, 字段)
 
 
@@ -64,6 +89,12 @@ func poll() -> void:
 	server.poll()
 	for rid: int in _rooms.keys():
 		var room: Dictionary = _rooms[rid]
+		# 一局打完：这间房不再复用（准备 / 开局都被 started 封死），立刻解散。
+		# 不散的话它会永远挂在列表上显示「战斗中」，里面的人按准备 / 选边 / 再开局全没反应。
+		# 玩家那边不会被踢走：终局快照带着 over，客户端据此留在结算界面看结果（见 client_logic）
+		if _本局已结束(room):
+			_解散房间(room)
+			continue    # 已打完：选角 / 开局 / 心跳都不必再推进（房间已在这轮里销毁）
 		# 推进选将阶段的超时（到点还没提交的按候选第 1 个收尾）
 		if room.has("pick"):
 			_check_pick_timeout(room)
@@ -76,54 +107,83 @@ func poll() -> void:
 		# 观战流是降频推的：欠着的快照到点补发，保证最后一次状态变化不会被吃掉
 		if bool(room["watch_dirty"]):
 			_请求观战快照(room)
-		# 连接质量：定期给房内每条连接打一次心跳（玩家的延迟只有服务端测得到）
-		_推房间心跳(room)
+	# 连接质量 / 幽灵连接：定期给「每一条还连着的连接」打一次心跳（不只是房间里的人，见 _推心跳）
+	_推心跳()
+	# 房间列表数据变了但还没写给 Steam 大厅的，到点补写（见 _同步大厅数据）
+	_推大厅数据()
 
 
-## 心跳 / 延迟测量：每 心跳间隔_ms 给房内每条连接发一次 HeartBeat，客户端回声后即可算出往返延迟。
-## 观战者也发（他们的连接质量同样只有服务端看得到），房主自己那条约为 0ms
-func _推房间心跳(room: Dictionary) -> void:
+## 心跳 / 延迟测量：每 心跳间隔_ms 给「每一条还连着的连接」发一次 HeartBeat，客户端回声后即可算出往返延迟。
+## 必须覆盖房间外的人：Steam P2P 没有底层断连事件，只能靠回声超时判定掉线；
+## 只给房里的人发的话，在大厅里就消失的玩家会永远挂在会话表里（幽灵连接，见 _sessions）。
+func _推心跳() -> void:
 	var 现在: int = Time.get_ticks_msec()
 	var 掉线: Array[int] = []
-	for cid: int in _房间接收者(room):
-		var s: Dictionary = _sessions.get(cid, {})
-		if s.is_empty():
-			continue
-		# Steam P2P 没有「底层断连」事件，只能靠回声超时判定掉线；
-		# 局域网 TCP 由底座自己发现断连，这里不重复判定
-		if server is SteamServer and 现在 - int(s.get("echo_ms", 现在)) > 掉线超时_ms:
-			掉线.append(cid)
-			continue
-		var 在等回声: int = int(s.get("ping_sent_ms", 0))
-		if 在等回声 > 0:
-			if 现在 - 在等回声 > 心跳超时_ms:
-				# 这一轮没回声：按最差一档处理（多半是卡住或刚掉线）
-				s["ping_sent_ms"] = 0
+	for cid: int in _sessions.keys():
+		var s: Dictionary = _sessions[cid]
+		# 这一轮心跳还在等回声（ping_sent_ms > 0）；回音到了由 _记心跳回声 清零
+		var 等回声起_ms: int = int(s.get("ping_sent_ms", 0))
+		if 等回声起_ms > 0:
+			# 「连续多久没有回音」的起点（ping_since_ms）：本轮心跳超时后会重发一次，
+			# 重发只更新 ping_sent_ms、不动它 —— 否则掉线判定永远攒不够时间（见下）
+			var 无回声起_ms: int = int(s.get("ping_since_ms", 等回声起_ms))
+			var 等了: int = 现在 - 等回声起_ms
+			# Steam P2P 没有「底层断连」事件，只能靠回声超时判定掉线。
+			# 判据必须挂在「这一次心跳有没有回音」上，绝不能看「多久没收到它的任何消息」：
+			# 「最近收到消息的时刻」对不回心跳的人永远是陈旧值，会把好好的人误判成掉线。
+			# 局域网 TCP 由底座自己发现断连，这里不重复判定（底座不同，按连接分别判断）
+			if server.靠回声判掉线(cid) and 现在 - 无回声起_ms > 掉线超时_ms:
+				掉线.append(cid)
+				continue
+			if 等了 > 心跳超时_ms:
+				# 回声迟迟不来：先按最差一档显示延迟；清掉「本轮等回声」标记让下一轮重新发一次
+				# （留在「等回声」上就再也不发心跳了，回音真到了也无法恢复）。
+				# 只清 ping_sent_ms、不动 ping_since_ms：连着几轮都没回音才算掉线
 				s["ping_ms"] = 心跳超时_ms
-		elif 现在 - int(s.get("ping_last_ms", 0)) >= 心跳间隔_ms:
+				s["ping_sent_ms"] = 0
+			continue
+		if 现在 - int(s.get("ping_last_ms", 0)) >= 心跳间隔_ms:
 			s["ping_sent_ms"] = 现在
 			s["ping_last_ms"] = 现在
+			# 还没有「连续无回音」起点时记一个，直到收到回音才清（见 _记心跳回声）
+			if int(s.get("ping_since_ms", 0)) <= 0:
+				s["ping_since_ms"] = 现在
 			server.send(cid, GConst.Msg.HeartBeat, {})
 	# 掉线的统一在遍历外断开：close_conn 会连锁触发退房，不能在遍历中改房间结构
 	for cid: int in 掉线:
 		server.close_conn(cid)
 
 
-## 收到心跳回声：算出往返延迟并平滑（旧值权重 2/3），抖动时数字不会乱跳
+## 收到心跳回声：这一轮心跳有了回音（清掉「等回声」标记），顺便算出往返延迟并平滑（旧值权重 2/3）
 func _记心跳回声(conn_id: int) -> void:
 	var s: Dictionary = _sessions.get(conn_id, {})
 	if s.is_empty():
 		return
-	# 收到任何回声都说明这条连接还活着（Steam 侧靠它判定掉线）
-	s["echo_ms"] = Time.get_ticks_msec()
 	var 发出: int = int(s.get("ping_sent_ms", 0))
 	if 发出 <= 0:
+		# 没欠着回声：只说明「这一轮已经回来了」，连续无回音的起点照旧清零
+		s["ping_since_ms"] = 0
 		return
 	s["ping_sent_ms"] = 0
+	# 回音到了：清掉「连续无回音」起点（掉线判定按它累计，见 _推心跳）
+	s["ping_since_ms"] = 0
 	var 新值: int = Time.get_ticks_msec() - 发出
-	# 加权平滑：旧值占 2/3、新值占 1/3。毫秒取整就够了（显式忽略「整数除法丢小数」警告）
+	# 第一次测到（旧值还是未测哨兵）：直接用新值，别拿哨兵去平滑，否则要把均值一路带偏
+	var 旧值: int = int(s.get("ping_ms", GConst.PING_未测))
 	@warning_ignore("integer_division")
-	s["ping_ms"] = (int(s.get("ping_ms", 新值)) * 2 + 新值) / 3
+	s["ping_ms"] = 新值 if 旧值 >= GConst.PING_未测 else (旧值 * 2 + 新值) / 3
+
+
+## 房主坐在哪个座位上（没有 = -1）：用 conn_of 反查「房主那条连接占着哪个座位」。
+## 快照里的 host_seat 就是它，客户端「玩家列表」据此给房主标星号
+func _房主座位(room: Dictionary) -> int:
+	var 房主连接: int = int(room.get("host_conn", -1))
+	if 房主连接 < 0:
+		return -1
+	for pid: Variant in (room["conn_of"] as Dictionary).keys():
+		if int(room["conn_of"][pid]) == 房主连接:
+			return int(pid)
+	return -1
 
 
 ## 把各连接测出的延迟写进玩家：快照会带着它一起下发（「玩家列表」右侧那一列）
@@ -134,7 +194,7 @@ func _同步连接质量(room: Dictionary) -> void:
 		if not battle.players.has(pid):
 			continue
 		var s: Dictionary = _sessions.get(int(conn_of[pid]), {})
-		(battle.players[pid] as BattlePlayer).ping_ms = int(s.get("ping_ms", 0))
+		(battle.players[pid] as BattlePlayer).ping_ms = int(s.get("ping_ms", GConst.PING_未测))
 
 
 ## 在线玩家数：对局中掉线/退出的人座位会保留（状态机还指着他），不能再算进「人数」里，
@@ -156,6 +216,28 @@ func _is_battle_playing(room: Dictionary) -> bool:
 	return bool(room["started"]) and battle.phase == BattleEngine.Phase.Playing
 
 
+## 本房间是否已经进入「留座」阶段：选角开始之后（选角中 / 对局中都要留座）。
+## 准备室阶段不留座 —— 退出就是退出：离席即释放座位与身份绑定，回来按新玩家重新落座，
+## 房间列表也不显示「可重连」（见 leave_room / enter_room / _room_infos 的 can_reenter）
+func _留座阶段(room: Dictionary) -> bool:
+	return bool(room["started"]) or room.has("pick")
+
+
+## 把座位连同身份绑定一起释放（准备室离席、房主退房都走这一份）：座位从座位表里摘掉，
+## 身份绑定清掉（回来就是个新玩家）。选角开始之后的离席不释放座位，见 leave_room。
+func _释放座位(room: Dictionary, pid: int) -> void:
+	(room["conn_of"] as Dictionary).erase(pid)
+	(room["battle"] as BattleEngine).remove_player(pid)
+	(room["client_of"] as Dictionary).erase(pid)
+
+
+## 本局是否已经打完（有结果、不再推进）：打完的房间不再复用，见 poll 里的解散处理
+func _本局已结束(room: Dictionary) -> bool:
+	if not bool(room.get("started", false)):
+		return false
+	return (room["battle"] as BattleEngine).phase == BattleEngine.Phase.Over
+
+
 # ============================================================
 # 连接生命周期
 # ============================================================
@@ -165,10 +247,10 @@ func _on_client_connected(conn_id: int) -> void:
 		"room_id": -1,
 		"player_id": -1,
 		"client_id": "",
-		"ping_ms": 0,        # 这一路测出的往返延迟（心跳测量，见 _推房间心跳）
-		"ping_sent_ms": 0,   # 本轮心跳发出时刻；0 = 没有在等回声
+		"ping_ms": GConst.PING_未测,   # 这一路测出的往返延迟；未测出来时是哨兵值（0ms 是合法值，房主自己就是 0）
+		"ping_sent_ms": 0,   # 本轮心跳发出时刻；0 = 没欠着回声（没发过 / 已经回来了）
 		"ping_last_ms": 0,   # 上一轮心跳发出时刻（控制发送间隔）
-		"echo_ms": Time.get_ticks_msec(),   # 最近一次收到该连接消息的时刻（Steam 掉线判定用）
+		"ping_since_ms": 0,  # 「连续没有回音」的起点（0 = 最近一轮心跳有回音）：掉线判定按它累计
 	}
 
 
@@ -180,21 +262,49 @@ func _on_client_disconnected(conn_id: int) -> void:
 			# 对局中掉线：标记掉线，引擎把等待时限收紧到掉线超时并自动代打
 			var battle: BattleEngine = room["battle"]
 			battle.set_offline(pid, true)
-	leave_room(conn_id)
+	leave_room(conn_id, true)
 	_sessions.erase(conn_id)
 
 
 func _on_client_message(conn_id: int, msg_type: int, data: Dictionary) -> void:
 	var s: Dictionary = _sessions.get(conn_id, {})
 	if s.is_empty():
+		# 会话不在了（这条连接被判掉线断开过）却又来消息：只有「登录」能把它重新登记回来。
+		# 少了这一步，房主自己那一路断一次就永远失聪 —— 他照旧发消息，服务端一句不理，
+		# 界面上建房 / 准备 / 退出全都没反应、也不会报错（见 SteamServer._断开 与 SteamClient.收到断开）
+		if msg_type != GConst.Msg.LoginReq:
+			return
+		_on_client_connected(conn_id)
+		s = _sessions[conn_id]
+	# 版本不合格的连接：只放行「登录」消息 —— 对方更新完再连时要在那里重新判一次
+	# （早先这里是「一律不理」，结果 Steam 下连接号就是同一个 SteamID，被拒一次之后就永远不合格了：
+	#   第二次进来连错误都不回，客户端一直卡在「正在进入房间…」）。其余消息照旧不理会
+	if msg_type != GConst.Msg.LoginReq and bool(s.get("版本不合格", false)):
 		return
 	match msg_type:
 		GConst.Msg.LoginReq:
-			# 去登录：仅用登录消息上报昵称与进程身份
-			var nick: String = str(data.get("user_id", ""))
+			# 版本不一致：直接拒绝（新旧版本的房间在列表里互相看得见，但进不去房间）。
+			# 大厅隔离标记 / 局域网发现只负责「显示对方版本」，这里挡的是真进房 ——
+			# 不同版本的房间数据与协议细节都可能对不上
+			var 对端版本: String = str(data.get("game_version", ""))
+			var 本机版本: String = Cfg.游戏版本()
+			if 对端版本 != 本机版本:
+				# 谁低谁去更新：本机更低 → 告诉对端「对方版本过低」；
+				# 否则（对端更低，或只是写法不同但数值相等）让对端去更新
+				var 码: int = GConst.GE_VERSION_PEER_HIGH if GConst.版本比较(对端版本, 本机版本) > 0 else GConst.GE_VERSION_PEER_LOW
+				server.send(conn_id, GConst.Msg.Error, {"id": 码, "dst_id": conn_id, "args": []})
+				# 不在这里主动断开：先保证这条错误消息发得出去（立刻断可能把它一起丢掉），
+				# 客户端收到后会自己断开；服务端这侧标记后不再理会它的非登录消息
+				s["版本不合格"] = true
+				return
+			# 之前不合格过、现在版本对上了（对方更新完重连）：放行
+			s.erase("版本不合格")
+			# 去登录：仅用登录消息上报昵称与进程身份。
+			# 长度一律按服务端自己的上限截断：这些字会随快照广播给全房，不能采信客户端的限制
+			var nick: String = str(data.get("user_id", "")).left(昵称最大字符数)
 			if nick != "":
 				s["nickname"] = nick
-			var cid: String = str(data.get("client_id", ""))
+			var cid: String = str(data.get("client_id", "")).left(身份标识最大字符数)
 			if cid != "":
 				s["client_id"] = cid
 			server.send(conn_id, GConst.Msg.LoginRep, {"state": 6, "nickname": s["nickname"]})
@@ -239,7 +349,6 @@ func _on_client_message(conn_id: int, msg_type: int, data: Dictionary) -> void:
 ## 房间列表。带 conn_id 时额外告诉这个连接「哪几间房还留着你的座位」——
 ## 对局中退出/掉线时座位不会被移除，这些人重进应该直接坐回去，而不是被当成观战
 func _room_infos(conn_id: int = -1) -> Array:
-	var 我的身份: String = str(_sessions.get(conn_id, {}).get("client_id", ""))
 	var out: Array = []
 	for rid: int in _rooms.keys():
 		var r: Dictionary = _rooms[rid]
@@ -263,7 +372,10 @@ func _room_infos(conn_id: int = -1) -> Array:
 			"sp_mo_dao": false,
 			"playing": r["started"],
 			"silence": false,
-			"can_reenter": _reclaim_seat(r, 我的身份) >= 0,
+			# 房主版本号：房间列表要显示（进不进得去由登录时的版本校验决定，见 LoginReq）
+			"version": Cfg.游戏版本(),
+			# 只有「留座阶段」（选角开始之后）才有可重连这一说：准备室离席即放弃座位（见 _留座阶段）
+			"can_reenter": _留座阶段(r) and _reclaim_seat(r, conn_id) >= 0,
 		})
 	return out
 
@@ -271,19 +383,31 @@ func _room_infos(conn_id: int = -1) -> Array:
 func create_room(conn_id: int, data: Dictionary) -> void:
 	if int(_sessions[conn_id]["room_id"]) >= 0:
 		leave_room(conn_id)
+	var room: Dictionary = _建房间(data, conn_id)
+	_rooms[int(room["id"])] = room
+	enter_room(conn_id, int(room["id"]))
+	rooms_changed.emit()
+
+
+## 按建房参数造一个房间对象（不登记到 _rooms）
+func _建房间(数据: Dictionary, 房主连接: int) -> Dictionary:
 	var rid: int = _next_room_id
 	_next_room_id += 1
 	var battle: BattleEngine = BattleEngine.new()
 	battle.room_id = rid
 	var room: Dictionary = {
 		"id": rid,
-		"name": str(data.get("room_name", "房间%d" % rid)),
-		"max_player": clampi(int(data.get("max_player", 6)), 2, GConst.MAX_PLAYER),
-		"role_strategy": int(data.get("role_strategy", GConst.RoleStrategy.Random)),
-		"seat_mode": int(data.get("seat_mode", GConst.SeatMode.Random)),
-		"allow_guest": bool(data.get("allow_guest", true)),
+		"name": str(数据.get("room_name", "房间%d" % rid)).left(房名最大字符数),
+		"max_player": clampi(int(数据.get("max_player", 6)), 2, GConst.MAX_PLAYER),
+		"role_strategy": int(数据.get("role_strategy", GConst.RoleStrategy.Random)),
+		"seat_mode": int(数据.get("seat_mode", GConst.SeatMode.Random)),
+		"allow_guest": bool(数据.get("allow_guest", true)),
 		"started": false,
-		"host_conn": conn_id,
+		# 房主的身份标识：断线重连后靠它把「房主」重新绑回房主的新连接（见 enter_room）。
+		# 光留连接号不够 —— 连接一断，就再也认不出谁是房主了
+		"host_id": str(_sessions.get(房主连接, {}).get("client_id", "")),
+		# 房主的连接号：房主主动退房时据此判断「这间房该整间解散」（见 leave_room）
+		"host_conn": 房主连接,
 		"conn_of": {},          # player_id -> conn_id
 		"client_of": {},        # player_id -> 客户端身份标识（认领座位用；局域网 = 昵称，Steam = SteamID）
 		"watchers": [],         # 观战者 conn_id 列表（满员时进来的人，不占座位，可同时有多个）
@@ -293,17 +417,19 @@ func create_room(conn_id: int, data: Dictionary) -> void:
 	}
 	battle.room_name = str(room["name"])
 	battle.room_max_player = int(room["max_player"])
-	battle.room_debug = bool(data.get("debug", false))
+	battle.room_debug = bool(数据.get("debug", false))
 	battle.seat_mode = int(room["seat_mode"])
 	battle.send_cb = func(target: int, msg_type: int, fields: Dictionary) -> void:
 		_engine_send(rid, target, msg_type, fields)
-	_rooms[rid] = room
-	enter_room(conn_id, rid)
-	rooms_changed.emit()
+	return room
 
 
 func enter_room(conn_id: int, room_id: int) -> void:
 	if not _rooms.has(room_id):
+		server.send(conn_id, GConst.Msg.Error, {"id": GConst.GE_INVALID_TABLEID, "dst_id": conn_id, "args": []})
+		return
+	# 已打完的房间会在几秒内解散（见 poll）：别再让人进来对着一个已经结束的局
+	if _本局已结束(_rooms[room_id]):
 		server.send(conn_id, GConst.Msg.Error, {"id": GConst.GE_INVALID_TABLEID, "dst_id": conn_id, "args": []})
 		return
 	var room: Dictionary = _rooms[room_id]
@@ -313,16 +439,30 @@ func enter_room(conn_id: int, room_id: int) -> void:
 	# 不能走下面「先退房再进」——退房会把没人的房间销毁掉，随后这次的进房就找不到房间了
 	if int(s["room_id"]) == room_id:
 		_broadcast_game(room)
+		# 同一条连接又发了一次进房请求（断线重连最常见）：快照之外，选角请求与「当前该谁回话」
+		# 也要补发，否则他重连回来会停在准备室、看不到该自己提交的选角弹层 / 回应询问
+		var 重连pid: int = int(s.get("player_id", -1))
+		if 重连pid >= 0:
+			_补发选角请求(room, 重连pid)
+			battle.重发当前询问(重连pid)
 		return
 	if int(s["room_id"]) >= 0:
 		leave_room(conn_id)
 	# 有座位就落座；满员则作为观战者进来（不占座位，能同时有多个）
 	var pid: int = GConst.GUEST
-	var 认领: int = _reclaim_seat(room, str(s.get("client_id", "")))
+	var 认领: int = _reclaim_seat(room, conn_id)
 	if 认领 >= 0:
-		# 断线重连：认领回本进程此前在本房间的座位（对局中座位不会被移除）
+		# 认领回本进程此前在本房间的座位。
+		# 座位要是还占在自己那条旧连接上（它还没被判掉线），先把它踢掉再坐回来
 		pid = 认领
+		_踢掉占座连接(room, pid, conn_id)
 		(room["conn_of"] as Dictionary)[pid] = conn_id
+		if not _留座阶段(room):
+			# 准备室不留座：同一个人的旧连接还挂着座位时（掉线还没被判定出来 ——
+			# Steam P2P 没有底层断连事件，得等心跳回声超时），只把座位号还给他，
+			# 队伍与准备状态一律从零开始，与「离席后重新进房」的结果一致
+			battle.set_color(pid, GConst.TEAM_NONE)
+			battle.set_ready(pid, false)
 	elif battle.order.size() < int(room["max_player"]):
 		# 座位号取「当前空闲的最小号」：有人退房再进人时新玩家补进空出来的座位，
 		# 房间界面的座位图才不会因为号一直自增而串位
@@ -335,8 +475,13 @@ func enter_room(conn_id: int, room_id: int) -> void:
 		var cid: String = str(s.get("client_id", ""))
 		if cid != "":
 			(room["client_of"] as Dictionary)[pid] = cid
-	else:
+	elif (room["watchers"] as Array).size() < 观战者上限:
 		(room["watchers"] as Array).append(conn_id)
+	else:
+		# 观战席也满了：不进房（也不占座位），回一条「房间已满」让界面照常提示。
+		# 此刻会话还没绑定房间，直接返回即可（下面那句 s["room_id"] = room_id 不会执行）
+		server.send(conn_id, GConst.Msg.Error, {"id": GConst.GE_PLAYER_FULL, "dst_id": conn_id, "args": []})
+		return
 	s["room_id"] = room_id
 	s["player_id"] = pid
 	if pid == GConst.GUEST:
@@ -347,6 +492,11 @@ func enter_room(conn_id: int, room_id: int) -> void:
 	else:
 		# 进入房间（含掉线后重新进入）：清除掉线标记，恢复常规回复超时
 		battle.set_offline(pid, false)
+		# 房主本人回来了（按身份认，见 _建房间 里 host_id 的说明）：把「房主」重新绑到他这条新连接上。
+		# 断线重连后 host_conn 指着一条已经不在的连接 —— 不重绑的话，玩家列表上房主星号会消失，
+		# 而且他之后退房时不会被当成房主（那是「整间解散」的判据，见 leave_room）
+		if str(room.get("host_id", "")) != "" and str(s.get("client_id", "")) == str(room["host_id"]):
+			room["host_conn"] = conn_id
 	_broadcast_game(room)
 	if pid != GConst.GUEST:
 		# 补发必须排在快照之后：客户端是「收到快照 → 切到准备室 / 战斗界面」，
@@ -355,30 +505,43 @@ func enter_room(conn_id: int, room_id: int) -> void:
 		battle.重发当前询问(pid)
 
 
-func leave_room(conn_id: int) -> void:
+## 离开房间（掉线那条走 掉线=true，见 _on_client_disconnected）
+func leave_room(conn_id: int, 掉线: bool = false) -> void:
 	var room: Dictionary = _room_of(conn_id)
 	if room.is_empty():
 		return
 	var s: Dictionary = _sessions.get(conn_id, {})
 	var pid: int = int(s.get("player_id", -1))
+	# 房主主动走了：整间解散（房主一走，这间房就没人接着开了）。
+	# 掉线不算「走」：他多半会重连回来，房间留着（座位按下面普通离席的规则处理）
+	if not 掉线 and int(room.get("host_conn", -1)) == conn_id:
+		if pid >= 0 and pid != GConst.GUEST:
+			# 先按「准备室离席」把自己的座位摘掉：他这个连接也就脱离了房间，
+			# 不会再收到这间房随后发的那句「房间不存在」（房间正是他这次退房拆掉的）
+			_释放座位(room, pid)
+		if not s.is_empty():
+			_离房清会话(s)
+		_房主离开(room)
+		return
 	var battle: BattleEngine = room["battle"]
 	if pid == GConst.GUEST:
 		# 观战者离席：从观战名单里去掉，不涉及座位
 		(room["watchers"] as Array).erase(conn_id)
 	elif pid >= 0:
-		(room["conn_of"] as Dictionary).erase(pid)
-		if _is_battle_playing(room) or room.has("pick"):
-			# 对局中 / 选角中：座位不可移除 —— 引擎状态机、等待对象、选角候选表都按座位号指着他，
+		if _留座阶段(room):
+			# 选角中 / 对局中：座位不可移除 —— 引擎状态机、等待对象、选角候选表都按座位号指着他，
 			# 保留座位并标记掉线；他回来时凭身份认领回同一个座位（选角能接着选，对局接着打）
+			(room["conn_of"] as Dictionary).erase(pid)
 			battle.set_offline(pid, true)
 			# 选角期间掉线：其余人都提交完就直接收尾，别让大家干等满 30 秒
 			_on_pick_player_left(room, pid)
+			print("[座位] 玩家 %d 对局中离席：座位与身份保留（身份=%s）" % [
+				pid, str((room["client_of"] as Dictionary).get(pid, ""))])
 		else:
-			battle.remove_player(pid)
-			# 准备室里离席：座位与身份绑定一并清除（未开局离席即放弃这个座位，回来重新落座）
-			(room["client_of"] as Dictionary).erase(pid)
-	s["room_id"] = -1
-	s["player_id"] = -1
+			# 准备室：座位与身份绑定一并清除（未开局离席即放弃这个座位，回来按新玩家重新落座）
+			_释放座位(room, pid)
+			print("[座位] 玩家 %d 准备室离席：座位与身份一并清除" % pid)
+	_离房清会话(s)
 	_同步观战者名单(room)
 	# 房间内已无在线玩家、也没有观战者：对局无从继续也无人在看，直接销毁房间
 	if (room["conn_of"] as Dictionary).is_empty() and (room["watchers"] as Array).is_empty():
@@ -388,6 +551,46 @@ func leave_room(conn_id: int) -> void:
 	else:
 		_broadcast_game(room)
 		rooms_changed.emit()
+
+
+## 房主主动离开：整间解散 —— 房主一走，这间房就没人接着开了（客户端各自回大厅）。
+## 对局中被强拆时额外公告一句，让房里的人知道不是自己的问题。
+func _房主离开(room: Dictionary) -> void:
+	if _is_battle_playing(room):
+		_broadcast_raw(room, GConst.Msg.Gossip, {
+			"type": GConst.GossipType.Notice,
+			"txt": "房主已离开，本局被迫结束",
+			"id": 0,
+		})
+	_解散房间(room)
+
+
+## 解散房间：把还留在房里的人（座位玩家 + 观战者）统统请回大厅，然后销毁房间。
+## 用在哪：① 房主主动退房（见 leave_room / _房主离开）；② 一局打完（见 poll）。
+## 主动退房那位不进这个循环：他的座位与连接在 leave_room 里已经摘掉，房间正是他这次退房拆掉的，
+## 不该再回他一句「房间不存在」（见 leave_room 的房主分支）。
+func _解散房间(room: Dictionary) -> void:
+	for cid: int in _房间接收者(room):
+		var s: Dictionary = _sessions.get(cid, {})
+		if not s.is_empty():
+			_离房清会话(s)
+		# 房间已不存在：客户端据此清掉房间上下文、回大厅（见 client_logic 对 GE_INVALID_TABLEID 的处理）
+		server.send(cid, GConst.Msg.Error, {"id": GConst.GE_INVALID_TABLEID, "dst_id": cid, "args": []})
+	_解绑房间(room)
+	_rooms.erase(int(room["id"]))
+	rooms_changed.emit()
+
+
+## 离开房间（或房间被解散）时清掉会话里的房间上下文：房间号 / 座位号，以及心跳状态。
+## 心跳状态也要清：不清的话它会在下一次进房时被当成「等了很久都没回音」而立刻判掉线
+## （见 _推心跳）；顺带也让重新进房时延迟重新测（先显示「测量中」）
+func _离房清会话(s: Dictionary) -> void:
+	s["room_id"] = -1
+	s["player_id"] = -1
+	s["ping_sent_ms"] = 0
+	s["ping_last_ms"] = 0
+	s["ping_since_ms"] = 0
+	s["ping_ms"] = GConst.PING_未测
 
 
 func _解绑房间(room: Dictionary) -> void:
@@ -401,19 +604,35 @@ func _解绑房间(room: Dictionary) -> void:
 	battle._进度表.clear()
 
 
-## 断线重连认领座位：找出本房间内属于该身份标识、且当前无连接占用的座位（无则 -1）
-func _reclaim_seat(room: Dictionary, client_id: String) -> int:
+## 断线重连认领座位：找出本房间内属于该连接身份的座位（无则 -1）。
+## 只按身份判 —— 座位表里的身份是唯一的，同身份就是同一个人，他那个座位就该还给他。
+## 注意：身份由客户端自报、服务端不校验（本作不防改包）。局域网模式下的身份就是昵称，
+## 所以同机多开测试时重名会互相认领座位、甚至把对方踢掉（见 _踢掉占座连接）——
+## 那是调试用的测试模式，正常玩家走 Steam（身份是 SteamID，撞不上）。
+## 房间列表的「可重连」也用它，所以这里必须是纯查询，不能顺手去踢连接（踢连接见 _踢掉占座连接）。
+func _reclaim_seat(room: Dictionary, conn_id: int) -> int:
+	var client_id: String = str(_sessions.get(conn_id, {}).get("client_id", ""))
 	if client_id == "":
 		return -1
-	var client_of: Dictionary = room["client_of"]
-	var conn_of: Dictionary = room["conn_of"]
-	for pid: int in client_of.keys():
-		if str(client_of[pid]) != client_id:
-			continue
-		if conn_of.has(pid):
-			continue
-		return int(pid)
+	for pid: Variant in (room["client_of"] as Dictionary).keys():
+		if str(room["client_of"][pid]) == client_id:
+			return int(pid)
 	return -1
+
+
+## 座位还占在一条旧连接上时（掉线刚回来、旧连接还没被判掉线的那个窗口）把它踢掉。
+## 必须先清旧连接的会话再断开它 —— 顺序不能反：直接断开会连锁触发 leave_room，
+## 而那时座位已经归新连接了，leave_room 会按旧会话的座位号把新连接的座位一起删掉。
+## 只有身份对得上才会走到这里，所以踢掉的确实是「同一个人那半死不活的旧连接」。
+func _踢掉占座连接(room: Dictionary, pid: int, conn_id: int) -> void:
+	var 占座: int = int((room["conn_of"] as Dictionary).get(pid, -1))
+	if 占座 < 0 or 占座 == conn_id:
+		return
+	var s: Dictionary = _sessions.get(占座, {})
+	if not s.is_empty():
+		_离房清会话(s)
+	print("[座位] 抢占座位 %d：踢掉还占着它的旧连接 %d" % [pid, 占座])
+	server.close_conn(占座)
 
 
 func join_team(conn_id: int, team: int) -> void:
@@ -557,12 +776,30 @@ func _开始本局(room: Dictionary, battle: BattleEngine) -> void:
 
 
 func _talk(conn_id: int, txt: String) -> void:
+	# 长度按服务端上限截断：这段文本会广播给房内所有人，客户端输入框的限制挡不住改包
+	txt = txt.left(聊天最大字符数)
 	if txt.strip_edges() == "":
 		return
 	var room: Dictionary = _room_of(conn_id)
 	if room.is_empty():
 		return
-	_broadcast_raw(room, GConst.Msg.Gossip, {"type": GConst.GossipType.Talk, "txt": txt, "id": int(_sessions[conn_id]["player_id"])})
+	# 发言者的显示名由服务端拼好，格式统一「昵称[补充]」：
+	#   · 座位玩家 —— 补充是角色名（准备室里还没选到角色就不带方括号）；
+	#   · 观战者 —— 补充是「观战」。
+	# 为什么不让客户端自己拼：观战者不在玩家表里，客户端拿 id 反查不到人（原来会显示成「9：…」）
+	var s: Dictionary = _sessions[conn_id]
+	var pid: int = int(s["player_id"])
+	var 昵称: String = str(s["nickname"])
+	var 补充: String = "观战"
+	if pid != GConst.GUEST:
+		var 玩家: BattlePlayer = (room["battle"] as BattleEngine).players.get(pid)
+		补充 = Data.role_name(玩家.role_id) if 玩家 != null and 玩家.role_id > 0 else ""
+	_broadcast_raw(room, GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Talk,
+		"txt": txt,
+		"id": pid,
+		"name": 昵称 if 补充 == "" else "%s[%s]" % [昵称, 补充],
+	})
 
 
 # ============================================================
@@ -696,7 +933,10 @@ func _finish_pick_candidates(room: Dictionary) -> void:
 	var pick: Dictionary = room["pick"]
 	var battle: BattleEngine = room["battle"]
 	if battle.order.size() < 2:
+		# 人不够（选角期间走光了）：取消选角并广播一次，别让还留着的人停在「等待选角」那一层
 		room.erase("pick")
+		battle.room_picking = false
+		_broadcast_game(room)
 		return
 	var 角色表: Dictionary = _分配角色(
 		battle.order, pick["candidates"], pick["picked"], pick["pool"], _任选模式(room))
@@ -857,6 +1097,9 @@ func _推送观战快照(room: Dictionary, 现在: int) -> void:
 func _broadcast_game(room: Dictionary) -> void:
 	var battle: BattleEngine = room["battle"]
 	_同步连接质量(room)
+	# 房主座位号跟着快照下发（客户端「玩家列表」据此给房主标星号）：
+	# 由 host_conn 反查一次（见 _房主座位），不在别处再维护一份冗余状态
+	battle.host_seat = _房主座位(room)
 	for pid: int in (room["conn_of"] as Dictionary).keys():
 		var cid: int = int((room["conn_of"] as Dictionary)[pid])
 		server.send(cid, GConst.Msg.Game, battle.game_info(pid))
@@ -867,18 +1110,71 @@ func _broadcast_game(room: Dictionary) -> void:
 
 ## Steam 模式：房主把自己房间的实况写进 Steam 大厅数据，别人在房间列表上就能看到人数与状态，
 ## 加入方也靠其中的「房间号」发进房请求（Steam 大厅号与服务端房间号是两回事）。
-## 本地模式不碰 Steam，直接返回。
+## 本地调试 / 局域网模式不碰 Steam，直接返回。
+## 这里做两件事控制写入量（对局快照每次刷新都会走到这里，而 Steam 对大厅数据更新有限流）：
+##   ① 内容没变就不写；② 变得太密先攒着，由 _推大厅数据 到点补写（最后一次变化一定送得出去）。
 func _同步大厅数据(room: Dictionary) -> void:
-	if Cfg.本地模式:
+	if Cfg.无Steam():
 		return
 	var battle: BattleEngine = room["battle"]
-	SteamNet.同步房间数据(
-		int(room["id"]),
-		_统计在线人数(battle),
-		battle.order.size(),
-		(room["watchers"] as Array).size(),
-		bool(room["started"])
-	)
+	# 「留了座位的身份」= 本房每个座位记着的身份（对局中离席/掉线的座位也还在表里），
+	# 写进大厅数据供加入方判断「这间还留着我的座位」（Steam 模式下房间列表只能靠这份共享数据）
+	var 留座身份: PackedStringArray = PackedStringArray()
+	for 身份: Variant in (room["client_of"] as Dictionary).values():
+		留座身份.append(str(身份))
+	var 房间号: int = int(room["id"])
+	var 在线人数: int = _统计在线人数(battle)
+	var 座位数: int = battle.order.size()
+	var 观战人数: int = (room["watchers"] as Array).size()
+	var 进行中: bool = bool(room["started"])
+	var 数据: String = "%d|%d|%d|%d|%s|%s" % [房间号, 在线人数, 座位数, 观战人数,
+		"1" if 进行中 else "0", ",".join(留座身份)]
+	# 内容一样、而且写的还是同一个大厅 → 不用写。
+	# 大厅号也要比：Steam 掉线重连会新建一个空大厅，内容虽然一样也得重写一遍
+	if 数据 == _大厅已写数据 and SteamNet.大厅id == _大厅已写大厅id:
+		# 又变回「已经写出去的那个状态」了：欠着的那份已经过期，撤销（否则会把过时数据补写出去）
+		_大厅待写.clear()
+		return
+	_大厅待写 = {
+		"数据": 数据,
+		"房间号": 房间号,
+		"在线人数": 在线人数,
+		"座位数": 座位数,
+		"观战人数": 观战人数,
+		"进行中": 进行中,
+		"留座身份": 留座身份,
+	}
+	_推大厅数据()
+
+
+## 把攒着的大厅数据写到 Steam（到写入间隔才真写）。由 poll 每帧调用
+func _推大厅数据() -> void:
+	if _大厅待写.is_empty():
+		return
+	# 房间已经没了（解散 / 退房）：这份数据作废。
+	# 必须清掉：留着的话它会一直往回写「本房房间号」，Steam 掉线重连时就会照着一个
+	# 已经不存在的房号把大厅重新开出来（见 SteamNet._重开大厅）
+	if not _rooms.has(int(_大厅待写["房间号"])):
+		_大厅待写.clear()
+		return
+	var 现在: int = Time.get_ticks_msec()
+	if 现在 - _大厅写入时刻_ms < 大厅写入间隔_ms:
+		return
+	var 身份: PackedStringArray = _大厅待写["留座身份"]
+	if not SteamNet.同步房间数据(
+		int(_大厅待写["房间号"]),
+		int(_大厅待写["在线人数"]),
+		int(_大厅待写["座位数"]),
+		int(_大厅待写["观战人数"]),
+		bool(_大厅待写["进行中"]),
+		身份
+	):
+		# 大厅还没建好（建房是异步的）：留着这份，等大厅建好后的下一拍再写
+		return
+	_大厅写入时刻_ms = 现在
+	_大厅已写数据 = str(_大厅待写["数据"])
+	_大厅已写大厅id = SteamNet.大厅id
+	_大厅待写.clear()
 
 
 func _room_of(conn_id: int) -> Dictionary:

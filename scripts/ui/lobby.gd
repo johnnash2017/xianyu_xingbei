@@ -12,6 +12,9 @@ const 刷新间隔_steam: float = 2.0
 ## 状态栏默认提示
 const 通用提示: String = "双击房间或点「进入选中房间」加入；没有房间就点「创建房间」"
 
+## 版本和我不一样的房间：整行淡灰（点得动，点了会弹「谁旧谁更新」的提示）
+const 版本不同色: Color = Color(0.55, 0.55, 0.55)
+
 ## 上次开房选的人数 / 选角，记在共享配置里（Cfg.shared_set / shared_get）：
 ## 多开的几个窗口共用同一份，重开也还在。键名与摆位参数（layout_*）同一段，都在 [shared]。
 const 共享键_人数: String = "room_max_player"
@@ -48,15 +51,28 @@ const 未记录: int = 0
 @export var 观战确认层: Control
 @export var 观战是按钮: Button
 @export var 观战否按钮: Button
+## 版本不一致的提示弹层（列表里的版本一比对到不同就直接弹；服务端登录时还会再拦一次）
+@export var 版本提示层: Control
+@export var 版本提示文本: Label
+@export var 版本确定按钮: Button
+## 画面中间底部的版本号（与登录界面同一处显示自己这一版）
+@export var 版本标签: Label
 
 var _room_ids: Array[int] = []
 ## 与 _room_ids 一一对应：该房间是不是已满（已满的房间点进去要先问「是否观战」）
 var _room_full: Array[bool] = []
 ## 与 _room_ids 一一对应：该房间还留着我的座位吗（对局中退出/掉线会留座，重进直接坐回去）
 var _room_reenter: Array[bool] = []
+## 与 _room_ids 一一对应：该房间的房主版本号（版本不同 → 整行淡灰，点了会弹提示）
+var _room_version: Array[String] = []
 ## 正在问「是否观战」的房间号（-1 = 没在问）
 var _待观战房间: int = -1
 var _刷新计时: float = 0.0
+## 局域网联机：还没连上房主时，列表显示「发现的主机」（点一下连过去）；
+## _主机列表 每项 {地址, 端口, 名称}，_主机列表版本 变一次就要重画一次列表
+var _主机列表: Array[Dictionary] = []
+var _主机列表版本: int = 0
+var _已渲染主机版本: int = -1
 
 
 func _ready() -> void:
@@ -72,8 +88,9 @@ func _ready() -> void:
 	Logic.notice_received.connect(_on_gossip)
 	_初始化房间列表()
 	房间列表.item_activated.connect(_on_room_activated)
-	# 昵称只在「本地调试」下标出来（多开时靠它区分窗口）；Steam 模式是正式界面，不显示
-	标题栏.text = ("房间列表（局域网·本地调试）　昵称：%s" % Cfg.nickname) if Cfg.本地模式 else "房间列表"
+	# 昵称在「不用 Steam」的两种模式下都标出来（多开时靠它区分窗口，局域网联机时便于认人）
+	标题栏.text = _标题文字()
+	版本标签.text = "版本 %s" % Cfg.游戏版本()
 	进入按钮.pressed.connect(func() -> void: _点了(_on_join_pressed))
 	刷新按钮.pressed.connect(func() -> void: _点了(_on_refresh_pressed))
 	创建房间按钮.pressed.connect(func() -> void: _点了(_on_open_create_pressed))
@@ -83,15 +100,33 @@ func _ready() -> void:
 	取消创建按钮.pressed.connect(func() -> void: _点了(_on_close_create_pressed))
 	观战是按钮.pressed.connect(func() -> void: _点了(_on_watch_yes_pressed))
 	观战否按钮.pressed.connect(func() -> void: _点了(_on_watch_no_pressed))
+	版本确定按钮.pressed.connect(func() -> void: _点了(_on_version_ok_pressed))
 	_恢复建房选项()
+	# 局域网联机：进来先搜同一网段里的房主（Steam 房主的房间也在广播之列，见 Net.开始局域网广播），
+	# 还没连上之前列表列的就是这些主机
+	if Cfg.局域网模式:
+		Net.discovery.host_found.connect(_on_host_found)
+		Net.search_lan()
 	Logic.request_room_list()
-	设状态(通用提示)
+	# 状态栏文案按模式给：局域网联机多一句「选一台主机连上去」
+	设状态("双击主机或点「进入选中房间」连上去；也可以点「创建房间」在本机开房" if Cfg.局域网模式 else 通用提示)
 	UI.刷新Steam状态(Steam状态)
 
 
 func _exit_tree() -> void:
+	if Cfg.局域网模式:
+		Net.stop_search()
 	if Logic.lobby == self:
 		Logic.lobby = null
+
+
+## 标题栏文字：不用 Steam 的两种模式下带上昵称（便于分辨窗口 / 认人），Steam 模式是正式界面，不带
+func _标题文字() -> String:
+	if Cfg.本地模式:
+		return "房间列表（局域网·本地调试）　昵称：%s" % Cfg.nickname
+	if Cfg.局域网模式:
+		return "房间列表（局域网）　昵称：%s" % Cfg.nickname
+	return "房间列表"
 
 
 ## 按钮统一：先出点击音，再跑各自的处理
@@ -109,14 +144,59 @@ func 设状态(t: String) -> void:
 # ============================================================
 func _process(delta: float) -> void:
 	UI.刷新Steam状态(Steam状态)
+	# 局域网联机还没连上房主：列表这一会儿列的是「发现的主机」，不用去问房间列表
+	if _处于主机列表模式():
+		_渲染主机列表()
+		return
 	_刷新计时 -= delta
 	if _刷新计时 <= 0.0:
-		_刷新计时 = 刷新间隔_steam if not Cfg.本地模式 else 刷新间隔
+		_刷新计时 = 刷新间隔_steam if not Cfg.无Steam() else 刷新间隔
 		Logic.request_room_list()
 
 
+## 局域网联机、且还没连上任何房主：列表用来列「发现的主机」
+func _处于主机列表模式() -> bool:
+	return Cfg.局域网模式 and not Net.is_connected_to_host()
+
+
+## 发现一台局域网房主：记进列表（同一台只记一次），下帧重画
+func _on_host_found(地址: String, 端口: int, _房间数: int, 房主名: String, 版本: String) -> void:
+	for h: Dictionary in _主机列表:
+		if str(h["地址"]) == 地址 and int(h["端口"]) == 端口:
+			return
+	_主机列表.append({"地址": 地址, "端口": 端口, "名称": 房主名, "版本": 版本})
+	_主机列表版本 += 1
+
+
+## 主机列表套用房间列表那套行结构（列名 / 列宽 / 配色完全复用），只是内容换成「发现的主机」。
+## 行的 metadata 用负数编号，避免和真实房间号（正数）撞上导致刷新后选中错行。
+func _渲染主机列表() -> void:
+	if _已渲染主机版本 == _主机列表版本:
+		return
+	_已渲染主机版本 = _主机列表版本
+	var 各行: Array[Dictionary] = []
+	for i: int in range(_主机列表.size()):
+		var h: Dictionary = _主机列表[i]
+		# 版本来自发现应答；同机 TCP 探测拿不到版本（空串）→ 按「—」显示
+		var 版本: String = str(h.get("版本", ""))
+		各行.append({
+			"id": -1 - i,
+			"列": PackedStringArray([
+				" 可加入 ", " — ",
+				" %s 的房间（局域网 %s）" % [str(h["名称"]), str(h["地址"])],
+				" 无观战 ", " %s " % (版本 if 版本 != "" else "—"), " "]),
+			"悬停": "点击连上这台房主（%s:%d）" % [str(h["地址"]), int(h["端口"])],
+			"已满": false,
+			"可重连": false,
+			"战斗中": false,
+			"版本": 版本,
+			"版本不同": _版本不同(版本),
+		})
+	_填行(各行)
+
+
 ## 列表的列：表头文字（顺序即列序）。用 Tree 的列头显示
-const 列表列名: PackedStringArray = ["状态", "人数", "房间名", "观战", "选项"]
+const 列表列名: PackedStringArray = ["状态", "人数", "房间名", "观战", "版本", "选项"]
 ## 「房间名」所在列（吃掉多余空间的就这一列；列头文字、悬停、列宽都按它定位）
 const 列_房间名: int = 2
 
@@ -146,16 +226,24 @@ func _初始化房间列表() -> void:
 
 
 func _fill(rooms: Array) -> void:
-	# 先记住原来选中的是哪间房（列表每 2 秒刷一次，刷完要还回去）
+	# 有真实房间可列了 → 主机列表下次要重画（见 _渲染主机列表）
+	_已渲染主机版本 = -1
+	# 先把每间房那一行的数据算出来（建列宽要用到，得先有全部内容）
+	var 各行: Array[Dictionary] = []
+	for r: Dictionary in rooms:
+		各行.append(_房间行(r))
+	_填行(各行)
+
+
+## 把算好的行画进列表。房间列表与「发现的主机」列表共用这一段（列宽 / 着色 / 选中还原都一样）
+func _填行(各行: Array[Dictionary]) -> void:
+	# 先记住原来选中的是哪一行（列表每 2 秒刷一次，刷完要还回去）
 	var 上次选中号: int = _选中房号()
 	房间列表.clear()
 	_room_ids.clear()
 	_room_full.clear()
 	_room_reenter.clear()
-	# 先把每间房那一行的数据算出来（建列宽要用到，得先有全部内容）
-	var 各行: Array[Dictionary] = []
-	for r: Dictionary in rooms:
-		各行.append(_房间行(r))
+	_room_version.clear()
 	_调整列宽(各行)
 	var 根: TreeItem = 房间列表.create_item()   # hide_root=true：根不显示，只当所有房间的父节点
 	for 行: Dictionary in 各行:
@@ -168,13 +256,16 @@ func _fill(rooms: Array) -> void:
 		var 悬停: String = str(行["悬停"])
 		if 悬停 != "":
 			项.set_tooltip_text(列_房间名, 悬停)
-		if bool(行["可重连"]):
+		if bool(行.get("版本不同", false)):
+			_整行着色(项, 版本不同色)
+		elif bool(行["可重连"]):
 			_整行着色(项, Color(0.55, 0.85, 0.95))
 		elif bool(行["战斗中"]):
 			_整行着色(项, Color(0.85, 0.8, 0.5))
 		_room_ids.append(int(行["id"]))
 		_room_full.append(bool(行["已满"]))
 		_room_reenter.append(bool(行["可重连"]))
+		_room_version.append(str(行.get("版本", "")))
 	if 上次选中号 >= 0:
 		_选中房(上次选中号)
 
@@ -238,6 +329,8 @@ func _房间行(r: Dictionary) -> Dictionary:
 	var 可重连: bool = bool(r.get("can_reenter", false))
 	var 战斗中: bool = bool(r.get("playing", false))
 	var 房间状态: String = "可重连" if 可重连 else ("战斗中" if 战斗中 else "等待中")
+	# 房主版本号：列表里显示出来，方便一眼看出「这间是别的版本」（拿不到就按「—」显示）
+	var 版本: String = str(r.get("version", ""))
 	# 建房设置：选角模式 / 座位规则 /（开了才有的）作弊。直接空开显示在行尾，
 	# 悬停再给带标签的全称 —— 房间列表每行是单行文本、字号又大，摊开写会把房间名挤出去
 	var 设置: PackedStringArray = PackedStringArray()
@@ -258,11 +351,14 @@ func _房间行(r: Dictionary) -> Dictionary:
 		# 每列前后各留一个空格：列与列之间、以及最外侧与列边之间都有呼吸空间
 		"列": PackedStringArray([
 			" %s " % 房间状态, " %d/%d " % [现在, 上限], " %s " % str(r.get("room_name", "")),
-			" 观战 %d " % 观战, " %s " % "　".join(设置)]),
+			" 观战 %d " % 观战, " %s " % (版本 if 版本 != "" else "—"),
+			" %s " % "　".join(设置)]),
 		"悬停": "　".join(悬停),
 		"已满": 已满,
 		"可重连": 可重连,
 		"战斗中": 战斗中,
+		"版本": 版本,
+		"版本不同": _版本不同(版本),
 	}
 
 
@@ -275,13 +371,28 @@ func _on_join_pressed() -> void:
 	if 项 == null:
 		设状态("请先在列表里点一个房间，再点「进入选中房间」")
 		return
+	# 局域网联机还没连上房主时，列表里是「发现的主机」：这一下是连过去，不是进房
+	if _处于主机列表模式():
+		var 主机下标: int = 项.get_index()
+		if 主机下标 < 0 or 主机下标 >= _主机列表.size():
+			return
+		var 主机: Dictionary = _主机列表[主机下标]
+		# 版本不同的房主不入：列表里就有对方版本，直接按「谁低」弹提示，不必真去连它
+		if _版本不同就弹窗(str(主机.get("版本", ""))):
+			return
+		设状态("正在连接局域网房主 %s:%d …" % [str(主机["地址"]), int(主机["端口"])])
+		Net.join_game(str(主机["地址"]), int(主机["端口"]))
+		return
 	# 行的下标就是房号（所有房行都挂在隐藏的根下，顺序与 _room_ids 一致）
 	var idx: int = 项.get_index()
 	if idx < 0 or idx >= _room_ids.size():
 		return
-	if not Net.is_connected_to_host():
-		设状态("已与房主断开连接，正在重连…")
+	# 版本不同同理：用列表里的版本先判，不真去连
+	if _版本不同就弹窗(_版本行(idx)):
 		return
+	# 这里刻意不判「还连着没有」：本机可能处于「无连接」的待机状态（待机连接没建立起 /
+	# 重连失败之后），而进房这条路自己会先把待机摆回来、把连接建起来（见 Logic.enter_room）；
+	# 真进不去时由 Logic 把原因写进状态栏
 	# 满员的房间：这间房还留着我的座位就直接坐回去（对局中退出/掉线会保留座位），
 	# 没留我的座位才问要不要以观战身份进去
 	if idx < _room_full.size() and _room_full[idx] and not _可重连(idx):
@@ -330,6 +441,13 @@ func _on_watch_no_pressed() -> void:
 
 
 func _on_refresh_pressed() -> void:
+	# 局域网联机还没连上房主时，「刷新」= 重新搜一遍网段（顺手丢掉陈旧的主机，免得全留在列表里）
+	if _处于主机列表模式():
+		_主机列表.clear()
+		_主机列表版本 += 1
+		Net.search_lan()
+		设状态("已重新搜索局域网房主")
+		return
 	Logic.request_room_list()
 	设状态("已请求刷新房间列表")
 
@@ -352,7 +470,23 @@ func _on_close_create_pressed() -> void:
 
 
 func _on_create_pressed() -> void:
-	if not Net.is_connected_to_host():
+	# 局域网联机还没连上任何房主时，「创建房间」的含义是「本机当房主」：
+	# 起局域网监听 + 向网段广播（别人就搜得到），等自己的客户端连上本机服务端再照常发建房请求
+	if Cfg.局域网模式 and not Net.is_connected_to_host():
+		创建层.visible = false
+		设状态("正在本机开房…")
+		if not Net.host_game():
+			设状态("本机开房失败：端口被占用")
+			return
+		var 计时: float = 0.0
+		while 计时 < 6.0 and not Net.is_connected_to_host():
+			await get_tree().create_timer(0.1).timeout
+			计时 += 0.1
+	# 只有局域网联机「本机开房」这一支需要在这里收尾（上面那 6 秒没连上就是失败了）。
+	# Steam / 本地调试不能在这里拦：本机可能处于「无连接待机」（待机连接没建立起 / 重连失败），
+	# 建房要先按模式把待机摆回来 —— 那件事交给 Logic.create_room 做（见它的 _补齐待机连接），
+	# 它会补连接并把失败原因写进状态栏
+	if Cfg.局域网模式 and not Net.is_connected_to_host():
 		设状态("已与房主断开连接，无法建房")
 		return
 	var 房名: String = 房名输入.text.strip_edges()
@@ -405,10 +539,59 @@ func _选中按元数据(组: ButtonGroup, 键: String, 值: int) -> void:
 # 服务端回执
 # ============================================================
 func _on_error(err_id: int, msg: String) -> void:
+	# 版本不一致：房主在登录时就拒绝了，这里弹窗说清是谁旧 —— 然后断开与它的连接
+	# （不断开的话客户端会一直自动重连、反复被拒，弹窗也会反复弹）
+	if err_id == GConst.GE_VERSION_PEER_LOW or err_id == GConst.GE_VERSION_PEER_HIGH:
+		_弹版本提示并断开(msg)
+		return
 	设状态("错误：%s" % msg)
 	# 房间可能已经被房主解散（列表是 2 秒前的快照）→ 立刻刷新一次，别让玩家反复点空房间
 	if err_id == GConst.GE_INVALID_TABLEID or err_id == GConst.GE_PLAYER_FULL:
 		Logic.request_room_list()
+
+
+# ============================================================
+# 版本不一致的提示弹层
+# ============================================================
+## 这间房的房主版本和我不一样？（空串 = 拿不到版本，不参与判断）
+func _版本不同(房主版本: String) -> bool:
+	return 房主版本 != "" and 房主版本 != Cfg.游戏版本()
+
+
+## 第 idx 行那间房的房主版本（越界给空串）
+func _版本行(idx: int) -> String:
+	return _room_version[idx] if idx >= 0 and idx < _room_version.size() else ""
+
+
+## 版本不同就别真去连了：列表里的版本是房主自己写上去的，直接按「谁低」弹提示。
+## （服务端登录时还会再判一次，那一层是挡改包硬进的兜底）
+func _版本不同就弹窗(房主版本: String) -> bool:
+	if not _版本不同(房主版本):
+		return false
+	if GConst.版本比较(Cfg.游戏版本(), 房主版本) < 0:
+		_弹版本提示("版本号过低，请更新游戏")
+	else:
+		_弹版本提示("对方版本号过低")
+	return true
+
+
+## 版本不同：弹窗说明谁旧谁更新。只负责显示，不动连接
+func _弹版本提示(文本: String) -> void:
+	版本提示文本.text = 文本
+	版本提示层.visible = true
+
+
+## 版本不同、而且已经连上对方了（服务端登录时拒的）：弹窗 + 断开那条连接 + 把待机状态摆回来。
+## 不断开会自动重连、反复被拒、弹窗反复弹；不摆回待机则会卡在「已与房主断开连接，无法建房」
+func _弹版本提示并断开(文本: String) -> void:
+	_弹版本提示(文本)
+	Logic.leave_room()
+	Net.回到待机()
+
+
+func _on_version_ok_pressed() -> void:
+	版本提示层.visible = false
+	设状态("更新游戏后重试，或换一间同版本的房间")
 
 
 func _on_gossip(txt: String, _kind: int = 0) -> void:
@@ -416,6 +599,6 @@ func _on_gossip(txt: String, _kind: int = 0) -> void:
 
 
 func _on_back_pressed() -> void:
-	Logic.leave_room()
-	Net.idle()
+	# 退房请求要先送出去、连接再断：Logic 里延后处理（见 回登录界面）
+	Logic.回登录界面()
 	UI.goto_enter()

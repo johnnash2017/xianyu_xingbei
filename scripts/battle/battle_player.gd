@@ -507,8 +507,9 @@ func base_v_extract(args: Array, team_gem: int, team_crystal: int) -> int:
 
 
 ## 这名玩家到服务端（房主）这一路的往返延迟（毫秒）：由服务端心跳测出后写进来，
-## 跟着快照下发给所有人（观战者也看得到，见「玩家列表」的右侧一列）
-var ping_ms: int = 0
+## 跟着快照下发给所有人（观战者也看得到，见「玩家列表」的右侧一列）。
+## 未被测出时是哨兵值 GConst.PING_未测 —— 不能拿 0 当未测：房主自己那一路是 0ms
+var ping_ms: int = GConst.PING_未测
 
 
 ## 序列化为 SinglePlayerInfo 字段字典

@@ -500,7 +500,7 @@ func p_harm_end(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			# 要弃 2 张同系手牌（校验里 cards.size() != 2 且两张必须同系）：
 			# need_card 必须是 2，并让客户端只让同系牌可点
-			询问(player.id, CHEN_LUN_XIE_ZOU_QU, 2, 1, GConst.CardSource.Hand, [], 0, "same")
+			询问(player.id, CHEN_LUN_XIE_ZOU_QU, 2, 1, GConst.CardSource.Hand, [], 0, "same", [], true, 0, -1, enemy_ids())
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		_chen_lun_step = 0
@@ -527,17 +527,22 @@ func p_harm_end(ctx: Dictionary) -> int:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": use_cards, "is_real": true,
 		})
+		var 打出伤害: bool = false
 		if 有法术牌:
-			engine.push_harm({
-				"src": player.id, "dst": int(dsts[0]), "point": 1,
-				"cause": CHEN_LUN_XIE_ZOU_QU, "type": GConst.HarmType.Magic,
-			})
+			# 目标必须是场上的对手（说明写「对目标对手」；改包点了队友就不结算这 1 点伤害）
+			var 伤害目标: BattlePlayer = engine.p(int(dsts[0]))
+			if 伤害目标 != null and 伤害目标.color != player.color:
+				engine.push_harm({
+					"src": player.id, "dst": int(dsts[0]), "point": 1,
+					"cause": CHEN_LUN_XIE_ZOU_QU, "type": GConst.HarmType.Magic,
+				})
+				打出伤害 = true
 		engine.take_from_hand(player.id, use_cards, true)
 		engine.to_discard(use_cards)
 		# 技能描述：弃完 2 张同系牌【展示】之后「你+1【灵感】」（以描述为准，先加再结算伤害）
 		_set_ling_gan(_ling_gan() + 1)
 		engine._broadcast_game()
-		if 有法术牌:
+		if 打出伤害:
 			return URGENT
 	return SUCCESS
 

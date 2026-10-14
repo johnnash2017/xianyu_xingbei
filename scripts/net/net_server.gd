@@ -47,8 +47,13 @@ func poll() -> void:
 		c.tcp = tcp
 		_conns[c.id] = c
 		client_connected.emit(c.id)
-	# 再统一轮询
+	# 再统一轮询。
+	# 遍历用的是 keys() 的快照，但处理消息时上层可能顺手踢掉别的连接
+	# （如「抢占座位」会把还占着座位的旧连接关掉，见 LocalServer._踢掉占座连接），
+	# 字典会在遍历中变小 —— 所以每条访问前先确认它还在
 	for cid: int in _conns.keys():
+		if not _conns.has(cid):
+			continue
 		var c: Conn = _conns[cid]
 		c.tcp.poll()
 		if c.tcp.get_status() != StreamPeerTCP.STATUS_CONNECTED:
@@ -80,6 +85,8 @@ func send(conn_id: int, msg_type: int, fields: Dictionary) -> void:
 		return
 	var body: PackedByteArray = ProtoCodec.encode(msg_type, fields)
 	var frame: PackedByteArray = Framing.pack(msg_type, body)
+	if frame.is_empty():
+		return    # 帧过大：Framing 已报错，这里不发出坏帧
 	c.tcp.put_data(frame)
 
 

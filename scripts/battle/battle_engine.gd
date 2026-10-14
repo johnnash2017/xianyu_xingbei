@@ -55,6 +55,9 @@ var first_id: int = -1
 var round_id: int = 1
 var phase: int = Phase.Idle
 var winner: int = -1
+## 房主坐在哪个座位上（-1 = 没记录）：客户端据此在「玩家列表」里给房主标个星号。
+## 房主是房间层面的概念，引擎自己不知道，由 LocalServer 每次广播前塞进来（见 LocalServer._房主座位）
+var host_seat: int = -1
 
 ## 队伍数值，下标为颜色（0 蓝 / 1 红）
 var team_morale: Array[int] = [0, 0]
@@ -133,6 +136,11 @@ var _pending_args: Array = []
 ## 本次询问是不是「是否发动某技能」的技能询问（ask_skill=true / ask_respond=false）：
 ## 超时兜底要按它区分「技能询问」与应战、弃牌之类的通用应答，而不是靠询问号的大小去猜
 var _pending_is_skill: bool = false
+## 本次技能询问「能不能取消」「要选几名目标」「合法目标白名单」：超时兜底要据此判断
+## 「不许回取消」以及「从谁里面随机挑目标」（如【念弹】：问之前就已记上 +1【斗气】，不能白拿）
+var _pending_skill_can_cancel: bool = true
+var _pending_skill_need_target: int = 0
+var _pending_skill_targets: Array = []
 ## 本次询问已收到的「分步应答」（客户端带 partial 标记的消息，如【剑气斩】在弹窗里选好「移除几点剑气」）：
 ## 只记下这一步的选择、不算最终回复；超时时若已收到它就据此继续（选好数量后超时＝自动释放），
 ## 没收到就按空回复处理（弹窗还没选就超时＝取消）
@@ -341,7 +349,7 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 	round_id = 1
 	phase = Phase.Playing
 	winner = -1
-	var base_morale: int = GConst.MORALE_8P if order.size() == 8 else GConst.MORALE_DEFAULT
+	var base_morale: int = 士气上限()
 	team_morale = [base_morale, base_morale]
 	team_gem = [0, 0]
 	team_crystal = [0, 0]
@@ -881,8 +889,17 @@ func _提交默认回复(pid: int, kind: int, 默认回复: Dictionary, 公告: 
 	run()
 
 
+## 本次对局的士气上限：8 人局 18，其余（4 / 6 人局）15。开局定下来后就照它算，
+## 角色脚本（如剑帝【天使之魂】）也读这里，别在别处再写死一个数字
+func 士气上限() -> int:
+	return GConst.MORALE_8P if order.size() == 8 else GConst.MORALE_DEFAULT
+
+
 ## 构造超时默认回复：与客户端「放弃 / 不发动」等价；返回空字典 = 这个询问不允许超时兜底
 func _build_timeout_reply(pid: int, kind: int) -> Dictionary:
+	# 询问超时兜底：按「这次问的是什么」构一条合理的最小回复
+	# 行动询问：允许放弃才按「放弃行动」收尾，否则不推进（见下）
+	# 应答询问：按询问号选默认项；技能询问：默认不发动，但**不可取消**的技能询问例外（见下）
 	if kind == GConst.Msg.Action:
 		# 行动询问（ask_action 下发 CmdReq/Action）：对照原版 StateActionPhase 的超时分支——
 		# 该阶段允许放弃（被挑衅 / 额外行动阶段）才按「放弃行动」收尾，否则不推进
@@ -895,6 +912,7 @@ func _build_timeout_reply(pid: int, kind: int) -> Dictionary:
 	# 应答询问：按询问号选择默认项
 	var rid: int = _pending_respond_id
 	var args: Array = []
+	var dst_ids: Array = []
 	if _pending_is_skill:
 		# 技能询问（ask_skill）→ 不发动：回空 args，
 		# 与客户端「取消」一致（0 留给正常的选项值，如【魔女之怒】的「摸 0 张牌」）
@@ -902,6 +920,20 @@ func _build_timeout_reply(pid: int, kind: int) -> Dictionary:
 		# （选好数量后超时＝自动释放；弹窗还没选就超时 → 仍回空 args＝取消）
 		if not _pending_partial.is_empty():
 			args = _pending_partial.get("args", [])
+		elif not _pending_skill_can_cancel and _pending_skill_need_target > 0:
+			# 不可取消的技能询问（如【念弹】：一定要打出一发）：超时不能按「取消」收尾 ——
+			# 那会让这条技能白拿代价（【念弹】在问之前就已经 +1【斗气】了）。
+			# 自动发动：目标优先从这次下发的合法目标里随机取一名，没给白名单就随机取一名对手；
+			# 一个目标都找不到（如只剩自己）才退回「取消」
+			var 候选: Array = _pending_skill_targets.duplicate()
+			var 问者: BattlePlayer = players.get(pid)
+			if 候选.is_empty() and 问者 != null:
+				for p1: BattlePlayer in players.values():
+					if p1 != null and p1.id != pid and p1.color != 问者.color:
+						候选.append(p1.id)
+			if not 候选.is_empty():
+				args = [1]
+				dst_ids = [int(候选[_rng.randi_range(0, 候选.size() - 1)])]
 	elif rid == GConst.RespondType.ReplyAttack or rid == GConst.RespondType.Bullet:
 		# 应战 / 魔弹传递 → 放弃（魔弹放弃＝承受伤害，面前有【圣盾】则自动挡下）
 		args = [GConst.Reattack.GiveUp]
@@ -913,7 +945,7 @@ func _build_timeout_reply(pid: int, kind: int) -> Dictionary:
 		args = []
 	# Discard / DiscardCover / Weaken 等：card_ids 留空，引擎或角色会按「放弃 / 自动补齐」处理
 	return {
-		"respond_id": rid, "src_id": pid, "dst_ids": [],
+		"respond_id": rid, "src_id": pid, "dst_ids": dst_ids,
 		"card_ids": [], "args": args,
 		# 标记「这是超时兜底」而非玩家主动取消：需要区分挂机与主动不发的角色脚本读它
 		"is_timeout": true,
@@ -933,7 +965,10 @@ func _notice_timeout(pid: int, kind: int, 已处理: bool) -> void:
 	})
 
 
-## 标记玩家掉线/上线；掉线时立刻把当前等待的截止时刻收紧到掉线超时
+## 标记玩家掉线/上线。
+## 刻意不动「当前正在等的这一次」的截止时刻：他掉线前那一次询问本来就该等满正常时长，
+## 一掉线就把倒计时砍到几秒太粗暴（玩家只是网络抖一下就被当成挂机处理）。
+## 之后的等待由 wait_for 按掉线时长收紧 —— 所以是「第一次等满，后续按短时长快速处理」。
 func set_offline(pid: int, v: bool) -> void:
 	if offline_players.has(pid) == v:
 		return
@@ -950,10 +985,6 @@ func set_offline(pid: int, v: bool) -> void:
 	if p0 != null:
 		p0.online = not v
 	if v:
-		if _await_id == pid and not _has_reply:
-			wait_deadline_ms = Time.get_ticks_msec() + OFFLINE_TIMEOUT_MS
-			wait_total_ms = OFFLINE_TIMEOUT_MS
-			_broadcast_game()
 		broadcast(GConst.Msg.Gossip, {
 			"type": GConst.GossipType.Warn,
 			"txt": "%s 已掉线，超时将由系统自动代打" % pname,
@@ -1218,6 +1249,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	_pending_respond_id = skill_id
 	_pending_args = args.duplicate()
 	_pending_is_skill = true
+	# 超时兜底要用的三项（见 _build_timeout_reply）：不可取消的技能询问不许按「取消」收尾
+	_pending_skill_can_cancel = can_cancel
+	_pending_skill_need_target = need_target
+	_pending_skill_targets = targets.duplicate()
 	_pending_partial = {}
 	_询问(pid, GConst.CmdType.Respond, [cmd])
 	wait_for(pid, GConst.Msg.Respond, 保留倒计时)
@@ -1268,6 +1303,8 @@ func game_info(viewer_id: int) -> Dictionary:
 		"watchers": room_watchers,
 		"picking": room_picking,
 		"player_id": viewer_id,
+		# 士气上限（跟人数走）：随快照下发，客户端不用自己再按人数算一遍
+		"morale_max": 士气上限(),
 		"red_morale": team_morale[GConst.RED],
 		"blue_morale": team_morale[GConst.BLUE],
 		"red_gem": team_gem[GConst.RED],
@@ -1287,6 +1324,10 @@ func game_info(viewer_id: int) -> Dictionary:
 		# 等待序号：客户端据此判断「是不是开始了新的一次等待」，避免重发快照重复弹提示
 		"wait_seq": wait_seq,
 		"start_countdown_ms": start_countdown_ms,
+		# 本局是否已经打完：房主随即解散房间，客户端据此留在结算界面看结果（见 client_logic）
+		"over": phase == Phase.Over,
+		# 房主座位号（-1 = 没记录）：客户端「玩家列表」据此给房主标星号
+		"host_seat": host_seat,
 	}
 
 
@@ -2817,17 +2858,12 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	var cards: Array = data.get("card_ids", [])
 	var dsts: Array = data.get("dst_ids", [])
 	if cards.is_empty() or dsts.is_empty():
-		print("[战斗诊断] 攻击被丢弃：牌或目标为空 → 直接结束回合")
+		# 客户端没给出牌或目标（改包 / 界面状态错乱）：当作放弃这次行动
 		push(STurnEnd.new())
 		return CONTINUE
 	var cid: int = int(cards[0])
 	var dst_id: int = int(dsts[0])
-	var 校验: int = cur.v_attack(cid, dst_id, players)
-	if 校验 != GConst.GE_SUCCESS:
-		print("[战斗诊断] 攻击被拒：v_attack 返回 %d（牌 %d，目标 %d，我方队色 %d，目标队色 %s）" % [
-			校验, cid, dst_id, cur.color,
-			str(players.get(dst_id).color if players.get(dst_id) != null else -9)])
-		# 临时诊断
+	if cur.v_attack(cid, dst_id, players) != GConst.GE_SUCCESS:
 		return _reject_action(cur)
 	# 防守方角色可拒绝被选为目标（如暗杀者潜行中「不能成为主动攻击的目标」）
 	var dst_p: BattlePlayer = players.get(dst_id)

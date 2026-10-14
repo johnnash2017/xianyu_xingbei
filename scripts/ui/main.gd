@@ -43,8 +43,8 @@ func _on_问题反馈_gui_input(event: InputEvent) -> void:
 # 玩家列表（按住 TAB 看：战斗中的玩家 + 观战者）
 # ============================================================
 ## TAB 按住显示、松开隐藏。用 _input 而不是 _unhandled_key_input：
-## TAB 默认会被 GUI 拿去做焦点切换，_unhandled_* 收不到；
-## 真要用这一次输入时才 set_input_as_handled()，顺带吃掉 TAB 的焦点跳转。
+## GUI 会先把 TAB 拿去处理（焦点切换虽然已在 UI._ready 里清掉，但控件内部仍可能吃掉它），
+## _unhandled_* 收不到；真要用这一次输入时才 set_input_as_handled()，顺手把 TAB 拦在这一层。
 ## 只在房间里（准备室 / 战斗界面）弹，大厅和登录界面按 TAB 不拦也不显示。
 func _input(event: InputEvent) -> void:
 	if not (event is InputEventKey):
@@ -69,16 +69,23 @@ func _在房间里() -> bool:
 	return UI.current != null and (UI.current.name == "ReadyRoom" or UI.current.name == "BattleUIMobile")
 
 
+## 「自己」那一行的高亮色：玩家列表（按 id 认自己）与观战者名单（按昵称认自己）共用
+const 自己色: Color = Color(1.0, 0.65, 0.25)
+
+
 ## 填「玩家列表」：战斗中的玩家（名字 / 队伍 / 角色，自己的名字标橙色）+ 观战者名单
 func _刷新玩家名单() -> void:
 	# 浮层顶部的总标题写房间名（和准备室顶部一致）
 	页面标题.text = str(Data.game_info.get("room_name", "房间"))
 	玩家标题.text = "【战斗】%d 人" % Data.player_list.size()
+	# 房主座位号（跟着快照下来，见 LocalServer._房主座位）：房主的名字前面标个星号
+	var 房主座位: int = int(Data.game_info.get("host_seat", -1))
 	# 常规字色取自段标题：改主题时这里跟着变，不用再抄一个颜色值
 	var 常规色: Color = 玩家标题.get_theme_color("font_color")
 	_清空网格(玩家网格)
 	for p: GPlayer in _按座位排序(Data.player_list):
-		_加一格(玩家网格, p.nickname, Color(1.0, 0.65, 0.25) if p.id == Data.id else 常规色)
+		var 名字: String = ("★%s" % p.nickname) if p.id == 房主座位 else p.nickname
+		_加一格(玩家网格, 名字, 自己色 if p.id == Data.id else 常规色)
 		var 队伍: String = "红队" if p.color == GConst.RED else ("蓝队" if p.color == GConst.BLUE else "未分队")
 		_加一格(玩家网格, 队伍, 常规色)
 		_加一格(玩家网格, p.role_name, 常规色)
@@ -88,15 +95,21 @@ func _刷新玩家名单() -> void:
 	var 观战者: Array = Data.game_info.get("watchers", [])
 	观战标题.text = "【观战者】无" if 观战者.is_empty() else "【观战者】%d 人" % 观战者.size()
 	for 名: Variant in 观战者:
-		_加一格(观战网格, str(名), 常规色)
+		# 自己那一行同样标橙色（观战者也能一眼认出哪个是自己）。
+		# 观战者名单只有昵称（见 LocalServer._同步观战者名单），所以按昵称比对 ——
+		# 和玩家那边靠 id 精确识别不同，同名观战者会一起标，这是昵称当显示名的固有代价
+		_加一格(观战网格, str(名), 自己色 if str(名) == Data.nick_name else 常规色)
 
 
-## 连接质量一列：掉线就写「掉线」，否则按到房主那一跳的往返延迟分档（0 = 还没测出来）
+## 连接质量一列：掉线就写「掉线」；未测出写「测量中」；0ms 是房主自己那一路（进程内直连），
+## 真实网络测不出 0，所以单独标成「本地」；其余按到房主那一跳的往返延迟分档
 func _连接质量(p: GPlayer) -> Array:
 	if not p.online:
 		return ["掉线", Color(0.9, 0.4, 0.4)]
-	if p.ping <= 0:
+	if p.ping >= GConst.PING_未测:
 		return ["测量中", Color(0.7, 0.7, 0.7)]
+	if p.ping <= 0:
+		return ["本地", Color(0.55, 0.9, 0.55)]
 	if p.ping < 80:
 		return ["良好 %dms" % p.ping, Color(0.55, 0.9, 0.55)]
 	if p.ping < 180:

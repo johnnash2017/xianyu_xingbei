@@ -376,7 +376,10 @@ func _nian_dan() -> int:
 			return SUCCESS
 		_set_dou_qi(_dou_qi() + 1)
 		engine._broadcast_game()
-		询问(player.id, NIAN_DAN, 0, 1)
+		# 只能打对手（客户端只让对手头像可点，服务端在下方复检）；**不可取消** ——
+		# 这条技能在询问之前就已经记上了 +1【斗气】，允许取消等于「白拿 1 点斗气」。
+		# 超时由引擎自动发动并从这次下发的合法目标里随机挑一名（见 BattleEngine._build_timeout_reply）
+		询问(player.id, NIAN_DAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false, 0, -1, enemy_ids())
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -385,7 +388,8 @@ func _nian_dan() -> int:
 		return SUCCESS
 	var dst_id: int = int(dsts[0])
 	var dst: BattlePlayer = engine.p(dst_id)
-	if dst == null:
+	# 目标必须是场上的对手（改包点了队友/自己就当这次念弹不生效）
+	if dst == null or dst.color == player.color:
 		return SUCCESS
 	notice_skill(NIAN_DAN, [dst_id])
 	# 目标治疗为 0 时，同时对自己造成等同斗气数（已含本次 +1）的法术伤害

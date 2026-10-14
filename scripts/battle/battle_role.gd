@@ -278,6 +278,16 @@ func hand_ids_with_skill(技能号: int) -> Array[int]:
 
 
 ## 场上所有对手的 id（需要指定多名对手的技能，available_skills 的 "targets" 用它）
+## 目标列表里有没有重复的人（说明写「N 名角色」的技能用它挡掉「同一人被点两次」）
+func _has_duplicate(ids: Array) -> bool:
+	var seen: Array = []
+	for i: Variant in ids:
+		if seen.has(int(i)):
+			return true
+		seen.append(int(i))
+	return false
+
+
 func enemy_ids() -> Array[int]:
 	var out: Array[int] = []
 	for pid: int in engine.order:

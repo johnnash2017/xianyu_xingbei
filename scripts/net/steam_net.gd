@@ -1,6 +1,7 @@
 extends Node
 ## Steam 接入（自动加载名 SteamNet）。
-## 只在**非本地模式**（裸启动，见 Cfg.本地模式）下真正初始化；多开脚本（F9/F10/F11）完全不碰 Steam。
+## 只在**非无 Steam 模式**（裸启动，见 Cfg 的 无Steam()）下真正初始化；多开脚本（F9/F10/F11）
+## 与「局域网联机（无需 Steam）」完全不碰 Steam。
 ##
 ## 目前承担：Steam 初始化 + 身份（SteamID）、Steam 大厅（建房 / 找房）、P2P 会话收发。
 ## 传输层本体在 SteamClient / SteamServer（SteamNetworkingMessages），这里负责共用的大厅数据与信号接线。
@@ -25,7 +26,7 @@ var _检查计时: float = 0.0
 
 
 func _ready() -> void:
-	if Cfg.本地模式:
+	if Cfg.无Steam():
 		return
 	# 这些回调只接一次：掉线后会重复走 _初始化，接在里面会重复连同一个信号
 	Steam.lobby_match_list.connect(_on_match_list)
@@ -38,8 +39,8 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	# 本地调试（多开脚本 F9/F10/F11）完全不碰 Steam —— 连「看看客户端在不在」都不问
-	if Cfg.本地模式:
+	# 本地调试（多开脚本 F9/F10/F11）与局域网联机完全不碰 Steam —— 连「看看客户端在不在」都不问
+	if Cfg.无Steam():
 		return
 	# GodotSteam 要求每帧跑一次回调（大厅结果、P2P 消息都靠它派发）
 	if 就绪:
@@ -79,7 +80,9 @@ func _初始化() -> void:
 		return
 	就绪 = true
 	失败原因 = ""
-	隔离标记 = 隔离标记前缀 + Cfg.游戏版本()
+	# 标记只挡「别的游戏」，不带版本：不同版本也要能在列表里互相看见（版本号写在 键_版本 里显示，
+	# 能不能进由登录时的版本校验把关，见 LocalServer 的 LoginReq）
+	隔离标记 = 隔离标记前缀
 	steam_id = str(Steam.get_current_steam_id())
 	玩家名 = str(Steam.getPersonaName())
 	print("[SteamNet] Steam 已连接，%s（SteamID = %s，版本 = %s）" % [玩家名, steam_id, Cfg.游戏版本()])
@@ -94,6 +97,11 @@ func _标记掉线(原因: String) -> void:
 	大厅id = 0
 	房主steam_id = ""
 	房主房间号 = -1
+	# 在途请求一并作废：掉线之后 Steam 不会再把回调送回来，
+	# 留着它们会让「建房」「刷新列表」「进房」此后再也发不出去（点了没反应、也不报错）
+	_建房中 = false
+	_查询中 = false
+	_待加入大厅 = 0
 	Steam.steamShutdown()
 	_记失败原因(原因)
 
@@ -101,8 +109,14 @@ func _标记掉线(原因: String) -> void:
 ## 重新接上 Steam 后：本进程之前要是开着房，就把大厅重新开出来（旧大厅已随掉线一起没了）。
 ## 房主自己那一路走的是进程内直连，不受影响；这里只管「别人还能不能在列表里搜到这间房」。
 func _重开大厅() -> void:
-	if 本房房间号 < 0 or _待建房名 == "":
+	if 本房房间号 < 0 or _待建房名 == "" or _建房中:
 		return
+	# 与建房走同一条受保护的路径：掉线前残留的旧大厅先退掉、置上在途标志 ——
+	# 否则玩家同一时刻点的「创建房间」会各建一个大厅，其中一个永远没人退、挂在列表里进不去
+	if 大厅id != 0:
+		Steam.leaveLobby(大厅id)
+		大厅id = 0
+	_建房中 = true
 	Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, _待建人数 + 观战席)
 
 
@@ -134,6 +148,10 @@ const 键_在线人数: String = "now_player"
 const 键_座位数: String = "seat_count"
 const 键_观战人数: String = "watchers"
 const 键_进行中: String = "playing"
+## 本房「还留着座位的身份」列表（逗号分隔）。Steam 的大厅数据是所有人共享的，写不了「逐人」的字段，
+## 就把留座的身份都列出来；加入方看自己在不在里面 —— 在列 = 这间还留着我的座位，
+## 房间列表显示「可重连」、进房直接坐回去，而不是被当成新玩家（满员时就不会再问要不要观战）
+const 键_可重连身份: String = "reenter_ids"
 ## 房主 SteamID：进房后据此建立 P2P 连接（NetworkingMessages 按 SteamID 发消息）
 const 键_房主: String = "host"
 ## 服务端房间号：加入方发进房请求要用（Steam 大厅号与服务端房间号是两回事）
@@ -144,14 +162,18 @@ const 键_座位: String = "seat_mode"
 const 键_作弊: String = "debug"
 ## 本作大厅隔离标记（对照 CyberWS 的 lobbyNameMarker）：房主写进大厅数据，查询时按它过滤。
 ## AppID 480 下世界范围里全是别人的开发大厅，只靠「房名非空」会把别的游戏也列进来。
-## 标记值 = 前缀 + 游戏版本（见 隔离标记前缀 与 Cfg.游戏版本），所以版本一变新旧版本就互相搜不到。
+## 取值就是下面那个固定前缀 —— **刻意不带版本号**：不同版本要能在列表里互相看见
+## （版本号另存 键_版本，列在房间列表里；能不能进由登录时的版本校验决定，见 LocalServer 的 LoginReq）
 const 键_隔离标记: String = "gametag"
 const 隔离标记前缀: String = "xianyu_xingbei_"
+## 房主版本号（写进大厅数据，房间列表显示用）
+const 键_版本: String = "version"
 ## 观战席：Steam 大厅成员上限 = 战斗人数上限 + 它。观战者也要进大厅才能读到房主 SteamID，
 ## 若上限只按战斗人数算，战斗席一满观战者就会被 Steam 拒之门外（本作观战不占战斗席）。
 const 观战席: int = 16
 
-## 本作当前大厅隔离标记：= 隔离标记前缀 + 游戏版本，Steam 初始化时算一次（见 _初始化）
+## 本作当前大厅隔离标记：就是那个固定前缀，Steam 初始化时算一次（见 _初始化）。
+## 它只把「别的游戏」挡住，不区分版本 —— 版本差异靠列表显示 + 登录校验处理
 var 隔离标记: String = ""
 ## 本机所在大厅 id（0 = 不在大厅里）
 var 大厅id: int = 0
@@ -223,14 +245,24 @@ func _on_match_list(lobbies: Array) -> void:
 			"seat_count": int(Steam.getLobbyData(id, 键_座位数)),
 			"watchers": int(Steam.getLobbyData(id, 键_观战人数)),
 			"playing": Steam.getLobbyData(id, 键_进行中) == "1",
-			# 大厅数据是所有人共享的，看不出「谁留了座位」；认领座位在 Steam 模式下待接
-			"can_reenter": false,
+			# 房主版本号：列表里显示出来，方便一眼看出「这间是别的版本」
+			"version": Steam.getLobbyData(id, 键_版本),
+			# 大厅数据里那串「留着座位的身份」里有没有我 —— 有就说明这间还给我留着座位（见 键_可重连身份）
+			"can_reenter": _含我的座位(Steam.getLobbyData(id, 键_可重连身份)),
 			"role_strategy": int(Steam.getLobbyData(id, 键_选角)),
 			"seat_mode": int(Steam.getLobbyData(id, 键_座位)),
 			"debug": Steam.getLobbyData(id, 键_作弊) == "1",
 			"allow_guest": true,
 		})
 	大厅列表已就绪.emit(列表)
+
+
+## 大厅数据里那串留座身份里有没有我（见 键_可重连身份）。Steam 模式没有「服务端逐人回答」的机会，
+## 只能在共享的大厅数据里这样问一句；SteamID 不可能和昵称撞，所以局域网玩家混在串里也不影响判断
+func _含我的座位(留座身份串: String) -> bool:
+	if steam_id == "" or 留座身份串 == "":
+		return false
+	return 留座身份串.split(",").has(steam_id)
 
 
 ## 建房（房主）：开一个公开大厅，并写上本作隔离标记。
@@ -265,6 +297,7 @@ func _on_lobby_created(返回码: int, lobby_id: int) -> void:
 	房主steam_id = steam_id
 	Steam.setLobbyData(lobby_id, 键_房主, steam_id)
 	Steam.setLobbyData(lobby_id, 键_隔离标记, 隔离标记)
+	Steam.setLobbyData(lobby_id, 键_版本, Cfg.游戏版本())
 	Steam.setLobbyData(lobby_id, 键_房名, _待建房名)
 	Steam.setLobbyData(lobby_id, 键_人数上限, str(_待建人数))
 	Steam.setLobbyData(lobby_id, 键_选角, str(_待建选角))
@@ -273,21 +306,30 @@ func _on_lobby_created(返回码: int, lobby_id: int) -> void:
 	# 房间编号可能比对局广播来得晚（建房是异步的）：这时已经先记在 本房房间号 里，补写一次
 	if 本房房间号 >= 0:
 		Steam.setLobbyData(lobby_id, 键_房间号, str(本房房间号))
+		# 房主自己也靠 房主房间号 记着「本房的服务端房间号」—— 断线重连回房时发的就是它
+		# （加入方那份是从大厅数据里读的，见 _on_lobby_joined）
+		房主房间号 = 本房房间号
 	print("[SteamNet] 已建大厅 %d（%s）" % [lobby_id, _待建房名])
 	建房结果.emit(true, "房间已建好，其他人可以搜到了")
 
 
 ## 房主同步房间实况到大厅数据（进人 / 退房 / 开局时由 LocalServer 调），列表上就能看到人数与状态；
-## 「房间号」也在里面 —— 加入方拿它发进房请求。大厅还没建好时先记着，建好再补写（见 _on_lobby_created）
-func 同步房间数据(房间号: int, 在线人数: int, 座位数: int, 观战人数: int, 进行中: bool) -> void:
+## 「房间号」也在里面 —— 加入方拿它发进房请求。大厅还没建好时先记着，建好再补写（见 _on_lobby_created）。
+## 返回是否真的写进了大厅：false = 大厅还没建好（建房是异步的），调用方要留着下次再写。
+func 同步房间数据(房间号: int, 在线人数: int, 座位数: int, 观战人数: int, 进行中: bool, 可重连身份: PackedStringArray) -> bool:
 	本房房间号 = 房间号
 	if 大厅id == 0:
-		return
+		return false
+	# 房主自己也要记着本房的服务端房间号（重连回房时发的是它；加入方那份从大厅数据读，见 _on_lobby_joined）。
+	# 放在「大厅已建好」之后：退房后房间若还留着别人，这里不该再把它写回来
+	房主房间号 = 房间号
 	Steam.setLobbyData(大厅id, 键_房间号, str(房间号))
 	Steam.setLobbyData(大厅id, 键_在线人数, str(在线人数))
 	Steam.setLobbyData(大厅id, 键_座位数, str(座位数))
 	Steam.setLobbyData(大厅id, 键_观战人数, str(观战人数))
 	Steam.setLobbyData(大厅id, 键_进行中, "1" if 进行中 else "0")
+	Steam.setLobbyData(大厅id, 键_可重连身份, ",".join(可重连身份))
+	return true
 
 
 ## 进房（加入方）：加入大厅，并从大厅数据里取房主的 SteamID（P2P 连接下一步用它）
@@ -331,3 +373,6 @@ func 离开大厅() -> void:
 	_待加入大厅 = 0
 	房主steam_id = ""
 	房主房间号 = -1
+	# 本房房间号也要清：它是「我这个进程现在开着几号房」，退了房就不该再留着，
+	# 否则下一次建房时大厅数据里会先写上一个旧房号（那一刻点进来的人会发错房号）
+	本房房间号 = -1

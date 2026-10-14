@@ -29,6 +29,11 @@ func _ready() -> void:
 	# 字体统一用引擎默认字体（缺的中文字形由系统的字体回退补上）
 	# 设计基准 1920x1080：没单独指定字号的地方按 20 号（原 16 号是 1152x680 时的默认）
 	ThemeDB.fallback_font_size = 20
+	# 关掉 TAB / Shift+TAB 在控件之间切换焦点的默认行为：游戏里不需要它，
+	# 而且 TAB 已经用来「按住看玩家列表」了（见 main.gd）。清掉按键绑定比逐个控件关 focus 干净。
+	# 方向键的焦点导航不动（那是 ui_up/ui_down/… 那一组）
+	InputMap.action_erase_events("ui_focus_next")
+	InputMap.action_erase_events("ui_focus_prev")
 	# 选将请求由 Logic 发信号，这里负责弹出弹层（Logic 不再直接操作界面）
 	Logic.role_pick_required.connect(显示选角)
 
@@ -173,7 +178,7 @@ func 关闭设置() -> void:
 ## 联机全靠它，所以不管连没连上都写清楚，别让玩家对着空列表猜。
 ## 每帧调都行：文本没变就不动标签，不白刷样式。
 func 刷新Steam状态(标签: Label) -> void:
-	var 用Steam: bool = not Cfg.本地模式
+	var 用Steam: bool = not Cfg.无Steam()
 	if 标签.visible != 用Steam:
 		标签.visible = 用Steam
 	if not 用Steam:
