@@ -17,7 +17,7 @@
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="Card" type="Control" unique_id=1595026165 node_paths=PackedStringArray("btn", "txtSkill1", "txtSkill2", "propertyRoot", "elementRoot", "selectBorder", "canSelectBorder")]
+[node name="Card" type="Control" unique_id=1595026165 node_paths=PackedStringArray("btn", "txtSkill1", "txtSkill2", "propertyRoot", "elementRoot", "selectBorder", "canSelectBorder", "txtName")]
 layout_mode = 3
 anchors_preset = 2
 anchor_top = 1.0
@@ -32,6 +32,7 @@ propertyRoot = NodePath("Root/Property")
 elementRoot = NodePath("Root/Element")
 selectBorder = NodePath("SelectBorder")
 canSelectBorder = NodePath("CanSelectBorder")
+txtName = NodePath("Name")
 
 [node name="CanSelectBorder" type="TextureRect" parent="." unique_id=60238750]
 layout_mode = 0
@@ -90,6 +91,7 @@ anchor_bottom = 1.0
 offset_left = -2.5
 offset_top = -30.0
 offset_right = 57.5
+grow_vertical = 0
 pivot_offset = Vector2(0, 30)
 theme_override_colors/font_color = Color(0.6955032, 0.6955031, 0.6955031, 1)
 theme_override_colors/font_outline_color = Color(0.19607843, 0.19607843, 0.19607843, 1)
@@ -251,5 +253,23 @@ grow_vertical = 2
 mouse_filter = 0
 texture = ExtResource("17_05thunderpng")
 expand_mode = 1
+
+[node name="Name" type="Label" parent="." unique_id=1890327835]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_top = -4.0
+offset_right = 400.0
+offset_bottom = 67.0
+grow_horizontal = 2
+scale = Vector2(0.5, 0.5)
+pivot_offset_ratio = Vector2(-0.5, 0)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 24
+text = "名字名字名字名字"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
 
 [connection signal="pressed" from="Root" to="." method="OnCardClick"]

@@ -18,6 +18,8 @@ signal 点击(卡牌号: int)
 @export var elementRoot: Control
 @export var selectBorder: TextureRect
 @export var canSelectBorder: TextureRect
+## 卡面顶部的卡名（对应 Card.tscn 的 Name 节点）
+@export var txtName: Label
 
 ## 这张卡（本工程的客户端卡牌视图）
 var card: GCard = null
@@ -133,6 +135,7 @@ func OnCardClick() -> void:
 func _画卡面(c: GCard) -> void:
 	if btn != null:
 		btn.icon = Art.card_face(c)
+	txtName.text = c.card_name
 	# 卡面底部那两格：印这张牌带的技能名（照搬参照工程 CardUI 的 Skill1/Skill2）。
 	# 字色看「我的角色有没有这门技能」：有＝亮绿黄，没有＝灰
 	var 我的技能: Array[int] = _我的角色技能()
