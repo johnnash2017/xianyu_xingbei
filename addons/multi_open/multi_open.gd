@@ -65,7 +65,9 @@ func _点了菜单(id: int) -> void:
 
 
 ## 用 powershell 执行 tests/启动多开.ps1：不阻塞编辑器（create_process），
-## 也不重写脚本里那套摆位 / 关上一批；open_console=true 让脚本自己按需隐藏控制台
+## 也不重写脚本里那套摆位 / 关上一批。
+## open_console=false：**完全不弹出控制台窗口**（脚本里那句隐藏控制台也就成了空操作）；
+## 脚本输出随之丢弃，排查时可改回 true 或直接用 .bat 加 -KeepConsole 跑
 func _拉起多开(数量: int, 自动开局: bool) -> void:
 	var 脚本: String = ProjectSettings.globalize_path(脚本路径)
 	if not FileAccess.file_exists(脚本):
@@ -77,7 +79,7 @@ func _拉起多开(数量: int, 自动开局: bool) -> void:
 	])
 	if 自动开局:
 		参数.append("-Auto")
-	var pid: int = OS.create_process("powershell", 参数, true)
+	var pid: int = OS.create_process("powershell", 参数, false)
 	if pid <= 0:
 		push_error("[多开] 拉起失败：请确认系统 PATH 里有 powershell")
 		return
