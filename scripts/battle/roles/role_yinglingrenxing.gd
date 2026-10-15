@@ -271,7 +271,7 @@ func _nu_huo_xuan(ctx: Dictionary) -> int:
 			# 额外翻转（说明：仅【蓄势迸发形态】（横置）下才可额外翻转 Y 个【魔纹】）
 			var 可额外: int = maxi(mini(_mo_wen() - 1, _wen_max() - _zhan_wen() - 1), 0) if player.tap else 0
 			for y: int in range(0, 可额外 + 1):
-				var 名: String = 提示(MO_WEN_RONG_HE, 1) if y == 0 else 提示(MO_WEN_RONG_HE, 2, y)
+				var 名: String = 提示(MO_WEN_RONG_HE, 0) if y == 0 else 提示(MO_WEN_RONG_HE, 1, y)
 				选项.append({"value": CHOICE_MO_WEN_RONG_HE + y, "label": 名,
 					"skill_id": MO_WEN_RONG_HE, "need_card": 2})
 		# 两项都不满足（正常不会发生：战纹 + 魔纹 恒为 3）：什么都不问

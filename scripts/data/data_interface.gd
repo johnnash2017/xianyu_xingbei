@@ -267,16 +267,6 @@ func role_skill_info(rid: int) -> String:
 	return GConst.词缀文本(str(role_skill_db.get(rid, "")))
 
 
-## 技能按钮的悬浮说明：技能号 → 文本（直接取技能表的「按钮说明」列；没有就返回空串）
-## 对应原客户端 data/buttonDB.txt + DataInterface::getButtonInfo
-func button_info(skill_id: int) -> String:
-	var 行: Array = GConst.技能行(skill_id)
-	if 行.is_empty():
-		return ""
-	var 技能列: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
-	return str(行[int(技能列["按钮说明"])]).replace("\\n", "\n")
-
-
 ## 按卡号取牌（虚拟牌号是 1000+，与数组下标不一致，所以走 id 索引）
 func get_card(cid: int) -> GCard:
 	if _card_by_id.has(cid):

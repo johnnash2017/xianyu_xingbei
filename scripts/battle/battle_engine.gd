@@ -2549,7 +2549,7 @@ class SRequestDiscard:
 			var r: Dictionary = e.take_reply()
 			var chosen: Array = []
 			for c: Variant in r.get("card_ids", []):
-				if chosen.size() < want and p0.has_hand_card(int(c)) and not chosen.has(int(c)):
+				if chosen.size() < want and p0.has_discard_card(int(c)) and not chosen.has(int(c)):
 					chosen.append(int(c))
 			if chosen.size() < want:
 				for cid: int in p0.hand_cards:
@@ -2583,7 +2583,7 @@ class SDiscardChosen:
 		var chosen: Array = []
 		for c: Variant in cards:
 			var cid: int = int(c)
-			if p0.has_hand_card(cid) and not chosen.has(cid):
+			if p0.has_discard_card(cid) and not chosen.has(cid):
 				chosen.append(cid)
 		if chosen.is_empty():
 			return BattleEngine.CONTINUE
@@ -2643,7 +2643,7 @@ class SHandOverflow:
 			var cards: Array = r.get("card_ids", [])
 			var chosen: Array = []
 			for c: Variant in cards:
-				if chosen.size() < over and target.has_hand_card(int(c)):
+				if chosen.size() < over and target.has_discard_card(int(c)):
 					chosen.append(int(c))
 			if chosen.size() < over:
 				for cid: int in target.hand_cards:
@@ -3086,6 +3086,15 @@ func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
 		if team_grail[cur.color] >= GConst.GRAIL_WIN:
 			_game_over(cur.color)
 			return CONTINUE
+		# 合成星杯的附带：对方阵容 −1 士气（对照原版：星杯 +1、摸 3 张、敌方士气 −1 属同一次合成）。
+		# 非伤害来源（type = NONE），与逆反居合斩 / 暗月诅咒同一入口走同步掉士气链；
+		# 同步入口不广播，故扣完自己补一次，客户端才能看到士气数字变化。
+		var 敌方id: int = _nearest_enemy(cur)
+		if 敌方id >= 0:
+			lose_morale(p(敌方id), 1, GConst.CAUSE_SYNTHESIZE)
+			_broadcast_game()
+			if phase == Phase.Over:
+				return CONTINUE
 		push_after_action("p_after_special", {"player": cur.id, "card_id": -1, "special_action": true})
 		push(SHandOverflow.new())
 		return CONTINUE
@@ -3182,7 +3191,7 @@ func _log_special(cur: BattlePlayer, aid: int) -> void:
 ## 对手的士气下降、月女的新月庇护要响应队友的士气下降），钩子内部按 ctx["dst"] 自行判断是否相关。
 ## 限制：本实现为同步调用，钩子内不能等待玩家输入。超限掉士气走 SOverloadMorale（可等待，见下），
 ## 需要等待支付的技能（如天使的神之庇护 706）在那边实现。
-## 本入口只用于「非伤害」来源（逆反居合斩 / 暗月诅咒）：对照服务端，这类惩罚的 harm.type = HARM_NONE、
+## 本入口只用于「非伤害」来源（合成星杯扣对方士气 / 逆反居合斩 / 暗月诅咒）：对照服务端，这类惩罚的 harm.type = HARM_NONE、
 ## harm.cause = 技能 cause，不能沿用 last_harm_*（最近一次伤害的上下文）——否则依 type 判定的钩子
 ## （新月庇护 / 神之庇护 / 舞女同生 / 蝶舞凋灵…）会把非伤害惩罚误判成「因伤害掉士气」。
 ## 因伤害掉士气（手牌超限）走 SOverloadMorale，其 harm 上下文由伤害那一拍显式带入。

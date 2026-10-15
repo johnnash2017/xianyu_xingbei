@@ -455,13 +455,11 @@ func _run_chong_neng(action: Dictionary) -> int:
 	return SUCCESS
 
 
-## 充能的摸牌数选项（二级技能栏）：1~4 张各一颗，文案取技能表「提示」列第 4 条（"摸 {n} 张"）。
-## 注意：序号 2（技能表「提示2」列那条「弃到 {n} 张牌，」）现在没有代码在读，但**不能删** ——
-## 客户端按「第几个非空提示」取文案，删掉它序号会整体前移，这里的「摸 {n} 张」就取不到了
+## 充能的摸牌数选项（二级技能栏）：1~4 张各一颗，文案取技能表「提示」列第 1 条（"摸 {n} 张"）
 func _chong_neng_choices() -> Array:
 	var out: Array = []
 	for i: int in range(1, 5):
-		out.append({"text": 提示(CHONG_NENG, 3, i), "args": [i]})
+		out.append({"text": 提示(CHONG_NENG, 0, i), "args": [i]})
 	return out
 
 
@@ -515,8 +513,8 @@ func _chong_neng(action: Dictionary) -> int:
 ## 「指定」那项的白名单是全场（含自己，对照原版 playerArea->enableAll），所以点自己＝自己弃 1 张
 func _mo_yan_choices() -> Array:
 	return [
-		{"text": 提示(MO_YAN, 2), "args": [0]},
-		{"text": 提示(MO_YAN, 3), "args": [1], "need_target": 1, "targets": _all_player_ids()},
+		{"text": 提示(MO_YAN, 0), "args": [0]},
+		{"text": 提示(MO_YAN, 1), "args": [1], "need_target": 1, "targets": _all_player_ids()},
 	]
 
 
@@ -550,12 +548,12 @@ func _mo_yan(action: Dictionary) -> int:
 
 
 ## 充能改牌 / 魔眼改牌：把至多 max_n 张手牌作为【充能】。skill_id 用主技能 id，
-## 序号 1 读技能表「提示2」列的那条（如【充能】的「把手牌作【充能】」）
+## 序号 0 读技能表「提示」列的那条（如【充能】的「把手牌作【充能】」）
 func _gai_pai(skill_id: int, max_n: int) -> int:
 	if not engine.has_reply():
 		# 至多 max_n 张：把点选上限放宽到 max_n（默认只会按 need_card 限 1 张）
 		# 提示文案里的张数用 max_n（可盖的张数上限），而不是最少张数
-		询问(player.id, skill_id, 1, 0, GConst.CardSource.Hand, [], max_n, "", [], true, 1, -1, [], max_n)
+		询问(player.id, skill_id, 1, 0, GConst.CardSource.Hand, [], max_n, "", [], true, 0, -1, [], max_n)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])

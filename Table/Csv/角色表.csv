@@ -1,4 +1,4 @@
-id,启用,角色索引,治疗上限,能量上限,黄槽上限,蓝槽上限,盖牌槽上限,标记,图标名,形态图,状态底色,横置形态,角色名,派系,势力,显示名,指示物,脚本,技能
+﻿id,启用,角色索引,治疗上限,能量上限,黄槽上限,蓝槽上限,盖牌槽上限,标记,图标名,形态图,状态底色,横置形态,角色名,派系,势力,显示名,指示物,脚本,技能
 id,enabled,role_index,heal_max,energy_max,yellow_max,blue_max,covered_max,flags,icon_name,tap,status_color,horizontal,name,property,bloc,display_name,tokens,script,skills
 string,"enum(禁用:0,启用:1)",int,int,int,int,int,int,string,string,string,string,list(string),string,string,string,string,string,string,list(技能表)
 角色#白板,禁用,0,2,3,0,0,0,,,,,,未选角色,技,战技殿堂,,,,
@@ -33,7 +33,7 @@ string,"enum(禁用:0,启用:1)",int,int,int,int,int,int,string,string,string,st
 角色#魔枪,启用,29,2,3,0,0,0,"5,8",HuanYing,HuanYing,#672E77,幻影形态,魔枪,幻,幻影联盟,魔枪,,res://scripts/battle/roles/role_moqiang.gd,技能#暗之解放;技能#幻影星辰;技能#黑暗束缚;技能#暗之障壁;技能#充盈;技能#漆黑之枪
 角色#苍炎魔女,启用,30,2,3,4,0,0,9,LieYan,LieYan,#FA2727,烈焰形态,苍炎魔女,血,鲜血议会,苍炎魔女,0:重生:4,res://scripts/battle/roles/role_monv.gd,技能#苍炎法典;技能#天火断空;技能#魔女之怒;技能#替身玩偶;技能#永生银时计;技能#痛苦链接;技能#魔能反转
 角色#吟游诗人,启用,31,2,3,3,0,0,"7,10",,ShiShen,#672E77,永恒囚徒形态,吟游诗人,幻,幻影联盟,吟游诗人,0:灵感:3,res://scripts/battle/roles/role_shiren.gd,技能#沉沦协奏曲;技能#不谐和弦;技能#禁忌诗篇;技能#激昂狂想曲;技能#胜利交响诗;技能#希望赋格曲
-角色#精灵射手,禁用,32,2,3,0,0,3,11,ZhuFu,ZhuFu,#44D647,精灵祝福形态,精灵射手,技,战技殿堂,精灵射手,2:祝福:3,res://scripts/battle/roles/role_jinglingsheshou.gd,技能#元素射击;技能#动物伙伴;技能#精灵密仪
+角色#精灵射手,启用,32,2,3,0,0,3,11,ZhuFu,ZhuFu,#44D647,精灵祝福形态,精灵射手,技,战技殿堂,精灵射手,2:祝福:3,res://scripts/battle/roles/role_jinglingsheshou.gd,技能#元素射击;技能#动物伙伴;技能#精灵密仪;技能#宠物强化
 角色#阴阳师,禁用,33,2,3,3,0,0,,ShiShen,ShiShen,#672E77,式神形态,阴阳师,血,鲜血议会,阴阳师,0:鬼火:3,res://scripts/battle/roles/role_yinyang.gd,技能#式神咒束;技能#黑暗祭礼;技能#式神降临;技能#生命结界;技能#阴阳转换
 角色#血色剑灵,禁用,34,2,3,3,0,0,,XueQiangWei,QiangWei,#FA2727,血蔷薇庭院,血色剑灵,圣,神圣教廷,血色剑灵,0:鲜血:3,res://scripts/battle/roles/role_xuejian.gd,技能#血色荆棘;技能#赤色一闪;技能#血染蔷薇;技能#血气屏障;技能#血蔷薇庭院
 角色#月之女神,禁用,35,2,3,2,3,99,,AnYue,AnYue,#0060FF,新月形态,月之女神,技,战技殿堂,月之女神,0:新月:2;1:石化:3;2:暗月:99,res://scripts/battle/roles/role_yuenv.gd,技能#新月庇护;技能#暗月诅咒;技能#美杜莎之眼;技能#月之轮回;技能#月渎;技能#暗月斩;技能#苍白之月

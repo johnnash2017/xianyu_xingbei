@@ -99,7 +99,7 @@ const 日志最大行: int = 233
 ## 给 30×40 会把它们上下拉伸；队伍条容器高 30、5 列正好 5×30=150
 const 格子最小尺寸: Vector2 = Vector2(30.0, 30.0)
 ## 队伍条上星杯格子的悬停提示
-const 星杯提示: String = "星杯 凑齐五个圣杯达成特殊胜利。"
+const 星杯提示: String = "星杯 凑齐五个圣杯达成特殊胜利。合成星杯时会扣除对方阵容 1 点士气。"
 ## 队伍条上士气数字的悬停提示
 const 士气提示: String = "士气 士气归零的一方战斗失败"
 ## 卡牌预制体（挂 scripts/CardUI.gd，已解耦为「塞数据 + 点击回调」）
@@ -269,6 +269,9 @@ const 行动阶段禁用法术牌角色: Array[int] = [9, 29]
 const 仲裁者角色: int = 14
 ## 苍炎魔女：【烈焰形态】下除水系、暗系外的攻击牌视为火系（对照 role_monv._is_fire_like）
 const 苍炎魔女角色: int = 30
+## 精灵射手（32）：【精灵祝福形态】（横置 tap）下她的【祝福】盖牌视同手牌参与出牌 / 应战判定
+## （对照服务端 role_jinglingsheshou.盖牌可当手牌 与 BattlePlayer.has_hand_card）
+const 精灵射手角色: int = 32
 
 ## 玩家面板顺序：自己的面板固定是 MainPlayer，其余按 Data.player_list 顺序依次填
 var _面板列表: Array[战斗玩家面板] = []
@@ -2385,8 +2388,11 @@ func _on_player_clicked(player_id: int) -> void:
 func _卡牌能点(card_id: int) -> bool:
 	# 盖牌只在本阶段确实要选盖牌时才点得动（盖牌超限弃牌 / 来源为盖牌区的技能询问）；
 	# 其余场合（行动出牌、普通弃牌…）盖牌一律不给点 —— 否则会被当成手牌选中提交，
-	# 服务端判「操作无效」再推一份快照回来，画面就会闪一下
-	if _is_my_cover(card_id) and not _selecting_cover:
+	# 服务端判「操作无效」再推一份快照回来，画面就会闪一下。
+	# 例外：精灵射手【精灵祝福形态】下她的【祝福】在「打牌 / 应战」时可当手牌（见 _盖牌视同手牌），
+	# 这时它不算「普通盖牌」，会继续往下按同号手牌的规则判（行动 / 应战 / 魔弹…）；
+	# 但弃牌类询问（下方 Discard / CardSource.Hand）仍按盖牌挡掉
+	if _是普通盖牌(card_id) and not _selecting_cover:
 		return false
 	# 「先弹选项」型：选定的效果若限定了发动牌系别（如【百鬼夜行】展示火系妖力必须真用火系牌），
 	# 其余系的牌整片置灰 —— 否则选错牌提交后服务端判无效、整条技能静默不生效（看着像「只打了一个人」）
@@ -2404,7 +2410,9 @@ func _卡牌能点(card_id: int) -> bool:
 	# 应答（应战/抵挡、弃牌、魔弹传递等）同样要能点手牌
 	if _mode == 2 and _need_cards <= 0:
 		return false
-	# 弃牌询问的选牌来源：普通弃牌只手牌，盖牌超限只盖牌
+	# 弃牌询问的选牌来源：普通弃牌只手牌，盖牌超限只盖牌。
+	# 「视同手牌」的盖牌（精灵射手【祝福】）在这里必须按盖牌挡掉 —— 盖牌能当手牌打 / 应战，
+	# 但任何弃手牌效果都不能弃盖牌，也不该列出来给玩家选
 	if _mode == 2:
 		var 应答号: int = int(_pending.get("respond_id", 0))
 		if 应答号 == GConst.RespondType.Discard and _is_my_cover(card_id):
@@ -2413,7 +2421,8 @@ func _卡牌能点(card_id: int) -> bool:
 			return false
 	if _mode != 1 and _mode != 2 and _mode != 3 and _mode != 4:
 		return false
-	# 选牌来源限制：盖牌询问只收盖牌，手牌询问只收手牌，两者皆可则都收
+	# 选牌来源限制：盖牌询问只收盖牌，手牌询问只收手牌，两者皆可则都收。
+	# 「从手牌选牌」的技能（CardSource.Hand，多为弃牌 / 交牌代价）同样不列盖牌
 	if _mode == 3 and _是技能询问:
 		if _skill_ask_card_source == GConst.CardSource.Cover and not _is_my_cover(card_id):
 			return false
@@ -2449,7 +2458,7 @@ func _卡牌能点(card_id: int) -> bool:
 				# 手牌 + 盖牌混选（如【魔贯冲击】）：两边都收，具体由白名单与 cover_need 约束
 				pass
 			_:
-				if _is_my_cover(card_id):
+				if _是普通盖牌(card_id):
 					return false
 		if not _skill_cards.is_empty() and not _skill_cards.has(card_id):
 			return false
@@ -2582,6 +2591,12 @@ func _手里没有能用的牌() -> bool:
 	for card: GCard in Data.hand_cards:
 		if card != null and _可主动使用牌(card.id):
 			return false
+	# 精灵射手【精灵祝福形态】下她的【祝福】盖牌视同手牌（见 _盖牌视同手牌）：
+	# 其中能主动使用的也算「有能用的牌」，否则会被误判成没有可用牌而进不可行动
+	if _盖牌视同手牌():
+		for cc: GCard in Data.cover_cards:
+			if cc != null and _可主动使用牌(cc.id):
+				return false
 	return true
 
 
@@ -4340,6 +4355,40 @@ func _is_my_cover(card_id: int) -> bool:
 	return false
 
 
+## 我此刻是否处于「盖牌视同手牌」的形态：精灵射手（role_id == 32）处于【精灵祝福形态】（横置 tap）。
+## 对照服务端 BattlePlayer.has_hand_card：role.盖牌可当手牌()（精灵射手覆写为 player.tap）时盖牌也算手牌。
+## 角色号与是否横置都取自客户端现成的 GPlayer 字段，不新增协议字段
+func _盖牌视同手牌() -> bool:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	return 我 != null and 我.role_id == 精灵射手角色 and 我.tap
+
+
+## 「按盖牌对待」的牌：我的盖牌里不属于「视同手牌」的那些（其余角色、或精灵射手不在形态时）。
+## 处于【精灵祝福形态】时她的盖牌不在此列 —— 与同号手牌走完全相同的可点 / 可提交判定
+func _是普通盖牌(card_id: int) -> bool:
+	return _is_my_cover(card_id) and not _盖牌视同手牌()
+
+
+## 精灵射手【精灵祝福形态】（盖牌视同手牌）时，盖牌行「此刻是否真的用得上」：只有当前这段阶段 / 询问
+## 真的放行她的盖牌（可出牌 / 可应战 / 明确含盖牌的技能询问）时才显示盖牌行，不再一进形态就常驻。
+## 时机与 _卡牌能点 放行她盖牌的几种情形一致：
+##   行动阶段（_mode 1，能主动出牌）/ 响应阶段（_mode 2 的应战与回应魔弹）/ 技能询问、发动技能
+##   （_mode 3 / 4）且本次取牌来源明确含盖牌（HandOrCover）。
+## 弃牌类询问（手牌超限 Discard、从手牌选牌的技能）一律不显示：盖牌不能作为弃牌对象。
+## 原可点性判定（_是普通盖牌 / _卡牌能点）不动，这里只决定盖牌行露不露出来。
+func _盖牌此刻可用() -> bool:
+	if not _盖牌视同手牌():
+		return false
+	if _mode == 1:
+		return true
+	if _mode == 2:
+		var 应答号: int = int(_pending.get("respond_id", 0))
+		return 应答号 == GConst.RespondType.ReplyAttack or 应答号 == GConst.RespondType.Bullet
+	if _mode == 3 or _mode == 4:
+		return _skill_card_source == GConst.CardSource.HandOrCover
+	return false
+
+
 ## 进入技能选牌界面时，若本技能在「自动选盖牌」名单里，就把盖牌区能选的最大张数先全选上
 ## （玩家想少用几张，自己把多出来的点掉即可）
 func _自动选盖牌(技能号: int) -> void:
@@ -4478,6 +4527,9 @@ func _补牌落高(card_id: int, 现在: int) -> float:
 
 ## 我的盖牌渲染进 ChooseArea（它不是布局容器，所以这里手工排成一行、整行居中）。
 ## 「要选盖牌」时可见且可点；点「盖牌」按钮查看时只可见、点不动。
+## 精灵射手【精灵祝福形态】下她的【祝福】视同手牌（见 _盖牌视同手牌）：这时盖牌行按 _盖牌此刻可用 决定
+## 显不显示 —— 只有当前阶段 / 询问真的放行她的盖牌时才露出来，不是一进形态就常驻；
+## 显示出来的每张再按 _卡牌能点 单独判定（可用的发光、不可用的置灰），可点性与同号手牌完全一致。
 ## 张数多到一行放不下时压缩间距（可以叠着放），不会溢到区外。
 func 刷新盖牌() -> void:
 	# 与手牌一样复用节点：盖牌没变时不重建（每份快照都重建同样很重）
@@ -4502,22 +4554,25 @@ func 刷新盖牌() -> void:
 		间距 = clampf((ChooseArea.size.x - 尺寸.x * float(张数)) / float(张数 - 1),
 			-尺寸.x * 手牌最多重叠比例, 盖牌间距)
 	var 总宽: float = 尺寸.x * float(张数) + 间距 * float(张数 - 1)
+	# 「视同手牌」时盖牌也要像手牌一样逐个判可点；否则（普通盖牌 / 只读查看）沿用原逻辑
+	var 当手牌: bool = _盖牌视同手牌()
+	var 可点控: bool = _selecting_cover or 当手牌
 	var 序: int = 0
 	for cc: GCard in Data.cover_cards:
 		if cc == null:
 			continue
-		var 可点: bool = _selecting_cover and _卡牌能点(cc.id)
+		var 可点: bool = 可点控 and _卡牌能点(cc.id)
 		# 只是「点盖牌按钮查看」时一律保持原色（只读、不给点，但牌面要看得清）；
-		# 只有在「要选盖牌」的询问里选不了的那几张才置灰
+		# 只有在「要选盖牌」的询问里、或「视同手牌」时选不了的那几张才置灰
 		var go: Node = 旧.get(cc.id)
 		if go == null:
-			go = _加卡牌(ChooseArea, cc, 尺寸, 可点, _selecting_cover)
+			go = _加卡牌(ChooseArea, cc, 尺寸, 可点, 可点控)
 		else:
 			旧.erase(cc.id)
 			var 复: Control = go as Control
 			复.custom_minimum_size = 尺寸
 			复.size = 尺寸
-			go.call("设置卡牌", cc, 可点, _selecting_cover)
+			go.call("设置卡牌", cc, 可点, 可点控)
 			go.call("设置发光色", 可选发光_红 if _正在弃牌() else 可选发光_绿)
 		ChooseArea.move_child(go, 序)
 		if go is Control:
@@ -4528,7 +4583,7 @@ func 刷新盖牌() -> void:
 		序 += 1
 	for 废弃: Variant in 旧.values():
 		(废弃 as Node).queue_free()
-	ChooseArea.visible = _selecting_cover or _查看盖牌
+	ChooseArea.visible = _selecting_cover or _查看盖牌 or _盖牌此刻可用()
 
 
 ## 造一张卡牌节点挂到指定容器下（Card.tscn + scripts/CardUI.gd），点击回调统一接进来。
@@ -4734,6 +4789,12 @@ func _刷新头像提示() -> void:
 		return
 	var 配置: Dictionary = _头像提示配置()
 	if 配置.is_empty():
+		# 这一帧没有要画的头像提示（含「选项提示」型切到没配提示的那一项，如【动物伙伴】的选项 1）：
+		# 把上一帧画的收起，否则会有旧文案残留在头像上。
+		# 「点头像分配」型的那几句由 _刷新治疗分配 负责，这里不碰（同一批 Label 是共用的）
+		if _分配配置().is_empty():
+			for 面板: 战斗玩家面板 in _面板列表:
+				_取治疗提示(面板.ID).visible = false
 		return
 	# 「分目标」按已选顺序给每个目标各配一句（如【冰冻】第 1 个吃伤害、第 2 个 +1 治疗）；
 	# 「自身」那句（如【魔道法典】对自己也有伤害）画在自己头像上，自己同时是目标就并成两行
@@ -5109,6 +5170,10 @@ func _沉沦协奏曲头像提示() -> Dictionary:
 	for pid: int in _sel_players:
 		out[pid] = str(配置.get("文案", "")) % int(配置.get("每目标", 1))
 	return out
+
+
+## 精灵射手【元素射击·命中结算】的头像提示不走这里：水之矢（32012）/ 地之矢（32013）各有自己的
+## 询问号，直接用静态指示器条目（GConst.技能_水之矢 / 技能_地之矢）画「%d 治疗」或「%d 法术伤害」
 
 
 ## 苍炎魔女【天火断空】的指示器（现算，写不进静态指示器表）：对目标角色与自己各造成法术伤害，

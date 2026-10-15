@@ -307,6 +307,13 @@ func ally_ids() -> Array[int]:
 	return out
 
 
+## 处于「盖牌可视为手牌使用或打出」的状态时返回 true（精灵射手【精灵祝福形态】下的【祝福】）。
+## 出牌合法性、弃牌落位都问这里（BattlePlayer.has_hand_card / remove_hand_cards），
+## 别把角色判断散在引擎或玩家对象里写死
+func 盖牌可当手牌() -> bool:
+	return false
+
+
 ## 场上满足条件的玩家 id（默认不含自己：只挑「别人」；确实允许指向自己的技能传 含自己 = true）。
 ## 需要按条件过滤目标的技能，available_skills 的 "targets" 用它
 func player_ids_where(条件: Callable, 含自己: bool = false) -> Array[int]:

@@ -270,12 +270,11 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 			# 伤害分支（值 1）选 2 名对手：目标数由客户端的「选项目标数」给成 2、白名单＝对手；
 			# 弃牌分支（值 2）选 2 张手牌：选项自带 need_card＝2，选中后手牌才可点。
 			# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
-			# 顶部提示取技能表序号 2（「对两名目标各 1 点法术伤害」）：序号 1 那条写的是
-			# 「选 1 名目标造伤」，与实际「对 2 名目标各 1 点」不符
+			# 顶部提示取技能表序号 0（「对两名目标各 1 点法术伤害」）
 			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU, 0, 0, GConst.CardSource.Hand, [
-				{"value": 1, "label": 提示(JI_ANG_KUANG_XIANG_QU, 2)},
-				{"value": 2, "label": 提示(JI_ANG_KUANG_XIANG_QU, 3), "need_card": 2},
-			], 2, "", [], true, 2, -1, _enemies_of(engine.current_id))
+				{"value": 1, "label": 提示(JI_ANG_KUANG_XIANG_QU, 0)},
+				{"value": 2, "label": 提示(JI_ANG_KUANG_XIANG_QU, 1), "need_card": 2},
+			], 2, "", [], true, 0, -1, _enemies_of(engine.current_id))
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])

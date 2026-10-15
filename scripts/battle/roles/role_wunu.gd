@@ -55,8 +55,8 @@ func available_skills() -> Array:
 	if tong_sheng_id != -1:
 		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG, "need_card": 0, "need_target": 1,
 			"arg_choices": [
-				{"text": 提示(XUE_ZHI_AI_SHANG, 1), "args": [1], "need_card": 0, "need_target": 1},
-				{"text": 提示(XUE_ZHI_AI_SHANG, 2), "args": [2], "need_card": 0, "need_target": 0},
+				{"text": 提示(XUE_ZHI_AI_SHANG, 0), "args": [1], "need_card": 0, "need_target": 1},
+				{"text": 提示(XUE_ZHI_AI_SHANG, 1), "args": [2], "need_card": 0, "need_target": 0},
 			]})
 	return out
 

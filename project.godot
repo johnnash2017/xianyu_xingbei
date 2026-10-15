@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="杂鱼星杯"
-config/version="1.0.42"
+config/version="1.0.43"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"

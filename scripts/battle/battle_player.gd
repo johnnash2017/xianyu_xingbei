@@ -92,19 +92,28 @@ func add_hand_cards(cards: Array) -> void:
 func remove_hand_cards(cards: Array) -> void:
 	for c: Variant in cards:
 		var cid: int = int(c)
-		# 精灵射手(32) 可能是从盖牌区打出的（她的盖牌算手牌），手牌里没有就去盖牌里删
+		# 打出一张「盖牌视同手牌」的牌（精灵射手【精灵祝福形态】下的【祝福】）时，
+		# 手牌里没有就从盖牌区删。弃牌路径不会走到这里 —— 弃牌一律只认真实手牌（见 has_discard_card）
 		if hand_cards.has(cid):
 			hand_cards.erase(cid)
-		else:
+		elif role.盖牌可当手牌():
 			cover_cards.erase(cid)
 
 
 ## 手牌里有没有这张牌（对照服务端 PlayerEntity::checkOneHandCard）：
-## 精灵射手(32) 的盖牌同时算手牌 —— 她的【祝福】盖牌可以直接当手牌打出
+## 盖牌能当手牌用的形态下，盖牌同时算手牌（如精灵射手的【祝福】）——
+## 只用于「打出 / 应战」这类把牌用出去的场合
 func has_hand_card(cid: int) -> bool:
 	if hand_cards.has(cid):
 		return true
-	return role_id == 32 and cover_cards.has(cid)
+	return role.盖牌可当手牌() and cover_cards.has(cid)
+
+
+## 这张牌能不能作为「弃手牌」的对象：只看真实手牌。
+## 【祝福】这类「盖牌视同手牌」只用于出牌 / 应战，任何弃手牌效果（爆牌、技能代价、
+## 他人令弃）都不能弃盖牌，也不把盖牌列出来给玩家选
+func has_discard_card(cid: int) -> bool:
+	return hand_cards.has(cid)
 
 
 func hand_count() -> int:
