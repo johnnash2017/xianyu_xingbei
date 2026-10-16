@@ -28,7 +28,7 @@
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "BlueBG", "RedBG", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "WinImg", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign", "BtnSetting")]
+[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "BlueBG", "RedBG", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "WinImg", "EndTxt", "BtnBack", "LogRoot", "BtnLogMode", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign", "BtnSetting")]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 1280.0
@@ -67,6 +67,7 @@ WinImg = NodePath("WinPanel/WinImg")
 EndTxt = NodePath("WinPanel/EndTxt")
 BtnBack = NodePath("WinPanel/BtnBack")
 LogRoot = NodePath("Root/LogRoot")
+BtnLogMode = NodePath("Root/LogRoot/BtnLogMode")
 ChatRoot = NodePath("Root/ChatRoot_")
 HandArea = NodePath("Root/HandArea")
 ShowCardArea = NodePath("Root/ShowCardArea")
@@ -726,7 +727,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 12.0
-offset_top = 12.0
+offset_top = 66.0
 offset_right = -12.0
 offset_bottom = -12.0
 grow_horizontal = 2
@@ -742,11 +743,23 @@ mouse_filter = 2
 [node name="Content_2" type="RichTextLabel" parent="Root/LogRoot/MsgRoot/Viewport_2" unique_id=677482167]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/normal_font_size = 25
+theme_override_font_sizes/normal_font_size = 22
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
 script = ExtResource("43_AutoClearLoggd")
+
+[node name="BtnLogMode" type="CheckButton" parent="Root/LogRoot" unique_id=88300485]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 150.0
+offset_bottom = 58.0
+focus_mode = 0
+theme_override_font_sizes/font_size = 22
+text = "简洁"
+button_pressed = true
 
 [node name="BtnLogExpand" type="Button" parent="Root" unique_id=729892912]
 layout_mode = 0

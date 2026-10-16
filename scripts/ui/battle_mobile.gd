@@ -47,6 +47,7 @@ var _调试模式: bool = false
 @export var InputField: LineEdit
 @export var BtnSubmit: Button
 @export var BtnLogExpand: Button
+@export var BtnLogMode: CheckButton     # 日志「简洁」开关（LogRoot 左上角，勾上 = 简洁模式）
 @export var BtnChatExpand: Button
 @export var WinPanel: Control
 @export var WinImg: TextureRect
@@ -217,7 +218,8 @@ const 日志标签色: Dictionary = {
 	"行动": "#93E6A8",     # 出牌 / 发动技能
 	"伤害": "#FF9A9A",     # 攻击 / 命中 / 伤害 / 抵挡
 	"治疗": "#8FC7FF",     # 治疗 / 恢复
-	"卡牌": "#B9B4C7",     # 出牌 / 弃牌 / 交牌 / 资源消耗 / 手牌数量与上限变化
+	"卡牌": "#B9B4C7",     # 弃牌 / 交牌 / 资源消耗
+	"手牌": "#B9B4C7",     # 手牌数量与上限变化（与 [卡牌] 同色，只是单列一类）
 	"指示物": "#C6A6FF",   # 指示物变化
 	"士气": "#E8A0D8",     # 队伍士气升降
 	"提示": "#FFB27A",     # 超时 / 掉线 / 无效操作 / 错误
@@ -225,6 +227,9 @@ const 日志标签色: Dictionary = {
 }
 ## 日志正文的颜色（白）
 const 日志正文色: String = "#FFFFFF"
+## 简洁模式保留的日志类别：行动（出牌 / 发动技能）、回合（轮到谁）、士气（队伍士气升降）、
+## 手牌（手牌数量与上限变化），其余类别一律不进简洁缓冲
+const 简洁日志类别: Array[String] = ["行动", "回合", "士气", "手牌"]
 ## 日志正文里玩家名（角色名[玩家名]）与卡名的着色：正文仍以白字为底，只把专名挑出来上色
 const 日志玩家色: String = "#FFD98A"
 const 日志卡牌色: String = "#8FD3FF"
@@ -250,6 +255,8 @@ func _日志标签(kind: int) -> String:
 			return "回合"
 		GConst.GossipType.Token:
 			return "指示物"
+		GConst.GossipType.Hand:
+			return "手牌"
 		GConst.GossipType.Warn:
 			return "提示"
 		_:
@@ -280,6 +287,10 @@ const 精灵射手角色: int = 32
 var _面板列表: Array[战斗玩家面板] = []
 ## 日志缓冲：Content_2 上的 AutoClearLog 按行裁剪，需要整段文本
 var _日志: String = ""
+## 简洁模式的日志缓冲：只攒 简洁日志类别 那几类行（切换模式时整段换给 Content_2）
+var _日志简洁: String = ""
+## 是否处于简洁模式（右侧日志面板左上角那个「简洁」开关）。默认简洁，只看行动 / 回合 / 士气
+var _日志简洁模式: bool = true
 ## 当前回合玩家 id（用于面板高亮）
 var _当前回合: int = -1
 ## 当前「背后的 Turn 亮着」的玩家 id：轮到谁行动 / 在等谁回复都算，变了才重播动画
@@ -468,6 +479,7 @@ func _ready() -> void:
 	BtnSubmit.pressed.connect(_on_submit)
 	InputField.text_submitted.connect(func(_t: String) -> void: _on_submit())
 	BtnLogExpand.pressed.connect(_展开日志)
+	BtnLogMode.toggled.connect(_切换日志模式)
 	BtnChatExpand.pressed.connect(_展开聊天)
 	BtnBack.pressed.connect(_on_back)
 	BtnSetting.pressed.connect(UI.切换设置)
@@ -982,7 +994,15 @@ func _on_error(_err_id: int, msg: String) -> void:
 # 屏幕中间的展示卡牌区（Root/ShowCardArea）
 # ============================================================
 ## 一拨展示的停留秒数，到点自动收起（下一拨出现会立刻顶掉上一拨）
-const 展示停留秒数: float = 3.2
+const 展示停留秒数: float = 6.4
+## 展示牌从玩家头像飞到展示位的时长（秒）
+const 展示飞行时长: float = 0.6
+## 多张展示牌之间的起飞间隔（秒）：一张接一张，不叠在一起
+const 展示飞行间隔: float = 0.06
+## 展示牌起飞时的缩放：小一点起步，飞到展示位正好长回原大
+const 展示飞行起始缩放: float = 0.5
+## 牌摊到展示位之后、出手弹道飞出去之前的停顿（秒）：留一点「看清这张牌」的空档
+const 出手等待秒数: float = 0.6
 ## 卡牌视图预制体：和手牌同一个 Card.tscn（卡图 + 左上角命格/元素 + 底部字形与技能名1/2）
 const 卡牌视图预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Card.tscn")
 ## 悬停基础效果牌时摊出的「状态名 + 完整卡面」预制体（见 悬停卡预览）
@@ -993,10 +1013,18 @@ const 悬停卡预览预制: PackedScene = preload("res://scenes/prefabs/battlem
 ## 否则上一拨的计时器到点会把刚摊出来的下一拨一起收掉（表现成展示时间被上一张牌拖短）
 var _展示代号: int = 0
 
+## 最近一拨摊出的牌在屏幕上的全局中心（(-1, -1) = 这条消息没摊牌）：斩击 / 魔弹的出手特效
+## 就「从这张牌上起飞」飞向目标头像，见 _播出手特效、_飞牌特效
+var _展示全局中心: Vector2 = Vector2(-1.0, -1.0)
+## 牌飞到展示位要多久（秒）：出手特效得等牌自己就位再起飞，这就是它的起跑延迟
+var _展示飞行延迟: float = 0.0
+
 
 ## 把这几张牌摊到屏幕中间给所有人看；停了 展示停留秒数 秒后自动收起，
-## 期间若来了新的一拨，立即顶掉（收起由新那拨负责）
-func _展示卡牌(卡号表: Array) -> void:
+## 期间若来了新的一拨，立即顶掉（收起由新那拨负责）。
+## 飞行起点 >= 0 时这几张牌先在那名玩家（出牌人 / 展示者）头像处现身，再一张接一张飞到自己的展示位；
+## 自己的牌不飞，由调用方传 -1 进来（见 _on_card）
+func _展示卡牌(卡号表: Array, 飞行起点: int) -> void:
 	_收起展示卡牌()
 	_展示代号 += 1
 	var 本代号: int = _展示代号
@@ -1022,11 +1050,47 @@ func _展示卡牌(卡号表: Array) -> void:
 	var 行y: float = (ShowCardArea.size.y - 手牌尺寸.y) * 0.5 + 展示牌下移像素
 	for i: int in range(视图表.size()):
 		视图表[i].position = Vector2(起点 + 间距 * float(i), 行y)
+	# 记下这拨牌在屏幕上的全局中心与「牌就位、再停一下」的总耗时：别人的牌摊过来后，
+	# 斩击 / 魔弹就从这张牌上起飞，并等上这么久（自己打的牌不飞、也不等，见 _播出手特效）
+	if not 视图表.is_empty() and 飞行起点 >= 0:
+		_展示全局中心 = 视图表[0].get_global_rect().get_center()
+		_展示飞行延迟 = 展示飞行时长 + 展示飞行间隔 * float(视图表.size() - 1) + 出手等待秒数
+	_展示飞行(视图表, 飞行起点)
 	await get_tree().create_timer(展示停留秒数).timeout
 	# 等待期间又摊出了新的一拨：收起交给新那拨，这里不动
 	if 本代号 != _展示代号:
 		return
 	_收起展示卡牌()
+
+
+## 展示飞行：把已经摆到展示位的这几张牌先挪到该玩家的头像上（缩小 + 全透明），
+## 再飞回展示位、同时清晰起来 —— 一眼能看出「这是谁出的牌」。
+## 头像中心是 Root 坐标，而展示位是 ShowCardArea 的局部坐标（它是 Root 正中一块），换算要减掉它的位置
+func _展示飞行(视图表: Array[Control], 玩家id: int) -> void:
+	if 玩家id < 0:
+		return
+	var 中心: Vector2 = _面板中心(玩家id)
+	if 中心.x < 0.0:
+		return
+	var 起飞: Vector2 = 中心 - ShowCardArea.position - 手牌尺寸 * 0.5
+	for i: int in range(视图表.size()):
+		var 视图: Control = 视图表[i]
+		var 终点: Vector2 = 视图.position
+		视图.pivot_offset = 手牌尺寸 * 0.5
+		视图.position = 起飞
+		视图.scale = Vector2.ONE * 展示飞行起始缩放
+		var 透明: Color = 视图.modulate
+		透明.a = 0.0
+		视图.modulate = 透明
+		var 延迟: float = 展示飞行间隔 * float(i)
+		# 三样一起走：位置飞回展示位、缩放长回原大、透明度在开头四成里亮起来
+		var t: Tween = 视图.create_tween()
+		t.set_parallel(true)
+		t.tween_property(视图, "position", 终点, 展示飞行时长) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT).set_delay(延迟)
+		t.tween_property(视图, "scale", Vector2.ONE, 展示飞行时长) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT).set_delay(延迟)
+		t.tween_property(视图, "modulate:a", 1.0, 展示飞行时长 * 0.4).set_delay(延迟)
 
 
 ## 收掉当前摊出来的牌
@@ -1041,6 +1105,9 @@ func _收起展示卡牌() -> void:
 func _on_card(msg: Dictionary) -> void:
 	var src: int = int(msg.get("src_id", -1))
 	var dst: int = int(msg.get("dst_id", -1))
+	# 出手特效的起飞点是「本条消息摊出来的那张牌」，先清掉上一条的，免得串台
+	_展示全局中心 = Vector2(-1.0, -1.0)
+	_展示飞行延迟 = 0.0
 	# 「给牌」不发牌面、也不进这里写日志（日志由服务端的 Gossip 写好了），
 	# 只是要播一个「牌从甲飘到乙」的动效 —— 见 engine._log_give_cards
 	if int(msg.get("type", 0)) == GConst.CardMsgType.Give:
@@ -1059,22 +1126,20 @@ func _on_card(msg: Dictionary) -> void:
 	# 出牌音效（对照参考项目 AudioManager 的 CARDMSG 分支）：攻击牌 atk-<系别>，法术牌 spell-<卡名>。
 	# 这次出牌「视为」另一张牌时（msg.as_card_id，如地/火牌当【魔弹】打）按那张牌出声；
 	# 摊牌与日志仍用真正打出的牌（card_ids）。
+	# 这里只定「响哪一声」，真正的播放交给 _播出手特效 —— 斩击 / 魔弹会跟着特效一起
+	# 推迟到从牌上起飞那一刻，其余情况它当场就响
 	var 表现牌: GCard = _视为牌(msg)
 	if 表现牌 == null:
 		表现牌 = 首张
-	if 表现牌 != null and not 是展示:
-		if 表现牌.is_attack():
-			Audio.播音效("atk-" + 表现牌.element)
-		else:
-			var 后缀: String = str(法术音效后缀.get(表现牌.card_name, ""))
-			if 后缀 != "":
-				Audio.播音效("spell-" + 后缀)
+	var 音效名: String = "" if 是展示 or 表现牌 == null else _出手音效(表现牌)
 	var 谁: String = _称号(src)
 	var 目标: GPlayer = Data.get_player_by_id(dst)
 	# 屏幕中间把牌摊出来（自己和其他人都看得到）。
 	# 虚拟牌（如【欺诈】变出来的那张攻击牌，is_real=false）不摊牌，只播声音 / 特效 / 日志
 	if bool(msg.get("is_real", true)):
-		_展示卡牌(msg.get("card_ids", []))
+		# 摊出来的牌从出牌人 / 展示者的头像飞过来（出手特效另算，那条是指向目标的粒子）；
+		# 自己的牌不飞：自己清楚自己打了什么，飞过来只会多挡一阵视线
+		_展示卡牌(msg.get("card_ids", []), -1 if src == Logic.my_player_id else src)
 	if 是展示:
 		_日志追加("%s 展示：%s" % [谁, ", ".join(names)], "行动")
 		return
@@ -1082,19 +1147,54 @@ func _on_card(msg: Dictionary) -> void:
 		_日志追加("%s 对自己打出：%s" % [谁, ", ".join(names)], "行动")
 	else:
 		_日志追加("%s 对 %s 打出：%s" % [谁, _称号(dst), ", ".join(names)], "行动")
-	_播出手特效(src, dst, msg)
+	_播出手特效(src, dst, msg, 音效名)
 
 
 ## 出手特效分发：这几种牌放专属粒子特效（打向别人时飞过去、对自己结算时原地炸开），
 ## 其它指向性牌退化成公用弹道。
-func _播出手特效(src: int, dst: int, msg: Dictionary) -> void:
+## 斩击 / 魔弹指向别人时改走「飞牌出手」：牌这时已经摊在展示位上，特效就从那张牌上起飞
+## 飞向目标头像，音效也跟到起飞那一刻 —— 观感上就是「把这张牌打过去」。
+## 但自己打的牌不这么走（自己摊牌时就没让牌飞，_展示全局中心 为 -1）：不等、也不从牌上飞出，
+## 仍按老样子从自己头像飞向目标；其余情况（展示 / 虚拟牌 / 对自己结算的原地炸开 / 公用弹道）保持原样。
+## 音效名 由调用方算好（见 _出手音效），空串 = 不出声
+func _播出手特效(src: int, dst: int, msg: Dictionary, 音效名: String) -> void:
+	var 牌号: int = _特效牌号(msg) if src >= 0 and dst >= 0 else -1
+	var 目标: 战斗玩家面板 = _玩家面板(dst)
+	if 牌号 >= 0 and dst != src and _展示全局中心.x >= 0.0 and 目标 != null:
+		_飞牌特效(牌号, _展示全局中心, 目标.get_global_rect().get_center(), _展示飞行延迟, 音效名)
+		return
+	if 音效名 != "":
+		Audio.播音效(音效名)
 	if src < 0 or dst < 0:
 		return
-	var 牌号: int = _特效牌号(msg)
 	if 牌号 >= 0:
 		_粒子特效(src, dst, 牌号, dst != src)
 	elif dst != src:
 		_行动弹道(src, dst)
+
+
+## 这次出牌该响哪一声（空串 = 不出声）：攻击牌 atk-<系别>，法术牌 spell-<卡名后缀>
+func _出手音效(牌: GCard) -> String:
+	if 牌.is_attack():
+		return "atk-" + 牌.element
+	var 后缀: String = str(法术音效后缀.get(牌.card_name, ""))
+	return "" if 后缀 == "" else "spell-" + 后缀
+
+
+## 飞牌出手：先等牌自己飞进展示位（延迟 = 0 表示这牌本来就没飞），
+## 再在展示位那张牌上生成斩击 / 魔弹特效飞向目标头像，起飞的同时打响这一声。
+## 起 / 止 与 _粒子特效 一样取全局坐标（特效预制体挂在 Root 下、按 global_position 走）
+func _飞牌特效(牌号: int, 起: Vector2, 止: Vector2, 延迟: float, 音效名: String) -> void:
+	var 牌: GCard = Data.get_card(牌号)
+	if 牌 == null or Root == null:
+		return
+	if 延迟 > 0.0:
+		await get_tree().create_timer(延迟).timeout
+	var go: Node2D = (EffectWarmer.特效预制表[牌.card_name_enum()] as PackedScene).instantiate() as Node2D
+	Root.add_child(go)
+	if 音效名 != "":
+		Audio.播音效(音效名)
+	go.call("播放", 起, 止, true)
 
 
 ## 这次出牌「视为」的那张牌（Card 消息的 as_card_id）：值为 0 或查不到时返回 null。
@@ -1268,13 +1368,15 @@ func _称号(player_id: int) -> String:
 
 ## 给日志正文里的玩家名与卡名单独上色（其余仍是白字）。
 ## 放在 _日志追加 里统一处理：客户端自己拼的行与服务端下发的公告都能着色。
-func _日志着色(t: String) -> String:
+## 简洁模式 下正文里不显示玩家名：「玩家名[角色名]」只留角色名（昵称一律不出现）
+func _日志着色(t: String, 简洁模式: bool = false) -> String:
 	var 结果: String = t
 	# 玩家：整段「玩家名[角色名]」一起染（与 _称号 的写法一致）
 	for p: GPlayer in Data.player_list:
 		var 称号: String = "%s[%s]" % [p.nickname, p.role_name]
 		if 结果.find(称号) >= 0:
-			结果 = 结果.replace(称号, "[color=%s]%s[/color]" % [日志玩家色, 称号])
+			var 显示名: String = p.role_name if 简洁模式 else 称号
+			结果 = 结果.replace(称号, "[color=%s]%s[/color]" % [日志玩家色, 显示名])
 	# 卡名：长名先替，避免短名（如「圣光」）把长名切碎而留下半边未着色
 	var 卡名表: Array[String] = []
 	for 卡: GCard in Data.card_db:
@@ -1300,11 +1402,35 @@ func _日志着色(t: String) -> String:
 ## （日志控件是 RichTextLabel，支持 BBCode）
 func _日志追加(t: String, 标签: String = "系统") -> void:
 	var 色: String = str(日志标签色.get(标签, 日志标签色["系统"]))
-	_日志 += "[color=%s][%s][/color][color=%s] %s[/color]\n" % [色, 标签, 日志正文色, _日志着色(t)]
+	_日志 += _日志行(色, 标签, _日志着色(t))
+	if 简洁日志类别.has(标签):
+		_日志简洁 += _日志行(色, 标签, _日志着色(t, true))
+	_刷新日志()
+
+
+## 拼日志的一行：开头的「[类别]」用标签色，正文用白字，末尾带换行
+func _日志行(色: String, 标签: String, 正文: String) -> String:
+	return "[color=%s][%s][/color][color=%s] %s[/color]\n" % [色, 标签, 日志正文色, 正文]
+
+
+## 把当前模式该看到的日志铺到右侧面板上（详情 = 全量，简洁 = 只有行动行）。
+## 两个缓冲的行格式完全一样，所以切换模式只是换一段文本给 Content_2
+func _刷新日志() -> void:
+	var 文本: String = _日志简洁 if _日志简洁模式 else _日志
 	if Content_2.has_method("AutoClearText"):
-		Content_2.call("AutoClearText", _日志, 日志最大行)
+		Content_2.call("AutoClearText", 文本, 日志最大行)
 	else:
-		Content_2.text = _日志
+		Content_2.text = 文本
+
+
+## 日志「简洁」开关：勾上只看行动 / 回合 / 士气，取消看全量
+func _切换日志模式(简洁: bool) -> void:
+	_日志简洁模式 = 简洁
+	_刷新日志()
+	if LogRoot.visible:
+		# 换过文本后高度要重量一次，再滚到最新一条（同 _展开日志）
+		await get_tree().process_frame
+		MsgRoot.scroll_vertical = 1 << 30
 
 
 # ============================================================
@@ -1369,7 +1495,7 @@ func _展开日志() -> void:
 		# 面板收起时宽度没定死，日志高度会按 0 宽换行量得偏大、底下拖出一片空白。
 		# 先等一帧让可见后的宽度算定，再让日志按新宽度重新量一次高度，最后滚到底。
 		await get_tree().process_frame
-		Content_2.call("AutoClearText", _日志, 日志最大行)
+		_刷新日志()
 		await get_tree().process_frame
 		MsgRoot.scroll_vertical = 1 << 30
 
