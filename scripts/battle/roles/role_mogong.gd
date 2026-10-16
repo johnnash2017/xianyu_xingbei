@@ -2,12 +2,13 @@ extends BattleRole
 ## 魔弓（roleID 26）—— 移植自服务端 role/MoGong.cpp
 ## 【响应】魔贯冲击（2601）：主动攻击前移除 1 个火系【充能】，本次伤害 +1；不能攻击手牌达到上限的对手；
 ##                  若命中可再移除 1 个火系【充能】使伤害再 +1；若未命中则对对方造成 3 点法术伤害③
+##                  （两处询问都只问「发不发动」，移除哪张由服务端自己挑，玩家不选牌）
 ## 【法术】雷光散射（2602）：移除雷系【充能】，对所有对手各 1 点法术伤害③；
-##                  若额外移除 X 个雷系【充能】，指定一名对手额外受 X 点
+##                  移除几张由技能栏的二级选项给出（选 2 张以上才指定一名对手额外受「移除张数」点）；
+##                  具体移除哪几张也由服务端自己挑，玩家不选牌
 ## 【响应】多重射击（2603）：【攻击行动】结束时移除 1 个风系【充能】，视为额外 1 次暗系主动攻击，
-##                  不能攻击上次的目标且伤害 -1（攻击行动结束直接询问，确认＝发动，
-##                  并在同一次询问里让玩家选要移除的风系【充能】和目标；
-##                  本次攻击结束后若还有风系【充能】可继续发动，无每回合次数限制）
+##                  不能攻击上次的目标且伤害 -1（攻击行动结束直接询问，确认＝发动 + 选打谁，
+##                  移除哪张由服务端自己挑；本次攻击结束后若还有风系【充能】可继续发动，无每回合次数限制）
 ## 【启动】充能（2604）：耗 1 能量，弃到四张、摸 X 张牌，可将至多 X 张手牌作为【充能】
 ## 【启动】魔眼（2605）：耗 1 宝石。点技能时二选一 —— 点一名角色（别人弃 1 张牌 / 自己摸 3 张牌），
 ##                  或点一张自己的手牌弃掉；然后将 1 张手牌作为【充能】，+1 水晶
@@ -58,25 +59,32 @@ func available_skills() -> Array:
 	# 充能 / 魔眼：「启动」技能，显示为技能栏按钮，点了才发动且不消耗本回合行动。
 	# 【充能】「弃到 4 张」是发动代价，写进 need_card（同格斗家【斗神天驱】）；
 	# 摸几张由 arg_choices 在二级技能栏里选 —— 点技能后弃牌与摸牌数一起选，最后按一次「确定」，
-	# 不再先确定、再由服务端补问一次摸牌数
-	if player.get_energy() > 0:
-		var 需弃: int = maxi(player.hand_cards.size() - CHONG_NENG_KEEP_HAND, 0)
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": CHONG_NENG, "need_card": 需弃, "need_target": 0,
-			"arg_choices": _chong_neng_choices()})
-	if player.gem > 0:
-		# 魔眼：点技能后先在二级技能栏里二选一（对照原服务端 MoGong::MoYan）——
-		# 「自己摸 3 张牌」不点目标；「指定一名角色弃 1 张牌」再点 1 名角色（可点自己）。
-		# need_target 给 0、不给 target_max：目标数完全由选项自带（选了要目标的那项客户端才放开点头像）
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_YAN, "need_card": 0, "need_target": 0,
-			"arg_choices": _mo_yan_choices()})
-	if _available_lei_guang:
-		# 雷光散射：从盖牌区选雷系牌（至少 1 张、可多选）。选超过 1 张时可指定一名对手额外受伤，
-		# 目标限敌方（白名单下发界面；「选超过 1 张才需要选目标」由技能指示器的「目标随牌」规则定）
-		var 雷系盖牌: Array[int] = _cover_ids_of_element(GConst.CardElement.Thunder)
-		if not 雷系盖牌.is_empty():
-			out.append({"type": GConst.ActionType.MagicSkill, "id": LEI_GUANG_SAN_SHE, "need_card": 1,
-				"card_source": GConst.CardSource.Cover, "cards": 雷系盖牌, "card_max": 雷系盖牌.size(),
-				"targets": enemy_ids()})
+	# 不再先确定、再由服务端补问一次摸牌数；条件不满足时按钮仍摆出、置灰
+	var 需弃: int = maxi(player.hand_cards.size() - CHONG_NENG_KEEP_HAND, 0)
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": CHONG_NENG, "need_card": 需弃, "need_target": 0,
+		"arg_choices": _chong_neng_choices(), "enabled": player.get_energy() > 0})
+	# 魔眼：点技能后先在二级技能栏里二选一（对照原服务端 MoGong::MoYan）——
+	# 「自己摸 3 张牌」不点目标；「指定一名角色弃 1 张牌」再点 1 名角色（可点自己）。
+	# need_target 给 0、不给 target_max：目标数完全由选项自带（选了要目标的那项客户端才放开点头像）；
+	# 条件不满足时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_YAN, "need_card": 0, "need_target": 0,
+		"arg_choices": _mo_yan_choices(), "enabled": player.gem > 0})
+	# 雷光散射：不再让玩家点盖牌，改成二级技能栏里选「移除几张」（移除哪几张由服务端自动挑盖牌区
+	# 最前面那几张，见 _lei_guang_san_she）。选项各自带目标数：只移除 1 张时每名对手各 1 点、不用选人；
+	# 移除 2 张以上才多出「指定一名对手额外受伤」那一步，目标限敌方。
+	# 条件不满足时按钮仍摆出、置灰
+	var 雷系盖牌: Array[int] = _cover_ids_of_element(GConst.CardElement.Thunder)
+	var 雷光散射选项: Array = []
+	for 张数: int in range(1, 雷系盖牌.size() + 1):
+		雷光散射选项.append({
+			"text": "移除 %d 张" % 张数, "args": [张数],
+			"need_target": 1 if 张数 > 1 else 0, "targets": enemy_ids(),
+		})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": LEI_GUANG_SAN_SHE,
+		"need_card": 0, "need_target": 0, "arg_choices": 雷光散射选项,
+		# 来源写盖牌：玩家一张都点不动（need_card = 0），只是让盖牌区亮出来给他看有几张雷系【充能】
+		"card_source": GConst.CardSource.Cover,
+		"targets": enemy_ids(), "enabled": _available_lei_guang and not 雷系盖牌.is_empty()})
 	# 【魔贯冲击】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
 	return out
 
@@ -112,9 +120,16 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if not _available_lei_guang:
 		return GConst.GE_INVALID_ACTION
-	# 服务端要求盖牌区存在雷系牌
-	if not _cover_has_element(GConst.CardElement.Thunder):
-		return GConst.GE_INVALID_ACTION
+	# 移除几张由二级技能栏的选项给出（args[0]）：1 ~ 盖牌区雷系牌数，顺带保证盖牌区真有雷系牌
+	var 参数: Array = action.get("args", [])
+	var 雷系数: int = _cover_ids_of_element(GConst.CardElement.Thunder).size()
+	if 参数.is_empty() or int(参数[0]) < 1 or int(参数[0]) > 雷系数:
+		return GConst.GE_INVALID_ARGUMENT
+	# 移除 2 张以上才多出「指定一名对手额外受伤」：必须带一名对手
+	if int(参数[0]) > 1:
+		var 目标: Array = action.get("dst_ids", [])
+		if 目标.is_empty() or engine.p(int(目标[0])) == null:
+			return GConst.GE_INVALID_ARGUMENT
 	return GConst.GE_SUCCESS
 
 
@@ -124,17 +139,17 @@ func p_magic_skill(action: Dictionary) -> int:
 	return _lei_guang_san_she(action)
 
 
-## 雷光散射：移除雷系【充能】，对所有对手各 1 点法术伤害；指定一名对手额外受（移除数）点
+## 雷光散射：移除雷系【充能】，对所有对手各 1 点法术伤害；指定一名对手额外受（移除数）点。
+## 移除几张由二级技能栏的选项给出（args[0]）；具体移除哪几张＝盖牌区里最前面那几张（玩家不挑牌）
 func _lei_guang_san_she(action: Dictionary) -> int:
+	var 参数: Array = action.get("args", [])
+	var 张数: int = int(参数[0]) if not 参数.is_empty() else 0
+	var 雷系: Array[int] = _cover_ids_of_element(GConst.CardElement.Thunder)
+	var used: Array = []
+	for i: int in range(张数):
+		used.append(雷系[i])
 	var dsts: Array = action.get("dst_ids", [])
 	var dest_id: int = int(dsts[0]) if not dsts.is_empty() else -1
-	var used: Array = []
-	for c: Variant in action.get("card_ids", []):
-		var cid: int = int(c)
-		var card: GCard = Data.get_card(cid)
-		if card != null and card.element_enum() == GConst.CardElement.Thunder and player.cover_cards.has(cid):
-			if not used.has(cid):
-				used.append(cid)
 	# 全部敌方角色（从自己的下家开始按行动顺序绕一圈）
 	var enemies: Array[int] = []
 	var nid: int = player.post_id
@@ -204,19 +219,21 @@ func _mo_guan_chong_ji(ctx: Dictionary) -> int:
 	if not _cover_has_element(GConst.CardElement.Fire):
 		return SUCCESS
 	if not engine.has_reply():
-		# 只能移除火系【充能】：下发火系盖牌白名单，界面把其余盖牌置灰；
+		# 移除哪张火系【充能】由服务端自己挑（玩家只回答要不要发动），故 need_card=0（界面上一张牌都点不动，
+		# 但盖牌区照样亮出来给他看）；张数传 1 只为让提示文案说「移除 1 个火系【充能】」。
 		# 顺带下发攻击目标与发动前的伤害，客户端据此在目标头像上现算「本次攻击伤害」
-		询问(player.id, MO_GUAN_CHONG_JI, 1, 0, GConst.CardSource.Cover, [], 0, "",
-			_cover_ids_of_element(GConst.CardElement.Fire), true, 0, -1, [dst.id], -1, {},
+		询问(player.id, MO_GUAN_CHONG_JI, 0, 0, GConst.CardSource.Cover, [], 0, "",
+			[], true, 0, -1, [dst.id], 1, {},
 			int(ctx.get("harm", {}).get("point", 0)))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
-	var cid: int = _cover_card_of_element(r.get("card_ids", []), GConst.CardElement.Fire)
-	if cid < 0:
+	var 火系: Array[int] = _cover_ids_of_element(GConst.CardElement.Fire)
+	if 火系.is_empty():
 		return SUCCESS
+	var cid: int = 火系[0]
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,
@@ -255,13 +272,21 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if _mo_guan_hit_step == 0:
 		_mo_guan_hit_step = PHASE_ASK_EXTRA
 	if _mo_guan_hit_step == PHASE_ASK_EXTRA:
-		# 对照原版 MoGuanChongJi_Hit：命中后询问是否追加发动，发动则由玩家选 1 张火系【充能】移除
-		# （序号 1 = 技能表「提示2」列的「发动【魔贯冲击】：再移除 {n} 个火系【充能】」）；
+		# 命中追加还要再移除一张火系【充能】：手上（盖牌区）一张牌都没有就没什么可问的，
+		# 直接当作不追加收尾。有盖牌但不是火系时照样问 —— 界面把盖牌区摆出来、只把「确定」置灰
+		# （客户端的「需盖牌系别」规则），玩家按「取消」跳过
+		if player.cover_cards.is_empty():
+			_using_mo_guan = false
+			_mo_guan_hit_step = STEP_DONE
+			return SUCCESS
+		# 对照原版 MoGuanChongJi_Hit：命中后询问是否追加发动。
+		# 与第一次询问一样不要求玩家选牌（need_card=0），移除哪张火系【充能】由服务端自动挑；
+		# 张数传 1 只为让提示文案说「再移除 1 个火系【充能】」（序号 1 = 技能表「提示2」列）；
 		# 同样下发攻击目标与当前伤害，客户端据此在目标头像上写「再 +1 后」的伤害
 		if not engine.has_reply():
-			询问(player.id, MO_GUAN_CHONG_JI, 1, 0, GConst.CardSource.Cover, [], 0, "",
-				_cover_ids_of_element(GConst.CardElement.Fire), true, 1,
-				-1, [int(ctx.get("dst", -1))], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
+			询问(player.id, MO_GUAN_CHONG_JI, 0, 0, GConst.CardSource.Cover, [], 0, "",
+				[], true, 1, -1, [int(ctx.get("dst", -1))], 1, {},
+				int(ctx.get("harm", {}).get("point", 0)))
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
@@ -269,9 +294,10 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		_mo_guan_hit_step = STEP_DONE
 		if args.is_empty() or int(args[0]) != 1:
 			return SUCCESS
-		var cid: int = _cover_card_of_element(r.get("card_ids", []), GConst.CardElement.Fire)
-		if cid < 0:
+		var 火系: Array[int] = _cover_ids_of_element(GConst.CardElement.Fire)
+		if 火系.is_empty():
 			return SUCCESS
+		var cid: int = 火系[0]
 		notice_skill(MO_GUAN_CHONG_JI, [int(ctx.get("dst", -1))])
 		engine.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -309,9 +335,8 @@ func p_after_attack(ctx: Dictionary) -> int:
 	return _duo_chong_she_ji_ask()
 
 
-## 【多重射击】：问玩家是否发动；发动则由他自己选要移除的风系【充能】和攻击目标
-##（同【魔贯冲击】那样把代价放进询问）。确认后视为额外 1 次暗系主动攻击
-##（伤害 -1、对方不能应战，在 p_timeline_1 里按 _using_duo_chong 结算）
+## 【多重射击】：问玩家是否发动（以及打谁）；发动时移除哪张风系【充能】由服务端自动挑。
+## 确认后视为额外 1 次暗系主动攻击（伤害 -1、对方不能应战，在 p_timeline_1 里按 _using_duo_chong 结算）
 func _duo_chong_she_ji_ask() -> int:
 	if not _available_duo_chong or not _cover_has_element(GConst.CardElement.Wind):
 		return SUCCESS
@@ -320,16 +345,19 @@ func _duo_chong_she_ji_ask() -> int:
 	if 可攻目标.is_empty():
 		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, DUO_CHONG_SHE_JI, 1, 1, GConst.CardSource.Cover, [], 0, "",
-			_cover_ids_of_element(GConst.CardElement.Wind), true, 0, -1, 可攻目标)
+		# 不要求玩家选牌（need_card=0，界面上一张牌都点不动，但盖牌区照样亮出来给他看），
+		# 移除哪张风系【充能】由服务端自动挑；张数传 1 只为让提示文案说「移除 1 个风系【充能】」
+		询问(player.id, DUO_CHONG_SHE_JI, 0, 1, GConst.CardSource.Cover, [], 0, "",
+			[], true, 0, -1, 可攻目标, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
-	var 充能: int = _cover_card_of_element(r.get("card_ids", []), GConst.CardElement.Wind)
-	if 充能 < 0:
+	var 风系: Array[int] = _cover_ids_of_element(GConst.CardElement.Wind)
+	if 风系.is_empty():
 		return SUCCESS
+	var 充能: int = 风系[0]
 	var dsts: Array = r.get("dst_ids", [])
 	if dsts.is_empty():
 		return SUCCESS
@@ -455,11 +483,12 @@ func _run_chong_neng(action: Dictionary) -> int:
 	return SUCCESS
 
 
-## 充能的摸牌数选项（二级技能栏）：1~4 张各一颗，文案取技能表「提示」列第 1 条（"摸 {n} 张"）
+## 充能的摸牌数选项（二级技能栏）：1~4 张各一颗，文案取技能表「提示」列第 2 条（"摸 {n} 张"）。
+## 第 1 条是「发动【充能】：把手牌作【充能】」——那是这条询问的指令文案，不是选项文案
 func _chong_neng_choices() -> Array:
 	var out: Array = []
 	for i: int in range(1, 5):
-		out.append({"text": 提示(CHONG_NENG, 0, i), "args": [i]})
+		out.append({"text": 提示(CHONG_NENG, 1, i), "args": [i]})
 	return out
 
 
@@ -510,11 +539,12 @@ func _chong_neng(action: Dictionary) -> int:
 
 ## 魔眼的两个选项（二级技能栏二选一，对照原服务端 MoGong::MoYan）：
 ## args[0]=0 不指定目标 → 自己摸 3 张牌；args[0]=1 指定一名角色 → 该角色弃 1 张牌。
-## 「指定」那项的白名单是全场（含自己，对照原版 playerArea->enableAll），所以点自己＝自己弃 1 张
+## 「指定」那项的白名单是全场（含自己，对照原版 playerArea->enableAll），所以点自己＝自己弃 1 张。
+## 文案取「提示」列第 2、3 条（第 1 条是「发动【魔眼】：…」的指令文案，不是选项文案）
 func _mo_yan_choices() -> Array:
 	return [
-		{"text": 提示(MO_YAN, 0), "args": [0]},
-		{"text": 提示(MO_YAN, 1), "args": [1], "need_target": 1, "targets": _all_player_ids()},
+		{"text": 提示(MO_YAN, 1), "args": [0]},
+		{"text": 提示(MO_YAN, 2), "args": [1], "need_target": 1, "targets": _all_player_ids()},
 	]
 
 
@@ -577,7 +607,8 @@ func _gai_pai(skill_id: int, max_n: int) -> int:
 # ============================================================
 # 工具
 # ============================================================
-## 盖牌区某系别的全部牌 id（雷光散射的 cards 用它限制只能选雷系盖牌）
+## 盖牌区某系别的全部牌 id（顺序＝盖牌区的摆放顺序）：
+## 【雷光散射】按它给出「移除几张」的选项、并按它取最前面那几张移除；【魔贯冲击】/【多重射击】取第一张
 func _cover_ids_of_element(elem: int) -> Array[int]:
 	var out: Array[int] = []
 	for cid: int in player.cover_cards:
@@ -590,18 +621,6 @@ func _cover_ids_of_element(elem: int) -> Array[int]:
 ## 盖牌区是否有某系别的【充能】
 func _cover_has_element(elem: int) -> bool:
 	return not _cover_ids_of_element(elem).is_empty()
-
-
-## 取回复中第一张指定系别的盖牌（玩家在代价/追加询问里选的那张）
-func _cover_card_of_element(cards: Array, elem: int) -> int:
-	for c: Variant in cards:
-		var cid: int = int(c)
-		if not player.cover_cards.has(cid):
-			continue
-		var card: GCard = Data.get_card(cid)
-		if card != null and card.element_enum() == elem:
-			return cid
-	return -1
 
 
 ## 把牌作为【充能】加入盖牌区（超限由引擎询问玩家弃哪几张，对照 StateRequestCover）

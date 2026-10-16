@@ -34,13 +34,13 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if player.get_energy() >= 1 and int(player.tokens[0]["num"]) >= 1 and _magic_card_count() >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": XING_HONG_SHI_ZI, "need_card": 2, "need_target": 1,
-			"cards": magic_hand_ids()})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": XING_HONG_SHI_ZI, "need_card": 2, "need_target": 1,
+		"enabled": player.get_energy() >= 1 and int(player.tokens[0]["num"]) >= 1 and _magic_card_count() >= 2,
+		"cards": magic_hand_ids()})
 	# 【血腥祷言】为「启动」：有治疗时可发动，把自身治疗分给队友（不消耗本回合行动）
-	if player.cross_num > 0:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_XING_DAO_YAN,
-			"need_card": 0, "need_target": 1, "targets": ally_ids()})
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_XING_DAO_YAN,
+		"need_card": 0, "need_target": 1, "targets": ally_ids(),
+		"enabled": player.cross_num > 0})
 	# 【猩红圣约】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
 	return out
 

@@ -31,7 +31,7 @@
 
 ### 技术栈与编码风格
 
-- 引擎：Godot **4.7**（Forward+）；Windows 渲染驱动 `d3d12`，物理引擎 `Jolt Physics`；设计分辨率 1920×1080，`canvas_items` 拉伸。
+- 引擎：Godot **4.7**（Forward+）；渲染驱动不指定（走引擎默认的 Vulkan —— 编辑器运行与导出包必须同一个驱动，否则同一个特效两边观感会不一样），物理引擎 `Jolt Physics`；设计分辨率 1920×1080，`canvas_items` 拉伸。
 - 语言：**GDScript**，全部显式类型声明（不用 `:=`）；变量/函数/文件名大量使用**中文命名**（作者自述"用中文编码""看着会很异端"），这是本项目的既定风格。
 - 协议：`protobuf` 线格式解析 + `Framing` 分帧 + `ProtoCodec`，线格式沿用旧服务端，协议号见 [proto_schema.gd](scripts/core/proto_schema.gd)。
 

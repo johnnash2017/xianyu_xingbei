@@ -47,18 +47,18 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 func available_skills() -> Array:
 	var out: Array = []
 	var 水系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water)
-	if not 水系牌.is_empty():
-		# 辉耀只能弃水系牌（v_magic_skill 校验同一条），下发 cards 让界面把其余手牌置灰
-		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_YAO, "need_card": 1, "need_target": 0,
-			"cards": 水系牌})
-	if _hand_has_magic() and _has_other_with_cross():
-		# 惩戒只能弃法术牌（v_magic_skill 校验同一条）
-		# 目标须有治疗（v_magic_skill：dst.cross_num == 0 时返回 GE_INVALID_ACTION）
-		out.append({"type": GConst.ActionType.MagicSkill, "id": CHENG_JIE, "need_card": 1, "need_target": 1,
-			"cards": magic_hand_ids(),
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.cross_num > 0)})
-	if player.gem >= 1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_QI_YU, "need_card": 0, "need_target": 0})
+	# 辉耀只能弃水系牌（v_magic_skill 校验同一条），下发 cards 让界面把其余手牌置灰；手里没有水系牌时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_YAO, "need_card": 1, "need_target": 0,
+		"cards": 水系牌, "enabled": not 水系牌.is_empty()})
+	# 惩戒只能弃法术牌（v_magic_skill 校验同一条）；目标须有治疗（v_magic_skill：dst.cross_num == 0 时返回 GE_INVALID_ACTION）；
+	# 手里没有法术牌或没有带治疗的其他角色时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": CHENG_JIE, "need_card": 1, "need_target": 1,
+		"cards": magic_hand_ids(),
+		"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.cross_num > 0),
+		"enabled": _hand_has_magic() and _has_other_with_cross()})
+	# 圣光祈愈要消耗 1 宝石，宝石不足时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_QI_YU, "need_card": 0, "need_target": 0,
+		"enabled": player.gem >= 1})
 	# 【天枪】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
 	return out
 

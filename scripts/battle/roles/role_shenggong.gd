@@ -59,28 +59,30 @@ func available_skills() -> Array:
 	# 圣屑飓暴要弃 2 张同系牌：只让「手里该系不少于 2 张、且该系有【圣】命格攻击牌」的牌可点，
 	# 界面据此把同系孤张与没有虚拟牌的系置灰（与 v_magic_skill 的校验一致）
 	var 同系牌: Array[int] = _sheng_xie_hand_ids()
-	if not 同系牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_XIE_JU_BAO, "need_card": 2, "need_target": 1,
-			"cards": 同系牌})
-	if (_xin_yang() > 1 or player.cross_num > 1) and not player.tap:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_HUANG_MO_SHI, "need_card": 0, "need_target": 0})
-	if player.cross_num > 0 and player.tap:
-		# v_magic_skill 只校验治疗数与横置，不校验任何牌，故不强制选牌。
-		# 治疗数与「弃/摸」原本由原版客户端拼成 args=[1或2, 治疗数]，通用客户端点「确定」只回 args=[]，
-		# 故改用 arg_choices：每个候选点数一个按钮，点它即回完整 args（服务端照旧读 args[0]/args[1]）。
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_BAO_LIE, "need_card": 0, "need_target": 1,
-			"arg_choices": _sheng_guang_bao_lie_choices()})
-	# 圣煌辉光炮：仅当我方士气低于敌方且信仰足够支付（士气差 + 5）时可选（客户端同此判定）
+	# 手里没有「该系至少 2 张且有【圣】命格攻击牌」的牌时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_XIE_JU_BAO, "need_card": 2, "need_target": 1,
+		"cards": 同系牌, "enabled": not 同系牌.is_empty()})
+	# 信仰与治疗都不够 2 点、或已横置时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_HUANG_MO_SHI, "need_card": 0, "need_target": 0,
+		"enabled": (_xin_yang() > 1 or player.cross_num > 1) and not player.tap})
+	# 治疗为 0 或未横置时置灰
+	# v_magic_skill 只校验治疗数与横置，不校验任何牌，故不强制选牌。
+	# 治疗数与「弃/摸」原本由原版客户端拼成 args=[1或2, 治疗数]，通用客户端点「确定」只回 args=[]，
+	# 故改用 arg_choices：每个候选点数一个按钮，点它即回完整 args（服务端照旧读 args[0]/args[1]）。
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_BAO_LIE, "need_card": 0, "need_target": 1,
+		"arg_choices": _sheng_guang_bao_lie_choices(),
+		"enabled": player.cross_num > 0 and player.tap})
+	# 圣煌辉光炮：仅当我方士气低于敌方且信仰足够支付（士气差 + 5）时可用（客户端同此判定），否则置灰
 	var en_color: int = GConst.BLUE if player.color == GConst.RED else GConst.RED
 	var my_morale: int = engine.team_morale[player.color]
 	var en_morale: int = engine.team_morale[en_color]
-	if my_morale < en_morale and _xin_yang() >= (en_morale - my_morale) + HUI_GUANG_PAO_COST:
-		# v_magic_skill 不校验任何牌/目标；执行体 _hui_guang_pao 用 args[0] 决定把哪一方士气拉到与另一方相等
-		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_GUANG_PAO, "need_card": 0, "need_target": 0,
-			"arg_choices": [
-				{"text": "敌方士气拉平到我方（提升敌方）", "args": [0]},
-				{"text": "我方士气拉平到敌方（降低我方）", "args": [1]},
-			]})
+	# v_magic_skill 不校验任何牌/目标；执行体 _hui_guang_pao 用 args[0] 决定把哪一方士气拉到与另一方相等
+	out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_GUANG_PAO, "need_card": 0, "need_target": 0,
+		"arg_choices": [
+			{"text": "敌方士气拉平到我方（提升敌方）", "args": [0]},
+			{"text": "我方士气拉平到敌方（降低我方）", "args": [1]},
+		],
+		"enabled": my_morale < en_morale and _xin_yang() >= (en_morale - my_morale) + HUI_GUANG_PAO_COST})
 	return out
 
 
@@ -251,9 +253,9 @@ func _sheng_liu_xing_atk() -> int:
 		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
 		var 选项: Array = []
 		if player.cross_num > 0:
-			选项.append({"value": 1, "label": "移除 1 点治疗，令目标 +1 治疗"})
+			选项.append({"value": 1, "label": "移除 1 点【治疗】，令目标 +1【治疗】"})
 		if _xin_yang() > 0:
-			选项.append({"value": 2, "label": "移除 1 点信仰，令目标 +1 治疗"})
+			选项.append({"value": 2, "label": "移除 1 点信仰，令目标 +1【治疗】"})
 		询问(player.id, SHENG_LIU_XING_ATK, 0, 1, GConst.CardSource.Hand, 选项)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
@@ -398,10 +400,10 @@ func p_turn_end(ctx: Dictionary) -> int:
 		# 四种转换各做一个选项（value 1~4，与服务端 match 分支一一对应）；
 		# 「取消」回空 args＝走服务端的超时兜底分支（choice 0）
 		询问(player.id, ZI_DONG_TIAN_CHONG, 0, 0, GConst.CardSource.Hand, [
-			{"value": 1, "label": "1 宝石 → 1 水晶 + 2 信仰"},
-			{"value": 2, "label": "1 宝石 → 1 水晶 + 2 治疗"},
-			{"value": 3, "label": "1 水晶（无则 1 宝石）→ 1 信仰"},
-			{"value": 4, "label": "1 水晶（无则 1 宝石）→ 1 治疗"},
+			{"value": 1, "label": "1【宝石】 → 1【水晶】 + 2 信仰"},
+			{"value": 2, "label": "1【宝石】 → 1【水晶】 + 2【治疗】"},
+			{"value": 3, "label": "1【水晶】（无则 1【宝石】）→ 1 信仰"},
+			{"value": 4, "label": "1【水晶】（无则 1【宝石】）→ 1【治疗】"},
 		])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

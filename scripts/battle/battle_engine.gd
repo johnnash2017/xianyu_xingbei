@@ -41,6 +41,9 @@ var room_watchers: Array[String] = []
 ## 房间是不是正处于选角（选将）阶段：房间级状态，由 LocalServer 维护，随 Game 快照下发。
 ## 准备室的观战提示靠它区分「正在等待选角」和「正在等待开始」
 var room_picking: bool = false
+## 选角阶段「已准备」的座位号（本地扩展，随 Game 快照下发）：选角界面底部的「立即开始（x/X）」据此显示。
+## 由 LocalServer 在选角期间维护（见 _on_pick_ban_candidates）
+var pick_ready: Array[int] = []
 ## 开局倒计时剩余毫秒（0 = 没在倒计时）：房间级状态，由 LocalServer 维护、随 Game 快照下发，
 ## 准备室据此显示「N 秒后开始」
 var start_countdown_ms: int = 0
@@ -1110,18 +1113,23 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		if not 行动牌.is_empty():
 			cmds[0]["card_ids"] = 行动牌
 		for sk: Dictionary in pl.role.available_skills():
-			# 「启动」技能每回合只能发动一个：本回合已发动过就整条不再下发
+			# 技能一律下发（界面默认全摆出来），当前不可用的只把 enabled 置 false —— 客户端据此置灰、
+			# 点不动，玩家能看见「这个技能存在、但现在用不了」，而不是整条消失
+			var 技能可用: bool = bool(sk.get("enabled", true))
+			# 「启动」技能每回合只能发动一个：本回合已发动过就置灰
 			# （「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不受这条限制）
 			if pl.boot_skill_used and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
 					and pl.role.is_free_skill(int(sk.get("id", 0))):
-				continue
-			# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时这条技能整条不发。
+				技能可用 = false
+			# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时置灰。
 			# 空列表在协议/客户端那里等于「不限制」（_玩家可选），会让本该被挡住的人
-			# （如已有【圣盾】/【天使之墙】的目标）反而变成能点，点了又被服务端拒。
+			# （如已有【圣盾】/【天使之墙】的目标）反而变成能点 —— 所以只能靠置灰挡住点击
 			if sk.has("targets") and (sk.get("targets", []) as Array).is_empty():
-				continue
+				技能可用 = false
 			cmds.append({
 				"respond_id": int(sk.get("type", 0)), "src_id": pid,
+				# false＝这条技能本次不可用：界面照样摆出来，但半透明、点不动
+				"enabled": 技能可用,
 				# targets 非空时，客户端只把这几名玩家点亮（如【魔弹融合】的落点固定是右手边最近的对手）
 				"dst_ids": sk.get("targets", []),
 				# cards 非空时，客户端只让这几张牌可点（如【暗影流星】只能弃法术牌）
@@ -1302,6 +1310,7 @@ func game_info(viewer_id: int) -> Dictionary:
 		"debug": room_debug,
 		"watchers": room_watchers,
 		"picking": room_picking,
+		"pick_ready": pick_ready,
 		"player_id": viewer_id,
 		# 士气上限（跟人数走）：随快照下发，客户端不用自己再按人数算一遍
 		"morale_max": 士气上限(),

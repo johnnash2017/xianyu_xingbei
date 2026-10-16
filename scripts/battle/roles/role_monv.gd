@@ -26,26 +26,26 @@ const VIRTUAL_FIRE_SLASH: int = 87
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _fire_like_count() >= 1:
-		# 苍炎法典只能弃视为火系的牌（v_magic_skill 的 _has_fire_like 校验同一条）
-		out.append({"type": GConst.ActionType.MagicSkill, "id": CANG_YAN_FA_DIAN, "need_card": 1, "need_target": 1,
-			"cards": hand_ids_where(func(cid: int, _c: GCard) -> bool: return _is_fire_like(cid))})
-	if _fire_like_count() >= 2 and (player.tap or int(player.tokens[0]["num"]) >= 1):
-		# 天火断空只能弃视为火系的牌（v_magic_skill 的 _has_fire_like 校验同一条）
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_HUO_DUAN_KONG, "need_card": 2, "need_target": 1,
-			"cards": hand_ids_where(func(cid: int, _c: GCard) -> bool: return _is_fire_like(cid))})
-	if player.get_energy() >= 1:
-		# 痛苦链接：目标须为对手（v_magic_skill：dst.color == player.color 时返回 GE_INVALID_ACTION）
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TONG_KU_LIAN_JIE, "need_card": 0, "need_target": 1,
-			"targets": enemy_ids()})
-	if player.hand_cards.size() <= 3:
-		# 启动：进入【烈焰形态】并摸 0~2 张牌（摸牌数由 arg_choices 选择）
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_NV_ZHI_NU, "need_card": 0, "need_target": 0,
-			"arg_choices": [
-				{"text": 提示(MO_NV_ZHI_NU, 0), "args": [0]},
-				{"text": 提示(MO_NV_ZHI_NU, 1), "args": [1]},
-				{"text": 提示(MO_NV_ZHI_NU, 2), "args": [2]},
-			]})
+	# 苍炎法典只能弃视为火系的牌（v_magic_skill 的 _has_fire_like 校验同一条）；
+	# 手里没有视为火系的牌时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": CANG_YAN_FA_DIAN, "need_card": 1, "need_target": 1,
+		"cards": hand_ids_where(func(cid: int, _c: GCard) -> bool: return _is_fire_like(cid)),
+		"enabled": _fire_like_count() >= 1})
+	# 天火断空只能弃视为火系的牌（v_magic_skill 的 _has_fire_like 校验同一条）；条件不满足时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_HUO_DUAN_KONG, "need_card": 2, "need_target": 1,
+		"cards": hand_ids_where(func(cid: int, _c: GCard) -> bool: return _is_fire_like(cid)),
+		"enabled": _fire_like_count() >= 2 and (player.tap or int(player.tokens[0]["num"]) >= 1)})
+	# 痛苦链接：目标须为对手（v_magic_skill：dst.color == player.color 时返回 GE_INVALID_ACTION）；
+	# 条件不满足时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": TONG_KU_LIAN_JIE, "need_card": 0, "need_target": 1,
+		"targets": enemy_ids(), "enabled": player.get_energy() >= 1})
+	# 启动：进入【烈焰形态】并摸 0~2 张牌（摸牌数由 arg_choices 选择）；条件不满足时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_NV_ZHI_NU, "need_card": 0, "need_target": 0,
+		"arg_choices": [
+			{"text": 提示(MO_NV_ZHI_NU, 0), "args": [0]},
+			{"text": 提示(MO_NV_ZHI_NU, 1), "args": [1]},
+			{"text": 提示(MO_NV_ZHI_NU, 2), "args": [2]},
+		], "enabled": player.hand_cards.size() <= 3})
 	return out
 
 

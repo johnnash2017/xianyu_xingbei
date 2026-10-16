@@ -32,12 +32,11 @@ var gui_huo_atk: bool = false          # 本次应战伤害改为鬼火数
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _has_same_property_pair():
-		# 式神降临要弃 2 张同命格牌：card_rule="sameprop" 让界面选第 1 张后只亮同命格的牌
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHI_SHEN_JIANG_LIN, "need_card": 2, "need_target": 0,
-			"card_rule": "sameprop"})
-	if player.get_energy() >= 1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_MING_JIE_JIE, "need_card": 0, "need_target": 1})
+	# 式神降临要弃 2 张同命格牌：card_rule="sameprop" 让界面选第 1 张后只亮同命格的牌
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHI_SHEN_JIANG_LIN, "need_card": 2, "need_target": 0,
+		"card_rule": "sameprop", "enabled": _has_same_property_pair()})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_MING_JIE_JIE, "need_card": 0, "need_target": 1,
+		"enabled": player.get_energy() >= 1})
 	return out
 
 

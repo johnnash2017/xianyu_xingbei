@@ -352,6 +352,18 @@ func send_pick(strategy: int, role_ids: Array) -> void:
 	role_pick_submitted.emit(strategy, role_ids)
 
 
+## 「立即开始」上行（选角界面底部那颗按钮，服务端记「已准备」）：带上当前选定的角色（还没选就空着 —— 服务端只记「已准备」，
+## 不会因此改你的选角结果）。点过准备之后照样能改选：改选走 send_pick，服务端记的「已准备」不会掉
+func send_ready(strategy: int, role_ids: Array) -> void:
+	if not Net.is_connected_to_host():
+		return
+	Net.send(GConst.Msg.PickBan, {
+		"strategy": strategy,
+		"role_ids": role_ids,
+		"ready": true,
+	})
+
+
 func enter_room(room_id: int) -> void:
 	# 玩家明确在进房了：退房后的「丢快照」窗口提前关掉，新房间的快照要收
 	_退房后忽略快照至_ms = 0

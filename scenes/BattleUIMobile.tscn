@@ -28,7 +28,7 @@
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "WinImg", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign", "BtnSetting")]
+[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "BlueBG", "RedBG", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "WinImg", "EndTxt", "BtnBack", "LogRoot", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign", "BtnSetting")]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 1280.0
@@ -48,6 +48,8 @@ BlueEnergy = NodePath("Root/BlueTeam/BlueEnergy")
 RedEnergy = NodePath("Root/RedTeam/RedEnergy")
 BlueGrail = NodePath("Root/BlueTeam/BlueGrail")
 RedGrail = NodePath("Root/RedTeam/RedGrail")
+BlueBG = NodePath("Root/BlueTeam/BlueBG")
+RedBG = NodePath("Root/RedTeam/RedBG")
 TxtTurn = NodePath("Root/Status/TxtTurn")
 TxtRID = NodePath("Root/Status/TxtRID")
 TxtHint = NodePath("Root/Hint/TxtHint")
@@ -157,22 +159,22 @@ pivot_offset = Vector2(0, 60)
 mouse_filter = 0
 expand_mode = 1
 
-[node name="ChildrenSkillArea" type="GridContainer" parent="Root" unique_id=2096393800]
+[node name="ChildrenSkillArea" type="HBoxContainer" parent="Root" unique_id=2096393800]
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -415.0
+offset_left = -600.0
 offset_top = 17.5
-offset_right = 355.0
+offset_right = 600.0
 offset_bottom = 107.5
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(385, 45)
-theme_override_constants/h_separation = 0
-theme_override_constants/v_separation = 0
-columns = 6
+mouse_filter = 2
+theme_override_constants/separation = 0
+alignment = 1
 
 [node name="Hint" type="TextureRect" parent="Root" unique_id=1236043393]
 visible = false
@@ -303,18 +305,18 @@ vertical_alignment = 1
 autowrap_mode = 3
 
 [node name="BtnOK" type="Button" parent="Root" unique_id=792897171]
-visible = false
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -228.0
-offset_top = -275.0
-offset_right = -94.0
-offset_bottom = -157.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_left = -221.33252
+offset_top = -259.66626
+offset_right = -87.33252
+offset_bottom = -141.66626
+grow_horizontal = 0
+grow_vertical = 0
 pivot_offset = Vector2(67, 59)
 focus_mode = 0
 theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
@@ -326,7 +328,6 @@ icon = ExtResource("34_b05bottonokpng")
 expand_icon = true
 
 [node name="BtnCancel" type="Button" parent="Root" unique_id=1426519125]
-visible = false
 layout_mode = 0
 anchor_left = 1.0
 anchor_top = 1.0
@@ -348,18 +349,18 @@ icon = ExtResource("35_b05bottonnopng")
 expand_icon = true
 
 [node name="BtnSpecila" type="Button" parent="Root" unique_id=150154565]
-visible = false
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -212.0
+offset_left = -203.33228
 offset_top = -130.5
-offset_right = -110.0
+offset_right = -101.332275
 offset_bottom = -43.5
-grow_horizontal = 2
-grow_vertical = 2
+grow_horizontal = 0
+grow_vertical = 0
 pivot_offset = Vector2(51, 43.5)
 focus_mode = 0
 theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
@@ -391,7 +392,6 @@ icon = ExtResource("5_b05bottonsetpng")
 expand_icon = true
 
 [node name="BtnResign" type="Button" parent="Root" unique_id=248496715]
-visible = false
 layout_mode = 0
 anchor_left = 1.0
 anchor_top = 1.0
@@ -413,7 +413,6 @@ icon = ExtResource("37_b05bottonskippng")
 expand_icon = true
 
 [node name="BtnCovered" type="Button" parent="Root" unique_id=1914479708]
-visible = false
 layout_mode = 0
 anchor_left = 1.0
 anchor_top = 1.0

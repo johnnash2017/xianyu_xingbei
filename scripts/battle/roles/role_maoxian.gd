@@ -26,17 +26,17 @@ func available_skills() -> Array:
 	var out: Array = []
 	# 欺诈：虚牌系别在二级技能栏里给（默认选中首项＝风，想换再点那一项），手牌不锁 ——
 	# 点技能就能直接选那 2 张同系牌 + 指定敌方目标，点一次「确定」提交（不再中途问第二次）。
-	# 手里至少要有一对同系牌才放行（对照原客户端 MaoXian::normal 的两两比较）
-	if _has_same_element_pair():
-		out.append({"type": GConst.ActionType.AttackSkill, "id": QI_ZHA, "need_card": 2, "need_target": 1,
-			"targets": enemy_ids(), "card_rule": "same", "arg_choices": _qi_zha_options()})
-	if player.get_energy() > 0 and not used_TouTianHuanRi:
-		# 偷天换日：先在二级技能栏里二选一（转移对方 1 宝石 / 我方水晶全部转宝石），
-		# 两种用法都不可行时不摆技能按钮
-		var 选项: Array = _tou_tian_options()
-		if not 选项.is_empty():
-			out.append({"type": GConst.ActionType.MagicSkill, "id": TOU_TIAN_HUAN_RI, "need_card": 0, "need_target": 0,
-				"arg_choices": 选项})
+	# 手里至少要有一对同系牌才放行（对照原客户端 MaoXian::normal 的两两比较）；
+	# 手里没有同系对时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.AttackSkill, "id": QI_ZHA, "need_card": 2, "need_target": 1,
+		"targets": enemy_ids(), "card_rule": "same", "arg_choices": _qi_zha_options(),
+		"enabled": _has_same_element_pair()})
+	# 偷天换日：先在二级技能栏里二选一（转移对方 1 宝石 / 我方水晶全部转宝石）；
+	# 条件不满足（无能量 / 本回合已用 / 两种用法都不可行）时按钮仍摆出、置灰
+	var 选项: Array = _tou_tian_options()
+	out.append({"type": GConst.ActionType.MagicSkill, "id": TOU_TIAN_HUAN_RI, "need_card": 0, "need_target": 0,
+		"arg_choices": 选项,
+		"enabled": player.get_energy() > 0 and not used_TouTianHuanRi and not 选项.is_empty()})
 	return out
 
 
@@ -169,9 +169,9 @@ func _qi_zha(action: Dictionary, virtual_card: int) -> int:
 func _tou_tian_options() -> Array:
 	var out: Array = []
 	if engine.team_gem[1 - player.color] >= 1:
-		out.append({"text": "转移对方 1 宝石到我方战绩区", "args": [TOU_TIAN_TRANSFER]})
+		out.append({"text": "转移对方 1【宝石】到我方战绩区", "args": [TOU_TIAN_TRANSFER]})
 	if engine.team_crystal[player.color] >= 1:
-		out.append({"text": "我方水晶全部转为宝石", "args": [TOU_TIAN_CONVERT]})
+		out.append({"text": "我方【水晶】全部转为【宝石】", "args": [TOU_TIAN_CONVERT]})
 	return out
 
 
@@ -312,11 +312,11 @@ func _qi_zha_virtual_cards() -> Array[int]:
 	return QI_ZHA_CARDS
 
 
-## 欺诈的虚牌选项（二级技能栏里先选，选完才让选牌 / 选目标）：value / args = 虚牌 id，label = 牌名
+## 欺诈的虚牌选项（二级技能栏里先选，选完才让选牌 / 选目标）：value / args = 虚牌 id，label = 「视为【XX】」
 func _qi_zha_options() -> Array:
 	var out: Array = []
 	for cid: int in QI_ZHA_CARDS:
-		out.append({"text": Data.get_card(cid).card_name, "args": [cid]})
+		out.append({"text": "视为【%s】" % Data.get_card(cid).card_name, "args": [cid]})
 	return out
 
 

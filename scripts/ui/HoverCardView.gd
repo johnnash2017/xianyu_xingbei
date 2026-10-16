@@ -23,8 +23,8 @@ func 设置(牌: GCard, 状态名文本: String, 尺寸: Vector2, 字号: int) -
 	卡牌.size = 尺寸
 	# 状态名比卡面宽时让卡面保持原宽、居中，不被拉长
 	卡牌.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	卡牌.call("设置卡牌", 牌, true)
-	(卡牌.get("canSelectBorder") as TextureRect).visible = false
+	# 「不可用」+「不置灰」= 正常亮度但不显示边框（预览只是给人看，不需要可选光晕）
+	卡牌.call("设置卡牌", 牌, false, false)
 
 
 ## 把一棵子树里的 Control 全部设成「不拾取鼠标」（自己 + 所有后代）

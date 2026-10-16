@@ -28,31 +28,34 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 祈祷（启动）：手牌非空、有宝石且未处于祈祷形态时可发动（耗 1 宝石横置进入祈祷形态）
-	if not player.hand_cards.is_empty() and player.gem > 0 and not player.tap:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": QI_DAO, "need_card": 0, "need_target": 0})
-	# 光辉信仰 / 黑暗诅咒：仅祈祷形态（横置）且符文 > 0
-	if player.tap and _fu_wen() > 0:
-		# 光辉信仰：发动时须弃 min(2, 手牌) 张牌（手牌不足 2 张就按实际张数弃，0 张也能发动）；
-		# 目标限同色队友（原客户端 enableMate，不含自己）
-		out.append({"type": GConst.ActionType.MagicSkill, "id": GUANG_HUI_XIN_YANG,
-			"need_card": mini(2, player.hand_cards.size()), "need_target": 1, "targets": ally_ids()})
-		# 黑暗诅咒：对目标角色与自己各造成 2 点法术伤害（目标任意）
-		out.append({"type": GConst.ActionType.MagicSkill, "id": QI_HEI_XIN_YANG, "need_card": 0, "need_target": 1})
+	# 祈祷（启动）：手牌非空、有宝石且未处于祈祷形态时可发动（耗 1 宝石横置进入祈祷形态）；
+	# 条件不满足时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": QI_DAO, "need_card": 0, "need_target": 0,
+		"enabled": not player.hand_cards.is_empty() and player.gem > 0 and not player.tap})
+	# 光辉信仰 / 黑暗诅咒：仅祈祷形态（横置）且符文 > 0；条件不满足时按钮仍摆出、置灰
+	# 光辉信仰：发动时须弃 min(2, 手牌) 张牌（手牌不足 2 张就按实际张数弃，0 张也能发动）；
+	# 目标限同色队友（原客户端 enableMate，不含自己）
+	out.append({"type": GConst.ActionType.MagicSkill, "id": GUANG_HUI_XIN_YANG,
+		"need_card": mini(2, player.hand_cards.size()), "need_target": 1, "targets": ally_ids(),
+		"enabled": player.tap and _fu_wen() > 0})
+	# 黑暗诅咒：对目标角色与自己各造成 2 点法术伤害（目标任意）
+	out.append({"type": GConst.ActionType.MagicSkill, "id": QI_HEI_XIN_YANG, "need_card": 0, "need_target": 1,
+		"enabled": player.tap and _fu_wen() > 0})
 	# 迅捷赐福/威力赐福：只有手中带对应技能的牌可作发动牌，下发给界面把其余手牌置灰
-	# （v_magic_skill 校验同一张牌：须在手、带该技能；目标限同色队友且面前无同类赐福，见 _check_ci_fu_target）
+	# （v_magic_skill 校验同一张牌：须在手、带该技能；目标限同色队友且面前无同类赐福，见 _check_ci_fu_target）；
+	# 手里没有对应牌时按钮仍摆出、置灰
 	var 迅捷牌: Array[int] = hand_ids_with_skill(XUN_JIE_CI_FU)
-	if not 迅捷牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": XUN_JIE_CI_FU, "need_card": 1, "need_target": 1,
-			"cards": 迅捷牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool:
-				return p.color == player.color and _find_effect_card(p, XUN_JIE_CI_FU) < 0)})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": XUN_JIE_CI_FU, "need_card": 1, "need_target": 1,
+		"cards": 迅捷牌,
+		"targets": player_ids_where(func(p: BattlePlayer) -> bool:
+			return p.color == player.color and _find_effect_card(p, XUN_JIE_CI_FU) < 0),
+		"enabled": not 迅捷牌.is_empty()})
 	var 威力牌: Array[int] = hand_ids_with_skill(WEI_LI_CI_FU)
-	if not 威力牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": WEI_LI_CI_FU, "need_card": 1, "need_target": 1,
-			"cards": 威力牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool:
-				return p.color == player.color and _find_effect_card(p, WEI_LI_CI_FU) < 0)})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": WEI_LI_CI_FU, "need_card": 1, "need_target": 1,
+		"cards": 威力牌,
+		"targets": player_ids_where(func(p: BattlePlayer) -> bool:
+			return p.color == player.color and _find_effect_card(p, WEI_LI_CI_FU) < 0),
+		"enabled": not 威力牌.is_empty()})
 	return out
 
 

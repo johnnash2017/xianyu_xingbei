@@ -29,35 +29,35 @@ var liu_xue_done: bool = false
 
 func available_skills() -> Array:
 	var out: Array = []
-	if tong_sheng_id == -1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TONG_SHENG_GONG_SI, "need_card": 0, "need_target": 1})
-	if player.tap and player.hand_cards.size() >= 2:
-		# 逆流任意 2 张手牌都可弃，无牌类限制，故不下发 cards
-		out.append({"type": GConst.ActionType.MagicSkill, "id": NI_LIU, "need_card": 2, "need_target": 0})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": TONG_SHENG_GONG_SI, "need_card": 0, "need_target": 1,
+		"enabled": tong_sheng_id == -1})
+	# 逆流任意 2 张手牌都可弃，无牌类限制，故不下发 cards
+	out.append({"type": GConst.ActionType.MagicSkill, "id": NI_LIU, "need_card": 2, "need_target": 0,
+		"enabled": player.tap and player.hand_cards.size() >= 2})
 	var 悲鸣牌: Array[int] = hand_ids_with_skill(XUE_ZHI_BEI_MING)
-	if player.tap and not 悲鸣牌.is_empty():
-		# 血之悲鸣仅【流血形态】（横置）下可发动；只能弃带【血之悲鸣】特技的牌（v_magic_skill 校验同一条）；
-		# v_magic_skill 允许 args[0] 取 1~3，执行体对目标与自己各造成该点数的法术伤害，
-		# 故用 arg_choices 让玩家在选好牌与目标后选定伤害点数
-		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_BEI_MING, "need_card": 1, "need_target": 1,
-			"cards": 悲鸣牌, "arg_choices": [
-				{"text": 提示(XUE_ZHI_BEI_MING, 0), "args": [1], "need_card": 1, "need_target": 1},
-				{"text": 提示(XUE_ZHI_BEI_MING, 1), "args": [2], "need_card": 1, "need_target": 1},
-				{"text": 提示(XUE_ZHI_BEI_MING, 2), "args": [3], "need_card": 1, "need_target": 1},
-			]})
-	if player.gem >= 1:
-		# 血之诅咒：耗 1 宝石，对目标 2 点法术伤害，并弃 3 张牌（手牌不足就全弃；手牌为空时不用弃）
-		# 弃哪几张在「选目标」这一步一起选（need_card/card_max 同为该张数），不再提交后单独问一次
-		var 需弃: int = mini(player.hand_cards.size(), 3)
-		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_ZU_ZHOU,
-			"need_card": 需弃, "card_max": 需弃, "need_target": 1})
+	# 血之悲鸣仅【流血形态】（横置）下可发动；只能弃带【血之悲鸣】特技的牌（v_magic_skill 校验同一条）；
+	# v_magic_skill 允许 args[0] 取 1~3，执行体对目标与自己各造成该点数的法术伤害，
+	# 故用 arg_choices 让玩家在选好牌与目标后选定伤害点数
+	out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_BEI_MING, "need_card": 1, "need_target": 1,
+		"cards": 悲鸣牌, "arg_choices": [
+			{"text": 提示(XUE_ZHI_BEI_MING, 0), "args": [1], "need_card": 1, "need_target": 1},
+			{"text": 提示(XUE_ZHI_BEI_MING, 1), "args": [2], "need_card": 1, "need_target": 1},
+			{"text": 提示(XUE_ZHI_BEI_MING, 2), "args": [3], "need_card": 1, "need_target": 1},
+		],
+		"enabled": player.tap and not 悲鸣牌.is_empty()})
+	# 血之诅咒：耗 1 宝石，对目标 2 点法术伤害，并弃 3 张牌（手牌不足就全弃；手牌为空时不用弃）
+	# 弃哪几张在「选目标」这一步一起选（need_card/card_max 同为该张数），不再提交后单独问一次
+	var 需弃: int = mini(player.hand_cards.size(), 3)
+	out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_ZU_ZHOU,
+		"need_card": 需弃, "card_max": 需弃, "need_target": 1,
+		"enabled": player.gem >= 1})
 	# 【血之哀伤】为「启动」：自己场上有【同生共死】时可发动（二选一：转移 / 移除）
-	if tong_sheng_id != -1:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG, "need_card": 0, "need_target": 1,
-			"arg_choices": [
-				{"text": 提示(XUE_ZHI_AI_SHANG, 0), "args": [1], "need_card": 0, "need_target": 1},
-				{"text": 提示(XUE_ZHI_AI_SHANG, 1), "args": [2], "need_card": 0, "need_target": 0},
-			]})
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG, "need_card": 0, "need_target": 1,
+		"arg_choices": [
+			{"text": 提示(XUE_ZHI_AI_SHANG, 0), "args": [1], "need_card": 0, "need_target": 1},
+			{"text": 提示(XUE_ZHI_AI_SHANG, 1), "args": [2], "need_card": 0, "need_target": 0},
+		],
+		"enabled": tong_sheng_id != -1})
 	return out
 
 

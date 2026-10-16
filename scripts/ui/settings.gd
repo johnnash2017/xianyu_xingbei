@@ -1,14 +1,22 @@
 extends Control
-## 设置浮层 —— 调背景音乐 / 效果音音量（对照参考工程 OptionsUI，只保留当前工程支持的两项）。
+## 设置浮层 —— 调音量（总音量 / 背景音乐 / 效果音）与切出游戏时的声音
+## （对照参考工程 OptionsUI，只保留当前工程支持的这几项）。
 ## 由 UI.切换设置() 挂到界面层最上面，盖在当前界面之上；点「关闭」收起。
 ## 界面结构全在 scenes/Settings.tscn 里（所见即所得地改），本脚本只绑节点 + 跑逻辑。
 
 @export var 总音量滑杆: HSlider
 @export var 音乐滑杆: HSlider
 @export var 音效滑杆: HSlider
+## 切出游戏时的声音：这两个勾选框二选一（场景里共用一个 ButtonGroup），对应 Audio.后台静音
+@export var 后台静音按钮: CheckBox
+@export var 后台播放按钮: CheckBox
+## 打开全角色预览（叠一层选角界面的版式，见 _on_preview_pressed）
+@export var 全角色预览按钮: Button
 @export var 关闭按钮: Button
 ## 退出房间：玩家和观战者都能用，只在房间里时才显示（登录 / 房间列表里没房间可退）
 @export var 退出房间按钮: Button
+## 设置面板本体：开全角色预览时先把它藏起来（预览那层自带半透明遮罩，留着会从底下透出来）
+@export var 面板: PanelContainer
 
 
 func _ready() -> void:
@@ -19,9 +27,23 @@ func _ready() -> void:
 	总音量滑杆.value_changed.connect(Audio.设置总音量)
 	音乐滑杆.value_changed.connect(Audio.设置音乐音量)
 	音效滑杆.value_changed.connect(Audio.设置音效音量)
+	# 切出游戏时的声音：勾选框按当前设置摆好，再挂监听。
+	# 监听只挂「后台静音」这一个：两个勾选框共用一个 ButtonGroup，点「后台播放」时它会被自动弹起、
+	# 一样走到这里（值 = false），不用再挂一遍
+	后台静音按钮.button_pressed = Audio.后台静音
+	后台播放按钮.button_pressed = not Audio.后台静音
+	后台静音按钮.toggled.connect(Audio.设置后台静音)
 	关闭按钮.pressed.connect(UI.关闭设置)
+	全角色预览按钮.pressed.connect(_on_preview_pressed)
 	退出房间按钮.pressed.connect(_on_exit_room_pressed)
 	退出房间按钮.visible = Logic.in_room
+
+
+## 打开全角色预览：叠一层角色列表（复用选角界面，见 UI.打开全角色预览）。
+## 面板先藏起来：预览那层的遮罩是半透明的，留着会从底下透出来；预览层被收掉（点「返回」）时放回来
+func _on_preview_pressed() -> void:
+	面板.visible = false
+	UI.打开全角色预览().tree_exiting.connect(func() -> void: 面板.visible = true)
 
 
 ## 退出房间：收起设置浮层 → 通知服务端离房 → 回房间列表。
@@ -32,6 +54,6 @@ func _on_exit_room_pressed() -> void:
 	UI.goto_lobby()
 
 
-## 收起时把音量写进本地配置（拖动过程只实时生效，不频繁落盘）
+## 收起时把音量与「后台静音」写进本地配置（拖动过程只实时生效，不频繁落盘）
 func _exit_tree() -> void:
-	Audio.保存音量设置()
+	Audio.保存声音设置()

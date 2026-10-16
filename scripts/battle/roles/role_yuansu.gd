@@ -35,11 +35,10 @@ func available_skills() -> Array:
 	var out: Array = []
 	# 陨石/风刃/火球/雷击/冰冻：第 1 张必须是带该技能的牌（发动牌），
 	# 第 2 张可再弃 1 张对应系的牌加伤 —— 两段条件分别用 card_slot_skill / card_slot_element 下发，
-	# cards 白名单是两者并集（界面只亮这些牌，逐张顺序再由槽位条件卡）
+	# cards 白名单是两者并集（界面只亮这些牌，逐张顺序再由槽位条件卡）。
+	# 手里没有对应的发动牌时照样摆出按钮，只把 enabled 置 false（界面半透明、点不动）
 	for sid: int in [YUN_SHI, FENG_REN, HUO_QIU, LEI_JI, BING_DONG]:
 		var 技能牌: Array[int] = hand_ids_with_skill(sid)
-		if 技能牌.is_empty():
-			continue
 		var 元素: int = int(法术系别[sid])
 		var 合法牌: Array[int] = 技能牌.duplicate()
 		for cid: int in hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == 元素):
@@ -48,11 +47,12 @@ func available_skills() -> Array:
 		# 冰冻必须指定 2 名角色（v_magic_skill：dsts.size() < 2 拒绝），其余法术只需 1 名
 		var 目标下限: int = 2 if sid == BING_DONG else 1
 		out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 目标下限,
-			"card_max": 2, "cards": 合法牌, "card_slot_skill": sid, "card_slot_element": 元素})
-	if _element_token() >= _element_max():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": YUAN_SU_DIAN_RAN, "need_card": 0, "need_target": 1})
-	if player.gem > 0:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": YUE_GUANG, "need_card": 0, "need_target": 1})
+			"card_max": 2, "cards": 合法牌, "card_slot_skill": sid, "card_slot_element": 元素,
+			"enabled": not 技能牌.is_empty()})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": YUAN_SU_DIAN_RAN, "need_card": 0, "need_target": 1,
+		"enabled": _element_token() >= _element_max()})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": YUE_GUANG, "need_card": 0, "need_target": 1,
+		"enabled": player.gem > 0})
 	return out
 
 

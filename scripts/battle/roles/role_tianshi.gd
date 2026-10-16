@@ -27,27 +27,25 @@ func available_skills() -> Array:
 	# 风之洁净：只有风系手牌可作发动牌，下发给界面把其余手牌置灰（v_magic_skill 校验同一条）。
 	# 选中目标按「确定」后，客户端把该目标身上的基础效果列出来供玩家选，选中的那张 id 作为 args[0] 回传
 	# （见 CardSource.HandAndBasicEffect），所以合法目标是「面前有基础效果的玩家」；
-	# 场上一个基础效果都没有时不给出该技能（v_magic_skill 要求 args[0] 是目标身上的基础效果牌）
+	# 手里没有风系牌、或场上一个基础效果都没有时置灰（v_magic_skill 要求 args[0] 是目标身上的基础效果牌）
 	var 风系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Wind)
-	if not 风系牌.is_empty():
-		var 有基础效果的目标: Array[int] = _有基础效果的目标()
-		if not 有基础效果的目标.is_empty():
-			out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_ZHI_JIE_JING, "need_card": 1, "need_target": 1,
-				"cards": 风系牌, "card_source": GConst.CardSource.HandAndBasicEffect, "targets": 有基础效果的目标})
+	var 有基础效果的目标: Array[int] = _有基础效果的目标()
+	out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_ZHI_JIE_JING, "need_card": 1, "need_target": 1,
+		"cards": 风系牌, "card_source": GConst.CardSource.HandAndBasicEffect, "targets": 有基础效果的目标,
+		"enabled": not 风系牌.is_empty() and not 有基础效果的目标.is_empty()})
 	# 天使之墙：只有手中带【天使之墙】的牌可作发动牌（v_magic_skill 校验同一张牌）
 	# 目标已有【圣盾】或【天使之墙】基础效果时服务端拒收（v_magic_skill + v_shield）。
-	# 可以贴给自己（服务端不排除自己，原客户端也可选），故白名单含自己
+	# 可以贴给自己（服务端不排除自己，原客户端也可选），故白名单含自己；手里没有该特技的牌时置灰
 	var 墙牌: Array[int] = hand_ids_with_skill(TIAN_SHI_ZHI_QIANG)
-	if not 墙牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHI_QIANG, "need_card": 1, "need_target": 1,
-			"cards": 墙牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return not p.check_basic_effect_name(GConst.CardName.Shield) and not p.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG), true)})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHI_QIANG, "need_card": 1, "need_target": 1,
+		"cards": 墙牌,
+		"targets": player_ids_where(func(p: BattlePlayer) -> bool: return not p.check_basic_effect_name(GConst.CardName.Shield) and not p.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG), true),
+		"enabled": not 墙牌.is_empty()})
 	# 天使祝福：只有水系手牌可作发动牌（v_magic_skill 校验同一条）
-	# 服务端允许 1~2 名目标（v_magic_skill：dsts.size() > 2 时拒收）
+	# 服务端允许 1~2 名目标（v_magic_skill：dsts.size() > 2 时拒收）；手里没有水系牌时置灰
 	var 水系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water)
-	if not 水系牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHU_FU, "need_card": 1, "need_target": 1,
-			"target_max": 2, "cards": 水系牌})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHU_FU, "need_card": 1, "need_target": 1,
+		"target_max": 2, "cards": 水系牌, "enabled": not 水系牌.is_empty()})
 	return out
 
 

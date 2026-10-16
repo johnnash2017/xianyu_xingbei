@@ -536,6 +536,9 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"gem": gem,
 		"crystal": crystal,
 		"covered_count": cover_cards.size(),
+		# 盖牌上限（角色表「指示物」列槽 2 的上限）：客户端「查看盖牌」时按它摆出空槽，
+		# 让玩家看见自己最多能放几张；0 表示这个角色根本没有盖牌区
+		"max_covered": cover_cards_max,
 		"is_knelt": tap,
 		"max_hand": hand_cards_max,
 		"nickname": player_name,

@@ -31,19 +31,19 @@ const HUI_MIE_HARM_POINT: int = 2       # 毁灭风暴：每名对手受到的�
 func available_skills() -> Array:
 	var out: Array = []
 	var enemies: int = _enemy_count()
-	if _hand_has_magic() and enemies >= 1:
-		# 弃 1 张法术牌 + 指定 1 名对手弃牌
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SP_MO_BAO_CHONG_JI, "need_card": 1, "need_target": 1,
-			"targets": enemy_ids(), "cards": magic_hand_ids()})
-	if _hand_has_fire_or_earth() and enemies >= 1:
-		# 落点候选（本角色没有【魔弹掌控】，只有右手边那个）一并发给客户端，界面只亮这些
-		# 可用牌＝手中的地系/火系牌（与 v_missile_fusion 的牌校验同一条），界面据此把其余手牌置灰
-		var 魔弹牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Fire or c.element_enum() == GConst.CardElement.Earth)
-		out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAN_RONG_HE, "need_card": 1, "need_target": 1,
-			"targets": missile_targets(player.id), "cards": 魔弹牌})
-	if player.gem > 0 and enemies >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_MIE_FENG_BAO, "need_card": 0, "need_target": 2,
-			"targets": enemy_ids()})
+	# 弃 1 张法术牌 + 指定 1 名对手弃牌；手里没有法术牌或场上没有对手时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SP_MO_BAO_CHONG_JI, "need_card": 1, "need_target": 1,
+		"targets": enemy_ids(), "cards": magic_hand_ids(),
+		"enabled": _hand_has_magic() and enemies >= 1})
+	# 落点候选（本角色没有【魔弹掌控】，只有右手边那个）一并发给客户端，界面只亮这些
+	# 可用牌＝手中的地系/火系牌（与 v_missile_fusion 的牌校验同一条），界面据此把其余手牌置灰；没有地系/火系牌或没有对手时置灰
+	var 魔弹牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Fire or c.element_enum() == GConst.CardElement.Earth)
+	out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAN_RONG_HE, "need_card": 1, "need_target": 1,
+		"targets": missile_targets(player.id), "cards": 魔弹牌,
+		"enabled": _hand_has_fire_or_earth() and enemies >= 1})
+	# 宝石不足 1 颗或对手少于 2 名时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_MIE_FENG_BAO, "need_card": 0, "need_target": 2,
+		"targets": enemy_ids(), "enabled": player.gem > 0 and enemies >= 2})
 	return out
 
 

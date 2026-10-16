@@ -34,6 +34,8 @@ const 未记录: int = 0
 @export var 创建房间按钮: Button
 @export var 返回登录按钮: Button
 @export var 设置按钮: Button
+## 全角色预览（右下角，点开叠一层角色列表给玩家翻看全部角色，见 UI.打开全角色预览）
+@export var 全角色预览按钮: Button
 ## 创建房间弹层
 @export var 创建层: Control
 @export var 房名输入: LineEdit
@@ -96,6 +98,7 @@ func _ready() -> void:
 	创建房间按钮.pressed.connect(func() -> void: _点了(_on_open_create_pressed))
 	返回登录按钮.pressed.connect(func() -> void: _点了(_on_back_pressed))
 	设置按钮.pressed.connect(func() -> void: _点了(UI.切换设置))
+	全角色预览按钮.pressed.connect(func() -> void: _点了(UI.打开全角色预览))
 	创建按钮.pressed.connect(func() -> void: _点了(_on_create_pressed))
 	取消创建按钮.pressed.connect(func() -> void: _点了(_on_close_create_pressed))
 	观战是按钮.pressed.connect(func() -> void: _点了(_on_watch_yes_pressed))

@@ -1,8 +1,20 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/RoleCard.gd" id="1_rolecard"]
 
-[node name="角色卡" type="Button" node_paths=PackedStringArray("立绘", "占位")]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_selected"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 6
+border_width_top = 6
+border_width_right = 6
+border_width_bottom = 6
+border_color = Color(1, 0.87, 0.28, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="角色卡" type="Button" node_paths=PackedStringArray("立绘", "占位", "选中框")]
 custom_minimum_size = Vector2(260, 363)
 offset_right = 260.0
 offset_bottom = 363.0
@@ -10,6 +22,7 @@ flat = true
 script = ExtResource("1_rolecard")
 "立绘" = NodePath("立绘")
 "占位" = NodePath("占位")
+"选中框" = NodePath("选中框")
 
 [node name="占位" type="ColorRect" parent="."]
 layout_mode = 1
@@ -31,3 +44,14 @@ grow_vertical = 2
 mouse_filter = 2
 expand_mode = 1
 stretch_mode = 6
+
+[node name="选中框" type="Panel" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_selected")

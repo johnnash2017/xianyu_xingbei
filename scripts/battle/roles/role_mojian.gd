@@ -28,13 +28,13 @@ var using_hei_an_zhen_chan: bool = false
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 暗影凝聚（启动）：未处于[暗影形态]（未横置）时可发动
-	if not player.tap:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": AN_YING_NING_JU, "need_card": 0, "need_target": 0})
-	# 暗影流星（905）：仅[暗影形态]（tap）下可用，代价是弃 2 张法术牌（服务端 v_magic_skill 也按 2 张校验）
-	if player.tap and _magic_card_count() >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": AN_YING_LIU_XING, "need_card": 2, "need_target": 1,
-			"cards": magic_hand_ids()})
+	# 暗影凝聚（启动）：未处于[暗影形态]（未横置）时可发动；已横置时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": AN_YING_NING_JU, "need_card": 0, "need_target": 0,
+		"enabled": not player.tap})
+	# 暗影流星（905）：仅[暗影形态]（tap）下可用，代价是弃 2 张法术牌（服务端 v_magic_skill 也按 2 张校验）；
+	# 条件不满足时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": AN_YING_LIU_XING, "need_card": 2, "need_target": 1,
+		"cards": magic_hand_ids(), "enabled": player.tap and _magic_card_count() >= 2})
 	return out
 
 
@@ -445,11 +445,11 @@ func _liu_xing_组合选项() -> Array:
 	var 水晶: int = engine.team_crystal[player.color]
 	var out: Array = []
 	if 水晶 >= 2:
-		out.append({"value": 1, "label": "移除 2 水晶"})
+		out.append({"value": 1, "label": "移除 2【水晶】"})
 	if 宝石 >= 1 and 水晶 >= 1:
-		out.append({"value": 2, "label": "移除 1 宝石 + 1 水晶"})
+		out.append({"value": 2, "label": "移除 1【宝石】 + 1【水晶】"})
 	if 宝石 >= 2:
-		out.append({"value": 3, "label": "移除 2 宝石"})
+		out.append({"value": 3, "label": "移除 2【宝石】"})
 	return out
 
 

@@ -36,7 +36,12 @@ void fragment() {
 	slash += abs(wave);
 	
 	float noise_mask = max(circle_mask, step(UV.x, 0.5));
-	noise_mask = pow((noise_mask - pow(abs(UV.y * 2.0 - 1.0), 4.0)) * UV.x, 0.6);
+	// 底数必须先夹到 >= 0：右半、圆外的那两个角上 (noise_mask - |2y-1|^4) 是负数，
+	// 而 GLSL 的 pow(负数, 0.6) 是未定义行为 —— 换驱动/着色器编译器（编辑器用 D3D12、导出包回退
+	// Vulkan 这类情况）就可能算成 NaN：NaN 顺着 noise_mask → value → ALPHA 一路传下去，
+	// 那几个角最后被当不透明画出来，整条斩击看着就"糊成一个方块"。
+	// 夹到 0 之后这些像素得到 value=0（透明），正是原本想要的结果；底数为正时不受影响。
+	noise_mask = pow(max((noise_mask - pow(abs(UV.y * 2.0 - 1.0), 4.0)) * UV.x, 0.0), 0.6);
 	
 	
 	vec2 noise_uv = UV * noise_scale + noise_scroll * TIME;

@@ -37,18 +37,18 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	var 地系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Earth)
-	if not 地系牌.is_empty():
-		# 瘟疫只能弃地系牌（v_magic_skill 校验同一条），下发 cards 让界面把其余手牌置灰
-		out.append({"type": GConst.ActionType.MagicSkill, "id": WEN_YI, "need_card": 1, "need_target": 0,
-			"cards": 地系牌})
+	# 瘟疫只能弃地系牌（v_magic_skill 校验同一条），下发 cards 让界面把其余手牌置灰；手里没有地系牌时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": WEN_YI, "need_card": 1, "need_target": 0,
+		"cards": 地系牌, "enabled": not 地系牌.is_empty()})
 	var 同系牌: Array[int] = _same_element_hand_ids()
-	if player.cross_num >= 2 and not 同系牌.is_empty():
-		# 死亡之触要求两张同系牌：下发「手里该系至少 2 张」的牌把同系孤张置灰；
-		# 具体选中两张是否同系、移除几点治疗仍由服务端 v_magic_skill 校验
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SI_WANG_ZHI_CHU, "need_card": 2, "need_target": 1,
-			"card_max": 同系牌.size(), "cards": 同系牌, "arg_choices": _si_wang_choices()})
-	if player.gem >= 1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": MU_BEI_YUN_LUO, "need_card": 0, "need_target": 0})
+	# 死亡之触要求两张同系牌：下发「手里该系至少 2 张」的牌把同系孤张置灰；
+	# 具体选中两张是否同系、移除几点治疗仍由服务端 v_magic_skill 校验；治疗不足 2 点或没有同系牌时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SI_WANG_ZHI_CHU, "need_card": 2, "need_target": 1,
+		"card_max": 同系牌.size(), "cards": 同系牌, "arg_choices": _si_wang_choices(),
+		"enabled": player.cross_num >= 2 and not 同系牌.is_empty()})
+	# 宝石不足 1 颗时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": MU_BEI_YUN_LUO, "need_card": 0, "need_target": 0,
+		"enabled": player.gem >= 1})
 	return out
 
 

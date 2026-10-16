@@ -20,20 +20,19 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if player.gem > 0:
-		if _max_different_elements() >= 2:
-			# 弃 X 张互异系牌（X≥2）：上限放到手牌数，并让客户端只让「与已选牌异系」的牌可点
-			out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAO_FA_DIAN, "need_card": 2, "need_target": 1,
-				"card_max": player.hand_count(), "card_rule": "diff"})
-		if _max_different_elements() >= 3:
-			# 圣洁法典要弃 X 张两两异系的牌（v_magic_skill：cards.size() >= 3 且全异系）：
-			# 最少 3 张，最多只能选到手牌里不同元素的种数；目标数上限 = 弃牌数 - 2（服务端 cards.size()-2）。
-			# 上限随弃牌数变化，故用 target_max_from_cards 告诉客户端（取消一张牌后上限要跟着降），
-			# target_max 仍给「按当前手牌算出来的」最大值，仅供界面显示用
-			out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_JIE_FA_DIAN, "need_card": 3, "need_target": 1,
-				"target_max": maxi(1, _max_different_elements() - 2),
-				"target_max_from_cards": 2,
-				"card_max": _max_different_elements(), "card_rule": "diff"})
+	# 弃 X 张互异系牌（X≥2）：上限放到手牌数，并让客户端只让「与已选牌异系」的牌可点
+	out.append({"type": GConst.ActionType.MagicSkill, "id": MO_DAO_FA_DIAN, "need_card": 2, "need_target": 1,
+		"card_max": player.hand_count(), "card_rule": "diff",
+		"enabled": player.gem > 0 and _max_different_elements() >= 2})
+	# 圣洁法典要弃 X 张两两异系的牌（v_magic_skill：cards.size() >= 3 且全异系）：
+	# 最少 3 张，最多只能选到手牌里不同元素的种数；目标数上限 = 弃牌数 - 2（服务端 cards.size()-2）。
+	# 上限随弃牌数变化，故用 target_max_from_cards 告诉客户端（取消一张牌后上限要跟着降），
+	# target_max 仍给「按当前手牌算出来的」最大值，仅供界面显示用
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_JIE_FA_DIAN, "need_card": 3, "need_target": 1,
+		"target_max": maxi(1, _max_different_elements() - 2),
+		"target_max_from_cards": 2,
+		"card_max": _max_different_elements(), "card_rule": "diff",
+		"enabled": player.gem > 0 and _max_different_elements() >= 3})
 	return out
 
 

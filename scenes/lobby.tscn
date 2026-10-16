@@ -8,7 +8,7 @@
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_seat"]
 
-[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "Steam状态", "进入按钮", "刷新按钮", "创建房间按钮", "返回登录按钮", "设置按钮", "创建层", "房名输入", "创建按钮", "取消创建按钮", "调试模式", "观战确认层", "观战是按钮", "观战否按钮", "版本提示层", "版本提示文本", "版本确定按钮", "版本标签")]
+[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "Steam状态", "进入按钮", "刷新按钮", "创建房间按钮", "返回登录按钮", "设置按钮", "全角色预览按钮", "创建层", "房名输入", "创建按钮", "取消创建按钮", "调试模式", "观战确认层", "观战是按钮", "观战否按钮", "版本提示层", "版本提示文本", "版本确定按钮", "版本标签")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -25,6 +25,7 @@ script = ExtResource("1_5gu6x")
 "创建房间按钮" = NodePath("主列/按钮行/创建房间按钮")
 "返回登录按钮" = NodePath("主列/按钮行/返回登录按钮")
 "设置按钮" = NodePath("设置按钮")
+"全角色预览按钮" = NodePath("全角色预览按钮")
 "创建层" = NodePath("创建层")
 "房名输入" = NodePath("创建层/居中/创建卡片/内容/房名输入")
 "人数组" = SubResource("ButtonGroup_people")
@@ -177,7 +178,7 @@ toggle_mode = true
 button_pressed = true
 button_group = SubResource("ButtonGroup_people")
 metadata/people = 4
-text = "4 人"
+text = "2 v 2"
 
 [node name="人数_6" type="Button" parent="创建层/居中/创建卡片/内容/人数行"]
 layout_mode = 2
@@ -185,7 +186,7 @@ theme_override_font_sizes/font_size = 26
 toggle_mode = true
 button_group = SubResource("ButtonGroup_people")
 metadata/people = 6
-text = "6 人"
+text = "3 v 3"
 
 [node name="选角行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容"]
 layout_mode = 2
@@ -217,14 +218,14 @@ button_group = SubResource("ButtonGroup_strategy")
 metadata/strategy = 2
 text = "三选一"
 
-[node name="选角_六选一" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
+[node name="选角_五选一" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
 custom_minimum_size = Vector2(110, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 toggle_mode = true
 button_group = SubResource("ButtonGroup_strategy")
 metadata/strategy = 6
-text = "六选一"
+text = "五选一"
 
 [node name="选角_任选" type="Button" parent="创建层/居中/创建卡片/内容/选角行"]
 custom_minimum_size = Vector2(110, 0)
@@ -298,6 +299,23 @@ custom_minimum_size = Vector2(208, 64)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "取消"
+
+[node name="全角色预览按钮" type="Button" parent="."]
+custom_minimum_size = Vector2(168, 64)
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -192.0
+offset_top = -168.0
+offset_right = -24.0
+offset_bottom = -104.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 26
+text = "全角色预览"
 
 [node name="设置按钮" type="Button" parent="." unique_id=1072185296]
 custom_minimum_size = Vector2(128, 64)

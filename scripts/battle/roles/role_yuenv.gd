@@ -39,11 +39,11 @@ var _md_dst: int = -1
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 苍白之月：耗 1 宝石，可选「移除 3【石化】」或「移除 x【新月】并造成伤害」；两者都不满足时不显示
+	# 苍白之月：耗 1 宝石，可选「移除 3【石化】」或「移除 x【新月】并造成伤害」；两者都不满足时置灰
 	var 选项: Array = _cang_bai_choices()
-	if player.gem > 0 and not 选项.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": CANG_BAI_ZHI_YUE, "need_card": 0, "need_target": 0,
-			"target_max": 1, "arg_choices": 选项})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": CANG_BAI_ZHI_YUE, "need_card": 0, "need_target": 0,
+		"target_max": 1, "arg_choices": 选项,
+		"enabled": player.gem > 0 and not 选项.is_empty()})
 	return out
 
 
@@ -120,7 +120,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			return SUCCESS
 		if not engine.has_reply():
 			询问(player.id, MEI_DU_SHA, 1, 1, GConst.CardSource.Cover, [
-				{"value": 1, "label": "普通（+1 治疗、+1 暗月）"},
+				{"value": 1, "label": "普通（+1【治疗】、+1 暗月）"},
 				{"value": 2, "label": "当作法术牌（弃 1 张牌，追加 1 点法术伤害）"},
 			])
 			return WAIT
@@ -180,8 +180,8 @@ func p_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not engine.has_reply():
 		询问(player.id, YUE_ZHI_LUN_HUI, 1, 1, GConst.CardSource.Cover, [
-			{"value": 1, "label": "移除 1 张【暗月】：指定角色 +1 治疗"},
-			{"value": 2, "label": "耗 1 点治疗：+1【新月】指示物"},
+			{"value": 1, "label": "移除 1 张【暗月】：指定角色 +1【治疗】"},
+			{"value": 2, "label": "耗 1 点【治疗】：+1【新月】指示物"},
 		])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

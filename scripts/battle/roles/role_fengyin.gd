@@ -30,27 +30,27 @@ const WU_XI_DRAW_MAX: int = GConst.五系束缚摸牌上限   # 五系束缚摸�
 func available_skills() -> Array:
 	var out: Array = []
 	for sid: int in [FENG_ZHI_FENG_YIN, SHUI_ZHI_FENG_YIN, HUO_ZHI_FENG_YIN, DI_ZHI_FENG_YIN, LEI_ZHI_FENG_YIN]:
-		# 只有手里带对应【X之封印】的牌才能发动，下发给界面用来把其余手牌置灰（v_magic_skill 校验同一条）
+		# 只有手里带对应【X之封印】的牌才能发动，下发给界面用来把其余手牌置灰（v_magic_skill 校验同一条）。
+		# 没有对应的牌时照样摆出按钮，只把 enabled 置 false（界面半透明、点不动）。
+		# 目标须非同色、且身上没有同种封印（v_magic_skill：dst.color == player.color
+		# 或 dst.check_basic_effect_skill(aid) 为真时拒收）
 		var 封印牌: Array[int] = hand_ids_with_skill(sid)
-		if not 封印牌.is_empty():
-			# 目标须非同色、且身上没有同种封印（v_magic_skill：dst.color == player.color
-			# 或 dst.check_basic_effect_skill(aid) 为真时拒收）
-			out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 1,
-				"cards": 封印牌,
-				"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.color != player.color and not p.check_basic_effect_skill(sid))})
-	if player.get_energy() > 0:
-		# 五系束缚：目标须为对手（v_magic_skill：dst.color == player.color 时拒收）
-		out.append({"type": GConst.ActionType.MagicSkill, "id": WU_XI_SHU_FU, "need_card": 0, "need_target": 1,
-			"targets": enemy_ids()})
-		# 封印破碎：合法目标限定为「面前有基础效果牌」的玩家（对照原客户端 FengYinPoSui 的 enablePlayerItem）。
-		# 交互与天使【风之洁净】一致（CardSource.HandAndBasicEffect）：先点一名目标、按「确定」，
-		# 客户端再列出该目标面前的基础效果供选，选中的那张牌 id 由 args[0] 回传
-		# （v_magic_skill 用 _has_basic_card(dst3, args[0]) 校验）。
-		# 一个基础效果都没有时不给出该技能
-		var 有基础效果的目标: Array[int] = _有基础效果的目标()
-		if not 有基础效果的目标.is_empty():
-			out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_YIN_PO_SUI, "need_card": 0, "need_target": 1,
-				"card_source": GConst.CardSource.HandAndBasicEffect, "targets": 有基础效果的目标})
+		out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 1,
+			"cards": 封印牌, "enabled": not 封印牌.is_empty(),
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.color != player.color and not p.check_basic_effect_skill(sid))})
+	# 五系束缚：目标须为对手（v_magic_skill：dst.color == player.color 时拒收）；无能量时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": WU_XI_SHU_FU, "need_card": 0, "need_target": 1,
+		"enabled": player.get_energy() > 0,
+		"targets": enemy_ids()})
+	# 封印破碎：合法目标限定为「面前有基础效果牌」的玩家（对照原客户端 FengYinPoSui 的 enablePlayerItem）。
+	# 交互与天使【风之洁净】一致（CardSource.HandAndBasicEffect）：先点一名目标、按「确定」，
+	# 客户端再列出该目标面前的基础效果供选，选中的那张牌 id 由 args[0] 回传
+	# （v_magic_skill 用 _has_basic_card(dst3, args[0]) 校验）。
+	# 无能量、或一个基础效果都没有时置灰
+	var 有基础效果的目标: Array[int] = _有基础效果的目标()
+	out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_YIN_PO_SUI, "need_card": 0, "need_target": 1,
+		"enabled": player.get_energy() > 0 and not 有基础效果的目标.is_empty(),
+		"card_source": GConst.CardSource.HandAndBasicEffect, "targets": 有基础效果的目标})
 	return out
 
 

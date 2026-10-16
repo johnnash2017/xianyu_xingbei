@@ -40,9 +40,9 @@ func available_skills() -> Array:
 	var out: Array = []
 	# 符文改造：有宝石时才能发动（耗 1 宝石并横置进入蓄势迸发形态、手牌上限 +1、摸 1 张）；
 	# 重排【战纹】/【魔纹】的取值做成参数按钮，点哪个即以该值作为 args[0] 提交
-	if player.gem > 0:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": FU_WEN_GAI_ZAO,
-			"need_card": 0, "need_target": 0, "arg_choices": _fu_wen_gai_zao_choices()})
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": FU_WEN_GAI_ZAO,
+		"need_card": 0, "need_target": 0, "arg_choices": _fu_wen_gai_zao_choices(),
+		"enabled": player.gem > 0})
 	return out
 
 

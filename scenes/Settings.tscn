@@ -2,7 +2,9 @@
 
 [ext_resource type="Script" path="res://scripts/ui/settings.gd" id="1_settings"]
 
-[node name="Settings" type="Control" node_paths=PackedStringArray("总音量滑杆", "音乐滑杆", "音效滑杆", "退出房间按钮", "关闭按钮")]
+[sub_resource type="ButtonGroup" id="ButtonGroup_bg"]
+
+[node name="Settings" type="Control" node_paths=PackedStringArray("总音量滑杆", "音乐滑杆", "音效滑杆", "后台静音按钮", "后台播放按钮", "全角色预览按钮", "退出房间按钮", "关闭按钮", "面板")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -13,8 +15,12 @@ script = ExtResource("1_settings")
 "总音量滑杆" = NodePath("居中/面板/边距/内容/总音量行/总音量滑杆")
 "音乐滑杆" = NodePath("居中/面板/边距/内容/音乐行/音乐滑杆")
 "音效滑杆" = NodePath("居中/面板/边距/内容/音效行/音效滑杆")
+"后台静音按钮" = NodePath("居中/面板/边距/内容/后台行/后台静音按钮")
+"后台播放按钮" = NodePath("居中/面板/边距/内容/后台行/后台播放按钮")
+"全角色预览按钮" = NodePath("居中/面板/边距/内容/全角色预览按钮")
 "退出房间按钮" = NodePath("居中/面板/边距/内容/退出房间按钮")
 "关闭按钮" = NodePath("居中/面板/边距/内容/关闭按钮")
+"面板" = NodePath("居中/面板")
 
 [node name="遮罩" type="ColorRect" parent="."]
 layout_mode = 1
@@ -117,6 +123,40 @@ size_flags_vertical = 4
 max_value = 1.0
 step = 0.01
 value = 0.5
+
+[node name="后台行" type="HBoxContainer" parent="居中/面板/边距/内容"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="后台标签" type="Label" parent="居中/面板/边距/内容/后台行"]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "切出游戏"
+vertical_alignment = 1
+
+[node name="后台静音按钮" type="CheckBox" parent="居中/面板/边距/内容/后台行"]
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "切到后台（窗口失焦 / 最小化）时把游戏声音压到听不见，回到前台再恢复"
+theme_override_font_sizes/font_size = 28
+button_group = SubResource("ButtonGroup_bg")
+button_pressed = true
+text = "后台静音"
+
+[node name="后台播放按钮" type="CheckBox" parent="居中/面板/边距/内容/后台行"]
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "切到后台时音乐与音效照常播放"
+theme_override_font_sizes/font_size = 28
+button_group = SubResource("ButtonGroup_bg")
+text = "后台播放"
+
+[node name="全角色预览按钮" type="Button" parent="居中/面板/边距/内容"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "全角色预览"
 
 [node name="退出房间按钮" type="Button" parent="居中/面板/边距/内容"]
 custom_minimum_size = Vector2(0, 56)

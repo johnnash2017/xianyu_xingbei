@@ -16,26 +16,24 @@ var used_sheng_liao: bool = false
 func available_skills() -> Array:
 	var out: Array = []
 	# 治疗术/治愈之光：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
-	# （v_magic_skill 校验同一张牌：须在手且带该特技）
+	# （v_magic_skill 校验同一张牌：须在手且带该特技）；手里没有对应特技的牌时置灰
 	var 治疗牌: Array[int] = hand_ids_with_skill(ZHI_LIAO_SHU)
-	if not 治疗牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_LIAO_SHU, "need_card": 1, "need_target": 1,
-			"cards": 治疗牌})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_LIAO_SHU, "need_card": 1, "need_target": 1,
+		"cards": 治疗牌, "enabled": not 治疗牌.is_empty()})
 	var 治愈牌: Array[int] = hand_ids_with_skill(ZHI_YU_ZHI_GUANG)
-	if not 治愈牌.is_empty():
-		# v_magic_skill：dsts 至少 1 名、至多 3 名（dsts.size() > 3 直接拒），故放开目标上限
-		out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_YU_ZHI_GUANG, "need_card": 1, "need_target": 1,
-			"target_max": 3, "cards": 治愈牌})
-	if player.get_energy() >= 1 and not used_sheng_liao:
-		# v_magic_skill 只校验能量与使用标记，不校验目标数/args；
-		# 执行体 _sheng_liao 把 3 点治疗按 args 逐一分配给 dsts（args[i] 为第 i 名目标的治疗量，合计 3）。
-		# 分配过程由客户端做「点头像 +1 治疗」的交互，选满 3 点后把「目标 + 各自点数」一并回传，
-		# 所以这里不再下发 arg_choices 让玩家点选项
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_LIAO, "need_card": 0, "need_target": 1,
-			"target_max": 3})
-	# 怜悯（启动）：有宝石且未横置时可发动 —— 耗 1 宝石转怜悯形态、+1 水晶（手牌上限恒为 7）
-	if player.gem > 0 and not player.tap:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": LIAN_MIN, "need_card": 0, "need_target": 0})
+	# v_magic_skill：dsts 至少 1 名、至多 3 名（dsts.size() > 3 直接拒），故放开目标上限
+	out.append({"type": GConst.ActionType.MagicSkill, "id": ZHI_YU_ZHI_GUANG, "need_card": 1, "need_target": 1,
+		"target_max": 3, "cards": 治愈牌, "enabled": not 治愈牌.is_empty()})
+	# 能量不足 1 点或本回合已用过圣疗时置灰
+	# v_magic_skill 只校验能量与使用标记，不校验目标数/args；
+	# 执行体 _sheng_liao 把 3 点治疗按 args 逐一分配给 dsts（args[i] 为第 i 名目标的治疗量，合计 3）。
+	# 分配过程由客户端做「点头像 +1 治疗」的交互，选满 3 点后把「目标 + 各自点数」一并回传，
+	# 所以这里不再下发 arg_choices 让玩家点选项
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_LIAO, "need_card": 0, "need_target": 1,
+		"target_max": 3, "enabled": player.get_energy() >= 1 and not used_sheng_liao})
+	# 怜悯（启动）：有宝石且未横置时可发动 —— 耗 1 宝石转怜悯形态、+1 水晶（手牌上限恒为 7）；无宝石或已横置时置灰
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": LIAN_MIN, "need_card": 0, "need_target": 0,
+		"enabled": player.gem > 0 and not player.tap})
 	return out
 
 

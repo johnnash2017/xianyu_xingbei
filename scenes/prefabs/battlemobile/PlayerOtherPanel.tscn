@@ -17,7 +17,6 @@
 [ext_resource type="Script" uid="uid://b77bejghr7if1" path="res://scripts/PlayerStatusMobile.gd" id="32_PlayerStatusMobilegd"]
 [ext_resource type="Texture2D" uid="uid://dno7djaa8hkv7" path="res://assets/textures/battle/b02_chara_mask.png" id="33_b02charamaskpng"]
 [ext_resource type="PackedScene" path="res://scenes/prefabs/battlemobile/StatusName.tscn" id="34_statusname"]
-[ext_resource type="Material" uid="uid://bgxhrqx7w23sp" path="res://scripts/effects/avatarSelectedGlow.tres" id="35_selectglow"]
 [ext_resource type="Shader" uid="uid://bcyggchx54mux" path="res://scripts/effects/silhouetteOutline.gdshader" id="36_silhouetteoutline"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_waitbg"]
@@ -27,13 +26,13 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_waitfill"]
-bg_color = Color(1, 0, 0, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.47788018, 0.47788018, 0.47787994, 1)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_cdujc"]
+bg_color = Color(1, 0.36259094, 0.29523543, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 1)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
@@ -208,7 +207,6 @@ expand_mode = 1
 
 [node name="Select_6" type="TextureRect" parent="." unique_id=630221780]
 visible = false
-material = ExtResource("35_selectglow")
 layout_mode = 0
 anchor_top = 1.0
 anchor_bottom = 1.0
@@ -313,7 +311,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 theme_override_styles/background = SubResource("StyleBoxFlat_waitbg")
-theme_override_styles/fill = SubResource("StyleBoxFlat_waitfill")
+theme_override_styles/fill = SubResource("StyleBoxFlat_cdujc")
 max_value = 1.0
 step = 0.001
 value = 0.5

@@ -42,12 +42,13 @@ func available_skills() -> Array:
 		舞动选项.append({"text": 提示(WU_DONG, 1), "args": [0], "need_card": 1})
 	out.append({"type": GConst.ActionType.MagicSkill, "id": WU_DONG, "need_card": 0, "need_target": 0,
 		"arg_choices": 舞动选项})
-	if player.gem > 0:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": YONG_HUA, "need_card": 0, "need_target": 0})
-	if player.get_energy() > 0:
-		# 目标数不由技能本体定，交给各选项自己带：只有「对目标角色 1 点法术伤害」那一项要选目标
-		out.append({"type": GConst.ActionType.MagicSkill, "id": DAO_NI_ZHI_DIE, "need_card": 2, "need_target": 0,
-			"arg_choices": _dao_ni_choices()})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": YONG_HUA, "need_card": 0, "need_target": 0,
+		"enabled": player.gem > 0})
+	# 倒逆之蝶三个分支都要先弃 2 张手牌：手牌不足 2 张或无能量时置灰（点了也凑不出代价）
+	# 目标数不由技能本体定，交给各选项自己带：只有「对目标角色 1 点法术伤害」那一项要选目标
+	out.append({"type": GConst.ActionType.MagicSkill, "id": DAO_NI_ZHI_DIE, "need_card": 2, "need_target": 0,
+		"enabled": player.get_energy() > 0 and player.hand_cards.size() >= 2,
+		"arg_choices": _dao_ni_choices()})
 	return out
 
 
@@ -90,6 +91,9 @@ func v_magic_skill(action: Dictionary) -> int:
 			return GConst.GE_SUCCESS
 		DAO_NI_ZHI_DIE:
 			if player.get_energy() == 0:
+				return GConst.GE_INVALID_ACTION
+			# 三个分支都要先弃 2 张手牌，手牌不足 2 张时不能发动（客户端也不下发，见 available_skills）
+			if player.hand_cards.size() < 2:
 				return GConst.GE_INVALID_ACTION
 			# ②③ 两项都要移除【蛹】：没有【蛹】时不能发动（客户端也不下发这两项，见 _dao_ni_choices）
 			var choice: int = int(args[0]) if not args.is_empty() else 0

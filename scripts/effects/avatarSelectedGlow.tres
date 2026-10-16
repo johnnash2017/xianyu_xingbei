@@ -1,7 +1,0 @@
-[gd_resource type="ShaderMaterial" format=3 uid="uid://bgxhrqx7w23sp"]
-
-[ext_resource type="Shader" uid="uid://3ogttec523j3" path="res://scripts/effects/cardGlowFrame.gdshader" id="1_glow"]
-
-[resource]
-shader = ExtResource("1_glow")
-shader_parameter/glow_color = Color(1, 0.9490196, 0, 1)

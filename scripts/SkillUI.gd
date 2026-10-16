@@ -22,8 +22,9 @@ signal 离开悬停()
 @export var plateButton: Button
 ## 对应 Skill.tscn 里的 背景板/选中发光（点中时亮起的黄色外发光）
 @export var selectedGlow: ColorRect
-## 对应 Skill.tscn 里的 SkillName（技能名文字）
-@export var skillName: Label
+## 对应 Skill.tscn 里的 SkillName（技能名 / 选项文案）。
+## 是 RichTextLabel：文案里的词缀关键字（【宝石】【水晶】等）要按词缀表画成图标（见 GConst.词缀文本）
+@export var skillName: RichTextLabel
 ## 对应 Skill.tscn 里的 SelectBorder（选中高亮框）
 @export var selectBorder: TextureRect
 
@@ -34,6 +35,10 @@ const 不可用透明度: float = 0.45
 
 ## 这个按钮代表的技能号
 var 技能号: int = 0
+## 挂在这颗按钮上的说明文本（鼠标指向时由容器弹出来，见 battle_mobile._显示技能说明）：
+## 技能按钮留空（说明去技能表里按技能号查），非技能的选项（如特殊行动的「购买 / 合成 / 提炼」）
+## 在这里挂自己那段效果说明
+var 说明文本: String = ""
 
 
 func _ready() -> void:
@@ -62,6 +67,7 @@ func 设置技能(id: int) -> void:
 	# 底色由「凸起」着色器上色：把技能类型色传给它（与技能说明里【类型】的标色一致），
 	# 不再靠节点 modulate，免得把子节点「选中发光」也一起染色
 	(plateButton.material as ShaderMaterial).set_shader_parameter("button_color", GConst.skill_type_color(id))
+	# 技能名取自技能表，里面的词缀关键字已按词缀表换成图标（见 GConst.skill_name）
 	var 文本: String = GConst.skill_name(id)
 	if skillName != null:
 		skillName.text = 文本
@@ -77,13 +83,21 @@ func 设置技能(id: int) -> void:
 ## 纯参数选项传 0，用调用方给的统一底色（黑灰 / 治疗抵挡的蓝色），悬停不弹。
 func 设置选项(文本: String, 底色: Color, 选项技能号: int = 0) -> void:
 	技能号 = 选项技能号
+	# 文案里的词缀关键字（如【宝石】/【水晶】）按词缀表换成图标，和技能名 / 技能说明同一口径
+	var 显示: String = GConst.词缀文本(文本)
 	var 用色: Color = GConst.skill_type_color(选项技能号) if 选项技能号 > 0 else 底色
 	(plateButton.material as ShaderMaterial).set_shader_parameter("button_color", 用色)
 	if skillName != null:
-		skillName.text = 文本
-		custom_minimum_size.x = _名字宽度(文本) + _一字宽() * 2.0
+		skillName.text = 显示
+		custom_minimum_size.x = _名字宽度(显示) + _一字宽() * 2.0
 	if selectBorder != null:
 		selectBorder.visible = false
+
+
+## 给这颗按钮挂一段说明：纯参数选项没有技能号，查不到技能表，说明只能由调用方给。
+## 说明里的词缀关键字同样按词缀表换成图标（提示框是 RichTextLabel，画得出图标）
+func 设置说明(文本: String) -> void:
+	说明文本 = GConst.词缀文本(文本)
 
 
 ## 这根选项能不能点：不能点时整颗按钮半透明（仍然显示，但点不动 —— 交给它自己解释为什么不行）
@@ -93,18 +107,30 @@ func 设置选项可用(值: bool) -> void:
 	modulate.a = 1.0 if 值 else 不可用透明度
 
 
-## 名字在按钮字体下的实际渲染宽度（含描边）
+## 词缀图标标签：GConst.词缀文本 把【宝石】这类关键字换成的 [img=宽x高]路径[/img]
+const 词缀图标模式: String = "\\[img=(\\d+)x(\\d+)\\].*?\\[/img\\]"
+
+
+## 名字在按钮字体下的实际渲染宽度（含描边）。
+## 名字里可能带词缀图标（见 GConst.词缀文本）：图标按标签里写的像素宽计入 ——
+## 字体量不到图片，而拿带标签的原文去量，会把「[img=20x20]res://…[/img]」整串也算成字，按钮会撑得非常宽
 func _名字宽度(名: String) -> float:
-	var 字体: Font = skillName.get_theme_font("font")
-	var 字号: int = skillName.get_theme_font_size("font_size")
+	var 正则: RegEx = RegEx.new()
+	正则.compile(词缀图标模式)
+	var 图标宽: float = 0.0
+	for 命中: RegExMatch in 正则.search_all(名):
+		图标宽 += float(命中.get_string(1).to_int())
+	var 字体: Font = skillName.get_theme_font("normal_font")
+	var 字号: int = skillName.get_theme_font_size("normal_font_size")
 	var 描边: int = skillName.get_theme_constant("outline_size")
-	return 字体.get_string_size(名, HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x + float(描边) * 2.0
+	var 正文宽: float = 字体.get_string_size(正则.sub(名, "", true), HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x
+	return 正文宽 + 图标宽 + float(描边) * 2.0
 
 
 ## 一个字宽：用当前字体量一个「字」的宽度（留白按它算，字号改了自动跟着变）
 func _一字宽() -> float:
-	var 字体: Font = skillName.get_theme_font("font")
-	var 字号: int = skillName.get_theme_font_size("font_size")
+	var 字体: Font = skillName.get_theme_font("normal_font")
+	var 字号: int = skillName.get_theme_font_size("normal_font_size")
 	return 字体.get_string_size("字", HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x
 
 

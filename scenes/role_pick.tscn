@@ -4,7 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://nc55vkh08lgi" path="res://assets/textures/lobby/ui_notice.png" id="2_notice"]
 [ext_resource type="PackedScene" path="res://scenes/prefabs/ui/TipBox.tscn" id="3_tipbox"]
 
-[node name="RolePick" type="Control" node_paths=PackedStringArray("标题", "座次条", "座位层", "提示", "倒计时", "卡片区", "滚动", "说明提示")]
+[node name="RolePick" type="Control" node_paths=PackedStringArray("标题", "座次行", "座次条", "座位层", "提示条", "提示", "倒计时", "即将开始文本", "卡片区", "滚动", "准备按钮", "返回按钮", "说明提示")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -13,12 +13,17 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_p4iqs")
 "标题" = NodePath("中间/竖排/标题")
+"座次行" = NodePath("中间/竖排/座次行")
 "座次条" = NodePath("中间/竖排/座次行/座次条")
 "座位层" = NodePath("中间/竖排/座次行/座次条/座位层")
+"提示条" = NodePath("中间/竖排/提示条")
 "提示" = NodePath("中间/竖排/提示条/提示")
 "倒计时" = NodePath("中间/竖排/倒计时")
+"即将开始文本" = NodePath("中间/竖排/即将开始文本")
 "卡片区" = NodePath("中间/竖排/滚动/卡片区")
 "滚动" = NodePath("中间/竖排/滚动")
+"准备按钮" = NodePath("中间/竖排/准备按钮")
+"返回按钮" = NodePath("中间/竖排/返回按钮")
 "说明提示" = NodePath("说明宿主/说明提示")
 
 [node name="遮罩" type="ColorRect" parent="."]
@@ -97,6 +102,23 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
+[node name="倒计时" type="ProgressBar" parent="中间/竖排"]
+custom_minimum_size = Vector2(420, 16)
+layout_mode = 2
+size_flags_horizontal = 4
+max_value = 30000.0
+value = 30000.0
+show_percentage = false
+
+[node name="即将开始文本" type="Label" parent="中间/竖排"]
+visible = false
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 26
+text = "即将开始…"
+horizontal_alignment = 1
+
 [node name="滚动" type="ScrollContainer" parent="中间/竖排"]
 custom_minimum_size = Vector2(780, 363)
 layout_mode = 2
@@ -124,13 +146,20 @@ theme_override_font_sizes/font_size = 24
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="倒计时" type="ProgressBar" parent="中间/竖排"]
-custom_minimum_size = Vector2(420, 16)
+[node name="准备按钮" type="Button" parent="中间/竖排"]
+custom_minimum_size = Vector2(260, 56)
 layout_mode = 2
 size_flags_horizontal = 4
-max_value = 30000.0
-value = 30000.0
-show_percentage = false
+theme_override_font_sizes/font_size = 28
+text = "立即开始（0/0）"
+
+[node name="返回按钮" type="Button" parent="中间/竖排"]
+visible = false
+custom_minimum_size = Vector2(220, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 28
+text = "返回"
 
 [node name="说明宿主" type="Control" parent="."]
 layout_mode = 1

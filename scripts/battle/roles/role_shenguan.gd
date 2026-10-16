@@ -32,31 +32,31 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _count_magic_cards() >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHEN_SHENG_QI_FU, "need_card": 2, "need_target": 0,
-			"cards": magic_hand_ids()})
-	if _has_water_card():
-		# 水之神力要弃 1 张水系牌：只让手牌里的水系牌可点（v_magic_skill 校验 card2.element_enum() == Water）
-		# 目标只能是同色队友，不能是自己（v_magic_skill 同样校验），故 targets 只列队友
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHUI_ZHI_SHEN_LI, "need_card": 1, "need_target": 1,
-			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water),
-			"targets": ally_ids()})
-	if player.get_energy() >= 1:
-		# 神圣领域要弃牌：手牌多于 2 张时恰好弃 2 张，否则把手牌弃光（v_magic_skill 同一条）
-		# 两种用法改为第一步就在二级技能栏里二选一（arg_choices），选完再选牌 / 选目标：
-		#   队友用法（args[0]==0）＝ 自己 +2、目标队友 +1 治疗；敌人用法（args[0]==1）＝ 移除自己 1 治疗、目标受 2 点法术伤害
-		# 每项各带自己的 targets 白名单：选了哪一边就只让那一边的头像亮（见 role_shenguan._ling_yu_choices）
-		# 自己治疗不足时打不出伤害（v_magic_skill 判 cross_num < 1），所以这时不列敌人那一项
-		out.append({
-			"type": GConst.ActionType.MagicSkill, "id": SHEN_SHENG_LING_YU,
-			"need_card": mini(LING_YU_DISCARD, player.hand_cards.size()), "need_target": 1,
-			"targets": _ling_yu_targets(),
-			"arg_choices": _ling_yu_choices(),
-		})
-	# 【神圣契约】为「启动」：有能量且有治疗时可发动，把治疗转移给队友（不消耗本回合行动）
-	if player.get_energy() >= 1 and player.cross_num > 0:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": SHEN_SHENG_QI_YUE,
-			"need_card": 0, "need_target": 1, "targets": ally_ids()})
+	# 手里法术牌不足 2 张时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHEN_SHENG_QI_FU, "need_card": 2, "need_target": 0,
+		"cards": magic_hand_ids(), "enabled": _count_magic_cards() >= 2})
+	# 水之神力要弃 1 张水系牌：只让手牌里的水系牌可点（v_magic_skill 校验 card2.element_enum() == Water）
+	# 目标只能是同色队友，不能是自己（v_magic_skill 同样校验），故 targets 只列队友；手里没有水系牌时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHUI_ZHI_SHEN_LI, "need_card": 1, "need_target": 1,
+		"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water),
+		"targets": ally_ids(), "enabled": _has_water_card()})
+	# 神圣领域要弃牌：手牌多于 2 张时恰好弃 2 张，否则把手牌弃光（v_magic_skill 同一条）
+	# 两种用法改为第一步就在二级技能栏里二选一（arg_choices），选完再选牌 / 选目标：
+	#   队友用法（args[0]==0）＝ 自己 +2、目标队友 +1 治疗；敌人用法（args[0]==1）＝ 移除自己 1 治疗、目标受 2 点法术伤害
+	# 每项各带自己的 targets 白名单：选了哪一边就只让那一边的头像亮（见 role_shenguan._ling_yu_choices）
+	# 自己治疗不足时打不出伤害（v_magic_skill 判 cross_num < 1），所以这时不列敌人那一项
+	# 能量不足 1 点时置灰
+	out.append({
+		"type": GConst.ActionType.MagicSkill, "id": SHEN_SHENG_LING_YU,
+		"need_card": mini(LING_YU_DISCARD, player.hand_cards.size()), "need_target": 1,
+		"targets": _ling_yu_targets(),
+		"arg_choices": _ling_yu_choices(),
+		"enabled": player.get_energy() >= 1,
+	})
+	# 【神圣契约】为「启动」：有能量且有治疗时可发动，把治疗转移给队友（不消耗本回合行动）；不满足时置灰
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": SHEN_SHENG_QI_YUE,
+		"need_card": 0, "need_target": 1, "targets": ally_ids(),
+		"enabled": player.get_energy() >= 1 and player.cross_num > 0})
 	return out
 
 
@@ -92,7 +92,7 @@ func _has_cards(cards: Array) -> bool:
 func _ling_yu_choices() -> Array:
 	var 队友: Array[int] = ally_ids()
 	队友.append(player.id)
-	var out: Array = [{"text": "自己+2、目标队友+1 治疗", "args": [0], "need_target": 1, "targets": 队友}]
+	var out: Array = [{"text": "自己+2、目标队友+1【治疗】", "args": [0], "need_target": 1, "targets": 队友}]
 	if player.cross_num >= 1:
 		out.append({"text": "自己-1、目标受 2 点法术伤害", "args": [1], "need_target": 1, "targets": enemy_ids()})
 	return out

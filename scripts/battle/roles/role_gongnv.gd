@@ -16,11 +16,11 @@ func available_skills() -> Array:
 	# 闪光陷阱：只有手中带【闪光陷阱】的牌可作发动牌，下发给界面把其余手牌置灰
 	# （v_magic_skill 校验同一张牌：须在手且带此特技）
 	var 闪光牌: Array[int] = hand_ids_with_skill(SHAN_GUANG_XIAN_JING)
-	if not 闪光牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": SHAN_GUANG_XIAN_JING, "need_card": 1, "need_target": 1,
-			"cards": 闪光牌})
-	if player.crystal > 0 or player.gem > 0:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": JU_JI, "need_card": 0, "need_target": 1})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHAN_GUANG_XIAN_JING, "need_card": 1, "need_target": 1,
+		"enabled": not 闪光牌.is_empty(),
+		"cards": 闪光牌})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": JU_JI, "need_card": 0, "need_target": 1,
+		"enabled": player.crystal > 0 or player.gem > 0})
 	# 【精准射击】不再提供技能栏按钮：它只能在主动攻击宣告时响应发动
 	return out
 

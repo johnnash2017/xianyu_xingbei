@@ -6,7 +6,7 @@ extends Node
 var card_db: Array[GCard] = []
 var _card_by_id: Dictionary = {}         # 卡号 -> GCard（get_card 查这张；虚拟牌 1000+ 不能按数组下标取）
 var role_list: Dictionary = {}          # roleID -> 显示名（「[剑圣]」这种，取自角色表的显示名列）
-## 可出场的角色号（角色表「启用」列 = 1 的）：随机分配、三选一/六选一/任选的候选池都取自这里
+## 可出场的角色号（角色表「启用」列 = 1 的）：随机分配、三选一/五选一/任选的候选池都取自这里
 var role_pool: Array[int] = []
 var role_skill_db: Dictionary = {}      # roleID -> 技能文本
 var role_property_db: Dictionary = {}   # roleID -> 派系（技 / 血 / 幻 / 咏 / 圣）
@@ -370,6 +370,9 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	# 能量上限：角色被动改过（如贤者 +1），判「星石已满 / 还有空位」用它
 	if pi.has("max_energy"):
 		p.set_energy_max(int(pi["max_energy"]))
+	# 盖牌上限：客户端「查看盖牌」时按它摆空槽
+	if pi.has("max_covered"):
+		p.cover_cards_max = int(pi["max_covered"])
 	# 基础效果
 	p.clean_basic_status()
 	for cid: Variant in pi.get("basic_cards", []):

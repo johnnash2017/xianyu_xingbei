@@ -26,6 +26,8 @@ extends Control
 @export var RedEnergy: GridContainer
 @export var BlueGrail: GridContainer
 @export var RedGrail: GridContainer
+@export var BlueBG: TextureRect
+@export var RedBG: TextureRect
 @export var TxtTurn: Label
 @export var TxtRID: Label
 @export var TxtHint: Label
@@ -56,12 +58,12 @@ var _调试模式: bool = false
 @export var HandArea: Control        # 我的手牌区（Root/HandArea；一行手排，位置由 刷新手牌 算）
 @export var ShowCardArea: Control      # 屏幕中间的展示卡牌区（Root/ShowCardArea；出牌/展示时把牌摊出来）
 @export var SkillArea: Control         # 技能区底图（Root/SkillArea）
-@export var ChildrenSkillArea: GridContainer  # 技能按钮容器（Root/ChildrenSkillArea）
+@export var ChildrenSkillArea: HBoxContainer  # 技能按钮容器（Root/ChildrenSkillArea，行内右对齐）
 @export var ChooseArea: Control        # 盖牌选择区（Root/ChooseArea）
 @export var BtnOK: Button              # 确定
 @export var BtnCancel: Button          # 取消
 @export var BtnCovered: Button         # 「盖牌」按钮（点开/收起查看自己的盖牌）
-@export var BtnSpecila: Button         # 行动阶段＝「特殊行动」（购买/合成/提炼）；魔弹传递时＝「放弃」
+@export var BtnSpecila: Button         # 魔弹传递时＝「放弃」（特殊行动的入口已挪进技能栏最左，见 _摆特殊行动入口）
 @export var BtnResign: Button          # 行动阶段＝「放弃行动」（对照参考工程 PlayerAgentUI 的 BtnResign → ResignAction）
 @export var BtnSetting: Button         # 右下角设置：打开设置浮层（调背景音乐 / 效果音音量）
 ## 本地「先选一项」的星石步骤是为哪个特殊行动开的（选完要按它提交）
@@ -98,6 +100,10 @@ const 日志最大行: int = 233
 ## 正方形：贴图本身近似正方形（宝石 29×30、水晶 29×30、星杯 23×23），
 ## 给 30×40 会把它们上下拉伸；队伍条容器高 30、5 列正好 5×30=150
 const 格子最小尺寸: Vector2 = Vector2(30.0, 30.0)
+## 队伍条底图（按队色）。左右两条队伍条固定「左＝我方、右＝对方」，底图要跟着数据一起换，
+## 免得出现「蓝框里写红队」（见 _刷新队伍）
+const 队条底图蓝: Texture2D = preload("res://assets/textures/battle/b02_team_blue.png")
+const 队条底图红: Texture2D = preload("res://assets/textures/battle/b02_team_red.png")
 ## 队伍条上星杯格子的悬停提示
 const 星杯提示: String = "星杯 凑齐五个圣杯达成特殊胜利。合成星杯时会扣除对方阵容 1 点士气。"
 ## 队伍条上士气数字的悬停提示
@@ -138,9 +144,6 @@ const 手牌尺寸: Vector2 = Vector2(114.4, 169.0)
 const 手牌下移像素: float = 15.0
 ## 屏幕中间的展示牌整体下移的像素
 const 展示牌下移像素: float = 10.0
-## 「可选」发光框的颜色：平常绿光；正在弃牌时改红光（更醒目，也和「打出」区分开）
-const 可选发光_绿: Color = Color(0.0, 1.0, 0.024)
-const 可选发光_红: Color = Color(1.0, 0.25, 0.25)
 ## 底栏提示文案的字号：场景里是 25，文案过长时按提示框宽度自动缩，最小缩到 14
 const 提示基础字号: int = 25
 const 提示最小字号: int = 14
@@ -370,6 +373,8 @@ var _skill_ask_can_cancel: bool = true
 var _selecting_cover: bool = false
 ## 是否正在「查看盖牌」（点「盖牌」按钮打开，只读，不影响回合）
 var _查看盖牌: bool = false
+## 查看盖牌时按「最多能放几张」补在最后几张牌后面的空槽（个数由 _刷新盖牌空槽 维护）
+var _盖牌空槽: Array[Label] = []
 ## 技能询问的可选项值（非空时渲染选项按钮）
 var _skill_options: Array[int] = []
 ## 「先弹选项」型（技能指示器配了「先弹选项」，如灵符师【百鬼夜行】）：在二级技能栏里选效果之前
@@ -438,9 +443,6 @@ var _行动命令: Array = []
 const 冒险家角色号: int = 12
 ## 【冒险者天堂】的技能号：冒险家提炼前先问把星石给谁（对照 role_maoxian）
 const 冒险者天堂技能号: int = 1202
-## 这几个技能要从盖牌区选【充能】作代价：进入选牌界面时先把可选的最大张数全选上，
-## 玩家要改再自己点掉（雷光散射＝全选雷系、魔贯冲击＝1 张火系、多重射击＝1 张风系）
-const 自动选盖牌技能: Array[int] = [2601, 2602, 2603]
 
 
 func _ready() -> void:
@@ -751,14 +753,29 @@ func _写士气日志(新士气: Array[int]) -> void:
 		_日志追加("蓝队士气%d → %d" % [_上次士气[1], 新士气[1]], "士气")
 
 
-## 士气 / 宝石 / 水晶 / 星杯（读 Logic.last_info 的绝对值）
+## 士气 / 宝石 / 水晶 / 星杯（读 Logic.last_info 的绝对值）。
+## 左右两条队伍条固定按「左＝我方、右＝对方」显示 —— 自己是蓝阵营时两份数据对调，
+## 免得玩家把左上角那份当成自己的。（场景里左条是 RedTeam、右条是 BlueTeam，只表示位置）
 func _刷新队伍(info: Dictionary) -> void:
-	BlueMorale.text = str(int(info.get("blue_morale", 0)))
-	RedMorale.text = str(int(info.get("red_morale", 0)))
-	_重建能量(BlueEnergy, int(info.get("blue_gem", 0)), int(info.get("blue_crystal", 0)))
-	_重建能量(RedEnergy, int(info.get("red_gem", 0)), int(info.get("red_crystal", 0)))
-	_重建格子(BlueGrail, int(info.get("blue_grail", 0)), "grail", 星杯提示)
-	_重建格子(RedGrail, int(info.get("red_grail", 0)), "grail", 星杯提示)
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	# 还没分队 / 快照里还没轮到自己时，维持场景原样（红在左、蓝在右）
+	var 我方: int = 我.color if (我 != null and 我.color != GConst.TEAM_NONE) else GConst.RED
+	_填队伍条(RedBG, RedMorale, RedEnergy, RedGrail, 我方, true, info)
+	_填队伍条(BlueBG, BlueMorale, BlueEnergy, BlueGrail, GConst.BLUE if 我方 == GConst.RED else GConst.RED, false, info)
+
+
+## 往一条队伍条里填一支队伍的数值（左条＝我方、右条＝对方，见 _刷新队伍）。
+## 队色底图也按这支队伍换，否则会「蓝框里写红队」。
+func _填队伍条(底图: TextureRect, 士气: Label, 能量: GridContainer, 星杯: GridContainer,
+		队伍: int, 是左条: bool, info: Dictionary) -> void:
+	# 蓝队底图是给右边画的（纹章在右端）、红队底图是给左边画的；数据换到另一边时把底图水平翻过来，
+	# 纹章才会留在靠屏幕外的那一头（士气数字正好压在纹章旁那颗宝石上）
+	底图.texture = 队条底图蓝 if 队伍 == GConst.BLUE else 队条底图红
+	底图.flip_h = (队伍 == GConst.BLUE) == 是左条
+	var 前缀: String = "blue" if 队伍 == GConst.BLUE else "red"
+	士气.text = str(int(info.get(前缀 + "_morale", 0)))
+	_重建能量(能量, int(info.get(前缀 + "_gem", 0)), int(info.get(前缀 + "_crystal", 0)))
+	_重建格子(星杯, int(info.get(前缀 + "_grail", 0)), "grail", 星杯提示)
 
 
 ## 能量格：宝石在前、水晶在后（与参考脚本 gemChange / crystalChange 的落位一致）；
@@ -995,9 +1012,8 @@ func _展示卡牌(卡号表: Array) -> void:
 		视图.size = 手牌尺寸
 		视图.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		ShowCardArea.add_child(视图)
-		# 「可用」传 true 才是正常亮度（false 会把整张牌置灰）；展示只是给人看，顺手关掉「可选」发光框
-		视图.call("设置卡牌", 卡, true)
-		(视图.get("canSelectBorder") as TextureRect).visible = false
+		# 「不可用」+「不置灰」= 正常亮度但不显示边框（展示只是给人看，不需要可选光晕）
+		视图.call("设置卡牌", 卡, false, false)
 		视图表.append(视图)
 	# 排成一行并水平居中：位置够就摊开，牌多了就像手牌一样挤在一起（同一套间距算法），绝不换行
 	var 排布: Array = _单行间距与起点(视图表.size(), ShowCardArea.size.x, 手牌尺寸, 手牌最多重叠比例)
@@ -1625,8 +1641,6 @@ func _进入技能询问() -> void:
 	_sel_cards.clear()
 	_sel_players.clear()
 	_重置治疗分配()
-	# 多重射击这类从盖牌区选【充能】作代价的询问：进来先按最大张数全选上，玩家要改再自己点
-	_自动选盖牌(_skill_ask_id)
 	_清空技能按钮()
 	# 带选项的询问（如英灵人形【怒火压制/魔纹融合】的二选一、【百鬼夜行】的展示与否）：
 	# 进「二级技能栏」—— 技能区只留这个技能（最左）+ 它的选项（紧挨右侧，同样用技能按钮显示），
@@ -1884,11 +1898,15 @@ const 状态图标说明字号: int = 16
 const 悬停卡牌尺寸: Vector2 = 手牌尺寸
 
 
-## 鼠标指向技能按钮：把该技能的说明摆在按钮正上方
+## 鼠标指向技能按钮：把该技能的说明摆在按钮正上方。
+## 按钮自带说明文本的（特殊行动的「购买 / 合成 / 提炼」这类没有技能号的选项）优先用自带的，
+## 其余按技能号去技能表里查
 func _显示技能说明(按钮: 技能按钮) -> void:
 	if 按钮 == null:
 		return
-	var 文本: String = 角色技能提示.单个技能(按钮.技能号)
+	var 文本: String = 按钮.说明文本
+	if 文本.is_empty():
+		文本 = 角色技能提示.单个技能(按钮.技能号)
 	if 文本.is_empty():
 		return
 	_悬停角色面板 = null
@@ -2049,9 +2067,9 @@ func _构建技能按钮(cmds: Array) -> void:
 	for i: int in range(1, cmds.size()):
 		var c: Dictionary = cmds[i]
 		var 技能类型: int = int(c.get("respond_id", 0))
-		# 本阶段不放行的技能不摆（额外攻击行动里法术技能也会亮，点了必被服务端拒）
-		if not GConst.放行动作(技能类型, _行动允许):
-			continue
+		# 本阶段不放行的技能也照样摆出来、只置灰（额外攻击行动里法术技能会亮着但点不动），
+		# 让玩家看得见「有这个技能、现在用不了」
+		var 阶段放行: bool = GConst.放行动作(技能类型, _行动允许)
 		var args: Array = c.get("args", [])
 		if args.is_empty():
 			continue
@@ -2070,12 +2088,17 @@ func _构建技能按钮(cmds: Array) -> void:
 		var 参数选项: Array = c.get("arg_choices", [])
 		var 盖牌需数: int = int(c.get("cover_need", 0))
 		var go: 技能按钮 = _新技能按钮(技能号)
+		# 服务端标了「本次不可用」（条件不满足）或本阶段不放行的：半透明、点不动，悬停说明照常可看
+		if not 阶段放行 or not bool(c.get("enabled", true)):
+			go.设置选项可用(false)
 		go.connect("点击", _选择技能.bind(技能类型, 需牌, 需目标, 合法目标, 合法牌, 最多牌,
 			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go, 盖牌需数))
 		# 点下去就把挂着的技能说明收掉，别挡着选牌选目标（悬停 / 离开悬停由 _新技能按钮 统一接）
 		go.connect("点击", func(_技能号: int) -> void: _隐藏技能说明())
-	# 技能全排一行：技能多的角色（如元素师 7 个技能）不能被场景里配的 6 列折到第二行去
-	_排技能区一行()
+	# 行动阶段顺手把「特殊行动」入口摆到技能栏最左（见 _摆特殊行动入口）。
+	# 本阶段不放行特殊行动时（额外行动只放行攻击 / 法术、发动过「启动」技能后）整颗不摆
+	if not _行动禁特殊 and GConst.放行动作(GConst.ActionType.Special, _行动允许):
+		_摆特殊行动入口()
 
 
 ## 造一颗技能按钮挂进技能区（只 Instantiate + 设置技能 + 接悬停说明，点击回调由调用方做）
@@ -2087,7 +2110,7 @@ func _新技能按钮(技能号: int) -> 技能按钮:
 	go.call("设置技能", 技能号)
 	# 鼠标指向技能按钮：把它的技能说明摆到按钮正上方（点下去收起另接）。
 	# 接在这里而不是各调用点：二级技能栏里现造的「父技能」与「本身就是技能」的选项按钮都要有这一份；
-	# 技能号为 0 的纯参数选项查不到说明，悬停自然不弹
+	# 技能号为 0 的纯参数选项查不到技能表，只有自带说明文本的才弹（见 技能按钮.说明文本）
 	go.connect("悬停", _显示技能说明)
 	go.connect("离开悬停", _隐藏技能说明)
 	_技能按钮.append(go)
@@ -2095,16 +2118,18 @@ func _新技能按钮(技能号: int) -> 技能按钮:
 	return go as 技能按钮
 
 
-## 技能区永远只排一行：把 GridContainer 的列数设成「当下可见的按钮数」。
-## 场景里配的是 6 列，技能多的角色（如元素师 7 个技能）第 7 颗会折到第二行，
-## 从只有一行高的技能区里溢出去。GridContainer 会跳过隐藏的子节点，所以按可见数算正好 ——
-## 二级技能栏里其余技能是藏着的，也一并适用（见 _进入二级技能栏）
-func _排技能区一行() -> void:
-	var 可见数: int = 0
-	for b: Node in _技能按钮:
-		if is_instance_valid(b) and b is Control and (b as Control).visible:
-			可见数 += 1
-	ChildrenSkillArea.columns = maxi(1, 可见数)
+## 把「特殊行动」（购买 / 合成 / 提炼）的入口摆到技能栏最左 —— 原先它单占右下角那颗 BtnSpecila，
+## 玩家的目光本来就落在技能栏上，摆一起省得来回找（见 _构建技能按钮）。
+## 三种都做不了（手牌放不下 3 张 / 战绩区没星石…）或仲裁者审判已满锁死行动时：半透明、点不动
+func _摆特殊行动入口() -> void:
+	var 可用: Array[bool] = _特殊行动可用()
+	var go: 技能按钮 = _新技能按钮(0)
+	go.设置选项("特殊行动", 二级选项底色_特殊行动, 0)
+	go.设置说明(特殊行动入口说明)
+	if not (可用[0] or 可用[1] or 可用[2]) or _末日审判锁死行动():
+		go.设置选项可用(false)
+	go.connect("点击", func(_技能号: int) -> void: _进入特殊行动())
+	ChildrenSkillArea.move_child(go, 0)
 
 
 # ---------------- 二级技能栏 ----------------
@@ -2119,6 +2144,8 @@ func _选项项(参数选项: Array) -> Array:
 			"参数": d.get("args", []),
 			# false＝这一项条件不满足：照样摆出来，但半透明、点不动（如特殊行动的购买 / 合成 / 提炼）
 			"可用": bool(d.get("enabled", true)),
+			# 鼠标指向时弹的效果说明（非技能的选项才给，如「购买 / 合成 / 提炼」，见 技能按钮.说明文本）
+			"说明": str(d.get("说明", "")),
 			"需牌": int(d.get("need_card", 0)),
 			"需目标": int(d.get("need_target", 0)),
 			"目标白名单": d.get("targets", []),
@@ -2141,6 +2168,18 @@ const 二级选项底色_治疗: Color = Color("3b82f6")
 const 二级选项底色_特殊行动: Color = Color("16a34a")
 ## 本次二级栏最左那颗「被点的技能」（0＝这一排只有选项，如多份额外行动 / 治疗抵挡）：提示条据此写名字
 var _二级栏父技能号: int = 0
+
+
+## 二级选项按钮上的文案：把开头的「发动【XXX】：」掐掉，只留后半句。
+## 那一排选项本来就摆在这个技能下面，每条都重复一遍技能名纯属占地方（如【充能】的那几条）。
+## 服务端下发的原文不动（其它地方可能还要用），只在这一处显示时瘦身
+func _选项文案(原文: String) -> String:
+	if not 原文.begins_with("发动【"):
+		return 原文
+	var 右括号: int = 原文.find("】")
+	if 右括号 < 0:
+		return 原文
+	return 原文.substr(右括号 + 1).lstrip("：:　 ")
 
 
 ## 进入二级技能栏：把「父技能」摆到最左，其余技能先藏起来，选项用技能按钮紧挨着排在它右边。
@@ -2168,7 +2207,9 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 		var d: Dictionary = 选项[i]
 		var 按钮: 技能按钮 = _新技能按钮(0)
 		# 该项本身就是技能时绑上技能号：鼠标指向它就和普通技能按钮一样弹技能说明
-		按钮.设置选项(str(d.get("文本", "")), 选项底色, int(d.get("技能号", 0)))
+		按钮.设置选项(_选项文案(str(d.get("文本", ""))), 选项底色, int(d.get("技能号", 0)))
+		# 这项自带效果说明的（如「购买 / 合成 / 提炼」）：鼠标指向它就把说明弹出来
+		按钮.设置说明(str(d.get("说明", "")))
 		# 条件不满足的项照样摆着，但半透明、点不动（见 技能按钮.设置选项可用）
 		var 项可用: bool = bool(d.get("可用", true))
 		按钮.设置选项可用(项可用)
@@ -2184,8 +2225,7 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 			"选牌来源": int(d.get("选牌来源", -1)),
 			"需盖牌": int(d.get("需盖牌", 0)),
 		})
-	# 技能本体 + 选项全排一行（按当下可见的按钮数定列数，选项多了也不折行）
-	_排技能区一行()
+	# 技能本体 + 选项排成一行、整排贴屏幕右侧（右对齐由场景里 ChildrenSkillArea 的 alignment 决定）
 	_二级栏父技能号 = 父技能号 if 父 != null else 0
 	_二级栏父按钮 = 父
 	_二级栏 = true
@@ -2869,12 +2909,9 @@ func _on_resign() -> void:
 	_发送行动(GConst.ActionType.None, 0, [], [], [])
 
 
-## 特殊行动 / 放弃（场景 BtnSpecila，图标就是 action 键）
+## 「放弃」（场景 BtnSpecila，图标就是 action 键；这颗现在只在魔弹传递时出现）。
+## 行动阶段要放弃行动走 BtnResign，特殊行动走技能栏最左那颗「特殊行动」（见 _摆特殊行动入口）
 func _on_giveup() -> void:
-	# 行动阶段：进「购买 / 合成 / 提炼」三选一（选项摆进二级技能栏，见 _进入特殊行动）
-	if _mode == 1:
-		_进入特殊行动()
-		return
 	var respond_id: int = int(_pending.get("respond_id", 0))
 	if _pending_type == GConst.Msg.Respond and respond_id == GConst.RespondType.ReplyAttack:
 		_发送应答(respond_id, [], [], [GConst.Reattack.GiveUp])
@@ -2886,7 +2923,18 @@ func _on_giveup() -> void:
 
 
 # ---------------- 特殊行动（购买 / 合成 / 提炼） ----------------
-## 行动阶段点「特殊行动」进来：购买 / 合成 / 提炼 三选一 —— 选项摆进二级技能栏（本地步骤）。
+## 特殊行动三项的效果说明（鼠标指向「购买 / 合成 / 提炼」时弹出，见 技能按钮.说明文本）。
+## 口径取自引擎结算（battle_engine._do_special）与校验（battle_player.base_v_buy / v_synthesize / base_v_extract）。
+## 购买在冒险家身上改走【地下法则】（只加宝石、一次 +2），故另备一条
+## 特殊行动入口按钮（技能栏最左那颗）的说明：三种子行动的名字与大致效果，
+## 具体效果与代价在点开后的各项上（见下面三条，鼠标指向就弹）
+const 特殊行动入口说明: String = "【购买】补战绩区【星石】\n【合成】消耗【星石】合成【星杯】\n【提炼】把【星石】变自身【能量】。\n\n点开后指向各项看效果。"
+const 购买说明: String = "给【战绩区】 +1【宝石】、 +1【水晶】，再摸 3 张牌。\n\n手牌放得下 3 张可执行此行动。"
+const 购买说明_地下法则: String = "有【地下法则】，【战绩区】 +2 【宝石】，再摸 3 张牌。\n\n手牌放得下 3 张可执行此行动。"
+const 合成说明: String = "【战绩区】的 -3【星石】，【星杯】加 1、对方阵营 -1【士气】，再摸 3 张牌。【宝石】和【水晶】随便凑。\n\n手牌放得下 3 张可执行此行动。"
+const 提炼说明: String = "选择【战绩区】的2 颗【星石】收进自己的【能量区】里。\n\n自己的【星石】有空位才能提炼。"
+
+## 行动阶段点技能栏最左那颗「特殊行动」进来：购买 / 合成 / 提炼 三选一 —— 选项摆进二级技能栏（本地步骤）。
 ## 可用性逐条对照原客户端 Role::normal / Role::buy / Role::synthetize / Role::extract：
 ##   购买 = 手牌放得下 3 张；合成 = 放得下且我方战绩区星石 ≥ 3；
 ##   提炼 = 战绩区有星石，且自己（或冒险家【冒险者天堂】时任一有空的队友）还收得下
@@ -2895,11 +2943,13 @@ func _进入特殊行动() -> void:
 	if 我 == null or 我.color == GConst.TEAM_NONE:
 		return
 	var 可用: Array[bool] = _特殊行动可用()
-	# 三种都摆出来：条件不满足的那几种半透明、点不动（而不是干脆不显示）
+	# 三种都摆出来：条件不满足的那几种半透明、点不动（而不是干脆不显示）；
+	# 每种带一句效果说明，鼠标指上去就弹（见 技能按钮.说明文本）
 	var 选项: Array = [
-		{"text": "购买", "args": [GConst.SpecialAction.Buy], "enabled": 可用[0]},
-		{"text": "合成", "args": [GConst.SpecialAction.Synthesize], "enabled": 可用[1]},
-		{"text": "提炼", "args": [GConst.SpecialAction.Extract], "enabled": 可用[2]},
+		{"text": "购买", "args": [GConst.SpecialAction.Buy], "enabled": 可用[0],
+			"说明": 购买说明_地下法则 if 我.role_id == 冒险家角色号 else 购买说明},
+		{"text": "合成", "args": [GConst.SpecialAction.Synthesize], "enabled": 可用[1], "说明": 合成说明},
+		{"text": "提炼", "args": [GConst.SpecialAction.Extract], "enabled": 可用[2], "说明": 提炼说明},
 	]
 	_进入本地选项(3, 0, 选项, "选择特殊行动：购买 / 合成 / 提炼")
 
@@ -3239,9 +3289,9 @@ func _提炼可分配空位() -> int:
 func _星石文案(宝石: int, 水晶: int) -> String:
 	var 段: Array[String] = []
 	if 宝石 > 0:
-		段.append("%d 宝石" % 宝石)
+		段.append("%d【宝石】" % 宝石)
 	if 水晶 > 0:
-		段.append("%d 水晶" % 水晶)
+		段.append("%d【水晶】" % 水晶)
 	return " ".join(段) if not 段.is_empty() else "0 星石"
 
 
@@ -3309,41 +3359,48 @@ func _选特殊行动(action_id: int) -> void:
 	var 组合: Array = []
 	match action_id:
 		GConst.SpecialAction.Buy:
-			# 冒险家（【地下法则】）只加宝石、一次最多 2 点（role_maoxian.v_buy）
+			# 冒险家（【地下法则】）只加宝石、一次最多 2 点（role_maoxian.v_buy）。
+			# 文案里的石头写成【宝石】/【水晶】：词缀表按这个关键字把它们画成图标（见 技能按钮.设置选项）
 			var 地下法则: bool = 我.role_id == 冒险家角色号
 			if 宝石 + 水晶 < 4:
 				if 地下法则:
-					组合.append({"text": "战绩区 +2 宝石", "gem": 2, "crystal": 0})
+					组合.append({"text": "战绩区 +2【宝石】", "gem": 2, "crystal": 0})
 				else:
-					组合.append({"text": "战绩区 +1 宝石 +1 水晶", "gem": 1, "crystal": 1})
+					组合.append({"text": "战绩区 +1【宝石】 +1【水晶】", "gem": 1, "crystal": 1})
 			elif 宝石 + 水晶 == 4:
-				组合.append({"text": "一个宝石", "gem": 1, "crystal": 0})
+				组合.append({"text": "一个【宝石】", "gem": 1, "crystal": 0})
 				if not 地下法则:
-					组合.append({"text": "一个水晶", "gem": 0, "crystal": 1})
+					组合.append({"text": "一个【水晶】", "gem": 0, "crystal": 1})
 			else:
 				组合.append({"text": "战绩区已满，不再加星石", "gem": 0, "crystal": 0})
 		GConst.SpecialAction.Synthesize:
 			if 水晶 >= 3:
-				组合.append({"text": "三个水晶", "gem": 0, "crystal": 3})
+				组合.append({"text": "三个【水晶】", "gem": 0, "crystal": 3})
 			if 水晶 >= 2 and 宝石 >= 1:
-				组合.append({"text": "两个水晶和一个宝石", "gem": 1, "crystal": 2})
+				组合.append({"text": "两个【水晶】和一个【宝石】", "gem": 1, "crystal": 2})
 			if 水晶 >= 1 and 宝石 >= 2:
-				组合.append({"text": "一个水晶和两个宝石", "gem": 2, "crystal": 1})
+				组合.append({"text": "一个【水晶】和两个【宝石】", "gem": 2, "crystal": 1})
 			if 宝石 >= 3:
-				组合.append({"text": "三个宝石", "gem": 3, "crystal": 0})
+				组合.append({"text": "三个【宝石】", "gem": 3, "crystal": 0})
 	if 组合.is_empty():
 		_指令提示("没有可用的星石组合")
 		return
 	if 组合.size() == 1:
-		# 只有一种组合（如购买时的「+1 宝石 +1 水晶」「战绩区已满」）就不用再问一遍
+		# 只有一种组合（如购买时的「+1【宝石】 +1【水晶】」「战绩区已满」）就不用再问一遍
 		var 只: Dictionary = 组合[0]
 		_发送特殊行动(action_id, int(只["gem"]), int(只["crystal"]))
 		return
-	# 第二层（选「用哪些星石」）走二级技能栏（本地步骤）：选项排成一行，选好点「确定」提交
+	# 第二层（选「用哪些星石」）走二级技能栏（本地步骤）：选项排成一行，选好点「确定」提交；
+	# 每项带上这一步的效果说明（鼠标指上去弹，见 技能按钮.说明文本）
+	var 本步说明: String = 购买说明
+	if action_id == GConst.SpecialAction.Synthesize:
+		本步说明 = 合成说明
+	elif 我.role_id == 冒险家角色号:
+		本步说明 = 购买说明_地下法则
 	var 选项: Array = []
 	for 项: Variant in 组合:
 		var d: Dictionary = 项
-		选项.append({"text": str(d["text"]), "args": [int(d["gem"]), int(d["crystal"])]})
+		选项.append({"text": str(d["text"]), "args": [int(d["gem"]), int(d["crystal"])], "说明": 本步说明})
 	_待定特殊行动 = action_id
 	_进入本地选项(2, 0, 选项,
 		"选择要购买的星石" if action_id == GConst.SpecialAction.Buy else "选择要合成的星石")
@@ -3363,15 +3420,15 @@ func _列提炼组合() -> void:
 	var 组合: Array = []
 	if 余量 >= 2:
 		if 宝石 >= 2:
-			组合.append({"text": "两个宝石", "gem": 2, "crystal": 0})
+			组合.append({"text": "两个【宝石】", "gem": 2, "crystal": 0})
 		if 水晶 >= 2:
-			组合.append({"text": "两个水晶", "gem": 0, "crystal": 2})
+			组合.append({"text": "两个【水晶】", "gem": 0, "crystal": 2})
 		if 宝石 >= 1 and 水晶 >= 1:
-			组合.append({"text": "一个宝石和一个水晶", "gem": 1, "crystal": 1})
+			组合.append({"text": "一个【宝石】和一个【水晶】", "gem": 1, "crystal": 1})
 	if 宝石 >= 1:
-		组合.append({"text": "一个宝石", "gem": 1, "crystal": 0})
+		组合.append({"text": "一个【宝石】", "gem": 1, "crystal": 0})
 	if 水晶 >= 1:
-		组合.append({"text": "一个水晶", "gem": 0, "crystal": 1})
+		组合.append({"text": "一个【水晶】", "gem": 0, "crystal": 1})
 	if 组合.is_empty():
 		_指令提示("没有可用的星石组合")
 		return
@@ -3383,7 +3440,7 @@ func _列提炼组合() -> void:
 	var 选项: Array = []
 	for 项: Variant in 组合:
 		var d: Dictionary = 项
-		选项.append({"text": str(d["text"]), "args": [int(d["gem"]), int(d["crystal"])]})
+		选项.append({"text": str(d["text"]), "args": [int(d["gem"]), int(d["crystal"])], "说明": 提炼说明})
 	_待定特殊行动 = GConst.SpecialAction.Extract
 	_进入本地选项(2, 0, 选项,
 		"选择要提炼的星石" if 余量 >= 1 else "自己星石已满，无法常规提炼")
@@ -3409,7 +3466,7 @@ func _回到行动阶段() -> void:
 	_提炼阶段 = 0
 	_本地选项阶段 = 0
 	_本地询问 = false
-	# 退回行动阶段就不再选盖牌了：不关掉会把盖牌区一直亮着、挡住界面（如取消【雷光散射】）
+	# 退回行动阶段就不再选盖牌了：不关掉会把盖牌区一直亮着、挡住界面（如取消【倒逆之蝶】选 2 张【茧】那一步）
 	_selecting_cover = false
 	_skill_cover_need = 0
 	_清空技能按钮()
@@ -3499,8 +3556,6 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	# 基础效果牌由玩家面板上的图标直接点
 	_selecting_cover = 选牌来源 == GConst.CardSource.Cover \
 		or 选牌来源 == GConst.CardSource.HandOrCover or 盖牌需数 > 0
-	# 雷光散射 / 魔贯冲击这类要选盖牌作代价的技能：进来先按最大张数全选上，玩家要改再自己点
-	_自动选盖牌(技能号)
 	var 指示配置: Dictionary = GConst.技能指示器.get(技能号, {})
 	# 「自动选」的技能（【辉耀】自动选全体、【圣光祈愈】自动选自己）：不用点头像，
 	# 进场即把目标选中并画「N 治疗」
@@ -4389,24 +4444,6 @@ func _盖牌此刻可用() -> bool:
 	return false
 
 
-## 进入技能选牌界面时，若本技能在「自动选盖牌」名单里，就把盖牌区能选的最大张数先全选上
-## （玩家想少用几张，自己把多出来的点掉即可）
-func _自动选盖牌(技能号: int) -> void:
-	if not _selecting_cover or not 自动选盖牌技能.has(技能号):
-		return
-	# 能选几张：手牌+盖牌混选型看「需盖牌数」（如魔贯冲击＝1），纯盖牌型看点选上限（如雷光散射＝全部雷系）
-	var 上限: int = _skill_cover_need if _skill_cover_need > 0 else _skill_card_max
-	if 上限 <= 0:
-		return
-	for 牌: GCard in Data.cover_cards:
-		if 牌 == null:
-			continue
-		if _sel_cards.size() >= 上限:
-			break
-		if _卡牌能点(牌.id):
-			_sel_cards.append(牌.id)
-
-
 # ============================================================
 # 渲染：手牌 / 盖牌 / 玩家面板选中 / 按钮
 # ============================================================
@@ -4481,7 +4518,7 @@ func 刷新手牌() -> void:
 			旧.erase(card.id)
 			# 复用节点也要按最新的可用性重画（省去重新实例化）
 			go.call("设置卡牌", card, 可用, true)
-			go.call("设置发光色", 可选发光_红 if _正在弃牌() else 可选发光_绿)
+			go.call("设置弃牌询问", _正在弃牌())
 		HandArea.move_child(go, i)
 		var 选中: bool = _sel_cards.has(card.id)
 		go.call("设置选中", 选中)
@@ -4542,7 +4579,11 @@ func 刷新盖牌() -> void:
 	for cc: GCard in Data.cover_cards:
 		if cc != null:
 			张数 += 1
-	if 张数 == 0:
+	# 点开「盖牌」查看时，把「最多能放几张」用空槽一起摆出来（看得见还剩几个位置）。
+	# 只在主动查看时摆：选盖牌的询问里混进空框会干扰「该选几张」
+	var 槽位数: int = maxi(张数, _盖牌上限()) if _查看盖牌 else 张数
+	_刷新盖牌空槽(槽位数 - 张数)
+	if 张数 == 0 and 槽位数 == 0:
 		for 废弃: Variant in 旧.values():
 			(废弃 as Node).queue_free()
 		ChooseArea.visible = false
@@ -4550,10 +4591,10 @@ func 刷新盖牌() -> void:
 	# 盖牌区里的牌比手牌小一档（见 盖牌显示缩放）：整行更容易挤进 ChooseArea，也不至于压到别处
 	var 尺寸: Vector2 = 盖牌尺寸 * 盖牌显示缩放
 	var 间距: float = 盖牌间距
-	if 张数 > 1:
-		间距 = clampf((ChooseArea.size.x - 尺寸.x * float(张数)) / float(张数 - 1),
+	if 槽位数 > 1:
+		间距 = clampf((ChooseArea.size.x - 尺寸.x * float(槽位数)) / float(槽位数 - 1),
 			-尺寸.x * 手牌最多重叠比例, 盖牌间距)
-	var 总宽: float = 尺寸.x * float(张数) + 间距 * float(张数 - 1)
+	var 总宽: float = 尺寸.x * float(槽位数) + 间距 * float(槽位数 - 1)
 	# 「视同手牌」时盖牌也要像手牌一样逐个判可点；否则（普通盖牌 / 只读查看）沿用原逻辑
 	var 当手牌: bool = _盖牌视同手牌()
 	var 可点控: bool = _selecting_cover or 当手牌
@@ -4573,7 +4614,7 @@ func 刷新盖牌() -> void:
 			复.custom_minimum_size = 尺寸
 			复.size = 尺寸
 			go.call("设置卡牌", cc, 可点, 可点控)
-			go.call("设置发光色", 可选发光_红 if _正在弃牌() else 可选发光_绿)
+			go.call("设置弃牌询问", _正在弃牌())
 		ChooseArea.move_child(go, 序)
 		if go is Control:
 			(go as Control).position = Vector2(
@@ -4581,9 +4622,45 @@ func 刷新盖牌() -> void:
 				(ChooseArea.size.y - 尺寸.y) * 0.5 + 盖牌显示下移)
 		go.call("设置选中", _sel_cards.has(cc.id))
 		序 += 1
+	# 空槽紧跟最后一张盖牌，用与牌完全相同的定位算式摆（同一行、同一间距）；
+	# 槽里写的是「整行的第几个位置」，所以编号接着已有的盖牌往下数
+	for k: int in range(_盖牌空槽.size()):
+		var 槽: Label = _盖牌空槽[k]
+		槽.text = str(张数 + k + 1)
+		槽.size = 尺寸
+		槽.position = Vector2(
+			(ChooseArea.size.x - 总宽) * 0.5 + float(张数 + k) * (尺寸.x + 间距),
+			(ChooseArea.size.y - 尺寸.y) * 0.5 + 盖牌显示下移)
 	for 废弃: Variant in 旧.values():
 		(废弃 as Node).queue_free()
 	ChooseArea.visible = _selecting_cover or _查看盖牌 or _盖牌此刻可用()
+
+
+## 自己这个角色最多能放几张盖牌（0＝没有盖牌区）。取服务端下发的 max_covered ——
+## 角色表的原始值在角色被动里会被改（与治疗 / 能量上限同一套道理），以快照为准
+func _盖牌上限() -> int:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	return 我.cover_cards_max
+
+
+## 空槽节点的个数对齐到「需要几个」：多了删、少了补（不每份快照重建）。
+## 一个 Label 就够：底图用它的 normal 样式（半透明），数字居中写在上面
+func _刷新盖牌空槽(个数: int) -> void:
+	while _盖牌空槽.size() > 个数:
+		(_盖牌空槽.pop_back() as Node).queue_free()
+	while _盖牌空槽.size() < 个数:
+		var 底: StyleBoxFlat = StyleBoxFlat.new()
+		底.bg_color = Color(1.0, 1.0, 1.0, 0.10)
+		var 槽: Label = Label.new()
+		槽.name = "盖牌空槽"
+		槽.add_theme_stylebox_override("normal", 底)
+		槽.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		槽.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		槽.add_theme_font_size_override("font_size", 40)
+		槽.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.35))
+		槽.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ChooseArea.add_child(槽)
+		_盖牌空槽.append(槽)
 
 
 ## 造一张卡牌节点挂到指定容器下（Card.tscn + scripts/CardUI.gd），点击回调统一接进来。
@@ -4597,13 +4674,13 @@ func _加卡牌(父: Node, card: GCard, 尺寸: Vector2, 可用: bool, 可置灰
 	ctl.scale = Vector2.ONE
 	父.add_child(go)
 	go.call("设置卡牌", card, 可用, 可置灰)
-	go.call("设置发光色", 可选发光_红 if _正在弃牌() else 可选发光_绿)
+	go.call("设置弃牌询问", _正在弃牌())
 	go.connect("点击", _on_card_clicked)
 	return go
 
 
-## 当前这次选牌是不是「手牌 / 盖牌溢出、被迫弃牌」：只有这种才把「可选」发光框改成红光。
-## 技能代价等主动弃牌（暗之障壁 / 充盈 / 被令弃牌…）不算溢出，仍用默认绿光。
+## 当前这次选牌是不是「手牌 / 盖牌溢出、被迫弃牌」：只有这种才把「可选」框换成「弃牌框」那个颜色（红）。
+## 技能代价等主动弃牌（暗之障壁 / 充盈 / 被令弃牌…）不算溢出，仍用默认的绿框。
 func _正在弃牌() -> bool:
 	if _mode != 2:
 		return false
@@ -4645,12 +4722,30 @@ func _当前技能号() -> int:
 
 
 ## 「目标随牌」配置（技能指示器）：已选牌数达到该值时，才需要（且才允许）选 1 名目标
-## （如【雷光散射】选超过 1 张雷系【充能】时才指定额外受伤的那名对手）。返回 0＝本技能没配这条规则
+## （如女武神【英灵召唤】弃了法术牌才给治疗）。返回 0＝本技能没配这条规则
 func _目标随牌阈值() -> int:
 	var 技能号: int = _当前技能号()
 	if 技能号 < 0:
 		return 0
 	return int(GConst.技能指示器.get(技能号, {}).get("目标随牌", 0))
+
+
+## 「需盖牌系别」配置（技能指示器）：这次询问不用玩家挑盖牌（服务端自己挑一张该系盖牌移除），
+## 但盖牌区里得有这一系的牌才让按「确定」—— 没有了就灰着，只能按「取消」放弃发动
+## （如魔弓【魔贯冲击】：命中追加那次火系【充能】已经用光）。返回 0＝本技能没配这条规则
+func _需盖牌系别() -> int:
+	var 技能号: int = _当前技能号()
+	if 技能号 < 0:
+		return 0
+	return int(GConst.技能指示器.get(技能号, {}).get("需盖牌系别", 0))
+
+
+## 自己的盖牌区里有没有这一系的牌（「需盖牌系别」用它判「确定」能不能点）
+func _盖牌区有系别(系别: int) -> bool:
+	for 牌: GCard in Data.cover_cards:
+		if 牌 != null and 牌.element_enum() == 系别:
+			return true
+	return false
 
 
 ## 「目标需法术牌」配置（技能指示器）：为 true 时必须先在已选牌里挑到一张法术牌，目标才可点
@@ -4875,12 +4970,13 @@ func _念弹头像提示() -> Dictionary:
 
 
 ## 魔弓【雷光散射】的指示器（现算，写不进静态表 —— 要画在「所有敌方」而不是选中的目标身上）：
-## 每名对手各 1 点法术伤害；已选雷系【充能】超过 1 张时，被指定的那名对手改为受「已选张数」点
+## 每名对手各 1 点法术伤害；选了「移除 N 张」（N > 1）并指定一名对手时，那名对手改为受 N 点。
+## 张数取二级技能栏里选中的那个选项（玩家不再挑盖牌，见 role_mogong.available_skills）
 func _雷光散射头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 4 or _pending_skill_id != GConst.技能_雷光散射:
 		return out
-	var 张数: int = _sel_cards.size()
+	var 张数: int = int(_已选参数[0]) if not _已选参数.is_empty() else 0
 	var 指定: int = int(_sel_players[0]) if not _sel_players.is_empty() else -1
 	for 面板: 战斗玩家面板 in _面板列表:
 		if 面板.ID < 0:
@@ -5326,7 +5422,7 @@ func _目标数合法() -> bool:
 	# 这时不必选目标（选 0 名也能点「确定」）
 	if _目标需法术牌() and not _已选牌含法术():
 		return true
-	# 「目标随牌」的技能（如【雷光散射】）：够阈值必须正好 1 名目标，不够则一名也不选
+	# 「目标随牌」的技能（如女武神【英灵召唤】）：够阈值必须正好 1 名目标，不够则一名也不选
 	var 随牌阈值: int = _目标随牌阈值()
 	if 随牌阈值 > 0:
 		return _sel_players.size() == (1 if _sel_cards.size() >= 随牌阈值 else 0)
@@ -5444,7 +5540,7 @@ func _玩家可选(player_id: int) -> bool:
 			return false
 		if bool(_分配配置().get("仅队友", false)) and not _是队友(player_id):
 			return false
-		# 「目标随牌」的技能（如【雷光散射】）：已选牌数够阈值时才点亮目标（选 1 张时不选目标）
+		# 「目标随牌」的技能（如女武神【英灵召唤】）：已选牌数够阈值时才点亮目标（牌不够时谁都不亮）
 		var 随牌阈值: int = _目标随牌阈值()
 		if 随牌阈值 > 0:
 			return _sel_cards.size() >= 随牌阈值 and (_skill_targets.is_empty() or _skill_targets.has(player_id))
@@ -5473,11 +5569,9 @@ func _更新按键() -> void:
 	BtnCovered.disabled = Data.cover_cards.is_empty()
 	BtnResign.visible = _模式可放弃行动()
 	BtnResign.disabled = not _模式可放弃行动()
-	var 特殊可用: bool = _按钮是特殊行动() or _按钮是放弃()
+	var 特殊可用: bool = _按钮是放弃()
 	BtnSpecila.visible = 特殊可用
-	# 仲裁者审判满时「特殊行动」也锁死：按钮留着但灰掉
-	# （购买 / 合成 / 提炼 哪个做不了，在二级技能栏里按项半透明、点不动，入口按钮不必再拦）
-	BtnSpecila.disabled = not 特殊可用 or (_按钮是特殊行动() and _末日审判锁死行动())
+	BtnSpecila.disabled = not 特殊可用
 
 
 func _确定不可用() -> bool:
@@ -5515,6 +5609,11 @@ func _确定不可用() -> bool:
 				return true
 			return false
 		if not _是技能询问:
+			return true
+		# 「需盖牌系别」的询问（如魔弓【魔贯冲击】）：盖牌区里已经没有该系的牌可移除 → 发动不了，
+		# 「确定」灰着（盖牌区照样摆着给他看，只能按「取消」放弃）
+		var 需系: int = _需盖牌系别()
+		if 需系 > 0 and not _盖牌区有系别(需系):
 			return true
 		# need_card 是「最少要选几张」，点选上限另由 _skill_card_max 管（如【法术反弹】可弃 1~N 张同系牌），
 		# 所以这里用 ≥ 而不是 ==，否则多选了反而点不动「确定」
@@ -5606,13 +5705,6 @@ func _模式可放弃行动() -> bool:
 	# 「放弃行动」不是标准行为（原版普通行动阶段 canGiveUp=false）：只有服务端在本次询问里
 	# 下发了放弃命令（被【挑衅】或额外行动阶段）才让点；想跳过自己回合用测试键 8
 	return _mode == 1 and _可放弃行动
-
-
-## 场景 BtnSpecila 在行动阶段是「特殊行动」（购买 / 合成 / 提炼）。
-## 本阶段不放行特殊行动时不show：额外行动阶段只放行它声明的种类（如【偷天换日】给的是
-## 「攻击/法术行动」，见 GConst.放行动作），被【挑衅】时也只放行攻击，都不该出现特殊行动按钮
-func _按钮是特殊行动() -> bool:
-	return _mode == 1 and not _行动禁特殊 and GConst.放行动作(GConst.ActionType.Special, _行动允许)
 
 
 ## 场景 BtnSpecila 在魔弹传递的询问里仍是「放弃」（沿用旧用法；应战时的放弃已挪给「取消」）

@@ -31,35 +31,31 @@ var connect_id: int = -1                     # 灵魂链接的另一端（-1＝�
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _hand_has_magic():
-		# 灵魂召还：弃 X 张法术牌 → +X 蓝魂。只让手牌里的法术牌可点，上限＝手里的法术牌数
-		# （v_magic_skill 校验同一条件）
-		var 法术牌: Array[int] = magic_hand_ids()
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHAO_HUAN, "need_card": 1, "need_target": 0,
-			"cards": 法术牌, "card_max": 法术牌.size()})
-	if _huang() >= 2:
-		# 【灵魂镜像】：有牌就得弃 —— 必须尽量弃满 min(2, 手牌数) 张，不是可弃可不弃；
-		# need_card 为张数下限（手牌不足 2 张时按手牌数），card_max 为点选上限 2；v_magic_skill 校验同一张数
-		var 应弃: int = mini(GConst.灵魂镜像张数, player.hand_cards.size())
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_JING_XIANG, "need_card": 应弃, "need_target": 1,
-			"card_max": GConst.灵魂镜像张数})
+	# 灵魂召还：弃 X 张法术牌 → +X 蓝魂。只让手牌里的法术牌可点，上限＝手里的法术牌数
+	# （v_magic_skill 校验同一条件）；手里无法术牌时按钮仍摆出、置灰
+	var 法术牌: Array[int] = magic_hand_ids()
+	out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHAO_HUAN, "need_card": 1, "need_target": 0,
+		"cards": 法术牌, "card_max": 法术牌.size(), "enabled": _hand_has_magic()})
+	# 【灵魂镜像】：有牌就得弃 —— 必须尽量弃满 min(2, 手牌数) 张，不是可弃可不弃；
+	# need_card 为张数下限（手牌不足 2 张时按手牌数），card_max 为点选上限 2；v_magic_skill 校验同一张数；
+	# 黄魂不足 2 个时按钮仍摆出、置灰
+	var 应弃: int = mini(GConst.灵魂镜像张数, player.hand_cards.size())
+	out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_JING_XIANG, "need_card": 应弃, "need_target": 1,
+		"card_max": GConst.灵魂镜像张数, "enabled": _huang() >= 2})
 	# 灵魂震爆/灵魂赐予：只有手中带对应特技的牌可作发动牌，下发给界面把其余手牌置灰
-	# （v_magic_skill 校验同一张牌：须在手且带该特技）
+	# （v_magic_skill 校验同一张牌：须在手且带该特技）；条件不满足时按钮仍摆出、置灰
 	var 震爆牌: Array[int] = hand_ids_with_skill(LING_HUN_ZHEN_BAO)
-	if _huang() >= 3 and not 震爆牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHEN_BAO, "need_card": 1, "need_target": 1,
-			"cards": 震爆牌})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_ZHEN_BAO, "need_card": 1, "need_target": 1,
+		"cards": 震爆牌, "enabled": _huang() >= 3 and not 震爆牌.is_empty()})
 	var 赐予牌: Array[int] = hand_ids_with_skill(LING_HUN_CI_YU)
-	if _lan() >= 3 and not 赐予牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_CI_YU, "need_card": 1, "need_target": 1,
-			"cards": 赐予牌})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": LING_HUN_CI_YU, "need_card": 1, "need_target": 1,
+		"cards": 赐予牌, "enabled": _lan() >= 3 and not 赐予牌.is_empty()})
 	# 【灵魂转换】不再提供技能栏按钮：它只能在主动攻击时响应发动，故不在这里列按钮
-	# 启动技能（每回合只能发动一个，由引擎统一下发/校验）
-	if player.gem > 0 and not used_zeng_fu:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_ZENG_FU, "need_card": 0, "need_target": 0})
-	if _can_lian_jie():
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_LIAN_JIE, "need_card": 0, "need_target": 1,
-			"targets": ally_ids()})
+	# 启动技能（每回合只能发动一个，由引擎统一下发/校验）；条件不满足时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_ZENG_FU, "need_card": 0, "need_target": 0,
+		"enabled": player.gem > 0 and not used_zeng_fu})
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_LIAN_JIE, "need_card": 0, "need_target": 1,
+		"targets": ally_ids(), "enabled": _can_lian_jie()})
 	return out
 
 

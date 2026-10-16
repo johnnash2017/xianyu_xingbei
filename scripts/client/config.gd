@@ -15,6 +15,9 @@ const 设计高: float = 1080.0
 var slot: int = 0
 var slot_source: String = "默认"
 var nickname: String = ""
+## 昵称是不是命令行指定的（ESC 重启会把旧名字带过来，见 重启窗口）：
+## 指定了就不随机、也不读配置 —— 服务端是拿昵称认人的，名字一变座位就认不回来
+var _昵称已指定: bool = false
 var shared: ConfigFile = ConfigFile.new()
 var local: ConfigFile = ConfigFile.new()
 ## 本进程占用的槽位回环端口（保持监听以独占）
@@ -99,9 +102,11 @@ func _ready() -> void:
 	# 本地调试的昵称：每次启动换成新的 10 位随机数（只改内存、不落盘）。
 	# 一是多开时天然不重名 —— 服务端是拿昵称认人的，重名会互相抢座位（之前真踩过）；
 	# 二是不会被「同一批窗口沿用上次配置里的名字」搞混（两个窗口都叫玩家2 之类）。
+	# 例外：ESC 重启会把旧名字用 `--nickname=` 带过来（见 重启窗口），那种情况必须沿用旧名字，
+	# 否则服务端会把重启后的窗口当成新玩家，座位认不回来。
 	# 位数拆开取（首位 1-9、后 9 位 0-999999999）而不是 randi_range(1000000000, 9999999999)：
 	# 单个随机整数的量级别超过 32 位，避免底层取模把高位吃掉
-	if 本地模式:
+	if 本地模式 and not _昵称已指定:
 		nickname = "%d%09d" % [randi_range(1, 9), randi_range(0, 999999999)]
 	if slot_source == "启动参数":
 		# 多开脚本显式指定了槽位与窗口数：立刻按宫格摆位
@@ -143,6 +148,10 @@ func _parse_cmdline() -> void:
 			调试模式 = true
 		elif a == "--lan":
 			局域网模式 = true
+		elif a.begins_with("--nickname="):
+			# ESC 重启带过来的旧昵称（见 重启窗口）：沿用，别再随机一个新的
+			nickname = a.substr(11)
+			_昵称已指定 = nickname != ""
 		elif a.begins_with("--count="):
 			多开人数 = int(a.substr(8))
 		elif a == "--count" and i + 1 < args.size():
@@ -192,7 +201,10 @@ func local_path() -> String:
 func _load_configs() -> void:
 	shared.load(SHARED_FILE)
 	local.load(local_path())
-	nickname = str(local.get_value("user", "nickname", ""))
+	# 命令行指定了昵称（ESC 重启带过来的）就不读盘：要跟重启前那个窗口同名，
+	# 否则服务端会把它当成新玩家（见 _昵称已指定）
+	if not _昵称已指定:
+		nickname = str(local.get_value("user", "nickname", ""))
 
 
 func _ensure_nickname() -> void:
@@ -476,7 +488,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	重启窗口()
 
 
-## 重启本窗口：参数取本进程的原始命令行，只去掉 --auto。
+## 重启本窗口：参数取本进程的原始命令行，只去掉 --auto，另外把当前昵称一并带过去。
+## 带昵称是必须的：本地模式下昵称是每次启动随机生成的（见 _ready），而服务端是拿昵称认人的——
+## 重启后换个新名字，座位就认不回来，会被当成新玩家重新落座。
 ## 用 set_restart_on_exit 而不是自己 create_process：引擎是在退出收尾的最后才拉起新进程
 ## （见 main 结尾），也就是「旧窗口先彻底关掉、新窗口才开始」，不会和旧的抢端口 / 抢槽位。
 func 重启窗口() -> void:
@@ -488,6 +502,9 @@ func 重启窗口() -> void:
 		if 项 == "--auto":
 			continue
 		用户参数.append(项)
+	# 昵称沿用本窗口的（见上面说明）；命令行走参数解析（--nickname=）而不是落盘，
+	# 免得把「本地调试的随机名字」写进配置、污染正常启动
+	用户参数.append("--nickname=%s" % nickname)
 	if not 用户参数.is_empty():
 		# 分隔符要补回来：用户参数（--slot / --port / --count…）不在 get_cmdline_args() 里，
 		# 少了这个 --，重启回来的窗口会丢掉自己的槽位，变成另认一个端口

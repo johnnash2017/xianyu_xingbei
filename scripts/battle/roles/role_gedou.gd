@@ -30,13 +30,13 @@ func available_skills() -> Array:
 	var out: Array = []
 	# （「本回合是否已发动过启动技能」由引擎统一过滤，这里只判各技能自己的条件）
 	# 百式幻龙拳：未横置（不在形态里）且斗气 ≥ 3 时才能发动（移除 3 斗气并横置）
-	if not player.tap and _dou_qi() >= 3:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": BAI_SHI_HUAN_LONG_QUAN,
-			"need_card": 0, "need_target": 0})
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": BAI_SHI_HUAN_LONG_QUAN,
+		"need_card": 0, "need_target": 0,
+		"enabled": not player.tap and _dou_qi() >= 3})
 	# 斗神天驱：有能量（水晶/宝石）时才能发动（耗 1 能量、+2 治疗、弃到 3 张手牌）
-	if player.get_energy() > 0:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": DOU_SHEN_TIAN_QU,
-			"need_card": maxi(player.hand_cards.size() - DOU_SHEN_KEEP_HAND, 0), "need_target": 0})
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": DOU_SHEN_TIAN_QU,
+		"need_card": maxi(player.hand_cards.size() - DOU_SHEN_KEEP_HAND, 0), "need_target": 0,
+		"enabled": player.get_energy() > 0})
 	# 【蓄力一击 / 气绝崩击】不再提供技能栏按钮：它们只能在主动攻击宣告时响应发动
 	return out
 

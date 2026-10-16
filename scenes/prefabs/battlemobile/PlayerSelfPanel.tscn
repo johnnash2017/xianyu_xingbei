@@ -13,22 +13,17 @@
 [ext_resource type="Script" uid="uid://coauheldg4ew6" path="res://scripts/LongPress.gd" id="31_LongPressgd"]
 [ext_resource type="Script" uid="uid://b77bejghr7if1" path="res://scripts/PlayerStatusMobile.gd" id="32_PlayerStatusMobilegd"]
 [ext_resource type="PackedScene" path="res://scenes/prefabs/battlemobile/StatusName.tscn" id="34_statusname"]
-[ext_resource type="Material" uid="uid://bgxhrqx7w23sp" path="res://scripts/effects/avatarSelectedGlow.tres" id="35_selectglow"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sef3q"]
-bg_color = Color(0, 0, 0, 0)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+bg_color = Color(0.13913858, 0.034979872, 0, 0)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_waitfill"]
-bg_color = Color(1, 0, 0, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.47843137, 0.47843137, 0.47843137, 1)
+bg_color = Color(1, 0.36259094, 0.29523543, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 1)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
@@ -134,7 +129,6 @@ expand_mode = 1
 
 [node name="Select" type="TextureRect" parent="." unique_id=565543874]
 visible = false
-material = ExtResource("35_selectglow")
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5

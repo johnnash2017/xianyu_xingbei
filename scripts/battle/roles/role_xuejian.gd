@@ -16,8 +16,8 @@ const XUE_QIANG_WEI_BOOT: int = 3405
 
 func available_skills() -> Array:
 	var out: Array = []
-	if int(player.tokens[0]["num"]) >= 2:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_RAN_QIANG_WEI, "need_card": 0, "need_target": 2})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_RAN_QIANG_WEI, "need_card": 0, "need_target": 2,
+		"enabled": int(player.tokens[0]["num"]) >= 2})
 	return out
 
 
@@ -185,8 +185,8 @@ func p_boot(_ctx: Dictionary) -> int:
 		# 两个方案（args[0]）：1=宝石、2=水晶（无水晶则 1 宝石）；宝石方案可选要弃的牌
 		询问(player.id, XUE_QIANG_WEI_BOOT, maxi(player.hand_cards.size() - 4, 0), 0,
 			GConst.CardSource.Hand, [
-				{"value": 1, "label": "耗 1 宝石：+2 鲜血并弃牌到 4 张"},
-				{"value": 2, "label": "耗 1 水晶（无则 1 宝石）：+2 鲜血"},
+				{"value": 1, "label": "耗 1【宝石】：+2 鲜血并弃牌到 4 张"},
+				{"value": 2, "label": "耗 1【水晶】（无则 1【宝石】）：+2 鲜血"},
 			])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

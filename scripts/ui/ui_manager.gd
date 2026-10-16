@@ -13,6 +13,8 @@ const SCENE_BATTLE_MOBILE: String = "res://scenes/BattleUIMobile.tscn"
 const SCENE_SETTINGS: String = "res://scenes/Settings.tscn"
 ## 选将弹层（叠在当前界面上，不参与 goto 切换）
 const SCENE_ROLE_PICK: String = "res://scenes/role_pick.tscn"
+## 全角色预览那层用的场景：就是选角界面（同一套版式）。preload —— 调用方要拿实例挂回调，不能是 null
+const 角色预览场景: PackedScene = preload("res://scenes/role_pick.tscn")
 ## 反馈问卷地址：右上角「问题反馈」文字点一下，用系统默认浏览器打开
 const 反馈问卷地址: String = "https://wj.qq.com/s2/28148393/mz1k/"
 
@@ -145,6 +147,19 @@ func 显示选角(data: Dictionary) -> void:
 	选角层 = ps.instantiate()
 	界面层.add_child(选角层)
 	选角层.apply_request(data)
+
+
+## 全角色预览（房间列表 / 设置浮层里那颗按钮都调这里）：叠一层角色列表给玩家翻看。
+## 与 显示选角 一样挂在「界面层」（屏幕坐标空间）—— 当前界面若是按 1.5 倍放大的那种，
+## 挂进去会跟着放大、版面溢出屏幕。
+## 候选＝启用中的全部角色；那一层自带滚轮翻看、悬停看技能说明与「返回」按钮，
+## 点返回自己收掉（见 role_pick._on_back_pressed）。返回实例是给「开预览时要先藏起自己」
+## 的调用方（如设置浮层）挂 tree_exiting 用
+func 打开全角色预览() -> Node:
+	var 预览: Node = 角色预览场景.instantiate()
+	界面层.add_child(预览)
+	预览.call("进入全角色预览")
+	return 预览
 
 
 func goto_enter() -> Node:

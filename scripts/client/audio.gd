@@ -11,6 +11,7 @@ extends Node
 ## 说明：界面上的 wav 音效（按钮点击 Equip、轮到你 It's your turn、技能 Skill 等）沿用 Art.play_sfx，
 ##      因为参考项目没有这些界面音（它的音频只有这张 ogg 表）。
 ## 多开时只有当前在用的那个窗口出声：窗口失焦就把声音压到听不见，回到前台再恢复。
+## 这条「切出游戏就静音」是默认行为，设置窗里可以改成「后台播放」（后台照常出声，见 后台静音）。
 ## 用「音量置 0」而不是「禁音（bus_mute）」或「不播」：音频流水线照常走，切回前台时
 ## 本该在播的声音（BGM / 长音效）会接着放，不会因为后台期间被丢掉而断裂。
 
@@ -25,9 +26,14 @@ const 默认总音量: float = 1.0
 const 键_音乐音量: String = "bgm_volume"
 const 键_音效音量: String = "se_volume"
 const 键_总音量: String = "master_volume"
+const 键_后台静音: String = "mute_in_background"
 var 总音量: float = 默认总音量
 var 音乐音量: float = 默认音乐音量
 var 音效音量: float = 默认音效音量
+## 切出游戏（窗口失焦 / 最小化）时是否静音：true＝把声音压到听不见（默认；多开时几个窗口里
+## 只有当前在用的那个出声），false＝「后台播放」，切到后台也照常出声。
+## 由设置窗里「后台静音 / 后台播放」这个二选一改（见 设置后台静音）
+var 后台静音: bool = true
 ## 场景号（对照参考项目 GameManager 的 current_scene_index）
 const 场景主界面: int = 1
 const 场景战斗: int = 2
@@ -45,17 +51,18 @@ var _缓存: Dictionary = {}
 ## 上一首战斗曲编号：随机时避开它，避免连续两局同一首
 var _上一首战斗: int = -1
 var _随机: RandomNumberGenerator = RandomNumberGenerator.new()
-## 是否静音：窗口失焦时为 true（多开时几个窗口只有当前在用的那个出声）
+## 此刻是否静音：窗口失焦（且设置里选的是「后台静音」）时为 true，回到前台再恢复
 var _静音: bool = false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_随机.randomize()
-	# 读回上次在设置窗里调好的音量（没存过就用默认值）
+	# 读回上次在设置窗里调好的音量与「后台静音」（没存过就用默认值）
 	总音量 = clampf(float(Cfg.get_setting(键_总音量, 默认总音量)), 0.0, 1.0)
 	音乐音量 = clampf(float(Cfg.get_setting(键_音乐音量, 默认音乐音量)), 0.0, 1.0)
 	音效音量 = clampf(float(Cfg.get_setting(键_音效音量, 默认音效音量)), 0.0, 1.0)
+	后台静音 = bool(Cfg.get_setting(键_后台静音, 后台静音))
 	_应用总音量()
 	_bgm = AudioStreamPlayer.new()
 	_bgm.name = "BGM"
@@ -71,11 +78,11 @@ func _ready() -> void:
 	_随焦点切声音()
 
 
-## 只有当前聚焦的窗口出声。
+## 只有当前聚焦的窗口出声（设置成「后台播放」时不静音，切出去照常出声）。
 ## 不用失焦通知：后台启动、从没拿到过焦点的窗口收不到通知，会一直出声。
 ## headless（自检）没有窗口与音频输出，不做焦点静音。
 func _随焦点切声音() -> void:
-	_切声音(DisplayServer.get_name() != "headless" and not DisplayServer.window_is_focused())
+	_切声音(后台静音 and DisplayServer.get_name() != "headless" and not DisplayServer.window_is_focused())
 
 
 ## 失焦就把声音压到听不见（BGM 与音效，含 Art.play_sfx 的界面 wav）；回到前台恢复。
@@ -123,31 +130,39 @@ func 有声效(名字: String) -> bool:
 
 
 # ============================================================
-# 音量（设置窗调用）
+# 音量与「后台静音」（设置窗调用）
 # ============================================================
-## 调总音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存音量设置
+## 调总音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存声音设置
 func 设置总音量(v: float) -> void:
 	总音量 = clampf(v, 0.0, 1.0)
 	_应用总音量()
 
 
-## 调背景音乐音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存音量设置
+## 调背景音乐音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存声音设置
 func 设置音乐音量(v: float) -> void:
 	音乐音量 = clampf(v, 0.0, 1.0)
 	if _bgm != null:
 		_bgm.volume_db = linear_to_db(音乐音量)
 
 
-## 调效果音音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存音量设置
+## 调效果音音量（0~1）：立即生效；拖动中只改内存，落盘统一在 保存声音设置
 func 设置音效音量(v: float) -> void:
 	音效音量 = clampf(v, 0.0, 1.0)
 
 
-## 把当前音量写进本地配置（设置窗收起时调一次，避免拖动过程频繁写盘）
-func 保存音量设置() -> void:
+## 「后台静音 / 后台播放」二选一（true＝后台静音）：立即生效 —— 立刻按新设置重算一次
+## 「这会儿该不该静音」；勾选过程只改内存，落盘统一在 保存声音设置
+func 设置后台静音(v: bool) -> void:
+	后台静音 = v
+	_随焦点切声音()
+
+
+## 把当前的音量与「后台静音」写进本地配置（设置窗收起时调一次，避免拖动过程频繁写盘）
+func 保存声音设置() -> void:
 	Cfg.set_setting(键_总音量, 总音量)
 	Cfg.set_setting(键_音乐音量, 音乐音量)
 	Cfg.set_setting(键_音效音量, 音效音量)
+	Cfg.set_setting(键_后台静音, 后台静音)
 
 
 # ============================================================

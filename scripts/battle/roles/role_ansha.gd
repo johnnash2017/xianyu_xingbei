@@ -32,12 +32,12 @@ func available_skills() -> Array:
 	# 潜行：有宝石且未横置（未处于潜行）时才能发动（耗 1 宝石并横置）。
 	# 「要不要先摸 1 张牌」在二级技能栏里随「确定」一起选（arg_choices）——
 	# 点技能时就问，不再发动完再由服务端补问一次
-	if player.gem > 0 and not player.tap:
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": QIAN_XING, "need_card": 0, "need_target": 0,
-			"arg_choices": [
-				{"text": "不摸牌", "args": [QIAN_XING_NO_DRAW]},
-				{"text": "摸 1 张牌", "args": [QIAN_XING_DRAW]},
-			]})
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": QIAN_XING, "need_card": 0, "need_target": 0,
+		"enabled": player.gem > 0 and not player.tap,
+		"arg_choices": [
+			{"text": "不摸牌", "args": [QIAN_XING_NO_DRAW]},
+			{"text": "摸 1 张牌", "args": [QIAN_XING_DRAW]},
+		]})
 	return out
 
 

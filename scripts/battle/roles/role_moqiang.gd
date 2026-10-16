@@ -55,22 +55,19 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 func available_skills() -> Array:
 	var out: Array = []
 	# 黑暗束缚：始终不能使用法术牌（服务端 v_allow_action 整类驳回，见文件末尾；客户端据此置灰）
-	# 暗之解放后本回合不能发动充盈
-	if availabel_chong_ying and (_hand_has_thunder() or _hand_has_magic()):
-		# 充盈要弃 1 张法术牌或雷系牌：只让这些牌可点（v_magic_skill 校验同一条）
-		out.append({"type": GConst.ActionType.MagicSkill, "id": CHONG_YING, "need_card": 1, "need_target": 0,
-			"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool:
-				return c.is_magic() or c.element_enum() == GConst.CardElement.Thunder)})
-	# 启动（由 is_free_skill 认可）：按当前形态只给对应的那一条，避免出现不可发动的那项
+	# 暗之解放后本回合不能发动充盈；条件不满足时按钮仍摆出、置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": CHONG_YING, "need_card": 1, "need_target": 0,
+		"cards": hand_ids_where(func(_cid: int, c: GCard) -> bool:
+			return c.is_magic() or c.element_enum() == GConst.CardElement.Thunder),
+		"enabled": availabel_chong_ying and (_hand_has_thunder() or _hand_has_magic())})
+	# 启动（由 is_free_skill 认可）：两条都摆出，按当前形态把不能发动的那条置灰
 	# （每回合只能发动一个启动技能由引擎统一过滤，这里不重复判）
-	if not player.tap:
-		# 未横置：[暗之解放]
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": AN_ZHI_JIE_FANG,
-			"need_card": 0, "need_target": 0})
-	else:
-		# 横置[幻影形态]：[幻影星辰]，须选 1 名对手为追加伤害目标
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": HUAN_YING_XING_CHEN,
-			"need_card": 0, "need_target": 1, "targets": enemy_ids()})
+	# 未横置：[暗之解放]
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": AN_ZHI_JIE_FANG,
+		"need_card": 0, "need_target": 0, "enabled": not player.tap})
+	# 横置[幻影形态]：[幻影星辰]，须选 1 名对手为追加伤害目标
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": HUAN_YING_XING_CHEN,
+		"need_card": 0, "need_target": 1, "targets": enemy_ids(), "enabled": player.tap})
 	return out
 
 

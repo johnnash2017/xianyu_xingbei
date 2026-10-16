@@ -30,15 +30,14 @@ var _bai_gui_phase: int = 0
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 灵符-风行/雷鸣：只有对应系别的手牌可作发动牌，下发给界面把其余手牌置灰（v_magic_skill 校验同一条）
+	# 灵符-风行/雷鸣：只有对应系别的手牌可作发动牌，下发给界面把其余手牌置灰（v_magic_skill 校验同一条）；
+	# 手里没有对应系别牌时按钮仍摆出、置灰
 	var 风系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Wind)
-	if not 风系牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_XING, "need_card": 1, "need_target": 2,
-			"cards": 风系牌})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": FENG_XING, "need_card": 1, "need_target": 2,
+		"cards": 风系牌, "enabled": not 风系牌.is_empty()})
 	var 雷系牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Thunder)
-	if not 雷系牌.is_empty():
-		out.append({"type": GConst.ActionType.MagicSkill, "id": LEI_MING, "need_card": 1, "need_target": 2,
-			"cards": 雷系牌})
+	out.append({"type": GConst.ActionType.MagicSkill, "id": LEI_MING, "need_card": 1, "need_target": 2,
+		"cards": 雷系牌, "enabled": not 雷系牌.is_empty()})
 	return out
 
 

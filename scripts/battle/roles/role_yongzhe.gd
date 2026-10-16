@@ -37,10 +37,9 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 func available_skills() -> Array:
 	var out: Array = []
-	if _nu_qi() > 0:
-		# 技能描述写的是「目标对手」：只能放到对手面前（targets 白名单决定头像上谁亮）
-		out.append({"type": GConst.ActionType.MagicSkill, "id": TIAO_XIN, "need_card": 0,
-			"need_target": 1, "targets": enemy_ids()})
+	# 技能描述写的是「目标对手」：只能放到对手面前（targets 白名单决定头像上谁亮）
+	out.append({"type": GConst.ActionType.MagicSkill, "id": TIAO_XIN, "need_card": 0,
+		"need_target": 1, "targets": enemy_ids(), "enabled": _nu_qi() > 0})
 	# 【怒吼 / 明镜止水】不再提供技能栏按钮：它们只能在主动攻击宣告时响应发动
 	return out
 

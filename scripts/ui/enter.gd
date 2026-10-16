@@ -4,7 +4,8 @@ extends Control
 ##   登录界面只做两件事 —— 收昵称 + 接上服务端；**不建房、不找房间**（那两件事都在大厅里做）。
 ## 接服务端的方式：本机已经有服务端就连它；没有就自己起一个；端口被同机另一个窗口占了就连 127.0.0.1。
 ## 界面结构全部在 enter.tscn 里（可在编辑器里所见即所得地改），本脚本只绑节点 + 跑逻辑。
-## 连接进度与失败不再往界面上的 Label 写文字：失败时只把「进入游戏」恢复可点，玩家可再点一次重试。
+## 局域网连不上时仍只把「进入游戏」恢复可点（玩家可再点一次重试）；
+## Steam 模式没连上时，登录卡片里的提示行会直接写出原因（见 _刷新Steam提示），不再只有一句笼统的「未登录」。
 
 @export var 昵称输入: LineEdit
 @export var 进入按钮: Button
@@ -59,6 +60,7 @@ func _process(_delta: float) -> void:
 	# Steam 登录是异步的，玩家名到得晚：到了就补进只读输入框
 	if not Cfg.无Steam():
 		_同步Steam昵称()
+		_刷新Steam提示()
 
 
 ## Steam 模式：把 Steam 玩家名同步进只读输入框与窗口标题。
@@ -72,6 +74,23 @@ func _同步Steam昵称() -> void:
 	if _等Steam进入:
 		_等Steam进入 = false
 		_on_enter_pressed()
+
+
+## Steam 模式：没连上就把原因写在登录卡片的提示行里，连上就藏起来（每帧对一次）。
+## 原因来自 SteamNet.失败原因（里面还带着 Steam 自己给的那句话），所以玩家看到的不再只是「未登录」。
+func _刷新Steam提示() -> void:
+	if SteamNet.玩家名 != "":
+		提示.visible = false
+		return
+	提示.text = "%s\n连接成功后会自动进入" % _未连上原因()
+	提示.visible = true
+
+
+## 还没拿到 Steam 的失败原因时（刚启动、正在初始化）给一句说明，避免提示行空着
+func _未连上原因() -> String:
+	if SteamNet.失败原因 != "":
+		return SteamNet.失败原因
+	return "正在连接 Steam 客户端…"
 
 
 ## 本次要用的昵称：不用 Steam 时 = 输入框内容（局域网联机时它就是身份）；Steam 模式 = Steam 玩家名
@@ -101,10 +120,10 @@ func _设标题昵称(名: String) -> void:
 # ============================================================
 func _on_enter_pressed() -> void:
 	if not Cfg.无Steam() and SteamNet.玩家名 == "":
-		# Steam 还没连上：这次不进，给出明确提示；连上后自动补进一次（见 _同步Steam昵称）
+		# Steam 还没连上：这次不进，提示行由 _刷新Steam提示 写出原因；
+		# 连上后自动补进一次（见 _同步Steam昵称）
 		_等Steam进入 = true
-		提示.text = "未连接 Steam 网络：请先启动并登录 Steam 客户端，连接成功后会自动进入"
-		提示.visible = true
+		_刷新Steam提示()
 		return
 	var 名: String = _取昵称()
 	if 名 == "":

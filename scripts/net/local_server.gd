@@ -7,12 +7,16 @@ extends RefCounted
 ## 选角 / 随机分配的角色池 = 角色表「启用」列打开的那些（Data.role_pool）。
 ## 启用或停用一个角色：改角色表那一行的「启用」（1 开 / 0 关），再导出一次 TableScripts/DataTables.gd。
 
-## 候选制选将每人发几个候选：三选一发 3 个、六选一发 6 个，都只从中选 1 个
+## 候选制选将每人发几个候选：三选一发 3 个、五选一发 5 个，都只从中选 1 个
 const 三选一候选数: int = 3
-const 六选一候选数: int = 6
+const 五选一候选数: int = 5
 
 ## 选将超时（毫秒），超时按服务端 GE_TIMEOUT 的语义收尾
-const PICK_TIMEOUT_MS: int = 30000
+const PICK_TIMEOUT_MS: int = 60000
+## 选角收尾后的等待（毫秒）：名单定下来后先把选角界面锁住（不再接受改选），过这么久才真正开局。
+## 一来给「最后一刻还在改选」一个明确的截止点（客户端收到收尾那条请求就把立绘锁住），
+## 二来让「你选到的是谁」先在界面亮一下，再切进对局
+const 选角收尾等待毫秒: int = 5000
 
 ## 观战席上限（与 Steam 大厅的观战席数一致）：观战者不占战斗座位，但也不能无限进
 const 观战者上限: int = 16
@@ -95,7 +99,7 @@ func poll() -> void:
 		if _本局已结束(room):
 			_解散房间(room)
 			continue    # 已打完：选角 / 开局 / 心跳都不必再推进（房间已在这轮里销毁）
-		# 推进选将阶段的超时（到点还没提交的按候选第 1 个收尾）
+		# 推进选将阶段：倒计时到点就收尾（定名单 + 锁选角界面），再过 选角收尾等待毫秒 才开局
 		if room.has("pick"):
 			_check_pick_timeout(room)
 		# 推进开局倒计时：条件被打断就撤销，到点真正开局
@@ -530,11 +534,11 @@ func leave_room(conn_id: int, 掉线: bool = false) -> void:
 	elif pid >= 0:
 		if _留座阶段(room):
 			# 选角中 / 对局中：座位不可移除 —— 引擎状态机、等待对象、选角候选表都按座位号指着他，
-			# 保留座位并标记掉线；他回来时凭身份认领回同一个座位（选角能接着选，对局接着打）
+			# 保留座位并标记掉线；他回来时凭身份认领回同一个座位（选角能接着选，对局接着打）。
+			# 选角期间掉线不必催收尾：改选窗口是固定的倒计时，到点由 _check_pick_timeout 收尾，
+			# 掉线这位由 _分配角色 随机兜底
 			(room["conn_of"] as Dictionary).erase(pid)
 			battle.set_offline(pid, true)
-			# 选角期间掉线：其余人都提交完就直接收尾，别让大家干等满 30 秒
-			_on_pick_player_left(room, pid)
 			print("[座位] 玩家 %d 对局中离席：座位与身份保留（身份=%s）" % [
 				pid, str((room["client_of"] as Dictionary).get(pid, ""))])
 		else:
@@ -807,27 +811,28 @@ func _talk(conn_id: int, txt: String) -> void:
 # ============================================================
 ## 开局前入口：按房间策略进入选将流程。选将状态保存在 room["pick"]，由 poll() 推进超时。
 ## 候选池统一是角色表「启用」列打开的角色（Data.role_pool）；Random 不走这里，它在 ready_for_game 直接随机分配。
-## 三选一抽 3 个候选、六选一抽 6 个（服务端 StateRoleStrategy31）；任选（Any/All）候选数 0 = 整池下发。
+## 三选一抽 3 个候选、五选一抽 5 个（服务端 StateRoleStrategy31）；任选（Any/All）候选数 0 = 整池下发。
 func _begin_role_pick(room: Dictionary) -> void:
 	var 候选数: int = 三选一候选数
-	if int(room["role_strategy"]) == GConst.RoleStrategy.Strategy61:
-		候选数 = 六选一候选数
+	if int(room["role_strategy"]) == GConst.RoleStrategy.Strategy51:
+		候选数 = 五选一候选数
 	elif _任选模式(room):
 		候选数 = 0
 	_begin_pick_candidates(room, Data.role_pool, 候选数)
 
 
-## 收客户端的 PickBan（选角结果）
+## 收客户端的 PickBan（选角结果）。同一个玩家可以反复提交（选定后还能改选），以最后一次为准；
+## 收尾之后（等开局那段锁定时间）一律不再接受，见 _on_pick_ban_candidates 里的 finish_at 判断
 func _on_pick_ban(room: Dictionary, pid: int, data: Dictionary) -> void:
 	if not room.has("pick") or pid == GConst.GUEST:
 		return
 	_on_pick_ban_candidates(room, pid, data)
 
 
-## 31 / 61 / Any：服务端 StateRoleStrategy31(331-372) 与 StateRoleStrategyAny(374-407)
-## 候选数 > 0：每人抽这么多个互不重复的候选（三选一发 3 个、六选一发 6 个），最后只取其一；
+## 31 / 51 / Any：服务端 StateRoleStrategy31(331-372) 与 StateRoleStrategyAny(374-407)
+## 候选数 > 0：每人抽这么多个互不重复的候选（三选一发 3 个、五选一发 5 个），最后只取其一；
 ## 候选数 = 0：整池下发（Any）
-## 下发用 strategy=2：服务端 Coder::askForRole(GameGrailCommon.h:759) 固定填 ROLE_STRATEGY_31，Any/61 只差候选池
+## 下发用 strategy=2：服务端 Coder::askForRole(GameGrailCommon.h:759) 固定填 ROLE_STRATEGY_31，Any/51 只差候选池
 func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> void:
 	var battle: BattleEngine = room["battle"]
 	var 池: Array = pool.duplicate()
@@ -848,10 +853,14 @@ func _begin_pick_candidates(room: Dictionary, pool: Array, 候选数: int) -> vo
 		"candidates": 候选表,
 		"pool": pool.duplicate(),
 		"picked": {},
+		# 「已准备」的座位号（选角界面底部那颗按钮点出来的）：全部就绪就不等满倒计时了
+		"ready": {},
 		"deadline": Time.get_ticks_msec() + PICK_TIMEOUT_MS,
 	}
-	# 选角开始：标记进快照，准备室的观战提示据此显示「正在等待选角」（观战者收不到 RoleReq）
+	# 选角开始：标记进快照，准备室的观战提示据此显示「正在等待选角」（观战者收不到 RoleReq）；
+	# 顺带把上一轮遗留的「已准备」名单清空（本局谁都没准备）
 	battle.room_picking = true
+	battle.pick_ready = []
 	for pid: int in battle.order:
 		_发选角请求(room, pid, 候选表[pid], PICK_TIMEOUT_MS)
 	_broadcast_game(room)
@@ -874,7 +883,7 @@ func _发选角请求(room: Dictionary, pid: int, 候选: Array, 剩余_ms: int,
 
 
 ## 选角阶段重新进房：把该玩家的选角请求再发一次（带他的候选、剩余倒计时，以及已选好的角色）。
-## 已经提交过的也要发 —— 客户端要靠它弹回「已选好、等其他人」那一层，否则重连回来只剩准备室，
+## 已经点选过的也要发 —— 客户端要靠它把已选那张的黄框亮起来，否则重连回来只剩准备室，
 ## 看不出自己已经选过（就是「离开再回来没回到已选择角色的等待界面」那个 bug）
 func _补发选角请求(room: Dictionary, pid: int) -> void:
 	if not room.has("pick"):
@@ -883,6 +892,11 @@ func _补发选角请求(room: Dictionary, pid: int) -> void:
 	var 候选表: Dictionary = pick["candidates"]
 	if not 候选表.has(pid):
 		return
+	# 正在收尾（名单已定、在等开局那段锁定时间）：补发「剩余 0 + 最终角色」，
+	# 客户端据此把界面锁住并亮出他最终拿到的角色，别让重连回来的人还能改选
+	if pick.has("角色表"):
+		_发收尾选角请求(room, pid)
+		return
 	var 已选角色: int = int((pick["picked"] as Dictionary).get(pid, 0))
 	_发选角请求(room, pid, 候选表[pid],
 		maxi(int(pick["deadline"]) - Time.get_ticks_msec(), 0), 已选角色)
@@ -890,36 +904,52 @@ func _补发选角请求(room: Dictionary, pid: int) -> void:
 
 func _on_pick_ban_candidates(room: Dictionary, pid: int, data: Dictionary) -> void:
 	var pick: Dictionary = room["pick"]
+	# 已经收尾（名单定了、在等开局那段锁定时间）：这时候的改选 / 准备一律作废
+	if pick.has("finish_at"):
+		return
 	var 候选表: Dictionary = pick["candidates"]
 	if not 候选表.has(pid):
 		return
-	var 已选: Dictionary = pick["picked"]
-	if 已选.has(pid):
-		return
+	var battle: BattleEngine = room["battle"]
 	var 候选: Array = 候选表[pid]
 	var 提交: Array = data.get("role_ids", [])
-	var 选定: int = 0
-	if not 提交.is_empty() and 候选.has(int(提交[0])):
-		选定 = int(提交[0])
-	elif not 候选.is_empty():
-		选定 = int(候选[0])
-	if 选定 <= 0:
-		return
-	已选[pid] = 选定
-	if _pick_candidates_done(room):
-		_finish_pick_candidates(room)
+	var 选定: int = int(提交[0]) if not 提交.is_empty() and 候选.has(int(提交[0])) else 0
+	if 选定 > 0:
+		# 直接覆盖（不是「提交过就不理」）：选定之后还能反悔，以最后一次提交为准。
+		# 这里**不提前收尾**：改选一直有效到倒计时结束（见 _check_pick_timeout），
+		# 倒计时到点才由它收尾 —— 否则谁都点过一遍就立刻开局，最后一刻改选全作废
+		(pick["picked"] as Dictionary)[pid] = 选定
+	# 底部「立即开始」按钮：只记「已准备」，不看有没有选角色（可以先点立即开始，之后照样能改选）
+	if bool(data.get("ready", false)):
+		(pick["ready"] as Dictionary)[pid] = true
+		battle.pick_ready = _已准备座位(room)
+		_broadcast_game(room)
+		# 所有人都准备好 → 选角时间直接归零：就地收尾。
+		# 客户端会收到一条「剩余 0」的选角请求，据此把倒计时清零、锁住立绘，再过一会儿开局
+		# （见 选角收尾等待毫秒）
+		if _全部准备(room):
+			_finish_pick_candidates(room)
 
 
-## 31/Any 是否所有「还在线」的在房玩家都已提交。
-## 掉线的先跳过（座位留着他回来接着选）：只要在线的都提交了就直接收尾，掉线那位由
-## _分配角色 随机兜底 —— 否则一个人掉线，其余人都得干等满 30 秒。
-func _pick_candidates_done(room: Dictionary) -> bool:
+## 快照要下发的「已准备」座位号（按座位顺序排，让 x/X 里的 x 稳定）
+func _已准备座位(room: Dictionary) -> Array[int]:
+	var 就绪: Dictionary = room["pick"]["ready"]
+	var out: Array[int] = []
+	for pid: int in (room["battle"] as BattleEngine).order:
+		if 就绪.has(pid):
+			out.append(pid)
+	return out
+
+
+## 是否在场玩家全都点了「准备」（是的话不必等满倒计时，见 _on_pick_ban_candidates）。
+## 掉线的人点不了准备，所以只要有人掉线就照旧等满倒计时
+func _全部准备(room: Dictionary) -> bool:
 	var battle: BattleEngine = room["battle"]
-	var 已选: Dictionary = room["pick"]["picked"]
+	if battle.order.size() < 2:
+		return false
+	var 就绪: Dictionary = room["pick"]["ready"]
 	for pid: int in battle.order:
-		if battle.offline_players.has(pid):
-			continue
-		if not 已选.has(pid):
+		if not 就绪.has(pid):
 			return false
 	return true
 
@@ -931,6 +961,8 @@ func _pick_candidates_done(room: Dictionary) -> bool:
 ## 再强行去重会把「大家都想玩同一个角色」改成随机补位，反而不符合任选的本意。
 func _finish_pick_candidates(room: Dictionary) -> void:
 	var pick: Dictionary = room["pick"]
+	if pick.has("finish_at"):
+		return   # 已经收过尾了（等开局那段锁定时间里又有人提交 / 掉线，不必再收一次）
 	var battle: BattleEngine = room["battle"]
 	if battle.order.size() < 2:
 		# 人不够（选角期间走光了）：取消选角并广播一次，别让还留着的人停在「等待选角」那一层
@@ -938,30 +970,52 @@ func _finish_pick_candidates(room: Dictionary) -> void:
 		battle.room_picking = false
 		_broadcast_game(room)
 		return
-	var 角色表: Dictionary = _分配角色(
+	# 名单先定下来，但**不立刻开局**：留 选角收尾等待毫秒 的空档（见 _check_pick_timeout）。
+	# 期间不再接受改选，并给每个人补一条「剩余 0」的选角请求 ——
+	# 客户端据此把立绘锁住、同时亮出他最终拿到的角色
+	pick["角色表"] = _分配角色(
 		battle.order, pick["candidates"], pick["picked"], pick["pool"], _任选模式(room))
-	room.erase("pick")
-	_start_battle(room, 角色表)
+	pick["finish_at"] = Time.get_ticks_msec() + 选角收尾等待毫秒
+	for pid: int in battle.order:
+		_发收尾选角请求(room, pid)
+
+
+## 收尾阶段（名单已定、等开局那段锁定时间）给某个人发的那条选角请求：剩余 0（客户端据此锁住立绘）
+## + 他最终拿到的角色。收尾当场给所有人各发一条，这期间重连回来的人由 _补发选角请求 走同一条
+func _发收尾选角请求(room: Dictionary, pid: int) -> void:
+	var pick: Dictionary = room["pick"]
+	var 候选表: Dictionary = pick["candidates"]
+	var 角色表: Dictionary = pick["角色表"]
+	var 他的候选: Array = 候选表.get(pid, [])
+	_发选角请求(room, pid, 他的候选, 0, int(角色表.get(pid, 0)))
 
 
 ## 把各玩家的提交落成最终角色分配（顺序: 座位序；已选: pid -> 提交的角色号）。
-## 候选制（31/61）保证全局不重复：没提交（超时 / 掉线）或提交的角色被占了的人，
-## 在自己候选里**随机**挑一个没被占的，候选全被占就从整池里随机补一个。
-## 任选（Any/All）允许重复，提交什么就是什么。
+## 选角锁定那一刻没人选的（超时 / 掉线）由这里随机补一个：先在自己的候选里随机挑一个
+## **还没被别人选走**的；候选都被人占了，才退回整池里随机挑一个同样没被占的。
+## 提交了但角色被别人占了的（任选之外的策略理论上不会发生）也走这条重挑。
+## 任选（Any/All）允许重复：自己提交的照原样留下，只有「随机补位」才避让已占用的角色。
 func _分配角色(顺序: Array, 候选表: Dictionary, 已选: Dictionary, 全池: Array, 允许重复: bool) -> Dictionary:
 	var 已用: Array = []
 	var 角色表: Dictionary = {}
 	for pid: int in 顺序:
 		var 选定: int = int(已选.get(pid, 0))
-		if 选定 <= 0 or (not 允许重复 and 已用.has(选定)):
-			选定 = _随机取未占用(候选表.get(pid, []), 已用, 允许重复)
-		if 选定 <= 0:
-			# 候选全被占用：从整池里随机补一个未用角色
-			选定 = _随机取未占用(全池, 已用, 允许重复)
-		if 选定 <= 0:
+		# 自己点选的：留着（任选允许重复；其余策略里出现重复只可能是被别人先占，那就走下面的重挑）
+		if 选定 > 0 and (允许重复 or not 已用.has(选定)):
+			已用.append(选定)
+			角色表[pid] = 选定
 			continue
-		已用.append(选定)
-		角色表[pid] = 选定
+		选定 = _随机取未占用(候选表.get(pid, []), 已用, false)
+		if 选定 <= 0:
+			# 候选全被人占了：从整池里随机补一个同样没被占的
+			选定 = _随机取未占用(全池, 已用, false)
+		if 选定 <= 0:
+			# 整池都被占（人比启用角色还多，正常不会发生）：退回允许重复，至少给个角色
+			选定 = _随机取未占用(全池, 已用, true)
+		if 选定 > 0:
+			# 记下结果：后面的随机补位据此避让这个角色
+			已用.append(选定)
+			角色表[pid] = 选定
 	return 角色表
 
 
@@ -982,22 +1036,23 @@ func _任选模式(room: Dictionary) -> bool:
 	return 策略 == GConst.RoleStrategy.Any or 策略 == GConst.RoleStrategy.All
 
 
-## 选将超时（poll 中调用）：到点全体收尾（没提交的取候选第 1 个）
+## 选将由 poll() 推进：倒计时到点就收尾 —— 收尾只是定名单 + 锁界面（见 _finish_pick_candidates），
+## 再过 选角收尾等待毫秒 才真正开局。掉线 / 没点过的人由 _分配角色 随机兜底，
+## 不会因为「在线的人都点过了」提前开局（改选窗口固定是这一整个倒计时）
 func _check_pick_timeout(room: Dictionary) -> void:
 	var pick: Dictionary = room["pick"]
+	var 现在: int = Time.get_ticks_msec()
+	# 已经收尾：等收尾等待走完就开局
+	if pick.has("finish_at"):
+		if 现在 >= int(pick["finish_at"]):
+			var 角色表: Dictionary = pick["角色表"]
+			room.erase("pick")
+			_start_battle(room, 角色表)
+		return
 	var 截止: int = int(pick.get("deadline", 0))
-	if 截止 <= 0 or Time.get_ticks_msec() < 截止:
+	if 截止 <= 0 or 现在 < 截止:
 		return
 	_finish_pick_candidates(room)
-
-
-## 选将期间玩家掉线：未提交的人由收尾兜底；都提交完就直接收尾
-func _on_pick_player_left(room: Dictionary, pid: int) -> void:
-	if not room.has("pick"):
-		return
-	var pick: Dictionary = room["pick"]
-	if (pick["candidates"] as Dictionary).has(pid) and _pick_candidates_done(room):
-		_finish_pick_candidates(room)
 
 
 ## 选将完成：按结果开局并广播（与原来 start() 之后的行为一致）
@@ -1006,6 +1061,7 @@ func _start_battle(room: Dictionary, 角色表: Dictionary) -> void:
 	var battle: BattleEngine = room["battle"]
 	# 选角结束（Random 策略直接开局，压根没进过选角阶段，这里一并归零）
 	battle.room_picking = false
+	battle.pick_ready = []
 	battle.start_with_roles(角色表)
 	rooms_changed.emit()
 

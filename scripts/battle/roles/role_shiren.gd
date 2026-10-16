@@ -70,15 +70,16 @@ var xi_wang_kind: int = 0
 func available_skills() -> Array:
 	var out: Array = []
 	# 不谐和弦（法术）：点开技能先选「移除几点灵感」（技能自带选项，选完按「确定」发动），
-	# 之后服务端再问一步「各摸还是各弃 x 张牌」+ 点目标（那步可取消，退回行动阶段重来）
-	if _ling_gan() > 1:
-		out.append({"type": GConst.ActionType.MagicSkill, "id": BU_XIE_HE_XIAN,
-			"need_card": 0, "need_target": 0, "arg_choices": _bu_xie_num_choices()})
+	# 之后服务端再问一步「各摸还是各弃 x 张牌」+ 点目标（那步可取消，退回行动阶段重来）；
+	# 灵感不多于 1 点时置灰
+	out.append({"type": GConst.ActionType.MagicSkill, "id": BU_XIE_HE_XIAN,
+		"need_card": 0, "need_target": 0, "arg_choices": _bu_xie_num_choices(),
+		"enabled": _ling_gan() > 1})
 	# 希望赋格曲（启动）：点开技能就先问「摸不摸牌」（技能自带选项，选完按「确定」发动），
-	# 之后由服务端接着问「选效果 + 点角色」与（转移时）「弃 1 张牌 + 选收益」
-	if _can_xi_wang():
-		out.append({"type": GConst.ActionType.SpecialSkill, "id": XI_WANG_FU_GE_QU,
-			"need_card": 0, "need_target": 0, "arg_choices": _xi_wang_draw_choices()})
+	# 之后由服务端接着问「选效果 + 点角色」与（转移时）「弃 1 张牌 + 选收益」；不满足条件时置灰
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": XI_WANG_FU_GE_QU,
+		"need_card": 0, "need_target": 0, "arg_choices": _xi_wang_draw_choices(),
+		"enabled": _can_xi_wang()})
 	return out
 
 
@@ -659,7 +660,7 @@ func _xi_wang_effects() -> int:
 		# 弃牌是这一步的代价，和收益在同一个询问里选，不能取消
 		if not engine.has_reply():
 			询问(player.id, XI_WANG_FU_GE_QU, 1, 0, GConst.CardSource.Hand, [
-				{"value": XI_WANG_HEAL, "label": "+1 治疗"},
+				{"value": XI_WANG_HEAL, "label": "+1【治疗】"},
 				{"value": XI_WANG_LING_GAN, "label": "+1 灵感"},
 			], 1, "", [], false, 0)
 			return WAIT

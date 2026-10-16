@@ -14,7 +14,8 @@ const 开发期_APPID: int = 480
 
 ## Steam 是否已就绪（初始化成功）
 var 就绪: bool = false
-## 初始化失败原因（只进日志，界面只显示「未登录」这个状态）
+## 初始化失败原因：登录界面会把它写进提示行（见 enter.gd 的 _刷新Steam提示），
+## 界面不再只说一句笼统的「未登录」，玩家自己就能看出是哪种问题
 var 失败原因: String = ""
 ## 本机 SteamID（十进制字符串：64 位整数，用字符串过协议不会丢精度）
 var steam_id: String = ""
@@ -72,11 +73,15 @@ func _检查连接() -> void:
 	_初始化()
 
 
-## 初始化 Steam；掉线之后也会重新走这里。失败不致命：只记原因，等下一轮再试
+## 初始化 Steam；掉线之后也会重新走这里。失败不致命：只记原因（原因会显示在登录界面上，见 enter.gd），
+## 等下一轮再试。
+## 用 steamInitEx 而不是 steamInit：只有前者会把失败原因（status / verbal）填进返回的字典；
+## steamInit 只回一个 bool，而且它**不会**填充 get_steam_init_result()，拿它查原因永远是空的。
 func _初始化() -> void:
-	# 这个版本 steamInit 返回 bool；失败细节走 get_steam_init_result()
-	if not Steam.steamInit(开发期_APPID, false):
-		_记失败原因("Steam 初始化失败（%s）：请确认 Steam 客户端已启动、已登录" % str(Steam.get_steam_init_result()))
+	var 结果: Dictionary = Steam.steamInitEx(开发期_APPID, false)
+	var 状态: int = int(结果.get("status", 1))
+	if 状态 != Steam.STEAM_API_INIT_RESULT_OK:
+		_记失败原因("Steam 初始化失败：%s（%s）" % [_初始化失败说明(状态), str(结果.get("verbal", ""))])
 		return
 	就绪 = true
 	失败原因 = ""
@@ -120,7 +125,17 @@ func _重开大厅() -> void:
 	Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, _待建人数 + 观战席)
 
 
-## 失败原因变了才打日志：掉线期间每秒都会重试，逐次刷屏没意义
+## steamInitEx 失败时的 status → 一句人话（status 取值见 Steamworks 的 ESteamAPIInitResult：
+## 2 = 连不上 Steam 客户端；3 = 客户端版本过旧；1 = 其它失败，交给 Steam 自己的 verbal 文本说明）
+func _初始化失败说明(状态: int) -> String:
+	if 状态 == Steam.STEAM_API_INIT_RESULT_NO_STEAM_CLIENT:
+		return "连不上 Steam 客户端，请确认 Steam 已启动并已登录"
+	if 状态 == 3:
+		return "Steam 客户端版本过旧，请更新 Steam"
+	return "其它原因"
+
+
+## 失败原因变了才记：掉线期间每秒都会重试，逐次刷屏没意义（界面上也就不会来回闪同一句话）
 func _记失败原因(原因: String) -> void:
 	if 原因 == 失败原因:
 		return

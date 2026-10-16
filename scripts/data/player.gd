@@ -34,6 +34,8 @@ var cross_max: int = GConst.CROSS_MAX
 var gem: int = 0
 var crystal: int = 0
 var energy_max: int = GConst.ENERGY_MAX
+## 盖牌上限（角色表「指示物」列槽 2 的上限）：查看盖牌时按它摆空槽；0＝这个角色没有盖牌区
+var cover_cards_max: int = 0
 var color: int = GConst.TEAM_NONE   # 1 红 / 0 蓝 / -1 未分队
 var role_id: int = 0
 var tap: bool = false               # 横置/锁定
