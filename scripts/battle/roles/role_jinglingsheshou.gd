@@ -11,9 +11,13 @@ extends BattleRole
 ##                 回合结束时若没有【祝福】则【重置】脱离该形态，并对目标角色造成 2 点法术伤害）
 
 const YUAN_SU_SHE_JI: int = 3201
-## 元素射击「命中结算」的两种箭：各自的询问号与客户端指示器条目（见 GConst.技能_水之矢 / 技能_地之矢）
+## 元素射击「命中结算」的两根箭：各有一条内部询问号（客户端按它取技能指示器条目，把效果写在目标头像上）。
+## 它们不占技能表的行 —— 指令条文案借用【元素射击】「提示」列里的两条（见 水之矢提示序号 / 地之矢提示序号）
 const SHUI_ZHI_SHI: int = 32012
 const DI_ZHI_SHI: int = 32013
+## 【元素射击】「提示」列里两根箭的文案序号（列 0 是本体那条「发动【元素射击】：弃 1 张法术牌或移除 1 张【祝福】」）
+const 水之矢提示序号: int = 1
+const 地之矢提示序号: int = 2
 const DONG_WU_HUO_BAN: int = 3202
 const DONG_WU_HUO_BAN_DISCARD: int = 32021
 const CHONG_WU_QIANG_HUA: int = 3204
@@ -149,10 +153,12 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not engine.has_reply():
 		# 不设二级选项：法术手牌与【祝福】盖牌合成一份白名单下发，玩家点哪张就走哪一支
-		# （界面把攻击牌等其余手牌置灰；服务端下面再按选中的那张牌最终校验）
+		# （界面把攻击牌等其余手牌置灰；服务端下面再按选中的那张牌最终校验）。
+		# 白名单只覆盖「手里确实有合法牌」的情形：一张法术牌、一张【祝福】都没有时它是空的
+		# （空＝不限，反倒变成什么都能选），所以要另外给选牌规则 magic_cover —— 界面按它自己判
 		var 可弃: Array[int] = magic_hand_ids()
 		可弃.append_array(player.cover_cards)
-		询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.HandOrCover, [], 1, "", 可弃)
+		询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.HandOrCover, [], 1, "magic_cover", 可弃)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -205,6 +211,11 @@ func 本次箭号() -> int:
 	return SHUI_ZHI_SHI if shui_zhi_shi else DI_ZHI_SHI
 
 
+## 本次结算的箭在【元素射击】「提示」列里的文案序号（与 本次箭号 一一对应）
+func 本次箭提示序号() -> int:
+	return 水之矢提示序号 if shui_zhi_shi else 地之矢提示序号
+
+
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
@@ -217,7 +228,11 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if step != 本次箭号():
 		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, 本次箭号(), 0, 1)
+		# 询问号按箭走（客户端据此取技能指示器条目，把「+1 治疗」/「1 法术伤害」写在目标头像上）；
+		# 指令条文案借用【元素射击】「提示」列里那一条 —— 两根箭不再各占一个技能行，所以这里直接
+		# 调 ask_skill 把文案传进去（走 询问() 的话它会去读箭号那一行，表里没有这一行）
+		engine.ask_skill(player.id, 本次箭号(), 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
+			GConst.提示文本(YUAN_SU_SHE_JI, 本次箭提示序号(), engine._称号(player), 0))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -225,14 +240,14 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
 	if shui_zhi_shi:
 		shui_zhi_shi = false
-		notice_skill(SHUI_ZHI_SHI, [dst_id])
+		notice_skill(YUAN_SU_SHE_JI, [dst_id])
 		var dp: BattlePlayer = engine.p(dst_id)
 		if dp != null:
 			施加治疗(dp.id, 1)
 		engine._broadcast_game()
 		return SUCCESS
 	di_zhi_shi = false
-	notice_skill(DI_ZHI_SHI, [dst_id])
+	notice_skill(YUAN_SU_SHE_JI, [dst_id])
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": 1,
 		"cause": DI_ZHI_SHI, "type": GConst.HarmType.Magic,

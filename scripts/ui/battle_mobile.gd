@@ -59,7 +59,7 @@ var _调试模式: bool = false
 @export var HandArea: Control        # 我的手牌区（Root/HandArea；一行手排，位置由 刷新手牌 算）
 @export var ShowCardArea: Control      # 屏幕中间的展示卡牌区（Root/ShowCardArea；出牌/展示时把牌摊出来）
 @export var SkillArea: Control         # 技能区底图（Root/SkillArea）
-@export var ChildrenSkillArea: HBoxContainer  # 技能按钮容器（Root/ChildrenSkillArea，行内右对齐）
+@export var ChildrenSkillArea: HBoxContainer  # 技能按钮容器（Root/ChildrenSkillArea，整排左对齐）
 @export var ChooseArea: Control        # 盖牌选择区（Root/ChooseArea）
 @export var BtnOK: Button              # 确定
 @export var BtnCancel: Button          # 取消
@@ -233,6 +233,8 @@ const 简洁日志类别: Array[String] = ["行动", "回合", "士气", "手牌
 ## 日志正文里玩家名（角色名[玩家名]）与卡名的着色：正文仍以白字为底，只把专名挑出来上色
 const 日志玩家色: String = "#FFD98A"
 const 日志卡牌色: String = "#8FD3FF"
+## 技能名的着色：与卡名（浅蓝）区分开，日志里「发动◯◯◯」一眼能认出来
+const 日志技能色: String = "#C7A6FF"
 ## 星石的着色：宝石红、水晶蓝（正文里凡提到星石都按这个上色）
 const 日志宝石色: String = "#FF6B6B"
 const 日志水晶色: String = "#6BB8FF"
@@ -1366,7 +1368,7 @@ func _称号(player_id: int) -> String:
 	return "%s[%s]" % [p.nickname, p.role_name]
 
 
-## 给日志正文里的玩家名与卡名单独上色（其余仍是白字）。
+## 给日志正文里的玩家名、卡名与技能名单独上色（其余仍是白字）。
 ## 放在 _日志追加 里统一处理：客户端自己拼的行与服务端下发的公告都能着色。
 ## 简洁模式 下正文里不显示玩家名：「玩家名[角色名]」只留角色名（昵称一律不出现）
 func _日志着色(t: String, 简洁模式: bool = false) -> String:
@@ -1377,15 +1379,8 @@ func _日志着色(t: String, 简洁模式: bool = false) -> String:
 		if 结果.find(称号) >= 0:
 			var 显示名: String = p.role_name if 简洁模式 else 称号
 			结果 = 结果.replace(称号, "[color=%s]%s[/color]" % [日志玩家色, 显示名])
-	# 卡名：长名先替，避免短名（如「圣光」）把长名切碎而留下半边未着色
-	var 卡名表: Array[String] = []
-	for 卡: GCard in Data.card_db:
-		if not 卡.card_name.is_empty() and not 卡名表.has(卡.card_name):
-			卡名表.append(卡.card_name)
-	卡名表.sort_custom(func(a: String, b: String) -> bool: return a.length() > b.length())
-	for 名: String in 卡名表:
-		if 结果.find(名) >= 0:
-			结果 = 结果.replace(名, "[color=%s]%s[/color]" % [日志卡牌色, 名])
+	# 卡名 / 技能名：各自染自己的颜色（长名优先，见 _专名着色）
+	结果 = _专名着色(结果)
 	# 「自身」代指发起者自己，也按玩家名的颜色染（服务端的治疗等日志用它）
 	结果 = 结果.replace("自身", "[color=%s]自身[/color]" % 日志玩家色)
 	# 星石：宝石红、水晶蓝（正文里凡提到星石都上色）
@@ -1394,6 +1389,55 @@ func _日志着色(t: String, 简洁模式: bool = false) -> String:
 	# 技能名 / 状态名外面的【】统一去掉（日志里有的带、有的不带，看着不齐）
 	结果 = 结果.replace("【", "").replace("】", "")
 	return 结果
+
+
+## 日志里要单独上色的「专名索引」：首字 → [[名, 颜色], …]（组内按长度从长到短）。
+## 卡名 + 技能名合成一张表；卡库与技能表都是启动时生成的静态数据，建一次就缓存
+static var _专名索引: Dictionary = {}
+
+func _日志专名索引() -> Dictionary:
+	if not _专名索引.is_empty():
+		return _专名索引
+	var 名色: Dictionary = {}
+	for 卡: GCard in Data.card_db:
+		if not 卡.card_name.is_empty() and not 名色.has(卡.card_name):
+			名色[卡.card_name] = 日志卡牌色
+	for 名: String in GConst.全部技能名():
+		if not 名色.has(名):
+			名色[名] = 日志技能色
+	for 名: String in 名色.keys():
+		var 首: String = 名.substr(0, 1)
+		if not _专名索引.has(首):
+			_专名索引[首] = []
+		(_专名索引[首] as Array).append([名, str(名色[名])])
+	for 首: String in _专名索引.keys():
+		(_专名索引[首] as Array).sort_custom(func(a: Array, b: Array) -> bool:
+			return str(a[0]).length() > str(b[0]).length())
+	return _专名索引
+
+
+## 把正文里的卡名 / 技能名各自染成自己的颜色（其余照旧）。
+## 从左到右扫一遍、每个位置在「同首字」的候选里取最长匹配 —— 不能逐个 replace：
+## 那样短名会在长名已经套上的着色标签里再染一层（卡「魔弹」切进技能「魔弹掌控」），
+## 半边没上色、两种颜色还打架
+func _专名着色(文: String) -> String:
+	var 索引: Dictionary = _日志专名索引()
+	var 出: String = ""
+	var i: int = 0
+	while i < 文.length():
+		var 命中: Array = []
+		for 项: Array in (索引.get(文.substr(i, 1), []) as Array):
+			var 名: String = str(项[0])
+			if 文.substr(i, 名.length()) == 名:
+				命中 = 项
+				break
+		if 命中.is_empty():
+			出 += 文.substr(i, 1)
+			i += 1
+		else:
+			出 += "[color=%s]%s[/color]" % [str(命中[1]), str(命中[0])]
+			i += str(命中[0]).length()
+	return 出
 
 
 ## 日志：攒进缓冲后交给 Content_2 上的 AutoClearLog 按行裁剪。
@@ -1835,10 +1879,12 @@ func _进入技能询问() -> void:
 	var 指示提示: String = _发动提示(_skill_ask_id)
 	if not 询问文案.is_empty():
 		_指令提示(询问文案)
+	elif not 指示提示.is_empty():
+		# 技能指示器里写死了「发动【X】：…」的（如兽灵武士【兽返】/【御魂流居合式】的选项询问）：
+		# 技能表那一行没有「提示」列可借，就用指示器这句当选项询问的抬头
+		_指令提示(指示提示)
 	elif not _skill_options.is_empty():
 		_刷新二级栏提示()
-	elif not 指示提示.is_empty():
-		_指令提示(指示提示)
 	elif _skill_ask_card_source == GConst.CardSource.HandAndBasicEffect:
 		_指令提示("【%s】：点一名面前有基础效果的角色，技能栏里就会列出可%s的效果" % [
 			GConst.skill_name(_skill_ask_id), _基础效果动作(_skill_ask_id),
@@ -2284,11 +2330,13 @@ func _选项项(参数选项: Array) -> Array:
 	return out
 
 
-## 二级技能栏里纯参数选项按钮统一的底色（黑灰）：这类选项只是「参数」，不跟技能类型色走 ——
-## 一排五颜六色反而看不出哪个是被点的技能，黑灰也让它们和左边那颗真技能按钮一眼分得开。
+## 二级技能栏里纯参数选项按钮统一的底色（靛蓝）：这类选项只是「参数」，不跟技能类型色走 ——
+## 一排五颜六色反而看不出哪个是被点的技能，靛蓝也让它们和左边那颗真技能按钮一眼分得开。
 ## （选项「本身就是技能」时不走这个底色，改用技能自己的类型色，见 技能按钮.设置选项）
-const 二级选项底色: Color = Color(0.24, 0.24, 0.26)
-## 「治疗抵挡」那几个选项用蓝色，和黑灰的技能选项区分开
+## 以前用黑灰，和「不可用（半透明）」混在一起，看着像点不动；改用亮度够、偏冷的靛蓝，
+## 一眼就是「可以点的按钮」。选中另有黄色外发光（见 技能按钮.设置选中），与底色分得开。
+const 二级选项底色: Color = Color("4f6fd6")
+## 「治疗抵挡」那几个选项用蓝色，和通用的靛蓝技能选项区分开
 const 二级选项底色_治疗: Color = Color("3b82f6")
 ## 特殊行动（购买 / 合成 / 提炼，含冒险者天堂那两步）的选项用绿色，和技能选项一眼分得开
 const 二级选项底色_特殊行动: Color = Color("16a34a")
@@ -2313,7 +2361,7 @@ func _选项文案(原文: String) -> String:
 ##          "技能号": 该项本身就是技能时给它的技能号}
 ## 父按钮为 null 且父技能号 > 0 时（技能询问那条通道没有现成的按钮）按父技能号现造一颗；
 ## 两者都空（如「多份额外行动」那种没有点击本体的场合）＝这一排只有选项。
-## 选项底色默认为统一的黑灰；「治疗抵挡」那条通道传蓝色，让治疗所属的选项一眼可辨。
+## 选项底色默认为统一的靛蓝；「治疗抵挡」那条通道传蓝色，让治疗所属的选项一眼可辨。
 ## 选项「本身就是技能」时（带技能号）不用这个底色，改用技能自己的类型色，见 技能按钮.设置选项
 func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: Array,
 		选项底色: Color = 二级选项底色) -> void:
@@ -2351,7 +2399,7 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 			"选牌来源": int(d.get("选牌来源", -1)),
 			"需盖牌": int(d.get("需盖牌", 0)),
 		})
-	# 技能本体 + 选项排成一行、整排贴屏幕右侧（右对齐由场景里 ChildrenSkillArea 的 alignment 决定）
+	# 技能本体 + 选项排成一行；技能栏整排左对齐（场景里 ChildrenSkillArea 的 alignment = BEGIN）
 	_二级栏父技能号 = 父技能号 if 父 != null else 0
 	_二级栏父按钮 = 父
 	_二级栏 = true
@@ -2638,8 +2686,9 @@ func _卡牌能点(card_id: int) -> bool:
 ## 按选牌规则过滤可点牌（服务端给的 card_rule）：
 ## "same"＝只能选与已选牌同系的；"diff"＝只能选与已选牌互异系的；
 ## "sameprop"＝只能选与已选牌同命格的（如【式神降临】）；
-## "an_zhi"＝暗之障壁：所选牌须同属「法术 / 雷系」中的同一类（两类都属的牌不锁类别）；""＝不限。
-## 服务端只做最终校验，这里先一步把不合规的牌置灰，免得玩家点了一堆却被判「操作无效」。
+## "an_zhi"＝暗之障壁：所选牌须同属「法术 / 雷系」中的同一类（两类都属的牌不锁类别）；
+## "magic_cover"＝手牌必须是法术牌、盖牌随意（精灵射手【元素射击】弃 1 张法术牌或移除 1 张【祝福】）；
+## ""＝不限。服务端只做最终校验，这里先一步把不合规的牌置灰，免得玩家点了一堆却被判「操作无效」。
 func _符合选牌规则(card_id: int) -> bool:
 	# 已选中的牌随时能点掉（取消选择）；否则下面按「第 1 张 / 第 2 张」分的槽位条件会把已选的牌反手卡住
 	if _sel_cards.has(card_id):
@@ -2651,6 +2700,13 @@ func _符合选牌规则(card_id: int) -> bool:
 	if _skill_card_rule == "magic":
 		var 法术牌: GCard = Data.get_card(card_id)
 		return 法术牌 != null and 法术牌.is_magic()
+	# magic_cover＝手牌必须法术牌、盖牌随意。这条规则不能只靠服务端的白名单：手里既没法术牌
+	# 又没【祝福】时白名单是空的（空＝不限），就成了「什么牌都能选」，所以界面这边自己也要挡
+	if _skill_card_rule == "magic_cover":
+		if _is_my_cover(card_id):
+			return true
+		var 可弃牌: GCard = Data.get_card(card_id)
+		return 可弃牌 != null and 可弃牌.is_magic()
 	if _skill_card_rule == "" or _sel_cards.is_empty():
 		return true
 	var 牌: GCard = Data.get_card(card_id)
@@ -3057,8 +3113,8 @@ func _on_giveup() -> void:
 const 特殊行动入口说明: String = "【购买】补战绩区【星石】\n【合成】消耗【星石】合成【星杯】\n【提炼】把【星石】变自身【能量】。\n\n点开后指向各项看效果。"
 const 购买说明: String = "给【战绩区】 +1【宝石】、 +1【水晶】，再摸 3 张牌。\n\n手牌放得下 3 张可执行此行动。"
 const 购买说明_地下法则: String = "有【地下法则】，【战绩区】 +2 【宝石】，再摸 3 张牌。\n\n手牌放得下 3 张可执行此行动。"
-const 合成说明: String = "【战绩区】的 -3【星石】，【星杯】加 1、对方阵营 -1【士气】，再摸 3 张牌。【宝石】和【水晶】随便凑。\n\n手牌放得下 3 张可执行此行动。"
-const 提炼说明: String = "选择【战绩区】的2 颗【星石】收进自己的【能量区】里。\n\n自己的【星石】有空位才能提炼。"
+const 合成说明: String = "【战绩区】的 -3【星石】，【星杯】加 1、对方阵营 -1【士气】，再摸 3 张牌。\n\n手牌放得下 3 张可执行此行动。"
+const 提炼说明: String = "选择【战绩区】的 2 颗【星石】收进自己的【能量区】里。\n\n自己的【星石】有空位才能提炼。"
 
 ## 行动阶段点技能栏最左那颗「特殊行动」进来：购买 / 合成 / 提炼 三选一 —— 选项摆进二级技能栏（本地步骤）。
 ## 可用性逐条对照原客户端 Role::normal / Role::buy / Role::synthetize / Role::extract：
@@ -3267,7 +3323,7 @@ func _队伍水晶() -> int:
 
 ## 本地二级栏选项步骤：进 mode 6 把选项摆进二级技能栏（不走服务端）；「确定 / 取消」按
 ## _本地选项阶段 分派（见 _on_ok / _on_cancel）。父技能号 > 0 时最左摆那颗技能按钮，0＝只有选项。
-## 底色默认走「特殊行动」绿（购买 / 合成 / 提炼这一条）；【冒险者天堂】那条传通用灰
+## 底色默认走「特殊行动」绿（购买 / 合成 / 提炼这一条）；【冒险者天堂】那条传通用靛蓝
 func _进入本地选项(阶段: int, 父技能号: int, 选项: Array, 提示: String,
 		选项底色: Color = 二级选项底色_特殊行动) -> void:
 	_本地选项阶段 = 阶段
@@ -4995,6 +5051,10 @@ func _刷新头像提示() -> void:
 		动态提示 = _朝圣头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _沉沦协奏曲头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _兽返头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _逆反居合斩头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
 	for 旧: int in _动态提示过的头像:
 		if not 动态提示.has(旧):
@@ -5396,6 +5456,41 @@ func _沉沦协奏曲头像提示() -> Dictionary:
 
 ## 精灵射手【元素射击·命中结算】的头像提示不走这里：水之矢（32012）/ 地之矢（32013）各有自己的
 ## 询问号，直接用静态指示器条目（GConst.技能_水之矢 / 技能_地之矢）画「%d 治疗」或「%d 法术伤害」
+
+
+## 兽灵武士【兽返】的指示器（现算）：选项 value＝要移除的【兽魂】数 X ——
+## 自己弃 X 张手牌，伤害来源（服务端随询问下发在 targets 里；need_target=0 时这里只当提示落点，
+## 头像点不动）弃 1 张牌。X 随二级技能栏里选中的那一项变，写不进静态指示器表。
+## 自己那句按选项给的要弃张数写（与客户端按该项 need_card 卡住的最少张数一致）
+func _兽返头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_兽返 or _已选参数.is_empty():
+		return out
+	var 弃: int = int(_已选参数[0])
+	if 弃 > 0:
+		out[Logic.my_player_id] = "弃 %d 张牌" % 弃
+	for pid: int in _skill_targets:
+		if pid == Logic.my_player_id:
+			# 伤害来源是自己（自伤）时并成两行，别把上面那句盖掉
+			var 已有: String = str(out.get(pid, ""))
+			out[pid] = ("%s\n弃 1 张牌" % 已有) if not 已有.is_empty() else "弃 1 张牌"
+		else:
+			out[pid] = "弃 1 张牌"
+	return out
+
+
+## 兽灵武士【逆反居合斩】的指示器（现算）：选项 value＝X+1（X 可以为 0），
+## 命中后攻击目标改为弃 X+2 张（弃不满则对方士气 -1）。攻击目标由服务端随询问点名（targets），
+## 指示器配「自动选目标」把它选中并锁死（头像亮起）；本次 need_target=0，头像点不动。
+## X 随选中的那一项变，写不进静态指示器表
+func _逆反居合斩头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_逆反居合斩 or _已选参数.is_empty():
+		return out
+	var 弃: int = int(_已选参数[0]) + 1
+	for pid: int in _skill_targets:
+		out[pid] = "弃 %d 张牌" % 弃
+	return out
 
 
 ## 苍炎魔女【天火断空】的指示器（现算，写不进静态指示器表）：对目标角色与自己各造成法术伤害，

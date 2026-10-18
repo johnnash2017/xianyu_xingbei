@@ -37,6 +37,6 @@ string,"enum(禁用:0,启用:1)",int,int,int,int,int,int,string,string,string,st
 角色#阴阳师,禁用,33,2,3,3,0,0,,ShiShen,ShiShen,#672E77,式神形态,阴阳师,血,鲜血议会,阴阳师,0:鬼火:3,res://scripts/battle/roles/role_yinyang.gd,技能#式神咒束;技能#黑暗祭礼;技能#式神降临;技能#生命结界;技能#阴阳转换
 角色#血色剑灵,禁用,34,2,3,3,0,0,,XueQiangWei,QiangWei,#FA2727,血蔷薇庭院,血色剑灵,圣,神圣教廷,血色剑灵,0:鲜血:3,res://scripts/battle/roles/role_xuejian.gd,技能#血色荆棘;技能#赤色一闪;技能#血染蔷薇;技能#血气屏障;技能#血蔷薇庭院
 角色#月之女神,禁用,35,2,3,2,3,99,,AnYue,AnYue,#0060FF,新月形态,月之女神,技,战技殿堂,月之女神,0:新月:2;1:石化:3;2:暗月:99,res://scripts/battle/roles/role_yuenv.gd,技能#新月庇护;技能#暗月诅咒;技能#美杜莎之眼;技能#月之轮回;技能#月渎;技能#暗月斩;技能#苍白之月
-角色#兽灵武士,禁用,36,2,3,4,2,0,,YuHun,QianXing,#44D647,御魂流居合形态,兽灵武士,圣,神圣教廷,兽灵武士,0:残心:4;1:兽魂:2,res://scripts/battle/roles/role_shouling.gd,技能#武者残心;技能#一击无念;技能#兽魂意念;技能#兽魂警戒;技能#兽返;技能#逆反居合斩;技能#御魂流居合式
+角色#兽灵武士,启用,36,2,3,4,2,0,,YuHun,QianXing,#44D647,御魂流居合形态,兽灵武士,圣,神圣教廷,兽灵武士,0:残心:4;1:兽魂:2,res://scripts/battle/roles/role_shouling.gd,技能#武者残心;技能#一击无念;技能#兽魂意念;技能#兽魂警戒;技能#兽返;技能#御魂流居合形态;技能#逆反居合斩;技能#御魂流居合式
 角色#圣弓,禁用,37,3,3,10,0,0,,AnYue,AnYue,#0060FF,,圣弓,圣,神圣教廷,圣弓,0:信仰:10,res://scripts/battle/roles/role_shenggong.gd,技能#天之弓;技能#圣屑飓暴;技能#圣煌模式;技能#圣光爆裂;技能#圣流星弹;技能#圣煌辉光炮;技能#自动填充
 角色#sp魔导师,禁用,108,2,3,0,0,0,,,,,,sp魔导师,咏,咏歌城,sp魔导师,,res://scripts/battle/roles/role_spmodao.gd,

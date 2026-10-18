@@ -1,17 +1,22 @@
 extends BattleRole
 ## 兽灵武士（roleID 36）—— 移植自服务端 role/ShouLing.cpp
-## 指示物：tokens[0] = 残心、tokens[1] = 兽魂，上限见角色表
-## 形态：tap（御魂流居合形态）
-## 技能：武者残心（3601，响应：自己的攻击行动结束后 +1 残心（每回合一次））、
-##       一击无念（3602，额外攻击行动：残心＞3 时移除 4 点残心，本次攻击无视圣盾与圣光，
-##                 御魂流居合形态下再 +1 兽魂且技类攻击牌强制命中）、
-##       兽魂意念（3603，被动：普通形态下主动攻击命中 +1 兽魂；每移除 1 点兽魂 +1 残心）、
-##       兽魂警戒（3604，响应：其他角色横置时移除 1 点兽魂 → 横置并 +1 残心，目标弃 1 张牌）、
-##       兽返（3605，响应：受到法术伤害时移除 X 点兽魂 → 自身弃 X 张牌，施害者弃 1 张牌）、
-##       逆反居合斩（3606，响应：御魂流居合形态下对攻击前手牌＜4 的对手，命中后移除 X 点兽魂，
-##                   抵御本次伤害并改为目标弃 X＋2 张手牌，不足则对方士气 -1）、
-##       御魂流居合式（3607，启动：耗 1 宝石 → 横置进入御魂流居合形态并 +1 兽魂、摸或弃 1 张牌）、
-##       形态附加：御魂流居合形态下攻击横置目标伤害 +1；造成伤害使其摸牌时脱离形态；回合结束移除 1 点兽魂
+## 指示物：tokens[0] = 残心（上限 4）、tokens[1] = 兽魂（上限 2）
+## 形态：tap（横置）=【御魂流居合形态】
+## 技能：
+##   武者残心（3601）：自己的攻击行动结束时 +1 残心（当前实现：可选发动、每回合一次）
+##   一击无念（3602）：攻击行动结束且残心 ≥4 时授予额外攻击行动；选它即移除 4 点残心，
+##                    该次攻击无视【圣盾】、不能用【圣光】抵挡；攻击牌为技类命格时强制命中
+##   兽魂意念（3603）：每移除 1 点兽魂 +1 残心；普通形态下主动攻击命中 +1 兽魂
+##   兽魂警戒（3604）：其他角色横置结算完后，移除 1 点兽魂并横置（转御魂流居合形态），
+##                    指定 1 名角色弃 1 张牌【展示】；弃的是法术牌则 +1 兽魂
+##   兽返（3605）：受法术伤害时移除 X 点兽魂，自己弃 X 张牌，施害者弃 1 张牌【展示】；
+##                施害者弃的是法术牌则 +1 兽魂
+##   御魂流居合形态（3608，被动形态）：对横置目标攻击伤害 +1；回合结束移除 1 点兽魂
+##                （等量 +1 残心），兽魂为 0 时脱离；造成伤害（Timeline6）时脱离
+##   逆反居合斩（3606）：仅御魂流居合形态下、对手手牌 <4 时宣告；发动时移除 X 点兽魂（X 可为 0），
+##                    命中后取消伤害、改为目标弃 X+2 张手牌（弃不满则对方士气 -1）
+##   御魂流居合式（3607）：启动（技能栏按钮），耗 1 宝石；无视上限 +1【兽魂】，
+##                    点了在二级栏里选摸或弃 1 张牌（也可不调整）；并横置转【御魂流居合形态】
 
 const WU_ZHE_CAN_XIN: int = 3601
 const YI_JI_WU_NIAN: int = 3602
@@ -19,7 +24,6 @@ const SHOU_HUN_YI_NIAN: int = 3603
 const SHOU_HUN_JING_JIE: int = 3604
 const SHOU_FAN: int = 3605
 const NI_FAN_ZHAN: int = 3606
-const NI_FAN_HIT: int = 36062
 const YU_HUN_BOOT: int = 3607
 
 ## 服务端的子状态编号（一击无念 / 御魂流居合形态的 step 标记）
@@ -30,11 +34,13 @@ const YU_HUN_ATK: int = 36071
 const SHOU_HUN_JING_JIE_DISCARD: int = 36041   # 兽魂警戒：请目标弃牌
 const SHOU_FAN_TARGET_DISCARD: int = 36051     # 兽返：请施害者弃牌
 const SHOU_FAN_SELF_DISCARD: int = 36052       # 兽返：自身弃牌
-const NI_FAN_DISCARD: int = 36063              # 逆反居合斩：目标弃牌
+const NI_FAN_DISCARD: int = 36063              # 逆反居合斩：等目标弃牌（步骤标记，无技能表行）
 
 const TOKEN_CAN_XIN: int = 0     # 残心（tokens[0]）
 const TOKEN_SHOU_HUN: int = 1    # 兽魂（tokens[1]）
 
+## 一击无念的残心门槛与消耗（说明：移除 4 点【残心】）
+const YI_JI_COST: int = 4
 const NI_FAN_TARGET_HAND: int = 4    # 逆反居合斩：对手手牌数须小于 4
 
 var used_wu_zhe: bool = false        # 本回合是否已用【武者残心】
@@ -49,9 +55,21 @@ var shou_fan_cards: Array = []
 var jing_jie_dst: int = -1
 
 
-## 兽灵武士的技能全部由钩子与启动流程触发
+## 行动阶段可发动的技能：御魂流居合式（3607）为「启动」，不消耗本回合行动，
+## 发动后引擎重新进入行动阶段让玩家继续本回合行动。
+## 其余技能（武者残心 / 兽魂警戒 / 兽返 / 逆反居合斩…）都只能在对应时机由钩子询问，不上技能栏。
 func available_skills() -> Array:
-	return []
+	var out: Array = []
+	# 御魂流居合式：技能栏里安安静静摆一颗按钮，点了才在二级栏里选效果
+	# （弃 1 张手牌 / 摸 1 张牌 / 不调整），不再在回合开始时自动弹询问。
+	# need_card 给 0：弃不弃牌由选中那一项自带的 need_card 决定（只有弃牌项要 1 张）；
+	# card_max 给 1：选中弃牌项后才放出手牌可选，且最多 1 张。
+	# 已是【御魂流居合形态】（横置）或没有宝石时按钮照摆、置灰。
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": YU_HUN_BOOT,
+		"need_card": 0, "card_max": 1, "need_target": 0,
+		"arg_choices": _yu_hun_boot_choices(),
+		"enabled": player.gem > 0 and not player.tap})
+	return out
 
 
 # ============================================================
@@ -76,10 +94,21 @@ func _set_token(idx: int, v: int) -> void:
 	t["num"] = clampi(v, 0, int(t["max"]))
 
 
-## 移除 n 点兽魂并等量 +n 残心（兽魂意念：每移除 1 点兽魂 +1 残心）
+## 加 n 点兽魂：默认按上限封顶，但已经超过上限时（御魂流居合式无视上限加出来的）不往下压；
+## 无视上限 时不封顶
+func _gain_shou_hun(n: int, 无视上限: bool = false) -> void:
+	var t: Dictionary = player.tokens[TOKEN_SHOU_HUN]
+	var 新值: int = int(t["num"]) + n
+	if not 无视上限:
+		新值 = mini(新值, maxi(int(t["max"]), int(t["num"])))
+	t["num"] = 新值
+
+
+## 移除 n 点兽魂并等量 +n 残心（兽魂意念：每移除 1 点兽魂 +1 残心）。
+## 兽魂可能高于上限，这里不走 _set_token，免得减完又被上限压回去
 func _remove_shou_hun(n: int) -> int:
 	var real: int = mini(n, _shou_hun())
-	_set_token(TOKEN_SHOU_HUN, _shou_hun() - real)
+	player.tokens[TOKEN_SHOU_HUN]["num"] = _shou_hun() - real
 	_set_token(TOKEN_CAN_XIN, _can_xin() + real)
 	return real
 
@@ -105,6 +134,7 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 		询问(pid, cause, want)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
+	# 「必须选满才能点确定」由客户端按 option_need_cards / need_card 挡住；这里只取真正选中的牌，不替他补
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
 	# 服务端这几处的 isShown：兽返 / 兽魂警戒 公开（顺带触发展示手牌钩子），
 	# 逆反居合斩的目标弃牌是面朝下的（false），不能一起公开
@@ -119,12 +149,14 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	if (cause == SHOU_HUN_JING_JIE or cause == SHOU_FAN) and not chosen.is_empty():
 		var c: GCard = Data.get_card(int(chosen[0]))
 		if c != null and c.is_magic():
-			_set_token(TOKEN_SHOU_HUN, _shou_hun() + 1)
+			_gain_shou_hun(1)
 	engine._broadcast_game()
 	return SUCCESS
 
 
-## 从 ids 中挑出 n 张目标手牌（不足时按其手牌顺序补齐）
+## 只保留玩家真正选中的手牌；数量不足时不补牌（选不满本来就点不了「确定」，
+## 见询问里各选项的 need_card / need_card 参数）。
+## 这里不能按手牌顺序补齐 —— 那会把玩家没选的牌也一起弃掉
 func _pick_cards(target: BattlePlayer, ids: Array, n: int) -> Array:
 	var out: Array = []
 	for c: Variant in ids:
@@ -133,11 +165,6 @@ func _pick_cards(target: BattlePlayer, ids: Array, n: int) -> Array:
 		var cid: int = int(c)
 		if target.has_hand_card(cid) and not out.has(cid):
 			out.append(cid)
-	for cid2: int in target.hand_cards:
-		if out.size() >= n:
-			break
-		if not out.has(cid2):
-			out.append(cid2)
 	return out
 
 
@@ -181,6 +208,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 func _yi_ji_wu_nian(ctx: Dictionary) -> void:
 	if not yi_ji_atk:
 		return
+	# 只认自己主动打出的那一次攻击：应战反击（is_active=false）不能吃这个加成，
+	# 也不消耗标记（标记留到回合结束由 p_turn_end 清掉）
+	if not bool(ctx.get("is_active", false)):
+		return
 	yi_ji_atk = false
 	ctx["check_shield"] = false
 	ctx["can_light"] = false
@@ -189,7 +220,8 @@ func _yi_ji_wu_nian(ctx: Dictionary) -> void:
 		ctx["hit_rate"] = GConst.HitRate.NoMiss
 
 
-## 逆反居合斩：御魂流居合形态下对武前手牌＜4 的对手宣告，命中后改为弃牌
+## 逆反居合斩：御魂流居合形态下、对手手牌 <4 时宣告。
+## 说明：发动①时就选好移除几点兽魂（X 可以为 0），命中②时才按 X+2 结算弃牌 —— 所以 X 在这里扣
 func _ni_fan_zhan(ctx: Dictionary) -> int:
 	if not player.tap:
 		return SUCCESS
@@ -197,11 +229,26 @@ func _ni_fan_zhan(ctx: Dictionary) -> int:
 	if _hand_card_count(dst_id) >= NI_FAN_TARGET_HAND:
 		return SUCCESS
 	if not engine.has_reply():
-		# 序号 1：这个技能号第 0 条提示是「叫别人弃牌」用的，自己发动这步留空走默认文案
-		询问(player.id, NI_FAN_ZHAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true, 1)
+		# 选项 value = X + 1：X 允许是 0，不能拿 0 当「不移除」用；取消/超时回 0＝不发动。
+		# 序号 1：这个技能号第 0 条提示是「叫别人弃牌」用的
+		var options: Array = []
+		for x: int in range(0, _shou_hun() + 1):
+			options.append({
+				"value": x + 1,
+				"label": "不移除兽魂（目标弃 2 张）" if x == 0 else "移除 %d 点兽魂（目标弃 %d 张）" % [x, x + 2],
+			})
+		# 本次攻击目标不是这边点头像选出来的，但指示器要把它自动选中并点亮（头像亮起），
+		# 再在它头像上写「弃 X+2 张牌」—— 故把目标随询问下发
+		# （need_target=0：客户端只当提示 / 点亮落点用，不让玩家改选）
+		var 提示目标: Array = [dst_id] if dst_id >= 0 else []
+		询问(player.id, NI_FAN_ZHAN, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true, 1, -1, 提示目标)
 		return WAIT
-	if not take_skill_reply():
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var choose: int = int(args[0]) if not args.is_empty() else 0
+	if choose <= 0:
 		return SUCCESS
+	ni_fan_add_harm = _remove_shou_hun(choose - 1)
 	ni_fan_atk = true
 	notice_skill(NI_FAN_ZHAN, [dst_id])
 	engine._broadcast_game()
@@ -221,40 +268,10 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if step == SHOU_HUN_YI_NIAN:
 		# 普通形态下主动攻击命中：+1 兽魂
 		if bool(ctx.get("is_active", false)) and not player.tap:
-			_set_token(TOKEN_SHOU_HUN, _shou_hun() + 1)
+			_gain_shou_hun(1)
 			notice_skill(SHOU_HUN_YI_NIAN, [player.id])
 			engine._broadcast_game()
-		step = NI_FAN_HIT
-	if step == NI_FAN_HIT:
-		var r: int = _ni_fan_hit(ctx)
-		if r == WAIT:
-			return WAIT
 		step = STEP_DONE
-	return SUCCESS
-
-
-## 逆反居合斩·命中：移除 X 点兽魂，本次攻击改为目标弃 X＋2 张手牌
-func _ni_fan_hit(ctx: Dictionary) -> int:
-	if not ni_fan_atk or _shou_hun() < 1:
-		return SUCCESS
-	if not engine.has_reply():
-		# 原版让玩家在提示区选「移除几点兽魂」，回 args=[1, 兽魂数]；通用客户端只回一维 args，
-		# 不带 options 时读不到 args[1]。这里把「移除几点兽魂」做成 options（value=兽魂数，1..当前兽魂数）：
-		# 本次询问不选牌不选目标 → 客户端弹居中选项窗，点某项回 args[0]=该值；取消/超时回 args[0]=0（不发动）
-		var options: Array = []
-		for n: int in range(1, _shou_hun() + 1):
-			options.append({"value": n, "label": "移除 %d 点兽魂" % n})
-		询问(player.id, NI_FAN_HIT, 0, 0, GConst.CardSource.Hand, options)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	# 选项 value 即要移除的兽魂数；0（取消/超时）视为不发动
-	var howmany: int = int(args[0]) if not args.is_empty() else 0
-	if howmany <= 0:
-		return SUCCESS
-	ni_fan_add_harm = _remove_shou_hun(howmany)
-	notice_skill(NI_FAN_ZHAN, [int(ctx.get("dst", -1))])
-	engine._broadcast_game()
 	return SUCCESS
 
 
@@ -341,10 +358,20 @@ func p_timeline_3(ctx: Dictionary) -> int:
 			# need_card=1 让客户端走「技能区选项按钮」而非居中弹窗（玩家要先选好手牌），
 			# 选中的手牌仍由 card_ids 回传；点选项回 args[0]=兽魂数，取消/超时回 args[0]=0（不发动）。
 			# 序号 1：第 0 条提示是「叫别人弃牌」用的，自己发动这步留空走默认文案
+			# 只列真弃得出来的档：手里的牌不够 X 张时，选了也是白选（「确定」永远点不亮）
+			var 最多: int = mini(_shou_hun(), player.hand_cards.size())
+			if 最多 <= 0:
+				_shou_fan_step = 0
+				return SUCCESS
 			var options: Array = []
-			for n: int in range(1, _shou_hun() + 1):
-				options.append({"value": n, "label": "移除 %d 点兽魂（弃 %d 张手牌）" % [n, n]})
-			询问(player.id, SHOU_FAN, 1, 0, GConst.CardSource.Hand, options, player.hand_cards.size(), "", [], true, 1)
+			for n: int in range(1, 最多 + 1):
+				# need_card=n：选了这一项就要弃满 n 张才让点「确定」（服务端不再替他补牌）
+				options.append({"value": n, "label": "移除 %d 点兽魂（弃 %d 张手牌）" % [n, n], "need_card": n})
+			# 伤害来源不是这边点头像选出来的，但指示器要在它头像上写「弃 1 张牌」；
+			# need_target=0 时 targets 只当提示落点，头像点不动
+			var 来源: int = int(harm.get("src", -1))
+			var 提示目标: Array = [来源] if 来源 >= 0 else []
+			询问(player.id, SHOU_FAN, 1, 0, GConst.CardSource.Hand, options, player.hand_cards.size(), "", [], true, 1, -1, 提示目标)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
@@ -353,8 +380,14 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		if howmany <= 0:
 			_shou_fan_step = 0
 			return SUCCESS
+		# 「先弹选项」的询问在选好一项后会先发一条 partial：若玩家还没选满手牌就超时，
+		# 超时兜底只带回选项值、不带牌。此时不能先把兽魂扣掉（会白扣 X 点却没有弃牌），
+		# 先按要弃的张数校验选中的牌，不够就当作没发动
+		shou_fan_cards = _pick_cards(player, r.get("card_ids", []), howmany)
+		if shou_fan_cards.size() < howmany:
+			_shou_fan_step = 0
+			return SUCCESS
 		shou_fan_num = _remove_shou_hun(howmany)
-		shou_fan_cards = r.get("card_ids", [])
 		if shou_fan_num <= 0:
 			_shou_fan_step = 0
 			return SUCCESS
@@ -452,7 +485,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 		step = YI_JI_WU_NIAN
 	if step == YI_JI_WU_NIAN:
 		# 授予额外攻击行动；移除 4 点残心并开启一击无念改在玩家选择时结算
-		if _can_xin() > _can_xin_max() - 1:
+		if _can_xin() >= YI_JI_COST:
 			player.add_action(GConst.ActionType.Attack, YI_JI_WU_NIAN)
 		step = STEP_DONE
 	return SUCCESS
@@ -465,7 +498,7 @@ func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	if int(ctx.get("cause", 0)) == YI_JI_WU_NIAN:
-		_set_token(TOKEN_CAN_XIN, _can_xin() - 4)
+		_set_token(TOKEN_CAN_XIN, _can_xin() - YI_JI_COST)
 		yi_ji_atk = true
 		engine._broadcast_game()
 	else:
@@ -490,11 +523,15 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 # 回合结束（p_turn_end）：御魂流居合形态移除 1 点兽魂并 +1 残心，兽魂归零则脱离形态
 # ============================================================
 func p_turn_end(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id or not player.tap:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	# 一击无念只对「选它换来的那次主动攻击」有效：额外行动被放弃 / 没用掉时，
+	# 标记在回合结束一并作废，不能留到后面（更不能喂给应战反击）
+	yi_ji_atk = false
+	if not player.tap:
 		return SUCCESS
 	if _shou_hun() > 0:
-		_set_token(TOKEN_SHOU_HUN, _shou_hun() - 1)
-		_set_token(TOKEN_CAN_XIN, _can_xin() + 1)
+		_remove_shou_hun(1)
 	if _shou_hun() < 1:
 		player.tap = false
 	engine._broadcast_game()
@@ -502,46 +539,71 @@ func p_turn_end(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 启动（自己回合）：御魂流居合式（3607）
+# 启动：御魂流居合式（3607）—— 技能栏按钮，点了才在二级栏里选效果
 # ============================================================
-func p_boot(_ctx: Dictionary) -> int:
-	if engine.current_id != player.id or player.tap or player.gem <= 0:
-		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	if step == 0:
-		step = YU_HUN_BOOT
-	if not engine.has_reply():
-		# 原版 box 三项（1 弃 1 张牌、2 摸 1 张牌、3 启动但不调整），回 args=[选择, 数量]。
-		# 通用客户端只回一维 args，不带 options 时读不到 args[1]：把三个分支做成 options（value=分支号），
-		# 点选项回 args[0]=分支号，取消回 args[0]=0（不发动，不扣宝石、不横置）。
-		# need_card=1 让客户端走「技能区选项按钮」（弃牌分支要选 1 张手牌，由 card_ids 回传），
-		# 序号 1（该技能提示列为空）避免 ask_text 抢占提示条、挡掉选项按钮的构建；
-		# 手牌为空时不列「弃牌 / 不调整」两项，避免出现必被服务端补牌的空弃分支
-		var options: Array = []
-		if not player.hand_cards.is_empty():
-			options.append({"value": 1, "label": "弃 1 张手牌"})
-		options.append({"value": 2, "label": "摸 1 张牌"})
-		if not player.hand_cards.is_empty():
-			options.append({"value": 3, "label": "不调整"})
-		询问(player.id, YU_HUN_BOOT, 1, 0, GConst.CardSource.Hand, options, 1, "", [], true, 1)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
-	var args: Array = r.get("args", [])
-	# args[0] 即选项 value（分支号）；0（取消/超时）视为不发动
+## 三个分支（二级技能栏）：1＝弃 1 张手牌、2＝摸 1 张牌、3＝不调整。
+## 弃牌项自带 need_card=1（选中它才放出手牌、并卡住最少 1 张）；摸牌 / 不调整不用牌。
+## 手牌为空时不列弃牌 / 不调整两项 —— 没有牌可弃，留着只会让玩家点了又点不了「确定」
+func _yu_hun_boot_choices() -> Array:
+	var out: Array = []
+	if not player.hand_cards.is_empty():
+		out.append({"text": "弃 1 张手牌", "args": [1], "need_card": 1})
+	out.append({"text": "摸 1 张牌", "args": [2]})
+	if not player.hand_cards.is_empty():
+		out.append({"text": "不调整", "args": [3]})
+	return out
+
+
+## 【御魂流居合式】为「启动」：不消耗本回合行动，发动后行动阶段照旧继续
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == YU_HUN_BOOT
+
+
+## 校验：有宝石、未横置（不在【御魂流居合形态】）时才能发动；
+## args[0] 是选项值（1 弃牌 / 2 摸牌 / 3 不调整）；选 1 时必须正好带 1 张自己的手牌
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != YU_HUN_BOOT:
+		return GConst.GE_INVALID_ACTION
+	if player.gem <= 0 or player.tap:
+		return GConst.GE_INVALID_ACTION
+	var args: Array = action.get("args", [])
 	var choose: int = int(args[0]) if not args.is_empty() else 0
-	if choose <= 0:
-		return SUCCESS
-	notice_skill(YU_HUN_BOOT, [player.id])
-	player.tap = true
-	player.set_gem(player.gem - 1)
-	_set_token(TOKEN_SHOU_HUN, _shou_hun() + 1)
-	# 分支 1＝弃 1 张手牌；2＝摸 1 张牌；3＝不调整（数量固定为 1，故不再从 args[1] 取）
+	if choose < 1 or choose > 3:
+		return GConst.GE_INVALID_ARGUMENT
 	if choose == 1:
-		var chosen: Array = _pick_cards(player, r.get("card_ids", []), 1)
-		engine.take_from_hand(player.id, chosen)
-		engine.to_discard(chosen)
+		var cards: Array = action.get("card_ids", [])
+		if cards.size() != 1 or not player.has_hand_card(int(cards[0])):
+			return GConst.GE_INVALID_ARGUMENT
+	return GConst.GE_SUCCESS
+
+
+## 御魂流居合式结算：耗 1 宝石、无视上限 +1【兽魂】、横置转入【御魂流居合形态】；
+## 分支 1 弃 1 张手牌、2 摸 1 张牌、3 不调整。
+## 「启动」每回合只能发动一个：成功发动后置 boot_skill_used（引擎靠它置灰其余启动技能）
+func p_special_skill(action: Dictionary) -> int:
+	var args: Array = action.get("args", [])
+	var choose: int = int(args[0]) if not args.is_empty() else 0
+	if choose < 1 or choose > 3:
+		return SUCCESS
+	# 选「弃 1 张」但没带牌（正常会被 v_special_skill 挡下）：当作不发动，不扣宝石 / 不横置
+	var 弃牌: Array = []
+	if choose == 1:
+		弃牌 = _pick_cards(player, action.get("card_ids", []), 1)
+		if 弃牌.is_empty():
+			return SUCCESS
+	notice_skill(YU_HUN_BOOT, [player.id])
+	player.boot_skill_used = true
+	player.set_gem(player.gem - 1)
+	# 说明：无视【兽魂】上限 +1
+	_gain_shou_hun(1, true)
+	player.tap = true
+	# 分支 1＝弃 1 张手牌；2＝摸 1 张牌；3＝不调整
+	if choose == 1:
+		engine.take_from_hand(player.id, 弃牌)
+		engine.to_discard(弃牌)
+		engine._log_discard(player.id, 弃牌)
 	elif choose == 2:
 		engine.push_draw(player.id, 1)
 	engine._broadcast_game()
