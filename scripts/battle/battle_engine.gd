@@ -1284,9 +1284,10 @@ func _等待文案() -> String:
 			GConst.ActionType.Magic: return "等待法术行动"
 			GConst.ActionType.None: return "等待响应无法行动"
 			_: return "等待行动"
-	# 技能询问：写「等待响应 + 技能名」
+	# 技能询问：通用写法「响应【技能名】」；技能名末尾的【回合限定】这类标签不带进等待栏
 	if _pending_is_skill:
-		return "等待响应" + GConst.skill_name(_pending_respond_id)
+		var 技能名: String = GConst.skill_name(_pending_respond_id).replace("【回合限定】", "")
+		return "响应【%s】" % 技能名
 	# 应答询问：按询问号区分应战 / 弃牌 / 弃盖牌 / 治疗 / 虚弱 / 魔弹 / 额外行动
 	match _pending_respond_id:
 		GConst.RespondType.ReplyAttack: return "等待应战响应"

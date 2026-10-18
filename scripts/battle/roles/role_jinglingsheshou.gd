@@ -8,7 +8,8 @@ extends BattleRole
 ##       宠物强化（3204，响应：触发【动物伙伴】时若你有【水晶】，可多付 1【水晶】
 ##                 把效果改为「令 1 名角色摸 1 张牌【强制】弃 1 张牌」）、
 ##       精灵密仪（3203，启动：技能栏按钮，耗 1 宝石并【横置】转为【精灵祝福形态】，牌库顶 3 张作为【祝福】；
-##                 回合结束时若没有【祝福】则【重置】脱离该形态，并对目标角色造成 2 点法术伤害）
+##                 回合结束时若没有【祝福】则【重置】脱离该形态，并对选中的目标角色造成 2 点法术伤害；
+##                 取消 / 超时（没选目标）则不结算伤害）
 
 const YUAN_SU_SHE_JI: int = 3201
 ## 元素射击「命中结算」的两根箭：各有一条内部询问号（客户端按它取技能指示器条目，把效果写在目标头像上）。
@@ -115,7 +116,8 @@ func p_turn_end(ctx: Dictionary) -> int:
 		_mi_yi_step = JING_LING_MI_YI
 	if _mi_yi_step != JING_LING_MI_YI:
 		return SUCCESS
-	# 服务端先【重置】再询问目标；未提供目标时以自己为目标
+	# 先【重置】再询问目标；取消 / 超时没有目标时**不结算伤害**。
+	# 不能像服务端那样把空目标退回自己 —— 那会让「取消」变成自伤 2 点。
 	player.tap = false
 	engine._broadcast_game()
 	if not engine.has_reply():
@@ -124,7 +126,10 @@ func p_turn_end(ctx: Dictionary) -> int:
 	var r: Dictionary = take_skill_reply_full()
 	_mi_yi_step = 0
 	var dsts: Array = r.get("dst_ids", [])
-	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
+	if dsts.is_empty():
+		engine._broadcast_game()
+		return SUCCESS
+	var dst_id: int = int(dsts[0])
 	notice_skill(JING_LING_MI_YI, [dst_id])
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": 2,
@@ -229,10 +234,13 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not engine.has_reply():
 		# 询问号按箭走（客户端据此取技能指示器条目，把「+1 治疗」/「1 法术伤害」写在目标头像上）；
-		# 指令条文案借用【元素射击】「提示」列里那一条 —— 两根箭不再各占一个技能行，所以这里直接
-		# 调 ask_skill 把文案传进去（走 询问() 的话它会去读箭号那一行，表里没有这一行）
+		# 两根箭不再各占一个技能行：指令条用 GConst.技能子步骤提示 的完整效果；
+		# 头像等待文案走通用的「响应【元素射击】」，不再为这两支单独写短提示。
+		var 箭提示: String = GConst.技能子步骤提示.get(本次箭号(), "")
+		if 箭提示.is_empty():
+			箭提示 = GConst.提示文本(YUAN_SU_SHE_JI, 本次箭提示序号(), engine._称号(player), 0)
 		engine.ask_skill(player.id, 本次箭号(), 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-			GConst.提示文本(YUAN_SU_SHE_JI, 本次箭提示序号(), engine._称号(player), 0))
+			箭提示)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

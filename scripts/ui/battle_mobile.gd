@@ -1946,8 +1946,10 @@ func _进入技能询问() -> void:
 	# 选中之前都还没发动，日志里不能写「发动【X】」——那句要等服务端广播技能通知时才出现
 	var 询问文案: String = str(_pending.get("ask_text", ""))
 	var 是响应技能: bool = GConst.skill_type(_skill_ask_id) == "响应"
+	# 元素箭这类子步骤的 ask_text 就是专门写好的效果提示，不能再被「响应技能统一用技能说明」盖掉
+	var 有专属提示: bool = GConst.技能子步骤提示.has(_skill_ask_id)
 	var 指示提示: String = _发动提示(_skill_ask_id)
-	if 是响应技能:
+	if 是响应技能 and not 有专属提示:
 		if not 指示提示.is_empty():
 			# 技能指示器里有专门写的完整效果（如贯穿射击、赤色一闪）时优先用它
 			询问文案 = 指示提示
@@ -1959,7 +1961,7 @@ func _进入技能询问() -> void:
 				询问文案 = 响应说明
 			elif 询问文案.contains("是否发动") or 询问文案.strip_edges().begins_with("是否"):
 				询问文案 = ""
-	elif _提示用技能说明(_skill_ask_id):
+	elif not 有专属提示 and _提示用技能说明(_skill_ask_id):
 		# 被动被询问时也写完整技能说明（和响应同一条口径）：被动没有「发动」这一步，
 		# 只说当前要选什么会看不出它到底做什么；说明里的 \n 由提示条统一忽略。
 		var 被动说明: String = _技能效果提示(_skill_ask_id)

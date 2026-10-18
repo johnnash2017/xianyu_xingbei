@@ -320,6 +320,24 @@ func 跑() -> void:
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 0, "回答技能询问后没有回到等待态：%d" % int(窗.get("_mode")))
 
+	# 元素箭（水之矢 / 地之矢）：选目标时提示条显示专属效果，不能被「响应技能统一用技能说明」盖掉
+	var 地之矢提示: String = str(GConst.技能子步骤提示.get(32013, ""))
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": 32013, "src_id": Logic.my_player_id, "dst_ids": [], "card_ids": [],
+			"args": [0, 1, GConst.CardSource.Hand, 0], "is_skill": true,
+			"ask_text": 地之矢提示,
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "元素箭询问没有进入应答态（_mode=%s）" % str(窗.get("_mode")))
+	检(str(窗.get("_提示原文")) == 地之矢提示,
+		"元素箭提示条没有显示专属效果：%s" % str(窗.get("_提示原文")))
+	(窗.get("BtnCancel") as Button).pressed.emit()
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 0, "取消元素箭询问后没有回到等待态：%d" % int(窗.get("_mode")))
+
 	# 被动技能被询问时：提示条固定写技能说明（不再只说当前要选什么），切选项也不变
 	var 军神: int = GConst.技能_军神威光
 	var 军神说明: String = "【%s】：%s" % [GConst.skill_name(军神),
