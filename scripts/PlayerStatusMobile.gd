@@ -110,6 +110,10 @@ const 补牌渐变时长: float = 0.5
 ## 材质用的是「受击描边」着色器 + tint：只把素材里的绿色换成 tint 色，描边与明暗都保留
 const 补牌黄块预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/refillBlock.tscn")
 const 补牌黄块材质: ShaderMaterial = preload("res://scripts/effects/refillBlockMaterial.tres")
+## 血蔷薇庭院在场时，有治疗的格子改用这个预制体：颜色在 HealRed.tscn / HealRedMaterial.tres 里调
+const 红治疗预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HealRed.tscn")
+## 红色治疗格的材质（与预制体共用同一份；受击时让它的描边也一起闪红）
+const 红治疗材质: ShaderMaterial = preload("res://scenes/prefabs/battlemobile/HealRedMaterial.tres")
 ## 新到手的宝石闪白时长（秒）：越短闪得越快
 const 宝石闪白时长: float = 0.3
 ## 闪白的起始强度：从纯白（1.0）开始往下淡
@@ -142,6 +146,9 @@ var _状态基础牌: Array = []
 ## 面板上的基础效果图标此刻是否可以点（选牌来源为 CardSource.BasicEffect 的技能期间打开）
 var _基础牌可点: bool = false
 var _状态独有效果: Array = []
+## 额外状态（不属于基础效果 / 独有效果的状态，如图腾/领域；元素为
+## {"name": 名字, "icon": 图标路径, "desc": 悬停说明}）
+var _状态额外: Array = []
 ## 对应 C# private RoleBase role = RoleFactory.Create(RoleID.Blank);
 ## 参考工程这里建的是角色对象（技能系统）。本工程没有该技能系统，本步骤只保留角色名用于显示。
 ## 第三步：技能系统。
@@ -201,6 +208,11 @@ var BasicAndExCards: Array = []:
 var ExclusiveCards: Array = []:
 	set(value):
 		set_ExclusiveCards(value)
+## 额外状态图标（如血色剑灵【血蔷薇庭院】）：[{name, icon, desc}]
+var ExtraStatuses: Array = []:
+	set(value):
+		_状态额外 = value
+		_刷新状态图标()
 var Energy: Vector2i = Vector2i.ZERO:
 	set(value):
 		set_Energy(value)
@@ -642,6 +654,24 @@ func _刷新状态图标() -> void:
 			# 状态名和效果说明分两行（提示框是 RichTextLabel，真换行即可）
 			提示 = "%s\n摸 %d 张牌 或 跳过回合" % [名, 五系束缚应摸张数()]
 		_加状态图标(ps, Art.exclusive_icon(i), "e:%d" % i, 新起点, -1, 提示)
+	# 额外状态：服务端只下发状态标记，图标与说明由 GConst 提供；
+	# 用图标路径作标识，同一状态重复渲染时仍能续播弹出动画
+	for 状态: Variant in _状态额外:
+		if not (状态 is Dictionary):
+			continue
+		var d: Dictionary = 状态
+		var 图标路径: String = str(d.get("icon", ""))
+		if 图标路径.is_empty():
+			continue
+		var 图标贴图: Texture2D = load(图标路径) as Texture2D
+		if 图标贴图 == null:
+			continue
+		var 状态名: String = str(d.get("name", ""))
+		var 状态说明: String = str(d.get("desc", ""))
+		var 状态提示: String = 状态名
+		if not 状态说明.is_empty():
+			状态提示 = "%s\n%s" % [状态名, 状态说明]
+		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示)
 	_状态已初始化 = true
 	_状态弹出起点 = 新起点
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
@@ -936,11 +966,27 @@ func set_HealCount(value: int) -> void:
 		max_heal = 玩家.cross_max
 	# 这一排每格挂同一行悬停提示：「治疗 当前/上限」（上限会随角色被动 / 星杯条件变）
 	var 提示: String = "治疗 %d/%d" % [value, max_heal]
+	var 庭院在场: bool = _血蔷薇庭院在场()
 	for _j in range(value):
-		_接格子提示(_add_image(healArea, ps, "heal", 扁平格尺寸, true, _治疗描边), 提示)
+		# 有治疗的格子：庭院在场时改用红色预制体；颜色 / 深浅都在预制体的材质里调，
+		# 不再由代码写死。材质自己带受击描边，所以这里不再套 _治疗描边，避免覆盖预制体材质。
+		var 实心格: Control = _add_image(healArea, 红治疗预制 if 庭院在场 else ps, "heal",
+			扁平格尺寸, true, null if 庭院在场 else _治疗描边)
+		_接格子提示(实心格, 提示)
 	for _k in range(maxi(max_heal - value, 0)):
-		_接格子提示(_add_image(healArea, ps, "handcardempty", 扁平格尺寸, true, _治疗描边), 提示)
+		var 空格: Control = _add_image(healArea, ps, "handcardempty", 扁平格尺寸, true, _治疗描边)
+		_接格子提示(空格, 提示)
 
+
+## 【血蔷薇庭院】在场：所有角色头像上的治疗块从蓝色改成红色
+func _血蔷薇庭院在场() -> bool:
+	for p: GPlayer in Data.player_list:
+		if p != null and p.xue_qiang_wei:
+			return true
+	return false
+
+
+## 通用：往一排格子里加一个方块（治疗实心格 / 上限空格 / 其他图标都用它）
 func _add_image(parent: Node, ps: PackedScene, sprite_name: String, 格尺寸: Vector2, 横向叠放: bool, 材质: Material = null) -> Control:
 	if ps == null or parent == null:
 		return null
@@ -1193,7 +1239,7 @@ func _造描边材质() -> ShaderMaterial:
 
 ## 受击时把手牌 / 治疗两排方块的深色描边一起染红，再用 受击描边时长 淡回原色
 func _闪受击描边() -> void:
-	if _手牌描边 == null and _治疗描边 == null:
+	if _手牌描边 == null and _治疗描边 == null and 红治疗材质 == null:
 		return
 	if _描边淡出 != null and _描边淡出.is_valid():
 		_描边淡出.kill()
@@ -1201,6 +1247,8 @@ func _闪受击描边() -> void:
 		_手牌描边.set_shader_parameter("mix_amount", 1.0)
 	if _治疗描边 != null:
 		_治疗描边.set_shader_parameter("mix_amount", 1.0)
+	# 红色治疗格用的是预制体材质，也让它跟着闪红
+	红治疗材质.set_shader_parameter("mix_amount", 1.0)
 	# 正在播的补牌黄块：描边也是同一套着色器，跟着一起红、一起淡回
 	补牌黄块材质.set_shader_parameter("mix_amount", 1.0)
 	_描边淡出 = create_tween()
@@ -1209,6 +1257,7 @@ func _闪受击描边() -> void:
 		_描边淡出.tween_method(_设描边强度.bind(_手牌描边), 1.0, 0.0, 受击描边时长)
 	if _治疗描边 != null:
 		_描边淡出.tween_method(_设描边强度.bind(_治疗描边), 1.0, 0.0, 受击描边时长)
+	_描边淡出.tween_method(_设描边强度.bind(红治疗材质), 1.0, 0.0, 受击描边时长)
 	_描边淡出.tween_method(_设描边强度.bind(补牌黄块材质), 1.0, 0.0, 受击描边时长)
 
 

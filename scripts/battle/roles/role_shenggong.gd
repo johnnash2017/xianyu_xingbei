@@ -400,10 +400,10 @@ func p_turn_end(ctx: Dictionary) -> int:
 		# 四种转换各做一个选项（value 1~4，与服务端 match 分支一一对应）；
 		# 「取消」回空 args＝走服务端的超时兜底分支（choice 0）
 		询问(player.id, ZI_DONG_TIAN_CHONG, 0, 0, GConst.CardSource.Hand, [
-			{"value": 1, "label": "1【宝石】 → 1【水晶】 + 2 信仰"},
-			{"value": 2, "label": "1【宝石】 → 1【水晶】 + 2【治疗】"},
-			{"value": 3, "label": "1【水晶】（无则 1【宝石】）→ 1 信仰"},
-			{"value": 4, "label": "1【水晶】（无则 1【宝石】）→ 1【治疗】"},
+			{"value": 1, "label": 提示原文(ZI_DONG_TIAN_CHONG, 1)},
+			{"value": 2, "label": 提示原文(ZI_DONG_TIAN_CHONG, 2)},
+			{"value": 3, "label": 提示原文(ZI_DONG_TIAN_CHONG, 3)},
+			{"value": 4, "label": 提示原文(ZI_DONG_TIAN_CHONG, 4)},
 		])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

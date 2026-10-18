@@ -202,6 +202,12 @@ func 提示(skill_id: int, 序号: int = 0, 张数: int = 0, 收牌人id: int = 
 	return GConst.提示文本(skill_id, 序号, engine._称号(player), 张数, _收牌人称号(收牌人id), 额外)
 
 
+## 读技能表「提示」原文（不按数字规则加空格）：选项按钮文案要精确控制空格时用，
+## 如「-2【水晶】-1【宝石】」「战绩区 -2【水晶】」。
+func 提示原文(skill_id: int, 序号: int = 0, 额外: Dictionary = {}) -> String:
+	return GConst.提示原文(skill_id, 序号, 额外)
+
+
 ## 收牌人称号（{dst} 用；没收牌人就返回空串）
 func _收牌人称号(收牌人id: int) -> String:
 	return engine._称号(engine.p(收牌人id)) if 收牌人id >= 0 else ""

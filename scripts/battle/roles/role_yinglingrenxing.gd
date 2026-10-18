@@ -11,11 +11,16 @@ extends BattleRole
 const NU_HUO_YA_ZHI: int = 2704       # 怒火压制（响应）
 const MO_WEN_RONG_HE: int = 2701      # 魔纹融合（响应）
 const ZHAN_WEN_SUI_JI: int = 2703     # 战纹碎击（响应）
-## 怒火压制／魔纹融合 询问的选项值（客户端点选项即以该值作为回复 args[0]）
+## 怒火压制／魔纹融合 的开局二选一
 const CHOICE_NU_HUO_YA_ZHI: int = 1
 const CHOICE_MO_WEN_RONG_HE: int = 2
-## 怒火压制／魔纹融合 的流程阶段：整条流程只有一次询问（二选一 + 选中后在同一询问里弃牌）
+## 怒火压制／魔纹融合 的流程阶段：第一段二选一 → 第二段魔纹融合的翻转档
 const 阶段_二选一: int = 1
+const 阶段_魔纹选择: int = 2
+## 角色内部流程返回值（只在 p_timeline_2_miss 里用，不交给引擎）：
+##   第一段选中魔纹融合＝进第二段 / 第二段取消＝退回第一段
+const 进入魔纹子项: int = 10
+const 返回二选一: int = 11
 const FU_WEN_GAI_ZAO: int = 2705      # 符文改造（启动）
 const SHUANG_CHONG_HUI_XIANG: int = 2706 # 双重回响（响应）
 
@@ -172,13 +177,13 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 弃 X 张同系牌（X≥2）：上限放到手牌数，并让客户端只让同系牌可点
-		# 额外翻转的【战纹】数做成选项按钮：value = 1 + Y（Y=0 表示不额外翻转）
-		# 额外翻转（说明：仅【蓄势迸发形态】（横置）下才可额外翻转 Y 个【战纹】）
-		var 可额外: int = maxi(_zhan_wen() - 1, 0) if player.tap else 0
+		# 额外翻转的【战纹】数做成选项按钮：value = 1 + Y（Y=0 表示不额外翻转）。
+		# 三档固定摆出；当前形态 / 战纹不够的档置灰，不再隐藏。
 		var 选项: Array = []
-		for y: int in range(0, 可额外 + 1):
+		for y: int in range(0, 3):
+			var 可用: bool = y == 0 or (player.tap and _zhan_wen() >= y + 1)
 			var 名: String = 提示(ZHAN_WEN_SUI_JI, 1) if y == 0 else 提示(ZHAN_WEN_SUI_JI, 2, y)
-			选项.append({"value": y + 1, "label": 名})
+			选项.append({"value": y + 1, "label": 名, "enabled": 可用})
 		# 目标与「本次攻击原本的伤害」一并下发：客户端在目标头像上现算
 		# 「原伤害 + 弃牌加伤」，随玩家选 / 退牌实时变（本次 need_target 是 0，头像本来就点不动）
 		var dst: int = int(ctx.get("dst", -1))
@@ -219,10 +224,11 @@ func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 主动攻击未命中后：怒火压制 / 魔纹融合（二选一）
+# 主动攻击未命中后：怒火压制 / 魔纹融合（两段式：先二选一，再选魔纹融合的翻转档）
 # ============================================================
-## 推进阶段：0＝还没开始 / 阶段_二选一＝正在问「二选一」（选中【魔纹融合】时连同要弃的牌一起回复）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
+## 推进阶段：0＝还没开始 / 阶段_二选一＝在问「怒火压制 / 魔纹融合」 /
+## 阶段_魔纹选择＝在问魔纹融合的翻转档（这一段取消＝退回二选一，不算放弃整次响应）。
+## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨两次询问，
 ## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
 ## 每次自己主动攻击未命中（p_timeline_2_miss）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）。
 ## 魔纹融合分支会返回 URGENT（压入了法术伤害），引擎在 URGENT 挂起后会重入本钩子：
@@ -239,72 +245,98 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _nu_huo_step == 0:
 		_nu_huo_step = 阶段_二选一
-	var r: int = _nu_huo_xuan(ctx)
-	if r == WAIT:
-		return WAIT
-	_nu_huo_step = 0
-	if r == URGENT:
-		step = STEP_DONE
-		return URGENT
-	return r
+	var r: int = SUCCESS
+	var r2: int = SUCCESS
+	while true:
+		if _nu_huo_step == 阶段_二选一:
+			r = _nu_huo_xuan(ctx)
+			if r == WAIT:
+				return WAIT
+			if r == 进入魔纹子项:
+				_nu_huo_step = 阶段_魔纹选择
+				continue
+			_nu_huo_step = 0
+			if r == URGENT:
+				step = STEP_DONE
+			return r
+		r2 = _nu_huo_mo_wen_xuan(ctx)
+		if r2 == WAIT:
+			return WAIT
+		if r2 == 返回二选一:
+			_nu_huo_step = 阶段_二选一
+			continue
+		_nu_huo_step = 0
+		if r2 == URGENT:
+			step = STEP_DONE
+		return r2
+	# while true 里每条分支都会 return；这一行只为满足 GDScript 的「所有路径都有返回值」检查
+	return SUCCESS
 
 
-## 怒火压制（2704）/ 魔纹融合（2701）：两个技能在同一次「主动攻击未命中」里二选一，在二级技能栏里列出来。
-## 选择与弃牌在同一次询问里完成 —— 【魔纹融合】那一项自带「需牌 2」，选中它之后客户端才放出手牌可选；
-## 选了怒火压制当场结算完，选了魔纹融合连同回复里的牌一起结算。
-## 询问挂在魔纹融合（2701）名下（它带着伤害 cause）；怒火压制分支按自己的号 2704 上报发动通知，
-## 两个技能各用各的技能表提示与日志名。
-## 选项值：1=怒火压制（不用弃牌）；2+Y=魔纹融合（弃 X 张异系牌，额外翻转 Y 个【魔纹】，伤害 +Y）
-## skill_id：两项本身就是技能，客户端鼠标指向选项按钮时据此弹技能说明
+## 第一段：怒火压制（2704）/ 魔纹融合（2701）二选一，二级技能栏里只摆这两颗。
+## 选魔纹融合只是「进第二段」，这里不弃牌、也不结算；选怒火压制当场结算。
+## 询问挂在魔纹融合（2701）名下（它带着伤害 cause）；怒火压制分支按自己的号 2704 上报发动通知。
 func _nu_huo_xuan(ctx: Dictionary) -> int:
 	var dst_id: int = int(ctx.get("dst", -1))
+	var 魔纹可用: bool = _mo_wen() >= 1 and player.hand_count() >= 2
 	if not engine.has_reply():
-		# 只列当前真有底子的项：怒火压制要 1 个【战纹】；魔纹融合要 1 个【魔纹】且手上凑得出 2 张牌
-		# （弃牌至少 2 张）。凑不出那 2 张就不列这一档 —— 连牌都选不出来，点了只会卡住
-		var 选项: Array = []
-		# need_card：这一项选中之后要弃几张牌（怒火压制一张不用，魔纹融合至少 2 张）；
-		# 客户端据此决定「选中它之后才放出手牌可选」，两项在同一次询问里选完
-		if _zhan_wen() >= 1:
-			选项.append({"value": CHOICE_NU_HUO_YA_ZHI, "label": 提示(NU_HUO_YA_ZHI, 0),
-				"skill_id": NU_HUO_YA_ZHI, "need_card": 0})
-		if _mo_wen() >= 1 and player.hand_count() >= 2:
-			# 额外翻转（说明：仅【蓄势迸发形态】（横置）下才可额外翻转 Y 个【魔纹】）
-			var 可额外: int = maxi(mini(_mo_wen() - 1, _wen_max() - _zhan_wen() - 1), 0) if player.tap else 0
-			for y: int in range(0, 可额外 + 1):
-				var 名: String = 提示(MO_WEN_RONG_HE, 0) if y == 0 else 提示(MO_WEN_RONG_HE, 1, y)
-				选项.append({"value": CHOICE_MO_WEN_RONG_HE + y, "label": 名,
-					"skill_id": MO_WEN_RONG_HE, "need_card": 2})
-		# 两项都不满足（正常不会发生：战纹 + 魔纹 恒为 3）：什么都不问
-		if 选项.is_empty():
-			return SUCCESS
-		# 询问级不用牌（弃牌上限给 0）：用不用牌、用几张，全看选中那一档的 need_card ——
-		# 怒火压制一张不用（选它时客户端把手牌整片置灰），魔纹融合至少弃 2 张（互异系，弃得越多伤害越高）
-		# 文案自己给：技能表里魔纹融合那条是「弃 {n} 张异系牌」，这里的 need_card 是 0，
-		# 照搬会显示成「弃 0 张异系牌」
-		# 顺带把这次攻击的目标下发：客户端在它头像上现算「弃几张 + 这一档」出来的伤害
-		# （本次 need_target 是 0，头像本来就点不动，这里只是当「伤害落在谁身上」用）
-		# 座位号从 0 起：0 号也是合法目标，判「没取到」只能用 < 0
+		var 选项: Array = [
+			{"value": CHOICE_NU_HUO_YA_ZHI, "label": GConst.skill_name(NU_HUO_YA_ZHI),
+				"skill_id": NU_HUO_YA_ZHI, "need_card": 0, "enabled": _zhan_wen() >= 1},
+			{"value": CHOICE_MO_WEN_RONG_HE, "label": 提示原文(MO_WEN_RONG_HE, 1),
+				"skill_id": MO_WEN_RONG_HE, "need_card": 0, "enabled": 魔纹可用},
+		]
 		var 伤害目标: Array = [dst_id] if dst_id >= 0 else []
 		engine.ask_skill(player.id, MO_WEN_RONG_HE, 0, 0, GConst.CardSource.Hand, 选项,
-			0, "diff", [], true, "选择发动【怒火压制】或【魔纹融合】", 伤害目标)
+			0, "diff", [], true, 提示原文(MO_WEN_RONG_HE, 0), 伤害目标)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var choice: int = int(args[0]) if not args.is_empty() else 0
 	if choice == CHOICE_NU_HUO_YA_ZHI:
-		# 怒火压制：翻转 1 个战纹为魔纹，当场结束
 		if _zhan_wen() < 1:
-			return GConst.GE_INVALID_ARGUMENT
+			return SUCCESS
 		notice_skill(NU_HUO_YA_ZHI, [dst_id])
 		_set_zhan_wen(_zhan_wen() - 1)
 		_set_mo_wen(_mo_wen() + 1)
 		engine._broadcast_game()
 		return SUCCESS
-	if choice >= CHOICE_MO_WEN_RONG_HE:
-		# 魔纹融合：选的牌就在同一次回复里（choice - CHOICE_MO_WEN_RONG_HE＝额外翻转数）
-		return _nu_huo_rong_he(dst_id, choice - CHOICE_MO_WEN_RONG_HE, r.get("card_ids", []))
-	# 取消 / 认不出的值：什么都不做
+	if choice == CHOICE_MO_WEN_RONG_HE:
+		return 进入魔纹子项
 	return SUCCESS
+
+
+## 第二段：魔纹融合的三个翻转档（客户端会在这三颗左边摆出技能本体，共四个按钮）。
+## 取消（空 args）＝退回第一段二选一，不放弃整次响应。
+func _nu_huo_mo_wen_xuan(ctx: Dictionary) -> int:
+	var dst_id: int = int(ctx.get("dst", -1))
+	var 有牌可弃: bool = player.hand_count() >= 2
+	var 魔纹基础可用: bool = _mo_wen() >= 1 and 有牌可弃
+	var 魔纹额外1可用: bool = player.tap and _mo_wen() >= 2 and 有牌可弃 \
+			and (_wen_max() - _zhan_wen() - 1) >= 1
+	var 魔纹额外2可用: bool = player.tap and _mo_wen() >= 3 and 有牌可弃 \
+			and (_wen_max() - _zhan_wen() - 1) >= 2
+	if not engine.has_reply():
+		var 选项: Array = [
+			{"value": CHOICE_MO_WEN_RONG_HE, "label": 提示原文(MO_WEN_RONG_HE, 2),
+				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹基础可用},
+			{"value": CHOICE_MO_WEN_RONG_HE + 1, "label": 提示原文(MO_WEN_RONG_HE, 3),
+				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹额外1可用},
+			{"value": CHOICE_MO_WEN_RONG_HE + 2, "label": 提示原文(MO_WEN_RONG_HE, 4),
+				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹额外2可用},
+		]
+		var 伤害目标: Array = [dst_id] if dst_id >= 0 else []
+		engine.ask_skill(player.id, MO_WEN_RONG_HE, 0, 0, GConst.CardSource.Hand, 选项,
+			player.hand_count(), "diff", [], true, 提示原文(MO_WEN_RONG_HE, 0), 伤害目标)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	if args.is_empty():
+		return 返回二选一
+	var choice: int = int(args[0])
+	if choice < CHOICE_MO_WEN_RONG_HE:
+		return SUCCESS
+	return _nu_huo_rong_he(dst_id, choice - CHOICE_MO_WEN_RONG_HE, r.get("card_ids", []))
 
 
 ## 魔纹融合结算：弃 ≥2 张互异系牌【展示】，对目标造成 (张数 - 1 + 额外翻转数) 点法术伤害
@@ -316,11 +348,12 @@ func _nu_huo_rong_he(dst_id: int, addition: int, cards: Array) -> int:
 		return GConst.GE_INVALID_ARGUMENT
 	if _element_check(cards) != ElementKind.AllDifferent or not _has_cards(cards):
 		return GConst.GE_INVALID_CARDID
+	# 额外翻转要本来的 1 个 + addition 个魔纹都够；先验再改，避免先扣资源后报错
+	if _mo_wen() < 1 + addition:
+		return GConst.GE_INVALID_ARGUMENT
 	_set_zhan_wen(_zhan_wen() + 1)
 	_set_mo_wen(_mo_wen() - 1)
 	if addition > 0:
-		if _mo_wen() < addition:
-			return GConst.GE_INVALID_ARGUMENT
 		_set_zhan_wen(_zhan_wen() + addition)
 		_set_mo_wen(_mo_wen() - addition)
 	notice_skill(MO_WEN_RONG_HE, [dst_id])

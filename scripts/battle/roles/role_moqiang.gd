@@ -309,11 +309,14 @@ func _qi_hei_zhi_qiang(ctx: Dictionary) -> int:
 		# 通用客户端只回一维 args：把「投入能量数」做成 options，args[0] 即选中项的 value
 		# （原版是靠 respond 的第二个参数 args[1] 传能量数，移植版拿不到所以恒为 0、伤害固定 +2）
 		# 选项文案取技能表「提示」列第 1 条（「投入 {n} 点能量（伤害 +{n2}）」）；
-		# 本次询问的指令条文案改用第 2 条（「发动【漆黑之枪】：选择投入的能量」），故 序号 传 1
+		# 本次询问的指令条文案改用第 2 条（「发动【漆黑之枪】：选择投入的能量」），故 序号 传 1。
+		# 目标固定是本次攻击目标：随询问下发，客户端自动选中并锁死；preview_base 是加伤前伤害。
+		var 攻击目标: Array = [dst_p.id]
 		var options: Array = []
 		for n: int in range(1, player.get_energy() + 1):
 			options.append({"value": n, "label": 提示(QI_HEI_ZHI_QIANG, 0, n, -1, {"n2": n + 2})})
-		询问(player.id, QI_HEI_ZHI_QIANG, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true, 1)
+		询问(player.id, QI_HEI_ZHI_QIANG, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true,
+			1, -1, 攻击目标, -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_hit_step = 0

@@ -6,7 +6,7 @@
 #   主体列类型写 list(string)#distributed  —— 该列自己一格配一条；
 #   其它列类型写 list(string)#distributed(主体列名) —— 分列，也是一格配一条；
 #   转表时把「主体列 + 各分列」按列从左到右并成一份正常的 list(string)，存到主体列名下，
-#   分列不导出。
+#   分列不导出。中间的空白格会导出成空串占位，避免后面的条目整体左移；末尾空白裁掉。
 class_name CsvToGd
 
 # ==================== 多线程相关变量 ====================
@@ -2050,15 +2050,24 @@ func _片段归属主体列(列名: String, 类型描述: Dictionary) -> String:
 	return str(类型描述.get("分布式主列名", ""))
 
 
-## 分布式 list：把主体列和各分列的格子按列顺序拼成一份正常的 list 字面量（空格子跳过）
+## 分布式 list：把主体列和各分列的格子按列顺序拼成一份正常的 list 字面量。
+## 中间的空白格必须保留成空值占位，否则后面的条目会整体左移（提示2 被当成提示，提示3 被当成提示2）。
+## 末尾连续空白格没有占位意义，仍然裁掉；整行都没有内容时导出空列表。
 func _分布式列表字面量(片段数组: Array, 类型描述: Dictionary) -> String:
 	var 子类型数组: Array = 类型描述["子类型"]
+	var 最后非空: int = -1
+	for i: int in range(片段数组.size()):
+		if not str(片段数组[i]).strip_edges().is_empty():
+			最后非空 = i
+	if 最后非空 < 0:
+		return "[]"
 	var 元素字符串列表: PackedStringArray = PackedStringArray()
-	for 片段: Variant in 片段数组:
-		var 文本: String = str(片段).strip_edges()
+	for i: int in range(最后非空 + 1):
+		var 文本: String = str(片段数组[i]).strip_edges()
 		if 文本.is_empty():
-			continue
-		元素字符串列表.append("[" + _直接转换单元格为字符串(文本, 子类型数组[0]) + "]")
+			元素字符串列表.append("[" + _直接转换单元格为字符串("", 子类型数组[0]) + "]")
+		else:
+			元素字符串列表.append("[" + _直接转换单元格为字符串(文本, 子类型数组[0]) + "]")
 	return "[" + ", ".join(元素字符串列表) + "]"
 
 

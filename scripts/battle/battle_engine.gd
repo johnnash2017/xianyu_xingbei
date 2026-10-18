@@ -1205,6 +1205,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
 	var 选项技能号: Array = []
+	var 选项可用: Array = []
 	var 选项需牌: Array = []
 	var 选项目标: Array = []
 	var 有选项目标: bool = false
@@ -1212,6 +1213,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		args.append(int(o.get("value", 0)))
 		notes.append(str(o.get("label", "")))
 		选项技能号.append(int(o.get("skill_id", 0)))
+		选项可用.append(bool(o.get("enabled", true)))
 		选项需牌.append(int(o.get("need_card", 0)))
 		var 目标: Array = o.get("targets", [])
 		选项目标.append({"ids": 目标})
@@ -1236,6 +1238,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 有「本身就是技能」的选项时才下发（如【蓄力一击】/【气绝崩击】），客户端据此让这些选项悬停弹技能说明
 	if not 选项技能号.is_empty() and 选项技能号.max() > 0:
 		cmd["option_skill_ids"] = 选项技能号
+	# 有不可用选项时才下发（如魔纹不够时的额外翻转档）：客户端据此置灰、点不动
+	if not 选项可用.is_empty() and 选项可用.has(false):
+		cmd["option_enabled"] = 选项可用
 	# 有「选中后要弃牌」的选项时才下发（如【魔纹融合】）：客户端选到该项才放出手牌可选
 	if not 选项需牌.is_empty() and 选项需牌.max() > 0:
 		cmd["option_need_cards"] = 选项需牌

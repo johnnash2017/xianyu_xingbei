@@ -188,8 +188,8 @@ func 跑() -> void:
 	检(int(窗.get("_本地选项阶段")) == 2, "选完「提炼」没有进入本地选星石步骤")
 	检(二级选项 != null and 二级选项.size() >= 2,
 		"二级技能栏没列出星石选项按钮（%d 个）" % (二级选项.size() if 二级选项 != null else -1))
-	检(str((窗.get("TxtHint") as Label).text) == "选择要提炼的星石",
-		"提炼的提示应为「选择要提炼的星石」：%s" % str((窗.get("TxtHint") as Label).text))
+	检(str((窗.get("TxtHint") as RichTextLabel).get_parsed_text()) == "选择要提炼的星石",
+		"提炼的提示应为「选择要提炼的星石」：%s" % str((窗.get("TxtHint") as RichTextLabel).get_parsed_text()))
 	# 「取消」→ 退回上一层「购买/合成/提炼」三选一
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(2)
@@ -222,6 +222,22 @@ func 跑() -> void:
 	await 等帧(2)
 	检(not 说明.可见(), "鼠标离开头像后角色说明没有收掉")
 
+	# 右侧头像：技能说明太长、正上方 / 下方都放不下时，应让到头像左侧，不能盖住头像
+	var 右侧玩家: GPlayer = Data.get_player_by_id(2)
+	if 右侧玩家 != null:
+		右侧玩家.role_id = 4
+	var 右侧面板: 战斗玩家面板 = 窗.get("PlayerStatusMobileR") as 战斗玩家面板
+	右侧面板.mouse_entered.emit()
+	await 等帧(8)
+	var 说明框: Control = 说明.get("框") as Control
+	检(说明.可见(), "鼠标指向右侧头像后没有弹出角色说明")
+	检(not 说明框.get_global_rect().intersects(右侧面板.get_global_rect()),
+		"右侧头像的角色说明盖住了头像：框 %s，头像 %s" % [
+			str(说明框.get_global_rect()), str(右侧面板.get_global_rect())])
+	右侧面板.mouse_exited.emit()
+	await 等帧(2)
+	检(not 说明.可见(), "鼠标离开右侧头像后角色说明没有收掉")
+
 	# ================= 2) 应答询问（被攻击，应战） =================
 	# 拿手牌里那张非暗系攻击牌当「本次攻击的牌」，它自己就是合法的应战牌
 	var 应战询问: Dictionary = {
@@ -234,6 +250,12 @@ func 跑() -> void:
 	Logic.command_received.emit(应战询问)
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 2, "应答询问后状态不是「响应」（=2）：%d" % int(窗.get("_mode")))
+	# 应战提示直接点名要出的系别（本次攻击牌是哪个系，就写哪个系）
+	var 应战系: String = GConst.element_to_chinese(攻击牌[0].element_enum())
+	var 应战提示: String = str(窗.get("_提示原文"))
+	检(应战提示.find("%s系斩" % 应战系) >= 0,
+		"应战提示没有点名系别：%s" % 应战提示)
+	检(应战提示.find("同系斩") < 0, "应战提示还在写「同系斩」：%s" % 应战提示)
 	# 应战同样是「先选牌 → 亮可反击的敌方 → 点目标即出手」
 	手牌区.get_child(0).call("OnCardClick")
 	await 等帧()
@@ -290,12 +312,98 @@ func 跑() -> void:
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 3, "技能询问没有进入应答态（_mode=%s）" % str(窗.get("_mode")))
 	var 技能确定: Button = 窗.get("BtnOK")
-	var 技能提示: Label = 窗.get("TxtHint")
+	var 技能提示: RichTextLabel = 窗.get("TxtHint")
 	检(技能确定.visible and not 技能确定.disabled, "技能询问时「确定」不可点（看不见或压灰就会卡住不攻击）")
-	检(技能提示.text.begins_with("是否发动"), "技能询问的提示没写出来：%s" % 技能提示.text)
+	检(技能提示.text.find("是否发动") < 0, "技能询问还在问是否发动：%s" % 技能提示.text)
+	检(技能提示.text.find("血影狂刀") >= 0, "技能询问没写技能说明：%s" % 技能提示.text)
 	窗.call("_on_ok")
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 0, "回答技能询问后没有回到等待态：%d" % int(窗.get("_mode")))
+
+	# 被动技能被询问时：提示条固定写技能说明（不再只说当前要选什么），切选项也不变
+	var 军神: int = GConst.技能_军神威光
+	var 军神说明: String = "【%s】：%s" % [GConst.skill_name(军神),
+		GConst.skill_desc(军神).replace("\\n", "").replace("\n", "").strip_edges()]
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": 军神, "src_id": Logic.my_player_id, "dst_ids": [], "card_ids": [],
+			"args": [0, 0, GConst.CardSource.Hand, 2, 1, 2], "is_skill": true,
+			"notes": ["回复并脱离", "移除星石加治疗"],
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "被动询问没有进入应答态（_mode=%s）" % str(窗.get("_mode")))
+	检(str(窗.get("_提示原文")) == 军神说明,
+		"被动询问没有固定显示技能说明：%s" % str(窗.get("_提示原文")))
+	窗.call("_选中二级选项", 军神, 1)
+	await 等帧()
+	检(str(窗.get("_提示原文")) == 军神说明,
+		"被动询问切换选项后提示变了：%s" % str(窗.get("_提示原文")))
+
+	# 法术 / 启动点「准备释放」：同样固定显示技能说明，切参数选项不跟着变
+	for 项: Array in [
+		[GConst.技能_偷天换日, "转移宝石", "水晶转宝石"],
+		[GConst.技能_散华轮舞, "消耗水晶", "消耗宝石"],
+	]:
+		var 技能号: int = int(项[0])
+		var 技能说明: String = "【%s】：%s" % [GConst.skill_name(技能号),
+			GConst.skill_desc(技能号).replace("\\n", "").replace("\n", "").strip_edges()]
+		窗.call("_清空技能按钮")
+		窗.call("_选择技能", 技能号, GConst.ActionType.Magic, 0, 0, [], [], 0, 0, 0,
+			GConst.CardSource.Hand, "", 0, 0, [
+				{"text": str(项[1]), "args": [1]},
+				{"text": str(项[2]), "args": [2]},
+			], null, 0)
+		await 等帧()
+		检(int(窗.get("_mode")) == 4, "点「准备释放」后没有进入发动状态（_mode=%s）" % str(窗.get("_mode")))
+		检(str(窗.get("_提示原文")) == 技能说明,
+			"法术/启动准备释放时没写技能说明：%s" % str(窗.get("_提示原文")))
+		检(str(窗.get("_提示原文")).find("\n") < 0 and str(窗.get("_提示原文")).find("\\n") < 0,
+			"技能说明里的换行没有忽略：%s" % str(窗.get("_提示原文")))
+		窗.call("_选中二级选项", 技能号, 1)
+		await 等帧()
+		检(str(窗.get("_提示原文")) == 技能说明,
+			"法术/启动切换选项后提示变了：%s" % str(窗.get("_提示原文")))
+
+	# 指示器里不再允许写死「提示」；被动/法术/启动/响应统一走技能说明
+	for 指示技能号: int in GConst.技能指示器:
+		检(not (GConst.技能指示器[指示技能号] as Dictionary).has("提示"),
+			"技能指示器里还有写死的提示：%s" % GConst.skill_name(指示技能号))
+	for 序号技能号: int in [GConst.技能_兽魂警戒, GConst.技能_逆反居合斩]:
+		检(not (GConst.技能指示器.get(序号技能号, {}) as Dictionary).has("提示序号"),
+			"响应技能还在用提示序号覆盖说明：%s" % GConst.skill_name(序号技能号))
+	# 原先写死过提示的响应技能：询问应直接显示说明列
+	var 贯穿: int = GConst.技能_贯穿射击
+	var 贯穿说明: String = "【%s】：%s" % [GConst.skill_name(贯穿),
+		GConst.skill_desc(贯穿).replace("\\n", "").replace("\n", "").strip_edges()]
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": 贯穿, "src_id": Logic.my_player_id, "dst_ids": [], "card_ids": [],
+			"args": [0, 0, GConst.CardSource.Hand, 0], "is_skill": true,
+		}],
+	})
+	await 等帧(2)
+	检(str(窗.get("_提示原文")) == 贯穿说明,
+		"响应技能没有改回通用说明：%s" % str(窗.get("_提示原文")))
+	窗.call("_清空待选")
+
+	# 额外行动里的技能（原先【赤色一闪】写死了提示）也走通用说明
+	var 赤色: int = GConst.技能_赤色一闪
+	var 赤色说明: String = "【%s】：%s" % [GConst.skill_name(赤色),
+		GConst.skill_desc(赤色).replace("\\n", "").replace("\n", "").strip_edges()]
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.RespondType.AdditionalAction, "src_id": Logic.my_player_id,
+			"args": [赤色], "dst_ids": [赤色],
+		}],
+	})
+	await 等帧(2)
+	检(str(窗.get("_提示原文")) == 赤色说明,
+		"额外行动没有走通用说明：%s" % str(窗.get("_提示原文")))
+	窗.call("_清空待选")
 
 	# 出手特效预制体（scenes/prefabs/effects/）：
 	# 【圣光】是原生 2D 粒子；斩击类与【魔弹】是把 3D 素材经 SubViewport 转成 2D 的预制体

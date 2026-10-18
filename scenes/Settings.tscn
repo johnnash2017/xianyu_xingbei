@@ -4,7 +4,7 @@
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_bg"]
 
-[node name="Settings" type="Control" node_paths=PackedStringArray("总音量滑杆", "音乐滑杆", "音效滑杆", "后台静音按钮", "后台播放按钮", "全角色预览按钮", "退出房间按钮", "关闭按钮", "面板")]
+[node name="Settings" type="Control" node_paths=PackedStringArray("总音量滑杆", "音乐滑杆", "音效滑杆", "技能说明滑杆", "技能说明数值", "后台静音按钮", "后台播放按钮", "全角色预览按钮", "退出房间按钮", "关闭按钮", "面板")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -15,6 +15,8 @@ script = ExtResource("1_settings")
 "总音量滑杆" = NodePath("居中/面板/边距/内容/总音量行/总音量滑杆")
 "音乐滑杆" = NodePath("居中/面板/边距/内容/音乐行/音乐滑杆")
 "音效滑杆" = NodePath("居中/面板/边距/内容/音效行/音效滑杆")
+"技能说明滑杆" = NodePath("居中/面板/边距/内容/技能说明行/技能说明滑杆")
+"技能说明数值" = NodePath("居中/面板/边距/内容/技能说明行/技能说明数值")
 "后台静音按钮" = NodePath("居中/面板/边距/内容/后台行/后台静音按钮")
 "后台播放按钮" = NodePath("居中/面板/边距/内容/后台行/后台播放按钮")
 "全角色预览按钮" = NodePath("居中/面板/边距/内容/全角色预览按钮")
@@ -123,6 +125,35 @@ size_flags_vertical = 4
 max_value = 1.0
 step = 0.01
 value = 0.5
+
+[node name="技能说明行" type="HBoxContainer" parent="居中/面板/边距/内容"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="技能说明标签" type="Label" parent="居中/面板/边距/内容/技能说明行"]
+custom_minimum_size = Vector2(160, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "技能说明尺寸"
+vertical_alignment = 1
+
+[node name="技能说明滑杆" type="HSlider" parent="居中/面板/边距/内容/技能说明行"]
+custom_minimum_size = Vector2(240, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+tooltip_text = "指针停在角色上时弹出的技能说明大小：0% 最小，100% 最大"
+max_value = 1.0
+step = 0.01
+value = 0.15
+
+[node name="技能说明数值" type="Label" parent="居中/面板/边距/内容/技能说明行"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "15%"
+horizontal_alignment = 2
+vertical_alignment = 1
 
 [node name="后台行" type="HBoxContainer" parent="居中/面板/边距/内容"]
 layout_mode = 2

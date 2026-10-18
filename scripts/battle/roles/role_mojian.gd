@@ -394,8 +394,8 @@ func p_magic_skill(action: Dictionary) -> int:
 	if _liu_xing_step == 0:
 		if not _liu_xing_组合选项().is_empty():
 			询问(player.id, AN_YING_LIU_XING, 0, 0, GConst.CardSource.Hand, [
-				{"value": 0, "label": "不移除"},
-				{"value": 1, "label": "扣除 2 个星石（脱离【暗影形态】，+1【宝石】）"},
+				{"value": 0, "label": 提示原文(AN_YING_LIU_XING, 2)},
+				{"value": 1, "label": 提示原文(AN_YING_LIU_XING, 3)},
 			], 0, "", [], true, 0)
 			_liu_xing_step = 1
 			return WAIT
@@ -439,17 +439,18 @@ func p_magic_skill(action: Dictionary) -> int:
 
 
 ## 【暗影流星】第二步的可选项：按我方【战绩区】现有的星石，列出能凑出的两颗组合
-## （value 1＝两水晶 / 2＝一宝石一水晶 / 3＝两宝石）；一颗可行组合都没有时返回空
+## （value 1＝两水晶 / 2＝一宝石一水晶 / 3＝两宝石）；一颗可行组合都没有时返回空。
+## 文案统一走「战绩区 -数量【星石类型】」的消耗写法（如 战绩区 -2【水晶】），界面按词缀表画成图标
 func _liu_xing_组合选项() -> Array:
 	var 宝石: int = engine.team_gem[player.color]
 	var 水晶: int = engine.team_crystal[player.color]
 	var out: Array = []
 	if 水晶 >= 2:
-		out.append({"value": 1, "label": "移除 2【水晶】"})
+		out.append({"value": 1, "label": 提示原文(AN_YING_LIU_XING, 4)})
 	if 宝石 >= 1 and 水晶 >= 1:
-		out.append({"value": 2, "label": "移除 1【宝石】 + 1【水晶】"})
+		out.append({"value": 2, "label": 提示原文(AN_YING_LIU_XING, 5)})
 	if 宝石 >= 2:
-		out.append({"value": 3, "label": "移除 2【宝石】"})
+		out.append({"value": 3, "label": 提示原文(AN_YING_LIU_XING, 6)})
 	return out
 
 

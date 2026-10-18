@@ -117,10 +117,15 @@ func _jun_shen_xuan_xiang_1() -> int:
 ## 整条链（从第 1 段算起）超时＝按选项① 收尾。
 func _jun_shen_wen_xing_shi() -> int:
 	if not engine.has_reply():
-		# 提示里的 {取消说明} 补上「返回上级」：这一段取消＝退回第一段重问。
+		# 这一段要选「移除哪几个星石 + 给谁治疗」：提示条用技能表第 3 条（写明移除的是我方【战绩区】星石），
+		# 选项本身只写 -N【水晶】/-N【宝石】；取消＝退回第一段重问，提示里补一句。
 		# 保留倒计时=true：整条链共用第 1 段那次等待的截止时刻
-		询问(player.id, JUN_SHEN_WEI_GUANG, 0, 1, GConst.CardSource.Hand, _jun_shen_wei_guang_energy_choices(),
-			0, "", [], true, 0, -1, engine.order, -1, {"取消说明": "，点「取消」返回上级"}, 0, 0, true)
+		var 文案: String = 提示(JUN_SHEN_WEI_GUANG, 2).strip_edges()
+		if not 文案.is_empty():
+			文案 += "（点「取消」返回上级）"
+		engine.ask_skill(player.id, JUN_SHEN_WEI_GUANG, 0, 1, GConst.CardSource.Hand,
+			_jun_shen_wei_guang_energy_choices(), 0, "", [], true, 文案,
+			engine.order, 0, 0, true)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -178,14 +183,14 @@ func _jun_shen_crystal_of(组合: int) -> int:
 	return int(数[1]) if 数 != null else -1
 
 
-## 军神威光星石组合的选项文案：两星石三种沿用技能表提示，一星石两种技能表未配，就地给短标签
+## 军神威光星石组合的选项文案：逐条取自技能表提示 4~8（战绩区 -N【…】）。
 func _jun_shen_combo_label(组合: int) -> String:
 	match 组合:
-		1: return 提示(JUN_SHEN_WEI_GUANG, 3)
-		2: return 提示(JUN_SHEN_WEI_GUANG, 4)
-		3: return 提示(JUN_SHEN_WEI_GUANG, 5)
-		4: return "移除 1 个【水晶】"
-		_: return "移除 1 个【宝石】"
+		1: return 提示原文(JUN_SHEN_WEI_GUANG, 3)
+		2: return 提示原文(JUN_SHEN_WEI_GUANG, 4)
+		3: return 提示原文(JUN_SHEN_WEI_GUANG, 5)
+		4: return 提示原文(JUN_SHEN_WEI_GUANG, 6)
+		_: return 提示原文(JUN_SHEN_WEI_GUANG, 7)
 
 
 # ============================================================

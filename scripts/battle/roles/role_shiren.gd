@@ -273,8 +273,10 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 			# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
 			# 顶部提示取技能表序号 0（「对两名目标各 1 点法术伤害」）
 			询问(engine.current_id, JI_ANG_KUANG_XIANG_QU, 0, 0, GConst.CardSource.Hand, [
-				{"value": 1, "label": 提示(JI_ANG_KUANG_XIANG_QU, 0)},
-				{"value": 2, "label": 提示(JI_ANG_KUANG_XIANG_QU, 1), "need_card": 2},
+				{"value": 1, "label": 提示(JI_ANG_KUANG_XIANG_QU, 0),
+					"enabled": _enemies_of(engine.current_id).size() >= 2},
+				{"value": 2, "label": 提示(JI_ANG_KUANG_XIANG_QU, 1), "need_card": 2,
+					"enabled": engine.p(engine.current_id).hand_count() >= 2},
 			], 2, "", [], true, 0, -1, _enemies_of(engine.current_id))
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
@@ -391,23 +393,23 @@ func p_turn_end(_ctx: Dictionary) -> int:
 ## 第 1 项是把战绩区的星石换成当前角色的能量：我方战绩区没有星石、或他能量已满（换了也进不去）
 ## 时都不提供这一项
 func _jiao_xiang_options(color: int) -> Array:
-	var out: Array = []
 	var holder: BattlePlayer = engine.p(engine.current_id)
 	var 能量没满: bool = holder != null and holder.get_energy() < holder.energy_max
-	if engine.team_gem[color] + engine.team_crystal[color] > 0 and 能量没满:
-		out.append({"value": 1, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 1)})
-	out.append({"value": 2, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 2)})
-	return out
+	var 可提炼: bool = engine.team_gem[color] + engine.team_crystal[color] > 0 and 能量没满
+	return [
+		{"value": 1, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 1), "enabled": 可提炼},
+		{"value": 2, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 2)},
+	]
 
 
 ## 胜利交响诗第二步的选项：1＝水晶、2＝宝石（我方战绩区里有那种星石才提供）
 func _stone_options(color: int) -> Array:
-	var out: Array = []
-	if engine.team_crystal[color] > 0:
-		out.append({"value": 1, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 3)})
-	if engine.team_gem[color] > 0:
-		out.append({"value": 2, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 4)})
-	return out
+	return [
+		{"value": 1, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 3),
+			"enabled": engine.team_crystal[color] > 0},
+		{"value": 2, "label": 提示(SHENG_LI_JIAO_XIANG_SHI, 4),
+			"enabled": engine.team_gem[color] > 0},
+	]
 
 
 ## 胜利交响诗第一步：选发动方式。返回 WAIT（等回复）或下一步的 step：

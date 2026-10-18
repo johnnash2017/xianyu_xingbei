@@ -143,8 +143,8 @@ func _di_qiang(ctx: Dictionary) -> int:
 		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
 		var 上限: int = mini(4, player.cross_num)
 		var 选项: Array = []
-		for n: int in range(1, 上限 + 1):
-			选项.append({"value": n, "label": 提示(DI_QIANG, 1, n)})
+		for n: int in range(1, 5):
+			选项.append({"value": n, "label": 提示(DI_QIANG, 1, n), "enabled": n <= 上限})
 		询问(player.id, DI_QIANG, 0, 0, GConst.CardSource.Hand, 选项)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

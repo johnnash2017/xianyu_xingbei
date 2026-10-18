@@ -357,6 +357,8 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.gem = int(pi.get("gem", 0))
 	p.crystal = int(pi.get("crystal", 0))
 	p.tap = bool(pi.get("is_knelt", false))
+	# 血色剑灵【血蔷薇庭院】：独立状态，不是横置形态
+	p.xue_qiang_wei = bool(pi.get("xue_qiang_wei", false))
 	p.ready = bool(pi.get("ready", false))
 	p.leader = int(pi.get("leader", 0)) == 1
 	p.online = bool(pi.get("online", true))

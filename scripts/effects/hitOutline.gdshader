@@ -14,6 +14,10 @@ uniform vec4 outline_color : source_color = vec4(1.0, 0.25, 0.25, 1.0);
 uniform float mix_amount : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 tint : source_color = vec4(1.0, 0.8, 0.1, 1.0);
 uniform float tint_amount : hint_range(0.0, 1.0) = 0.0;
+// 蓝治疗块专用换色（默认关闭）：只动「蓝色填充」，不动深灰描边 / 空格。
+// 由 HealRed.tscn 的材质把强度调成 1、颜色调成想要的红色；想调深浅直接改材质参数。
+uniform vec4 heal_tint : source_color = vec4(1.0, 0.35, 0.35, 1.0);
+uniform float heal_tint_strength : hint_range(0.0, 1.0) = 0.0;
 
 void fragment() {
 	vec4 t = texture(TEXTURE, UV);
@@ -27,6 +31,13 @@ void fragment() {
 		float green_amount = smoothstep(0.10, 0.22, t.g - t.r) * tint_amount * (1.0 - is_outline);
 		float level = max(max(t.r, t.g), t.b);
 		COLOR.rgb = mix(COLOR.rgb, tint.rgb * level * modulate_rgb, green_amount);
+	}
+	// 蓝治疗块换色：蓝通道明显高于红通道的填充像素才动（蓝治疗约 0.55、深灰描边约 0.01、
+	// 空位约 0.01），所以只会有治疗实心格变红，上限空格保持原色
+	if (heal_tint_strength > 0.0) {
+		float blue_amount = smoothstep(0.22, 0.38, t.b - t.r) * heal_tint_strength * (1.0 - is_outline);
+		float level = max(max(t.r, t.g), t.b);
+		COLOR.rgb = mix(COLOR.rgb, heal_tint.rgb * level * modulate_rgb, blue_amount);
 	}
 	// 描边染红（受击）
 	COLOR.rgb = mix(COLOR.rgb, outline_color.rgb * modulate_rgb, is_outline * mix_amount);

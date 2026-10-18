@@ -136,8 +136,14 @@ func p_attack_preview(_ctx: Dictionary) -> int:
 func _si_lie(harm: Dictionary) -> int:
 	if player.gem <= 0:
 		return SUCCESS
+	var dst: int = int(harm.get("dst", -1))
+	if dst < 0:
+		return SUCCESS
 	if not engine.has_reply():
-		询问(player.id, SI_LIE)
+		# 目标就是本次攻击目标：随询问下发 targets，客户端进场自动选中并锁死；
+		# preview_base 是加伤前的原始攻击伤害，客户端据此在头像上画「原伤害划掉 → 新伤害」
+		询问(player.id, SI_LIE, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			0, -1, [dst], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS

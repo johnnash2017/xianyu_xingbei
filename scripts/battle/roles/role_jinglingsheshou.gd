@@ -289,10 +289,10 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 			# 【水晶】可用【宝石】替代支付，与【圣疗】/【剑影】等水晶消耗技能同一口径）
 			# 序号 1：第 0 条提示是「叫别人交牌」用的，这步「怎么发动」读第 1 条
 			var 选项: Array = [{"value": 1, "label": "你摸 1 张、弃 1 张【强制】"}]
-			if player.get_energy() >= 1:
-				# 绑上【宠物强化】的技能号：选项按钮悬停能看它的技能说明，提示条也按它称呼
-				选项.append({"value": 2, "skill_id": CHONG_WU_QIANG_HUA,
-					"label": "消耗 1 能量，改为令 1 名角色摸 1 张、弃 1 张【强制】"})
+			# 【宠物强化】没有能量时也摆出来，但置灰点不动；不要整项藏掉
+			选项.append({"value": 2, "skill_id": CHONG_WU_QIANG_HUA,
+				"label": 提示原文(CHONG_WU_QIANG_HUA, 0),
+				"enabled": player.get_energy() >= 1})
 			询问(player.id, DONG_WU_HUO_BAN, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true, 1)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()

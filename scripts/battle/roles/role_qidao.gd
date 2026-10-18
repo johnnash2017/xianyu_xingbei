@@ -134,8 +134,14 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var effect_card: int = _find_effect_card(attacker, WEI_LI_CI_FU, player.id)
 	if effect_card < 0:
 		return SUCCESS
+	var dst: int = int(harm.get("dst", -1))
+	if dst < 0:
+		return SUCCESS
 	if not engine.has_reply():
-		询问(attacker_id, WEI_LI_CI_FU, 0, 0)
+		# 被攻击的目标固定：随询问下发 targets，客户端自动选中并锁死；
+		# preview_base 是加伤前的原始攻击伤害，头像上画「原伤害划掉 → 新伤害」
+		询问(attacker_id, WEI_LI_CI_FU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			0, -1, [dst], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
 		return WAIT
 	if not take_skill_reply():
 		step = STEP_DONE

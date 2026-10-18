@@ -1,7 +1,7 @@
 extends BattleRole
 ## 冒险家（roleID 12）—— 移植自服务端 role/MaoXian.cpp
 ## 技能：欺诈（响应/攻击技能 1201：弃 2 张同系牌，视为一次除暗系以外的任意系主动攻击，虚牌系别由此决定）、
-##       冒险者天堂（1202：提炼时可移除自身 X 能量额外提炼 X 颗，与基本 2 颗一起分给至多 2 名队友；不占技能栏）、
+##       冒险者天堂（1202：提炼时可移除自身 X 能量额外提炼 X 颗，与基本 1~2 颗一起分给至多 2 名队友；不占技能栏）、
 ##       偷天换日（必杀法术技能 1203：消耗 1 能量，转移对方 1 宝石 或 把我方水晶全部转宝石，额外 +1 攻击或法术行动）
 ## 被动：强运（每发动欺诈 +1 水晶）、地下法则（购买时改为战绩区 +2 宝石）
 
@@ -169,9 +169,9 @@ func _qi_zha(action: Dictionary, virtual_card: int) -> int:
 func _tou_tian_options() -> Array:
 	var out: Array = []
 	if engine.team_gem[1 - player.color] >= 1:
-		out.append({"text": "转移对方 1【宝石】到我方战绩区", "args": [TOU_TIAN_TRANSFER]})
+		out.append({"text": 提示原文(TOU_TIAN_HUAN_RI, 1), "args": [TOU_TIAN_TRANSFER]})
 	if engine.team_crystal[player.color] >= 1:
-		out.append({"text": "我方【水晶】全部转为【宝石】", "args": [TOU_TIAN_CONVERT]})
+		out.append({"text": 提示原文(TOU_TIAN_HUAN_RI, 2), "args": [TOU_TIAN_CONVERT]})
 	return out
 
 
@@ -238,14 +238,14 @@ func _tou_tian_convert() -> int:
 
 
 # ============================================================
-# 冒险者天堂：提炼时把「基本 2 颗 + 额外 X 颗」一起分给至多 2 名队友，
+# 冒险者天堂：提炼时把「基本 1~2 颗 + 额外 X 颗」一起分给至多 2 名队友，
 # 额外提炼的 X 颗每颗代价是移除自身 1 点能量
 # ============================================================
 ## 提炼校验覆写。头位不是 GConst.提炼天堂标记（即常规提炼的 [宝石, 水晶]）＝退回通用校验；否则是【冒险者天堂】：
-##   触发后先按常规提炼定下 2 颗基本量，再选额外提炼数 X，把两份合起来一次性分给队友；
+##   触发后先按常规提炼定下 1~2 颗基本量，再选额外提炼数 X，把两份合起来一次性分给队友；
 ##   args = [标记, 给自己的宝石, 给自己的水晶, 给队友的宝石, 给队友的水晶, 移除的自身能量 X, 目标1颗数, 目标2颗数(可省)]
 ##   dst_ids 与「目标N颗数」一一对应（同队队友、不含自己、互不重复、至多 2 名）；
-##   星石只能分给队友，所以中间那两位恒为 0；各目标颗数之和 ＝ 2 + X（不能多分也不能少分）。
+##   星石只能分给队友，所以中间那两位恒为 0；各目标颗数之和 ＝ 1~2 + X（不能多分也不能少分）。
 func v_extract(args: Array, team_gem: int, team_crystal: int, dst_ids: Array) -> int:
 	if args.is_empty() or int(args[0]) != GConst.提炼天堂标记:
 		return V_NOT_OVERRIDE
@@ -266,9 +266,12 @@ func v_extract(args: Array, team_gem: int, team_crystal: int, dst_ids: Array) ->
 	# 自己那份得装得下（常规提炼口径：自己的能量空位够），否则结算时会被上限夹掉
 	if 自己总数 > player.energy_max - player.get_energy():
 		return GConst.GE_INVALID_ACTION
-	# 本次总数＝基本提炼 2 颗 + 额外提炼 X 颗；没有额外提炼（X＝0）就不该有分配；
-	# 也不许越过单次上限（客户端按同一个数给档位，这里兜底）
-	if x < 1 or 自己总数 + 给队友总数 != 2 + x or 自己总数 + 给队友总数 > GConst.提炼总数上限:
+	# 本次总数＝基本提炼 1~2 颗 + 额外提炼 X 颗（普通提炼的基本量本来就可取 1 颗，故是 X+1 或 X+2）；
+	# 没有额外提炼（X＝0）就不该有分配；也不许越过单次上限（客户端按同一规则给档位，这里兜底）
+	var 总数: int = 自己总数 + 给队友总数
+	if x < 1 or 总数 > GConst.提炼总数上限:
+		return GConst.GE_INVALID_ACTION
+	if 总数 != x + 1 and 总数 != x + 2:
 		return GConst.GE_INVALID_ACTION
 	# 目标必须都是同队队友（不含自己、互不重复），且各目标收到的颗数不超过其剩余空位
 	var 已见: Array[int] = []

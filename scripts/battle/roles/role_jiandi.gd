@@ -168,8 +168,9 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 				# 目标只能是「本次攻击目标」以外的角色（对照原客户端 playerArea->disablePlayerItem(本次目标)）；
 				# 弹窗带「取消」，点「取消」＝这次不发动
 				var 选项: Array = []
-				for n: int in range(1, 上限 + 1):
-					选项.append({"value": n, "label": 提示(JIAN_QI_ZHAN, 1, n)})
+				for n: int in range(1, 4):
+					选项.append({"value": n, "label": 提示(JIAN_QI_ZHAN, 1, n),
+						"enabled": n <= int(player.tokens[0]["num"])})
 				询问(player.id, JIAN_QI_ZHAN, 0, 1, GConst.CardSource.Hand, 选项, 0, "", [], true,
 					0, -1, _可选目标(int(ctx.get("dst", -1))))
 				return WAIT

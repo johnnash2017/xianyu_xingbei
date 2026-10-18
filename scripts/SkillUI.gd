@@ -49,6 +49,8 @@ func _ready() -> void:
 	plateButton.mouse_exited.connect(func() -> void: 离开悬停.emit())
 	# 「凸起」「选中发光」两个材质都按按钮尺寸画，宽度随技能名变化，尺寸一变就刷新
 	plateButton.resized.connect(_刷新材质尺寸)
+	if selectedGlow != null:
+		selectedGlow.resized.connect(_刷新材质尺寸)
 	_刷新材质尺寸()
 	if selectBorder != null:
 		selectBorder.visible = false
@@ -59,6 +61,10 @@ func _刷新材质尺寸() -> void:
 	var 尺寸: Vector2 = plateButton.size
 	(plateButton.material as ShaderMaterial).set_shader_parameter("rect_size", 尺寸)
 	(selectedGlow.material as ShaderMaterial).set_shader_parameter("rect_size", 尺寸)
+	# 选中发光节点在场景里带 0.98 缩放（为了不越出按钮边缘）。它的 pivot 默认在左上角，
+	# 按钮被长文案拉宽后，缩放会把右侧光晕一起往左收，右侧就明显变弱；改成绕中心缩放。
+	if selectedGlow != null:
+		selectedGlow.pivot_offset = selectedGlow.size * 0.5
 
 
 ## 设置这个按钮显示哪个技能
@@ -78,14 +84,13 @@ func 设置技能(id: int) -> void:
 
 
 ## 当成「二级技能栏」里的一个选项按钮：只显示一段文案，底色由调用方给。
-## 选项本身就是个技能时（如【蓄力一击】/【风怒追击】）传 选项技能号 > 0：绑上技能号（容器悬停时
-## 像普通技能按钮那样弹它的技能说明），底色也改用技能自己的类型色，和技能栏里那颗按钮一致；
-## 纯参数选项传 0，用调用方给的统一底色（通用的靛蓝 / 治疗抵挡的蓝色），悬停不弹。
+## 选项本身带技能号时只用于悬停弹它的技能说明，不再按技能类型色染色 ——
+## 二级栏所有选项统一用调用方给的普通底色。
 func 设置选项(文本: String, 底色: Color, 选项技能号: int = 0) -> void:
 	技能号 = 选项技能号
 	# 文案里的词缀关键字（如【宝石】/【水晶】）按词缀表换成图标，和技能名 / 技能说明同一口径
 	var 显示: String = GConst.词缀文本(文本)
-	var 用色: Color = GConst.skill_type_color(选项技能号) if 选项技能号 > 0 else 底色
+	var 用色: Color = 底色
 	(plateButton.material as ShaderMaterial).set_shader_parameter("button_color", 用色)
 	if skillName != null:
 		skillName.text = 显示

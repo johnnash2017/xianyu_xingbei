@@ -1,5 +1,5 @@
 extends Control
-## 设置浮层 —— 调音量（总音量 / 背景音乐 / 效果音）与切出游戏时的声音
+## 设置浮层 —— 调音量（总音量 / 背景音乐 / 效果音）、切出游戏时的声音与技能说明尺寸
 ## （对照参考工程 OptionsUI，只保留当前工程支持的这几项）。
 ## 由 UI.切换设置() 挂到界面层最上面，盖在当前界面之上；点「关闭」收起。
 ## 界面结构全在 scenes/Settings.tscn 里（所见即所得地改），本脚本只绑节点 + 跑逻辑。
@@ -7,6 +7,10 @@ extends Control
 @export var 总音量滑杆: HSlider
 @export var 音乐滑杆: HSlider
 @export var 音效滑杆: HSlider
+## 技能说明尺寸（悬停角色时弹出的技能说明）：0% = 最小，100% = 上限
+@export var 技能说明滑杆: HSlider
+## 技能说明尺寸右侧的百分比
+@export var 技能说明数值: Label
 ## 切出游戏时的声音：这两个勾选框二选一（场景里共用一个 ButtonGroup），对应 Audio.后台静音
 @export var 后台静音按钮: CheckBox
 @export var 后台播放按钮: CheckBox
@@ -18,6 +22,9 @@ extends Control
 ## 设置面板本体：开全角色预览时先把它藏起来（预览那层自带半透明遮罩，留着会从底下透出来）
 @export var 面板: PanelContainer
 
+## 技能说明尺寸档位（0~1）：拖动中只改内存，落盘统一在 _exit_tree
+var _技能说明档: float = 说明提示框.默认角色说明缩放档
+
 
 func _ready() -> void:
 	# 先按当前音量摆好滑杆，再挂监听（否则初始化赋值会立刻触发一次回调）
@@ -27,6 +34,13 @@ func _ready() -> void:
 	总音量滑杆.value_changed.connect(Audio.设置总音量)
 	音乐滑杆.value_changed.connect(Audio.设置音乐音量)
 	音效滑杆.value_changed.connect(Audio.设置音效音量)
+	# 技能说明尺寸：0% = 最小（0.6156）、100% = 上限（1.3）；没存过就默认 15%
+	_技能说明档 = clampf(float(Cfg.get_setting(
+		说明提示框.设置键_角色说明缩放, 说明提示框.默认角色说明缩放档)), 0.0, 1.0)
+	说明提示框.设置角色说明缩放档(_技能说明档)
+	技能说明滑杆.value = _技能说明档
+	_刷新技能说明数值()
+	技能说明滑杆.value_changed.connect(_on_技能说明尺寸_changed)
 	# 切出游戏时的声音：勾选框按当前设置摆好，再挂监听。
 	# 监听只挂「后台静音」这一个：两个勾选框共用一个 ButtonGroup，点「后台播放」时它会被自动弹起、
 	# 一样走到这里（值 = false），不用再挂一遍
@@ -54,6 +68,18 @@ func _on_exit_room_pressed() -> void:
 	UI.goto_lobby()
 
 
-## 收起时把音量与「后台静音」写进本地配置（拖动过程只实时生效，不频繁落盘）
+## 技能说明尺寸滑杆：拖动只改内存并更新百分比，落盘统一在 _exit_tree（与音量一致）
+func _on_技能说明尺寸_changed(v: float) -> void:
+	_技能说明档 = clampf(v, 0.0, 1.0)
+	说明提示框.设置角色说明缩放档(_技能说明档)
+	_刷新技能说明数值()
+
+
+func _刷新技能说明数值() -> void:
+	技能说明数值.text = "%d%%" % int(round(_技能说明档 * 100.0))
+
+
+## 收起时把音量、技能说明尺寸与「后台静音」写进本地配置（拖动过程只实时生效，不频繁落盘）
 func _exit_tree() -> void:
 	Audio.保存声音设置()
+	Cfg.set_setting(说明提示框.设置键_角色说明缩放, _技能说明档)

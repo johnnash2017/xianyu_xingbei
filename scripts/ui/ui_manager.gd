@@ -9,7 +9,7 @@ const SCENE_LOBBY: String = "res://scenes/lobby.tscn"
 const SCENE_READY_ROOM: String = "res://scenes/ReadyRoom.tscn"
 ## 对局进行中用参考工程搬来的那套：res://scenes/BattleUIMobile.tscn
 const SCENE_BATTLE_MOBILE: String = "res://scenes/BattleUIMobile.tscn"
-## 设置浮层（背景音乐 / 效果音音量）：盖在当前界面之上，各界面都能从设置按钮打开
+## 设置浮层（背景音乐 / 效果音音量、技能说明尺寸）：盖在当前界面之上，各界面都能从设置按钮打开
 const SCENE_SETTINGS: String = "res://scenes/Settings.tscn"
 ## 选将弹层（叠在当前界面上，不参与 goto 切换）
 const SCENE_ROLE_PICK: String = "res://scenes/role_pick.tscn"
@@ -179,7 +179,7 @@ func 切换设置() -> void:
 	界面层.add_child(_设置浮层)
 
 
-## 收起设置浮层（浮层自己在 _exit_tree 里把音量落盘）
+## 收起设置浮层（浮层自己在 _exit_tree 里把音量与技能说明尺寸落盘）
 func 关闭设置() -> void:
 	if _设置浮层 != null and is_instance_valid(_设置浮层):
 		_设置浮层.queue_free()

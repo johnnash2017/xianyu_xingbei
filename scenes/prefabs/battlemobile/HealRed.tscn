@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://bkcvpdhp6pkd2"]
+
+[ext_resource type="Texture2D" uid="uid://bd1snln220kon" path="res://assets/textures/battle/heal.png" id="1_healpng"]
+[ext_resource type="Material" uid="uid://pmg40y0p0873" path="res://scenes/prefabs/battlemobile/HealRedMaterial.tres" id="2_healredmaterial"]
+
+[node name="HealRed" type="TextureRect" unique_id=1247399007]
+material = ExtResource("2_healredmaterial")
+custom_minimum_size = Vector2(33, 14)
+offset_right = 33.0
+offset_bottom = 14.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+texture = ExtResource("1_healpng")
+expand_mode = 1

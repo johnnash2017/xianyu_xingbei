@@ -1,0 +1,12 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://pmg40y0p0873"]
+
+[ext_resource type="Shader" uid="uid://h0y2g6pagmmj" path="res://scripts/effects/hitOutline.gdshader" id="1_hitoutline"]
+
+[resource]
+shader = ExtResource("1_hitoutline")
+shader_parameter/outline_color = Color(1, 0.25, 0.25, 1)
+shader_parameter/mix_amount = 0.0
+shader_parameter/tint = Color(1, 0.8, 0.1, 1)
+shader_parameter/tint_amount = 0.0
+shader_parameter/heal_tint = Color(0.8666667, 0, 0, 1)
+shader_parameter/heal_tint_strength = 1.0

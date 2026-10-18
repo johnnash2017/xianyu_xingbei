@@ -37,6 +37,9 @@ var tap: bool:
 		_形态 = v
 		if engine != null:
 			engine.形态变更(self, v, 变了)
+## 血色剑灵【血蔷薇庭院】是否在场上：这是独立状态，不是「横置形态」。
+## 只影响【治疗】抵御与【血染蔷薇】的群伤；客户端在状态图标区显示对应图标。
+var xue_qiang_wei: bool = false
 var tokens: Array = [null, null, null]      # [{name, max, num}]
 
 var pre_id: int = -1
@@ -540,6 +543,8 @@ func to_proto(viewer_id: int) -> Dictionary:
 		# 让玩家看见自己最多能放几张；0 表示这个角色根本没有盖牌区
 		"max_covered": cover_cards_max,
 		"is_knelt": tap,
+		# 血色剑灵【血蔷薇庭院】：独立状态，客户端画状态图标（不是形态名）
+		"xue_qiang_wei": xue_qiang_wei,
 		"max_hand": hand_cards_max,
 		"nickname": player_name,
 		"ready": ready,

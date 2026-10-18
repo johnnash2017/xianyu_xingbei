@@ -36,10 +36,12 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	var out: Array = []
 	# 舞动：args[0]=1 摸 1 张；否则弃 1 张（弃牌才需选 1 张手牌）。
-	# 手牌为空时不给「弃 1 张」这个选项 —— 否则点了也不产生代价，等于白拿一次技能
-	var 舞动选项: Array = [{"text": 提示(WU_DONG, 0), "args": [1]}]
-	if not player.hand_cards.is_empty():
-		舞动选项.append({"text": 提示(WU_DONG, 1), "args": [0], "need_card": 1})
+	# 手牌为空时「弃 1 张」也照摆出来，置灰点不动。
+	var 舞动选项: Array = [
+		{"text": 提示(WU_DONG, 0), "args": [1]},
+		{"text": 提示(WU_DONG, 1), "args": [0], "need_card": 1,
+			"enabled": not player.hand_cards.is_empty()},
+	]
 	out.append({"type": GConst.ActionType.MagicSkill, "id": WU_DONG, "need_card": 0, "need_target": 0,
 		"arg_choices": 舞动选项})
 	out.append({"type": GConst.ActionType.MagicSkill, "id": YONG_HUA, "need_card": 0, "need_target": 0,
@@ -58,19 +60,15 @@ func available_skills() -> Array:
 ## ③对自己造成 4 点法术伤害并移除 1 个【蛹】（该伤害可被治疗抵御）
 ## ②③ 都要移除【蛹】，没有【蛹】就整项不发（服务端 v_magic_skill 同样驳回）
 func _dao_ni_choices() -> Array:
+	var 有蛹: bool = int(player.tokens[0]["num"]) >= 1
 	var out: Array = [
 		{"text": 提示(DAO_NI_ZHI_DIE, 0), "args": [1], "need_card": 2, "need_target": 1},
-	]
-	if int(player.tokens[0]["num"]) < 1:
-		return out
-	# 盖牌区不足 2 个【茧】时不给「移除 2 个【茧】」这一项（给了也点不出 2 张）
-	if player.cover_cards.size() >= 2:
-		out.append({
-			"text": 提示(DAO_NI_ZHI_DIE, 1), "args": [2],
+		{"text": 提示(DAO_NI_ZHI_DIE, 1), "args": [2],
 			# 一步选 4 张：2 张手牌 + 盖牌区里的 2 张【茧】，所以来源是「手牌+盖牌」、其中 2 张必须是盖牌
 			"need_card": 4, "card_source": GConst.CardSource.HandOrCover, "cover_need": 2,
-		})
-	out.append({"text": 提示(DAO_NI_ZHI_DIE, 2), "args": [0], "need_card": 2})
+			"enabled": 有蛹 and player.cover_cards.size() >= 2},
+		{"text": 提示(DAO_NI_ZHI_DIE, 2), "args": [0], "need_card": 2, "enabled": 有蛹},
+	]
 	return out
 
 
