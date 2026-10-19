@@ -250,12 +250,29 @@ func 跑() -> void:
 	Logic.command_received.emit(应战询问)
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 2, "应答询问后状态不是「响应」（=2）：%d" % int(窗.get("_mode")))
-	# 应战提示直接点名要出的系别（本次攻击牌是哪个系，就写哪个系）
+	# 应战提示点名「X或暗系斩」，并给系别字上色（雷/地/风/火/水/暗）
 	var 应战系: String = GConst.element_to_chinese(攻击牌[0].element_enum())
 	var 应战提示: String = str(窗.get("_提示原文"))
-	检(应战提示.find("%s系斩" % 应战系) >= 0,
-		"应战提示没有点名系别：%s" % 应战提示)
+	var 应战片段: String = "%s或%s系斩" % [
+		str(窗.call("_系别着色", 应战系)), str(窗.call("_系别着色", "暗")),
+	]
+	检(应战提示.find(应战片段) >= 0,
+		"应战提示没有点名系别 / 暗系或没有上色：%s" % 应战提示)
 	检(应战提示.find("同系斩") < 0, "应战提示还在写「同系斩」：%s" % 应战提示)
+
+	# 战斗日志里的斩名也按系别上色（与应战提示同一套配色）
+	for 系: String in ["地", "水", "风", "火", "雷", "暗"]:
+		var 斩名: String = ""
+		for 卡: GCard in Data.card_db:
+			if 卡.is_attack() and GConst.element_to_chinese(卡.element_enum()) == 系:
+				斩名 = 卡.card_name
+				break
+		if 斩名.is_empty():
+			continue
+		var 日志文: String = str(窗.call("_日志着色", "打出 " + 斩名))
+		var 名片段: String = "[color=%s]%s[/color]" % [str(窗.call("_系别颜色", 系)), 斩名]
+		检(日志文.find(名片段) >= 0,
+			"战斗日志里的 %s 没有按系别上色：%s" % [斩名, 日志文])
 	# 应战同样是「先选牌 → 亮可反击的敌方 → 点目标即出手」
 	手牌区.get_child(0).call("OnCardClick")
 	await 等帧()

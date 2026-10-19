@@ -118,6 +118,8 @@ var _当前状态: Variant = null
 ## 「等待行动 / 等待攻击行动 / 等待法术行动」这类头像文案
 var _pending_action_type: int = 0
 var _reply: Dictionary = {}
+## 客户端攒操作时预置的应答：由角色在询问别人之前写入，轮到该询问时直接取用、不再等客户端
+var _prepared_replies: Dictionary = {}
 var _has_reply: bool = false
 ## 当前等待的截止时刻（Time.get_ticks_msec() 口径，0 表示当前没有在等）
 var wait_deadline_ms: int = 0
@@ -810,6 +812,17 @@ func take_reply() -> Dictionary:
 	return r
 
 
+## 客户端攒操作：角色把「下一次应战询问」的答复先放这里，轮到该询问时直接取用
+func prepare_reply(pid: int, r: Dictionary) -> void:
+	_prepared_replies[pid] = r
+
+
+func take_prepared_reply(pid: int) -> Dictionary:
+	var r: Dictionary = _prepared_replies.get(pid, {})
+	_prepared_replies.erase(pid)
+	return r
+
+
 ## 清掉等待 / 回复 / 分步应答 / 查询链倒计时等交互态：终局与新对局开始时统一收尾，
 ## 避免残留在这些字段里的回复被后续流程（或下一局复用同一引擎时）误用
 func _清空等待() -> void:
@@ -819,6 +832,7 @@ func _清空等待() -> void:
 	_当前状态 = null
 	_has_reply = false
 	_reply = {}
+	_prepared_replies.clear()
 	_pending_partial = {}
 	wait_deadline_ms = 0
 	wait_total_ms = 0
@@ -1201,7 +1215,9 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 预览目标 非空时随询问下发（preview_ids）：现算头像提示要画在哪几名角色身上，
 ## 当它与「可点目标（targets）」不是同一批时用（如【英灵召唤】伤害 +1 要写在本次攻击目标头像上）
 ## 保留倒计时=true 时沿用这条链当前那次等待的截止时刻（见 wait_for），用于同一条链上的后续询问
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = []) -> void:
+## can_light=false 时随询问下发 can_light=false（如【阴阳转换】：这次攻击不能用【圣光】抵挡，
+## 客户端据此把【圣光】置灰；默认 true 时不下发，客户端按可用处理）
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true) -> void:
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
 	var 选项技能号: Array = []
@@ -1257,6 +1273,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 头像提示画在这些角色身上（非空时用它，否则沿用 dst_ids）：见 ask_skill 顶部「预览目标」
 	if not 预览目标.is_empty():
 		cmd["preview_ids"] = 预览目标
+	# 本次攻击不能用【圣光】抵挡时才下发（客户端据此把【圣光】置灰）
+	if not can_light:
+		cmd["can_light"] = false
 	# 询问别人的场合（如请人交牌）：下发目标侧文案，客户端优先显示它
 	if not ask_text.is_empty():
 		cmd["ask_text"] = ask_text
@@ -2161,8 +2180,11 @@ class SAttackedAsk:
 		if hit_rate == GConst.HitRate.NoMiss:
 			e.push(STimeline2Hit.new(harm))
 			return BattleEngine.CONTINUE
-		if e.has_reply():
-			var r: Dictionary = e.take_reply()
+		# 客户端攒操作的预置应战答复优先；没有预置才等正常回复
+		var r: Dictionary = e.take_prepared_reply(defender.id)
+		if r.is_empty() and e.has_reply():
+			r = e.take_reply()
+		if not r.is_empty():
 			var args: Array = r.get("args", [])
 			var choice: int = int(args[0]) if args.size() > 0 else GConst.Reattack.GiveUp
 			var cards: Array = r.get("card_ids", [])

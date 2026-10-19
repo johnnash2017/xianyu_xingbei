@@ -7,8 +7,8 @@ extends BattleRole
 ##       生命结界（3304，法术：耗 1 能量 → +1 鬼火，二选一：
 ##                 ① 目标队友 +1 宝石 +1 治疗，自己受 X 点法术伤害；
 ##                 ② 仅式神形态：弃 2 张同命格牌退出形态，目标队友弃 1 张牌）、
-##       式神转换（3305，与阴阳转换同时发动：+1 鬼火）、
-##       阴阳转换（3306，响应：应战并把本次应战伤害改为自己的鬼火数）
+##       式神转换（3305，与阴阳转换同时发动：摸 1 张牌并额外 +1 鬼火）、
+##       阴阳转换（3306，响应：应战后 +1 鬼火；仅式神形态下把这次反击伤害改为鬼火数并退出形态）
 ##
 ## 受限说明：
 ## - 式神咒束（3301）的「代替队友应战」改由引擎 BattlePlayer.reattacker 实现：把自己的 id
@@ -35,6 +35,10 @@ var _shi_shen_pending: bool = false
 var _apply_yin_yang_after_use: bool = false
 ## 式神咒束已经宣告、还没选应战牌：选牌成功后才扣战绩区能量
 var _shi_shen_zhou_shu_pending: bool = false
+## 式神咒束要保护的目标队友（宣告时记下，真正打出应战牌时才发技能通知）
+var _shi_shen_zhou_shu_dst: int = -1
+## 客户端攒操作时随 3301 应答带上来的 3306 选择（0＝没带，仍走普通询问）
+var _yin_yang_choice: int = 0
 
 
 func available_skills() -> Array:
@@ -107,37 +111,86 @@ func p_attacked(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 阴阳转换：只选要不要发动；应战牌由引擎紧接着的应战询问选，只选一次
+## 阴阳转换（3306）：客户端把效果、应战牌、反击目标放在同一条应答里一起提交；
+## 这里把牌 / 目标预置给引擎紧接着的应战询问，玩家不必再被问第二次。
+## 式神咒束那条链会在 3301 的应答里带上 3306 的选择（_yin_yang_choice），此时直接结算。
 func _yin_yang_zhuan_huan(ctx: Dictionary) -> int:
 	if int(ctx.get("hit_rate", GConst.HitRate.Normal)) != GConst.HitRate.Normal:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
+	if _yin_yang_choice > 0:
+		var 已选: int = _yin_yang_choice
+		_yin_yang_choice = 0
+		step = STEP_DONE
+		_应用阴阳转换选择(已选)
+		return SUCCESS
+	var atk_id: int = int(ctx.get("card_id", -1))
+	# 即便手里没有同系 / 同命格牌，也照样询问（三档全部置灰）：
+	# 不询问会让对手从「没弹询问」直接推断出阴阳师手里没有对应牌。
+	var 可阴阳: bool = _has_same_property_attack(atk_id)
+	# 【圣光】也能算「仅应战」：手里没有同系攻击牌、但能用圣光抵挡时，仍要给玩家这一档，
+	# 否则他只能先取消、再等引擎的普通应战询问，又变回两步操作。
+	var 可圣光: bool = bool(ctx.get("can_light", true)) and _has_holy_light()
+	var 有基础应战: bool = _has_base_reattack_card(atk_id) or 可圣光
 	if not engine.has_reply():
-		# 选项值：1=仅应战 / 2=阴阳转换 / 3=阴阳转换+式神转换。
-		# need_card=0：这里不选牌，避免和引擎随后的应战选牌重复
-		询问(player.id, YIN_YANG_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand, [
-			{"value": 1, "label": "仅应战"},
-			{"value": 2, "label": "应战并发动阴阳转换（伤害改为鬼火数）"},
-			{"value": 3, "label": "应战并发动阴阳转换，再发动式神转换（摸 1 张，+2 鬼火）"},
-		])
+		# 三档始终都摆出来：本次用不了的那档由 enabled=false 置灰（对照其他技能的 option_enabled），
+		# 不能直接省略——否则玩家会以为这套技能少了一档。
+		询问(player.id, YIN_YANG_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand,
+			_阴阳转换选项(有基础应战, 可阴阳),
+			0, "", [], true, 0, -1, [], -1, {},
+			atk_id, 0, false, [int(ctx.get("src", -1))], bool(ctx.get("can_light", true)))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
+	# 客户端攒操作：应战牌 / 反击目标随 3306 的应答一起上来，先预置给引擎紧接着的应战询问，
+	# 这样玩家只选一次（点效果 → 选牌选目标 → 确定），不再被第二次询问打断。
+	_预置应战答复(r)
 	var args: Array = r.get("args", [])
 	var choice: int = int(args[0]) if not args.is_empty() else 0
+	# 自己被攻击时取消（或超时）＝放弃整次应战：仅应战已经在选项里了，
+	# 不需要再回退到普通应战询问让玩家取消第二次。预置一个「放弃」答复给引擎直接消费。
+	# 替队友应战的取消不这样做——那时回退普通询问还要继续替队友挡。
+	if choice <= 0 and int(ctx.get("dst", -1)) == player.id:
+		engine.prepare_reply(player.id, {
+			"respond_id": GConst.RespondType.ReplyAttack,
+			"args": [GConst.Reattack.GiveUp],
+			"card_ids": [],
+			"dst_ids": [],
+		})
+		return SUCCESS
+	# 选择 1（仅应战）不发动阴阳转换；替队友应战时的取消也走到这里（回退普通询问继续替队友挡）
 	if choice <= 1:
 		return SUCCESS
 	# 先记下选择；应战牌选好、真正打出后再加鬼火 / 摸牌 / 退出形态
-	_yin_yang_pending = true
-	_shi_shen_pending = choice > 2
-	engine._broadcast_game()
+	_应用阴阳转换选择(choice)
 	return SUCCESS
+
+
+## 3306 / 3301 共用的三档选项：仅应战 / 阴阳转换 / 阴阳转换+式神转换。
+## 本次用不了的那档也返回（enabled=false），客户端按其他技能的 option_enabled 置灰显示。
+func _阴阳转换选项(有基础应战: bool, 可阴阳: bool) -> Array:
+	return [
+		{"value": 1, "label": "仅应战", "enabled": 有基础应战},
+		{"value": 2, "label": "发动阴阳转换并应战（+1 鬼火）", "enabled": 可阴阳},
+		{"value": 3, "label": "发动阴阳转换，再发动式神转换并应战（摸 1 张，+2 鬼火）", "enabled": 可阴阳},
+	]
+
+
+## 记录本次 3306 的选择；真正 +鬼火 / 摸牌 / 改伤害在应战牌打出后结算（_结算阴阳转换后效）。
+func _应用阴阳转换选择(选择: int) -> void:
+	if 选择 >= 2:
+		_yin_yang_pending = true
+		_shi_shen_pending = 选择 > 2
+		engine._broadcast_game()
 
 
 ## 应战牌已经打出：按“先应战，再加鬼火，再退出形态”的顺序结算
 func _结算阴阳转换后效(harm: Dictionary) -> void:
 	notice_skill(YIN_YANG_ZHUAN_HUAN, [player.id])
+	# 先记下应战时是否处于式神形态：只有式神形态下才是「本次攻击伤害为 X（鬼火数）」，
+	# 并且才「重置脱离式神形态」；普通形态只加鬼火，不改伤害、也不退出形态。
+	var 在式神形态: bool = player.tap
 	_set_gui_huo(_gui_huo() + 1)
 	if _shi_shen_pending:
 		notice_skill(SHI_SHEN_ZHUAN_HUAN, [player.id])
@@ -145,14 +198,49 @@ func _结算阴阳转换后效(harm: Dictionary) -> void:
 		# 不走 push_draw 的排队，避免被后面的应战 / 伤害流程压住
 		engine.draw(player.id, 1)
 		_set_gui_huo(_gui_huo() + 1)
-	harm["point"] = _gui_huo()
-	if player.tap:
+	if 在式神形态:
+		harm["point"] = _gui_huo()
 		player.tap = false
 	_apply_yin_yang_after_use = false
 	_yin_yang_pending = false
 	_shi_shen_pending = false
 	_shi_shen_zhou_shu_pending = false
+	_shi_shen_zhou_shu_dst = -1
+	_yin_yang_choice = 0
 	engine._broadcast_game()
+
+
+## 把客户端随 3306 应答一起带上来的应战牌 / 反击目标，预置成引擎下一次应战询问的答复。
+## 带【圣光】时按「抵挡」提交（不需要反击目标）；带攻击牌时按「应战」提交，必须有反击目标。
+func _预置应战答复(r: Dictionary) -> void:
+	var 牌组: Array = r.get("card_ids", [])
+	if 牌组.is_empty():
+		return
+	var 牌号: int = int(牌组[0])
+	var 牌: GCard = Data.get_card(牌号)
+	if 牌 == null:
+		return
+	var 打法: int = GConst.Reattack.Block if 牌.card_name_enum() == GConst.CardName.HolyLight \
+			else GConst.Reattack.Attack
+	var 目标组: Array = r.get("dst_ids", [])
+	var 目标: Array = [int(目标组[0])] if not 目标组.is_empty() else []
+	if 打法 == GConst.Reattack.Attack and 目标.is_empty():
+		return
+	engine.prepare_reply(player.id, {
+		"respond_id": GConst.RespondType.ReplyAttack,
+		"args": [打法],
+		"card_ids": [牌号],
+		"dst_ids": 目标,
+	})
+
+
+## 手里有没有【圣光】（可以作抵挡）
+func _has_holy_light() -> bool:
+	for cid: int in player.hand_cards:
+		var card: GCard = Data.get_card(cid)
+		if card != null and card.card_name_enum() == GConst.CardName.HolyLight:
+			return true
+	return false
 
 
 # ============================================================
@@ -190,7 +278,9 @@ func p_reattack(ctx: Dictionary) -> int:
 	if _shi_shen_zhou_shu_pending:
 		if _can_pay_shi_shen_cost():
 			_pay_shi_shen_cost()
+			notice_skill(SHI_SHEN_ZHOU_SHU, [_shi_shen_zhou_shu_dst] if _shi_shen_zhou_shu_dst >= 0 else [])
 		_shi_shen_zhou_shu_pending = false
+		_shi_shen_zhou_shu_dst = -1
 	var c: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if _yin_yang_pending:
 		# 光系牌在 v_reattack 已被挡掉；真走到这里就按普通格挡处理，不发动阴阳转换
@@ -228,12 +318,15 @@ func _清空应战待办() -> void:
 	_shi_shen_pending = false
 	_apply_yin_yang_after_use = false
 	_shi_shen_zhou_shu_pending = false
+	_shi_shen_zhou_shu_dst = -1
+	_yin_yang_choice = 0
 
 
 # ============================================================
 # 攻击应战阶段：式神咒束（3301）
 # 对应服务端 YinYang::p_attacked 的式神咒束分支 + ShiShenZhouShu：
-# 队友被主动攻击时，由自己代替其应战；随后再问阴阳转换
+# 队友被主动攻击时，由自己代替其应战；三档效果（仅应战 / 阴阳转换 / 阴阳转换+式神转换）
+# 与直接 3306 共用选项和后续结算。
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
@@ -247,19 +340,25 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst == null or dst.color != player.color:
 		return SUCCESS
-	# 须处于式神形态，且命中率为普通；自身要有能打出的应战牌
+	# 须处于式神形态，且命中率为普通。即便手里没有合法应战牌也照样询问（三档全部置灰），
+	# 避免对手从「没弹询问」推断出阴阳师手里没有对应牌。
+	# 替队友应战时不能用【圣光】帮队友抵挡，所以「仅应战」只认普通攻击牌 / 同命格攻击牌。
 	if not player.tap:
 		return SUCCESS
 	if int(ctx.get("hit_rate", GConst.HitRate.Normal)) != GConst.HitRate.Normal:
 		return SUCCESS
-	if not _has_legal_reattack_card(int(ctx.get("card_id", -1))):
-		return SUCCESS
+	var atk_id: int = int(ctx.get("card_id", -1))
 	if not _can_pay_shi_shen_cost():
 		return SUCCESS
 	if not engine.has_reply():
-		# 只问「要不要用式神咒束」：没有选项，确定＝发动、取消＝不发动；
-		# 阴阳转换 / 式神转换由紧接着的 p_attacked 再问
-		询问(player.id, SHI_SHEN_ZHOU_SHU, 0, 0, GConst.CardSource.Hand, [])
+		# 和直接 3306 用同一张三档选项：仅应战 / 阴阳转换 / 阴阳转换+式神转换。
+		# 用不了的档同样置灰显示；同时把本次攻击牌和攻击者带给客户端。
+		# 可圣光传 false：3301 这条不能用圣光抵挡，客户端据此把【圣光】置灰。
+		询问(player.id, SHI_SHEN_ZHOU_SHU, 0, 0, GConst.CardSource.Hand,
+			_阴阳转换选项(_has_base_reattack_card(atk_id),
+				_has_same_property_attack(atk_id)),
+			0, "", [], true, 0, -1, [], -1, {},
+			atk_id, 0, false, [int(ctx.get("src", -1))], false)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -267,28 +366,38 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if choice <= 0:
 		step = STEP_DONE
 		return SUCCESS
-	notice_skill(SHI_SHEN_ZHOU_SHU, [dst.id])
-	# 由自己代替队友应战；代价等应战牌选好后再扣（见 p_reattack）
+	# 客户端攒操作时 args[1] 是 3306 已经选好的效果；没带就仍由 p_attacked 再问
+	var 阴阳选择: int = int(args[1]) if args.size() > 1 else 0
+	if 阴阳选择 > 0:
+		_yin_yang_choice = 阴阳选择
+	# 客户端把应战牌和反击目标也一起攒上来了：与直接 3306 共用同一套预置逻辑
+	_预置应战答复(r)
+	# 由自己代替队友应战；技能通知与代价都等应战牌真正打出后再结算（见 p_reattack）
 	dst.reattacker = player.id
 	_shi_shen_zhou_shu_pending = true
+	_shi_shen_zhou_shu_dst = dst.id
 	# 让同一回合的 p_attacked 还能接着问阴阳转换
 	step = 0
 	engine._broadcast_game()
 	return SUCCESS
 
 
-## 手牌里有没有能应付这次攻击的牌：普通同系应战，或式神形态下同命格应战
-func _has_legal_reattack_card(attack_card_id: int) -> bool:
-	var atk: GCard = Data.get_card(attack_card_id)
-	if atk == null:
-		return false
+## 普通应战牌（同系 / 暗系）是否存在
+func _has_base_reattack_card(attack_card_id: int) -> bool:
 	for cid: int in player.hand_cards:
 		if player.base_v_reattack(cid, attack_card_id) == GConst.GE_SUCCESS:
 			return true
+	return false
+
+
+## 同命格攻击牌是否存在（阴阳转换用；光系不算，暗系攻击本身不可应战）
+func _has_same_property_attack(attack_card_id: int) -> bool:
+	var atk: GCard = Data.get_card(attack_card_id)
+	if atk == null or atk.element_enum() == GConst.CardElement.Darkness:
+		return false
+	for cid: int in player.hand_cards:
 		var card: GCard = Data.get_card(cid)
 		if card == null or not card.is_attack():
-			continue
-		if atk.element_enum() == GConst.CardElement.Darkness:
 			continue
 		if card.element_enum() != GConst.CardElement.Light and card.property_enum() == atk.property_enum():
 			return true
@@ -396,6 +505,8 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_ACTION
 			if cards.size() != 2:
 				return GConst.GE_INVALID_CARDID
+			if int(cards[0]) == int(cards[1]):
+				return GConst.GE_INVALID_CARDID
 			var c0: GCard = Data.get_card(int(cards[0]))
 			var c1: GCard = Data.get_card(int(cards[1]))
 			if c0 == null or c1 == null:
@@ -417,6 +528,8 @@ func v_magic_skill(action: Dictionary) -> int:
 			var opt: int = int(args[0]) if not args.is_empty() else 1
 			if opt == 2:
 				if not player.tap or cards.size() != 2:
+					return GConst.GE_INVALID_CARDID
+				if int(cards[0]) == int(cards[1]):
 					return GConst.GE_INVALID_CARDID
 				var a0: GCard = Data.get_card(int(cards[0]))
 				var a1: GCard = Data.get_card(int(cards[1]))
@@ -454,6 +567,7 @@ func _shi_shen_jiang_lin(action: Dictionary) -> int:
 	})
 	engine.take_from_hand(player.id, use_cards, true)
 	engine.to_discard(use_cards)
+	engine._log_discard(player.id, use_cards)
 	engine._broadcast_game()
 	return URGENT
 

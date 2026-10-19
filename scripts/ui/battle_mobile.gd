@@ -229,11 +229,30 @@ const 日志标签色: Dictionary = {
 ## 日志正文的颜色（白）
 const 日志正文色: String = "#FFFFFF"
 ## 简洁模式保留的日志类别：行动（出牌 / 发动技能）、回合（轮到谁）、士气（队伍士气升降）、
-## 手牌（手牌数量与上限变化），其余类别一律不进简洁缓冲
+## 手牌（手牌数量与上限变化）、指示物（鬼火 / 兽魂等增减），其余类别一律不进简洁缓冲
 const 简洁日志类别: Array[String] = ["行动", "回合", "士气", "手牌", "指示物"]
 ## 日志正文里玩家名（角色名[玩家名]）与卡名的着色：正文仍以白字为底，只把专名挑出来上色
 const 日志玩家色: String = "#FFD98A"
 const 日志卡牌色: String = "#8FD3FF"
+## 五派系（命格）配色：血浅红、咏浅橙、技浅绿、圣浅蓝、幻浅紫。
+## 只用于「·派系」后缀与阴阳转换的应战提示，不改变卡面/角色等其他位置。
+const 派系色: Dictionary = {
+	"血": "#FF9A9E",
+	"咏": "#FFC18A",
+	"技": "#9BE7A2",
+	"圣": "#9FD8FF",
+	"幻": "#C9A7FF",
+}
+## 五系 + 暗系的配色：应战提示里的「X或暗系斩」与战斗日志里的斩名共用。
+## 雷淡紫、地淡土黄、风淡绿、火淡红、水淡蓝、暗暗紫。
+const 系别色: Dictionary = {
+	"雷": "#C9A7FF",
+	"地": "#D9C08A",
+	"风": "#9BE7A2",
+	"火": "#FF9A9E",
+	"水": "#9FD8FF",
+	"暗": "#7B4FBF",
+}
 ## 技能名的着色：与卡名（浅蓝）区分开，日志里「发动◯◯◯」一眼能认出来
 const 日志技能色: String = "#C7A6FF"
 ## 星石的着色：宝石红、水晶蓝（正文里凡提到星石都按这个上色）
@@ -398,6 +417,23 @@ var _盖牌空槽: Array[Label] = []
 var _skill_options: Array[int] = []
 ## 阴阳转换已经选好、接下来这次应战允许打同命格的攻击牌
 var _应战同命格: bool = false
+## 本地攒应战（式神咒束 3301 / 阴阳转换 3306 共用）：
+## 玩家在二级技能栏选效果 → 选应战牌 + 反击目标 → 点「确定」一次性提交。
+## 0＝没有在攒；否则就是这次要回的应答号（3301 / 3306）。
+var _攒应战应答号: int = 0
+## 已经点中效果、正在选应战牌 / 反击目标
+var _攒应战选应战: bool = false
+## 1=仅应战 / 2=阴阳转换 / 3=阴阳转换+式神转换
+var _攒应战选择: int = 0
+## 本次攻击牌 / 攻击者（从询问的 preview_base / preview_ids 带上来）
+var _攒应战攻击牌: int = -1
+var _攒应战攻击者: int = -1
+## 这条路的「仅应战」能不能用【圣光】抵挡：3306 看 can_light；3301 固定 false
+var _攒应战允圣光: bool = false
+## 已提交、等服务器决定是否回退成普通应战询问：记下本次攻击牌与选择。
+## 正常情况服务器直接消费预置答复、不会再问；万一回退，同一张攻击牌的应战询问要恢复同命格过滤。
+var _攒应战回退攻击牌: int = -1
+var _攒应战回退选择: int = 0
 ## 「先弹选项」型（技能指示器配了「先弹选项」，如灵符师【百鬼夜行】）：在二级技能栏里选效果之前
 ## 不让点牌 / 点目标（需牌 / 目标数临时清零），选完效果在 _应用选项目标数 里还原 / 收紧
 var _先弹选项: bool = false
@@ -934,6 +970,10 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 
 func _on_turn(player_id: int, round_id: int) -> void:
 	_当前回合 = player_id
+	# 新回合开始：上一回合可能残留的「同命格」许可 / 回退记录作废
+	_应战同命格 = false
+	_攒应战回退攻击牌 = -1
+	_攒应战回退选择 = 0
 	# 别人的回合刚开始：自己若还停在上一条询问上（超时后被服务端推进），先退回等待态
 	if player_id != Logic.my_player_id and _mode != 0:
 		_清空待选()
@@ -1425,6 +1465,27 @@ func _称号(player_id: int) -> String:
 ## 给日志正文里的玩家名、卡名与技能名单独上色（其余仍是白字）。
 ## 放在 _日志追加 里统一处理：客户端自己拼的行与服务端下发的公告都能着色。
 ## 简洁模式 下正文里不显示玩家名：「玩家名[角色名]」只留角色名（昵称一律不出现）
+## 给派系字上色（血/咏/技/圣/幻）。只染这一个字，标点/前后文保持原样。
+func _派系着色(派系: String) -> String:
+	var 色: String = str(派系色.get(派系, ""))
+	if 色.is_empty():
+		return 派系
+	return "[color=%s]%s[/color]" % [色, 派系]
+
+
+## 系别对应的颜色（雷/地/风/火/水/暗；取不到时退回普通卡名色）
+func _系别颜色(系别: String) -> String:
+	return str(系别色.get(系别, 日志卡牌色))
+
+
+## 给系别字上色（雷/地/风/火/水/暗）。只染这一个字，标点/前后文保持原样。
+func _系别着色(系别: String) -> String:
+	var 色: String = str(系别色.get(系别, ""))
+	if 色.is_empty():
+		return 系别
+	return "[color=%s]%s[/color]" % [色, 系别]
+
+
 func _日志着色(t: String, 简洁模式: bool = false) -> String:
 	var 结果: String = t
 	# 玩家：整段「玩家名[角色名]」一起染（与 _称号 的写法一致）
@@ -1435,6 +1496,9 @@ func _日志着色(t: String, 简洁模式: bool = false) -> String:
 			结果 = 结果.replace(称号, "[color=%s]%s[/color]" % [日志玩家色, 显示名])
 	# 卡名 / 技能名：各自染自己的颜色（长名优先，见 _专名着色）
 	结果 = _专名着色(结果)
+	# 卡牌后面的「·派系」：只给派系字上色，点保留白色
+	for 派: String in 派系色:
+		结果 = 结果.replace("·%s" % 派, "·[color=%s]%s[/color]" % [str(派系色[派]), 派])
 	# 「自身」代指发起者自己，也按玩家名的颜色染（服务端的治疗等日志用它）
 	结果 = 结果.replace("自身", "[color=%s]自身[/color]" % 日志玩家色)
 	# 星石：宝石红、水晶蓝（正文里凡提到星石都上色）
@@ -1454,7 +1518,12 @@ func _日志专名索引() -> Dictionary:
 		return _专名索引
 	var 名色: Dictionary = {}
 	for 卡: GCard in Data.card_db:
-		if not 卡.card_name.is_empty() and not 名色.has(卡.card_name):
+		if 卡.card_name.is_empty() or 名色.has(卡.card_name):
+			continue
+		if 卡.is_attack():
+			# 斩名按系别上色（地/水/风/火/雷/暗），与应战提示同一套配色
+			名色[卡.card_name] = _系别颜色(GConst.element_to_chinese(卡.element_enum()))
+		else:
 			名色[卡.card_name] = 日志卡牌色
 	for 名: String in GConst.全部技能名():
 		if not 名色.has(名):
@@ -1615,10 +1684,14 @@ func _on_command(data: Dictionary) -> void:
 	var cmds: Array = data.get("commands", [])
 	if cmds.is_empty():
 		return
-	# 阴阳转换的同命格许可只给紧接着的那条应战询问；来的是别的询问就作废
+	# 攒应战的同命格许可只给紧接着的那条应战询问；来的是别的询问就作废
 	var 新应答号: int = int((cmds[0] as Dictionary).get("respond_id", 0))
-	if 新应答号 != GConst.RespondType.ReplyAttack:
+	if 新应答号 == GConst.RespondType.ReplyAttack:
+		_恢复攒应战同命格(cmds[0])
+	else:
 		_应战同命格 = false
+		_攒应战回退攻击牌 = -1
+		_攒应战回退选择 = 0
 	# 每次询问先清掉上一轮的技能按钮，避免残留
 	_清空技能按钮()
 	# 上一条询问可能已经作废（典型的：特殊行动选星石的二级栏还摆着，服务端径自跳过）：
@@ -1644,6 +1717,9 @@ func _on_command(data: Dictionary) -> void:
 	_selecting_cover = false
 	_need_cards = 0
 	_need_players = 0
+	# 新询问到达：上一条询问里还没提交的本地攒操作作废（应战同命格 要留给紧接着的 ReplyAttack 询问，不在这里清）
+	_攒应战应答号 = 0
+	_攒应战选应战 = false
 	var cmd: Dictionary = cmds[0]
 	var cmd_type: int = int(data.get("cmd_type", 0))
 	var respond_id: int = int(cmd.get("respond_id", 0))
@@ -1744,18 +1820,24 @@ func _进入待选() -> void:
 					var 攻击者: GPlayer = Data.get_player_by_id(_原攻击者())
 					var 被动加伤: int = int(GConst.攻击提示角色加成.get(攻击者.role_id, 0)) if 攻击者 != null else 0
 					受伤前缀 = "受到 %d 伤害攻击：" % (int(args[5]) + 被动加伤)
-				# 应战牌必须与本次攻击同系（暗系除外）：提示直接点名系别，别让人自己猜
-				var 应战句: String = "打出同系斩应战"
+				# 应战牌必须与本次攻击同系，暗系牌可替任意系：提示点名「X或暗系斩」并给系别上色
+				var 应战句: String = "打出同系或暗系斩应战"
 				var 攻击牌: GCard = null
 				if args.size() > 1:
 					攻击牌 = Data.get_card(int(args[1]))
 					if 攻击牌 != null:
 						var 系别: String = GConst.element_to_chinese(攻击牌.element_enum())
 						if not 系别.is_empty() and 系别 != "?":
-							应战句 = "打出%s系斩应战" % 系别
+							if 系别 == "暗":
+								应战句 = "打出%s系斩应战" % _系别着色("暗")
+							else:
+								应战句 = "打出%s或%s系斩应战" % [_系别着色(系别), _系别着色("暗")]
 				if _应战同命格:
-					# 阴阳转换：打同命格牌应战，且不能用圣光格挡
-					应战句 = "打出同命格牌应战"
+					# 阴阳转换：打同命格牌应战，且不能用圣光格挡；把具体命格写出来并上色
+					if 攻击牌 != null and not 攻击牌.property.is_empty():
+						应战句 = "打出%s命格的斩应战" % _派系着色(攻击牌.property)
+					else:
+						应战句 = "打出同命格的斩应战"
 					_指令提示(受伤前缀 + 应战句 + "，不能使用【圣光】，或取消放弃")
 				elif _可应战():
 					if _可圣光抵挡():
@@ -1950,6 +2032,10 @@ func _进入技能询问() -> void:
 					break
 			父技能号 = 0 if 有怒火 else _skill_ask_id
 		_进入二级技能栏(父技能号, null, 项们)
+		# 式神咒束（3301）与阴阳转换（3306）共用同一套本地攒应战：
+		# 先记下本次攻击牌 / 攻击者，玩家在二级技能栏点中效果后立即进入选牌 / 选目标。
+		if _skill_ask_id == GConst.技能_阴阳转换 or _skill_ask_id == GConst.技能_式神咒束:
+			_开始攒应战(_skill_ask_id, _pending)
 	elif _skill_ask_card_source == GConst.CardSource.HandAndBasicEffect:
 		# 【天使之歌】：询问一到就把二级技能栏摆出来（此刻只有技能本体一颗），
 		# 选完目标再由 _刷新基础效果选项 把该目标面前的基础效果填进去 —— 不用先按一次「确定」
@@ -2020,6 +2106,26 @@ func _进入技能询问() -> void:
 			_指令提示(效果)
 		else:
 			_指令提示("发动【%s】" % GConst.skill_name(_skill_ask_id))
+	# 式神咒束：选效果、选应战牌、选反击目标都在同一步完成，提示条写操作指引；
+	# 三档全置灰时说明没有可用应战方式，只能取消。
+	# 阴阳转换：提示条用技能说明（与其他响应技能一致）；只有三档全灰时在说明后补一句只能取消。
+	if _skill_ask_id == GConst.技能_式神咒束 or _skill_ask_id == GConst.技能_阴阳转换:
+		var 有可用选项: bool = false
+		for 项: Dictionary in _二级选项:
+			if bool(项.get("可用", true)):
+				有可用选项 = true
+				break
+		if _skill_ask_id == GConst.技能_式神咒束:
+			if not 有可用选项:
+				_指令提示("【式神咒束】：当前没有可用的应战方式，点「取消」让队友自己应战")
+			else:
+				_指令提示("【式神咒束】：先选应战方式，再选应战牌与攻击目标，点「确定」应战；取消＝不发动")
+		else:
+			var 说明: String = _技能效果提示(_skill_ask_id)
+			if not 说明.is_empty():
+				if not 有可用选项:
+					说明 += "（当前没有可用的应战方式，点「取消」放弃应战）"
+				_指令提示(说明)
 	_刷新交互()
 
 
@@ -2604,6 +2710,12 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		var b: 技能按钮 = _二级选项[i]["按钮"]
 		if is_instance_valid(b):
 			b.设置选中(i == 序号)
+	# 式神咒束 / 阴阳转换：选效果、选应战牌、选反击目标都在同一步里完成。
+	# 点中效果只切到「可选牌/选目标」，技能栏和选项不收起；选完再按确定。
+	if _攒应战应答号 > 0:
+		var 选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else 1
+		_进入攒应战选应战(选择)
+		return
 	# 英灵人形第一段：点「魔纹融合」这颗技能本体＝直接进子项，不用再按「确定」
 	# （怒火压制仍按普通选项走：选中后按确定；子项里的三个翻转档要选牌，也不能点一下就提交）
 	if _是技能询问 and _skill_ask_id == GConst.技能_魔纹融合 and _二级选项.size() == 2 \
@@ -2761,6 +2873,9 @@ func _on_card_clicked(card_id: int) -> void:
 		if _need_cards > 0 and _sel_cards.size() >= _need_cards:
 			_sel_cards.clear()
 		_sel_cards.append(card_id)
+	# 攒应战里选【圣光】＝抵挡，不需要反击目标：把已点的目标清掉，别让它一直亮着
+	if _攒应战选应战 and _选中是圣光():
+		_sel_players.clear()
 	# 换了牌，先前选中的目标可能不再合法（例如法术→攻击牌后队友不能再打），顺手清掉。
 	# 但「点头像分配」型指示器技能的目标由分配自己管（如【辉耀】进场就全员选中、【惩戒】点头像选），
 	# 不随牌变化，别在这里清掉（否则选完牌指示器就暗了）；
@@ -2792,6 +2907,12 @@ func _on_player_clicked(player_id: int) -> void:
 	# 点头像分配型：点一次给该角色加「每次」点治疗（配置允许时可重复点同一人），分满后确定
 	if not _分配配置().is_empty():
 		_点治疗目标(player_id)
+		return
+	# 攒应战（式神咒束 / 阴阳转换）：点目标只记下来，等「确定」再连同技能号 / 牌 / 目标一次性提交
+	if _攒应战选应战:
+		_sel_players = [player_id]
+		刷新选中面板()
+		_更新按键()
 		return
 	# 攻击：选好攻击牌后点敌方头像就直接打出去，不用再按「确定」
 	if _mode == 1 and _选中是攻击牌():
@@ -2830,6 +2951,11 @@ func _on_player_clicked(player_id: int) -> void:
 ## 这张牌此刻能不能点选
 ## 同一条判定同时决定「是否置灰」与「点击是否响应」，两者不会不一致
 func _卡牌能点(card_id: int) -> bool:
+	# 式神咒束 / 阴阳转换的同一步选牌：按当前选项过滤，不走普通技能栏的牌数规则；盖牌不能当手牌应战
+	if _攒应战选应战:
+		if _是普通盖牌(card_id):
+			return false
+		return _攒应战可应战牌(card_id)
 	# 盖牌只在本阶段确实要选盖牌时才点得动（盖牌超限弃牌 / 来源为盖牌区的技能询问）；
 	# 其余场合（行动出牌、普通弃牌…）盖牌一律不给点 —— 否则会被当成手牌选中提交，
 	# 服务端判「操作无效」再推一份快照回来，画面就会闪一下。
@@ -3132,8 +3258,157 @@ func _可圣光抵挡() -> bool:
 	return int(args[4]) != 0 if args.size() > 4 else true
 
 
+## 开始一次本地攒应战：式神咒束（3301）与阴阳转换（3306）共用。
+## 询问里已经带了本次攻击牌（preview_base）与攻击者（preview_ids），先记下来；
+## 玩家在二级技能栏点中效果后才放开选牌 / 选目标（见 _进入攒应战选应战）。
+func _开始攒应战(应答号: int, cmd: Dictionary) -> void:
+	_攒应战应答号 = 应答号
+	_攒应战选应战 = false
+	_攒应战选择 = 0
+	_攒应战攻击牌 = int(cmd.get("preview_base", -1))
+	var 预览目标: Array = cmd.get("preview_ids", [])
+	_攒应战攻击者 = int(预览目标[0]) if not 预览目标.is_empty() else -1
+	# 「仅应战」能不能用【圣光】由本次攻击的 can_light 决定；3301 / 3306 的询问都会带这个字段
+	_攒应战允圣光 = bool(cmd.get("can_light", true))
+
+
+## 点中二级技能栏里的效果后：放开 1 张应战牌 + 1 个反击目标，并按效果重新校验已选。
+func _进入攒应战选应战(选择: int) -> void:
+	_攒应战选择 = 选择
+	_攒应战选应战 = true
+	_应战同命格 = 选择 >= 2
+	# 不切 mode、不收技能栏：就在当前这条询问里放开选牌 / 选目标
+	_skill_ask_need_card = 1
+	_skill_card_max = 1
+	_need_cards = 1
+	_skill_ask_need_target = 1
+	_need_players = 1
+	_skill_card_source = GConst.CardSource.Hand
+	_skill_card_rule = ""
+	_selecting_cover = false
+	# 切换效果时保留原本选好的牌 / 目标（与 _换选项后重校验 同一口径）：
+	# 合法的留着，新效果下不再合法的才丢掉
+	_保留攒应战已选()
+	_刷新交互()
+	_刷新攒应战提示()
+
+
+## 切换效果后复检已选牌 / 目标：跟 _换选项后重校验 / _保留合法目标 同一口径，
+## 合法的保留、不再合法的丢掉。本技能最多 1 张牌 / 1 个目标，多选的裁掉。
+func _保留攒应战已选() -> void:
+	var 牌保留: Array[int] = []
+	for cid: Variant in _sel_cards:
+		if 牌保留.size() >= 1:
+			break
+		if _卡牌能点(int(cid)) and not 牌保留.has(int(cid)):
+			牌保留.append(int(cid))
+	_sel_cards = 牌保留
+	# 仅应战选【圣光】是抵挡，不需要反击目标（与 _on_card_clicked 的处理一致）
+	if _攒应战选择 < 2 and _选中是圣光():
+		_sel_players.clear()
+		return
+	var 目标保留: Array[int] = []
+	for pid: Variant in _sel_players:
+		if 目标保留.size() >= 1:
+			break
+		if _玩家可选(int(pid)) and not 目标保留.has(int(pid)):
+			目标保留.append(int(pid))
+	_sel_players = 目标保留
+
+
+## 攒应战这一步的可点牌：
+##   仅应战＝普通同系 / 暗系攻击牌；3306 另外允许【圣光】抵挡（3301 不允许）；
+##   阴阳转换＝同命格攻击牌，且不能用光系。
+func _攒应战可应战牌(card_id: int) -> bool:
+	var 牌: GCard = Data.get_card(card_id)
+	var 攻击牌: GCard = Data.get_card(_攒应战攻击牌)
+	if 牌 == null or 攻击牌 == null or 攻击牌.element_enum() == GConst.CardElement.Darkness:
+		return false
+	if _攒应战选择 >= 2:
+		return 牌.is_attack() and 牌.element_enum() != GConst.CardElement.Light \
+				and 牌.property_enum() == 攻击牌.property_enum()
+	if 牌.card_name_enum() == GConst.CardName.HolyLight:
+		return _攒应战允圣光 and bool(_pending.get("can_light", true))
+	return 牌.is_attack() and (牌.element_enum() == 攻击牌.element_enum() \
+			or 牌.element_enum() == GConst.CardElement.Darkness)
+
+
+## 攒应战的反击目标：敌方、且不是原攻击者
+func _攒应战可反击目标(player_id: int) -> bool:
+	if player_id == Logic.my_player_id or player_id == _攒应战攻击者:
+		return false
+	return _是敌方(player_id)
+
+
+## 收到应战询问：若它是 3301 / 3306 提交后服务器回退出来的同一次询问（同一张攻击牌），
+## 把「同命格」过滤恢复；否则这次询问与本轮攒应战无关，清掉可能残留的许可。
+## 正常情况下应答里已经带牌带目标，服务器不会再问，这个分支不会走到。
+func _恢复攒应战同命格(cmd: Dictionary) -> void:
+	var args: Array = cmd.get("args", [])
+	var 攻号: int = int(args[1]) if args.size() > 1 else -1
+	if _攒应战回退选择 >= 2 and 攻号 == _攒应战回退攻击牌:
+		_应战同命格 = true
+	else:
+		_应战同命格 = false
+	_攒应战回退攻击牌 = -1
+	_攒应战回退选择 = 0
+
+
+## 攒应战的指令提示：按本次技能与选中的效果说清「该打什么牌」
+func _刷新攒应战提示() -> void:
+	var 抬头: String = "【%s】：" % GConst.skill_name(_攒应战应答号) if _攒应战应答号 > 0 else ""
+	var 攻击牌: GCard = Data.get_card(_攒应战攻击牌)
+	if _攒应战选择 >= 2:
+		if 攻击牌 != null and not 攻击牌.property.is_empty():
+			_指令提示("%s打出%s命格的斩应战，再选择攻击目标" % [抬头, _派系着色(攻击牌.property)])
+		else:
+			_指令提示("%s打出同命格的斩应战，再选择攻击目标" % 抬头)
+		return
+	var 圣光句: String = "（或【圣光】抵挡）" if _攒应战允圣光 else ""
+	if 攻击牌 != null:
+		var 系别: String = GConst.element_to_chinese(攻击牌.element_enum())
+		if not 系别.is_empty() and 系别 != "?":
+			var 斩句: String = "打出%s系斩应战" % _系别着色("暗") if 系别 == "暗" \
+					else "打出%s或%s系斩应战" % [_系别着色(系别), _系别着色("暗")]
+			_指令提示("%s仅应战：%s%s，再选择攻击目标" % [抬头, 斩句, 圣光句])
+			return
+	_指令提示("%s仅应战：打出同系或%s系斩应战%s，再选择攻击目标" % [抬头, _系别着色("暗"), 圣光句])
+
+
 # ---------------- 确定 / 取消 / 放弃 ----------------
 func _on_ok() -> void:
+	# 攒应战（式神咒束 / 阴阳转换）：应战牌和反击目标都在本地选好后，
+	# 把「技能号 + 效果 + 牌 + 目标」一次性提交；3301 的参数前面多一个「发动 3301」。
+	if _攒应战应答号 > 0:
+		if not _攒应战选应战:
+			_指令提示("请先选择应战方式")
+			return
+		if _sel_cards.is_empty():
+			_指令提示("请选择一张应战牌")
+			return
+		var 选择: int = _攒应战选择
+		var 参数: Array = [选择]
+		if _攒应战应答号 == GConst.技能_式神咒束:
+			参数 = [1, 选择]
+		# 仅应战 + 【圣光】：抵挡不需要反击目标（只有 3306 允许圣光）
+		if 选择 < 2 and _选中是圣光():
+			_攒应战选应战 = false
+			_应战同命格 = false
+			_攒应战回退攻击牌 = -1
+			_攒应战回退选择 = 0
+			_发送应答(_攒应战应答号, [], _sel_cards, 参数)
+			return
+		if _sel_players.is_empty():
+			_指令提示("请选择攻击目标")
+			return
+		# 先记下这次对应的攻击牌：万一服务器没用上预置答复、又问一次应战，
+		# 客户端在 _on_command 里据此恢复「同命格」过滤；正常情况不会再问。
+		_攒应战回退攻击牌 = _攒应战攻击牌
+		_攒应战回退选择 = 选择
+		_攒应战选应战 = false
+		_应战同命格 = false
+		_发送应答(_攒应战应答号, _sel_players, _sel_cards, 参数)
+		return
 	# 本地二级栏选项步骤（不走服务端）：确定＝按当前这一步分派
 	# （冒险者天堂最后一步的确定走下面 mode 3 的「本地询问」通道，提交点头像分配的结果）
 	if _本地选项阶段 == 4:
@@ -3163,11 +3438,6 @@ func _on_ok() -> void:
 		if _是技能询问:
 			# 二级技能栏提交的是技能栏里选定的那个效果值（【天使之歌】的选项在选完目标时就填进技能栏了）；
 			# 普通询问固定回 [1]（发动）
-			var 是阴阳转换: bool = _skill_ask_id == GConst.技能_阴阳转换
-			var 阴阳选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else 0
-			# 在发送前就置位：本地/局域网可能在这一帧就回新的应战询问，不能等发送后才设
-			if 是阴阳转换:
-				_应战同命格 = 阴阳选择 >= 2
 			_发送应答(_skill_ask_id, _sel_players, _sel_cards, _已选参数 if _二级栏 else [1])
 		return
 	# 发动技能
@@ -3250,6 +3520,19 @@ func _on_ok() -> void:
 
 
 func _on_cancel() -> void:
+	# 攒应战（式神咒束 / 阴阳转换）：取消＝不发动这条技能，回对应技能号的空应答。
+	# 3306 取消后引擎仍会按普通应战询问（想用普通应战牌 / 圣光时走那一步即可）；
+	# 3301 取消则不改队友的应战目标。
+	if _攒应战应答号 > 0:
+		var 应答号: int = _攒应战应答号
+		_攒应战应答号 = 0
+		_攒应战选应战 = false
+		_攒应战选择 = 0
+		_应战同命格 = false
+		_攒应战回退攻击牌 = -1
+		_攒应战回退选择 = 0
+		_发送应答(应答号, [], [], [])
+		return
 	# 本地二级栏选项步骤：取消＝退回上一层
 	# （提炼前选提炼方式 → 特殊行动三选一；购买/合成/常规提炼选星石 → 三选一）
 	if _本地选项阶段 == 4:
@@ -4667,6 +4950,12 @@ func _清空待选() -> void:
 	_skill_options.clear()
 	_先弹选项 = false
 	_已选参数.clear()
+	_攒应战应答号 = 0
+	_攒应战选应战 = false
+	_攒应战选择 = 0
+	_攒应战攻击牌 = -1
+	_攒应战攻击者 = -1
+	_攒应战允圣光 = false
 	_目标锁死 = false
 	_pending_skill_id = -1
 	_pending_skill_type = -1
@@ -5367,6 +5656,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _生命结界头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _攒应战头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _赤色一闪头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _血染蔷薇水晶头像提示()
@@ -5828,6 +6119,49 @@ func _气血屏障头像提示() -> Dictionary:
 	return out
 
 
+## 当前自己的鬼火数（客户端 0 鬼火时不会建 Token，按 0 处理）
+func _我的鬼火数() -> int:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 我 == null or 我.tokens[0] == null:
+		return 0
+	return int((我.tokens[0] as GPlayer.Token).num)
+
+
+## 自己的鬼火上限（没有 Token 时取角色表定义）
+func _我的鬼火上限() -> int:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 我 == null:
+		return 0
+	if 我.tokens[0] != null:
+		return int((我.tokens[0] as GPlayer.Token).max_num)
+	return int(Data.role_token_def(我.role_id, 0).get("max", 0))
+
+
+## 自己此刻是否处于式神形态（阴阳师横置）：阴阳转换只有在这个形态下才把伤害改成鬼火数
+func _我在式神形态() -> bool:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	return 我 != null and 我.tap
+
+
+## 攒应战（式神咒束 / 阴阳转换）：选好反击目标后，在目标头像上写这次会造成的攻击伤害。
+## 仅应战＝攻击牌基础伤害；处于式神形态的阴阳转换/式神转换＝结算后的鬼火数（+1 / +2，封顶上限）。
+## 不在式神形态时阴阳转换仍按普通攻击牌基础伤害（只加鬼火，不改伤害）。
+func _攒应战头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if not _攒应战选应战 or _sel_players.is_empty():
+		return out
+	# 仅应战选【圣光】是抵挡，不产生反击伤害
+	if _攒应战选择 < 2 and _选中是圣光():
+		return out
+	var 伤害: int = BattleEngine.ATTACK_BASE_POINT
+	if _攒应战选择 >= 2 and _我在式神形态():
+		var 加成: int = 2 if _攒应战选择 >= 3 else 1
+		伤害 = mini(_我的鬼火数() + 加成, _我的鬼火上限())
+	for pid: int in _sel_players:
+		out[pid] = "%d 攻击伤害" % 伤害
+	return out
+
+
 ## 阴阳师【生命结界】：按选定的档位给目标队友写效果（+1宝石+1治疗 / 弃1牌），
 ## 第一档还会在自己头像上写即将会受到的 X 点法术伤害（X＝结算后鬼火数）。
 func _生命结界头像提示() -> Dictionary:
@@ -6053,7 +6387,7 @@ func _灵魂震爆头像提示() -> Dictionary:
 	return out
 
 
-## 灵魂术士【灵魂赐予】的指示器：在选中的目标头像上写「N 宝石」，告诉玩家会给他多少宝石
+## 灵魂术士【灵魂赐予】的指示器：在选中的目标头像上写「+N 宝石」，告诉玩家会给他多少宝石
 func _灵魂赐予头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 4 or _pending_skill_id != GConst.技能_灵魂赐予 or _sel_players.is_empty():
@@ -6156,6 +6490,9 @@ func _玩家可选(player_id: int) -> bool:
 	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：头像一律不可点，改不了目标
 	if _目标锁死:
 		return false
+	# 攒应战（式神咒束 / 阴阳转换）同一步选目标：牌和目标的先后不限
+	if _攒应战选应战:
+		return _攒应战可反击目标(player_id)
 	if _mode == 1:
 		# 先选牌、再亮目标：还没选牌时谁都不亮
 		var 牌: GCard = Data.get_card(_sel_cards[0]) if not _sel_cards.is_empty() else null
@@ -6266,6 +6603,13 @@ func _确定不可用() -> bool:
 			return true
 		return _sel_cards.is_empty() and _sel_players.is_empty()
 	if _mode == 3:
+		# 攒应战：应战方式没选、应战牌没选都灰着；仅应战选【圣光】抵挡时不要求反击目标
+		if _攒应战选应战:
+			if _二级选中 < 0 or _sel_cards.is_empty():
+				return true
+			if _攒应战选择 < 2 and _选中是圣光():
+				return false
+			return _sel_players.is_empty()
 		# 单份额外行动（如【迅捷赐福】/【风怒追击】）：确定＝发动它；引擎判「不能发动」时置灰
 		if _额外行动单选 >= 0:
 			return not _额外行动可选
