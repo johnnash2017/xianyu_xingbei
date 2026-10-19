@@ -234,11 +234,9 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not engine.has_reply():
 		# 询问号按箭走（客户端据此取技能指示器条目，把「+1 治疗」/「1 法术伤害」写在目标头像上）；
-		# 两根箭不再各占一个技能行：指令条用 GConst.技能子步骤提示 的完整效果；
+		# 两根箭不占技能表的行，指令条文案直接取【元素射击】「提示」列里的第 1 / 2 条（表里维护）；
 		# 头像等待文案走通用的「响应【元素射击】」，不再为这两支单独写短提示。
-		var 箭提示: String = GConst.技能子步骤提示.get(本次箭号(), "")
-		if 箭提示.is_empty():
-			箭提示 = GConst.提示文本(YUAN_SU_SHE_JI, 本次箭提示序号(), engine._称号(player), 0)
+		var 箭提示: String = GConst.提示原文(YUAN_SU_SHE_JI, 本次箭提示序号())
 		engine.ask_skill(player.id, 本次箭号(), 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 			箭提示)
 		return WAIT

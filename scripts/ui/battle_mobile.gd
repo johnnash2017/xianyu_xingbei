@@ -230,7 +230,7 @@ const 日志标签色: Dictionary = {
 const 日志正文色: String = "#FFFFFF"
 ## 简洁模式保留的日志类别：行动（出牌 / 发动技能）、回合（轮到谁）、士气（队伍士气升降）、
 ## 手牌（手牌数量与上限变化），其余类别一律不进简洁缓冲
-const 简洁日志类别: Array[String] = ["行动", "回合", "士气", "手牌"]
+const 简洁日志类别: Array[String] = ["行动", "回合", "士气", "手牌", "指示物"]
 ## 日志正文里玩家名（角色名[玩家名]）与卡名的着色：正文仍以白字为底，只把专名挑出来上色
 const 日志玩家色: String = "#FFD98A"
 const 日志卡牌色: String = "#8FD3FF"
@@ -396,6 +396,8 @@ var _查看盖牌: bool = false
 var _盖牌空槽: Array[Label] = []
 ## 技能询问的可选项值（非空时渲染选项按钮）
 var _skill_options: Array[int] = []
+## 阴阳转换已经选好、接下来这次应战允许打同命格的攻击牌
+var _应战同命格: bool = false
 ## 「先弹选项」型（技能指示器配了「先弹选项」，如灵符师【百鬼夜行】）：在二级技能栏里选效果之前
 ## 不让点牌 / 点目标（需牌 / 目标数临时清零），选完效果在 _应用选项目标数 里还原 / 收紧
 var _先弹选项: bool = false
@@ -1036,7 +1038,7 @@ func _收起提示() -> void:
 
 
 func _on_error(_err_id: int, msg: String) -> void:
-	_日志追加(msg, "提示")
+	# 错误只提示在提示条上，不再写进战斗日志
 	_提示(msg)
 
 
@@ -1170,7 +1172,11 @@ func _on_card(msg: Dictionary) -> void:
 	for cid: Variant in msg.get("card_ids", []):
 		var c: GCard = Data.get_card(int(cid))
 		if c != null:
-			names.append(c.card_name)
+			# 日志里所有牌都带派系（如「地裂斩·幻」「中毒·幻」），展示 / 打出都生效
+			if not c.property.is_empty():
+				names.append("%s·%s" % [c.card_name, c.property])
+			else:
+				names.append(c.card_name)
 			if 首张 == null:
 				首张 = c
 	# 出牌音效（对照参考项目 AudioManager 的 CARDMSG 分支）：攻击牌 atk-<系别>，法术牌 spell-<卡名>。
@@ -1609,6 +1615,10 @@ func _on_command(data: Dictionary) -> void:
 	var cmds: Array = data.get("commands", [])
 	if cmds.is_empty():
 		return
+	# 阴阳转换的同命格许可只给紧接着的那条应战询问；来的是别的询问就作废
+	var 新应答号: int = int((cmds[0] as Dictionary).get("respond_id", 0))
+	if 新应答号 != GConst.RespondType.ReplyAttack:
+		_应战同命格 = false
 	# 每次询问先清掉上一轮的技能按钮，避免残留
 	_清空技能按钮()
 	# 上一条询问可能已经作废（典型的：特殊行动选星石的二级栏还摆着，服务端径自跳过）：
@@ -1736,13 +1746,18 @@ func _进入待选() -> void:
 					受伤前缀 = "受到 %d 伤害攻击：" % (int(args[5]) + 被动加伤)
 				# 应战牌必须与本次攻击同系（暗系除外）：提示直接点名系别，别让人自己猜
 				var 应战句: String = "打出同系斩应战"
+				var 攻击牌: GCard = null
 				if args.size() > 1:
-					var 攻击牌: GCard = Data.get_card(int(args[1]))
+					攻击牌 = Data.get_card(int(args[1]))
 					if 攻击牌 != null:
 						var 系别: String = GConst.element_to_chinese(攻击牌.element_enum())
 						if not 系别.is_empty() and 系别 != "?":
 							应战句 = "打出%s系斩应战" % 系别
-				if _可应战():
+				if _应战同命格:
+					# 阴阳转换：打同命格牌应战，且不能用圣光格挡
+					应战句 = "打出同命格牌应战"
+					_指令提示(受伤前缀 + 应战句 + "，不能使用【圣光】，或取消放弃")
+				elif _可应战():
 					if _可圣光抵挡():
 						_指令提示(受伤前缀 + 应战句 + " 或 【圣光】抵挡，或取消放弃")
 					else:
@@ -1946,8 +1961,12 @@ func _进入技能询问() -> void:
 	# 选中之前都还没发动，日志里不能写「发动【X】」——那句要等服务端广播技能通知时才出现
 	var 询问文案: String = str(_pending.get("ask_text", ""))
 	var 是响应技能: bool = GConst.skill_type(_skill_ask_id) == "响应"
-	# 元素箭这类子步骤的 ask_text 就是专门写好的效果提示，不能再被「响应技能统一用技能说明」盖掉
-	var 有专属提示: bool = GConst.技能子步骤提示.has(_skill_ask_id)
+	# 元素箭这类子步骤的 ask_text 就是母技能「提示」列里专门写给这一步的文案，
+	# 不能再被「响应技能统一用技能说明」盖掉；强制询问（can_cancel=false，如逆反居合斩的弃牌）
+	# 下发的 ask_text 也是给目标看的专属提示，同样优先保留（如「弃掉 2 张牌」）
+	var 专属询问文案: String = str(_pending.get("ask_text", ""))
+	var 有专属提示: bool = GConst.技能子步骤母号.has(_skill_ask_id) \
+		or (not _skill_ask_can_cancel and not 专属询问文案.is_empty())
 	var 指示提示: String = _发动提示(_skill_ask_id)
 	if 是响应技能 and not 有专属提示:
 		if not 指示提示.is_empty():
@@ -1967,13 +1986,9 @@ func _进入技能询问() -> void:
 		var 被动说明: String = _技能效果提示(_skill_ask_id)
 		if not 被动说明.is_empty():
 			询问文案 = 被动说明
-	# 魔纹融合的选项抬头由指示器「提示」统一给出（选择要发动的效果）
-	if not _skill_options.is_empty():
-		_日志追加(询问文案 if not 询问文案.is_empty() else "【%s】请在技能栏里选一个效果" % GConst.skill_name(_skill_ask_id), "行动")
-	elif not 询问文案.is_empty():
-		_日志追加(询问文案, "行动")
-	else:
-		_日志追加("【%s】等你决定" % GConst.skill_name(_skill_ask_id), "行动")
+	# 技能询问只更新提示条，不写战斗日志；真正发动技能时由 notice_skill 的技能通知写。
+	# 否则日志里会出现「发动黑暗祭礼：选目标…」「阴阳转换：请选择…」这类询问提示，
+	# 和实际的行动日志混在一起。
 	if not 询问文案.is_empty():
 		_指令提示(询问文案)
 	elif not 指示提示.is_empty():
@@ -2789,6 +2804,7 @@ func _on_player_clicked(player_id: int) -> void:
 	# 应战：选好应战牌后点反击目标就直接应战（【圣光】抵挡不需要目标，不会走到这里）
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.ReplyAttack:
 		_发送应答(GConst.RespondType.ReplyAttack, [player_id], _sel_cards, [GConst.Reattack.Attack])
+		_应战同命格 = false
 		return
 	# 魔弹传递：选好【魔弹】后点亮起的敌人头像就把伤害传下去
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet:
@@ -3077,6 +3093,9 @@ func _可应战牌(card_id: int) -> bool:
 	if 牌 == null:
 		return false
 	if 牌.card_name_enum() == GConst.CardName.HolyLight:
+		# 发动阴阳转换时不能用光：光只能在不发动阴阳转换时作格挡
+		if _应战同命格:
+			return false
 		return _可圣光抵挡()
 	if not _可应战() or not 牌.is_attack():
 		return false
@@ -3084,6 +3103,9 @@ func _可应战牌(card_id: int) -> bool:
 	var 攻击牌: GCard = Data.get_card(int(args[1])) if args.size() > 1 else null
 	if 攻击牌 == null or 攻击牌.element_enum() == GConst.CardElement.Darkness:
 		return false
+	if _应战同命格:
+		# 阴阳转换：打同命格的攻击牌应战
+		return not 牌.property.is_empty() and 牌.property == 攻击牌.property
 	return _实际系别(牌) == 攻击牌.element_enum() or 牌.element_enum() == GConst.CardElement.Darkness
 
 
@@ -3141,6 +3163,11 @@ func _on_ok() -> void:
 		if _是技能询问:
 			# 二级技能栏提交的是技能栏里选定的那个效果值（【天使之歌】的选项在选完目标时就填进技能栏了）；
 			# 普通询问固定回 [1]（发动）
+			var 是阴阳转换: bool = _skill_ask_id == GConst.技能_阴阳转换
+			var 阴阳选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else 0
+			# 在发送前就置位：本地/局域网可能在这一帧就回新的应战询问，不能等发送后才设
+			if 是阴阳转换:
+				_应战同命格 = 阴阳选择 >= 2
 			_发送应答(_skill_ask_id, _sel_players, _sel_cards, _已选参数 if _二级栏 else [1])
 		return
 	# 发动技能
@@ -3271,6 +3298,7 @@ func _on_cancel() -> void:
 	# 应战：取消＝放弃应战（原先这一功能挂在「放弃行动」按钮上，挪到「取消」上）
 	if _pending_type == GConst.Msg.Respond and respond_id == GConst.RespondType.ReplyAttack:
 		_发送应答(respond_id, [], [], [GConst.Reattack.GiveUp])
+		_应战同命格 = false
 		return
 	# 魔弹传递：取消＝不转弹、不抵挡，直接承受这次魔弹伤害
 	if _pending_type == GConst.Msg.Respond and respond_id == GConst.RespondType.Bullet:
@@ -3876,7 +3904,7 @@ func _回到行动阶段() -> void:
 	_清空技能按钮()
 	if not _行动命令.is_empty():
 		_构建技能按钮(_行动命令)
-	_指令提示("轮到你了：选择一张手牌作为攻击/法术，或点「特殊行动」「放弃行动」")
+	_指令提示("轮到你了：选择一张手牌作为攻击/法术，或点「特殊行动」")
 	刷新手牌()
 	刷新盖牌()
 	刷新选中面板()
@@ -4267,16 +4295,18 @@ func _刷新治疗分配() -> void:
 		var 提炼文本: Dictionary = {}
 		if _mode == 3 and _skill_ask_id == 冒险者天堂技能号:
 			提炼文本 = _提炼分配文本表()
-		# 【血腥祷言】这类：转出去多少点治疗，自己就吃等量法术伤害（配置「转出反噬」），
-		# 那句写在自己头像上 —— 自己不在分配名单里，所以单独画一句
+		# 【血腥祷言】转出去多少点治疗，自己就吃等量法术伤害（配置「转出反噬」）；
+		# 【神圣契约】则是转出去多少点，自己头像就写「移除 X 治疗」（配置「转出移除」）。
+		# 自己不在分配名单里，所以这两种都在下面单独画一句。
 		var 反噬: int = _治疗分配.size() * 每次 if bool(配置.get("转出反噬", false)) else 0
+		var 转出移除: int = _治疗分配.size() * 每次 if bool(配置.get("转出移除", false)) else 0
 		for 面板: 战斗玩家面板 in _面板列表:
 			var 次数: int = 0
 			for id: int in _治疗分配:
 				if id == 面板.ID:
 					次数 += 1
-			if 面板.ID == Logic.my_player_id and 反噬 > 0:
-				_刷治疗提示(面板, 次数 * 每次, 反噬)
+			if 面板.ID == Logic.my_player_id and (反噬 > 0 or 转出移除 > 0):
+				_刷治疗提示(面板, -转出移除, 反噬)
 				continue
 			if 次数 <= 0:
 				continue
@@ -4289,13 +4319,19 @@ func _刷新治疗分配() -> void:
 	_更新按键()
 
 
-## 【冒险者天堂】各队友头像上的「x 宝石 x 水晶」：口径同 _提炼逐人颗数
+## 【冒险者天堂】各队友头像上的「+x 宝石 / +x 水晶」：口径同 _提炼逐人颗数。
+## 头像提示用「+X 宝石」这种简写，不写成【宝石】（【】是给按钮当图标用的）。
 func _提炼分配文本表() -> Dictionary:
 	var out: Dictionary = {}
 	var 逐人: Dictionary = _提炼逐人颗数()
 	for id: Variant in 逐人:
 		var 数: Array = 逐人[id]
-		out[id] = _星石文案(int(数[0]), int(数[1]))
+		var 段: Array[String] = []
+		if int(数[0]) > 0:
+			段.append("+%d 宝石" % int(数[0]))
+		if int(数[1]) > 0:
+			段.append("+%d 水晶" % int(数[1]))
+		out[id] = "\n".join(段)
 	return out
 
 
@@ -4326,17 +4362,17 @@ func _阵营键(player_id: int) -> String:
 	return "敌人"
 
 
-## 把「N 治疗」/「N 法术伤害」画到该面板头像正中
+## 把「+N 治疗」/「N 法术伤害」画到该面板头像正中
 func _刷治疗提示(面板: 战斗玩家面板, 治疗值: int, 伤害值: int) -> void:
 	_贴头像提示(面板, _取治疗提示(面板.ID), _效果文本(治疗值, 伤害值))
 
 
-## 头像提示的文案：加治疗写「N 治疗」，减治疗写「移除 N 治疗」（不写 -N 治疗）；
+## 头像提示的文案：加治疗写「+N 治疗」，减治疗写「移除 N 治疗」（不写 -N 治疗）；
 ## 伤害写成「N 法术伤害」（同一个人两样都有就换行）
 func _效果文本(治疗值: int, 伤害值: int) -> String:
 	var 段: Array[String] = []
 	if 治疗值 > 0:
-		段.append("%d 治疗" % 治疗值)
+		段.append("+%d 治疗" % 治疗值)
 	elif 治疗值 < 0:
 		段.append("移除 %d 治疗" % -治疗值)
 	if 伤害值 > 0:
@@ -4663,9 +4699,8 @@ func _清空待选() -> void:
 func on_invalid_input(_data: Dictionary) -> void:
 	_进入待选()
 	# 放在 _进入待选 之后：那个函数会写「轮到你了…」，这里再盖成失败原因，
-	# 不然玩家只看到选择被清空、完全不知道刚才那手为什么没生效（日志里也留一行）
+	# 不然玩家只看到选择被清空、完全不知道刚才那手为什么没生效
 	_指令提示("操作无效，请重新选择")
-	_日志追加("操作无效，请重新选择", "提示")
 
 
 # ---------------- 规则判定 ----------------
@@ -5330,6 +5365,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _气血屏障头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _生命结界头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _赤色一闪头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _血染蔷薇水晶头像提示()
@@ -5673,7 +5710,7 @@ func _军神威光头像提示() -> Dictionary:
 	if 治疗量 <= 0:
 		return out
 	for pid: int in _sel_players:
-		out[pid] = "%d 治疗" % 治疗量
+		out[pid] = "+%d 治疗" % 治疗量
 	return out
 
 
@@ -5692,9 +5729,9 @@ func _英灵召唤头像提示() -> Dictionary:
 			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 1]
 		else:
 			out[pid] = "%d 攻击伤害" % (原伤害 + 1)
-	# 治疗那行：与静态指示器的「每目标 1 / 文案 %d 治疗」一致（选中的治疗目标才画）
+	# 治疗那行：与静态指示器的「每目标 1 / 文案 +%d 治疗」一致（选中的治疗目标才画）
 	for pid2: int in _sel_players:
-		var 治疗句: String = "1 治疗"
+		var 治疗句: String = "+1 治疗"
 		if out.has(pid2):
 			out[pid2] = "%s\n%s" % [out[pid2], 治疗句]
 		else:
@@ -5783,11 +5820,45 @@ func _气血屏障头像提示() -> Dictionary:
 	if 伤害 <= 0:
 		return out
 	# 第一行开头挂 [zwj] 当标记 —— 界面据此给它压一条删除线（见 _铺粗删除线）
-	out[Logic.my_player_id] = "[zwj]%d 点法术伤害\n%d 点法术伤害" % [伤害, maxi(伤害 - 1, 0)]
+	out[Logic.my_player_id] = "[zwj]%d 法术伤害\n%d 法术伤害" % [伤害, maxi(伤害 - 1, 0)]
 	# 选中的对手：这次反打 1 点法术伤害
 	for pid: int in _sel_players:
 		if pid != Logic.my_player_id:
-			out[pid] = "1 点法术伤害"
+			out[pid] = "1 法术伤害"
+	return out
+
+
+## 阴阳师【生命结界】：按选定的档位给目标队友写效果（+1宝石+1治疗 / 弃1牌），
+## 第一档还会在自己头像上写即将会受到的 X 点法术伤害（X＝结算后鬼火数）。
+func _生命结界头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_生命结界:
+		return out
+	var 选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else 1
+	# 目标队友：第一档 +1 宝石 +1 治疗；第二档弃 1 张牌
+	for pid: int in _sel_players:
+		if 选择 == 2:
+			out[pid] = "弃 1 牌"
+		else:
+			out[pid] = "+1 宝石\n+1 治疗"
+	if 选择 != 1:
+		return out
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 我 == null:
+		return out
+	# 鬼火为 0 时客户端不会建 Token（Data 只在值>0 时建），所以要按 0 处理并取角色表上限
+	var 当前: int = 0
+	var 上限: int = 3
+	var 火: GPlayer.Token = 我.tokens[0] as GPlayer.Token
+	if 火 != null:
+		当前 = int(火.num)
+		上限 = int(火.max_num)
+	else:
+		var 定义: Dictionary = Data.role_token_def(我.role_id, 0)
+		上限 = int(定义.get("max", 3))
+	var 伤害: int = mini(当前 + 1, 上限)
+	if 伤害 > 0:
+		out[Logic.my_player_id] = "%d 法术伤害" % 伤害
 	return out
 
 
@@ -5798,7 +5869,7 @@ func _赤色一闪头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 3 or _额外行动单选 != GConst.技能_赤色一闪 or not _额外行动可选:
 		return out
-	out[Logic.my_player_id] = "2 点法术伤害"
+	out[Logic.my_player_id] = "2 法术伤害"
 	return out
 
 
@@ -5990,7 +6061,7 @@ func _灵魂赐予头像提示() -> Dictionary:
 	for 目标id: int in _sel_players:
 		if Data.get_player_by_id(目标id) == null:
 			continue
-		out[目标id] = "%d 宝石" % GConst.灵魂赐予宝石
+		out[目标id] = "+%d 宝石" % GConst.灵魂赐予宝石
 	return out
 
 

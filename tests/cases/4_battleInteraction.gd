@@ -320,8 +320,29 @@ func 跑() -> void:
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 0, "回答技能询问后没有回到等待态：%d" % int(窗.get("_mode")))
 
-	# 元素箭（水之矢 / 地之矢）：选目标时提示条显示专属效果，不能被「响应技能统一用技能说明」盖掉
-	var 地之矢提示: String = str(GConst.技能子步骤提示.get(32013, ""))
+	# 技能询问的日志只写「要做什么」，不能把整段技能说明倒进日志
+	# （逆反居合斩的强制弃牌曾因此出现一大段「(仅御魂流居合形态下…)」）
+	var 日志前: String = str(窗.get("_日志"))
+	var 弃牌提示: String = "弃掉 2 张牌，若弃少于 2 则士气 -1"
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.技能_逆反居合斩, "src_id": Logic.my_player_id,
+			"dst_ids": [], "card_ids": [],
+			"args": [2, 0, GConst.CardSource.Hand, 0], "is_skill": true, "can_cancel": false,
+			"ask_text": 弃牌提示,
+		}],
+	})
+	await 等帧(2)
+	检(str(窗.get("_提示原文")) == 弃牌提示,
+		"逆反居合斩的弃牌提示条不是「%s」：%s" % [弃牌提示, str(窗.get("_提示原文"))])
+	var 日志新: String = str(窗.get("_日志")).substr(日志前.length())
+	检(日志新.find(弃牌提示) < 0 and 日志新.find("仅御魂流居合形态") < 0,
+		"逆反居合斩的强制弃牌不该写战斗日志：%s" % 日志新)
+
+	# 元素箭（水之矢 / 地之矢）：选目标时提示条显示表里【元素射击】「提示」列的专属效果，
+	# 不能被「响应技能统一用技能说明」盖掉
+	var 地之矢提示: String = GConst.提示原文(GConst.技能_地之矢, 2)
 	Logic.command_received.emit({
 		"cmd_type": GConst.CmdType.Respond,
 		"commands": [{

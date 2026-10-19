@@ -8,7 +8,7 @@ extends Node
 ## 出手时放专属特效的牌 → 特效预制体（scenes/prefabs/effects/）
 ## 斩击类（水 / 火 / 地 / 风 / 雷 / 暗灭）是把 3D 斩击素材经 SubViewport 转成 2D 的预制体，见 scripts/effects/slash2D.gd；
 ## 魔弹同样是把 3D 弹道素材经 SubViewport 转成 2D 的预制体，见 scripts/effects/magicBullet2D.gd；
-## 圣光是原生 2D 粒子（GPUParticles2D），见 scripts/effects/particleEffect.gd。
+## 【圣光】不放出手特效（只保留音效），所以不在这张表里。
 const 特效预制表: Dictionary = {
 	GConst.CardName.WaterSlash: preload("res://scenes/prefabs/effects/waterSlash.tscn"),
 	GConst.CardName.FireSlash: preload("res://scenes/prefabs/effects/fireSlash.tscn"),
@@ -17,7 +17,6 @@ const 特效预制表: Dictionary = {
 	GConst.CardName.ThunderSlash: preload("res://scenes/prefabs/effects/thunderSlash.tscn"),
 	GConst.CardName.DarkSlash: preload("res://scenes/prefabs/effects/darkAnnihilation.tscn"),
 	GConst.CardName.Missile: preload("res://scenes/prefabs/effects/magicBullet.tscn"),
-	GConst.CardName.HolyLight: preload("res://scenes/prefabs/effects/holyLight.tscn"),
 }
 
 

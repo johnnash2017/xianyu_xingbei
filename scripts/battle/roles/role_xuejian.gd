@@ -183,7 +183,7 @@ func p_magic_skill(action: Dictionary) -> int:
 		_xue_ran_step = XUE_RAN_QIANG_WEI_CRYSTAL
 		engine.ask_skill(player.id, XUE_RAN_QIANG_WEI_CRYSTAL, 0, 1, GConst.CardSource.Hand,
 			[], 0, "", [], false,
-			"发动【血染蔷薇】：选择一名友方角色；若其有【水晶】，将 1【水晶】翻面为 1【宝石】",
+			提示原文(XUE_RAN_QIANG_WEI, 0),
 			友方)
 		return WAIT
 	elif _xue_ran_step == XUE_RAN_QIANG_WEI_CRYSTAL:
@@ -249,7 +249,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 			return SUCCESS
 		engine.ask_skill(player.id, XUE_QI_PING_ZHANG, 0, 1, GConst.CardSource.Hand,
 			[], 0, "", [], true,
-			"发动【血气屏障】：-1【鲜血】，本次法术伤害 -1，对目标对手造成 1 点法术伤害",
+			提示原文(XUE_QI_PING_ZHANG, 0),
 			对手, int(harm.get("point", 0)), GConst.HarmType.Magic)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

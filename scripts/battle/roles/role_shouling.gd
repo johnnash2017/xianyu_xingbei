@@ -14,7 +14,7 @@ extends BattleRole
 ##   御魂流居合形态（3608，被动形态）：对横置目标攻击伤害 +1；回合结束移除 1 点兽魂
 ##                （等量 +1 残心），兽魂为 0 时脱离；造成伤害（Timeline6）时脱离
 ##   逆反居合斩（3606）：仅御魂流居合形态下、对手手牌 <4 时宣告；发动时移除 X 点兽魂（X 可为 0），
-##                    命中后取消伤害、改为目标弃 X+2 张手牌（弃不满则对方士气 -1）
+##                    命中后取消伤害、改为目标弃 X+2 张手牌（不可取消；超时自动按手牌顺序补弃；弃不满则对方士气 -1）
 ##   御魂流居合式（3607）：启动（技能栏按钮），耗 1 宝石；无视上限 +1【兽魂】，
 ##                    点了在二级栏里选摸或弃 1 张牌（也可不调整）；并横置转【御魂流居合形态】
 
@@ -124,18 +124,31 @@ func _hand_card_count(pid: int) -> int:
 # 请某名角色弃 n 张牌（服务端 StateRequestHand；本引擎直接向其发起询问）
 # 兽魂警戒 / 兽返下，若其弃掉的是法术牌则 +1 兽魂（服务端 p_show_hand）
 # ============================================================
-func _request_discard(pid: int, n: int, cause: int) -> int:
+func _request_discard(pid: int, n: int, cause: int, 必须弃: bool = false) -> int:
 	var target: BattlePlayer = engine.p(pid)
 	if target == null or n <= 0 or target.hand_cards.is_empty():
 		return SUCCESS
 	var want: int = mini(n, target.hand_cards.size())
 	if not engine.has_reply():
-		# 由玩家自己挑选要弃的牌（对照服务端 StateRequestHand 让玩家选满）；提示告诉他弃几张
-		询问(pid, cause, want)
+		# 由玩家自己挑选要弃的牌（对照服务端 StateRequestHand 让玩家选满）；提示告诉他弃几张。
+		# 必须弃的（逆反居合斩）：不给取消，超时由下面的「补齐」兜底；提示条写的是「需要弃的总数」n，
+		# 不是手里实际能弃的张数（want）—— 手牌不够时照样要让他看到差多少会掉士气
+		if 必须弃:
+			engine.ask_skill(pid, cause, want, 0, GConst.CardSource.Hand, [], 0, "", [], false,
+				提示原文(NI_FAN_ZHAN, 0, {"n": n}))
+		else:
+			询问(pid, cause, want)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	# 「必须选满才能点确定」由客户端按 option_need_cards / need_card 挡住；这里只取真正选中的牌，不替他补
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
+	if 必须弃 and chosen.size() < want:
+		# 强制弃牌没有「少弃」的选项：超时 / 空回复时按手牌顺序补满
+		for cid: int in target.hand_cards:
+			if chosen.size() >= want:
+				break
+			if not chosen.has(cid):
+				chosen.append(cid)
 	# 服务端这几处的 isShown：兽返 / 兽魂警戒 公开（顺带触发展示手牌钩子），
 	# 逆反居合斩的目标弃牌是面朝下的（false），不能一起公开
 	var 公开: bool = cause == SHOU_FAN or cause == SHOU_HUN_JING_JIE
@@ -305,7 +318,7 @@ func p_timeline_4(ctx: Dictionary) -> int:
 	if _ni_fan_step == NI_FAN_DISCARD:
 		# 服务端先压掉士气、后压弃牌（LIFO）→ 先弃牌再掉士气；「弃不满」按弃牌前的手牌数判定
 		var 弃不满: bool = _hand_card_count(dst_id) < 2 + ni_fan_add_harm
-		var r: int = _request_discard(dst_id, 2 + ni_fan_add_harm, NI_FAN_ZHAN)
+		var r: int = _request_discard(dst_id, 2 + ni_fan_add_harm, NI_FAN_ZHAN, true)
 		if r == WAIT:
 			return WAIT
 		if 弃不满:

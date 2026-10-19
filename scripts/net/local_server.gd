@@ -996,15 +996,28 @@ func _发收尾选角请求(room: Dictionary, pid: int) -> void:
 ## 提交了但角色被别人占了的（任选之外的策略理论上不会发生）也走这条重挑。
 ## 任选（Any/All）允许重复：自己提交的照原样留下，只有「随机补位」才避让已占用的角色。
 func _分配角色(顺序: Array, 候选表: Dictionary, 已选: Dictionary, 全池: Array, 允许重复: bool) -> Dictionary:
-	var 已用: Array = []
+	# 先把所有人「自己点选」的角色预留出来：随机补位按座位顺序走，若点选者恰好排在后面，
+	# 前面的人可能先把他的角色随机走，轮到他时再保留一次，就撞成两个同名角色（任选模式尤其明显）。
+	# 预留之后，随机补位永远绕开任何有人点选的角色。
+	var 预留: Array = []
+	for pid: int in 顺序:
+		var 点选: int = int(已选.get(pid, 0))
+		if 点选 > 0 and not 预留.has(点选):
+			预留.append(点选)
+	var 已分配: Array = []
 	var 角色表: Dictionary = {}
 	for pid: int in 顺序:
 		var 选定: int = int(已选.get(pid, 0))
 		# 自己点选的：留着（任选允许重复；其余策略里出现重复只可能是被别人先占，那就走下面的重挑）
-		if 选定 > 0 and (允许重复 or not 已用.has(选定)):
-			已用.append(选定)
+		if 选定 > 0 and (允许重复 or not 已分配.has(选定)):
+			已分配.append(选定)
 			角色表[pid] = 选定
 			continue
+		# 随机补位的避让名单 = 全部点选角色 + 已经分配出去的角色
+		var 已用: Array = 预留.duplicate()
+		for r: int in 已分配:
+			if not 已用.has(r):
+				已用.append(r)
 		选定 = _随机取未占用(候选表.get(pid, []), 已用, false)
 		if 选定 <= 0:
 			# 候选全被人占了：从整池里随机补一个同样没被占的
@@ -1014,7 +1027,7 @@ func _分配角色(顺序: Array, 候选表: Dictionary, 已选: Dictionary, 全
 			选定 = _随机取未占用(全池, 已用, true)
 		if 选定 > 0:
 			# 记下结果：后面的随机补位据此避让这个角色
-			已用.append(选定)
+			已分配.append(选定)
 			角色表[pid] = 选定
 	return 角色表
 

@@ -18,18 +18,20 @@
 _data = [Vector2(0.062251654, 1), 0.0, -3.092313, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
 point_count = 2
 
-[sub_resource type="CurveTexture" id="CurveTexture_fibrn"]
+[sub_resource type="CurveTexture" id="CurveTexture_rc5lo"]
 curve = SubResource("Curve_fibrn")
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_fu07v"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_fibrn"]
 shader = ExtResource("2_rc5lo")
 shader_parameter/glow_color = Color(0, 1, 0.024, 1)
 shader_parameter/face_half_px = Vector2(63, 94.38203)
-shader_parameter/band_px = 28.98
+shader_parameter/band_px = 20.16
 shader_parameter/corner_px = 0.0
 shader_parameter/glow_core = 0.0
 shader_parameter/glow_intensity = 1.0
-shader_parameter/fade_curve = SubResource("CurveTexture_fibrn")
+shader_parameter/fade_curve = SubResource("CurveTexture_rc5lo")
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_fu07v"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_7nmf6"]
 
@@ -38,8 +40,6 @@ shader_parameter/fade_curve = SubResource("CurveTexture_fibrn")
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_lt5fp"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_t30m7"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ic2fn"]
 
 [node name="Card" type="Control" unique_id=1595026165 node_paths=PackedStringArray("btn", "txtSkill1", "txtSkill2", "propertyRoot", "elementRoot", "边框", "txtName")]
 layout_mode = 3
@@ -63,16 +63,16 @@ txtName = NodePath("Name")
 "技能字色_无" = Color(1, 1, 1, 1)
 
 [node name="Border" type="ColorRect" parent="." unique_id=60238750]
-material = SubResource("ShaderMaterial_fu07v")
+material = SubResource("ShaderMaterial_fibrn")
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -91.979996
-offset_top = -123.36203
-offset_right = 91.979996
-offset_bottom = 123.36203
+offset_left = -83.16
+offset_top = -114.54202
+offset_right = 83.16
+offset_bottom = 114.54202
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(83, 115)
@@ -85,59 +85,14 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 focus_mode = 0
-theme_override_styles/normal = SubResource("StyleBoxEmpty_7nmf6")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_wipff")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_lt5fp")
-theme_override_styles/disabled = SubResource("StyleBoxEmpty_t30m7")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_ic2fn")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_fu07v")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_7nmf6")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_wipff")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_lt5fp")
+theme_override_styles/focus = SubResource("StyleBoxEmpty_t30m7")
 icon = ExtResource("5_diLieZhanpng")
 icon_alignment = 1
 expand_icon = true
-
-[node name="Skill1" type="Label" parent="Root" unique_id=1275449768]
-layout_mode = 1
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = -4.5
-offset_top = -40.0
-offset_right = 125.5
-offset_bottom = -6.0
-grow_vertical = 0
-scale = Vector2(0.5, 0.5)
-pivot_offset = Vector2(0, 30)
-theme_override_colors/font_color = Color(0.8, 1, 0.5882353, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 24
-text = "321312"
-horizontal_alignment = 1
-vertical_alignment = 1
-autowrap_mode = 3
-
-[node name="Skill2" type="Label" parent="Root" unique_id=431161559]
-layout_mode = 1
-anchors_preset = 3
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -94.0
-offset_top = -40.0
-offset_right = 36.0
-offset_bottom = -6.0
-grow_horizontal = 0
-grow_vertical = 0
-scale = Vector2(0.5, 0.5)
-pivot_offset = Vector2(60, 30)
-theme_override_colors/font_color = Color(0.8, 1, 0.5882353, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 24
-text = "123132"
-horizontal_alignment = 1
-vertical_alignment = 1
-autowrap_mode = 3
 
 [node name="Property" type="Control" parent="Root" unique_id=525092272]
 layout_mode = 1
@@ -146,12 +101,13 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -12.5
-offset_top = 66.600006
+offset_left = -12.500008
+offset_top = 61.600006
 offset_right = 12.5
-offset_bottom = 91.600006
+offset_bottom = 86.600006
 grow_horizontal = 2
 grow_vertical = 2
+scale = Vector2(1.5, 1.5)
 pivot_offset = Vector2(12.5, 12.5)
 
 [node name="圣" type="TextureRect" parent="Root/Property" unique_id=1135958072]
@@ -208,6 +164,51 @@ grow_vertical = 2
 mouse_filter = 0
 texture = ExtResource("12_UI616png")
 expand_mode = 1
+
+[node name="Skill1" type="Label" parent="Root" unique_id=1275449768]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -4.5
+offset_top = -40.0
+offset_right = 125.5
+offset_bottom = -6.0
+grow_vertical = 0
+scale = Vector2(0.5, 0.5)
+pivot_offset = Vector2(0, 30)
+theme_override_colors/font_color = Color(0.8, 1, 0.5882353, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 24
+text = "321312"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Skill2" type="Label" parent="Root" unique_id=431161559]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -94.0
+offset_top = -40.0
+offset_right = 36.0
+offset_bottom = -6.0
+grow_horizontal = 0
+grow_vertical = 0
+scale = Vector2(0.5, 0.5)
+pivot_offset = Vector2(60, 30)
+theme_override_colors/font_color = Color(0.8, 1, 0.5882353, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 24
+text = "123132"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
 
 [node name="Element" type="Control" parent="Root" unique_id=708988465]
 anchors_preset = 0

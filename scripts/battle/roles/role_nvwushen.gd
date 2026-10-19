@@ -120,9 +120,8 @@ func _jun_shen_wen_xing_shi() -> int:
 		# 这一段要选「移除哪几个星石 + 给谁治疗」：提示条用技能表第 3 条（写明移除的是我方【战绩区】星石），
 		# 选项本身只写 -N【水晶】/-N【宝石】；取消＝退回第一段重问，提示里补一句。
 		# 保留倒计时=true：整条链共用第 1 段那次等待的截止时刻
-		var 文案: String = 提示(JUN_SHEN_WEI_GUANG, 2).strip_edges()
-		if not 文案.is_empty():
-			文案 += "（点「取消」返回上级）"
+		# 第二段的提示（含「点取消返回上级」）直接取技能表第 3 条，不再在代码里拼后缀
+		var 文案: String = 提示原文(JUN_SHEN_WEI_GUANG, 2)
 		engine.ask_skill(player.id, JUN_SHEN_WEI_GUANG, 0, 1, GConst.CardSource.Hand,
 			_jun_shen_wei_guang_energy_choices(), 0, "", [], true, 文案,
 			engine.order, 0, 0, true)

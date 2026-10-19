@@ -191,7 +191,7 @@ func _询问攻击加成(ctx: Dictionary) -> int:
 	# 故不再摆「技能本体」那一颗（见 const.技能指示器「无父技能」）
 	if not engine.has_reply():
 		engine.ask_skill(player.id, XU_LI_YI_JI, 0, 0, GConst.CardSource.Hand, _攻击加成选项(), 0, "", [], true,
-			"主动攻击：请选择要发动的技能（点「取消」＝都不发动）",
+			提示原文(XU_LI_YI_JI, 1),
 			[int(ctx.get("dst", -1))], int(ctx.get("harm", {}).get("point", 0)))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
@@ -208,7 +208,7 @@ func _询问攻击加成(ctx: Dictionary) -> int:
 func _问单项加成(技能号: int, ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		engine.ask_skill(player.id, 技能号, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			"是否发动【%s】？" % GConst.skill_name(技能号),
+			提示原文(技能号, 0),
 			[int(ctx.get("dst", -1))], int(ctx.get("harm", {}).get("point", 0)))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
