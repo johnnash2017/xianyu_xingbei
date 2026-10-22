@@ -6,7 +6,9 @@ const 非角色ID: Array[int] = [0]
 ## 源工程本身就没有的素材，不算缺失
 const 已知缺立绘: Array[int] = [37]
 ## 代码里会用到的界面 wav 音效（Art.play_sfx 的入参）
-const 界面音效: Array[String] = ["Equip", "Skill", "It's your turn", "TurnBegin"]
+## TurnBegin / Skill / It's your turn 是原版客户端遗留素材，均已删除（2026-10-22）；
+## 现在只剩按钮点击音 Equip
+const 界面音效: Array[String] = ["Equip"]
 const 卡面目录: String = "res://assets/textures/card/"
 const 音效目录: String = "res://assets/media/sfx/"
 

@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/StatusIconTip.gd" id="1_script"]
+[ext_resource type="Material" path="res://scenes/prefabs/battlemobile/StatusIconTipMaterial.tres" id="2_mat"]
+
+[node name="状态图标预览" type="VBoxContainer" node_paths=PackedStringArray("图标", "文本")]
+mouse_filter = 2
+theme_override_constants/separation = 8
+script = ExtResource("1_script")
+"图标" = NodePath("图标")
+"文本" = NodePath("文本")
+
+[node name="图标" type="TextureRect" parent="."]
+material = ExtResource("2_mat")
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="文本" type="RichTextLabel" parent="."]
+layout_mode = 2
+mouse_filter = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+autowrap_mode = 0

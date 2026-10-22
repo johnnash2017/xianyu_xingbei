@@ -1,0 +1,26 @@
+[gd_scene format=3 uid="uid://d4qiuvf3c171"]
+
+[ext_resource type="Texture2D" uid="uid://8jlei4nx8nuh" path="res://assets/textures/battle/token2.png" id="2_cmoar"]
+[ext_resource type="Material" uid="uid://dtv2axaofxu5a" path="res://scenes/prefabs/battlemobile/StatusIconMaterial.tres" id="2_mat"]
+
+[node name="StatusIcon" type="TextureRect" unique_id=21697530]
+material = ExtResource("2_mat")
+offset_right = 28.0
+offset_bottom = 28.0
+texture = ExtResource("2_cmoar")
+expand_mode = 1
+
+[node name="Text" type="Label" parent="." unique_id=1124814469]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 5.0
+offset_right = 5.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 14
+text = "0"
+autowrap_mode = 3

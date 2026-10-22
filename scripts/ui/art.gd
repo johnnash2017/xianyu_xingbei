@@ -109,7 +109,7 @@ func token_icon(slot: int) -> Texture2D:
 # ============================================================
 # 音效
 # ============================================================
-## 播放一次音效（文件名取自 assets/media/sfx，如 "Hit" / "Hurt" / "Cure" / "Skill"）
+## 播放一次音效（文件名取自 assets/media/sfx，目前只剩 "Equip"；文件缺失时静默跳过）
 func play_sfx(file_name: String) -> void:
 	if _sfx == null or file_name == "":
 		return

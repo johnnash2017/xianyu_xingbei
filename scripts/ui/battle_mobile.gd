@@ -106,8 +106,8 @@ const 格子最小尺寸: Vector2 = Vector2(30.0, 30.0)
 ## 免得出现「蓝框里写红队」（见 _刷新队伍）
 const 队条底图蓝: Texture2D = preload("res://assets/textures/battle/b02_team_blue.png")
 const 队条底图红: Texture2D = preload("res://assets/textures/battle/b02_team_red.png")
-## 队伍条上星杯格子的悬停提示
-const 星杯提示: String = "星杯 凑齐五个圣杯达成特殊胜利。合成星杯时会扣除对方阵容 1 点士气。"
+## 队伍条上星杯格子的悬停提示（名字一行、说明一行：提示框是 RichTextLabel，真换行即可）
+const 星杯提示: String = "星杯\n凑齐五个圣杯达成特殊胜利。合成星杯时会扣除对方阵容 1 点士气。"
 ## 队伍条上士气数字的悬停提示
 const 士气提示: String = "士气 士气归零的一方战斗失败"
 ## 卡牌预制体（挂 scripts/CardUI.gd，已解耦为「塞数据 + 点击回调」）
@@ -851,7 +851,7 @@ func _填队伍条(底图: TextureRect, 士气: Label, 能量: GridContainer, �
 	var 前缀: String = "blue" if 队伍 == GConst.BLUE else "red"
 	士气.text = str(int(info.get(前缀 + "_morale", 0)))
 	_重建能量(能量, int(info.get(前缀 + "_gem", 0)), int(info.get(前缀 + "_crystal", 0)))
-	_重建格子(星杯, int(info.get(前缀 + "_grail", 0)), "grail", 星杯提示)
+	_重建格子(星杯, int(info.get(前缀 + "_grail", 0)), "grail", 星杯提示, true, true)
 
 
 ## 能量格：宝石在前、水晶在后（与参考脚本 gemChange / crystalChange 的落位一致）；
@@ -864,11 +864,13 @@ func _重建能量(容器: GridContainer, 宝石数: int, 水晶数: int) -> voi
 		_加格子(容器, "crystal", "星石-水晶")
 
 
-## 单一贴图的格子（星杯）；提示 传给每格做悬停说明
-func _重建格子(容器: GridContainer, 数量: int, 贴图名: String, 提示: String = "") -> void:
+## 单一贴图的格子（星杯）；提示 传给每格做悬停说明。
+## 描边 / 显示大图 只给星杯这种有正经图标的格子用（见 _加格子）
+func _重建格子(容器: GridContainer, 数量: int, 贴图名: String, 提示: String = "",
+		描边: bool = false, 显示大图: bool = false) -> void:
 	_清空格子(容器)
 	for _i: int in range(maxi(数量, 0)):
-		_加格子(容器, 贴图名, 提示)
+		_加格子(容器, 贴图名, 提示, 描边, 显示大图)
 
 
 func _清空格子(容器: GridContainer) -> void:
@@ -877,8 +879,10 @@ func _清空格子(容器: GridContainer) -> void:
 
 
 ## 单个格子：用 battlemobile/Image.tscn，贴图交给 AssetIndex 按文件名取。
-## 提示 非空时这个格子可被鼠标拾取、悬停弹提示；空串＝纯装饰、放行点击
-func _加格子(容器: GridContainer, 贴图名: String, 提示: String = "") -> void:
+## 提示 非空时这个格子可被鼠标拾取、悬停弹提示；空串＝纯装饰、放行点击。
+## 描边：给格子套状态图标那份材质（外白内黑描边 + 马赛克），星杯要用它才和状态图标一个观感
+func _加格子(容器: GridContainer, 贴图名: String, 提示: String = "",
+		描边: bool = false, 显示大图: bool = false) -> void:
 	var ps: PackedScene = load(预制目录 + "Image.tscn")
 	if ps == null:
 		return
@@ -890,8 +894,10 @@ func _加格子(容器: GridContainer, 贴图名: String, 提示: String = "") -
 	if go is Control:
 		var 格子: Control = go as Control
 		格子.custom_minimum_size = 格子最小尺寸
+		if 描边:
+			格子.material = 状态图标材质
 		if 提示 != "":
-			_接悬停提示(格子, 提示)
+			_接悬停提示(格子, 提示, 显示大图)
 		else:
 			# 队伍条是纯装饰、又排在玩家面板上层：格子必须放行点击，
 			# 否则落在队伍条那一条（y<128）上的头像点击会被它吃掉
@@ -986,11 +992,10 @@ func _on_turn(player_id: int, round_id: int) -> void:
 	TxtTurn.text = str(round_id)
 	_高亮玩家(player_id)
 	var p: GPlayer = Data.get_player_by_id(player_id)
-	# 轮到这个角色就放他自己的语音；没有语音的角色（如 37 号）沿用界面提示音
+	# 轮到这个角色就放他自己的语音；没有语音的角色（如 37 号）就没有这一声了
+	# （兜底用的界面提示音 It's your turn.wav / TurnBegin.wav 是原版遗留素材，已删除）
 	if p != null and Audio.有声效(str(p.role_id)):
 		Audio.播音效(str(p.role_id))
-	else:
-		Art.play_sfx("It's your turn" if player_id == Logic.my_player_id else "TurnBegin")
 	if p != null:
 		_日志追加("第 %d 回合，轮到 %s" % [round_id, _称号(player_id)], "回合")
 
@@ -1105,6 +1110,10 @@ const 出手等待秒数: float = 0.6
 const 卡牌视图预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Card.tscn")
 ## 悬停基础效果牌时摊出的「状态名 + 完整卡面」预制体（见 悬停卡预览）
 const 悬停卡预览预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HoverCardView.tscn")
+## 悬停状态图标 / 指示物时摊出的「放大原图 + 说明」预制体（没有卡面可摊的那些，见 状态图标预览）
+const 状态图标预览预制: PackedScene = preload("res://scenes/prefabs/battlemobile/StatusIconTip.tscn")
+## 状态图标那份「描边 + 马赛克」材质：队伍条上的星杯格子也套它，图标才有一致的框
+const 状态图标材质: ShaderMaterial = preload("res://scenes/prefabs/battlemobile/StatusIconMaterial.tres")
 
 
 ## 展示代号：每摊出一拨 +1。等待到点后只有「还是当前这一拨」才收起 ——
@@ -2329,6 +2338,9 @@ const 技能说明字号: int = 16
 const 状态图标说明字号: int = 16
 ## 悬停基础效果牌时摊出来的完整卡面尺寸：照手牌卡面大小，牌名 / 命格 / 元素都看得清
 const 悬停卡牌尺寸: Vector2 = 手牌尺寸
+## 悬停状态图标 / 指示物时，提示里那枚大图的边长：面板上只有 28px，
+## 放大到 72 才认得出图案（大图用原贴图，不套描边与马赛克）
+const 状态图标预览边长: float = 72.0
 
 
 ## 鼠标指向技能按钮：把该技能的说明摆在按钮正上方。
@@ -2439,7 +2451,7 @@ func _面板说明到时() -> void:
 
 ## 鼠标指向状态图标（基础效果牌 / 指示物）：在图标正上方弹提示 ——
 ## 基础效果牌摊出这张牌的完整卡面 + 状态名，指示物只有一行「名字 当前/上限」
-func _显示状态图标说明(图标: Control, 文本: String, 牌id: int) -> void:
+func _显示状态图标说明(图标: Control, 文本: String, 牌id: int, 显示大图: bool) -> void:
 	_悬停技能按钮 = null
 	_悬停角色面板 = null
 	_悬停状态图标 = true
@@ -2447,14 +2459,23 @@ func _显示状态图标说明(图标: Control, 文本: String, 牌id: int) -> v
 	if 卡面 != null:
 		_说明提示.显示内容(卡面, 图标.get_global_rect())
 		return
+	# 没有卡面可摊（独有效果 / 额外状态 / 指示物）：把图标原图放大摆进提示里 ——
+	# 面板上那枚只有 28px，还套着描边 + 马赛克，图案根本认不清。
+	# 星石 / 手牌那种扁平方块不要（显示大图=false）：放大只会更糊，还占地方
+	if 显示大图:
+		var 预览: Control = _造状态图标预览(图标, 文本)
+		if 预览 != null:
+			_说明提示.显示内容(预览, 图标.get_global_rect())
+			return
 	_说明提示.显示(文本, 图标.get_global_rect(), 0.0, 状态图标说明字号)
 
 
-## 给某个控件接上「悬停出一行提示」（整局共用一份提示框，见 _说明提示）。
-## 顺手把鼠标拾取打开 —— Label / 纯装饰图默认是 IGNORE，不拾取就收不到 hover
-func _接悬停提示(控件: Control, 文本: String) -> void:
+## 给某个控件接上「悬停出提示」（整局共用一份提示框，见 _说明提示）。
+## 顺手把鼠标拾取打开 —— Label / 纯装饰图默认是 IGNORE，不拾取就收不到 hover。
+## 显示大图：提示里是否再摊一张放大的高清原图（星杯这类有图标的要；士气这种纯数字不要）
+func _接悬停提示(控件: Control, 文本: String, 显示大图: bool = false) -> void:
 	控件.mouse_filter = Control.MOUSE_FILTER_STOP
-	控件.mouse_entered.connect(func() -> void: _显示状态图标说明(控件, 文本, -1))
+	控件.mouse_entered.connect(func() -> void: _显示状态图标说明(控件, 文本, -1, 显示大图))
 	控件.mouse_exited.connect(_隐藏状态图标说明)
 
 
@@ -2470,6 +2491,18 @@ func _造悬停卡牌(牌id: int, 状态名: String) -> Control:
 	var 视图: 悬停卡预览 = 悬停卡预览预制.instantiate()
 	# 预制体本身就是「状态名一行 + 卡面」的竖排，尺寸 / 字号 / 忽略鼠标都在 悬停卡预览.设置 里
 	视图.设置(牌, 状态名, 悬停卡牌尺寸, 状态图标说明字号)
+	return 视图
+
+
+## 造一份「状态图标放大预览」：图标原图（不带描边/马赛克材质）+ 说明文字。
+## 基础效果 / 独有效果 / 额外状态 / 指示物的悬停目标都是 TextureRect，贴图直接拿来用；
+## 万一取不到（不是 TextureRect 或没贴图）就返回 null，调用方退回纯文字提示
+func _造状态图标预览(图标: Control, 文本: String) -> Control:
+	var 贴图控件: TextureRect = 图标 as TextureRect
+	if 贴图控件 == null or 贴图控件.texture == null:
+		return null
+	var 视图: 状态图标预览 = 状态图标预览预制.instantiate()
+	视图.设置(贴图控件.texture, 文本, 状态图标预览边长, 状态图标说明字号)
 	return 视图
 
 

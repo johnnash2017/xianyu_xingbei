@@ -8,7 +8,7 @@ extends Node
 ##   * 给牌（交牌动效配的那声，见 battle_mobile._给牌特效）：暂时拿参考工程的 draw.mp3 顶着，
 ##     换成正式音效时把 assets/media/audio/dealCard.ogg / dealCard.wav 放进去即可（找文件的顺序是 ogg → wav → mp3）
 ## 对照脚本：参考项目 scripts/game/AudioManager.gd
-## 说明：界面上的 wav 音效（按钮点击 Equip、轮到你 It's your turn、技能 Skill 等）沿用 Art.play_sfx，
+## 说明：界面上的 wav 音效（按钮点击 Equip）沿用 Art.play_sfx，
 ##      因为参考项目没有这些界面音（它的音频只有这张 ogg 表）。
 ## 多开时只有当前在用的那个窗口出声：窗口失焦就把声音压到听不见，回到前台再恢复。
 ## 这条「切出游戏就静音」是默认行为，设置窗里可以改成「后台播放」（后台照常出声，见 后台静音）。

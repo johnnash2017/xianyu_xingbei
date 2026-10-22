@@ -20,7 +20,9 @@ signal 离开悬停()
 ## 鼠标指向 / 离开某枚状态图标（基础效果牌 / 指示物）：容器据此在图标上方弹提示 ——
 ## 指示物＝一行「名字 当前/上限」；基础效果牌＝摊出这张牌的完整卡面 + 一行「卡名（命格·元素）」
 ## （牌id >= 0 表示带上了卡牌；容器用图标的矩形摆位，保证提示不压住图标）
-signal 状态图标悬停(图标: Control, 文本: String, 牌id: int)
+## 显示大图：这个控件要不要在提示里摆一张放大的原图（状态图标 / 指示物要；星石 / 手牌那种
+## 扁平方块不要，放大反而更糊、还占地方）
+signal 状态图标悬停(图标: Control, 文本: String, 牌id: int, 显示大图: bool)
 signal 状态图标离开悬停()
 
 ## 消息类型枚举走全局 class_name Msg（见 scripts/framework/Msg.gd）。
@@ -92,6 +94,12 @@ var token2: Label = null
 var hurted: Node = null
 ## 状态图标（基础效果 / 独有效果）的边长：素材都是 20×20，放大到 28 显示（格子里居中）
 const 状态图标尺寸: float = 28.0
+## 状态图标（基础效果 / 独有效果 / 额外状态）的预制体：一枚 28×28 的 TextureRect，贴图由代码按状态填。
+## 描边（外白内黑两层）和马赛克都在它引用的材质里，想手调就开这两个文件：
+##   scenes/prefabs/battlemobile/StatusIcon.tscn          ← 图标预制体（看效果）
+##   scenes/prefabs/battlemobile/StatusIconMaterial.tres  ← 材质：外/内描边宽度与颜色、马赛克块数
+## 同一份预制体（StatusIcon.tscn）也当指示物用：数字标签默认藏着，指示物才亮出来
+const 状态图标预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/StatusIcon.tscn")
 ## 名牌上「等待响应XX」那行字的字号（场景里是 20）与缩放下限：文案带技能名时会一行放不下，
 ## 由 _自适应等待字号 逐级缩小，见那里
 const 等待文案基础字号: int = 20
@@ -137,8 +145,6 @@ const 状态弹出放大: float = 6.0
 var _状态弹出起点: Dictionary = {}
 ## 是否已经渲染过一次状态图标（进场第一次不播弹出动画）
 var _状态已初始化: bool = false
-## 状态图标的白描边材质（所有图标共用一份，参数一样）
-var _状态描边材质: ShaderMaterial = null
 ## 三个指示物槽上一次的数值（-1＝还没设过）：用来判断这次是不是「变多」了
 var _指示物数值: Array[int] = [-1, -1, -1]
 ## 状态图标区当前要显示的基础效果牌 / 独有效果下标（两个 setter 合成一次渲染，见 _刷新状态图标）
@@ -359,9 +365,8 @@ func _ready() -> void:
 	# 手牌 / 治疗那两排方块的受击描边材质（受击时把描边染红再淡回，见 Hurted）
 	_手牌描边 = _造描边材质()
 	_治疗描边 = _造描边材质()
-	# 状态图标的白描边（只沿轮廓勾一圈白，见 scripts/effects/whiteOutline.gdshader）
-	_状态描边材质 = ShaderMaterial.new()
-	_状态描边材质.shader = 状态描边着色器
+	# 状态图标的描边 + 马赛克在预制体引用的材质里调（scenes/prefabs/battlemobile/StatusIconMaterial.tres），
+	# 这里不再现造材质：状态图标与指示物都直接引用那份材质
 	# 参考工程在这里 role = RoleFactory.create(0)（技能系统）；本步骤不接。第三步：技能系统。
 	# 对应 C# MessageSystem<MessageType>.Regist(AgentSelectPlayer / RecHandChange, this)
 	MessageSystem.regist(Msg.T.AgentSelectPlayer, self, Callable(self, "on_event_trigger"))
@@ -460,38 +465,35 @@ func set_RoleID(value: int) -> void:
 		seted = true
 		_create_tokens()
 
-## 对应 C# RoleID setter 里创建 token0/1/2 的那段
+## 对应 C# RoleID setter 里创建 token0/1/2 的那段。
+## 指示物和状态图标共用同一个预制体（StatusIcon.tscn）：区别只是指示物把里面那枚 Text 数字亮出来，
+## 并且贴图按槽位换（token0/1/2.png，见 Art.TOKEN_ICON）—— 描边 + 马赛克、数字样式都只维护那一份
 func _create_tokens() -> void:
-	token0 = _create_token("Token0", "token0", 0)
-	token1 = _create_token("Token1", "token1", 1)
-	token2 = _create_token("Token2", "token2", 2)
+	token0 = _create_token("token0", 0)
+	token1 = _create_token("token1", 1)
+	token2 = _create_token("token2", 2)
 
-func _create_token(prefab_name: String, node_name: String, 槽: int) -> Label:
-	var ps := _load_prefab(prefab_name)
+func _create_token(node_name: String, 槽: int) -> Label:
+	var ps: PackedScene = 状态图标预制体
 	if ps == null or basicAndExCardArea == null:
 		return null
 	var go := ps.instantiate()
 	go.name = node_name
 	basicAndExCardArea.add_child(go)
-	# Token 预制体同样是 0×0（expand_mode=1 的 TextureRect 落到 GridContainer 里最小尺寸为 0），
-	# 不给最小尺寸的话 token 数字与它上面的 Text 都看不见。
+	# 格子尺寸要显式给：预制体是 expand_mode=1 的 TextureRect，落到容器里最小尺寸会算成 0
 	if go is Control:
 		var 图标: Control = go as Control
 		图标.custom_minimum_size = 指示物格尺寸
-		# 指示物也算状态图标：套同一份白描边
-		图标.material = _状态描边材质
 		# 鼠标压上去时报给容器，由容器弹一条「名字 当前/上限」（和角色 / 技能说明同一份提示框）
 		图标.mouse_entered.connect(func() -> void: _报告指示物悬停(槽, 图标))
 		图标.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
+	if go is TextureRect:
+		(go as TextureRect).texture = Art.token_icon(槽)
 	var lbl: Label = go.find_child("Text", true, false) as Label
 	if lbl != null:
+		# 数字标签在预制体里默认隐藏（状态图标用它时就是藏着的），指示物这里才亮出来
+		lbl.visible = true
 		lbl.text = "0"
-		# 指示物数字整体右移 5px（原来贴着格子左上角），并勾一圈黑描边，
-		# 让白字叠在浅色底板上也看得清
-		lbl.offset_left += 5.0
-		lbl.offset_right += 5.0
-		lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 1.0))
-		lbl.add_theme_constant_override("outline_size", 6)
 	if go is CanvasItem:
 		(go as CanvasItem).visible = false
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
@@ -503,13 +505,18 @@ static func 指示物上限文本(上限: int) -> String:
 	return "∞" if 上限 == 99 else str(上限)
 
 
-## 鼠标指到某枚指示物图标：把「名字 当前/上限」报给容器（上限只在悬浮提示里露面）
+## 鼠标指到某枚指示物图标：把「名字 当前/上限」报给容器（上限只在悬浮提示里露面）。
+## 槽 2 是盖牌区（角色表里那列写的只是「盖着什么牌」：充能 / 茧 / 剑魂 / 祝福 / 暗月…），
+## 提示里补一句「盖牌」，例如魔弓的「充能盖牌 3/8」，否则只看名字看不出这是盖着的牌
 func _报告指示物悬停(槽: int, 图标: Control) -> void:
 	var 定义: Dictionary = Data.role_token_def(角色号, 槽)
 	if 定义.is_empty():
 		return
+	var 名: String = str(定义["name"])
+	if 槽 == 2 and not 名.ends_with("盖牌"):
+		名 += "盖牌"
 	var 上限文本: String = 指示物上限文本(int(定义["max"]))
-	状态图标悬停.emit(图标, "%s %d/%s" % [str(定义["name"]), _指示物数值[槽], 上限文本], -1)
+	状态图标悬停.emit(图标, "%s %d/%s" % [名, _指示物数值[槽], 上限文本], -1, true)
 
 
 ## 鼠标指到某枚基础效果牌图标：报出这张牌的 id（容器据此摊出完整卡面）+ 一行
@@ -519,7 +526,7 @@ func _报告基础效果悬停(牌id: int, 图标: Control) -> void:
 	if 牌 == null:
 		return
 	状态图标悬停.emit(图标,
-		"%s（%s·%s）" % [状态名(牌), 牌.fate_pattern, GConst.element_to_chinese(牌.element_enum())], 牌id)
+		"%s（%s·%s）" % [状态名(牌), 牌.fate_pattern, GConst.element_to_chinese(牌.element_enum())], 牌id, true)
 
 
 ## 这张牌摆在头像上当状态用时，那个状态叫什么。
@@ -635,7 +642,7 @@ func _刷新状态图标() -> void:
 	for c in basicAndExCardArea.get_children():
 		if not String(c.name).begins_with("token"):
 			c.queue_free()
-	var ps := _load_prefab("Image")
+	var ps: PackedScene = 状态图标预制体
 	if ps == null:
 		return
 	# 这次渲染后各图标的新起点表（键＝图标标识，值＝该标识各实例的起点），渲染完整体换掉旧的
@@ -697,8 +704,9 @@ func 五系束缚应摸张数() -> int:
 	return mini(GConst.五系束缚摸牌基数 + n, GConst.五系束缚摸牌上限)
 
 
-## 往状态图标区加一枚图标（Image 预制体自身是 0×0，不给最小尺寸就什么都看不见）。
-## 图标统一套白描边材质；新挂上的（含状态叠层多出来的那几枚）播一次「放大→缩回」，
+## 往状态图标区加一枚图标（预制体自身是 28×28，不给最小尺寸在容器里也会缩成 0）。
+## 描边与马赛克来自预制体引用的材质（StatusIconMaterial.tres），这里不再逐枚设材质；
+## 新挂上的（含状态叠层多出来的那几枚）播一次「放大→缩回」，
 ## 起点记在 起点表 里跨重建续播（同一帧可能刷新多次，一次性 tween 会被下一次重建清掉）。
 ## 基础效果牌（基础牌id >= 0）在「基础牌可点」时变成可点的，点一下就上报给战斗界面；
 ## 提示 是给独有效果用的纯文字提示（它们没有卡牌对象，弹不出卡面）
@@ -715,13 +723,12 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 			(go as TextureRect).gui_input.connect(_on_基础牌图标输入.bind(基础牌id))
 	var 起点: int = -1
 	if go is Control:
-		(go as Control).material = _状态描边材质
 		# 鼠标压上去各报各的：基础效果牌报「卡名（命格·元素）」+ 卡面，独有效果只有名字
 		var 图标: Control = go as Control
 		if 基础牌id >= 0:
 			图标.mouse_entered.connect(func() -> void: _报告基础效果悬停(基础牌id, 图标))
 		elif 提示 != "":
-			图标.mouse_entered.connect(func() -> void: 状态图标悬停.emit(图标, 提示, -1))
+			图标.mouse_entered.connect(func() -> void: 状态图标悬停.emit(图标, 提示, -1, true))
 		if 基础牌id >= 0 or 提示 != "":
 			图标.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
 		var 旧列表: Array = _状态弹出起点.get(标识, [])
@@ -843,7 +850,7 @@ func _接格子提示(格: Control, 文本: String) -> void:
 	if 格 == null:
 		return
 	格.mouse_filter = Control.MOUSE_FILTER_STOP
-	格.mouse_entered.connect(func() -> void: 状态图标悬停.emit(格, 文本, -1))
+	格.mouse_entered.connect(func() -> void: 状态图标悬停.emit(格, 文本, -1, false))
 	格.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
 	格.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
@@ -1198,8 +1205,6 @@ const 受击描边着色器: Shader = preload("res://scripts/effects/hitOutline.
 const 受击描边时长: float = 2.0
 ## 宝石闪白着色器：只把图形本身推白、透明处不动（见 scripts/effects/flashWhite.gdshader）
 const 闪白着色器: Shader = preload("res://scripts/effects/flashWhite.gdshader")
-## 状态图标的白描边着色器：沿 alpha 轮廓扩一圈白边（见 scripts/effects/whiteOutline.gdshader）
-const 状态描边着色器: Shader = preload("res://scripts/effects/whiteOutline.gdshader")
 
 ## 头像初始位置：首次受击时记下，之后每次抖动都围绕它 —— 连续受击也不会把头像越抖越偏
 var _头像原位: Vector2 = Vector2.ZERO

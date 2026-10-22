@@ -1,0 +1,15 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://scripts/effects/whiteOutline.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "StatusIconTipMaterial"
+shader = ExtResource("1_shader")
+shader_parameter/outer_color = Color(1, 1, 1, 1)
+shader_parameter/outer_ratio = 0.02
+shader_parameter/inner_color = Color(0, 0, 0, 1)
+shader_parameter/inner_ratio = 0.018
+shader_parameter/mosaic_blocks = 0.0
+shader_parameter/mosaic_samples = 4.0
+shader_parameter/icon_px = 72.0
+shader_parameter/mosaic_min_block_px = 1.5
