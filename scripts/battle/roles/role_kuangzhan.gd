@@ -85,9 +85,11 @@ func _xue_ying_kuang_dao(ctx: Dictionary) -> int:
 	if n < 2 or n > 3:
 		return SUCCESS
 	if not engine.has_reply():
-		# 目标与发动前的伤害一并下发：客户端据此在目标头像上现算「本次攻击伤害」
+		# 目标与发动前的伤害一并下发：客户端据此在目标头像上现算「本次攻击伤害」。
+		# 狂化「手牌 > 3 再 +1」只有服务端算得出来，随预览基准一起带上。
+		var 预览基准: int = int(ctx.get("harm", {}).get("point", 0)) + p_attack_preview(ctx)
 		询问(player.id, XUE_YING_KUANG_DAO, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [dst.id], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
+			0, -1, [dst.id], -1, {}, 预览基准)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS

@@ -23,6 +23,8 @@ func 跑() -> void:
 	]
 	Data.player_list = 玩家
 	玩家[0].role_id = 33
+	# 攻击者用狂战士：验证「通用应战的固定角色加伤」也用在 3306/3301 提示里
+	玩家[1].role_id = GConst.角色_狂战士
 
 	# 找两张同命格、非光系的攻击牌：一张当本次攻击牌，一张当应战牌
 	var 攻击牌: GCard = null
@@ -34,7 +36,7 @@ func 跑() -> void:
 	if 攻击牌 != null:
 		for c: GCard in Data.card_db:
 			if c != 攻击牌 and c.is_attack() and c.element_enum() != GConst.CardElement.Light \
-					and c.property_enum() == 攻击牌.property_enum():
+					and c.fate_pattern_enum() == 攻击牌.fate_pattern_enum():
 				应战牌 = c
 				break
 	检(攻击牌 != null and 应战牌 != null, "找不到同命格攻击牌，用例前提不成立")
@@ -63,6 +65,7 @@ func 跑() -> void:
 			"is_skill": true,
 			"preview_base": 攻击牌.id,
 			"preview_ids": [2],
+			"preview_damage": 2,
 			"option_enabled": [false, true, true],
 		}],
 	})
@@ -90,8 +93,10 @@ func 跑() -> void:
 	await 等帧()
 	检(bool(窗.get("_攒应战选应战")), "点效果后没有进入同一步选应战")
 	检(bool(窗.call("_卡牌能点", 应战牌.id)), "阴阳转换下同命格应战牌点不动")
-	检(str(窗.get("_提示原文")).find("命格的斩应战，再选择攻击目标") >= 0,
-		"阴阳转换提示没有写成「命格的斩 / 攻击目标」：%s" % str(窗.get("_提示原文")))
+	检(str(窗.get("_提示原文")).find("命格的斩应战，点击头像选择应战目标") >= 0,
+		"阴阳转换提示没有写成「命格的斩 / 点击头像」：%s" % str(窗.get("_提示原文")))
+	检(str(窗.get("_提示原文")).find("受到 3 伤害攻击，") >= 0,
+		"阴阳转换提示没有带本次伤害说明：%s" % str(窗.get("_提示原文")))
 	检(bool(窗.call("_玩家可选", 3)), "反击目标没有亮起")
 	检(not bool(窗.call("_玩家可选", 1)), "自己不该成为反击目标")
 	检(not bool(窗.call("_玩家可选", 2)), "原攻击者不该成为反击目标")
@@ -166,7 +171,7 @@ func 跑() -> void:
 			continue
 		if 元 == 攻击牌.element_enum() and c.id != 攻击牌.id:
 			同系应战牌 = c
-		if c.property_enum() == 攻击牌.property_enum() and 元 != 攻击牌.element_enum():
+		if c.fate_pattern_enum() == 攻击牌.fate_pattern_enum() and 元 != 攻击牌.element_enum():
 			同命格异系牌 = c
 		if 同系应战牌 != null and 同命格异系牌 != null:
 			break
@@ -229,6 +234,7 @@ func 跑() -> void:
 				"is_skill": true,
 				"preview_base": 攻击牌.id,
 				"preview_ids": [2],
+				"preview_damage": 2,
 			}],
 		})
 		await 等帧(2)
@@ -236,6 +242,12 @@ func 跑() -> void:
 		await 等帧()
 		检(bool(窗.call("_卡牌能点", 圣光.id)), "仅应战下【圣光】点不动")
 		检(bool(窗.call("_玩家可选", 3)), "仅应战下反击目标应仍可点")
+		检(str(窗.get("_提示原文")).find("受到 3 伤害攻击，") >= 0,
+			"仅应战提示没有带本次伤害说明：%s" % str(窗.get("_提示原文")))
+		检(str(窗.get("_提示原文")).find(" 或【圣光】抵挡") >= 0,
+			"仅应战提示里的【圣光】没有被正确接上：%s" % str(窗.get("_提示原文")))
+		检(str(窗.get("_提示原文")).find("（或") < 0,
+			"仅应战提示里的【圣光】还带着括号：%s" % str(窗.get("_提示原文")))
 		窗.call("_on_card_clicked", 圣光.id)
 		await 等帧()
 		检((窗.get("_sel_players") as Array).is_empty(), "选【圣光】后反击目标没有清掉")
@@ -295,6 +307,22 @@ func 跑() -> void:
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 0, "三档全灰时点取消没有退出询问")
+
+	# 圣光被禁（can_light=false）：仅应战提示不写「或【圣光】抵挡」，改写「无法用【圣光】抵挡」
+	窗.set("_攒应战应答号", GConst.技能_阴阳转换)
+	窗.set("_攒应战选择", 1)
+	窗.set("_攒应战允圣光", false)
+	窗.set("_攒应战伤害", 2)
+	窗.set("_攒应战攻击牌", 攻击牌.id)
+	窗.set("_攒应战攻击者", 2)
+	窗.call("_刷新攒应战提示")
+	await 等帧()
+	检(str(窗.get("_提示原文")).find("或【圣光】抵挡") < 0,
+		"圣光被禁时提示还写着【圣光】抵挡：%s" % str(窗.get("_提示原文")))
+	检(str(窗.get("_提示原文")).find("无法用【圣光】抵挡") >= 0,
+		"圣光被禁时提示没有写「无法用【圣光】抵挡」：%s" % str(窗.get("_提示原文")))
+	检(str(窗.get("_提示原文")).find("点击头像选择应战目标") >= 0,
+		"圣光被禁时提示没有「点击头像选择应战目标」：%s" % str(窗.get("_提示原文")))
 
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 阴阳转换：选效果 → 同一步选牌选目标 → 确定一次性提交")

@@ -22,7 +22,7 @@ signal 点击(卡牌号: int)
 @export var btn: Button
 @export var txtSkill1: Label
 @export var txtSkill2: Label
-@export var propertyRoot: Control
+@export var fate_pattern_root: Control
 @export var elementRoot: Control
 ## 卡牌边框（一个节点就够）：可选=绿、弃牌询问=红、选中=黄，不可用时隐藏
 @export var 边框: ColorRect
@@ -35,8 +35,14 @@ var card: GCard = null
 var _可用: bool = false
 ## 是否处于「已选中」：选中时边框换成选中框那个颜色（与「可选」互斥 —— 同一个节点，只换颜色）
 var _选中: bool = false
+## 选中时是否连整张牌一起染黄（盖牌区牌太小，只换边框看不清；学习头像被选中时的整体发黄）
+var _选中整体染色: bool = false
 ## 当前这次选牌是不是「被迫弃牌」：是的话「可选」框换成弃牌框那个颜色（红）
 var _弃牌询问: bool = false
+## 设置卡牌时的「可置灰」：取消选中后要按它恢复原色 / 置灰色
+var _可置灰: bool = true
+## 整体选中色：与战斗玩家面板的 面板选中色 同一份黄（1,1,0.55）
+const 选中整体色: Color = Color(1.0, 1.0, 0.55)
 
 ## 卡图原始尺寸（assets/textures/card/*.png，267×400）
 const CARD_ART_SIZE: Vector2 = Vector2(267.0, 400.0)
@@ -174,10 +180,12 @@ func _notification(what: int) -> void:
 func 设置卡牌(new_card: GCard, 可用: bool, 可置灰: bool = true) -> void:
 	card = new_card
 	_可用 = 可用
+	_可置灰 = 可置灰
 	if not 可用:
 		_选中 = false
-	# 置灰走 modulate：会一并压暗卡面、命格元素与边框，整张牌看起来是一体的
-	modulate = DISABLED_TINT if (可置灰 and not 可用) else Color.WHITE
+		_选中整体染色 = false
+	# 置灰 / 选中整体黄都走 modulate：会一并影响卡面、命格元素与边框，整张牌看起来是一体的
+	_刷新整体颜色()
 	_刷新边框()
 	if new_card == null:
 		return
@@ -192,10 +200,23 @@ func 设置弃牌询问(值: bool) -> void:
 	_刷新边框()
 
 
-## 是否处于「已选中」：选中时边框换成「选中框」那个颜色（同一个节点，不叠两圈）
-func 设置选中(值: bool) -> void:
+## 是否处于「已选中」：选中时边框换成「选中框」那个颜色（同一个节点，不叠两圈）。
+## 整体染色=true 时连整张牌一起染黄（盖牌区专用；手牌不传，保持原来的边框选中）。
+func 设置选中(值: bool, 整体染色: bool = false) -> void:
 	_选中 = 值
+	_选中整体染色 = 值 and 整体染色
+	_刷新整体颜色()
 	_刷新边框()
+
+
+## 卡牌整体色：选中整体染色优先；否则按「可置灰且不可用」压灰，正常为白
+func _刷新整体颜色() -> void:
+	if _选中 and _选中整体染色:
+		modulate = 选中整体色
+	elif _可置灰 and not _可用:
+		modulate = DISABLED_TINT
+	else:
+		modulate = Color.WHITE
 
 
 ## 对应 C# public void OnCardClick()（由 Card.tscn 的 [connection] 调用，方法名逐字保留）
@@ -261,10 +282,10 @@ func _我的角色技能() -> Array[int]:
 ## 命格（血/技/幻/咏/圣）与元素（earth/wind/water/fire/thunder）小图标：
 ## 预制体里各是一排同名子图，按卡牌数据把对应的那张显出来即可（光/暗没有图，都不显）
 func _画命格元素(c: GCard) -> void:
-	if propertyRoot != null:
-		for n: Node in propertyRoot.get_children():
+	if fate_pattern_root != null:
+		for n: Node in fate_pattern_root.get_children():
 			if n is CanvasItem:
-				(n as CanvasItem).visible = n.name == c.property
+				(n as CanvasItem).visible = n.name == c.fate_pattern
 	if elementRoot != null:
 		for n: Node in elementRoot.get_children():
 			if n is CanvasItem:
@@ -356,8 +377,8 @@ func _抓装饰基准() -> void:
 	if _基准已抓:
 		return
 	_基准已抓 = true
-	if propertyRoot != null:
-		_装饰基准[propertyRoot] = _原偏移(propertyRoot)
+	if fate_pattern_root != null:
+		_装饰基准[fate_pattern_root] = _原偏移(fate_pattern_root)
 	if elementRoot != null:
 		for n: Node in elementRoot.get_children():
 			if n is Control:

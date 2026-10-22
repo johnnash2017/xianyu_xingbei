@@ -1,4 +1,4 @@
-﻿id,类型,元素,派系,卡名,资源名,技能数,技能1,技能2,虚拟牌,说明
+﻿id,类型,元素,命格,卡名,资源名,技能数,技能1,技能2,虚拟牌,说明
 id,type,element,property,card_name,asset_path,skill_num,skill_1,skill_2,virtual_card,description
 string,string,string,string,string,string,int,技能表,技能表,int,string
 卡表#0,magic,earth,幻,圣盾,shengDun,0,,,0,【圣盾】（主动法术）#（将此牌放置于目标角色面前）在他遭受攻击或【魔弹】而即将命中时，#移除【圣盾】来抵挡，视为未命中。触发后移除此牌。

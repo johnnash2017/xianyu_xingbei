@@ -9,7 +9,7 @@ var role_list: Dictionary = {}          # roleID -> 显示名（「[剑圣]」�
 ## 可出场的角色号（角色表「启用」列 = 1 的）：随机分配、三选一/五选一/任选的候选池都取自这里
 var role_pool: Array[int] = []
 var role_skill_db: Dictionary = {}      # roleID -> 技能文本
-var role_property_db: Dictionary = {}   # roleID -> 派系（技 / 血 / 幻 / 咏 / 圣）
+var role_fate_pattern_db: Dictionary = {}   # roleID -> 命格（技 / 血 / 幻 / 咏 / 圣）
 var role_tokens_db: Dictionary = {}     # roleID -> { 槽位: {name, max} }（取自角色表的指示物列）
 ## 角色号 -> 角色表那一行（懒建一次；角色表 id 是名字型，协议/代码用的角色号在「角色索引」列）
 var _角色索引到行: Dictionary = {}
@@ -36,7 +36,7 @@ func _ready() -> void:
 	_load_card_db()
 	_load_role_list()
 	_load_role_skill_db()
-	_load_role_property()
+	_load_role_fate_pattern()
 	_load_role_tokens()
 
 
@@ -78,20 +78,20 @@ func _load_role_list() -> void:
 	role_pool.sort()
 
 
-## 技能表「派系」列的取值 → 界面上的分段标题；数组顺序即显示顺序
+## 技能表「大类」列的取值 → 界面上的分段标题；数组顺序即显示顺序
 const 技能分段顺序: Array[String] = ["普通", "独有技", "专属技", "必杀技"]
 const 技能分段标题: Dictionary = {"普通": "普通技", "独有技": "独有技", "专属技": "专属技", "必杀技": "必杀技"}
 
 
 ## 角色技能文本：按「角色表」的「技能」引用逐条拼装（角色ID -> 技能文本）
-## 一级标题取技能表的「派系」列；每条技能一行，技能表里的「说明」已经不带头，
+## 一级标题取技能表的「大类」列；每条技能一行，技能表里的「说明」已经不带头，
 ## 这里把「类型」「技能名」拼回去，成「【响应】疾风技：说明」的样子。
 ## 说明 / 技能名统一走 GConst 的读取入口：数字空格、词缀图标都在那里处理，
 ## 角色说明（选角卡、战斗内头像悬停）才会和技能按钮 / 提示条看到同一份文本。
 func _load_role_skill_db() -> void:
 	role_skill_db.clear()
 	var 列索引: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
-	var 分段列: int = int(列索引["派系"])
+	var 分段列: int = int(列索引["大类"])
 	var 角色索引列: int = int(数据表格.表元数据["角色表"]["列索引"]["角色索引"])
 	for key: String in 数据表格.角色表.keys():
 		var 角色行: Array = 数据表格.角色表[key]
@@ -115,7 +115,7 @@ func _load_role_skill_db() -> void:
 		role_skill_db[角色号] = _拼技能文本(分组)
 
 
-## 把某角色的分段字典拼成一段文本：一级标题（派系）一行，该段每条技能各占一行。
+## 把某角色的分段字典拼成一段文本：一级标题（大类）一行，该段每条技能各占一行。
 ## 行与行之间的间距不在这里插空行，改由 上色 配合 RichTextLabel 的 paragraph_separation 统一控制
 func _拼技能文本(段字典: Dictionary) -> String:
 	var 行列表: Array[String] = []
@@ -134,15 +134,15 @@ func _拼技能文本(段字典: Dictionary) -> String:
 	return "\n".join(行列表)
 
 
-## 角色派系（技 / 血 / 幻 / 咏 / 圣）：取自「角色表」的派系列（同参考工程 RoleBase.RoleProperty）
-func _load_role_property() -> void:
-	role_property_db.clear()
+## 角色命格（技 / 血 / 幻 / 咏 / 圣）：取自「角色表」的命格列（参考工程里对应角色命格的字段）
+func _load_role_fate_pattern() -> void:
+	role_fate_pattern_db.clear()
 	# 列下标按列名从表元数据取，改表结构时这里不用跟着改数字
-	var 派系列: int = int(数据表格.表元数据["角色表"]["列索引"]["派系"])
+	var 命格列: int = int(数据表格.表元数据["角色表"]["列索引"]["命格"])
 	var 索引列: int = int(数据表格.表元数据["角色表"]["列索引"]["角色索引"])
 	for key: String in 数据表格.角色表.keys():
 		var row: Array = 数据表格.角色表[key]
-		role_property_db[int(row[索引列])] = str(row[派系列]).strip_edges()
+		role_fate_pattern_db[int(row[索引列])] = str(row[命格列]).strip_edges()
 
 
 # ============================================================
@@ -215,9 +215,9 @@ func role_forms(rid: int) -> Array[String]:
 	return 结果
 
 
-## 角色派系（技 / 血 / 幻 / 咏 / 圣）；角色表里没有的角色返回空串（界面据此不显示派系图标）
-func role_property(rid: int) -> String:
-	return role_property_db.get(rid, "")
+## 角色命格（技 / 血 / 幻 / 咏 / 圣）；角色表里没有的角色返回空串（界面据此不显示命格图标）
+func role_fate_pattern(rid: int) -> String:
+	return role_fate_pattern_db.get(rid, "")
 
 
 ## 状态标签底板色（角色表「状态底色」列，写 #RRGGBB / #RRGGBBAA）。

@@ -39,7 +39,7 @@ func 跑() -> void:
 		for c: GCard in Data.card_db:
 			if c == 攻击牌 or not c.is_attack() or c.element_enum() == GConst.CardElement.Light:
 				continue
-			if c.property_enum() != 攻击牌.property_enum():
+			if c.fate_pattern_enum() != 攻击牌.fate_pattern_enum():
 				continue
 			# 优先找「同系 + 同命格」的牌：仅应战和阴阳转换两档都能用
 			if c.element_enum() == 攻击牌.element_enum():
@@ -63,7 +63,8 @@ func 跑() -> void:
 		"blue_gem": 1, "blue_crystal": 0, "red_gem": 1, "red_crystal": 0})
 	await 等帧(2)
 
-	# 3301：替队友应战不能用【圣光】帮队友挡，服务端下发 can_light=false
+	# 3301：替队友应战不能用【圣光】。这里故意不带 can_light / 按默认 true，
+	# 客户端也必须按技能号硬拦（不依赖服务端字段）。
 	Logic.command_received.emit({
 		"cmd_type": GConst.CmdType.Respond,
 		"commands": [{
@@ -75,7 +76,7 @@ func 跑() -> void:
 			"is_skill": true,
 			"preview_base": 攻击牌.id,
 			"preview_ids": [2],
-			"can_light": false,
+			"preview_damage": 2,
 		}],
 	})
 	await 等帧(2)
@@ -91,8 +92,12 @@ func 跑() -> void:
 	await 等帧()
 	检(bool(窗.call("_卡牌能点", 应战牌.id)), "3301 的普通应战牌点不动")
 	检(not bool(窗.call("_卡牌能点", 圣光.id)), "3301 替队友应战不应允许【圣光】")
-	检(str(窗.get("_提示原文")).find("再选择攻击目标") >= 0,
-		"3301 的仅应战提示没有写「攻击目标」：%s" % str(窗.get("_提示原文")))
+	检(str(窗.get("_提示原文")).find("点击头像选择应战目标") >= 0,
+		"3301 的仅应战提示没有写「点击头像选择应战目标」：%s" % str(窗.get("_提示原文")))
+	检(str(窗.get("_提示原文")).find("代其应战") >= 0,
+		"3301 的仅应战提示没有写「代其应战」：%s" % str(窗.get("_提示原文")))
+	检(str(窗.get("_提示原文")).find("队友受到 2 点伤害攻击，") >= 0,
+		"3301 替队友挡的提示没有带本次伤害说明：%s" % str(窗.get("_提示原文")))
 
 	# 切到「发动阴阳转换」这一档（index 1）：牌和目标放开，【圣光】在阴阳转换下也不能用
 	窗.call("_选中二级选项", GConst.技能_式神咒束, 1)
@@ -100,8 +105,8 @@ func 跑() -> void:
 	检(bool(窗.get("_攒应战选应战")), "3301 点效果后没有进入同一步选应战")
 	检(bool(窗.call("_卡牌能点", 应战牌.id)), "3301 同命格应战牌点不动")
 	检(not bool(窗.call("_卡牌能点", 圣光.id)), "阴阳转换下不应允许【圣光】")
-	检(str(窗.get("_提示原文")).find("命格的斩应战，再选择攻击目标") >= 0,
-		"3301 的阴阳转换提示没有写成「命格的斩 / 攻击目标」：%s" % str(窗.get("_提示原文")))
+	检(str(窗.get("_提示原文")).find("命格的斩代其应战，点击头像选择应战目标") >= 0,
+		"3301 的阴阳转换提示没有写成「命格的斩代其应战 / 点击头像」：%s" % str(窗.get("_提示原文")))
 	检(bool(窗.call("_玩家可选", 3)), "3301 的反击目标没有亮起")
 	检(not bool(窗.call("_玩家可选", 1)) and not bool(窗.call("_玩家可选", 2)),
 		"自己 / 原攻击者不该成为反击目标")

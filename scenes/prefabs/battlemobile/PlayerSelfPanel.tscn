@@ -271,7 +271,7 @@ step = 0.001
 value = 0.5
 show_percentage = false
 
-[node name="HeroProperty" type="TextureRect" parent="." unique_id=1807125472]
+[node name="HeroFatePattern" type="TextureRect" parent="." unique_id=1807125472]
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5

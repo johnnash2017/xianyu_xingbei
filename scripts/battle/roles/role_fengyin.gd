@@ -280,7 +280,7 @@ func _consume_one_energy() -> void:
 
 ## 是否是封印牌（攻击牌 + 幻命格，与服务端 TYPE_ATTACK + PROPERTY_PHANTOM 一致）
 func _is_seal_card(card: GCard) -> bool:
-	return card.is_attack() and card.property_enum() == GConst.CardProperty.Phantom
+	return card.is_attack() and card.fate_pattern_enum() == GConst.FatePattern.Phantom
 
 
 ## 元素 → 对应的封印技能号（服务端 getMapping）

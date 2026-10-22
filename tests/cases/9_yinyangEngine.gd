@@ -18,7 +18,7 @@ func 跑() -> void:
 	if 攻击牌 != null:
 		for c: GCard in Data.card_db:
 			if c != 攻击牌 and c.is_attack() and c.element_enum() != GConst.CardElement.Light \
-					and c.property_enum() == 攻击牌.property_enum():
+					and c.fate_pattern_enum() == 攻击牌.fate_pattern_enum():
 				应战牌 = c
 				break
 	检(攻击牌 != null and 应战牌 != null, "找不到同命格攻击牌，用例前提不成立")
@@ -58,6 +58,8 @@ func 跑() -> void:
 		return
 	检(int(问3306.get("preview_base", 0)) == 攻击牌.id, "3306 询问没带本次攻击牌")
 	检((问3306.get("preview_ids", []) as Array) == [2], "3306 询问没带攻击者")
+	检(int(问3306.get("preview_damage", -1)) == BattleEngine.ATTACK_BASE_POINT,
+		"3306 询问没带本次攻击的伤害预览：%s" % str(问3306))
 
 	# 回复 3306：发动阴阳转换 + 应战牌 + 反击目标 3
 	发送记录.clear()
@@ -214,5 +216,50 @@ func 跑() -> void:
 					无牌又问应战 = true
 		检(not 无牌又问应战, "没有对应牌时点取消也不该再问一次普通应战")
 		检(无牌命中, "没有对应牌时点取消应直接放弃应战、原攻击命中")
+
+	# 选项 3（阴阳转换 + 式神转换）：+2 鬼火、摸 1 张；顺带验证 3305 摸牌走标准流程
+	引擎._states.clear()
+	引擎._清空等待()
+	引擎.phase = BattleEngine.Phase.Playing
+	引擎.p(1).hand_cards = [应战牌.id] as Array[int]
+	引擎.p(1).tokens[0]["num"] = 0
+	引擎.p(1).tap = true
+	引擎._states.clear()
+	引擎.p(3).hand_cards.clear()
+	发送记录.clear()
+	var 转换攻击: Dictionary = {
+		"src": 2, "dst": 1, "point": BattleEngine.ATTACK_BASE_POINT,
+		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack, "card_id": 攻击牌.id,
+	}
+	引擎.push(BattleEngine.SAttackCard.new(2, 1, 攻击牌.id, 转换攻击))
+	引擎.run()
+	var 转换问3306: Dictionary = {}
+	for r: Dictionary in 发送记录:
+		if int(r["pid"]) == 1 and int(r["msg"]) == GConst.Msg.CmdReq:
+			var cmds: Array = (r["data"] as Dictionary).get("commands", [])
+			if not cmds.is_empty() and int((cmds[0] as Dictionary).get("respond_id", 0)) == GConst.技能_阴阳转换:
+				转换问3306 = cmds[0]
+	检(not 转换问3306.is_empty(), "选项 3 场景没有发出 3306 询问")
+	if not 转换问3306.is_empty():
+		发送记录.clear()
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.技能_阴阳转换, "src_id": 1,
+			"args": [3], "card_ids": [应战牌.id], "dst_ids": [3],
+		})
+		引擎.on_message(3, GConst.Msg.Respond, {
+			"respond_id": GConst.RespondType.ReplyAttack, "src_id": 3,
+			"args": [GConst.Reattack.GiveUp], "card_ids": [], "dst_ids": [],
+		})
+		var 转换鬼火: int = int((引擎.p(1).tokens[0] as Dictionary).get("num", -1))
+		var 转换手牌: int = 引擎.p(1).hand_cards.size()
+		var 转换伤害: int = -1
+		for r: Dictionary in 发送记录:
+			if int(r["msg"]) == GConst.Msg.Hurt \
+					and int((r["data"] as Dictionary).get("dst_id", -1)) == 3:
+				转换伤害 = int((r["data"] as Dictionary).get("hurt", -1))
+		检(转换鬼火 == 2, "阴阳转换 + 式神转换后鬼火应为 2，实际 %d" % 转换鬼火)
+		检(转换手牌 == 1, "式神转换的摸牌没有走标准流程（应战牌弃掉后应摸回 1 张，实际 %d 张）" % 转换手牌)
+		检(转换伤害 == 2, "式神形态下鬼火 2 的反击伤害应为 2，实际 %d" % 转换伤害)
+		检(not 引擎.p(1).tap, "阴阳转换结算后没有退出式神形态")
 
 	print("[自检] 阴阳转换引擎：3306 一次应答直接应战，不再问第二次")

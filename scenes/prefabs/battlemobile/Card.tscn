@@ -41,7 +41,7 @@ shader_parameter/fade_curve = SubResource("CurveTexture_rc5lo")
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_t30m7"]
 
-[node name="Card" type="Control" unique_id=1595026165 node_paths=PackedStringArray("btn", "txtSkill1", "txtSkill2", "propertyRoot", "elementRoot", "边框", "txtName")]
+[node name="Card" type="Control" unique_id=1595026165 node_paths=PackedStringArray("btn", "txtSkill1", "txtSkill2", "fate_pattern_root", "elementRoot", "边框", "txtName")]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 126.0
@@ -52,7 +52,7 @@ script = ExtResource("18_CardUIgd")
 btn = NodePath("Root")
 txtSkill1 = NodePath("Root/Skill1")
 txtSkill2 = NodePath("Root/Skill2")
-propertyRoot = NodePath("Root/Property")
+fate_pattern_root = NodePath("Root/FatePattern")
 elementRoot = NodePath("Root/Element")
 "边框" = NodePath("Border")
 txtName = NodePath("Name")
@@ -94,7 +94,7 @@ icon = ExtResource("5_diLieZhanpng")
 icon_alignment = 1
 expand_icon = true
 
-[node name="Property" type="Control" parent="Root" unique_id=525092272]
+[node name="FatePattern" type="Control" parent="Root" unique_id=525092272]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -110,7 +110,7 @@ grow_vertical = 2
 scale = Vector2(1.5, 1.5)
 pivot_offset = Vector2(12.5, 12.5)
 
-[node name="圣" type="TextureRect" parent="Root/Property" unique_id=1135958072]
+[node name="圣" type="TextureRect" parent="Root/FatePattern" unique_id=1135958072]
 visible = false
 layout_mode = 0
 anchor_right = 1.0
@@ -121,7 +121,7 @@ mouse_filter = 0
 texture = ExtResource("8_UI612png")
 expand_mode = 1
 
-[node name="技" type="TextureRect" parent="Root/Property" unique_id=2087146370]
+[node name="技" type="TextureRect" parent="Root/FatePattern" unique_id=2087146370]
 visible = false
 layout_mode = 0
 anchor_right = 1.0
@@ -132,7 +132,7 @@ mouse_filter = 0
 texture = ExtResource("9_UI613png")
 expand_mode = 1
 
-[node name="血" type="TextureRect" parent="Root/Property" unique_id=370233716]
+[node name="血" type="TextureRect" parent="Root/FatePattern" unique_id=370233716]
 visible = false
 layout_mode = 0
 anchor_right = 1.0
@@ -143,7 +143,7 @@ mouse_filter = 0
 texture = ExtResource("10_UI614png")
 expand_mode = 1
 
-[node name="幻" type="TextureRect" parent="Root/Property" unique_id=243243491]
+[node name="幻" type="TextureRect" parent="Root/FatePattern" unique_id=243243491]
 visible = false
 layout_mode = 0
 anchor_right = 1.0
@@ -154,7 +154,7 @@ mouse_filter = 0
 texture = ExtResource("11_UI615png")
 expand_mode = 1
 
-[node name="咏" type="TextureRect" parent="Root/Property" unique_id=1108499975]
+[node name="咏" type="TextureRect" parent="Root/FatePattern" unique_id=1108499975]
 visible = false
 layout_mode = 0
 anchor_right = 1.0

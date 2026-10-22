@@ -45,7 +45,7 @@ func 跑() -> void:
 			缺形态图.append("%d(%s)" % [int(rid), Data.role_name(int(rid))])
 	检(缺形态图.is_empty(), "缺形态图：%s" % str(缺形态图))
 
-	# 表驱动素材（状态图标 / 独有图标 / 指示物 / 派系图标）：名字都配在代码常量或数据表里，
+	# 表驱动素材（状态图标 / 独有图标 / 指示物 / 命格图标）：名字都配在代码常量或数据表里，
 	# 编辑器引用兜不住，只能在这里逐个查
 	var 缺状态图标: Array[String] = []
 	for 卡名: Variant in Art.STATUS_ICON.keys():
@@ -65,11 +65,11 @@ func 跑() -> void:
 			缺指示物.append(Art.TOKEN_ICON[i])
 	检(缺指示物.is_empty(), "缺指示物：%s" % str(缺指示物))
 
-	var 缺派系图标: Array[String] = []
-	for 派系: Variant in Art.PROPERTY_ICON.keys():
-		if Art.role_property_icon(str(派系)) == null:
-			缺派系图标.append(str(派系))
-	检(缺派系图标.is_empty(), "缺派系图标：%s" % str(缺派系图标))
+	var 缺命格图标: Array[String] = []
+	for 命格: Variant in Art.FATE_PATTERN_ICON.keys():
+		if Art.role_fate_pattern_icon(str(命格)) == null:
+			缺命格图标.append(str(命格))
+	检(缺命格图标.is_empty(), "缺命格图标：%s" % str(缺命格图标))
 
 	for 名: String in 界面音效:
 		var 找到: bool = false

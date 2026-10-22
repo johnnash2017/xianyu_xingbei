@@ -459,7 +459,7 @@ func _发特殊(aid: int, args: Array) -> bool:
 
 
 ## 按技能对选牌的要求挑牌，返回 {"ok": 是否挑得出来, "cards": id 数组}。
-## 规则（card_rule）：""＝不限 / magic＝只能法术牌 / same＝必须同系 / diff＝必须互异系 / sameprop＝同命格；
+## 规则（card_rule）：""＝不限 / magic＝只能法术牌 / same＝必须同系 / diff＝必须互异系 / same_fate_pattern＝同命格；
 ## 另认「逐张条件」（第 1 张须带某技能 card_slot_skill、第 2 张须为某系 card_slot_element）与「需盖牌数」cover_need。
 func _按规则选牌(需牌: int, 白名单: Array, 规则: String, slot_skill: int, slot_element: int, cover_need: int, 来源: int) -> Dictionary:
 	# 只能从「场上基础效果」选牌的技能，机器人不会构造，跳过
@@ -482,12 +482,12 @@ func _按规则选牌(需牌: int, 白名单: Array, 规则: String, slot_skill:
 		候选.append(项)
 	if 需牌 <= 0:
 		return {"ok": cover_need <= 0, "cards": []}
-	if 规则 == "same" or 规则 == "sameprop":
+	if 规则 == "same" or 规则 == "same_fate_pattern":
 		# 同系 / 同命格：按元素或命格分组，某一组里挑得够就行
 		var 分组: Dictionary = {}
 		for 项: Variant in 候选:
 			var c2: GCard = 项["card"]
-			var 键: int = c2.property_enum() if 规则 == "sameprop" else c2.element_enum()
+			var 键: int = c2.fate_pattern_enum() if 规则 == "same_fate_pattern" else c2.element_enum()
 			if not 分组.has(键):
 				分组[键] = []
 			(分组[键] as Array).append(项)

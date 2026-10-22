@@ -22,7 +22,7 @@ func 跑() -> void:
 		for c: GCard in Data.card_db:
 			if c == 攻击牌 or not c.is_attack() or c.element_enum() == GConst.CardElement.Light:
 				continue
-			if c.property_enum() != 攻击牌.property_enum():
+			if c.fate_pattern_enum() != 攻击牌.fate_pattern_enum():
 				continue
 			# 优先找「同命格但不同系」的牌：这样「仅应战」不可用，能验证服务端下发的 enabled
 			if c.element_enum() != 攻击牌.element_enum():
@@ -73,6 +73,7 @@ func 跑() -> void:
 			if not cmds.is_empty() and int((cmds[0] as Dictionary).get("respond_id", 0)) == GConst.技能_式神咒束:
 				问3301 = cmds[0]
 	检(not 问3301.is_empty(), "队友被攻击后没有向阴阳师发出 3301 询问")
+	检(not bool(问3301.get("can_light", true)), "3301 询问没有下发 can_light=false（替队友不能用圣光）")
 	if 问3301.is_empty():
 		return
 	var 参数: Array = 问3301.get("args", [])
@@ -84,6 +85,8 @@ func 跑() -> void:
 			"3301 的「仅应战」应为不可用（手里只有同命格异系牌 + 圣光）：%s" % str(问3301.get("option_enabled", [])))
 	检(int(问3301.get("preview_base", 0)) == 攻击牌.id, "3301 询问没带本次攻击牌")
 	检((问3301.get("preview_ids", []) as Array) == [3], "3301 询问没带攻击者")
+	检(int(问3301.get("preview_damage", -1)) == BattleEngine.ATTACK_BASE_POINT,
+		"3301 询问没带本次攻击的伤害预览")
 
 	# 应答 3301：发动式神咒束 + 阴阳转换 + 同命格应战牌 + 反击目标 4
 	发送记录.clear()

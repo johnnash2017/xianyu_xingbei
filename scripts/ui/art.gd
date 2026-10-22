@@ -4,7 +4,7 @@ extends Node
 
 ## 选角大立绘（260x363）
 const DIR_ROLE_BIG: String = "res://assets/textures/hero/middle/"
-## 战斗小图标目录（派系图 + 状态图标，搬自参照工程 assets/textures/battle）
+## 战斗小图标目录（命格图 + 状态图标，搬自参照工程 assets/textures/battle）
 const DIR_BATTLE: String = "res://assets/textures/battle/"
 const DIR_TAP: String = "res://assets/textures/hero/tap/"
 const DIR_SFX: String = "res://assets/media/sfx/"
@@ -18,8 +18,8 @@ const STATUS_ICON: Dictionary = {
 	"灵魂链接": "LianJie", "同生共死": "TongSheng", "永恒乐章": "YueZhang",
 }
 
-## 派系名（角色表「派系」列：技 / 血 / 幻 / 咏 / 圣）→ 派系图标文件名（assets/textures/battle 下）
-const PROPERTY_ICON: Dictionary = {
+## 命格名（角色表「命格」列：技 / 血 / 幻 / 咏 / 圣）→ 命格图标文件名（assets/textures/battle 下）
+const FATE_PATTERN_ICON: Dictionary = {
 	"技": "skill", "血": "blood", "幻": "illusion", "咏": "chant", "圣": "holy",
 }
 
@@ -79,9 +79,9 @@ func role_tap(role_id: int) -> Texture2D:
 	return tex("%s%s.png" % [DIR_TAP, 形态名])
 
 
-## 角色派系图标（技 / 血 / 幻 / 咏 / 圣）；没派系就返回 null
-func role_property_icon(property_name: String) -> Texture2D:
-	var 图标名: String = str(PROPERTY_ICON.get(property_name, ""))
+## 角色命格图标（技 / 血 / 幻 / 咏 / 圣）；没命格就返回 null
+func role_fate_pattern_icon(fate_pattern: String) -> Texture2D:
+	var 图标名: String = str(FATE_PATTERN_ICON.get(fate_pattern, ""))
 	if 图标名 == "":
 		return null
 	return tex("%s%s.png" % [DIR_BATTLE, 图标名])

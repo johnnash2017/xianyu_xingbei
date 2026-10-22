@@ -229,7 +229,7 @@ func _yi_ji_wu_nian(ctx: Dictionary) -> void:
 	ctx["check_shield"] = false
 	ctx["can_light"] = false
 	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if card != null and card.property_enum() == GConst.CardProperty.Martial:
+	if card != null and card.fate_pattern_enum() == GConst.FatePattern.Martial:
 		ctx["hit_rate"] = GConst.HitRate.NoMiss
 
 
@@ -486,7 +486,9 @@ func p_after_attack(ctx: Dictionary) -> int:
 	if step == 0:
 		step = WU_ZHE_CAN_XIN
 	if step == WU_ZHE_CAN_XIN:
-		if not used_wu_zhe:
+		# 残心已经到上限：+1 会被封顶吃掉，不再弹「加不加」的询问。
+		# 但仍要继续走一击无念的授予判定（满残心本来就够 4 点）。
+		if not used_wu_zhe and _can_xin() < _can_xin_max():
 			if not engine.has_reply():
 				询问(player.id, WU_ZHE_CAN_XIN, 0, 0)
 				return WAIT

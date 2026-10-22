@@ -18,7 +18,7 @@ signal 基础效果牌点击(玩家id: int, 牌id: int)
 signal 悬停(面板: 战斗玩家面板)
 signal 离开悬停()
 ## 鼠标指向 / 离开某枚状态图标（基础效果牌 / 指示物）：容器据此在图标上方弹提示 ——
-## 指示物＝一行「名字 当前/上限」；基础效果牌＝摊出这张牌的完整卡面 + 一行「卡名（派系·元素）」
+## 指示物＝一行「名字 当前/上限」；基础效果牌＝摊出这张牌的完整卡面 + 一行「卡名（命格·元素）」
 ## （牌id >= 0 表示带上了卡牌；容器用图标的矩形摆位，保证提示不压住图标）
 signal 状态图标悬停(图标: Control, 文本: String, 牌id: int)
 signal 状态图标离开悬停()
@@ -52,8 +52,8 @@ signal 状态图标离开悬停()
 @onready var minusSelect: BaseButton = _find_variant("minusSelect") as BaseButton
 ## 对应 C# [SerializeField] private Image hero;
 @onready var hero: TextureRect = _find_variant("Hero") as TextureRect
-## 对应 C# [SerializeField] private Image property;  （场景里的 HeroProperty）
-@onready var propertyImage: TextureRect = _find_variant("HeroProperty") as TextureRect
+## 对应 C# [SerializeField] private Image 命格图标（原 C# 字段）；场景里的 HeroFatePattern
+@onready var fate_pattern_image: TextureRect = _find_variant("HeroFatePattern") as TextureRect
 ## 对应 C# [SerializeField] private Image knelt;（本工程改成 Label：状态名文字 + 自带底板）
 @onready var knelt: Label = _find_variant("Knelt") as Label
 ## 对应 C# [SerializeField] private Text playerName;  （MainPlayer 是 Name/TxtName，其余是 PlayerName/Name_N）
@@ -413,7 +413,7 @@ func set_RoleID(value: int) -> void:
 	if value == 0:
 		return
 	# 参考工程在这里 role = RoleFactory.create(value)（技能系统）；本工程不用技能系统，
-	# 角色名与派系图标都直接查数据表。
+	# 角色名与命格图标都直接查数据表。
 	角色名 = Data.role_name(value)
 	角色号 = value
 	# 只有「自己那块面板」（MainPlayer）按大立绘排版，用 heroL；其余面板都是小图标槽，用 heroS。
@@ -450,12 +450,12 @@ func set_RoleID(value: int) -> void:
 ## 注意：这里**不要**再去「隐藏带 chara 贴图的节点」—— 头像背后那块背景板（队徽底图）
 ## 用的就是 battle/b02_chara_*.png，按贴图名去关会把背景板一起关掉（表现为「看不到头像
 ## 也看不到背景板」）。头像直接换 HeroIcon 的贴图就够了，不需要隐藏任何东西。
-	# 派系（技 / 血 / 幻 / 咏 / 圣）图标贴到名牌左侧的 HeroProperty 上
-	# （对照参考工程 PlayerStatusMobile 里 role.get_role_property() 那段）
-	var 派系图: Texture2D = Art.role_property_icon(Data.role_property(value))
-	if propertyImage != null:
-		propertyImage.texture = 派系图
-		propertyImage.visible = 派系图 != null
+	# 命格（技 / 血 / 幻 / 咏 / 圣）图标贴到名牌左侧的 HeroFatePattern 上
+	# （对照参考工程 PlayerStatusMobile 里对应角色命格的那段）
+	var 命格图: Texture2D = Art.role_fate_pattern_icon(Data.role_fate_pattern(value))
+	if fate_pattern_image != null:
+		fate_pattern_image.texture = 命格图
+		fate_pattern_image.visible = 命格图 != null
 	if not seted:
 		seted = true
 		_create_tokens()
@@ -497,22 +497,29 @@ func _create_token(prefab_name: String, node_name: String, 槽: int) -> Label:
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
 	return lbl
 
+## 指示物悬浮提示里的上限文案：角色表配 99 的按“无限”显示成 ∞；
+## 实际数值仍以 99 为上限制约（这里只改显示，不动数据）。
+static func 指示物上限文本(上限: int) -> String:
+	return "∞" if 上限 == 99 else str(上限)
+
+
 ## 鼠标指到某枚指示物图标：把「名字 当前/上限」报给容器（上限只在悬浮提示里露面）
 func _报告指示物悬停(槽: int, 图标: Control) -> void:
 	var 定义: Dictionary = Data.role_token_def(角色号, 槽)
 	if 定义.is_empty():
 		return
-	状态图标悬停.emit(图标, "%s %d/%d" % [str(定义["name"]), _指示物数值[槽], int(定义["max"])], -1)
+	var 上限文本: String = 指示物上限文本(int(定义["max"]))
+	状态图标悬停.emit(图标, "%s %d/%s" % [str(定义["name"]), _指示物数值[槽], 上限文本], -1)
 
 
 ## 鼠标指到某枚基础效果牌图标：报出这张牌的 id（容器据此摊出完整卡面）+ 一行
-## 「状态名（派系·元素）」（卡面贴图缺失时兜底用；同一状态有好几版牌，如【圣盾】有幻 / 圣 / 咏）
+## 「状态名（命格·元素）」（卡面贴图缺失时兜底用；同一状态有好几版牌，如【圣盾】有幻 / 圣 / 咏）
 func _报告基础效果悬停(牌id: int, 图标: Control) -> void:
 	var 牌: GCard = Data.get_card(牌id)
 	if 牌 == null:
 		return
 	状态图标悬停.emit(图标,
-		"%s（%s·%s）" % [状态名(牌), 牌.property, GConst.element_to_chinese(牌.element_enum())], 牌id)
+		"%s（%s·%s）" % [状态名(牌), 牌.fate_pattern, GConst.element_to_chinese(牌.element_enum())], 牌id)
 
 
 ## 这张牌摆在头像上当状态用时，那个状态叫什么。
@@ -685,7 +692,7 @@ func 五系束缚应摸张数() -> int:
 	for p: GPlayer in Data.player_list:
 		for st: GPlayer.BasicStatus in p.basic_status_list:
 			var c: GCard = st.card
-			if c != null and c.is_attack() and c.property_enum() == GConst.CardProperty.Phantom:
+			if c != null and c.is_attack() and c.fate_pattern_enum() == GConst.FatePattern.Phantom:
 				n += 1
 	return mini(GConst.五系束缚摸牌基数 + n, GConst.五系束缚摸牌上限)
 
@@ -709,7 +716,7 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 	var 起点: int = -1
 	if go is Control:
 		(go as Control).material = _状态描边材质
-		# 鼠标压上去各报各的：基础效果牌报「卡名（派系·元素）」+ 卡面，独有效果只有名字
+		# 鼠标压上去各报各的：基础效果牌报「卡名（命格·元素）」+ 卡面，独有效果只有名字
 		var 图标: Control = go as Control
 		if 基础牌id >= 0:
 			图标.mouse_entered.connect(func() -> void: _报告基础效果悬停(基础牌id, 图标))

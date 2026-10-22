@@ -187,6 +187,16 @@ enum GossipType {
 const RED: int = 1
 const BLUE: int = 0
 const TEAM_NONE: int = -1
+
+
+## 应战反击目标：敌方、不是自己、不是原攻击者。
+## 客户端可点过滤与服务端 _reattack_target_ok 共用，避免两边各写一份。
+static func 可作反击目标(my_id: int, my_color: int, target_id: int, target_color: int, origin_src: int) -> bool:
+	if my_id < 0 or target_id < 0 or target_id == my_id or target_id == origin_src:
+		return false
+	if my_color == TEAM_NONE or target_color == TEAM_NONE:
+		return false
+	return my_color != target_color
 # 观战者（房间满员时的 playerId）
 const GUEST: int = 9
 
@@ -325,7 +335,7 @@ enum CardElement {
 	Darkness = 7,
 }
 
-enum CardProperty {
+enum FatePattern {
 	Blood = 1,
 	Martial = 2,
 	Phantom = 3,
@@ -643,6 +653,13 @@ const 技能_生命结界: int = 3304
 ## 阴阳师【阴阳转换】（3306）：响应时在同一步里选效果、应战牌与反击目标，客户端一次提交；
 ## 选阴阳转换时允许用同命格的攻击牌应战（光系仍然只能在不发动阴阳转换时用于格挡）
 const 技能_阴阳转换: int = 3306
+## 月之女神（35）
+const 技能_新月庇护: int = 3501
+const 技能_美杜莎之眼: int = 3503
+const 技能_月之轮回: int = 3504
+const 技能_月渎: int = 3505
+const 技能_暗月斩: int = 3506
+const 技能_苍白之月: int = 3507
 ## 神箭手【贯穿射击】：响应技能
 const 技能_贯穿射击: int = 305
 ## 血色剑灵（34）：血染蔷薇分两步问（先选目标，再选有【水晶】的友方），
@@ -751,8 +768,10 @@ const 攻击提示角色加成: Dictionary = {
 #               {1: {"反选": true, "文案": "%d 法术伤害", "每目标": 1}, 0: {"文案": "%d 法术伤害", "每目标": 1}}；
 #               键就是上面那套展示键（含「反选」）。没选效果之前不画提示
 #   选项牌系 —— 各效果值 → 该效果要求发动牌是这一系，形如 {1: GConst.CardElement.Fire}
-#               （如【百鬼夜行】展示火系妖力：必须真拿火系【妖力】发动）。
+#               （如【百鬼夜行】展示火系【妖力】：必须真拿火系【妖力】发动）。
 #               选了该效果后，其它系的牌整片置灰 —— 免得选错牌提交、服务端静默不生效
+#   选项目牌型 —— 各效果值 → 该效果只允许哪种牌型，形如 {2: "magic"}（只让法术牌可点）。
+#               如月女【美杜莎之眼】的「移除一个法术牌【暗月】」按钮；没选该效果时不限
 #
 # 通用键：
 #   提示     —— 指令条上的说明文案（仅客户端用）
@@ -1068,6 +1087,35 @@ const 技能指示器: Dictionary = {
 	# 选项按钮只写「移除【水晶】/移除【宝石】」这种短标签，具体效果放到下方提示条（选项说明），
 	# 不在角色头像上写效果 —— 只有简单通用效果才用头像指示器。
 	技能_散华轮舞: {"先弹选项": true},
+	# 月女【美杜莎之眼】：两个按钮同一次询问里选。
+	# 「普通」不选目标；「法术牌」才选 1 名对手；第二项还只允许点法术牌【暗月】。
+	# 两项都给自己 +1 治疗；法术牌分支还对目标对手造成 1 点法术伤害。
+	技能_美杜莎之眼: {"先弹选项": true, "选项目标数": {1: 0, 2: 1},
+		"选项目牌型": {1: "cover", 2: "cover_magic"},
+		"选项提示": {
+			1: {"自身": {"每目标": 1, "文案": "+%d 治疗"}},
+			2: {"每目标": 1, "文案": "%d 法术伤害",
+				"自身": {"每目标": 1, "文案": "+%d 治疗"}},
+		}},
+	# 月女【月之轮回】：两个按钮的资源与目标都不同 ——
+	# 第一项要 1 张【暗月】+1 名角色，给他 +1 治疗；第二项只要 1 点【治疗】，不要牌也不要目标。
+	技能_月之轮回: {"先弹选项": true, "选项目标数": {1: 1, 2: 0},
+		"无牌选项禁牌": true,
+		"选项提示": {
+			1: {"每目标": 1, "文案": "+%d 治疗"},
+			2: {"自身": {"每目标": 1, "文案": "移除 %d 治疗"}},
+		}},
+	# 月女【月渎】：对目标对手造成 1 点法术伤害，自己移除 1 点治疗
+	技能_月渎: {"每目标": 1, "文案": "%d 法术伤害",
+		"自身": {"每目标": 1, "文案": "移除 %d 治疗"}},
+	# 月女【暗月斩】：目标固定为本次攻击目标，头像上写本次攻击伤害（选暗月后 +X）
+	技能_暗月斩: {"自动选目标": "询问目标"},
+	# 月女【苍白之月】：第二项对目标对手造成 X+1 点法术伤害（X 是 args[1] 的新月数）
+	技能_苍白之月: {"选项提示": {
+		1: {},
+		2: {"每目标": 1, "加参数": true, "加参数下标": 1,
+			"文案": "%d 法术伤害"},
+	}},
 }
 
 
@@ -1154,21 +1202,21 @@ static var _技能文本数字空格正则: RegEx = null
 static var _技能文本连续空格正则: RegEx = null
 
 
-## 技能的分类标签（派系·类型，如「独有技·响应」）；技能表里查不到就返回空串
+## 技能的大类标签（大类·类型，如「独有技·响应」）；技能表里查不到就返回空串
 static func skill_tag(skill_id: int) -> String:
 	var row: Array = 技能行(skill_id)
 	if row.is_empty():
 		return ""
-	var 派系: String = str(row[_技能列("派系")]).strip_edges()
+	var BroadCategory: String = str(row[_技能列("大类")]).strip_edges()
 	# 表里普通技写的是「普通」，界面上补回「技」字，与独有技/专属技/必杀技一致
-	if 派系 == "普通":
-		派系 = "普通技"
+	if BroadCategory == "普通":
+		BroadCategory = "普通技"
 	var 类型: String = str(row[_技能列("类型")]).strip_edges()
-	if 派系 == "":
+	if BroadCategory == "":
 		return 类型
 	if 类型 == "":
-		return 派系
-	return "%s·%s" % [派系, 类型]
+		return BroadCategory
+	return "%s·%s" % [BroadCategory, 类型]
 
 
 ## 技能表「类型」列（响应 / 启动 / 被动 / 法术…）；技能表里查不到就返回空串
@@ -1484,13 +1532,13 @@ static func element_to_chinese(e: int) -> String:
 
 
 ## 命格字符串 → 枚举值
-static func property_from_string(s: String) -> int:
+static func fate_pattern_from_string(s: String) -> int:
 	match s:
-		"血": return CardProperty.Blood
-		"技": return CardProperty.Martial
-		"幻": return CardProperty.Phantom
-		"咏": return CardProperty.Cast
-		"圣": return CardProperty.Holy
+		"血": return FatePattern.Blood
+		"技": return FatePattern.Martial
+		"幻": return FatePattern.Phantom
+		"咏": return FatePattern.Cast
+		"圣": return FatePattern.Holy
 	return 0
 
 

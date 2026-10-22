@@ -43,19 +43,19 @@ var _yin_yang_choice: int = 0
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 式神降临要弃 2 张同命格牌：card_rule="sameprop" 让界面选第 1 张后只亮同命格的牌。
+	# 式神降临要弃 2 张同命格牌：card_rule="same_fate_pattern" 让界面选第 1 张后只亮同命格的牌。
 	# 已经是式神形态（横置）时不能再开，必须等重置回普通形态。
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SHI_SHEN_JIANG_LIN, "need_card": 2, "need_target": 0,
-		"card_rule": "sameprop", "enabled": not player.tap and _has_same_property_pair()})
+		"card_rule": "same_fate_pattern", "enabled": not player.tap and _has_same_fate_pattern_pair()})
 	# 生命结界：两档效果；目标只能是队友。费用什么能量都行（水晶优先扣）。
 	var 队友: Array[int] = ally_ids()
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_MING_JIE_JIE, "need_card": 0, "need_target": 1,
-		"targets": 队友, "card_rule": "sameprop",
+		"targets": 队友, "card_rule": "same_fate_pattern",
 		"arg_choices": [
 			{"text": 提示原文(SHENG_MING_JIE_JIE, 0), "args": [1],
 				"enabled": player.get_energy() >= 1 and not 队友.is_empty()},
 			{"text": 提示原文(SHENG_MING_JIE_JIE, 1), "args": [2], "need_card": 2,
-				"enabled": player.tap and player.get_energy() >= 1 and _has_same_property_pair()},
+				"enabled": player.tap and player.get_energy() >= 1 and _has_same_fate_pattern_pair()},
 		],
 		"enabled": player.get_energy() >= 1 and not 队友.is_empty()})
 	return out
@@ -79,16 +79,51 @@ func _set_gui_huo(v: int) -> void:
 
 
 ## 手牌中是否存在 2 张同命格的牌（式神降临的条件）
-func _has_same_property_pair() -> bool:
+func _has_same_fate_pattern_pair() -> bool:
 	for i: int in range(player.hand_cards.size()):
 		var ci: GCard = Data.get_card(player.hand_cards[i])
 		if ci == null:
 			continue
 		for j: int in range(i + 1, player.hand_cards.size()):
 			var cj: GCard = Data.get_card(player.hand_cards[j])
-			if cj != null and cj.property_enum() == ci.property_enum():
+			if cj != null and cj.fate_pattern_enum() == ci.fate_pattern_enum():
 				return true
 	return false
+
+
+## 校验「2 张命格相同的手牌」：两张不同、都在手、命格相同。返回 GE_* 错误码。
+## 式神降临和生命结界第二档共用，避免两边各写一套。
+func _check_same_fate_pattern_pair(cards: Array) -> int:
+	if cards.size() != 2:
+		return GConst.GE_INVALID_CARDID
+	var c0: int = int(cards[0])
+	var c1: int = int(cards[1])
+	if c0 == c1:
+		return GConst.GE_INVALID_CARDID
+	var a0: GCard = Data.get_card(c0)
+	var a1: GCard = Data.get_card(c1)
+	if a0 == null or a1 == null or a0.fate_pattern_enum() != a1.fate_pattern_enum():
+		return GConst.GE_INVALID_CARDID
+	if not player.has_hand_card(c0) or not player.has_hand_card(c1):
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+## 展示并弃掉自己手里的牌（客户端摊牌 + p_show_hand 钩子 + 弃牌日志）。
+## 3303 / 3304 第二档共用；不负责最终的 _broadcast_game()。
+func _展示并弃(cards: Array) -> void:
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": cards, "is_real": true,
+	})
+	_弃手牌(player.id, cards, true)
+
+
+## 弃掉某人的手牌（展示 可选：走 p_show_hand 钩子）；不负责广播快照。
+func _弃手牌(pid: int, cards: Array, 展示: bool = false) -> void:
+	engine.take_from_hand(pid, cards, 展示)
+	engine.to_discard(cards)
+	engine._log_discard(pid, cards)
 
 
 # ============================================================
@@ -128,18 +163,21 @@ func _yin_yang_zhuan_huan(ctx: Dictionary) -> int:
 	var atk_id: int = int(ctx.get("card_id", -1))
 	# 即便手里没有同系 / 同命格牌，也照样询问（三档全部置灰）：
 	# 不询问会让对手从「没弹询问」直接推断出阴阳师手里没有对应牌。
-	var 可阴阳: bool = _has_same_property_attack(atk_id)
+	var 可阴阳: bool = _has_same_fate_pattern_attack(atk_id)
 	# 【圣光】也能算「仅应战」：手里没有同系攻击牌、但能用圣光抵挡时，仍要给玩家这一档，
 	# 否则他只能先取消、再等引擎的普通应战询问，又变回两步操作。
 	var 可圣光: bool = bool(ctx.get("can_light", true)) and _has_holy_light()
 	var 有基础应战: bool = _has_base_reattack_card(atk_id) or 可圣光
+	# 提示里的「受到 N 伤害攻击」：自己挨打和替队友挡都用本次攻击的同一个伤害。
+	var harm: Dictionary = ctx.get("harm", {})
+	var 预览伤害: int = engine._应战提示伤害(int(ctx.get("src", -1)), ctx, harm)
 	if not engine.has_reply():
 		# 三档始终都摆出来：本次用不了的那档由 enabled=false 置灰（对照其他技能的 option_enabled），
 		# 不能直接省略——否则玩家会以为这套技能少了一档。
 		询问(player.id, YIN_YANG_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand,
 			_阴阳转换选项(有基础应战, 可阴阳),
 			0, "", [], true, 0, -1, [], -1, {},
-			atk_id, 0, false, [int(ctx.get("src", -1))], bool(ctx.get("can_light", true)))
+			atk_id, 0, false, [int(ctx.get("src", -1))], bool(ctx.get("can_light", true)), 预览伤害)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE
@@ -194,9 +232,9 @@ func _结算阴阳转换后效(harm: Dictionary) -> void:
 	_set_gui_huo(_gui_huo() + 1)
 	if _shi_shen_pending:
 		notice_skill(SHI_SHEN_ZHUAN_HUAN, [player.id])
-		# 【强制】摸 1 张：直接进手牌，保证这次应战结算完立刻能看到牌；
-		# 不走 push_draw 的排队，避免被后面的应战 / 伤害流程压住
-		engine.draw(player.id, 1)
+		# 【强制】摸 1 张：走标准摸牌流程（先跑摸牌前响应，再摸进手牌），
+		# 和项目里其它摸牌保持一致。
+		engine.push_draw(player.id, 1, SHI_SHEN_ZHUAN_HUAN)
 		_set_gui_huo(_gui_huo() + 1)
 	if 在式神形态:
 		harm["point"] = _gui_huo()
@@ -252,14 +290,7 @@ func v_reattack(card_id: int, attack_card_id: int) -> int:
 			return GConst.GE_INVALID_CARDID
 		var card: GCard = Data.get_card(card_id)
 		var atk: GCard = Data.get_card(attack_card_id)
-		if card == null or atk == null:
-			return GConst.GE_INVALID_CARDID
-		# 阴阳转换不能用光系牌：光系是格挡，不是应战
-		if card.element_enum() == GConst.CardElement.Light:
-			return GConst.GE_INVALID_CARDID
-		if atk.element_enum() == GConst.CardElement.Darkness:
-			return GConst.GE_INVALID_CARDID
-		if not card.is_attack() or card.property_enum() != atk.property_enum():
+		if not GCard.可阴阳应战(card, atk):
 			return GConst.GE_INVALID_CARDID
 		return GConst.GE_SUCCESS
 	return player.base_v_reattack(card_id, attack_card_id)
@@ -333,13 +364,11 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 仅「队友被主动攻击」时发动（不含自己、不含由应战发起的反击）
 	var dst_id: int = int(ctx.get("dst", -1))
-	if dst_id == player.id:
-		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	var dst: BattlePlayer = engine.p(dst_id)
-	if dst == null or dst.color != player.color:
+	if not ally_ids().has(dst_id):
 		return SUCCESS
+	var dst: BattlePlayer = engine.p(dst_id)
 	# 须处于式神形态，且命中率为普通。即便手里没有合法应战牌也照样询问（三档全部置灰），
 	# 避免对手从「没弹询问」推断出阴阳师手里没有对应牌。
 	# 替队友应战时不能用【圣光】帮队友抵挡，所以「仅应战」只认普通攻击牌 / 同命格攻击牌。
@@ -350,15 +379,18 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	var atk_id: int = int(ctx.get("card_id", -1))
 	if not _can_pay_shi_shen_cost():
 		return SUCCESS
+	# 替队友挡时也把这次攻击的伤害带给客户端，提示里才能写「受到 N 伤害攻击」
+	var harm: Dictionary = ctx.get("harm", {})
+	var 预览伤害: int = engine._应战提示伤害(int(ctx.get("src", -1)), ctx, harm)
 	if not engine.has_reply():
 		# 和直接 3306 用同一张三档选项：仅应战 / 阴阳转换 / 阴阳转换+式神转换。
 		# 用不了的档同样置灰显示；同时把本次攻击牌和攻击者带给客户端。
 		# 可圣光传 false：3301 这条不能用圣光抵挡，客户端据此把【圣光】置灰。
 		询问(player.id, SHI_SHEN_ZHOU_SHU, 0, 0, GConst.CardSource.Hand,
 			_阴阳转换选项(_has_base_reattack_card(atk_id),
-				_has_same_property_attack(atk_id)),
+				_has_same_fate_pattern_attack(atk_id)),
 			0, "", [], true, 0, -1, [], -1, {},
-			atk_id, 0, false, [int(ctx.get("src", -1))], false)
+			atk_id, 0, false, [int(ctx.get("src", -1))], false, 预览伤害)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -366,6 +398,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if choice <= 0:
 		step = STEP_DONE
 		return SUCCESS
+	# 式神咒束只能用攻击牌应战，替队友挡不能出圣光：把本次攻击的 can_light 关掉，
+	# 后续应战询问 / 格挡判定与客户端保持同一口径。
+	ctx["can_light"] = false
 	# 客户端攒操作时 args[1] 是 3306 已经选好的效果；没带就仍由 p_attacked 再问
 	var 阴阳选择: int = int(args[1]) if args.size() > 1 else 0
 	if 阴阳选择 > 0:
@@ -391,15 +426,12 @@ func _has_base_reattack_card(attack_card_id: int) -> bool:
 
 
 ## 同命格攻击牌是否存在（阴阳转换用；光系不算，暗系攻击本身不可应战）
-func _has_same_property_attack(attack_card_id: int) -> bool:
+func _has_same_fate_pattern_attack(attack_card_id: int) -> bool:
 	var atk: GCard = Data.get_card(attack_card_id)
 	if atk == null or atk.element_enum() == GConst.CardElement.Darkness:
 		return false
 	for cid: int in player.hand_cards:
-		var card: GCard = Data.get_card(cid)
-		if card == null or not card.is_attack():
-			continue
-		if card.element_enum() != GConst.CardElement.Light and card.property_enum() == atk.property_enum():
+		if GCard.可阴阳应战(Data.get_card(cid), atk):
 			return true
 	return false
 
@@ -503,18 +535,9 @@ func v_magic_skill(action: Dictionary) -> int:
 			# 已经是式神形态时不能再开
 			if player.tap:
 				return GConst.GE_INVALID_ACTION
-			if cards.size() != 2:
-				return GConst.GE_INVALID_CARDID
-			if int(cards[0]) == int(cards[1]):
-				return GConst.GE_INVALID_CARDID
-			var c0: GCard = Data.get_card(int(cards[0]))
-			var c1: GCard = Data.get_card(int(cards[1]))
-			if c0 == null or c1 == null:
-				return GConst.GE_INVALID_CARDID
-			if c0.property_enum() != c1.property_enum():
-				return GConst.GE_INVALID_CARDID
-			if not player.has_hand_card(int(cards[0])) or not player.has_hand_card(int(cards[1])):
-				return GConst.GE_INVALID_ACTION
+			var 降临错误: int = _check_same_fate_pattern_pair(cards)
+			if 降临错误 != GConst.GE_SUCCESS:
+				return 降临错误
 		SHENG_MING_JIE_JIE:
 			if player.get_energy() < 1:
 				return GConst.GE_INVALID_ACTION
@@ -522,21 +545,16 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_ACTION
 			var dst: BattlePlayer = engine.p(int(dsts[0]))
 			# 目标只能是队友（不含自己）
-			if dst == null or dst.id == player.id or dst.color != player.color:
+			if dst == null or not ally_ids().has(dst.id):
 				return GConst.GE_INVALID_PLAYERID
 			var args: Array = action.get("args", [])
 			var opt: int = int(args[0]) if not args.is_empty() else 1
 			if opt == 2:
-				if not player.tap or cards.size() != 2:
+				if not player.tap:
 					return GConst.GE_INVALID_CARDID
-				if int(cards[0]) == int(cards[1]):
-					return GConst.GE_INVALID_CARDID
-				var a0: GCard = Data.get_card(int(cards[0]))
-				var a1: GCard = Data.get_card(int(cards[1]))
-				if a0 == null or a1 == null or a0.property_enum() != a1.property_enum():
-					return GConst.GE_INVALID_CARDID
-				if not player.has_hand_card(int(cards[0])) or not player.has_hand_card(int(cards[1])):
-					return GConst.GE_INVALID_ACTION
+				var 结界错误: int = _check_same_fate_pattern_pair(cards)
+				if 结界错误 != GConst.GE_SUCCESS:
+					return 结界错误
 			elif opt != 1:
 				return GConst.GE_INVALID_ARGUMENT
 		_:
@@ -561,13 +579,7 @@ func _shi_shen_jiang_lin(action: Dictionary) -> int:
 	_set_gui_huo(_gui_huo() + 1)
 	player.add_action(GConst.ActionType.Attack, SHI_SHEN_JIANG_LIN, true)
 	engine.set_tap(player.id, true)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": use_cards, "is_real": true,
-	})
-	engine.take_from_hand(player.id, use_cards, true)
-	engine.to_discard(use_cards)
-	engine._log_discard(player.id, use_cards)
+	_展示并弃(use_cards)
 	engine._broadcast_game()
 	return URGENT
 
@@ -590,16 +602,15 @@ func _sheng_ming_jie_jie(action: Dictionary) -> int:
 		if victim != null:
 			for cid: Variant in want_ids:
 				var id: int = int(cid)
-				if victim.has_hand_card(id) and not chosen.has(id):
+				# 弃手牌只认真手牌（盖牌可当手牌，但不能用来弃）
+				if victim.has_discard_card(id) and not chosen.has(id):
 					chosen.append(id)
 					if chosen.size() >= 1:
 						break
 			if chosen.is_empty() and not victim.hand_cards.is_empty():
 				chosen.append(int(victim.hand_cards[0]))
 			if not chosen.is_empty():
-				engine.take_from_hand(victim.id, chosen)
-				engine.to_discard(chosen)
-				engine._log_discard(victim.id, chosen)
+				_弃手牌(victim.id, chosen)
 		_sheng_ming_step = 0
 		_sheng_ming_dst = -1
 		engine._broadcast_game()
@@ -611,10 +622,7 @@ func _sheng_ming_jie_jie(action: Dictionary) -> int:
 	var args: Array = action.get("args", [])
 	var opt: int = int(args[0]) if not args.is_empty() else 1
 	# 费用：什么能量都行，水晶优先
-	if player.crystal > 0:
-		player.set_crystal(player.crystal - 1)
-	else:
-		player.set_gem(player.gem - 1)
+	player.remove_energy(1)
 	notice_skill(SHENG_MING_JIE_JIE, [dst_id])
 	_set_gui_huo(_gui_huo() + 1)
 
@@ -622,13 +630,7 @@ func _sheng_ming_jie_jie(action: Dictionary) -> int:
 		# 方案二：弃 2 张同命格牌，退出式神形态，再让目标队友弃 1 张
 		var cards: Array = action.get("card_ids", [])
 		var use_cards: Array = [int(cards[0]), int(cards[1])]
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": use_cards, "is_real": true,
-		})
-		engine.take_from_hand(player.id, use_cards, true)
-		engine.to_discard(use_cards)
-		engine._log_discard(player.id, use_cards)
+		_展示并弃(use_cards)
 		if player.tap:
 			player.tap = false
 		if dst != null and not dst.hand_cards.is_empty():

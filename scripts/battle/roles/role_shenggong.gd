@@ -232,7 +232,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if _timeline_1_step == TIAN_ZHI_GONG:
 		# 非【圣】命格的攻击牌：本次伤害 -1
 		var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-		if card != null and card.property_enum() != GConst.CardProperty.Holy:
+		if card != null and card.fate_pattern_enum() != GConst.FatePattern.Holy:
 			var harm: Dictionary = ctx.get("harm", {})
 			harm["point"] = int(harm.get("point", 0)) - 1
 		_timeline_1_step = SHENG_LIU_XING_ATK
@@ -286,7 +286,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	step = STEP_DONE
 	var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if card != null and card.property_enum() == GConst.CardProperty.Holy:
+	if card != null and card.fate_pattern_enum() == GConst.FatePattern.Holy:
 		notice_skill(SHENG_LIU_XING_HIT, [player.id])
 		_set_token(TOKEN_XIN_YANG, _xin_yang() + 1)
 		engine._broadcast_game()

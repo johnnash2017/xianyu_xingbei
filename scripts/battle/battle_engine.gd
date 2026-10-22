@@ -83,6 +83,8 @@ var 行动允许: int = GConst.ActionType.Any
 var 行动可放弃: bool = false
 ## 本次行动阶段是不是「额外行动」（额外行动阶段允许放弃，与「被挑衅」那种可放弃的普通阶段区分开）
 var 行动额外: bool = false
+## 本次额外行动的触发来源（cause）：苍白之月要据此把提示写成「获得额外【无法应战】攻击行动」
+var 行动额外来源: int = 0
 ## 本次行动阶段是否禁止「特殊行动」（购买/合成/提炼）。发动过「启动」技能后，行动阶段照旧继续，
 ## 但只能再攻击 / 法术，不能再走特殊行动（启动技与特殊行动互斥）
 var 行动禁特殊: bool = false
@@ -535,6 +537,8 @@ func push_overload_with_harm(harm: Dictionary) -> void:
 		return
 	for st: Variant in _states:
 		if st is SHandOverflow:
+			(st as SHandOverflow).补充伤害上下文(
+				int(harm.get("cause", 0)), int(harm.get("type", GConst.HarmType.None)))
 			return
 	push(SHandOverflow.new(int(harm.get("cause", 0)), int(harm.get("type", GConst.HarmType.None))))
 
@@ -1069,9 +1073,9 @@ func broadcast(msg_type: int, data: Dictionary) -> void:
 ## 行动阶段询问（附带角色可选技能）
 ## can_give_up：本阶段是否允许「放弃行动」（对照原版 Coder::askForAction 的 canGiveUp 分支，
 ## 允许时额外下发一条 ACTION_NONE 命令，客户端据此显示「放弃行动」）
-func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bool = false, no_special: bool = false) -> void:
+func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bool = false, no_special: bool = false, extra_cause: int = 0) -> void:
 	_pending_action_type = action_type
-	var cmds: Array = action_commands(pid, action_type, can_give_up, extra, no_special)
+	var cmds: Array = action_commands(pid, action_type, can_give_up, extra, no_special, extra_cause)
 	_最后行动命令[pid] = cmds
 	_询问(pid, GConst.CmdType.Action, cmds)
 
@@ -1098,7 +1102,7 @@ func 重发当前询问(pid: int) -> void:
 func _刷新技能可用(pid: int) -> void:
 	if _await_id != pid or _await_kind != GConst.Msg.Action:
 		return
-	var cmds: Array = action_commands(pid, 行动允许, 行动可放弃, 行动额外, 行动禁特殊)
+	var cmds: Array = action_commands(pid, 行动允许, 行动可放弃, 行动额外, 行动禁特殊, 行动额外来源)
 	if str(cmds) == str(_最后行动命令.get(pid, [])):
 		return
 	_最后行动命令[pid] = cmds
@@ -1106,12 +1110,14 @@ func _刷新技能可用(pid: int) -> void:
 
 
 ## 行动询问的命令表：第 0 项是通用行动（允许放弃时再补一项「放弃」），其余是当前手牌下该角色能放的技能
-func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool = false, no_special: bool = false) -> Array:
+func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool = false, no_special: bool = false, extra_cause: int = 0) -> Array:
 	var cmds: Array = [{
 		"respond_id": action_type, "src_id": pid,
 		"dst_ids": [], "card_ids": [], "args": [],
 		# 额外行动阶段：客户端据此把提示写成「获得额外攻击行动 / 额外法术行动 / 额外行动」
 		"is_extra": extra,
+		# 这份额外行动的来源（如苍白之月 3507）；普通行动不带
+		"extra_cause": extra_cause,
 		# 禁止特殊行动（发动过「启动」技能后）：客户端据此把「特殊行动」按钮收掉
 		"no_special": no_special,
 	}]
@@ -1155,7 +1161,7 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				# （如【冒险者天堂】选要用哪些星石）
 				"arg_choices": sk.get("arg_choices", []),
 				# card_rule 非空时客户端限制可点牌（same＝必须同系 / diff＝必须互异系 /
-				# magic＝只能法术牌 / sameprop＝必须与已选牌同命格）
+				# magic＝只能法术牌 / same_fate_pattern＝必须与已选牌同命格）
 				"card_rule": str(sk.get("card_rule", "")),
 				# card_prompt 非空时客户端用它替代默认的「从手牌中选 N 张」发动提示
 				# （如【充能】的发动代价是「弃到 4 张牌」，说「选 4 张」不准确）
@@ -1201,7 +1207,7 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 选项文案放在同一条命令的 notes 里，与选项值一一对应；选项技能号放在 option_skill_ids 里（同序）
 ## card_max 给点选上限（省略或 0＝刚好 need_card 张，如【法术反弹】可弃 1~N 张同系牌）
 ## card_rule 给选牌规则（""＝不限 / "same"＝必须同系 / "diff"＝必须互异系 /
-## "magic"＝只能选法术牌 / "sameprop"＝必须与已选牌同命格）
+## "magic"＝只能选法术牌 / "same_fate_pattern"＝必须与已选牌同命格）
 ## cards 给合法牌白名单（非空时客户端只让这几张牌可点，如【魔能反转】只能弃法术牌）
 ## can_cancel 为 false 时客户端把「取消」置灰（强制询问，如【水之神力】的交牌）
 ## ask_text 非空时客户端改用它当指令条文案：内容取自技能表「提示」列里对应的那一条
@@ -1217,7 +1223,7 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 保留倒计时=true 时沿用这条链当前那次等待的截止时刻（见 wait_for），用于同一条链上的后续询问
 ## can_light=false 时随询问下发 can_light=false（如【阴阳转换】：这次攻击不能用【圣光】抵挡，
 ## 客户端据此把【圣光】置灰；默认 true 时不下发，客户端按可用处理）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true) -> void:
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0) -> void:
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
 	var 选项技能号: Array = []
@@ -1249,6 +1255,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		# 只有「不能取消」才下发这个字段（客户端拿不到就按可以取消处理）
 		"can_cancel": can_cancel,
 	}
+	# 手牌+盖牌混选时，要求其中几张必须是盖牌（如美杜莎之眼：1 张暗月盖牌 + 1 张手牌）
+	if cover_need > 0:
+		cmd["cover_need"] = cover_need
 	if not notes.is_empty():
 		cmd["notes"] = notes
 	# 有「本身就是技能」的选项时才下发（如【蓄力一击】/【气绝崩击】），客户端据此让这些选项悬停弹技能说明
@@ -1276,6 +1285,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 本次攻击不能用【圣光】抵挡时才下发（客户端据此把【圣光】置灰）
 	if not can_light:
 		cmd["can_light"] = false
+	# 同一次攻击的伤害预览（客户端「受到 N 伤害攻击」用）：普通应战里由 SAttackedAsk 下发，
+	# 3306 这种在同一步里先问效果的技能询问也要带上，提示才对得上。
+	if 预览伤害 >= 0:
+		cmd["preview_damage"] = 预览伤害
 	# 询问别人的场合（如请人交牌）：下发目标侧文案，客户端优先显示它
 	if not ask_text.is_empty():
 		cmd["ask_text"] = ask_text
@@ -1390,12 +1403,12 @@ func _发送对局快照() -> void:
 ## 应战的反击目标是否合法（对照服务端 PlayerEntity::v_reattack）：
 ## 必须是存在的其它玩家，不能是自己、不能是原攻击者、不能是同队
 func _reattack_target_ok(defender: BattlePlayer, dst_id: int, origin_src: int) -> bool:
-	if defender == null or dst_id < 0 or dst_id == defender.id or dst_id == origin_src:
+	if defender == null:
 		return false
 	var dst: BattlePlayer = players.get(dst_id)
 	if dst == null:
 		return false
-	return dst.color != GConst.TEAM_NONE and dst.color != defender.color
+	return GConst.可作反击目标(defender.id, defender.color, dst.id, dst.color, origin_src)
 
 
 ## 本次攻击「命中时才会结算」的加伤合计（只用于给被攻击者看提示，不改变实际结算）。
@@ -1405,6 +1418,13 @@ func _预告加伤(src: int, ctx: Dictionary) -> int:
 	if 攻击者 == null or 攻击者.role == null:
 		return 0
 	return 攻击者.role.p_attack_preview(ctx)
+
+
+## 应战提示里的「受到 N 伤害」：本次伤害 + 攻击者预告加伤。
+## 客户端另外补 GConst.攻击提示角色加成（固定角色加伤）；这里由通用应战和
+## 3301/3306 的技能询问共用，避免各算一套。
+func _应战提示伤害(src: int, ctx: Dictionary, harm: Dictionary) -> int:
+	return int(harm.get("point", 0)) + _预告加伤(src, ctx)
 
 
 # ============================================================
@@ -1947,14 +1967,17 @@ class SActionPhase:
 	var 额外: bool = false
 	## 本阶段是否禁止特殊行动（发动过「启动」技能后：只能再攻击 / 法术）
 	var 禁特殊: bool = false
+	## 额外行动的来源（cause；普通行动为 0）
+	var 额外来源: int = 0
 	## 玩家挂机超时：本阶段已作废，直接收尾（tick 里置位，不替他出牌，也不宣告「无法行动」换手牌）
 	var 跳过: bool = false
 
-	func _init(allow: int = GConst.ActionType.Any, can_give_up: bool = false, extra: bool = false, no_special: bool = false) -> void:
+	func _init(allow: int = GConst.ActionType.Any, can_give_up: bool = false, extra: bool = false, no_special: bool = false, cause: int = 0) -> void:
 		允许 = allow
 		可放弃 = can_give_up
 		额外 = extra
 		禁特殊 = no_special
+		额外来源 = cause
 
 	func handle(e: BattleEngine) -> int:
 		# 挂机超时：把这名玩家的行动阶段直接跳过，轮到下家
@@ -1981,11 +2004,12 @@ class SActionPhase:
 		e.行动可放弃 = 可放弃
 		e.行动额外 = 额外
 		e.行动禁特殊 = 禁特殊
+		e.行动额外来源 = 额外来源
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
 			var at: int = int(r.get("action_type", GConst.ActionType.None))
 			return e.resolve_action(at, r)
-		e.ask_action(e.current_id, 允许, 可放弃, 额外, 禁特殊)
+		e.ask_action(e.current_id, 允许, 可放弃, 额外, 禁特殊, 额外来源)
 		e.wait_for(e.current_id, GConst.Msg.Action)
 		return BattleEngine.WAIT
 
@@ -2000,7 +2024,7 @@ class STurnEnd:
 			return BattleEngine.CONTINUE
 		if 回行动阶段:
 			回行动阶段 = false
-			e.push(SActionPhase.new(e.行动允许, e.行动可放弃, e.行动额外, e.行动禁特殊))
+			e.push(SActionPhase.new(e.行动允许, e.行动可放弃, e.行动额外, e.行动禁特殊, e.行动额外来源))
 			return BattleEngine.CONTINUE
 		var cur: BattlePlayer = e.p(e.current_id)
 		if cur != null and cur.contains_action():
@@ -2099,7 +2123,7 @@ class SAdditionalAction:
 		# 先让角色结算「被选中」的代价（p_additional_action），再进入额外行动阶段。
 		# 额外行动阶段只放行这份额外行动声明的种类、且允许放弃（对照原版
 		# PlayerEntity::p_additional_action → StateActionPhase(it->allowAction, true)）
-		e.push(SActionPhase.new(允许, true, true))
+		e.push(SActionPhase.new(允许, true, true, false, cause))
 		e.push(SHook.new("p_additional_action", {"player": cur.id, "cause": cause}, []))
 		return BattleEngine.CONTINUE
 
@@ -2174,9 +2198,9 @@ class SAttackedAsk:
 		var hit_rate: int = int(owner.ctx.get("hit_rate", GConst.HitRate.Normal))
 		# 应战询问的参数；末位＝本次攻击伤害：harm["point"]（怒吼 / 精准射击 / 蓄力一击等「宣告阶段」
 		# 已加进去的）＋ 攻击者预告的「命中才结算」加伤（暗影之力 / 暗之解放…，见 p_attack_preview）。
-		# 客户端把它写进提示（「受到 N 伤害攻击：…」），让被攻击者一眼看到这一下要挨多少
+		# 客户端把它写进提示（「受到 N 伤害攻击，…」），让被攻击者一眼看到这一下要挨多少
 		var 应战询问: Array = [hit_rate, owner.card, defender.id, owner.src,
-			owner.ctx.get("can_light", 1), int(harm.get("point", 0)) + e._预告加伤(owner.src, owner.ctx)]
+			owner.ctx.get("can_light", 1), e._应战提示伤害(owner.src, owner.ctx, harm)]
 		if hit_rate == GConst.HitRate.NoMiss:
 			e.push(STimeline2Hit.new(harm))
 			return BattleEngine.CONTINUE
@@ -2214,7 +2238,9 @@ class SAttackedAsk:
 				return BattleEngine.CONTINUE
 			if choice == GConst.Reattack.Block and not cards.is_empty():
 				var cid2: int = int(cards[0])
-				if defender.v_block(cid2) == GConst.GE_SUCCESS:
+				# 与询问里下发的 can_light 对齐：本次攻击不能用【圣光】时，格挡不成立。
+				# 解析失败按常规「放弃应战」收尾（不扣牌、不改形态）。
+				if bool(owner.ctx.get("can_light", true)) and defender.v_block(cid2) == GConst.GE_SUCCESS:
 					e.take_from_hand(defender.id, [cid2])
 					e.to_discard([cid2])
 					dst.reattacker = -1
@@ -2658,15 +2684,41 @@ class SHandOverflow:
 	## 引擎通用的 _check_hand_overflow 建出来的实例没带（-1），只能在 handle 里按最近一次伤害兜底
 	var harm_cause: int = -1
 	var harm_type: int = -1
+	## 目标已选好超限牌、但还没真正弃掉：先给月女【新月庇护】一次发动机会
+	var _pending_target: int = -1
+	var _pending_over: int = 0
+	var _pending_cards: Array = []
+	var _xinyue_checked: bool = false
+	var _xinyue_ctx: Dictionary = {}
+	## 本次超限是否真的带着伤害上下文（push_overload_with_harm 建出来的）。
+	## 通用 _check_hand_overflow 建出来的实例没有，不能拿最近一次伤害去硬凑，
+	## 否则普通的摸牌超限会误触发月女【新月庇护】。
+	var _from_damage: bool = false
 
 	func _init(cause: int = -1, htype: int = -1) -> void:
 		harm_cause = cause
 		harm_type = htype
+		_from_damage = htype == GConst.HarmType.Attack or htype == GConst.HarmType.Magic
+
+	## 已有一次排队中的超限结算时，把这次伤害的上下文补给它（原先 push_overload_with_harm 直接 return，
+	## 若排着的是 _check_hand_overflow 建的通用结算，就会丢掉「因伤害」标记）。
+	## 已有真实伤害上下文 / 已经开始问弃牌 的不覆盖。
+	func 补充伤害上下文(cause: int, htype: int) -> void:
+		if _from_damage or _pending_target >= 0:
+			return
+		if htype != GConst.HarmType.Attack and htype != GConst.HarmType.Magic:
+			return
+		harm_cause = cause
+		harm_type = htype
+		_from_damage = true
 
 	func handle(e: BattleEngine) -> int:
 		if harm_cause < 0:
 			harm_cause = e.last_harm_cause
 			harm_type = e.last_harm_type
+		# 超限牌已经选好：先问完月女，再决定「变暗月」还是「正常弃掉」
+		if _pending_target >= 0:
+			return _finish(e)
 		var target: BattlePlayer = null
 		for pid: int in e.order:
 			var pp: BattlePlayer = e.p(pid)
@@ -2681,7 +2733,7 @@ class SHandOverflow:
 			var cards: Array = r.get("card_ids", [])
 			var chosen: Array = []
 			for c: Variant in cards:
-				if chosen.size() < over and target.has_discard_card(int(c)):
+				if chosen.size() < over and target.has_discard_card(int(c)) and not chosen.has(int(c)):
 					chosen.append(int(c))
 			if chosen.size() < over:
 				for cid: int in target.hand_cards:
@@ -2689,18 +2741,52 @@ class SHandOverflow:
 						break
 					if not chosen.has(cid):
 						chosen.append(cid)
-			e.take_from_hand(target.id, chosen)
-			e.to_discard(chosen)
-			e._log_discard(target.id, chosen)
-			# 先压「继续处理下一个超限玩家」，再压掉士气（后压先执行 → 士气先结算，与服务器一致）；
-			# 下一个玩家共用同一份伤害上下文
-			e.push(SHandOverflow.new(harm_cause, harm_type))
-			e.push(SOverloadMorale.new(target.id, over, GConst.CAUSE_OVERLOAD, harm_cause, harm_type))
-			e._broadcast_game()
-			return BattleEngine.CONTINUE
+			_pending_target = target.id
+			_pending_over = over
+			_pending_cards = chosen
+			if not _xinyue_checked:
+				_xinyue_checked = true
+				# 目标已经选好要弃的牌，但还没真正弃；此时让【新月庇护】决定是否把它们变成【暗月】
+				_xinyue_ctx = {
+					"dst": target.id, "amount": over, "cards": chosen.duplicate(),
+					"cause": GConst.CAUSE_OVERLOAD, "harm_cause": harm_cause,
+					"type": harm_type, "before_discard": true,
+					"from_damage": _from_damage,
+				}
+				e.push(SHook.new("p_xin_yue", _xinyue_ctx, []))
+				return BattleEngine.SUSPEND
+			return _finish(e)
 		e.ask_respond(target.id, GConst.RespondType.Discard, [target.id, GConst.CAUSE_OVERLOAD, over], [target.id])
 		e.wait_for(target.id, GConst.Msg.Respond)
 		return BattleEngine.WAIT
+
+	## 月女已决定：active＝把这几张牌变成【暗月】且本次不掉士气；否则按原流程弃牌 + 掉士气
+	func _finish(e: BattleEngine) -> int:
+		var target: BattlePlayer = e.p(_pending_target)
+		if target == null:
+			return BattleEngine.CONTINUE
+		if bool(_xinyue_ctx.get("active", false)):
+			var moon: BattlePlayer = e.p(int(_xinyue_ctx.get("moon_id", -1)))
+			if moon != null and not _pending_cards.is_empty() \
+					and e.take_from_hand(target.id, _pending_cards):
+				# 先排下一个超限玩家，再 add_cover（它会把 p_cover_change 压到上面），
+				# 保证盖牌变动钩子仍在下一名玩家之前结算
+				e.push(SHandOverflow.new(harm_cause, harm_type))
+				e.add_cover(moon.id, _pending_cards, moon.id, GConst.技能_新月庇护)
+				moon.tap = true
+				e.last_harm_cause = 0
+				e.last_harm_type = 0
+				e._broadcast_game()
+				return BattleEngine.CONTINUE
+		e.take_from_hand(target.id, _pending_cards)
+		e.to_discard(_pending_cards)
+		e._log_discard(target.id, _pending_cards)
+		# 先压「继续处理下一个超限玩家」，再压掉士气（后压先执行 → 士气先结算，与服务器一致）；
+		# 下一个玩家共用同一份伤害上下文
+		e.push(SHandOverflow.new(harm_cause, harm_type))
+		e.push(SOverloadMorale.new(target.id, _pending_over, GConst.CAUSE_OVERLOAD, harm_cause, harm_type))
+		e._broadcast_game()
+		return BattleEngine.CONTINUE
 
 
 ## 超限掉士气（可等待玩家输入）：依次跑完整掉士气链 ——

@@ -244,7 +244,7 @@ func 跑() -> void:
 		"cmd_type": GConst.CmdType.Respond,
 		"commands": [{
 			"respond_id": GConst.RespondType.ReplyAttack,
-			"args": [GConst.HitRate.Normal, 攻击牌[0].id, Logic.my_player_id, 99],
+			"args": [GConst.HitRate.Normal, 攻击牌[0].id, Logic.my_player_id, 99, 0, 2],
 		}],
 	}
 	Logic.command_received.emit(应战询问)
@@ -259,6 +259,10 @@ func 跑() -> void:
 	检(应战提示.find(应战片段) >= 0,
 		"应战提示没有点名系别 / 暗系或没有上色：%s" % 应战提示)
 	检(应战提示.find("同系斩") < 0, "应战提示还在写「同系斩」：%s" % 应战提示)
+	检(应战提示.find("伤害攻击，") >= 0, "普通应战提示的伤害说明没有用逗号：%s" % 应战提示)
+	检(应战提示.find("伤害攻击：") < 0, "普通应战提示的伤害说明还在用冒号：%s" % 应战提示)
+	检(应战提示.find("无法用【圣光】抵挡") >= 0,
+		"圣光被禁时普通应战提示没有写「无法用【圣光】抵挡」：%s" % 应战提示)
 
 	# 战斗日志里的斩名也按系别上色（与应战提示同一套配色）
 	for 系: String in ["地", "水", "风", "火", "雷", "暗"]:

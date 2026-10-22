@@ -355,7 +355,7 @@ func base_v_reattack(card_id: int, attack_card_id: int) -> int:
 		return GConst.GE_INVALID_CARDID
 	if atk.element_enum() == GConst.CardElement.Darkness:
 		return GConst.GE_INVALID_ACTION
-	if card.element_enum() != atk.element_enum() and card.element_enum() != GConst.CardElement.Darkness:
+	if not GCard.可普通应战(card, atk):
 		return GConst.GE_INVALID_CARDID
 	return GConst.GE_SUCCESS
 

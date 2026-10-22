@@ -6,7 +6,7 @@ extends RefCounted
 var id: int = 0
 var type: String = ""          # "attack" / "magic"
 var element: String = ""       # earth / wind / fire / water / thunder / light / darkness
-var property: String = ""      # 血 / 技 / 幻 / 咏 / 圣
+var fate_pattern: String = ""  # 命格：血 / 技 / 幻 / 咏 / 圣
 var card_name: String = ""     # 卡名：地裂斩 / 圣盾 / 中毒 …
 var source: String = ""        # 卡面资源名，如 shengDun（交给 AssetIndex 解析成 assets 下的图）
 var description: String = ""   # 说明文本（# 已替换为换行）
@@ -23,7 +23,7 @@ static func from_row(card_id: int, row: Array) -> GCard:
 	c.id = card_id
 	c.type = str(row[int(列["类型"])])
 	c.element = str(row[int(列["元素"])])
-	c.property = str(row[int(列["派系"])])
+	c.fate_pattern = str(row[int(列["命格"])])
 	c.card_name = str(row[int(列["卡名"])])
 	c.source = str(row[int(列["资源名"])])
 	c.description = str(row[int(列["说明"])]).replace("#", "\n")
@@ -60,13 +60,34 @@ func element_enum() -> int:
 
 
 ## 命格枚举值
-func property_enum() -> int:
-	return GConst.property_from_string(property)
+func fate_pattern_enum() -> int:
+	return GConst.fate_pattern_from_string(fate_pattern)
 
 
 ## 卡名枚举值
 func card_name_enum() -> int:
 	return GConst.card_name_from_string(card_name)
+
+
+## 普通应战：同系攻击牌，或暗系攻击牌可应战任意系。
+## 只判卡面规则；「这张牌在不在手牌」由调用方检查。
+static func 可普通应战(card: GCard, atk: GCard) -> bool:
+	if card == null or atk == null or not card.is_attack():
+		return false
+	if atk.element_enum() == GConst.CardElement.Darkness:
+		return false
+	return card.element_enum() == atk.element_enum() or card.element_enum() == GConst.CardElement.Darkness
+
+
+## 阴阳转换应战：同命格攻击牌，不能是光系；暗系攻击本身不可应战。
+static func 可阴阳应战(card: GCard, atk: GCard) -> bool:
+	if card == null or atk == null or not card.is_attack():
+		return false
+	if atk.element_enum() == GConst.CardElement.Darkness:
+		return false
+	if card.element_enum() == GConst.CardElement.Light:
+		return false
+	return card.fate_pattern_enum() == atk.fate_pattern_enum()
 
 
 ## 卡面贴图资源路径：按资源名交给 AssetIndex 解析（资源名如 shengDun，对应 assets/textures/card/*.png）
