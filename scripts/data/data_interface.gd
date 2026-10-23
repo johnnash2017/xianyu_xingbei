@@ -359,6 +359,8 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.tap = bool(pi.get("is_knelt", false))
 	# 血色剑灵【血蔷薇庭院】：独立状态，不是横置形态
 	p.xue_qiang_wei = bool(pi.get("xue_qiang_wei", false))
+	# 圣弓专属技正反面：客户端画【圣煌辉光炮】/【圣煌余辉】状态图标
+	p.sheng_huang_side = int(pi.get("sheng_huang_side", 0))
 	p.ready = bool(pi.get("ready", false))
 	p.leader = int(pi.get("leader", 0)) == 1
 	p.online = bool(pi.get("online", true))

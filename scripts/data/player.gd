@@ -41,6 +41,8 @@ var role_id: int = 0
 var tap: bool = false               # 横置/锁定
 ## 血色剑灵【血蔷薇庭院】独立状态：状态图标区显示庭院图标，不占横置形态
 var xue_qiang_wei: bool = false
+## 圣弓专属技正反面：0=【圣煌辉光炮】、1=【圣煌余辉】、2=已移除
+var sheng_huang_side: int = 0
 var specials: Array[bool] = [false, false, false, false, false]  # 独有效果 ex_cards
 ## 与 specials 一一对应：每张专属牌是谁放的（-1＝没记）；【挑衅】靠它只放行放牌者那个头像
 var specials_from: Array[int] = [-1, -1, -1, -1, -1]

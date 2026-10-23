@@ -495,6 +495,14 @@ var _二级选项: Array = []
 var _二级选中: int = -1
 ## 苍白之月第二项已经点进去、正在本地选移除 1/2 点【新月】的第二步（不提交服务端）
 var _苍白第二步: bool = false
+## 圣弓【自动填充】：第一层选完水晶/宝石后，本地第二层再选加治疗或加信仰
+var _自动填充第二步: bool = false
+## 自动填充第一层的两个资源选项（归一化后的选项项，取消第二层时原样摆回来）
+var _自动填充第一层选项: Array = []
+## 圣光爆裂群体分支：先在二级栏选「群体」，再进第二层选移除多少治疗 X
+var _圣光爆裂第二步: bool = false
+## 二级栏左侧技能本体被点时，要执行的“回退一层”；普通询问没有回退，留空
+var _本体回退: Callable = Callable()
 ## 二级栏最左那颗「被点的技能」按钮（没有就是 null）。目标变化后要重填选项时沿用它，
 ## 免得重造一颗、把玩家刚点的那颗藏起来（见 _刷新基础效果选项）
 var _二级栏父按钮: 技能按钮 = null
@@ -952,6 +960,19 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			"icon": GConst.血蔷薇庭院图标,
 			"desc": GConst.血蔷薇庭院说明,
 		})
+	if p.role_id == GConst.角色_圣弓:
+		if p.sheng_huang_side == 0:
+			额外状态.append({
+				"name": "圣煌辉光炮",
+				"icon": GConst.圣煌辉光炮图标,
+				"desc": GConst.圣煌辉光炮说明,
+			})
+		elif p.sheng_huang_side == 1:
+			额外状态.append({
+				"name": "圣煌余辉",
+				"icon": GConst.圣煌余辉图标,
+				"desc": GConst.圣煌余辉说明,
+			})
 	面板.set("ExtraStatuses", 额外状态)
 	# 掉线标记：只画在别人的面板上（自己的面板没有 Ssignal 节点，set_Online 里允许为空）
 	面板.set("Online", p.online)
@@ -1043,6 +1064,9 @@ func _on_提示超时() -> void:
 func _指令提示(txt: String) -> void:
 	# 技能提示末尾的「选好后点『确定』」不再显示：确定按钮就摆着，重复写只占空间
 	txt = GConst.去掉确定提示(txt)
+	# 提示条和技能说明提示框一样是 RichTextLabel，也支持词缀表：
+	# 动态拼出来的提示（如圣光爆裂第二层的说明）也要把【治疗】等换成图标。
+	txt = GConst.词缀文本(txt)
 	# 让上一轮「自动隐藏」的倒计时作废
 	_提示token += 1
 	_提示原文 = txt
@@ -1503,12 +1527,25 @@ func _系别着色(系别: String) -> String:
 
 func _日志着色(t: String, 简洁模式: bool = false) -> String:
 	var 结果: String = t
-	# 玩家：整段「玩家名[角色名]」一起染（与 _称号 的写法一致）
-	for p: GPlayer in Data.player_list:
+	# 先把「玩家名[角色名]」整段换成占位符，最后再染回玩家色。
+	# 不能先染色再跑 _专名着色：角色名里可能正好含着技能名（如「祈祷师」含技能「祈祷」），
+	# 那样会把半个角色名又染成技能色。占位符同时保护玩家名不被后面的「宝石 / 水晶 / 自身」再替换。
+	var 玩家们: Array[GPlayer] = []
+	玩家们.append_array(Data.player_list)
+	# 长称号优先，避免一个称号是另一个称号的前缀时先被短串吃掉
+	玩家们.sort_custom(func(a: GPlayer, b: GPlayer) -> bool:
+		var 甲: String = "%s[%s]" % [a.nickname, a.role_name]
+		var 乙: String = "%s[%s]" % [b.nickname, b.role_name]
+		return 甲.length() > 乙.length()
+	)
+	var 玩家占位: Dictionary = {}
+	for p: GPlayer in 玩家们:
 		var 称号: String = "%s[%s]" % [p.nickname, p.role_name]
-		if 结果.find(称号) >= 0:
-			var 显示名: String = p.role_name if 简洁模式 else 称号
-			结果 = 结果.replace(称号, "[color=%s]%s[/color]" % [日志玩家色, 显示名])
+		if 结果.find(称号) < 0:
+			continue
+		var 占位: String = "\u0001P%d\u0002" % 玩家占位.size()
+		玩家占位[占位] = p.role_name if 简洁模式 else 称号
+		结果 = 结果.replace(称号, 占位)
 	# 卡名 / 技能名：各自染自己的颜色（长名优先，见 _专名着色）
 	结果 = _专名着色(结果)
 	# 卡牌后面的「·命格」：只给命格字上色，点保留白色
@@ -1521,6 +1558,9 @@ func _日志着色(t: String, 简洁模式: bool = false) -> String:
 	结果 = 结果.replace("水晶", "[color=%s]水晶[/color]" % 日志水晶色)
 	# 技能名 / 状态名外面的【】统一去掉（日志里有的带、有的不带，看着不齐）
 	结果 = 结果.replace("【", "").replace("】", "")
+	# 所有专名替换都做完了，再把玩家名染回去
+	for 占位: String in 玩家占位:
+		结果 = 结果.replace(占位, "[color=%s]%s[/color]" % [日志玩家色, str(玩家占位[占位])])
 	return 结果
 
 
@@ -2039,6 +2079,9 @@ func _进入技能询问() -> void:
 				var 白名单: Dictionary = 选项目标[i]
 				项["目标白名单"] = 白名单.get("ids", [])
 			项们.append(项)
+		# 自动填充第二层取消时要原样退回第一层；先留一份第一层的归一化选项。
+		if _skill_ask_id == GConst.技能_自动填充:
+			_自动填充第一层选项 = 项们.duplicate(true)
 		# 「无父技能」型（格斗【蓄力一击 / 气绝崩击】这条询问）：选项本身就是技能，
 		# 这一排只摆选项，不摆「被问的技能」那颗本体（否则会多出一颗与选项同名的按钮）
 		var 父技能号: int = 0 if bool(指示配置.get("无父技能", false)) else _skill_ask_id
@@ -2602,7 +2645,7 @@ func _摆特殊行动入口() -> void:
 
 # ---------------- 二级技能栏 ----------------
 ## 把服务端下发的 arg_choices 归一成二级栏的选项项
-## （键名统一成 文本 / 参数 / 需牌 / 需目标 / 目标白名单 / 技能号 / 选牌来源 / 需盖牌）
+## （键名统一成 文本 / 参数 / 需牌 / 需目标 / 最多目标 / 目标白名单 / 技能号 / 选牌来源 / 需盖牌）
 func _选项项(参数选项: Array) -> Array:
 	var out: Array = []
 	for 项: Variant in 参数选项:
@@ -2616,6 +2659,8 @@ func _选项项(参数选项: Array) -> Array:
 			"说明": str(d.get("说明", "")),
 			"需牌": int(d.get("need_card", 0)),
 			"需目标": int(d.get("need_target", 0)),
+			# >0＝选中该项后本次目标数上限（如圣弓【圣光爆裂】群体 X 档最多 X 名）
+			"最多目标": int(d.get("target_max", 0)),
 			"目标白名单": d.get("targets", []),
 			# >0＝这一项本身就是个技能（如【风怒追击】/【剑影】），选项按钮据此绑技能号、悬停弹说明
 			"技能号": int(d.get("skill_id", 0)),
@@ -2653,7 +2698,7 @@ func _选项文案(原文: String) -> String:
 
 
 ## 进入二级技能栏：把「父技能」摆到最左，其余技能先藏起来，选项用技能按钮紧挨着排在它右边。
-## 选项项：{"文本": 按钮上的字, "参数": 提交用的 args, "需牌": N, "需目标": N, "目标白名单": [...],
+## 选项项：{"文本": 按钮上的字, "参数": 提交用的 args, "需牌": N, "需目标": N, "最多目标": N, "目标白名单": [...],
 ##          "技能号": 该项本身就是技能时给它的技能号}
 ## 父按钮为 null 且父技能号 > 0 时（技能询问那条通道没有现成的按钮）按父技能号现造一颗；
 ## 两者都空（如「多份额外行动」那种没有点击本体的场合）＝这一排只有选项。
@@ -2662,8 +2707,8 @@ func _选项文案(原文: String) -> String:
 func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: Array,
 		选项底色: Color = 二级选项底色) -> void:
 	_清空二级选项()
-	# 父按钮要现造时（技能询问那条通道没有现成的按钮）：那颗只是「这次在问哪个技能」的牌子，
-	# 不接点击 —— 响应弹出的询问不该有「再点一下就回退」，只能走右下角的「确定 / 取消」
+	# 父按钮要现造时（技能询问那条通道没有现成的按钮）：默认只是「这次在问哪个技能」的牌子，
+	# 不直接等于取消；只有当前步骤登记了 _本体回退（本地回退一层）时，点它才走回退。
 	var 父: 技能按钮 = 父按钮
 	if 父 == null and 父技能号 > 0:
 		父 = _新技能按钮(父技能号)
@@ -2676,6 +2721,9 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 		# 魔纹融合第二段：左边那颗技能本体可以点，点它＝退回「怒火压制 / 魔纹融合」二选一
 		if 父按钮 == null and 父技能号 == GConst.技能_魔纹融合 and _是技能询问:
 			父.connect("点击", _魔纹本体返回)
+		elif 父按钮 == null and not 父.is_connected("点击", _技能本体返回):
+			# 其它询问：父技能本体只在“本地回退一层”时生效（当前步骤没设 _本体回退 就点不动）
+			父.connect("点击", _技能本体返回)
 	# 选项里出现两个及以上不同的技能时（怒火压制/魔纹融合、蓄力一击/气绝崩击），
 	# 这些选项不是「参数」而是各自的技能本体：按自己的技能类型色上色，和普通技能按钮一致。
 	# 同一技能拆出来的参数选项（如魔纹融合的三个翻转档）仍用调用方给的普通二级选项底色。
@@ -2706,6 +2754,7 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 			"技能号": int(d.get("技能号", 0)),
 			"需牌": int(d.get("需牌", 0)),
 			"需目标": int(d.get("需目标", 0)),
+			"最多目标": int(d.get("最多目标", 0)),
 			"目标白名单": d.get("目标白名单", []),
 			"选牌来源": int(d.get("选牌来源", -1)),
 			"需盖牌": int(d.get("需盖牌", 0)),
@@ -2729,6 +2778,13 @@ func _魔纹本体返回(_技能号: int) -> void:
 	_on_cancel()
 
 
+## 通用：二级栏左侧技能本体被点。只有当前步骤登记了“回退一层”才动作；
+## 普通询问 / 强制询问没有登记时点本体没有反应，避免误把“看说明”当成取消。
+func _技能本体返回(_技能号: int) -> void:
+	if _本体回退.is_valid():
+		_本体回退.call()
+
+
 ## 清掉二级栏的状态与选项按钮（技能本体按钮与其余技能由 _清空技能按钮 统一收）
 func _清空二级选项() -> void:
 	for 项: Dictionary in _二级选项:
@@ -2743,6 +2799,9 @@ func _清空二级选项() -> void:
 	_二级栏父按钮 = null
 	_额外行动用二级栏 = false
 	_苍白第二步 = false
+	_自动填充第二步 = false
+	_圣光爆裂第二步 = false
+	_本体回退 = Callable()
 
 
 ## 点了二级栏里的某个选项：记下它的 args 并点亮它，其余选项熄灭（选好再按「确定」才提交）
@@ -2759,6 +2818,16 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 	if _mode == 4 and _pending_skill_id == GConst.技能_苍白之月 and not _苍白第二步 \
 			and _已选参数.size() == 1 and int(_已选参数[0]) == 2:
 		_进入苍白月第二段()
+		return
+	# 圣弓【圣光爆裂】：第一层选「群体」后，本地进入第二层选移除多少治疗 X。
+	if _mode == 4 and _pending_skill_id == GConst.技能_圣光爆裂 and not _圣光爆裂第二步 \
+			and _已选参数.size() == 1 and int(_已选参数[0]) == 2:
+		_进入圣光爆裂第二层()
+		return
+	# 圣弓【自动填充】：第一层选完「水晶 / 宝石」，本地进入第二层选「治疗 / 信仰」。
+	if _是技能询问 and _skill_ask_id == GConst.技能_自动填充 and not _自动填充第二步 \
+			and not _已选参数.is_empty():
+		_进入自动填充第二层(int(_已选参数[0]))
 		return
 	# 式神咒束 / 阴阳转换：选效果、选应战牌、选反击目标都在同一步里完成。
 	# 点中效果只切到「可选牌/选目标」，技能栏和选项不收起；选完再按确定。
@@ -2811,6 +2880,7 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		var 项: Dictionary = _二级选中项()
 		var 项需牌: int = int(项.get("需牌", 0))
 		var 项需目标: int = int(项.get("需目标", 0))
+		var 项最多目标: int = int(项.get("最多目标", 0))
 		var 项来源: int = int(项.get("选牌来源", -1))
 		_skill_card_source = 项来源 if 项来源 >= 0 else _选项原始来源
 		_skill_cover_need = maxi(_选项原始盖牌需数, int(项.get("需盖牌", 0)))
@@ -2820,7 +2890,7 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		_skill_card_max = maxi(_选项原始最多牌, _skill_need_card)
 		_need_cards = _skill_card_max
 		_skill_need_target = maxi(_选项原始目标数, 项需目标)
-		_skill_target_max = maxi(_选项原始最多目标, _skill_need_target)
+		_skill_target_max = maxi(maxi(_选项原始最多目标, _skill_need_target), 项最多目标)
 		_need_players = _skill_target_max
 		# 雷光散射只移除 1 张雷系【充能】时是全体敌方 AOE：把所有敌方头像选中并锁死，
 		# 不再让玩家点目标。移除 2 张以上才有「指定一名额外受伤」的目标，保持可点选。
@@ -2886,6 +2956,116 @@ func _返回苍白月第一层() -> void:
 	_指令提示("请选择苍白之月的效果")
 
 
+## 圣光爆裂·群体的可选对手：手牌数 <= 自己手牌数 - X（与服务端 _sheng_guang_mode2_targets 同口径）。
+func _圣光爆裂群体目标(x: int) -> Array:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 我 == null:
+		return []
+	var 上限: int = 我.hand_cards_num - x
+	if 上限 < 0:
+		return []
+	var out: Array = []
+	for p: GPlayer in Data.player_list:
+		if p.color != 我.color and p.hand_cards_num <= 上限:
+			out.append(p.id)
+	return out
+
+
+## 圣光爆裂·群体的说明：把「你的手牌数 - X」直接算成目标手牌上限，避免玩家自己做减法。
+## 手牌数不足以支付 X 张弃牌时，选项本身会置灰，说明也明确写出来。
+func _圣光爆裂群体说明(x: int, 手牌数: int) -> String:
+	# 服务端条件是「目标手牌 <= 你的手牌 - X」；改用统一措辞「手牌数小于 Y」时，
+	# Y 要写成「你的手牌 - X + 1」，数值才和原条件等价。
+	var 目标上限: int = 手牌数 - x + 1
+	if 目标上限 <= 0:
+		return "当前手牌数不足以支付该档弃牌，无法发动。"
+	return "选择最多 %d 名手牌数小于 %d 的对手，你弃 %d 张牌，然后对他们造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数，你获得 %d 点【信仰】。" % [x, 目标上限, x, x]
+
+
+## 圣光爆裂群体分支的第二层选项：X=1..3，决定移除多少治疗；
+## 每项按 X 收紧弃牌数（X 张）和目标数（最多 X 名），不足 X 治疗的置灰。
+func _圣光爆裂第二层选项(治疗: int) -> Array:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	var 手牌数: int = 我.hand_cards_num if 我 != null else 0
+	var 选项: Array = []
+	for x: int in range(1, 4):
+		var 群体目标: Array = _圣光爆裂群体目标(x)
+		选项.append({
+			"text": "移除 %d 治疗，弃 %d 张牌，最多 %d 名目标" % [x, x, x],
+			"args": [2, x],
+			"need_card": x,
+			"need_target": 1,
+			"target_max": x,
+			"targets": 群体目标,
+			# 只要还有 1 名符合手牌条件的目标就能选这档；不要求凑满 X 名，
+			# 也不要求所有对手都符合条件。
+			"enabled": 治疗 >= x and 群体目标.size() >= 1,
+			"说明": _圣光爆裂群体说明(x, 手牌数),
+		})
+	return 选项
+
+
+## 进入圣光爆裂群体第二层：摆出 X=1..3，选好再提交 args=[2,x]。
+func _进入圣光爆裂第二层() -> void:
+	var 父: 技能按钮 = _二级栏父按钮
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	var 治疗: int = 我.cross_num if 我 != null else 0
+	var 选项: Array = _圣光爆裂第二层选项(治疗)
+	_进入二级技能栏(GConst.技能_圣光爆裂, 父, _选项项(选项))
+	_圣光爆裂第二步 = true
+	_刷新交互()
+	_刷新二级栏提示()
+	_指令提示("请选择移除多少治疗")
+
+
+## 圣光爆裂第二层取消：退回「单体 / 群体」第一层。
+func _返回圣光爆裂第一层() -> void:
+	var 父: 技能按钮 = _二级栏父按钮
+	_圣光爆裂第二步 = false
+	_进入二级技能栏(GConst.技能_圣光爆裂, 父, _选项项(_skill_arg_choices))
+	_刷新交互()
+	_刷新二级栏提示()
+	_指令提示("请选择圣光爆裂的效果")
+
+
+## 自动填充第二层的选项：资源 1=水晶（可宝石替代）、2=宝石。
+## 玩家手选治疗/信仰，治疗不因空位不足置灰（这是超时自动规则，不是玩家规则）。
+## args=[资源, 效果]（效果 1=治疗、2=信仰），服务端按这两项结算。
+func _自动填充第二层选项(资源: int) -> Array:
+	if 资源 == 2:
+		return [
+			{"text": "+1【水晶】，+2【治疗】", "args": [2, 1], "enabled": true},
+			{"text": "+1【水晶】，+2【信仰】", "args": [2, 2], "enabled": true},
+		]
+	return [
+		{"text": "+1【治疗】", "args": [1, 1], "enabled": true},
+		{"text": "+1【信仰】", "args": [1, 2], "enabled": true},
+	]
+
+
+## 圣弓【自动填充】第二层：第一层选了水晶/宝石后，本地再选加治疗或加信仰。
+## 第二层选好再按「确定」才提交 args=[资源, 效果]。
+func _进入自动填充第二层(资源: int) -> void:
+	var 父: 技能按钮 = _二级栏父按钮
+	var 选项: Array = _自动填充第二层选项(资源)
+	_进入二级技能栏(GConst.技能_自动填充, 父, _选项项(选项))
+	_自动填充第二步 = true
+	_本体回退 = _返回自动填充第一层
+	_刷新交互()
+	_刷新二级栏提示()
+	_指令提示("请选择加治疗还是加信仰")
+
+
+## 自动填充第二层取消：退回第一层消耗水晶/宝石，不取消整个技能。
+func _返回自动填充第一层() -> void:
+	var 父: 技能按钮 = _二级栏父按钮
+	_自动填充第二步 = false
+	_进入二级技能栏(GConst.技能_自动填充, 父, _自动填充第一层选项.duplicate(true))
+	_刷新交互()
+	_刷新二级栏提示()
+	_指令提示("请选择消耗水晶还是宝石")
+
+
 ## 二级栏里当前选中那一项（还没选就是空字典）
 func _二级选中项() -> Dictionary:
 	if _二级选中 < 0 or _二级选中 >= _二级选项.size():
@@ -2901,6 +3081,13 @@ func _刷新二级栏提示() -> void:
 	if _本地选项阶段 > 0 or _提炼阶段 == 4:
 		return
 	var 选中项: Dictionary = _二级选中项()
+	# 圣光爆裂：选中单体 / 群体 X 后，提示条直接显示该选项的说明，
+	# 群体档的说明已把目标手牌上限算好，不再让玩家看「你的手牌数 - X」公式。
+	if _mode == 4 and _pending_skill_id == GConst.技能_圣光爆裂 and not 选中项.is_empty():
+		var 爆裂说明: String = str(选中项.get("说明", ""))
+		if not 爆裂说明.is_empty():
+			_指令提示(爆裂说明)
+			return
 	var 选中技能号: int = int(选中项.get("技能号", 0))
 	var 父技能号: int = _二级栏父技能号
 	var 锁定父说明: bool = _固定父说明(父技能号)
@@ -3675,6 +3862,14 @@ func _on_cancel() -> void:
 		_攒应战回退选择 = 0
 		_发送应答(应答号, [], [], [])
 		return
+	# 圣光爆裂第二层的「取消」只退回第一层单体/群体，不取消整个技能
+	if _圣光爆裂第二步:
+		_返回圣光爆裂第一层()
+		return
+	# 自动填充第二层的「取消」只退回第一层水晶/宝石，不取消整个技能
+	if _自动填充第二步:
+		_返回自动填充第一层()
+		return
 	# 苍白之月第二步的「取消」只退回第一层两项，不取消整个技能
 	if _苍白第二步:
 		_返回苍白月第一层()
@@ -4375,8 +4570,8 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		选牌来源: int = GConst.CardSource.Hand, 选牌规则: String = "",
 		首张技能: int = 0, 次张系别: int = 0, 参数选项: Array = [], 按钮: Node = null, 盖牌需数: int = 0) -> void:
 	# 二级栏正开着、点的又是它最左那颗父技能按钮：这一下＝收起二级栏，等同「取消」本次技能选择。
-	# 只有「玩家自己点技能开出来的二级栏」走这条；响应弹出的询问（技能询问那条通道）没有回退，
-	# 那颗父技能牌只当牌子用，只能靠右下角的「确定 / 取消」
+	# 只有「玩家自己点技能开出来的二级栏」走这条；询问弹出的父技能牌默认只当牌子。
+	# 询问里的本地回退步骤（如自动填充第二层）由 _本体回退 单独接父按钮点击。
 	if _二级栏 and 按钮 != null and 按钮 == _二级栏父按钮:
 		_on_cancel()
 		return
@@ -5832,6 +6027,16 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _漆黑之枪头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _圣屑飓暴未命中头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _圣流星弹头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _圣煌模式头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _圣光爆裂头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _圣煌辉光炮头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _攻击加成头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _天火断空头像提示()
@@ -6023,6 +6228,114 @@ func _撕裂头像提示() -> Dictionary:
 			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 2]
 		else:
 			out[目标id] = "%d 攻击伤害" % (原伤害 + 2)
+	return out
+
+
+## 圣弓【圣屑飓暴·未命中】：X 既从自己移除 X 治疗，也让目标队友弃 X 张牌。
+## X 来自选项 args[0]；目标还没选时只写自己的代价，不画「弃 X 张」。
+func _圣屑飓暴未命中头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != 37021 or _已选参数.is_empty():
+		return out
+	var x: int = int(_已选参数[0])
+	if x <= 0:
+		return out
+	var 我: int = Logic.my_player_id
+	out[我] = "移除 %d 治疗" % x
+	for 目标id: Variant in _sel_players:
+		var pid: int = int(目标id)
+		if pid != 我:
+			out[pid] = "弃 %d 张牌" % x
+	return out
+
+
+## 圣弓【圣流星弹】：选中的友方目标 +1 治疗；自己按支付方式移除 1 治疗 / 1 信仰。
+## 目标可以选自己，此时两行并在一起。
+func _圣流星弹头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_圣流星弹:
+		return out
+	var 我: int = Logic.my_player_id
+	for 目标id: Variant in _sel_players:
+		out[int(目标id)] = "+1 治疗"
+	if not _已选参数.is_empty():
+		var 选择: int = int(_已选参数[0])
+		var 代价: String = ""
+		if 选择 == 1:
+			代价 = "移除 1 治疗"
+		elif 选择 == 2:
+			代价 = "移除 1 信仰"
+		if not 代价.is_empty():
+			var 旧: String = str(out.get(我, ""))
+			out[我] = (旧 + "\n" if not 旧.is_empty() else "") + 代价
+	return out
+
+
+## 圣弓【圣煌模式】：没有目标，只在自己头像上写支付代价。
+func _圣煌模式头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_圣煌模式 or _已选参数.is_empty():
+		return out
+	match int(_已选参数[0]):
+		1:
+			out[Logic.my_player_id] = "移除 2 治疗"
+		2:
+			out[Logic.my_player_id] = "移除 2 信仰"
+	return out
+
+
+## 圣弓【圣煌辉光炮 / 圣煌余辉】：全场手牌调整到 4（上限不足则到上限）；
+## 辉光炮额外给我方 +1 治疗；自己头像上写移除的信仰代价。
+func _圣煌辉光炮头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or (_pending_skill_id != GConst.技能_圣煌辉光炮 \
+			and _pending_skill_id != GConst.技能_圣煌余辉):
+		return out
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 我 == null:
+		return out
+	for p: GPlayer in Data.player_list:
+		var 目标手牌: int = mini(GConst.圣煌手牌目标, p.hand_cards_max)
+		var 差: int = 目标手牌 - p.hand_cards_num
+		var 行: Array[String] = []
+		if 差 > 0:
+			行.append("摸 %d 张牌" % 差)
+		elif 差 < 0:
+			行.append("弃 %d 张牌" % -差)
+		if _pending_skill_id == GConst.技能_圣煌辉光炮 and p.color == 我.color:
+			行.append("+1 治疗")
+		if not 行.is_empty():
+			out[p.id] = "\n".join(行)
+	var 费: int = 4
+	if Data.my_team != null and Data.other_team != null:
+		费 += maxi(Data.other_team.morale - Data.my_team.morale, 0)
+	var 旧: String = str(out.get(我.id, ""))
+	out[我.id] = (旧 + "\n" if not 旧.is_empty() else "") + "移除 %d 信仰" % 费
+	return out
+
+
+## 圣弓【圣光爆裂】的指示器（现算）：单体固定 2 点攻击伤害，群体为 (Y+2) 点，
+## Y＝已选目标中当前有治疗的人数；自己头像上写本次移除的治疗和弃牌（代价）。
+func _圣光爆裂头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_圣光爆裂 or _已选参数.is_empty():
+		return out
+	var 我: int = Logic.my_player_id
+	var 模式: int = int(_已选参数[0])
+	if 模式 == 1:
+		out[我] = "移除 1 治疗\n+1 信仰"
+		for 目标id: Variant in _sel_players:
+			out[int(目标id)] = "2 攻击伤害"
+	elif 模式 == 2:
+		var x: int = int(_已选参数[1]) if _已选参数.size() > 1 else 0
+		var y: int = 0
+		for 目标id: Variant in _sel_players:
+			var 目标: GPlayer = Data.get_player_by_id(int(目标id))
+			if 目标 != null and 目标.cross_num > 0:
+				y += 1
+		out[我] = "移除 %d 治疗\n弃 %d 张牌\n+%d 信仰" % [x, x, x]
+		for 目标id: Variant in _sel_players:
+			out[int(目标id)] = "%d 攻击伤害" % (2 + y)
 	return out
 
 
@@ -6935,6 +7248,9 @@ func _按钮是放弃() -> bool:
 ## 「取消」是否可用：技能询问 / 发动技能 / 特殊行动 / 应战放弃 / 魔弹放弃传递 / 虚弱强摸 / 治疗抵御
 func _取消可用() -> bool:
 	if _mode == 3:
+		# 自动填充第二层允许「取消」退回第一层（第一层本身仍是强制询问）
+		if _自动填充第二步:
+			return true
 		# 技能询问：强制的那次（can_cancel=false，如【水之神力】交牌）不许取消
 		if _是技能询问:
 			return _skill_ask_can_cancel

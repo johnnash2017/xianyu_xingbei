@@ -44,6 +44,9 @@ const PLAYER_INFO_FIELDS: Dictionary = {
 	27: {"n": "max_covered", "t": "u32"},
 	# 血色剑灵【血蔷薇庭院】独立状态（不是横置形态）：客户端据此在状态图标区画庭院图标
 	28: {"n": "xue_qiang_wei", "t": "bool"},
+	# 圣弓专属技正反面：0=【圣煌辉光炮】、1=【圣煌余辉】、2=已移除。
+	# 客户端按角色号 37 过滤，只有圣弓会画这个状态图标。
+	29: {"n": "sheng_huang_side", "t": "u32"},
 }
 
 ## 子消息字段表（作为 msg 类型的 schema）

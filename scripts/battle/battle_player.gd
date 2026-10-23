@@ -40,6 +40,9 @@ var tap: bool:
 ## 血色剑灵【血蔷薇庭院】是否在场上：这是独立状态，不是「横置形态」。
 ## 只影响【治疗】抵御与【血染蔷薇】的群伤；客户端在状态图标区显示对应图标。
 var xue_qiang_wei: bool = false
+## 圣弓专属技正反面：0=【圣煌辉光炮】、1=【圣煌余辉】、2=已移除。
+## 客户端据此在状态图标区显示正面/背面图标；其他角色保持 0 但不显示（按角色号过滤）。
+var sheng_huang_side: int = 0
 var tokens: Array = [null, null, null]      # [{name, max, num}]
 
 var pre_id: int = -1
@@ -545,6 +548,8 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"is_knelt": tap,
 		# 血色剑灵【血蔷薇庭院】：独立状态，客户端画状态图标（不是形态名）
 		"xue_qiang_wei": xue_qiang_wei,
+		# 圣弓专属技正反面（0/1/2）：客户端画【圣煌辉光炮】/【圣煌余辉】状态图标
+		"sheng_huang_side": sheng_huang_side,
 		"max_hand": hand_cards_max,
 		"nickname": player_name,
 		"ready": ready,

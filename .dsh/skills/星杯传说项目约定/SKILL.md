@@ -40,15 +40,49 @@ description: "修改星杯传说角色技能时自动触发：统一约定技能
 4. 发现数据不一致时，回到设计表修正后重新导表，不要手改生成文件。
 5. 提交时，设计表与导表产物一起提交，避免源表和生成结果不一致。
 
+### 改表用插件工具，不要临时写脚本
+
+修改 `设计表.xlsx` 统一用 DSH 的 `dsh-excel-chat` 插件（已装在本机 `web` profile，重启 DSH 后加载），不要再为每次改表现写 Python 脚本。
+
+1. **定位**：先用 `excel_profile` 看表结构，或用 `excel_read` 的 `range` + `maxRows` 分页读目标区域。不要把整张表读进对话。
+2. **修改**：用 `excel_operate` 原地写回，**必须显式把 `outPath` 设为原文件路径**：
+
+   ```json
+   {
+     "path": "D:/星杯传说工程/星杯传说2/xianyu_xingbei/Table/Design/设计表.xlsx",
+     "outPath": "D:/星杯传说工程/星杯传说2/xianyu_xingbei/Table/Design/设计表.xlsx",
+     "operations": [
+       { "op": "set", "cells": { "技能表.csv!H223": "请选择{n}张【手牌】弃掉" } }
+     ]
+   }
+   ```
+
+   - 工作表名带 `.csv` 后缀：`技能表.csv`、`卡表.csv`、`角色表.csv`、`词缀.csv`、`文本表.csv`（是否参与导出以上面第 1 条为准）。
+   - **不传 `outPath` 会写成 `设计表.edited.xlsx` 副本，原表不变**，这是最容易犯的错。
+   - 正常结果：`warnings` 为空，`validation` 的 `anomalies`、`errors` 为空。出现 `warnings` 时先看清再继续。
+   - 改单个单元格/文案/数值用 `set`；插行、填充、批量改等多步操作放在同一个 `operations` 数组里一次完成。
+3. **清理**：原地写回会在同目录生成 `设计表.xlsx.bak`（改前快照，供 `excel_undo` 回滚）和 `设计表.xlsx.patch.json`（审计日志）。确认导表结果无误后删除这两个文件，不要提交。
+4. **导表**：仍按上面的流程执行「检查并转换表格」，生成 CSV 与 `DataTables.gd`。
+
+注意事项：
+
+- 写回前确认 `设计表.xlsx` 没有被 Excel/WPS 打开占用，否则会写入失败或产生冲突。
+- 插件首次保存会把 `xl/styles.xml` 默认字体槽的名字从 `等线` 改成 `Calibri`（两者都带 `scheme="minor"`，指向主题字体；单元格值、样式、合并、列宽不变）。如果发现设计表外观有肉眼可见的变化，先停下来确认，不要继续批量改。
+- 插件不可用时（新机器未安装、或装了但还没重启 DSH），才退回内置 Python + openpyxl 的临时脚本；脚本和备份放 `.dsh/tmp`，用完删除。
+- 重装插件时如果 `dsh plugin add` 报 `ERR_PNPM_VIRTUAL_STORE_DIR_MAX_LENGTH_DIFF`，说明 profile 的 lockfile 由 pnpm 8 生成、与当前 pnpm 11 不兼容；改用 `npx pnpm@8.15.9 add dsh-excel-chat`，再把 `dsh-excel-chat` 补进 profile `package.json` 的 `dsh.profile.bundles`。
+
 ### 禁止
 
 - 只改 CSV 或 `DataTables.gd`，不改设计表。
 - 直接编辑生成文件中的数值、文案或结构。
 - 改了设计表但不导表，导致运行时仍读取旧数据。
+- 用临时 Python 脚本直接读写 `设计表.xlsx`（应使用 `excel_operate`）；`excel_operate` 不传 `outPath` 只生成副本，当成原表已改。
 
 ### 完成检查
 
 - [ ] 设计表已修改。
+- [ ] 改表用的是 `excel_operate` 原地写回（`outPath` 为原路径），没有临时脚本。
+- [ ] `.bak` / `.patch.json` 已清理，没有混进提交。
 - [ ] 已重新导表。
 - [ ] CSV 与 `DataTables.gd` 的差异和设计表一致。
 - [ ] 没有手改生成文件。
