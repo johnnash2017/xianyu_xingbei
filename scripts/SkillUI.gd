@@ -73,8 +73,9 @@ func 设置技能(id: int) -> void:
 	# 底色由「凸起」着色器上色：把技能类型色传给它（与技能说明里【类型】的标色一致），
 	# 不再靠节点 modulate，免得把子节点「选中发光」也一起染色
 	(plateButton.material as ShaderMaterial).set_shader_parameter("button_color", GConst.skill_type_color(id))
-	# 技能名取自技能表，里面的词缀关键字已按词缀表换成图标（见 GConst.skill_name）
-	var 文本: String = GConst.skill_name(id)
+	# 技能栏按钮上的技能名取技能表「说明说明名」列（角色悬停说明也用这一列）；
+	# 日志 / 提示条 / 单个技能悬停说明等其它地方仍用 GConst.skill_name。
+	var 文本: String = GConst.skill_desc_name(id)
 	if skillName != null:
 		skillName.text = 文本
 		# 名字不换行：按钮宽度按名字长度自适应撑开，左右各留一个字宽（否则【百式幻龙拳】这类长名会折行）

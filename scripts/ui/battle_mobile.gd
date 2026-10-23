@@ -64,7 +64,6 @@ var _调试模式: bool = false
 @export var BtnOK: Button              # 确定
 @export var BtnCancel: Button          # 取消
 @export var BtnCovered: Button         # 「盖牌」按钮（点开/收起查看自己的盖牌）
-@export var BtnSpecila: Button         # 魔弹传递时＝「放弃」（特殊行动的入口已挪进技能栏最左，见 _摆特殊行动入口）
 @export var BtnResign: Button          # 行动阶段＝「放弃行动」（对照参考工程 PlayerAgentUI 的 BtnResign → ResignAction）
 @export var BtnSetting: Button         # 右下角设置：打开设置浮层（调背景音乐 / 效果音音量）
 ## 本地「先选一项」的星石步骤是为哪个特殊行动开的（选完要按它提交）
@@ -501,8 +500,6 @@ var _自动填充第二步: bool = false
 var _自动填充第一层选项: Array = []
 ## 圣光爆裂群体分支：先在二级栏选「群体」，再进第二层选移除多少治疗 X
 var _圣光爆裂第二步: bool = false
-## 二级栏左侧技能本体被点时，要执行的“回退一层”；普通询问没有回退，留空
-var _本体回退: Callable = Callable()
 ## 二级栏最左那颗「被点的技能」按钮（没有就是 null）。目标变化后要重填选项时沿用它，
 ## 免得重造一颗、把玩家刚点的那颗藏起来（见 _刷新基础效果选项）
 var _二级栏父按钮: 技能按钮 = null
@@ -568,7 +565,6 @@ func _ready() -> void:
 	BtnOK.pressed.connect(_on_ok)
 	BtnCancel.pressed.connect(_on_cancel)
 	BtnCovered.pressed.connect(_on_cover_view)
-	BtnSpecila.pressed.connect(_on_giveup)
 	BtnResign.pressed.connect(_on_resign)
 	for 面板: 战斗玩家面板 in _面板列表:
 		面板.pressed.connect(_on_player_pressed.bind(面板))
@@ -2087,14 +2083,18 @@ func _进入技能询问() -> void:
 		var 父技能号: int = 0 if bool(指示配置.get("无父技能", false)) else _skill_ask_id
 		# 魔纹融合：有怒火压制时不摆父技能（四颗都是选项）；只有魔纹融合选项时
 		# 把父技能本体放出来，凑成「本体 + 3 个魔纹选项」。
+		# 第二段（3 个翻转档）的父按钮右侧摆「返回」，退回第一段二选一。
+		var 返回: Callable = Callable()
 		if _skill_ask_id == GConst.技能_魔纹融合:
+			if _skill_options.size() == 3:
+				返回 = _魔纹本体返回
 			var 有怒火: bool = false
 			for 选项技能: Variant in _pending.get("option_skill_ids", []):
 				if int(选项技能) == GConst.技能_怒火压制:
 					有怒火 = true
 					break
 			父技能号 = 0 if 有怒火 else _skill_ask_id
-		_进入二级技能栏(父技能号, null, 项们)
+		_进入二级技能栏(父技能号, null, 项们, 二级选项底色, 返回)
 		# 式神咒束（3301）与阴阳转换（3306）共用同一套本地攒应战：
 		# 先记下本次攻击牌 / 攻击者，玩家在二级技能栏点中效果后立即进入选牌 / 选目标。
 		if _skill_ask_id == GConst.技能_阴阳转换 or _skill_ask_id == GConst.技能_式神咒束:
@@ -2345,7 +2345,8 @@ func _进入额外行动(causes: Array, 可发动: Array) -> void:
 			var 说明: String = _技能效果提示(c)
 			if 说明.is_empty():
 				说明 = GConst.skill_desc(c)
-			选项.append({"text": GConst.skill_name(c), "args": [c], "skill_id": c,
+			# 技能栏上的名字用「说明说明名」，和普通技能按钮保持一致；提示条等其它地方仍用 skill_name
+			选项.append({"text": GConst.skill_desc_name(c), "args": [c], "skill_id": c,
 				"说明": 说明, "enabled": 可发动.has(c)})
 		_额外行动单选 = -1
 		_进入二级技能栏(0, null, _选项项(选项))
@@ -2629,7 +2630,7 @@ func _新技能按钮(技能号: int) -> 技能按钮:
 	return go as 技能按钮
 
 
-## 把「特殊行动」（购买 / 合成 / 提炼）的入口摆到技能栏最左 —— 原先它单占右下角那颗 BtnSpecila，
+## 把「特殊行动」（购买 / 合成 / 提炼）的入口摆到技能栏最左 ——
 ## 玩家的目光本来就落在技能栏上，摆一起省得来回找（见 _构建技能按钮）。
 ## 三种都做不了（手牌放不下 3 张 / 战绩区没星石…）或仲裁者审判已满锁死行动时：半透明、点不动
 func _摆特殊行动入口() -> void:
@@ -2679,8 +2680,11 @@ func _选项项(参数选项: Array) -> Array:
 const 二级选项底色: Color = Color("4f6fd6")
 ## 「治疗抵挡」那几个选项用蓝色，和通用的靛蓝技能选项区分开
 const 二级选项底色_治疗: Color = Color("3b82f6")
-## 特殊行动（购买 / 合成 / 提炼，含冒险者天堂那两步）的选项用绿色，和技能选项一眼分得开
+## 特殊行动的入口按钮 / 二级菜单左侧本体用绿色，和普通技能一眼分开；
+## 其子选项（购买 / 合成 / 提炼、选星石、冒险家提炼方式）统一用普通靛蓝
 const 二级选项底色_特殊行动: Color = Color("16a34a")
+## 二级菜单里的「返回」按钮：沿用普通选项的靛蓝，不再单独配色
+const 二级选项底色_返回: Color = 二级选项底色
 ## 本次二级栏最左那颗「被点的技能」（0＝这一排只有选项，如多份额外行动 / 治疗抵挡）：提示条据此写名字
 var _二级栏父技能号: int = 0
 
@@ -2702,13 +2706,14 @@ func _选项文案(原文: String) -> String:
 ##          "技能号": 该项本身就是技能时给它的技能号}
 ## 父按钮为 null 且父技能号 > 0 时（技能询问那条通道没有现成的按钮）按父技能号现造一颗；
 ## 两者都空（如「多份额外行动」那种没有点击本体的场合）＝这一排只有选项。
+## 父按钮只作展示 / 悬停说明，不接点击；当前步骤能回上一层时由 返回回调 在它右边摆「返回」。
 ## 选项底色默认为统一的靛蓝；「治疗抵挡」那条通道传蓝色，让治疗所属的选项一眼可辨。
 ## 选项「本身就是技能」时（带技能号）不用这个底色，改用技能自己的类型色，见 技能按钮.设置选项
 func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: Array,
-		选项底色: Color = 二级选项底色) -> void:
+		选项底色: Color = 二级选项底色, 返回回调: Callable = Callable()) -> void:
 	_清空二级选项()
-	# 父按钮要现造时（技能询问那条通道没有现成的按钮）：默认只是「这次在问哪个技能」的牌子，
-	# 不直接等于取消；只有当前步骤登记了 _本体回退（本地回退一层）时，点它才走回退。
+	# 父按钮要现造时（技能询问那条通道没有现成的按钮）：只摆出来当「这次在问哪个技能」的牌子，
+	# 查看说明用；回退统一走它右边那颗「返回」。
 	var 父: 技能按钮 = 父按钮
 	if 父 == null and 父技能号 > 0:
 		父 = _新技能按钮(父技能号)
@@ -2718,12 +2723,8 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 	if 父 != null:
 		ChildrenSkillArea.move_child(父, 0)
 		父.设置选中(true)
-		# 魔纹融合第二段：左边那颗技能本体可以点，点它＝退回「怒火压制 / 魔纹融合」二选一
-		if 父按钮 == null and 父技能号 == GConst.技能_魔纹融合 and _是技能询问:
-			父.connect("点击", _魔纹本体返回)
-		elif 父按钮 == null and not 父.is_connected("点击", _技能本体返回):
-			# 其它询问：父技能本体只在“本地回退一层”时生效（当前步骤没设 _本体回退 就点不动）
-			父.connect("点击", _技能本体返回)
+		if 返回回调.is_valid():
+			_添加返回按钮(返回回调)
 	# 选项里出现两个及以上不同的技能时（怒火压制/魔纹融合、蓄力一击/气绝崩击），
 	# 这些选项不是「参数」而是各自的技能本体：按自己的技能类型色上色，和普通技能按钮一致。
 	# 同一技能拆出来的参数选项（如魔纹融合的三个翻转档）仍用调用方给的普通二级选项底色。
@@ -2770,19 +2771,12 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 	_排技能栏.call_deferred()
 
 
-## 魔纹融合第二段：点左边的技能本体＝退回「怒火压制 / 魔纹融合」二选一。
+## 魔纹融合第二段：右侧「返回」按钮＝退回「怒火压制 / 魔纹融合」二选一。
 ## 对服务端而言就是取消第二段（空 args），它会重新问第一段；取消键也走同一条路。
 func _魔纹本体返回(_技能号: int) -> void:
 	if not _是技能询问 or _skill_ask_id != GConst.技能_魔纹融合:
 		return
 	_on_cancel()
-
-
-## 通用：二级栏左侧技能本体被点。只有当前步骤登记了“回退一层”才动作；
-## 普通询问 / 强制询问没有登记时点本体没有反应，避免误把“看说明”当成取消。
-func _技能本体返回(_技能号: int) -> void:
-	if _本体回退.is_valid():
-		_本体回退.call()
 
 
 ## 清掉二级栏的状态与选项按钮（技能本体按钮与其余技能由 _清空技能按钮 统一收）
@@ -2801,7 +2795,6 @@ func _清空二级选项() -> void:
 	_苍白第二步 = false
 	_自动填充第二步 = false
 	_圣光爆裂第二步 = false
-	_本体回退 = Callable()
 
 
 ## 点了二级栏里的某个选项：记下它的 args 并点亮它，其余选项熄灭（选好再按「确定」才提交）
@@ -2935,7 +2928,7 @@ func _进入苍白月第二段() -> void:
 		选项.append({"text": "移除 %d 点【新月】" % x, "args": [2, x],
 			"need_card": 1, "need_target": 1, "targets": 敌人,
 			"enabled": 新月数 >= x})
-	_进入二级技能栏(GConst.技能_苍白之月, 父, _选项项(选项))
+	_进入二级技能栏(GConst.技能_苍白之月, 父, _选项项(选项), 二级选项底色, _on_cancel)
 	_苍白第二步 = true
 	_刷新交互()
 	_刷新二级栏提示()
@@ -2950,7 +2943,8 @@ func _返回苍白月第一层() -> void:
 	_skill_need_target = 0
 	_skill_target_max = 0
 	_need_players = 0
-	_进入二级技能栏(GConst.技能_苍白之月, 父, _选项项(_skill_arg_choices))
+	_进入二级技能栏(GConst.技能_苍白之月, 父, _选项项(_skill_arg_choices),
+		二级选项底色, _on_cancel)
 	_刷新交互()
 	_刷新二级栏提示()
 	_指令提示("请选择苍白之月的效果")
@@ -3011,7 +3005,7 @@ func _进入圣光爆裂第二层() -> void:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	var 治疗: int = 我.cross_num if 我 != null else 0
 	var 选项: Array = _圣光爆裂第二层选项(治疗)
-	_进入二级技能栏(GConst.技能_圣光爆裂, 父, _选项项(选项))
+	_进入二级技能栏(GConst.技能_圣光爆裂, 父, _选项项(选项), 二级选项底色, _on_cancel)
 	_圣光爆裂第二步 = true
 	_刷新交互()
 	_刷新二级栏提示()
@@ -3022,7 +3016,8 @@ func _进入圣光爆裂第二层() -> void:
 func _返回圣光爆裂第一层() -> void:
 	var 父: 技能按钮 = _二级栏父按钮
 	_圣光爆裂第二步 = false
-	_进入二级技能栏(GConst.技能_圣光爆裂, 父, _选项项(_skill_arg_choices))
+	_进入二级技能栏(GConst.技能_圣光爆裂, 父, _选项项(_skill_arg_choices),
+		二级选项底色, _on_cancel)
 	_刷新交互()
 	_刷新二级栏提示()
 	_指令提示("请选择圣光爆裂的效果")
@@ -3048,9 +3043,8 @@ func _自动填充第二层选项(资源: int) -> Array:
 func _进入自动填充第二层(资源: int) -> void:
 	var 父: 技能按钮 = _二级栏父按钮
 	var 选项: Array = _自动填充第二层选项(资源)
-	_进入二级技能栏(GConst.技能_自动填充, 父, _选项项(选项))
+	_进入二级技能栏(GConst.技能_自动填充, 父, _选项项(选项), 二级选项底色, _on_cancel)
 	_自动填充第二步 = true
-	_本体回退 = _返回自动填充第一层
 	_刷新交互()
 	_刷新二级栏提示()
 	_指令提示("请选择加治疗还是加信仰")
@@ -3060,7 +3054,9 @@ func _进入自动填充第二层(资源: int) -> void:
 func _返回自动填充第一层() -> void:
 	var 父: 技能按钮 = _二级栏父按钮
 	_自动填充第二步 = false
-	_进入二级技能栏(GConst.技能_自动填充, 父, _自动填充第一层选项.duplicate(true))
+	var 返回: Callable = _on_cancel if _mode == 4 else Callable()
+	_进入二级技能栏(GConst.技能_自动填充, 父, _自动填充第一层选项.duplicate(true),
+		二级选项底色, 返回)
 	_刷新交互()
 	_刷新二级栏提示()
 	_指令提示("请选择消耗水晶还是宝石")
@@ -3954,19 +3950,6 @@ func _on_resign() -> void:
 	_发送行动(GConst.ActionType.None, 0, [], [], [])
 
 
-## 「放弃」（场景 BtnSpecila，图标就是 action 键；这颗现在只在魔弹传递时出现）。
-## 行动阶段要放弃行动走 BtnResign，特殊行动走技能栏最左那颗「特殊行动」（见 _摆特殊行动入口）
-func _on_giveup() -> void:
-	var respond_id: int = int(_pending.get("respond_id", 0))
-	if _pending_type == GConst.Msg.Respond and respond_id == GConst.RespondType.ReplyAttack:
-		_发送应答(respond_id, [], [], [GConst.Reattack.GiveUp])
-		return
-	if _pending_type == GConst.Msg.Respond and respond_id == GConst.RespondType.Bullet:
-		_发送应答(respond_id, [], [], [GConst.Reattack.GiveUp])
-		return
-	_发送行动(GConst.ActionType.None, 0, [], [], [])
-
-
 # ---------------- 特殊行动（购买 / 合成 / 提炼） ----------------
 ## 特殊行动三项的效果说明（鼠标指向「购买 / 合成 / 提炼」时弹出，见 技能按钮.说明文本）。
 ## 口径取自引擎结算（battle_engine._do_special）与校验（battle_player.base_v_buy / v_synthesize / base_v_extract）。
@@ -3978,6 +3961,27 @@ const 购买说明: String = "给【战绩区】 +1【宝石】、 +1【水晶�
 const 购买说明_地下法则: String = "有【地下法则】，【战绩区】 +2 【宝石】，再摸 3 张牌。\n\n手牌放得下 3 张可执行此行动。"
 const 合成说明: String = "【战绩区】的 -3【星石】，【星杯】加 1、对方阵营 -1【士气】，再摸 3 张牌。\n\n手牌放得下 3 张可执行此行动。"
 const 提炼说明: String = "选择【战绩区】的 2 颗【星石】收进自己的【能量区】里。\n\n自己的【星石】有空位才能提炼。"
+
+## 特殊行动二级菜单最左那颗「特殊行动」本体：只作悬停说明，不接点击，也不带技能号。
+## 回退由它右边那颗「返回」按钮负责（见 _添加返回按钮）。
+func _造特殊行动父按钮() -> 技能按钮:
+	var 父: 技能按钮 = _新技能按钮(0)
+	父.设置选项("特殊行动", 二级选项底色_特殊行动, 0)
+	父.设置说明(特殊行动入口说明)
+	return 父
+
+
+## 在二级栏父按钮右边插一颗「返回」：当前步骤能回上一层（回调有效）时才摆。
+## 父按钮自己只给鼠标指向看说明，不再承担返回；返回按钮排在选项前面，一眼能找到。
+func _添加返回按钮(回退: Callable) -> void:
+	if not 回退.is_valid():
+		return
+	var 钮: 技能按钮 = _新技能按钮(0)
+	钮.设置选项("返回", 二级选项底色_返回, 0)
+	钮.设置说明("返回上一级")
+	钮.connect("点击", func(_技能号: int) -> void: 回退.call())
+	ChildrenSkillArea.move_child(钮, 1)
+
 
 ## 行动阶段点技能栏最左那颗「特殊行动」进来：购买 / 合成 / 提炼 三选一 —— 选项摆进二级技能栏（本地步骤）。
 ## 可用性逐条对照原客户端 Role::normal / Role::buy / Role::synthetize / Role::extract：
@@ -3996,7 +4000,8 @@ func _进入特殊行动() -> void:
 		{"text": "合成", "args": [GConst.SpecialAction.Synthesize], "enabled": 可用[1], "说明": 合成说明},
 		{"text": "提炼", "args": [GConst.SpecialAction.Extract], "enabled": 可用[2], "说明": 提炼说明},
 	]
-	_进入本地选项(3, 0, 选项, "选择特殊行动：购买 / 合成 / 提炼")
+	_进入本地选项(3, 0, 选项, "选择特殊行动：购买 / 合成 / 提炼",
+		二级选项底色, true, _回到行动阶段)
 
 
 ## 特殊行动（购买 / 合成 / 提炼）此刻各自可不可用，返回 [购买, 合成, 提炼]。
@@ -4099,7 +4104,8 @@ func _刷新基础效果选项() -> void:
 	var 技能号: int = _pending_skill_id if _mode == 4 else _skill_ask_id
 	var 动作: String = _基础效果动作(技能号)
 	var 父: 技能按钮 = _二级栏父按钮
-	_进入二级技能栏(技能号, 父, _选项项(_基础效果选项()))
+	var 返回: Callable = _on_cancel if _mode == 4 else Callable()
+	_进入二级技能栏(技能号, 父, _选项项(_基础效果选项()), 二级选项底色, 返回)
 	if _二级选项.is_empty():
 		_指令提示("【%s】：点一名面前有基础效果的角色，技能栏里就会列出可%s的基础效果" % [
 			GConst.skill_name(技能号), 动作,
@@ -4137,7 +4143,8 @@ func _天堂选提炼方式() -> void:
 		var 文本: String = GConst.提示原文(冒险者天堂技能号, 2,
 			{"n": x, "花费": _自身能量花费文案(x)})
 		选项.append({"text": 文本, "args": [x], "enabled": 上限 >= x})
-	_进入本地选项(4, 冒险者天堂技能号, 选项, GConst.提示原文(冒险者天堂技能号, 0), 二级选项底色)
+	_进入本地选项(4, 0, 选项, GConst.提示原文(冒险者天堂技能号, 0),
+		二级选项底色, true, _进入特殊行动)
 
 
 ## 冒险者天堂额外档位里「你 -N【水晶】-M【宝石】」的消耗文案：优先扣水晶，不够再用宝石
@@ -4190,9 +4197,12 @@ func _队伍水晶() -> int:
 
 ## 本地二级栏选项步骤：进 mode 6 把选项摆进二级技能栏（不走服务端）；「确定 / 取消」按
 ## _本地选项阶段 分派（见 _on_ok / _on_cancel）。父技能号 > 0 时最左摆那颗技能按钮，0＝只有选项。
-## 底色默认走「特殊行动」绿（购买 / 合成 / 提炼这一条）；【冒险者天堂】那条传通用靛蓝
+## 特殊行动父 = true 时最左摆「特殊行动」本体（只作悬停说明）；回退回调有效时，
+## 在它右边摆一颗「返回」，由返回按钮调用 回退 返回上一层。
+## 底色默认走普通二级选项的靛蓝；特殊行动的入口 / 本体另有绿色（二级选项底色_特殊行动）
 func _进入本地选项(阶段: int, 父技能号: int, 选项: Array, 提示: String,
-		选项底色: Color = 二级选项底色_特殊行动) -> void:
+		选项底色: Color = 二级选项底色,
+		特殊行动父: bool = false, 回退: Callable = Callable()) -> void:
 	_本地选项阶段 = 阶段
 	_本地询问 = true
 	_是技能询问 = false
@@ -4202,7 +4212,11 @@ func _进入本地选项(阶段: int, 父技能号: int, 选项: Array, 提示: 
 	_sel_players.clear()
 	_重置治疗分配()
 	_清空技能按钮()
-	_进入二级技能栏(父技能号, null, _选项项(选项), 选项底色)
+	if 特殊行动父:
+		var 父: 技能按钮 = _造特殊行动父按钮()
+		_进入二级技能栏(0, 父, _选项项(选项), 选项底色, 回退)
+	else:
+		_进入二级技能栏(父技能号, null, _选项项(选项), 选项底色, 回退)
 	_指令提示(提示)
 	刷新选中面板()
 	_更新按键()
@@ -4283,7 +4297,8 @@ func _天堂列组合() -> void:
 		"dst_ids": 候选, "can_cancel": true,
 	}
 	_进入技能询问()
-	_进入二级技能栏(冒险者天堂技能号, null, _选项项(选项), 二级选项底色)
+	var 父: 技能按钮 = _造特殊行动父按钮()
+	_进入二级技能栏(0, 父, _选项项(选项), 二级选项底色, _天堂选提炼方式)
 	_重置治疗分配()
 	# 默认选上第一项：提示条与头像立刻可用
 	_选中二级选项(冒险者天堂技能号, 0)
@@ -4459,7 +4474,8 @@ func _选特殊行动(action_id: int) -> void:
 		选项.append({"text": str(d["text"]), "args": [int(d["gem"]), int(d["crystal"])], "说明": 本步说明})
 	_待定特殊行动 = action_id
 	_进入本地选项(2, 0, 选项,
-		"选择要购买的星石" if action_id == GConst.SpecialAction.Buy else "选择要合成的星石")
+		"选择要购买的星石" if action_id == GConst.SpecialAction.Buy else "选择要合成的星石",
+		二级选项底色, true, _进入特殊行动)
 
 
 ## 常规提炼：把战绩区能取出的星石列成组合（取给自己），进二级技能栏点「确定」提交。
@@ -4499,7 +4515,8 @@ func _列提炼组合() -> void:
 		选项.append({"text": str(d["text"]), "args": [int(d["gem"]), int(d["crystal"])], "说明": 提炼说明})
 	_待定特殊行动 = GConst.SpecialAction.Extract
 	_进入本地选项(2, 0, 选项,
-		"选择要提炼的星石" if 余量 >= 1 else "自己星石已满，无法常规提炼")
+		"选择要提炼的星石" if 余量 >= 1 else "自己星石已满，无法常规提炼",
+		二级选项底色, true, _进入特殊行动)
 
 
 ## 发出特殊行动：args = [宝石数, 水晶数]（服务端 _do_special 按这个口径结算）。
@@ -4569,11 +4586,9 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		最多牌: int = 0, 最多目标: int = 0, 目标上限减牌数: int = 0,
 		选牌来源: int = GConst.CardSource.Hand, 选牌规则: String = "",
 		首张技能: int = 0, 次张系别: int = 0, 参数选项: Array = [], 按钮: Node = null, 盖牌需数: int = 0) -> void:
-	# 二级栏正开着、点的又是它最左那颗父技能按钮：这一下＝收起二级栏，等同「取消」本次技能选择。
-	# 只有「玩家自己点技能开出来的二级栏」走这条；询问弹出的父技能牌默认只当牌子。
-	# 询问里的本地回退步骤（如自动填充第二层）由 _本体回退 单独接父按钮点击。
+	# 二级栏正开着、点的又是它最左那颗父技能按钮：本体只作悬停说明，不接点击；
+	# 回退走它右边那颗「返回」（由 _进入二级技能栏 按回调摆出来）。
 	if _二级栏 and 按钮 != null and 按钮 == _二级栏父按钮:
-		_on_cancel()
 		return
 	_mode = 4
 	_标记选中技能(按钮)
@@ -4658,7 +4673,7 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		_skill_target_max = 0
 		_need_players = 0
 	if not 参数选项.is_empty():
-		_进入二级技能栏(技能号, 按钮 as 技能按钮, _选项项(参数选项))
+		_进入二级技能栏(技能号, 按钮 as 技能按钮, _选项项(参数选项), 二级选项底色, _on_cancel)
 		# 「默认选首项」型（如冒险家【欺诈】）：进栏就替玩家把第一个选项选上 ——
 		# 手牌不锁、随手就能选牌，也不必先点一次选项才能按「确定」；想换效果再点别的选项
 		if bool(指示配置.get("默认选首项", false)):
@@ -7095,9 +7110,6 @@ func _更新按键() -> void:
 	BtnCovered.disabled = Data.cover_cards.is_empty()
 	BtnResign.visible = _模式可放弃行动()
 	BtnResign.disabled = not _模式可放弃行动()
-	var 特殊可用: bool = _按钮是放弃()
-	BtnSpecila.visible = 特殊可用
-	BtnSpecila.disabled = not 特殊可用
 
 
 func _确定不可用() -> bool:
@@ -7238,11 +7250,6 @@ func _模式可放弃行动() -> bool:
 	# 「放弃行动」不是标准行为（原版普通行动阶段 canGiveUp=false）：只有服务端在本次询问里
 	# 下发了放弃命令（被【挑衅】或额外行动阶段）才让点；想跳过自己回合用测试键 8
 	return _mode == 1 and _可放弃行动
-
-
-## 场景 BtnSpecila 在魔弹传递的询问里仍是「放弃」（沿用旧用法；应战时的放弃已挪给「取消」）
-func _按钮是放弃() -> bool:
-	return _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet
 
 
 ## 「取消」是否可用：技能询问 / 发动技能 / 特殊行动 / 应战放弃 / 魔弹放弃传递 / 虚弱强摸 / 治疗抵御

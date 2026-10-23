@@ -226,8 +226,8 @@ func _问单项加成(技能号: int, ctx: Dictionary) -> int:
 ## 带上 skill_id：这两项本身就是技能，客户端鼠标指向选项按钮时据此弹技能说明
 func _攻击加成选项() -> Array:
 	return [
-		{"value": XU_LI_YI_JI, "label": GConst.skill_name(XU_LI_YI_JI), "skill_id": XU_LI_YI_JI},
-		{"value": QI_JUE_BENG_JI, "label": GConst.skill_name(QI_JUE_BENG_JI), "skill_id": QI_JUE_BENG_JI},
+		{"value": XU_LI_YI_JI, "label": GConst.skill_desc_name(XU_LI_YI_JI), "skill_id": XU_LI_YI_JI},
+		{"value": QI_JUE_BENG_JI, "label": GConst.skill_desc_name(QI_JUE_BENG_JI), "skill_id": QI_JUE_BENG_JI},
 	]
 
 

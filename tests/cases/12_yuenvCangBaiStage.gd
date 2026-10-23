@@ -90,11 +90,22 @@ func 跑() -> void:
 	窗.call("_选中二级选项", GConst.技能_苍白之月, 0)
 	检((窗.get("_已选参数") as Array) == [2, 1], "第二步选 1 点后参数应为 [2, 1]")
 
-	# 第二步取消＝退回第一层两项，而不是取消整个技能
-	窗.call("_on_cancel")
-	检(not bool(窗.get("_苍白第二步")), "取消第二步后应回到第一层")
+	# 第二步点右侧「返回」＝退回第一层两项，而不是取消整个技能
+	var 栏: HBoxContainer = 窗.get("ChildrenSkillArea") as HBoxContainer
+	var 返回按钮: 技能按钮 = null
+	for 子: Node in 栏.get_children():
+		if 子 is 技能按钮:
+			var 按钮: 技能按钮 = 子 as 技能按钮
+			if 按钮.skillName != null and 按钮.skillName.get_parsed_text() == "返回":
+				返回按钮 = 按钮
+				break
+	检(返回按钮 != null, "第二步没有「返回」按钮")
+	if 返回按钮 != null and 返回按钮.plateButton != null:
+		返回按钮.plateButton.pressed.emit()
+	await 等帧(2)
+	检(not bool(窗.get("_苍白第二步")), "点返回后应回到第一层")
 	var 回一层: Array = 窗.get("_二级选项")
-	检(回一层.size() == 2, "取消第二步后应重新摆出第一层两项：%s" % str(回一层.size()))
+	检(回一层.size() == 2, "点返回后应重新摆出第一层两项：%s" % str(回一层.size()))
 	if 回一层.size() == 2:
 		检((回一层[0].get("参数", []) as Array) == [1], "第一层第一项仍是石化")
 		检((回一层[1].get("参数", []) as Array) == [2], "第一层第二项仍不带新月数")

@@ -157,8 +157,19 @@ func 跑() -> void:
 	检((窗.get("_sel_cards") as Array).is_empty() and (窗.get("_sel_players") as Array).is_empty(),
 		"点「取消」没有清空已选的牌与目标")
 
-	# 特殊行动：点 BtnSpecila 应进入「购买 / 合成 / 提炼」三选一（选项摆进二级技能栏），而不是直接结束行动
-	(窗.get("BtnSpecila") as Button).pressed.emit()
+	# 特殊行动入口只在本阶段放行「特殊行动」时才摆出来：重新下发一条普通行动询问（Any）。
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Action,
+		"commands": [{"respond_id": GConst.ActionType.Any, "src_id": Logic.my_player_id, "args": []}],
+	})
+	await 等帧(2)
+
+	# 特殊行动：点技能栏最左的「特殊行动」入口，应进入「购买 / 合成 / 提炼」三选一
+	# （选项摆进二级技能栏），而不是直接结束行动。
+	var 特殊按钮: 技能按钮 = _找特殊行动按钮(窗)
+	检(特殊按钮 != null, "技能栏里找不到「特殊行动」入口")
+	if 特殊按钮 != null and 特殊按钮.plateButton != null:
+		特殊按钮.plateButton.pressed.emit()
 	await 等帧(2)
 	检(int(窗.get("_本地选项阶段")) == 3,
 		"点「特殊行动」没有进入三选一（阶段=%d）" % int(窗.get("_本地选项阶段")))
@@ -169,10 +180,20 @@ func 跑() -> void:
 		var 按钮: 技能按钮 = 项["按钮"]
 		检(按钮.plateButton.disabled == (not bool(项["可用"])),
 			"特殊行动选项的可点状态没跟着「可用」走")
-	# 三选一里取消 → 退回行动阶段，本回合的技能按钮要摆回来
-	(窗.get("BtnCancel") as Button).pressed.emit()
+	# 本体只作悬停说明：点它不应返回；返回由右边的「返回」按钮负责
+	特殊按钮 = _找特殊行动按钮(窗)
+	检(特殊按钮 != null, "三选一里没有左侧「特殊行动」本体")
+	var 阶段前: int = int(窗.get("_本地选项阶段"))
+	if 特殊按钮 != null and 特殊按钮.plateButton != null:
+		特殊按钮.plateButton.pressed.emit()
 	await 等帧(2)
-	检(int(窗.get("_mode")) == 1, "取消特殊行动后没有退回行动阶段：%d" % int(窗.get("_mode")))
+	检(int(窗.get("_本地选项阶段")) == 阶段前, "点左侧特殊行动本体不应返回上一级")
+	var 返回按钮: 技能按钮 = _找技能栏文案按钮(窗, "返回")
+	检(返回按钮 != null, "三选一右侧没有「返回」按钮")
+	if 返回按钮 != null and 返回按钮.plateButton != null:
+		返回按钮.plateButton.pressed.emit()
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 1, "点右侧「返回」后没有退回行动阶段：%d" % int(窗.get("_mode")))
 	检((窗.get("_二级选项") as Array).is_empty(), "退回行动阶段后二级选项没收掉")
 
 	# 特殊行动的第二层「用哪些星石」：也走二级技能栏（本地步骤，不用弹窗）
@@ -180,7 +201,10 @@ func 跑() -> void:
 	var 蓝队: GTeam = Data.team_of(GConst.BLUE)
 	蓝队.gem = 2
 	蓝队.crystal = 1
-	(窗.get("BtnSpecila") as Button).pressed.emit()
+	特殊按钮 = _找特殊行动按钮(窗)
+	检(特殊按钮 != null, "第二次找不到技能栏里的「特殊行动」入口")
+	if 特殊按钮 != null and 特殊按钮.plateButton != null:
+		特殊按钮.plateButton.pressed.emit()
 	await 等帧(2)
 	窗.call("_选特殊行动", GConst.SpecialAction.Extract)
 	await 等帧(2)
@@ -190,11 +214,14 @@ func 跑() -> void:
 		"二级技能栏没列出星石选项按钮（%d 个）" % (二级选项.size() if 二级选项 != null else -1))
 	检(str((窗.get("TxtHint") as RichTextLabel).get_parsed_text()) == "选择要提炼的星石",
 		"提炼的提示应为「选择要提炼的星石」：%s" % str((窗.get("TxtHint") as RichTextLabel).get_parsed_text()))
-	# 「取消」→ 退回上一层「购买/合成/提炼」三选一
-	(窗.get("BtnCancel") as Button).pressed.emit()
+	# 点右侧「返回」按钮 → 退回上一层「购买/合成/提炼」三选一
+	返回按钮 = _找技能栏文案按钮(窗, "返回")
+	检(返回按钮 != null, "选星石步骤没有「返回」按钮")
+	if 返回按钮 != null and 返回按钮.plateButton != null:
+		返回按钮.plateButton.pressed.emit()
 	await 等帧(2)
-	检(int(窗.get("_本地选项阶段")) == 3, "取消星石选择后没有退回三选一：%d" % int(窗.get("_本地选项阶段")))
-	检(not (窗.get("_二级选项") as Array).is_empty(), "取消星石选择后三选一的选项没摆出来")
+	检(int(窗.get("_本地选项阶段")) == 3, "点右侧「返回」后没有退回三选一：%d" % int(窗.get("_本地选项阶段")))
+	检(not (窗.get("_二级选项") as Array).is_empty(), "退回三选一后选项没摆出来")
 	# 战斗界面的取消 → 一路退回行动阶段
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(2)
@@ -523,3 +550,21 @@ func _收尾(窗: Node, 旧id: int, 旧玩家: Array[GPlayer], 旧手牌: Array[
 	Data.hand_cards = 旧手牌
 	Data.cover_cards = 旧盖牌
 	await 等帧(2)
+
+
+## 在技能栏里找文案为「特殊行动」的按钮（现在是本体；旧入口已移除，测试不再直接点场景里的按钮）。
+func _找特殊行动按钮(窗: Control) -> 技能按钮:
+	return _找技能栏文案按钮(窗, "特殊行动")
+
+
+## 在技能栏里按文案找按钮（特殊行动本体 / 返回等）。
+func _找技能栏文案按钮(窗: Control, 文案: String) -> 技能按钮:
+	var 栏: HBoxContainer = 窗.get("ChildrenSkillArea") as HBoxContainer
+	if 栏 == null:
+		return null
+	for 子: Node in 栏.get_children():
+		if 子 is 技能按钮:
+			var 按钮: 技能按钮 = 子 as 技能按钮
+			if 按钮.skillName != null and 按钮.skillName.get_parsed_text() == 文案:
+				return 按钮
+	return null

@@ -15,7 +15,6 @@
 [ext_resource type="Texture2D" uid="uid://b7fundhb10idd" path="res://assets/textures/battle/ui_notice.png" id="33_uinoticepng"]
 [ext_resource type="Texture2D" uid="uid://dw4qa6mkukslj" path="res://assets/textures/battle/b05_botton_ok.png" id="34_b05bottonokpng"]
 [ext_resource type="Texture2D" uid="uid://ewjnpky7ad7f" path="res://assets/textures/battle/b05_botton_no.png" id="35_b05bottonnopng"]
-[ext_resource type="Texture2D" uid="uid://dsepx1im7hkkc" path="res://assets/textures/battle/b05_botton_action.png" id="36_b05bottonactionpng"]
 [ext_resource type="Texture2D" uid="uid://sfwnplqm25o5" path="res://assets/textures/battle/b05_botton_skip.png" id="37_b05bottonskippng"]
 [ext_resource type="Texture2D" uid="uid://xsyp34kxxe75" path="res://assets/textures/battle/b05_button_log.png" id="38_b05buttonlogpng"]
 [ext_resource type="Texture2D" uid="uid://ci3wvo4id2il" path="res://assets/textures/battle/b05_button_chat.png" id="39_b05buttonchatpng"]
@@ -28,7 +27,7 @@
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_noBox"]
 
-[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "BlueBG", "RedBG", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "WinImg", "EndTxt", "BtnBack", "LogRoot", "BtnLogMode", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnSpecila", "BtnResign", "BtnSetting")]
+[node name="BattleUIMobile" type="Control" unique_id=1679758448 node_paths=PackedStringArray("Root", "MainPlayer", "PlayerStatusMobileR", "PlayerStatusMobileUR", "PlayerStatusMobileU", "PlayerStatusMobileUL", "PlayerStatusMobileL", "BlueMorale", "RedMorale", "BlueEnergy", "RedEnergy", "BlueGrail", "RedGrail", "BlueBG", "RedBG", "TxtTurn", "TxtRID", "TxtHint", "Hint", "测试提示", "Content_2", "MsgRoot", "Content", "InputField", "BtnSubmit", "BtnLogExpand", "BtnChatExpand", "WinPanel", "WinImg", "EndTxt", "BtnBack", "LogRoot", "BtnLogMode", "ChatRoot", "HandArea", "ShowCardArea", "SkillArea", "ChildrenSkillArea", "ChooseArea", "BtnOK", "BtnCancel", "BtnCovered", "BtnResign", "BtnSetting")]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 1280.0
@@ -77,7 +76,6 @@ ChooseArea = NodePath("Root/ChooseArea")
 BtnOK = NodePath("Root/BtnOK")
 BtnCancel = NodePath("Root/BtnCancel")
 BtnCovered = NodePath("Root/BtnCovered")
-BtnSpecila = NodePath("Root/BtnSpecila")
 BtnResign = NodePath("Root/BtnResign")
 BtnSetting = NodePath("Root/BtnSetting")
 
@@ -350,29 +348,6 @@ theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
 theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
 icon = ExtResource("35_b05bottonnopng")
-expand_icon = true
-
-[node name="BtnSpecila" type="Button" parent="Root" unique_id=150154565]
-layout_mode = 1
-anchors_preset = 3
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -203.33228
-offset_top = -130.5
-offset_right = -101.332275
-offset_bottom = -43.5
-grow_horizontal = 0
-grow_vertical = 0
-pivot_offset = Vector2(51, 43.5)
-focus_mode = 0
-theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/disabled = SubResource("StyleBoxEmpty_noBox")
-theme_override_styles/focus = SubResource("StyleBoxEmpty_noBox")
-icon = ExtResource("36_b05bottonactionpng")
 expand_icon = true
 
 [node name="BtnSetting" type="Button" parent="Root" unique_id=602787382]

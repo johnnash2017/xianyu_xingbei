@@ -386,13 +386,12 @@ const 五系束缚摸牌上限: int = 4
 # 规则常量（GameGrailCommon.h / PlayerEntity.cpp / GameGrail.cpp）
 # ============================================================
 const CARDSUM: int = 150          # 牌库总数
-const MAX_PLAYER: int = 8         # 最大玩家数
+const MAX_PLAYER: int = 6         # 最大玩家数（当前只支持 4 / 6 人局）
 const HAND_CARDS_MAX: int = 6     # 默认手牌上限
 const CROSS_MAX: int = 2          # 默认治疗上限
 const ENERGY_MAX: int = 3         # 默认个人能量上限
 const TEAM_ENERGY_MAX: int = 5    # 团队 宝石+水晶 上限
-const MORALE_DEFAULT: int = 15    # 士气上限（非 8 人局）
-const MORALE_8P: int = 18         # 士气上限（8 人局）
+const MORALE_DEFAULT: int = 15    # 士气上限（固定 15）
 const GRAIL_WIN: int = 5          # 星杯获胜数
 const START_HAND: int = 4         # 开局每人手牌
 ## 【魔弹】的初始伤害（每被传递一次 +1）——服务端结算与客户端「准备打出」的头像提示共用这一处
@@ -1158,6 +1157,19 @@ static func skill_name(skill_id: int) -> String:
 	if row.is_empty():
 		return "技能%d" % skill_id
 	return 词缀文本(技能文本数字空格(str(row[_技能列("技能名")]).strip_edges())).strip_edges()
+
+
+## 技能表「说明说明名」列：只用于角色悬停说明、以及技能栏按钮上的技能名；
+## 日志、提示条、单个技能悬停说明等其他地方仍用 skill_name()。
+## 该列为空时回退到「技能名」列，避免新列漏填时按钮变成空白。
+static func skill_desc_name(skill_id: int) -> String:
+	var row: Array = 技能行(skill_id)
+	if row.is_empty():
+		return skill_name(skill_id)
+	var 名: String = str(row[_技能列("说明说明名")]).strip_edges()
+	if 名 == "":
+		return skill_name(skill_id)
+	return 词缀文本(技能文本数字空格(名)).strip_edges()
 
 
 ## 技能表「说明」列的正文（技能按钮的悬停说明用）；查不到返回空串

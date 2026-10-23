@@ -20,32 +20,49 @@ func _scan(dir_path: String) -> void:
 	var d := DirAccess.open(dir_path)
 	if d == null:
 		return
+	var 文件: Array[String] = []
+	var 子目录: Array[String] = []
 	d.list_dir_begin()
 	var entry := d.get_next()
 	while entry != "":
 		if entry.begins_with("."):
 			entry = d.get_next()
 			continue
-		var full := dir_path.path_join(entry)
 		if d.current_is_dir():
-			_scan(full)
+			子目录.append(entry)
 		else:
-			# 导出后 res:// 目录里只剩 *.import（真实数据在 .godot/imported/），
-			# 编辑器里则是「原始文件 + 同名 .import」。两种形态统一还原成原始文件名再建索引，
-			# 索引值也必须用原始路径——ResourceLoader 会经 .import 里的 path= 解析到实际的 .ctex。
-			var 文件名: String = entry
-			if 文件名.ends_with(".import"):
-				文件名 = 文件名.substr(0, 文件名.length() - ".import".length())
-			var base: String = 文件名.get_basename().to_lower()
-			var ext: String = 文件名.get_extension().to_lower()
-			if ext in ["png", "jpg", "jpeg", "webp"]:
-				if not _images.has(base):
-					_images[base] = dir_path.path_join(文件名)
-			elif ext in ["ogg", "wav", "mp3"]:
-				if not _audio.has(base):
-					_audio[base] = dir_path.path_join(文件名)
+			文件.append(entry)
 		entry = d.get_next()
 	d.list_dir_end()
+	# 先收本层文件、再进子目录，两层都按名字排序：
+	# 同一个基名可能在多个地方各有一份（如 card/anMie.png 与 card/新图标/anMie.png），
+	# 索引「先到先得」—— 不排序的话，导出后 DirAccess 的枚举顺序和编辑器不一样
+	# （实测导出包里会先给子目录），同一张牌在编辑器里取正式卡面、在导出包里取到备用图。
+	# 先文件后目录保证同层的正式资源优先，排序则让两个环境的结果完全一致。
+	文件.sort()
+	子目录.sort()
+	for 名: String in 文件:
+		_收文件(dir_path, 名)
+	for 名: String in 子目录:
+		_scan(dir_path.path_join(名))
+
+
+## 把本层的一个文件按扩展名收进索引。导出后 res:// 目录里只剩 *.import（真实数据在
+## .godot/imported/），编辑器里则是「原始文件 + 同名 .import」。两种形态统一还原成原始
+## 文件名再建索引，索引值也必须用原始路径——ResourceLoader 会经 .import 里的 path= 解析到
+## 实际的 .ctex。
+func _收文件(dir_path: String, entry: String) -> void:
+	var 文件名: String = entry
+	if 文件名.ends_with(".import"):
+		文件名 = 文件名.substr(0, 文件名.length() - ".import".length())
+	var base: String = 文件名.get_basename().to_lower()
+	var ext: String = 文件名.get_extension().to_lower()
+	if ext in ["png", "jpg", "jpeg", "webp"]:
+		if not _images.has(base):
+			_images[base] = dir_path.path_join(文件名)
+	elif ext in ["ogg", "wav", "mp3"]:
+		if not _audio.has(base):
+			_audio[base] = dir_path.path_join(文件名)
 
 ## 对应 LoadAsset<Sprite>(bundle, name)：name 可以是 "card/moDan" 这类带目录的写法
 func image(asset_name: String) -> String:

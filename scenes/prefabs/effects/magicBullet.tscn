@@ -20,6 +20,7 @@ VFX = NodePath("视口容器/视口/特效位/特效")
 BG = NodePath("背景")
 
 [node name="背景" type="Sprite2D" parent="." unique_id=242185466]
+visible = false
 self_modulate = Color(0, 0.64705884, 0.827451, 1)
 position = Vector2(7, 1.9999995)
 scale = Vector2(1.6460409, 1.0991416)
@@ -32,10 +33,11 @@ texture = ExtResource("2_7k4of")
 
 [node name="视口容器" type="SubViewportContainer" parent="." unique_id=95775249]
 material = SubResource("CanvasItemMaterial_add")
-offset_left = -540.0
-offset_top = -256.0
-offset_right = 160.0
-offset_bottom = 256.0
+offset_left = -263.0
+offset_top = -124.0
+offset_right = 437.0
+offset_bottom = 388.0
+scale = Vector2(0.5, 0.5)
 mouse_filter = 2
 stretch = true
 

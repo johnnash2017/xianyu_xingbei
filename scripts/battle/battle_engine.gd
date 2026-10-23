@@ -911,10 +911,10 @@ func _提交默认回复(pid: int, kind: int, 默认回复: Dictionary, 公告: 
 	run()
 
 
-## 本次对局的士气上限：8 人局 18，其余（4 / 6 人局）15。开局定下来后就照它算，
+## 本次对局的士气上限：当前只支持 4 / 6 人局，固定 15。开局定下来后就照它算，
 ## 角色脚本（如剑帝【天使之魂】）也读这里，别在别处再写死一个数字
 func 士气上限() -> int:
-	return GConst.MORALE_8P if order.size() == 8 else GConst.MORALE_DEFAULT
+	return GConst.MORALE_DEFAULT
 
 
 ## 构造超时默认回复：与客户端「放弃 / 不发动」等价；返回空字典 = 这个询问不允许超时兜底
@@ -1351,7 +1351,7 @@ func game_info(viewer_id: int) -> Dictionary:
 		"picking": room_picking,
 		"pick_ready": pick_ready,
 		"player_id": viewer_id,
-		# 士气上限（跟人数走）：随快照下发，客户端不用自己再按人数算一遍
+		# 士气上限（固定 15）：随快照下发，客户端直接用，不必自己再算
 		"morale_max": 士气上限(),
 		"red_morale": team_morale[GConst.RED],
 		"blue_morale": team_morale[GConst.BLUE],

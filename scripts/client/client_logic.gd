@@ -194,7 +194,7 @@ func _on_game(data: Dictionary) -> void:
 	started = bool(data.get("is_started", false))
 	对局已结束 = bool(data.get("over", false))
 	if started:
-		# 士气上限随快照下发（跟人数走：4 / 6 人局 15、8 人局 18，见 BattleEngine.士气上限）
+		# 士气上限随快照下发（固定 15，见 BattleEngine.士气上限）
 		Data.init_team(int(data.get("morale_max", GConst.MORALE_DEFAULT)))
 	in_room = true
 	# 首条对局信息 → 交给 UI 管理器切到「房间准备室 / 战斗界面」

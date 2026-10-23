@@ -1,10 +1,7 @@
 extends 自检用例
-## 用例 1：数据表与素材齐全（卡表、卡面、角色立绘、界面音效文件）
+## 用例 1：数据表与素材齐全（卡表、卡面、界面音效文件）
+## 立绘 / 形态图不作为自检项：这两类素材按需补，不作为完整性门槛。
 
-## 表里的 0 号是表头名「角色」，不是真角色
-const 非角色ID: Array[int] = [0]
-## 源工程本身就没有的素材，不算缺失
-const 已知缺立绘: Array[int] = [37]
 ## 代码里会用到的界面 wav 音效（Art.play_sfx 的入参）
 ## TurnBegin / Skill / It's your turn 是原版客户端遗留素材，均已删除（2026-10-22）；
 ## 现在只剩按钮点击音 Equip
@@ -30,22 +27,19 @@ func 跑() -> void:
 			缺卡面.append("%d号" % 卡.id)
 	检(缺卡面.is_empty(), "缺卡面：%s" % str(缺卡面))
 
-	var 缺立绘: Array[String] = []
-	for rid: Variant in Data.role_list.keys():
-		if int(rid) in 非角色ID or int(rid) in 已知缺立绘:
-			continue
-		if Art.role_hero(int(rid)) == null:
-			缺立绘.append("%d(%s)" % [int(rid), Data.role_name(int(rid))])
-	检(缺立绘.is_empty(), "缺立绘：%s" % str(缺立绘))
-
-	# 形态图：角色表「形态图」列配了资源名的，就要求 tap 目录下有对应 png
-	var 缺形态图: Array[String] = []
-	for rid: Variant in Data.role_list.keys():
-		if int(rid) in 非角色ID or int(rid) in 已知缺立绘:
-			continue
-		if Data.role_tap(int(rid)) != "" and Art.role_tap(int(rid)) == null:
-			缺形态图.append("%d(%s)" % [int(rid), Data.role_name(int(rid))])
-	检(缺形态图.is_empty(), "缺形态图：%s" % str(缺形态图))
+	# 卡面优先级：card/ 根目录与 card/新图标/ 各有一套同名图，索引必须取根目录那份正式卡面。
+	# 导出后 DirAccess 的枚举顺序和编辑器不一样，这里把「取哪一份」定死，别到导出包里才发现。
+	var 卡面取错: Array[String] = []
+	var 卡面所在目录: DirAccess = DirAccess.open("res://assets/textures/card/")
+	if 卡面所在目录 != null:
+		for 文件: String in 卡面所在目录.get_files():
+			if not 文件.ends_with(".png"):
+				continue
+			var 应取: String = "res://assets/textures/card/" + 文件
+			var 实际: String = AssetIndex.image(文件.get_basename())
+			if 实际 != 应取:
+				卡面取错.append("%s → %s" % [文件, 实际])
+	检(卡面取错.is_empty(), "卡面取到了子目录里的备用图：%s" % str(卡面取错))
 
 	# 表驱动素材（状态图标 / 独有图标 / 指示物 / 命格图标）：名字都配在代码常量或数据表里，
 	# 编辑器引用兜不住，只能在这里逐个查

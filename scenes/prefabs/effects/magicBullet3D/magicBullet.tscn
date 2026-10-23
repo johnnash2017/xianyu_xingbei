@@ -1,33 +1,42 @@
 [gd_scene format=3 uid="uid://clhepsamj2k7v"]
 
-[ext_resource type="Script" uid="uid://bo76hrgfyk86m" path="res://scripts/effects/3D/effectController3D.gd" id="1_br0i1"]
-[ext_resource type="Material" uid="uid://rew6ftjwmm00" path="res://scenes/prefabs/effects/magicBullet3D/materials/magicBulletWave.tres" id="1_j6vj0"]
-[ext_resource type="Material" uid="uid://b2o2vag58abyu" path="res://scenes/prefabs/effects/magicBullet3D/materials/magicBulletHead.tres" id="2_necqt"]
-[ext_resource type="Material" uid="uid://78ukyvmsmdje" path="res://scenes/prefabs/effects/magicBullet3D/materials/magicBulletCore.tres" id="3_necqt"]
-[ext_resource type="Script" uid="uid://ilkyo5cx2bgx" path="res://scripts/effects/3D/effectLight3D.gd" id="4_3rbsi"]
+[ext_resource type="Material" uid="uid://ckydc4wpygfnq" path="res://scenes/prefabs/effects/magicBullet3D/materials/wave_band.tres" id="1_m2sb2"]
+[ext_resource type="Script" uid="uid://bo76hrgfyk86m" path="res://scripts/effects/3D/effectController3D.gd" id="1_wak8h"]
+[ext_resource type="Material" uid="uid://cragwg3j2c001" path="res://scenes/prefabs/effects/magicBullet3D/materials/wave_head.tres" id="2_q6k4w"]
+[ext_resource type="Material" uid="uid://bjp7a6pyphlm8" path="res://scenes/prefabs/effects/magicBullet3D/materials/wave_core.tres" id="3_q6k4w"]
+[ext_resource type="Script" uid="uid://ilkyo5cx2bgx" path="res://scripts/effects/3D/effectLight3D.gd" id="4_ycx3u"]
 
-[sub_resource type="CylinderMesh" id="CylinderMesh_br0i1"]
-top_radius = 0.3
-bottom_radius = 0.25
-height = 0.9
-rings = 32
-cap_top = false
-cap_bottom = false
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_necqt"]
-top_radius = 0.3
-bottom_radius = 0.1
+[sub_resource type="CylinderMesh" id="CylinderMesh_pq0gu"]
+top_radius = 0.001
+bottom_radius = 0.6
 height = 1.4
+radial_segments = 32
 rings = 32
 cap_top = false
 cap_bottom = false
 
-[sub_resource type="SphereMesh" id="SphereMesh_j6vj0"]
-radius = 0.4
-height = 1.8
+[sub_resource type="CylinderMesh" id="CylinderMesh_wak8h"]
+top_radius = 0.3
+bottom_radius = 0.2
+height = 0.9
+radial_segments = 32
+rings = 32
+cap_top = false
+cap_bottom = false
 
-[sub_resource type="SphereMesh" id="SphereMesh_br0i1"]
+[sub_resource type="CylinderMesh" id="CylinderMesh_q6k4w"]
+top_radius = 0.3
+bottom_radius = 0.02
+height = 1.4
+radial_segments = 32
+rings = 32
+cap_top = false
+cap_bottom = false
+
+[sub_resource type="SphereMesh" id="SphereMesh_wak8h"]
 radius = 0.25
+radial_segments = 32
+rings = 16
 
 [sub_resource type="Animation" id="Animation_e2thh"]
 length = 0.001
@@ -214,38 +223,40 @@ _data = {
 &"oneshot": SubResource("Animation_dtgg3")
 }
 
-[node name="魔弹" type="Node3D" unique_id=1152969521]
-script = ExtResource("1_br0i1")
-primary_color = Color(0.8, 0.878431, 1, 1)
-secondary_color = Color(0.5529412, 0.5647059, 1, 1)
-tertiary_color = Color(0.176471, 0.431373, 1, 1)
-light_color = Color(0.411765, 0.752941, 1, 1)
+[node name="魔弹" type="Node3D" unique_id=1741549879]
+script = ExtResource("1_wak8h")
+primary_color = Color(1, 0.65196335, 0.59805304, 1)
+secondary_color = Color(0.6784314, 0, 0.87058824, 1)
+tertiary_color = Color(0, 0, 1, 1)
+light_enable = false
+light_color = Color(0.945098, 0.356863, 0, 1)
 
-[node name="Wave_01" type="MeshInstance3D" parent="." unique_id=377633359]
-transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.5, 0, 0)
-material_override = ExtResource("1_j6vj0")
-mesh = SubResource("CylinderMesh_br0i1")
+[node name="Head" type="MeshInstance3D" parent="." unique_id=786102559]
+transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.46582338, 0, 0.016332865)
+material_override = ExtResource("2_q6k4w")
+mesh = SubResource("CylinderMesh_pq0gu")
 
-[node name="Wave_02" type="MeshInstance3D" parent="." unique_id=1448586980]
-transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.7, 0, 0)
-material_override = ExtResource("1_j6vj0")
-mesh = SubResource("CylinderMesh_necqt")
+[node name="Wave_01" type="MeshInstance3D" parent="." unique_id=1028735533]
+transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.90732336, 0, 0)
+material_override = ExtResource("1_m2sb2")
+mesh = SubResource("CylinderMesh_wak8h")
 
-[node name="Head" type="MeshInstance3D" parent="." unique_id=105479050]
-transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.72, 0, 0)
-material_override = ExtResource("2_necqt")
-mesh = SubResource("SphereMesh_j6vj0")
+[node name="Wave_02" type="MeshInstance3D" parent="." unique_id=1012313815]
+transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -1.0825512, 0, 0)
+material_override = ExtResource("1_m2sb2")
+mesh = SubResource("CylinderMesh_q6k4w")
 
-[node name="Core" type="MeshInstance3D" parent="." unique_id=238491298]
-transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.285, 0, 0)
-material_override = ExtResource("3_necqt")
-mesh = SubResource("SphereMesh_br0i1")
+[node name="Core" type="MeshInstance3D" parent="." unique_id=238226381]
+transform = Transform3D(-4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0, 1, -0.7551918, 0, 0)
+material_override = ExtResource("3_q6k4w")
+mesh = SubResource("SphereMesh_wak8h")
 
-[node name="Light" type="OmniLight3D" parent="." unique_id=477462042]
-light_color = Color(0.411765, 0.752941, 1, 1)
+[node name="Light" type="OmniLight3D" parent="." unique_id=2019278889]
+visible = false
+light_color = Color(0.945098, 0.356863, 0, 1)
 light_energy = 4.0
-script = ExtResource("4_3rbsi")
+script = ExtResource("4_ycx3u")
 base_energy = 4.0
 
-[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=951303352]
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=404251311]
 libraries/ = SubResource("AnimationLibrary_e2thh")

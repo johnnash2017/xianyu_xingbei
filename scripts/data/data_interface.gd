@@ -85,9 +85,9 @@ const 技能分段标题: Dictionary = {"普通": "普通技", "独有技": "独
 
 ## 角色技能文本：按「角色表」的「技能」引用逐条拼装（角色ID -> 技能文本）
 ## 一级标题取技能表的「大类」列；每条技能一行，技能表里的「说明」已经不带头，
-## 这里把「类型」「技能名」拼回去，成「【响应】疾风技：说明」的样子。
-## 说明 / 技能名统一走 GConst 的读取入口：数字空格、词缀图标都在那里处理，
-## 角色说明（选角卡、战斗内头像悬停）才会和技能按钮 / 提示条看到同一份文本。
+## 这里把「类型」「说明说明名」拼回去，成「【响应】疾风技【回合限定】：说明」的样子。
+## 角色说明（选角卡、战斗内头像悬停）与技能栏按钮用「说明说明名」列；
+## 日志、提示条、单个技能悬停说明等其他地方仍用「技能名」列（见 GConst.skill_name）。
 func _load_role_skill_db() -> void:
 	role_skill_db.clear()
 	var 列索引: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
@@ -105,7 +105,7 @@ func _load_role_skill_db() -> void:
 			if 说明 == "":
 				continue
 			var 条目: String = "【%s】%s：%s" % [
-				GConst.skill_type(技能号), GConst.skill_name(技能号), 说明]
+				GConst.skill_type(技能号), GConst.skill_desc_name(技能号), 说明]
 			var 分段: String = str(row[分段列])
 			if not 分组.has(分段):
 				分组[分段] = []

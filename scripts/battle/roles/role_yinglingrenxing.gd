@@ -281,7 +281,7 @@ func _nu_huo_xuan(ctx: Dictionary) -> int:
 	var 魔纹可用: bool = _mo_wen() >= 1 and player.hand_count() >= 2
 	if not engine.has_reply():
 		var 选项: Array = [
-			{"value": CHOICE_NU_HUO_YA_ZHI, "label": GConst.skill_name(NU_HUO_YA_ZHI),
+			{"value": CHOICE_NU_HUO_YA_ZHI, "label": GConst.skill_desc_name(NU_HUO_YA_ZHI),
 				"skill_id": NU_HUO_YA_ZHI, "need_card": 0, "enabled": _zhan_wen() >= 1},
 			{"value": CHOICE_MO_WEN_RONG_HE, "label": 提示原文(MO_WEN_RONG_HE, 1),
 				"skill_id": MO_WEN_RONG_HE, "need_card": 0, "enabled": 魔纹可用},

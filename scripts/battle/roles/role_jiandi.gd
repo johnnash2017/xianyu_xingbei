@@ -271,7 +271,7 @@ func _jian_hun_shou_hu(ctx: Dictionary) -> void:
 
 
 ## 天使之魂未命中：我方士气 +1（未达上限时）。
-## 上限按人数取（4 / 6 人局 15、8 人局 18），统一读引擎那份，别在这写死数字
+## 上限固定 15，统一读引擎那份，别在这写死数字
 func _tian_shi_zhi_hun_miss() -> void:
 	if engine.team_morale[player.color] >= engine.士气上限():
 		return
