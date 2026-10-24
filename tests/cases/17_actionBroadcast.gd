@@ -357,20 +357,21 @@ func 跑() -> void:
 				break
 		检(找到, "调用 _排行动播报 后，战斗界面上没有出现「测试技能」这一行")
 
-		# 等上一行播完，再验同名 Skill 连发只飘一次、日志也只记一条
+		# 每次 Skill 通知都写日志、都排一条头像飘字（不再按同名去重）
 		await get_tree().create_timer(4.8).timeout
 		var 日志前: String = str(战.get("_日志"))
 		战.call("_on_skill", {"skill_id": 2001, "src_id": 1})
 		战.call("_on_skill", {"skill_id": 2001, "src_id": 1})
-		await 等帧(1)
+		var 新增日志: String = str(战.get("_日志")).substr(日志前.length())
+		检(新增日志.count(技能名) == 2,
+			"两条 Skill 通知应各写一条日志「%s」，实际：%s" % [技能名, 新增日志])
+		# 队列间隔 1 秒：等第二条排到后再数
+		await get_tree().create_timer(1.3).timeout
 		var 技能飘报数: int = 0
 		for 子: Node in 根.get_children():
 			if 子 is Label and (子 as Label).text == 技能名:
 				技能飘报数 += 1
-		检(技能飘报数 == 1, "连续两条同名 Skill 通知应只飘一次「%s」，实际 %d 次" % [技能名, 技能飘报数])
-		var 新增日志: String = str(战.get("_日志")).substr(日志前.length())
-		检(新增日志.count(技能名) == 1,
-			"连续两条同名 Skill 通知的日志应只有一条「%s」，实际：%s" % [技能名, 新增日志])
+		检(技能飘报数 == 2, "两条 Skill 通知应各飘一次「%s」，实际 %d 次" % [技能名, 技能飘报数])
 
 		# 等技能行播完，再验特殊行动的信号能落到头像播报上
 		await get_tree().create_timer(4.8).timeout

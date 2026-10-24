@@ -92,6 +92,8 @@ func 跑() -> void:
 	窗.call("_on_cancel")
 	await 等帧(2)
 	检(not bool(窗.get("_二级栏")), "取消欺诈后二级栏状态没有清掉")
+	检(int(窗.get("_need_cards")) == 1, "取消欺诈后行动阶段没有恢复成只选 1 张牌")
+	检(str(窗.get("_skill_card_rule")) == "", "取消欺诈后仍残留技能选牌规则")
 	检(欺诈选项.size() == 5, "取消欺诈后把技能声明里的原参数选项数组清空了")
 	窗.call("_选择技能", GConst.技能_欺诈, GConst.ActionType.AttackSkill, 2, 1, [2, 3], [], 0, 0, 0,
 		GConst.CardSource.Hand, "same", 0, 0, 欺诈选项, null, 0)

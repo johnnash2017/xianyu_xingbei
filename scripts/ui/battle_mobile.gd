@@ -1015,8 +1015,6 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 
 func _on_turn(player_id: int, round_id: int) -> void:
 	_当前回合 = player_id
-	# 新回合：上回合的「同名技能只飘一次」记录作废，新的触发重新显示
-	_上次技能播报.clear()
 	# 新回合开始：上一回合可能残留的「同命格」许可 / 回退记录作废
 	_应战同命格 = false
 	_攒应战回退攻击牌 = -1
@@ -1168,10 +1166,7 @@ var _展示飞行延迟: float = 0.0
 var _行动播报队列: Dictionary = {}
 ## 玩家 id → 是否有播报协程正在跑（见 _播行动播报队列）
 var _行动播报中: Dictionary = {}
-## 玩家 id → 最近一次记为「发动」的技能名：同一次结算里服务端可能连发多条同名 Skill
-## （多目标 / 多段 / 额外行动回执），日志和头像播报都只处理第一条；
-## 受伤或换回合后清空，下一次独立触发仍会重新显示。
-var _上次技能播报: Dictionary = {}
+
 
 
 ## 把这几张牌摊到屏幕中间给所有人看；停了 展示停留秒数 秒后自动收起，
@@ -1449,10 +1444,6 @@ func _on_hit(src_id: int, dst_id: int, hit: int) -> void:
 
 
 func _on_hurt(msg: Dictionary) -> void:
-	# 一次伤害结算后，下一次独立触发要能重新飘同名技能（同一次结算里的重复通知则被挡在上面）。
-	# 只清伤害双方，免得别人挨打就把自己的同名播报去重记录清掉。
-	_上次技能播报.erase(int(msg.get("src_id", -1)))
-	_上次技能播报.erase(int(msg.get("dst_id", -1)))
 	var cause: int = int(msg.get("cause", 0))
 	# 法术伤害：交给队列逐个播（群伤时才有视觉先后）；攻击 / 魔弹 / 其它照旧即时播
 	if int(msg.get("type", GConst.HarmType.None)) == GConst.HarmType.Magic \
@@ -1491,15 +1482,8 @@ func _on_skill(msg: Dictionary) -> void:
 	var src: int = int(msg.get("src_id", -1))
 	var skill_id: int = int(msg.get("skill_id", 0))
 	var 技能文本: String = _技能播报文本(msg)
-	# 同一次结算里服务端可能连发多条同名 Skill（多目标 / 多段 / 额外行动回执）：
-	# 日志只记一条、头像名只飘一次；换回合或受伤后重置，下一次独立触发照常显示。
-	# 【魔弹融合】例外：每次拿地/火牌出牌都是独立的一手，挨着手出也要各飘一次。
-	var 强制显示: bool = skill_id == GConst.技能_魔弹融合
-	if not 强制显示 and not 技能文本.is_empty() \
-			and str(_上次技能播报.get(src, "")) == 技能文本:
-		return
-	if not 技能文本.is_empty():
-		_上次技能播报[src] = 技能文本
+	# 每次 Skill 通知都写日志、排一条头像飘字：不再按「同玩家 + 同技能名」去重，
+	# 保证战斗日志里出现的每一条技能播报都有对应的飘字。
 	# 技能全称带分类，如「发动【独有技·响应】疾风技」（对照设计表「技能表」的大类/类型列）
 	_日志追加("%s 发动%s" % [
 		_称号(src),
