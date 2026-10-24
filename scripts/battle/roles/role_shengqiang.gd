@@ -233,7 +233,7 @@ func _hui_yao(action: Dictionary) -> int:
 		var dp: BattlePlayer = engine.p(int(d))
 		if dp != null:
 			施加治疗(dp.id, 1)
-	player.add_action(GConst.ActionType.Attack, HUI_YAO, true)
+	player.add_action(GConst.ActionType.Attack, HUI_YAO, true, true)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -254,7 +254,7 @@ func _cheng_jie(action: Dictionary) -> int:
 	engine.to_discard([cid])
 	dst.sub_cross_num(1)
 	施加治疗(player.id, 1)
-	player.add_action(GConst.ActionType.Attack, CHENG_JIE, true)
+	player.add_action(GConst.ActionType.Attack, CHENG_JIE, true, true)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -265,7 +265,7 @@ func _sheng_guang_qi_yu() -> int:
 	player.set_gem(player.gem - 1)
 	# 无视上限 +2 治疗、最高到 5：走与普通加治疗同一入口（会写战斗日志，且超过上限时只加不减）
 	施加治疗_突破(player.id, 2, 5)
-	player.add_action(GConst.ActionType.Attack, SHENG_GUANG_QI_YU, true)
+	player.add_action(GConst.ActionType.Attack, SHENG_GUANG_QI_YU, true, true)
 	used_sheng_guang_qi_yu = true
 	engine._broadcast_game()
 	return SUCCESS

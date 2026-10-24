@@ -137,12 +137,12 @@ func v_magic_skill(action: Dictionary) -> int:
 func p_magic_skill(action: Dictionary) -> int:
 	match int(action.get("action_id", 0)):
 		FENG_REN:
-			# 风刃：额外 +1 攻击行动
-			player.add_action(GConst.ActionType.Attack, FENG_REN, true)
+			# 风刃：额外 +1 攻击行动（技能通告由 _yuan_su_damage 发）
+			player.add_action(GConst.ActionType.Attack, FENG_REN, true, true)
 			return _yuan_su_damage(action)
 		YUN_SHI:
-			# 陨石：额外 +1 法术行动
-			player.add_action(GConst.ActionType.Magic, YUN_SHI, true)
+			# 陨石：额外 +1 法术行动（技能通告由 _yuan_su_damage 发）
+			player.add_action(GConst.ActionType.Magic, YUN_SHI, true, true)
 			return _yuan_su_damage(action)
 		HUO_QIU:
 			return _yuan_su_damage(action)
@@ -206,7 +206,7 @@ func _lei_ji_gem() -> void:
 func _yuan_su_dian_ran(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
-	player.add_action(GConst.ActionType.Magic, YUAN_SU_DIAN_RAN, true)
+	player.add_action(GConst.ActionType.Magic, YUAN_SU_DIAN_RAN, true, true)
 	notice_skill(YUAN_SU_DIAN_RAN, [dst_id])
 	_clear_element_token()
 	engine.push_harm({

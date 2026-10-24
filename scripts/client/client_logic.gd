@@ -12,6 +12,8 @@ signal notice_received(txt: String, kind: int)
 signal heal_received(pid: int, num: int)
 ## 弃牌事件（弃牌者 id + 弃牌张数）：战斗界面据此在他身上播「牌向下飞出并淡出」的弃牌特效
 signal discard_received(pid: int, num: int)
+## 特殊行动事件（执行者 id + GConst.SpecialAction）：战斗界面据此在头像上飘「购买 / 合成 / 提炼」
+signal special_action_received(pid: int, action_id: int)
 signal game_info_updated(info: Dictionary)
 signal command_received(data: Dictionary)
 signal turn_changed(player_id: int, round_id: int)
@@ -140,6 +142,10 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 				# 弃牌日志额外发一条事件给战斗界面播弃牌特效（num = 弃牌张数，其余 Discard 类日志不带）
 				elif kind == GConst.GossipType.Discard and int(data.get("num", 0)) > 0:
 					discard_received.emit(int(data.get("id", -1)), int(data.get("num", 0)))
+				# 特殊行动日志额外发一条事件给战斗界面飘「购买 / 合成 / 提炼」；
+				# 购买 = 0，所以按字段是否存在判断，不能按值判断
+				if data.has("special_action"):
+					special_action_received.emit(int(data.get("id", -1)), int(data.get("special_action", 0)))
 				notice_received.emit(str(data.get("txt", "")), kind)
 		GConst.Msg.HeartBeat:
 			# 服务端心跳：原样回一声，服务端按「发包时刻 → 收到回声」算这一路的往返延迟

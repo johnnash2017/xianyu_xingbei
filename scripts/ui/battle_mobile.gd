@@ -123,6 +123,8 @@ const 删除线预制: PackedScene = preload("res://scenes/prefabs/battlemobile/
 const 加号预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HealPlus.tscn")
 ## 受伤飘字（见 _生成伤害飘字）
 const 飘字预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HurtFloat.tscn")
+## 行动播报（打出卡牌 / 发动技能时从角色头像上飘出名字，见 _排行动播报）
+const 行动播报预制: PackedScene = preload("res://scenes/prefabs/battlemobile/ActionNameFloat.tscn")
 ## 给牌动效预制体（一张卡背从交牌人飘到收牌人，见 _给牌特效）
 const 给牌预制: PackedScene = preload("res://scenes/prefabs/effects/dealCard.tscn")
 ## 交多张给牌动效之间的起飞间隔（秒）：一张接一张，不叠在一起
@@ -209,6 +211,19 @@ const 飘字上飘: float = 96.0
 const 飘字时长: float = 1.8
 const 飘字色_法术伤害: Color = Color("ff3cff")
 const 飘字色_攻击伤害: Color = Color("ff3c3c")
+
+## 行动播报（打出卡牌 / 发动技能时，在角色头像上飘出卡牌名或技能名）：
+## 起点抬到头像中心上方，避开从中心冒出的伤害数字；同一玩家短时间连续发动时排队逐行播，
+## 否则「出牌 + 被动触发 + 响应」会叠成一团。字号 / 描边 / 白色字在 ActionNameFloat.tscn 里。
+const 行动播报间隔: float = 2.3
+const 行动播报起始偏移: float = -72.0
+const 行动播报上飘: float = 82.0
+const 行动播报时长: float = 4.6
+const 行动播报出场时长: float = 0.28
+const 行动播报淡入时长: float = 0.24
+const 行动播报淡出时长: float = 1.52
+const 行动播报淡出延迟: float = 2.88
+const 行动播报起始缩放: float = 0.86
 
 ## 战斗日志的样式：每行开头一个彩色的「[类别]」标识，后面的正文一律白字（方便一眼扫类别）。
 ## 颜色是暗底上柔和的低饱和色，避免刺眼。
@@ -541,6 +556,7 @@ func _ready() -> void:
 	Logic.notice_received.connect(_on_notice)
 	Logic.heal_received.connect(_on_heal_received)
 	Logic.discard_received.connect(_on_discard_received)
+	Logic.special_action_received.connect(_on_special_action)
 	Logic.error_received.connect(_on_error)
 	BtnSubmit.pressed.connect(_on_submit)
 	InputField.text_submitted.connect(func(_t: String) -> void: _on_submit())
@@ -999,6 +1015,8 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 
 func _on_turn(player_id: int, round_id: int) -> void:
 	_当前回合 = player_id
+	# 新回合：上回合的「同名技能只飘一次」记录作废，新的触发重新显示
+	_上次技能播报.clear()
 	# 新回合开始：上一回合可能残留的「同命格」许可 / 回退记录作废
 	_应战同命格 = false
 	_攒应战回退攻击牌 = -1
@@ -1146,6 +1164,15 @@ var _展示全局中心: Vector2 = Vector2(-1.0, -1.0)
 ## 牌飞到展示位要多久（秒）：出手特效得等牌自己就位再起飞，这就是它的起跑延迟
 var _展示飞行延迟: float = 0.0
 
+## 行动播报队列：玩家 id → [文本]；同一玩家一条播完再接下一行，避免多个名字叠在一起
+var _行动播报队列: Dictionary = {}
+## 玩家 id → 是否有播报协程正在跑（见 _播行动播报队列）
+var _行动播报中: Dictionary = {}
+## 玩家 id → 最近一次记为「发动」的技能名：同一次结算里服务端可能连发多条同名 Skill
+## （多目标 / 多段 / 额外行动回执），日志和头像播报都只处理第一条；
+## 受伤或换回合后清空，下一次独立触发仍会重新显示。
+var _上次技能播报: Dictionary = {}
+
 
 ## 把这几张牌摊到屏幕中间给所有人看；停了 展示停留秒数 秒后自动收起，
 ## 期间若来了新的一拨，立即顶掉（收起由新那拨负责）。
@@ -1278,6 +1305,10 @@ func _on_card(msg: Dictionary) -> void:
 		_日志追加("%s 对自己打出：%s" % [谁, ", ".join(names)], "行动")
 	else:
 		_日志追加("%s 对 %s 打出：%s" % [谁, _称号(dst), ", ".join(names)], "行动")
+	# 只有真正「打出」才飘卡牌名；展示 / 给牌不是使用，分别走自己的动效。
+	# 地/火牌当【魔弹】打出的这一手实际是在发动【魔弹融合】，只飘技能名，不再重复飘地/火牌名。
+	if not _是魔弹融合出牌(msg):
+		_排行动播报(src, _卡牌播报文本(msg))
 	_播出手特效(src, dst, msg, 音效名)
 
 
@@ -1419,6 +1450,10 @@ func _on_hit(src_id: int, dst_id: int, hit: int) -> void:
 
 
 func _on_hurt(msg: Dictionary) -> void:
+	# 一次伤害结算后，下一次独立触发要能重新飘同名技能（同一次结算里的重复通知则被挡在上面）。
+	# 只清伤害双方，免得别人挨打就把自己的同名播报去重记录清掉。
+	_上次技能播报.erase(int(msg.get("src_id", -1)))
+	_上次技能播报.erase(int(msg.get("dst_id", -1)))
 	var cause: int = int(msg.get("cause", 0))
 	# 法术伤害：交给队列逐个播（群伤时才有视觉先后）；攻击 / 魔弹 / 其它照旧即时播
 	if int(msg.get("type", GConst.HarmType.None)) == GConst.HarmType.Magic \
@@ -1455,11 +1490,82 @@ func _on_hurt(msg: Dictionary) -> void:
 
 func _on_skill(msg: Dictionary) -> void:
 	var src: int = int(msg.get("src_id", -1))
+	var skill_id: int = int(msg.get("skill_id", 0))
+	var 技能文本: String = _技能播报文本(msg)
+	# 同一次结算里服务端可能连发多条同名 Skill（多目标 / 多段 / 额外行动回执）：
+	# 日志只记一条、头像名只飘一次；换回合或受伤后重置，下一次独立触发照常显示。
+	# 【魔弹融合】例外：每次拿地/火牌出牌都是独立的一手，挨着手出也要各飘一次。
+	var 强制显示: bool = skill_id == GConst.技能_魔弹融合
+	if not 强制显示 and not 技能文本.is_empty() \
+			and str(_上次技能播报.get(src, "")) == 技能文本:
+		return
+	if not 技能文本.is_empty():
+		_上次技能播报[src] = 技能文本
 	# 技能全称带分类，如「发动【独有技·响应】疾风技」（对照设计表「技能表」的大类/类型列）
 	_日志追加("%s 发动%s" % [
 		_称号(src),
-		GConst.skill_title(int(msg.get("skill_id", 0))),
+		GConst.skill_title(skill_id),
 	], "行动")
+	if not 技能文本.is_empty():
+		_排行动播报(src, 技能文本)
+
+
+## 卡牌播报文本：只认「使用」消息（Show＝亮牌 / 超限换牌，Give＝暗中交牌，都不算打出）。
+## 卡名带命格后缀，多张用顿号连起来；查不到牌或没有牌名时返回空串。
+func _卡牌播报文本(msg: Dictionary) -> String:
+	if int(msg.get("type", 0)) != GConst.CardMsgType.Use:
+		return ""
+	var 名表: Array[String] = []
+	for raw: Variant in msg.get("card_ids", []):
+		var 牌: GCard = Data.get_card(int(raw))
+		if 牌 == null or 牌.card_name.is_empty():
+			continue
+		if 牌.fate_pattern.is_empty():
+			名表.append(牌.card_name)
+		else:
+			名表.append("%s·%s" % [牌.card_name, 牌.fate_pattern])
+	return "、".join(名表)
+
+
+## 这条出牌消息是不是「地/火牌当【魔弹】」的【魔弹融合】出牌：
+## as_card_id 指向【魔弹】，且出牌者是拥有 803 的魔导 / 特殊魔导。
+## 这种牌仍会摊出真卡面，但头像播报只飘技能名，避免「魔弹融合 + 地裂斩」两条名字挤在一起。
+func _是魔弹融合出牌(msg: Dictionary) -> bool:
+	if int(msg.get("type", 0)) != GConst.CardMsgType.Use:
+		return false
+	var 视为号: int = int(msg.get("as_card_id", 0))
+	if 视为号 <= 0:
+		return false
+	var 视为牌: GCard = Data.get_card(视为号)
+	if 视为牌 == null or 视为牌.card_name_enum() != GConst.CardName.Missile:
+		return false
+	var 出牌人: GPlayer = Data.get_player_by_id(int(msg.get("src_id", -1)))
+	return 出牌人 != null and 地火可作魔弹角色.has(出牌人.role_id)
+
+
+## 技能播报文本：直接写技能名；技能号无效时返回空串（不飘一个空壳）
+func _技能播报文本(msg: Dictionary) -> String:
+	var skill_id: int = int(msg.get("skill_id", 0))
+	if skill_id <= 0:
+		return ""
+	return GConst.skill_name(skill_id)
+
+
+## 特殊行动（购买 / 合成 / 提炼）在头像上飘的名字
+func _特殊行动播报名(action_id: int) -> String:
+	match action_id:
+		GConst.SpecialAction.Buy:
+			return "购买"
+		GConst.SpecialAction.Synthesize:
+			return "合成"
+		GConst.SpecialAction.Extract:
+			return "提炼"
+	return ""
+
+
+## 收到特殊行动事件（服务端随「执行【…】」日志附带 special_action）：在行动者头像上飘字
+func _on_special_action(pid: int, action_id: int) -> void:
+	_排行动播报(pid, _特殊行动播报名(action_id))
 
 
 ## 玩家发言：既进日志，也在聊天区加一条
@@ -5202,6 +5308,71 @@ func _面板中心(player_id: int) -> Vector2:
 		if 面板.ID == player_id:
 			return 面板.get_rect().get_center()
 	return Vector2(-1.0, -1.0)
+
+
+## 排一行行动播报：卡牌名 / 技能名从该玩家头像上飘出。
+## 同一玩家短时间连续触发（出牌 + 被动 + 响应）时排队逐行播，避免几行字叠在一起。
+func _排行动播报(player_id: int, 文本: String) -> void:
+	if player_id < 0 or 文本.is_empty():
+		return
+	if not _行动播报队列.has(player_id):
+		_行动播报队列[player_id] = []
+	(_行动播报队列[player_id] as Array).append(文本)
+	if bool(_行动播报中.get(player_id, false)):
+		return
+	_行动播报中[player_id] = true
+	_播行动播报队列(player_id)
+
+
+## 逐行播放某玩家的行动播报队列：上一行飘出一段距离后再播下一行；队列空了才释放「播放中」标记
+func _播行动播报队列(player_id: int) -> void:
+	while is_inside_tree():
+		var 队列: Array = _行动播报队列.get(player_id, [])
+		if 队列.is_empty():
+			break
+		var 文本: String = str(队列.pop_front())
+		_行动播报队列[player_id] = 队列
+		_生成行动播报(player_id, 文本)
+		await get_tree().create_timer(行动播报间隔).timeout
+	_行动播报队列.erase(player_id)
+	_行动播报中.erase(player_id)
+
+
+## 单个行动播报：从头像中心偏上的位置出现，轻轻上飘并淡出，放完自毁。
+## 字号 / 描边 / 白色字在 ActionNameFloat.tscn 里；这里只设文本和运镜。
+func _生成行动播报(player_id: int, 文本: String) -> void:
+	if 文本.is_empty() or Root == null:
+		return
+	var 中心: Vector2 = _面板中心(player_id)
+	if 中心.x < 0.0:
+		return
+	var 播报: Label = 行动播报预制.instantiate() as Label
+	if 播报 == null:
+		return
+	播报.text = 文本
+	# 尺寸在预制体里（480×52）；万一以后改预制体尺寸变成 0，退回一份兜底值
+	var 尺寸: Vector2 = 播报.size
+	if 尺寸.x <= 0.0 or 尺寸.y <= 0.0:
+		尺寸 = Vector2(480.0, 52.0)
+	var 起点: Vector2 = 中心 + Vector2(0.0, 行动播报起始偏移) - 尺寸 * 0.5
+	var 终点: Vector2 = 起点 + Vector2(0.0, -行动播报上飘)
+	# 最上面一排头像离屏幕上沿很近：上飘时把整行字夹在画面内，别只飘出一半
+	终点.y = maxf(终点.y, 8.0)
+	播报.position = 起点
+	播报.pivot_offset = 尺寸 * 0.5
+	播报.scale = Vector2.ONE * 行动播报起始缩放
+	播报.modulate.a = 0.0
+	播报.z_index = 50
+	Root.add_child(播报)
+	var t: Tween = create_tween()
+	t.set_parallel(true)
+	t.tween_property(播报, "modulate:a", 1.0, 行动播报淡入时长)
+	t.tween_property(播报, "scale", Vector2.ONE, 行动播报出场时长) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(播报, "position", 终点, 行动播报时长) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	t.tween_property(播报, "modulate:a", 0.0, 行动播报淡出时长).set_delay(行动播报淡出延迟)
+	t.chain().tween_callback(播报.queue_free)
 
 
 ## 受击反馈（泛红 / 抖动 / 画面扭曲震荡波）已移进角色头像面板（战斗玩家面板.Hurted），

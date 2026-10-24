@@ -218,7 +218,7 @@ func _tou_tian_transfer() -> int:
 	var enemy: int = 1 - player.color
 	engine.set_team_gem(enemy, engine.team_gem[enemy] - 1)
 	engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
-	player.add_action(GConst.ActionType.AttackMagic, TOU_TIAN_HUAN_RI, true)
+	player.add_action(GConst.ActionType.AttackMagic, TOU_TIAN_HUAN_RI, true, true)
 	used_TouTianHuanRi = true
 	engine._broadcast_game()
 	return SUCCESS
@@ -231,7 +231,7 @@ func _tou_tian_convert() -> int:
 	var crystal_have: int = engine.team_crystal[player.color]
 	engine.set_team_crystal(player.color, 0)
 	engine.set_team_gem(player.color, engine.team_gem[player.color] + crystal_have)
-	player.add_action(GConst.ActionType.AttackMagic, TOU_TIAN_HUAN_RI, true)
+	player.add_action(GConst.ActionType.AttackMagic, TOU_TIAN_HUAN_RI, true, true)
 	used_TouTianHuanRi = true
 	engine._broadcast_game()
 	return SUCCESS

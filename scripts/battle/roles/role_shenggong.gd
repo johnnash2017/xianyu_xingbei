@@ -755,7 +755,7 @@ func _sheng_huang_mo_shi(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	notice_skill(SHENG_HUANG_MO_SHI, [player.id])
 	player.tap = true
-	player.add_action(GConst.ActionType.Magic, SHENG_HUANG_MO_SHI, true)
+	player.add_action(GConst.ActionType.Magic, SHENG_HUANG_MO_SHI, true, true)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -874,7 +874,7 @@ func _hui_guang_pao(action: Dictionary) -> int:
 			player.sheng_huang_side = HUI_GUANG_SIDE_BACK
 			# 额外行动固定放行攻击或法术：玩家进入额外行动阶段后自己决定，
 			# 不再由本技能的选项预先选攻击/法术。
-			player.add_action(GConst.ActionType.AttackMagic, HUI_GUANG_PAO, true)
+			player.add_action(GConst.ActionType.AttackMagic, HUI_GUANG_PAO, true, true)
 		engine._broadcast_game()
 		if engine.team_grail[my_color] >= GConst.GRAIL_WIN:
 			engine._game_over(my_color)

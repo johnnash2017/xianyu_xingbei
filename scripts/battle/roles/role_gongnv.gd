@@ -202,7 +202,7 @@ func _ju_ji(action: Dictionary) -> int:
 	else:
 		player.set_gem(player.gem - 1)
 	# 额外一次攻击行动
-	player.add_action(GConst.ActionType.Attack, JU_JI, true)
+	player.add_action(GConst.ActionType.Attack, JU_JI, true, true)
 	# 目标手牌补到 5 张
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst != null:

@@ -399,8 +399,13 @@ func _diao_ling_process() -> int:
 	var out: int = SUCCESS
 	if not _diao_harms.is_empty():
 		player.tap = true
+		# 【凋零】一次发动只宣告一次；之前放在循环里会按目标数重复发 Skill 通知
+		# （日志里会连出几条「发动【…】凋零」，头像播报也会重复飘名字）
+		var 目标表: Array[int] = []
 		for h: Dictionary in _diao_harms:
-			notice_skill(DIAO_LING, [int(h["dst"])])
+			目标表.append(int(h["dst"]))
+		notice_skill(DIAO_LING, 目标表)
+		for h: Dictionary in _diao_harms:
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 				"card_ids": [int(h["card"])], "is_real": true,

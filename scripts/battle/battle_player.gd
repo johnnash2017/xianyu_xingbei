@@ -253,8 +253,13 @@ var reattacker: int = -1
 ## （该阶段允许「放弃行动」，想跳过在那里放弃即可）。
 ## 判定标准：这份额外行动「被选中」时不额外消耗代价（p_additional_action 无扣费/无移除资源）。
 ## 代价在选中时才结算的（如剑圣【剑影】扣能量、剑帝【不屈意志】扣能量）仍要询问，保留玩家「不付代价退出」的权利。
-func add_action(allow_action: int, cause: int, direct: bool = false) -> void:
-	additional_actions.append({"allow_action": allow_action, "cause": cause, "direct": direct})
+## skip_notice=true：授予这份额外行动的技能已经自己发过 Skill 通告（如式神降临、充盈、辉耀），
+## 引擎进入额外行动时不要再补发一次，否则同一技能会多一条「发动…」日志/头像播报。
+func add_action(allow_action: int, cause: int, direct: bool = false, skip_notice: bool = false) -> void:
+	additional_actions.append({
+		"allow_action": allow_action, "cause": cause, "direct": direct,
+		"skip_notice": skip_notice,
+	})
 
 
 ## 额外行动「被选中」时的二次校验（角色可覆写）

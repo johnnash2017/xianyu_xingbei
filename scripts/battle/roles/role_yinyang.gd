@@ -577,7 +577,7 @@ func _shi_shen_jiang_lin(action: Dictionary) -> int:
 	var use_cards: Array = [int(cards[0]), int(cards[1])]
 	notice_skill(SHI_SHEN_JIANG_LIN, [player.id])
 	_set_gui_huo(_gui_huo() + 1)
-	player.add_action(GConst.ActionType.Attack, SHI_SHEN_JIANG_LIN, true)
+	player.add_action(GConst.ActionType.Attack, SHI_SHEN_JIANG_LIN, true, true)
 	engine.set_tap(player.id, true)
 	_展示并弃(use_cards)
 	engine._broadcast_game()

@@ -458,7 +458,7 @@ func _chong_ying(action: Dictionary) -> int:
 		used_chong_ying = true
 		_chong_targets = _all_ids_from_self()
 		_chong_index = 0
-		player.add_action(GConst.ActionType.Attack, CHONG_YING, true)
+		player.add_action(GConst.ActionType.Attack, CHONG_YING, true, true)
 		engine._broadcast_game()
 		step = 1
 	if step == 1:
@@ -492,7 +492,8 @@ func _chong_ying(action: Dictionary) -> int:
 			if c2 == null:
 				continue
 			var counted: bool = c2.is_magic() or c2.element_enum() == GConst.CardElement.Thunder
-			notice_skill(CHONG_YING, [tid])
+			# 【充盈】在 step 0 已经宣告过一次；这里逐个目标弃牌，不再重复发 Skill 通知
+			# （否则每个弃牌的人都会让日志多一行「发动…充盈」、头像上重复飘一次技能名）
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": tid, "dst_id": tid,
 				"card_ids": [ccid], "is_real": true,

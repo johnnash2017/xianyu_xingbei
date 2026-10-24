@@ -238,6 +238,6 @@ func _sheng_liao(action: Dictionary) -> int:
 		remain -= amount
 	used_sheng_liao = true
 	# direct=true：获得额外行动后不必再点一次【圣疗】按钮，直接进入额外行动阶段（里面可放弃）
-	player.add_action(GConst.ActionType.AttackMagic, SHENG_LIAO, true)
+	player.add_action(GConst.ActionType.AttackMagic, SHENG_LIAO, true, true)
 	engine._broadcast_game()
 	return SUCCESS

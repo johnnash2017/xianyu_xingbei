@@ -2115,11 +2115,14 @@ class SAdditionalAction:
 				可发动.append(c)
 		return [causes, 可发动]
 
-	## 进入某份额外行动：移除它、广播技能通知，再压入额外行动阶段（允许放弃）与其「被选中」代价钩子
+	## 进入某份额外行动：移除它、广播技能通知（授予者已宣告过时不重复），
+	## 再压入额外行动阶段（允许放弃）与其「被选中」代价钩子
 	func _进入(e: BattleEngine, cur: BattlePlayer, idx: int, cause: int) -> int:
 		var 允许: int = int(cur.additional_actions[idx]["allow_action"])
+		var 跳过宣告: bool = bool(cur.additional_actions[idx].get("skip_notice", false))
 		cur.additional_actions.remove_at(idx)
-		e.broadcast(GConst.Msg.Skill, {"skill_id": cause, "src_id": cur.id, "dst_ids": []})
+		if not 跳过宣告:
+			e.broadcast(GConst.Msg.Skill, {"skill_id": cause, "src_id": cur.id, "dst_ids": []})
 		# 先让角色结算「被选中」的代价（p_additional_action），再进入额外行动阶段。
 		# 额外行动阶段只放行这份额外行动声明的种类、且允许放弃（对照原版
 		# PlayerEntity::p_additional_action → StateActionPhase(it->allowAction, true)）
@@ -2382,10 +2385,18 @@ class SMissileAsk:
 				# 打出的是【魔弹】继续传递：dst_id 必须给下一个落点，客户端才知道魔弹要从自己飞向谁；
 				# 没人能再接（nxt < 0）就仍写自己，动画落在自己身上。
 				# 魔导/特殊魔导也可以拿地系、火系牌传递：这次出牌同样视为【魔弹】
+				var 视为魔弹号: int = e.missile_as_card(cid)
+				# 地/火牌继续传递也是发动【魔弹融合】：补发技能通知，客户端才知道该飘技能名
+				# （真正的【魔弹】牌视为魔弹号 = 0，不补；它本来就不靠 803）
+				if 视为魔弹号 != 0:
+					e.broadcast(GConst.Msg.Skill, {
+						"skill_id": GConst.技能_魔弹融合, "src_id": holder,
+						"dst_ids": [nxt if nxt >= 0 else holder],
+					})
 				e.broadcast(GConst.Msg.Card, {
 					"type": GConst.CardMsgType.Use, "src_id": holder,
 					"dst_id": nxt if nxt >= 0 else holder,
-					"card_ids": [cid], "is_real": true, "as_card_id": e.missile_as_card(cid),
+					"card_ids": [cid], "is_real": true, "as_card_id": 视为魔弹号,
 				})
 				if nxt >= 0:
 					下轮记录.append(nxt)
@@ -3312,6 +3323,7 @@ func _log_special(cur: BattlePlayer, aid: int) -> void:
 	broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Skill, "id": cur.id,
 		"txt": "%s 执行【%s】" % [_称号(cur), 名],
+		"special_action": aid,
 	})
 
 

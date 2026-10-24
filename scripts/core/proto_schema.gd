@@ -299,6 +299,9 @@ const TABLE: Dictionary = {
 		# 聊天发言者的显示名（「昵称[角色名]」/「昵称[观战]」）：由服务端拼好 ——
 		# 观战者不在玩家表里，客户端拿 id 反查不到人；角色名也只有服务端手里最新
 		5: {"n": "name", "t": "str"},
+		# 特殊行动（购买 / 合成 / 提炼）：值见 GConst.SpecialAction（购买 = 0，所以客户端用
+		# has("special_action") 判断有没有这个字段，而不是拿 0 当「没有」）。普通 Gossip 不带
+		6: {"n": "special_action", "t": "u32"},
 	},
 	GConst.Msg.Error: {
 		1: {"n": "id", "t": "i32"},

@@ -413,7 +413,7 @@ func p_magic_skill(action: Dictionary) -> int:
 		# 移除 3【石化】：额外 1 次攻击行动 + 额外回合；该次额外攻击无法应战
 		# （标记在玩家点中这份额外行动时由 p_additional_action 置位）
 		_add_token(1, -3)
-		player.add_action(GConst.ActionType.Attack, CANG_BAI_ZHI_YUE, true)
+		player.add_action(GConst.ActionType.Attack, CANG_BAI_ZHI_YUE, true, true)
 		_cang_bai_add_turn = true
 		engine._broadcast_game()
 		return SUCCESS

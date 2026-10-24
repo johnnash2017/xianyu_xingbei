@@ -190,7 +190,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		GConst.CardElement.Water:
 			shui_zhi_shi = true
 		GConst.CardElement.Wind:
-			player.add_action(GConst.ActionType.Attack, YUAN_SU_SHE_JI, true)
+			player.add_action(GConst.ActionType.Attack, YUAN_SU_SHE_JI, true, true)
 		_:
 			# 服务端 default：技能已发动并记录，但不结算弃牌
 			engine._broadcast_game()

@@ -121,7 +121,7 @@ func _ji_feng_ji(ctx: Dictionary) -> int:
 	if not take_skill_reply():
 		return SUCCESS
 	notice_skill(JI_FENG_JI, [int(ctx.get("dst", -1))])
-	player.add_action(GConst.ActionType.Attack, JI_FENG_JI, true)
+	player.add_action(GConst.ActionType.Attack, JI_FENG_JI, true, true)
 	return SUCCESS
 
 
