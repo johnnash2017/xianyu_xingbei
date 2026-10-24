@@ -1269,14 +1269,15 @@ func _on_card(msg: Dictionary) -> void:
 		return
 	# 展示（亮牌/超限换牌）没有「对谁使用」的概念，单独写一行
 	var 是展示: bool = int(msg.get("type", 0)) == GConst.CardMsgType.Show
-	# 虚拟牌（欺诈 / 圣屑飓暴 / 多重射击变出来的攻击）没有命格：日志与播报都只写卡名
-	var 虚拟牌: bool = not bool(msg.get("is_real", true))
+	# 虚拟牌默认仍按借用的真实卡面显示命格；只有服务端明确标了 virtual_no_fate 的
+	# （目前是欺诈）才在日志 / 播报里去掉命格。is_real=false 只决定是否摊牌。
+	var 无命格虚拟: bool = bool(msg.get("virtual_no_fate", false))
 	var names: Array[String] = []
 	var 首张: GCard = null
 	for cid: Variant in msg.get("card_ids", []):
 		var c: GCard = Data.get_card(int(cid))
 		if c != null:
-			names.append(_牌显示名(c, not 虚拟牌))
+			names.append(_牌显示名(c, not 无命格虚拟))
 			if 首张 == null:
 				首张 = c
 	# 出牌音效（对照参考项目 AudioManager 的 CARDMSG 分支）：攻击牌 atk-<系别>，法术牌 spell-<卡名>。
@@ -1509,7 +1510,7 @@ func _on_skill(msg: Dictionary) -> void:
 
 
 ## 卡牌显示名：真实牌带命格后缀（如「地裂斩·幻」）；
-## 虚拟牌（欺诈 / 圣屑飓暴 / 多重射击变出来的攻击）没有命格，只写卡名。
+## 无命格虚拟牌（欺诈等，服务端标 virtual_no_fate）只写卡名。
 func _牌显示名(牌: GCard, 带命格: bool = true) -> String:
 	if 牌 == null or 牌.card_name.is_empty():
 		return ""
@@ -1519,17 +1520,17 @@ func _牌显示名(牌: GCard, 带命格: bool = true) -> String:
 
 
 ## 卡牌播报文本：只认「使用」消息（Show＝亮牌 / 超限换牌，Give＝暗中交牌，都不算打出）。
-## 卡名带命格后缀，多张用顿号连起来；虚拟牌不带命格。查不到牌或没有牌名时返回空串。
+## 卡名带命格后缀，多张用顿号连起来；服务端标了 virtual_no_fate 的虚牌不带命格。
 func _卡牌播报文本(msg: Dictionary) -> String:
 	if int(msg.get("type", 0)) != GConst.CardMsgType.Use:
 		return ""
-	var 虚拟牌: bool = not bool(msg.get("is_real", true))
+	var 无命格虚拟: bool = bool(msg.get("virtual_no_fate", false))
 	var 名表: Array[String] = []
 	for raw: Variant in msg.get("card_ids", []):
 		var 牌: GCard = Data.get_card(int(raw))
 		if 牌 == null or 牌.card_name.is_empty():
 			continue
-		名表.append(_牌显示名(牌, not 虚拟牌))
+		名表.append(_牌显示名(牌, not 无命格虚拟))
 	return "、".join(名表)
 
 
@@ -4811,7 +4812,9 @@ func _筛出当前技能可留的牌(原选: Array[int]) -> Array[int]:
 	if 原选.is_empty() or _skill_card_max <= 0:
 		return 保留
 	# 「先弹选项」且不允许先选牌的技能：选效果前本来就不让点牌，旧选择全部收回。
-	if _先弹选项 and not bool(_指示器配置().get("允许先选牌", false)):
+	# 但已经选过效果后（_已选参数 非空）是正常的换效果复检，不能把牌全清掉。
+	if _先弹选项 and _已选参数.is_empty() \
+			and not bool(_指示器配置().get("允许先选牌", false)):
 		return 保留
 	var 备份: Array[int] = _sel_cards
 	_sel_cards = 保留

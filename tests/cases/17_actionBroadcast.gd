@@ -49,7 +49,7 @@ func 跑() -> void:
 	检(技能文本 == 技能名, "技能播报应为「%s」，实际「%s」" % [技能名, 技能文本])
 	检(str(窗.call("_技能播报文本", {"skill_id": 0})).is_empty(), "技能号为 0 时不应播报")
 
-	# 虚拟牌（欺诈 / 圣屑飓暴 / 多重射击）没有命格：播报与日志都不能带「·命格」
+	# 欺诈虚牌没有命格：服务端必须明确标 virtual_no_fate；仅 is_real=false 不能去命格
 	var 命格攻击牌: GCard = null
 	for c: GCard in Data.card_db:
 		if c.is_attack() and not c.fate_pattern.is_empty():
@@ -57,15 +57,28 @@ func 跑() -> void:
 			break
 	检(命格攻击牌 != null, "卡库里找不到带命格的攻击牌，无法验证虚拟牌去命格")
 	if 命格攻击牌 != null:
+		var 期望真实: String = "%s·%s" % [命格攻击牌.card_name, 命格攻击牌.fate_pattern]
 		var 真实播报: String = str(窗.call("_卡牌播报文本", {
 			"type": GConst.CardMsgType.Use, "card_ids": [命格攻击牌.id], "is_real": true,
 		}))
 		var 虚拟播报: String = str(窗.call("_卡牌播报文本", {
+			"type": GConst.CardMsgType.Use, "card_ids": [命格攻击牌.id],
+			"is_real": false, "virtual_no_fate": true,
+		}))
+		var 有命格虚拟播报: String = str(窗.call("_卡牌播报文本", {
 			"type": GConst.CardMsgType.Use, "card_ids": [命格攻击牌.id], "is_real": false,
 		}))
-		var 期望真实: String = "%s·%s" % [命格攻击牌.card_name, 命格攻击牌.fate_pattern]
 		检(真实播报 == 期望真实, "真实牌的播报仍应带命格：%s" % 真实播报)
-		检(虚拟播报 == 命格攻击牌.card_name, "虚拟牌播报不应带命格：%s" % 虚拟播报)
+		检(虚拟播报 == 命格攻击牌.card_name, "无命格虚牌播报不应带命格：%s" % 虚拟播报)
+		检(有命格虚拟播报 == 期望真实,
+			"其他虚拟牌（如圣屑飓暴的圣命格虚牌）仍应显示命格：%s" % 有命格虚拟播报)
+		var 虚牌消息: Dictionary = {
+			"type": GConst.CardMsgType.Use, "card_ids": [命格攻击牌.id],
+			"is_real": false, "virtual_no_fate": true,
+		}
+		var 虚牌解码: Dictionary = ProtoCodec.decode(GConst.Msg.Card,
+			ProtoCodec.encode(GConst.Msg.Card, 虚牌消息))
+		检(bool(虚牌解码.get("virtual_no_fate", false)), "无命格虚牌标记没有过 Card 协议")
 
 	# 选项的系别颜色：字段要过协议，客户端归一后要有对应字色
 	var 选项原名: Dictionary = {
@@ -185,6 +198,19 @@ func 跑() -> void:
 		窗.set("_skill_card_max", 0)
 		var 留零张: Array = 窗.call("_筛出当前技能可留的牌", 原选单张)
 		检(留零张.is_empty(), "点不需要牌的技能时旧选牌应全部收回")
+
+		# 先弹选项型技能换效果：已经选过效果后，已选牌不能因为“先弹选项”被整批清掉
+		窗.set("_skill_need_card", 1)
+		窗.set("_skill_card_max", 1)
+		窗.set("_skill_card_rule", "")
+		窗.set("_先弹选项", true)
+		窗.set("_已选参数", [1])
+		var 换效果保留: Array = 窗.call("_筛出当前技能可留的牌", 原选单张)
+		检(换效果保留.size() == 1, "先弹选项技能换效果时，已选牌被误清空")
+		窗.set("_已选参数", [])
+		var 未选效果保留: Array = 窗.call("_筛出当前技能可留的牌", 原选单张)
+		检(未选效果保留.is_empty(), "先弹选项技能还没选效果时，旧选牌应收回")
+		窗.set("_先弹选项", false)
 
 		# 取消技能退回行动阶段：技能通道的选牌上限 / 同组规则必须复位，
 		# 否则行动阶段会继续按技能的 2 张、同命格规则点牌。

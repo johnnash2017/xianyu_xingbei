@@ -391,6 +391,9 @@ const TABLE: Dictionary = {
 		# 「给牌」（CardMsgType.Give）专用：交了几张。不公开牌面，只给客户端播动效用
 		# （交几张就飞几张卡背）；其他 Card 消息不填
 		7: {"n": "count", "t": "u32"},
+		# 虚拟攻击牌不继承卡面命格（目前是冒险家【欺诈】）：客户端显示卡名时不要加「·命格」。
+		# 其他 is_real=false 的虚拟牌（如圣屑飓暴的圣命格虚牌）不填，仍按真实卡面命格显示。
+		8: {"n": "virtual_no_fate", "t": "bool"},
 	},
 	GConst.Msg.Hurt: {
 		1: {"n": "src_id", "t": "u32"},

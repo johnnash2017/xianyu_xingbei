@@ -148,7 +148,7 @@ func _qi_zha(action: Dictionary, virtual_card: int) -> int:
 	# 虚牌视为一次主动攻击（非真实牌，不移动）
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id,
-		"card_ids": [virtual_card], "is_real": false,
+		"card_ids": [virtual_card], "is_real": false, "virtual_no_fate": true,
 	})
 	engine._broadcast_game()
 	var harm: Dictionary = {
