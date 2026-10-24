@@ -2325,7 +2325,8 @@ class SReattackGo:
 ## 魔弹传递询问：持有者可以打出【魔弹】继续传递、出【圣光】抵挡，或放弃并承受伤害。
 ## 对照服务端 StateMissiled：传递方向沿用出弹时定下的方向（【魔弹】默认右手边 post；
 ## 魔导用【魔弹掌控】逆向打出则是 pre），后续传递者只是「传给下一个」、不改方向，
-## 只有【魔弹掌控】的持有者才能在传递时改方向。同一轮传递里每人只能参与一次。
+## 只有【魔弹掌控】的持有者才能在传递时改方向。同一轮传递里每人只能参与一次；
+## 一轮结束后重置参与记录开新一轮，但新一轮的第一个目标不能是刚把魔弹传给自己的人。
 ## 即使持有者手里既没有【魔弹】也没有【圣光】，也照样要问、要等应答。
 class SMissileAsk:
 	## 当前持有者 / 上一个打出魔弹的人（伤害来源）/ 当前伤害
@@ -2349,7 +2350,7 @@ class SMissileAsk:
 			# dst_ids = 本次可以把魔弹传给谁（候选，有【魔弹掌控】时左右各一个）
 			# args[0] 放持有者 id：客户端据此判断这条询问是不是发给自己的
 			e.ask_respond(holder, GConst.RespondType.Bullet, [holder, point, src],
-				e._missile_relay_targets(holder, post_dir, used))
+				e._missile_relay_targets(holder, post_dir, used, src))
 			e.wait_for(holder, GConst.Msg.Respond)
 			return BattleEngine.WAIT
 		var r: Dictionary = e.take_reply()
@@ -2369,8 +2370,15 @@ class SMissileAsk:
 			if choice == GConst.Reattack.Attack and me.v_remissile(cid) == GConst.GE_SUCCESS:
 				# 继续传递：伤害 +1，沿**当前方向**转给下一个还没参与过的对手。
 				# 方向由出弹时定下（顺时针打出＝顺向，魔导用【魔弹掌控】逆向打出＝逆向）；
-				# 【魔弹掌控】只作用于「主动打出」那一步，传递者一律不能改向
-				var nxt: int = e._next_missile_target(holder, post_dir, used)
+				# 【魔弹掌控】只作用于「主动打出」那一步，传递者一律不能改向。
+				# 本轮没人可接时开新一轮；新一轮的第一个目标不能是刚把魔弹传给自己的人。
+				var 下轮记录: Array[int] = []
+				下轮记录.append_array(used)
+				var nxt: int = e._next_missile_target(holder, post_dir, 下轮记录, src)
+				if nxt < 0:
+					下轮记录.clear()
+					下轮记录.append(holder)
+					nxt = e._next_missile_target(holder, post_dir, 下轮记录, src)
 				# 打出的是【魔弹】继续传递：dst_id 必须给下一个落点，客户端才知道魔弹要从自己飞向谁；
 				# 没人能再接（nxt < 0）就仍写自己，动画落在自己身上。
 				# 魔导/特殊魔导也可以拿地系、火系牌传递：这次出牌同样视为【魔弹】
@@ -2380,8 +2388,8 @@ class SMissileAsk:
 					"card_ids": [cid], "is_real": true, "as_card_id": e.missile_as_card(cid),
 				})
 				if nxt >= 0:
-					used.append(nxt)
-					e.push(SMissileAsk.new(nxt, holder, point + 1, post_dir, used))
+					下轮记录.append(nxt)
+					e.push(SMissileAsk.new(nxt, holder, point + 1, post_dir, 下轮记录))
 				else:
 					# 没人能再接：由当前持有者承受
 					e.push_harm({"src": src, "dst": holder, "point": point, "cause": GConst.CAUSE_MISSILE, "type": GConst.HarmType.Magic})
@@ -3118,35 +3126,35 @@ func _nearest_enemy(cur: BattlePlayer) -> int:
 	return -1
 
 
-## 本次可以把魔弹传给谁（候选）：只有「当前传递方向上最近、本轮还没接过的对手」。
-## 传递时一律不能改方向（【魔弹掌控】802 只作用于「主动打出」那一步，见 BattleRole.missile_targets）
-func _missile_relay_targets(holder: int, post_dir: bool, used: Array[int]) -> Array[int]:
+## 本次可以把魔弹传给谁（候选）：当前方向上最近、本轮还没接过的对手。
+## 本轮所有人都接过之后开新一轮；新一轮的第一个目标不能是刚把魔弹传给自己的人（禁选）。
+func _missile_relay_targets(holder: int, post_dir: bool, used: Array[int], 禁选: int = -1) -> Array[int]:
 	var out: Array[int] = []
-	var 顺: int = _next_missile_target(holder, post_dir, used)
+	var 顺: int = _next_missile_target(holder, post_dir, used, 禁选)
+	if 顺 < 0:
+		# 本轮没有可接的人：重置本轮参与记录，开始新一轮，但仍跳过刚传给自己的人
+		var 新一轮: Array[int] = [holder]
+		顺 = _next_missile_target(holder, post_dir, 新一轮, 禁选)
 	if 顺 >= 0:
 		out.append(顺)
 	return out
 
 
-## 该方向上最近的一名「本轮还没参与过魔弹传递」的对手（对照服务端 StateMissiled）。
-## 该方向上的人全都参与过之后从头再来：允许把魔弹递给已经接过的人（否则传完一圈就没人可接、链条卡死）。
-func _next_missile_target(from_id: int, post_dir: bool, used: Array[int]) -> int:
+## 该方向上最近的一名「本轮还没参与过魔弹传递」的对手；禁选 = 刚把魔弹传给自己的人。
+## 本轮所有对手都参与过就返回 -1，由调用方决定是否开始新一轮。
+func _next_missile_target(from_id: int, post_dir: bool, used: Array[int], 禁选: int = -1) -> int:
 	var cur: BattlePlayer = players.get(from_id)
 	if cur == null:
 		return -1
 	var nid: int = cur.post_id if post_dir else cur.pre_id
-	var 已传过的人: int = -1
 	for _i: int in range(order.size()):
 		var pp: BattlePlayer = players.get(nid)
 		if pp == null:
 			return -1
-		if pp.color != cur.color:
-			if not used.has(nid):
-				return nid
-			if 已传过的人 < 0:
-				已传过的人 = nid
+		if pp.color != cur.color and not used.has(nid) and nid != 禁选:
+			return nid
 		nid = pp.post_id if post_dir else pp.pre_id
-	return 已传过的人
+	return -1
 
 
 ## 目标若拥有【圣盾】或视作【圣盾】的【天使之墙】，移除之并返回 true（魔弹视作未命中）

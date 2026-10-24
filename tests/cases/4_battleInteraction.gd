@@ -510,6 +510,10 @@ func 跑() -> void:
 	else:
 		检(弹.VFX != null, "魔弹预制体没绑里面的 3D 特效节点（VFX 为空）")
 		检(弹.get_node_or_null("视口容器/视口/特效位/特效") != null, "魔弹预制体缺 SubViewport 结构")
+		检(弹.get_node_or_null("Trail") != null, "魔弹预制体缺 2D 拖尾节点")
+		检(弹.Trail is Line2D, "魔弹 2D 拖尾不是 Line2D")
+		检(弹.Trail != null and 弹.Trail.gradient != null and 弹.Trail.width > 0.0,
+			"魔弹 2D 线条拖尾缺渐变或宽度")
 		弹.free()
 	var 弹素材: Node3D = (load("res://scenes/prefabs/effects/magicBullet3D/magicBullet.tscn") as PackedScene).instantiate() as Node3D
 	if 弹素材 == null:

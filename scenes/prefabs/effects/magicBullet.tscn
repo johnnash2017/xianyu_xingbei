@@ -7,6 +7,10 @@
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_add"]
 blend_mode = 1
 
+[sub_resource type="Gradient" id="Gradient_trail"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(1, 0.21960784, 1, 0, 0.79607844, 0, 0.6666667, 0.54509807, 0.4745098, 0, 0.67058825, 1)
+
 [sub_resource type="Environment" id="Environment_bolt"]
 background_mode = 1
 tonemap_mode = 3
@@ -14,22 +18,34 @@ glow_enabled = true
 glow_bloom = 0.2
 glow_blend_mode = 0
 
-[node name="魔弹" type="Node2D" unique_id=1850176880 node_paths=PackedStringArray("VFX", "BG")]
+[node name="魔弹" type="Node2D" unique_id=1850176880 node_paths=PackedStringArray("VFX", "BG", "Trail")]
 script = ExtResource("1_wrap")
 VFX = NodePath("视口容器/视口/特效位/特效")
 BG = NodePath("背景")
+Trail = NodePath("Trail")
+"拖尾长度" = 720.0
+"拖尾点间距" = 10.0
 
 [node name="背景" type="Sprite2D" parent="." unique_id=242185466]
-visible = false
 self_modulate = Color(0, 0.64705884, 0.827451, 1)
-position = Vector2(7, 1.9999995)
-scale = Vector2(1.6460409, 1.0991416)
+position = Vector2(-36, 5.499998)
+scale = Vector2(0.99218744, 0.61328125)
 texture = ExtResource("2_7k4of")
 
 [node name="背景2" type="Sprite2D" parent="背景" unique_id=204489608]
 modulate = Color(0.4745098, 0, 0.67058825, 1)
 scale = Vector2(0.948325, 0.9064611)
 texture = ExtResource("2_7k4of")
+
+[node name="Trail" type="Line2D" parent="." unique_id=205734912]
+visible = false
+material = SubResource("CanvasItemMaterial_add")
+width = 18.0
+gradient = SubResource("Gradient_trail")
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
 
 [node name="视口容器" type="SubViewportContainer" parent="." unique_id=95775249]
 material = SubResource("CanvasItemMaterial_add")
