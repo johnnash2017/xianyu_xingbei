@@ -215,14 +215,14 @@ const 飘字色_攻击伤害: Color = Color("ff3c3c")
 ## 行动播报（打出卡牌 / 发动技能时，在角色头像上飘出卡牌名或技能名）：
 ## 起点抬到头像中心上方，避开从中心冒出的伤害数字；同一玩家短时间连续发动时排队逐行播，
 ## 否则「出牌 + 被动触发 + 响应」会叠成一团。字号 / 描边 / 白色字在 ActionNameFloat.tscn 里。
-const 行动播报间隔: float = 2.3
+const 行动播报间隔: float = 1.0
 const 行动播报起始偏移: float = -72.0
 const 行动播报上飘: float = 82.0
-const 行动播报时长: float = 4.6
+const 行动播报时长: float = 9.2
 const 行动播报出场时长: float = 0.28
 const 行动播报淡入时长: float = 0.24
-const 行动播报淡出时长: float = 1.52
-const 行动播报淡出延迟: float = 2.88
+const 行动播报淡出时长: float = 3.04
+const 行动播报淡出延迟: float = 5.76
 const 行动播报起始缩放: float = 0.86
 
 ## 战斗日志的样式：每行开头一个彩色的「[类别]」标识，后面的正文一律白字（方便一眼扫类别）。
@@ -1269,16 +1269,14 @@ func _on_card(msg: Dictionary) -> void:
 		return
 	# 展示（亮牌/超限换牌）没有「对谁使用」的概念，单独写一行
 	var 是展示: bool = int(msg.get("type", 0)) == GConst.CardMsgType.Show
+	# 虚拟牌（欺诈 / 圣屑飓暴 / 多重射击变出来的攻击）没有命格：日志与播报都只写卡名
+	var 虚拟牌: bool = not bool(msg.get("is_real", true))
 	var names: Array[String] = []
 	var 首张: GCard = null
 	for cid: Variant in msg.get("card_ids", []):
 		var c: GCard = Data.get_card(int(cid))
 		if c != null:
-			# 日志里所有牌都带命格（如「地裂斩·幻」「中毒·幻」），展示 / 打出都生效
-			if not c.fate_pattern.is_empty():
-				names.append("%s·%s" % [c.card_name, c.fate_pattern])
-			else:
-				names.append(c.card_name)
+			names.append(_牌显示名(c, not 虚拟牌))
 			if 首张 == null:
 				首张 = c
 	# 出牌音效（对照参考项目 AudioManager 的 CARDMSG 分支）：攻击牌 atk-<系别>，法术牌 spell-<卡名>。
@@ -1510,20 +1508,28 @@ func _on_skill(msg: Dictionary) -> void:
 		_排行动播报(src, 技能文本)
 
 
+## 卡牌显示名：真实牌带命格后缀（如「地裂斩·幻」）；
+## 虚拟牌（欺诈 / 圣屑飓暴 / 多重射击变出来的攻击）没有命格，只写卡名。
+func _牌显示名(牌: GCard, 带命格: bool = true) -> String:
+	if 牌 == null or 牌.card_name.is_empty():
+		return ""
+	if not 带命格 or 牌.fate_pattern.is_empty():
+		return 牌.card_name
+	return "%s·%s" % [牌.card_name, 牌.fate_pattern]
+
+
 ## 卡牌播报文本：只认「使用」消息（Show＝亮牌 / 超限换牌，Give＝暗中交牌，都不算打出）。
-## 卡名带命格后缀，多张用顿号连起来；查不到牌或没有牌名时返回空串。
+## 卡名带命格后缀，多张用顿号连起来；虚拟牌不带命格。查不到牌或没有牌名时返回空串。
 func _卡牌播报文本(msg: Dictionary) -> String:
 	if int(msg.get("type", 0)) != GConst.CardMsgType.Use:
 		return ""
+	var 虚拟牌: bool = not bool(msg.get("is_real", true))
 	var 名表: Array[String] = []
 	for raw: Variant in msg.get("card_ids", []):
 		var 牌: GCard = Data.get_card(int(raw))
 		if 牌 == null or 牌.card_name.is_empty():
 			continue
-		if 牌.fate_pattern.is_empty():
-			名表.append(牌.card_name)
-		else:
-			名表.append("%s·%s" % [牌.card_name, 牌.fate_pattern])
+		名表.append(_牌显示名(牌, not 虚拟牌))
 	return "、".join(名表)
 
 
@@ -2390,14 +2396,10 @@ func _保留合法目标() -> void:
 ## 目标白名单过滤 —— 否则上一个用法选好的队友会被带到「对敌」用法上误伤。
 ## 调用前需已按选中项更新过 _skill_need_card / _skill_target_max 等（见 _应用选项目标数）。
 func _换选项后重校验() -> void:
-	# 手牌：按新用法的可点条件（牌系 / 来源 / 白名单…）逐张复检，并受新的点选上限约束
-	var 牌保留: Array[int] = []
-	for cid: Variant in _sel_cards:
-		if 牌保留.size() >= _skill_card_max:
-			break
-		if _卡牌能点(int(cid)) and _选项牌型允许(int(cid)) and not 牌保留.has(int(cid)):
-			牌保留.append(int(cid))
-	_sel_cards = 牌保留
+	# 手牌：按新用法的可点条件（牌系 / 来源 / 白名单 / 同系规则 / 槽位…）逐张复检，
+	# 合法的保留、不合法的丢掉，并受新的点选上限约束。
+	# 不能直接对整份旧选择调 _卡牌能点：它会把「已选中的牌」自身放行，等于跳过新用法校验。
+	_sel_cards = _筛出当前技能可留的牌(_sel_cards)
 	if not _分配配置().is_empty():
 		# 「点头像分配」型：分配记录按新用法的目标白名单过滤，再整体刷新（顺带重建 _sel_players）
 		var 分配保留: Array[int] = []
@@ -2679,8 +2681,9 @@ func _收起所有说明() -> void:
 
 ## 行动询问里附带的技能 → 生成技能按钮
 func _构建技能按钮(cmds: Array) -> void:
-	# 存一份，取消技能 / 取消特殊行动时要把这批技能按钮重新摆回来
-	_行动命令 = cmds
+	# 存一份，取消技能 / 取消特殊行动时要把这批技能按钮重新摆回来。
+	# 复制而不是直接引用：_清空待选 会 clear 这份缓存，不能把服务端下发的 commands 一起清掉。
+	_行动命令 = cmds.duplicate()
 	for i: int in range(1, cmds.size()):
 		var c: Dictionary = cmds[i]
 		var 技能类型: int = int(c.get("respond_id", 0))
@@ -2752,7 +2755,7 @@ func _摆特殊行动入口() -> void:
 
 # ---------------- 二级技能栏 ----------------
 ## 把服务端下发的 arg_choices 归一成二级栏的选项项
-## （键名统一成 文本 / 参数 / 需牌 / 需目标 / 最多目标 / 目标白名单 / 技能号 / 选牌来源 / 需盖牌）
+## （键名统一成 文本 / 参数 / 字色 / 需牌 / 需目标 / 最多目标 / 目标白名单 / 技能号 / 选牌来源 / 需盖牌）
 func _选项项(参数选项: Array) -> Array:
 	var out: Array = []
 	for 项: Variant in 参数选项:
@@ -2760,6 +2763,7 @@ func _选项项(参数选项: Array) -> Array:
 		out.append({
 			"文本": str(d.get("text", "")),
 			"参数": d.get("args", []),
+			"字色": _选项字色(d),
 			# false＝这一项条件不满足：照样摆出来，但半透明、点不动（如特殊行动的购买 / 合成 / 提炼）
 			"可用": bool(d.get("enabled", true)),
 			# 鼠标指向时弹的效果说明（非技能的选项才给，如「购买 / 合成 / 提炼」，见 技能按钮.说明文本）
@@ -2776,6 +2780,15 @@ func _选项项(参数选项: Array) -> Array:
 			"需盖牌": int(d.get("cover_need", 0)),
 		})
 	return out
+
+
+## 选项文字颜色：带 element 的选项按该系别上色（如欺诈的五种虚牌斩），其余保持默认字色
+func _选项字色(项: Dictionary) -> Color:
+	var 系别: int = int(项.get("element", -1))
+	if 系别 < 0:
+		return Color.TRANSPARENT
+	var 色值: String = _系别颜色(GConst.element_to_chinese(系别))
+	return Color.TRANSPARENT if 色值.is_empty() else Color(色值)
 
 
 ## 二级技能栏里纯参数选项按钮统一的底色（靛蓝）：这类选项只是「参数」，不跟技能类型色走 ——
@@ -2846,7 +2859,8 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 		var 项技能号: int = int(d.get("技能号", 0))
 		var 用底色: Color = GConst.skill_type_color(项技能号) if 多技能选项 and 项技能号 > 0 else 选项底色
 		# 该项本身就是技能时绑上技能号：鼠标指向它就和普通技能按钮一样弹技能说明
-		按钮.设置选项(_选项文案(str(d.get("文本", ""))), 用底色, 项技能号)
+		var 字色: Color = d.get("字色", Color.TRANSPARENT)
+		按钮.设置选项(_选项文案(str(d.get("文本", ""))), 用底色, 项技能号, 字色)
 		# 这项自带效果说明的（如「购买 / 合成 / 提炼」）：鼠标指向它就把说明弹出来
 		按钮.设置说明(str(d.get("说明", "")))
 		# 条件不满足的项照样摆着，但半透明、点不动（见 技能按钮.设置选项可用）
@@ -3470,14 +3484,26 @@ func _符合选牌规则(card_id: int) -> bool:
 			return true
 		var 可弃牌: GCard = Data.get_card(card_id)
 		return 可弃牌 != null and 可弃牌.is_magic()
-	if _skill_card_rule == "" or _sel_cards.is_empty():
-		return true
+	# 暗之障壁（2904）：所选牌须同属「法术 / 雷系」中的同一类。
+	# 这条必须在「还没选牌就放行」之前判断：否则第一张会绕过规则，非雷非法术也能点。
+	if _skill_card_rule == "an_zhi":
+		var 暗之牌: GCard = Data.get_card(card_id)
+		if 暗之牌 == null:
+			return false
+		if not 暗之牌.is_magic() and 暗之牌.element_enum() != GConst.CardElement.Thunder:
+			return false
+		return _暗之障壁可同组(_sel_cards, 暗之牌)
 	var 牌: GCard = Data.get_card(card_id)
 	if 牌 == null:
 		return true
-	# 暗之障壁（2904）：所选牌须同属「法术 / 雷系」中的同一类
-	if _skill_card_rule == "an_zhi":
-		return _暗之障壁可同组(_sel_cards, 牌)
+	# 同系 / 同命格：还没选牌时，也要先把「凑不出另一张同类牌」的孤张置灰，
+	# 否则玩家先点一张孤张、再发现没有第二张同类的可点，等于白点。
+	if _sel_cards.is_empty() \
+			and (_skill_card_rule == "same" or _skill_card_rule == "same_fate_pattern") \
+			and not _同组有足够搭档(牌):
+		return false
+	if _skill_card_rule == "" or _sel_cards.is_empty():
+		return true
 	for c: Variant in _sel_cards:
 		var 已选号: int = int(c)
 		# 跳过自己：一张牌与自己当然「同系」，不跳过就会被 diff 规则判成不合规，
@@ -3498,6 +3524,70 @@ func _符合选牌规则(card_id: int) -> bool:
 		if _skill_card_rule == "diff" and 同系:
 			return false
 	return true
+
+
+## 这次选牌至少需要几张（mode 4 读技能本体/选项还原后的需牌，mode 3 读询问里的需牌）
+func _选牌需求张数() -> int:
+	if _mode == 4:
+		return maxi(_skill_need_card, 0)
+	if _mode == 3:
+		return maxi(_skill_ask_need_card, 0)
+	return 0
+
+
+## 当前选牌来源下，按白名单 / 选项牌型 / 逐张槽位过滤后的候选牌（不套同系 / 同命格规则，避免递归）
+func _当前候选牌池() -> Array[GCard]:
+	var 池: Array[GCard] = []
+	match _skill_card_source:
+		GConst.CardSource.Cover:
+			池.append_array(Data.cover_cards)
+		GConst.CardSource.BasicEffect:
+			_收集基础效果牌(池)
+		GConst.CardSource.HandOrCover:
+			池.append_array(Data.hand_cards)
+			池.append_array(Data.cover_cards)
+		GConst.CardSource.HandAndBasicEffect:
+			池.append_array(Data.hand_cards)
+			_收集基础效果牌(池)
+		_:
+			池.append_array(Data.hand_cards)
+	var 结果: Array[GCard] = []
+	for 牌: GCard in 池:
+		if 牌 == null:
+			continue
+		if not _skill_cards.is_empty() and not _skill_cards.has(牌.id):
+			continue
+		if not _选项牌型允许(牌.id) or not _符合选牌槽位(牌.id):
+			continue
+		if not 结果.has(牌):
+			结果.append(牌)
+	return 结果
+
+
+## 收集场上所有基础效果牌（卡牌来源为 BasicEffect / HandAndBasicEffect 时用）
+func _收集基础效果牌(池: Array[GCard]) -> void:
+	for p: GPlayer in Data.player_list:
+		for st: GPlayer.BasicStatus in p.basic_status_list:
+			if st.card != null:
+				池.append(st.card)
+
+
+## 同系 / 同命格的首张牌：当前候选池里必须凑得出「至少需要张数」的同组牌
+func _同组有足够搭档(牌: GCard) -> bool:
+	var 需: int = _选牌需求张数()
+	if 需 < 2:
+		return true
+	var 数: int = 0
+	for 候选: GCard in _当前候选牌池():
+		if _skill_card_rule == "same":
+			if 候选.element_enum() == 牌.element_enum():
+				数 += 1
+		elif _skill_card_rule == "same_fate_pattern":
+			if 候选.fate_pattern_enum() == 牌.fate_pattern_enum():
+				数 += 1
+		else:
+			return true
+	return 数 >= 需
 
 
 ## 暗之障壁：所选牌必须同属「法术」或「雷系」中的同一类。
@@ -4631,9 +4721,38 @@ func _发送特殊行动(action_id: int, gem: int, crystal: int) -> void:
 	_发送行动(GConst.ActionType.Special, action_id, [], [], [gem, crystal])
 
 
+## 取消技能 / 特殊行动后退回行动阶段时，把技能通道的选牌约束全部复位。
+## 不复位的话（例如同系技能要 2 张牌）_need_cards 还停在技能的 2，
+## 行动阶段就会继续允许点两张牌，看起来像还在按同系 / 同命格选牌。
+func _复位行动阶段选牌状态() -> void:
+	_need_cards = 1
+	_need_players = 0
+	_skill_need_card = 0
+	_skill_need_target = 0
+	_skill_card_max = 0
+	_skill_target_max = 0
+	_skill_target_max_from_cards = 0
+	_skill_card_rule = ""
+	_skill_card_source = GConst.CardSource.Hand
+	_skill_cover_need = 0
+	_skill_cards.clear()
+	_skill_targets.clear()
+	_skill_slot_skill = 0
+	_skill_slot_element = 0
+	_skill_arg_choices.clear()
+	_skill_options.clear()
+	_选项原始需牌 = 0
+	_选项原始最多牌 = 0
+	_选项原始目标数 = 0
+	_选项原始最多目标 = 0
+	_选项原始来源 = GConst.CardSource.Hand
+	_选项原始盖牌需数 = 0
+
+
 ## 退回行动阶段（取消发动技能 / 取消特殊行动时用），顺手把本回合的技能按钮摆回来
 func _回到行动阶段() -> void:
 	_mode = 1
+	_复位行动阶段选牌状态()
 	_sel_cards.clear()
 	_sel_players.clear()
 	_重置治疗分配()
@@ -4683,6 +4802,31 @@ func _套用自动选目标(指示配置: Dictionary) -> bool:
 	return true
 
 
+## 进入新技能时复检此前已经拿起的牌：在新技能下仍然合法、且没超过点选上限的继续保留，
+## 不合法的才收回。不能直接拿整份旧选择去问 _卡牌能点 —— 它会把「已选中的牌」自身放行，
+## 这里逐张按「已保留的牌」重新模拟点选，同系 / 同命格 / 异系 / 暗之障壁与逐张槽位
+## 都按真实点选顺序判。
+func _筛出当前技能可留的牌(原选: Array[int]) -> Array[int]:
+	var 保留: Array[int] = []
+	if 原选.is_empty() or _skill_card_max <= 0:
+		return 保留
+	# 「先弹选项」且不允许先选牌的技能：选效果前本来就不让点牌，旧选择全部收回。
+	if _先弹选项 and not bool(_指示器配置().get("允许先选牌", false)):
+		return 保留
+	var 备份: Array[int] = _sel_cards
+	_sel_cards = 保留
+	for cid: int in 原选:
+		if 保留.size() >= _skill_card_max:
+			break
+		if 保留.has(cid):
+			continue
+		if _卡牌能点(cid):
+			保留.append(cid)
+			_sel_cards = 保留
+	_sel_cards = 备份
+	return 保留
+
+
 ## 选中并准备发动某个技能（行动阶段点技能按钮）
 ## 合法目标 / 合法牌由服务端的技能声明给出（targets / cards），非空时界面只让它们可点；
 ## 需牌是最少张数、最多牌（card_max）是点选上限（省略＝刚好 need_card 张），目标数同理走 target_max；
@@ -4698,8 +4842,9 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		return
 	_mode = 4
 	_标记选中技能(按钮)
-	# 重新点技能按钮＝从头来一遍：上次留下的二级栏选项由下面带选项时重进二级栏的 _清空二级选项 收掉
-	# （本地「先选一项」的星石步骤也一并收掉，免得还认着上一轮的特殊行动）
+	# 重新点技能按钮＝重新进这个技能：上次留下的二级栏选项由下面带选项时重进二级栏的 _清空二级选项 收掉
+	# （本地「先选一项」的星石步骤也一并收掉，免得还认着上一轮的特殊行动）；
+	# 已经拿起的牌不在这里一律收回，由下面的 _筛出当前技能可留的牌 按新技能复检去留。
 	_本地选项阶段 = 0
 	_本地询问 = false
 	_pending_skill_type = 技能类型
@@ -4720,7 +4865,9 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	_skill_card_rule = 选牌规则
 	_skill_slot_skill = 首张技能
 	_skill_slot_element = 次张系别
-	_skill_arg_choices = 参数选项
+	# 复制一份：取消技能时 _复位行动阶段选牌状态 会 clear 它，
+	# 直接引用会让 _行动命令 里同一份 arg_choices 被一起清空，再次点技能就只剩空选项。
+	_skill_arg_choices = 参数选项.duplicate()
 	# 复用 _need_cards / _need_players 驱动点选上限与「确定」可用性（同 _进入技能询问）
 	_need_cards = _skill_card_max
 	_need_players = _skill_target_max
@@ -4730,7 +4877,6 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	_skill_cards.clear()
 	for 牌号: Variant in 合法牌:
 		_skill_cards.append(int(牌号))
-	_sel_cards.clear()
 	_sel_players.clear()
 	_重置治疗分配()
 	# 盖牌来源才让盖牌区亮起来；手牌+盖牌混选（盖牌需数>0）也要亮；
@@ -4738,6 +4884,12 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	_selecting_cover = 选牌来源 == GConst.CardSource.Cover \
 		or 选牌来源 == GConst.CardSource.HandOrCover or 盖牌需数 > 0
 	var 指示配置: Dictionary = GConst.技能指示器.get(技能号, {})
+	# 「先弹选项」型只是多一步：选效果之前不让点牌 / 点目标。
+	# 这个标记要在复检旧选牌之前定下来 —— 选效果前不让点牌的技能，旧选择一律收回。
+	_先弹选项 = bool(指示配置.get("先弹选项", false)) and not 参数选项.is_empty()
+	_已选参数.clear()
+	# 点技能不再无条件把已经拿起的牌放回去：能用于这个技能的保留，不能用的才收回。
+	_sel_cards = _筛出当前技能可留的牌(_sel_cards)
 	# 「自动选」的技能（【辉耀】自动选全体、【圣光祈愈】自动选自己）：不用点头像，
 	# 进场即把目标选中并画「N 治疗」
 	match str(指示配置.get("自动选", "")):
@@ -4753,9 +4905,6 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	_目标锁死 = _套用自动选目标(指示配置)
 	# 带选项的技能（arg_choices）：进「二级技能栏」—— 被点的技能留在最左，选项用技能按钮排在它右边，
 	# 选项先选中（亮黄），按「确定」才提交、按「取消」退回行动阶段。
-	# 「先弹选项」型只是多一步：选效果之前不让点牌 / 点目标
-	_先弹选项 = bool(指示配置.get("先弹选项", false)) and not 参数选项.is_empty()
-	_已选参数.clear()
 	# 记下技能本体给的需牌 / 目标数 / 选牌来源：选中带这些的效果时要拿它当基准
 	# （「先弹选项」型由 _应用选项目标数 还原 / 收紧；其余型见 _选中二级选项）。
 	# 【封印破碎】/【风之洁净】/【天使之歌】这类「选完目标才由客户端补选项」的也必须记：

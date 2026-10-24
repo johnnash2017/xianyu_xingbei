@@ -170,6 +170,8 @@ const SUB: Dictionary = {
 		# 该项本次是否可选（false＝按钮半透明、点不动）：如散华轮舞没有【水晶】时的水晶方案。
 		# 省略＝可用；这个字段必须随网络下发，否则客户端会把不可用的选项也画成可点。
 		9: {"n": "enabled", "t": "bool"},
+		# 选项对应的系别（CardElement）：仅用于按钮文字配色，如欺诈的五种虚牌斩。
+		10: {"n": "element", "t": "u32"},
 	},
 	# 某个选项各自的可点目标（option_targets 的一项）
 	"OptionTargets": {

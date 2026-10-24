@@ -262,4 +262,40 @@ func 跑() -> void:
 		检(转换伤害 == 2, "式神形态下鬼火 2 的反击伤害应为 2，实际 %d" % 转换伤害)
 		检(not 引擎.p(1).tap, "阴阳转换结算后没有退出式神形态")
 
+	# 欺诈虚牌无命格：同命格应战牌不能选，3306 的「阴阳转换」两档都必须置灰
+	引擎._states.clear()
+	引擎._清空等待()
+	引擎.phase = BattleEngine.Phase.Playing
+	引擎.p(1).hand_cards = [应战牌.id] as Array[int]
+	引擎.p(1).tap = false
+	引擎.p(1).tokens[0]["num"] = 0
+	引擎.p(3).hand_cards.clear()
+	发送记录.clear()
+	var 虚牌攻击: Dictionary = {
+		"src": 2, "dst": 1, "point": BattleEngine.ATTACK_BASE_POINT,
+		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack, "card_id": 攻击牌.id,
+		"virtual_no_fate": true,
+	}
+	引擎.push(BattleEngine.SAttackCard.new(2, 1, 攻击牌.id, 虚牌攻击))
+	引擎.run()
+	var 虚牌问3306: Dictionary = {}
+	for r: Dictionary in 发送记录:
+		if int(r["pid"]) == 1 and int(r["msg"]) == GConst.Msg.CmdReq:
+			var cmds: Array = (r["data"] as Dictionary).get("commands", [])
+			if not cmds.is_empty() and int((cmds[0] as Dictionary).get("respond_id", 0)) == GConst.技能_阴阳转换:
+				虚牌问3306 = cmds[0]
+	检(not 虚牌问3306.is_empty(), "无命格虚牌攻击仍应弹 3306 询问（三档照摆）")
+	if not 虚牌问3306.is_empty():
+		var 虚牌可用: Array = 虚牌问3306.get("option_enabled", [])
+		检(虚牌可用.size() == 3 and bool(虚牌可用[0]) \
+				and not bool(虚牌可用[1]) and not bool(虚牌可用[2]),
+			"无命格虚牌不应允许阴阳转换两档：%s" % str(虚牌可用))
+		发送记录.clear()
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.技能_阴阳转换, "src_id": 1,
+			"args": [2], "card_ids": [应战牌.id], "dst_ids": [3],
+		})
+		var 虚牌鬼火: int = int((引擎.p(1).tokens[0] as Dictionary).get("num", -1))
+		检(虚牌鬼火 == 0, "硬提交阴阳转换也不应给无命格虚牌加鬼火，实际 %d" % 虚牌鬼火)
+
 	print("[自检] 阴阳转换引擎：3306 一次应答直接应战，不再问第二次")

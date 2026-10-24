@@ -42,9 +42,10 @@ func available_skills() -> Array:
 		"cards": 地系牌, "enabled": not 地系牌.is_empty()})
 	var 同系牌: Array[int] = _same_element_hand_ids()
 	# 死亡之触要求两张同系牌：下发「手里该系至少 2 张」的牌把同系孤张置灰；
-	# 具体选中两张是否同系、移除几点治疗仍由服务端 v_magic_skill 校验；治疗不足 2 点或没有同系牌时置灰
+	# card_rule="same" 让界面在第一张选定后只亮同系的牌，否则会从两个不同系各选一张、
+	# 点确定后被服务端驳回。具体是否同系、移除几点治疗仍由服务端 v_magic_skill 校验。
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SI_WANG_ZHI_CHU, "need_card": 2, "need_target": 1,
-		"card_max": 同系牌.size(), "cards": 同系牌, "arg_choices": _si_wang_choices(),
+		"card_max": 同系牌.size(), "cards": 同系牌, "card_rule": "same", "arg_choices": _si_wang_choices(),
 		"enabled": player.cross_num >= 2 and not 同系牌.is_empty()})
 	# 宝石不足 1 颗时置灰
 	out.append({"type": GConst.ActionType.MagicSkill, "id": MU_BEI_YUN_LUO, "need_card": 0, "need_target": 0,

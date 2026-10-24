@@ -154,6 +154,8 @@ func _qi_zha(action: Dictionary, virtual_card: int) -> int:
 	var harm: Dictionary = {
 		"src": player.id, "dst": dst_id, "point": 2, "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": virtual_card, "is_active": true,
+		# 虚牌不是真实卡：不继承卡面的命格，阴阳转换等「同命格」效果不能匹配
+		"virtual_no_fate": true,
 	}
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, virtual_card, harm))
 	engine.take_from_hand(player.id, cards, true)
@@ -305,8 +307,8 @@ func p_extract_to(ctx: Dictionary) -> int:
 # ============================================================
 # 工具
 # ============================================================
-## 欺诈虚牌：各系别对应的一张【圣】命格攻击牌（顺序照原客户端：风 / 水 / 火 / 地 / 雷）。
-## 「弃 3 张同系 → 视为暗系攻击」的分支已删除，故不含【暗灭】
+## 欺诈虚牌：各系别对应的一张攻击牌（顺序照原客户端：风 / 水 / 火 / 地 / 雷）。
+## 虚牌只借卡名 / 系别 / 攻击类型，不继承卡面的命格；「弃 3 张同系 → 视为暗系攻击」的分支已删除，故不含【暗灭】
 const QI_ZHA_CARDS: Array[int] = [66, 133, 87, 45, 110]
 
 
@@ -315,11 +317,14 @@ func _qi_zha_virtual_cards() -> Array[int]:
 	return QI_ZHA_CARDS
 
 
-## 欺诈的虚牌选项（二级技能栏里先选，选完才让选牌 / 选目标）：value / args = 虚牌 id，label = 「视为【XX】」
+## 欺诈的虚牌选项（二级技能栏里先选，选完才让选牌 / 选目标）：value / args = 虚牌 id，
+## label = 「视为【XX】」；element 供客户端把选项文字染成对应系别色
 func _qi_zha_options() -> Array:
 	var out: Array = []
 	for cid: int in QI_ZHA_CARDS:
-		out.append({"text": "视为【%s】" % Data.get_card(cid).card_name, "args": [cid]})
+		var c: GCard = Data.get_card(cid)
+		out.append({"text": "视为【%s】" % c.card_name, "args": [cid],
+			"element": c.element_enum()})
 	return out
 
 

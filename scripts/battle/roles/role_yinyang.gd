@@ -29,6 +29,8 @@ const TOKEN_GUI_HUO: int = 0
 
 ## 阴阳转换已经选好、但还没选应战牌：选牌时放开同命格限制
 var _yin_yang_pending: bool = false
+## 本次攻击牌是无命格的虚拟牌（如欺诈）：阴阳转换无法匹配命格
+var _yin_yang_attack_no_fate: bool = false
 ## 本次阴阳转换同时发动了式神转换（摸 1 张 + 再 +1 鬼火）
 var _shi_shen_pending: bool = false
 ## 应战牌选好后，在真正打出这次应战时结算 +鬼火 / 摸牌 / 退出形态
@@ -154,22 +156,26 @@ func _yin_yang_zhuan_huan(ctx: Dictionary) -> int:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
+	var atk_id: int = int(ctx.get("card_id", -1))
+	var harm: Dictionary = ctx.get("harm", {})
+	# 欺诈虚牌无命格：阴阳转换要求同命格，不能匹配
+	var 无命格: bool = bool(harm.get("virtual_no_fate", false))
+	_yin_yang_attack_no_fate = 无命格
 	if _yin_yang_choice > 0:
 		var 已选: int = _yin_yang_choice
 		_yin_yang_choice = 0
 		step = STEP_DONE
-		_应用阴阳转换选择(已选)
+		if not 无命格:
+			_应用阴阳转换选择(已选)
 		return SUCCESS
-	var atk_id: int = int(ctx.get("card_id", -1))
 	# 即便手里没有同系 / 同命格牌，也照样询问（三档全部置灰）：
 	# 不询问会让对手从「没弹询问」直接推断出阴阳师手里没有对应牌。
-	var 可阴阳: bool = _has_same_fate_pattern_attack(atk_id)
+	var 可阴阳: bool = not 无命格 and _has_same_fate_pattern_attack(atk_id)
 	# 【圣光】也能算「仅应战」：手里没有同系攻击牌、但能用圣光抵挡时，仍要给玩家这一档，
 	# 否则他只能先取消、再等引擎的普通应战询问，又变回两步操作。
 	var 可圣光: bool = bool(ctx.get("can_light", true)) and _has_holy_light()
 	var 有基础应战: bool = _has_base_reattack_card(atk_id) or 可圣光
 	# 提示里的「受到 N 伤害攻击」：自己挨打和替队友挡都用本次攻击的同一个伤害。
-	var harm: Dictionary = ctx.get("harm", {})
 	var 预览伤害: int = engine._应战提示伤害(int(ctx.get("src", -1)), ctx, harm)
 	if not engine.has_reply():
 		# 三档始终都摆出来：本次用不了的那档由 enabled=false 置灰（对照其他技能的 option_enabled），
@@ -217,7 +223,8 @@ func _阴阳转换选项(有基础应战: bool, 可阴阳: bool) -> Array:
 
 ## 记录本次 3306 的选择；真正 +鬼火 / 摸牌 / 改伤害在应战牌打出后结算（_结算阴阳转换后效）。
 func _应用阴阳转换选择(选择: int) -> void:
-	if 选择 >= 2:
+	# 无命格的虚牌不能匹配阴阳转换；即使客户端硬提交也忽略
+	if 选择 >= 2 and not _yin_yang_attack_no_fate:
 		_yin_yang_pending = true
 		_shi_shen_pending = 选择 > 2
 		engine._broadcast_game()
@@ -241,6 +248,7 @@ func _结算阴阳转换后效(harm: Dictionary) -> void:
 		player.tap = false
 	_apply_yin_yang_after_use = false
 	_yin_yang_pending = false
+	_yin_yang_attack_no_fate = false
 	_shi_shen_pending = false
 	_shi_shen_zhou_shu_pending = false
 	_shi_shen_zhou_shu_dst = -1
@@ -286,6 +294,9 @@ func _has_holy_light() -> bool:
 # ============================================================
 func v_reattack(card_id: int, attack_card_id: int) -> int:
 	if _yin_yang_pending:
+		# 无命格的虚牌不能匹配阴阳转换
+		if _yin_yang_attack_no_fate:
+			return GConst.GE_INVALID_CARDID
 		if not player.has_hand_card(card_id):
 			return GConst.GE_INVALID_CARDID
 		var card: GCard = Data.get_card(card_id)
@@ -346,6 +357,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 func _清空应战待办() -> void:
 	_yin_yang_pending = false
+	_yin_yang_attack_no_fate = false
 	_shi_shen_pending = false
 	_apply_yin_yang_after_use = false
 	_shi_shen_zhou_shu_pending = false
@@ -381,6 +393,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 替队友挡时也把这次攻击的伤害带给客户端，提示里才能写「受到 N 伤害攻击」
 	var harm: Dictionary = ctx.get("harm", {})
+	# 欺诈虚牌无命格：阴阳转换要求同命格，不能匹配
+	var 无命格: bool = bool(harm.get("virtual_no_fate", false))
+	_yin_yang_attack_no_fate = 无命格
 	var 预览伤害: int = engine._应战提示伤害(int(ctx.get("src", -1)), ctx, harm)
 	if not engine.has_reply():
 		# 和直接 3306 用同一张三档选项：仅应战 / 阴阳转换 / 阴阳转换+式神转换。
@@ -388,7 +403,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		# 可圣光传 false：3301 这条不能用圣光抵挡，客户端据此把【圣光】置灰。
 		询问(player.id, SHI_SHEN_ZHOU_SHU, 0, 0, GConst.CardSource.Hand,
 			_阴阳转换选项(_has_base_reattack_card(atk_id),
-				_has_same_fate_pattern_attack(atk_id)),
+				not 无命格 and _has_same_fate_pattern_attack(atk_id)),
 			0, "", [], true, 0, -1, [], -1, {},
 			atk_id, 0, false, [int(ctx.get("src", -1))], false, 预览伤害)
 		return WAIT
@@ -403,7 +418,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	ctx["can_light"] = false
 	# 客户端攒操作时 args[1] 是 3306 已经选好的效果；没带就仍由 p_attacked 再问
 	var 阴阳选择: int = int(args[1]) if args.size() > 1 else 0
-	if 阴阳选择 > 0:
+	# 无命格虚牌：选项 2/3 已置灰，硬提交也忽略
+	if 阴阳选择 > 0 and not _yin_yang_attack_no_fate:
 		_yin_yang_choice = 阴阳选择
 	# 客户端把应战牌和反击目标也一起攒上来了：与直接 3306 共用同一套预置逻辑
 	_预置应战答复(r)

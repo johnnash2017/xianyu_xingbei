@@ -87,7 +87,7 @@ func 设置技能(id: int) -> void:
 ## 当成「二级技能栏」里的一个选项按钮：只显示一段文案，底色由调用方给。
 ## 选项本身带技能号时只用于悬停弹它的技能说明，不再按技能类型色染色 ——
 ## 二级栏所有选项统一用调用方给的普通底色。
-func 设置选项(文本: String, 底色: Color, 选项技能号: int = 0) -> void:
+func 设置选项(文本: String, 底色: Color, 选项技能号: int = 0, 字色: Color = Color.TRANSPARENT) -> void:
 	技能号 = 选项技能号
 	# 文案里的词缀关键字（如【宝石】/【水晶】）按词缀表换成图标，和技能名 / 技能说明同一口径
 	var 显示: String = GConst.词缀文本(文本)
@@ -95,6 +95,11 @@ func 设置选项(文本: String, 底色: Color, 选项技能号: int = 0) -> vo
 	(plateButton.material as ShaderMaterial).set_shader_parameter("button_color", 用色)
 	if skillName != null:
 		skillName.text = 显示
+		# 普通选项保持主题字色；带系别色的选项（如欺诈的五种虚牌斩）只覆盖文字颜色。
+		if 字色.a > 0.0:
+			skillName.add_theme_color_override("default_color", 字色)
+		else:
+			skillName.remove_theme_color_override("default_color")
 		custom_minimum_size.x = _名字宽度(显示) + _一字宽() * 2.0
 	if selectBorder != null:
 		selectBorder.visible = false

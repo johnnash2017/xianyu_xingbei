@@ -71,6 +71,52 @@ func 跑() -> void:
 	检(not (窗.get("_sel_players") as Array).has(4), "切换用法后队友头像仍被标为已选")
 	检((窗.get("BtnOK") as Button).disabled, "目标不合法时「确定」却是可用的")
 
+	# 冒险家【欺诈】：取消二级技能栏后再次点技能，二级栏必须重新打开
+	var 欺诈选项: Array = [
+		{"text": "视为【风】", "args": [66], "element": GConst.CardElement.Wind},
+		{"text": "视为【水】", "args": [133], "element": GConst.CardElement.Water},
+		{"text": "视为【火】", "args": [87], "element": GConst.CardElement.Fire},
+		{"text": "视为【地】", "args": [45], "element": GConst.CardElement.Earth},
+		{"text": "视为【雷】", "args": [110], "element": GConst.CardElement.Thunder},
+	]
+	窗.call("_选择技能", GConst.技能_欺诈, GConst.ActionType.AttackSkill, 2, 1, [2, 3], [], 0, 0, 0,
+		GConst.CardSource.Hand, "same", 0, 0, 欺诈选项, null, 0)
+	await 等帧(2)
+	检(bool(窗.get("_二级栏")), "欺诈第一次没有进入二级技能栏")
+	检((窗.get("_二级选项") as Array).size() == 5, "欺诈二级栏没有摆出 5 个虚牌系别")
+	if (窗.get("_二级选项") as Array).size() == 5:
+		var 首项: Dictionary = (窗.get("_二级选项") as Array)[0]
+		var 首钮: 技能按钮 = 首项.get("按钮")
+		检(首钮.skillName.get_theme_color("default_color") == Color("#9BE7A2"),
+			"欺诈风系选项没有使用风系字色：%s" % str(首钮.skillName.get_theme_color("default_color")))
+	窗.call("_on_cancel")
+	await 等帧(2)
+	检(not bool(窗.get("_二级栏")), "取消欺诈后二级栏状态没有清掉")
+	检(欺诈选项.size() == 5, "取消欺诈后把技能声明里的原参数选项数组清空了")
+	窗.call("_选择技能", GConst.技能_欺诈, GConst.ActionType.AttackSkill, 2, 1, [2, 3], [], 0, 0, 0,
+		GConst.CardSource.Hand, "same", 0, 0, 欺诈选项, null, 0)
+	await 等帧(2)
+	检(bool(窗.get("_二级栏")), "取消欺诈后再次点技能，二级栏没有重新打开")
+	检((窗.get("_二级选项") as Array).size() == 5, "取消欺诈后再次点技能，二级栏选项没有重建")
+
+	# 同类选项型技能（偷天换日）：取消后也必须能重新打开二级栏
+	var 偷天选项: Array = [
+		{"text": "转移对方 1【宝石】", "args": [0]},
+		{"text": "我方【水晶】全部转为【宝石】", "args": [1]},
+	]
+	窗.call("_选择技能", GConst.技能_偷天换日, GConst.ActionType.MagicSkill, 0, 0, [2, 3], [], 0, 0, 0,
+		GConst.CardSource.Hand, "", 0, 0, 偷天选项, null, 0)
+	await 等帧(2)
+	检(bool(窗.get("_二级栏")) and (窗.get("_二级选项") as Array).size() == 2,
+		"偷天换日第一次没有进入二级技能栏")
+	窗.call("_on_cancel")
+	await 等帧(2)
+	窗.call("_选择技能", GConst.技能_偷天换日, GConst.ActionType.MagicSkill, 0, 0, [2, 3], [], 0, 0, 0,
+		GConst.CardSource.Hand, "", 0, 0, 偷天选项, null, 0)
+	await 等帧(2)
+	检(bool(窗.get("_二级栏")) and (窗.get("_二级选项") as Array).size() == 2,
+		"取消偷天换日后再次点技能，二级栏没有重新打开")
+
 	Logic.my_player_id = 旧id
 	Data.player_list = 旧玩家
 	Data.hand_cards = 旧手牌

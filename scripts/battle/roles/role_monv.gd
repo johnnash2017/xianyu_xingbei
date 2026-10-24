@@ -257,8 +257,10 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 			var c: GCard = Data.get_card(cid)
 			if c != null and c.is_magic():
 				法术牌.append(cid)
-		# 目标只给「任意敌人」——结算里也按这条卡（点错会被静默丢掉、白费一次触发）
-		询问(player.id, MO_NENG_FAN_ZHUAN, 2, 1, GConst.CardSource.Hand, [], 法术牌.size(), "", 法术牌,
+		# 目标只给「任意敌人」——结算里也按这条卡（点错会被静默丢掉、白费一次触发）。
+		# 白名单在没法术牌时是空的（空＝不限），所以必须同时给 card_rule="magic"，
+		# 否则非法术牌会亮起来、选了也白选。
+		询问(player.id, MO_NENG_FAN_ZHUAN, 2, 1, GConst.CardSource.Hand, [], 法术牌.size(), "magic", 法术牌,
 			true, 0, -1, enemy_ids())
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

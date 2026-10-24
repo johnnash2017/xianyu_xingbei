@@ -71,9 +71,11 @@ func available_skills() -> Array:
 	# 圣屑飓暴要弃 2 张同系牌：只让「手里该系不少于 2 张、且该系有【圣】命格攻击牌」的牌可点，
 	# 界面据此把同系孤张与没有虚拟牌的系置灰（与 v_magic_skill 的校验一致）
 	var 同系牌: Array[int] = _sheng_xie_hand_ids()
-	# 手里没有「该系至少 2 张且有【圣】命格攻击牌」的牌时置灰
+	# 手里没有「该系至少 2 张且有【圣】命格攻击牌」的牌时置灰。
+	# card_rule="same" 让界面在第一张选定后只亮同系牌，避免从两个不同系各选一张、
+	# 点确定后被 v_magic_skill 驳回。
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_XIE_JU_BAO, "need_card": 2, "need_target": 1,
-		"cards": 同系牌, "targets": enemy_ids(), "enabled": not 同系牌.is_empty()})
+		"cards": 同系牌, "card_rule": "same", "targets": enemy_ids(), "enabled": not 同系牌.is_empty()})
 	# 圣煌模式：两种资源都摆成选项，不够的那一项置灰；已横置时整颗技能置灰。
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_HUANG_MO_SHI, "need_card": 0, "need_target": 0,
 		"arg_choices": _sheng_huang_mo_shi_choices(),
