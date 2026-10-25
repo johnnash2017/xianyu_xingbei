@@ -187,24 +187,31 @@ func _xi_wang_move_targets() -> Array:
 
 ## 第二步的两个效果（值 → 文案 + 各自可点的角色）：
 ##   ① 放置：把乐章放到一名队友面前（不能是自己）；
-##   ② 转移：转移给「另一名」我方角色（含自己、不含当前持有者），要弃 1 张牌并 +1 一点收益 ——
-##      乐章不在场上就没得转、手上没牌也弃不出，这两种情况都不发这一项
+##   ② 转移：转移给「另一名」我方角色（含自己、不含当前持有者），要弃 1 张牌并 +1 一点收益。
+## 两项始终下发；当前做不了的那项 enabled=false，由界面置灰，不整项消失。
 func _xi_wang_effect_options() -> Array:
-	var out: Array = []
 	var 放置目标: Array = _xi_wang_place_targets()
-	if not 放置目标.is_empty():
-		out.append({
-			"value": XI_WANG_PLACE, "label": "将【永恒乐章】放置于目标队友面前",
-			"targets": 放置目标,
-		})
 	var 转移目标: Array = _xi_wang_move_targets()
-	if yue_zhang_dst != -1 and not player.hand_cards.is_empty() and not 转移目标.is_empty():
-		out.append({
+	return [
+		{
+			"value": XI_WANG_PLACE, "label": "将【永恒乐章】放置于目标队友面前",
+			"targets": 放置目标, "enabled": not 放置目标.is_empty(),
+		},
+		{
 			"value": XI_WANG_MOVE,
 			"label": "将【永恒乐章】转移给我方另一目标角色，你弃 1 张牌，+1【治疗】或 +1【灵感】",
 			"targets": 转移目标,
-		})
-	return out
+			"enabled": yue_zhang_dst != -1 and not player.hand_cards.is_empty() and not 转移目标.is_empty(),
+		},
+	]
+
+
+## 按效果值取第二步选项（用于校验玩家是否选了当前可用的项）
+func _xi_wang_option(效果: int) -> Dictionary:
+	for 项: Dictionary in _xi_wang_effect_options():
+		if int(项.get("value", -1)) == 效果:
+			return 项
+	return {}
 
 
 ## 第二步那次询问里可点角色的并集（还没选效果时用；选定某项后客户端按该项自己的白名单收紧）
@@ -217,11 +224,14 @@ func _xi_wang_targets() -> Array:
 	return out
 
 
-## 希望赋格曲的发动条件：耗 1 能量，且至少有一个发得出来的效果（可放对象或可转对象）。
-## （服务端那段 do-while 里「手牌为空不能发」「全是光系且不足 4 张不能发」之类的条件已随旧流程去掉：
-##   手牌为空时只是发不出「转移」那一项，照样能「放置」）
+## 希望赋格曲的发动条件：耗 1 能量，且至少有一个 enabled 的效果（可放对象或可转对象）。
 func _can_xi_wang() -> bool:
-	return player.get_energy() >= 1 and not _xi_wang_effect_options().is_empty()
+	if player.get_energy() < 1:
+		return false
+	for 项: Dictionary in _xi_wang_effect_options():
+		if bool(项.get("enabled", true)):
+			return true
+	return false
 
 
 ## 某名玩家的对手 id（激昂狂想曲的伤害分支只能选对手）
@@ -627,7 +637,12 @@ func _xi_wang_effects() -> int:
 	if xi_wang_phase == 1:
 		# 第一个确认：选效果 + 点角色（两项各自的可点角色随选项下发，见 _xi_wang_effect_options）
 		var 选项: Array = _xi_wang_effect_options()
-		if 选项.is_empty():
+		var 首选: Dictionary = {}
+		for 项: Dictionary in 选项:
+			if bool(项.get("enabled", true)):
+				首选 = 项
+				break
+		if 首选.is_empty():
 			xi_wang_phase = 0
 			return SUCCESS
 		if not engine.has_reply():
@@ -637,12 +652,15 @@ func _xi_wang_effects() -> int:
 		var r2: Dictionary = take_skill_reply_full()
 		var 效果args: Array = r2.get("args", [])
 		var 目标s: Array = r2.get("dst_ids", [])
-		var 效果: int = int(效果args[0]) if not 效果args.is_empty() else int(选项[0]["value"])
+		var 效果: int = int(效果args[0]) if not 效果args.is_empty() else int(首选["value"])
+		var 选择项: Dictionary = _xi_wang_option(效果)
+		if 选择项.is_empty() or not bool(选择项.get("enabled", true)):
+			效果 = int(首选["value"])
 		var 白名单: Array = _xi_wang_option_targets(效果)
 		var 目标: int = int(目标s[0]) if not 目标s.is_empty() else -1
 		if not 白名单.has(目标):
-			# 超时兜底（或选了个不合法的）：按第一项效果 + 它的第一个可点角色代打
-			效果 = int(选项[0]["value"])
+			# 超时兜底（或选了个不合法的）：按第一个可用效果 + 它的第一个可点角色代打
+			效果 = int(首选["value"])
 			白名单 = _xi_wang_option_targets(效果)
 			目标 = int(白名单[0]) if not 白名单.is_empty() else -1
 		if 目标 < 0:

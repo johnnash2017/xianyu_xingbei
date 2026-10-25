@@ -87,6 +87,8 @@ var _提炼减能量: int = 0
 ## 【冒险者天堂】选定的整份星石构成（宝石 / 水晶颗数，加起来＝_提炼总数）
 var _提炼宝石: int = 0
 var _提炼水晶: int = 0
+## 12 号冒险家新版【冒险者天堂】：提炼出的整份星石全部交给一名目标队友（不拆分、不给自己）
+var _提炼全给一人: bool = false
 
 ## 预制体目录（格子/聊天条目与参考脚本一致）
 const 预制目录: String = "res://scenes/prefabs/battlemobile/"
@@ -526,9 +528,32 @@ var _技能栏基准左: float = 0.0
 ## 本次行动询问下发的全部命令（取消技能/特殊行动时用它把技能按钮摆回来）
 var _行动命令: Array = []
 ## 【地下法则】的持有者：冒险家（购买时只加宝石、一次可加 2 点，对照 role_maoxian.v_buy）
-const 冒险家角色号: int = 12
+## 冒险家有两个版本：12＝原版冒险家，89＝冒险家Trick；基础入口共用，提炼细节按版本分流
+const 冒险家角色号: Array[int] = [12, 89]
+const 冒险家原版角色号: int = 12
+const 冒险家Trick角色号: int = 89
+## 圣弓两版（37 圣弓 / 88 原初之弓Trick）共用同一套界面逻辑，差异只在技能号
+const 圣弓_圣煌模式: Array[int] = [GConst.技能_圣煌模式, GConst.技能_圣煌模式Trick]
+const 圣弓_圣光爆裂: Array[int] = [GConst.技能_圣光爆裂, GConst.技能_圣光爆裂Trick]
+const 圣弓_圣流星弹: Array[int] = [GConst.技能_圣流星弹, GConst.技能_圣流星弹Trick]
+const 圣弓_自动填充: Array[int] = [GConst.技能_自动填充, GConst.技能_自动填充Trick]
+const 圣弓_辉光炮: Array[int] = [GConst.技能_圣煌辉光炮, GConst.技能_圣煌辉光炮Trick]
+const 圣弓_余辉: Array[int] = [GConst.技能_圣煌余辉, GConst.技能_圣煌余辉Trick]
+const 圣弓_圣屑未命中: Array[int] = [37021, 88021]
 ## 【冒险者天堂】的技能号：冒险家提炼前先问把星石给谁（对照 role_maoxian）
-const 冒险者天堂技能号: int = 1202
+const 冒险者天堂技能号: int = GConst.技能_冒险者天堂
+const 冒险者天堂Trick技能号: int = GConst.技能_冒险者天堂Trick
+
+
+## 当前玩家这一版冒险家的【冒险者天堂】技能号：Trick 用 8902，原版用 1202
+func _当前冒险者天堂技能号() -> int:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	return 冒险者天堂Trick技能号 if 我 != null and 我.role_id == 冒险家Trick角色号 else 冒险者天堂技能号
+
+
+## 收到的技能询问是不是任意一版的【冒险者天堂】
+func _是冒险者天堂技能(skill_id: int) -> bool:
+	return skill_id == 冒险者天堂技能号 or skill_id == 冒险者天堂Trick技能号
 
 
 func _ready() -> void:
@@ -972,12 +997,13 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			"icon": GConst.血蔷薇庭院图标,
 			"desc": GConst.血蔷薇庭院说明,
 		})
-	if p.role_id == GConst.角色_圣弓:
+	if GConst.圣弓角色号.has(p.role_id):
 		if p.sheng_huang_side == 0:
 			额外状态.append({
 				"name": "圣煌辉光炮",
 				"icon": GConst.圣煌辉光炮图标,
-				"desc": GConst.圣煌辉光炮说明,
+				"desc": GConst.圣煌辉光炮说明 if p.role_id == GConst.角色_圣弓Trick \
+					else "游戏初始拥有【圣煌辉光炮】；使用后移除",
 			})
 		elif p.sheng_huang_side == 1:
 			额外状态.append({
@@ -2173,7 +2199,7 @@ func _进入技能询问() -> void:
 				项["目标白名单"] = 白名单.get("ids", [])
 			项们.append(项)
 		# 自动填充第二层取消时要原样退回第一层；先留一份第一层的归一化选项。
-		if _skill_ask_id == GConst.技能_自动填充:
+		if 圣弓_自动填充.has(_skill_ask_id):
 			_自动填充第一层选项 = 项们.duplicate(true)
 		# 「无父技能」型（格斗【蓄力一击 / 气绝崩击】这条询问）：选项本身就是技能，
 		# 这一排只摆选项，不摆「被问的技能」那颗本体（否则会多出一颗与选项同名的按钮）
@@ -2191,6 +2217,10 @@ func _进入技能询问() -> void:
 					有怒火 = true
 					break
 			父技能号 = 0 if 有怒火 else _skill_ask_id
+		elif _skill_ask_id == GConst.技能_军神威光 and _skill_options.size() == 5:
+			# 军神威光第二段（选星石组合）是在第一段二选一之后才进的；
+			# 服务端把空应答当作「退回第一段重问」，所以这里必须摆一颗「返回」。
+			返回 = _军神威光返回
 		_进入二级技能栏(父技能号, null, 项们, 二级选项底色, 返回)
 		# 式神咒束（3301）与阴阳转换（3306）共用同一套本地攒应战：
 		# 先记下本次攻击牌 / 攻击者，玩家在二级技能栏点中效果后立即进入选牌 / 选目标。
@@ -2745,15 +2775,32 @@ func _选项项(参数选项: Array) -> Array:
 	var out: Array = []
 	for 项: Variant in 参数选项:
 		var d: Dictionary = 项
+		var 文本: String = str(d.get("text", ""))
+		var 字色: Color = _选项字色(d)
+		# 带系别色的选项（当前是欺诈的虚牌斩）：只把卡名那一段染成系别色，
+		# 其余文字保持普通字色；不再整段选项都染色。卡名从 args[0] 的卡号取，
+		# 不依赖选项文案的括号格式。
+		var 参数: Array = d.get("args", [])
+		var 系别: int = int(d.get("element", -1))
+		if 字色.a > 0.0 and 系别 >= 0 and not 参数.is_empty():
+			var 卡: GCard = Data.get_card(int(参数[0]))
+			if 卡 != null and not 卡.card_name.is_empty() and 文本.contains(卡.card_name):
+				var 色值: String = _系别颜色(GConst.element_to_chinese(系别))
+				if not 色值.is_empty():
+					文本 = 文本.replace(卡.card_name,
+						"[color=#%s]%s[/color]" % [色值.trim_prefix("#"), 卡.card_name])
+					字色 = Color.TRANSPARENT
 		out.append({
-			"文本": str(d.get("text", "")),
+			"文本": 文本,
 			"参数": d.get("args", []),
-			"字色": _选项字色(d),
+			"字色": 字色,
 			# false＝这一项条件不满足：照样摆出来，但半透明、点不动（如特殊行动的购买 / 合成 / 提炼）
 			"可用": bool(d.get("enabled", true)),
 			# 鼠标指向时弹的效果说明（非技能的选项才给，如「购买 / 合成 / 提炼」，见 技能按钮.说明文本）
 			"说明": str(d.get("说明", "")),
 			"需牌": int(d.get("need_card", 0)),
+			# >0＝选中该项后本次选牌/点牌上限（如欺诈 2 张档最多 2、3 张暗系档最多 3）
+			"最多牌": int(d.get("card_max", 0)),
 			"需目标": int(d.get("need_target", 0)),
 			# >0＝选中该项后本次目标数上限（如圣弓【圣光爆裂】群体 X 档最多 X 名）
 			"最多目标": int(d.get("target_max", 0)),
@@ -2767,7 +2814,8 @@ func _选项项(参数选项: Array) -> Array:
 	return out
 
 
-## 选项文字颜色：带 element 的选项按该系别上色（如欺诈的五种虚牌斩），其余保持默认字色
+## 选项文字颜色：带 element 的选项按该系别算兜底色；实际渲染时只给卡名套 BBCode 颜色，
+## 不再整段覆盖（见 _选项项）。
 func _选项字色(项: Dictionary) -> Color:
 	var 系别: int = int(项.get("element", -1))
 	if 系别 < 0:
@@ -2860,6 +2908,7 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 			"技能号": int(d.get("技能号", 0)),
 			"需牌": int(d.get("需牌", 0)),
 			"需目标": int(d.get("需目标", 0)),
+			"最多牌": int(d.get("最多牌", 0)),
 			"最多目标": int(d.get("最多目标", 0)),
 			"目标白名单": d.get("目标白名单", []),
 			"选牌来源": int(d.get("选牌来源", -1)),
@@ -2878,8 +2927,18 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 
 ## 魔纹融合第二段：右侧「返回」按钮＝退回「怒火压制 / 魔纹融合」二选一。
 ## 对服务端而言就是取消第二段（空 args），它会重新问第一段；取消键也走同一条路。
-func _魔纹本体返回(_技能号: int) -> void:
+func _魔纹本体返回(_技能号: int = 0) -> void:
 	if not _是技能询问 or _skill_ask_id != GConst.技能_魔纹融合:
+		return
+	_on_cancel()
+
+
+## 军神威光第二段（星石组合）的「返回」：取消当前这一段，服务端会重新问第一段二选一。
+## 服务端 _jun_shen_wen_xing_shi 对空 args 的处理就是退回第一段，不会结束整条技能。
+func _军神威光返回(_技能号: int = 0) -> void:
+	if not _是技能询问 or _skill_ask_id != GConst.技能_军神威光:
+		return
+	if _skill_options.size() != 5:
 		return
 	_on_cancel()
 
@@ -2912,18 +2971,26 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		var b: 技能按钮 = _二级选项[i]["按钮"]
 		if is_instance_valid(b):
 			b.设置选中(i == 序号)
+	# 特殊行动三选一 / 冒险家提炼方式：这两层只是“进入下一层”的入口，
+	# 点选项就直接进去，不再要求先点一次「确定」；返回按钮仍可退回上一层。
+	if _本地选项阶段 == 3:
+		_确认特殊行动()
+		return
+	if _本地选项阶段 == 4:
+		_确认提炼方式()
+		return
 	# 月女【苍白之月】第二项：点进去还不提交，先在本地进入第二步选「移除 1/2 点【新月】」
 	if _mode == 4 and _pending_skill_id == GConst.技能_苍白之月 and not _苍白第二步 \
 			and _已选参数.size() == 1 and int(_已选参数[0]) == 2:
 		_进入苍白月第二段()
 		return
 	# 圣弓【圣光爆裂】：第一层选「群体」后，本地进入第二层选移除多少治疗 X。
-	if _mode == 4 and _pending_skill_id == GConst.技能_圣光爆裂 and not _圣光爆裂第二步 \
+	if _mode == 4 and 圣弓_圣光爆裂.has(_pending_skill_id) and not _圣光爆裂第二步 \
 			and _已选参数.size() == 1 and int(_已选参数[0]) == 2:
 		_进入圣光爆裂第二层()
 		return
 	# 圣弓【自动填充】：第一层选完「水晶 / 宝石」，本地进入第二层选「治疗 / 信仰」。
-	if _是技能询问 and _skill_ask_id == GConst.技能_自动填充 and not _自动填充第二步 \
+	if _是技能询问 and 圣弓_自动填充.has(_skill_ask_id) and not _自动填充第二步 \
 			and not _已选参数.is_empty():
 		_进入自动填充第二层(int(_已选参数[0]))
 		return
@@ -2937,6 +3004,12 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 	# （怒火压制仍按普通选项走：选中后按确定；子项里的三个翻转档要选牌，也不能点一下就提交）
 	if _是技能询问 and _skill_ask_id == GConst.技能_魔纹融合 and _二级选项.size() == 2 \
 			and int(_二级选项[序号].get("技能号", 0)) == GConst.技能_魔纹融合:
+		_发送应答(_skill_ask_id, [], [], _已选参数)
+		return
+	# 军神威光第一段第二项：点它就进第二段（选星石组合），不用再按「确定」。
+	# 服务端收到 args=[2] 会直接下发第二段询问；第二段右侧有「返回」。
+	if _是技能询问 and _skill_ask_id == GConst.技能_军神威光 and _二级选项.size() == 2 \
+			and _已选参数.size() == 1 and int(_已选参数[0]) == 2:
 		_发送应答(_skill_ask_id, [], [], _已选参数)
 		return
 	# 「多份额外行动」这条：选项就是几个可发的额外行动，选中＝把「确定」要发的那一个记下来
@@ -2977,6 +3050,7 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		# 技能本体已有需牌 / 需目标 / 来源的（如【欺诈】弃 2~3 张）以本体为准，选项只会往上加、不会削减
 		var 项: Dictionary = _二级选中项()
 		var 项需牌: int = int(项.get("需牌", 0))
+		var 项最多牌: int = int(项.get("最多牌", 0))
 		var 项需目标: int = int(项.get("需目标", 0))
 		var 项最多目标: int = int(项.get("最多目标", 0))
 		var 项来源: int = int(项.get("选牌来源", -1))
@@ -2985,7 +3059,9 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		_selecting_cover = _skill_card_source == GConst.CardSource.Cover \
 			or _skill_card_source == GConst.CardSource.HandOrCover or _skill_cover_need > 0
 		_skill_need_card = maxi(_选项原始需牌, 项需牌)
-		_skill_card_max = maxi(_选项原始最多牌, _skill_need_card)
+		# 选项自己的最多牌优先：欺诈 2 张档不能被全局 card_max=3 放宽到 3 张
+		_skill_card_max = maxi(_skill_need_card, 项最多牌) if 项最多牌 > 0 \
+			else maxi(_选项原始最多牌, _skill_need_card)
 		_need_cards = _skill_card_max
 		_skill_need_target = maxi(_选项原始目标数, 项需目标)
 		_skill_target_max = maxi(maxi(_选项原始最多目标, _skill_need_target), 项最多目标)
@@ -3078,7 +3154,9 @@ func _圣光爆裂群体说明(x: int, 手牌数: int) -> String:
 	var 目标上限: int = 手牌数 - x + 1
 	if 目标上限 <= 0:
 		return "当前手牌数不足以支付该档弃牌，无法发动。"
-	return "选择最多 %d 名手牌数小于 %d 的对手，你弃 %d 张牌，然后对他们造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数，你获得 %d 点【信仰】。" % [x, 目标上限, x, x]
+	var 信仰句: String = "" if _pending_skill_id == GConst.技能_圣光爆裂 \
+		else "，你获得 %d 点【信仰】" % x
+	return "选择最多 %d 名手牌数小于 %d 的对手，你弃 %d 张牌，然后对他们造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数%s。" % [x, 目标上限, x, 信仰句]
 
 
 ## 圣光爆裂群体分支的第二层选项：X=1..3，决定移除多少治疗；
@@ -3110,7 +3188,7 @@ func _进入圣光爆裂第二层() -> void:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	var 治疗: int = 我.cross_num if 我 != null else 0
 	var 选项: Array = _圣光爆裂第二层选项(治疗)
-	_进入二级技能栏(GConst.技能_圣光爆裂, 父, _选项项(选项), 二级选项底色, _on_cancel)
+	_进入二级技能栏(_pending_skill_id, 父, _选项项(选项), 二级选项底色, _on_cancel)
 	_圣光爆裂第二步 = true
 	_刷新交互()
 	_刷新二级栏提示()
@@ -3121,7 +3199,7 @@ func _进入圣光爆裂第二层() -> void:
 func _返回圣光爆裂第一层() -> void:
 	var 父: 技能按钮 = _二级栏父按钮
 	_圣光爆裂第二步 = false
-	_进入二级技能栏(GConst.技能_圣光爆裂, 父, _选项项(_skill_arg_choices),
+	_进入二级技能栏(_pending_skill_id, 父, _选项项(_skill_arg_choices),
 		二级选项底色, _on_cancel)
 	_刷新交互()
 	_刷新二级栏提示()
@@ -3132,10 +3210,22 @@ func _返回圣光爆裂第一层() -> void:
 ## 玩家手选治疗/信仰，治疗不因空位不足置灰（这是超时自动规则，不是玩家规则）。
 ## args=[资源, 效果]（效果 1=治疗、2=信仰），服务端按这两项结算。
 func _自动填充第二层选项(资源: int) -> Array:
+	# 新版 37 的说明顺序是「+信仰或+治疗」；88 保留旧版的「+治疗或+信仰」。
+	var 新版37: bool = _skill_ask_id == GConst.技能_自动填充
 	if 资源 == 2:
+		if 新版37:
+			return [
+				{"text": "+1【水晶】，+2【信仰】", "args": [2, 2], "enabled": true},
+				{"text": "+1【水晶】，+2【治疗】", "args": [2, 1], "enabled": true},
+			]
 		return [
 			{"text": "+1【水晶】，+2【治疗】", "args": [2, 1], "enabled": true},
 			{"text": "+1【水晶】，+2【信仰】", "args": [2, 2], "enabled": true},
+		]
+	if 新版37:
+		return [
+			{"text": "+1【信仰】", "args": [1, 2], "enabled": true},
+			{"text": "+1【治疗】", "args": [1, 1], "enabled": true},
 		]
 	return [
 		{"text": "+1【治疗】", "args": [1, 1], "enabled": true},
@@ -3148,11 +3238,12 @@ func _自动填充第二层选项(资源: int) -> Array:
 func _进入自动填充第二层(资源: int) -> void:
 	var 父: 技能按钮 = _二级栏父按钮
 	var 选项: Array = _自动填充第二层选项(资源)
-	_进入二级技能栏(GConst.技能_自动填充, 父, _选项项(选项), 二级选项底色, _on_cancel)
+	_进入二级技能栏(_skill_ask_id, 父, _选项项(选项), 二级选项底色, _on_cancel)
 	_自动填充第二步 = true
 	_刷新交互()
 	_刷新二级栏提示()
-	_指令提示("请选择加治疗还是加信仰")
+	_指令提示("请选择加信仰还是加治疗" if _skill_ask_id == GConst.技能_自动填充 \
+		else "请选择加治疗还是加信仰")
 
 
 ## 自动填充第二层取消：退回第一层消耗水晶/宝石，不取消整个技能。
@@ -3160,7 +3251,7 @@ func _返回自动填充第一层() -> void:
 	var 父: 技能按钮 = _二级栏父按钮
 	_自动填充第二步 = false
 	var 返回: Callable = _on_cancel if _mode == 4 else Callable()
-	_进入二级技能栏(GConst.技能_自动填充, 父, _自动填充第一层选项.duplicate(true),
+	_进入二级技能栏(_skill_ask_id, 父, _自动填充第一层选项.duplicate(true),
 		二级选项底色, 返回)
 	_刷新交互()
 	_刷新二级栏提示()
@@ -3184,7 +3275,7 @@ func _刷新二级栏提示() -> void:
 	var 选中项: Dictionary = _二级选中项()
 	# 圣光爆裂：选中单体 / 群体 X 后，提示条直接显示该选项的说明，
 	# 群体档的说明已把目标手牌上限算好，不再让玩家看「你的手牌数 - X」公式。
-	if _mode == 4 and _pending_skill_id == GConst.技能_圣光爆裂 and not 选中项.is_empty():
+	if _mode == 4 and 圣弓_圣光爆裂.has(_pending_skill_id) and not 选中项.is_empty():
 		var 爆裂说明: String = str(选中项.get("说明", ""))
 		if not 爆裂说明.is_empty():
 			_指令提示(爆裂说明)
@@ -4177,7 +4268,7 @@ func _进入特殊行动() -> void:
 	# 每种带一句效果说明，鼠标指上去就弹（见 技能按钮.说明文本）
 	var 选项: Array = [
 		{"text": "购买", "args": [GConst.SpecialAction.Buy], "enabled": 可用[0],
-			"说明": 购买说明_地下法则 if 我.role_id == 冒险家角色号 else 购买说明},
+			"说明": 购买说明_地下法则 if 冒险家角色号.has(我.role_id) else 购买说明},
 		{"text": "合成", "args": [GConst.SpecialAction.Synthesize], "enabled": 可用[1], "说明": 合成说明},
 		{"text": "提炼", "args": [GConst.SpecialAction.Extract], "enabled": 可用[2], "说明": 提炼说明},
 	]
@@ -4202,7 +4293,7 @@ func _特殊行动可用() -> Array[bool]:
 	结果[0] = 我.hand_cards_num + 3 <= 我.hand_cards_max
 	结果[1] = 结果[0] and 星石 >= 3
 	结果[2] = 星石 > 0 and (我.get_energy() < 我.energy_max \
-			or (我.role_id == 冒险家角色号 and not _提炼候选队友().is_empty()))
+			or (冒险家角色号.has(我.role_id) and not _提炼候选队友().is_empty()))
 	return 结果
 
 
@@ -4311,20 +4402,35 @@ func _提炼候选队友() -> Array[int]:
 ##   给自己提炼 1~2 个＝走一次普通提炼；给队友额外提炼 1/2/3 颗＝【冒险者天堂】本次总数 2+N，
 ##   移除自身 N 能量、分给队友。
 ## 三个额外档位始终摆出来，条件不满足的置灰点不动。
+## 12 号冒险家新版【冒险者天堂】：没有额外提取这一步，直接选 1~2 颗的构成，
+## 再把整份交给一名目标队友。
+func _冒险家12提炼() -> void:
+	_提炼是冒险家流程 = true
+	_提炼全给一人 = true
+	_提炼阶段 = 0
+	_提炼总数 = 2
+	_提炼减能量 = 0
+	_提炼宝石 = 0
+	_提炼水晶 = 0
+	_天堂列组合()
+
+
 func _天堂选提炼方式() -> void:
 	_提炼是冒险家流程 = false
+	_提炼全给一人 = false
 	_提炼阶段 = 0
 	_提炼总数 = 0
 	_提炼减能量 = 0
 	_提炼宝石 = 0
 	_提炼水晶 = 0
 	var 上限: int = _天堂额外上限()
-	var 选项: Array = [{"text": GConst.提示原文(冒险者天堂技能号, 1), "args": [0], "enabled": true}]
+	var 天堂技能号: int = _当前冒险者天堂技能号()
+	var 选项: Array = [{"text": GConst.提示原文(天堂技能号, 1), "args": [0], "enabled": true}]
 	for x: int in range(1, 4):
-		var 文本: String = GConst.提示原文(冒险者天堂技能号, 2,
+		var 文本: String = GConst.提示原文(天堂技能号, 2,
 			{"n": x, "花费": _自身能量花费文案(x)})
 		选项.append({"text": 文本, "args": [x], "enabled": 上限 >= x})
-	_进入本地选项(4, 0, 选项, GConst.提示原文(冒险者天堂技能号, 0),
+	_进入本地选项(4, 0, 选项, GConst.提示原文(天堂技能号, 0),
 		二级选项底色, true, _进入特殊行动)
 
 
@@ -4467,22 +4573,37 @@ func _天堂列组合() -> void:
 	_提炼阶段 = 4
 	_本地询问 = true
 	_是技能询问 = false
-	_skill_ask_id = 冒险者天堂技能号
+	var 天堂技能号: int = _当前冒险者天堂技能号()
+	_skill_ask_id = 天堂技能号
 	_提炼宝石 = 0
 	_提炼水晶 = 0
 	# 借「本地技能询问」这条通道进 mode 3：点头像分配那套（_玩家可选 / _点治疗目标 /
 	# _刷新治疗分配 / 确定提交）全都认这个模式，选项则自己摆进二级技能栏
 	_pending_type = GConst.Msg.Respond
 	_pending = {
-		"respond_id": 冒险者天堂技能号, "args": [0, 1, GConst.CardSource.Hand, 0],
+		"respond_id": 天堂技能号, "args": [0, 1, GConst.CardSource.Hand, 0],
 		"dst_ids": 候选, "can_cancel": true,
 	}
 	_进入技能询问()
 	var 父: 技能按钮 = _造特殊行动父按钮()
-	_进入二级技能栏(0, 父, _选项项(选项), 二级选项底色, _天堂选提炼方式)
+	var 返回回调: Callable = _返回提炼选择 if _提炼全给一人 else _天堂选提炼方式
+	_进入二级技能栏(0, 父, _选项项(选项), 二级选项底色, 返回回调)
 	_重置治疗分配()
 	# 默认选上第一项：提示条与头像立刻可用
-	_选中二级选项(冒险者天堂技能号, 0)
+	_选中二级选项(天堂技能号, 0)
+
+
+## 12 号冒险家新版提炼的「返回」：退回特殊行动三选一
+func _返回提炼选择() -> void:
+	_提炼全给一人 = false
+	_提炼是冒险家流程 = false
+	_提炼阶段 = 0
+	_本地询问 = false
+	_提炼总数 = 0
+	_提炼减能量 = 0
+	_提炼宝石 = 0
+	_提炼水晶 = 0
+	_进入特殊行动()
 
 
 ## 冒险家【冒险者天堂】最后一步：把二级栏里选定的构成记下来（args = [宝石, 水晶]），
@@ -4490,8 +4611,18 @@ func _天堂列组合() -> void:
 func _应用提炼组合() -> void:
 	_提炼宝石 = int(_已选参数[0]) if _已选参数.size() > 0 else 0
 	_提炼水晶 = int(_已选参数[1]) if _已选参数.size() > 1 else 0
+	if _提炼全给一人 and not _治疗分配.is_empty():
+		# 换构成后总颗数可能变化：目标还装得下就保留，装不下则清掉重新选
+		var 目标: int = int(_治疗分配[0])
+		_治疗分配.clear()
+		if _玩家空位(目标) >= _提炼宝石 + _提炼水晶:
+			for _i: int in range(_提炼宝石 + _提炼水晶):
+				_治疗分配.append(目标)
 	_刷新治疗分配()
-	_指令提示("分配提取的 %s，点击优先分配宝石" % _星石文案(_提炼宝石, _提炼水晶))
+	if _提炼全给一人:
+		_指令提示("选择一名目标队友，将整份 %s 全部交给他" % _星石文案(_提炼宝石, _提炼水晶))
+	else:
+		_指令提示("分配提取的 %s，点击优先分配宝石" % _星石文案(_提炼宝石, _提炼水晶))
 
 
 ## 冒险家【冒险者天堂】：选「额外提取 N 颗」时把「要移除的自身能量」预览在自己头像上
@@ -4521,6 +4652,11 @@ func _玩家空位(pid: int) -> int:
 
 ## 冒险家【冒险者天堂】：两名队友合计能收的星石上限（取空位最多的两名，保证后面点头像分得下）
 func _提炼可分配空位() -> int:
+	if _提炼全给一人:
+		var 最多: int = 0
+		for pid: int in _提炼候选队友():
+			最多 = maxi(最多, _玩家空位(pid))
+		return 最多
 	var 空位表: Array[int] = []
 	for pid: int in _提炼候选队友():
 		空位表.append(_玩家空位(pid))
@@ -4587,6 +4723,7 @@ func _发送冒险家提炼分配() -> void:
 	_本地选项阶段 = 0
 	_本地询问 = false
 	_提炼是冒险家流程 = false
+	_提炼全给一人 = false
 	_发送行动(GConst.ActionType.Special, GConst.SpecialAction.Extract, 目标表, [], args)
 
 
@@ -4600,7 +4737,11 @@ func _选特殊行动(action_id: int) -> void:
 	# 提炼单开一条（冒险家还要先选提炼方式），这里只处理购买 / 合成
 	if action_id == GConst.SpecialAction.Extract:
 		_提炼是冒险家流程 = false
-		if 我.role_id == 冒险家角色号:
+		_提炼全给一人 = false
+		if 我.role_id == 冒险家原版角色号:
+			_冒险家12提炼()
+			return
+		if 我.role_id == 冒险家Trick角色号:
 			_天堂选提炼方式()
 			return
 		_列提炼组合()
@@ -4613,7 +4754,7 @@ func _选特殊行动(action_id: int) -> void:
 		GConst.SpecialAction.Buy:
 			# 冒险家（【地下法则】）只加宝石、一次最多 2 点（role_maoxian.v_buy）。
 			# 文案里的石头写成【宝石】/【水晶】：词缀表按这个关键字把它们画成图标（见 技能按钮.设置选项）
-			var 地下法则: bool = 我.role_id == 冒险家角色号
+			var 地下法则: bool = 冒险家角色号.has(我.role_id)
 			if 宝石 + 水晶 < 4:
 				if 地下法则:
 					组合.append({"text": "战绩区 +2【宝石】", "gem": 2, "crystal": 0})
@@ -4647,7 +4788,7 @@ func _选特殊行动(action_id: int) -> void:
 	var 本步说明: String = 购买说明
 	if action_id == GConst.SpecialAction.Synthesize:
 		本步说明 = 合成说明
-	elif 我.role_id == 冒险家角色号:
+	elif 冒险家角色号.has(我.role_id):
 		本步说明 = 购买说明_地下法则
 	var 选项: Array = []
 	for 项: Variant in 组合:
@@ -4710,6 +4851,9 @@ func _发送特殊行动(action_id: int, gem: int, crystal: int) -> void:
 ## 不复位的话（例如同系技能要 2 张牌）_need_cards 还停在技能的 2，
 ## 行动阶段就会继续允许点两张牌，看起来像还在按同系 / 同命格选牌。
 func _复位行动阶段选牌状态() -> void:
+	_提炼全给一人 = false
+	_提炼阶段 = 0
+	_提炼是冒险家流程 = false
 	_need_cards = 1
 	_need_players = 0
 	_skill_need_card = 0
@@ -4919,7 +5063,13 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		# 「默认选首项」型（如冒险家【欺诈】）：进栏就替玩家把第一个选项选上 ——
 		# 手牌不锁、随手就能选牌，也不必先点一次选项才能按「确定」；想换效果再点别的选项
 		if bool(指示配置.get("默认选首项", false)):
-			_选中二级选项(技能号, 0)
+			# 优先替玩家选第一个可用项；没有可选时才退回首项（技能本体通常会置灰）
+			var 首项: int = 0
+			for i: int in range(_二级选项.size()):
+				if bool((_二级选项[i] as Dictionary).get("可用", true)):
+					首项 = i
+					break
+			_选中二级选项(技能号, 首项)
 	elif 选牌来源 == GConst.CardSource.HandAndBasicEffect:
 		# 【封印破碎】/【风之洁净】：进技能就把二级技能栏摆出来（此刻只有技能本体一颗），
 		# 选完目标再由 _刷新基础效果选项 把该目标面前的基础效果填进去 —— 不用先按一次「确定」
@@ -5100,7 +5250,7 @@ func _分配上限() -> int:
 	if 配置.is_empty():
 		return 0
 	# 【冒险者天堂】的上限＝本次提炼出的星石总数（取到的宝石 + 水晶）
-	if _mode == 3 and _skill_ask_id == 冒险者天堂技能号:
+	if _mode == 3 and _是冒险者天堂技能(_skill_ask_id):
 		return _提炼宝石 + _提炼水晶
 	var 上限: int = int(配置.get("上限", 0))
 	if 上限 > 0:
@@ -5120,6 +5270,16 @@ func _点治疗目标(player_id: int) -> void:
 	var 每次: int = int(配置.get("每次", 1))
 	var 上限: int = _分配上限()
 	if 每次 <= 0 or 上限 <= 0:
+		return
+	# 12 号冒险家新版【冒险者天堂】：整份星石只能交给一名队友，点一次就全给他
+	if _提炼全给一人:
+		var 总: int = _提炼宝石 + _提炼水晶
+		if 总 <= 0 or _玩家空位(player_id) < 总:
+			return
+		_治疗分配.clear()
+		for _i: int in range(总):
+			_治疗分配.append(player_id)
+		_刷新治疗分配()
 		return
 	if not bool(配置.get("可多目标", true)) and not _治疗分配.is_empty() and int(_治疗分配[0]) != player_id:
 		_治疗分配 = [player_id]
@@ -5146,7 +5306,7 @@ func _点治疗目标(player_id: int) -> void:
 			if 目标已有 + 每次 > 封顶:
 				return
 	# 【冒险者天堂】每名队友各有限额（其能量空位）：已装不下的队友再点不再增加
-	if _mode == 3 and _skill_ask_id == 冒险者天堂技能号:
+	if _mode == 3 and _是冒险者天堂技能(_skill_ask_id):
 		var 已有: int = 0
 		for id: int in _治疗分配:
 			if id == player_id:
@@ -5178,7 +5338,7 @@ func _刷新治疗分配() -> void:
 		var 每次: int = int(配置.get("每次", 1))
 		# 【冒险者天堂】分的是星石颗数，还要按「先宝石、后水晶」拆开写（见 _提炼分配文本表）
 		var 提炼文本: Dictionary = {}
-		if _mode == 3 and _skill_ask_id == 冒险者天堂技能号:
+		if _mode == 3 and _是冒险者天堂技能(_skill_ask_id):
 			提炼文本 = _提炼分配文本表()
 		# 【血腥祷言】转出去多少点治疗，自己就吃等量法术伤害（配置「转出反噬」）；
 		# 【神圣契约】则是转出去多少点，自己头像就写「移除 X 治疗」（配置「转出移除」）。
@@ -5550,7 +5710,7 @@ func _重置治疗分配() -> void:
 ## 技能询问（发动与否）与发动技能两条通道分别回不同的包
 func _发送治疗分配() -> void:
 	# 【冒险者天堂】分配的不是「点数」而是「星石颗数」，且走特殊行动（提炼）提交，单独一条
-	if _mode == 3 and _skill_ask_id == 冒险者天堂技能号:
+	if _mode == 3 and _是冒险者天堂技能(_skill_ask_id):
 		_发送冒险家提炼分配()
 		return
 	# 配了「阵营效果」的技能（【神圣领域】）：只有一个目标，args 不是点数而是「用哪种用法」——
@@ -6557,7 +6717,7 @@ func _撕裂头像提示() -> Dictionary:
 ## X 来自选项 args[0]；目标还没选时只写自己的代价，不画「弃 X 张」。
 func _圣屑飓暴未命中头像提示() -> Dictionary:
 	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != 37021 or _已选参数.is_empty():
+	if _mode != 3 or not 圣弓_圣屑未命中.has(_skill_ask_id) or _已选参数.is_empty():
 		return out
 	var x: int = int(_已选参数[0])
 	if x <= 0:
@@ -6575,7 +6735,7 @@ func _圣屑飓暴未命中头像提示() -> Dictionary:
 ## 目标可以选自己，此时两行并在一起。
 func _圣流星弹头像提示() -> Dictionary:
 	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_圣流星弹:
+	if _mode != 3 or not 圣弓_圣流星弹.has(_skill_ask_id):
 		return out
 	var 我: int = Logic.my_player_id
 	for 目标id: Variant in _sel_players:
@@ -6596,7 +6756,7 @@ func _圣流星弹头像提示() -> Dictionary:
 ## 圣弓【圣煌模式】：没有目标，只在自己头像上写支付代价。
 func _圣煌模式头像提示() -> Dictionary:
 	var out: Dictionary = {}
-	if _mode != 4 or _pending_skill_id != GConst.技能_圣煌模式 or _已选参数.is_empty():
+	if _mode != 4 or not 圣弓_圣煌模式.has(_pending_skill_id) or _已选参数.is_empty():
 		return out
 	match int(_已选参数[0]):
 		1:
@@ -6610,12 +6770,13 @@ func _圣煌模式头像提示() -> Dictionary:
 ## 辉光炮额外给我方 +1 治疗；自己头像上写移除的信仰代价。
 func _圣煌辉光炮头像提示() -> Dictionary:
 	var out: Dictionary = {}
-	if _mode != 4 or (_pending_skill_id != GConst.技能_圣煌辉光炮 \
-			and _pending_skill_id != GConst.技能_圣煌余辉):
+	if _mode != 4 or not (圣弓_辉光炮.has(_pending_skill_id) \
+			or 圣弓_余辉.has(_pending_skill_id)):
 		return out
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	if 我 == null:
 		return out
+	var 新版37: bool = _pending_skill_id == GConst.技能_圣煌辉光炮
 	for p: GPlayer in Data.player_list:
 		var 目标手牌: int = mini(GConst.圣煌手牌目标, p.hand_cards_max)
 		var 差: int = 目标手牌 - p.hand_cards_num
@@ -6624,7 +6785,7 @@ func _圣煌辉光炮头像提示() -> Dictionary:
 			行.append("摸 %d 张牌" % 差)
 		elif 差 < 0:
 			行.append("弃 %d 张牌" % -差)
-		if _pending_skill_id == GConst.技能_圣煌辉光炮 and p.color == 我.color:
+		if not 新版37 and 圣弓_辉光炮.has(_pending_skill_id) and p.color == 我.color:
 			行.append("+1 治疗")
 		if not 行.is_empty():
 			out[p.id] = "\n".join(行)
@@ -6640,14 +6801,25 @@ func _圣煌辉光炮头像提示() -> Dictionary:
 ## Y＝已选目标中当前有治疗的人数；自己头像上写本次移除的治疗和弃牌（代价）。
 func _圣光爆裂头像提示() -> Dictionary:
 	var out: Dictionary = {}
-	if _mode != 4 or _pending_skill_id != GConst.技能_圣光爆裂 or _已选参数.is_empty():
+	if _mode != 4 or not 圣弓_圣光爆裂.has(_pending_skill_id) or _已选参数.is_empty():
 		return out
 	var 我: int = Logic.my_player_id
 	var 模式: int = int(_已选参数[0])
+	var 新版37: bool = _pending_skill_id == GConst.技能_圣光爆裂
 	if 模式 == 1:
-		out[我] = "移除 1 治疗\n+1 信仰"
-		for 目标id: Variant in _sel_players:
-			out[int(目标id)] = "2 攻击伤害"
+		if 新版37:
+			# 新版 37：辅助分支，不再是单体攻击；目标可以是自己，自己头像上要同时写代价和 +1 治疗。
+			out[我] = "摸 1 张牌\n移除 1 治疗\n+1 信仰"
+			for 目标id: Variant in _sel_players:
+				var pid: int = int(目标id)
+				if pid == 我:
+					out[我] += "\n+1 治疗"
+				else:
+					out[pid] = "+1 治疗"
+		else:
+			out[我] = "移除 1 治疗\n+1 信仰"
+			for 目标id: Variant in _sel_players:
+				out[int(目标id)] = "2 攻击伤害"
 	elif 模式 == 2:
 		var x: int = int(_已选参数[1]) if _已选参数.size() > 1 else 0
 		var y: int = 0
@@ -6655,7 +6827,9 @@ func _圣光爆裂头像提示() -> Dictionary:
 			var 目标: GPlayer = Data.get_player_by_id(int(目标id))
 			if 目标 != null and 目标.cross_num > 0:
 				y += 1
-		out[我] = "移除 %d 治疗\n弃 %d 张牌\n+%d 信仰" % [x, x, x]
+		out[我] = "移除 %d 治疗\n弃 %d 张牌" % [x, x]
+		if not 新版37:
+			out[我] += "\n+%d 信仰" % x
 		for 目标id: Variant in _sel_players:
 			out[int(目标id)] = "%d 攻击伤害" % (2 + y)
 	return out
@@ -7364,6 +7538,10 @@ func _玩家可选(player_id: int) -> bool:
 		# 分配型指示器配了「仅队友」时（如神官【神圣契约】），只有队友头像能点（不含自己）
 		if bool(_分配配置().get("仅队友", false)) and not _是队友(player_id):
 			return false
+		# 12 号冒险家新版【冒险者天堂】：目标必须能一次收下整份星石
+		if _提炼全给一人:
+			var 总: int = _提炼宝石 + _提炼水晶
+			return 总 > 0 and _玩家空位(player_id) >= 总
 		# 「目标随牌」的技能（如女武神【英灵召唤】：弃了法术牌才给治疗）：没选够牌时谁都不亮、点不动
 		# （取消牌后 _on_card_clicked 会再问一次 _玩家可选，把已点的目标一并清掉）
 		var 随牌阈值: int = _目标随牌阈值()

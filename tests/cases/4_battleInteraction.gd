@@ -222,6 +222,18 @@ func 跑() -> void:
 	await 等帧(2)
 	检(int(窗.get("_本地选项阶段")) == 3, "点右侧「返回」后没有退回三选一：%d" % int(窗.get("_本地选项阶段")))
 	检(not (窗.get("_二级选项") as Array).is_empty(), "退回三选一后选项没摆出来")
+	# 三选一是“进入下一层”的选项：点「提炼」应直接进去，不需要先点「确定」
+	var 提炼项: 技能按钮 = _找技能栏文案按钮(窗, "提炼")
+	检(提炼项 != null, "三选一里找不到「提炼」选项")
+	if 提炼项 != null and 提炼项.plateButton != null:
+		提炼项.plateButton.pressed.emit()
+	await 等帧(2)
+	检(int(窗.get("_本地选项阶段")) == 2, "点「提炼」选项没有直接进入选星石步骤")
+	返回按钮 = _找技能栏文案按钮(窗, "返回")
+	if 返回按钮 != null and 返回按钮.plateButton != null:
+		返回按钮.plateButton.pressed.emit()
+	await 等帧(2)
+	检(int(窗.get("_本地选项阶段")) == 3, "从选星石步骤返回后没有回到三选一")
 	# 战斗界面的取消 → 一路退回行动阶段
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(2)

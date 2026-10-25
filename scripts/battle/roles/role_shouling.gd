@@ -248,7 +248,7 @@ func _ni_fan_zhan(ctx: Dictionary) -> int:
 		for x: int in range(0, _shou_hun() + 1):
 			options.append({
 				"value": x + 1,
-				"label": "不移除兽魂（目标弃 2 张）" if x == 0 else "移除 %d 点兽魂（目标弃 %d 张）" % [x, x + 2],
+				"label": "不移除兽魂，目标弃 2 张" if x == 0 else "移除 %d 点兽魂，目标弃 %d 张" % [x, x + 2],
 			})
 		# 本次攻击目标不是这边点头像选出来的，但指示器要把它自动选中并点亮（头像亮起），
 		# 再在它头像上写「弃 X+2 张牌」—— 故把目标随询问下发
@@ -379,7 +379,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 			var options: Array = []
 			for n: int in range(1, 最多 + 1):
 				# need_card=n：选了这一项就要弃满 n 张才让点「确定」（服务端不再替他补牌）
-				options.append({"value": n, "label": "移除 %d 点兽魂（弃 %d 张手牌）" % [n, n], "need_card": n})
+				options.append({"value": n, "label": "移除 %d 点兽魂，弃 %d 张手牌" % [n, n], "need_card": n})
 			# 伤害来源不是这边点头像选出来的，但指示器要在它头像上写「弃 1 张牌」；
 			# need_target=0 时 targets 只当提示落点，头像点不动
 			var 来源: int = int(harm.get("src", -1))
@@ -557,16 +557,14 @@ func p_turn_end(ctx: Dictionary) -> int:
 # 启动：御魂流居合式（3607）—— 技能栏按钮，点了才在二级栏里选效果
 # ============================================================
 ## 三个分支（二级技能栏）：1＝弃 1 张手牌、2＝摸 1 张牌、3＝不调整。
-## 弃牌项自带 need_card=1（选中它才放出手牌、并卡住最少 1 张）；摸牌 / 不调整不用牌。
-## 手牌为空时不列弃牌 / 不调整两项 —— 没有牌可弃，留着只会让玩家点了又点不了「确定」
+## 三项始终摆出来；手牌为空时只有「弃 1 张手牌」置灰，另外两项仍然可点。
 func _yu_hun_boot_choices() -> Array:
-	var out: Array = []
-	if not player.hand_cards.is_empty():
-		out.append({"text": "弃 1 张手牌", "args": [1], "need_card": 1})
-	out.append({"text": "摸 1 张牌", "args": [2]})
-	if not player.hand_cards.is_empty():
-		out.append({"text": "不调整", "args": [3]})
-	return out
+	return [
+		{"text": "弃 1 张手牌", "args": [1], "need_card": 1,
+			"enabled": not player.hand_cards.is_empty()},
+		{"text": "摸 1 张牌", "args": [2]},
+		{"text": "不调整", "args": [3]},
+	]
 
 
 ## 【御魂流居合式】为「启动」：不消耗本回合行动，发动后行动阶段照旧继续

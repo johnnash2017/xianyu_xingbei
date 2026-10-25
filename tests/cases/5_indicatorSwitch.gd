@@ -72,12 +72,13 @@ func 跑() -> void:
 	检((窗.get("BtnOK") as Button).disabled, "目标不合法时「确定」却是可用的")
 
 	# 冒险家【欺诈】：取消二级技能栏后再次点技能，二级栏必须重新打开
+	var 风名: String = Data.get_card(66).card_name
 	var 欺诈选项: Array = [
-		{"text": "视为【风】", "args": [66], "element": GConst.CardElement.Wind},
-		{"text": "视为【水】", "args": [133], "element": GConst.CardElement.Water},
-		{"text": "视为【火】", "args": [87], "element": GConst.CardElement.Fire},
-		{"text": "视为【地】", "args": [45], "element": GConst.CardElement.Earth},
-		{"text": "视为【雷】", "args": [110], "element": GConst.CardElement.Thunder},
+		{"text": "视为%s" % 风名, "args": [66], "element": GConst.CardElement.Wind},
+		{"text": "视为%s" % Data.get_card(133).card_name, "args": [133], "element": GConst.CardElement.Water},
+		{"text": "视为%s" % Data.get_card(87).card_name, "args": [87], "element": GConst.CardElement.Fire},
+		{"text": "视为%s" % Data.get_card(45).card_name, "args": [45], "element": GConst.CardElement.Earth},
+		{"text": "视为%s" % Data.get_card(110).card_name, "args": [110], "element": GConst.CardElement.Thunder},
 	]
 	窗.call("_选择技能", GConst.技能_欺诈, GConst.ActionType.AttackSkill, 2, 1, [2, 3], [], 0, 0, 0,
 		GConst.CardSource.Hand, "same", 0, 0, 欺诈选项, null, 0)
@@ -87,8 +88,10 @@ func 跑() -> void:
 	if (窗.get("_二级选项") as Array).size() == 5:
 		var 首项: Dictionary = (窗.get("_二级选项") as Array)[0]
 		var 首钮: 技能按钮 = 首项.get("按钮")
-		检(首钮.skillName.get_theme_color("default_color") == Color("#9BE7A2"),
-			"欺诈风系选项没有使用风系字色：%s" % str(首钮.skillName.get_theme_color("default_color")))
+		检(首钮.skillName.text.contains("[color=#9BE7A2]%s[/color]" % 风名),
+			"欺诈风系选项应只给卡名上色：%s" % 首钮.skillName.text)
+		检(not 首钮.skillName.text.contains("【"),
+			"欺诈选项文案不应再用【】包卡名：%s" % 首钮.skillName.text)
 	窗.call("_on_cancel")
 	await 等帧(2)
 	检(not bool(窗.get("_二级栏")), "取消欺诈后二级栏状态没有清掉")
@@ -118,6 +121,68 @@ func 跑() -> void:
 	await 等帧(2)
 	检(bool(窗.get("_二级栏")) and (窗.get("_二级选项") as Array).size() == 2,
 		"取消偷天换日后再次点技能，二级栏没有重新打开")
+
+	# 军神威光第一段第二项：点选项应直接提交，不再等玩家按「确定」
+	窗.set("_是技能询问", true)
+	窗.set("_pending_type", GConst.Msg.Respond)
+	窗.set("_skill_ask_id", GConst.技能_军神威光)
+	窗.set("_pending", {
+		"respond_id": GConst.技能_军神威光, "is_skill": true,
+		"args": [0, 0, GConst.CardSource.Hand, 2, 1, 2],
+		"notes": ["脱离英灵形态", "移除星石"],
+		"can_cancel": false,
+	})
+	窗.call("_进入技能询问")
+	await 等帧(2)
+	窗.call("_选中二级选项", GConst.技能_军神威光, 1)
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 0 and (窗.get("_pending") as Dictionary).is_empty(),
+		"点军神威光第一段第二项没有直接提交进入下一段")
+
+	# 军神威光第二段：选项 5 档，必须提供「返回」按钮（服务端把空应答当退回第一段）
+	窗.set("_是技能询问", true)
+	窗.set("_pending_type", GConst.Msg.Respond)
+	窗.set("_skill_ask_id", GConst.技能_军神威光)
+	窗.set("_pending", {
+		"respond_id": GConst.技能_军神威光, "is_skill": true,
+		"args": [0, 1, GConst.CardSource.Hand, 5, 1, 2, 3, 4, 5],
+		"notes": ["组合一", "组合二", "组合三", "组合四", "组合五"],
+		"can_cancel": true,
+	})
+	窗.call("_进入技能询问")
+	await 等帧(2)
+	var 有返回: bool = false
+	for 子: Node in 窗.get("_技能按钮"):
+		if 子 is 技能按钮 and (子 as 技能按钮).skillName.text == "返回":
+			有返回 = true
+			break
+	检(有返回, "军神威光第二段没有摆出「返回」按钮")
+	检(not str(GConst.提示原文(GConst.技能_军神威光, 2)).contains("返回上级"),
+		"军神威光第二段提示仍带「返回上级」后缀")
+
+	# 12 号冒险家新版【冒险者天堂】：选完构成后点一次队友，整份星石都给同一人
+	玩家[0].role_id = 12
+	var 蓝队2: GTeam = Data.team_of(GConst.BLUE)
+	蓝队2.gem = 2
+	蓝队2.crystal = 1
+	窗.call("_选特殊行动", GConst.SpecialAction.Extract)
+	await 等帧(2)
+	检(bool(窗.get("_提炼全给一人")), "12 号冒险家提炼没有进入整份给一人的流程")
+	检(int(窗.get("_提炼阶段")) == 4, "12 号冒险家提炼没有进入选构成步骤")
+	var 提炼选项: Array = 窗.get("_二级选项") as Array
+	检(not 提炼选项.is_empty(), "12 号冒险家提炼没有列出星石构成")
+	if not 提炼选项.is_empty():
+		窗.call("_选中二级选项", GConst.技能_冒险者天堂, 0)
+		await 等帧()
+		var 总颗数: int = int(窗.get("_提炼宝石")) + int(窗.get("_提炼水晶"))
+		检(总颗数 >= 1, "12 号冒险家提炼选出的总颗数不对")
+		窗.call("_on_player_clicked", 4)
+		await 等帧()
+		var 分配: Array = 窗.get("_治疗分配")
+		检(分配.size() == 总颗数 and 分配.all(func(id: Variant) -> bool: return int(id) == 4),
+			"12 号冒险家提炼应把整份星石全部交给同一名队友：%s" % str(分配))
+	窗.call("_on_cancel")
+	await 等帧(2)
 
 	Logic.my_player_id = 旧id
 	Data.player_list = 旧玩家

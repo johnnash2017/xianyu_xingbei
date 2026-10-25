@@ -95,7 +95,8 @@ func 设置选项(文本: String, 底色: Color, 选项技能号: int = 0, 字�
 	(plateButton.material as ShaderMaterial).set_shader_parameter("button_color", 用色)
 	if skillName != null:
 		skillName.text = 显示
-		# 普通选项保持主题字色；带系别色的选项（如欺诈的五种虚牌斩）只覆盖文字颜色。
+		# 普通选项保持主题字色；带系别色的选项由调用方在文本里只给卡名套 BBCode 颜色，
+		# 这里的字色只作“没做局部着色”时的兜底。
 		if 字色.a > 0.0:
 			skillName.add_theme_color_override("default_color", 字色)
 		else:
@@ -120,6 +121,8 @@ func 设置选项可用(值: bool) -> void:
 
 ## 词缀图标标签：GConst.词缀文本 把【宝石】这类关键字换成的 [img=宽x高]路径[/img]
 const 词缀图标模式: String = "\\[img=(\\d+)x(\\d+)\\].*?\\[/img\\]"
+## 选项局部着色标签（如欺诈只染卡名）：量宽度前必须从文本里剥掉
+const 颜色标签模式: String = "\\[/?color[^\\]]*\\]"
 
 
 ## 名字在按钮字体下的实际渲染宽度（含描边）。
@@ -134,7 +137,11 @@ func _名字宽度(名: String) -> float:
 	var 字体: Font = skillName.get_theme_font("normal_font")
 	var 字号: int = skillName.get_theme_font_size("normal_font_size")
 	var 描边: int = skillName.get_theme_constant("outline_size")
-	var 正文宽: float = 字体.get_string_size(正则.sub(名, "", true), HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x
+	var 去图标: String = 正则.sub(名, "", true)
+	var 颜色正则: RegEx = RegEx.new()
+	颜色正则.compile(颜色标签模式)
+	var 去颜色: String = 颜色正则.sub(去图标, "", true)
+	var 正文宽: float = 字体.get_string_size(去颜色, HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x
 	return 正文宽 + 图标宽 + float(描边) * 2.0
 
 

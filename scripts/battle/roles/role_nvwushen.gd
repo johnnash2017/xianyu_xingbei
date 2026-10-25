@@ -75,7 +75,7 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 ## 第 1 段：问「选项① 还是 选项②」。不能取消（客户端「取消」键灰掉）；整条链超时＝自动选选项①。
 func _jun_shen_wen_guo_ju() -> int:
 	if not engine.has_reply():
-		# 提示里的 {取消说明} 留空：这一段不能取消，不该出现「点取消返回上级」。
+		# 提示里的 {取消说明} 留空：这一段不能取消，也不提供返回按钮。
 		# 保留倒计时＝已在链中就沿用最早的截止时刻（从第 2 段退回来重问时不重新计时）
 		询问(player.id, JUN_SHEN_WEI_GUANG, 0, 0, GConst.CardSource.Hand, _jun_shen_wei_guang_choices(),
 			0, "", [], false, 0, -1, [], -1, {"取消说明": ""}, 0, 0, _jun_shen_链中)
@@ -118,9 +118,9 @@ func _jun_shen_xuan_xiang_1() -> int:
 func _jun_shen_wen_xing_shi() -> int:
 	if not engine.has_reply():
 		# 这一段要选「移除哪几个星石 + 给谁治疗」：提示条用技能表第 3 条（写明移除的是我方【战绩区】星石），
-		# 选项本身只写 -N【水晶】/-N【宝石】；取消＝退回第一段重问，提示里补一句。
+		# 选项本身只写 -N【水晶】/-N【宝石】；取消／「返回」＝退回第一段重问，界面在选项左侧提供返回按钮。
 		# 保留倒计时=true：整条链共用第 1 段那次等待的截止时刻
-		# 第二段的提示（含「点取消返回上级」）直接取技能表第 3 条，不再在代码里拼后缀
+		# 第二段提示直接取技能表第 3 条（已去掉“点取消返回上级”的后缀）
 		var 文案: String = 提示原文(JUN_SHEN_WEI_GUANG, 2)
 		engine.ask_skill(player.id, JUN_SHEN_WEI_GUANG, 0, 1, GConst.CardSource.Hand,
 			_jun_shen_wei_guang_energy_choices(), 0, "", [], true, 文案,
@@ -132,7 +132,8 @@ func _jun_shen_wen_xing_shi() -> int:
 	var 宝石用: int = _jun_shen_gem_of(组合)
 	var 水晶用: int = _jun_shen_crystal_of(组合)
 	var dsts: Array = r.get("dst_ids", [])
-	if 宝石用 < 0 or 水晶用 < 0 or dsts.is_empty():
+	if 宝石用 < 0 or 水晶用 < 0 or dsts.is_empty() \
+			or 宝石用 > engine.team_gem[player.color] or 水晶用 > engine.team_crystal[player.color]:
 		_jun_shen_step = 0
 		if bool(r.get("is_timeout", false)):
 			# 整条链超时：自动按选项① 收尾，不再来回问
@@ -149,24 +150,27 @@ func _jun_shen_wen_xing_shi() -> int:
 	return SUCCESS
 
 
-## 军神威光第一段选项：+1 治疗并脱离【英灵形态】，或（战绩区有星石时）移除 1~2 星石给目标 +X 治疗
+## 军神威光第一段选项：+1 治疗并脱离【英灵形态】，或（战绩区有星石时）移除 1~2 星石给目标 +X 治疗。
+## 两项始终下发；没有星石时第二项 enabled=false，由界面置灰。
 func _jun_shen_wei_guang_choices() -> Array:
-	var 选项: Array = [{"value": 1, "label": 提示(JUN_SHEN_WEI_GUANG, 1)}]
-	if engine.team_gem[player.color] + engine.team_crystal[player.color] > 0:
-		选项.append({"value": 2, "label": 提示(JUN_SHEN_WEI_GUANG, 2)})
-	return 选项
+	return [
+		{"value": 1, "label": 提示(JUN_SHEN_WEI_GUANG, 1)},
+		{"value": 2, "label": 提示(JUN_SHEN_WEI_GUANG, 2),
+			"enabled": engine.team_gem[player.color] + engine.team_crystal[player.color] > 0},
+	]
 
 
-## 军神威光第二段选项：按战绩区现有的星石列出可行组合（总数 X<3，即 X＝1 或 2）
+## 军神威光第二段选项：五种组合始终摆出来，凑不出的置灰
 ## （value 1＝两水晶 / 2＝一宝石一水晶 / 3＝两宝石 / 4＝一水晶 / 5＝一宝石）
 func _jun_shen_wei_guang_energy_choices() -> Array:
 	var 宝石: int = engine.team_gem[player.color]
 	var 水晶: int = engine.team_crystal[player.color]
 	var 选项: Array = []
 	for 组合: int in range(1, 6):
-		if 宝石 < _jun_shen_gem_of(组合) or 水晶 < _jun_shen_crystal_of(组合):
-			continue
-		选项.append({"value": 组合, "label": _jun_shen_combo_label(组合)})
+		选项.append({
+			"value": 组合, "label": _jun_shen_combo_label(组合),
+			"enabled": 宝石 >= _jun_shen_gem_of(组合) and 水晶 >= _jun_shen_crystal_of(组合),
+		})
 	return 选项
 
 

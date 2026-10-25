@@ -172,6 +172,8 @@ const SUB: Dictionary = {
 		9: {"n": "enabled", "t": "bool"},
 		# 选项对应的系别（CardElement）：仅用于按钮文字配色，如欺诈的五种虚牌斩。
 		10: {"n": "element", "t": "u32"},
+		# 该选项自己的选牌上限（0/省略＝沿用技能本体）；如欺诈 2 张档最多 2、暗系 3 张档最多 3。
+		11: {"n": "card_max", "t": "u32"},
 	},
 	# 某个选项各自的可点目标（option_targets 的一项）
 	"OptionTargets": {

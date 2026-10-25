@@ -44,8 +44,7 @@ func available_skills() -> Array:
 	# 两种用法改为第一步就在二级技能栏里二选一（arg_choices），选完再选牌 / 选目标：
 	#   队友用法（args[0]==0）＝ 自己 +2、目标队友 +1 治疗；敌人用法（args[0]==1）＝ 移除自己 1 治疗、目标受 2 点法术伤害
 	# 每项各带自己的 targets 白名单：选了哪一边就只让那一边的头像亮（见 role_shenguan._ling_yu_choices）
-	# 自己治疗不足时打不出伤害（v_magic_skill 判 cross_num < 1），所以这时不列敌人那一项
-	# 能量不足 1 点时置灰
+	# 自己治疗不足时敌人那一项仍摆出但置灰（不删项）；能量不足 1 点时整个技能置灰
 	out.append({
 		"type": GConst.ActionType.MagicSkill, "id": SHEN_SHENG_LING_YU,
 		"need_card": mini(LING_YU_DISCARD, player.hand_cards.size()), "need_target": 1,
@@ -88,14 +87,16 @@ func _has_cards(cards: Array) -> bool:
 
 ## 神圣领域的两种用法（二级技能栏里的二选一）。每项各带自己的 targets 白名单：
 ## 选了哪一项，客户端就只让那一边的头像亮（选队友＝加治疗、选敌人＝打伤害）。
-## 自己治疗不足时打不出伤害（v_magic_skill 判 cross_num < 1），所以这时不列敌人那一项。
+## 自己治疗不足时打不出伤害（v_magic_skill 判 cross_num < 1）：
+## 敌人那一项仍然摆出来，只把 enabled 标为 false，由界面置灰，不整项消失。
 func _ling_yu_choices() -> Array:
 	var 队友: Array[int] = ally_ids()
 	队友.append(player.id)
-	var out: Array = [{"text": "自己+2、目标队友+1【治疗】", "args": [0], "need_target": 1, "targets": 队友}]
-	if player.cross_num >= 1:
-		out.append({"text": "自己-1、目标受 2 点法术伤害", "args": [1], "need_target": 1, "targets": enemy_ids()})
-	return out
+	return [
+		{"text": "自己+2、目标队友+1【治疗】", "args": [0], "need_target": 1, "targets": 队友},
+		{"text": "自己-1、目标受 2 点法术伤害", "args": [1], "need_target": 1, "targets": enemy_ids(),
+			"enabled": player.cross_num >= 1},
+	]
 
 
 ## 神圣领域的可选目标：治疗够时全场都能点（含自己，因为「队友」这一边含自己）；

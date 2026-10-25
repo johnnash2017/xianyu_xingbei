@@ -48,6 +48,8 @@ const HUI_GUANG_SIDE_BACK: int = 1
 const HUI_GUANG_SIDE_REMOVED: int = 2
 
 var no_tian_chong: bool = false             # 本回合是否进行过特殊行动（跳过自动填充）
+## 圣煌形态被特殊行动解除后，等待玩家选择 +1 治疗 / +1 信仰（在 p_after_special 里问）
+var sheng_huang_exit_pending: bool = false
 
 ## 圣屑飓暴·未命中的中间状态
 var sheng_xie_miss_dst: int = -1
@@ -62,7 +64,9 @@ var hui_guang_draws: Array = []
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
 	p.cross_max = CROSS_MAX_SHENG_GONG
-	# 天之弓：游戏初始时拥有【圣煌辉光炮】。客户端据 player.sheng_huang_side 画状态图标。
+	# 天之弓：游戏初始时 +2【水晶】，并获得【圣煌辉光炮】正面状态。
+	p.set_crystal(p.crystal + 2)
+	# 客户端据 player.sheng_huang_side 画状态图标；新版 37 使用后直接移除，不再翻面。
 	p.sheng_huang_side = HUI_GUANG_SIDE_FRONT
 
 
@@ -90,14 +94,11 @@ func available_skills() -> Array:
 			break
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_GUANG_BAO_LIE, "need_card": 0, "need_target": 0,
 		"arg_choices": 爆裂选项, "enabled": player.tap and 爆裂可用})
-	# 圣煌辉光炮 / 圣煌余辉：同一张专属技的正反面，两颗都摆出来，按 player.sheng_huang_side 置灰。
+	# 圣煌辉光炮：新版 37 只有正面这一张，使用后直接移除，不再翻面 / 不再保留圣煌余辉。
 	# 只要求圣煌形态 + 信仰足够支付（落后士气差 + 4）；设计表没有把“士气落后”写成发动条件。
-	var 炮选项: Array = _hui_guang_pao_choices(true)
-	var 余辉选项: Array = _hui_guang_pao_choices(false)
+	var 炮选项: Array = _hui_guang_pao_choices(false)
 	out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_GUANG_PAO, "need_card": 0, "need_target": 0,
 		"arg_choices": 炮选项, "enabled": _hui_guang_enabled(HUI_GUANG_SIDE_FRONT)})
-	out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_GUANG_YU_HUI, "need_card": 0, "need_target": 0,
-		"arg_choices": 余辉选项, "enabled": _hui_guang_enabled(HUI_GUANG_SIDE_BACK)})
 	return out
 
 
@@ -109,35 +110,34 @@ func _sheng_huang_mo_shi_choices() -> Array:
 	]
 
 
-## 圣光爆裂的第一层选项（args[0]=1 单体 / 2 群体）：
-##   1：移除 1 治疗，摸 1 张牌，对 1 名手牌数少于你的对手造成 2 点攻击伤害，+1 信仰；
+## 圣光爆裂的第一层选项（args[0]=1 辅助 / 2 群体）：
+##   1：摸 1 张牌，移除 1 治疗，+1 信仰，目标队友 +1 治疗；
 ##   2：群体，具体的 X（移除多少治疗）由客户端二级技能栏再选，最终 args=[2, x]。
-## 单体的 need_card / need_target / target_max / targets 照旧；群体第一层不要求目标 / 牌，
+## 单体的目标改为友方；群体第一层不要求目标 / 牌，
 ## 选完群体后由客户端摆出 X=1..3 的第二层选项，再按 X 收紧弃牌数与目标。
 func _sheng_guang_bao_lie_choices() -> Array:
 	var out: Array = []
-	var 单体目标: Array[int] = _sheng_guang_mode1_targets()
+	var 友方: Array[int] = _all_allies()
 	out.append({
-		"text": "发动单体攻击，移除 1 治疗，摸 1 牌",
+		"text": "摸 1 张牌，移除 1 治疗，目标队友 +1 治疗",
 		"args": [1],
 		"need_card": 0,
 		"need_target": 1,
 		"target_max": 1,
-		"targets": 单体目标,
-		"enabled": player.cross_num > 0 and not 单体目标.is_empty(),
-		# 单体分支先摸 1 张再判定伤害；摸牌受手牌上限约束，目标手牌须严格小于摸牌后的手牌数。
-		"说明": "摸 1 牌，对 1 名手牌数小于 %d 的对手造成 2 点攻击伤害，你 +1【信仰】。" % _sheng_guang_single_hand_limit(),
+		"targets": 友方,
+		"enabled": player.cross_num > 0 and not 友方.is_empty(),
+		"说明": "摸 1 张牌【强制】，移除 1【治疗】，你 +1【信仰】，目标队友 +1【治疗】。",
 	})
 	var 群体目标: Array[int] = _sheng_guang_mode2_targets(1)
 	out.append({
-		"text": "发动群体攻击，移除 X 治疗，弃 X 牌",
+		"text": "移除 X 治疗，弃 X 牌，群体攻击",
 		"args": [2],
 		"need_card": 0,
 		"need_target": 0,
 		"target_max": 0,
 		"targets": [],
 		"enabled": player.cross_num > 0 and not 群体目标.is_empty(),
-		"说明": "移除 X 治疗，弃 X 张牌，对最多 X 名手牌数小于（你的手牌数 - X + 1）的对手各造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数，你获得 X 点【信仰】。X 在下一步选择。",
+		"说明": "移除 X 治疗，弃 X 张牌，对最多 X 名手牌数不大于（你的手牌数 - X）的对手各造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数。X 在下一步选择。",
 	})
 	return out
 
@@ -242,24 +242,26 @@ func _same_element(a: int, b: int) -> bool:
 	return ca.element_enum() == cb.element_enum()
 
 
-## 圣屑飓暴可弃的手牌：该系手里至少有 2 张，且该系存在【圣】命格攻击牌可当虚拟牌用
+## 圣屑飓暴可弃的手牌：该系手里至少有 2 张【攻击牌】，且该系存在【圣】命格攻击牌可当虚拟牌用。
+## 新版 37 不再接受任意同系牌，也不再保留「两张【圣光】改暗系」的特殊分支。
 func _sheng_xie_hand_ids() -> Array[int]:
 	var out: Array[int] = []
 	for cid: int in player.hand_cards:
 		var c: GCard = Data.get_card(cid)
-		if c == null or _sheng_xie_virtual_card(c.element_enum()) < 0:
+		if c == null or not c.is_attack() or _sheng_xie_virtual_card(c.element_enum()) < 0:
 			continue
-		var 同系数: int = 0
+		var 同系攻击数: int = 0
 		for other: int in player.hand_cards:
 			var o: GCard = Data.get_card(other)
-			if o != null and o.element_enum() == c.element_enum():
-				同系数 += 1
-		if 同系数 >= 2:
+			if o != null and o.is_attack() and o.element_enum() == c.element_enum():
+				同系攻击数 += 1
+		if 同系攻击数 >= 2:
 			out.append(cid)
 	return out
 
 
-## 该系【圣】命格攻击牌（发动时当作打出的虚拟牌）；取值与服务端客户端 ShengGong.cpp 的硬编码一致
+## 该系【圣】命格攻击牌（发动时当作打出的虚拟牌）；取值与服务端客户端 ShengGong.cpp 的硬编码一致。
+## 新版 37 只走「该系攻击牌」；光系没有对应的圣命格攻击牌，返回 -1。
 func _sheng_xie_virtual_card(element: int) -> int:
 	match element:
 		GConst.CardElement.Earth: return 54       # 地裂斩
@@ -268,7 +270,6 @@ func _sheng_xie_virtual_card(element: int) -> int:
 		GConst.CardElement.Thunder: return 117    # 雷光斩
 		GConst.CardElement.Fire: return 96        # 火焰斩
 		GConst.CardElement.Darkness: return 39    # 暗灭
-		GConst.CardElement.Light: return 39       # 两张【圣光】按设计表视为暗系【暗灭】
 	return -1
 
 
@@ -349,6 +350,7 @@ func _ids_from_self() -> Array[int]:
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	no_tian_chong = false
+	sheng_huang_exit_pending = false
 	return SUCCESS
 
 
@@ -455,7 +457,7 @@ func _sheng_xie_miss_choices() -> Array:
 	var out: Array = []
 	var n: int = mini(player.cross_num, 2)
 	for x: int in range(1, n + 1):
-		out.append({"value": x, "label": "弃 %d 张牌" % x})
+		out.append({"value": x, "label": "目标友方弃 %d 张牌" % x})
 	return out
 
 
@@ -530,7 +532,32 @@ func p_before_special(ctx: Dictionary) -> int:
 		return SUCCESS
 	notice_skill(SHENG_HUANG_MO_SHI, [player.id])
 	player.tap = false
-	施加治疗(player.id, 1)
+	# p_before_special 不能等待玩家输入；先把「选 +1 治疗 / +1 信仰」挂起，
+	# 等本次特殊行动结算完，再由 p_after_special 问。
+	sheng_huang_exit_pending = true
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 圣煌形态解除后的奖励：+1【治疗】或 +1【信仰】。
+func p_after_special(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id or not sheng_huang_exit_pending:
+		return SUCCESS
+	var 选项: Array = [
+		{"text": "+1【治疗】", "args": [1]},
+		{"text": "+1【信仰】", "args": [2]},
+	]
+	if not engine.has_reply():
+		询问(player.id, SHENG_HUANG_MO_SHI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	sheng_huang_exit_pending = false
+	var args: Array = r.get("args", [])
+	var choice: int = int(args[0]) if not args.is_empty() else 0
+	if choice == 1:
+		施加治疗(player.id, 1)
+	elif choice == 2:
+		_set_token(TOKEN_XIN_YANG, _xin_yang() + 1)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -617,17 +644,20 @@ func v_magic_skill(action: Dictionary) -> int:
 	var args: Array = action.get("args", [])
 	match int(action.get("action_id", 0)):
 		SHENG_XIE_JU_BAO:
-			# 弃 2 张同系手牌，虚拟牌（该系【圣】命格攻击牌）由服务端按元素自己取，客户端不用传。
+			# 弃 2 张同系【攻击牌】，虚拟牌（该系【圣】命格攻击牌）由服务端按元素自己取，客户端不用传。
 			if cards.size() != 2 or dsts.size() != 1:
 				return GConst.GE_INVALID_ACTION
 			if int(cards[0]) == int(cards[1]):
 				return GConst.GE_INVALID_CARDID
 			if not player.has_hand_card(int(cards[0])) or not player.has_hand_card(int(cards[1])):
 				return GConst.GE_INVALID_ACTION
+			var first: GCard = Data.get_card(int(cards[0]))
+			var second: GCard = Data.get_card(int(cards[1]))
+			if first == null or second == null or not first.is_attack() or not second.is_attack():
+				return GConst.GE_INVALID_CARDID
 			if not _same_element(int(cards[0]), int(cards[1])):
 				return GConst.GE_INVALID_CARDID
-			var first: GCard = Data.get_card(int(cards[0]))
-			if first == null or _sheng_xie_virtual_card(first.element_enum()) < 0:
+			if _sheng_xie_virtual_card(first.element_enum()) < 0:
 				return GConst.GE_INVALID_CARDID
 			var dst0: BattlePlayer = engine.p(int(dsts[0]))
 			if dst0 == null or dst0.color == player.color:
@@ -653,10 +683,7 @@ func v_magic_skill(action: Dictionary) -> int:
 				if not cards.is_empty() or dsts.size() != 1:
 					return GConst.GE_INVALID_ACTION
 				var 单体: BattlePlayer = engine.p(int(dsts[0]))
-				if 单体 == null or 单体.color == player.color:
-					return GConst.GE_INVALID_ACTION
-				# 单体分支先摸 1 张（受手牌上限约束），目标手牌须严格小于摸牌后的手牌数。
-				if 单体.hand_cards.size() >= _sheng_guang_single_hand_limit():
+				if 单体 == null or 单体.color != player.color:
 					return GConst.GE_INVALID_ACTION
 			elif 模式 == 2:
 				if args.size() < 2:
@@ -763,8 +790,8 @@ func _sheng_huang_mo_shi(action: Dictionary) -> int:
 
 
 ## 圣光爆裂：
-##   模式 1：移除 1 治疗 → 摸 1 张 → 对 1 名手牌数少于你的对手造成 2 点攻击伤害 → +1 信仰。
-##   模式 2：移除 X 治疗 → 弃 X 张牌 → 对最多 X 名合法对手各造成 (Y+2) 点攻击伤害 → +X 信仰。
+##   模式 1：摸 1 张 → 移除 1 治疗 → +1 信仰 → 目标队友 +1 治疗。
+##   模式 2：移除 X 治疗 → 弃 X 张牌 → 对最多 X 名合法对手各造成 (Y+2) 点攻击伤害。
 func _sheng_guang_bao_lie(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
@@ -773,18 +800,14 @@ func _sheng_guang_bao_lie(action: Dictionary) -> int:
 	if 模式 == 1:
 		var dst_id: int = int(dsts[0])
 		var dst: BattlePlayer = engine.p(dst_id)
-		if dst == null or dst.color == player.color or player.cross_num < 1:
+		if dst == null or dst.color != player.color or player.cross_num < 1:
 			return GConst.GE_INVALID_ACTION
 		player.sub_cross_num(1)
 		_set_token(TOKEN_XIN_YANG, _xin_yang() + 1)
+		施加治疗(dst_id, 1)
 		notice_skill(SHENG_GUANG_BAO_LIE, [player.id, dst_id])
 		engine._broadcast_game()
-		engine.push_harm({
-			"src": player.id, "dst": dst_id, "point": SHENG_GUANG_BAO_LIE_BASE,
-			"cause": SHENG_GUANG_BAO_LIE, "type": GConst.HarmType.Attack,
-		})
-		# 先摸 1 张再结算伤害：后压的摸牌状态先执行（LIFO），伤害在摸牌完成后才落。
-		# 【强制】仍走 push_draw，允许暗杀者【水影】这类“摸牌前”响应（已确认）。
+		# 【强制】摸 1 张，允许暗杀者【水影】这类“摸牌前”响应。
 		engine.push_draw(player.id, 1, SHENG_GUANG_BAO_LIE)
 		return URGENT
 	if 模式 != 2 or args.size() < 2:
@@ -798,7 +821,6 @@ func _sheng_guang_bao_lie(action: Dictionary) -> int:
 		if dp != null and dp.cross_num > 0:
 			point += 1
 	player.sub_cross_num(x)
-	_set_token(TOKEN_XIN_YANG, _xin_yang() + x)
 	engine.take_from_hand(player.id, cards)
 	engine.to_discard(cards)
 	engine._log_discard(player.id, cards)
@@ -813,11 +835,10 @@ func _sheng_guang_bao_lie(action: Dictionary) -> int:
 	return URGENT
 
 
-## 圣煌辉光炮（3706）/ 圣煌余辉（3708）：
+## 圣煌辉光炮（3706，新版 37 唯一形态）：
 ## 从圣弓开始逆时针，把每名角色的手牌调整到 min(4, 他的手牌上限) → 星杯 +1 →
 ## 一方士气拉平到另一方。星杯 +1 不额外扣对方士气，set_morale 也不走掉士气钩子。
-## 3706 再给我方所有角色 +1 治疗、自己 +1 攻击或法术行动，然后把专属技翻面成 3708；
-## 3708 没有治疗和额外行动，用完把专属技移除。
+## 使用后直接移除【圣煌辉光炮】状态，不再给我方治疗 / 额外行动，也不翻面成圣煌余辉。
 func _hui_guang_pao(action: Dictionary) -> int:
 	var aid: int = int(action.get("action_id", 0))
 	var 是余辉: bool = aid == HUI_GUANG_YU_HUI
@@ -867,16 +888,8 @@ func _hui_guang_pao(action: Dictionary) -> int:
 		else:
 			engine.set_morale(en_color, my_morale)
 		_set_token(TOKEN_XIN_YANG, _xin_yang() - gap - HUI_GUANG_PAO_COST)
-		if 是余辉:
-			# 余辉只做手牌 / 星杯 / 士气三件事，没有治疗和额外行动，用完移除。
-			player.sheng_huang_side = HUI_GUANG_SIDE_REMOVED
-		else:
-			for pid2: int in _all_allies():
-				施加治疗(pid2, 1)
-			player.sheng_huang_side = HUI_GUANG_SIDE_BACK
-			# 额外行动固定放行攻击或法术：玩家进入额外行动阶段后自己决定，
-			# 不再由本技能的选项预先选攻击/法术。
-			player.add_action(GConst.ActionType.AttackMagic, HUI_GUANG_PAO, true, true)
+		# 新版 37 使用后直接移除；没有治疗、没有额外行动、不翻面。
+		player.sheng_huang_side = HUI_GUANG_SIDE_REMOVED
 		engine._broadcast_game()
 		if engine.team_grail[my_color] >= GConst.GRAIL_WIN:
 			engine._game_over(my_color)

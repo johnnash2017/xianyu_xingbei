@@ -13,7 +13,7 @@ string,"enum(禁用:0,启用:1)",int,int,int,int,int,int,string,string,string,st
 角色#魔剑士,启用,9,2,3,0,0,0,5,AnYing,AnYing,#672E77,暗影形态,魔剑士,幻,幻影联盟,魔剑士,,res://scripts/battle/roles/role_mojian.gd,技能#修罗连斩;技能#暗影凝聚;技能#暗影之力;技能#暗影抗拒;技能#暗影流星;技能#黄泉震颤
 角色#圣枪骑士,启用,10,3,3,0,0,0,,,,,,圣枪骑士,圣,神圣教廷,圣枪骑士,,res://scripts/battle/roles/role_shengqiang.gd,技能#辉耀;技能#惩戒;技能#圣光祈愈;技能#天枪;技能#地枪;技能#神圣信仰;技能#圣击
 角色#元素师,启用,11,2,3,3,0,0,,,,,,元素师,咏,咏歌城,元素师,0:元素:3,res://scripts/battle/roles/role_yuansu.gd,技能#风刃;技能#冰冻;技能#火球;技能#陨石;技能#雷击;技能#元素点燃;技能#月光;技能#元素吸收
-角色#冒险家,启用,12,2,3,0,0,0,4,,,,,冒险家Trick,幻,幻影联盟,冒险家Trick,,res://scripts/battle/roles/role_maoxian.gd,技能#欺诈;技能#冒险者天堂;技能#偷天换日;技能#强运;技能#地下法则
+角色#冒险家,启用,12,2,3,0,0,0,4,,,,,冒险家,幻,幻影联盟,冒险家,,res://scripts/battle/roles/role_maoxian.gd,技能#欺诈;技能#冒险者天堂;技能#偷天换日;技能#强运;技能#地下法则
 角色#瘟疫法师,启用,13,5,3,0,0,0,,,,,,瘟疫法师,幻,幻影联盟,瘟疫法师,,res://scripts/battle/roles/role_siling.gd,技能#不朽;技能#圣渎;技能#瘟疫;技能#死亡之触;技能#剧毒新星
 角色#仲裁者,启用,14,2,3,4,0,0,"6,1409",ShenPan,ShenPan,#FA2727,审判形态,仲裁者,血,鲜血议会,仲裁者,0:审判:4,res://scripts/battle/roles/role_zhongcai.gd,技能#仪式中断;技能#仲裁仪式;技能#末日审判;技能#审判浪潮;技能#判决天平;技能#仲裁法则
 角色#神官,启用,15,6,3,0,0,0,,,,,,神官,圣,神圣教廷,神官,,res://scripts/battle/roles/role_shenguan.gd,技能#神圣启示;技能#神圣祈福;技能#水之神力;技能#圣使守护;技能#神圣契约;技能#神圣领域
@@ -38,5 +38,7 @@ string,"enum(禁用:0,启用:1)",int,int,int,int,int,int,string,string,string,st
 角色#血色剑灵,启用,34,2,3,3,0,0,,XueQiangWei,QiangWei,,,血色剑灵,圣,神圣教廷,血色剑灵,0:鲜血:3,res://scripts/battle/roles/role_xuejian.gd,技能#血色荆棘;技能#赤色一闪;技能#血染蔷薇;技能#血气屏障;技能#血蔷薇庭院;技能#散华轮舞
 角色#月之女神,启用,35,2,3,2,3,99,,AnYue,AnYue,#0060FF,暗月形态,月之女神,技,战技殿堂,月之女神,0:新月:2;1:石化:3;2:暗月:99,res://scripts/battle/roles/role_yuenv.gd,技能#新月庇护;技能#暗月诅咒;技能#美杜莎之眼;技能#月之轮回;技能#月渎;技能#暗月斩;技能#苍白之月
 角色#兽灵武士,启用,36,2,3,4,2,0,,YuHun,QianXing,#44D647,御魂流居合形态,兽灵武士,圣,神圣教廷,兽灵武士,0:残心:4;1:兽魂:2,res://scripts/battle/roles/role_shouling.gd,技能#武者残心;技能#一击无念;技能#兽魂意念;技能#兽魂警戒;技能#兽返;技能#御魂流居合形态;技能#逆反居合斩;技能#御魂流居合式
-角色#原初之弓,启用,37,3,3,10,0,0,,AnYue,AnYue,#0060FF,圣煌形态,原初之弓,圣,神圣教廷,原初之弓,0:信仰:10,res://scripts/battle/roles/role_shenggong.gd,技能#天之弓;技能#圣屑飓暴;技能#圣煌模式;技能#圣光爆裂;技能#圣流星弹;技能#圣煌辉光炮;技能#圣煌余辉;技能#自动填充
+角色#圣弓,启用,37,3,3,10,0,0,,AnYue,AnYue,#0060FF,圣煌形态,圣弓,圣,神圣教廷,圣弓,0:信仰:10,res://scripts/battle/roles/role_shenggong.gd,技能#天之弓;技能#圣屑飓暴;技能#圣煌模式;技能#圣光爆裂;技能#圣流星弹;技能#圣煌辉光炮;技能#自动填充
 角色#sp魔导师,禁用,108,2,3,0,0,0,,,,,,sp魔导师,咏,咏歌城,sp魔导师,,res://scripts/battle/roles/role_spmodao.gd,
+角色#冒险家Trick,启用,89,2,3,0,0,0,4,,,,,冒险家Trick,幻,幻影联盟,冒险家Trick,,res://scripts/battle/roles/role_maoxian_trick.gd,技能#欺诈Trick;技能#冒险者天堂Trick;技能#偷天换日Trick;技能#强运Trick;技能#地下法则Trick
+角色#原初之弓Trick,启用,88,3,3,10,0,0,,AnYue,AnYue,#0060FF,圣煌形态,原初之弓Trick,圣,神圣教廷,原初之弓Trick,0:信仰:10,res://scripts/battle/roles/role_shenggong_trick.gd,技能#天之弓Trick;技能#圣屑飓暴Trick;技能#圣煌模式Trick;技能#圣光爆裂Trick;技能#圣流星弹Trick;技能#圣煌辉光炮Trick;技能#圣煌余辉Trick;技能#自动填充Trick

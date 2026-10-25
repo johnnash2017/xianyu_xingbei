@@ -1,9 +1,9 @@
 extends 自检用例
-## 用例 12：圣弓（37）—— 选项/目标/资源校验、圣屑飓暴圣光与队友、天之弓应战信仰、
+## 用例 12：原初之弓Trick（88）—— 旧版圣弓技能回归：选项/目标/资源校验、圣屑飓暴圣光与队友、天之弓应战信仰、
 ## 圣煌辉光炮翻面状态/攻法额外行动、自动填充资源门槛与超时兜底。
 
 func _init() -> void:
-	名称 = "圣弓技能对齐"
+	名称 = "原初之弓Trick技能对齐"
 
 
 func _取牌(数量: int, 排除: Array = []) -> Array[int]:
@@ -24,7 +24,7 @@ func _按号(技能表: Array) -> Dictionary:
 	return out
 
 
-## 把自动填充的起始状态摆好并让 p_turn_end 发问；返回 3707 的询问（没发问返回空字典）。
+## 把自动填充的起始状态摆好并让 p_turn_end 发问；返回 8807 的询问（没发问返回空字典）。
 func _问自动填充(引擎: BattleEngine, 角色: BattleRole, 弓: BattlePlayer,
 		水晶: int, 宝石: int, 治疗: int, 信仰: int) -> Dictionary:
 	弓.cross_num = 治疗
@@ -40,7 +40,7 @@ func _问自动填充(引擎: BattleEngine, 角色: BattleRole, 弓: BattlePlaye
 		return {}
 	var 问: Dictionary = {}
 	for r: Dictionary in 引擎._最后询问.get(1, {}).get("commands", []):
-		if int(r.get("respond_id", 0)) == 3707:
+		if int(r.get("respond_id", 0)) == 8807:
 			问 = r
 	return 问
 
@@ -74,7 +74,7 @@ func 跑() -> void:
 	引擎.add_player(2, GConst.BLUE, "队友")
 	引擎.add_player(3, GConst.RED, "对手甲")
 	引擎.add_player(4, GConst.RED, "对手乙")
-	引擎.start_with_roles({1: 37, 2: 0, 3: 0, 4: 0})
+	引擎.start_with_roles({1: 88, 2: 0, 3: 0, 4: 0})
 	引擎._states.clear()
 	引擎._清空等待()
 	引擎.phase = BattleEngine.Phase.Playing
@@ -83,7 +83,7 @@ func 跑() -> void:
 	var 对手甲: BattlePlayer = 引擎.p(3)
 	var 对手乙: BattlePlayer = 引擎.p(4)
 	if 弓 == null or 弓.role == null:
-		检(false, "圣弓角色脚本没有挂上")
+		检(false, "原初之弓Trick角色脚本没有挂上")
 		return
 	var 角色: BattleRole = 弓.role
 
@@ -96,27 +96,27 @@ func 跑() -> void:
 	弓.tap = true
 	引擎.team_morale[GConst.BLUE] = 10
 	引擎.team_morale[GConst.RED] = 15
-	检(GConst.技能指示器.has(GConst.技能_圣屑飓暴), "缺少圣屑飓暴的头像指示器配置")
-	检(GConst.技能指示器.has(GConst.技能_圣光爆裂), "缺少圣光爆裂的头像指示器配置")
-	检(GConst.技能指示器.has(GConst.技能_圣流星弹), "缺少圣流星弹的头像指示器配置")
+	检(GConst.技能指示器.has(GConst.技能_圣屑飓暴Trick), "缺少圣屑飓暴的头像指示器配置")
+	检(GConst.技能指示器.has(GConst.技能_圣光爆裂Trick), "缺少圣光爆裂的头像指示器配置")
+	检(GConst.技能指示器.has(GConst.技能_圣流星弹Trick), "缺少圣流星弹的头像指示器配置")
 	检(ResourceLoader.exists(GConst.圣煌辉光炮图标), "缺少圣煌辉光炮状态图标")
 	检(ResourceLoader.exists(GConst.圣煌余辉图标), "缺少圣煌余辉状态图标")
-	检(GConst.提示原文(3702, 1).contains("队友"), "圣屑飓暴未命中提示应已改成指定队友")
+	检(GConst.提示原文(8802, 1).contains("队友"), "圣屑飓暴未命中提示应已改成指定队友")
 	var 技能表: Array = 角色.available_skills()
 	var 技能: Dictionary = _按号(技能表)
-	检(技能.has(3706), "技能栏缺少圣煌辉光炮")
-	检(技能.has(3708), "技能栏缺少圣煌余辉")
-	检(bool((技能.get(3706, {}) as Dictionary).get("enabled", false)), "士气落后且信仰足够时圣煌辉光炮应可用")
-	检(not bool((技能.get(3708, {}) as Dictionary).get("enabled", true)), "未翻面前圣煌余辉应置灰")
+	检(技能.has(8806), "技能栏缺少圣煌辉光炮")
+	检(技能.has(8808), "技能栏缺少圣煌余辉")
+	检(bool((技能.get(8806, {}) as Dictionary).get("enabled", false)), "士气落后且信仰足够时圣煌辉光炮应可用")
+	检(not bool((技能.get(8808, {}) as Dictionary).get("enabled", true)), "未翻面前圣煌余辉应置灰")
 	检(int(弓.to_proto(1).get("sheng_huang_side", -1)) == 0,
 		"初始快照应带【圣煌辉光炮】状态（0）")
-	var 飓暴: Dictionary = 技能.get(3702, {})
+	var 飓暴: Dictionary = 技能.get(8802, {})
 	检((飓暴.get("cards", []) as Array).has(圣光[0]) and (飓暴.get("cards", []) as Array).has(圣光[1]),
 		"圣屑飓暴的合法牌应包含两张【圣光】：%s" % str(飓暴.get("cards", [])))
 
 	# 两张【圣光】应能通过圣屑飓暴校验，并以暗系【暗灭】作为虚拟攻击牌。
 	var 飓暴动作: Dictionary = {
-		"src_id": 1, "action_id": 3702, "card_ids": [圣光[0], 圣光[1]], "dst_ids": [3],
+		"src_id": 1, "action_id": 8802, "card_ids": [圣光[0], 圣光[1]], "dst_ids": [3],
 	}
 	检(角色.v_magic_skill(飓暴动作) == GConst.GE_SUCCESS, "两张【圣光】应能发动圣屑飓暴")
 	检(角色._sheng_xie_virtual_card(GConst.CardElement.Light) == 39,
@@ -127,14 +127,14 @@ func 跑() -> void:
 	var 特效记录: Array = []
 	特效引擎.send_cb = func(pid: int, msg: int, data: Dictionary) -> void:
 		特效记录.append({"pid": pid, "msg": msg, "data": data})
-	特效引擎.add_player(1, GConst.BLUE, "圣弓")
+	特效引擎.add_player(1, GConst.BLUE, "原初之弓Trick")
 	特效引擎.add_player(2, GConst.RED, "靶子")
-	特效引擎.start_with_roles({1: 37, 2: 0})
+	特效引擎.start_with_roles({1: 88, 2: 0})
 	var 特效弓: BattlePlayer = 特效引擎.p(1)
 	特效弓.hand_cards = [圣光[0], 圣光[1]] as Array[int]
 	特效记录.clear()
 	特效弓.role._sheng_xie_ju_bao({
-		"src_id": 1, "action_id": 3702,
+		"src_id": 1, "action_id": 8802,
 		"card_ids": [圣光[0], 圣光[1]], "dst_ids": [2],
 	})
 	var 有虚拟攻击: bool = false
@@ -162,11 +162,11 @@ func 跑() -> void:
 	检(引擎._await_id < 0, "别的攻击未命中不应发出询问")
 	角色._miss_step = 0
 	引擎._清空等待()
-	检(角色.p_timeline_2_miss({"src": 1, "harm": {"cause": 3702}}) == BattleRole.WAIT,
+	检(角色.p_timeline_2_miss({"src": 1, "harm": {"cause": 8802}}) == BattleRole.WAIT,
 		"圣屑飓暴未命中应询问弃/摸与目标")
 	var 未命中问: Dictionary = {}
 	for r: Dictionary in 引擎._最后询问.get(1, {}).get("commands", []):
-		if int(r.get("respond_id", 0)) == 37021:
+		if int(r.get("respond_id", 0)) == 88021:
 			未命中问 = r
 	检(not 未命中问.is_empty(), "没有发出圣屑飓暴·未命中询问")
 	var 未命中args: Array = 未命中问.get("args", [])
@@ -175,22 +175,24 @@ func 跑() -> void:
 		"圣屑飓暴·未命中只能选队友（不含自己）：%s" % str(未命中问.get("dst_ids", [])))
 	检(bool(未命中问.get("can_cancel", false)), "圣屑飓暴·未命中应允许取消")
 	检(not 未命中args.has(3) and not 未命中args.has(4), "不应再有摸牌选项：%s" % str(未命中args))
+	for 项: Dictionary in 角色.call("_sheng_xie_miss_choices"):
+		检(str(项.get("label", "")).contains("目标友方"), "圣屑未命中选项应写明是目标友方弃牌：%s" % str(项.get("label", "")))
 	# 答复第一步（X=1、队友 2），应继续向队友发出弃 1 张牌的询问；答复后队友真的弃掉。
 	队友.hand_cards = _取牌(3, 弓.hand_cards + 对手甲.hand_cards + 对手乙.hand_cards)
 	var 队友手牌前: int = 队友.hand_cards.size()
 	引擎._reply = {"args": [1], "card_ids": [], "dst_ids": [2]}
 	引擎._has_reply = true
-	检(角色.p_timeline_2_miss({"src": 1, "harm": {"cause": 3702}}) == BattleRole.WAIT,
+	检(角色.p_timeline_2_miss({"src": 1, "harm": {"cause": 8802}}) == BattleRole.WAIT,
 		"选完 X 和队友后应继续等队友弃牌")
 	var 弃牌问: Dictionary = {}
 	for r: Dictionary in 引擎._最后询问.get(2, {}).get("commands", []):
-		if int(r.get("respond_id", 0)) == 37021:
+		if int(r.get("respond_id", 0)) == 88021:
 			弃牌问 = r
 	检(not 弃牌问.is_empty(), "没有向队友发出弃牌询问")
 	检(int((弃牌问.get("args", [0]) as Array)[0]) == 1, "队友弃牌询问应要求 1 张")
 	引擎._reply = {"args": [], "card_ids": [队友.hand_cards[0]], "dst_ids": []}
 	引擎._has_reply = true
-	检(角色.p_timeline_2_miss({"src": 1, "harm": {"cause": 3702}}) == BattleRole.SUCCESS,
+	检(角色.p_timeline_2_miss({"src": 1, "harm": {"cause": 8802}}) == BattleRole.SUCCESS,
 		"队友答复后未命中弃牌应结算完成")
 	检(队友.hand_cards.size() == 队友手牌前 - 1, "队友应真的弃掉 1 张手牌")
 	检(not 弃牌日志.is_empty(), "队友弃牌应写战斗日志")
@@ -207,7 +209,7 @@ func 跑() -> void:
 	弓.cross_num = 2
 	弓.tokens[0]["num"] = 1
 	技能 = _按号(角色.available_skills())
-	var 模式选项: Array = (技能.get(3703, {}) as Dictionary).get("arg_choices", [])
+	var 模式选项: Array = (技能.get(8803, {}) as Dictionary).get("arg_choices", [])
 	检(模式选项.size() == 2, "圣煌模式应有两个支付选项")
 	if 模式选项.size() == 2:
 		检(int(模式选项[0].get("args", [0])[0]) == 1 and bool(模式选项[0].get("enabled", false)),
@@ -221,7 +223,7 @@ func 跑() -> void:
 	对手甲.hand_cards = _取牌(3, 弓.hand_cards)
 	对手乙.hand_cards = _取牌(5, 弓.hand_cards + 对手甲.hand_cards)
 	技能 = _按号(角色.available_skills())
-	var 爆裂选项: Array = (技能.get(3704, {}) as Dictionary).get("arg_choices", [])
+	var 爆裂选项: Array = (技能.get(8804, {}) as Dictionary).get("arg_choices", [])
 	检(爆裂选项.size() == 2, "圣光爆裂第一层应有单体 / 群体两个选项")
 	if 爆裂选项.size() == 2:
 		var 单体: Dictionary = 爆裂选项[0]
@@ -239,7 +241,7 @@ func 跑() -> void:
 			"圣光爆裂群体选项文案不对：%s" % str(群体.get("text", "")))
 	# 单体分支：目标手牌 3、自己 4，摸 1 后 3 < 5，合法；对手乙 5 不合法。
 	var 单体动作: Dictionary = {
-		"src_id": 1, "action_id": 3704, "args": [1], "card_ids": [], "dst_ids": [3],
+		"src_id": 1, "action_id": 8804, "args": [1], "card_ids": [], "dst_ids": [3],
 	}
 	检(角色.v_magic_skill(单体动作) == GConst.GE_SUCCESS, "圣光爆裂单体应接受手牌数少于你的对手")
 	单体动作["dst_ids"] = [4]
@@ -247,7 +249,7 @@ func 跑() -> void:
 	# 群体 X=2：对手甲手牌 3 > 4-2，不合法；改成 2 张后合法。
 	对手甲.hand_cards = _取牌(2, 弓.hand_cards)
 	var 群体动作: Dictionary = {
-		"src_id": 1, "action_id": 3704, "args": [2, 2],
+		"src_id": 1, "action_id": 8804, "args": [2, 2],
 		"card_ids": [弓.hand_cards[0], 弓.hand_cards[1]], "dst_ids": [3],
 	}
 	检(角色.v_magic_skill(群体动作) == GConst.GE_SUCCESS, "圣光爆裂群体 X=2 应接受手牌 <=2 的对手")
@@ -262,12 +264,12 @@ func 跑() -> void:
 	弓.hand_cards_max = 6
 	对手甲.hand_cards = _取牌(6, 弓.hand_cards)
 	技能 = _按号(角色.available_skills())
-	爆裂选项 = (技能.get(3704, {}) as Dictionary).get("arg_choices", [])
+	爆裂选项 = (技能.get(8804, {}) as Dictionary).get("arg_choices", [])
 	if not 爆裂选项.is_empty():
 		检(str((爆裂选项[0] as Dictionary).get("说明", "")).contains("小于 6"),
 			"6 张手牌时单体阈值应封顶为 6：%s" % str((爆裂选项[0] as Dictionary).get("说明", "")))
 	var 上限单体动作: Dictionary = {
-		"src_id": 1, "action_id": 3704, "args": [1], "card_ids": [], "dst_ids": [3],
+		"src_id": 1, "action_id": 8804, "args": [1], "card_ids": [], "dst_ids": [3],
 	}
 	检(角色.v_magic_skill(上限单体动作) != GConst.GE_SUCCESS,
 		"6 张手牌时目标 6 张不应满足「小于 6」")
@@ -282,7 +284,7 @@ func 跑() -> void:
 	对手甲.hand_cards = _取牌(5, 弓.hand_cards)
 	对手乙.hand_cards = _取牌(6, 弓.hand_cards + 对手甲.hand_cards)
 	技能 = _按号(角色.available_skills())
-	var 无目标爆裂: Dictionary = 技能.get(3704, {})
+	var 无目标爆裂: Dictionary = 技能.get(8804, {})
 	检(not bool(无目标爆裂.get("enabled", true)), "单体/群体都没有合法目标时，圣光爆裂应整颗置灰")
 	for 项: Dictionary in (无目标爆裂.get("arg_choices", []) as Array):
 		检(not bool(项.get("enabled", true)), "没有合法目标时，圣光爆裂各分支都应置灰")
@@ -304,7 +306,7 @@ func 跑() -> void:
 	检(角色.p_timeline_1(攻击上下文) == BattleRole.WAIT, "主动攻击宣告后应询问圣流星弹")
 	var 流星问: Dictionary = {}
 	for r: Dictionary in 引擎._最后询问.get(1, {}).get("commands", []):
-		if int(r.get("respond_id", 0)) == 3705:
+		if int(r.get("respond_id", 0)) == 8805:
 			流星问 = r
 	检(not 流星问.is_empty(), "没有发出圣流星弹询问")
 	检((流星问.get("dst_ids", []) as Array) == [1, 2],
@@ -319,7 +321,7 @@ func 跑() -> void:
 	检(角色.p_timeline_1(攻击上下文) == BattleRole.WAIT, "只有治疗时仍应询问圣流星弹")
 	var 流星问二: Dictionary = {}
 	for r: Dictionary in 引擎._最后询问.get(1, {}).get("commands", []):
-		if int(r.get("respond_id", 0)) == 3705:
+		if int(r.get("respond_id", 0)) == 8805:
 			流星问二 = r
 	检((流星问二.get("option_enabled", []) as Array) == [true, false],
 		"没有信仰时“移除 1 信仰”应置灰：%s" % str(流星问二.get("option_enabled", [])))
@@ -333,8 +335,8 @@ func 跑() -> void:
 	引擎.team_morale[GConst.RED] = 15
 	弓.sheng_huang_side = 0
 	技能 = _按号(角色.available_skills())
-	检(bool((技能.get(3706, {}) as Dictionary).get("enabled", false)), "翻面前辉光炮应可用")
-	检(not bool((技能.get(3708, {}) as Dictionary).get("enabled", true)), "翻面前余辉应置灰")
+	检(bool((技能.get(8806, {}) as Dictionary).get("enabled", false)), "翻面前辉光炮应可用")
+	检(not bool((技能.get(8808, {}) as Dictionary).get("enabled", true)), "翻面前余辉应置灰")
 	检(角色._hui_guang_cost() == 9, "落后 5 士气时信仰消耗应为 5+4=9")
 	var 逆时针: Array = 角色._ids_from_self()
 	检(逆时针.size() == 4 and int(逆时针[0]) == 1 and int(逆时针[1]) == 弓.pre_id,
@@ -342,7 +344,7 @@ func 跑() -> void:
 	对手乙.hand_cards_max = 3
 	检(角色._hui_guang_target_hand(对手乙) == 3, "手牌上限小于 4 时应只补到上限")
 	对手乙.hand_cards_max = GConst.HAND_CARDS_MAX
-	var 炮选项: Array = (技能.get(3706, {}) as Dictionary).get("arg_choices", [])
+	var 炮选项: Array = (技能.get(8806, {}) as Dictionary).get("arg_choices", [])
 	检(炮选项.size() == 2, "辉光炮应只保留两个士气方向选项")
 	if 炮选项.size() == 2:
 		检((炮选项[0].get("args", []) as Array) == [1]
@@ -350,14 +352,14 @@ func 跑() -> void:
 			"辉光炮选项只携带士气方向，不再携带额外行动：%s" % str(炮选项))
 	弓.sheng_huang_side = 1
 	技能 = _按号(角色.available_skills())
-	检(not bool((技能.get(3706, {}) as Dictionary).get("enabled", true)), "翻面后辉光炮应置灰")
-	检(bool((技能.get(3708, {}) as Dictionary).get("enabled", false)), "翻面后余辉应可用")
+	检(not bool((技能.get(8806, {}) as Dictionary).get("enabled", true)), "翻面后辉光炮应置灰")
+	检(bool((技能.get(8808, {}) as Dictionary).get("enabled", false)), "翻面后余辉应可用")
 	# 辉光炮会把双方士气拉平；余辉不能因为“不再落后”而被卡死。
 	引擎.team_morale[GConst.BLUE] = 10
 	引擎.team_morale[GConst.RED] = 10
 	弓.tokens[0]["num"] = 4
 	技能 = _按号(角色.available_skills())
-	检(bool((技能.get(3708, {}) as Dictionary).get("enabled", false)),
+	检(bool((技能.get(8808, {}) as Dictionary).get("enabled", false)),
 		"士气相等时余辉仍应可用（只付 4 信仰）")
 	检(角色._hui_guang_cost() == 4, "士气相等时信仰消耗应为 4")
 
@@ -376,7 +378,7 @@ func 跑() -> void:
 	对手乙.hand_cards = _取牌(4, 弓.hand_cards + 队友.hand_cards + 对手甲.hand_cards)
 	弓.sheng_huang_side = 0
 	角色.hui_guang_index = -1
-	检(角色._hui_guang_pao({"action_id": 3706, "args": [0]}) == BattleRole.SUCCESS,
+	检(角色._hui_guang_pao({"action_id": 8806, "args": [0]}) == BattleRole.SUCCESS,
 		"辉光炮在执行条件满足时应直接结算完成")
 	检(引擎.team_grail[GConst.BLUE] == 1, "辉光炮应让我方星杯 +1")
 	检(引擎.team_morale[GConst.RED] == 10, "选择第一项后敌方士气应拉平到我方")
@@ -390,8 +392,8 @@ func 跑() -> void:
 		"辉光炮应给自己额外攻击或法术行动")
 	弓.additional_actions.clear()
 	# 余辉的弃牌询问要和辉光炮一样，不能退化成「是否发动」。
-	检(GConst.提示原文(3708, 0).contains("弃") and GConst.提示原文(3708, 0).contains("{n}"),
-		"圣煌余辉应复用弃牌提示：%s" % GConst.提示原文(3708, 0))
+	检(GConst.提示原文(8808, 0).contains("弃") and GConst.提示原文(8808, 0).contains("{n}"),
+		"圣煌余辉应复用弃牌提示：%s" % GConst.提示原文(8808, 0))
 
 	# 执行背面：不再给治疗和额外行动，只做星杯/士气并移除余辉。
 	弓.cross_num = 0
@@ -403,7 +405,7 @@ func 跑() -> void:
 	引擎.team_grail[GConst.BLUE] = 0
 	弓.sheng_huang_side = 1
 	角色.hui_guang_index = -1
-	检(角色._hui_guang_pao({"action_id": 3708, "args": [0]}) == BattleRole.SUCCESS,
+	检(角色._hui_guang_pao({"action_id": 8808, "args": [0]}) == BattleRole.SUCCESS,
 		"余辉在执行条件满足时应直接结算完成")
 	检(弓.cross_num == 0 and 队友.cross_num == 0, "余辉不应给任何角色加治疗")
 	检(弓.sheng_huang_side == 2, "余辉用完后应被移除")
@@ -412,8 +414,8 @@ func 跑() -> void:
 	检(not 弓.contains_action(), "余辉不应给额外行动")
 	检(引擎.team_grail[GConst.BLUE] == 1, "余辉仍应让我方星杯 +1")
 	技能 = _按号(角色.available_skills())
-	检(not bool((技能.get(3706, {}) as Dictionary).get("enabled", true))
-		and not bool((技能.get(3708, {}) as Dictionary).get("enabled", true)),
+	检(not bool((技能.get(8806, {}) as Dictionary).get("enabled", true))
+		and not bool((技能.get(8808, {}) as Dictionary).get("enabled", true)),
 		"余辉用掉后两颗技能都应置灰")
 
 	# 天之弓：应战反击（is_active=false）命中圣类命格也应 +1 信仰。
@@ -424,18 +426,18 @@ func 跑() -> void:
 	检(int(弓.tokens[0]["num"]) == 1, "应战反击命中圣类命格也应 +1 信仰")
 
 	# 自动填充第一层只选资源，第二层再手选治疗/信仰；超时才按空位自动选。
-	检(GConst.提示原文(3707, 1).contains("水晶")
-		and GConst.提示原文(3707, 1).contains("治疗")
-		and GConst.提示原文(3707, 1).contains("信仰")
-		and not GConst.提示原文(3707, 1).contains("宝石")
-		and not GConst.提示原文(3707, 1).contains("（")
-		and not GConst.提示原文(3707, 1).contains("→"),
+	检(GConst.提示原文(8807, 1).contains("水晶")
+		and GConst.提示原文(8807, 1).contains("治疗")
+		and GConst.提示原文(8807, 1).contains("信仰")
+		and not GConst.提示原文(8807, 1).contains("宝石")
+		and not GConst.提示原文(8807, 1).contains("（")
+		and not GConst.提示原文(8807, 1).contains("→"),
 		"自动填充第一层水晶项不应再写括号里的宝石替代和箭头")
-	检(GConst.提示原文(3707, 2).contains("宝石")
-		and GConst.提示原文(3707, 2).contains("水晶")
-		and GConst.提示原文(3707, 2).contains("治疗")
-		and GConst.提示原文(3707, 2).contains("信仰")
-		and not GConst.提示原文(3707, 2).contains("→"),
+	检(GConst.提示原文(8807, 2).contains("宝石")
+		and GConst.提示原文(8807, 2).contains("水晶")
+		and GConst.提示原文(8807, 2).contains("治疗")
+		and GConst.提示原文(8807, 2).contains("信仰")
+		and not GConst.提示原文(8807, 2).contains("→"),
 		"自动填充第一层宝石项应写清扣除宝石、+1 水晶和两种效果，且不用箭头")
 	# 第二层选项：玩家手选，治疗/信仰都始终可选（空位不足不置灰）；args=[资源, 效果]。
 	var 填充窗: Control = load("res://scripts/ui/battle_mobile.gd").new()
@@ -461,19 +463,19 @@ func 跑() -> void:
 	var 我: int = Logic.my_player_id
 	var 目标提示id: int = 3 if 我 != 3 else 4
 	头像窗._mode = 3
-	头像窗._skill_ask_id = 37021
+	头像窗._skill_ask_id = 88021
 	头像窗._已选参数 = [1]
 	头像窗._sel_players.append(目标提示id)
 	var 未中提示: Dictionary = 头像窗.call("_圣屑飓暴未命中头像提示")
 	检(str(未中提示.get(我, "")) == "移除 1 治疗", "未命中应在自己头像写移除治疗")
 	检(str(未中提示.get(目标提示id, "")) == "弃 1 张牌", "未命中应在队友头像写弃牌")
-	头像窗._skill_ask_id = GConst.技能_圣流星弹
+	头像窗._skill_ask_id = GConst.技能_圣流星弹Trick
 	头像窗._已选参数 = [2]
 	var 流星提示: Dictionary = 头像窗.call("_圣流星弹头像提示")
 	检(str(流星提示.get(目标提示id, "")) == "+1 治疗", "圣流星弹应在目标头像写 +1 治疗")
 	检(str(流星提示.get(我, "")).contains("移除 1 信仰"), "圣流星弹应在自己头像写信仰代价")
 	头像窗._mode = 4
-	头像窗._pending_skill_id = GConst.技能_圣光爆裂
+	头像窗._pending_skill_id = GConst.技能_圣光爆裂Trick
 	头像窗._已选参数 = [1]
 	头像窗._sel_players.clear()
 	头像窗._sel_players.append(目标提示id)
@@ -523,7 +525,7 @@ func 跑() -> void:
 	Logic.my_player_id = 原我id
 	Data.player_list.clear()
 	Data.player_list.append_array(原玩家列表)
-	头像窗._pending_skill_id = GConst.技能_圣煌模式
+	头像窗._pending_skill_id = GConst.技能_圣煌模式Trick
 	头像窗._已选参数 = [1]
 	var 模式提示: Dictionary = 头像窗.call("_圣煌模式头像提示")
 	检(str(模式提示.get(我, "")) == "移除 2 治疗", "圣煌模式应写自己的治疗代价")

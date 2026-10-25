@@ -392,7 +392,7 @@ func p_magic_skill(action: Dictionary) -> int:
 	# 第一步只问「要不要移除」（第一项固定是「不移除」，选了才继续走原效果；
 	# 一颗可行组合都没有时干脆不问）；选定要移除后第二步再问「移除哪两颗」。
 	if _liu_xing_step == 0:
-		if not _liu_xing_组合选项().is_empty():
+		if _liu_xing_any_combo():
 			询问(player.id, AN_YING_LIU_XING, 0, 0, GConst.CardSource.Hand, [
 				{"value": 0, "label": 提示原文(AN_YING_LIU_XING, 2)},
 				{"value": 1, "label": 提示原文(AN_YING_LIU_XING, 3)},
@@ -438,25 +438,36 @@ func p_magic_skill(action: Dictionary) -> int:
 	return URGENT
 
 
-## 【暗影流星】第二步的可选项：按我方【战绩区】现有的星石，列出能凑出的两颗组合
-## （value 1＝两水晶 / 2＝一宝石一水晶 / 3＝两宝石）；一颗可行组合都没有时返回空。
+## 【暗影流星】第二步的可选项：三种组合始终摆出来，当前凑不出/不可用的置灰
+## （value 1＝两水晶 / 2＝一宝石一水晶 / 3＝两宝石）。
 ## 文案统一走「战绩区 -数量【星石类型】」的消耗写法（如 战绩区 -2【水晶】），界面按词缀表画成图标
 func _liu_xing_组合选项() -> Array:
 	var 宝石: int = engine.team_gem[player.color]
 	var 水晶: int = engine.team_crystal[player.color]
-	var out: Array = []
-	if 水晶 >= 2:
-		out.append({"value": 1, "label": 提示原文(AN_YING_LIU_XING, 4)})
-	if 宝石 >= 1 and 水晶 >= 1:
-		out.append({"value": 2, "label": 提示原文(AN_YING_LIU_XING, 5)})
-	if 宝石 >= 2:
-		out.append({"value": 3, "label": 提示原文(AN_YING_LIU_XING, 6)})
-	return out
+	return [
+		{"value": 1, "label": 提示原文(AN_YING_LIU_XING, 4), "enabled": 水晶 >= 2},
+		{"value": 2, "label": 提示原文(AN_YING_LIU_XING, 5), "enabled": 宝石 >= 1 and 水晶 >= 1},
+		{"value": 3, "label": 提示原文(AN_YING_LIU_XING, 6), "enabled": 宝石 >= 2},
+	]
+
+
+## 三种组合里至少有一种当前可做（决定要不要问「是否追加移除」）
+func _liu_xing_any_combo() -> bool:
+	return engine.team_crystal[player.color] >= 2 \
+		or (engine.team_gem[player.color] >= 1 and engine.team_crystal[player.color] >= 1) \
+		or engine.team_gem[player.color] >= 2
 
 
 ## 结算【暗影流星】的追加效果：按 选择 移除我方【战绩区】两颗星石，脱离[暗影形态]并 +1【宝石】。
 ## 选择 不是三种组合之一（玩家在第二步取消 / 回了空值）时什么也不做，只走原效果
 func _应用暗影流星追加(选择: int) -> void:
+	# 服务端兜底：置灰项即使被硬提交也不扣资源，按“不追加”处理
+	var 宝石: int = engine.team_gem[player.color]
+	var 水晶: int = engine.team_crystal[player.color]
+	if (选择 == 1 and 水晶 < 2) \
+			or (选择 == 2 and (宝石 < 1 or 水晶 < 1)) \
+			or (选择 == 3 and 宝石 < 2):
+		return
 	match 选择:
 		1:
 			engine.set_team_crystal(player.color, engine.team_crystal[player.color] - 2)

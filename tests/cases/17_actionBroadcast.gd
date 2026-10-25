@@ -80,21 +80,27 @@ func 跑() -> void:
 			ProtoCodec.encode(GConst.Msg.Card, 虚牌消息))
 		检(bool(虚牌解码.get("virtual_no_fate", false)), "无命格虚牌标记没有过 Card 协议")
 
-	# 选项的系别颜色：字段要过协议，客户端归一后要有对应字色
+	# 选项的系别颜色：字段要过协议；客户端只把卡名染成系别色，不再整段覆盖字色
 	var 选项原名: Dictionary = {
-		"text": "视为【风神斩】", "args": [66], "element": GConst.CardElement.Wind,
+		"text": "视为风神斩", "args": [66], "element": GConst.CardElement.Wind,
 	}
 	var 选项解码: Dictionary = ProtoCodec.decode_named("ArgChoice",
 		ProtoCodec.encode_named("ArgChoice", 选项原名))
 	检(int(选项解码.get("element", -1)) == GConst.CardElement.Wind,
 		"选项系别没有过 ArgChoice 协议：%s" % str(选项解码.get("element", null)))
 	var 归一选项: Array = 窗.call("_选项项", [选项解码])
+	var 选项文本: String = ""
 	var 选项字色: Color = Color.TRANSPARENT
 	if not 归一选项.is_empty():
+		选项文本 = str((归一选项[0] as Dictionary).get("文本", ""))
 		var 字色值: Variant = (归一选项[0] as Dictionary).get("字色", Color.TRANSPARENT)
 		if 字色值 is Color:
 			选项字色 = 字色值
-	检(选项字色 == Color("#9BE7A2"), "风系选项没有算出风系字色：%s" % str(选项字色))
+	检(选项文本.contains("[color=#9BE7A2]风神斩[/color]"),
+		"风系选项只应给卡名「风神斩」上色：%s" % 选项文本)
+	检(not 选项文本.contains("【") and not 选项文本.contains("（"),
+		"选项文案不应再用括号包说明：%s" % 选项文本)
+	检(选项字色.a == 0.0, "选项不应再整段覆盖字色：%s" % str(选项字色))
 
 	# 特殊行动：购买 / 合成 / 提炼都有名字，未知值不飘
 	检(str(窗.call("_特殊行动播报名", GConst.SpecialAction.Buy)) == "购买", "购买的特殊行动播报名不对")

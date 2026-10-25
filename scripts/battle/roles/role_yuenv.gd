@@ -144,9 +144,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			# 手牌+盖牌同一步选：普通分支只要 1 张同系【暗月】；法术牌分支要
 			# 1 张同系法术【暗月】+ 1 张手牌一起交上来，不再另开一次弃牌询问。
 			询问(player.id, MEI_DU_SHA, 1, 0, GConst.CardSource.HandOrCover, [
-				{"value": 1, "label": "移除 1 个【暗月】（+1【治疗】、+1【石化】）",
+				{"value": 1, "label": "移除 1 个【暗月】，+1【治疗】、+1【石化】",
 					"enabled": true, "need_card": 1},
-				{"value": 2, "label": "移除 1 个法术牌【暗月】并弃 1 张手牌（+1【治疗】、+1【石化】，对目标对手造成 1 点法术伤害）",
+				{"value": 2, "label": "移除 1 个法术牌【暗月】并弃 1 张手牌，+1【治疗】、+1【石化】，对目标对手造成 1 点法术伤害",
 					"enabled": not 合法法术暗月.is_empty() and not 敌人.is_empty() and not player.hand_cards.is_empty(),
 					"need_card": 2, "need_target": 1, "targets": 敌人},
 			], 1, "", 可选牌, true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1)
@@ -505,6 +505,3 @@ func _discard_hand_cards(cards: Array, n: int) -> void:
 	engine.take_from_hand(player.id, chosen)
 	engine.to_discard(chosen)
 	engine._log_discard(player.id, chosen)
-
-
-
