@@ -3,10 +3,10 @@
 [ext_resource type="Texture2D" uid="uid://bv663p6i4egm0" path="res://assets/textures/battle/b02_sys_turn.png" id="7_b02systurnpng"]
 [ext_resource type="Texture2D" uid="uid://cj0adj10qw5ls" path="res://assets/textures/battle/b02_chara_blue_0.png" id="8_b02charablue0png"]
 [ext_resource type="Texture2D" uid="uid://bxjc1hdxyxen3" path="res://assets/textures/battle/b02_chara_red_0.png" id="9_b02charared0png"]
+[ext_resource type="Texture2D" uid="uid://b2340e0jywl6o" path="res://assets/textures/battle/b01_status_1.png" id="9_sef3q"]
 [ext_resource type="Texture2D" uid="uid://bylbt510762dk" path="res://assets/textures/battle/b02_chara_light_g.png" id="10_b02charalightgpng"]
 [ext_resource type="Texture2D" uid="uid://bsstg2lsg8wkx" path="res://assets/textures/battle/b02_selected.png" id="11_b02selectedpng"]
 [ext_resource type="Texture2D" uid="uid://bn4j2t812c7v2" path="res://assets/textures/hero/large/0L.png" id="12_0Lpng"]
-[ext_resource type="Texture2D" uid="uid://d4dm3vwkme0y1" path="res://assets/textures/battle/b01_status_0.png" id="14_b01status0png"]
 [ext_resource type="Texture2D" uid="uid://bv6rskm345axg" path="res://assets/textures/battle/1x1.png" id="15_1x1png"]
 [ext_resource type="Texture2D" uid="uid://dftdkji7lrsah" path="res://assets/textures/battle/b08_chatpoo3.png" id="16_b08chatpoo3png"]
 [ext_resource type="Texture2D" uid="uid://bfsv5s403s0pr" path="res://assets/textures/battle/b02_chara_focus.png" id="17_b02charafocuspng"]
@@ -214,20 +214,21 @@ pivot_offset = Vector2(15, 60)
 mouse_filter = 2
 
 [node name="Name" type="TextureRect" parent="." unique_id=2011035374]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -165.0
-offset_top = 11.5
-offset_right = 164.0
-offset_bottom = 132.5
+offset_left = -135.0
+offset_top = 45.0
+offset_right = 65.0
+offset_bottom = 95.0
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(164.5, 60.5)
 mouse_filter = 0
-texture = ExtResource("14_b01status0png")
+texture = ExtResource("9_sef3q")
 expand_mode = 1
 
 [node name="TxtName" type="Label" parent="Name" unique_id=1335636860]
@@ -237,15 +238,16 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -101.8
-offset_top = -9.599998
-offset_right = 58.199997
-offset_bottom = 18.400002
+offset_left = -88.0
+offset_top = -6.0000305
+offset_right = 72.0
+offset_bottom = 21.99997
 grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(80, 12.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 20
+text = "123123123"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
@@ -257,12 +259,13 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -104.0
-offset_top = 56.0
-offset_right = 65.0
-offset_bottom = 62.0
+offset_left = -123.0
+offset_top = 57.0
+offset_right = 37.0
+offset_bottom = 63.0
 grow_horizontal = 2
 grow_vertical = 2
+scale = Vector2(1, 0.833)
 mouse_filter = 2
 theme_override_styles/background = SubResource("StyleBoxFlat_sef3q")
 theme_override_styles/fill = SubResource("StyleBoxFlat_waitfill")
@@ -272,6 +275,7 @@ value = 0.5
 show_percentage = false
 
 [node name="HeroFatePattern" type="TextureRect" parent="." unique_id=1807125472]
+visible = false
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 0.5
@@ -289,33 +293,35 @@ texture = ExtResource("15_1x1png")
 expand_mode = 1
 
 [node name="Hand" type="GridContainer" parent="." unique_id=796844389]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -135.0
-offset_top = -36.9
+offset_top = -37.899994
 offset_right = 45.0
-offset_bottom = -22.9
+offset_bottom = -23.899994
 grow_horizontal = 2
-grow_vertical = 2
+grow_vertical = 0
 pivot_offset = Vector2(90, 7)
 theme_override_constants/h_separation = -13
 theme_override_constants/v_separation = 0
 
 [node name="Heal" type="GridContainer" parent="." unique_id=623864718]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -135.0
-offset_top = -22.9
+offset_top = -23.899994
 offset_right = 45.0
-offset_bottom = -8.9
+offset_bottom = -9.899994
 grow_horizontal = 2
-grow_vertical = 2
+grow_vertical = 0
 pivot_offset = Vector2(90, 7)
 theme_override_constants/h_separation = -13
 theme_override_constants/v_separation = 0

@@ -455,12 +455,11 @@ func set_RoleID(value: int) -> void:
 ## 注意：这里**不要**再去「隐藏带 chara 贴图的节点」—— 头像背后那块背景板（队徽底图）
 ## 用的就是 battle/b02_chara_*.png，按贴图名去关会把背景板一起关掉（表现为「看不到头像
 ## 也看不到背景板」）。头像直接换 HeroIcon 的贴图就够了，不需要隐藏任何东西。
-	# 命格（技 / 血 / 幻 / 咏 / 圣）图标贴到名牌左侧的 HeroFatePattern 上
-	# （对照参考工程 PlayerStatusMobile 里对应角色命格的那段）
-	var 命格图: Texture2D = Art.role_fate_pattern_icon(Data.role_fate_pattern(value))
+	# 玩家头像左侧不再显示命格 / 阵营图标：HeroFatePattern 节点保留但始终隐藏
+	# （自己和其他玩家的面板共用这段逻辑）
 	if fate_pattern_image != null:
-		fate_pattern_image.texture = 命格图
-		fate_pattern_image.visible = 命格图 != null
+		fate_pattern_image.texture = null
+		fate_pattern_image.visible = false
 	if not seted:
 		seted = true
 		_create_tokens()
