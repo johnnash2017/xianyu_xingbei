@@ -41,6 +41,8 @@ const 行距下限: int = -3
 @export var 框: PanelContainer
 ## 底板里的富文本（【类型】要上色，普通 Label 会把颜色码原样显示出来）
 @export var 文本: RichTextLabel
+## 右上角星数（角色说明才显示；单独一个 Label 叠在富文本上，免得和角色名抢同一行）
+@export var 星数标签: Label
 ## 自定义内容节点（如一张完整的卡牌视图，见 显示内容）；非空时文字隐藏，整框改按它的尺寸走
 var 内容: Control = null
 ## 本次说明的「基准整体缩放」（角色说明按设置窗里的档位取）。摆框时若按它仍塞不进宿主，会在它基础上再等比缩小兜底
@@ -78,6 +80,7 @@ func 显示(说明: String, 图标矩形: Rect2, 宽度: float, 字号: int, 整
 	if 说明.is_empty():
 		return
 	_卸内容()
+	_隐藏星数()
 	_基缩放 = 整体缩放
 	_让开图标 = 让开图标
 	文本.visible = true
@@ -129,6 +132,10 @@ static func 设置角色说明缩放档(档: float) -> void:
 func 显示角色说明(角色号: int, 图标矩形: Rect2) -> void:
 	显示(角色技能提示.悬浮提示(角色号, 角色说明字号缩放), 图标矩形,
 		角色说明宽度, 角色说明字号, 档位到缩放(当前角色说明缩放档()), true, true)
+	if 星数标签 != null:
+		var 星数: String = 角色技能提示.星数文本(角色号)
+		星数标签.text = 星数
+		星数标签.visible = 星数 != ""
 
 
 ## 显示一段自定义内容（如一张完整的卡牌视图）：内容节点由调用方造好递进来，
@@ -137,6 +144,7 @@ func 显示内容(内容节点: Control, 图标矩形: Rect2) -> void:
 	if 内容节点 == null:
 		return
 	_卸内容()
+	_隐藏星数()
 	_基缩放 = 1.0
 	_让开图标 = false
 	内容 = 内容节点
@@ -161,11 +169,17 @@ func _卸内容() -> void:
 func 收起() -> void:
 	_轮次 += 1
 	框.visible = false
+	_隐藏星数()
 
 
 ## 此刻是否正显示着
 func 可见() -> bool:
 	return 框.visible
+
+
+func _隐藏星数() -> void:
+	if 星数标签 != null:
+		星数标签.visible = false
 
 
 ## 排一次「下一帧再摆」：同帧多次显示只记最新的图标矩形，回调始终只挂一个。

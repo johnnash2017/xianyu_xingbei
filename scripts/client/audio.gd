@@ -4,7 +4,7 @@ extends Node
 ##   * 主界面音乐 lobby、战斗音乐 battle1~6（随机且不与上一首重复）、胜负 win/lose
 ##   * 出牌 atk-<系别> / spell-<卡名>、命中 sys-hit（攻击 / 魔弹命中）、受伤 sys-hurt（法术 / 技能伤害）、
 ##     治疗 sys-heal、士气 sys-morale、宝石水晶 sys-energy、选将 sys-turn
-##   * 角色语音 <角色id>（1~36、108）：轮到该角色回合时播他自己的那条
+##   * 角色语音 <角色id>（1~36、999）：轮到该角色回合时播他自己的那条
 ##   * 给牌（交牌动效配的那声，见 battle_mobile._给牌特效）：暂时拿参考工程的 draw.mp3 顶着，
 ##     换成正式音效时把 assets/media/audio/dealCard.ogg / dealCard.wav 放进去即可（找文件的顺序是 ogg → wav → mp3）
 ## 对照脚本：参考项目 scripts/game/AudioManager.gd

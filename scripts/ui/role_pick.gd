@@ -24,6 +24,8 @@ const 座位格预制: PackedScene = preload("res://scenes/prefabs/ui/SeatCell.t
 const 角色卡预制: PackedScene = preload("res://scenes/prefabs/ui/RoleCard.tscn")
 ## 顶部座位条上的座位格宽度（与 SeatCell.tscn 里的格宽一致，算格间距要用）
 const 座次格宽: float = 32.0
+## 全角色预览的分组标题高度（按角色表「版本」列分组，枚举值小的排前面）
+const 版本标题高: float = 46.0
 
 # ---- 当前 RoleReq 数据 ----
 var _strategy: int = 0
@@ -33,6 +35,8 @@ var _role_ids: Array[int] = []
 var _interactive: bool = false
 
 # ---- 场景里绑定的界面节点（结构在 role_pick.tscn 里，可所见即所得地改） ----
+## 中间的整体居中容器：全角色预览时给它留出左侧版本列表的宽度
+@export var 中间: CenterContainer
 @export var 标题: Label
 ## 底部提示那块底板（ui_notice）：没话可说时连它一起收掉，免得留个空框
 @export var 提示条: TextureRect
@@ -56,8 +60,16 @@ var _interactive: bool = false
 ## 底部「立即开始（x/X）」：点了＝我可以开始了（服务端记「已准备」），全部人就绪就直接结束选角。
 ## 点过之后照样能改选（见 _on_ready_pressed）
 @export var 准备按钮: Button
+## 全角色预览左侧的版本跳转列表（只在预览模式显示；普通选角收起）
+@export var 版本列表: VBoxContainer
+@export var 版本按钮区: VBoxContainer
+## 左侧版本栏预留宽度（列表右边缘 236 + 中间间距 24；用于把角色卡整体往右让开）
+const 预览左侧留白: float = 260.0
 ## 角色卡的悬浮说明框（与战斗界面同款；结构在 TipBox.tscn 里，见 说明提示框）
 @export var 说明提示: 说明提示框
+
+## 预览时每个版本分组标题在卡片区里的 y 坐标：点左侧版本按钮跳到这里
+var _版本滚动位置: Dictionary = {}
 
 ## 是不是「全角色预览」（设置窗里进来的那条路，见 进入全角色预览）：
 ## 是的话不选人、不收快照影响，只铺出来给人看
@@ -127,6 +139,9 @@ func 进入全角色预览() -> void:
 	_role_ids.clear()
 	for rid: int in Data.role_pool:
 		_role_ids.append(rid)
+	# 给左侧版本栏留出空间，避免版本按钮盖在角色卡上
+	中间.offset_left = 预览左侧留白
+	版本列表.visible = true
 	座次行.visible = false
 	倒计时.visible = false
 	返回按钮.visible = true
@@ -141,6 +156,8 @@ func _on_back_pressed() -> void:
 
 ## 应用（或更新）一条 RoleReq 数据；重复收到时复用本实例刷新内容，避免叠层
 func apply_request(data: Dictionary) -> void:
+	版本列表.visible = false
+	中间.offset_left = 0.0
 	_strategy = int(data.get("strategy", 0))
 	_ask_id = int(data.get("id", -1))
 	_role_ids.clear()
@@ -182,6 +199,13 @@ func _refresh() -> void:
 	for c: Node in 卡片区.get_children():
 		卡片区.remove_child(c)
 		c.queue_free()
+	# 全角色预览：按角色表版本分组，枚举值越小越靠前
+	if _预览模式:
+		_刷新预览分组()
+		_刷新版本列表()
+		return
+	版本列表.visible = false
+	中间.offset_left = 0.0
 	# 卡片按「一行 每行张数 张」手动摆；一行张数不足时（任意选的最后一行）在这一行里居中。
 	# 摆不下就滚动：可见区域最多 可见行数 行高，面板宽度固定。
 	var 张数: int = _role_ids.size()
@@ -202,6 +226,92 @@ func _refresh() -> void:
 	# 锁定期重建卡片（如断线重连补发的那条收尾请求）：直接按锁定版面摆
 	if _锁定:
 		_应用锁定外观()
+
+
+## 全角色预览的版本分组：返回 [{version:int, name:String, ids:Array[int]}, …]，
+## 版本按枚举升序（即 1 十周年 → 2 异端业火 → … → 5 特典），组内保持角色池的原有顺序。
+func _预览分组() -> Array:
+	var 分组: Dictionary = {}
+	for rid: int in Data.role_pool:
+		var v: int = Data.role_version(rid)
+		if not 分组.has(v):
+			分组[v] = []
+		(分组[v] as Array).append(rid)
+	var 版本列表: Array = 分组.keys()
+	版本列表.sort()
+	var out: Array = []
+	for v: int in 版本列表:
+		var ids: Array = 分组[v]
+		out.append({
+			"version": v,
+			"name": str(GConst.ROLE_VERSION_NAMES.get(v, "未定义")),
+			"ids": ids,
+		})
+	return out
+
+
+## 全角色预览的一行张数：扣掉左侧版本栏后按窗口宽度自动取 2~6 张，
+## 避免 6 张固定宽度把面板撑到版本栏下面。
+func _预览列数() -> int:
+	var 可用宽: float = get_viewport_rect().size.x - 预览左侧留白
+	return clampi(int(可用宽 / ROLE_BTN_W), 2, 每行张数)
+
+
+## 全角色预览布局：每个版本一段标题，下面按当前可用宽度摆该版本角色；标题本身不参与卡片点击。
+func _刷新预览分组() -> void:
+	var 分组: Array = _预览分组()
+	var 列数: int = _预览列数()
+	var 预览宽: float = ROLE_BTN_W * 列数
+	_版本滚动位置.clear()
+	var 总高: float = 0.0
+	for 组: Dictionary in 分组:
+		var 张数: int = (组["ids"] as Array).size()
+		var 行数: int = maxi(1, ceili(float(张数) / 列数))
+		总高 += 版本标题高 + 行数 * ROLE_BTN_H
+	滚动.custom_minimum_size = Vector2(预览宽, minf(总高, 版本标题高 + 可见行数 * ROLE_BTN_H))
+	卡片区.custom_minimum_size = Vector2(预览宽, 总高)
+	var y: float = 0.0
+	for 组: Dictionary in 分组:
+		_版本滚动位置[int(组.get("version", 0))] = y
+		var 标题格: Label = Label.new()
+		标题格.text = "%s（%d）" % [str(组.get("name", "")), (组["ids"] as Array).size()]
+		标题格.position = Vector2(0.0, y)
+		标题格.size = Vector2(预览宽, 版本标题高)
+		标题格.add_theme_font_size_override("font_size", 28)
+		标题格.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		标题格.add_theme_color_override("font_color", Color(0.92, 0.82, 0.55))
+		卡片区.add_child(标题格)
+		y += 版本标题高
+		var ids: Array = 组["ids"]
+		for i: int in range(ids.size()):
+			var btn: Button = _build_role_button(int(ids[i]))
+			卡片区.add_child(btn)
+			@warning_ignore("integer_division")
+			var 行: int = i / 列数
+			var 本行张数: int = mini(列数, ids.size() - 行 * 列数)
+			btn.position = Vector2(
+				(预览宽 - 本行张数 * ROLE_BTN_W) * 0.5 + (i % 列数) * ROLE_BTN_W,
+				y + 行 * ROLE_BTN_H)
+		y += maxi(1, ceili(float(ids.size()) / 列数)) * ROLE_BTN_H
+
+
+## 左侧版本跳转按钮：每个版本一个，按枚举升序；只在全角色预览里显示。
+func _刷新版本列表() -> void:
+	for c: Node in 版本按钮区.get_children():
+		c.queue_free()
+	for 组: Dictionary in _预览分组():
+		var 钮: Button = Button.new()
+		钮.text = "%s（%d）" % [str(组.get("name", "")), (组["ids"] as Array).size()]
+		钮.custom_minimum_size = Vector2(212, 48)
+		钮.add_theme_font_size_override("font_size", 22)
+		钮.pressed.connect(_跳到版本.bind(int(组.get("version", 0))))
+		版本按钮区.add_child(钮)
+
+
+## 点左侧版本按钮：把滚动框跳到该版本标题的位置。
+func _跳到版本(版本: int) -> void:
+	var y: int = int(_版本滚动位置.get(版本, 0))
+	滚动.scroll_vertical = y
 
 
 ## 把「已点选的那张」的黄框点亮、其余熄灭（改选、重连补发、重建卡片都走这里）

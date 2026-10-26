@@ -75,6 +75,8 @@ const SUB: Dictionary = {
 		17: {"n": "watchers", "t": "u32"},
 		# 房主建房时是否勾了「作弊」（调试模式）：房间列表只在开着时把这一段显示出来
 		18: {"n": "debug", "t": "bool"},
+		# 本房间开启的角色版本位掩码（角色表「版本」列；房间列表显示、选角/随机池过滤）
+		19: {"n": "role_versions", "t": "u32"},
 	},
 	"SinglePlayerInfo": PLAYER_INFO_FIELDS,
 	"Command": {
@@ -232,6 +234,8 @@ const TABLE: Dictionary = {
 		10: {"n": "silence", "t": "bool"},
 		# 调试模式：房主建房时勾选，房内所有人都能用测试指令（见 BattleEngine.room_debug）
 		11: {"n": "debug", "t": "bool"},
+		# 房间开启的角色版本位掩码（角色表「版本」列）；0/省略＝旧客户端，按全部版本处理
+		12: {"n": "role_versions", "t": "u32"},
 	},
 	GConst.Msg.EnterRoomReq: {
 		1: {"n": "room_id", "t": "i32"},

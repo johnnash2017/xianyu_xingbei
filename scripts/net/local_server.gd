@@ -366,6 +366,8 @@ func _room_infos(conn_id: int = -1) -> Array:
 			"watchers": (r["watchers"] as Array).size(),
 			"role_strategy": r["role_strategy"],
 			"seat_mode": r["seat_mode"],
+			# 本房间开启的角色版本（位掩码）：房间列表显示，客户端也可以用来解释为什么候选里没有某些角色
+			"role_versions": int(r.get("role_versions", 0)),
 			# 房主勾了「作弊」（调试模式）：房间列表据此显示一段提示（没勾就不显示）
 			"debug": battle.room_debug,
 			"role_range": 31,
@@ -399,12 +401,18 @@ func _建房间(数据: Dictionary, 房主连接: int) -> Dictionary:
 	_next_room_id += 1
 	var battle: BattleEngine = BattleEngine.new()
 	battle.room_id = rid
+	# 角色版本：0/省略＝旧客户端，按全部可用版本处理；过滤后没有角色时也退回全部，
+	# 避免旧数据 / 空版本把房间开成没有角色可选。
+	var 角色版本掩码: int = int(数据.get("role_versions", 0))
+	if 角色版本掩码 <= 0 or Data.role_pool_for_versions(角色版本掩码).is_empty():
+		角色版本掩码 = Data.role_versions_all_mask()
 	var room: Dictionary = {
 		"id": rid,
 		"name": str(数据.get("room_name", "房间%d" % rid)).left(房名最大字符数),
 		"max_player": clampi(int(数据.get("max_player", 6)), 2, GConst.MAX_PLAYER),
 		"role_strategy": int(数据.get("role_strategy", GConst.RoleStrategy.Random)),
 		"seat_mode": int(数据.get("seat_mode", GConst.SeatMode.Random)),
+		"role_versions": 角色版本掩码,
 		"allow_guest": bool(数据.get("allow_guest", true)),
 		"started": false,
 		# 房主的身份标识：断线重连后靠它把「房主」重新绑回房主的新连接（见 enter_room）。
@@ -771,7 +779,7 @@ func _开始本局(room: Dictionary, battle: BattleEngine) -> void:
 	if int(room["role_strategy"]) == GConst.RoleStrategy.Random:
 		# Random 策略保持原样：不发询问、直接随机分配（自动测试依赖这条零交互路径）
 		room["started"] = true
-		battle.start(Data.role_pool.duplicate())
+		battle.start(_房间角色池(room).duplicate())
 		rooms_changed.emit()
 		return
 	# 进选角前先广播一次：让选角界面带上刚定下的队伍色与座位顺序
@@ -818,7 +826,7 @@ func _begin_role_pick(room: Dictionary) -> void:
 		候选数 = 五选一候选数
 	elif _任选模式(room):
 		候选数 = 0
-	_begin_pick_candidates(room, Data.role_pool, 候选数)
+	_begin_pick_candidates(room, _房间角色池(room), 候选数)
 
 
 ## 收客户端的 PickBan（选角结果）。同一个玩家可以反复提交（选定后还能改选），以最后一次为准；
@@ -1041,6 +1049,16 @@ func _随机取未占用(候选: Array, 已用: Array, 允许重复: bool) -> in
 	if 可选.is_empty():
 		return 0
 	return int(可选.pick_random())
+
+
+## 本房间的角色池：按房间开启的版本过滤；过滤不到（旧数据 / 空版本）时退回全部启用角色。
+func _房间角色池(room: Dictionary) -> Array[int]:
+	var 池: Array[int] = Data.role_pool_for_versions(int(room.get("role_versions", 0)))
+	if not 池.is_empty():
+		return 池
+	var 全部: Array[int] = []
+	全部.append_array(Data.role_pool)
+	return 全部
 
 
 ## 是否「任选」策略：候选是整张角色表，允许多人选同一个角色

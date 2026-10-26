@@ -8,7 +8,7 @@
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_seat"]
 
-[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "Steam状态", "进入按钮", "刷新按钮", "创建房间按钮", "返回登录按钮", "设置按钮", "全角色预览按钮", "创建层", "房名输入", "创建按钮", "取消创建按钮", "调试模式", "观战确认层", "观战是按钮", "观战否按钮", "版本提示层", "版本提示文本", "版本确定按钮", "版本标签")]
+[node name="Lobby" type="Control" unique_id=1457348357 node_paths=PackedStringArray("标题栏", "房间列表", "状态栏", "Steam状态", "进入按钮", "刷新按钮", "创建房间按钮", "返回登录按钮", "设置按钮", "全角色预览按钮", "创建层", "房名输入", "版本选项", "创建按钮", "取消创建按钮", "调试模式", "观战确认层", "观战是按钮", "观战否按钮", "版本提示层", "版本提示文本", "版本确定按钮", "版本标签")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -31,6 +31,7 @@ script = ExtResource("1_5gu6x")
 "人数组" = SubResource("ButtonGroup_people")
 "选角组" = SubResource("ButtonGroup_strategy")
 "座位组" = SubResource("ButtonGroup_seat")
+"版本选项" = NodePath("创建层/居中/创建卡片/内容/版本行/版本选项")
 "创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/创建按钮")
 "取消创建按钮" = NodePath("创建层/居中/创建卡片/内容/按钮行/取消创建按钮")
 "调试模式" = NodePath("创建层/居中/创建卡片/内容/指令行/调试模式")
@@ -265,6 +266,22 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_seat")
 metadata/seat = 4
 text = "间隔"
+
+[node name="版本行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="版本标签" type="Label" parent="创建层/居中/创建卡片/内容/版本行"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "版本"
+vertical_alignment = 1
+
+[node name="版本选项" type="HBoxContainer" parent="创建层/居中/创建卡片/内容/版本行"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
 
 [node name="指令行" type="HBoxContainer" parent="创建层/居中/创建卡片/内容"]
 layout_mode = 2

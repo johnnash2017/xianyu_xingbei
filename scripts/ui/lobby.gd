@@ -20,6 +20,8 @@ const 版本不同色: Color = Color(0.55, 0.55, 0.55)
 const 共享键_人数: String = "room_max_player"
 const 共享键_选角: String = "room_role_strategy"
 const 共享键_座位: String = "room_seat_mode"
+## 房间开启的角色版本位掩码（角色表「版本」列）
+const 共享键_版本: String = "room_role_versions"
 ## 共享配置里没记录过时的取值：人数与选角的合法值都 ≥ 1，所以用 0 表示「没记过」
 const 未记录: int = 0
 
@@ -45,6 +47,8 @@ const 未记录: int = 0
 @export var 选角组: ButtonGroup
 ## 创建房间的座位单选组（每个按钮的 metadata/seat = GConst.SeatMode 值）
 @export var 座位组: ButtonGroup
+## 创建房间的角色版本复选组（每个 CheckBox 的 metadata/version = GConst.ROLE_VERSION_NAMES 的键）
+@export var 版本选项: HBoxContainer
 @export var 创建按钮: Button
 @export var 取消创建按钮: Button
 ## 创建房间「指令」行的勾选（界面上写的是「开启作弊」）：勾上后本房间内所有玩家都能用测试指令
@@ -75,6 +79,8 @@ var _刷新计时: float = 0.0
 var _主机列表: Array[Dictionary] = []
 var _主机列表版本: int = 0
 var _已渲染主机版本: int = -1
+## 建房面板里的版本复选框（按 Data.role_version_options 动态创建）
+var _版本复选框: Array[CheckBox] = []
 
 
 func _ready() -> void:
@@ -104,6 +110,7 @@ func _ready() -> void:
 	观战是按钮.pressed.connect(func() -> void: _点了(_on_watch_yes_pressed))
 	观战否按钮.pressed.connect(func() -> void: _点了(_on_watch_no_pressed))
 	版本确定按钮.pressed.connect(func() -> void: _点了(_on_version_ok_pressed))
+	_初始化版本选项()
 	_恢复建房选项()
 	# 局域网联机：进来先搜同一网段里的房主（Steam 房主的房间也在广播之列，见 Net.开始局域网广播），
 	# 还没连上之前列表列的就是这些主机
@@ -187,7 +194,7 @@ func _渲染主机列表() -> void:
 			"列": PackedStringArray([
 				" 可加入 ", " — ",
 				" %s 的房间（局域网 %s）" % [str(h["名称"]), str(h["地址"])],
-				" 无观战 ", " %s " % (版本 if 版本 != "" else "—"), " "]),
+				" 无观战 ", " — ", " %s " % (版本 if 版本 != "" else "—"), " "]),
 			"悬停": "点击连上这台房主（%s:%d）" % [str(h["地址"]), int(h["端口"])],
 			"已满": false,
 			"可重连": false,
@@ -199,7 +206,7 @@ func _渲染主机列表() -> void:
 
 
 ## 列表的列：表头文字（顺序即列序）。用 Tree 的列头显示
-const 列表列名: PackedStringArray = ["状态", "人数", "房间名", "观战", "版本", "选项"]
+const 列表列名: PackedStringArray = ["状态", "人数", "房间名", "观战", "角色版本", "版本", "选项"]
 ## 「房间名」所在列（吃掉多余空间的就这一列；列头文字、悬停、列宽都按它定位）
 const 列_房间名: int = 2
 
@@ -334,10 +341,13 @@ func _房间行(r: Dictionary) -> Dictionary:
 	var 房间状态: String = "可重连" if 可重连 else ("战斗中" if 战斗中 else "等待中")
 	# 房主版本号：列表里显示出来，方便一眼看出「这间是别的版本」（拿不到就按「—」显示）
 	var 版本: String = str(r.get("version", ""))
+	# 房间开启的角色版本（角色表「版本」列）：与上面的游戏版本是两回事
+	var 角色版本: String = Data.role_versions_text(int(r.get("role_versions", 0)))
 	# 建房设置：选角模式 / 座位规则 /（开了才有的）作弊。直接空开显示在行尾，
 	# 悬停再给带标签的全称 —— 房间列表每行是单行文本、字号又大，摊开写会把房间名挤出去
 	var 设置: PackedStringArray = PackedStringArray()
 	var 悬停: PackedStringArray = PackedStringArray()
+	悬停.append("角色版本：%s" % 角色版本)
 	var 选角名: String = str(GConst.ROLE_STRATEGY_NAMES.get(int(r.get("role_strategy", 0)), ""))
 	if 选角名 != "":
 		设置.append(选角名)
@@ -354,7 +364,7 @@ func _房间行(r: Dictionary) -> Dictionary:
 		# 每列前后各留一个空格：列与列之间、以及最外侧与列边之间都有呼吸空间
 		"列": PackedStringArray([
 			" %s " % 房间状态, " %d/%d " % [现在, 上限], " %s " % str(r.get("room_name", "")),
-			" 观战 %d " % 观战, " %s " % (版本 if 版本 != "" else "—"),
+			" 观战 %d " % 观战, " %s " % 角色版本, " %s " % (版本 if 版本 != "" else "—"),
 			" %s " % "　".join(设置)]),
 		"悬停": "　".join(悬停),
 		"已满": 已满,
@@ -472,6 +482,42 @@ func _on_close_create_pressed() -> void:
 	创建层.visible = false
 
 
+## 角色版本复选框：只摆「当前角色表里确实有启用角色」的版本；版本掩码才是房间实际使用的数据。
+func _初始化版本选项() -> void:
+	for c: Node in 版本选项.get_children():
+		c.queue_free()
+	_版本复选框.clear()
+	for 项: Dictionary in Data.role_version_options:
+		var 钮: CheckBox = CheckBox.new()
+		钮.text = "%s（%d）" % [str(项.get("name", "")), int(项.get("count", 0))]
+		钮.tooltip_text = "开启后，本房间可选用该版本的角色"
+		钮.set_meta("version", int(项.get("value", 0)))
+		钮.add_theme_font_size_override("font_size", 22)
+		钮.button_pressed = true
+		版本选项.add_child(钮)
+		_版本复选框.append(钮)
+
+
+## 把版本掩码套到复选框上（mask 0 / 越界时退回全部可用版本）
+func _套用版本掩码(mask: int) -> void:
+	var 全部: int = Data.role_versions_all_mask()
+	var 用: int = mask if mask > 0 else 全部
+	for 钮: CheckBox in _版本复选框:
+		钮.button_pressed = (用 & (1 << int(钮.get_meta("version", 0)))) != 0
+	if _读取版本掩码() == 0:
+		for 钮: CheckBox in _版本复选框:
+			钮.button_pressed = true
+
+
+## 当前版本复选框 → 位掩码
+func _读取版本掩码() -> int:
+	var mask: int = 0
+	for 钮: CheckBox in _版本复选框:
+		if 钮.button_pressed:
+			mask |= 1 << int(钮.get_meta("version", 0))
+	return mask
+
+
 func _on_create_pressed() -> void:
 	# 局域网联机还没连上任何房主时，「创建房间」的含义是「本机当房主」：
 	# 起局域网监听 + 向网段广播（别人就搜得到），等自己的客户端连上本机服务端再照常发建房请求
@@ -501,13 +547,19 @@ func _on_create_pressed() -> void:
 	var 人数: int = int(人数组.get_pressed_button().get_meta("people"))
 	var 选角: int = int(选角组.get_pressed_button().get_meta("strategy"))
 	var 座位: int = int(座位组.get_pressed_button().get_meta("seat"))
+	var 版本: int = _读取版本掩码()
 	var 调试: bool = 调试模式.button_pressed
+	if 版本 == 0:
+		创建层.visible = true
+		设状态("请至少开启一个角色版本")
+		return
 	# 记住这次选的：写共享配置，多开共用一份，下次启动直接沿用。
 	# 调试模式刻意不记：每次建房都从「未勾选」开始，免得顺手把调试入口带进正常局
 	Cfg.shared_set(共享键_人数, 人数)
 	Cfg.shared_set(共享键_选角, 选角)
 	Cfg.shared_set(共享键_座位, 座位)
-	Logic.create_room(房名, 人数, 选角, 座位, 调试)
+	Cfg.shared_set(共享键_版本, 版本)
+	Logic.create_room(房名, 人数, 选角, 座位, 调试, 版本)
 
 
 # ============================================================
@@ -525,6 +577,7 @@ func _恢复建房选项() -> void:
 	_选中按元数据(人数组, "people", 人数)
 	_选中按元数据(选角组, "strategy", int(Cfg.shared_get(共享键_选角, 未记录)))
 	_选中按元数据(座位组, "seat", int(Cfg.shared_get(共享键_座位, 未记录)))
+	_套用版本掩码(int(Cfg.shared_get(共享键_版本, 未记录)))
 	调试模式.button_pressed = Cfg.调试模式
 
 

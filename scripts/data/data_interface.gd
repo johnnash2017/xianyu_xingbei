@@ -8,7 +8,13 @@ var _card_by_id: Dictionary = {}         # 卡号 -> GCard（get_card 查这张�
 var role_list: Dictionary = {}          # roleID -> 显示名（「[剑圣]」这种，取自角色表的显示名列）
 ## 可出场的角色号（角色表「启用」列 = 1 的）：随机分配、三选一/五选一/任选的候选池都取自这里
 var role_pool: Array[int] = []
+## 角色号 -> 版本（角色表「版本」列的枚举值，如十周年=1、特典=5）
+var role_version_db: Dictionary = {}
+## 当前角色表里实际有启用角色的版本，按 GConst.ROLE_VERSION_ORDER 排序：
+## 每项 {value:int, name:String, count:int}，建房面板据此摆版本复选框
+var role_version_options: Array[Dictionary] = []
 var role_skill_db: Dictionary = {}      # roleID -> 技能文本
+var role_personal_name_db: Dictionary = {}  # roleID -> 姓名（角色表「姓名」列，如 猎巫人 → 白狼卡拉马）
 var role_fate_pattern_db: Dictionary = {}   # roleID -> 命格（技 / 血 / 幻 / 咏 / 圣）
 var role_tokens_db: Dictionary = {}     # roleID -> { 槽位: {name, max} }（取自角色表的指示物列）
 ## 角色号 -> 角色表那一行（懒建一次；角色表 id 是名字型，协议/代码用的角色号在「角色索引」列）
@@ -35,6 +41,7 @@ func _ready() -> void:
 	blue = GTeam.new(false)
 	_load_card_db()
 	_load_role_list()
+	_load_role_personal_name()
 	_load_role_skill_db()
 	_load_role_fate_pattern()
 	_load_role_tokens()
@@ -60,11 +67,15 @@ func _load_card_db() -> void:
 func _load_role_list() -> void:
 	role_list.clear()
 	role_pool.clear()
+	role_version_db.clear()
+	role_version_options.clear()
 	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
 	var 显示列: int = int(列索引["显示名"])
-	var 名列: int = int(列索引["角色名"])
+	var 名列: int = int(列索引["职业名"])
 	var 索引列: int = int(列索引["角色索引"])
 	var 启用列: int = int(列索引["启用"])
+	var 版本列: int = int(列索引.get("版本", -1))
+	var 版本计数: Dictionary = {}
 	for key: String in 数据表格.角色表.keys():
 		var row: Array = 数据表格.角色表[key]
 		var 名: String = str(row[显示列]).strip_edges()
@@ -72,10 +83,40 @@ func _load_role_list() -> void:
 			名 = str(row[名列]).strip_edges()
 		var 角色号: int = int(row[索引列])
 		role_list[角色号] = 名
+		var 版本: int = int(row[版本列]) if 版本列 >= 0 and 版本列 < row.size() else 0
+		role_version_db[角色号] = 版本
 		# 「启用」列 = 1 的才进候选池；停用一个角色就把它那格改成 0
 		if int(row[启用列]) > 0:
 			role_pool.append(角色号)
+			if 版本 > 0:
+				版本计数[版本] = int(版本计数.get(版本, 0)) + 1
 	role_pool.sort()
+	for v: int in GConst.ROLE_VERSION_ORDER:
+		if int(版本计数.get(v, 0)) <= 0:
+			continue
+		role_version_options.append({
+			"value": v,
+			"name": str(GConst.ROLE_VERSION_NAMES.get(v, "版本%d" % v)),
+			"count": int(版本计数[v]),
+		})
+
+
+## 角色姓名：取自「角色表」的「姓名」列，与职业名分开。
+## 白板、未移植的特典角色可能没有姓名，返回空串。
+func _load_role_personal_name() -> void:
+	role_personal_name_db.clear()
+	var 列索引: Dictionary = 数据表格.表元数据["角色表"]["列索引"]
+	var 姓名列: int = int(列索引.get("姓名", -1))
+	if 姓名列 < 0:
+		return
+	var 索引列: int = int(列索引["角色索引"])
+	for key: String in 数据表格.角色表.keys():
+		var row: Array = 数据表格.角色表[key]
+		if 姓名列 >= row.size():
+			continue
+		var 姓名: String = str(row[姓名列]).strip_edges()
+		if 姓名 != "":
+			role_personal_name_db[int(row[索引列])] = 姓名
 
 
 ## 技能表「大类」列的取值 → 界面上的分段标题；数组顺序即显示顺序
@@ -150,6 +191,54 @@ func _load_role_fate_pattern() -> void:
 # ============================================================
 func role_name(rid: int) -> String:
 	return str(role_list.get(rid, "角色"))
+
+
+## 角色姓名（角色表的「姓名」列）；与显示名/职业名分开，未配置时返回空串
+func role_personal_name(rid: int) -> String:
+	return str(role_personal_name_db.get(rid, ""))
+
+
+## 该角色属于哪个版本（未定义返回 0）
+func role_version(rid: int) -> int:
+	return int(role_version_db.get(rid, 0))
+
+
+## 角色星数（使用难度）：角色表「星数」列；白板/未配置返回 0
+func role_star(rid: int) -> float:
+	var row: Array = _角色行(rid)
+	if row.is_empty():
+		return 0.0
+	var 列: int = int(数据表格.表元数据["角色表"]["列索引"].get("星数", -1))
+	if 列 < 0 or 列 >= row.size():
+		return 0.0
+	return float(row[列])
+
+
+## 当前所有有启用角色的版本掩码（位：1 << 版本号）
+func role_versions_all_mask() -> int:
+	var mask: int = 0
+	for 项: Dictionary in role_version_options:
+		mask |= GConst.role_version_bit(int(项.get("value", 0)))
+	return mask
+
+
+## 按房间版本掩码筛出可出场角色；mask=0 视为「没限制」（兼容旧客户端 / 旧建房请求）
+func role_pool_for_versions(mask: int) -> Array[int]:
+	var out: Array[int] = []
+	if mask == 0:
+		out.append_array(role_pool)
+		return out
+	for rid: int in role_pool:
+		var bit: int = GConst.role_version_bit(role_version(rid))
+		if bit != 0 and (mask & bit) != 0:
+			out.append(rid)
+	return out
+
+
+## 版本掩码 → 房间列表显示用的中文串（没有可用版本时给破折号）
+func role_versions_text(mask: int) -> String:
+	var 文: String = GConst.role_versions_text(mask)
+	return 文 if 文 != "" else "—"
 
 
 ## 角色表里某角色那一行（「除 id 以外的各列」）；没有这个角色就返回空数组

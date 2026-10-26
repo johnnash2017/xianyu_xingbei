@@ -175,6 +175,8 @@ const 键_房间号: String = "server_room"
 const 键_选角: String = "role_strategy"
 const 键_座位: String = "seat_mode"
 const 键_作弊: String = "debug"
+## 房间开启的角色版本位掩码（角色表「版本」列）：列表显示 + 进房后服务端过滤角色池
+const 键_角色版本: String = "role_versions"
 ## 本作大厅隔离标记（对照 CyberWS 的 lobbyNameMarker）：房主写进大厅数据，查询时按它过滤。
 ## AppID 480 下世界范围里全是别人的开发大厅，只靠「房名非空」会把别的游戏也列进来。
 ## 取值就是下面那个固定前缀 —— **刻意不带版本号**：不同版本要能在列表里互相看见
@@ -215,6 +217,7 @@ var _待建人数: int = 0
 var _待建选角: int = GConst.RoleStrategy.Random
 var _待建座位: int = GConst.SeatMode.Random
 var _待建作弊: bool = false
+var _待建角色版本: int = 0
 
 ## 大厅列表就绪：房间信息的形状与局域网那套一致，房间列表 UI 直接复用
 signal 大厅列表已就绪(房间列表: Array)
@@ -266,6 +269,8 @@ func _on_match_list(lobbies: Array) -> void:
 			"can_reenter": _含我的座位(Steam.getLobbyData(id, 键_可重连身份)),
 			"role_strategy": int(Steam.getLobbyData(id, 键_选角)),
 			"seat_mode": int(Steam.getLobbyData(id, 键_座位)),
+			# 房间开启的角色版本位掩码（角色表「版本」列）
+			"role_versions": int(Steam.getLobbyData(id, 键_角色版本)),
 			"debug": Steam.getLobbyData(id, 键_作弊) == "1",
 			"allow_guest": true,
 		})
@@ -285,7 +290,7 @@ func _含我的座位(留座身份串: String) -> bool:
 ## 观战者也是大厅成员：他们要从大厅数据里拿到房主 SteamID 才能收 P2P 消息，
 ## 上限若只按战斗人数算，战斗席一满观战者就会被 Steam 拒。
 ## 选角 / 座位 / 作弊一并带上：大厅数据里有它们，房间列表才能把这几项显示出来
-func 建房(房名: String, 人数上限: int, 选角: int, 座位: int, 作弊: bool) -> void:
+func 建房(房名: String, 人数上限: int, 选角: int, 座位: int, 作弊: bool, 角色版本: int = 0) -> void:
 	if not 就绪 or _建房中:
 		return
 	# 旧大厅还没退（连点「创建房间」、或没回大厅就又建一次）：先退掉，
@@ -299,6 +304,7 @@ func 建房(房名: String, 人数上限: int, 选角: int, 座位: int, 作弊:
 	_待建选角 = 选角
 	_待建座位 = 座位
 	_待建作弊 = 作弊
+	_待建角色版本 = 角色版本
 	Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, 人数上限 + 观战席)
 
 
@@ -318,6 +324,7 @@ func _on_lobby_created(返回码: int, lobby_id: int) -> void:
 	Steam.setLobbyData(lobby_id, 键_选角, str(_待建选角))
 	Steam.setLobbyData(lobby_id, 键_座位, str(_待建座位))
 	Steam.setLobbyData(lobby_id, 键_作弊, "1" if _待建作弊 else "0")
+	Steam.setLobbyData(lobby_id, 键_角色版本, str(_待建角色版本))
 	# 房间编号可能比对局广播来得晚（建房是异步的）：这时已经先记在 本房房间号 里，补写一次
 	if 本房房间号 >= 0:
 		Steam.setLobbyData(lobby_id, 键_房间号, str(本房房间号))

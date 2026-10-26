@@ -298,7 +298,10 @@ func request_room_list() -> void:
 	Net.send(GConst.Msg.RoomListReq, {"role_strategy": GConst.RoleStrategy.All})
 
 
-func create_room(room_name: String, max_player: int, role_strategy: int = GConst.RoleStrategy.Random, seat_mode: int = GConst.SeatMode.Random, debug: bool = false) -> void:
+func create_room(room_name: String, max_player: int, role_strategy: int = GConst.RoleStrategy.Random, seat_mode: int = GConst.SeatMode.Random, debug: bool = false, role_versions: int = 0) -> void:
+	# 0＝调用方还没接版本选择（旧路径）：按当前全部可用版本开房，避免把角色池开空。
+	if role_versions <= 0:
+		role_versions = Data.role_versions_all_mask()
 	# 玩家明确在建房了：退房后的「丢快照」窗口提前关掉，新房子的快照要收
 	_退房后忽略快照至_ms = 0
 	# 什么时候先补「大厅待机」：
@@ -316,7 +319,7 @@ func create_room(room_name: String, max_player: int, role_strategy: int = GConst
 	# （选角 / 座位 / 作弊也写进大厅数据，房间列表要显示）
 	# 同时向局域网广播本机有房：同一网段里没登 Steam 的机器也能搜到并连进来（见 MultiServer）
 	if not Cfg.无Steam():
-		SteamNet.建房(room_name, max_player, role_strategy, seat_mode, debug)
+		SteamNet.建房(room_name, max_player, role_strategy, seat_mode, debug, role_versions)
 		Net.开始局域网广播()
 	Net.send(GConst.Msg.CreateRoomReq, {
 		"room_name": room_name,
@@ -325,6 +328,7 @@ func create_room(room_name: String, max_player: int, role_strategy: int = GConst
 		"seat_mode": seat_mode,
 		"allow_guest": true,
 		"debug": debug,
+		"role_versions": role_versions,
 	})
 
 

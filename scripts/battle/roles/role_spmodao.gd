@@ -1,5 +1,5 @@
 extends BattleRole
-## sp魔导师（roleID 108）—— 移植自服务端 role/spMoDao.cpp
+## sp魔导师（roleID 999）—— 移植自服务端 role/spMoDao.cpp
 ## 技能：
 ##   sp魔爆冲击（805）——【法术】弃 1 张法术牌【展示】；我方【战绩区】+1【宝石】；指定 1 名目标对手
 ##        弃 1 张法术牌【展示】，若他不如此做，则对其造成 2 点法术伤害③

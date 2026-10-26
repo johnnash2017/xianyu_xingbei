@@ -34,7 +34,11 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0) -> String:
 	var 正文号: int = maxi(1, int(round(float(提示框正文字号) * 字号缩放)))
 	var 姓名号: int = maxi(1, int(round(float(提示框姓名行字号) * 字号缩放)))
 	var 标题号: int = maxi(1, int(round(float(提示框标题字号) * 字号缩放)))
-	var 文本: String = "[font_size=%d]%s[/font_size]" % [姓名号, Data.role_name(角色号)]
+	var 角色名: String = Data.role_name(角色号)
+	var 姓名: String = Data.role_personal_name(角色号)
+	if 姓名 != "":
+		角色名 = "%s %s" % [角色名, 姓名]
+	var 文本: String = "[font_size=%d]%s[/font_size]" % [姓名号, 角色名]
 	var 信息: String = Data.role_skill_info(角色号)
 	if 信息 != "":
 		# 角色名就压在最上面，第一个分段标题（普通技）上方也要留白，和后面几类一致
@@ -52,6 +56,18 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0) -> String:
 		文本 += "\n[font_size=%d] [/font_size]\n[right][font_size=%d][color=#%s]%s[/color][/font_size][/right]" % [
 			标题上方留白字号, 标识物号, 提示框标识物颜色.to_html(false), 标识物]
 	return 文本
+
+
+## 角色星数文本（提示框右上角）：整数显示 `★3`，半星显示 `★3.5`；没有星数返回空串。
+## 项目字体没有 ⭐（U+2B50）的字形，用同形的 ★（U+2605）。
+static func 星数文本(角色号: int) -> String:
+	var 星: float = Data.role_star(角色号)
+	if 星 <= 0.0:
+		return ""
+	var 整: float = roundf(星)
+	if is_equal_approx(星, 整):
+		return "★%d" % int(整)
+	return "★%.1f" % 星
 
 
 ## 某个角色的专属标识物一览（纯文本）：`专属标识物【黄魂】上限为6，【蓝魂】上限为6`。

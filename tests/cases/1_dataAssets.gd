@@ -19,6 +19,83 @@ func 跑() -> void:
 	检(not Data.card_db.is_empty(), "卡表为空（DataTables.gd 的卡表没读到）")
 	检(not Data.role_list.is_empty(), "角色表为空（数据/角色表 没读到）")
 
+	# 维基补录角色：只录入数据，暂设为禁用；SP 魔导师改到 999，108 让给剑之子
+	检(str(Data.role_list.get(38, "")) == "游击士", "38 号角色名不是「游击士」")
+	检(Data.role_personal_name(38) == "索拉", "38 号游击士姓名不是「索拉」")
+	检(str(Data.role_list.get(108, "")) == "剑之子", "108 号角色名不是「剑之子」")
+	检(str(Data.role_list.get(999, "")) == "sp魔导师", "sp魔导师应改到 999")
+	检(str(Data.role_list.get(111, "")) == "红衣主教", "111 号角色名不是「红衣主教」")
+	for 补录号: int in [43, 47, 75, 78, 87, 106, 107]:
+		检(str(Data.role_list.get(补录号, "")) != "", "补录角色 %d 缺失" % 补录号)
+	检(not Data.role_pool.has(38) and not Data.role_pool.has(108) and not Data.role_pool.has(999),
+		"补充角色/停用角色不应进入选角池")
+
+	# 维基技能补录：只配置了表，没有脚本；每个新角色至少有一个能查到的技能行
+	var 新角色号: Array[int] = [38, 39, 40, 41, 43, 45, 46, 47, 75, 78, 79, 80, 81, 82, 83, 84, 86, 87, 92, 93, 94, 95, 96, 97, 106, 107, 108, 109, 111]
+	for 新角色: int in 新角色号:
+		var 技能号列表: Array[int] = Data.role_skills(新角色)
+		检(not 技能号列表.is_empty(), "%d 号补录角色没有技能引用" % 新角色)
+		检(Data.role_script(新角色) == "", "%d 号补录角色不应有脚本" % 新角色)
+		for 技能号: int in 技能号列表:
+			检(not GConst.技能行(技能号).is_empty(), "%d 号角色的技能 %d 查不到技能表行" % [新角色, 技能号])
+	检(str(Data.role_skill_info(38)).contains("精灵赠礼"), "38 号补录角色的技能文本未生成")
+
+	# 指示物槽位：游击士盖牌、神秘学者秘术+言灵、铸律者银弹+圣遗物、传教士虔诚
+	var 游击士弹: Dictionary = Data.role_token_def(38, 2)
+	检(str(游击士弹.get("name", "")) == "子弹" and int(游击士弹.get("max", 0)) == 6,
+		"游击士【子弹】槽配置不对：%s" % str(游击士弹))
+	var 神秘秘术: Dictionary = Data.role_token_def(80, 0)
+	var 神秘言灵: Dictionary = Data.role_token_def(80, 2)
+	检(str(神秘秘术.get("name", "")) == "秘术" and int(神秘秘术.get("max", 0)) == 4,
+		"神秘学者【秘术】槽配置不对：%s" % str(神秘秘术))
+	检(str(神秘言灵.get("name", "")) == "言灵" and int(神秘言灵.get("max", 0)) == 3,
+		"神秘学者【言灵】槽配置不对：%s" % str(神秘言灵))
+	var 铸律银弹: Dictionary = Data.role_token_def(92, 0)
+	var 铸律圣遗物: Dictionary = Data.role_token_def(92, 1)
+	检(str(铸律银弹.get("name", "")) == "银制子弹" and int(铸律银弹.get("max", 0)) == 3,
+		"铸律者【银制子弹】槽配置不对：%s" % str(铸律银弹))
+	检(str(铸律圣遗物.get("name", "")) == "圣遗物" and int(铸律圣遗物.get("max", 0)) == 3,
+		"铸律者【圣遗物】槽配置不对：%s" % str(铸律圣遗物))
+	var 传教虔诚: Dictionary = Data.role_token_def(96, 0)
+	检(str(传教虔诚.get("name", "")) == "虔诚" and int(传教虔诚.get("max", 0)) == 4,
+		"传教士【虔诚】槽配置不对：%s" % str(传教虔诚))
+
+	# 新角色各自用自己的技能行：EX魔弓不借用神箭手【狙击】，咒符师不借用灵符师【念咒】
+	var EX技能: Array[int] = Data.role_skills(75)
+	检(EX技能.has(7504) and not EX技能.has(303), "EX魔弓的【狙击】没有独立成行：%s" % str(EX技能))
+	var 咒符技能: Array[int] = Data.role_skills(84)
+	检(咒符技能.has(8403) and not 咒符技能.has(1803), "咒符师的【念咒】没有独立成行：%s" % str(咒符技能))
+
+	# 补录角色的版本与命格（势力在表里一并核过）
+	检(Data.role_version(38) == 5 and Data.role_fate_pattern(38) == "技", "游击士版本/命格不对")
+	检(Data.role_version(39) == 2 and Data.role_fate_pattern(39) == "圣", "圣庭检察士版本/命格不对")
+	检(Data.role_version(78) == 3 and Data.role_fate_pattern(78) == "咏", "矜贵之女版本/命格不对")
+	检(Data.role_version(92) == 4 and Data.role_fate_pattern(92) == "血", "铸律者版本/命格不对")
+	检(Data.role_version(109) == 5 and Data.role_fate_pattern(109) == "圣", "仲裁者·圣版本/命格不对")
+	检(Data.role_version(111) == 4 and Data.role_fate_pattern(111) == "圣", "红衣主教版本/命格不对")
+
+	# 星数：表里除白板/sp 外都要有值
+	for 星角色: int in Data.role_list.keys():
+		if 星角色 == 0 or 星角色 == 999:
+			continue
+		检(Data.role_star(星角色) > 0.0, "%d 号角色缺星数" % 星角色)
+	检(Data.role_star(1) == 3.0 and Data.role_star(9) == 3.5 and Data.role_star(19) == 4.5,
+		"标准角色星数不对")
+	检(Data.role_star(38) == 3.5 and Data.role_star(92) == 5.0, "补录角色星数不对")
+
+	# 有持续形态的角色：状态名与状态底色
+	检(Data.role_forms(43) == ["圣炎形态"], "圣殿骑士形态名不对：%s" % str(Data.role_forms(43)))
+	检(Data.role_status_bg(43).to_html(false).to_lower() == "e64a19", "圣殿骑士状态底色不对")
+	检(Data.role_forms(83) == ["狂戾形态"], "染污者形态名不对：%s" % str(Data.role_forms(83)))
+	检(Data.role_status_bg(83).to_html(false).to_lower() == "b71c1c", "染污者状态底色不对")
+	检(Data.role_forms(81) == ["侍奉之道"], "女仆长形态名不对：%s" % str(Data.role_forms(81)))
+	检(Data.role_status_bg(81).to_html(false).to_lower() == "44d647", "女仆长状态底色不对")
+	检(Data.role_forms(82) == ["荒神祭仪"], "结界师形态名不对：%s" % str(Data.role_forms(82)))
+	检(Data.role_status_bg(82).to_html(false).to_lower() == "672e77", "结界师状态底色不对")
+	检(Data.role_forms(109) == ["天罪"], "仲裁者·圣形态名不对：%s" % str(Data.role_forms(109)))
+	检(Data.role_status_bg(109).to_html(false).to_lower() == "0060ff", "仲裁者·圣状态底色不对")
+	检(Data.role_forms(38).is_empty(), "游击士不应有横置形态")
+
 	# 冒险家两版：12＝冒险家，89＝冒险家Trick，脚本与头像资源都必须各自齐全
 	检(str(Data.role_list.get(12, "")) == "冒险家", "12 号角色名不是「冒险家」")
 	检(str(Data.role_list.get(89, "")) == "冒险家Trick", "89 号角色名不是「冒险家Trick」")

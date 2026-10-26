@@ -301,7 +301,7 @@ func _日志标签(kind: int) -> String:
 			return "系统"
 
 ## 能把地系 / 火系牌当【魔弹】打出去的角色（【魔弹融合】803，对照 role_modao / role_spmodao）
-const 地火可作魔弹角色: Array[int] = [8, 108]
+const 地火可作魔弹角色: Array[int] = [8, 999]
 ## 拥有【魔弹掌控】（802）的角色：主动打【魔弹】时左右两个方向都能选（对照 skillDB 802「可选逆向传递」）。
 ## 注意只在「主动使用」那一步生效 —— 魔弹打出后传递方向就固定了，传递时不能改向
 const 魔弹掌控角色: Array[int] = [8]
@@ -320,6 +320,11 @@ const 苍炎魔女角色: int = 30
 ## 精灵射手（32）：【精灵祝福形态】（横置 tap）下她的【祝福】盖牌视同手牌参与出牌 / 应战判定
 ## （对照服务端 role_jinglingsheshou.盖牌可当手牌 与 BattlePlayer.has_hand_card）
 const 精灵射手角色: int = 32
+
+
+## 猎巫人【转换】是技能栏里可选发的响应，不是把普通法术牌自动放行成攻击牌；
+## 因此客户端不再对法术牌做「转换牌」判断，改由服务端 available_skills 下发技能按钮。
+## 普通法术牌仍按卡牌自己的类型走法术入口。
 
 ## 玩家面板顺序：自己的面板固定是 MainPlayer，其余按 Data.player_list 顺序依次填
 var _面板列表: Array[战斗玩家面板] = []
@@ -2242,7 +2247,8 @@ func _进入技能询问() -> void:
 	# 下发的 ask_text 也是给目标看的专属提示，同样优先保留（如「弃掉 2 张牌」）
 	var 专属询问文案: String = str(_pending.get("ask_text", ""))
 	var 有专属提示: bool = GConst.技能子步骤母号.has(_skill_ask_id) \
-		or (not _skill_ask_can_cancel and not 专属询问文案.is_empty())
+		or (not _skill_ask_can_cancel and not 专属询问文案.is_empty()) \
+		or (_skill_ask_id == GConst.技能_偷袭 and _skill_ask_need_target > 0)
 	var 指示提示: String = _发动提示(_skill_ask_id)
 	if 是响应技能 and not 有专属提示:
 		if not 指示提示.is_empty():
@@ -6542,6 +6548,10 @@ func _刷新头像提示() -> void:
 		动态提示 = _兽返头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _逆反居合斩头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _偷袭头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _灌银毒刃头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
 	for 旧: int in _动态提示过的头像:
 		if not 动态提示.has(旧):
@@ -7134,6 +7144,31 @@ func _气血屏障头像提示() -> Dictionary:
 	return out
 
 
+## 猎巫人【灌银毒刃】：受伤目标头像写「原伤害 → 减 1 后伤害」，自己头像写 +1 治疗。
+## 目标不是选出来的，是服务端随询问下发的 preview_ids；所以这里不看 _sel_players。
+func _灌银毒刃头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_灌银毒刃:
+		return out
+	var 伤害: int = int(_pending.get("preview_base", 0))
+	if 伤害 <= 0:
+		return out
+	var 类型: int = int(_pending.get("preview_kind", GConst.HarmType.Attack))
+	var 词: String = "法术伤害" if 类型 == GConst.HarmType.Magic else "攻击伤害"
+	# 服务端下发的是本次受伤目标；即使它没有出现在可点目标里，也照样画在它头上。
+	for pid_v: Variant in _pending.get("preview_ids", []):
+		var pid: int = int(pid_v)
+		if pid >= 0:
+			out[pid] = "[zwj]%d %s\n%d %s" % [伤害, 词, maxi(伤害 - 1, 0), 词]
+	# 发动者自己：本次发动 +1 治疗
+	var 我: int = Logic.my_player_id
+	if out.has(我):
+		out[我] = str(out[我]) + "\n+1 治疗"
+	else:
+		out[我] = "+1 治疗"
+	return out
+
+
 ## 当前自己的鬼火数（客户端 0 鬼火时不会建 Token，按 0 处理）
 func _我的鬼火数() -> int:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
@@ -7288,6 +7323,17 @@ func _逆反居合斩头像提示() -> Dictionary:
 	var 弃: int = int(_已选参数[0]) + 1
 	for pid: int in _skill_targets:
 		out[pid] = "弃 %d 张牌" % 弃
+	return out
+
+
+## 猎巫人【偷袭】选目标时，每名被选中的目标头上都写本次伤害。
+## 偷袭的 X 点伤害和同系追加都是 1 点法术伤害；目标选择本身由服务端下发，这里只画文字。
+func _偷袭头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _当前技能号() != GConst.技能_偷袭:
+		return out
+	for pid: int in _sel_players:
+		out[pid] = "1 法术伤害"
 	return out
 
 
@@ -7513,7 +7559,7 @@ func _玩家可选(player_id: int) -> bool:
 		var 牌: GCard = Data.get_card(_sel_cards[0]) if not _sel_cards.is_empty() else null
 		if 牌 == null:
 			return false
-		# 攻击牌只能打敌方（服务端 v_attack 对同队直接拒）；法术按 _do_magic 的分支判
+		# 攻击牌只能打敌方（服务端 v_attack 对同队直接拒）；法术按 _do_magic 的分支判。
 		if 牌.is_attack():
 			# 暗杀者潜行（横置）期间不能被主动攻击选中（否则点亮后点了会被服务端拒，客户端闪一下没反应）
 			if not (_是敌方(player_id) and not _潜行中(player_id)):
