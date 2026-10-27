@@ -406,6 +406,9 @@ const TABLE: Dictionary = {
 		# 虚拟攻击牌不继承卡面命格（目前是冒险家【欺诈】）：客户端显示卡名时不要加「·命格」。
 		# 其他 is_real=false 的虚拟牌（如圣屑飓暴的圣命格虚牌）不填，仍按真实卡面命格显示。
 		8: {"n": "virtual_no_fate", "t": "bool"},
+		# 展示（CardMsgType.Show）是否一直留在展示区，直到下一条 Pick / Show 消息：
+		# 10803 剑守誓言把牌库顶 X+1 张摊开后要一直摆着，等玩家慢慢选，不能 6.4 秒自动收起。
+		9: {"n": "persist", "t": "bool"},
 	},
 	GConst.Msg.Hurt: {
 		1: {"n": "src_id", "t": "u32"},

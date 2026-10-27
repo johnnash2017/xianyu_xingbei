@@ -1825,14 +1825,29 @@ func 移除牌库顶(张数: int = 1) -> Array[int]:
 
 ## 把若干张牌【展示】给全场看（展示牌库顶 / 弃置牌库顶牌类技能用）。
 ## 只是广播展示，不会移动牌；真正的移除/入弃牌由调用方做。
-func 展示牌库顶(展示者id: int, cards: Array) -> void:
+## 持久=true：客户端一直摆在展示区，直到下一条 Pick / Show（10803 选牌期间不自动收起）。
+func 展示牌库顶(展示者id: int, cards: Array, 持久: bool = false) -> void:
 	if cards.is_empty():
 		return
-	broadcast(GConst.Msg.Card, {
+	var 数据: Dictionary = {
 		"type": GConst.CardMsgType.Show, "src_id": 展示者id, "dst_id": 展示者id,
 		"card_ids": cards, "is_real": true,
-	})
+	}
+	if 持久:
+		数据["persist"] = true
+	broadcast(GConst.Msg.Card, 数据)
 	_broadcast_game()
+
+
+## 从展示区选走一张牌（10803 剑守誓言）：给全场播一条 Pick，客户端把这张牌从展示位
+## 飞向选牌者头像，并收起其余仍摊着的展示牌。牌面已经在展示区公开过，is_real 固定为 true。
+func 选走展示牌(玩家id: int, 牌号: int) -> void:
+	if 玩家id < 0 or 牌号 <= 0:
+		return
+	broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Pick, "src_id": 玩家id, "dst_id": 玩家id,
+		"card_ids": [牌号], "is_real": true,
+	})
 
 
 ## 逐张移除牌库顶并逐张展示（9701「持续移除牌库顶牌【展示】」这类用法）。

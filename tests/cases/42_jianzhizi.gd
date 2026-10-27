@@ -112,6 +112,39 @@ func _展示过(牌表: Array) -> bool:
 	return false
 
 
+## 最近一条展示这些牌的 Show 消息（没有返回空字典）
+func _展示消息(牌表: Array) -> Dictionary:
+	for i: int in range(发送记录.size() - 1, -1, -1):
+		var r: Dictionary = 发送记录[i]
+		if int(r.get("msg", 0)) != GConst.Msg.Card:
+			continue
+		var 数据: Dictionary = r.get("data", {})
+		if int(数据.get("type", -1)) != GConst.CardMsgType.Show:
+			continue
+		var 发牌: Array = 数据.get("card_ids", [])
+		var 全含: bool = true
+		for c: Variant in 牌表:
+			if not 发牌.has(int(c)):
+				全含 = false
+				break
+		if 全含:
+			return 数据
+	return {}
+
+
+## 某张牌「从展示区选走」（CardMsgType.Pick）的消息；没有返回空字典
+func _选走消息(牌号: int) -> Dictionary:
+	for r: Dictionary in 发送记录:
+		if int(r.get("msg", 0)) != GConst.Msg.Card:
+			continue
+		var 数据: Dictionary = r.get("data", {})
+		if int(数据.get("type", -1)) != GConst.CardMsgType.Pick:
+			continue
+		if (数据.get("card_ids", []) as Array).has(牌号):
+			return 数据
+	return {}
+
+
 # ============================================================
 # 建引擎 / 重置
 # ============================================================
@@ -681,21 +714,34 @@ func _测剑守誓言结算() -> void:
 		"发动后应先移除并展示牌库顶，再让玩家选 1 张")
 	检(引擎.deck.pile.is_empty(), "X=2 时应移除 3 张，牌库应为空（实际 %s）" % str(引擎.deck.pile))
 	检(_展示过(三张), "移除的牌应一次展示给全场：%s" % str(发送记录))
+	var 展示消息: Dictionary = _展示消息(三张)
+	检(not 展示消息.is_empty(), "应能查到整批展示消息")
+	检(bool(展示消息.get("persist", false)),
+		"整批展示应持久保留到选牌（不能 6.4 秒自动收起）")
 	var 选择问: Dictionary = _取询问(1, 10803)
 	检((选择问.get("notes", []) as Array).size() == 3, "应完整下发 3 张牌的选项")
 	检((选择问.get("option_card_ids", []) as Array) == 三张,
 		"选牌选项应逐项带 card_id，供客户端悬停摊卡面：%s" % str(选择问.get("option_card_ids", [])))
+	检(not bool(选择问.get("can_cancel", true)),
+		"剑守誓言选牌不能取消，只能选择或超时自动选")
 	# 光服务端命令里有还不够：必须真的能过协议编码，否则联机时客户端收到的是空数组
 	var 选择命令编码: PackedByteArray = ProtoCodec.encode_named("Command", 选择问)
 	var 选择命令解码: Dictionary = ProtoCodec.decode_named("Command", 选择命令编码)
 	检((选择命令解码.get("option_card_ids", []) as Array) == 三张,
 		"Command 协议应包含 option_card_ids，客户端才能悬停摊卡面：%s"
 		% str(选择命令解码.get("option_card_ids", [])))
+	# 持久展示标记也必须过协议，否则联机时客户端仍会 6.4 秒自动收起
+	var 展示卡编码: PackedByteArray = ProtoCodec.encode(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "card_ids": [三张[0], 三张[1]], "persist": true,
+	})
+	var 展示卡解码: Dictionary = ProtoCodec.decode(GConst.Msg.Card, 展示卡编码)
+	检(bool(展示卡解码.get("persist", false)),
+		"Card 协议应包含 persist，展示才能一直留到选牌")
 	检(_播报次数(10803) == 1, "【剑守誓言】发动应播报一次，实际 %d 次" % _播报次数(10803))
 	_应答([2])
 	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "选好牌后【剑守誓言】应结算完")
 	检(玩家.hand_cards.has(三张[1]), "选中的第 2 张应加入手牌")
-	# 选中的牌再展示一次（牌库顶整批展示 + 选中后再展示），并在战斗日志里写「谁 获得【什么】」
+	# 选中的牌不再二次展示：整批展示一次 + 一条 Pick 飞向角色头像
 	var 选中牌: int = int(三张[1])
 	var 展示次数: int = 0
 	var 获得日志: String = ""
@@ -709,7 +755,11 @@ func _测剑守誓言结算() -> void:
 			var 文案: String = str(数据.get("txt", ""))
 			if 文案.contains("获得") and 文案.contains(非魔牌表[1].card_name):
 				获得日志 = 文案
-	检(展示次数 >= 2, "选中的牌应展示至少两次（整批 + 选中后再展示），实际 %d 次" % 展示次数)
+	检(展示次数 == 1, "整批展示一次即可；选中的牌不再二次展示，实际 %d 次" % 展示次数)
+	var 选走消息: Dictionary = _选走消息(选中牌)
+	检(not 选走消息.is_empty(), "选中后应发 Pick，让牌从展示位飞向角色头像")
+	检(int(选走消息.get("src_id", -1)) == 1 and int(选走消息.get("dst_id", -1)) == 1,
+		"Pick 的起点/终点都应是选牌者（1 号）")
 	检(not 获得日志.is_empty(), "战斗日志应写一条「谁 获得【什么】」")
 	检(获得日志.contains("剑之子") and 获得日志.contains(非魔牌表[1].card_name),
 		"获得日志应包含角色与牌名：%s" % 获得日志)
@@ -721,7 +771,7 @@ func _测剑守誓言结算() -> void:
 	检(玩家.role_id == 108, "没有法术牌时不应替换角色")
 	检(玩家.crystal == 0, "没有法术牌时不应 +2 水晶")
 
-	# ---- 选 1 张时取消：整批进弃牌堆，不给牌 ----
+	# ---- 超时 / 空回复：自动选第 1 张（不能取消） ----
 	_重置战斗()
 	角色.p_timeline_2_hit(_攻击上下文(非技击牌.id))
 	引擎.team_grail = [1, 1]
@@ -731,10 +781,13 @@ func _测剑守誓言结算() -> void:
 	_应答([1])
 	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT, "应让玩家选 1 张")
 	_应答([])
-	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "取消选牌应直接收尾")
-	检(玩家.hand_cards.is_empty(), "取消选牌不应拿牌")
-	检(引擎.deck.discard.size() == 3, "取消选牌时 3 张应全部进弃牌堆，实际 %d 张"
-		% 引擎.deck.discard.size())
+	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "超时/空回复应自动选第 1 张并收尾")
+	检(玩家.hand_cards.has(三张[0]), "超时/空回复应自动把第 1 张加入手牌")
+	检(not 玩家.hand_cards.has(三张[1]) and not 玩家.hand_cards.has(三张[2]),
+		"其余两张不应进手牌")
+	检(引擎.deck.discard.has(三张[1]) and 引擎.deck.discard.has(三张[2]),
+		"其余两张应进弃牌堆")
+	检(not _选走消息(三张[0]).is_empty(), "自动选择也应发 Pick，让牌飞向头像")
 
 	# ---- 牌库不足：X+1=4，实际只有 2 张；不洗回，按实际张数结算 ----
 	_重置战斗()

@@ -1206,6 +1206,9 @@ const 状态图标材质: ShaderMaterial = preload("res://scenes/prefabs/battlem
 ## 展示代号：每摊出一拨 +1。等待到点后只有「还是当前这一拨」才收起 ——
 ## 否则上一拨的计时器到点会把刚摊出来的下一拨一起收掉（表现成展示时间被上一张牌拖短）
 var _展示代号: int = 0
+## 当前这拨是不是持久展示（10803 剑守誓言选牌）：持久展示不启动 6.4 秒自动收起，
+## 一直留到收到 Pick（选走一张）或下一条 Show 顶掉。
+var _展示持久: bool = false
 
 ## 最近一拨摊出的牌在屏幕上的全局中心（(-1, -1) = 这条消息没摊牌）：斩击 / 魔弹的出手特效
 ## 就「从这张牌上起飞」飞向目标头像，见 _播出手特效、_飞牌特效
@@ -1220,28 +1223,38 @@ var _行动播报中: Dictionary = {}
 
 
 
-## 把这几张牌摊到屏幕中间给所有人看；停了 展示停留秒数 秒后自动收起，
-## 期间若来了新的一拨，立即顶掉（收起由新那拨负责）。
+## 造一张展示用的卡牌视图（ShowCardArea 的子节点）；取不到卡返回 null。
+## 「展示牌号」meta 供 Pick（选走一张）时按牌号找回对应视图。
+func _造展示卡牌视图(牌号: int) -> Control:
+	var 卡: GCard = Data.get_card(牌号)
+	if 卡 == null:
+		return null
+	var 视图: Control = 卡牌视图预制.instantiate()
+	# Card.tscn 的根节点本身是 0 尺寸的（手牌区是代码给尺寸的），得显式给尺寸才画得出来
+	视图.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	视图.custom_minimum_size = 手牌尺寸
+	视图.size = 手牌尺寸
+	视图.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	视图.set_meta("展示牌号", 牌号)
+	# 「不可用」+「不置灰」= 正常亮度但不显示边框（展示只是给人看，不需要可选光晕）
+	视图.call("设置卡牌", 卡, false, false)
+	return 视图
+
+
+## 把这几张牌摊到屏幕中间给所有人看；默认停了 展示停留秒数 秒后自动收起，
+## 持久=true 时一直留着，直到收到 Pick / 下一条 Show（10803 选牌期间不自动收起）。
 ## 飞行起点 >= 0 时这几张牌先在那名玩家（出牌人 / 展示者）头像处现身，再一张接一张飞到自己的展示位；
 ## 自己的牌不飞，由调用方传 -1 进来（见 _on_card）
-func _展示卡牌(卡号表: Array, 飞行起点: int) -> void:
+func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false) -> void:
 	_收起展示卡牌()
 	_展示代号 += 1
 	var 本代号: int = _展示代号
 	var 视图表: Array[Control] = []
 	for cid: Variant in 卡号表:
-		var 卡: GCard = Data.get_card(int(cid))
-		if 卡 == null:
+		var 视图: Control = _造展示卡牌视图(int(cid))
+		if 视图 == null:
 			continue
-		var 视图: Control = 卡牌视图预制.instantiate()
-		# Card.tscn 的根节点本身是 0 尺寸的（手牌区是代码给尺寸的），得显式给尺寸才画得出来
-		视图.set_anchors_preset(Control.PRESET_TOP_LEFT)
-		视图.custom_minimum_size = 手牌尺寸
-		视图.size = 手牌尺寸
-		视图.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		ShowCardArea.add_child(视图)
-		# 「不可用」+「不置灰」= 正常亮度但不显示边框（展示只是给人看，不需要可选光晕）
-		视图.call("设置卡牌", 卡, false, false)
 		视图表.append(视图)
 	# 排成一行并水平居中：位置够就摊开，牌多了就像手牌一样挤在一起（同一套间距算法），绝不换行
 	var 排布: Array = _单行间距与起点(视图表.size(), ShowCardArea.size.x, 手牌尺寸, 手牌最多重叠比例)
@@ -1256,6 +1269,10 @@ func _展示卡牌(卡号表: Array, 飞行起点: int) -> void:
 		_展示全局中心 = 视图表[0].get_global_rect().get_center()
 		_展示飞行延迟 = 展示飞行时长 + 展示飞行间隔 * float(视图表.size() - 1) + 出手等待秒数
 	_展示飞行(视图表, 飞行起点)
+	_展示持久 = 持久
+	if 持久:
+		# 持久展示：不启动自动收起；等 Pick（选走）或下一条 Show 顶掉
+		return
 	await get_tree().create_timer(展示停留秒数).timeout
 	# 等待期间又摊出了新的一拨：收起交给新那拨，这里不动
 	if 本代号 != _展示代号:
@@ -1285,6 +1302,7 @@ func _展示飞行(视图表: Array[Control], 玩家id: int) -> void:
 		var 延迟: float = 展示飞行间隔 * float(i)
 		# 三样一起走：位置飞回展示位、缩放长回原大、透明度在开头四成里亮起来
 		var t: Tween = 视图.create_tween()
+		视图.set_meta("展示飞行tween", t)
 		t.set_parallel(true)
 		t.tween_property(视图, "position", 终点, 展示飞行时长) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT).set_delay(延迟)
@@ -1293,8 +1311,52 @@ func _展示飞行(视图表: Array[Control], 玩家id: int) -> void:
 		t.tween_property(视图, "modulate:a", 1.0, 展示飞行时长 * 0.4).set_delay(延迟)
 
 
+## 从展示区选走一张牌（10803）：把这张牌的视图从展示位飞向选牌者头像，其余展示牌收起。
+## 视图找不到（重连 / 展示已被顶掉）时现造一张，保证其他人仍能看到「牌飞向头像」。
+func _选走展示牌(玩家id: int, 牌号: int) -> void:
+	_展示代号 += 1  # 作废可能还在等待的 6.4 秒收起
+	_展示持久 = false
+	var 选中视图: Control = null
+	for 子: Node in ShowCardArea.get_children():
+		if not (子 is Control):
+			continue
+		if 选中视图 == null and int(子.get_meta("展示牌号", 0)) == 牌号:
+			选中视图 = 子
+		else:
+			子.queue_free()
+	var 中心: Vector2 = _面板中心(玩家id)
+	if 选中视图 == null:
+		# 展示已不在：现造一张，从展示区正中飞过去
+		选中视图 = _造展示卡牌视图(牌号)
+		if 选中视图 != null:
+			ShowCardArea.add_child(选中视图)
+			选中视图.position = Vector2(
+				(ShowCardArea.size.x - 手牌尺寸.x) * 0.5,
+				(ShowCardArea.size.y - 手牌尺寸.y) * 0.5 + 展示牌下移像素)
+	if 选中视图 == null:
+		return
+	if 中心.x < 0.0:
+		选中视图.queue_free()
+		return
+	# 进场飞行可能还在跑：先杀掉，免得和新 tween 抢 position
+	var 旧: Variant = 选中视图.get_meta("展示飞行tween", null)
+	if 旧 is Tween and (旧 as Tween).is_valid():
+		(旧 as Tween).kill()
+	选中视图.pivot_offset = 手牌尺寸 * 0.5
+	var 终点: Vector2 = 中心 - ShowCardArea.position - 手牌尺寸 * 0.5
+	var t: Tween = 选中视图.create_tween()
+	t.set_parallel(true)
+	t.tween_property(选中视图, "position", 终点, 0.45) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_property(选中视图, "scale", Vector2.ONE * 0.35, 0.45) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_property(选中视图, "modulate:a", 0.0, 0.3).set_delay(0.15)
+	t.finished.connect(选中视图.queue_free)
+
+
 ## 收掉当前摊出来的牌
 func _收起展示卡牌() -> void:
+	_展示持久 = false
 	for 旧: Node in ShowCardArea.get_children():
 		旧.queue_free()
 
@@ -1309,9 +1371,15 @@ func _on_card(msg: Dictionary) -> void:
 	_展示全局中心 = Vector2(-1.0, -1.0)
 	_展示飞行延迟 = 0.0
 	# 「给牌」不发牌面、也不进这里写日志（日志由服务端的 Gossip 写好了），
-	# 只是要播一个「牌从甲飘到乙」的动效 —— 见 engine._log_give_cards
+	# 只是要播一个「牌从甲飘到乙」的给牌动效 —— 见 engine._log_give_cards
 	if int(msg.get("type", 0)) == GConst.CardMsgType.Give:
 		_给牌特效(src, dst, int(msg.get("count", 1)))
+		return
+	# 从展示区选走一张（10803）：牌面从展示位飞向选牌者头像，其余展示牌收起
+	if int(msg.get("type", 0)) == GConst.CardMsgType.Pick:
+		var 取走: Array = msg.get("card_ids", [])
+		if not 取走.is_empty():
+			_选走展示牌(src, int(取走[0]))
 		return
 	# 展示（亮牌/超限换牌）没有「对谁使用」的概念，单独写一行
 	var 是展示: bool = int(msg.get("type", 0)) == GConst.CardMsgType.Show
@@ -1342,7 +1410,8 @@ func _on_card(msg: Dictionary) -> void:
 	if bool(msg.get("is_real", true)):
 		# 摊出来的牌从出牌人 / 展示者的头像飞过来（出手特效另算，那条是指向目标的粒子）；
 		# 自己的牌不飞：自己清楚自己打了什么，飞过来只会多挡一阵视线
-		_展示卡牌(msg.get("card_ids", []), -1 if src == Logic.my_player_id else src)
+		_展示卡牌(msg.get("card_ids", []), -1 if src == Logic.my_player_id else src,
+			bool(msg.get("persist", false)))
 	if 是展示:
 		_日志追加("%s 展示：%s" % [谁, ", ".join(names)], "行动")
 		return
@@ -3034,7 +3103,7 @@ func _清空二级选项() -> void:
 func _选中二级选项(_技能号: int, 序号: int) -> void:
 	if 序号 < 0 or 序号 >= _二级选项.size():
 		return
-	# 点中选项后先收起悬停卡面，避免和「选择后再展示一次」的正式展示叠在一起
+	# 点中选项后先收起悬停卡面，避免它挡着选项按钮 / 确认栏
 	_隐藏技能说明()
 	_二级选中 = 序号
 	_已选参数 = (_二级选项[序号]["参数"] as Array).duplicate()

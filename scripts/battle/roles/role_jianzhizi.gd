@@ -484,19 +484,21 @@ func p_after_turn_end(ctx: Dictionary) -> int:
 			ctx[KEY_10803_STEP] = STEP_DONE
 			return SUCCESS
 		ctx[KEY_10803_CARDS] = 取得
-		engine.展示牌库顶(player.id, 取得)
+		# 持久展示：X+1 张牌一直摊在屏幕中间，直到玩家选完（或超时自动选择），不按 6.4 秒收起
+		engine.展示牌库顶(player.id, 取得, true)
 		notice_skill(剑守誓言, [player.id])
 		ctx[KEY_10803_STEP] = 1
 	if int(ctx.get(KEY_10803_STEP, 0)) == 1:
 		var 牌表: Array = ctx.get(KEY_10803_CARDS, [])
 		if not engine.has_reply():
-			# 「可选择其中 1 张加入手牌」：取消＝不拿，整批弃置。
+			# 「可选择其中 1 张加入手牌」：不能取消；展示一直留着，玩家慢慢选，超时由服务端自动选第 1 张。
 			# 牌不在手牌里，客户端不能按手牌白名单点选，故用固定选项逐张列出（选项值＝第几张）。
-			询问(player.id, 剑守誓言, 0, 0, GConst.CardSource.Hand, _剑守誓言选项(牌表))
+			询问(player.id, 剑守誓言, 0, 0, GConst.CardSource.Hand, _剑守誓言选项(牌表), 0, "", [], false)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		ctx[KEY_10803_STEP] = STEP_DONE
-		var 选中: int = -1
+		# 默认第 1 张：超时 / 空回复 / 非法选项都按「自动选择第一张」结算
+		var 选中: int = int(牌表[0]) if not 牌表.is_empty() else -1
 		var args: Array = r.get("args", [])
 		if not args.is_empty():
 			var 档: int = int(args[0])
@@ -545,14 +547,15 @@ func _元素字(元素: int) -> String:
 ## 10803 结算：选中 1 张加入手牌，其余进弃牌堆；这次弃置的整批牌里有法术牌时
 ## +2 水晶、安排 +1 额外回合并永久替换为风之剑圣。
 ## 「弃牌中有法术牌」按这次从牌库顶弃置的整批牌判断（含被选入手的 1 张；见文件头口径）。
+## 选中的牌不再二次展示：改发 Pick 消息，让客户端把它从展示位直接飞向选牌者头像。
 func _settle_jian_shou_shi_yan(牌表: Array, 选中: int) -> void:
 	var 弃: Array = []
 	for v: Variant in 牌表:
 		var cid: int = int(v)
-		if cid == 选中:
+		if cid == 选中 and 选中 >= 0:
 			player.add_hand_cards([cid])
-			# 选择后再展示一次这张牌（牌库顶整批展示过，但选中的那张再亮一次更清楚）
-			engine.展示牌库顶(player.id, [cid])
+			# 牌面从展示位飞向角色头像（其他人也看得到）；不再回展示区二次展示
+			engine.选走展示牌(player.id, cid)
 			# 战斗日志补一条「谁 获得【什么】」；这批牌已经公开，不会泄露暗牌
 			engine.播获得牌日志(player.id, [cid])
 		else:
