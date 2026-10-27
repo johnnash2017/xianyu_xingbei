@@ -169,6 +169,10 @@ const SUB: Dictionary = {
 		# 额外行动询问里每个 cause 各自允许的行动种类（GConst.ActionType；与 args 的 cause 一一对应）：
 		# 客户端据此把默认按钮写成「额外【攻击行动】」而不是「额外【行动】」。
 		34: {"n": "allow_actions", "t": "u32", "r": true},
+		# 攻击结束响应里每个额外攻击快捷项的出牌 / 目标白名单（与 extra_attack_causes 一一对应）：
+		# 客户端选中某项后据此只点亮合法的牌 / 目标，点手牌 + 敌方头像即发起攻击。
+		35: {"n": "extra_attack_cards", "t": "msg", "r": true, "s": "OptionTargets"},
+		36: {"n": "extra_attack_targets", "t": "msg", "r": true, "s": "OptionTargets"},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {

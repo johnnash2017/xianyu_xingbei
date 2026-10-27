@@ -97,6 +97,9 @@ var 行动额外来源: int = 0
 var 行动禁特殊: bool = false
 ## 攻击结束响应里玩家点了「额外攻击行动」快捷按钮：下一次 SAdditionalAction 直接进入它（不弹额外行动选择）
 var 首选额外行动: int = -1
+## 响应里点额外攻击时已经选好的攻击牌 / 目标：进入该额外行动后直接用它们发起攻击
+var 首选额外行动卡: int = 0
+var 首选额外行动目标: int = 0
 ## 当前额外行动阶段的原始数据（客户端切到另一份额外行动时，提交攻击一并携带 cause，这里据此换队）
 var 当前额外行动数据: Dictionary = {}
 ## 测试指令「跳过自己回合」（战斗界面按 8）：记下是谁按的，行动阶段轮到他直接收尾（-1 = 无）
@@ -991,6 +994,10 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 	if not 有:
 		return
 	首选额外行动 = cause
+	var 牌表: Array = data.get("card_ids", [])
+	var 目标表: Array = data.get("dst_ids", [])
+	首选额外行动卡 = int(牌表[0]) if not 牌表.is_empty() else 0
+	首选额外行动目标 = int(目标表[0]) if not 目标表.is_empty() else 0
 	_await_id = -1
 	_has_reply = false
 	wait_deadline_ms = 0
@@ -1594,13 +1601,27 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 攻击结束响应期间，把「已获得但还没用的攻击行动」一并下发给客户端做红色快捷按钮
 	if _当前状态 is SHook and (_当前状态 as SHook).hook == "p_after_attack" and pid == current_id:
 		var 额外攻击: Array = []
+		var 额外牌表: Array = []
+		var 额外目标表: Array = []
 		var 问者: BattlePlayer = players.get(pid)
 		if 问者 != null:
 			for a: Dictionary in 问者.additional_actions:
-				if GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
-					额外攻击.append(int(a.get("cause", 0)))
+				var 类: int = int(a.get("allow_action", 0))
+				if not GConst.放行动作(GConst.ActionType.Attack, 类):
+					continue
+				var c: int = int(a.get("cause", 0))
+				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
+					if 问者.role != null else []
+				if 牌.is_empty() and 问者.role != null:
+					牌 = 问者.role.action_card_ids(GConst.ActionType.Attack)
+				var 目标: Array = 问者.role.extra_action_targets(c) if 问者.role != null else []
+				额外攻击.append(c)
+				额外牌表.append({"ids": 牌})
+				额外目标表.append({"ids": 目标})
 		if not 额外攻击.is_empty():
 			cmd["extra_attack_causes"] = 额外攻击
+			cmd["extra_attack_cards"] = 额外牌表
+			cmd["extra_attack_targets"] = 额外目标表
 	# 超时兜底要用的三项（见 _build_timeout_reply）：不可取消的技能询问不许按「取消」收尾
 	_pending_skill_can_cancel = can_cancel
 	_pending_skill_need_target = need_target
@@ -2785,6 +2806,29 @@ func _直接切换额外攻击(cur: BattlePlayer, cause: int) -> bool:
 	return true
 
 
+## 响应里选额外攻击时已经点好手牌 + 敌方：进入额外行动（含选中代价钩子）后直接发起攻击
+class S自动攻击:
+	var cause: int
+	var card: int
+	var target: int
+	var data: Dictionary
+	func _init(c: int, cd: int, t: int, d: Dictionary) -> void:
+		cause = c
+		card = cd
+		target = t
+		data = d
+	func handle(e: BattleEngine) -> int:
+		e.行动允许 = GConst.ActionType.Attack
+		e.行动可放弃 = false
+		e.行动额外 = true
+		e.行动禁特殊 = false
+		e.行动额外来源 = cause
+		e.当前额外行动数据 = data
+		return e.resolve_action(GConst.ActionType.Attack, {
+			"card_ids": [card], "dst_ids": [target], "args": [cause],
+		})
+
+
 ## 回合结束：先处理额外行动，否则轮转到下家
 class STurnEnd:
 	## 技能行动被取消（见 BattleEngine.取消技能行动）：本回合不结束，改为重新进入行动阶段
@@ -2933,6 +2977,15 @@ class SAdditionalAction:
 		# PlayerEntity::p_additional_action → StateActionPhase(it->allowAction, true)）
 		var 阶段: SActionPhase = SActionPhase.new(允许, true, true, false, cause)
 		阶段.额外数据 = 数据
+		# 响应里已经点好手牌 + 敌方：进入该额外行动后不再问，直接发起这次攻击
+		if e.首选额外行动卡 > 0 and e.首选额外行动目标 > 0:
+			var 卡: int = e.首选额外行动卡
+			var 目标: int = e.首选额外行动目标
+			e.首选额外行动卡 = 0
+			e.首选额外行动目标 = 0
+			e.push(S自动攻击.new(cause, 卡, 目标, 数据))
+			e.push(SHook.new("p_additional_action", {"player": cur.id, "cause": cause}, []))
+			return BattleEngine.CONTINUE
 		e.push(阶段)
 		e.push(SHook.new("p_additional_action", {"player": cur.id, "cause": cause}, []))
 		return BattleEngine.CONTINUE

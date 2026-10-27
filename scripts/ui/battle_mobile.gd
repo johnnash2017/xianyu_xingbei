@@ -421,6 +421,8 @@ var _额外行动按钮表: Array = []
 ## 攻击结束响应里的额外攻击快捷按钮（按钮, cause）：点按钮只选中，可切换，按「确定」才放弃响应进入
 var _额外攻击响应选择: int = -1
 var _额外攻击响应按钮: Array = []
+var _额外攻击响应_牌白: Array = []
+var _额外攻击响应_目标白: Array = []
 ## 额外攻击阶段本地选中的额外攻击 cause / 该行动的牌与目标白名单（点切换只改本地，不提交、不重排）
 var _当前额外攻击选择: int = 0
 var _额外手牌白名单_选择: Array = []
@@ -2387,16 +2389,22 @@ func _进入技能询问() -> void:
 		_进入二级技能栏(_skill_ask_id, null, [])
 	# 攻击结束响应期间：已获得但还没用的攻击行动摆成红色快捷按钮，点一个就放弃剩余响应、直接进入它
 	var 额外攻击: Array = _pending.get("extra_attack_causes", [])
+	var 额外牌表: Array = _pending.get("extra_attack_cards", [])
+	var 额外目标表: Array = _pending.get("extra_attack_targets", [])
 	_额外攻击响应选择 = -1
 	_额外攻击响应按钮.clear()
+	_额外攻击响应_牌白.clear()
+	_额外攻击响应_目标白.clear()
 	if not 额外攻击.is_empty():
-		for cause: Variant in 额外攻击:
-			var c: int = int(cause)
+		for i: int in range(额外攻击.size()):
+			var c: int = int(额外攻击[i])
+			var 牌白: Array = (额外牌表[i] as Dictionary).get("ids", []) if i < 额外牌表.size() else []
+			var 目标白: Array = (额外目标表[i] as Dictionary).get("ids", []) if i < 额外目标表.size() else []
 			var 额外按钮: 技能按钮 = _新技能按钮(0)
 			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack), 额外攻击按钮色, 0)
 			额外按钮.设置说明(_额外行动按钮说明(c))
 			额外按钮.connect("点击", func(_技能号: int) -> void:
-				_发送应答(GConst.RespondType.ChooseExtraAction, [], [], [c]))
+				_选中额外攻击响应(c, 牌白, 目标白))
 			_额外攻击响应按钮.append({"按钮": 额外按钮, "cause": c})
 		_排技能栏.call_deferred()
 	# 技能询问同时写一行日志：它只挂在提示条上，错过就会一直等（看着像「点了确定没反应」）
@@ -2650,25 +2658,31 @@ func _选中额外行动(cause: int) -> void:
 
 
 ## 攻击结束响应里点额外攻击快捷按钮：只选中（可切换），按「确定」才放弃响应进入
-func _选中额外攻击响应(cause: int) -> void:
+func _选中额外攻击响应(cause: int, 牌白: Array = [], 目标白: Array = []) -> void:
 	_额外攻击响应选择 = cause
-	for 项: Dictionary in _额外攻击响应按钮:
-		var b: Variant = 项.get("按钮")
-		if is_instance_valid(b):
-			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
-	# 额外攻击和响应技能二选一：取消技能选项的选中，但保留全部按钮可见
+	_额外攻击响应_牌白 = 牌白.duplicate()
+	_额外攻击响应_目标白 = 目标白.duplicate()
+	_sel_cards.clear()
+	_sel_players.clear()
+	# 响应技能选项保留可见，但取消它的选中（改由这次额外攻击接管）
 	_二级选中 = -1
 	_已选参数.clear()
 	for 项: Dictionary in _二级选项:
 		var 技能钮: Variant = 项.get("按钮")
 		if is_instance_valid(技能钮):
 			(技能钮 as 技能按钮).设置选中(false)
-	_指令提示("确定＝进入所选额外攻击行动")
+	for 项: Dictionary in _额外攻击响应按钮:
+		var b: Variant = 项.get("按钮")
+		if is_instance_valid(b):
+			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
+	_指令提示("点击手牌 + 敌方头像＝发起该额外攻击")
 	_刷新交互()
 
 
 func _清除额外攻击响应选择() -> void:
 	_额外攻击响应选择 = -1
+	_额外攻击响应_牌白.clear()
+	_额外攻击响应_目标白.clear()
 	for 项: Dictionary in _额外攻击响应按钮:
 		var b: Variant = 项.get("按钮")
 		if is_instance_valid(b):
@@ -3278,6 +3292,8 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		return
 	# 点中选项后先收起悬停卡面，避免它挡着选项按钮 / 确认栏
 	_隐藏技能说明()
+	# 改选响应技能＝取消之前选中的额外攻击快捷项
+	_清除额外攻击响应选择()
 	_二级选中 = 序号
 	_已选参数 = (_二级选项[序号]["参数"] as Array).duplicate()
 	for i: int in range(_二级选项.size()):
@@ -3707,6 +3723,14 @@ func _on_player_clicked(player_id: int) -> void:
 		return
 	if not _玩家可选(player_id):
 		return
+	# 攻击结束响应里选中额外攻击：点手牌 + 敌方头像＝发起这次额外攻击
+	if _额外攻击响应选择 > 0:
+		if _sel_cards.is_empty():
+			_指令提示("请先点一张攻击牌")
+			return
+		_发送应答(GConst.RespondType.ChooseExtraAction, [player_id], [_sel_cards[0]],
+			[_额外攻击响应选择])
+		return
 	# 点头像分配型：点一次给该角色加「每次」点治疗（配置允许时可重复点同一人），分满后确定
 	if not _分配配置().is_empty():
 		_点治疗目标(player_id)
@@ -3755,6 +3779,19 @@ func _on_player_clicked(player_id: int) -> void:
 ## 这张牌此刻能不能点选
 ## 同一条判定同时决定「是否置灰」与「点击是否响应」，两者不会不一致
 func _卡牌能点(card_id: int) -> bool:
+	# 攻击结束响应里选中额外攻击后：只让点该额外攻击白名单内的攻击牌
+	if _额外攻击响应选择 > 0:
+		var 在手中: bool = false
+		for c: GCard in Data.hand_cards:
+			if c.id == card_id:
+				在手中 = true
+				break
+		if not 在手中:
+			return false
+		var 牌: GCard = Data.get_card(card_id)
+		if 牌 == null or not 牌.is_attack():
+			return false
+		return _额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(card_id)
 	# 式神咒束 / 阴阳转换的同一步选牌：按当前选项过滤，不走普通技能栏的牌数规则；盖牌不能当手牌应战
 	if _攒应战选应战:
 		if _是普通盖牌(card_id):
@@ -8051,6 +8088,11 @@ func _是场上基础效果牌(card_id: int) -> bool:
 func _玩家可选(player_id: int) -> bool:
 	if player_id < 0 or player_id == GConst.GUEST:
 		return false
+	# 攻击结束响应里选中额外攻击后：只点亮该额外攻击的目标白名单内敌方
+	if _额外攻击响应选择 > 0:
+		if not _是敌方(player_id):
+			return false
+		return _额外攻击响应_目标白.is_empty() or _额外攻击响应_目标白.has(player_id)
 	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：头像一律不可点，改不了目标
 	if _目标锁死:
 		return false
@@ -8152,6 +8194,9 @@ func _更新按键() -> void:
 
 
 func _确定不可用() -> bool:
+	# 攻击结束响应里选中额外攻击：靠点手牌 + 敌方头像发起，不靠确定
+	if _额外攻击响应选择 > 0:
+		return true
 	# 额外行动提示：点按钮只选中，选中后才允许确定
 	if _额外行动单选 >= 0 and not _是技能询问:
 		return not _额外行动可选
@@ -8377,6 +8422,8 @@ func _清空技能按钮() -> void:
 	_当前额外攻击选择 = 0
 	_额外手牌白名单_选择.clear()
 	_额外目标白名单_选择.clear()
+	_额外攻击响应_牌白.clear()
+	_额外攻击响应_目标白.clear()
 	for b: Node in _技能按钮:
 		if is_instance_valid(b):
 			b.queue_free()
