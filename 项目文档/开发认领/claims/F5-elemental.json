@@ -1,0 +1,19 @@
+{
+  "id": "F5-elemental",
+  "title": "F5-C 元素师独有技 helper（1101~1105）",
+  "agent": "MAIN",
+  "claimed_at": "2026-10-27T18:25:52",
+  "status": "review",
+  "files": [
+    "scripts/battle/skills/skill_elemental.gd",
+    "tests/cases/f5_elemental.gd"
+  ],
+  "acceptance": "新建 helper 类，实现风刃/冰冻/火球/陨石/雷击的发动牌校验、额外弃同系加伤、各自后续效果；不改 role_yuansu.gd；用 dummy 借用角色各完成一次结算；测试通过。",
+  "summary": "[主代理修复] 补测：设置额外加伤上限=2 后覆盖『同一张额外牌重复提交被拒』『两张不同额外牌通过并按3张结算、各只进弃牌堆一次』；自检 41/41。",
+  "tests": "按协议跑了 --check-only，但该模式不注册 autoload（未改动的 role_yuansu.gd / battle_role.gd 同样报 Identifier not found: Data），无法作为有效检查；改用与 F1 相同的临时 SceneTree runner（%TEMP%，已删除）加载 skill_elemental.gd + f5_elemental.gd 并实际跑完该用例：失败 0、退出无泄漏；未跑全量自检（并发实现期间按协议不跑）。",
+  "files_changed": [
+    "scripts/battle/skills/skill_elemental.gd",
+    "tests/cases/f5_elemental.gd"
+  ],
+  "finished_at": "2026-10-27T18:57:48"
+}

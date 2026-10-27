@@ -402,8 +402,43 @@ func missile_targets(from_id: int) -> Array[int]:
 # 打出去之后的「继续传递 / 圣光抵挡 / 放弃承受」全部交给引擎统一的魔弹传递询问（SMissileAsk），
 # 与主动打出【魔弹】走同一条链；能不能继续用牌传递由本角色的 v_remissile 覆写决定。
 # 技能号各角色不同，只影响播报 / 日志，不影响牌与落点的校验。
+#
+# 系别可配：默认地 / 火（魔导师 8 / 节日魔导 76 的现状）。47 水/火、87 雷/火、107 地/风 等
+# 角色在各自脚本里覆写 missile_fusion_elements() 即可，魔弹融合牌表、发动校验、响应传递
+# 都走同一份配置，不要在下游再写死系别。106 的「弃 2 张同系牌」是独立入口，不经过这里。
 # ============================================================
 const MISSILE_FUSION_SKILL: int = 803
+
+
+## 本角色【魔弹融合】可当【魔弹】的系别（默认地 / 火，与 8 / 76 现状一致）。
+## 借用 / 变体角色覆写本方法即可（返回 GConst.CardElement.* 的数组）。
+func missile_fusion_elements() -> Array[int]:
+	return [GConst.CardElement.Fire, GConst.CardElement.Earth]
+
+
+## 这张牌能否当【魔弹】使用 / 响应传递：【魔弹】本身恒可，其余走 missile_fusion_elements()。
+## 拥有【魔弹融合】的角色在 v_missile / v_remissile 覆写里用它，保证「主动打出」与
+## 「继续传递」是同一口径。
+func can_use_as_missile(card: GCard) -> bool:
+	if card == null:
+		return false
+	if card.card_name_enum() == GConst.CardName.Missile:
+		return true
+	return can_use_as_missile_fusion(card)
+
+
+## 这张牌能否作为【魔弹融合】的发动牌：必须是配置系别之一。
+## 【魔弹】本身不算融合材料（它走普通【魔弹】行动，不占【魔弹融合】这个技能按钮）。
+func can_use_as_missile_fusion(card: GCard) -> bool:
+	if card == null:
+		return false
+	return missile_fusion_elements().has(card.element_enum())
+
+
+## 手牌里能作为【魔弹融合】发动牌的牌 id（available_skills 的 "cards" 用）。
+## 与 can_use_as_missile_fusion / v_missile_fusion 同一口径，界面不会点到必被服务端拒的牌。
+func missile_fusion_hand_ids() -> Array[int]:
+	return hand_ids_where(func(_cid: int, c: GCard) -> bool: return can_use_as_missile_fusion(c))
 
 
 ## 本角色【魔弹融合】的技能号（默认魔导师的 803；节日魔导覆写为 7602）
@@ -421,9 +456,7 @@ func v_missile_fusion(action: Dictionary) -> int:
 	if not player.has_hand_card(cid):
 		return GConst.GE_INVALID_CARDID
 	var card: GCard = Data.get_card(cid)
-	if card == null:
-		return GConst.GE_INVALID_CARDID
-	if card.element_enum() != GConst.CardElement.Fire and card.element_enum() != GConst.CardElement.Earth:
+	if not can_use_as_missile_fusion(card):
 		return GConst.GE_INVALID_CARDID
 	if not missile_targets(player.id).has(int(dsts[0])):
 		return GConst.GE_INVALID_PLAYERID

@@ -1,0 +1,14 @@
+{
+  "id": "F5-elemental",
+  "title": "F5-C 元素师独有技 helper（1101~1105）",
+  "reviewer": "R7",
+  "implementer": "MAIN",
+  "approve": true,
+  "issues": [],
+  "notes": "逐条核对：① skill_elemental.gd:197-199 的『已选.append(牌号)』缩进为 2 个 Tab，与 197 的 if 同级、位于 if 块之外，可达；已选 以首牌号初始化并逐张追加。② 新用例 f5_elemental.gd:259-283 先 设置覆盖(风刃, {额外加伤上限:2})，[风刃卡,风系副,风系副] 共 3 张恰好等于 1+2，不会被 192 的张数上限挡掉；第二张额外牌必然走到 197 的已选.has 去重分支并返回 GE_INVALID_ACTION。若把 append 缩进回 if 内，该断言会得到 SUCCESS 而失败，回归判别力成立（该用例的 INVALID_ACTION 只能来自去重：牌在手上、同系、目标合法、张数未超）。③ [风刃卡,风系副A,风系副B] 校验通过，p_magic_skill 按 3 张结算 3 点伤害，三张牌各离手一次、弃牌堆计数各 +1（269-282）。④ v_magic_skill:175-181 在牌表校验前复核覆盖『可用』，Callable 无效时跳过；用例 304-311 覆盖按钮置灰与硬提交被拒，与 available_skills 口径一致。全量自检独立跑：用例 41 个，通过 41，失败 0，无 [失败]/SCRIPT ERROR/Parse Error（仅既有音频/UI 资源泄漏 WARNING/ERROR，不在本任务文件）。",
+  "reviewed_at": "2026-10-27T18:59:06",
+  "files": [
+    "scripts/battle/skills/skill_elemental.gd",
+    "tests/cases/f5_elemental.gd"
+  ]
+}

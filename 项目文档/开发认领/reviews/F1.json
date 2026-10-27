@@ -1,0 +1,14 @@
+{
+  "id": "F1",
+  "title": "F1 魔弹融合泛化（系别可配）",
+  "reviewer": "R1",
+  "implementer": "W6",
+  "approve": true,
+  "issues": [],
+  "notes": "改动仅限任务 files 列出的 battle_role.gd 与新增 tests/cases/25_missileElements.gd，未越界。BattleRole 新增 missile_fusion_elements（默认火/地）、can_use_as_missile、can_use_as_missile_fusion、missile_fusion_hand_ids；v_missile_fusion 的牌型校验改走 can_use_as_missile_fusion，默认系别与 8/76 的 803/7602 技能号、魔弹掌控行为不变。测试用 dummy 水/火角色验证水系/火系通过、地系拒绝，并覆盖魔弹牌本身、队友落点、8/76 默认系别/牌表/技能号回归；24_jierimodao 仍通过。我方独立跑全量自检：用例 41 个，通过 41，失败 0，退出码 0。非阻塞备注：role_modao/role_spmodao 的 available_skills 仍按地/火硬编码，按本任务范围未改，后续 47/87/107 角色脚本应使用 missile_fusion_hand_ids；cast_missile_fusion 上方注释仍写地/火，可后续顺手改为可配置表述。",
+  "reviewed_at": "2026-10-27T18:40:30",
+  "files": [
+    "scripts/battle/battle_role.gd",
+    "tests/cases/25_missileElements.gd"
+  ]
+}

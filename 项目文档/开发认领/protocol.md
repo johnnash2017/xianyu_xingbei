@@ -30,11 +30,12 @@ python 项目文档/开发认领/claim.py finish --agent W1 --id F1 --blocked --
 
 ## 2. 测试
 
-- **实现代理**：并发实现期间不要跑全量自检（其他代理可能正在写文件，会看到临时 parse error）。只对自己的脚本做语法检查：
-  ```bash
-  "D:\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe" --headless --path "D:\星杯传说工程\星杯传说2\xianyu_xingbei" --check-only --script res://scripts/battle/xxx.gd
-  ```
-  新增测试文件也做一次 `--check-only`。
+- **实现代理**：并发实现期间不要跑全量自检（其他代理可能正在写文件，会看到临时 parse error）。
+  **注意**：本机 Godot 4.7.2 的 `--check-only --script` 在 autoload 注册前编译，对引用 `Data` 等单例的脚本会误报
+  `Identifier not found: Data`（未改动的现有脚本也一样）。因此：
+  - 不要用 `--check-only` 判定失败；它可以用来抓纯语法错，但 `Data` 报错属环境假失败。
+  - 需要自检时，用 `%TEMP%` 下的临时 SceneTree runner 正常启动项目、只加载自己的脚本/用例；跑完删除，仓库里不留临时文件。
+  - 最终的全量自检由评审代理跑。
 - **评审代理**：在实现批次结束后跑全量自检（此时工作区稳定）：
   ```bash
   "D:\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe" --headless --path "D:\星杯传说工程\星杯传说2\xianyu_xingbei" res://tests/selfCheck.tscn

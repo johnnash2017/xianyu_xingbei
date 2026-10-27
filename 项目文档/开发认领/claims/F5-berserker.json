@@ -1,0 +1,19 @@
+{
+  "id": "F5-berserker",
+  "title": "F5-B 狂战士独有技 helper（201/202）",
+  "agent": "W1",
+  "claimed_at": "2026-10-27T18:25:52",
+  "status": "review",
+  "files": [
+    "scripts/battle/skills/skill_berserker.gd",
+    "tests/cases/f5_berserker.gd"
+  ],
+  "acceptance": "新建 helper 类，实现 201 血影狂刀 / 202 血腥咆哮作为主动攻击时的响应；不改 role_kuangzhan.gd；用 dummy 借用角色完成一次攻击结算；测试通过，原角色自检不变。",
+  "summary": "新建 scripts/battle/skills/skill_berserker.gd（RefCounted，构造传 BattleRole）：从 role_kuangzhan.gd 抽出 201 血影狂刀/202 血腥咆哮 的触发校验+询问+结算，按 201→202 顺序推进并持久化分步进度；技能号血影狂刀/血腥咆哮可配（狂战士 201/202，97 借用填 9702）用于询问与播报；覆盖点：血影狂刀加伤 Callable(dst)->int、血腥咆哮条件 Callable(dst)->bool、血腥咆哮效果 Callable(ctx,dst)->int（供 9703 改命中/圣光抵挡）；不改 role_kuangzhan.gd。",
+  "tests": "两个文件均跑 --check-only，本机不注册 autoload 报 Identifier not found: Data（未改动的 role_kuangzhan.gd 同样报错，同 F1 记录）；改用 %TEMP% 临时 SceneTree runner 定向加载 tests/cases/f5_berserker.gd，输出 [通过] F5狂战士独有技（失败 0，无 SCRIPT ERROR），runner 已删除；未跑全量自检（并发实现期间按协议不跑）。",
+  "files_changed": [
+    "scripts/battle/skills/skill_berserker.gd",
+    "tests/cases/f5_berserker.gd"
+  ],
+  "finished_at": "2026-10-27T18:33:09"
+}

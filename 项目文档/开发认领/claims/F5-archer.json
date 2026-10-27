@@ -1,0 +1,19 @@
+{
+  "id": "F5-archer",
+  "title": "F5-A 神箭手独有技 helper（301/302）",
+  "agent": "W8",
+  "claimed_at": "2026-10-27T18:25:52",
+  "status": "review",
+  "files": [
+    "scripts/battle/skills/skill_archer.gd",
+    "tests/cases/f5_archer.gd"
+  ],
+  "acceptance": "新建 helper 类（构造传 BattleRole），实现神箭手 301 精准射击 / 302 闪光陷阱的校验+结算；不改 role_gongnv.gd；用 dummy 借用角色完成至少一次完整结算；测试通过，原角色自检不变。",
+  "summary": "新增 神箭手技能 helper（class_name，构造传 BattleRole，弱引用角色避免循环引用）：302 闪光陷阱=技能栏项（不可用置灰）+发动牌/目标校验+完整结算（亮牌→弃牌→2点法术伤害）；301 精准射击=攻击宣告 p_timeline_1 询问、强制命中且本次伤害-1、询问分步状态放实例变量；未改 role_gongnv.gd 与任何共享文件。",
+  "tests": "规定的 --check-only 在本机对含 autoload 的脚本一律报 Identifier not found: Data（用未改动的 role_gongnv.gd 复现，基线即失败），不能作为语法检查依据；改用临时单用例 headless runner（只加载 skill_archer.gd + f5_archer.gd，已删除临时文件）实跑：通过（302/301 各完成一次引擎完整结算）。未跑全量自检：并发期间按协议不跑。",
+  "files_changed": [
+    "scripts/battle/skills/skill_archer.gd",
+    "tests/cases/f5_archer.gd"
+  ],
+  "finished_at": "2026-10-27T18:32:02"
+}

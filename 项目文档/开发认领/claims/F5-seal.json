@@ -1,0 +1,19 @@
+{
+  "id": "F5-seal",
+  "title": "F5-D 封印师独有技 helper（401~405）",
+  "agent": "W7",
+  "claimed_at": "2026-10-27T18:25:52",
+  "status": "review",
+  "files": [
+    "scripts/battle/skills/skill_seal.gd",
+    "tests/cases/f5_seal.gd"
+  ],
+  "acceptance": "新建 helper 类，实现五系封印的放置与展示触发（3 点法术伤害并移除）；不改 role_fengyin.gd；用 dummy 借用角色完成一次放置+触发；测试通过。",
+  "summary": "新增 scripts/battle/skills/skill_seal.gd（构造传 BattleRole）：静态 是封印牌/封印技能号/封印元素；实例 手上封印牌/合法目标/available_skills/v_place/p_place/p_show_hand。放置流程与 role_fengyin.gd 一致（按牌上封印号播报→展示→add_basic_effect→离手并触发展示钩子，返回 URGENT）；展示触发按「攻击牌+幻命格」认封印牌、同系展示→3 点法术伤害+移除+弃牌，ctx[seals_triggered] 防重复；借用自己技能行（如 4606）时传牌上实际带的 401~405 校验与播报。新增 tests/cases/f5_seal.gd：dummy 借用角色完成放置+触发，覆盖同色/重复放置/错牌/异系不触发/多封印依次触发/ctx 去重/非法 id/空参数，并验证 4 号封印师脚本仍可加载、技能栏 7 项不变。",
+  "tests": "协议给的 --check-only 在本工程对任何引用 autoload 的脚本都必然失败（基线 role_fengyin.gd 同样报 Compile Error: Identifier not found: Data，--check-only 在 autoload 注册前编译）。改用 %TEMP% 单例运行器在运行时 load() 做编译检查（等同自检的运行方式）：skill_seal.gd 编译 true、f5_seal.gd 编译 true，只跑本用例结果「通过」（失败 0）；未跑全量自检（并发实现期间其他代理仍在写文件），runner 与日志均放 %TEMP%，未在仓库留下临时文件。",
+  "files_changed": [
+    "scripts/battle/skills/skill_seal.gd",
+    "tests/cases/f5_seal.gd"
+  ],
+  "finished_at": "2026-10-27T18:32:12"
+}

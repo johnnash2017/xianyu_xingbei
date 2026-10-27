@@ -1,0 +1,14 @@
+{
+  "id": "F5-seal",
+  "title": "F5-D 封印师独有技 helper（401~405）",
+  "reviewer": "R4",
+  "implementer": "W7",
+  "approve": true,
+  "issues": [],
+  "notes": "范围仅 skill_seal.gd + f5_seal.gd，未改 role_fengyin.gd 及共享文件；放置校验（手牌带对应封印号、异色目标、同种不重复）、available_skills 五系常驻+enabled 置灰+合法 targets、p_place（播报→展示→add_basic_effect→离手→URGENT）与 role_fengyin 同口径；p_show_hand 以「攻击牌+幻命格」认封印、同系触发 3 点法术伤害+移除+入弃牌并用 ctx[seals_triggered] 防重入，支持借用者用自己的技能行转发且按牌上 401~405 校验/播报；dummy 借用角色完成放置+触发，覆盖同色/重复/错牌/异系/多封印/去重/空参数，并验证原角色 4 号技能栏 7 项不变；全量自检 41/41 通过。备注（非阻塞）：helper 以强引用持有角色，与 archer/elemental 的 WeakRef 风格不一致，会形成 RefCounted 循环，可后续统一处理。",
+  "reviewed_at": "2026-10-27T18:39:52",
+  "files": [
+    "scripts/battle/skills/skill_seal.gd",
+    "tests/cases/f5_seal.gd"
+  ]
+}

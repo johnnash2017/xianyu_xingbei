@@ -1,0 +1,14 @@
+{
+  "id": "F5-sword",
+  "title": "F5-F 剑圣独有技 helper（101/102）",
+  "reviewer": "R4",
+  "implementer": "W5",
+  "approve": true,
+  "issues": [],
+  "notes": "范围仅 skill_sword.gd + f5_sword.gd，未改 role_jiansheng.gd 及共享文件；101/102 先问后结算、102 → NoReattack+check_shield=false（圣盾保留）、101 仅主动攻击 is_active 且 direct+skip_notice 加额外攻击，均与 role_jiansheng 原实现同口径；进度放实例变量并与脚本内状态重置分离；dummy 借用角色走真实 resolve_action 完成 102（应战被驳回重问、圣盾不消耗、命中 2 点）与 101（额外攻击阶段来源/允许/等待）两次完整攻击结算，另覆盖无圣盾、应战攻击、天使之墙等同圣盾、取消不生效、非攻击者不处理；全量自检 41/41 通过。",
+  "reviewed_at": "2026-10-27T18:40:18",
+  "files": [
+    "scripts/battle/skills/skill_sword.gd",
+    "tests/cases/f5_sword.gd"
+  ]
+}

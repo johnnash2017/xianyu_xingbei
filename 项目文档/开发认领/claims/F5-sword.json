@@ -1,0 +1,19 @@
+{
+  "id": "F5-sword",
+  "title": "F5-F 剑圣独有技 helper（101/102）",
+  "agent": "W5",
+  "claimed_at": "2026-10-27T18:25:53",
+  "status": "review",
+  "files": [
+    "scripts/battle/skills/skill_sword.gd",
+    "tests/cases/f5_sword.gd"
+  ],
+  "acceptance": "新建 helper 类，实现 101 疾风技（额外攻击行动）/ 102 烈风技（无视圣盾且无法应战）；不改 role_jiansheng.gd；用 dummy 借用角色完成一次攻击结算；测试通过。",
+  "summary": "新增 F5-F 剑圣独有技 helper scripts/battle/skills/skill_sword.gd：构造传 BattleRole，p_timeline_1 为唯一借用入口；先问 102 烈风技（目标有圣盾/天使之墙时发动→hit_rate=NoReattack、check_shield=false，圣盾保留不消耗），再问 101 疾风技（主动攻击 is_active 时发动→add_action 额外攻击，direct+skip_notice 与原实现一致）；进度放实例变量、src 非本人直接放行；未改 role_jiansheng.gd。新增 tests/cases/f5_sword.gd：dummy 借用角色走真实攻击入口完成 102 完整结算（含应战询问标记 NoReattack、非法应战被驳回重问、圣盾不消耗）与 101 完整结算（额外攻击阶段来源/允许/等待断言），并覆盖无圣盾、应战攻击不触发 101、天使之墙等同圣盾、取消不生效、非攻击者不处理等边界。",
+  "tests": "--check-only 对两个新文件报 Identifier not found: Data；已确认该模式不注册 autoload（未改动的 role_jiansheng.gd / 其他代理的 skill_bless.gd 同样报此错），故不作为有效结果。改用临时 Node 定向 runner（tests/_tempW5SwordCheck.*，跑完已删除）加载工程（autoload 正常）并执行 tests/cases/f5_sword.gd：输出 [通过] 剑圣独有技借用，失败 0。未跑全量自检（并发实现期间按协议不跑，避免其他代理的临时 parse error）。",
+  "files_changed": [
+    "scripts/battle/skills/skill_sword.gd",
+    "tests/cases/f5_sword.gd"
+  ],
+  "finished_at": "2026-10-27T18:32:48"
+}

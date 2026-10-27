@@ -1,0 +1,14 @@
+{
+  "id": "F5-bless",
+  "title": "F5-E 祈祷师独有技 helper（1601/1602）",
+  "reviewer": "R8",
+  "implementer": "MAIN",
+  "approve": true,
+  "issues": [],
+  "notes": "R8 独立复审 MAIN 修复（当前工作区 + 独立全量自检 41/41）。逐条核对：①迅捷赐福跨来源：skill_bless.gd:240 触发、:252 v_additional_action、:265 p_additional_action 均改为 find_blessing(持有者,1601,-1)，只认『持有者面前有 1601』；引擎只用当前行动者自己的角色做 v_additional_action（battle_engine.gd:2087/2114），祈祷师贴到 46 面前、46 转发 helper 时不再被误拒。②可选目标(:98)与_目标合法(:300)都改成按技能号全局判重，同类赐福不区分来源不叠加，与 role_qidao._check_ci_fu_target、F5-seal 口径及 helper 注释一致；『两张 1601 挂在同一人面前、选择时各移除一张』的路径已被堵死。③威力赐福仍按 src 归属(:184 传 角色.player.id)，别的来源不会冒领；目标全局去重后同一人不可能有两张 1602，配合 _威力阶段_已完成 每次命中只处理一次，不会叠到 +4。④新增跨来源用例 f5_bless.gd:339-367 真覆盖且能区分修复前后：352 友角色.v_additional_action(1601)==SUCCESS（旧代码按 src=3 过滤会 INVALID）、356-361 借用触发后友获得 1601 额外行动（旧代码按 src=1 过滤会失败）、362-365 选择额外行动后赐福被移除并进弃牌堆（旧代码不删会失败）、366 移除后被拒；354 也断言别人放的 1601 会从可选目标里排除。⑤独立跑全量自检：用例 41 个，通过 41，失败 0，无 [失败]/SCRIPT ERROR/Parse Error（结尾仅有 Godot 退出时的资源泄漏 WARNING/ERROR，属既有自检场景，不在本任务文件）。role_qidao.gd 未被改动。非阻塞小注：f5_bless.gd:234-236 的断言文案写『没有迅捷赐福的队友』，但此时友二实际持有迅捷二、只是无手牌，该断言实际覆盖的是『没牌不授予』，建议后续改文案。结论：通过。",
+  "reviewed_at": "2026-10-27T19:01:19",
+  "files": [
+    "scripts/battle/skills/skill_bless.gd",
+    "tests/cases/f5_bless.gd"
+  ]
+}

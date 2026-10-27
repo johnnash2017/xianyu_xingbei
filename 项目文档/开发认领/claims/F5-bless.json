@@ -1,0 +1,19 @@
+{
+  "id": "F5-bless",
+  "title": "F5-E 祈祷师独有技 helper（1601/1602）",
+  "agent": "MAIN",
+  "claimed_at": "2026-10-27T18:25:52",
+  "status": "review",
+  "files": [
+    "scripts/battle/skills/skill_bless.gd",
+    "tests/cases/f5_bless.gd"
+  ],
+  "acceptance": "新建 helper 类，实现迅捷赐福/威力赐福的放置与队友触发；不改 role_qidao.gd；用 dummy 借用角色完成一次放置+触发；测试通过。",
+  "summary": "[主代理修复] 修复：迅捷赐福的校验/触发/移除改为『持有者面前有 1601』不区分来源；同类赐福目标判重改全局；补跨来源用例。自检 41/41。",
+  "tests": "按协议跑 --check-only：本工程任何脚本（含既有 role_qidao.gd）在该模式下均因 autoload 未注册报 Identifier not found: Data，属环境限制；改用临时 SceneTree 延迟到 autoload 就绪后加载做真实编译，skill_bless.gd 与 tests/cases/f5_bless.gd 均加载成功；并单独运行 f5_bless 用例（临时驱动）输出 W2_CASE_PASS，无 SCRIPT ERROR/Parse Error。未跑全量自检（并发实现期间按协议禁止）。",
+  "files_changed": [
+    "scripts/battle/skills/skill_bless.gd",
+    "tests/cases/f5_bless.gd"
+  ],
+  "finished_at": "2026-10-27T18:46:49"
+}

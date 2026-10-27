@@ -1,0 +1,14 @@
+{
+  "id": "F5-archer",
+  "title": "F5-A 神箭手独有技 helper（301/302）",
+  "reviewer": "R4",
+  "implementer": "W8",
+  "approve": true,
+  "issues": [],
+  "notes": "范围仅 skill_archer.gd + f5_archer.gd，未改 role_gongnv.gd 与共享文件；helper 构造传 BattleRole、弱引用防循环，302 技能栏置灰/发动牌/目标校验与重亮牌→弃牌→2 点法术伤害结算与 role_gongnv 一致，301 在 p_timeline_1 先问后结算（NoMiss、伤害-1、preview_base 下发），状态放实例变量；dummy 借用角色用真实引擎完成 302 与 301 完整结算，并覆盖取消/非301牌/重复询问/非法目标等边界；全量自检 41 例全通过（41/41，含本用例）。",
+  "reviewed_at": "2026-10-27T18:38:32",
+  "files": [
+    "scripts/battle/skills/skill_archer.gd",
+    "tests/cases/f5_archer.gd"
+  ]
+}

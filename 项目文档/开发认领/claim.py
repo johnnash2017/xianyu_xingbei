@@ -259,6 +259,57 @@ def cmd_review(data: dict, agent: str, tid: str, approve: bool, issues: str,
         unlock()
 
 
+def cmd_reopen(data: dict, tid: str, summary: str, agent: str) -> None:
+    """主代理修复 needs_fix/blocked 后重新送审：认领者记为 agent（默认 MAIN），
+    评审者清空，状态回 review，问题历史保留在 tasks.json 的 issues 里。"""
+    lock()
+    try:
+        t = by_id(data, tid)
+        if t.get("status") not in ("needs_fix", "blocked"):
+            raise SystemExit(f"任务 {tid} 当前状态 {t.get('status')}，只有 needs_fix/blocked 能 reopen")
+        t["status"] = "review"
+        t["implementer"] = agent
+        t["reviewer"] = ""
+        t["summary"] = "[主代理修复] " + summary
+        t["finished_at"] = now()
+        t["reviewed_at"] = ""
+        if claim_path(tid).exists():
+            with claim_path(tid).open("r", encoding="utf-8") as f:
+                c = json.load(f)
+        else:
+            c = {"id": tid, "title": t["title"]}
+        c.update({
+            "agent": agent,
+            "status": "review",
+            "summary": t["summary"],
+            "finished_at": t["finished_at"],
+        })
+        with claim_path(tid).open("w", encoding="utf-8") as f:
+            json.dump(c, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        save(data)
+        print(f"REOPENED {tid} -> review (implementer={agent})")
+    finally:
+        unlock()
+
+
+def cmd_release(data: dict, tid: str, summary: str) -> None:
+    """主代理释放卡住的评审（评审代理异常退出等）：reviewing -> review，清空 reviewer。"""
+    lock()
+    try:
+        t = by_id(data, tid)
+        if t.get("status") != "reviewing":
+            raise SystemExit(f"任务 {tid} 当前状态 {t.get('status')}，只有 reviewing 能 release")
+        t["status"] = "review"
+        t["reviewer"] = ""
+        t["reviewed_at"] = ""
+        t["summary"] = str(t.get("summary", "")) + " [主代理释放评审] " + summary
+        save(data)
+        print(f"RELEASED {tid} -> review")
+    finally:
+        unlock()
+
+
 def cmd_status(data: dict) -> None:
     counts: dict[str, int] = {}
     print(f"{'ID':<12} {'状态':<10} {'实现':<6} {'评审':<6} 标题")
@@ -303,6 +354,17 @@ def main() -> None:
     g.add_argument("--issues")
     p.add_argument("--notes", default="")
     p.set_defaults(func=lambda data, a: cmd_review(data, a.agent, a.id, a.approve, a.issues or "", a.notes))
+
+    p = sub.add_parser("reopen")
+    p.add_argument("--id", required=True)
+    p.add_argument("--summary", required=True)
+    p.add_argument("--agent", default="MAIN")
+    p.set_defaults(func=lambda data, a: cmd_reopen(data, a.id, a.summary, a.agent))
+
+    p = sub.add_parser("release")
+    p.add_argument("--id", required=True)
+    p.add_argument("--summary", required=True)
+    p.set_defaults(func=lambda data, a: cmd_release(data, a.id, a.summary))
 
     a = ap.parse_args()
     data = load()

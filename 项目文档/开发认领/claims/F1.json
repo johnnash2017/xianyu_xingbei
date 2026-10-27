@@ -1,0 +1,19 @@
+{
+  "id": "F1",
+  "title": "F1 魔弹融合泛化（系别可配）",
+  "agent": "W6",
+  "claimed_at": "2026-10-27T18:25:51",
+  "status": "review",
+  "files": [
+    "scripts/battle/battle_role.gd",
+    "tests/cases/25_missileElements.gd"
+  ],
+  "acceptance": "BattleRole 增加 missile_fusion_elements()（默认火/地）、missile_fusion_hand_ids()、can_use_as_missile(card)；v_missile_fusion / available 用的牌表走配置；8/76 行为不变；新增测试用 dummy 水/火角色验证通过/拒绝，并跑自检全过。",
+  "summary": "BattleRole 新增 missile_fusion_elements()（默认火/地）、can_use_as_missile()、can_use_as_missile_fusion()、missile_fusion_hand_ids()；v_missile_fusion 的牌表/系别校验改走配置，默认值保持 8/76 行为不变；新增 25_missileElements 用例（dummy 水/火角色通过/拒绝 + 8/76 回归）。",
+  "tests": "本机 --check-only 无法注册 autoload，未改动的 role_modao.gd 也报 Identifier not found: Data，故该命令不作为有效结果；改用临时 SceneTree runner（已删除）加载脚本并定向跑 25_missileElements + 24_jierimodao，两用例失败均为 0。未跑全量自检（并发实现期间按协议不跑）。",
+  "files_changed": [
+    "scripts/battle/battle_role.gd",
+    "tests/cases/25_missileElements.gd"
+  ],
+  "finished_at": "2026-10-27T18:29:17"
+}

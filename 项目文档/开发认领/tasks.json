@@ -14,10 +14,20 @@
       "size": "M",
       "acceptance": "BattleRole 增加 missile_fusion_elements()（默认火/地）、missile_fusion_hand_ids()、can_use_as_missile(card)；v_missile_fusion / available 用的牌表走配置；8/76 行为不变；新增测试用 dummy 水/火角色验证通过/拒绝，并跑自检全过。",
       "desc": "只改列出的两个文件；不要改 role_modao/role_spmodao。参考 项目文档/禁用3星与3.5星角色开发计划.md F1。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W6",
+      "reviewer": "R1",
+      "issues": [],
+      "claimed_at": "2026-10-27T18:25:51",
+      "summary": "BattleRole 新增 missile_fusion_elements()（默认火/地）、can_use_as_missile()、can_use_as_missile_fusion()、missile_fusion_hand_ids()；v_missile_fusion 的牌表/系别校验改走配置，默认值保持 8/76 行为不变；新增 25_missileElements 用例（dummy 水/火角色通过/拒绝 + 8/76 回归）。",
+      "tests": "本机 --check-only 无法注册 autoload，未改动的 role_modao.gd 也报 Identifier not found: Data，故该命令不作为有效结果；改用临时 SceneTree runner（已删除）加载脚本并定向跑 25_missileElements + 24_jierimodao，两用例失败均为 0。未跑全量自检（并发实现期间按协议不跑）。",
+      "files_changed": [
+        "scripts/battle/battle_role.gd",
+        "tests/cases/25_missileElements.gd"
+      ],
+      "finished_at": "2026-10-27T18:29:17",
+      "reviewing_at": "2026-10-27T18:37:03",
+      "reviewed_at": "2026-10-27T18:40:30"
     },
     {
       "id": "F5-archer",
@@ -31,10 +41,20 @@
       "size": "M",
       "acceptance": "新建 helper 类（构造传 BattleRole），实现神箭手 301 精准射击 / 302 闪光陷阱的校验+结算；不改 role_gongnv.gd；用 dummy 借用角色完成至少一次完整结算；测试通过，原角色自检不变。",
       "desc": "参考 role_gongnv.gd；helper 只暴露借用入口，状态放实例变量；不要改共享文件。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W8",
+      "reviewer": "R4",
+      "issues": [],
+      "claimed_at": "2026-10-27T18:25:52",
+      "summary": "新增 神箭手技能 helper（class_name，构造传 BattleRole，弱引用角色避免循环引用）：302 闪光陷阱=技能栏项（不可用置灰）+发动牌/目标校验+完整结算（亮牌→弃牌→2点法术伤害）；301 精准射击=攻击宣告 p_timeline_1 询问、强制命中且本次伤害-1、询问分步状态放实例变量；未改 role_gongnv.gd 与任何共享文件。",
+      "tests": "规定的 --check-only 在本机对含 autoload 的脚本一律报 Identifier not found: Data（用未改动的 role_gongnv.gd 复现，基线即失败），不能作为语法检查依据；改用临时单用例 headless runner（只加载 skill_archer.gd + f5_archer.gd，已删除临时文件）实跑：通过（302/301 各完成一次引擎完整结算）。未跑全量自检：并发期间按协议不跑。",
+      "files_changed": [
+        "scripts/battle/skills/skill_archer.gd",
+        "tests/cases/f5_archer.gd"
+      ],
+      "finished_at": "2026-10-27T18:32:02",
+      "reviewing_at": "2026-10-27T18:37:05",
+      "reviewed_at": "2026-10-27T18:38:32"
     },
     {
       "id": "F5-berserker",
@@ -48,10 +68,20 @@
       "size": "M",
       "acceptance": "新建 helper 类，实现 201 血影狂刀 / 202 血腥咆哮作为主动攻击时的响应；不改 role_kuangzhan.gd；用 dummy 借用角色完成一次攻击结算；测试通过，原角色自检不变。",
       "desc": "参考 role_kuangzhan.gd；9702/9703 会在此基础上改伤害/命中效果，接口要允许覆盖。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W1",
+      "reviewer": "R3",
+      "issues": [],
+      "claimed_at": "2026-10-27T18:25:52",
+      "summary": "新建 scripts/battle/skills/skill_berserker.gd（RefCounted，构造传 BattleRole）：从 role_kuangzhan.gd 抽出 201 血影狂刀/202 血腥咆哮 的触发校验+询问+结算，按 201→202 顺序推进并持久化分步进度；技能号血影狂刀/血腥咆哮可配（狂战士 201/202，97 借用填 9702）用于询问与播报；覆盖点：血影狂刀加伤 Callable(dst)->int、血腥咆哮条件 Callable(dst)->bool、血腥咆哮效果 Callable(ctx,dst)->int（供 9703 改命中/圣光抵挡）；不改 role_kuangzhan.gd。",
+      "tests": "两个文件均跑 --check-only，本机不注册 autoload 报 Identifier not found: Data（未改动的 role_kuangzhan.gd 同样报错，同 F1 记录）；改用 %TEMP% 临时 SceneTree runner 定向加载 tests/cases/f5_berserker.gd，输出 [通过] F5狂战士独有技（失败 0，无 SCRIPT ERROR），runner 已删除；未跑全量自检（并发实现期间按协议不跑）。",
+      "files_changed": [
+        "scripts/battle/skills/skill_berserker.gd",
+        "tests/cases/f5_berserker.gd"
+      ],
+      "finished_at": "2026-10-27T18:33:09",
+      "reviewing_at": "2026-10-27T18:37:05",
+      "reviewed_at": "2026-10-27T18:38:47"
     },
     {
       "id": "F5-elemental",
@@ -65,10 +95,26 @@
       "size": "M",
       "acceptance": "新建 helper 类，实现风刃/冰冻/火球/陨石/雷击的发动牌校验、额外弃同系加伤、各自后续效果；不改 role_yuansu.gd；用 dummy 借用角色各完成一次结算；测试通过。",
       "desc": "参考 role_yuansu.gd 的 available_skills/v_magic_skill/p_magic_skill；9303/9304 会借用并改雷击。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "MAIN",
+      "reviewer": "R7",
+      "issues": [],
+      "claimed_at": "2026-10-27T18:25:52",
+      "summary": "[主代理修复] 补测：设置额外加伤上限=2 后覆盖『同一张额外牌重复提交被拒』『两张不同额外牌通过并按3张结算、各只进弃牌堆一次』；自检 41/41。",
+      "tests": "按协议跑了 --check-only，但该模式不注册 autoload（未改动的 role_yuansu.gd / battle_role.gd 同样报 Identifier not found: Data），无法作为有效检查；改用与 F1 相同的临时 SceneTree runner（%TEMP%，已删除）加载 skill_elemental.gd + f5_elemental.gd 并实际跑完该用例：失败 0、退出无泄漏；未跑全量自检（并发实现期间按协议不跑）。",
+      "files_changed": [
+        "scripts/battle/skills/skill_elemental.gd",
+        "tests/cases/f5_elemental.gd"
+      ],
+      "finished_at": "2026-10-27T18:57:48",
+      "reviewing_at": "2026-10-27T18:57:56",
+      "reviewed_at": "2026-10-27T18:59:06",
+      "history": [
+        "skill_elemental.gd:192 的「已选.append(牌号)」被缩进在「if 已选.has(牌号): return」之后，是不可达代码：额外弃牌之间的重复只校验了首牌，当「额外加伤上限」>1 时同一张额外牌可重复提交，伤害按重复张数计算，而 take_from_hand 只移除一次、to_discard 会重复入弃牌堆，破坏手牌/弃牌堆一致性",
+        "现有用例只测了首牌重复，未覆盖此边界。建议把 append 移出 if 并补一条额外牌重复的用例。",
+        "设置覆盖的「可用」只改 available_skills 的 enabled，v_magic_skill 没有复核它：硬提交被置灰的技能仍会通过校验，与技能维护约定「服务端对置灰项兜底校验」不一致。建议 v_magic_skill 也检查「可用」回调，或明确注释该覆盖仅供 UI、由借用角色自行在 v_magic_skill 兜底。",
+        "新增的『同一张额外牌不能重复提交两次』用例没有真正覆盖该边界（f5_elemental.gd:242-244）：风刃默认额外加伤上限=1，[风刃卡, 风系副, 风系副] 共 3 张会先被 skill_elemental.gd:192 的『牌表.size() > 1 + 额外上限』挡掉，走不到 195-199 的『已选.has』去重分支。即使把 append 缩进回 if 内（原问题复现），该用例仍会通过，起不到回归保护作用。请先用 设置覆盖(风刃, {'额外加伤上限': 2})，再补两条用例：① [风刃卡, 风系副, 风系副] 应返回 GE_INVALID_ACTION。② [风刃卡, 风系副A, 风系副B] 应通过并造成 3 点伤害，且三张牌各只离手一次、各只进弃牌堆一次。"
+      ]
     },
     {
       "id": "F5-seal",
@@ -82,10 +128,20 @@
       "size": "M",
       "acceptance": "新建 helper 类，实现五系封印的放置与展示触发（3 点法术伤害并移除）；不改 role_fengyin.gd；用 dummy 借用角色完成一次放置+触发；测试通过。",
       "desc": "参考 role_fengyin.gd；4606 会借用。注意基础效果牌/目标校验。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W7",
+      "reviewer": "R4",
+      "issues": [],
+      "claimed_at": "2026-10-27T18:25:52",
+      "summary": "新增 scripts/battle/skills/skill_seal.gd（构造传 BattleRole）：静态 是封印牌/封印技能号/封印元素；实例 手上封印牌/合法目标/available_skills/v_place/p_place/p_show_hand。放置流程与 role_fengyin.gd 一致（按牌上封印号播报→展示→add_basic_effect→离手并触发展示钩子，返回 URGENT）；展示触发按「攻击牌+幻命格」认封印牌、同系展示→3 点法术伤害+移除+弃牌，ctx[seals_triggered] 防重复；借用自己技能行（如 4606）时传牌上实际带的 401~405 校验与播报。新增 tests/cases/f5_seal.gd：dummy 借用角色完成放置+触发，覆盖同色/重复放置/错牌/异系不触发/多封印依次触发/ctx 去重/非法 id/空参数，并验证 4 号封印师脚本仍可加载、技能栏 7 项不变。",
+      "tests": "协议给的 --check-only 在本工程对任何引用 autoload 的脚本都必然失败（基线 role_fengyin.gd 同样报 Compile Error: Identifier not found: Data，--check-only 在 autoload 注册前编译）。改用 %TEMP% 单例运行器在运行时 load() 做编译检查（等同自检的运行方式）：skill_seal.gd 编译 true、f5_seal.gd 编译 true，只跑本用例结果「通过」（失败 0）；未跑全量自检（并发实现期间其他代理仍在写文件），runner 与日志均放 %TEMP%，未在仓库留下临时文件。",
+      "files_changed": [
+        "scripts/battle/skills/skill_seal.gd",
+        "tests/cases/f5_seal.gd"
+      ],
+      "finished_at": "2026-10-27T18:32:12",
+      "reviewing_at": "2026-10-27T18:38:33",
+      "reviewed_at": "2026-10-27T18:39:52"
     },
     {
       "id": "F5-bless",
@@ -99,10 +155,24 @@
       "size": "M",
       "acceptance": "新建 helper 类，实现迅捷赐福/威力赐福的放置与队友触发；不改 role_qidao.gd；用 dummy 借用角色完成一次放置+触发；测试通过。",
       "desc": "参考 role_qidao.gd；4606 会借用。注意队友目标与基础效果。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "MAIN",
+      "reviewer": "R8",
+      "issues": [],
+      "claimed_at": "2026-10-27T18:25:52",
+      "summary": "[主代理修复] 修复：迅捷赐福的校验/触发/移除改为『持有者面前有 1601』不区分来源；同类赐福目标判重改全局；补跨来源用例。自检 41/41。 [主代理释放评审] R5 复审代理异常退出（无评审记录），主代理释放评审锁；代码与测试已修复，自检 41/41。",
+      "tests": "按协议跑 --check-only：本工程任何脚本（含既有 role_qidao.gd）在该模式下均因 autoload 未注册报 Identifier not found: Data，属环境限制；改用临时 SceneTree 延迟到 autoload 就绪后加载做真实编译，skill_bless.gd 与 tests/cases/f5_bless.gd 均加载成功；并单独运行 f5_bless 用例（临时驱动）输出 W2_CASE_PASS，无 SCRIPT ERROR/Parse Error。未跑全量自检（并发实现期间按协议禁止）。",
+      "files_changed": [
+        "scripts/battle/skills/skill_bless.gd",
+        "tests/cases/f5_bless.gd"
+      ],
+      "finished_at": "2026-10-27T18:46:49",
+      "reviewing_at": "2026-10-27T18:57:56",
+      "reviewed_at": "2026-10-27T19:01:19",
+      "history": [
+        "v_additional_action 只认「本角色放的」迅捷赐福（find_blessing(角色.player, XUN_JIE_CI_FU, 角色.player.id)），但引擎的 v_additional_action 问的是「选择额外行动的持有者自己的角色脚本」：当祈祷师把迅捷赐福贴到 46 面前时，46 的 v_additional_action 会返回 GE_INVALID_ACTION，导致这 +1 攻击行动在客户端被置灰/服务端被驳回（role_qidao.gd 的 _find_effect_card 是不区分来源的）。应改为只校验「面前有 1601」，并补一个「46 持有别人放的迅捷赐福」的用例。",
+        "可选目标/_目标合法 也按来源判重，不同来源的同类赐福可以叠在同一队友面前，与 role_qidao._check_ci_fu_target、F5-seal 的「身上没有同种」口径以及 helper 自身注释「同类不叠加」不一致，两张 1601 同场时 p_after_attack 的 cause 去重只给 1 个额外行动，而选择时两个角色的 p_additional_action 可能各移除一张，出现 1 个额外行动消耗 2 张牌（两张 1602 则可能叠到 +4）。建议目标判重改为按技能号全局（find_blessing 来源传 -1），触发归属仍按 src，并补跨来源用例。"
+      ]
     },
     {
       "id": "F5-sword",
@@ -116,10 +186,20 @@
       "size": "M",
       "acceptance": "新建 helper 类，实现 101 疾风技（额外攻击行动）/ 102 烈风技（无视圣盾且无法应战）；不改 role_jiansheng.gd；用 dummy 借用角色完成一次攻击结算；测试通过。",
       "desc": "参考 role_jiansheng.gd；10802 会按攻击牌上的剑圣独有技触发。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W5",
+      "reviewer": "R4",
+      "issues": [],
+      "claimed_at": "2026-10-27T18:25:53",
+      "summary": "新增 F5-F 剑圣独有技 helper scripts/battle/skills/skill_sword.gd：构造传 BattleRole，p_timeline_1 为唯一借用入口；先问 102 烈风技（目标有圣盾/天使之墙时发动→hit_rate=NoReattack、check_shield=false，圣盾保留不消耗），再问 101 疾风技（主动攻击 is_active 时发动→add_action 额外攻击，direct+skip_notice 与原实现一致）；进度放实例变量、src 非本人直接放行；未改 role_jiansheng.gd。新增 tests/cases/f5_sword.gd：dummy 借用角色走真实攻击入口完成 102 完整结算（含应战询问标记 NoReattack、非法应战被驳回重问、圣盾不消耗）与 101 完整结算（额外攻击阶段来源/允许/等待断言），并覆盖无圣盾、应战攻击不触发 101、天使之墙等同圣盾、取消不生效、非攻击者不处理等边界。",
+      "tests": "--check-only 对两个新文件报 Identifier not found: Data；已确认该模式不注册 autoload（未改动的 role_jiansheng.gd / 其他代理的 skill_bless.gd 同样报此错），故不作为有效结果。改用临时 Node 定向 runner（tests/_tempW5SwordCheck.*，跑完已删除）加载工程（autoload 正常）并执行 tests/cases/f5_sword.gd：输出 [通过] 剑圣独有技借用，失败 0。未跑全量自检（并发实现期间按协议不跑，避免其他代理的临时 parse error）。",
+      "files_changed": [
+        "scripts/battle/skills/skill_sword.gd",
+        "tests/cases/f5_sword.gd"
+      ],
+      "finished_at": "2026-10-27T18:32:48",
+      "reviewing_at": "2026-10-27T18:39:53",
+      "reviewed_at": "2026-10-27T18:40:18"
     },
     {
       "id": "D1",
@@ -132,10 +212,19 @@
       "size": "S",
       "acceptance": "逐角色/逐技能审计 59 颗技能：提示列缺口、指示物/盖牌、技能指示器、文本歧义、跨角色依赖、建议实现顺序；不改设计表/代码/CSV；报告引用设计表行号或技能号。",
       "desc": "只写 data-audit.md；读设计表/CSV/技能维护约定/计划。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W3",
+      "reviewer": "R4",
+      "issues": [],
+      "claimed_at": "2026-10-27T18:25:56",
+      "summary": "只读审计 13 角色 59 技能：提示列 100% 为空（37 技能约 60 条建议）、38/46/93 指示物/盖牌配置核对、22 技能新增指示器缺口、52 条文本歧义与建议口径、6 组借用依赖与卡牌载体数量核对、F1~F9 代码缺口（4704 进弃牌前钩子、9703 暗灭应战引擎标志、10604 提炼钩子、10803 额外回合/角色替换等）、建议实现顺序与测试重点",
+      "tests": "未跑全量自检（并发实现期间按协议不跑）；本任务只读报告、未新增/修改脚本，无 check-only 对象",
+      "files_changed": [
+        "项目文档/开发认领/data-audit.md"
+      ],
+      "finished_at": "2026-10-27T18:36:38",
+      "reviewing_at": "2026-10-27T18:40:20",
+      "reviewed_at": "2026-10-27T18:42:46"
     },
     {
       "id": "F2",

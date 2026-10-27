@@ -1,0 +1,14 @@
+{
+  "id": "F5-berserker",
+  "title": "F5-B 狂战士独有技 helper（201/202）",
+  "reviewer": "R3",
+  "implementer": "W1",
+  "approve": true,
+  "issues": [],
+  "notes": "范围仅 skill_berserker.gd + f5_berserker.gd，role_kuangzhan.gd 未改，无越界；helper 的 201/202 校验-询问-结算与 role_kuangzhan.gd 逐项对齐（主动攻击、牌载技能、手牌2~3/治疗2、目标与 preview_base、NoMiss），技能号可配且测试验证借用方按 9702 询问/播报、不再播 201，覆盖点（加伤/条件/效果 Callable）可用；测试覆盖数据、直接转发、加伤2/1、取消、不满足条件、应战不触发、202 强制命中、覆盖点与 dummy 完整攻击结算；全量自检 41 用例通过 41 失败 0（含原狂战士交互用例），原角色行为无回归。",
+  "reviewed_at": "2026-10-27T18:38:47",
+  "files": [
+    "scripts/battle/skills/skill_berserker.gd",
+    "tests/cases/f5_berserker.gd"
+  ]
+}
