@@ -2575,53 +2575,71 @@ func _换选项后重校验() -> void:
 	_更新按键()
 
 
-## 额外行动询问：把每个可选 cause 变成一个按钮
+## 额外攻击行动按钮的红底（与普通技能/参数选项区分）
+const 额外攻击按钮色: Color = Color("c0392b")
+
+
+## 这份额外行动是不是攻击行动（看「额外行动提示」里写的是攻击 / 法术 / 其它）
+func _是攻击额外行动(cause: int) -> bool:
+	return str(GConst.额外行动提示.get(cause, "")).contains("攻击行动")
+
+
+## 额外行动按钮文案：默认「额外【攻击行动】」（【攻击行动】由词缀表换成图标）；
+## 有特定限制的（如「只能使用技类攻击牌」）把特性接在后面。
+func _额外行动按钮文本(cause: int) -> String:
+	var 提示: String = str(GConst.额外行动提示.get(cause, ""))
+	var 行动: String = "攻击行动" if 提示.contains("攻击行动") \
+		else ("法术行动" if 提示.contains("法术行动") else "行动")
+	var 冒号: int = 提示.find("：")
+	var 特性: String = 提示.substr(冒号 + 1).strip_edges() if 冒号 >= 0 else ""
+	var 底: String = "额外【%s】" % 行动
+	return 底 if 特性.is_empty() else 底 + "：" + 特性
+
+
+## 额外行动按钮的悬停说明：优先用「额外行动提示」的完整句，没有再退回技能说明。
+func _额外行动按钮说明(cause: int) -> String:
+	var 提示: String = str(GConst.额外行动提示.get(cause, ""))
+	if not 提示.is_empty():
+		return 提示
+	var 说明: String = GConst.skill_desc(cause)
+	return 说明 if not 说明.is_empty() else "额外行动"
+
+
+## 额外行动询问：把每个可选 cause 变成一个按钮，点哪个就直接进入哪个额外行动
 func _进入额外行动(causes: Array, 可发动: Array) -> void:
 	_mode = 3
 	_是技能询问 = false
 	_skill_ask_id = -1
 	_额外行动单选 = -1
 	_额外行动可选 = true
+	_额外行动用二级栏 = false
 	_pending = {"args": causes}
 	_pending_type = GConst.Msg.Respond
 	_sel_cards.clear()
 	_sel_players.clear()
 	_清空技能按钮()
+	for cause: Variant in causes:
+		var c: int = int(cause)
+		var 攻击: bool = _是攻击额外行动(c)
+		var 按钮: 技能按钮 = _新技能按钮(0)
+		按钮.设置选项(_额外行动按钮文本(c),
+			额外攻击按钮色 if 攻击 else GConst.skill_type_color(c), 0)
+		按钮.设置说明(_额外行动按钮说明(c))
+		按钮.设置选项可用(可发动.has(c))
+		按钮.connect("点击", func(_技能号: int) -> void: _选择额外行动(c))
 	if causes.size() == 1:
-		# 只有一份额外行动：技能栏里摆出这颗技能（只作展示，不接点击），
-		# 提示条直接写技能效果，不再问「是否发动」。
-		_额外行动单选 = int(causes[0])
-		_额外行动可选 = 可发动.has(_额外行动单选)
-		var 展示按钮: 技能按钮 = _新技能按钮(_额外行动单选)
-		展示按钮.设置选中(true)
-		# 统一按技能说明写（带技能名、忽略 \n）；说明为空时才退回原始说明文本
-		var 效果提示: String = _技能效果提示(_额外行动单选)
+		# 单份：提示条写技能效果（保留原行为），点击按钮直接进入
+		var 唯一: int = int(causes[0])
+		var 效果提示: String = _技能效果提示(唯一)
 		if 效果提示.is_empty():
-			效果提示 = GConst.skill_desc(_额外行动单选)
+			效果提示 = GConst.skill_desc(唯一)
 		if 效果提示.is_empty():
-			_指令提示("发动【%s】" % GConst.skill_name(_额外行动单选))
+			_指令提示("发动【%s】" % GConst.skill_name(唯一))
 		else:
 			_指令提示(效果提示)
-		_排技能栏.call_deferred()
 	else:
-		# 多份额外行动（如剑圣【风怒追击】+【剑影】）：用二级技能栏列出这几颗，选中再按「确定」发动。
-		# 这次没有「被点的技能」，所以最左不放技能本体，这一排就是那几个额外行动
-		var 选项: Array = []
-		for cause: Variant in causes:
-			var c: int = int(cause)
-			# 发不动的（如手里没风系攻击牌时的【风怒追击】）也照样摆出来，置灰点不动
-			var 说明: String = _技能效果提示(c)
-			if 说明.is_empty():
-				说明 = GConst.skill_desc(c)
-			# 技能栏上的名字用「说明说明名」，和普通技能按钮保持一致；提示条等其它地方仍用 skill_name
-			选项.append({"text": GConst.skill_desc_name(c), "args": [c], "skill_id": c,
-				"说明": 说明, "enabled": 可发动.has(c)})
-		_额外行动单选 = -1
-		_进入二级技能栏(0, null, _选项项(选项))
-		# 这面标记必须在进二级栏「之后」设：_进入二级技能栏 开头会 _清空二级选项()，那里会把它清回 false，
-		# 先设就被抹掉，选中选项后 _选中二级选项 认不出这条通道，「确定」会一直灰着点不动
-		_额外行动用二级栏 = true
-		_刷新二级栏提示()
+		_指令提示("选择要发动的额外行动")
+	_排技能栏.call_deferred()
 	_刷新交互()
 
 
@@ -2865,6 +2883,16 @@ func _构建技能按钮(cmds: Array) -> void:
 	# 存一份，取消技能 / 取消特殊行动时要把这批技能按钮重新摆回来。
 	# 复制而不是直接引用：_清空待选 会 clear 这份缓存，不能把服务端下发的 commands 一起清掉。
 	_行动命令 = cmds.duplicate()
+	# 额外行动阶段：最左摆一颗当前额外行动按钮（红底 / 特性），让玩家知道这一击属于哪份额外行动
+	var 首位: Dictionary = cmds[0] if not cmds.is_empty() else {}
+	if bool(首位.get("is_extra", false)) and int(首位.get("extra_cause", 0)) > 0:
+		var 当前来源: int = int(首位.get("extra_cause", 0))
+		var 当前攻击: bool = _是攻击额外行动(当前来源)
+		var 当前按钮: 技能按钮 = _新技能按钮(0)
+		当前按钮.设置选项(_额外行动按钮文本(当前来源),
+			额外攻击按钮色 if 当前攻击 else GConst.skill_type_color(当前来源), 0)
+		当前按钮.设置说明(_额外行动按钮说明(当前来源))
+		当前按钮.设置选中(true)
 	for i: int in range(1, cmds.size()):
 		var c: Dictionary = cmds[i]
 		var 技能类型: int = int(c.get("respond_id", 0))
