@@ -475,3 +475,14 @@ func 跑() -> void:
 		elif int(a.get("cause", 0)) == 105 and bool(a.get("direct", false)):
 			有影 = true
 	检(有风 and 有影, "确认后两份额外行动都应以 direct 入队：%s" % str(玩家1.additional_actions))
+	# 进入第一份额外攻击时，技能栏应同时给出另一份（剑影）的切换按钮
+	引擎.push(BattleEngine.SAdditionalAction.new())
+	引擎.run()
+	var 剑影命令表: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	var 有剑影切换: bool = false
+	for c: Dictionary in 剑影命令表:
+		if int(c.get("respond_id", 0)) == GConst.ActionType.ChooseExtraAction \
+				and (c.get("args", []) as Array) == [105]:
+			有剑影切换 = true
+			break
+	检(有剑影切换, "风怒追击的额外攻击阶段应同时显示剑影切换按钮：%s" % str(剑影命令表))

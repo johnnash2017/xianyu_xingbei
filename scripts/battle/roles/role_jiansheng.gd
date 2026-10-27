@@ -301,8 +301,12 @@ func v_additional_action(cause: int) -> int:
 # 引擎在选中时会统一广播技能通知，故此处只处理回合限定标记与能量扣除
 # ============================================================
 func extra_action_switchable(cause: int) -> bool:
-	# 风怒追击没有「选中时扣资源」的代价，可以中途切换过去；剑影选中要扣能量，切换不安全
-	return cause == LIAN_XU_JI
+	# 风怒追击没有资源代价；剑影可切换，但必须还有能量支付它 1 点能量
+	if cause == LIAN_XU_JI:
+		return true
+	if cause == JIAN_YING:
+		return player.get_energy() > 0 and not used_jian_ying
+	return false
 
 
 func p_additional_action(ctx: Dictionary) -> int:
@@ -339,12 +343,28 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 		var card: GCard = Data.get_card(card_id)
 		if card.element_enum() != GConst.CardElement.Wind:
 			return GConst.GE_INVALID_ACTION
+	if engine != null and engine.行动额外 and engine.行动额外来源 == JIAN_YING:
+		# 剑影：中途切换过来时 p_additional_action 没跑过，这里补付 1 能量并记本回合已用
+		using_lian_xu_ji = false
+		if not used_jian_ying:
+			if player.get_energy() <= 0:
+				return GConst.GE_INVALID_ACTION
+			if player.crystal > 0:
+				player.set_crystal(player.crystal - 1)
+			else:
+				player.set_gem(player.gem - 1)
+			used_jian_ying = true
+			engine._broadcast_game()
 	return GConst.GE_SUCCESS
 
 
-## 风怒追击给的那份攻击行动：按 cause 直接给风系攻击牌白名单（不依赖当前是否已进入）
+## 103 / 105 给的那份攻击行动：103 限风系攻击牌；105 不限制（返回全部手牌，避免回落到当前 103 的 using 状态）
 func extra_action_card_ids(cause: int, action_type: int) -> Array:
-	if cause != LIAN_XU_JI or action_type != GConst.ActionType.Attack:
+	if action_type != GConst.ActionType.Attack:
+		return []
+	if cause == JIAN_YING:
+		return player.hand_cards.duplicate()
+	if cause != LIAN_XU_JI:
 		return []
 	var out: Array = []
 	for cid: int in player.hand_cards:
