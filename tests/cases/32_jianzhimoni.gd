@@ -85,6 +85,18 @@ func _取询问(pid: int, respond_id: int) -> Dictionary:
 	return {}
 
 
+## 最近一份对局快照里某玩家的 dream_tier（没有快照返回 -1）
+func _最后快照档(pid: int) -> int:
+	for i: int in range(发送记录.size() - 1, -1, -1):
+		var r: Dictionary = 发送记录[i]
+		if int(r.get("msg", 0)) != GConst.Msg.Game:
+			continue
+		for info: Dictionary in (r.get("data", {}) as Dictionary).get("player_infos", []):
+			if int(info.get("id", -1)) == pid:
+				return int(info.get("dream_tier", 0))
+	return -1
+
+
 ## 某技能号播报过几次
 func _播报次数(技能号: int) -> int:
 	var n: int = 0
@@ -254,6 +266,12 @@ func 跑() -> void:
 	_打一次攻击(技击甲, 2)
 	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
 		"攻击结束后应询问玩家 1 是否发动【技之剑意】（等待 %s）" % str(引擎._await_id))
+	检(角色.dream_tier() == 1,
+		"攻击结束、等 4501 回复时梦想剑第 1 档应已标绿")
+	检(not 角色.dream_ignore_shield,
+		"等 4501 回复时实际效果还没推进（p_action_end 才生效）")
+	检(_最后快照档(1) == 1,
+		"攻击结束、等 4501 回复时快照应已带 dream_tier=1，客户端才能标绿")
 	检(not _取询问(1, 4501).is_empty(), "没有下发【技之剑意】询问")
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4501, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
@@ -412,20 +430,24 @@ func 跑() -> void:
 	_重置战斗()
 	玩家.reset_action_counts()
 	for 次数: int in range(1, 5):
-		# 记录行动在攻击宣告前 +1；随后 p_timeline_1 时刀已打出，展示档提前推进
+		# 记录行动在攻击宣告前 +1；宣告时不应变绿，等攻击结算完进入「攻击结束」响应才推进
+		var 宣告前档: int = 角色.dream_tier()
 		玩家.record_action("attack", false)
 		角色.p_timeline_1({"src": 1, "is_active": true})
+		检(角色.dream_tier() == 宣告前档,
+			"第 %d 次攻击宣告时不应提前变绿" % 次数)
+		角色.p_after_attack({"player": 1, "kind": "attack"})
 		if 次数 == 1:
 			检(角色.dream_tier() == 1 and not 角色.dream_ignore_shield,
-				"第 1 次攻击宣告后应提前显示档位 1，但效果尚未生效")
+				"第 1 次攻击结束响应时应显示档位 1，但效果尚未生效")
 		elif 次数 == 2:
 			检(角色.dream_tier() == 2 and not 角色.dream_no_reattack,
-				"第 2 次攻击宣告后应提前显示档位 2，但效果尚未生效")
+				"第 2 次攻击结束响应时应显示档位 2，但效果尚未生效")
 		elif 次数 == 3:
-			检(角色.dream_tier() == 2, "第 3 次攻击宣告后展示档仍应为 2")
+			检(角色.dream_tier() == 2, "第 3 次攻击结束响应时展示档仍应为 2")
 		else:
 			检(角色.dream_tier() == 3 and not 角色.dream_no_miss,
-				"第 4 次攻击宣告后应提前显示档位 3，但效果尚未生效")
+				"第 4 次攻击结束响应时应显示档位 3，但效果尚未生效")
 		角色.p_action_end({"player": 1, "kind": "attack"})
 		if 次数 == 1:
 			检(角色.dream_ignore_shield, "第 1 次攻击行动后梦想剑应激活「无视圣盾」")

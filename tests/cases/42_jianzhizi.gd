@@ -471,20 +471,24 @@ func _测倾慕与梦想剑断念() -> void:
 	_挂剑之魔女()
 	玩家.reset_action_counts()
 	for 次数: int in range(1, 5):
-		# 记录行动在攻击宣告前 +1；随后 p_timeline_1 时刀已打出，展示档提前推进
+		# 记录行动在攻击宣告前 +1；宣告时不应变绿，等攻击结算完进入「攻击结束」响应才推进
+		var 宣告前档: int = 角色.dream_tier()
 		玩家.record_action("attack", false)
 		角色.p_timeline_1(_攻击上下文(非技击牌.id))
+		检(角色.dream_tier() == 宣告前档,
+			"第 %d 次攻击宣告时不应提前变绿" % 次数)
+		角色.p_after_attack({"player": 1, "kind": "attack"})
 		if 次数 == 1:
 			检(角色.dream_tier() == 1 and not 角色._dream_ignore_shield,
-				"第 1 次攻击宣告后应提前显示档位 1，但效果尚未生效")
+				"第 1 次攻击结束响应时应显示档位 1，但效果尚未生效")
 		elif 次数 == 2:
 			检(角色.dream_tier() == 2 and not 角色._dream_no_reattack,
-				"第 2 次攻击宣告后应提前显示档位 2，但效果尚未生效")
+				"第 2 次攻击结束响应时应显示档位 2，但效果尚未生效")
 		elif 次数 == 3:
-			检(角色.dream_tier() == 2, "第 3 次攻击宣告后展示档仍应为 2")
+			检(角色.dream_tier() == 2, "第 3 次攻击结束响应时展示档仍应为 2")
 		else:
 			检(角色.dream_tier() == 3 and not 角色._dream_no_miss,
-				"第 4 次攻击宣告后应提前显示档位 3，但效果尚未生效")
+				"第 4 次攻击结束响应时应显示档位 3，但效果尚未生效")
 		角色.p_action_end({"player": 1, "kind": "attack"})
 		if 次数 == 1:
 			检(角色._dream_ignore_shield, "第 1 次攻击行动后梦想剑应激活「无视圣盾」")

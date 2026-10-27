@@ -41,8 +41,8 @@ var used_jian_ying_duan_nian: bool = false
 var dream_ignore_shield: bool = false
 var dream_no_reattack: bool = false
 var dream_no_miss: bool = false
-## 展示档位：攻击宣告（刀已打出）时就提前推进，供客户端说明逐段标绿；
-## 实际效果仍由上面的 dream_* 在攻击行动结束（p_action_end）后开始生效。
+## 展示档位：攻击行动结算完、进入「攻击结束」响应（p_after_attack）时推进，
+## 供客户端说明逐段标绿；此时还没到本回合结束阶段，实际效果仍由 dream_* 在 p_action_end 后生效。
 var dream_display_tier: int = 0
 
 
@@ -51,7 +51,8 @@ func dream_tier() -> int:
 	return dream_display_tier
 
 
-## 攻击宣告时按「本次是第几次攻击行动」提前推进展示档；不改变实际效果 flags。
+## 攻击行动结算完、进入攻击结束响应时，按「本次是第几次攻击行动」推进展示档；
+## 不改变实际效果 flags（flags 仍在 p_action_end 推进）。
 func _更新梦想剑展示档() -> void:
 	# 记录行动在攻击宣告前已经 +1，所以这里直接用当前计数＝本次是第几次攻击
 	var 序号: int = player.attack_action_count
@@ -62,7 +63,7 @@ func _更新梦想剑展示档() -> void:
 			engine._broadcast_game()
 
 
-## 攻击行动结束、效果 flags 真正推进后，把展示档补到同一档（防止只跑 p_action_end 的场合）。
+## 兜底：如果这次行动结束没有经过 p_after_attack（正常不会），按 flags 补齐展示档。
 func _同步梦想剑展示档() -> void:
 	var 档位: int = 3 if dream_no_miss else (2 if dream_no_reattack else (1 if dream_ignore_shield else 0))
 	if 档位 > dream_display_tier:
@@ -88,8 +89,6 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	# 应战反击（is_active=false）不是主动攻击，梦想剑不生效
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	# 刀已打出：展示档提前推进（第一个攻击行动宣告后即标绿第一段）
-	_更新梦想剑展示档()
 	if dream_no_miss:
 		ctx["hit_rate"] = GConst.HitRate.NoMiss
 	elif dream_no_reattack:
@@ -105,6 +104,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
+	# 攻击已经结算完、进入「攻击结束」响应：此时才推进展示档，既不会在攻击宣告时就变绿，
+	# 也能让 4501 / 4504 这类响应技能在决定时看到本回合的新档位（实际效果仍在 p_action_end 生效）。
+	_更新梦想剑展示档()
 	var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
 	if 阶段 >= STEP_DONE:
 		return SUCCESS

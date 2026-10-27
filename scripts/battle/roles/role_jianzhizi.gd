@@ -74,7 +74,8 @@ var _剑残影目标: int = -1
 var _dream_ignore_shield: bool = false
 var _dream_no_reattack: bool = false
 var _dream_no_miss: bool = false
-## 展示档位：攻击宣告（刀已打出）时提前推进；实际效果仍由 _dream_* 在行动结束后生效。
+## 展示档位：攻击行动结算完、进入「攻击结束」响应（p_after_attack）时推进；
+## 此时还没到本回合结束阶段，实际效果仍由 _dream_* 在 p_action_end 后生效。
 var _dream_display_tier: int = 0
 
 
@@ -83,7 +84,8 @@ func dream_tier() -> int:
 	return _dream_display_tier
 
 
-## 攻击宣告时按「本次是第几次攻击行动」提前推进展示档；不改变实际效果 flags。
+## 攻击行动结算完、进入攻击结束响应时，按「本次是第几次攻击行动」推进展示档；
+## 不改变实际效果 flags（flags 仍在 p_action_end 推进）。
 func _更新梦想剑展示档() -> void:
 	# 记录行动在攻击宣告前已经 +1，所以这里直接用当前计数＝本次是第几次攻击
 	var 序号: int = player.attack_action_count
@@ -94,7 +96,7 @@ func _更新梦想剑展示档() -> void:
 			engine._broadcast_game()
 
 
-## 攻击行动结束、效果 flags 真正推进后，把展示档补到同一档。
+## 兜底：如果这次行动结束没有经过 p_after_attack（正常不会），按 flags 补齐展示档。
 func _同步梦想剑展示档() -> void:
 	var 档位: int = 3 if _dream_no_miss else (2 if _dream_no_reattack else (1 if _dream_ignore_shield else 0))
 	if 档位 > _dream_display_tier:
@@ -131,9 +133,6 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	# 应战反击不是主动攻击：10802 / 4503 都不触发，10804 的目标限制也不在这里消费
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	# 刀已打出：有剑之魔女时，梦想剑展示档提前推进；实际效果仍在行动结束后生效
-	if _剑之魔女在场():
-		_更新梦想剑展示档()
 	# 这次主动攻击已经由 v_attack 校验过目标：10804 的「下次主动攻击只能打该目标」到此消费
 	_剑残影目标 = -1
 	var r: int = _feng_zhi_jian(ctx)
@@ -278,6 +277,10 @@ func p_action_end(ctx: Dictionary) -> int:
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
+	# 攻击已经结算完、进入「攻击结束」响应：此时才推进展示档，既不会在攻击宣告时就变绿，
+	# 也能让 10804 / 4504 这类响应技能在决定时看到本回合的新档位（实际效果仍在 p_action_end 生效）。
+	if _剑之魔女在场():
+		_更新梦想剑展示档()
 	var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
 	if 阶段 >= STEP_DONE:
 		return SUCCESS
