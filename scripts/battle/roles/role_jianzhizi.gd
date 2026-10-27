@@ -61,8 +61,8 @@ const KEY_10802_STEP: String = "_jianzhizi_10802_step"
 ## （二选一确认后从 2 开始，不再单独问一次「是否发动」）
 const KEY_10804_STEP: String = "_jianzhizi_10804_step"
 const KEY_10804_TARGET: String = "_jianzhizi_10804_target"
-## 4504：0 未开始 / 1 已付款 / 2 等弃 2 张
-## （二选一确认后直接付款、进 2，不再单独问一次「是否发动」）
+## 4504：0 未开始 / 1 等选 2 张弃牌（还没付款）
+## （二选一确认后直接进 1，不再单独问一次「是否发动」；选完弃牌按确定才扣宝石）
 const KEY_4504_STEP: String = "_jianzhizi_4504_step"
 ## 10803：0 未问发动 / 1 已移除并展示、等选 1 张
 const KEY_10803_STEP: String = "_jianzhizi_10803_step"
@@ -469,45 +469,43 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 # ============================================================
 # 借用 4504 剑影*断念（10801）
 # ============================================================
-## 跳过发动=true：二选一已经确认过，直接付款并进入弃牌步骤，不再问一次「是否发动」。
+## 跳过发动=true：二选一已经确认过，直接进入弃牌步骤，不再问一次「是否发动」。
+## 宝石在弃牌选完、确认之后才扣：中途取消不会先付代价。
 func _diao_ying_duan_nian(ctx: Dictionary, 跳过发动: bool = false) -> int:
 	if not _剑之魔女在场():
 		return SUCCESS
 	var 阶段: int = int(ctx.get(KEY_4504_STEP, 0))
 	if 阶段 >= STEP_DONE:
 		return SUCCESS
-	if 跳过发动 and 阶段 == 0:
-		if _used_剑影断念 or player.gem <= 0 or player.hand_cards.size() < 2:
-			return SUCCESS
-		_启动剑影断念()
-		ctx[KEY_4504_STEP] = 2
-		阶段 = 2
 	if 阶段 == 0:
 		if _used_剑影断念 or player.gem <= 0 or player.hand_cards.size() < 2:
 			return SUCCESS
 		ctx[KEY_4504_STEP] = 1
-		if not engine.has_reply():
-			询问(player.id, 剑影断念)
-			return WAIT
+		if 跳过发动:
+			阶段 = 1
+		else:
+			if not engine.has_reply():
+				询问(player.id, 剑影断念)
+				return WAIT
+			if not take_skill_reply():
+				ctx[KEY_4504_STEP] = STEP_DONE
+				return SUCCESS
+			阶段 = 1
 	if 阶段 == 1:
-		if not engine.has_reply():
-			return WAIT
-		if not take_skill_reply():
-			ctx[KEY_4504_STEP] = STEP_DONE
-			return SUCCESS
-		_启动剑影断念()
-		ctx[KEY_4504_STEP] = 2
-		阶段 = 2
-	if 阶段 == 2:
 		if not engine.has_reply():
 			询问(player.id, 剑影断念, 2, 0, GConst.CardSource.Hand, [], 0, "", [], false)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var 弃: Array = _选并补齐(player, r.get("card_ids", []), 2)
-		if not 弃.is_empty():
-			engine.take_from_hand(player.id, 弃)
-			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": 剑影断念})
-			engine._log_discard(player.id, 弃)
+		# 选完弃牌按确定才付宝石；凑不齐 2 张就整颗不发动，不扣代价
+		if 弃.size() < 2 or player.gem <= 0:
+			ctx[KEY_4504_STEP] = STEP_DONE
+			return SUCCESS
+		engine.take_from_hand(player.id, 弃)
+		_启动剑影断念()
+		engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": 剑影断念})
+		engine._log_discard(player.id, 弃)
+		engine._broadcast_game()
 		ctx[KEY_4504_STEP] = STEP_DONE
 		# 先挂额外攻击行动，再摸牌：摸牌可能触发摸牌前响应 / 手牌超限，都排在行动结束之前结算
 		player.add_action(GConst.ActionType.Attack, 剑影断念, true, true)
@@ -516,7 +514,7 @@ func _diao_ying_duan_nian(ctx: Dictionary, 跳过发动: bool = false) -> int:
 	return SUCCESS
 
 
-## 4504 的付款与播报：二选一确认后 / 单独确认发动后都走这里，只付一次。
+## 4504 的付款与播报：弃牌确认后走这里，只付一次。
 func _启动剑影断念() -> void:
 	_used_剑影断念 = true
 	notice_skill(剑影断念, [player.id])
