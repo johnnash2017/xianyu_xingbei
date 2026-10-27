@@ -355,6 +355,18 @@ func role_skill_info(rid: int) -> String:
 	return GConst.词缀文本(str(role_skill_db.get(rid, "")))
 
 
+## 技能表「大类」：普通 / 独有技 / 专属技 / 必杀技。
+## 角色说明按这个分组；剑之子借用 4503/4504 时也据此放回对应分段底部。
+func 技能分段(技能号: int) -> String:
+	var 行: Array = GConst.技能行(技能号)
+	if 行.is_empty():
+		return ""
+	var 列索引: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
+	if not 列索引.has("大类"):
+		return ""
+	return str(行[int(列索引["大类"])]).strip_edges()
+
+
 ## 按卡号取牌（虚拟牌号是 1000+，与数组下标不一致，所以走 id 索引）
 func get_card(cid: int) -> GCard:
 	if _card_by_id.has(cid):

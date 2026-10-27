@@ -74,7 +74,7 @@ static func 剑之子对局说明(原文: String, 有剑之魔女: bool) -> Stri
 	var 行列表: Array[String] = []
 	for 行: String in 原文.split("\n"):
 		行列表.append(行)
-	# 先给剑守誓言的整段加删除线（避免后面插入倾慕追加段导致下标偏移）
+	# 先标记剑守誓言整段失效（避免后面按分段插入时下标变化）
 	var 誓言起: int = -1
 	for i: int in range(行列表.size()):
 		if 行列表[i].lstrip("　 ").begins_with("【响应】剑守誓言"):
@@ -88,40 +88,56 @@ static func 剑之子对局说明(原文: String, 有剑之魔女: bool) -> Stri
 			誓言终 += 1
 		for i: int in range(誓言起, 誓言终 + 1):
 			行列表[i] = _标记失效行(行列表[i])
-	# 在【倾慕】条目末尾追加借用的两颗技能说明
-	var 倾慕起: int = -1
-	for i: int in range(行列表.size()):
-		if 行列表[i].lstrip("　 ").begins_with("【被动】倾慕"):
-			倾慕起 = i
-			break
-	if 倾慕起 < 0:
-		return "\n".join(行列表)
-	var 倾慕终: int = 倾慕起
-	while 倾慕终 + 1 < 行列表.size() \
-			and 行列表[倾慕终 + 1].begins_with(正文前缀) \
-			and not _是技能正文起(行列表[倾慕终 + 1]):
-		倾慕终 += 1
-	var 追加: Array[String] = []
-	追加.append("　　（%s获得：）" % ("因【剑之魔女】在场" if 有剑之魔女 else "若【剑之魔女】在场"))
-	for 技能号: int in [4504, 4503]:
-		var 说明: String = GConst.skill_desc(技能号)
-		if 说明 == "":
+	# 借用的 4503 / 4504 不放倾慕下面，而是按技能表「大类」追加到对应分段底部：
+	# 4503 梦想剑 → 普通技；4504 剑影*断念 → 必杀技。
+	for 技能号: int in [4503, 4504]:
+		var 分段: String = Data.技能分段(技能号)
+		if 分段 == "":
 			continue
-		var 条目: String = GConst.词缀文本("【%s】%s：%s" % [
-			GConst.skill_type(技能号), GConst.skill_desc_name(技能号), 说明])
-		for 子行: String in 条目.replace("\\n", "\n").split("\n"):
-			var 文本: String = 子行.strip_edges()
-			if 文本 == "":
-				continue
-			var 行: String = "　　" + 文本
-			if not 有剑之魔女:
-				行 = _标记失效行(行)
-			追加.append(行)
+		var 标题: String = {"普通": "普通技", "必杀技": "必杀技"}.get(分段, 分段)
+		_在分段底部插入(行列表, 标题, _构造借用技能行(技能号, 有剑之魔女))
+	return "\n".join(行列表)
+
+
+## 把借用技能的正文行追加到某个大类分段的最后一条技能之后（下一个一级标题之前）。
+static func _在分段底部插入(行列表: Array[String], 分段标题: String, 插入: Array[String]) -> void:
+	if 插入.is_empty():
+		return
+	var 分段起: int = -1
+	for i: int in range(行列表.size()):
+		if 行列表[i].strip_edges() == 分段标题:
+			分段起 = i
+			break
+	if 分段起 < 0:
+		行列表.append_array(插入)
+		return
+	var 分段终: int = 分段起
+	while 分段终 + 1 < 行列表.size() and 行列表[分段终 + 1].begins_with(正文前缀):
+		分段终 += 1
 	var 新行: Array[String] = []
-	新行.append_array(行列表.slice(0, 倾慕终 + 1))
-	新行.append_array(追加)
-	新行.append_array(行列表.slice(倾慕终 + 1))
-	return "\n".join(新行)
+	新行.append_array(行列表.slice(0, 分段终 + 1))
+	新行.append_array(插入)
+	新行.append_array(行列表.slice(分段终 + 1))
+	行列表.assign(新行)
+
+
+## 生成一颗借用技能的正文行；剑之魔女不在场时逐行打上失效（置灰）标记。
+static func _构造借用技能行(技能号: int, 有剑之魔女: bool) -> Array[String]:
+	var 行列表: Array[String] = []
+	var 说明: String = GConst.skill_desc(技能号)
+	if 说明 == "":
+		return 行列表
+	var 条目: String = GConst.词缀文本("【%s】%s：%s" % [
+		GConst.skill_type(技能号), GConst.skill_desc_name(技能号), 说明])
+	for 子行: String in 条目.replace("\\n", "\n").split("\n"):
+		var 文本: String = 子行.strip_edges()
+		if 文本 == "":
+			continue
+		var 行: String = "　　" + 文本
+		if not 有剑之魔女:
+			行 = _标记失效行(行)
+		行列表.append(行)
+	return 行列表
 
 
 ## 这一行是不是「一条新技能」的正文首行（而不是上一条技能的续行 / 分段标题）。
