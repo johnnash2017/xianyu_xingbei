@@ -20,6 +20,8 @@ var used_lian_xu_ji: bool = false
 var used_jian_ying: bool = false
 var using_lian_xu_ji: bool = false
 var attack_count: int = 0
+## 剑影的 1 能量是否已经在「攻击结束询问确认」时付过（之后切换行动不再重复付）
+var _jian_ying_paid: bool = false
 
 ## 攻击结束的 103 / 105 二选一：本次攻击内是否已经问过（问过就不再在后续额外攻击结束时重复问）
 var _after_skill_asked: bool = false
@@ -47,6 +49,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	using_lian_xu_ji = false
 	attack_count = 0
 	_after_skill_asked = false
+	_jian_ying_paid = false
 	_sheng_jian_active = false
 	_sheng_jian_step = 0
 	_sheng_jian_弃张数 = 0
@@ -179,6 +182,16 @@ func p_after_attack(ctx: Dictionary) -> int:
 				notice_skill(LIAN_XU_JI, [])
 				player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true, true)
 			elif 选中 == JIAN_YING:
+				# 剑影的 1 能量在确认发动时就付（询问释放即付），之后切换给的行动不再重复扣
+				if not _jian_ying_paid:
+					if player.get_energy() <= 0:
+						continue
+					if player.crystal > 0:
+						player.set_crystal(player.crystal - 1)
+					else:
+						player.set_gem(player.gem - 1)
+					_jian_ying_paid = true
+					engine._broadcast_game()
 				notice_skill(JIAN_YING, [])
 				player.add_action(GConst.ActionType.Attack, JIAN_YING, true, true)
 	# 【圣剑】：本次（第 3 次）【攻击行动】触发强制命中后，结束这次攻击时摸 X 张、弃 X 张（跨一次询问）
@@ -305,7 +318,7 @@ func extra_action_switchable(cause: int) -> bool:
 	if cause == LIAN_XU_JI:
 		return true
 	if cause == JIAN_YING:
-		return player.get_energy() > 0 and not used_jian_ying
+		return _jian_ying_paid or (player.get_energy() > 0 and not used_jian_ying)
 	return false
 
 
@@ -319,10 +332,12 @@ func p_additional_action(ctx: Dictionary) -> int:
 		used_lian_xu_ji = true
 	elif cause == JIAN_YING:
 		used_jian_ying = true
-		if player.crystal > 0:
-			player.set_crystal(player.crystal - 1)
-		else:
-			player.set_gem(player.gem - 1)
+		if not _jian_ying_paid:
+			if player.crystal > 0:
+				player.set_crystal(player.crystal - 1)
+			else:
+				player.set_gem(player.gem - 1)
+			_jian_ying_paid = true
 		engine._broadcast_game()
 	return SUCCESS
 
@@ -344,15 +359,17 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 		if card.element_enum() != GConst.CardElement.Wind:
 			return GConst.GE_INVALID_ACTION
 	if engine != null and engine.行动额外 and engine.行动额外来源 == JIAN_YING:
-		# 剑影：中途切换过来时 p_additional_action 没跑过，这里补付 1 能量并记本回合已用
+		# 剑影：询问确认时已经付过能量；这里只补记已用/兼容未付过的旧路径
 		using_lian_xu_ji = false
 		if not used_jian_ying:
-			if player.get_energy() <= 0:
-				return GConst.GE_INVALID_ACTION
-			if player.crystal > 0:
-				player.set_crystal(player.crystal - 1)
-			else:
-				player.set_gem(player.gem - 1)
+			if not _jian_ying_paid:
+				if player.get_energy() <= 0:
+					return GConst.GE_INVALID_ACTION
+				if player.crystal > 0:
+					player.set_crystal(player.crystal - 1)
+				else:
+					player.set_gem(player.gem - 1)
+				_jian_ying_paid = true
 			used_jian_ying = true
 			engine._broadcast_game()
 	return GConst.GE_SUCCESS
