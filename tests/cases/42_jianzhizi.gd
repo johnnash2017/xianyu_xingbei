@@ -873,3 +873,8 @@ func _测剑之子说明书() -> void:
 	检(not 角色技能提示.悬浮提示(108, 1.0, true).contains(句1),
 		"剑之魔女不在场时剑之子的梦想剑不应标绿")
 	Data.player_list = 旧列表
+	# 协议层必须真的带上 dream_tier；否则服务端有档位、客户端永远收不到
+	var 编码: PackedByteArray = ProtoCodec.encode_named("SinglePlayerInfo", {"id": 1, "dream_tier": 2})
+	var 解码: Dictionary = ProtoCodec.decode_named("SinglePlayerInfo", 编码)
+	检(int(解码.get("dream_tier", -1)) == 2,
+		"SinglePlayerInfo 协议应包含 dream_tier")
