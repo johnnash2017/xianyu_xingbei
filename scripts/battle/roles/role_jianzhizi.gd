@@ -148,7 +148,6 @@ func _feng_zhi_jian(ctx: Dictionary) -> int:
 	else:
 		return SUCCESS
 	_发动牌上剑圣技(ctx)
-	notice_skill(风之剑, [int(ctx.get("dst", -1))])
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -177,10 +176,14 @@ func _发动牌上剑圣技(ctx: Dictionary) -> void:
 	if 牌 == null:
 		return
 	if 牌.has_skill_id(疾风技):
-		player.add_action(GConst.ActionType.Attack, 风之剑, true, true)
+		# 真正发动的是牌上的【疾风技】101：先播报 101（客户端飘出「疾风技」），
+		# 额外行动的来源也记 101，与其他玩家看到的是同一颗技能
+		notice_skill(疾风技, [int(ctx.get("dst", -1))])
+		player.add_action(GConst.ActionType.Attack, 疾风技, true, true)
 	if 牌.has_skill_id(烈风技):
 		var 目标: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 		if _目标有圣盾(目标):
+			notice_skill(烈风技, [int(ctx.get("dst", -1))])
 			ctx["hit_rate"] = GConst.HitRate.NoReattack
 			ctx["check_shield"] = false
 

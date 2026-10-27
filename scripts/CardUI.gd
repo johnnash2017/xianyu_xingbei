@@ -270,13 +270,27 @@ func _技能字色(c: GCard, 位: int, 我的技能: Array[int]) -> Color:
 	return 技能字色_有 if 我的技能.has(c.skill_ids[位]) else 技能字色_无
 
 
+## 卡面技能名显示为「会」的技能：剑之子（108）的【风之剑】10802 允许他把牌上的
+## 剑圣独有技 101/102 当作自己会，所以拿到带这两颗技能的牌时，卡面底部技能名也要像
+## 风之剑圣本人一样显示成绿色（而不是灰）。
+static func 显示技能(角色号: int, 基础: Array[int]) -> Array[int]:
+	var out: Array[int] = []
+	for 技能号: int in 基础:
+		out.append(技能号)
+	if 角色号 == 108:
+		for 技能号: int in [101, 102]:
+			if not out.has(技能号):
+				out.append(技能号)
+	return out
+
+
 ## 我的角色引用的技能号。还没定角色（非对局界面）就拿不到，返回空数组：这时两格都按灰显示。
 func _我的角色技能() -> Array[int]:
 	var 空: Array[int] = []
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	if 我 == null or 我.role_id <= 0:
 		return 空
-	return Data.role_skills(我.role_id)
+	return 显示技能(我.role_id, Data.role_skills(我.role_id))
 
 
 ## 命格（血/技/幻/咏/圣）与元素（earth/wind/water/fire/thunder）小图标：

@@ -96,7 +96,42 @@ static func 剑之子对局说明(原文: String, 有剑之魔女: bool) -> Stri
 			continue
 		var 标题: String = {"普通": "普通技", "必杀技": "必杀技"}.get(分段, 分段)
 		_在分段底部插入(行列表, 标题, _构造借用技能行(技能号, 有剑之魔女))
+	# 风之剑（10802）借用的剑圣独有技 101 / 102：数据表里 108 还没有「独有技」分段，
+	# 在角色说明里补一段；两颗都按正常（不置灰）显示。
+	var 剑圣行: Array[String] = []
+	for 技能号: int in [101, 102]:
+		剑圣行.append_array(_构造借用技能行(技能号, true))
+	_插入独有技分段(行列表, 剑圣行)
 	return "\n".join(行列表)
+
+
+## 把剑圣独有技插到「独有技」分段：已有该标题就追加在段底；
+## 没有就新建在「普通技」之后、「必杀技」之前（技能分段顺序：普通→独有→专属→必杀）。
+static func _插入独有技分段(行列表: Array[String], 插入: Array[String]) -> void:
+	if 插入.is_empty():
+		return
+	for 行: String in 行列表:
+		if 行.strip_edges() == "独有技":
+			_在分段底部插入(行列表, "独有技", 插入)
+			return
+	var 普通起: int = -1
+	for i: int in range(行列表.size()):
+		if 行列表[i].strip_edges() == "普通技":
+			普通起 = i
+			break
+	if 普通起 < 0:
+		行列表.append("独有技")
+		行列表.append_array(插入)
+		return
+	var 普通终: int = 普通起
+	while 普通终 + 1 < 行列表.size() and 行列表[普通终 + 1].begins_with(正文前缀):
+		普通终 += 1
+	var 新行: Array[String] = []
+	新行.append_array(行列表.slice(0, 普通终 + 1))
+	新行.append("独有技")
+	新行.append_array(插入)
+	新行.append_array(行列表.slice(普通终 + 1))
+	行列表.assign(新行)
 
 
 ## 把借用技能的正文行追加到某个大类分段的最后一条技能之后（下一个一级标题之前）。
