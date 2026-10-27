@@ -2622,6 +2622,9 @@ func _是攻击额外行动(cause: int, allow_action: int = 0) -> bool:
 ## 额外行动按钮文案：默认「额外【攻击行动】」（【攻击行动】由词缀表换成图标）；
 ## 有特定限制的（如「只能使用技类攻击牌」）把特性接在后面。
 func _额外行动按钮文本(cause: int, allow_action: int = 0) -> String:
+	# 剑残影给的那次攻击：锁定目标写在技能说明里，按钮用通用「额外【攻击行动】」即可
+	if cause == GConst.技能_剑残影:
+		return "额外【攻击行动】"
 	var 提示: String = str(GConst.额外行动提示.get(cause, ""))
 	var 行动: String = ""
 	if allow_action > 0:
