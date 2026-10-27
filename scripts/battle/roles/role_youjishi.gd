@@ -338,6 +338,11 @@ func extra_action_card_ids(cause: int, action_type: int) -> Array:
 	return out if not out.is_empty() else [GConst.手牌白名单_全禁]
 
 
+## 二重剑影给的额外攻击行动限定的系别（授予时已定）
+func extra_action_element(cause: int) -> int:
+	return _3803_系别 if cause == ER_CHONG_JIAN_YING else 0
+
+
 # ============================================================
 # 附魔之术（3804）：执行提炼时若没有【子弹】，消耗提炼的 1 能量补 1 张盖牌
 # ============================================================

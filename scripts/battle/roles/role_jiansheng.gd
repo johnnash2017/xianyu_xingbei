@@ -322,6 +322,11 @@ func extra_action_switchable(cause: int) -> bool:
 	return false
 
 
+## 风怒追击给的额外攻击行动只允许风系攻击牌
+func extra_action_element(cause: int) -> int:
+	return GConst.CardElement.Wind if cause == LIAN_XU_JI else 0
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS

@@ -486,3 +486,10 @@ func 跑() -> void:
 			有剑影切换 = true
 			break
 	检(有剑影切换, "风怒追击的额外攻击阶段应同时显示剑影切换按钮：%s" % str(剑影命令表))
+	检(not 剑影命令表.is_empty() and int((剑影命令表[0] as Dictionary).get("extra_element", 0)) == GConst.CardElement.Wind,
+		"风怒追击的当前行动应带风系标记（按钮显示额外风系【攻击行动】）：%s" % str(剑影命令表))
+	for c: Dictionary in 剑影命令表:
+		if int(c.get("respond_id", 0)) == GConst.ActionType.ChooseExtraAction \
+				and (c.get("args", []) as Array) == [105]:
+			检(int(c.get("extra_element", 0)) == 0, "剑影不限制系别，不应带系别标记：%s" % str(c))
+			break

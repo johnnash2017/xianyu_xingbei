@@ -963,6 +963,12 @@ static func 行动阶段禁用法术牌(role_id: int) -> bool:
 	return 角色特性值(role_id, "行动阶段禁用法术牌") == true
 
 
+## 额外攻击行动的固定限定系别（服务端 extra_element 没下发时兜底）；风怒追击 103 限风系
+const 额外行动系别: Dictionary = {
+	103: CardElement.Wind,
+}
+
+
 ## 额外行动的指令条提示：键 = 该额外行动的 cause（发起它的技能号）。
 ## 服务端在行动询问里下发 is_extra / extra_cause，客户端据此写成「获得额外……行动：限制」。
 ## 没配的技能沿用通用的「获得额外攻击 / 法术行动」。

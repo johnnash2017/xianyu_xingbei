@@ -211,6 +211,8 @@ func v_basic_effect_target(_dst: BattlePlayer, _card_id: int) -> int: return GCo
 func v_additional_action(_cause: int) -> int: return V_NOT_OVERRIDE
 ## 这份额外行动能不能在选牌阶段切换到别的额外行动（默认可以；有「选中代价」的角色覆写为 false）
 func extra_action_switchable(_cause: int) -> bool: return true
+## 这份额外攻击行动是否限定某一系（CardElement；0＝不限）。客户端据此把按钮写成「额外X系【攻击行动】」。
+func extra_action_element(_cause: int) -> int: return 0
 ## 梦想剑（4503）本回合当前档位：0=未启用 / 1=无视圣盾 / 2=对方无法应战 / 3=强制命中。
 ## 供客户端角色说明把梦想剑那一行标绿（45 / 108 覆写），默认 0。
 func dream_tier() -> int: return 0

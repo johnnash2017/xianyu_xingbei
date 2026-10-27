@@ -2395,6 +2395,7 @@ func _进入技能询问() -> void:
 	var 额外攻击: Array = _pending.get("extra_attack_causes", [])
 	var 额外牌表: Array = _pending.get("extra_attack_cards", [])
 	var 额外目标表: Array = _pending.get("extra_attack_targets", [])
+	var 额外系别表: Array = _pending.get("extra_attack_elements", [])
 	_额外攻击响应选择 = -1
 	_额外攻击响应按钮.clear()
 	_额外攻击响应_牌白.clear()
@@ -2404,8 +2405,9 @@ func _进入技能询问() -> void:
 			var c: int = int(额外攻击[i])
 			var 牌白: Array = (额外牌表[i] as Dictionary).get("ids", []) if i < 额外牌表.size() else []
 			var 目标白: Array = (额外目标表[i] as Dictionary).get("ids", []) if i < 额外目标表.size() else []
+			var 系别: int = int(额外系别表[i]) if i < 额外系别表.size() else 0
 			var 额外按钮: 技能按钮 = _新技能按钮(0)
-			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack), 额外攻击按钮色, 0)
+			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack, 系别), 额外攻击按钮色, 0)
 			额外按钮.设置说明(_额外行动按钮说明(c))
 			额外按钮.connect("点击", func(_技能号: int) -> void:
 				_选中额外攻击响应(c, 牌白, 目标白))
@@ -2625,7 +2627,7 @@ func _是攻击额外行动(cause: int, allow_action: int = 0) -> bool:
 
 ## 额外行动按钮文案：默认「额外【攻击行动】」（【攻击行动】由词缀表换成图标）；
 ## 有特定限制的（如「只能使用技类攻击牌」）把特性接在后面。
-func _额外行动按钮文本(cause: int, allow_action: int = 0) -> String:
+func _额外行动按钮文本(cause: int, allow_action: int = 0, element: int = 0) -> String:
 	# 剑残影给的那次攻击：锁定目标写在技能说明里，按钮用通用「额外【攻击行动】」即可
 	if cause == GConst.技能_剑残影:
 		return "额外【攻击行动】"
@@ -2638,9 +2640,11 @@ func _额外行动按钮文本(cause: int, allow_action: int = 0) -> String:
 	if 行动.is_empty():
 		行动 = "攻击行动" if 提示.contains("攻击行动") \
 			else ("法术行动" if 提示.contains("法术行动") else "行动")
+	var 系: int = element if element > 0 else int(GConst.额外行动系别.get(cause, 0))
 	var 冒号: int = 提示.find("：")
 	var 特性: String = 提示.substr(冒号 + 1).strip_edges() if 冒号 >= 0 else ""
-	var 底: String = "额外【%s】" % 行动
+	var 底: String = ("额外%s系【%s】" % [GConst.element_to_chinese(系), 行动]) if 系 > 0 \
+		else ("额外【%s】" % 行动)
 	return 底 if 特性.is_empty() else 底 + "：" + 特性
 
 
@@ -3004,7 +3008,8 @@ func _构建技能按钮(cmds: Array) -> void:
 		_额外手牌白名单_选择 = 当前牌.duplicate()
 		_额外目标白名单_选择 = 当前目标.duplicate()
 		var 当前按钮: 技能按钮 = _新技能按钮(0)
-		当前按钮.设置选项(_额外行动按钮文本(当前来源, 当前类型),
+		当前按钮.设置选项(_额外行动按钮文本(当前来源, 当前类型,
+			int(首位.get("extra_element", 0))),
 			额外攻击按钮色 if 当前攻击 else GConst.skill_type_color(当前来源), 0)
 		当前按钮.设置说明(_额外行动按钮说明(当前来源))
 		当前按钮.设置选中(true)
@@ -3026,7 +3031,8 @@ func _构建技能按钮(cmds: Array) -> void:
 			var 切换牌: Array = c.get("card_ids", [])
 			var 切换目标: Array = c.get("dst_ids", [])
 			var 切换按钮: 技能按钮 = _新技能按钮(0)
-			切换按钮.设置选项(_额外行动按钮文本(cause, GConst.ActionType.Attack), 额外攻击按钮色, 0)
+			切换按钮.设置选项(_额外行动按钮文本(cause, GConst.ActionType.Attack,
+				int(c.get("extra_element", 0))), 额外攻击按钮色, 0)
 			切换按钮.设置说明(_额外行动按钮说明(cause))
 			切换按钮.connect("点击", func(_技能号: int) -> void:
 				_本地选择额外攻击(cause, 切换牌, 切换目标))

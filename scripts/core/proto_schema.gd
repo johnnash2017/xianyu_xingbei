@@ -173,6 +173,8 @@ const SUB: Dictionary = {
 		# 客户端选中某项后据此只点亮合法的牌 / 目标，点手牌 + 敌方头像即发起攻击。
 		35: {"n": "extra_attack_cards", "t": "msg", "r": true, "s": "OptionTargets"},
 		36: {"n": "extra_attack_targets", "t": "msg", "r": true, "s": "OptionTargets"},
+		# 攻击结束响应里每个额外攻击快捷项的限定系别（CardElement；0＝不限），与 extra_attack_causes 一一对应
+		37: {"n": "extra_attack_elements", "t": "u32", "r": true},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {

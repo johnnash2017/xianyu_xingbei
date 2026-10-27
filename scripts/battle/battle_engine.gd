@@ -1398,6 +1398,9 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			var 目标限制: Array = pl.role.extra_action_targets(extra_cause)
 			if not 目标限制.is_empty():
 				cmds[0]["dst_ids"] = 目标限制
+			var 系别: int = pl.role.extra_action_element(extra_cause)
+			if 系别 > 0:
+				cmds[0]["extra_element"] = 系别
 		for sk: Dictionary in pl.role.available_skills():
 			# 技能一律下发（界面默认全摆出来），当前不可用的只把 enabled 置 false —— 客户端据此置灰、
 			# 点不动，玩家能看见「这个技能存在、但现在用不了」，而不是整条消失
@@ -1458,11 +1461,13 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			var 切换牌: Array = pl.role.extra_action_card_ids(c, GConst.ActionType.Attack)
 			if 切换牌.is_empty():
 				切换牌 = pl.role.action_card_ids(GConst.ActionType.Attack)
+			var 系别: int = pl.role.extra_action_element(c)
 			cmds.append({
 				"respond_id": GConst.ActionType.ChooseExtraAction, "src_id": pid,
 				"dst_ids": pl.role.extra_action_targets(c),
 				"card_ids": 切换牌,
 				"args": [c], "extra_cause": c,
+				"extra_element": 系别,
 			})
 	return cmds
 
@@ -1606,6 +1611,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		var 额外攻击: Array = []
 		var 额外牌表: Array = []
 		var 额外目标表: Array = []
+		var 额外系别表: Array = []
 		var 问者: BattlePlayer = players.get(pid)
 		if 问者 != null:
 			for a: Dictionary in 问者.additional_actions:
@@ -1621,10 +1627,12 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 				额外攻击.append(c)
 				额外牌表.append({"ids": 牌})
 				额外目标表.append({"ids": 目标})
+				额外系别表.append(问者.role.extra_action_element(c) if 问者.role != null else 0)
 		if not 额外攻击.is_empty():
 			cmd["extra_attack_causes"] = 额外攻击
 			cmd["extra_attack_cards"] = 额外牌表
 			cmd["extra_attack_targets"] = 额外目标表
+			cmd["extra_attack_elements"] = 额外系别表
 	# 超时兜底要用的三项（见 _build_timeout_reply）：不可取消的技能询问不许按「取消」收尾
 	_pending_skill_can_cancel = can_cancel
 	_pending_skill_need_target = need_target
