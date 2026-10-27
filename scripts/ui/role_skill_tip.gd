@@ -8,6 +8,12 @@ extends RefCounted
 ## 技能文本里正文行的前缀（data_interface._拼技能文本 给每条技能正文加的「　　」）；
 ## 拿它区分「四个一级标题」（无前缀）与「技能正文」（有前缀）
 const 正文前缀: String = "　　"
+## 失效技能的零宽标记：\u2060 标在「每一条被划掉技能的正文行」行首（类型之后，用于置灰），
+## \u200b / \u200c 只标在被划掉整块的起止（供说明提示框画粗删除线）。
+## 用零宽字符而不是 BBCode 的 [s]：字体自带的删除线太细、位置也偏低，粗线由提示框自绘。
+const 失效行标记: String = "\u2060"
+const 失效起标记: String = "\u200b"
+const 失效止标记: String = "\u200c"
 ## 悬停提示里技能正文的字号
 const 提示框正文字号: int = 18
 ## 悬停提示里角色名的字号（原 72 的一半）
@@ -85,6 +91,8 @@ static func 剑之子对局说明(原文: String, 有剑之魔女: bool) -> Stri
 			誓言终 += 1
 		for i: int in range(誓言起, 誓言终 + 1):
 			行列表[i] = _整行删除线(行列表[i])
+		行列表[誓言起] = _在类型后插标记(行列表[誓言起], 失效起标记)
+		行列表[誓言终] = 行列表[誓言终] + 失效止标记
 	# 在【倾慕】条目末尾追加借用的两颗技能说明
 	var 倾慕起: int = -1
 	for i: int in range(行列表.size()):
@@ -114,6 +122,10 @@ static func 剑之子对局说明(原文: String, 有剑之魔女: bool) -> Stri
 			if not 有剑之魔女:
 				行 = _整行删除线(行)
 			追加.append(行)
+	# 不在场时，追加的借用技整块要画粗删除线：起止标记只圈技能正文，不圈「若在场获得：」说明行
+	if not 有剑之魔女 and 追加.size() > 1:
+		追加[1] = _在类型后插标记(追加[1], 失效起标记)
+		追加[追加.size() - 1] = 追加[追加.size() - 1] + 失效止标记
 	var 新行: Array[String] = []
 	新行.append_array(行列表.slice(0, 倾慕终 + 1))
 	新行.append_array(追加)
@@ -127,16 +139,24 @@ static func _是技能正文起(行: String) -> bool:
 	return 行.begins_with(正文前缀) and 行.lstrip("　 ").begins_with("【")
 
 
-## 给一行角色技能正文套 [s] 删除线：行首的【类型】保留原色，只划技能名与说明；
-## 续行没有类型前缀，整行划。BBCode 的 [s] 由 RichTextLabel 渲染。
+## 标记一行角色技能正文失效：行首的【类型】保留原色，正文行首插零宽标记；
+## 续行没有类型前缀，标记插在缩进后。真正的删除线由说明提示框按起止标记自绘粗线。
 static func _整行删除线(行: String) -> String:
 	var 缩进长: int = 行.length() - 行.lstrip("　 ").length()
 	var 缩进: String = 行.substr(0, 缩进长)
 	var 正文: String = 行.substr(缩进长)
 	var 右括号: int = 正文.find("】")
 	if 正文.begins_with("【") and 右括号 >= 0:
-		return 缩进 + 正文.substr(0, 右括号 + 1) + "[s]" + 正文.substr(右括号 + 1) + "[/s]"
-	return 缩进 + "[s]" + 正文 + "[/s]"
+		return 缩进 + 正文.substr(0, 右括号 + 1) + 失效行标记 + 正文.substr(右括号 + 1)
+	return 缩进 + 失效行标记 + 正文
+
+
+## 把整块起止标记插在【类型】之后：整块第一个可视行保持【类型】在行首，不破坏 _染类型。
+static func _在类型后插标记(行: String, 标记: String) -> String:
+	var 右括号: int = 行.find("】")
+	if 右括号 >= 0:
+		return 行.substr(0, 右括号 + 1) + 标记 + 行.substr(右括号 + 1)
+	return 行 + 标记
 
 
 ## 场上是否有剑之魔女（45）；选角/非对局由调用方传 对局中=false，不会读旧快照。
@@ -209,7 +229,14 @@ static func 上色(技能文本: String, 正文字号: int = 0, 标题字号: in
 			# 正文：去掉「　　」前缀，改用 [indent] 整体缩进；正文字号 >0 时整行套 [font_size]
 			# （先还原说明里写成「\n」的换行，再上色 —— 换行必须在「按前缀分类」之后做，
 			#   否则说明内部的续行会掉进「一级标题」那一档被放大）
-			var 正文行: String = "[indent]%s[/indent]" % _染类型(还原换行(行文本.substr(正文前缀.length())))
+			var 正文: String = 还原换行(行文本.substr(正文前缀.length()))
+			var 失效: bool = 正文.contains(失效行标记)
+			var 染色: String = _染类型(正文, 失效)
+			if 失效:
+				# 保留【类型】原色但降透明度；技能名 / 说明用同样的半透明白压灰，
+				# 不是换成纯灰 —— 类型色还认得出来，只是整体变淡。
+				染色 = "[color=#FFFFFF8C]%s[/color]" % 染色
+			var 正文行: String = "[indent]%s[/indent]" % 染色
 			if 正文字号 > 0:
 				正文行 = "[font_size=%d]%s[/font_size]" % [正文字号, 正文行]
 			行列表.append(正文行)
@@ -232,13 +259,17 @@ static func 还原换行(文: String) -> String:
 	return 文.replace("\\n", "\n")
 
 
-## 行首（可带缩进）是「【类型】」时给这截连同方括号一起上色（BBCode）；别的行原样返回
-static func _染类型(行文本: String) -> String:
+## 行首（可带缩进）是「【类型】」时给这截连同方括号一起上色（BBCode）；别的行原样返回。
+## 失效=true 时类型色保留色相、只降透明度（配合外层半透明白，整条技能置灰）。
+static func _染类型(行文本: String, 失效: bool = false) -> String:
 	var 缩进: String = 行文本.substr(0, 行文本.length() - 行文本.lstrip("　 ").length())
 	var 正文: String = 行文本.substr(缩进.length())
 	for 类型: String in GConst.技能类型颜色:
 		var 前缀: String = "【%s】" % 类型
 		if 正文.begins_with(前缀):
+			var 色: Color = GConst.技能类型颜色[类型]
+			if 失效:
+				色 = Color(色.r, 色.g, 色.b, 0.55)
 			return "%s[color=#%s]%s[/color]%s" % [
-				缩进, (GConst.技能类型颜色[类型] as Color).to_html(false), 前缀, 正文.substr(前缀.length())]
+				缩进, 色.to_html(失效), 前缀, 正文.substr(前缀.length())]
 	return 行文本
