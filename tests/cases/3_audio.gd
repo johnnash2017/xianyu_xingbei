@@ -23,13 +23,13 @@ func 跑() -> void:
 			缺.append(名)
 	检(缺.is_empty(), "缺音频文件：%s" % str(缺))
 
-	# 角色语音：按角色 id 命名，1~36 与 999 都要在（37 号原工程就没有这条；101/102/103 未接）
+	# 角色语音：按角色 id 命名，1~36 与 76 都要在（37 号原工程就没有这条；101/102/103 未接）
 	var 缺语音: Array[String] = []
-	for rid: int in range(1, 37) + [999]:
+	for rid: int in range(1, 37) + [76]:
 		if not ResourceLoader.exists(音频目录 + str(rid) + ".ogg"):
 			缺语音.append(str(rid))
 	检(缺语音.is_empty(), "缺角色语音：%s" % str(缺语音))
-	检(Audio.有声效("1") and Audio.有声效("999"), "角色语音存在性判断不对")
+	检(Audio.有声效("1") and Audio.有声效("76"), "角色语音存在性判断不对")
 	检(not Audio.有声效("37"), "没有语音的角色被误判为有语音")
 	检(not Audio.是否静音(), "自检进程没有失焦，不应处于静音状态")
 

@@ -371,18 +371,18 @@ func 结算顺序(目标集合: Array) -> Array[int]:
 
 
 # ============================================================
-# 【魔弹掌控】（802）—— 魔导的落点选择
+# 【魔弹掌控】（802）/【魔弹掌握】（7601）—— 主动打【魔弹】时的落点选择
 # 技能原文：「你主动使用【魔弹】时可以选择逆向传递」。
 # 只作用于「主动打出【魔弹】」这一步（见 missile_targets）；魔弹一旦打出，
 # 后续的传递方向就由出弹时定下，任何角色在传递时都不能改向（见 BattleEngine.SMissileAsk）。
 # ============================================================
-## 本角色是否拥有【魔弹掌控】（默认为否，魔导覆写为 true）
+## 本角色是否拥有【魔弹掌控】/【魔弹掌握】（默认为否，魔导 / 节日魔导覆写为 true）
 func has_missile_mastery() -> bool:
 	return false
 
 
 ## 本角色打出【魔弹】时的可选落点：默认只有右手边（post）最近的对手；
-## 有【魔弹掌控】时左手边（pre）那个也能选（＝逆向传递）。剔除 -1 与重复
+## 有【魔弹掌控】/【魔弹掌握】时左手边（pre）那个也能选（＝逆向传递）。剔除 -1 与重复
 func missile_targets(from_id: int) -> Array[int]:
 	var out: Array[int] = []
 	var 顺: int = nearest_enemy_id(from_id, true)
@@ -396,13 +396,19 @@ func missile_targets(from_id: int) -> Array[int]:
 
 
 # ============================================================
-# 【魔弹融合】（803）—— 魔导 / 特殊魔导共通
+# 【魔弹融合】—— 魔导（803）/ 节日魔导（7602）共通
 # 自己的地系 / 火系牌可以当【魔弹】打出去：落点与【魔弹】完全一致（默认右手边最近的对手，
-# 不接受队友；有【魔弹掌控】802 的角色左右各一个候选，见 missile_targets）。
+# 不接受队友；有【魔弹掌控】/【魔弹掌握】的角色左右各一个候选，见 missile_targets）。
 # 打出去之后的「继续传递 / 圣光抵挡 / 放弃承受」全部交给引擎统一的魔弹传递询问（SMissileAsk），
 # 与主动打出【魔弹】走同一条链；能不能继续用牌传递由本角色的 v_remissile 覆写决定。
+# 技能号各角色不同，只影响播报 / 日志，不影响牌与落点的校验。
 # ============================================================
 const MISSILE_FUSION_SKILL: int = 803
+
+
+## 本角色【魔弹融合】的技能号（默认魔导师的 803；节日魔导覆写为 7602）
+func missile_fusion_skill() -> int:
+	return MISSILE_FUSION_SKILL
 
 
 ## 魔弹融合的牌与落点校验（v_magic_skill 用）
@@ -424,13 +430,16 @@ func v_missile_fusion(action: Dictionary) -> int:
 	return GConst.GE_SUCCESS
 
 
-## 把这张地系 / 火系牌当【魔弹】打出去（p_magic_skill 用）
+## 把这张地系 / 火系牌当【魔弹】打出去（p_magic_skill 用）。
+## 返回 URGENT：魔弹传递询问已经压在栈顶，本次技能行动要等它结算完再跑 p_after_magic。
+## 若返回 SUCCESS，SkillRun 会把 p_after_magic 压到魔弹询问之上，行动结束钩子就会先于魔弹伤害触发，
+## 与普通【魔弹】路径（先魔弹、再行动结束）不一致。
 func cast_missile_fusion(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
 	var cid: int = int(cards[0])
 	var dst_id: int = int(dsts[0])
-	notice_skill(MISSILE_FUSION_SKILL, [dst_id])
+	notice_skill(missile_fusion_skill(), [dst_id])
 	# 地/火牌这次是当【魔弹】打出去的：card_ids 仍放真正打出的牌（客户端要展示它），
 	# 另用 as_card_id 说明这次出牌在系统里视为【魔弹】——音效/特效与后续魔弹相关逻辑都按它走
 	engine.broadcast(GConst.Msg.Card, {
@@ -443,7 +452,7 @@ func cast_missile_fusion(action: Dictionary) -> int:
 	# 落点选了逆向那个＝本次沿 pre 方向传递
 	var 顺向: bool = dst_id == nearest_enemy_id(player.id, true)
 	engine.push(BattleEngine.SMissileAsk.new(dst_id, player.id, BattleEngine.MISSILE_BASE_POINT, 顺向, used))
-	return SUCCESS
+	return URGENT
 
 
 # ============================================================

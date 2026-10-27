@@ -2327,8 +2327,9 @@ class SReattackGo:
 
 ## 魔弹传递询问：持有者可以打出【魔弹】继续传递、出【圣光】抵挡，或放弃并承受伤害。
 ## 对照服务端 StateMissiled：传递方向沿用出弹时定下的方向（【魔弹】默认右手边 post；
-## 魔导用【魔弹掌控】逆向打出则是 pre），后续传递者只是「传给下一个」、不改方向，
-## 只有【魔弹掌控】的持有者才能在传递时改方向。同一轮传递里每人只能参与一次；
+## 魔导用【魔弹掌控】/ 节日魔导用【魔弹掌握】逆向打出则是 pre），后续传递者只是「传给下一个」、
+## 不能改方向 —— 落点方向只在「主动打出」那一步决定（见 BattleRole.missile_targets）。
+## 同一轮传递里每人只能参与一次；
 ## 一轮结束后重置参与记录开新一轮，但新一轮的第一个目标不能是刚把魔弹传给自己的人。
 ## 即使持有者手里既没有【魔弹】也没有【圣光】，也照样要问、要等应答。
 class SMissileAsk:
@@ -2387,10 +2388,14 @@ class SMissileAsk:
 				# 魔导/特殊魔导也可以拿地系、火系牌传递：这次出牌同样视为【魔弹】
 				var 视为魔弹号: int = e.missile_as_card(cid)
 				# 地/火牌继续传递也是发动【魔弹融合】：补发技能通知，客户端才知道该飘技能名
-				# （真正的【魔弹】牌视为魔弹号 = 0，不补；它本来就不靠 803）
+				# （真正的【魔弹】牌视为魔弹号 = 0，不补；它本来就不靠魔弹融合）
+				# 技能号按传递者自己的角色取：魔导师 803、节日魔导 7602
 				if 视为魔弹号 != 0:
+					var 融合技能号: int = GConst.技能_魔弹融合
+					if me != null and me.role != null:
+						融合技能号 = me.role.missile_fusion_skill()
 					e.broadcast(GConst.Msg.Skill, {
-						"skill_id": GConst.技能_魔弹融合, "src_id": holder,
+						"skill_id": 融合技能号, "src_id": holder,
 						"dst_ids": [nxt if nxt >= 0 else holder],
 					})
 				e.broadcast(GConst.Msg.Card, {

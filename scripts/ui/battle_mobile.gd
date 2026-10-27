@@ -300,11 +300,13 @@ func _日志标签(kind: int) -> String:
 		_:
 			return "系统"
 
-## 能把地系 / 火系牌当【魔弹】打出去的角色（【魔弹融合】803，对照 role_modao / role_spmodao）
-const 地火可作魔弹角色: Array[int] = [8, 999]
-## 拥有【魔弹掌控】（802）的角色：主动打【魔弹】时左右两个方向都能选（对照 skillDB 802「可选逆向传递」）。
+## 能把地系 / 火系牌当【魔弹】打出去的角色（【魔弹融合】：魔导师 803 / 节日魔导 7602，
+## 对照 role_modao / role_spmodao）
+const 地火可作魔弹角色: Array[int] = [8, 76]
+## 拥有【魔弹掌控】/【魔弹掌握】的角色：主动打【魔弹】时左右两个方向都能选
+## （魔导师 802 / 节日魔导 7601「可选逆向传递」）。
 ## 注意只在「主动使用」那一步生效 —— 魔弹打出后传递方向就固定了，传递时不能改向
-const 魔弹掌控角色: Array[int] = [8]
+const 魔弹掌控角色: Array[int] = [8, 76]
 ## 【黑暗束缚】2903 的「响应侧」：不能用【魔弹】转弹、也不能用【圣光】格挡（对照 role_moqiang 的
 ## v_remissile / v_block）。「主动阶段整片禁用法术牌」那半条在下面的 行动阶段禁用法术牌角色 里
 const 魔弹全禁角色: Array[int] = [29]
@@ -6552,6 +6554,8 @@ func _刷新头像提示() -> void:
 		动态提示 = _偷袭头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _灌银毒刃头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _法力护盾头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
 	for 旧: int in _动态提示过的头像:
 		if not 动态提示.has(旧):
@@ -7166,6 +7170,27 @@ func _灌银毒刃头像提示() -> Dictionary:
 		out[我] = str(out[我]) + "\n+1 治疗"
 	else:
 		out[我] = "+1 治疗"
+	return out
+
+
+## 节日魔导【法力护盾】7604：在受伤者（自己）头像上写「原伤害 → 弃 X 张后伤害」。
+## 原伤害与伤害类型由服务端随询问下发；X 就是当前选中的法术牌张数，随选 / 退牌实时变。
+func _法力护盾头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_节日魔导法力护盾:
+		return out
+	var 伤害: int = int(_pending.get("preview_base", 0))
+	if 伤害 <= 0:
+		return out
+	var 类型: int = int(_pending.get("preview_kind", GConst.HarmType.Magic))
+	var 词: String = "法术伤害" if 类型 == GConst.HarmType.Magic else "攻击伤害"
+	# 这次询问只放法术牌可选（服务端 card_rule = "magic"），选中几张就挡几点
+	var 抵挡: int = _sel_cards.size()
+	var 我: int = Logic.my_player_id
+	if 抵挡 <= 0:
+		out[我] = "%d %s" % [伤害, 词]
+	else:
+		out[我] = "[zwj]%d %s\n%d %s" % [伤害, 词, maxi(伤害 - 抵挡, 0), 词]
 	return out
 
 

@@ -19,16 +19,17 @@ func 跑() -> void:
 	检(not Data.card_db.is_empty(), "卡表为空（DataTables.gd 的卡表没读到）")
 	检(not Data.role_list.is_empty(), "角色表为空（数据/角色表 没读到）")
 
-	# 维基补录角色：只录入数据，暂设为禁用；SP 魔导师改到 999，108 让给剑之子
+	# 维基补录角色：只录入数据，暂设为禁用；sp魔导师 已改名节日魔导、改到 76 并启用
 	检(str(Data.role_list.get(38, "")) == "游击士", "38 号角色名不是「游击士」")
 	检(Data.role_personal_name(38) == "索拉", "38 号游击士姓名不是「索拉」")
 	检(str(Data.role_list.get(108, "")) == "剑之子", "108 号角色名不是「剑之子」")
-	检(str(Data.role_list.get(999, "")) == "sp魔导师", "sp魔导师应改到 999")
+	检(str(Data.role_list.get(76, "")) == "节日魔导", "76 号角色名不是「节日魔导」")
 	检(str(Data.role_list.get(111, "")) == "红衣主教", "111 号角色名不是「红衣主教」")
 	for 补录号: int in [43, 47, 75, 78, 87, 106, 107]:
 		检(str(Data.role_list.get(补录号, "")) != "", "补录角色 %d 缺失" % 补录号)
-	检(not Data.role_pool.has(38) and not Data.role_pool.has(108) and not Data.role_pool.has(999),
+	检(not Data.role_pool.has(38) and not Data.role_pool.has(108),
 		"补充角色/停用角色不应进入选角池")
+	检(Data.role_pool.has(76), "节日魔导已启用，应进入选角池")
 
 	# 维基技能补录：只配置了表，没有脚本；每个新角色至少有一个能查到的技能行
 	var 新角色号: Array[int] = [38, 39, 40, 41, 43, 45, 46, 47, 75, 78, 79, 80, 81, 82, 83, 84, 86, 87, 92, 93, 94, 95, 96, 97, 106, 107, 108, 109, 111]
@@ -74,14 +75,21 @@ func 跑() -> void:
 	检(Data.role_version(109) == 5 and Data.role_fate_pattern(109) == "圣", "仲裁者·圣版本/命格不对")
 	检(Data.role_version(111) == 4 and Data.role_fate_pattern(111) == "圣", "红衣主教版本/命格不对")
 
-	# 星数：表里除白板/sp 外都要有值
+	# 星数：表里除白板外都要有值（节日魔导已从 sp 的 0 改为 3）
 	for 星角色: int in Data.role_list.keys():
-		if 星角色 == 0 or 星角色 == 999:
+		if 星角色 == 0:
 			continue
 		检(Data.role_star(星角色) > 0.0, "%d 号角色缺星数" % 星角色)
 	检(Data.role_star(1) == 3.0 and Data.role_star(9) == 3.5 and Data.role_star(19) == 4.5,
 		"标准角色星数不对")
 	检(Data.role_star(38) == 3.5 and Data.role_star(92) == 5.0, "补录角色星数不对")
+	检(Data.role_star(76) == 3.0, "节日魔导星数不对")
+	检(Data.role_version(76) == 5 and Data.role_fate_pattern(76) == "咏", "节日魔导版本/命格不对")
+	检(Data.role_skills(76) == [7601, 7602, 7603, 7604, 7605],
+		"节日魔导技能号不对：%s" % str(Data.role_skills(76)))
+	检(Art.role_hero(76) != null, "节日魔导缺选角立绘（76M）")
+	检(ResourceLoader.exists("res://assets/textures/hero/small/76S.png"), "节日魔导缺战斗小头像（76S）")
+	检(ResourceLoader.exists("res://assets/textures/hero/large/76L.png"), "节日魔导缺战斗大头像（76L）")
 
 	# 有持续形态的角色：状态名与状态底色
 	检(Data.role_forms(43) == ["圣炎形态"], "圣殿骑士形态名不对：%s" % str(Data.role_forms(43)))
