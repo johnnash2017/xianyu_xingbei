@@ -457,13 +457,26 @@ func 跑() -> void:
 	var 一选项: Array = (一问[0] as Dictionary).get("args", []) if not 一问.is_empty() else []
 	检(一选项.size() >= 6 and 一选项.slice(4) == [103, 105],
 		"攻击结束应同时摆出风怒追击和剑影：%s" % str(一选项))
-	# 确认风怒追击后应立即进入额外攻击行动阶段（不再提交成响应 / 等回合结束）
+	# 确认风怒追击后只入队，还应继续问剑影；不立即进入、不先消耗
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 103, "src_id": 1, "args": [103], "card_ids": [], "dst_ids": [],
 	})
-	检(引擎.行动额外来源 == 103 and 引擎._await_kind == GConst.Msg.Action,
-		"确认风怒追击后应立即进入额外攻击行动阶段（来源 %d / 等待 %s）"
-		% [引擎.行动额外来源, str(引擎._await_kind)])
+	var 二问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	var 二选项: Array = (二问[0] as Dictionary).get("args", []) if not 二问.is_empty() else []
+	检(二选项.size() >= 5 and 二选项.slice(4) == [105],
+		"选完风怒追击后还应继续问剑影：%s" % str(二选项))
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 105, "src_id": 1, "args": [105], "card_ids": [], "dst_ids": [],
+	})
+	var 有风: bool = false
+	var 有影: bool = false
+	for a: Dictionary in 玩家1.additional_actions:
+		if int(a.get("cause", 0)) == 103 and bool(a.get("direct", false)):
+			有风 = true
+		elif int(a.get("cause", 0)) == 105 and bool(a.get("direct", false)):
+			有影 = true
+	检(有风 and 有影, "确认后两份额外行动都应以 direct 入队、等收尾时再进入：%s"
+		% str(玩家1.additional_actions))
 
 	# ---- 场景 12：响应快捷按钮已经选好风系攻击牌 + 目标，自动进入 103 应立即发起攻击 ----
 	_重置战斗()
