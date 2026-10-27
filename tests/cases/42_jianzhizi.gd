@@ -477,14 +477,20 @@ func _测倾慕与梦想剑断念() -> void:
 			检(角色._dream_ignore_shield, "第 1 次攻击行动后梦想剑应激活「无视圣盾」")
 			检(not 角色._dream_no_reattack and not 角色._dream_no_miss,
 				"第 1 次攻击行动后不应同时激活后两档")
+			检(角色.dream_tier() == 1, "第 1 档 dream_tier 应为 1")
 		elif 次数 == 2:
 			检(角色._dream_no_reattack, "第 2 次攻击行动后梦想剑应激活「无法应战」")
 			检(not 角色._dream_no_miss, "第 2 次攻击行动后不应已激活「强制命中」")
+			检(角色.dream_tier() == 2, "第 2 档 dream_tier 应为 2")
 		elif 次数 == 3:
 			检(not 角色._dream_no_miss, "第 3 次攻击行动后不应有新档位")
+			检(角色.dream_tier() == 2, "第 3 次攻击行动后 dream_tier 仍应为 2")
 		else:
 			检(角色._dream_no_miss, "第 4 次攻击行动后梦想剑应激活「强制命中」")
+			检(角色.dream_tier() == 3, "第 4 档 dream_tier 应为 3")
 	检(_播报次数(4503) == 3, "梦想剑第 1 / 2 / 4 档各应播报一次，实际 %d 次" % _播报次数(4503))
+	检(int(玩家.to_proto(1).get("dream_tier", 0)) == 3,
+		"快照应下发 dream_tier=3，供角色说明标绿")
 	# 第 4 档：主动攻击强制命中 + 无视圣盾；应战反击不受影响
 	var 梦想主动: Dictionary = _攻击上下文(非技击牌.id)
 	角色.p_timeline_1(梦想主动)
@@ -825,3 +831,30 @@ func _测剑之子说明书() -> void:
 	var 失效剑守位: int = 在场色.find(角色技能提示.失效行标记 + "剑守誓言")
 	检(置灰位 >= 0 and 失效剑守位 > 置灰位,
 		"置灰颜色应包住失效的剑守誓言：%d / %d" % [置灰位, 失效剑守位])
+	# 梦想剑启用（dream_tier>0）时，剑之魔女 / 剑之子的说明里梦想剑那行用独有技绿
+	var 绿45: String = 角色技能提示.梦想剑标绿(Data.role_skill_info(45), true)
+	检(绿45.contains("[color=#A9FF00]梦想剑"),
+		"剑之魔女的梦想剑启用后应标绿")
+	var 不绿45: String = 角色技能提示.梦想剑标绿(Data.role_skill_info(45), false)
+	检(not 不绿45.contains("[color=#A9FF00]梦想剑"),
+		"梦想剑未启用时不应标绿")
+	var 绿108: String = 角色技能提示.梦想剑标绿(在场, true)
+	检(绿108.contains("[color=#A9FF00]梦想剑"),
+		"剑之子的梦想剑启用后应标绿")
+	# 用客户端快照里的 dream_tier 驱动 45 / 108 的悬停说明
+	var 旧列表: Array[GPlayer] = Data.player_list.duplicate()
+	var 假45: GPlayer = GPlayer.new()
+	假45.role_id = 45
+	假45.dream_tier = 1
+	var 假108: GPlayer = GPlayer.new()
+	假108.role_id = 108
+	假108.dream_tier = 1
+	Data.player_list = [假45, 假108]
+	检(角色技能提示.悬浮提示(45, 1.0, true).contains("[color=#A9FF00]梦想剑"),
+		"剑之魔女 dream_tier=1 时悬停说明应标绿")
+	检(角色技能提示.悬浮提示(108, 1.0, true).contains("[color=#A9FF00]梦想剑"),
+		"剑之子 dream_tier=1 时悬停说明应标绿")
+	假108.dream_tier = 0
+	检(not 角色技能提示.悬浮提示(108, 1.0, true).contains("[color=#A9FF00]梦想剑"),
+		"剑之子 dream_tier=0 时悬停说明不应标绿")
+	Data.player_list = 旧列表

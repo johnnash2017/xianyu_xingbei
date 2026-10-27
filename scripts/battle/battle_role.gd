@@ -209,6 +209,9 @@ func v_attacked() -> int: return V_NOT_OVERRIDE
 ## 注意：这只挡「成为目标」，不阻止已经在自己面前的基础效果继续生效。
 func v_basic_effect_target(_dst: BattlePlayer, _card_id: int) -> int: return GConst.GE_SUCCESS
 func v_additional_action(_cause: int) -> int: return V_NOT_OVERRIDE
+## 梦想剑（4503）本回合当前档位：0=未启用 / 1=无视圣盾 / 2=对方无法应战 / 3=强制命中。
+## 供客户端角色说明把梦想剑那一行标绿（45 / 108 覆写），默认 0。
+func dream_tier() -> int: return 0
 
 
 # ============================================================

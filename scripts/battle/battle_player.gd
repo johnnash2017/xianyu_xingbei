@@ -755,6 +755,8 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"online": online,
 		"ping": ping_ms,
 		"leader": 0,
+		# 梦想剑 4503 当前档位（0=未启用 / 1 / 2 / 3）：客户端角色说明据此把梦想剑标绿
+		"dream_tier": role.dream_tier() if role != null else 0,
 	}
 	var bas: Array = []
 	for e: Dictionary in basic_effects:

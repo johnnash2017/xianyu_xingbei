@@ -43,6 +43,17 @@ var dream_no_reattack: bool = false
 var dream_no_miss: bool = false
 
 
+## 梦想剑当前档位（供客户端角色说明标绿）：3 最强，其次 2、1，都没激活返回 0。
+func dream_tier() -> int:
+	if dream_no_miss:
+		return 3
+	if dream_no_reattack:
+		return 2
+	if dream_ignore_shield:
+		return 1
+	return 0
+
+
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_yi_xiang_jian = false
 	used_jian_ying_duan_nian = false

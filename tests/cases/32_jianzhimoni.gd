@@ -418,13 +418,19 @@ func 跑() -> void:
 			检(角色.dream_ignore_shield, "第 1 次攻击行动后梦想剑应激活「无视圣盾」")
 			检(not 角色.dream_no_reattack and not 角色.dream_no_miss,
 				"第 1 次攻击行动后不应同时激活后两档")
+			检(角色.dream_tier() == 1, "第 1 档 dream_tier 应为 1")
 		elif 次数 == 2:
 			检(角色.dream_no_reattack, "第 2 次攻击行动后梦想剑应激活「无法应战」")
 			检(not 角色.dream_no_miss, "第 2 次攻击行动后不应已激活「强制命中」")
+			检(角色.dream_tier() == 2, "第 2 档 dream_tier 应为 2")
 		elif 次数 == 3:
 			检(not 角色.dream_no_miss, "第 3 次攻击行动后不应有新档位")
+			检(角色.dream_tier() == 2, "第 3 次攻击行动后 dream_tier 仍应为 2")
 		else:
 			检(角色.dream_no_miss, "第 4 次攻击行动后梦想剑应激活「强制命中」")
+			检(角色.dream_tier() == 3, "第 4 档 dream_tier 应为 3")
+	检(int(玩家.to_proto(1).get("dream_tier", 0)) == 3,
+		"快照应下发 dream_tier=3，供角色说明标绿")
 	var 梦想主动: Dictionary = _攻击上下文(非技击, 1, 2, true, BattleEngine.ATTACK_BASE_POINT)
 	角色.p_timeline_1(梦想主动)
 	检(int(梦想主动.get("hit_rate", -1)) == GConst.HitRate.NoMiss,

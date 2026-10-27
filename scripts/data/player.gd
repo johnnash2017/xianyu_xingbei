@@ -39,6 +39,8 @@ var cover_cards_max: int = 0
 var color: int = GConst.TEAM_NONE   # 1 红 / 0 蓝 / -1 未分队
 var role_id: int = 0
 var tap: bool = false               # 横置/锁定
+## 梦想剑 4503 当前档位（0=未启用 / 1=无视圣盾 / 2=无法应战 / 3=强制命中）
+var dream_tier: int = 0
 ## 血色剑灵【血蔷薇庭院】独立状态：状态图标区显示庭院图标，不占横置形态
 var xue_qiang_wei: bool = false
 ## 圣弓专属技正反面：0=【圣煌辉光炮】、1=【圣煌余辉】、2=已移除

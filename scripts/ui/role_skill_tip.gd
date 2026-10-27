@@ -11,6 +11,8 @@ const 正文前缀: String = "　　"
 ## 失效技能的零宽标记：\u2060 标在「每一条失效技能的正文行」类型之后，仅用于把该行置灰。
 ## 不画删除线；用零宽字符而不是 BBCode 的 [s]，避免字体自带的细线又冒出来。
 const 失效行标记: String = "\u2060"
+## 梦想剑 4503 启用时技能说明的绿：与卡面「独有技」技能名同色（CardUI.技能字色_有）
+const 梦想剑启用色: String = "A9FF00"
 ## 悬停提示里技能正文的字号
 const 提示框正文字号: int = 18
 ## 悬停提示里角色名的字号（原 72 的一半）
@@ -47,6 +49,9 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0, 对局中: b
 	var 信息: String = Data.role_skill_info(角色号)
 	if 角色号 == 108 and 信息 != "":
 		信息 = 剑之子对局说明(信息, 对局中 and _剑之魔女在场())
+	# 梦想剑当前档位已启用（1/2/4 次攻击后）：45 和 108 的说明里都把梦想剑那行标成独有技绿
+	if 对局中 and (角色号 == 45 or 角色号 == 108) and _梦想剑已启用(角色号):
+		信息 = 梦想剑标绿(信息)
 	if 信息 != "":
 		# 角色名就压在最上面，第一个分段标题（普通技）上方也要留白，和后面几类一致
 		文本 += "\n" + 上色(信息, 正文号, 标题号, true)
@@ -191,6 +196,31 @@ static func _标记失效行(行: String) -> String:
 	if 正文.begins_with("【") and 右括号 >= 0:
 		return 缩进 + 正文.substr(0, 右括号 + 1) + 失效行标记 + 正文.substr(右括号 + 1)
 	return 缩进 + 失效行标记 + 正文
+
+
+## 梦想剑 4503 技能说明标绿：只标「技能名 + 说明」，行首【被动】保留原类型色。
+## 绿值与卡面「独有技」技能名同色（A9FF00）。启用中技能在多行时也只处理首行。
+static func 梦想剑标绿(原文: String, 启用: bool = true) -> String:
+	if not 启用:
+		return 原文
+	var 行列表: Array[String] = []
+	for 行: String in 原文.split("\n"):
+		if 行.lstrip("　 ").begins_with("【被动】梦想剑"):
+			var 右括号: int = 行.find("】")
+			if 右括号 >= 0:
+				行 = 行.substr(0, 右括号 + 1) + "[color=#%s]%s[/color]" % [
+					梦想剑启用色, 行.substr(右括号 + 1)]
+		行列表.append(行)
+	return "\n".join(行列表)
+
+
+## 该角色的梦想剑当前是否已启用（档位 >0）。读客户端快照里的 dream_tier；
+## 剑之子在剑之魔女不在场时档位不会被推进，自然为 0。
+static func _梦想剑已启用(角色号: int) -> bool:
+	for 玩家: GPlayer in Data.player_list:
+		if 玩家 != null and 玩家.role_id == 角色号 and int(玩家.dream_tier) > 0:
+			return true
+	return false
 
 
 ## 场上是否有剑之魔女（45）；选角/非对局由调用方传 对局中=false，不会读旧快照。

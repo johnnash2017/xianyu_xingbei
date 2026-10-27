@@ -74,6 +74,19 @@ var _剑残影目标: int = -1
 var _dream_ignore_shield: bool = false
 var _dream_no_reattack: bool = false
 var _dream_no_miss: bool = false
+
+
+## 梦想剑当前档位（供客户端角色说明标绿）：3 最强，其次 2、1，都没激活返回 0。
+func dream_tier() -> int:
+	if _dream_no_miss:
+		return 3
+	if _dream_no_reattack:
+		return 2
+	if _dream_ignore_shield:
+		return 1
+	return 0
+
+
 ## 10803 的回合条件跟踪
 var _本回合有主动攻击命中: bool = false
 var _回合开始星杯总数: int = 0
