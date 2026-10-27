@@ -2052,7 +2052,7 @@ func _on_command(data: Dictionary) -> void:
 			# 魔弹传递询问：args[0] = 当前持有者（也就是该由谁来应答）
 			target_id = int(args[0]) if args.size() > 0 else -1
 		elif respond_id == GConst.RespondType.AdditionalAction:
-			_进入额外行动(args, cmd.get("dst_ids", []))
+			_进入额外行动(args, cmd.get("dst_ids", []), cmd.get("allow_actions", []))
 			return
 		if target_id != Logic.my_player_id:
 			return
@@ -2387,7 +2387,7 @@ func _进入技能询问() -> void:
 		for cause: Variant in 额外攻击:
 			var c: int = int(cause)
 			var 额外按钮: 技能按钮 = _新技能按钮(0)
-			额外按钮.设置选项(_额外行动按钮文本(c), 额外攻击按钮色, 0)
+			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack), 额外攻击按钮色, 0)
 			额外按钮.设置说明(_额外行动按钮说明(c))
 			额外按钮.connect("点击", func(_技能号: int) -> void: _选中额外攻击响应(c))
 			_额外攻击响应按钮.append({"按钮": 额外按钮, "cause": c})
@@ -2597,17 +2597,25 @@ func _换选项后重校验() -> void:
 const 额外攻击按钮色: Color = Color("c0392b")
 
 
-## 这份额外行动是不是攻击行动（看「额外行动提示」里写的是攻击 / 法术 / 其它）
-func _是攻击额外行动(cause: int) -> bool:
+## 这份额外行动是不是攻击行动：优先看服务端下发的 allow_action，没给才退回「额外行动提示」文字
+func _是攻击额外行动(cause: int, allow_action: int = 0) -> bool:
+	if allow_action > 0:
+		return GConst.放行动作(GConst.ActionType.Attack, allow_action)
 	return str(GConst.额外行动提示.get(cause, "")).contains("攻击行动")
 
 
 ## 额外行动按钮文案：默认「额外【攻击行动】」（【攻击行动】由词缀表换成图标）；
 ## 有特定限制的（如「只能使用技类攻击牌」）把特性接在后面。
-func _额外行动按钮文本(cause: int) -> String:
+func _额外行动按钮文本(cause: int, allow_action: int = 0) -> String:
 	var 提示: String = str(GConst.额外行动提示.get(cause, ""))
-	var 行动: String = "攻击行动" if 提示.contains("攻击行动") \
-		else ("法术行动" if 提示.contains("法术行动") else "行动")
+	var 行动: String = ""
+	if allow_action > 0:
+		var 攻: bool = GConst.放行动作(GConst.ActionType.Attack, allow_action)
+		var 法: bool = GConst.放行动作(GConst.ActionType.Magic, allow_action)
+		行动 = "攻击行动" if 攻 and not 法 else ("法术行动" if 法 and not 攻 else "行动")
+	if 行动.is_empty():
+		行动 = "攻击行动" if 提示.contains("攻击行动") \
+			else ("法术行动" if 提示.contains("法术行动") else "行动")
 	var 冒号: int = 提示.find("：")
 	var 特性: String = 提示.substr(冒号 + 1).strip_edges() if 冒号 >= 0 else ""
 	var 底: String = "额外【%s】" % 行动
@@ -2661,7 +2669,7 @@ func _清除额外攻击响应选择() -> void:
 
 
 ## 额外行动询问：把每个可选 cause 变成一个按钮，点哪个就直接进入哪个额外行动
-func _进入额外行动(causes: Array, 可发动: Array) -> void:
+func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = []) -> void:
 	_mode = 3
 	_是技能询问 = false
 	_skill_ask_id = -1
@@ -2676,9 +2684,11 @@ func _进入额外行动(causes: Array, 可发动: Array) -> void:
 	_清空技能按钮()
 	for cause: Variant in causes:
 		var c: int = int(cause)
-		var 攻击: bool = _是攻击额外行动(c)
+		var idx: int = causes.find(cause)
+		var allow: int = int(允许[idx]) if idx >= 0 and idx < 允许.size() else 0
+		var 攻击: bool = _是攻击额外行动(c, allow)
 		var 按钮: 技能按钮 = _新技能按钮(0)
-		按钮.设置选项(_额外行动按钮文本(c),
+		按钮.设置选项(_额外行动按钮文本(c, allow),
 			额外攻击按钮色 if 攻击 else GConst.skill_type_color(c), 0)
 		按钮.设置说明(_额外行动按钮说明(c))
 		按钮.设置选项可用(可发动.has(c))
@@ -2944,9 +2954,10 @@ func _构建技能按钮(cmds: Array) -> void:
 	var 首位: Dictionary = cmds[0] if not cmds.is_empty() else {}
 	if bool(首位.get("is_extra", false)) and int(首位.get("extra_cause", 0)) > 0:
 		var 当前来源: int = int(首位.get("extra_cause", 0))
-		var 当前攻击: bool = _是攻击额外行动(当前来源)
+		var 当前类型: int = int(首位.get("respond_id", 0))
+		var 当前攻击: bool = _是攻击额外行动(当前来源, 当前类型)
 		var 当前按钮: 技能按钮 = _新技能按钮(0)
-		当前按钮.设置选项(_额外行动按钮文本(当前来源),
+		当前按钮.设置选项(_额外行动按钮文本(当前来源, 当前类型),
 			额外攻击按钮色 if 当前攻击 else GConst.skill_type_color(当前来源), 0)
 		当前按钮.设置说明(_额外行动按钮说明(当前来源))
 		当前按钮.设置选中(true)
@@ -2960,7 +2971,7 @@ func _构建技能按钮(cmds: Array) -> void:
 		if 技能类型 == GConst.ActionType.ChooseExtraAction:
 			var cause: int = int(args[0]) if not args.is_empty() else 0
 			var 切换按钮: 技能按钮 = _新技能按钮(0)
-			切换按钮.设置选项(_额外行动按钮文本(cause), 额外攻击按钮色, 0)
+			切换按钮.设置选项(_额外行动按钮文本(cause, GConst.ActionType.Attack), 额外攻击按钮色, 0)
 			切换按钮.设置说明(_额外行动按钮说明(cause))
 			切换按钮.connect("点击", func(_技能号: int) -> void:
 				_发送行动(GConst.ActionType.ChooseExtraAction, 0, [], [], [cause]))

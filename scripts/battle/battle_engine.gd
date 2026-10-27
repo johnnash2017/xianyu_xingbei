@@ -1451,7 +1451,7 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 
 
 func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], src_id: int = -1,
-		card_max: int = 0, card_rule: String = "", ask_text: String = "") -> void:
+		card_max: int = 0, card_rule: String = "", ask_text: String = "", allow_actions: Array = []) -> void:
 	# 记录本次询问，供超时构造默认回复
 	_pending_respond_id = respond_id
 	_pending_args = args.duplicate()
@@ -1464,6 +1464,8 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 		"card_ids": [],
 		"args": args,
 	}
+	if not allow_actions.is_empty():
+		cmd["allow_actions"] = allow_actions
 	# 魔弹传递等少数应答需要放宽选牌上限 / 给提示（10603 弃 2 张同系牌视为魔弹）
 	if card_max > 0:
 		cmd["card_max"] = card_max
@@ -2850,7 +2852,8 @@ class SAdditionalAction:
 				# 角色二次校验未通过（服务端 v_additional_action）：提示并重新询问
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 				var 参数2: Array = _询问参数(cur)
-				e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, 参数2[0], 参数2[1])
+				e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, 参数2[0], 参数2[1],
+					-1, 0, "", "", 参数2[2])
 				e.wait_for(cur.id, GConst.Msg.Respond)
 				return BattleEngine.WAIT
 			if idx >= 0:
@@ -2860,22 +2863,26 @@ class SAdditionalAction:
 			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
 		var 参数: Array = _询问参数(cur)
-		e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, 参数[0], 参数[1])
+		e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, 参数[0], 参数[1],
+			-1, 0, "", "", 参数[2])
 		e.wait_for(cur.id, GConst.Msg.Respond)
 		return BattleEngine.WAIT
 
 
-	## 额外行动询问参数：causes = 全部可选；可发动 = 当前 v_additional_action 认可的。
-	## 后者作为询问的 dst_ids 下发，客户端据此把「确定」/选项按钮置灰（不能发动也能点「取消」跳过）
+	## 额外行动询问参数：causes = 全部可选；可发动 = 当前 v_additional_action 认可的；
+	## 允许 = 每份额外行动各自允许的行动种类（客户端据此写「额外【攻击行动】」）。
+	## 可发动作为询问的 dst_ids 下发，客户端据此把「确定」/选项按钮置灰（不能发动也能点「取消」跳过）
 	func _询问参数(cur: BattlePlayer) -> Array:
 		var causes: Array = []
 		var 可发动: Array = []
+		var 允许: Array = []
 		for a: Dictionary in cur.additional_actions:
 			var c: int = int(a["cause"])
 			causes.append(c)
+			允许.append(int(a.get("allow_action", 0)))
 			if cur.v_additional_action(c) == GConst.GE_SUCCESS:
 				可发动.append(c)
-		return [causes, 可发动]
+		return [causes, 可发动, 允许]
 
 	## 进入某份额外行动：移除它、广播技能通知（授予者已宣告过时不重复），
 	## 再压入额外行动阶段（允许放弃）与其「被选中」代价钩子

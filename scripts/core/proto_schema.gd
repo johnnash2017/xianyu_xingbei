@@ -166,6 +166,9 @@ const SUB: Dictionary = {
 		# 攻击结束响应期间可选的「已获得但还没用的攻击行动」cause 列表（客户端摆成红色快捷按钮）：
 		# 玩家点一个就放弃剩余响应、直接进入该额外攻击。
 		33: {"n": "extra_attack_causes", "t": "u32", "r": true},
+		# 额外行动询问里每个 cause 各自允许的行动种类（GConst.ActionType；与 args 的 cause 一一对应）：
+		# 客户端据此把默认按钮写成「额外【攻击行动】」而不是「额外【行动】」。
+		34: {"n": "allow_actions", "t": "u32", "r": true},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {
