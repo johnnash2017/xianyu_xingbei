@@ -2640,8 +2640,18 @@ func _额外行动按钮文本(cause: int, allow_action: int = 0) -> String:
 	return 底 if 特性.is_empty() else 底 + "：" + 特性
 
 
-## 额外行动按钮的悬停说明：优先用「额外行动提示」的完整句，没有再退回技能说明。
+## 攻击额外行动里本地选中的 cause：只在本次确实要出手时随行动一起提交（服务端据此换队消耗）
+func _额外攻击行动参数() -> Array:
+	if _当前额外攻击选择 > 0 and not _额外攻击切换项.is_empty():
+		return [_当前额外攻击选择]
+	return []
+
+
+## 额外行动按钮的悬停说明：优先用完整技能提示（含技能名 / 类型），不要只给一小段效果
 func _额外行动按钮说明(cause: int) -> String:
+	var 单个: String = 角色技能提示.单个技能(cause)
+	if not 单个.is_empty():
+		return 单个
 	var 提示: String = str(GConst.额外行动提示.get(cause, ""))
 	if not 提示.is_empty():
 		return 提示
@@ -3746,7 +3756,7 @@ func _on_player_clicked(player_id: int) -> void:
 		return
 	# 攻击：选好攻击牌后点敌方头像就直接打出去，不用再按「确定」
 	if _mode == 1 and _选中是攻击牌():
-		_发送行动(GConst.ActionType.Attack, 0, [player_id], _sel_cards, [])
+		_发送行动(GConst.ActionType.Attack, 0, [player_id], _sel_cards, _额外攻击行动参数())
 		return
 	# 法术：选好法术牌后点目标就直接释放（不点目标＝对自己，那条走「确定」）
 	if _mode == 1 and _选中是法术牌():
@@ -4530,9 +4540,7 @@ func _on_ok() -> void:
 			if _sel_players.is_empty():
 				_指令提示("攻击请点敌方头像出手（选好攻击牌后直接点要打的人）")
 				return
-			var 额外参数: Array = []
-			if _当前额外攻击选择 > 0 and not _额外攻击切换项.is_empty():
-				额外参数 = [_当前额外攻击选择]
+			var 额外参数: Array = _额外攻击行动参数()
 			_发送行动(GConst.ActionType.Attack, 0, _sel_players, _sel_cards, 额外参数)
 		else:
 			var dst: Array = _sel_players
