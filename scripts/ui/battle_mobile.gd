@@ -2374,6 +2374,17 @@ func _进入技能询问() -> void:
 		# 【天使之歌】：询问一到就把二级技能栏摆出来（此刻只有技能本体一颗），
 		# 选完目标再由 _刷新基础效果选项 把该目标面前的基础效果填进去 —— 不用先按一次「确定」
 		_进入二级技能栏(_skill_ask_id, null, [])
+	# 攻击结束响应期间：已获得但还没用的攻击行动摆成红色快捷按钮，点一个就放弃剩余响应、直接进入它
+	var 额外攻击: Array = _pending.get("extra_attack_causes", [])
+	if not 额外攻击.is_empty():
+		for cause: Variant in 额外攻击:
+			var c: int = int(cause)
+			var 额外按钮: 技能按钮 = _新技能按钮(0)
+			额外按钮.设置选项(_额外行动按钮文本(c), 额外攻击按钮色, 0)
+			额外按钮.设置说明(_额外行动按钮说明(c))
+			额外按钮.connect("点击", func(_技能号: int) -> void:
+				_发送应答(GConst.RespondType.ChooseExtraAction, [], [], [c]))
+		_排技能栏.call_deferred()
 	# 技能询问同时写一行日志：它只挂在提示条上，错过就会一直等（看着像「点了确定没反应」）
 	# 被问的人看到的应是「要我做什么」：服务端下发了技能表「提示」列里对应的那一条
 	# （谁交给谁、几张）就直接用它，否则才退回技能说明。
@@ -2900,6 +2911,14 @@ func _构建技能按钮(cmds: Array) -> void:
 		# 让玩家看得见「有这个技能、现在用不了」
 		var 阶段放行: bool = GConst.放行动作(技能类型, _行动允许)
 		var args: Array = c.get("args", [])
+		if 技能类型 == GConst.ActionType.ChooseExtraAction:
+			var cause: int = int(args[0]) if not args.is_empty() else 0
+			var 切换按钮: 技能按钮 = _新技能按钮(0)
+			切换按钮.设置选项(_额外行动按钮文本(cause), 额外攻击按钮色, 0)
+			切换按钮.设置说明(_额外行动按钮说明(cause))
+			切换按钮.connect("点击", func(_技能号: int) -> void:
+				_发送行动(GConst.ActionType.ChooseExtraAction, 0, [], [], [cause]))
+			continue
 		if args.is_empty():
 			continue
 		var 技能号: int = int(args[0])

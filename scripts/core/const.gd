@@ -145,6 +145,7 @@ enum ActionType {
 	Any = 7,
 	AttackMagic = 8,
 	Unactional = 9,
+	ChooseExtraAction = 10,
 	None = 100000,
 }
 
@@ -184,6 +185,7 @@ enum RespondType {
 	DiscardCover = 16,
 	Role = 17,
 	InsertBan = 18,
+	ChooseExtraAction = 19,
 }
 
 # 指令类型（CommandRequest / ErrorInput）

@@ -296,6 +296,9 @@ func p_after_attack(ctx: Dictionary) -> int:
 # 玩家选择额外行动时：不屈意志（耗 1 点能量，摸 1 张牌并 +1 剑气；服务端 JianDi::BuQuYiZhi）
 # （引擎已在选中时广播该额外行动的技能宣告，此处不再重复）
 # ============================================================
+func extra_action_switchable(_cause: int) -> bool: return false
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id or int(ctx.get("cause", 0)) != BU_QU_YI_ZHI:
 		return SUCCESS

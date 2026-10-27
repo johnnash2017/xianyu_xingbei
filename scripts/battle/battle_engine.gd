@@ -95,6 +95,8 @@ var 行动额外来源: int = 0
 ## 本次行动阶段是否禁止「特殊行动」（购买/合成/提炼）。发动过「启动」技能后，行动阶段照旧继续，
 ## 但只能再攻击 / 法术，不能再走特殊行动（启动技与特殊行动互斥）
 var 行动禁特殊: bool = false
+## 攻击结束响应里玩家点了「额外攻击行动」快捷按钮：下一次 SAdditionalAction 直接进入它（不弹额外行动选择）
+var 首选额外行动: int = -1
 ## 测试指令「跳过自己回合」（战斗界面按 8）：记下是谁按的，行动阶段轮到他直接收尾（-1 = 无）
 var 测试跳过回合: int = -1
 ## 角色的 p_after_turn_end 要求「接下来的回合还是他」时写这里（月女【苍白之月】），
@@ -941,6 +943,11 @@ func _清空等待() -> void:
 func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	if _await_id != pid or kind != _await_kind:
 		return
+	# 攻击结束响应里的「额外攻击行动」快捷按钮：放弃剩余响应，下一次直接进入所选额外攻击
+	if kind == GConst.Msg.Respond \
+			and int(data.get("respond_id", 0)) == GConst.RespondType.ChooseExtraAction:
+		_选择额外攻击响应(pid, data)
+		return
 	# 分步应答（如【剑气斩】先在弹窗选好「移除几点剑气」）：只记下这一步，不算本次询问的最终回复，
 	# 继续等玩家选目标 / 目标超时兜底时再拿它用
 	if bool(data.get("partial", false)):
@@ -952,6 +959,41 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	wait_deadline_ms = 0
 	wait_total_ms = 0
 	# 等待已结束：先广播一次，客户端会收起等待进度条；随后 run() 若又进入等待会再广播
+	_broadcast_game()
+	run()
+
+
+## 攻击结束响应里点了「额外攻击行动」快捷按钮：记录首选，跳过当前响应钩子剩余角色，
+## 让本轮行动收尾后由 SAdditionalAction 直接进入该额外攻击。
+func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
+	if _await_id != pid or _await_kind != GConst.Msg.Respond:
+		return
+	var 钩: SHook = null
+	for i: int in range(_states.size() - 1, -1, -1):
+		if _states[i] is SHook and (_states[i] as SHook).hook == "p_after_attack":
+			钩 = _states[i]
+			break
+	if 钩 == null:
+		return
+	var args: Array = data.get("args", [])
+	var cause: int = int(args[0]) if not args.is_empty() else 0
+	var cur: BattlePlayer = players.get(pid)
+	if cur == null or cause <= 0:
+		return
+	var 有: bool = false
+	for a: Dictionary in cur.additional_actions:
+		if int(a.get("cause", 0)) == cause \
+				and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
+			有 = true
+			break
+	if not 有:
+		return
+	首选额外行动 = cause
+	_await_id = -1
+	_has_reply = false
+	wait_deadline_ms = 0
+	wait_total_ms = 0
+	钩._iter = order.size()
 	_broadcast_game()
 	run()
 
@@ -1390,6 +1432,21 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				"args": [int(sk.get("id", 0)), int(sk.get("need_card", 0)), int(sk.get("need_target", 0)),
 					int(sk.get("target_max", 0)), int(sk.get("card_source", GConst.CardSource.Hand))],
 			})
+	# 额外攻击行动阶段：把队列里其它「无选中代价」的攻击额外行动也摆出来，点一个就切换过去
+	if extra and extra_cause > 0 and GConst.放行动作(GConst.ActionType.Attack, action_type) \
+			and pl != null and pl.role != null:
+		for a: Dictionary in pl.additional_actions:
+			var c: int = int(a.get("cause", 0))
+			if c <= 0 or not bool(a.get("direct", false)):
+				continue
+			if not GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
+				continue
+			if not pl.role.extra_action_switchable(c):
+				continue
+			cmds.append({
+				"respond_id": GConst.ActionType.ChooseExtraAction, "src_id": pid,
+				"dst_ids": [], "card_ids": [], "args": [c], "extra_cause": c,
+			})
 	return cmds
 
 
@@ -1525,6 +1582,16 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	_pending_respond_id = skill_id
 	_pending_args = args.duplicate()
 	_pending_is_skill = true
+	# 攻击结束响应期间，把「已获得但还没用的攻击行动」一并下发给客户端做红色快捷按钮
+	if _当前状态 is SHook and (_当前状态 as SHook).hook == "p_after_attack" and pid == current_id:
+		var 额外攻击: Array = []
+		var 问者: BattlePlayer = players.get(pid)
+		if 问者 != null:
+			for a: Dictionary in 问者.additional_actions:
+				if GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
+					额外攻击.append(int(a.get("cause", 0)))
+		if not 额外攻击.is_empty():
+			cmd["extra_attack_causes"] = 额外攻击
 	# 超时兜底要用的三项（见 _build_timeout_reply）：不可取消的技能询问不许按「取消」收尾
 	_pending_skill_can_cancel = can_cancel
 	_pending_skill_need_target = need_target
@@ -2596,6 +2663,8 @@ class SActionPhase:
 	var 禁特殊: bool = false
 	## 额外行动的来源（cause；普通行动为 0）
 	var 额外来源: int = 0
+	## 当前这份额外行动的原始数据（切换额外攻击时退回队列用）
+	var 额外数据: Dictionary = {}
 	## 玩家挂机超时：本阶段已作废，直接收尾（tick 里置位，不替他出牌，也不宣告「无法行动」换手牌）
 	var 跳过: bool = false
 
@@ -2639,10 +2708,44 @@ class SActionPhase:
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
 			var at: int = int(r.get("action_type", GConst.ActionType.None))
+			if at == GConst.ActionType.ChooseExtraAction:
+				var 参数: Array = r.get("args", [])
+				e.切换额外攻击(self, cur, int(参数[0]) if not 参数.is_empty() else 0)
+				# 无论切换成功与否都回到本状态重新发行动询问（失败时保留原行动）
+				return BattleEngine.SUSPEND
 			return e.resolve_action(at, r)
 		e.ask_action(e.current_id, 允许, 可放弃, 额外, 禁特殊, 额外来源)
 		e.wait_for(e.current_id, GConst.Msg.Action)
 		return BattleEngine.WAIT
+
+
+## 切换当前额外攻击行动：把当前这份退回队列、取出一份新的直接额外攻击，重新发行动询问。
+## 只允许 direct（选中无额外代价）且角色认可可切换的额外行动，避免退款 / 重复扣代价。
+func 切换额外攻击(状态: SActionPhase, cur: BattlePlayer, cause: int) -> bool:
+	if cur == null or cur.role == null or not 状态.额外 or 状态.额外数据.is_empty():
+		return false
+	if not bool(状态.额外数据.get("direct", false)):
+		return false
+	if not cur.role.extra_action_switchable(int(状态.额外来源)):
+		return false
+	var idx: int = -1
+	for i: int in range(cur.additional_actions.size()):
+		var a: Dictionary = cur.additional_actions[i]
+		if int(a.get("cause", 0)) == cause and bool(a.get("direct", false)) \
+				and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))) \
+				and cur.role.extra_action_switchable(cause):
+			idx = i
+			break
+	if idx < 0:
+		return false
+	var 新: Dictionary = cur.additional_actions[idx].duplicate()
+	cur.additional_actions.remove_at(idx)
+	cur.additional_actions.append(状态.额外数据)
+	状态.额外数据 = 新
+	状态.允许 = int(新.get("allow_action", GConst.ActionType.Attack))
+	状态.额外来源 = cause
+	状态.禁特殊 = false
+	return true
 
 
 ## 回合结束：先处理额外行动，否则轮转到下家
@@ -2716,6 +2819,14 @@ class SAdditionalAction:
 		if cur == null or not cur.contains_action():
 			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
+		# 攻击结束响应里玩家点了某份额外攻击行动：直接进入它（不再弹额外行动选择）
+		if e.首选额外行动 >= 0:
+			var 期望: int = e.首选额外行动
+			e.首选额外行动 = -1
+			for i: int in range(cur.additional_actions.size()):
+				if int(cur.additional_actions[i].get("cause", 0)) == 期望 \
+						and cur.v_additional_action(期望) == GConst.GE_SUCCESS:
+					return _进入(e, cur, i, 期望)
 		# 声明了 direct 的额外行动（如圣女【圣疗】）不用先问：直接进入它的额外行动阶段。
 		# 该阶段允许「放弃行动」，想跳过在那里放弃即可，省掉「再点一次技能按钮」这一步。
 		if not e.has_reply():
@@ -2771,13 +2882,16 @@ class SAdditionalAction:
 	func _进入(e: BattleEngine, cur: BattlePlayer, idx: int, cause: int) -> int:
 		var 允许: int = int(cur.additional_actions[idx]["allow_action"])
 		var 跳过宣告: bool = bool(cur.additional_actions[idx].get("skip_notice", false))
+		var 数据: Dictionary = cur.additional_actions[idx].duplicate()
 		cur.additional_actions.remove_at(idx)
 		if not 跳过宣告:
 			e.broadcast(GConst.Msg.Skill, {"skill_id": cause, "src_id": cur.id, "dst_ids": []})
 		# 先让角色结算「被选中」的代价（p_additional_action），再进入额外行动阶段。
 		# 额外行动阶段只放行这份额外行动声明的种类、且允许放弃（对照原版
 		# PlayerEntity::p_additional_action → StateActionPhase(it->allowAction, true)）
-		e.push(SActionPhase.new(允许, true, true, false, cause))
+		var 阶段: SActionPhase = SActionPhase.new(允许, true, true, false, cause)
+		阶段.额外数据 = 数据
+		e.push(阶段)
 		e.push(SHook.new("p_additional_action", {"player": cur.id, "cause": cause}, []))
 		return BattleEngine.CONTINUE
 

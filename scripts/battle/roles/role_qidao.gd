@@ -231,6 +231,9 @@ func v_additional_action(cause: int) -> int:
 # 玩家选择额外行动时：迅捷赐福移除赐福牌 → 法力潮汐消耗 1 能量
 # （引擎已在选中时广播该额外行动的技能宣告，此处不再重复）
 # ============================================================
+func extra_action_switchable(_cause: int) -> bool: return false
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	var cause: int = int(ctx.get("cause", 0))
 	var pid: int = int(ctx.get("player", -1))

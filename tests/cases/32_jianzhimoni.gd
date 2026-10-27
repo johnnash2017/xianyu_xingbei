@@ -598,6 +598,12 @@ func 跑() -> void:
 		"4501 二选一应配「攻击结束二选一」")
 	检(bool(GConst.技能指示器.get(4504, {}).get("攻击结束二选一", false)),
 		"4504 二选一应配「攻击结束二选一」")
+	# 攻击结束响应里的额外攻击快捷按钮数据（4501 已进队列）必须过协议
+	var 额外编码: PackedByteArray = ProtoCodec.encode_named("Command",
+		{"extra_attack_causes": [4501]})
+	var 额外解码: Dictionary = ProtoCodec.decode_named("Command", 额外编码)
+	检((额外解码.get("extra_attack_causes", []) as Array) == [4501],
+		"Command 协议应包含 extra_attack_causes：%s" % str(额外解码.get("extra_attack_causes", [])))
 	_应答([4501])
 	检(角色.p_after_attack(二选一上下文) == BattleRole.WAIT,
 		"用掉 4501 后应继续问 4504")

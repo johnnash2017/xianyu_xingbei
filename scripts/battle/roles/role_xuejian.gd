@@ -129,6 +129,9 @@ func v_additional_action(cause: int) -> int:
 
 
 ## 玩家选中额外行动时：-1【鲜血】，自己受 2 点法术伤害
+func extra_action_switchable(_cause: int) -> bool: return false
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS

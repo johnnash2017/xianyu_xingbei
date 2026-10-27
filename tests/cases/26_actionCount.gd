@@ -357,7 +357,42 @@ func 跑() -> void:
 	检(玩家1.action_count() == 0 and 玩家1.special_action_count == 0,
 		"被取消的技能行动应撤销计数：%s" % str(引擎.行动计数(1)))
 	检(角色.行动结束记录.is_empty(), "被取消的技能行动不应触发通用 p_action_end")
-	检(引擎.current_id == 1 and 引擎._await_id == 1,
-		"取消技能行动应退回行动阶段而不是结束回合（当前 %d / 等待 %s）" % [引擎.current_id, str(引擎._await_id)])
+	# ---- 场景 8：额外攻击阶段可在「无选中代价」的额外攻击之间切换 ----
+	_重置战斗()
+	var 当前额外: int = 计数角色.额外攻击来源
+	var 另一额外: int = GConst.技能_剑影断念
+	玩家1.add_action(GConst.ActionType.Attack, 另一额外, true)
+	var 额外阶段: BattleEngine.SActionPhase = BattleEngine.SActionPhase.new(
+		GConst.ActionType.Attack, true, true, false, 当前额外)
+	额外阶段.额外数据 = {
+		"allow_action": GConst.ActionType.Attack, "cause": 当前额外,
+		"direct": true, "skip_notice": true,
+	}
+	引擎.push(额外阶段)
+	引擎.run()
+	检(引擎.行动额外 and 引擎.行动额外来源 == 当前额外,
+		"应进入当前额外攻击阶段（额外 %s / 来源 %s）" % [str(引擎.行动额外), str(引擎.行动额外来源)])
+	var 切换命令表: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	var 有切换: bool = false
+	for c: Dictionary in 切换命令表:
+		if int(c.get("respond_id", 0)) == GConst.ActionType.ChooseExtraAction \
+				and (c.get("args", []) as Array) == [另一额外]:
+			有切换 = true
+			break
+	检(有切换, "额外攻击阶段的技能栏没有下发另一份额外攻击的切换按钮：%s" % str(切换命令表))
+	引擎.on_message(1, GConst.Msg.Action, {
+		"action_type": GConst.ActionType.ChooseExtraAction, "src_id": 1,
+		"args": [另一额外], "card_ids": [], "dst_ids": [],
+	})
+	检(引擎.行动额外来源 == 另一额外,
+		"切换后当前额外行动来源应变成 %d，实际 %d" % [另一额外, 引擎.行动额外来源])
+	var 退回: bool = false
+	for a: Dictionary in 玩家1.additional_actions:
+		if int(a.get("cause", 0)) == 当前额外:
+			退回 = true
+			break
+	检(退回, "切换后原来那份额外行动应退回队列：%s" % str(玩家1.additional_actions))
+	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Action,
+		"切换后应重新等玩家 1 选择攻击牌（等待 %s / %s）" % [str(引擎._await_id), str(引擎._await_kind)])
 	引擎._states.clear()
 	引擎._清空等待()

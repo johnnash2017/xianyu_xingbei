@@ -509,6 +509,9 @@ func p_after_attack(ctx: Dictionary) -> int:
 # ============================================================
 # 玩家选择额外行动时：一击无念（移除 4 点残心并让本次攻击无视圣盾与圣光）
 # ============================================================
+func extra_action_switchable(_cause: int) -> bool: return false
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS

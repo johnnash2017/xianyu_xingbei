@@ -253,6 +253,9 @@ func v_additional_action(cause: int) -> int:
 # 玩家选中额外行动时：结算风怒追击/剑影的代价
 # 引擎在选中时会统一广播技能通知，故此处只处理回合限定标记与能量扣除
 # ============================================================
+func extra_action_switchable(_cause: int) -> bool: return false
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS

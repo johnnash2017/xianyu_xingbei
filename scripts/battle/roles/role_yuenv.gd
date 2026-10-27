@@ -440,6 +440,9 @@ func p_magic_skill(action: Dictionary) -> int:
 # 玩家选择额外行动时（服务端 YueNv::p_additional_action）：
 # 选中【苍白之月】授予的攻击行动则记为不可应战，其他选择一律清除
 # ============================================================
+func extra_action_switchable(_cause: int) -> bool: return false
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS

@@ -349,6 +349,9 @@ func v_additional_action(cause: int) -> int:
 # 玩家选中额外行动时：置「修罗连斩」标记供 v_attack 限制火系牌
 # （对照服务端 p_additional_action：选中修罗连斩置位 used/using，其余额外行动清除 using）
 # ============================================================
+func extra_action_switchable(_cause: int) -> bool: return false
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS

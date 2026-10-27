@@ -294,6 +294,9 @@ func _shen_sheng_zhui_ji(pid: int) -> int:
 # 引擎在选中时会统一广播技能通知；服务端选中后会把「已授予」标记置回 false，
 # 使本次额外攻击结束后仍可再次授予，故此处同步重置
 # ============================================================
+func extra_action_switchable(_cause: int) -> bool: return false
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS

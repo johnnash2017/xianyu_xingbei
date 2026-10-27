@@ -248,6 +248,9 @@ func _jie_jiao_jie_zao(pid: int) -> int:
 # 玩家选择额外行动时：戒骄戒躁扣 1 能量（优先水晶）并解除热血沸腾形态
 # （引擎已在选中时广播该额外行动的技能宣告，此处不再重复）
 # ============================================================
+func extra_action_switchable(_cause: int) -> bool: return false
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id or int(ctx.get("cause", 0)) != JIE_JIAO_JIE_ZAO:
 		return SUCCESS
