@@ -245,7 +245,8 @@
       "status": "pending",
       "implementer": "",
       "reviewer": "",
-      "issues": []
+      "issues": [],
+      "chain": "core"
     },
     {
       "id": "F3",
@@ -267,7 +268,8 @@
       "status": "pending",
       "implementer": "",
       "reviewer": "",
-      "issues": []
+      "issues": [],
+      "chain": "core"
     },
     {
       "id": "F4",
@@ -291,7 +293,8 @@
       "status": "pending",
       "implementer": "",
       "reviewer": "",
-      "issues": []
+      "issues": [],
+      "chain": "core"
     },
     {
       "id": "F6",
@@ -314,7 +317,8 @@
       "status": "pending",
       "implementer": "",
       "reviewer": "",
-      "issues": []
+      "issues": [],
+      "chain": "core"
     },
     {
       "id": "F7",
@@ -336,7 +340,8 @@
       "status": "pending",
       "implementer": "",
       "reviewer": "",
-      "issues": []
+      "issues": [],
+      "chain": "core"
     },
     {
       "id": "F8",
@@ -358,7 +363,8 @@
       "status": "pending",
       "implementer": "",
       "reviewer": "",
-      "issues": []
+      "issues": [],
+      "chain": "core"
     },
     {
       "id": "F9",
@@ -380,7 +386,8 @@
       "status": "pending",
       "implementer": "",
       "reviewer": "",
-      "issues": []
+      "issues": [],
+      "chain": "core"
     },
     {
       "id": "R38",

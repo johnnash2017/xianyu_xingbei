@@ -7,12 +7,15 @@ BASE = Path(__file__).resolve().parent
 
 
 def T(tid, title, order, deps, files, size, acceptance, desc=""):
-    return {
+    t = {
         "id": tid, "title": title, "order": order, "deps": deps,
         "files": files, "size": size, "acceptance": acceptance,
         "desc": desc, "status": "pending", "implementer": "", "reviewer": "",
         "issues": [],
     }
+    if tid in ("F2", "F3", "F4", "F6", "F7", "F8", "F9"):
+        t["chain"] = "core"
+    return t
 
 
 tasks = [

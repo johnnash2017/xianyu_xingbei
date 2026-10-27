@@ -110,6 +110,31 @@ def active_claims(data: dict, skip: str = "") -> list[dict]:
     return [t for t in data["tasks"] if t["id"] != skip and t.get("status") in ACTIVE]
 
 
+def deps_ok(data: dict, t: dict, chain: bool) -> bool:
+    for d in t.get("deps", []):
+        st = by_id(data, d).get("status")
+        if st == DONE:
+            continue
+        # 核心链：同一名 core 代理可以先把依赖做到 review，再继续做下一颗核心能力；
+        # 评审仍会在本轮/下一轮独立进行。其它任务仍要求依赖 done。
+        if chain and t.get("chain") == "core" and st in ("review", "reviewing"):
+            continue
+        return False
+    return True
+
+
+def can_claim_files(data: dict, t: dict, agent: str, chain: bool) -> bool:
+    for o in active_claims(data):
+        if not overlap(t.get("files", []), o.get("files", [])):
+            continue
+        # 同一名 core 代理可以连续改同一批核心文件（它自己之前的任务是 review）
+        if chain and t.get("chain") == "core" and o.get("chain") == "core" \
+                and o.get("implementer") == agent:
+            continue
+        return False
+    return True
+
+
 def claim_path(tid: str) -> Path:
     return CLAIMS / f"{tid}.json"
 
@@ -130,16 +155,16 @@ def write_claim(t: dict, agent: str) -> None:
         f.write("\n")
 
 
-def cmd_next(data: dict, agent: str) -> None:
+def cmd_next(data: dict, agent: str, chain: bool = False) -> None:
     lock()
     try:
         cand = []
         for t in data["tasks"]:
             if t.get("status") != "pending":
                 continue
-            if not deps_done(data, t):
+            if not deps_ok(data, t, chain):
                 continue
-            if any(overlap(t.get("files", []), o.get("files", [])) for o in active_claims(data)):
+            if not can_claim_files(data, t, agent, chain):
                 continue
             cand.append(t)
         cand.sort(key=lambda x: (x.get("order", 9999), x["id"]))
@@ -150,6 +175,34 @@ def cmd_next(data: dict, agent: str) -> None:
         t["status"] = "claimed"
         t["implementer"] = agent
         t["claimed_at"] = now()
+        write_claim(t, agent)
+        save(data)
+        print(json.dumps(t, ensure_ascii=False, indent=2))
+    finally:
+        unlock()
+
+
+def cmd_next_fix(data: dict, agent: str) -> None:
+    """修复代理：认领 needs_fix / blocked 的任务。修复代理不能是该任务的实现者或评审者。"""
+    lock()
+    try:
+        cand = [t for t in data["tasks"]
+                if t.get("status") in ("needs_fix", "blocked")
+                and t.get("implementer") != agent
+                and t.get("reviewer") != agent
+                and not any(overlap(t.get("files", []), o.get("files", []))
+                            for o in active_claims(data, skip=t["id"]))]
+        cand.sort(key=lambda x: (x.get("order", 9999), x["id"]))
+        if not cand:
+            print("NO_TASK")
+            return
+        t = cand[0]
+        t["previous_implementer"] = t.get("implementer", "")
+        t["status"] = "claimed"
+        t["implementer"] = agent
+        t["reviewer"] = ""
+        t["claimed_at"] = now()
+        t["fixing"] = True
         write_claim(t, agent)
         save(data)
         print(json.dumps(t, ensure_ascii=False, indent=2))
@@ -331,7 +384,12 @@ def main() -> None:
 
     p = sub.add_parser("next")
     p.add_argument("--agent", required=True)
-    p.set_defaults(func=lambda data, a: cmd_next(data, a.agent))
+    p.add_argument("--chain", action="store_true", help="核心链：允许同一代理连续做 core 任务（依赖处于 review 也可继续）")
+    p.set_defaults(func=lambda data, a: cmd_next(data, a.agent, a.chain))
+
+    p = sub.add_parser("next-fix")
+    p.add_argument("--agent", required=True)
+    p.set_defaults(func=lambda data, a: cmd_next_fix(data, a.agent))
 
     p = sub.add_parser("finish")
     p.add_argument("--agent", required=True)

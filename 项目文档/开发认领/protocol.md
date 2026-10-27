@@ -17,9 +17,19 @@
 
 ```bash
 python 项目文档/开发认领/claim.py next --agent W1
+python 项目文档/开发认领/claim.py next --agent W1 --chain     # 核心代理：连续做 core 任务
 python 项目文档/开发认领/claim.py finish --agent W1 --id F1 --summary "做了什么" --tests "跑了什么" --files "a.gd,b.gd"
 python 项目文档/开发认领/claim.py finish --agent W1 --id F1 --blocked --summary "卡住原因"
+python 项目文档/开发认领/claim.py next-fix --agent FIX1       # 修复代理：认领 needs_fix / blocked
 ```
+
+### 核心链与修复
+
+- **核心链**：F2/F3/F4/F6/F7/F8/F9 共用 `battle_engine.gd` 等文件，由同一个核心代理 `next --chain` 连续做；
+  依赖处于 `review` 也可继续，同一代理可连续改同一批文件。核心代理每完成一颗仍要 `finish`，评审仍独立进行。
+- **修复**：评审退回的任务进入 `needs_fix`；修复代理用 `next-fix` 认领（不能是原实现者/评审者），修完 `finish` 回 `review`，
+  由**新的**评审代理复审。修复代理不修改范围外文件，不自己评审。
+- 所有代理的最终短报告只写 task id、改动文件、测试/阻塞，不要贴大段代码。
 
 - `next` 会原子地检查：依赖是否都 `done`、是否与正在 `claimed/review/reviewing/needs_fix/blocked` 的任务文件范围重叠。没有可认领时输出 `NO_TASK`。
 - 认领后 **只能改任务 `files` 列出的文件**；不要为了“顺手”改共享文件、其他角色、设计表、CSV、DataTables、客户端常量。需要跨范围时：`finish --blocked` 说明原因，主代理处理。
