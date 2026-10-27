@@ -1187,6 +1187,8 @@ func _on_error(_err_id: int, msg: String) -> void:
 const 展示停留秒数: float = 6.4
 ## 展示牌从玩家头像飞到展示位的时长（秒）
 const 展示飞行时长: float = 0.6
+## 选中后从展示位飞向角色头像的时长（秒）
+const 选走飞行时长: float = 1.0
 ## 多张展示牌之间的起飞间隔（秒）：一张接一张，不叠在一起
 const 展示飞行间隔: float = 0.06
 ## 展示牌起飞时的缩放：小一点起步，飞到展示位正好长回原大
@@ -1346,11 +1348,13 @@ func _选走展示牌(玩家id: int, 牌号: int) -> void:
 	var 终点: Vector2 = 中心 - ShowCardArea.position - 手牌尺寸 * 0.5
 	var t: Tween = 选中视图.create_tween()
 	t.set_parallel(true)
-	t.tween_property(选中视图, "position", 终点, 0.45) \
+	t.tween_property(选中视图, "position", 终点, 选走飞行时长) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	t.tween_property(选中视图, "scale", Vector2.ONE * 0.35, 0.45) \
+	t.tween_property(选中视图, "scale", Vector2.ONE * 0.35, 选走飞行时长) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	t.tween_property(选中视图, "modulate:a", 0.0, 0.3).set_delay(0.15)
+	# 前 60% 保持可见，最后 40% 淡出，正好在飞到头像时消失
+	t.tween_property(选中视图, "modulate:a", 0.0, 选走飞行时长 * 0.4) \
+		.set_delay(选走飞行时长 * 0.6)
 	t.finished.connect(选中视图.queue_free)
 
 
