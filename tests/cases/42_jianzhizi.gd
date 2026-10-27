@@ -831,30 +831,45 @@ func _测剑之子说明书() -> void:
 	var 失效剑守位: int = 在场色.find(角色技能提示.失效行标记 + "剑守誓言")
 	检(置灰位 >= 0 and 失效剑守位 > 置灰位,
 		"置灰颜色应包住失效的剑守誓言：%d / %d" % [置灰位, 失效剑守位])
-	# 梦想剑启用（dream_tier>0）时，剑之魔女 / 剑之子的说明里梦想剑那行用独有技绿
-	var 绿45: String = 角色技能提示.梦想剑标绿(Data.role_skill_info(45), true)
-	检(绿45.contains("[color=#A9FF00]梦想剑"),
-		"剑之魔女的梦想剑启用后应标绿")
-	var 不绿45: String = 角色技能提示.梦想剑标绿(Data.role_skill_info(45), false)
-	检(not 不绿45.contains("[color=#A9FF00]梦想剑"),
-		"梦想剑未启用时不应标绿")
-	var 绿108: String = 角色技能提示.梦想剑标绿(在场, true)
-	检(绿108.contains("[color=#A9FF00]梦想剑"),
-		"剑之子的梦想剑启用后应标绿")
+	# 梦想剑按档位逐段标绿：第 1 段 / 第 2 段 / 第 3 段
+	var 句1: String = "[color=#A9FF00]回合内你的主动攻击无视【圣盾】[/color]"
+	var 句2: String = "[color=#A9FF00]回合内你的主动攻击对方无法应战[/color]"
+	var 句3: String = "[color=#A9FF00]回合内你的主动攻击强制命中[/color]"
+	var 绿1: String = 角色技能提示.梦想剑标绿(Data.role_skill_info(45), 1)
+	检(绿1.contains(句1) and not 绿1.contains(句2) and not 绿1.contains(句3),
+		"档位 1 只应标绿「无视圣盾」")
+	var 绿2: String = 角色技能提示.梦想剑标绿(Data.role_skill_info(45), 2)
+	检(绿2.contains(句1) and 绿2.contains(句2) and not 绿2.contains(句3),
+		"档位 2 应标绿前两段")
+	var 绿3: String = 角色技能提示.梦想剑标绿(Data.role_skill_info(45), 3)
+	检(绿3.contains(句1) and 绿3.contains(句2) and 绿3.contains(句3),
+		"档位 3 应标绿三段")
+	检(not 角色技能提示.梦想剑标绿(Data.role_skill_info(45), 0).contains(句1),
+		"档位 0 不应标绿")
+	var 绿108: String = 角色技能提示.梦想剑标绿(在场, 2)
+	检(绿108.contains(句1) and 绿108.contains(句2) and not 绿108.contains(句3),
+		"剑之子档位 2 应标绿前两段")
 	# 用客户端快照里的 dream_tier 驱动 45 / 108 的悬停说明
 	var 旧列表: Array[GPlayer] = Data.player_list.duplicate()
 	var 假45: GPlayer = GPlayer.new()
 	假45.role_id = 45
+	假45.dream_tier = 1
 	var 假108: GPlayer = GPlayer.new()
 	假108.role_id = 108
-	# 梦想剑可用即标绿，不要求先打 1/2/4 次攻击：45 常驻；108 有 45 在场即可
+	假108.dream_tier = 1
 	Data.player_list = [假45, 假108]
-	检(角色技能提示.悬浮提示(45, 1.0, true).contains("[color=#A9FF00]梦想剑"),
-		"剑之魔女对局中梦想剑说明应标绿")
-	检(角色技能提示.悬浮提示(108, 1.0, true).contains("[color=#A9FF00]梦想剑"),
-		"剑之子有剑之魔女在场时梦想剑说明应标绿")
+	检(角色技能提示.悬浮提示(45, 1.0, true).contains(句1),
+		"剑之魔女档位 1 时应标绿第一段")
+	检(角色技能提示.悬浮提示(108, 1.0, true).contains(句1),
+		"剑之子档位 1 时应标绿第一段")
+	假108.dream_tier = 2
+	检(角色技能提示.悬浮提示(108, 1.0, true).contains(句2),
+		"剑之子档位 2 时应标绿第二段")
+	假108.dream_tier = 3
+	检(角色技能提示.悬浮提示(108, 1.0, true).contains(句3),
+		"剑之子档位 3 时应标绿第三段")
 	# 剑之魔女不在场：108 的梦想剑是置灰借用技，不应标绿
 	Data.player_list = [假108]
-	检(not 角色技能提示.悬浮提示(108, 1.0, true).contains("[color=#A9FF00]梦想剑"),
+	检(not 角色技能提示.悬浮提示(108, 1.0, true).contains(句1),
 		"剑之魔女不在场时剑之子的梦想剑不应标绿")
 	Data.player_list = 旧列表

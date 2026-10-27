@@ -49,12 +49,12 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0, 对局中: b
 	var 信息: String = Data.role_skill_info(角色号)
 	if 角色号 == 108 and 信息 != "":
 		信息 = 剑之子对局说明(信息, 对局中 and _剑之魔女在场())
-	# 梦想剑被启用时把说明标成独有技绿：
-	# - 剑之魔女（45）的梦想剑是常驻被动，对局中即启用；
-	# - 剑之子（108）只有剑之魔女在场、借到梦想剑时才启用。
-	# 不要求先打出 1/2/4 次攻击（档位是效果强弱，不是技能是否可用）。
+	# 梦想剑按当前档位逐段标绿：第 1 次攻击后第一段、第 2 次后两段、第 4 次后三段。
+	# 剑之魔女（45）与借到梦想剑的剑之子（108）都按各自快照里的 dream_tier 现算。
 	if 对局中 and (角色号 == 45 or (角色号 == 108 and _剑之魔女在场())):
-		信息 = 梦想剑标绿(信息)
+		var 档位: int = _梦想剑档位(角色号)
+		if 档位 > 0:
+			信息 = 梦想剑标绿(信息, 档位)
 	if 信息 != "":
 		# 角色名就压在最上面，第一个分段标题（普通技）上方也要留白，和后面几类一致
 		文本 += "\n" + 上色(信息, 正文号, 标题号, true)
@@ -203,18 +203,34 @@ static func _标记失效行(行: String) -> String:
 
 ## 梦想剑 4503 技能说明标绿：只标「技能名 + 说明」，行首【被动】保留原类型色。
 ## 绿值与卡面「独有技」技能名同色（A9FF00）。启用中技能在多行时也只处理首行。
-static func 梦想剑标绿(原文: String, 启用: bool = true) -> String:
-	if not 启用:
+static func 梦想剑标绿(原文: String, 档位: int) -> String:
+	if 档位 <= 0:
 		return 原文
+	var 短语表: Array[String] = [
+		"回合内你的主动攻击无视【圣盾】",
+		"回合内你的主动攻击对方无法应战",
+		"回合内你的主动攻击强制命中",
+	]
 	var 行列表: Array[String] = []
 	for 行: String in 原文.split("\n"):
 		if 行.lstrip("　 ").begins_with("【被动】梦想剑"):
-			var 右括号: int = 行.find("】")
-			if 右括号 >= 0:
-				行 = 行.substr(0, 右括号 + 1) + "[color=#%s]%s[/color]" % [
-					梦想剑启用色, 行.substr(右括号 + 1)]
+			for i: int in range(mini(档位, 短语表.size())):
+				var 短语: String = 短语表[i]
+				var 位置: int = 行.find(短语)
+				if 位置 >= 0:
+					行 = 行.substr(0, 位置) + "[color=#%s]%s[/color]" % [
+						梦想剑启用色, 短语] + 行.substr(位置 + 短语.length())
 		行列表.append(行)
 	return "\n".join(行列表)
+
+
+## 客户端快照里该角色的梦想剑档位（45 / 108 各一份）；没有该角色或未推进返回 0。
+static func _梦想剑档位(角色号: int) -> int:
+	var 最高: int = 0
+	for 玩家: GPlayer in Data.player_list:
+		if 玩家 != null and 玩家.role_id == 角色号:
+			最高 = maxi(最高, int(玩家.dream_tier))
+	return 最高
 
 
 ## 场上是否有剑之魔女（45）；选角/非对局由调用方传 对局中=false，不会读旧快照。
