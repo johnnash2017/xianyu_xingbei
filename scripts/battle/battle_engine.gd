@@ -979,11 +979,13 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 			钩 = _states[i]
 			break
 	if 钩 == null:
+		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
 	var args: Array = data.get("args", [])
 	var cause: int = int(args[0]) if not args.is_empty() else 0
 	var cur: BattlePlayer = players.get(pid)
 	if cur == null or cause <= 0:
+		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
 	var 有: bool = false
 	for a: Dictionary in cur.additional_actions:
@@ -992,6 +994,7 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 			有 = true
 			break
 	if not 有:
+		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
 	首选额外行动 = cause
 	var 牌表: Array = data.get("card_ids", [])

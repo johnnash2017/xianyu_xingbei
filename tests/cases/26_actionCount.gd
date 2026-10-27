@@ -396,3 +396,20 @@ func 跑() -> void:
 		"切换后应重新等玩家 1 选择攻击牌（等待 %s / %s）" % [str(引擎._await_id), str(引擎._await_kind)])
 	引擎._states.clear()
 	引擎._清空等待()
+
+	# ---- 场景 9：响应里已经点好手牌 + 目标，进入额外行动后直接发起攻击 ----
+	_重置战斗()
+	var 自动来源: int = 计数角色.额外攻击来源
+	角色.额外攻击牌 = [攻击牌甲.id]
+	角色.额外攻击目标 = [3]
+	玩家1.hand_cards.append(攻击牌甲.id)
+	玩家1.add_action(GConst.ActionType.Attack, 自动来源, true, true)
+	引擎.首选额外行动 = 自动来源
+	引擎.首选额外行动卡 = 攻击牌甲.id
+	引擎.首选额外行动目标 = 3
+	引擎.push(BattleEngine.SAdditionalAction.new())
+	引擎.run()
+	检(引擎.行动额外来源 == 自动来源,
+		"自动进入的额外行动来源不对：%d" % 引擎.行动额外来源)
+	检(引擎._await_id == 3 and 引擎._await_kind == GConst.Msg.Respond,
+		"点好手牌 + 目标后应直接进入攻击应战询问（等待 %s / %s）" % [str(引擎._await_id), str(引擎._await_kind)])

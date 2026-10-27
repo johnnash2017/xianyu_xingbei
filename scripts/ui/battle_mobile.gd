@@ -3731,18 +3731,23 @@ func _on_player_pressed(面板: 战斗玩家面板) -> void:
 ## 点不动的时候（不是该选目标的时机 / 他不是合法目标）什么都不做。
 ## 想看某人的角色技能说明：鼠标指向他的头像即可（说明框由容器摆，见 _显示角色说明）
 func _on_player_clicked(player_id: int) -> void:
+	# 攻击结束响应里选中额外攻击：点手牌 + 敌方头像＝发起这次额外攻击。
+	# 必须放在「目标锁死」之前 —— 响应技能自己的锁定目标状态不能挡住额外攻击的选目标。
+	if _额外攻击响应选择 > 0:
+		if not _玩家可选(player_id):
+			return
+		if _sel_cards.is_empty():
+			_指令提示("请先点一张攻击牌")
+			return
+		# 先不本地清空：等服务端真正接下这次额外攻击并下发新状态；
+		# 服务端若拒绝，响应选项还在，可以改选/重试，不会出现「选项没了、攻击也没出去」。
+		Logic.send_respond(GConst.RespondType.ChooseExtraAction, [player_id],
+			[_sel_cards[0]], [_额外攻击响应选择])
+		return
 	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：点头像什么都不做
 	if _目标锁死:
 		return
 	if not _玩家可选(player_id):
-		return
-	# 攻击结束响应里选中额外攻击：点手牌 + 敌方头像＝发起这次额外攻击
-	if _额外攻击响应选择 > 0:
-		if _sel_cards.is_empty():
-			_指令提示("请先点一张攻击牌")
-			return
-		_发送应答(GConst.RespondType.ChooseExtraAction, [player_id], [_sel_cards[0]],
-			[_额外攻击响应选择])
 		return
 	# 点头像分配型：点一次给该角色加「每次」点治疗（配置允许时可重复点同一人），分满后确定
 	if not _分配配置().is_empty():
