@@ -444,3 +444,34 @@ func 跑() -> void:
 		玩家1.role = 角色
 	else:
 		检(false, "卡库里找不到一张风系攻击牌和一张非风系攻击牌")
+
+	# ---- 场景 11：103 风怒追击 / 105 剑影在攻击结束时一起摆出来问 ----
+	_重置战斗()
+	var 剑圣二: BattleRole = 剑圣类.new()
+	剑圣二.setup(玩家1, 引擎)
+	玩家1.role = 剑圣二
+	玩家1.set_gem(1)
+	引擎.push(BattleEngine.SHook.new("p_after_attack", {"player": 1}, []))
+	引擎.run()
+	var 一问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	var 一选项: Array = (一问[0] as Dictionary).get("args", []) if not 一问.is_empty() else []
+	检(一选项.size() >= 6 and 一选项.slice(4) == [103, 105],
+		"攻击结束应同时摆出风怒追击和剑影：%s" % str(一选项))
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 103, "src_id": 1, "args": [103], "card_ids": [], "dst_ids": [],
+	})
+	var 二问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	var 二选项: Array = (二问[0] as Dictionary).get("args", []) if not 二问.is_empty() else []
+	检(二选项.size() >= 5 and 二选项.slice(4) == [105],
+		"选完风怒追击后还应继续问剑影：%s" % str(二选项))
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 105, "src_id": 1, "args": [105], "card_ids": [], "dst_ids": [],
+	})
+	var 有风: bool = false
+	var 有影: bool = false
+	for a: Dictionary in 玩家1.additional_actions:
+		if int(a.get("cause", 0)) == 103 and bool(a.get("direct", false)):
+			有风 = true
+		elif int(a.get("cause", 0)) == 105 and bool(a.get("direct", false)):
+			有影 = true
+	检(有风 and 有影, "确认后两份额外行动都应以 direct 入队：%s" % str(玩家1.additional_actions))

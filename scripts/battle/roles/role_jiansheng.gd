@@ -21,6 +21,11 @@ var used_jian_ying: bool = false
 var using_lian_xu_ji: bool = false
 var attack_count: int = 0
 
+## 攻击结束的 103 / 105 二选一：本次攻击内是否已经问过（问过就不再在后续额外攻击结束时重复问）
+var _after_skill_asked: bool = false
+## p_after_attack 的推进阶段（0＝未开始 / 1＝正在问 103、105 / 2＝问完）
+const KEY_AFTER_STEP: String = "_jiansheng_after_step"
+
 ## 【圣剑】追踪：
 ## _sheng_jian_active 记「本次【攻击行动】是否触发了圣剑强制命中」，供 p_after_attack 收尾时先摸 X 张、再弃 X 张；
 ## _sheng_jian_step 是该收尾流程的推进阶段（0＝在问要摸几张（据此摸牌）/ 1＝已摸牌、待问第二次弃牌 /
@@ -41,6 +46,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_jian_ying = false
 	using_lian_xu_ji = false
 	attack_count = 0
+	_after_skill_asked = false
 	_sheng_jian_active = false
 	_sheng_jian_step = 0
 	_sheng_jian_弃张数 = 0
@@ -143,18 +149,59 @@ func _sheng_jian(ctx: Dictionary) -> void:
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 【风怒追击】→【剑影】：不跨询问，一轮走完（同一 SHook 内 step 不会被重置）
-	if step < STEP_DONE:
-		if step == 0:
-			_lian_xu_ji()
-			step = JIAN_YING
-		if step == JIAN_YING:
-			_jian_ying()
-			step = STEP_DONE
+	# 【风怒追击 / 剑影】像剑之子那样在攻击结束时一起摆出来问；
+	# 选中后以 direct 额外行动入队，之后由引擎直接进入，不再在回合结束二次询问。
+	var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
+	if 阶段 == 0:
+		阶段 = 2 if _after_skill_asked else 1
+		ctx[KEY_AFTER_STEP] = 阶段
+	if 阶段 == 1:
+		while true:
+			var 选项: Array = _攻击结束额外选项()
+			if 选项.is_empty():
+				ctx[KEY_AFTER_STEP] = 2
+				break
+			_after_skill_asked = true
+			if not engine.has_reply():
+				engine.ask_skill(player.id, int(选项[0]["value"]), 0, 0, GConst.CardSource.Hand,
+					选项, 0, "", [], true,
+					"攻击结束时可以发动以下技能，选择一项（发动后还能发动另一项）", [])
+				return WAIT
+			var r: Dictionary = take_skill_reply_full()
+			var args: Array = r.get("args", [])
+			var 选中: int = int(args[0]) if not args.is_empty() else 0
+			if not _选项里有(选项, 选中):
+				ctx[KEY_AFTER_STEP] = 2
+				break
+			# 已经在这里确认过「发动」：入队时标 direct + skip_notice，
+			# 引擎进入额外行动时直接开打，不再问一次、也不重复播报。
+			if 选中 == LIAN_XU_JI:
+				notice_skill(LIAN_XU_JI, [])
+				player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true, true)
+			elif 选中 == JIAN_YING:
+				notice_skill(JIAN_YING, [])
+				player.add_action(GConst.ActionType.Attack, JIAN_YING, true, true)
 	# 【圣剑】：本次（第 3 次）【攻击行动】触发强制命中后，结束这次攻击时摸 X 张、弃 X 张（跨一次询问）
 	if _sheng_jian_active:
 		return _sheng_jian_cycle()
 	return SUCCESS
+
+
+## 本次攻击结束还能发动的 103 / 105；用过、已在队列里、能量不够的不再出现。
+func _攻击结束额外选项() -> Array:
+	var out: Array = []
+	if not used_lian_xu_ji and not _contains_action(LIAN_XU_JI):
+		out.append({"value": LIAN_XU_JI, "label": "风怒追击", "skill_id": LIAN_XU_JI})
+	if not used_jian_ying and not _contains_action(JIAN_YING) and player.get_energy() > 0:
+		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING})
+	return out
+
+
+func _选项里有(选项: Array, 技能号: int) -> bool:
+	for o: Dictionary in 选项:
+		if int(o.get("value", 0)) == 技能号:
+			return true
+	return false
 
 
 ## 【圣剑】收尾（先摸后弃）：第一步在二级技能栏里给「摸 1 / 2 / 3 张牌」三个选项（取消＝不摸牌，本次收尾结束），
