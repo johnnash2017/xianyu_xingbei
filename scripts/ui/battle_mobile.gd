@@ -3874,7 +3874,7 @@ func _卡牌能点(card_id: int) -> bool:
 	# 行动阶段：只有能主动出手的牌可点（【圣光】只作响应，回合内置灰点不动）。
 	# 服务端给了普通行动的手牌白名单时（如【修罗连斩】的额外攻击只能出火系攻击牌），只有白名单里的牌可点
 	if _mode == 1:
-		var 白名单: Array = _pending.get("card_ids", [])
+		var 白名单: Array = _行动手牌白名单()
 		if not 白名单.is_empty() and not 白名单.has(card_id):
 			return false
 		return _可主动使用牌(card_id)

@@ -413,3 +413,34 @@ func 跑() -> void:
 		"自动进入的额外行动来源不对：%d" % 引擎.行动额外来源)
 	检(引擎._await_id == 3 and 引擎._await_kind == GConst.Msg.Respond,
 		"点好手牌 + 目标后应直接进入攻击应战询问（等待 %s / %s）" % [str(引擎._await_id), str(引擎._await_kind)])
+
+	# ---- 场景 10：风怒追击的白名单按 cause 给，不依赖当前是否已经进入 ----
+	_重置战斗()
+	var 剑圣类 = preload("res://scripts/battle/roles/role_jiansheng.gd")
+	var 剑圣: BattleRole = 剑圣类.new()
+	剑圣.setup(玩家1, 引擎)
+	玩家1.role = 剑圣
+	var 风击: GCard = null
+	var 非风击: GCard = null
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual or not c.is_attack():
+			continue
+		if c.element_enum() == GConst.CardElement.Wind and 风击 == null:
+			风击 = c
+		elif c.element_enum() != GConst.CardElement.Wind and 非风击 == null:
+			非风击 = c
+	if 风击 != null and 非风击 != null:
+		玩家1.hand_cards = [风击.id, 非风击.id]
+		var 白名单: Array = 剑圣.extra_action_card_ids(103, GConst.ActionType.Attack)
+		检(白名单 == [风击.id],
+			"风怒追击的牌白名单应只含风系攻击牌，实际 %s" % str(白名单))
+		引擎.行动额外 = true
+		引擎.行动额外来源 = 103
+		检(剑圣.v_attack(非风击.id, 3, {3: 引擎.p(3)}) != GConst.GE_SUCCESS,
+			"风怒追击额外攻击不应允许非风系攻击牌")
+		检(剑圣.v_attack(风击.id, 3, {3: 引擎.p(3)}) == GConst.GE_SUCCESS,
+			"风怒追击额外攻击应允许风系攻击牌")
+		# 恢复 dummy 角色，避免影响同用例后续（当前已是最后一个场景）
+		玩家1.role = 角色
+	else:
+		检(false, "卡库里找不到一张风系攻击牌和一张非风系攻击牌")

@@ -253,7 +253,9 @@ func v_additional_action(cause: int) -> int:
 # 玩家选中额外行动时：结算风怒追击/剑影的代价
 # 引擎在选中时会统一广播技能通知，故此处只处理回合限定标记与能量扣除
 # ============================================================
-func extra_action_switchable(_cause: int) -> bool: return false
+func extra_action_switchable(cause: int) -> bool:
+	# 风怒追击没有「选中时扣资源」的代价，可以中途切换过去；剑影选中要扣能量，切换不安全
+	return cause == LIAN_XU_JI
 
 
 func p_additional_action(ctx: Dictionary) -> int:
@@ -282,11 +284,27 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 	var rc: int = player.base_v_attack(card_id, dst_id, players)
 	if rc != GConst.GE_SUCCESS:
 		return rc
-	if using_lian_xu_ji:
+	if using_lian_xu_ji or (engine != null and engine.行动额外 and engine.行动额外来源 == LIAN_XU_JI):
+		# 中途切换过来时 p_additional_action 没跑过，这里补记本回合已用并置位
+		if engine != null and engine.行动额外 and engine.行动额外来源 == LIAN_XU_JI:
+			using_lian_xu_ji = true
+			used_lian_xu_ji = true
 		var card: GCard = Data.get_card(card_id)
 		if card.element_enum() != GConst.CardElement.Wind:
 			return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
+
+
+## 风怒追击给的那份攻击行动：按 cause 直接给风系攻击牌白名单（不依赖当前是否已进入）
+func extra_action_card_ids(cause: int, action_type: int) -> Array:
+	if cause != LIAN_XU_JI or action_type != GConst.ActionType.Attack:
+		return []
+	var out: Array = []
+	for cid: int in player.hand_cards:
+		var card: GCard = Data.get_card(cid)
+		if card != null and card.is_attack() and card.element_enum() == GConst.CardElement.Wind:
+			out.append(cid)
+	return out if not out.is_empty() else [GConst.手牌白名单_全禁]
 
 
 ## 风怒追击的额外攻击行动期间，本阶段「普通出牌」的手牌白名单只剩手里的风系攻击牌
