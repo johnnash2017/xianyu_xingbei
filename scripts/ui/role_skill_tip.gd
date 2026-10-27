@@ -30,7 +30,9 @@ const 提示框无限字号增量: int = 8
 ## 悬停提示的完整文本：角色名一行 + 技能说明（上色排版）+ 右下角的专属标识物一览，含 BBCode。
 ## 战斗外选角卡与战斗内玩家头像的悬浮说明都用它 —— 组装规则只有这一份。
 ## 字号缩放：调用方想让整块文字等比小一点时传（战斗内的框要压一档），1.0＝原样
-static func 悬浮提示(角色号: int, 字号缩放: float = 1.0) -> String:
+## 对局中：只有战斗内传 true（选角界面传 false）。剑之子的倾慕/剑守誓言要按场上有没有
+## 剑之魔女动态改文本；选角时没有对局，按「剑之魔女不在场」处理（追加的借用技划掉）。
+static func 悬浮提示(角色号: int, 字号缩放: float = 1.0, 对局中: bool = false) -> String:
 	var 正文号: int = maxi(1, int(round(float(提示框正文字号) * 字号缩放)))
 	var 姓名号: int = maxi(1, int(round(float(提示框姓名行字号) * 字号缩放)))
 	var 标题号: int = maxi(1, int(round(float(提示框标题字号) * 字号缩放)))
@@ -40,6 +42,8 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0) -> String:
 		角色名 = "%s %s" % [角色名, 姓名]
 	var 文本: String = "[font_size=%d]%s[/font_size]" % [姓名号, 角色名]
 	var 信息: String = Data.role_skill_info(角色号)
+	if 角色号 == 108 and 信息 != "":
+		信息 = 剑之子对局说明(信息, 对局中 and _剑之魔女在场())
 	if 信息 != "":
 		# 角色名就压在最上面，第一个分段标题（普通技）上方也要留白，和后面几类一致
 		文本 += "\n" + 上色(信息, 正文号, 标题号, true)
@@ -56,6 +60,81 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0) -> String:
 		文本 += "\n[font_size=%d] [/font_size]\n[right][font_size=%d][color=#%s]%s[/color][/font_size][/right]" % [
 			标题上方留白字号, 标识物号, 提示框标识物颜色.to_html(false), 标识物]
 	return 文本
+
+
+## 剑之子（108）的角色说明动态部分：
+##  - 剑之魔女在场时，【剑守誓言】10803 无法发动，整段划删除线；
+##  - 【倾慕】10801 下面**始终**追加借用来的 4504 / 4503 说明：剑之魔女在场时正常显示，
+##    不在场时整段划删除线（让玩家看到「本来会获得什么」）。
+## 原文来自 Data.role_skill_info(108)，行首「　　」是正文前缀；返回仍用同一套行格式给 上色()。
+static func 剑之子对局说明(原文: String, 有剑之魔女: bool) -> String:
+	var 行列表: Array[String] = []
+	for 行: String in 原文.split("\n"):
+		行列表.append(行)
+	# 先给剑守誓言的整段加删除线（避免后面插入倾慕追加段导致下标偏移）
+	var 誓言起: int = -1
+	for i: int in range(行列表.size()):
+		if 行列表[i].lstrip("　 ").begins_with("【响应】剑守誓言"):
+			誓言起 = i
+			break
+	if 有剑之魔女 and 誓言起 >= 0:
+		var 誓言终: int = 誓言起
+		while 誓言终 + 1 < 行列表.size() and 行列表[誓言终 + 1].begins_with(正文前缀):
+			誓言终 += 1
+		for i: int in range(誓言起, 誓言终 + 1):
+			行列表[i] = _整行删除线(行列表[i])
+	# 在【倾慕】条目末尾追加借用的两颗技能说明
+	var 倾慕起: int = -1
+	for i: int in range(行列表.size()):
+		if 行列表[i].lstrip("　 ").begins_with("【被动】倾慕"):
+			倾慕起 = i
+			break
+	if 倾慕起 < 0:
+		return "\n".join(行列表)
+	var 倾慕终: int = 倾慕起
+	while 倾慕终 + 1 < 行列表.size() and 行列表[倾慕终 + 1].begins_with(正文前缀):
+		倾慕终 += 1
+	var 追加: Array[String] = []
+	追加.append("　　（%s获得：）" % ("因【剑之魔女】在场" if 有剑之魔女 else "若【剑之魔女】在场"))
+	for 技能号: int in [4504, 4503]:
+		var 说明: String = GConst.skill_desc(技能号)
+		if 说明 == "":
+			continue
+		var 条目: String = GConst.词缀文本("【%s】%s：%s" % [
+			GConst.skill_type(技能号), GConst.skill_desc_name(技能号), 说明])
+		for 子行: String in 条目.replace("\\n", "\n").split("\n"):
+			var 文本: String = 子行.strip_edges()
+			if 文本 == "":
+				continue
+			var 行: String = "　　" + 文本
+			if not 有剑之魔女:
+				行 = _整行删除线(行)
+			追加.append(行)
+	var 新行: Array[String] = []
+	新行.append_array(行列表.slice(0, 倾慕终 + 1))
+	新行.append_array(追加)
+	新行.append_array(行列表.slice(倾慕终 + 1))
+	return "\n".join(新行)
+
+
+## 给一行角色技能正文套 [s] 删除线：行首的【类型】保留原色，只划技能名与说明；
+## 续行没有类型前缀，整行划。BBCode 的 [s] 由 RichTextLabel 渲染。
+static func _整行删除线(行: String) -> String:
+	var 缩进长: int = 行.length() - 行.lstrip("　 ").length()
+	var 缩进: String = 行.substr(0, 缩进长)
+	var 正文: String = 行.substr(缩进长)
+	var 右括号: int = 正文.find("】")
+	if 正文.begins_with("【") and 右括号 >= 0:
+		return 缩进 + 正文.substr(0, 右括号 + 1) + "[s]" + 正文.substr(右括号 + 1) + "[/s]"
+	return 缩进 + "[s]" + 正文 + "[/s]"
+
+
+## 场上是否有剑之魔女（45）；选角/非对局由调用方传 对局中=false，不会读旧快照。
+static func _剑之魔女在场() -> bool:
+	for 玩家: GPlayer in Data.player_list:
+		if 玩家 != null and 玩家.role_id == 45:
+			return true
+	return false
 
 
 ## 角色星数文本（提示框右上角）：整数显示 `★3`，半星显示 `★3.5`；没有星数返回空串。
