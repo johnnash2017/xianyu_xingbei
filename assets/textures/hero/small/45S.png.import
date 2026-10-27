@@ -2,8 +2,8 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://pn489kp8ks07l"
-path="res://.godot/imported/0S.png-564bb7504d077deb1a4f13049622846d.ctex"
+uid="uid://d2wnieyhu7exb"
+path="res://.godot/imported/45S.png-22a7ee2c3f28614ce50594f7f2141d22.ctex"
 metadata={
 "vram_texture": false
 }
@@ -11,7 +11,7 @@ metadata={
 [deps]
 
 source_file="res://assets/textures/hero/small/45S.png"
-dest_files=["res://.godot/imported/0S.png-564bb7504d077deb1a4f13049622846d.ctex"]
+dest_files=["res://.godot/imported/45S.png-22a7ee2c3f28614ce50594f7f2141d22.ctex"]
 
 [params]
 
