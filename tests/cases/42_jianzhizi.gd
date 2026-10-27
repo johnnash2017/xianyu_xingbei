@@ -845,16 +845,16 @@ func _测剑之子说明书() -> void:
 	var 旧列表: Array[GPlayer] = Data.player_list.duplicate()
 	var 假45: GPlayer = GPlayer.new()
 	假45.role_id = 45
-	假45.dream_tier = 1
 	var 假108: GPlayer = GPlayer.new()
 	假108.role_id = 108
-	假108.dream_tier = 1
+	# 梦想剑可用即标绿，不要求先打 1/2/4 次攻击：45 常驻；108 有 45 在场即可
 	Data.player_list = [假45, 假108]
 	检(角色技能提示.悬浮提示(45, 1.0, true).contains("[color=#A9FF00]梦想剑"),
-		"剑之魔女 dream_tier=1 时悬停说明应标绿")
+		"剑之魔女对局中梦想剑说明应标绿")
 	检(角色技能提示.悬浮提示(108, 1.0, true).contains("[color=#A9FF00]梦想剑"),
-		"剑之子 dream_tier=1 时悬停说明应标绿")
-	假108.dream_tier = 0
+		"剑之子有剑之魔女在场时梦想剑说明应标绿")
+	# 剑之魔女不在场：108 的梦想剑是置灰借用技，不应标绿
+	Data.player_list = [假108]
 	检(not 角色技能提示.悬浮提示(108, 1.0, true).contains("[color=#A9FF00]梦想剑"),
-		"剑之子 dream_tier=0 时悬停说明不应标绿")
+		"剑之魔女不在场时剑之子的梦想剑不应标绿")
 	Data.player_list = 旧列表
