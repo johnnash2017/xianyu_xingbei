@@ -3040,6 +3040,9 @@ func _本地选择额外攻击(cause: int, 牌白: Array, 目标白: Array) -> v
 	_当前额外攻击选择 = cause
 	_额外手牌白名单_选择 = 牌白.duplicate()
 	_额外目标白名单_选择 = 目标白.duplicate()
+	# 换了一份额外行动：旧的选牌 / 选目标可能不再合法，清掉重选（不重发询问、不重排按钮）
+	_sel_cards.clear()
+	_sel_players.clear()
 	for 项: Dictionary in _额外攻击切换项:
 		var b: Variant = 项.get("按钮")
 		if is_instance_valid(b):
