@@ -423,6 +423,8 @@ var _额外攻击响应选择: int = -1
 var _额外攻击响应按钮: Array = []
 var _额外攻击响应_牌白: Array = []
 var _额外攻击响应_目标白: Array = []
+## 响应里点手牌 + 目标发起额外攻击时，先备份当前技能询问：服务端拒绝时用它恢复选项
+var _额外攻击请求备份: Dictionary = {}
 ## 额外攻击阶段本地选中的额外攻击 cause / 该行动的牌与目标白名单（点切换只改本地，不提交、不重排）
 var _当前额外攻击选择: int = 0
 var _额外手牌白名单_选择: Array = []
@@ -1981,6 +1983,8 @@ func _展开聊天() -> void:
 
 # ---------------- 收到服务端询问 ----------------
 func _on_command(data: Dictionary) -> void:
+	# 收到新询问＝服务端已经接下上一次额外攻击（或进入下一步），失败备份不再需要
+	_额外攻击请求备份.clear()
 	var cmds: Array = data.get("commands", [])
 	if cmds.is_empty():
 		return
@@ -3739,9 +3743,10 @@ func _on_player_clicked(player_id: int) -> void:
 		if _sel_cards.is_empty():
 			_指令提示("请先点一张攻击牌")
 			return
-		# 先不本地清空：等服务端真正接下这次额外攻击并下发新状态；
-		# 服务端若拒绝，响应选项还在，可以改选/重试，不会出现「选项没了、攻击也没出去」。
-		Logic.send_respond(GConst.RespondType.ChooseExtraAction, [player_id],
+		# 备份这次技能询问；先收起界面（避免攻击已开始时响应选项还亮着），
+		# 服务端如果拒绝，on_invalid_input 会用它把选项恢复回来。
+		_额外攻击请求备份 = _pending.duplicate(true)
+		_发送应答(GConst.RespondType.ChooseExtraAction, [player_id],
 			[_sel_cards[0]], [_额外攻击响应选择])
 		return
 	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：点头像什么都不做
@@ -6306,6 +6311,16 @@ func _清空待选() -> void:
 
 ## 操作无效（ErrorInput 由 Logic 回调进来）：提示并重新进入本次询问
 func on_invalid_input(_data: Dictionary) -> void:
+	# 响应里发起额外攻击被服务端拒绝：恢复刚才的响应询问（含额外攻击快捷按钮）
+	if not _额外攻击请求备份.is_empty():
+		_pending = _额外攻击请求备份.duplicate(true)
+		_额外攻击请求备份 = {}
+		_pending_type = GConst.Msg.Respond
+		_是技能询问 = true
+		_skill_ask_id = int(_pending.get("respond_id", 0))
+		_进入技能询问()
+		_指令提示("操作无效，请重新选择")
+		return
 	_进入待选()
 	# 放在 _进入待选 之后：那个函数会写「轮到你了…」，这里再盖成失败原因，
 	# 不然玩家只看到选择被清空、完全不知道刚才那手为什么没生效
