@@ -79,7 +79,9 @@ static func 剑之子对局说明(原文: String, 有剑之魔女: bool) -> Stri
 			break
 	if 有剑之魔女 and 誓言起 >= 0:
 		var 誓言终: int = 誓言起
-		while 誓言终 + 1 < 行列表.size() and 行列表[誓言终 + 1].begins_with(正文前缀):
+		while 誓言终 + 1 < 行列表.size() \
+				and 行列表[誓言终 + 1].begins_with(正文前缀) \
+				and not _是技能正文起(行列表[誓言终 + 1]):
 			誓言终 += 1
 		for i: int in range(誓言起, 誓言终 + 1):
 			行列表[i] = _整行删除线(行列表[i])
@@ -92,7 +94,9 @@ static func 剑之子对局说明(原文: String, 有剑之魔女: bool) -> Stri
 	if 倾慕起 < 0:
 		return "\n".join(行列表)
 	var 倾慕终: int = 倾慕起
-	while 倾慕终 + 1 < 行列表.size() and 行列表[倾慕终 + 1].begins_with(正文前缀):
+	while 倾慕终 + 1 < 行列表.size() \
+			and 行列表[倾慕终 + 1].begins_with(正文前缀) \
+			and not _是技能正文起(行列表[倾慕终 + 1]):
 		倾慕终 += 1
 	var 追加: Array[String] = []
 	追加.append("　　（%s获得：）" % ("因【剑之魔女】在场" if 有剑之魔女 else "若【剑之魔女】在场"))
@@ -115,6 +119,12 @@ static func 剑之子对局说明(原文: String, 有剑之魔女: bool) -> Stri
 	新行.append_array(追加)
 	新行.append_array(行列表.slice(倾慕终 + 1))
 	return "\n".join(新行)
+
+
+## 这一行是不是「一条新技能」的正文首行（而不是上一条技能的续行 / 分段标题）。
+## 所有正文行都以「　　」开头，只能靠缩进后的【类型】区分。
+static func _是技能正文起(行: String) -> bool:
+	return 行.begins_with(正文前缀) and 行.lstrip("　 ").begins_with("【")
 
 
 ## 给一行角色技能正文套 [s] 删除线：行首的【类型】保留原色，只划技能名与说明；
