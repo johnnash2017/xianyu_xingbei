@@ -1379,11 +1379,16 @@ func _on_card(msg: Dictionary) -> void:
 	if int(msg.get("type", 0)) == GConst.CardMsgType.Give:
 		_给牌特效(src, dst, int(msg.get("count", 1)))
 		return
-	# 从展示区选走一张（10803）：牌面从展示位飞向选牌者头像，其余展示牌收起
+	# 从展示区选走一张（10803）：别人看到牌面从展示位飞向选牌者头像；
+	# 选牌者自己不播这段飞牌，只看展示区收起、牌进手牌。
 	if int(msg.get("type", 0)) == GConst.CardMsgType.Pick:
 		var 取走: Array = msg.get("card_ids", [])
 		if not 取走.is_empty():
-			_选走展示牌(src, int(取走[0]))
+			if src == Logic.my_player_id:
+				_展示代号 += 1
+				_收起展示卡牌()
+			else:
+				_选走展示牌(src, int(取走[0]))
 		return
 	# 展示（亮牌/超限换牌）没有「对谁使用」的概念，单独写一行
 	var 是展示: bool = int(msg.get("type", 0)) == GConst.CardMsgType.Show
