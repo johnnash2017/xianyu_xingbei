@@ -23,7 +23,12 @@ const JIAN_YING_DUAN_NIAN: int = 4504
 ## 4501 / 4504 在同一份「攻击行动结束」上下文里的推进进度。
 ## 存在 ctx 里而不是角色实例：同一次攻击的钩子重入拿的是同一份 ctx，天然不会把上一击的进度带过来。
 const KEY_AFTER_STEP: String = "_jianzhimoni_after_step"
-const AFTER_STEP_4501: int = 1
+const AFTER_STEP_CHOOSE: int = 0
+const AFTER_STEP_RESOLVE: int = 1
+const KEY_AFTER_CHOSEN: String = "_jianzhimoni_after_chosen"
+## 本次攻击结束已经选过的技能（防止同一技能在一次攻击结束里重复弹）
+const KEY_4501_DONE: String = "_jianzhimoni_4501_done"
+const KEY_4504_DONE: String = "_jianzhimoni_4504_done"
 ## 4502 的分步进度：0 未开始 / 1 已发动、等目标弃牌 / 2 已弃牌、等【展示】响应结算 /
 ##                 3 等是否获得攻击牌。
 const KEY_YI_XIANG_STEP: String = "_jianzhimoni_yixiang_step"
@@ -99,7 +104,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击行动结束时（after_attack）：技之剑意（4501）→ 剑影*断念（4504）
+# 攻击行动结束时（after_attack）：技之剑意（4501）/ 剑影*断念（4504）同时二选一
 # ============================================================
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
@@ -107,45 +112,82 @@ func p_after_attack(ctx: Dictionary) -> int:
 	# 攻击已经结算完、进入「攻击结束」响应：此时才推进展示档，既不会在攻击宣告时就变绿，
 	# 也能让 4501 / 4504 这类响应技能在决定时看到本回合的新档位（实际效果仍在 p_action_end 生效）。
 	_更新梦想剑展示档()
-	var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
-	if 阶段 >= STEP_DONE:
-		return SUCCESS
-	if 阶段 == 0:
-		var r: int = _ji_zhi_jian_yi()
-		# 等回复期间不能推进阶段：重入时还要回到 4501 里把这份回复读掉
-		if r == WAIT:
+	while true:
+		var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
+		if 阶段 == AFTER_STEP_RESOLVE:
+			var 所选: int = int(ctx.get(KEY_AFTER_CHOSEN, 0))
+			var r: int = _解决攻击结束技能(ctx, 所选)
+			if r == WAIT:
+				return WAIT
+			if r == URGENT:
+				return URGENT
+			ctx[KEY_AFTER_STEP] = AFTER_STEP_CHOOSE
+			ctx.erase(KEY_AFTER_CHOSEN)
+			continue
+		# 二选一：两项都满足条件就一起摆出来，选一项；结算完再回来问另一项
+		var 选项: Array = _攻击结束选项(ctx)
+		if 选项.is_empty():
+			return SUCCESS
+		if not engine.has_reply():
+			engine.ask_skill(player.id, int(选项[0]["value"]), 0, 0, GConst.CardSource.Hand,
+				选项, 0, "", [], true,
+				"攻击结束时可以发动以下技能，选择一项（发动后还能发动另一项）")
 			return WAIT
-		阶段 = AFTER_STEP_4501
-		ctx[KEY_AFTER_STEP] = 阶段
-	if 阶段 == AFTER_STEP_4501:
-		var r2: int = _jian_ying_duan_nian(ctx)
-		if r2 == WAIT:
-			return WAIT
-		ctx[KEY_AFTER_STEP] = STEP_DONE
-		if r2 == URGENT:
-			return URGENT
+		var r2: Dictionary = take_skill_reply_full()
+		var args: Array = r2.get("args", [])
+		var 选中: int = int(args[0]) if not args.is_empty() else 0
+		if not _选项里有(选项, 选中):
+			return SUCCESS
+		ctx[KEY_AFTER_CHOSEN] = 选中
+		ctx[KEY_AFTER_STEP] = AFTER_STEP_RESOLVE
+		if 选中 == JI_ZHI_JIAN_YI:
+			ctx[KEY_4501_DONE] = true
+		elif 选中 == JIAN_YING_DUAN_NIAN:
+			ctx[KEY_4504_DONE] = true
 	return SUCCESS
+
+
+## 本次攻击结束还能发动的技能：两项都满足条件就一起摆出来；用过 / 条件不满足的不再出现。
+func _攻击结束选项(ctx: Dictionary) -> Array:
+	var out: Array = []
+	if not bool(ctx.get(KEY_4501_DONE, false)) and not _martial_attack_hand_ids().is_empty():
+		out.append({"value": JI_ZHI_JIAN_YI, "label": "技之剑意", "skill_id": JI_ZHI_JIAN_YI})
+	if not bool(ctx.get(KEY_4504_DONE, false)) and not used_jian_ying_duan_nian \
+			and player.gem > 0 and player.hand_cards.size() >= 2:
+		out.append({"value": JIAN_YING_DUAN_NIAN, "label": "剑影*断念", "skill_id": JIAN_YING_DUAN_NIAN})
+	return out
+
+
+## 结算二选一里选中的那一项（跳过它自己的「是否发动」询问，选择即确认）。
+func _解决攻击结束技能(ctx: Dictionary, 技能号: int) -> int:
+	match 技能号:
+		JI_ZHI_JIAN_YI:
+			_发动技之剑意()
+			return SUCCESS
+		JIAN_YING_DUAN_NIAN:
+			return _jian_ying_duan_nian(ctx, true)
+	return SUCCESS
+
+
+func _选项里有(选项: Array, 技能号: int) -> bool:
+	for o: Dictionary in 选项:
+		if int(o.get("value", 0)) == 技能号:
+			return true
+	return false
 
 
 ## 4501 技之剑意：攻击行动结束时，额外 +1 只能使用「技类命格攻击牌」的攻击行动。
-## 手里一张技类攻击牌都没有时不询问 —— 这份额外行动一张牌都出不了，只会让玩家多按一次放弃。
-func _ji_zhi_jian_yi() -> int:
-	if not engine.has_reply():
-		if _martial_attack_hand_ids().is_empty():
-			return SUCCESS
-		询问(player.id, JI_ZHI_JIAN_YI, 0, 0)
-		return WAIT
-	if not take_skill_reply():
-		return SUCCESS
+## 手里一张技类攻击牌都没有时不会出现在选项里（这份额外行动一张牌都出不了）。
+func _发动技之剑意() -> void:
 	notice_skill(JI_ZHI_JIAN_YI, [player.id])
 	# direct=true：选中即进入额外攻击行动，不再二次追问；skip_notice=true：上面已经播报过 4501
 	player.add_action(GConst.ActionType.Attack, JI_ZHI_JIAN_YI, true, true)
-	return SUCCESS
 
 
 ## 4504 剑影*断念：支付 1【宝石】（不能用宝石顶水晶那套，必须是真宝石）→ 弃 2 张手牌
 ## → 摸 1 张【强制】→ 额外 +1 攻击行动。摸牌走 push_draw，故返回 URGENT 让摸牌先结算。
-func _jian_ying_duan_nian(ctx: Dictionary) -> int:
+## 跳过发动=true：二选一已经确认过，直接付款并进入弃牌步骤，不再问一次「是否发动」。
+func _jian_ying_duan_nian(ctx: Dictionary, 跳过发动: bool = false) -> int:
 	var 阶段: int = int(ctx.get(KEY_DUAN_NIAN_STEP, 0))
 	if 阶段 >= STEP_DONE:
 		return SUCCESS
@@ -154,16 +196,17 @@ func _jian_ying_duan_nian(ctx: Dictionary) -> int:
 		return SUCCESS
 	if 阶段 == 0 and (player.gem <= 0 or player.hand_cards.size() < 2):
 		return SUCCESS
+	if 跳过发动 and 阶段 == 0:
+		_启动剑影断念()
+		ctx[KEY_DUAN_NIAN_STEP] = 1
+		阶段 = 1
 	if 阶段 == 0:
 		if not engine.has_reply():
 			engine.ask_skill(player.id, JIAN_YING_DUAN_NIAN)
 			return WAIT
 		if not take_skill_reply():
 			return SUCCESS
-		used_jian_ying_duan_nian = true
-		notice_skill(JIAN_YING_DUAN_NIAN, [player.id])
-		player.set_gem(player.gem - 1)
-		engine._broadcast_game()
+		_启动剑影断念()
 		ctx[KEY_DUAN_NIAN_STEP] = 1
 		阶段 = 1
 	if 阶段 == 1:
@@ -184,6 +227,14 @@ func _jian_ying_duan_nian(ctx: Dictionary) -> int:
 		engine.push_draw(player.id, 1, JIAN_YING_DUAN_NIAN)
 		return URGENT
 	return SUCCESS
+
+
+## 4504 的付款与播报：二选一确认后 / 单独确认发动后都走这里，只付一次。
+func _启动剑影断念() -> void:
+	used_jian_ying_duan_nian = true
+	notice_skill(JIAN_YING_DUAN_NIAN, [player.id])
+	player.set_gem(player.gem - 1)
+	engine._broadcast_game()
 
 
 # ============================================================

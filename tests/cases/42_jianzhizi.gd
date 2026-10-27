@@ -292,6 +292,7 @@ func 跑() -> void:
 	_测风之剑()
 	_测剑残影()
 	_测倾慕与梦想剑断念()
+	_测攻击结束二选一()
 	_测剑守誓言条件()
 	_测剑守誓言结算()
 	_测剑守誓言替换角色()
@@ -399,7 +400,7 @@ func _测剑残影() -> void:
 	var r: int = 角色.p_after_attack(上下文)
 	检(r == BattleRole.WAIT, "攻击行动结束后应询问是否发动【剑残影】")
 	检(not _取询问(1, 10804).is_empty(), "没有下发【剑残影】发动询问")
-	_应答([1])
+	_应答([10804])
 	r = 角色.p_after_attack(上下文)
 	检(r == BattleRole.WAIT, "确认【剑残影】后应让玩家选目标对手")
 	var 目标问: Dictionary = _取询问(1, 10804)
@@ -450,7 +451,7 @@ func _测剑残影() -> void:
 	玩家.set_gem(1)
 	上下文 = {"player": 1, "kind": "attack"}
 	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问【剑残影】")
-	_应答([1])
+	_应答([10804])
 	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问目标")
 	_应答([1], [2])
 	检(角色.p_after_attack(上下文) == BattleRole.SUCCESS,
@@ -470,7 +471,7 @@ func _测剑残影() -> void:
 	玩家.set_crystal(1)
 	上下文 = {"player": 1, "kind": "attack"}
 	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问【剑残影】")
-	_应答([1])
+	_应答([10804])
 	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问目标")
 	_应答([1], [])
 	检(角色.p_after_attack(上下文) == BattleRole.SUCCESS, "取消目标选择应直接收尾")
@@ -573,7 +574,7 @@ func _测倾慕与梦想剑断念() -> void:
 	var r: int = 角色.p_after_attack(上下文)
 	检(r == BattleRole.WAIT, "剑之魔女在场时攻击结束应询问【剑影*断念】")
 	检(not _取询问(1, 4504).is_empty(), "没有下发【剑影*断念】询问")
-	_应答([1])
+	_应答([4504])
 	r = 角色.p_after_attack(上下文)
 	检(r == BattleRole.WAIT, "支付宝石后应让玩家选 2 张牌弃掉")
 	var 弃牌问: Dictionary = _取询问(1, 4504)
@@ -631,6 +632,47 @@ func _测倾慕与梦想剑断念() -> void:
 	检(玩家.gem == 1, "取消【剑影*断念】不应扣宝石")
 	检(玩家.hand_cards.size() == 2, "取消【剑影*断念】不应弃牌")
 	检(_有额外行动(4504) == false, "取消【剑影*断念】不应给额外攻击行动")
+
+
+# ============================================================
+# 10804 / 4504 攻击结束二选一
+# ============================================================
+func _测攻击结束二选一() -> void:
+	_重置战斗()
+	_挂剑之魔女()
+	玩家.set_crystal(1)
+	玩家.set_gem(1)
+	玩家.hand_cards = [非魔牌表[0].id, 非魔牌表[1].id]
+	靶.hand_cards.clear()
+	var 上下文: Dictionary = {"player": 1, "kind": "attack"}
+	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "两项都可发动时应弹二选一")
+	var 问: Dictionary = _取询问(1, 10804)
+	检(not 问.is_empty(), "没有下发 10804 / 4504 的二选一询问")
+	var 参数: Array = 问.get("args", [])
+	检(参数.size() >= 6 and int(参数[3]) == 2,
+		"应同时下发两个选项：%s" % str(参数))
+	检(int(参数[4]) == 10804 and int(参数[5]) == 4504,
+		"选项值应是 10804 / 4504：%s" % str(参数))
+	检((问.get("option_skill_ids", []) as Array) == [10804, 4504],
+		"两项都应带技能号供客户端悬停说明：%s" % str(问.get("option_skill_ids", [])))
+	检(bool(GConst.技能指示器.get(10804, {}).get("选项即提交", false)),
+		"10804 二选一应配「点选项即提交」")
+	检(bool(GConst.技能指示器.get(4504, {}).get("选项即提交", false)),
+		"4504 二选一应配「点选项即提交」")
+	# 目标没有手牌：选 10804 后只选目标即可结算，然后应继续问 4504
+	_应答([10804])
+	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "选 10804 后应问目标")
+	_应答([1], [2])
+	检(角色.p_after_attack(上下文) == BattleRole.WAIT,
+		"10804 结算完应继续问 4504")
+	检(_有额外行动(10804), "选 10804 应获得额外攻击行动")
+	var 二问: Dictionary = _取询问(1, 4504)
+	检(not 二问.is_empty(), "10804 用掉后应只剩 4504 询问")
+	var 二问参数: Array = 二问.get("args", [])
+	检(二问参数.size() >= 5 and int(二问参数[3]) == 1 and int(二问参数[4]) == 4504,
+		"第二问应只剩 4504：%s" % str(二问参数))
+	_应答([])
+	检(角色.p_after_attack(上下文) == BattleRole.SUCCESS, "取消剩余的 4504 应收尾")
 
 
 # ============================================================

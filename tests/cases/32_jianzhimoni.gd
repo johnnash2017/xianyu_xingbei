@@ -274,7 +274,7 @@ func 跑() -> void:
 		"攻击结束、等 4501 回复时快照应已带 dream_tier=1，客户端才能标绿")
 	检(not _取询问(1, 4501).is_empty(), "没有下发【技之剑意】询问")
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4501, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
+		"respond_id": 4501, "src_id": 1, "args": [4501], "card_ids": [], "dst_ids": [],
 	})
 	检(引擎.current_id == 1 and 引擎.行动额外 and 引擎.行动额外来源 == 4501,
 		"确认【技之剑意】后应直接进入 4501 的额外攻击行动（当前 %d / 额外 %s / 来源 %s）"
@@ -500,7 +500,7 @@ func 跑() -> void:
 	var 断念上下文: Dictionary = {"player": 1, "kind": "attack", "card_id": 0, "dst": 2}
 	检(角色.p_after_attack(断念上下文) == BattleRole.WAIT, "攻击结束时应有宝石可发动【剑影*断念】")
 	检(not _取询问(1, 4504).is_empty(), "没有下发【剑影*断念】询问")
-	_应答([1])
+	_应答([4504])
 	检(角色.p_after_attack(断念上下文) == BattleRole.WAIT, "支付宝石后应让玩家选 2 张牌弃掉")
 	var 断念弃牌问: Dictionary = _取询问(1, 4504)
 	检(not 断念弃牌问.is_empty(), "没有下发【剑影*断念】弃牌询问")
@@ -577,6 +577,38 @@ func 跑() -> void:
 	检(玩家.gem == 1, "不发动【剑影*断念】不应支付宝石")
 	检(玩家.hand_cards.size() == 3, "不发动【剑影*断念】不应弃牌")
 	检(_有额外行动(4504) == false, "不发动【剑影*断念】不应给额外攻击行动")
+
+	# 4501 / 4504 同时满足：同一条询问里两项都摆出来；用掉一项后另一项还能再问
+	_重置战斗()
+	玩家.set_gem(1)
+	_给牌(玩家, 技击甲.id)
+	_给牌(玩家, 非技击.id)
+	var 二选一上下文: Dictionary = {"player": 1, "kind": "attack"}
+	检(角色.p_after_attack(二选一上下文) == BattleRole.WAIT, "两项都可发动时应弹二选一")
+	var 二选一问: Dictionary = _取询问(1, 4501)
+	检(not 二选一问.is_empty(), "没有下发 4501 / 4504 的二选一询问")
+	var 二选一参数: Array = 二选一问.get("args", [])
+	检(二选一参数.size() >= 6 and int(二选一参数[3]) == 2,
+		"应同时下发两个选项：%s" % str(二选一参数))
+	检(int(二选一参数[4]) == 4501 and int(二选一参数[5]) == 4504,
+		"选项值应是 4501 / 4504：%s" % str(二选一参数))
+	检((二选一问.get("option_skill_ids", []) as Array) == [4501, 4504],
+		"两项都应带技能号供客户端悬停说明：%s" % str(二选一问.get("option_skill_ids", [])))
+	检(bool(GConst.技能指示器.get(4501, {}).get("选项即提交", false)),
+		"4501 二选一应配「点选项即提交」")
+	检(bool(GConst.技能指示器.get(4504, {}).get("选项即提交", false)),
+		"4504 二选一应配「点选项即提交」")
+	_应答([4501])
+	检(角色.p_after_attack(二选一上下文) == BattleRole.WAIT,
+		"用掉 4501 后应继续问 4504")
+	检(_有额外行动(4501), "选 4501 应获得额外攻击行动")
+	var 二问: Dictionary = _取询问(1, 4504)
+	检(not 二问.is_empty(), "4501 用掉后应只剩 4504 询问")
+	var 二问参数: Array = 二问.get("args", [])
+	检(二问参数.size() >= 5 and int(二问参数[3]) == 1 and int(二问参数[4]) == 4504,
+		"第二问应只剩 4504：%s" % str(二问参数))
+	_应答([])
+	检(角色.p_after_attack(二选一上下文) == BattleRole.SUCCESS, "取消剩余的 4504 应收尾")
 
 	# 自己的额外行动阶段结束后，别家的攻击结束钩子不应处理
 	_重置战斗()
