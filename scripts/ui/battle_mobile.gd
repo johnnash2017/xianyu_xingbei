@@ -2699,7 +2699,7 @@ func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = []) ->
 			额外攻击按钮色 if 攻击 else GConst.skill_type_color(c), 0)
 		按钮.设置说明(_额外行动按钮说明(c))
 		按钮.设置选项可用(可发动.has(c))
-		按钮.connect("点击", func(_技能号: int) -> void: _选中额外行动(c))
+		按钮.connect("点击", func(_技能号: int) -> void: _选择额外行动(c))
 		_额外行动按钮表.append({"按钮": 按钮, "cause": c})
 	if causes.size() == 1:
 		# 单份：提示条写技能效果（保留原行为），点击按钮直接进入
