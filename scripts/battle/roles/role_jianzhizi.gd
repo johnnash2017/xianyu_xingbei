@@ -487,7 +487,8 @@ func _剑守誓言选项(牌表: Array) -> Array:
 		var 标签: String = "未知牌"
 		if 牌 != null:
 			标签 = "%s %s" % [牌.card_name, _元素字(牌.element_enum())]
-		选项.append({"value": i + 1, "label": 标签})
+		# card_id 只用于客户端悬停选项时摊出牌面；服务端仍按选项值结算。
+		选项.append({"value": i + 1, "label": 标签, "card_id": int(牌表[i])})
 	return 选项
 
 
@@ -512,6 +513,10 @@ func _settle_jian_shou_shi_yan(牌表: Array, 选中: int) -> void:
 		var cid: int = int(v)
 		if cid == 选中:
 			player.add_hand_cards([cid])
+			# 选择后再展示一次这张牌（牌库顶整批展示过，但选中的那张再亮一次更清楚）
+			engine.展示牌库顶(player.id, [cid])
+			# 战斗日志补一条「谁 获得【什么】」；这批牌已经公开，不会泄露暗牌
+			engine.播获得牌日志(player.id, [cid])
 		else:
 			弃.append(cid)
 	if not 弃.is_empty():

@@ -647,10 +647,30 @@ func _测剑守誓言结算() -> void:
 	检(_展示过(三张), "移除的牌应一次展示给全场：%s" % str(发送记录))
 	var 选择问: Dictionary = _取询问(1, 10803)
 	检((选择问.get("notes", []) as Array).size() == 3, "应完整下发 3 张牌的选项")
+	检((选择问.get("option_card_ids", []) as Array) == 三张,
+		"选牌选项应逐项带 card_id，供客户端悬停摊卡面：%s" % str(选择问.get("option_card_ids", [])))
 	检(_播报次数(10803) == 1, "【剑守誓言】发动应播报一次，实际 %d 次" % _播报次数(10803))
 	_应答([2])
 	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "选好牌后【剑守誓言】应结算完")
 	检(玩家.hand_cards.has(三张[1]), "选中的第 2 张应加入手牌")
+	# 选中的牌再展示一次（牌库顶整批展示 + 选中后再展示），并在战斗日志里写「谁 获得【什么】」
+	var 选中牌: int = int(三张[1])
+	var 展示次数: int = 0
+	var 获得日志: String = ""
+	for r: Dictionary in 发送记录:
+		var 数据: Dictionary = r.get("data", {})
+		if int(r.get("msg", 0)) == GConst.Msg.Card \
+				and int(数据.get("type", -1)) == GConst.CardMsgType.Show \
+				and (数据.get("card_ids", []) as Array).has(选中牌):
+			展示次数 += 1
+		if int(r.get("msg", 0)) == GConst.Msg.Gossip:
+			var 文案: String = str(数据.get("txt", ""))
+			if 文案.contains("获得") and 文案.contains(非魔牌表[1].card_name):
+				获得日志 = 文案
+	检(展示次数 >= 2, "选中的牌应展示至少两次（整批 + 选中后再展示），实际 %d 次" % 展示次数)
+	检(not 获得日志.is_empty(), "战斗日志应写一条「谁 获得【什么】」")
+	检(获得日志.contains("剑之子") and 获得日志.contains(非魔牌表[1].card_name),
+		"获得日志应包含角色与牌名：%s" % 获得日志)
 	检(引擎.deck.discard.has(三张[0]) and 引擎.deck.discard.has(三张[2]),
 		"其余牌应进弃牌堆")
 	检(引擎.deck.discard.has(非魔牌表[3].id), "牌库不足不应把原有弃牌洗回 / 清掉")

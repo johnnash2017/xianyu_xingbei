@@ -813,6 +813,19 @@ func _播治疗日志(pp: BattlePlayer, amount: int, src_id: int, 前: int) -> v
 	})
 
 
+## 获得牌日志：某张已公开的牌加入某人手牌时写一条「谁 获得【什么】」。
+## 只用于牌面已经公开的场合（如【剑守誓言】从牌库顶展示后选牌），不要拿它公开暗牌。
+func 播获得牌日志(pid: int, cards: Array) -> void:
+	var pp: BattlePlayer = players.get(pid)
+	if pp == null or cards.is_empty():
+		return
+	var 名表: Array[String] = []
+	for c: Variant in cards:
+		var 牌: GCard = Data.get_card(int(c))
+		名表.append("【%s】" % (牌.card_name if 牌 != null else str(int(c))))
+	_播手牌日志(pp, "%s 获得 %s" % [_称号(pp), "、".join(名表)])
+
+
 ## 交牌日志（不公开亮牌的「把牌交给别人」用）：交牌双方在日志里看到具体牌名，
 ## 其他人只看到张数 —— 所以按人分别下发，而不是一条广播。
 func _log_give_cards(src_id: int, dst_id: int, cards: Array) -> void:
@@ -1437,6 +1450,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var 选项可用: Array = []
 	var 选项需牌: Array = []
 	var 选项目标: Array = []
+	var 选项牌号: Array = []
 	var 有选项目标: bool = false
 	for o: Dictionary in options:
 		args.append(int(o.get("value", 0)))
@@ -1444,6 +1458,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		选项技能号.append(int(o.get("skill_id", 0)))
 		选项可用.append(bool(o.get("enabled", true)))
 		选项需牌.append(int(o.get("need_card", 0)))
+		选项牌号.append(int(o.get("card_id", 0)))
 		var 目标: Array = o.get("targets", [])
 		选项目标.append({"ids": 目标})
 		if not 目标.is_empty():
@@ -1470,6 +1485,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 有「本身就是技能」的选项时才下发（如【蓄力一击】/【气绝崩击】），客户端据此让这些选项悬停弹技能说明
 	if not 选项技能号.is_empty() and 选项技能号.max() > 0:
 		cmd["option_skill_ids"] = 选项技能号
+	# 选项对应一张牌时（如剑之子【剑守誓言】的「选 1 张加入手牌」）：客户端悬停选项按钮时直接摊卡面
+	if not 选项牌号.is_empty() and 选项牌号.max() > 0:
+		cmd["option_card_ids"] = 选项牌号
 	# 有不可用选项时才下发（如魔纹不够时的额外翻转档）：客户端据此置灰、点不动
 	if not 选项可用.is_empty() and 选项可用.has(false):
 		cmd["option_enabled"] = 选项可用
