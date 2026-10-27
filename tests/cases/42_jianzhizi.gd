@@ -685,6 +685,12 @@ func _测剑守誓言结算() -> void:
 	检((选择问.get("notes", []) as Array).size() == 3, "应完整下发 3 张牌的选项")
 	检((选择问.get("option_card_ids", []) as Array) == 三张,
 		"选牌选项应逐项带 card_id，供客户端悬停摊卡面：%s" % str(选择问.get("option_card_ids", [])))
+	# 光服务端命令里有还不够：必须真的能过协议编码，否则联机时客户端收到的是空数组
+	var 选择命令编码: PackedByteArray = ProtoCodec.encode_named("Command", 选择问)
+	var 选择命令解码: Dictionary = ProtoCodec.decode_named("Command", 选择命令编码)
+	检((选择命令解码.get("option_card_ids", []) as Array) == 三张,
+		"Command 协议应包含 option_card_ids，客户端才能悬停摊卡面：%s"
+		% str(选择命令解码.get("option_card_ids", [])))
 	检(_播报次数(10803) == 1, "【剑守誓言】发动应播报一次，实际 %d 次" % _播报次数(10803))
 	_应答([2])
 	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "选好牌后【剑守誓言】应结算完")
