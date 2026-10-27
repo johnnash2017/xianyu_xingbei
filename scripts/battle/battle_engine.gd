@@ -1451,6 +1451,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var 选项需牌: Array = []
 	var 选项目标: Array = []
 	var 选项牌号: Array = []
+	var 选项需目标: Array = []
 	var 有选项目标: bool = false
 	for o: Dictionary in options:
 		args.append(int(o.get("value", 0)))
@@ -1459,6 +1460,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		选项可用.append(bool(o.get("enabled", true)))
 		选项需牌.append(int(o.get("need_card", 0)))
 		选项牌号.append(int(o.get("card_id", 0)))
+		选项需目标.append(int(o.get("need_target", 0)))
 		var 目标: Array = o.get("targets", [])
 		选项目标.append({"ids": 目标})
 		if not 目标.is_empty():
@@ -1494,6 +1496,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 有「选中后要弃牌」的选项时才下发（如【魔纹融合】）：客户端选到该项才放出手牌可选
 	if not 选项需牌.is_empty() and 选项需牌.max() > 0:
 		cmd["option_need_cards"] = 选项需牌
+	# 每个选项各自要求选几名目标（攻击结束二选一：剑残影 1 名、剑影*断念 0 名）
+	if not 选项需目标.is_empty() and 选项需目标.max() > 0:
+		cmd["option_need_targets"] = 选项需目标
 	# 有「各自目标白名单」的选项时才下发（如吟游诗人【希望赋格曲】的「放置」不含自己、
 	# 「转移」含自己）：客户端选中某项后按它收紧可点头像（未选＝按并集）
 	if 有选项目标:

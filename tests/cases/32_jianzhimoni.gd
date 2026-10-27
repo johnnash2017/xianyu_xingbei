@@ -499,19 +499,14 @@ func 跑() -> void:
 	_给牌(玩家, 法术牌.id)
 	var 断念上下文: Dictionary = {"player": 1, "kind": "attack", "card_id": 0, "dst": 2}
 	检(角色.p_after_attack(断念上下文) == BattleRole.WAIT, "攻击结束时应有宝石可发动【剑影*断念】")
-	检(not _取询问(1, 4504).is_empty(), "没有下发【剑影*断念】询问")
-	_应答([4504])
-	检(角色.p_after_attack(断念上下文) == BattleRole.WAIT,
-		"选完技能后应让玩家选 2 张牌弃掉（此时还不扣宝石）")
-	var 断念弃牌问: Dictionary = _取询问(1, 4504)
-	检(not 断念弃牌问.is_empty(), "没有下发【剑影*断念】弃牌询问")
-	检(int((断念弃牌问.get("args", [0]) as Array)[0]) == 2, "【剑影*断念】应弃 2 张牌")
-	检(not bool(断念弃牌问.get("can_cancel", true)), "【剑影*断念】弃牌是强制的，不能取消")
-	检(玩家.gem == 1, "选完弃牌前不应扣宝石，实际剩 %d" % 玩家.gem)
-	检(_播报次数(4504) == 0, "选完弃牌前不应播报发动，实际 %d 次" % _播报次数(4504))
-	_应答([1], [非技击.id, 攻击牌.id])
+	var 断念问: Dictionary = _取询问(1, 4504)
+	检(not 断念问.is_empty(), "没有下发【剑影*断念】二选一询问")
+	检((断念问.get("option_need_cards", []) as Array) == [2],
+		"【剑影*断念】选项应要求选 2 张弃牌：%s" % str(断念问.get("option_need_cards", [])))
+	检(玩家.gem == 1, "未确认弃牌前不应扣宝石，实际剩 %d" % 玩家.gem)
+	_应答([4504], [非技击.id, 攻击牌.id])
 	检(角色.p_after_attack(断念上下文) == BattleRole.URGENT,
-		"弃牌后应先摸 1 张牌，返回 URGENT 让摸牌先结算")
+		"弃牌选完并确认后应先摸 1 张牌，返回 URGENT 让摸牌先结算")
 	检(玩家.gem == 0, "选完弃牌按确定后才扣 1 点宝石，实际剩 %d" % 玩家.gem)
 	检(_播报次数(4504) == 1, "【剑影*断念】发动应播报一次，实际 %d 次" % _播报次数(4504))
 	检(not 玩家.hand_cards.has(非技击.id) and not 玩家.hand_cards.has(攻击牌.id),
@@ -597,10 +592,12 @@ func 跑() -> void:
 		"选项值应是 4501 / 4504：%s" % str(二选一参数))
 	检((二选一问.get("option_skill_ids", []) as Array) == [4501, 4504],
 		"两项都应带技能号供客户端悬停说明：%s" % str(二选一问.get("option_skill_ids", [])))
-	检(bool(GConst.技能指示器.get(4501, {}).get("选项即提交", false)),
-		"4501 二选一应配「点选项即提交」")
-	检(bool(GConst.技能指示器.get(4504, {}).get("选项即提交", false)),
-		"4504 二选一应配「点选项即提交」")
+	检((二选一问.get("option_need_cards", []) as Array) == [0, 2],
+		"4504 项要求选 2 张弃牌、4501 项不要求：%s" % str(二选一问.get("option_need_cards", [])))
+	检(bool(GConst.技能指示器.get(4501, {}).get("攻击结束二选一", false)),
+		"4501 二选一应配「攻击结束二选一」")
+	检(bool(GConst.技能指示器.get(4504, {}).get("攻击结束二选一", false)),
+		"4504 二选一应配「攻击结束二选一」")
 	_应答([4501])
 	检(角色.p_after_attack(二选一上下文) == BattleRole.WAIT,
 		"用掉 4501 后应继续问 4504")

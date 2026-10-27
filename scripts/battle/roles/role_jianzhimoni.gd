@@ -26,6 +26,8 @@ const KEY_AFTER_STEP: String = "_jianzhimoni_after_step"
 const AFTER_STEP_CHOOSE: int = 0
 const AFTER_STEP_RESOLVE: int = 1
 const KEY_AFTER_CHOSEN: String = "_jianzhimoni_after_chosen"
+## 攻击结束二选一的同一条回复里带上的弃牌（选 4504 时 2 张；选 4501 时为空）
+const KEY_AFTER_CARDS: String = "_jianzhimoni_after_cards"
 ## 本次攻击结束已经选过的技能（防止同一技能在一次攻击结束里重复弹）
 const KEY_4501_DONE: String = "_jianzhimoni_4501_done"
 const KEY_4504_DONE: String = "_jianzhimoni_4504_done"
@@ -138,6 +140,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 		var 选中: int = int(args[0]) if not args.is_empty() else 0
 		if not _选项里有(选项, 选中):
 			return SUCCESS
+		ctx[KEY_AFTER_CARDS] = (r2.get("card_ids", []) as Array).duplicate()
 		ctx[KEY_AFTER_CHOSEN] = 选中
 		ctx[KEY_AFTER_STEP] = AFTER_STEP_RESOLVE
 		if 选中 == JI_ZHI_JIAN_YI:
@@ -154,7 +157,8 @@ func _攻击结束选项(ctx: Dictionary) -> Array:
 		out.append({"value": JI_ZHI_JIAN_YI, "label": "技之剑意", "skill_id": JI_ZHI_JIAN_YI})
 	if not bool(ctx.get(KEY_4504_DONE, false)) and not used_jian_ying_duan_nian \
 			and player.gem > 0 and player.hand_cards.size() >= 2:
-		out.append({"value": JIAN_YING_DUAN_NIAN, "label": "剑影*断念", "skill_id": JIAN_YING_DUAN_NIAN})
+		out.append({"value": JIAN_YING_DUAN_NIAN, "label": "剑影*断念", "skill_id": JIAN_YING_DUAN_NIAN,
+			"need_card": 2})
 	return out
 
 
@@ -210,12 +214,17 @@ func _jian_ying_duan_nian(ctx: Dictionary, 跳过发动: bool = false) -> int:
 				return SUCCESS
 			阶段 = 1
 	if 阶段 == 1:
-		if not engine.has_reply():
-			询问(player.id, JIAN_YING_DUAN_NIAN, 2, 0, GConst.CardSource.Hand, [], 0, "", [], false, 0)
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var 弃牌: Array = _pick_hand_cards(player, r.get("card_ids", []), 2)
-		_fill_from_hand(player, 弃牌, 2)
+		var 弃牌: Array
+		if 跳过发动:
+			# 弃牌和「选哪一项」在同一条回复里；不足 2 张＝放弃 4504，不扣宝石
+			弃牌 = _pick_hand_cards(player, ctx.get(KEY_AFTER_CARDS, []), 2)
+		else:
+			if not engine.has_reply():
+				询问(player.id, JIAN_YING_DUAN_NIAN, 2, 0, GConst.CardSource.Hand, [], 0, "", [], false, 0)
+				return WAIT
+			var r: Dictionary = take_skill_reply_full()
+			弃牌 = _pick_hand_cards(player, r.get("card_ids", []), 2)
+			_fill_from_hand(player, 弃牌, 2)
 		# 选完弃牌按确定才付宝石；凑不齐 2 张就整颗不发动，不扣代价
 		if 弃牌.size() < 2 or player.gem <= 0:
 			ctx[KEY_DUAN_NIAN_STEP] = STEP_DONE

@@ -399,16 +399,13 @@ func _测剑残影() -> void:
 	var 上下文: Dictionary = {"player": 1, "kind": "attack", "card_id": 非技击牌.id, "dst": 2}
 	var r: int = 角色.p_after_attack(上下文)
 	检(r == BattleRole.WAIT, "攻击行动结束后应询问是否发动【剑残影】")
-	检(not _取询问(1, 10804).is_empty(), "没有下发【剑残影】发动询问")
-	_应答([10804])
-	r = 角色.p_after_attack(上下文)
-	检(r == BattleRole.WAIT, "确认【剑残影】后应让玩家选目标对手")
-	var 目标问: Dictionary = _取询问(1, 10804)
-	检(not 目标问.is_empty(), "没有下发【剑残影】目标询问")
-	检(int((目标问.get("args", [0, 0]) as Array)[1]) == 1, "【剑残影】应要求 1 名目标")
-	检((目标问.get("dst_ids", []) as Array).has(2) and (目标问.get("dst_ids", []) as Array).has(4),
-		"【剑残影】的目标白名单应是所有对手：%s" % str(目标问.get("dst_ids", [])))
-	_应答([1], [2])
+	var 发动问: Dictionary = _取询问(1, 10804)
+	检(not 发动问.is_empty(), "没有下发【剑残影】发动询问")
+	检((发动问.get("option_need_targets", []) as Array) == [1],
+		"【剑残影】选项应要求选 1 名目标：%s" % str(发动问.get("option_need_targets", [])))
+	检((发动问.get("dst_ids", []) as Array).has(2) and (发动问.get("dst_ids", []) as Array).has(4),
+		"【剑残影】的目标白名单应是所有对手：%s" % str(发动问.get("dst_ids", [])))
+	_应答([10804], [2])
 	r = 角色.p_after_attack(上下文)
 	检(r == BattleRole.WAIT, "选好目标后应等待目标弃 1 张牌")
 	var 弃牌问: Dictionary = _取询问(2, 10804)
@@ -446,14 +443,12 @@ func _测剑残影() -> void:
 	检(玩家.v_attack(非技击牌.id, 4, 引擎.players) == GConst.GE_SUCCESS,
 		"限制解除后打其他对手应通过")
 
-	# 目标没有手牌：不弹弃牌询问，仍给额外攻击行动
+	# 目标没有手牌：选完目标直接结算，仍给额外攻击行动
 	_重置战斗()
 	玩家.set_gem(1)
 	上下文 = {"player": 1, "kind": "attack"}
 	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问【剑残影】")
-	_应答([10804])
-	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问目标")
-	_应答([1], [2])
+	_应答([10804], [2])
 	检(角色.p_after_attack(上下文) == BattleRole.SUCCESS,
 		"目标没有手牌时应直接结算完（不弹弃牌询问）")
 	检(_有额外行动(10804), "目标没有手牌也应给额外攻击行动")
@@ -471,9 +466,7 @@ func _测剑残影() -> void:
 	玩家.set_crystal(1)
 	上下文 = {"player": 1, "kind": "attack"}
 	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问【剑残影】")
-	_应答([10804])
-	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问目标")
-	_应答([1], [])
+	_应答([10804], [])
 	检(角色.p_after_attack(上下文) == BattleRole.SUCCESS, "取消目标选择应直接收尾")
 	检(玩家.get_energy() == 1 and not _有额外行动(10804), "取消目标不应扣费 / 给额外行动")
 	检(角色._used_剑残影 == false, "取消目标不应消耗回合限定")
@@ -573,17 +566,14 @@ func _测倾慕与梦想剑断念() -> void:
 	var 上下文: Dictionary = {"player": 1, "kind": "attack"}
 	var r: int = 角色.p_after_attack(上下文)
 	检(r == BattleRole.WAIT, "剑之魔女在场时攻击结束应询问【剑影*断念】")
-	检(not _取询问(1, 4504).is_empty(), "没有下发【剑影*断念】询问")
-	_应答([4504])
+	var 断念问: Dictionary = _取询问(1, 4504)
+	检(not 断念问.is_empty(), "没有下发【剑影*断念】二选一询问")
+	检((断念问.get("option_need_cards", []) as Array) == [2],
+		"【剑影*断念】选项应要求选 2 张弃牌：%s" % str(断念问.get("option_need_cards", [])))
+	检(玩家.gem == 1, "未确认弃牌前不应扣宝石，实际剩 %d" % 玩家.gem)
+	_应答([4504], [], [非魔牌表[0].id, 非魔牌表[1].id])
 	r = 角色.p_after_attack(上下文)
-	检(r == BattleRole.WAIT, "选完技能后应让玩家选 2 张牌弃掉（此时还不扣宝石）")
-	var 弃牌问: Dictionary = _取询问(1, 4504)
-	检(int((弃牌问.get("args", [0]) as Array)[0]) == 2, "【剑影*断念】应弃 2 张牌")
-	检(not bool(弃牌问.get("can_cancel", true)), "【剑影*断念】弃牌是强制的，不能取消")
-	检(玩家.gem == 1, "选完弃牌前不应扣宝石，实际剩 %d" % 玩家.gem)
-	_应答([2], [], [非魔牌表[0].id, 非魔牌表[1].id])
-	r = 角色.p_after_attack(上下文)
-	检(r == BattleRole.URGENT, "弃牌后应先摸 1 张牌（返回 URGENT）")
+	检(r == BattleRole.URGENT, "弃牌选完并确认后应先摸 1 张牌（返回 URGENT）")
 	检(玩家.gem == 0, "选完弃牌按确定后才扣 1 真宝石，实际剩 %d" % 玩家.gem)
 	检(_播报次数(4504) == 1, "【剑影*断念】发动应播报一次，实际 %d 次" % _播报次数(4504))
 	检(_有额外行动(4504), "【剑影*断念】应额外 +1 攻击行动")
@@ -657,14 +647,23 @@ func _测攻击结束二选一() -> void:
 		"选项值应是 10804 / 4504：%s" % str(参数))
 	检((问.get("option_skill_ids", []) as Array) == [10804, 4504],
 		"两项都应带技能号供客户端悬停说明：%s" % str(问.get("option_skill_ids", [])))
-	检(bool(GConst.技能指示器.get(10804, {}).get("选项即提交", false)),
-		"10804 二选一应配「点选项即提交」")
-	检(bool(GConst.技能指示器.get(4504, {}).get("选项即提交", false)),
-		"4504 二选一应配「点选项即提交」")
-	# 目标没有手牌：选 10804 后只选目标即可结算，然后应继续问 4504
-	_应答([10804])
-	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "选 10804 后应问目标")
-	_应答([1], [2])
+	检((问.get("option_need_targets", []) as Array) == [1, 0],
+		"剑残影项要求 1 名目标、4504 项不要求目标：%s" % str(问.get("option_need_targets", [])))
+	检((问.get("option_need_cards", []) as Array) == [0, 2],
+		"4504 项要求 2 张弃牌、剑残影项不要求：%s" % str(问.get("option_need_cards", [])))
+	# 两项需求都必须过协议：否则联机时客户端不知道选中后要放开目标还是弃牌
+	var 二选一编码: PackedByteArray = ProtoCodec.encode_named("Command", 问)
+	var 二选一解码: Dictionary = ProtoCodec.decode_named("Command", 二选一编码)
+	检((二选一解码.get("option_need_targets", []) as Array) == [1, 0],
+		"Command 协议应包含 option_need_targets：%s" % str(二选一解码.get("option_need_targets", [])))
+	检((二选一解码.get("option_need_cards", []) as Array) == [0, 2],
+		"Command 协议应包含 option_need_cards：%s" % str(二选一解码.get("option_need_cards", [])))
+	检(bool(GConst.技能指示器.get(10804, {}).get("攻击结束二选一", false)),
+		"10804 二选一应配「攻击结束二选一」")
+	检(bool(GConst.技能指示器.get(4504, {}).get("攻击结束二选一", false)),
+		"4504 二选一应配「攻击结束二选一」")
+	# 目标没有手牌：同一条回复里选 10804 + 目标即可结算，然后应继续问 4504
+	_应答([10804], [2])
 	检(角色.p_after_attack(上下文) == BattleRole.WAIT,
 		"10804 结算完应继续问 4504")
 	检(_有额外行动(10804), "选 10804 应获得额外攻击行动")
