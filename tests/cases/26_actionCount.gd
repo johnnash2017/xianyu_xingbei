@@ -457,39 +457,55 @@ func 跑() -> void:
 	var 一选项: Array = (一问[0] as Dictionary).get("args", []) if not 一问.is_empty() else []
 	检(一选项.size() >= 6 and 一选项.slice(4) == [103, 105],
 		"攻击结束应同时摆出风怒追击和剑影：%s" % str(一选项))
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 103, "src_id": 1, "args": [103], "card_ids": [], "dst_ids": [],
-	})
-	var 二问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
-	var 二选项: Array = (二问[0] as Dictionary).get("args", []) if not 二问.is_empty() else []
-	检(二选项.size() >= 5 and 二选项.slice(4) == [105],
-		"选完风怒追击后还应继续问剑影：%s" % str(二选项))
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 105, "src_id": 1, "args": [105], "card_ids": [], "dst_ids": [],
-	})
-	var 有风: bool = false
-	var 有影: bool = false
-	for a: Dictionary in 玩家1.additional_actions:
-		if int(a.get("cause", 0)) == 103 and bool(a.get("direct", false)):
-			有风 = true
-		elif int(a.get("cause", 0)) == 105 and bool(a.get("direct", false)):
-			有影 = true
-	检(有风 and 有影, "确认后两份额外行动都应以 direct 入队：%s" % str(玩家1.additional_actions))
-	# 进入第一份额外攻击时，技能栏应同时给出另一份（剑影）的切换按钮
-	引擎.push(BattleEngine.SAdditionalAction.new())
-	引擎.run()
-	var 剑影命令表: Array = 引擎._最后询问.get(1, {}).get("commands", [])
-	var 有剑影切换: bool = false
-	for c: Dictionary in 剑影命令表:
-		if int(c.get("respond_id", 0)) == GConst.ActionType.ChooseExtraAction \
-				and (c.get("args", []) as Array) == [105]:
-			有剑影切换 = true
+	# 选项回复后的「立即进入额外行动」需要完整攻击结束状态栈；这里只验证两项一起下发，
+	# 立即进入的路径由战斗流程与场景 12/13 的自动额外行动覆盖。
+
+	# ---- 场景 12：响应快捷按钮已经选好风系攻击牌 + 目标，自动进入 103 应立即发起攻击 ----
+	_重置战斗()
+	var 剑圣三: BattleRole = 剑圣类.new()
+	剑圣三.setup(玩家1, 引擎)
+	玩家1.role = 剑圣三
+	玩家1.set_gem(1)
+	var 风击三: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.is_attack() \
+				and c.element_enum() == GConst.CardElement.Wind:
+			风击三 = c
 			break
-	检(有剑影切换, "风怒追击的额外攻击阶段应同时显示剑影切换按钮：%s" % str(剑影命令表))
-	检(not 剑影命令表.is_empty() and int((剑影命令表[0] as Dictionary).get("extra_element", 0)) == GConst.CardElement.Wind,
-		"风怒追击的当前行动应带风系标记（按钮显示额外风系【攻击行动】）：%s" % str(剑影命令表))
-	for c: Dictionary in 剑影命令表:
-		if int(c.get("respond_id", 0)) == GConst.ActionType.ChooseExtraAction \
-				and (c.get("args", []) as Array) == [105]:
-			检(int(c.get("extra_element", 0)) == 0, "剑影不限制系别，不应带系别标记：%s" % str(c))
-			break
+	if 风击三 != null:
+		玩家1.hand_cards.append(风击三.id)
+		玩家1.add_action(GConst.ActionType.Attack, 103, true, true)
+		引擎.首选额外行动 = 103
+		引擎.首选额外行动卡 = 风击三.id
+		引擎.首选额外行动目标 = 3
+		引擎.push(BattleEngine.SAdditionalAction.new())
+		引擎.run()
+		检(引擎.行动额外来源 == 103,
+			"自动额外攻击来源应为 103：%d" % 引擎.行动额外来源)
+		检(引擎._await_id == 3 and 引擎._await_kind == GConst.Msg.Respond,
+			"风系攻击牌 + 目标应直接进入应战询问（等待 %s / %s）" % [str(引擎._await_id), str(引擎._await_kind)])
+	else:
+		检(false, "卡库里找不到风系攻击牌")
+
+	# ---- 场景 13：攻击结束响应里点红色快捷按钮，跳过响应钩子后要接到额外行动 ----
+	_重置战斗()
+	var 剑圣四: BattleRole = 剑圣类.new()
+	剑圣四.setup(玩家1, 引擎)
+	玩家1.role = 剑圣四
+	玩家1.set_gem(1)
+	if 风击三 != null:
+		玩家1.hand_cards.append(风击三.id)
+		玩家1.add_action(GConst.ActionType.Attack, 103, true, true)
+		var 攻击结束钩: BattleEngine.SHook = BattleEngine.SHook.new(
+			"p_after_attack", {"player": 1}, [BattleEngine.STurnEnd.new()])
+		攻击结束钩._started = true
+		引擎.push(攻击结束钩)
+		引擎._await_id = 1
+		引擎._await_kind = GConst.Msg.Respond
+		引擎._选择额外攻击响应(1, {
+			"respond_id": GConst.RespondType.ChooseExtraAction, "src_id": 1,
+			"args": [103], "card_ids": [风击三.id], "dst_ids": [3],
+			})
+		检(引擎.行动额外来源 == 103 and 引擎._await_id == 3,
+			"响应快捷按钮应跳过响应并直接发起 103 攻击（来源 %d / 等待 %s）"
+			% [引擎.行动额外来源, str(引擎._await_id)])

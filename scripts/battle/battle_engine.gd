@@ -2844,6 +2844,39 @@ class S自动攻击:
 		})
 
 
+## 角色在钩子里立即分出额外行动后调用：让当前钩子本轮不再处理剩余角色（避免额外行动结束后
+## 又回到同一钩子、在错误时机重问剩下的选项）。
+func 跳过当前钩子剩余角色() -> void:
+	if _当前状态 is SHook:
+		(_当前状态 as SHook)._iter = order.size()
+
+
+## 立刻进入某份已在队列里的额外行动（不回 STurnEnd、不再问一次）：
+## 角色在攻击结束确认后直接调用它并返回 URGENT，玩家马上进入选牌 / 选目标。
+func 立即进入额外行动(pid: int, cause: int) -> bool:
+	var cur: BattlePlayer = players.get(pid)
+	if cur == null or cause <= 0:
+		return false
+	var idx: int = -1
+	for i: int in range(cur.additional_actions.size()):
+		if int(cur.additional_actions[i].get("cause", 0)) == cause:
+			idx = i
+			break
+	if idx < 0:
+		return false
+	var 允许: int = int(cur.additional_actions[idx].get("allow_action", GConst.ActionType.Attack))
+	var 跳过宣告: bool = bool(cur.additional_actions[idx].get("skip_notice", false))
+	var 数据: Dictionary = cur.additional_actions[idx].duplicate()
+	cur.additional_actions.remove_at(idx)
+	if not 跳过宣告:
+		broadcast(GConst.Msg.Skill, {"skill_id": cause, "src_id": pid, "dst_ids": []})
+	var 阶段: SActionPhase = SActionPhase.new(允许, true, true, false, cause)
+	阶段.额外数据 = 数据
+	push(阶段)
+	push(SHook.new("p_additional_action", {"player": pid, "cause": cause}, []))
+	return true
+
+
 ## 回合结束：先处理额外行动，否则轮转到下家
 class STurnEnd:
 	## 技能行动被取消（见 BattleEngine.取消技能行动）：本回合不结束，改为重新进入行动阶段

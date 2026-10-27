@@ -176,11 +176,12 @@ func p_after_attack(ctx: Dictionary) -> int:
 			if not _选项里有(选项, 选中):
 				ctx[KEY_AFTER_STEP] = 2
 				break
-			# 已经在这里确认过「发动」：入队时标 direct + skip_notice，
-			# 引擎进入额外行动时直接开打，不再问一次、也不重复播报。
+			# 已经在这里确认过「发动」：立即进入该额外攻击，玩家马上选牌 / 选目标，
+			# 不再先提交成响应、也不等回合结束。打完后本钩子会继续问另一项。
 			if 选中 == LIAN_XU_JI:
-				notice_skill(LIAN_XU_JI, [])
-				player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true, true)
+				if engine.立即进入额外行动(player.id, LIAN_XU_JI):
+					engine.跳过当前钩子剩余角色()
+					return URGENT
 			elif 选中 == JIAN_YING:
 				# 剑影的 1 能量在确认发动时就付（询问释放即付），之后切换给的行动不再重复扣
 				if not _jian_ying_paid:
@@ -192,8 +193,9 @@ func p_after_attack(ctx: Dictionary) -> int:
 						player.set_gem(player.gem - 1)
 					_jian_ying_paid = true
 					engine._broadcast_game()
-				notice_skill(JIAN_YING, [])
-				player.add_action(GConst.ActionType.Attack, JIAN_YING, true, true)
+				if engine.立即进入额外行动(player.id, JIAN_YING):
+					engine.跳过当前钩子剩余角色()
+					return URGENT
 	# 【圣剑】：本次（第 3 次）【攻击行动】触发强制命中后，结束这次攻击时摸 X 张、弃 X 张（跨一次询问）
 	if _sheng_jian_active:
 		return _sheng_jian_cycle()
