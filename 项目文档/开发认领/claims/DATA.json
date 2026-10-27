@@ -1,0 +1,25 @@
+{
+  "id": "DATA",
+  "title": "DATA 数据启用/导表",
+  "agent": "W6",
+  "claimed_at": "2026-10-28T01:07:07",
+  "status": "review",
+  "files": [
+    "Table/Design/设计表.xlsx",
+    "Table/Csv/角色表.csv",
+    "Table/Csv/技能表.csv",
+    "Table/TableScripts/DataTables.gd",
+    "tests/_export_tables.gd"
+  ],
+  "acceptance": "从设计表改脚本列/启用列/提示/指示物，导表；13 角色进入选角池；数据测试更新；自检全过。",
+  "summary": "13 名 3★/3.5★ 角色启用并填脚本列（38/41/45/46/47/75/78/87/93/97/106/107/108）；59 技能中 32 个有运行时询问的技能补 44 条提示（4701 按脚本读 #2/#3、8701 读 #1，前序空列保留）；38/46/93 指示物/盖牌配置复核；设计表→CSV→DataTables 全量重导，未手改生成文件。技能指示器条目属 CLIENT 的 const.gd（W7 已加），DATA 侧只负责指示物数据。",
+  "tests": "临时 SceneTree runner：Data 加载通过（13 角色在池、脚本可加载、59 技能行、44 条提示可读且占位符已替换、子弹/灵涌/元子上限、全版本池 54）；静态检查 13 角色所有 询问 的提示下标 0 缺失；重导后临时目录复现与仓库 CSV/DataTables 完全一致（仅生成时间变）。未跑全量自检（并发）；tests/cases/1_dataAssets.gd 仍有 14 条旧断言（38/108 不在池、13 角色无脚本）与启用冲突，该文件不在 DATA files，需主代理更新。",
+  "files_changed": [
+    "Table/Design/设计表.xlsx",
+    "Table/Csv/角色表.csv",
+    "Table/Csv/技能表.csv",
+    "Table/TableScripts/DataTables.gd",
+    "tests/_export_tables.gd"
+  ],
+  "finished_at": "2026-10-28T01:18:11"
+}

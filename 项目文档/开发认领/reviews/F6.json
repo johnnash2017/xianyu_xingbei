@@ -1,0 +1,17 @@
+{
+  "id": "F6",
+  "title": "F6 伤害转移/弃牌拦截（spike）",
+  "reviewer": "R5",
+  "implementer": "FIX1",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】按 db695f4 核对：F6 实际改 scripts/battle/battle_engine.gd、scripts/battle/battle_role.gd、新增 tests/cases/29_redirectIntercept.gd；battle_player.gd 未改，battle_mobile.gd 仓库不存在（客户端在 scripts/ui/battle_mobile.gd）；未越界。engine 同时含 F2/F3/F4/F7/F8/F9 等核心链改动（同一核心链代理连续做），按 F6 acceptance 与 29_redirectIntercept 判定，未计入 F6；仓库无临时文件、无 git 提交。\n【问题1 已修】⑥ 转移后后续伤害钩子 ctx.dst 仍是原目标：SGateTimeline6 不再在 p_timeline_6 之前构造 p_timeline_6_drawn 的上下文，新增 SHookTimeline6Drawn 在摸牌/超限结算完之后按 harm 现算；push_harm 不再在流水线入口快照 p_harm_end 上下文，新增 SHookHarmEnd 在流水线最末尾按 harm 现算（battle_engine.gd:2146-2148、3135-3162）；转移只改 harm.dst 并记 redirect_from（2167-2186）。p_timeline_6 同一钩子轮次内 ctx.dst 仍是轮次开始快照、要看最新目标读 harm.dst 这一边界，已在 转移伤害 与 BattleRole.转移伤害 注释写明（2158-2166、battle_role.gd:343-353），与实现一致。用例钉住：转移后 p_timeline_6_drawn / p_harm_end 的 ctx.dst 与 ctx.harm.dst 都是新目标 2、redirect_from=1、新目标两钩子命中 2、原目标角色收到同轮钩子但命中 0；对照组无转移时 dst=1、命中 2、无 redirect_from。\n【问题2 已修】29_redirectIntercept 已补 dummy 转移角色与挂在原目标身上的观察角色，在 p_timeline_6_drawn / p_harm_end 记录 ctx.dst、ctx.harm.dst、redirect_from 并按 ctx.dst==自己统计命中；用例头注释与实际断言一致。\n【回归/上下游】全仓库除 F6 自身（引擎 API、role 转发、用例 dummy）无其它 转移伤害 调用，现有角色与旧行为不受影响：重算上下文只影响 dst，且 dst 仅 转移伤害 会改，src/card_id/is_active 无钩子改动，非转移路径 ctx 内容与旧实现等价。⑥ 主链路（改目标、新目标摸牌/超限、原目标不动、免士气只作用于本次超限且不残留）与拦截钩子（队友手牌/盖牌、上下文、认领与代价、拒绝/交不出/非队友/非魔弹/未知牌主/多张只认领 1/只问一次/不递归）均有用例覆盖。本评审实跑全量自检：[自检] 用例 55 个：通过 55，失败 0，无 [失败]/SCRIPT ERROR/Parse Error（仅退出期 RID/ObjectDB 资源警告）。\n【非阻塞，留 R47】1) 按 ctx.dst 做收尾的既有角色在「自己成为被转移的原目标」时不再触发：魔枪 幻影形态（role_moqiang.gd:201）会卡形态、勇者 死斗 si_dou_morale_lock（role_yongzhe.gd:419）会残留；R47 落地 4702 时需按 harm.redirect_from 兜底，或确认 4702 不转移自伤。2) 转移伤害 只能在 p_timeline_6 调用目前只有注释约束，p_timeline_3/4/5 误调会让那些快照 ctx 失真。3) R1 上轮列的非阻塞项（92 处角色 to_discard 不带 ctx 不拦截、_结算待弃牌 直接信任 ctx.taken、face_up 默认 true、认领后日志按全量张数记）本次未处理，仍建议写进 to_discard / p_before_discard 注释。\n【结论】两条 blocking 均已修复且被用例钉住，全量自检通过，同意。",
+  "reviewed_at": "2026-10-27T23:21:54",
+  "files": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_role.gd",
+    "scripts/battle/battle_mobile.gd",
+    "tests/cases/29_redirectIntercept.gd"
+  ]
+}

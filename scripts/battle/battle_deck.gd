@@ -41,6 +41,34 @@ func _reshuffle_discard() -> void:
 	shuffle()
 
 
+## 从牌库顶（pile 末尾）取 n 张，顺序与 draw 相同（先取到的在前）。
+## 与 draw 的区别：**牌库不足时不把弃牌堆洗回**，只返回实际能取到的张数 ——
+## 供「移除/弃置牌库顶牌」类技能使用（9701 / 10803）：这些效果按字面只看牌库顶，
+## 牌库空了就停，不能把弃牌堆重新洗成牌库。
+func remove_top(n: int = 1) -> Array[int]:
+	var out: Array[int] = []
+	if n <= 0:
+		return out
+	for _i: int in range(n):
+		if pile.is_empty():
+			break
+		out.append(pile.pop_back())
+	return out
+
+
+## 查看牌库顶 n 张（不改变牌库；顺序同 remove_top：第一张先被移除）。不足返回实际张数。
+func peek_top(n: int = 1) -> Array[int]:
+	var out: Array[int] = []
+	if n <= 0:
+		return out
+	for i: int in range(n):
+		var idx: int = pile.size() - 1 - i
+		if idx < 0:
+			break
+		out.append(pile[idx])
+	return out
+
+
 ## 把牌放进弃牌堆
 func push_discard(cards: Array) -> void:
 	for c: Variant in cards:

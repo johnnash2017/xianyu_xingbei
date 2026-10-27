@@ -1,0 +1,14 @@
+{
+  "id": "R41",
+  "title": "R41 战斗法师（41）4 技能",
+  "reviewer": "R2",
+  "implementer": "W1",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】R41 只新增 scripts/battle/roles/role_zhandoufashi.gd（414 行）与 tests/cases/31_zhandoufashi.gd（752 行），基线 db695f4 无这两个文件（git diff 为空，按全量内容核对）；工作区里 battle_engine/battle_player/battle_role 的改动属 F2(W4)、claim.py/tasks.json 属认领工具，均不在本任务范围；未动数据表（角色表脚本列仍留空，符合 DATA 约定）、客户端、共享代码，无 41 号专用分支混入。\n【数据与同名技能】角色表 41 战斗法师 / 路尔莉嘉 / 3.0 星 / 命格咏 / 技能 4101~4104；技能表 4101 符文置换（法术·普通·无）、4102 附魔打击（响应·普通·无，说明名带【回合限定】）、4103 熵变（响应·普通·无）、4104 魔力熵增（响应·必杀技·水晶），脚本常量与技能表 ID 一致；四个技能名无重名/重号，未借用其他角色技能号。\n【4101 符文置换】available_skills 下发 MagicSkill、need_card=2、cards=能凑同系的手牌；回合限定或凑不齐只置灰不删项。v_magic_skill 校验来源/技能号/回合限定/恰好 2 张/重复/在手/非虚拟/两张同元素（A6：彼此同元素、只用手牌）；p_magic_skill 播报→Show 广播→take_from_hand(已展示)→进弃牌堆+弃牌日志→弃牌含咏(Cast)命格或法术牌则 add_action(Attack,4101,direct,skip_notice)→push_draw(强制，走 p_before_draw 允许水影等响应)，返回 URGENT 保证先摸牌再行动结束；p_before_turn_begin 重置回合限定与分步标记。额外攻击行动未加出牌限制，与技能文一致。\n【4102 附魔打击】p_timeline_2_hit/miss 只认 src=自己且 is_active 的主动攻击；未命中分支再查攻击牌命格为 Cast；命中/未命中都先询问，取消不生效、同意才置回合限定标记并 add_action(Magic,4102,direct)；p_timeline_1 清本次分步进度、STEP_DONE 挡 URGENT 重入；应战反击（is_active=false）、他人攻击、本回合已发动过都不弹询问。完整攻击流水线用例证明命中→询问→额外法术行动阶段→攻击伤害/计数正常。\n【4103 熵变】p_action_end 看 action_count==3（F2 统一计数含额外行动，符合 A8）；先下发固定两项支付选项（1 我方战绩区宝石=team_gem / 2 队友能量=队友 get_energy，不可支付只 enabled=false），服务端对回报的支付方式二次校验；随后按 need_target=min(2, 对手数)、targets=对手白名单选目标并去重/敌我校验；目标合法后才实际扣费（team_gem-1 或队友 remove_energy(1)）；取消、支付方式非法、目标不足、两项都不可支付均不结算不扣费；伤害统一在所有询问结束后才压栈（4103 先压、4104 后压，LIFO 下 4104 先结算，避免询问夹在伤害中间，也不会被 4103 的伤害影响 4104 的士气对比）。\n【4104 魔力熵增】只认 ctx.is_extra（任何额外行动结束）；无能量或无对手不问；询问 1 名目标（对手白名单），回报合法才 remove_energy(1)（先水晶后宝石，宝石可顶水晶，符合 A40 与既有复盘口径）并 push_harm(1 点法术伤害, cause=4104)；p_harm_end 对比伤害前后目标队伍士气，未下降→set_team_gem(player.color,+1)，因此掉士气→不加；按 action_count 与已处理标记支持每次额外行动各问一次，回合开始清理；与 4103 同一次额外行动结束的先后顺序用例覆盖。\n【测试与自检】用例覆盖数据/角色/技能行、4101 技能栏与置灰、校验 8 类非法、两种结算与回合限定、4102 命中/未命中/咏与非咏/取消/非主动/他人/完整流水线、4103 第 2 次不问/宝石支付/队友能量支付/都不可支付/取消/双目标伤害、4104 首次与第二次/宝石顶水晶/无能量/普通行动不触发/掉士气不加宝石、4103+4104 同次行动结束、回合重置。本评审实跑全量：godot --headless --path ... res://tests/selfCheck.tscn → [自检] 用例 45 个：通过 45，失败 0，退出码 0，无 [失败]/SCRIPT ERROR/Parse Error（仅退出期 RID/ObjectDB/resources 在用的引擎告警）；列表中的 [通过] 战斗法师 即新用例。\n【不阻塞备注】1) 4103 两个支付选项文案暂硬编码在脚本（技能表提示列按 DATA 任务补），与部分既有角色写法一致，DATA 完成后建议改走 提示原文 统一。2) 选「队友能量」时自动取第一个有能量的队友，未让玩家指定是哪一名队友（A8 只要求选择支付来源，二元选项文案亦如此；多队友时属体验/规则细化空间）。3) 4101 可点牌表未排除虚拟牌（服务端 v_magic_skill 已拒收；现有 5 张 none 元素牌均为虚拟牌，实际进不了手牌），与「界面可点=服务端可收」的注释约定存在理论偏差。4) 角色表脚本列与客户端提示未接（DATA/CLIENT 任务），实局还不会加载本角色；4104 在真实 direct 额外行动后的端到端触发由 F2 的 SActionPhase→行动额外 路径保证，现有用例用手工上下文覆盖钩子本身。",
+  "reviewed_at": "2026-10-27T20:10:42",
+  "files": [
+    "scripts/battle/roles/role_zhandoufashi.gd",
+    "tests/cases/31_zhandoufashi.gd"
+  ]
+}

@@ -1,0 +1,580 @@
+extends BattleRole
+## 剑之子（roleID 108）—— 特典
+## 技能：
+##   倾慕（10801，被动）：若【剑之魔女】在场，你无法发动【剑守誓言】，
+##       并获得【剑之魔女】的【剑影*断念】4504、【梦想剑】4503。
+##   风之剑（10802，响应）：你使用技类命格牌作为主动攻击打出时，可移除我方【战绩区】1 星石，
+##       视为你发动该牌上的剑圣独有技（101 疾风技 / 102 烈风技）。
+##   剑守誓言（10803，响应）：你有主动攻击命中②或任意一方【星杯区】星杯数增加的回合结束后，
+##       弃置牌库顶（X+1）张牌【展示】（X＝双方星杯数之和），你可选择其中 1 张加入手牌；
+##       若这次弃牌中有法术牌：你 +2【水晶】，立即执行 1 个你的额外回合（该回合攻击伤害 +1），
+##       永久将你的角色卡替换为【风之剑圣】。
+##   剑残影（10804，响应 / 必杀技 / 回合限定 / 水晶）：【攻击行动】结束后支付 1【水晶】，
+##       目标对手弃 1 张牌，额外 +1【攻击行动】；本回合你的下次主动攻击只能攻击该目标对手。
+##
+## 借用关系（见 data-audit §7 / A49~A52）：
+##   - 10802 的 101/102 是本角色自己实现的：F5-sword helper 的询问 / 结算里没有「移除战绩区星石」
+##     这一步，也承载不了星石类型选择；只复用它的判定口径，不改 skill_sword.gd / role_jiansheng.gd；
+##     播报按本角色 10802（借用技能行）。
+##   - 10801 的 4503/4504 从 role_jianzhimoni.gd 复制（任务板没有 45 的 helper 任务，data-audit Q3），
+##     播报按源技能 4503 / 4504；不改 role_jianzhimoni.gd。
+##   - 10803 的牌库顶语义按 F8：不移除时洗回弃牌堆，牌库不足只取实际张数；
+##     「弃牌中有法术牌」按这次从牌库顶弃置的整批牌判断（含被选入手的 1 张，见下方结算注释）。
+##   - 10803 先安排额外回合、再替换角色（F7 的顺序；替换会清旧角色的额外行动 / 行动计数，
+##     所以必须把额外回合安排在替换之前）；角色替换后旧角色被解绑，之后不再调用本脚本任何方法。
+##   - 10804 的「本回合你的下次主动攻击只能攻击该目标」用角色状态 + v_attack 兜底；
+##     额外行动的界面白名单走 extra_action_targets。客户端目标过滤留给 CLIENT（任务范围外）。
+
+const 倾慕: int = 10801
+const 风之剑: int = 10802
+const 剑守誓言: int = 10803
+const 剑残影: int = 10804
+
+## 借用的剑圣 / 剑之魔女技能号（卡表 / 技能表里的源技能号）
+const 疾风技: int = 101
+const 烈风技: int = 102
+const 梦想剑: int = 4503
+const 剑影断念: int = 4504
+
+const 剑之魔女: int = 45
+const 风之剑圣: int = 1
+
+## 10804 的固定费用（【水晶】，按约定宝石可顶：get_energy / remove_energy）
+const 剑残影费用: int = 1
+## 10803 有法术牌时的奖励
+const 剑守誓言水晶: int = 2
+
+# ============================================================
+# 分步进度键（都放在钩子 ctx 里：同一次钩子重入拿同一份 ctx，不会串到下一次）
+# ============================================================
+## 攻击行动结束：10804 → 4504
+const KEY_AFTER_STEP: String = "_jianzhizi_after_step"
+const AFTER_STEP_剑残影: int = 1
+## 10802：0 未问 / 1 已问发动与星石类型
+const KEY_10802_STEP: String = "_jianzhizi_10802_step"
+## 10804：0 未问 / 1 已问发动 / 2 已问目标 / 3 已问目标弃牌
+const KEY_10804_STEP: String = "_jianzhizi_10804_step"
+const KEY_10804_TARGET: String = "_jianzhizi_10804_target"
+## 4504：0 未问 / 1 已付款等弃 2 张
+const KEY_4504_STEP: String = "_jianzhizi_4504_step"
+## 10803：0 未问发动 / 1 已移除并展示、等选 1 张
+const KEY_10803_STEP: String = "_jianzhizi_10803_step"
+const KEY_10803_CARDS: String = "_jianzhizi_10803_cards"
+
+## 10804 的两个固定选项值
+const 星石_宝石: int = 1
+const 星石_水晶: int = 2
+
+## 本回合的 10804 / 4504 回合限定
+var _used_剑残影: bool = false
+var _used_剑影断念: bool = false
+## 10804 的「下次主动攻击只能攻击该目标」（-1＝无限制）
+var _剑残影目标: int = -1
+## 4503 梦想剑本回合已激活的档位
+var _dream_ignore_shield: bool = false
+var _dream_no_reattack: bool = false
+var _dream_no_miss: bool = false
+## 10803 的回合条件跟踪
+var _本回合有主动攻击命中: bool = false
+var _回合开始星杯总数: int = 0
+
+
+# ============================================================
+# 回合开始：清回合限定 / 梦想剑档位 / 10804 目标限制，重置 10803 的星杯基准
+# ============================================================
+func p_before_turn_begin(_ctx: Dictionary) -> int:
+	_used_剑残影 = false
+	_used_剑影断念 = false
+	_剑残影目标 = -1
+	_dream_ignore_shield = false
+	_dream_no_reattack = false
+	_dream_no_miss = false
+	_本回合有主动攻击命中 = false
+	_回合开始星杯总数 = engine.星杯总数() if engine != null else 0
+	return SUCCESS
+
+
+# ============================================================
+# 攻击宣告（timeline_1）：10804 限制消费 / 10802 风之剑 / 借用 4503 梦想剑
+# ============================================================
+func p_timeline_1(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) != player.id:
+		return SUCCESS
+	# 应战反击不是主动攻击：10802 / 4503 都不触发，10804 的目标限制也不在这里消费
+	if not bool(ctx.get("is_active", false)):
+		return SUCCESS
+	# 这次主动攻击已经由 v_attack 校验过目标：10804 的「下次主动攻击只能打该目标」到此消费
+	_剑残影目标 = -1
+	var r: int = _feng_zhi_jian(ctx)
+	if r == WAIT:
+		return WAIT
+	_apply_dream_sword(ctx)
+	return SUCCESS
+
+
+# ============================================================
+# 10802 风之剑：技类命格攻击牌 → 移除 1 星石 → 发动牌上的 101 / 102
+# ============================================================
+func _feng_zhi_jian(ctx: Dictionary) -> int:
+	var 阶段: int = int(ctx.get(KEY_10802_STEP, 0))
+	if 阶段 >= STEP_DONE:
+		return SUCCESS
+	if 阶段 == 0:
+		if not _可发动风之剑(ctx):
+			return SUCCESS
+		ctx[KEY_10802_STEP] = 1
+		if not engine.has_reply():
+			# 星石类型由玩家选（A50）；两个选项始终成对下发，做不了的置灰。
+			# 取消＝不发动（不扣星石）。
+			询问(player.id, 风之剑, 0, 0, GConst.CardSource.Hand, _星石选项())
+			return WAIT
+	if 阶段 != 1:
+		return SUCCESS
+	if not engine.has_reply():
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	ctx[KEY_10802_STEP] = STEP_DONE
+	var args: Array = r.get("args", [])
+	var 选择: int = int(args[0]) if not args.is_empty() else 0
+	# 回复期间资源可能已变化：支付前按当前战绩区复核
+	if 选择 == 星石_宝石:
+		if engine.team_gem[player.color] <= 0:
+			return SUCCESS
+		engine.set_team_gem(player.color, engine.team_gem[player.color] - 1)
+	elif 选择 == 星石_水晶:
+		if engine.team_crystal[player.color] <= 0:
+			return SUCCESS
+		engine.set_team_crystal(player.color, engine.team_crystal[player.color] - 1)
+	else:
+		return SUCCESS
+	_发动牌上剑圣技(ctx)
+	notice_skill(风之剑, [int(ctx.get("dst", -1))])
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 10802 能否发动：主动攻击、技类命格攻击牌、牌上带 101 或 102 且至少一项效果当前能生效、
+## 我方战绩区至少 1 颗星石。
+func _可发动风之剑(ctx: Dictionary) -> bool:
+	var 牌: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+	if 牌 == null or not 牌.is_attack():
+		return false
+	if 牌.fate_pattern_enum() != GConst.FatePattern.Martial:
+		return false
+	var 有101: bool = 牌.has_skill_id(疾风技)
+	var 有102: bool = 牌.has_skill_id(烈风技)
+	if not 有101 and not 有102:
+		return false
+	# 102 只在目标有【圣盾】/【天使之墙】时有实际效果；只有 102 且不满足条件时不问
+	if not 有101 and not _目标有圣盾(engine.p(int(ctx.get("dst", -1)))):
+		return false
+	return engine.team_gem[player.color] + engine.team_crystal[player.color] > 0
+
+
+## 发动牌上的剑圣独有技：101 额外 +1 攻击行动；102 本次攻击无法应战且不查圣盾。
+func _发动牌上剑圣技(ctx: Dictionary) -> void:
+	var 牌: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+	if 牌 == null:
+		return
+	if 牌.has_skill_id(疾风技):
+		player.add_action(GConst.ActionType.Attack, 风之剑, true, true)
+	if 牌.has_skill_id(烈风技):
+		var 目标: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+		if _目标有圣盾(目标):
+			ctx["hit_rate"] = GConst.HitRate.NoReattack
+			ctx["check_shield"] = false
+
+
+func _目标有圣盾(dst: BattlePlayer) -> bool:
+	if dst == null:
+		return false
+	return dst.check_basic_effect_name(GConst.CardName.Shield) \
+			or dst.check_basic_effect_skill(GConst.技能_天使之墙)
+
+
+## 10802 的星石类型选项（固定两项，按战绩区置灰）
+func _星石选项() -> Array:
+	return [
+		{"value": 星石_宝石, "label": "移除战绩区 1【宝石】", "enabled": engine.team_gem[player.color] > 0},
+		{"value": 星石_水晶, "label": "移除战绩区 1【水晶】", "enabled": engine.team_crystal[player.color] > 0},
+	]
+
+
+# ============================================================
+# 借用 4503 梦想剑（10801；只在剑之魔女在场时生效）
+# ============================================================
+## 攻击宣告时按本回合第几次攻击行动施加档位：第 1 档无视圣盾 / 第 2 档无法应战 / 第 4 档强制命中。
+## 放在 10802 之后调用：102 的「无法应战」不应盖掉梦想剑第 4 档的「强制命中」。
+func _apply_dream_sword(ctx: Dictionary) -> void:
+	if not _剑之魔女在场():
+		return
+	if _dream_no_miss:
+		ctx["hit_rate"] = GConst.HitRate.NoMiss
+	elif _dream_no_reattack:
+		ctx["hit_rate"] = GConst.HitRate.NoReattack
+	if _dream_ignore_shield:
+		ctx["check_shield"] = false
+
+
+## 攻击行动结束时推进梦想剑档位（与 role_jianzhimoni.gd 同口径：计数含额外攻击行动）
+func p_action_end(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	if str(ctx.get("kind", "")) != "attack":
+		return SUCCESS
+	if not _剑之魔女在场():
+		return SUCCESS
+	var n: int = player.attack_action_count
+	if n == 1 and not _dream_ignore_shield:
+		_dream_ignore_shield = true
+		notice_skill(梦想剑, [player.id])
+	elif n == 2 and not _dream_no_reattack:
+		_dream_no_reattack = true
+		notice_skill(梦想剑, [player.id])
+	elif n >= 4 and not _dream_no_miss:
+		_dream_no_miss = true
+		notice_skill(梦想剑, [player.id])
+	return SUCCESS
+
+
+# ============================================================
+# 攻击行动结束后（after_attack）：剑残影 10804 → 借用的剑影*断念 4504
+# ============================================================
+func p_after_attack(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
+	if 阶段 >= STEP_DONE:
+		return SUCCESS
+	if 阶段 == 0:
+		var r: int = _jian_can_ying(ctx)
+		if r == WAIT:
+			return WAIT
+		if r == URGENT:
+			ctx[KEY_AFTER_STEP] = STEP_DONE
+			return URGENT
+		ctx[KEY_AFTER_STEP] = AFTER_STEP_剑残影
+	if int(ctx.get(KEY_AFTER_STEP, 0)) == AFTER_STEP_剑残影:
+		var r2: int = _diao_ying_duan_nian(ctx)
+		if r2 == WAIT:
+			return WAIT
+		if r2 == URGENT:
+			ctx[KEY_AFTER_STEP] = STEP_DONE
+			return URGENT
+		ctx[KEY_AFTER_STEP] = STEP_DONE
+	return SUCCESS
+
+
+# ============================================================
+# 10804 剑残影
+# ============================================================
+## 分步：问发动 → 选目标 → 目标弃 1 张 → 额外攻击行动 + 目标限制。
+## 付款放在目标选好之后：目标步骤取消＝整颗技能不发动，不扣水晶。
+func _jian_can_ying(ctx: Dictionary) -> int:
+	var 阶段: int = int(ctx.get(KEY_10804_STEP, 0))
+	if 阶段 >= STEP_DONE:
+		return SUCCESS
+	if 阶段 == 0:
+		if _used_剑残影 or player.get_energy() < 剑残影费用 or enemy_ids().is_empty():
+			return SUCCESS
+		ctx[KEY_10804_STEP] = 1
+		if not engine.has_reply():
+			# 响应技能先问发动者；不发动走「取消」（见《技能维护约定》猎巫人复盘第 1 条）
+			询问(player.id, 剑残影)
+			return WAIT
+	if 阶段 == 1:
+		if not engine.has_reply():
+			return WAIT
+		if not take_skill_reply():
+			ctx[KEY_10804_STEP] = STEP_DONE
+			return SUCCESS
+		ctx[KEY_10804_STEP] = 2
+		if not engine.has_reply():
+			# 目标只能是任意一名对手（原文「目标对手」）；固定白名单交给客户端过滤
+			询问(player.id, 剑残影, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, enemy_ids())
+			return WAIT
+	if 阶段 == 2:
+		if not engine.has_reply():
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		var dsts: Array = r.get("dst_ids", [])
+		var 目标: int = int(dsts[0]) if not dsts.is_empty() else -1
+		if not enemy_ids().has(目标):
+			ctx[KEY_10804_STEP] = STEP_DONE
+			return SUCCESS
+		_used_剑残影 = true
+		player.remove_energy(剑残影费用)
+		notice_skill(剑残影, [目标])
+		engine._broadcast_game()
+		ctx[KEY_10804_TARGET] = 目标
+		ctx[KEY_10804_STEP] = 3
+		var 靶: BattlePlayer = engine.p(目标)
+		if 靶 == null or 靶.hand_cards.is_empty():
+			_settle_jian_can_ying(ctx, 目标)
+			return SUCCESS
+		if not engine.has_reply():
+			# 目标弃牌是强制的（不能取消）；空回复/非法牌由服务端从手牌补齐
+			询问(目标, 剑残影, 1, 0, GConst.CardSource.Hand, [], 0, "", [], false)
+			return WAIT
+	if 阶段 == 3:
+		if not engine.has_reply():
+			return WAIT
+		var r2: Dictionary = take_skill_reply_full()
+		var 目标2: int = int(ctx.get(KEY_10804_TARGET, -1))
+		_目标弃一张(目标2, r2)
+		_settle_jian_can_ying(ctx, 目标2)
+		return SUCCESS
+	return SUCCESS
+
+
+## 目标弃 1 张手牌：只认回复里真实存在的 1 张；空回复/非法牌按手牌顺序补 1 张。
+## 10804 原文没有【展示】，所以不广播 Show（只写弃牌日志）。
+func _目标弃一张(目标id: int, r: Dictionary) -> void:
+	var 靶: BattlePlayer = engine.p(目标id)
+	if 靶 == null or 靶.hand_cards.is_empty():
+		return
+	var 弃: Array = []
+	for v: Variant in r.get("card_ids", []):
+		var cid: int = int(v)
+		if 靶.has_discard_card(cid) and not 弃.has(cid):
+			弃.append(cid)
+			break
+	if 弃.is_empty():
+		for cid: int in 靶.hand_cards:
+			弃.append(cid)
+			break
+	if 弃.is_empty():
+		return
+	engine.take_from_hand(目标id, 弃)
+	engine.to_discard(弃, {"owner": 目标id, "source": "hand", "cause": 剑残影})
+	engine._log_discard(目标id, 弃)
+	engine._broadcast_game()
+
+
+## 10804 收尾：额外 +1 攻击行动，并记下「下次主动攻击只能打该目标」
+func _settle_jian_can_ying(ctx: Dictionary, 目标id: int) -> void:
+	ctx[KEY_10804_STEP] = STEP_DONE
+	player.add_action(GConst.ActionType.Attack, 剑残影, true, true)
+	_剑残影目标 = 目标id
+	engine._broadcast_game()
+
+
+## 10804 的目标限制：这次额外行动只允许攻击该目标（引擎还会在 v_attack 里兜底）
+func extra_action_targets(cause: int) -> Array:
+	if cause > 0 and _剑残影目标 >= 0:
+		return [_剑残影目标]
+	return []
+
+
+## 10804 的「下次主动攻击只能攻击该目标」：v_attack 只在主动攻击时被引擎调用；
+## 应战反击走另一条校验，不受它限制（原文只写「主动攻击」）。
+func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
+	if _剑残影目标 >= 0 and dst_id != _剑残影目标:
+		return GConst.GE_INVALID_PLAYERID
+	return player.base_v_attack(card_id, dst_id, players)
+
+
+# ============================================================
+# 借用 4504 剑影*断念（10801）
+# ============================================================
+func _diao_ying_duan_nian(ctx: Dictionary) -> int:
+	if not _剑之魔女在场():
+		return SUCCESS
+	var 阶段: int = int(ctx.get(KEY_4504_STEP, 0))
+	if 阶段 >= STEP_DONE:
+		return SUCCESS
+	if 阶段 == 0:
+		if _used_剑影断念 or player.gem <= 0 or player.hand_cards.size() < 2:
+			return SUCCESS
+		ctx[KEY_4504_STEP] = 1
+		if not engine.has_reply():
+			询问(player.id, 剑影断念)
+			return WAIT
+	if 阶段 == 1:
+		if not engine.has_reply():
+			return WAIT
+		if not take_skill_reply():
+			ctx[KEY_4504_STEP] = STEP_DONE
+			return SUCCESS
+		_used_剑影断念 = true
+		notice_skill(剑影断念, [player.id])
+		player.set_gem(player.gem - 1)
+		engine._broadcast_game()
+		ctx[KEY_4504_STEP] = 2
+	if int(ctx.get(KEY_4504_STEP, 0)) == 2:
+		if not engine.has_reply():
+			询问(player.id, 剑影断念, 2, 0, GConst.CardSource.Hand, [], 0, "", [], false)
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		var 弃: Array = _选并补齐(player, r.get("card_ids", []), 2)
+		if not 弃.is_empty():
+			engine.take_from_hand(player.id, 弃)
+			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": 剑影断念})
+			engine._log_discard(player.id, 弃)
+		ctx[KEY_4504_STEP] = STEP_DONE
+		# 先挂额外攻击行动，再摸牌：摸牌可能触发摸牌前响应 / 手牌超限，都排在行动结束之前结算
+		player.add_action(GConst.ActionType.Attack, 剑影断念, true, true)
+		engine.push_draw(player.id, 1, 剑影断念)
+		return URGENT
+	return SUCCESS
+
+
+# ============================================================
+# 10803 剑守誓言：回合结束后
+# ============================================================
+func p_after_turn_end(ctx: Dictionary) -> int:
+	if not _可发动剑守誓言():
+		return SUCCESS
+	var 阶段: int = int(ctx.get(KEY_10803_STEP, 0))
+	if 阶段 >= STEP_DONE:
+		return SUCCESS
+	if 阶段 == 0:
+		# 牌库为空时没有任何牌可弃置 / 加入手牌，也没有法术牌可触发后续；不弹无用询问
+		if engine.deck.pile_size() <= 0:
+			ctx[KEY_10803_STEP] = STEP_DONE
+			return SUCCESS
+		if not engine.has_reply():
+			# 响应技能先问发动者；取消＝不发动，牌库不动
+			询问(player.id, 剑守誓言)
+			return WAIT
+		if not take_skill_reply():
+			ctx[KEY_10803_STEP] = STEP_DONE
+			return SUCCESS
+		# X＝双方星杯区星杯数之和（A51）；牌库顶 X+1 张，不洗回弃牌堆
+		var 取得: Array[int] = engine.移除牌库顶(engine.星杯总数() + 1)
+		if 取得.is_empty():
+			ctx[KEY_10803_STEP] = STEP_DONE
+			return SUCCESS
+		ctx[KEY_10803_CARDS] = 取得
+		engine.展示牌库顶(player.id, 取得)
+		notice_skill(剑守誓言, [player.id])
+		ctx[KEY_10803_STEP] = 1
+	if int(ctx.get(KEY_10803_STEP, 0)) == 1:
+		var 牌表: Array = ctx.get(KEY_10803_CARDS, [])
+		if not engine.has_reply():
+			# 「可选择其中 1 张加入手牌」：取消＝不拿，整批弃置。
+			# 牌不在手牌里，客户端不能按手牌白名单点选，故用固定选项逐张列出（选项值＝第几张）。
+			询问(player.id, 剑守誓言, 0, 0, GConst.CardSource.Hand, _剑守誓言选项(牌表))
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		ctx[KEY_10803_STEP] = STEP_DONE
+		var 选中: int = -1
+		var args: Array = r.get("args", [])
+		if not args.is_empty():
+			var 档: int = int(args[0])
+			if 档 >= 1 and 档 <= 牌表.size():
+				选中 = int(牌表[档 - 1])
+		_settle_jian_shou_shi_yan(牌表, 选中)
+	return SUCCESS
+
+
+## 10803 的触发条件：剑之魔女在场时被 10801 禁止；否则「本回合有主动攻击命中」或
+## 「本回合任意一方星杯数增加」（回合开始快照 vs 现在）。
+func _可发动剑守誓言() -> bool:
+	if _剑之魔女在场():
+		return false
+	if _本回合有主动攻击命中:
+		return true
+	return engine.星杯总数() > _回合开始星杯总数
+
+
+## 10803 的「选择 1 张加入手牌」选项：每张一个按钮，选项值＝1 基下标。
+## 牌不在手牌里，走固定选项而不是手牌白名单（客户端现有二级选项即可完成选择）。
+func _剑守誓言选项(牌表: Array) -> Array:
+	var 选项: Array = []
+	for i: int in range(牌表.size()):
+		var 牌: GCard = Data.get_card(int(牌表[i]))
+		var 标签: String = "未知牌"
+		if 牌 != null:
+			标签 = "%s %s" % [牌.card_name, _元素字(牌.element_enum())]
+		选项.append({"value": i + 1, "label": 标签})
+	return 选项
+
+
+func _元素字(元素: int) -> String:
+	match 元素:
+		GConst.CardElement.Earth: return "地"
+		GConst.CardElement.Wind: return "风"
+		GConst.CardElement.Fire: return "火"
+		GConst.CardElement.Water: return "水"
+		GConst.CardElement.Thunder: return "雷"
+		GConst.CardElement.Light: return "光"
+		GConst.CardElement.Darkness: return "暗"
+	return ""
+
+
+## 10803 结算：选中 1 张加入手牌，其余进弃牌堆；这次弃置的整批牌里有法术牌时
+## +2 水晶、安排 +1 额外回合并永久替换为风之剑圣。
+## 「弃牌中有法术牌」按这次从牌库顶弃置的整批牌判断（含被选入手的 1 张；见文件头口径）。
+func _settle_jian_shou_shi_yan(牌表: Array, 选中: int) -> void:
+	var 弃: Array = []
+	for v: Variant in 牌表:
+		var cid: int = int(v)
+		if cid == 选中:
+			player.add_hand_cards([cid])
+		else:
+			弃.append(cid)
+	if not 弃.is_empty():
+		engine.to_discard(弃, {"source": "deck", "cause": 剑守誓言, "face_up": true})
+	engine._broadcast_game()
+	var 有法术: bool = false
+	for v: Variant in 牌表:
+		var 牌: GCard = Data.get_card(int(v))
+		if 牌 != null and 牌.is_magic():
+			有法术 = true
+			break
+	if not 有法术:
+		return
+	# 「你 +2【水晶】」进玩家自己的能量区（不是战绩区）；set_crystal 会按能量上限截断
+	player.set_crystal(player.crystal + 剑守誓言水晶)
+	# 先安排额外回合、再替换角色：替换会清旧角色的额外行动，但引擎的额外回合不受影响
+	安排额外回合(1, 剑守誓言)
+	替换角色(风之剑圣)
+
+
+# ============================================================
+# 10803 的触发条件跟踪
+# ============================================================
+func p_timeline_2_hit(ctx: Dictionary) -> int:
+	var harm: Dictionary = ctx.get("harm", {})
+	if int(harm.get("src", -1)) != player.id:
+		return SUCCESS
+	if int(harm.get("type", GConst.HarmType.None)) != GConst.HarmType.Attack:
+		return SUCCESS
+	# 10803 要求「主动攻击命中」：应战反击的命中不算
+	if not bool(ctx.get("is_active", false)):
+		return SUCCESS
+	_本回合有主动攻击命中 = true
+	return SUCCESS
+
+
+# ============================================================
+# 工具
+# ============================================================
+## 剑之魔女是否在场：任意玩家（含对手）的角色卡是 45 即算（A49）。
+## 本工程没有角色离场 / 替换 45 的机制，故本局内判定为常驻。
+func _剑之魔女在场() -> bool:
+	if engine == null:
+		return false
+	for pid: int in engine.order:
+		var p0: BattlePlayer = engine.p(pid)
+		if p0 != null and p0.role_id == 剑之魔女:
+			return true
+	return false
+
+
+## 从候选 id 里只保留真实在手牌中、不重复的牌；不足 n 张时按手牌顺序补齐。
+func _选并补齐(持有人: BattlePlayer, ids: Array, n: int) -> Array:
+	var out: Array = []
+	for v: Variant in ids:
+		if out.size() >= n:
+			break
+		var cid: int = int(v)
+		if 持有人.has_discard_card(cid) and not out.has(cid):
+			out.append(cid)
+	for cid: int in 持有人.hand_cards:
+		if out.size() >= n:
+			break
+		if not out.has(cid):
+			out.append(cid)
+	return out

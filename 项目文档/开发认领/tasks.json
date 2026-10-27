@@ -242,11 +242,23 @@
       "size": "L",
       "acceptance": "每回合攻击/法术/特殊/额外行动计数；行动结束通用钩子；额外行动目标/出牌限制接口；不改变现有角色行为；测试覆盖普通/额外行动、重置、限制；自检全过。",
       "desc": "参考 role_jiansheng.v_attack/action_card_ids、add_action；F2 是 45/41/107/108 的前置。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
+      "status": "done",
+      "implementer": "W4",
+      "reviewer": "R3",
       "issues": [],
-      "chain": "core"
+      "chain": "core",
+      "claimed_at": "2026-10-27T19:10:12",
+      "summary": "F2 额外行动与行动计数：BattlePlayer 新增每回合攻击/法术/特殊/额外行动计数（record_action/undo_action/reset_action_counts + action_count/action_count_of 只读查询），引擎 SCheckTurnStart 清零、新增 行动计数(pid) 查询；push_after_action 统一增加通用钩子 p_action_end（与 p_after_attack/magic/special 同一份上下文：kind、is_skill、action_id、is_extra、extra_cause、action_count 与四类计数），直接行动与技能行动（SkillRun 校验通过后）都记一次，启动技能不算行动，被取消的技能行动撤销计数且不触发；新增额外行动限制接口 BattleRole.extra_action_card_ids(cause, action_type)/extra_action_targets(cause)，action_commands 下发出牌白名单与目标白名单（牌白名单缺失时回退 action_card_ids，兼容剑圣 103），服务端在攻击/法术/技能行动落牌时兜底校验，默认空表不改变现有角色行为。测试 tests/cases/26_actionCount.gd 覆盖：普通攻击计 1 次、行动结束钩子上下文、额外攻击计第 2 次且 extra_action_count=1、p_action_end 授予额外行动、回合开始清零下家计数、旧接口 action_card_ids 回退、白名单外牌/受限目标被驳回不计且不触发钩子、合法牌+目标通过、法术/特殊/技能攻击计数、启动技能不计、取消技能行动撤销计数。未做：客户端行动模式的目标头像置灰需 CLIENT 任务接入（服务端已下发 dst_ids 并兜底）；9703 的「无法用【暗灭】应战」仍需引擎级扩展（data-audit Q2，不在 F2 验收内）。 [主代理释放评审] R1 评审异常退出，未写 reviews/F2.json；主代理释放评审锁，交新评审复审。",
+      "tests": "按协议未跑全量自检（并发实现期间）。用临时 SceneTree runner（tests/ 下临时 tscn/gd，跑完已删除；日志在 %TEMP%）正常启动项目，定向加载并跑 9 个用例：26_actionCount、f5_sword、12_yuenvCangBaiStage、12_yuenvCangBaiNoReattack、25_missileElements、16_missileRelay、23_liewuren、10_shoulingCanxin、9_yinyangEngine，全部 [通过]，失败 0，无 SCRIPT ERROR / Parse Error。",
+      "files_changed": [
+        "scripts/battle/battle_engine.gd",
+        "scripts/battle/battle_player.gd",
+        "scripts/battle/battle_role.gd",
+        "tests/cases/26_actionCount.gd"
+      ],
+      "finished_at": "2026-10-27T19:22:06",
+      "reviewing_at": "2026-10-27T19:46:26",
+      "reviewed_at": "2026-10-27T19:51:31"
     },
     {
       "id": "F3",
@@ -265,11 +277,26 @@
       "size": "S",
       "acceptance": "验证/补齐 tokens/cover 的初始化、上限、消耗、UI 显示与角色名区分；子弹（盖牌槽2）、灵涌、元子可用；测试覆盖开局/上限/消耗；自检全过。",
       "desc": "参考 猎巫人 cover_cards、role_token_def、_按表初始化标识物；不要改角色数值。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
+      "status": "done",
+      "implementer": "W3",
+      "reviewer": "R1",
       "issues": [],
-      "chain": "core"
+      "chain": "core",
+      "claimed_at": "2026-10-27T20:31:08",
+      "reviewing_at": "2026-10-27T20:51:51",
+      "fixing": false,
+      "summary": "F3 指示物/盖牌通用能力：BattlePlayer 新增 token_def/token_name/token_num/token_max/add_token/remove_token/clear_token/set_token_num（按角色表上限增删夹取）、cover_space/can_add_cover_cards、按表初始化指示物（槽0/1 token、槽2 盖牌上限）；引擎对没有角色脚本的白板角色也按表初始化（有脚本仍走 BattleRole.setup，不覆盖脚本的开局数量），并新增 draw_cover（牌库顶取牌面朝下入盖牌区、按槽2上限截断、触发 p_cover_change）；新增 tests/cases/27_tokensCover.gd 覆盖 38 子弹/46 灵涌/93 元子的数据、初始化、上限截断、消耗不足、盖牌超限 SCoverOverflow、对局快照字段与玩家面板/角色提示的名字区分。任务 files 里的 scripts/battle/battle_mobile.gd 不存在（客户端实际在 scripts/ui/battle_mobile.gd + scripts/PlayerStatusMobile.gd）；两处指示物显示已按 Data.role_token_def 通用渲染，本任务用 UI 面板用例验证，未改客户端代码。",
+      "history": [
+        "W4 实现代理异常退出（任务停在 claimed，无 F3 改动/无测试）"
+      ],
+      "tests": "临时 %TEMP% SceneTree runner（已删除，仓库无临时文件）正常启动工程，跑 tests/cases/27_tokensCover.gd 输出 [通过] 指示物与盖牌、失败 0；并定向回归 26_actionCount、12_coverInfinitySlots、12_tokenInfinityDisplay、14_roleTokenSummary、23_liewuren 全部 [通过]，退出码 0，无 SCRIPT ERROR / Parse Error。未跑全量自检（并发实现期间按协议不跑）。",
+      "files_changed": [
+        "scripts/battle/battle_player.gd",
+        "scripts/battle/battle_engine.gd",
+        "tests/cases/27_tokensCover.gd"
+      ],
+      "finished_at": "2026-10-27T20:42:49",
+      "reviewed_at": "2026-10-27T20:56:04"
     },
     {
       "id": "F4",
@@ -290,11 +317,27 @@
       "size": "L",
       "acceptance": "新增 v_basic_effect_target（默认成功），add_basic_effect/出牌校验/客户端目标统一走它；新增基础效果触发并结算完成钩子；4601/4602/4604 可用；封印师/天使/圣女不回归；测试+自检。",
       "desc": "参考 add_basic_effect/remove_basic_effect/p_basic_effect_change、v_shield/v_weaken。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
+      "status": "done",
+      "implementer": "W5",
+      "reviewer": "R1",
       "issues": [],
-      "chain": "core"
+      "chain": "core",
+      "claimed_at": "2026-10-27T22:12:58",
+      "reviewing_at": "2026-10-27T22:22:48",
+      "fixing": false,
+      "summary": "F4 基础效果目标/触发钩子：BattleRole 新增 v_basic_effect_target（默认成功，目标角色自己判定）+ p_basic_effect_triggered 钩子，BattlePlayer/引擎加同口径包装；add_basic_effect 放置前统一走目标资格校验（被拒返回错误码、不挂效果，返回 int）；_do_magic 的圣盾/虚弱/中毒在扣牌前校验并驳回；新增 BattleRole.basic_effect_placements 声明接口，SkillRun 执行前统一校验技能放置目标（封印/赐福/天使之墙类可声明，R46 借用时用）；remove_basic_effect 新增 triggered 参数并在 p_basic_effect_change 带 triggered 标记，触发点（中毒/虚弱结算、圣盾·天使之墙挡攻击/挡魔弹）显式标记，封印 401~405/赐福 1601~1602 这类『cause＝牌自身技能号』的移除自动识别为触发，triggered 钩子压在后续结算状态之下以满足『结算完成后』；4602 仍用 p_basic_effect_change(add=true, doer=放置者)。只改共享核心三个文件与新增用例，未改 role_fengyin/role_qidao/role_tianshi 与 F5 helper。客户端目标过滤未做：任务 files 里的 scripts/battle/battle_mobile.gd 不存在，实际客户端在 scripts/ui/battle_mobile.gd（属 CLIENT 任务，F3 同情况）；服务端已提供 engine.v_basic_effect_target 与技能 targets 同口径供角色/CLIENT 过滤。",
+      "history": [
+        "W3 实现代理异常退出（任务停在 claimed，未 finish；F4 核心文件可能已有部分改动，新认领者需先读现状）"
+      ],
+      "tests": "按协议未跑全量自检（并发实现期间），未跑 --import，未用 --check-only 判定。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，与 selfCheck 同路径，跑完已删除，仓库无临时文件）实跑：新增 tests/cases/28_basicEffectTarget.gd [通过]（失败 0），覆盖默认成功/免疫拒绝、圣盾·虚弱·中毒被拒时牌未离手且不挂效果、自己指定自己、add_basic_effect 兜底、普通放置与 4602 钩子上下文、圣盾挡攻击/中毒/虚弱触发及『结算完成后』顺序（落空·伤害·摸牌之后）、封印与赐福的自动触发识别、被拿走不算触发、技能行动 basic_effect_placements 校验；同 runner 定向回归 4_battleInteraction、6_healBlockDefault、16_missileRelay、26_actionCount、27_tokensCover、f5_seal、f5_bless、f5_sword、9_yinyangEngine、41_jidushaonv、32_jianzhimoni、35_exmogong、23_liewuren、20_role12Skills、25_missileElements 全部 [通过]，失败 0，无 SCRIPT ERROR / Parse Error。",
+      "files_changed": [
+        "scripts/battle/battle_engine.gd",
+        "scripts/battle/battle_player.gd",
+        "scripts/battle/battle_role.gd",
+        "tests/cases/28_basicEffectTarget.gd"
+      ],
+      "finished_at": "2026-10-27T22:22:41",
+      "reviewed_at": "2026-10-27T22:29:07"
     },
     {
       "id": "F6",
@@ -314,11 +357,28 @@
       "size": "L",
       "acceptance": "实现/验证 ⑥ 伤害改由自己承受且不掉士气；实现魔弹进弃牌前拦截钩子（或明确 best-effort 限制）；测试覆盖目标/伤害/士气/拦截；自检。",
       "desc": "4702/4704 的前置；先写时序测试，参考 push_harm/SHarmTimeline6/to_discard。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
+      "status": "done",
+      "implementer": "FIX1",
+      "reviewer": "R5",
       "issues": [],
-      "chain": "core"
+      "chain": "core",
+      "claimed_at": "2026-10-27T23:13:01",
+      "summary": "修复：1) ⑥ 转移后的后续伤害钩子 ctx.dst 仍是原目标：新增 BattleEngine.SHookTimeline6Drawn，SGateTimeline6 不再在 p_timeline_6 之前构造 p_timeline_6_drawn 的上下文，改为摸牌/超限结算完、钩子触发时按 harm 现算；新增 BattleEngine.SHookHarmEnd，push_harm 不再使用流水线入口的快照，p_harm_end 在流水线最末尾按 harm 现算 ctx。转移后 p_timeline_6_drawn / p_harm_end 的 ctx.dst 与 ctx.harm.dst 都是新目标，按 ctx.dst 判断的 501 反噬 / 802 智慧法典 / 幻影形态收尾 / 沉沦协奏曲等既有角色会自动跟到新目标；同步改掉 转移伤害 与 BattleRole.转移伤害 里与实现不符的注释，明确只有同一次 p_timeline_6 钩子轮次内是快照（那时读 harm[\"dst\"]），并写明 redirect_from。2) 29_redirectIntercept 补 dummy 钩子观察角色（转移者自身 + 原目标各一），在 p_timeline_6_drawn / p_harm_end 记录 ctx.dst、ctx.harm.dst、redirect_from 并按 ctx.dst==自己统计命中：断言转移后两个钩子都按新目标 2 触发、redirect_from=1、原目标命中 0；对照组无转移时 ctx.dst=1、命中 2、无 redirect_from。",
+      "tests": "按协议并发期未跑全量自检、未 --import、未用 --check-only 判定。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，跑完已删除，仓库未留临时文件）只加载指定用例：29_redirectIntercept [临时通过]（含新增的 p_timeline_6_drawn / p_harm_end 上下文与命中断言）；定向回归 26 例全部 [临时通过]、失败 0、无 SCRIPT ERROR/Parse Error：26_actionCount、27_tokensCover、28_basicEffectTarget、12_yuenvXinyueEngine、12_yuenvCangBaiStage、16_missileRelay、6_healBlockDefault、9_yinyangEngine、25_missileElements、23_liewuren、32_jianzhimoni、4_battleInteraction、31_zhandoufashi、30_youjishi、10_shoulingCanxin、33_lingxizhichao、12_yuenvMeidushaEngine、12_yuenvCangBaiNoReattack、12_yuenvIndicators、20_role12Skills、21_shenggong37New、24_jierimodao、35_exmogong、38_jianxizhipian、41_jidushaonv、8_forcedDiscard。",
+      "files_changed": [
+        "scripts/battle/battle_engine.gd",
+        "scripts/battle/battle_role.gd",
+        "tests/cases/29_redirectIntercept.gd"
+      ],
+      "finished_at": "2026-10-27T23:18:20",
+      "reviewing_at": "2026-10-27T23:18:28",
+      "reviewed_at": "2026-10-27T23:21:54",
+      "previous_implementer": "W1",
+      "fixing": true,
+      "history": [
+        "⑥ 转移后的后续伤害钩子 ctx.dst 仍是原目标：p_timeline_6_drawn 的上下文在 SGateTimeline6（battle_engine.gd:3131）构造于 p_timeline_6 之前，p_harm_end 的上下文更早（push_harm，battle_engine.gd:2143），而转移只改 harm.dst（battle_engine.gd:2169），两处 ctx 都没重建，与 battle_engine.gd:2156-2158 和 battle_role.gd:346「之后的摸牌/超限/伤害结束钩子都按新目标走」的说明不符。R47 落地 4702 后，会误触发按 ctx.dst 判断的现有角色：role_ansha.gd:227（501 反噬）、role_xianzhe.gd:55（802 智慧法典/法术反弹）、role_moqiang.gd:201（幻影形态收尾）、role_yongzhe.gd:419、role_shiren.gd:496（沉沦协奏曲的目标记录）。建议在 F6 自己的 battle_engine.gd 内修：p_timeline_6 之后再构造 p_timeline_6_drawn 的 ctx（如摸牌后按 harm 现算），p_harm_end 改成触发时按 harm 现算 dst。若确定只做 best-effort，至少改掉两处「都按新目标走」的注释、写明 ctx.dst 是快照并列出受影响的既有角色，交主代理决定是否改角色。",
+        "29_redirectIntercept.gd 头注释宣称「伤害结束钩子都按新目标走」，但用例只断言摸牌/超限/士气，没有 p_timeline_6_drawn / p_harm_end 的上下文断言，本 spike 要验证的「只改 harm.dst 是否足够」没有被测试钉住。修好上一条后请补 dummy 角色：在 p_timeline_6_drawn 与 p_harm_end 记录 ctx.dst、ctx.harm.dst、redirect_from，断言转移后两者都等于新目标、原目标不触发。"
+      ]
     },
     {
       "id": "F7",
@@ -337,11 +397,22 @@
       "size": "XL",
       "acceptance": "实现额外回合状态机（不推进 current_id）与角色替换为风之剑圣（重 setup/上限/技能）；或给出明确的降级接口与限制；测试覆盖回合边界/角色替换；自检。",
       "desc": "10803 的前置；风险最高，先 spike 再写完整；不要改 DATA/CLIENT。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
+      "status": "done",
+      "implementer": "W1",
+      "reviewer": "R2",
       "issues": [],
-      "chain": "core"
+      "chain": "core",
+      "claimed_at": "2026-10-27T22:40:15",
+      "summary": "F7 额外回合 / 角色替换：1) 额外回合：引擎新增 额外回合玩家/额外回合攻击加伤/额外回合来源（待执行）与 当前额外回合玩家/当前额外回合攻击加伤（执行中），新增 安排额外回合(pid, 攻击加伤, 来源) / 是否额外回合() / 额外回合加伤(pid) / 攻击基础伤害(pid)；SNextPlayer 在待执行时把行动者切到该玩家（不推进 current_id 到下家、不增加 round_id），走完整 SCheckTurnStart（回合开始钩子、中毒/虚弱、行动计数/额外行动/启动标记重置），结束后再正常轮转；p_turn_begin/p_before_turn_begin/p_boot/p_before_action/p_between_weak_and_action 与 p_turn_end/p_after_turn_end 的 ctx 增加 extra_turn/attack_bonus，TurnBegin 广播带 extra_turn/extra_cause/attack_bonus；引擎普通攻击与应战反击的伤害改走 攻击基础伤害(pid)，额外回合攻击 +N 由引擎统一加（先安排再替换角色也不丢）。2) 角色替换：新增 engine.替换角色(pid, 新角色id, 重置上限) 与 BattleRole.替换角色/安排额外回合 包装、BattleRole.p_before_role_replace 清理钩子；顺序为旧角色清理→解绑→退出形态/清额外行动/行动计数/启动标记/reattacker→恢复基础手牌/能量/治疗上限→清指示物槽与盖牌上限→写新角色号并按角色表重新 setup（白板角色按表初始化）→公告+快照；手牌/盖牌/基础效果/能量/治疗/战绩区保留，旧角色对象之后不再收到钩子。开始新对局时重置额外回合字段。未改 battle_player.gd / battle_deck.gd。限制：额外回合在当前回合结束时开始（10803 触发时机即回合结束）；+1 只接入引擎普通攻击/应战反击，角色自建 harm 的攻击技能需自行读 攻击基础伤害；p_before_role_replace 必须同步；旧角色有盖牌槽而新角色没有时盖牌保留在盖牌区不自动清空。",
+      "tests": "按协议并发期未跑全量自检、未用 --check-only 判定、未 --import。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，跑完已删除，仓库未留临时文件）只加载 tests/cases/29_extraTurn.gd 实跑：[通过] 额外回合与角色替换，失败 0，退出码 0，无 SCRIPT ERROR/Parse Error；覆盖额外回合不推进 current_id/不增加 round_id、状态与行动计数重置、回合开始钩子 extra_turn、TurnBegin 广播、结束后正常轮转与 round 边界、额外回合攻击 +1（普通攻击真实进 harm）、10803 顺序（安排+1额外回合并替换为风之剑圣后新角色正常行动）、替换清理钩子/解绑/上限与指示物重算/资源保留/非法参数。同 runner 定向回归 18 例全部 [通过]：7_roleAssign、12_yuenvCangBaiStage、12_yuenvCangBaiNoReattack、17_actionBroadcast、26_actionCount、28_basicEffectTarget、27_tokensCover、4_battleInteraction、9_yinyangEngine、23_liewuren、32_jianzhimoni、41_jidushaonv、12_yuenvXinyueEngine、29_redirectIntercept、16_missileRelay、25_missileElements、f5_sword。",
+      "files_changed": [
+        "scripts/battle/battle_engine.gd",
+        "scripts/battle/battle_role.gd",
+        "tests/cases/29_extraTurn.gd"
+      ],
+      "finished_at": "2026-10-27T22:50:09",
+      "reviewing_at": "2026-10-27T23:01:49",
+      "reviewed_at": "2026-10-27T23:07:10"
     },
     {
       "id": "F8",
@@ -360,11 +431,22 @@
       "size": "M",
       "acceptance": "牌库顶逐张移除/展示/入弃牌；双方星杯数读取；移除战绩区全部星石并记录构成；士气转移；测试覆盖牌库不足/星杯 0/士气上限；自检。",
       "desc": "9701/10803/8704 的前置。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
+      "status": "done",
+      "implementer": "W1",
+      "reviewer": "R3",
       "issues": [],
-      "chain": "core"
+      "chain": "core",
+      "claimed_at": "2026-10-27T22:50:12",
+      "summary": "F8 牌库顶/星杯/战绩区/士气：1) 牌库顶：BattleDeck 新增 remove_top(n)/peek_top(n)（从 pile 末尾取，牌库不足只返回实际张数，**不把弃牌堆洗回**，与 draw 的洗回语义分开）；引擎新增 移除牌库顶(张数)、展示牌库顶(展示者id, cards)（Card Show 广播）、逐张移除牌库顶(张数, 展示者id)（逐张移除+逐张展示）、弃置牌库顶(张数, 展示者id, 展示)（移除+展示+统一进弃牌堆），供 9701「逐张移除展示」与 10803「弃置牌堆顶」使用。2) 星杯：新增 星杯数(color)、星杯总数()（10803 的 X＝双方星杯之和）。3) 战绩区：新增 战绩区构成(color)->{gem,crystal,total} 与 清空战绩区(color)（一次清空该队全部星石并返回移除前构成，8704 用）。4) 士气：新增 转移士气(从颜色, 到颜色, 点)（返回实际转移点数；来源最多扣到 0，目标不超过 士气上限()，目标已满/同队/越界/0 点不转移；转移后来源归零走正常败北判定；写公告+快照）。只改共享引擎/牌堆与新增用例，未改 battle_player.gd。限制：9701/10803 的逐张条件判断与「选 1 张入手」仍由角色脚本用这些原语组合；弃置牌库顶是一次性全部入弃牌堆。",
+      "tests": "按协议并发期未跑全量自检、未用 --check-only 判定、未 --import。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，跑完已删除，仓库未留临时文件）只加载 tests/cases/29_deckStars.gd 实跑：[通过] 牌库顶星杯战绩区与士气，失败 0，退出码 0，无 SCRIPT ERROR/Parse Error；覆盖 peek_top 不改牌库、remove_top 顺序、牌库不足只取实际张数且不洗回弃牌堆、空牌库安全返回、逐张移除逐张展示、弃置牌库顶展示+入弃牌、空牌库弃置；星杯 0/双方/总数/越界；战绩区构成与清空及另一队不受影响、越界空构成；士气正常转移、目标已满不转移、部分空间只转 1、0 点/同队/越界不转移。另分两批定向回归（每批 8 例，均失败 0）：A＝29_deckStars/29_extraTurn/29_redirectIntercept/26_actionCount/28_basicEffectTarget/27_tokensCover/12_yuenvXinyueEngine/9_yinyangEngine；B＝23_liewuren/32_jianzhimoni/41_jidushaonv/f5_sword/f5_seal/16_missileRelay/25_missileElements/4_battleInteraction。",
+      "files_changed": [
+        "scripts/battle/battle_engine.gd",
+        "scripts/battle/battle_deck.gd",
+        "tests/cases/29_deckStars.gd"
+      ],
+      "finished_at": "2026-10-27T22:57:14",
+      "reviewing_at": "2026-10-27T23:01:49",
+      "reviewed_at": "2026-10-27T23:08:08"
     },
     {
       "id": "F9",
@@ -383,11 +465,22 @@
       "size": "L",
       "acceptance": "右手边最近队友、随机弃手牌、跳过行动阶段标记、提炼前/后钩子、手牌补/弃到 N；106/78 可用；测试覆盖多玩家顺序/提示；自检。",
       "desc": "10601/10602/10604/7804 的前置。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
+      "status": "done",
+      "implementer": "W1",
+      "reviewer": "R2",
       "issues": [],
-      "chain": "core"
+      "chain": "core",
+      "claimed_at": "2026-10-27T22:57:16",
+      "summary": "F9 跨玩家操作：1) 右手边最近队友：引擎 nearest_teammate_id(from_id, post_dir) 与 BattleRole.nearest_teammate_id 包装（沿 post/pre，不含自己）。2) 随机弃手牌：引擎 随机弃手牌(pid, n, cause, 展示) 从真实手牌随机抽 n 张、离手进弃牌堆并写日志（可选展示触发 p_show_hand），供 10601「队友随机丢弃你 1 张」。3) 强制摸牌：引擎 强制摸牌(pid, n, cause) 直接 draw（不触发 p_before_draw，与特殊行动摸牌同口径），供「目标对手摸 1 张【强制】」与补手牌。4) 手牌补/弃到 N：引擎 调整手牌到(pid, 目标, cause, 随机弃牌) 返回 bool；不足用强制摸牌补齐，超出且随机弃牌=true 时随机弃，否则压入 SHandAdjust 等待牌主自己选弃（角色可据此返回 URGENT），支持任意玩家（7804）。5) 跳过行动阶段标记：新增 请求跳过行动阶段(来源)/跳过行动阶段来源 与 本回合跳过行动阶段/本回合跳过行动阶段来源；SCheckTurnStart 清零，SActionPhase 消费 skip_action_phase 时记录来源，供 10605「跳过行动阶段后」读取。6) 提炼前/后钩子：BattleRole 新增 p_before_extract（全体同步，ctx.forbidden 可取消提炼）与 p_after_extract（星石已移动后可等待，ctx 带 player/gem/crystal/args/dst_ids/is_heaven），_do_special 提炼分支接入；p_after_special 的 ctx 补 action_id（buy/synthesize/extract）。7) 跨玩家询问：BattleRole.询问/ask_skill 支持 pid 为当前行动者以外的队友，回复仍回到发起询问的钩子状态（测试覆盖队友选目标）。只改共享引擎/角色与新增用例；scripts/battle/battle_mobile.gd 仓库不存在（实际客户端 scripts/ui/battle_mobile.gd），跨玩家选目标的头像/提示交互需 CLIENT 任务接入。限制：p_before_extract 必须同步；调整手牌补牌是强制 draw；106/78 的角色脚本仍由各自任务实现，F9 只提供原语。",
+      "tests": "按协议并发期未跑全量自检、未用 --check-only 判定、未 --import。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，跑完已删除，仓库未留临时文件）只加载 tests/cases/29_crossPlayer.gd 实跑：[通过] 跨玩家操作，失败 0，退出码 0，无 SCRIPT ERROR/Parse Error；覆盖最近队友（post/pre/不存在玩家）、随机弃 1/多/不足/非法、调整手牌补到 4、超出由牌主选弃、随机弃到 4、调整其他角色、相同/非法参数、跳过行动阶段与来源标记及下回合清零、提炼前/后钩子（星石移动前后、个人能量、p_after_special action_id、forbidden 驳回不移动资源）、跨玩家询问+10601 式组合（队友选目标→随机弃自己→目标强制摸牌）。同 runner 定向回归 12 例全部 [通过]：29_deckStars、29_extraTurn、29_redirectIntercept、26_actionCount、27_tokensCover、28_basicEffectTarget、4_battleInteraction、20_role12Skills、30_youjishi、7_roleAssign、9_yinyangEngine。",
+      "files_changed": [
+        "scripts/battle/battle_engine.gd",
+        "scripts/battle/battle_role.gd",
+        "tests/cases/29_crossPlayer.gd"
+      ],
+      "finished_at": "2026-10-27T23:01:38",
+      "reviewing_at": "2026-10-27T23:07:12",
+      "reviewed_at": "2026-10-27T23:11:03"
     },
     {
       "id": "R38",
@@ -404,10 +497,27 @@
       "size": "M",
       "acceptance": "实现 3801~3805：开局 6 子弹、元素射击分支、同系额外攻击、提炼补子弹、攻击牌视为风系；只改 role/test；数据启用留给 DATA；测试+自检。",
       "desc": "参考计划第 5 节第 2 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "FIX1",
+      "reviewer": "R5",
+      "issues": [],
+      "claimed_at": "2026-10-27T21:52:58",
+      "summary": "修复：1) 3805 v_attack_skill 补 dst.v_attacked() 校验（暗杀者潜行/横置期间不能成为主动攻击目标），非法目标返回 GE_INVALID_PLAYERID，与猎魔人 4201 / 冒险家 1201 同口径；2) 3805 的 available_skills targets 改为新增的 _可攻击目标()，按 v_attacked 过滤敌方不可攻击目标（服务端仍自查，客户端白名单不再给出被拒目标）；3) 明确 3805 命格口径：本次攻击按风系虚牌 66 结算，虚牌既不继承真实攻击牌命格、也不采用 66 卡面的【幻】命格，harm 标 virtual_no_fate（与欺诈 1201 同口径），同步更新文件头与常量注释。只改 role/test，未动数据表/共享文件。",
+      "tests": "按并发修复约定未跑全量自检；用 %TEMP% 临时 SceneTree runner（--script 正常启动工程、等一帧后加载用例，60s 看门狗，跑完删除）实跑 tests/cases/30_youjishi.gd：[通过] 游击士，失败 0，无 SCRIPT ERROR/Parse Error。新增用例：挂 role_ansha 并横置后 3805 目标白名单只剩 [4]、v_attack_skill 拒绝该目标、解除横置后恢复；3805 压栈攻击 card/harm.card_id=66 且 harm.virtual_no_fate=true；挂 role_yinyang 实测 3805 攻击时 3306 option_enabled=[true,false,false]（不被 66 的幻命格误触发），对照组真实 66 攻击 + 手里 67（同幻命格）时阴阳转换档位可用。同 runner 定向回归 9_yinyangEngine、17_actionBroadcast、1_dataAssets 均通过。",
+      "files_changed": [
+        "scripts/battle/roles/role_youjishi.gd",
+        "tests/cases/30_youjishi.gd"
+      ],
+      "finished_at": "2026-10-27T22:07:40",
+      "reviewing_at": "2026-10-27T22:07:53",
+      "reviewed_at": "2026-10-27T22:12:04",
+      "previous_implementer": "W5",
+      "fixing": true,
+      "history": [
+        "3805 的 v_attack_skill 未校验目标角色的 v_attacked()：横置暗杀者潜行期间不能成为主动攻击目标，普通攻击由引擎 _do_attack 检查，攻击技能需角色自查——猎魔人 4201（role_liewuren.gd）和冒险家 1201（role_maoxian.gd）都显式检查 dst.v_attacked()",
+        "3805 只调 player.base_v_attack，available_skills 的 targets 又直接给 enemy_ids()，因此可以对横置暗杀者发动 3805 并进入攻击流水线，绕过旧角色限制。请补 v_attacked 校验（必要时同时过滤 targets）并加挂 role_ansha 横置的用例",
+        "3805 用虚拟牌 66【风神斩】（幻命格）作为 harm.card_id，却未像欺诈 1201 那样标 virtual_no_fate，阴阳师 p_timeline_1/p_timeline_2_hit 会按 66 的幻命格判定阴阳转换，真实攻击牌不是幻命格时也能同命格应战，与本文件头注释「虚牌不继承原牌命格」及项目现有口径不一致。请明确 3805 的命格口径（按虚牌标 virtual_no_fate，或保留真实牌命格）并补测。"
+      ]
     },
     {
       "id": "R41",
@@ -423,10 +533,20 @@
       "size": "M",
       "acceptance": "实现 4101~4104：弃2同系、命中/未命中额外法术、第3次行动结束、每次额外行动结束；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 2 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W1",
+      "reviewer": "R2",
+      "issues": [],
+      "claimed_at": "2026-10-27T19:52:15",
+      "summary": "新增 scripts/battle/roles/role_zhandoufashi.gd：4101 符文置换（法术技能，回合限定；弃2张同元素手牌展示+摸1张走 push_draw；弃牌含咏类命格或法术牌时 direct 额外攻击行动）；4102 附魔打击（p_timeline_2_hit/miss，主动攻击命中或未命中且攻击牌咏类命格→询问后额外法术行动，回合限定）；4103 熵变（p_action_end action_count==3，先弹固定两项支付选项：我方战绩区1宝石/队友1能量(get_energy)，再选至多2名对手各1点法术伤害，不可支付项置灰）；4104 魔力熵增（p_action_end is_extra，支付1水晶(宝石可顶)→1名对手1点法术伤害，p_harm_end 对比伤害前后队伍士气决定我方战绩区+1宝石）。伤害统一在询问结束后压栈，避免询问夹在伤害结算中间；回合开始清回合限定与分步进度。4103 两个支付选项文案暂为脚本内固定两项（技能表提示列待 DATA 任务补）。",
+      "tests": "临时单用例 SceneTree runner（跑完已删除，未在仓库留文件）正常启动工程加载 role/test 并执行 tests/cases/31_zhandoufashi.gd：输出 [临时通过] 战斗法师，退出码 0，无 SCRIPT ERROR / Parse Error；覆盖 4101 技能栏/校验/两种结算/回合限定、4102 命中/未命中/取消/非主动/完整攻击流水线、4103 第2次不问/第3次两种支付/都不可支付/取消、4104 首次与第二次额外行动/宝石顶水晶/无能量/普通行动不触发/掉士气不加宝石、4103+4104 同一次行动结束、回合重置；未跑全量自检（并发实现期间按协议不跑）。",
+      "files_changed": [
+        "scripts/battle/roles/role_zhandoufashi.gd",
+        "tests/cases/31_zhandoufashi.gd"
+      ],
+      "finished_at": "2026-10-27T20:03:08",
+      "reviewing_at": "2026-10-27T20:03:17",
+      "reviewed_at": "2026-10-27T20:10:42"
     },
     {
       "id": "R45",
@@ -442,10 +562,25 @@
       "size": "M",
       "acceptance": "实现 4501~4504：技类额外攻击、臆想剑弃牌/获得/加伤、梦想剑三种形态标记、剑影*断念；只改 role/test；测试+自检。",
       "desc": "108 的前置；参考计划第 5 节第 1 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "FIX1",
+      "reviewer": "R5",
+      "issues": [],
+      "claimed_at": "2026-10-27T20:21:03",
+      "summary": "修复：4502 目标弃牌【展示】后先置 ctx 步骤并 return URGENT，等 p_show_hand（含等待型响应，如圣女弃水系牌触发 603）结算完再重入问「是否获得」；法术牌 +2 同样移到展示结算后；攻击牌被展示响应移出弃牌堆时不再询问；补带等待型 p_show_hand 的回归用例并更新原有 4502 时序用例。",
+      "tests": "临时 %TEMP% SceneTree runner 只加载 tests/cases/32_jianzhimoni.gd 实跑：FIX1_CASE_PASS 剑之魔女，失败 0，无 SCRIPT ERROR / Parse Error；另用临时全引擎流水线复现（真实攻击 + 圣女 603 等待型展示）验证：弃牌后 p1 未被问获得（0 次）→ 圣女 603 结算 → 重入后只问一次获得 → 获得牌 + 额外攻击行动；临时文件已删。未跑全量自检（并发修复期间按协议）。",
+      "files_changed": [
+        "scripts/battle/roles/role_jianzhimoni.gd",
+        "tests/cases/32_jianzhimoni.gd"
+      ],
+      "finished_at": "2026-10-27T20:25:33",
+      "reviewing_at": "2026-10-27T20:25:39",
+      "reviewed_at": "2026-10-27T20:30:16",
+      "previous_implementer": "W2",
+      "fixing": true,
+      "history": [
+        "4502 的「获得该攻击牌」询问在目标弃牌【展示】触发的 p_show_hand 还没结算时就下发：目标弃出会触发等待型展示响应的牌（实测目标为圣女、弃【水涟斩】触发 603 冰霜祷言）时，剑之魔女会先后被问两次「是否获得」，第一次的回答被丢弃，展示响应也排在获得询问之后。建议弃牌并 take_from_hand(..., true) 之后先置 ctx 步骤、return URGENT，等 p_show_hand 结算完再在重入里问获得，并补一条带等待型 p_show_hand 的回归用例。"
+      ]
     },
     {
       "id": "R46",
@@ -464,10 +599,26 @@
       "size": "L",
       "acceptance": "实现 4601~4606：基础效果免疫、放置后1伤害、士气下降群伤、触发+灵涌、满灵涌群伤、借用封印/祈祷技；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 3 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "FIX2",
+      "reviewer": "R4",
+      "issues": [],
+      "claimed_at": "2026-10-27T23:13:02",
+      "summary": "修复：1) role_lingxizhichao.gd 按 skill_seal.gd / skill_bless.gd 头注释的借用角色接法补触发转发：p_show_hand 转给封印 helper（目标展示同系牌 → 3 点法术伤害 + 移除 + 按 401~405 播报）；p_timeline_2_hit / p_after_attack / p_after_magic / p_additional_action 转给赐福 helper（1602 命中询问牌主、+2 伤害并移除；1601 行动结束授予 +1 攻击行动、选中额外行动时移除并弃置）；v_additional_action 原样转发并保留 helper 对非 1601 返回的 V_NOT_OVERRIDE 回退。2) 头注释补充「放置后还要转发触发钩子」，并说明 helper 内部去重口径。3) 33_lingxizhichao.gd 新增借用技真实生效用例：借用 404 异系展示不触发、同系展示由 46 的 p_show_hand 触发 3 点法术伤害/移除/404 播报/伤害来源＝46；借用 1602 完整走 4606（4602 + 必弃 1 张）后，命中时向队友 3 询问原伤害 2、发动后 2→4 并移除进弃牌堆；借用 1601 行动结束授予 1601 攻击额外行动、不重复授予、v_additional_action(1601) 拒绝且 (9999) 回退 V_NOT_OVERRIDE、选中后移除并进弃牌堆。4602/4606 弃牌流程在借用技触发场景中仍照常（1602 场景先核对 4602→弃 1 张→弃牌堆再触发）；未改范围外文件。",
+      "tests": "用 %TEMP% 临时 SceneTree runner（正常启动 Main.tscn，仅加载 tests/cases/33_lingxizhichao.gd）实跑：[临时] 用例 灵熙之潮：通过，退出码 0，无 SCRIPT ERROR / Parse Error。按并发约定未跑全量 runSelfCheck.ps1、未跑 --import；未用 --check-only 作判定。",
+      "files_changed": [
+        "scripts/battle/roles/role_lingxizhichao.gd",
+        "tests/cases/33_lingxizhichao.gd"
+      ],
+      "finished_at": "2026-10-27T23:17:23",
+      "reviewing_at": "2026-10-27T23:18:28",
+      "reviewed_at": "2026-10-27T23:22:44",
+      "previous_implementer": "W3",
+      "fixing": true,
+      "history": [
+        "4606 只做了借用技的「放置」，没有把 F5 helper 的触发钩子路由进来：role_lingxizhichao.gd 没有 p_show_hand（封印 401~405 的展示触发），也没有 p_timeline_2_hit / p_after_attack / p_after_magic / v_additional_action / p_additional_action（赐福 1601 的授予额外攻击与移除、1602 的命中 +2 与移除），而 skill_seal.gd 头注释（借用角色接法）与 skill_bless.gd 头注释明确要求借用角色转发这些 p_*。结果：46 用 4606 放到对手面前的封印不会在目标展示同系牌时造成 3 点法术伤害并移除，1601 不会在持有者行动结束时给 +1 攻击行动、也不会在选用后移除，1602 不会在攻击命中时 +2 伤害并移除，除非场上恰好有封印师/祈祷师本尊在转发，借用技实际是半成品。请在 role_lingxizhichao.gd 补这些转发（v_additional_action 要保留 helper 的 V_NOT_OVERRIDE 回退），并保证 4602 / 4606 的弃牌流程在触发后仍照常走。",
+        "33_lingxizhichao.gd 的 4606 场景只验证到「放置 + 4602 + 弃 1 张」为止，没有任何借用技真正生效的断言（封印被展示触发、1602 命中 +2/移除、1601 行动结束给额外攻击并在选用后移除），所以上一条缺失能通过自检。请照 tests/cases/f5_seal.gd、tests/cases/f5_bless.gd 的 dummy 借用角色写法补触发用例（用真实入口 p_show_hand / push_harm / p_after_attack 等驱动），断言触发后的伤害、移除与额外行动。"
+      ]
     },
     {
       "id": "R47",
@@ -484,10 +635,20 @@
       "size": "L",
       "acceptance": "实现 4701~4705：2目标弃法术、⑥伤害转移、水/火魔弹、弃牌前拦截、2目标2伤害；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 3 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W4",
+      "reviewer": "R1",
+      "issues": [],
+      "claimed_at": "2026-10-27T23:23:02",
+      "summary": "新增 role_baoshishaonv.gd 实现 4701~4705：4701 弃1张法术牌【展示】→我方战绩区+1宝石，逐个询问2名对手各弃1张法术牌（可取消），每名不弃者吃2点法术伤害且你各弃1张（手牌不足时弃现有的、强制弃），伤害按点选顺序结算；4702 仅队友（同色不含自己）受伤⑥时问，弃1张真【魔弹】【展示】→转移伤害给自己并带 redirect_from/no_morale，敌方/自己/无魔弹/0点不问，同一次伤害只问一次；4703 按 A21 只扩展响应传递（水系/火系牌走 v_remissile），不提供主动使用入口；4704 接 F6 的 wants_before_discard + p_before_discard：队友手牌/盖牌、face_up、自己有代价牌时弃1张获得该【魔弹】，一次多张取待弃顺序第一张；4705 真宝石支付、2名不同对手各2点法术伤害。未改共享/数据/客户端文件。提示列依赖 DATA：4701 目标弃牌序号2、自己弃牌序号3，4702/4704 序号0；4704 多张魔弹的逐张选择交互属 CLIENT 范围。",
+      "tests": "并发实现期按协议未跑全量自检、未 --import、未用 --check-only 判定。用仓库临时 SceneTree runner（tests/_w4t_run.*，跑完已删除，仓库无残留；日志在 %TEMP%）正常启动工程并加载 Main.tscn，只加载 tests/cases/34_baoshishaonv.gd 实跑：输出「[W4] 用例 爆食少女：通过，失败 0」，退出码 0，无 SCRIPT ERROR / Parse Error；覆盖数据、五技能主路径与边界（目标弃/取消/硬提交非法牌/无法术牌、自己无代价牌、无魔弹/敌方/自己受伤、免士气超限、多张魔弹、盖牌来源、face_up=false、宝石不能用晶体顶等）。",
+      "files_changed": [
+        "scripts/battle/roles/role_baoshishaonv.gd",
+        "tests/cases/34_baoshishaonv.gd"
+      ],
+      "finished_at": "2026-10-27T23:44:48",
+      "reviewing_at": "2026-10-27T23:45:42",
+      "reviewed_at": "2026-10-27T23:55:31"
     },
     {
       "id": "R75",
@@ -503,10 +664,20 @@
       "size": "S",
       "acceptance": "实现 7501~7504：风系无法应战、未命中弃法术2伤害、借用301/302、7504狙击；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 1 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W2",
+      "reviewer": "R2",
+      "issues": [],
+      "claimed_at": "2026-10-27T19:10:13",
+      "summary": "新增 role_exmogong.gd 实现 7501~7504：7501 神风矢=攻击宣告时把风系攻击牌命中率置 NoReattack（与弓之女神 304 闪电箭同口径，暗系仍由引擎处理）；7502 疾风追射=主动攻击未命中时先问是否发动，弃 1 张法术牌【展示】（cards 白名单+card_rule=magic，服务端再校验）→ 对所攻击目标 2 点法术伤害③，无 7502 牌/非主动/他人未命中不弹询问，取消与非法牌提交不生效；7503 弓神候补=路由到 F5-archer 的 skill_archer helper（只借用 301/302、必须有牌在手的发动牌，播报/提示用源技能号，不借用 303）；7504 狙击=本角色独立技能行（不是 303），用 get_energy/remove_energy 支付 1 水晶（宝石可顶），目标角色手牌补到 5 张【强制】（push_draw 尊重【水影】等摸牌前响应，返回 URGENT 保证先摸牌再行动结束）、额外 +1 攻击行动（direct，不再二次询问）。7501/7502 分步标记按攻击宣告重置并挡 URGENT 重入。只改 role/test 两个文件。",
+      "tests": "协议给的 --check-only 在本工程对引用 autoload 的脚本必然报 Identifier not found: Data，不作为依据；改用 %TEMP% 下临时 SceneTree runner（--script 正常启动工程、autoload 就绪）只加载 tests/cases/35_exmogong.gd 与 role_exmogong.gd 并实跑：输出 W2_CASE_PASS：EX魔弓、失败 0、无 SCRIPT ERROR/Parse Error（runner/watchdog 已删除，仓库无临时文件）。用例覆盖数据（角色名/7501~7504 技能行/301·302 源技能行/7504≠303）、技能栏置灰与不借用303、7504 水晶与宝石支付/目标不存在/队友目标/目标已满5/缺目标按自己、7501 风系与完整攻击流水线 NoReattack 标记、7502 取消/发动2点法术伤害/无牌/非主动/他人/空目标/非法牌、7503 的 302 完整结算与 301 询问播报源号。未跑全量自检（并发实现期间按协议不跑）。",
+      "files_changed": [
+        "scripts/battle/roles/role_exmogong.gd",
+        "tests/cases/35_exmogong.gd"
+      ],
+      "finished_at": "2026-10-27T19:25:00",
+      "reviewing_at": "2026-10-27T19:25:12",
+      "reviewed_at": "2026-10-27T19:32:14"
     },
     {
       "id": "R78",
@@ -523,10 +694,28 @@
       "size": "L",
       "acceptance": "实现 7801~7805：提炼+水晶、魔法入门多段、Magic!三分支、强予愿行手牌4、友情羁绊改写；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 3 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "FIX3",
+      "reviewer": "R8",
+      "issues": [],
+      "claimed_at": "2026-10-28T00:43:55",
+      "summary": "修复：7805 的 2 张选定弃牌改为选定时就 take_from_hand 离手（入弃牌堆统一放结算，避开弃牌前拦截与后续询问串链），7803「弃 2 张」询问不再能选到这两张；7803 结算改为逐张只处理还真实在手里的牌，避免整组 take_from_hand 遇已离手牌整组失败后仍整组入弃（同一张牌在弃牌堆出现两次）。7804 选星石/选角色子询问的取消与超时（空 args / 空 dst）或非法选择统一按「放弃额外移除」处理，不再用 _默认可选星石 / _取目标 补齐，不默认扣星石、不调整他人手牌；结算额外移除增加目标已选中守卫。测试补充 7805+7803 牌数守恒（手牌≥2 触发 7803 分支1，回复夹带已离手牌）、7803 结算夹带已离手牌、7804 选星石/选角色取消与超时。",
+      "tests": "按并发约定未跑全量自检、未 --import、未用 --check-only 判定；用 %TEMP% 临时 SceneTree runner 正常启动工程加载 Main.tscn，只跑 tests/cases/36_jinguizhinv.gd 与 1_dataAssets：[临时通过] 矜贵之女 / [临时通过] 数据与素材，退出码 0，无 SCRIPT ERROR / Parse Error（仅 headless 退出噪音），临时文件已删除。",
+      "files_changed": [
+        "scripts/battle/roles/role_jinguizhinv.gd",
+        "tests/cases/36_jinguizhinv.gd"
+      ],
+      "finished_at": "2026-10-28T00:54:01",
+      "reviewing_at": "2026-10-28T00:54:07",
+      "reviewed_at": "2026-10-28T00:59:34",
+      "previous_implementer": "W2",
+      "fixing": true,
+      "history": [
+        "7805+7803 牌数守恒：友情羁绊选好的 2 张弃牌要到 _结算魔法入门（role_jinguizhinv.gd:385-396）才离手，而 7803 分支1 的询问在 264-286 行、更早，玩家在这两次询问里仍能选到这两张牌，_取手牌（635-651）还会从手牌补齐",
+        "结算时 7803 的 take_from_hand 遇到已离手的牌会整体返回 false（battle_engine.gd:1946-1956）而一张都不移除，to_discard 仍把整组牌塞进弃牌堆，导致同一张牌在弃牌堆出现两次、另一张同时留在手里（现有 7805 用例只剩 1 张手牌，碰不到 7803 分支1，未覆盖）。建议 7805 的 2 张牌在 7803 询问前离手，或从 7803 候选里排除并在结算时只处理实际移除成功的牌",
+        "7804 子询问取消语义：步_强予选星石（505-507）与步_强予选角色（525-527）都传 can_cancel=true，取消或超时回空 args/dst 后角色用 _默认可选星石、_取目标 补齐，玩家取消仍会扣 1 颗星石并把第一名其他角色手牌调到 4 张，而不是放弃额外移除",
+        "建议子询问改 can_cancel=false（超时给明确默认）或把空回复按放弃额外移除处理，取消/超时未测。"
+      ]
     },
     {
       "id": "R87",
@@ -543,10 +732,20 @@
       "size": "M",
       "acceptance": "实现 8701~8704：弃法术+水晶、额外法术、雷/火魔弹、清空星石/伤害成长/士气转移；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 2 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W3",
+      "reviewer": "R7",
+      "issues": [],
+      "claimed_at": "2026-10-27T23:23:08",
+      "summary": "新增 scripts/battle/roles/role_tanlanshaonv.gd 实现 8701~8704：8701 贪欲黑洞＝弃 1 张法术牌【展示】+我方战绩区+1水晶→目标可选弃 1 张法术牌（取消/非法牌/无牌即惩罚）否则 2 点法术伤害③+自己+1法术行动，回合限定，发动后本回合 8704 置灰且校验驳回；8702 殓金魔法＝p_timeline_6 中自己【魔弹】伤害后+1水晶（自动，不额外询问）；8703 炼金术＝missile_fusion_elements 雷/火，v_missile/v_remissile 与技能栏魔弹融合入口，播报用 8703；8704 亡女的金库＝宝石可顶水晶支付 1 能量、2 名对手各 1 点法术伤害③，可选额外移除战绩区全部星石（固定两项选项、取消=不发动退回行动阶段），每 2 星石伤害+1（向下取整），移除宝石≥2 时伤害结算完成后经自定义钩子转移对方 1 点士气；回合开始清回合限定/封锁/分步进度。只改 role+test 两个文件。 [主代理释放评审] 长循环停止，评审代理中断；交新评审复审。",
+      "tests": "用 D:\\tmp 下临时 SceneTree runner（--headless --script 正常启动工程并加载 Main.tscn，跑完删除，仓库无临时文件）只加载 tests/cases/37_tanlanshaonv.gd 实跑：[通过] 贪婪少女，失败 0，无 SCRIPT ERROR/Parse Error；同 runner 定向回归 41_jidushaonv、38_jianxizhipian、24_jierimodao、25_missileElements、26_actionCount、16_missileRelay、29_redirectIntercept、29_deckStars 全部 [通过]、失败 0。未跑全量自检（并发实现期间按协议不跑）、未用 --check-only 判定、未 --import。",
+      "files_changed": [
+        "scripts/battle/roles/role_tanlanshaonv.gd",
+        "tests/cases/37_tanlanshaonv.gd"
+      ],
+      "finished_at": "2026-10-27T23:34:48",
+      "reviewing_at": "2026-10-28T00:32:26",
+      "reviewed_at": "2026-10-28T00:37:59"
     },
     {
       "id": "R93",
@@ -563,10 +762,20 @@
       "size": "M",
       "acceptance": "实现 9301~9305：元子、重塑、借用元素师、雷击变异、月陨；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 1 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W1",
+      "reviewer": "R2",
+      "issues": [],
+      "claimed_at": "2026-10-27T21:24:27",
+      "summary": "新增 scripts/battle/roles/role_jianxizhipian.gd：9301 元子吸收（自己每个法术伤害目标③ +1 元子，上限走角色表指示物）、9302 元子重塑（2 元子→弃 1~3 张牌、摸同数、额外+1 法术行动，选牌与校验同口径）、9303 元素学徒（路由到 F5 skill_elemental helper，下发/校验/结算 1101~1105）、9304 雷击变异（覆盖 helper 的雷击后续：战绩区+1宝石改为+1元子，受上限 3 截断）、9305 月陨（宝石费用不能用晶体顶，扣费后按剩余能量+1 造成法术伤害，目标必须 1 名、可选自己）。未改共享文件与 role_yuansu.gd；新增 tests/cases/38_jianxizhipian.gd 覆盖数据/五技能主路径与取消、资源不足、牌重复/不在手牌、上限、目标非法、无宝石等边界。",
+      "tests": "用 %TEMP% 下临时 SceneTree runner（--script 正常启动工程并先加载 Main.tscn，与 selfCheck 同路径）只加载 tests/cases/38_jianxizhipian.gd 实跑：输出 [临时通过] 见习制片，失败 0，退出码 0，无 SCRIPT ERROR / Parse Error；runner 与日志均放 %TEMP%，跑后删除，仓库未留临时文件。未跑全量自检（并发实现期间按协议不跑）。",
+      "files_changed": [
+        "scripts/battle/roles/role_jianxizhipian.gd",
+        "tests/cases/38_jianxizhipian.gd"
+      ],
+      "finished_at": "2026-10-27T21:39:19",
+      "reviewing_at": "2026-10-27T21:39:49",
+      "reviewed_at": "2026-10-27T21:46:18"
     },
     {
       "id": "R97",
@@ -583,10 +792,20 @@
       "size": "M",
       "acceptance": "实现 9701~9704：牌库顶加伤、借用狂战士201/202、改写202、宝石/水晶二选一；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 1 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W5",
+      "reviewer": "R1",
+      "issues": [],
+      "claimed_at": "2026-10-27T23:23:09",
+      "summary": "实现 97 萝莉番长：9701 喧哗上等（攻击命中后逐张移除牌库顶并展示，血类命格且法术牌才继续、累计 3 张必停，伤害+X，移出牌入弃牌堆且牌库不足不洗回）；9702 夜露死苦（复用 F5 狂战士 helper，201/202 的询问与播报都按本角色 9702）；9703 爱死天流（血腥咆哮条件改为目标治疗>0，效果改为关闭【圣光】抵挡、不再强制命中；「无法用【暗灭】应战」需 battle_engine.gd 的应战标志（data-audit Q2），角色任务范围无法落地，已在代码注明待引擎任务）；9704 灭茶苦茶（命中后二选一：宝石+2 / 水晶+1，固定两项按资源置灰，宝石可顶水晶，支付前复核资源；与 9701 同次命中时 9704 预览基准含 9701 加伤）。只改 role+test，未改共享文件/数据表。",
+      "tests": "%TEMP% 临时 SceneTree runner 正常启动工程、只加载 tests/cases/39_luolifanzhang.gd：结果 [临时通过] 萝莉番长，失败 0；未跑全量自检（并发实现期间按协议），未用 --check-only 判定。",
+      "files_changed": [
+        "scripts/battle/roles/role_luolifanzhang.gd",
+        "tests/cases/39_luolifanzhang.gd"
+      ],
+      "finished_at": "2026-10-27T23:28:58",
+      "reviewing_at": "2026-10-27T23:55:33",
+      "reviewed_at": "2026-10-28T00:03:24"
     },
     {
       "id": "R106",
@@ -598,15 +817,37 @@
       ],
       "files": [
         "scripts/battle/roles/role_daduoshaonv.gd",
-        "tests/cases/40_daduoshaonv.gd"
+        "tests/cases/40_daduoshaonv.gd",
+        "scripts/battle/battle_engine.gd",
+        "scripts/battle/battle_player.gd",
+        "scripts/battle/battle_role.gd",
+        "scripts/ui/battle_mobile.gd"
       ],
       "size": "L",
       "acceptance": "实现 10601~10605：队友随机弃牌/选目标、跳过行动、弃2同系魔弹、禁提炼/队友提炼奖励、跳过后的群疗/士气；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 3 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "MAIN",
+      "reviewer": "R7",
+      "issues": [],
+      "claimed_at": "2026-10-28T00:19:54",
+      "summary": "[主代理修复] 主代理补 10603 的响应传递半边：SMissileAsk 放宽选牌上限、v_remissile_multi、双牌结算/再询问、客户端 card_max/提示/同系过滤；自检 61/61。10604/10601 的询问兜底由修复代理完成。",
+      "tests": "按并发约定未跑全量自检、未 --import、未用 --check-only 判定。%TEMP% 临时 SceneTree runner（--script 启动工程并加载 Main.tscn，跑完已删除）实跑：[通过] 怠惰少女、跨玩家操作、额外回合与角色替换、伤害转移与弃牌拦截、忌妒少女、F5-祈祷师赐福；[临时自检] 用例 6 个：失败 0，无 SCRIPT ERROR / Parse Error。",
+      "files_changed": [
+        "scripts/battle/roles/role_daduoshaonv.gd",
+        "tests/cases/40_daduoshaonv.gd"
+      ],
+      "finished_at": "2026-10-28T00:32:19",
+      "reviewing_at": "2026-10-28T00:38:00",
+      "reviewed_at": "2026-10-28T00:43:14",
+      "previous_implementer": "W1",
+      "fixing": true,
+      "history": [
+        "10603 只实现了主动使用，A43 明确「包括主动使用与响应传递」的响应传递未实现：被【魔弹】传递时弃 2 张同系牌视为打出魔弹这条路径，引擎 SMissileAsk 只读取 card_ids[0] 并只调 v_remissile(单张)，role/test 范围无法支持两张牌，需主代理补引擎任务（传递询问接受 2 张牌并暴露角色钩子）或明确接受降级，落地前 106 在魔弹传递响应里用不了 10603",
+        "10604 的选星石询问 can_cancel=true，取消后连 +1 宝石都不给、也不移除星石，而 A44 规定「任何队友执行提炼都触发（每提炼一次触发一次）」是被动/强制，玩家只应选移除哪种星石，现在玩家可取消以免除移除星石的成本，请把该询问 can_cancel 设 false 并在空/非法回复时按可移除的第一种星石兜底结算（+1 宝石照给），同步修改用例的取消分支",
+        "10601 的队友指定目标询问 can_cancel=true，A41「若该队友是 AI/掉线则按默认规则代选」未落实：超时/取消会走取消技能行动，而不是从 targets 代选，请把该询问 can_cancel 设 false（引擎超时会从下发的合法目标里随机代选），或由主代理确认接受「队友可放弃」的口径并补 data-audit，用例的队友取消分支需同步。",
+        "已修 2/3：10604 的选星石询问 can_cancel=false，空/非法回复（取消、超时）按第一种可移除星石兜底结算且 +1 宝石照给（A44），用例同步；10601 的队友指定目标询问 can_cancel=false，超时由引擎从下发合法目标随机代选，硬发的取消/非法/空回复按 A41 默认规则取第一名合法对手并正常结算（行动计数保留），用例同步。仍阻塞：10603 的 A43「响应传递」半边（被【魔弹】传递时弃 2 张同系牌视为打出魔弹）需引擎支持——SMissileAsk 只读 card_ids[0]、只调 v_remissile(单张)，要接 2 张牌并暴露角色钩子，超出本任务 role/test 范围，需主代理补引擎任务或明确接受降级。"
+      ]
     },
     {
       "id": "R107",
@@ -623,10 +864,32 @@
       "size": "M",
       "acceptance": "实现 10701~10704：未命中弃法术/2伤害、命中额外法术且只魔弹+逆向、地/风魔弹、额外攻击手牌限制；只改 role/test；测试+自检。",
       "desc": "参考计划第 5 节第 2 批。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "FIX1",
+      "reviewer": "R4",
+      "issues": [],
+      "claimed_at": "2026-10-27T21:02:58",
+      "reviewing_at": "2026-10-27T21:19:26",
+      "fixing": true,
+      "summary": "修复三条：1) 10702「只能使用【魔弹】」拆两套白名单：普通法术行动 extra_action_card_ids 只放行【魔弹】本体，地/风系【圣盾】/【虚弱】/【中毒】不再下发点亮也不再被服务端放行；10703 技能行动另用 missile_fusion_hand_ids 放行地/风系牌当【魔弹】（引擎把技能入口按基础种类 Magic 校验，故按当前处理状态是 10703 SkillRun 区分），并加 p_before_magic 兜底：引擎驳回额外行动后会把阶段重置成普通行动，本回合 10702 授予过额外法术行动时仍禁止非【魔弹】牌走普通法术；2) 10701 按 data-audit A46 改强制弃牌（can_cancel=false），弃不出/超时回空/硬提交非法牌仍结算 2 点法术伤害+我方战绩区 1 水晶；3) 10704 支付 1 能量后补 engine._broadcast_game()，客户端能量不再滞后。用例补地/风系法术牌白名单与真实驳回、10703 在额外行动内当魔弹的真实结算、强制弃牌 can_cancel 断言、支付后快照断言，并修掉可读性差的旧断言。备注：引擎 _reject_action 在额外行动被驳回时压回默认普通行动阶段属共享引擎既有行为（本任务只改 role+test 未动共享文件），10702 的普通法术限制已用 p_before_magic 兜住。",
+      "history": [
+        "W3 实现代理异常退出（任务停在 claimed，无 role_jidushaonv.gd）",
+        "10702「本次法术行动只能使用【魔弹】」未真正限制：extra_action_card_ids(10702,Magic) 把全部地/风系手牌列入白名单，地/风系法术牌（地系圣盾 卡表#0~#2、虚弱 #3、中毒 #4",
+        "风系圣盾 #6~#8、虚弱 #9、中毒 #10）也会放行",
+        "客户端（白名单 + _可主动使用牌 都会通过）可点亮并在 10702 额外法术行动里按普通法术结算（如放置地系【圣盾】），服务端 _do_magic 的 Shield/Weaken/Poison 分支照常结算，违反技能原文。测试负例只用了火系法术牌（火法术），未覆盖地/风系法术牌。修复需禁止该额外行动里用非【魔弹】牌走普通法术（若要保留 10703 技能用地/风牌当魔弹，需拆普通行动/技能行动两套白名单或加引擎钩子），并补地/风系法术牌用例。",
+        "10701 与 data-audit A46 冲突：A46 定「目标强制弃 1 张法术牌」，实现允许目标取消（args[0]=0）后直接吃 2 点法术伤害+我方水晶（与 801/7603 旧口径一致），请主代理确认口径",
+        "若按 A46，需 can_cancel=false 并同步改用例。",
+        "10704 支付 1 能量（remove_energy(1)）后未调用 engine._broadcast_game()，客户端能量显示可能滞后到下一次快照",
+        "7504/4504 都在支付后补了快照，建议补上并加断言。"
+      ],
+      "tests": "按协议未跑全量自检（并发修复期），未跑 --import，未用 --check-only 判定。用 %TEMP% 下临时 SceneTree runner（--script 正常启动工程、加载 Main.tscn 后跑 tests/cases/41_jidushaonv.gd）实跑：PASS:忌妒少女，失败 0，无 SCRIPT ERROR / Parse Error，退出码 0（跑后删除临时文件）。反证有效：临时分别回退三处修复复跑——旧宽白名单 15 条失败、旧可取消弃牌询问 3 条失败、10704 缺快照 1 条失败、去掉 p_before_magic 兜底 3 条失败；恢复后均重新通过。",
+      "files_changed": [
+        "scripts/battle/roles/role_jidushaonv.gd",
+        "tests/cases/41_jidushaonv.gd"
+      ],
+      "finished_at": "2026-10-27T21:19:15",
+      "reviewed_at": "2026-10-27T21:24:00",
+      "previous_implementer": "W2"
     },
     {
       "id": "R108",
@@ -646,10 +909,20 @@
       "size": "XL",
       "acceptance": "实现 10801~10804：倾慕借用、风之剑、剑守誓言（额外出牌/星杯/额外回合/角色替换）、剑残影；只改 role/test；测试+自检。",
       "desc": "最后一批；依赖 45 和 F7。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W5",
+      "reviewer": "R1",
+      "issues": [],
+      "claimed_at": "2026-10-27T23:29:00",
+      "summary": "实现 108 剑之子：10801 倾慕（剑之魔女在场时获得 4503/4504 并封锁 10803；4503 档位/4504 支付宝石弃2摸1额外攻击按 45 逻辑复制，不改 45）；10802 风之剑（技类命格主动攻击、牌上 101/102 判定；移除我方战绩区 1 星石，宝石/水晶二选一且按资源置灰；101 额外攻击、102 禁应战且不查圣盾；未直接用 F5-sword helper，因为 helper 不含星石费用/类型选择，仅复用其判定口径）；10803 剑守誓言（主动攻击命中或任一方星杯增加的回合结束后触发；X=双方星杯和，牌库顶 X+1 不洗回；展示后选项选 1 张入手、其余进弃牌；本次弃置的整批牌中有法术牌时 +2 个人水晶、安排攻击+1 额外回合、永久替换为风之剑圣，先安排再替换）；10804 剑残影（攻击结束后问发动→选对手→对手强制弃1→扣1能量、额外攻击、本回合下次主动攻击只能打该目标；extra_action_targets + v_attack 双保险，命中一次后解除，回合限定）。只改 role+test；客户端目标过滤/技能栏显示留给 CLIENT。",
+      "tests": "临时 SceneTree runner 只加载 tests/cases/42_jianzhizi.gd：[临时通过] 剑之子，失败 0；同 runner 顺序回归 39_luolifanzhang / 42_jianzhizi / f5_sword / 29_extraTurn：[临时回归] 4 个用例通过 4、失败 0；未跑全量自检（并发实现期按协议），未用 --check-only 判定。",
+      "files_changed": [
+        "scripts/battle/roles/role_jianzhizi.gd",
+        "tests/cases/42_jianzhizi.gd"
+      ],
+      "finished_at": "2026-10-27T23:45:34",
+      "reviewing_at": "2026-10-28T00:12:12",
+      "reviewed_at": "2026-10-28T00:19:43"
     },
     {
       "id": "DATA",
@@ -680,10 +953,27 @@
       "size": "M",
       "acceptance": "从设计表改脚本列/启用列/提示/指示物，导表；13 角色进入选角池；数据测试更新；自检全过。",
       "desc": "所有角色完成后做；不要手改 CSV/DataTables。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W6",
+      "reviewer": "R10",
+      "issues": [],
+      "claimed_at": "2026-10-28T01:07:07",
+      "reviewing_at": "2026-10-28T01:35:30",
+      "fixing": false,
+      "summary": "13 名 3★/3.5★ 角色启用并填脚本列（38/41/45/46/47/75/78/87/93/97/106/107/108）；59 技能中 32 个有运行时询问的技能补 44 条提示（4701 按脚本读 #2/#3、8701 读 #1，前序空列保留）；38/46/93 指示物/盖牌配置复核；设计表→CSV→DataTables 全量重导，未手改生成文件。技能指示器条目属 CLIENT 的 const.gd（W7 已加），DATA 侧只负责指示物数据。",
+      "history": [
+        "W7 误领（W7 为 CLIENT 代理，提示词限定 CLIENT 文件；DATA 应由 W6 认领），退回 pending 供 W6 认领"
+      ],
+      "tests": "临时 SceneTree runner：Data 加载通过（13 角色在池、脚本可加载、59 技能行、44 条提示可读且占位符已替换、子弹/灵涌/元子上限、全版本池 54）；静态检查 13 角色所有 询问 的提示下标 0 缺失；重导后临时目录复现与仓库 CSV/DataTables 完全一致（仅生成时间变）。未跑全量自检（并发）；tests/cases/1_dataAssets.gd 仍有 14 条旧断言（38/108 不在池、13 角色无脚本）与启用冲突，该文件不在 DATA files，需主代理更新。",
+      "files_changed": [
+        "Table/Design/设计表.xlsx",
+        "Table/Csv/角色表.csv",
+        "Table/Csv/技能表.csv",
+        "Table/TableScripts/DataTables.gd",
+        "tests/_export_tables.gd"
+      ],
+      "finished_at": "2026-10-28T01:18:11",
+      "reviewed_at": "2026-10-28T01:40:36"
     },
     {
       "id": "CLIENT",
@@ -712,10 +1002,28 @@
       "size": "M",
       "acceptance": "把 13 角色需要的目标/牌过滤、技能指示器、头像提示、选项集中接入；避免角色号硬编码散落；测试+自检。",
       "desc": "可与 DATA 并行；只改列出的客户端/常量文件。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "FIX5",
+      "reviewer": "R12",
+      "issues": [],
+      "claimed_at": "2026-10-28T01:45:18",
+      "reviewing_at": "2026-10-28T01:51:44",
+      "fixing": true,
+      "summary": "修复评审 3 条：1) _预览伤害头像提示 排除 3301/3306（这两条询问的 preview_base 是本次攻击牌 id，不是伤害），不再把牌号画成攻击者头像上的「N 点攻击伤害」，并补回归断言；2) 10603 双张魔弹收口提交/取消：新增 _魔弹响应提交方式 统一判定（1 张真【魔弹】继续传递 / 1 张【圣光】抵挡 / 10603 恰好 2 张同系视为魔弹），_玩家可选（点亮落点）、_确定不可用、_on_ok（提交）全部按它卡住，单张同系牌不再能以单牌 Attack 提交（服务端会按放弃）；_可回魔弹牌 在选满 2 张时允许点已选牌取消、第二张必须与第一张同系，改不了牌的问题解决；两张同系【圣光】改按 Attack 提交（服务端多牌分支），不再按 Block 只处理第一张；补真实点击/提交路径用例；3) 43 用例把「技能指示器缺文案」断言从 continue 之后挪进非空分支内真正执行。本轮未改 const.gd。",
+      "history": [
+        "W6 误领（W6 为 DATA 代理，提示词限定 DATA 文件；CLIENT 应由 W7 认领），退回 pending 供 CLIENT 代理认领",
+        "W6 误认领退回：W6 的任务是 DATA（但 next 因 DATA 已被 W7 认领而落到 CLIENT），CLIENT 的 files 超出 W6 授权范围；未改动任何文件，退回 pending 供 W7 认领",
+        "battle_mobile.gd:6508「_预览伤害头像提示」把 preview_base 一律当伤害数值，但 3301 式神咒束 / 3306 阴阳转换的技能询问里 preview_base 是「本次攻击牌 id」（role_yinyang.gd:183/404 传 预览基准=atk_id、预览目标=[攻击者]，客户端 _开始攒应战 3935 也按牌号读）：这两条询问一进场，攻击者头像会被画成「<牌号> 点攻击伤害」（例如牌号 107 就显示「107 点攻击伤害」），旧版本没有这条提示，属旧行为回归。建议在 _预览伤害头像提示 里排除这两个技能号（或改用 preview_damage 区分语义），并补一条头像提示断言。\n10603 双张魔弹的响应链路只做了可点过滤，没管提交与改选：card_max=2 时 _可回魔弹牌 允许先选任意一张有同系搭档的非虚拟牌，但点目标（battle_mobile.gd:3444-3445）与「确定」（7926-7930）都只要求非空，选 1 张水系/雷系/地风系牌即可提交单牌 Attack",
+        "106 的 v_remissile 只认真【魔弹】、服务端只在 2 张同系时走 v_remissile_multi，这条回复会被服务端当成放弃、玩家直接吃魔弹伤害。反向：选满 2 张后 _可回魔弹牌 的 `_sel_cards.size() >= 2`（3847）让所有牌变灰、无法取消或换牌（只能整次取消）。另外选 2 张【圣光】会以 Block 提交两张，服务端只处理第一张。建议 10603 的提交/取消路径要求恰好 2 张同系（或 1 张真【魔弹】/【圣光】），2 张时允许点已选牌取消，并补点击/提交路径用例（现在只直接调 _可回魔弹牌）。\ntests/cases/43_clientRoleFeatures.gd:133-135 的 continue 之后那句「技能指示器缺文案」断言与 if 同级、永远执行不到（用例头注释称校验每颗的文案，实际没校验），请修缩进/断言。"
+      ],
+      "tests": "定向验证（%TEMP% 临时 SceneTree runner，正常启动 Main.tscn，跑完已删；未 --import、未跑全量、未用 --check-only）：第一批 43_clientRoleFeatures / 9_yinyangSingleStep / 40_daduoshaonv 通过 3/3；第二批 4_battleInteraction / 5_indicatorSwitch / 16_missileRelay / 19_optionVisibility / 25_missileElements / 9_yinyangShiShenUI / 38_jianxizhipian / 41_jidushaonv / 42_jianzhizi 通过 9/9；变异验证（临时去掉 3301/3306 排除与已选牌可取消两处修复）43 用例报 6 条失败（3301/3306 头像误画「39 点攻击伤害」、2 张后无法取消/换牌），恢复后最终批次 43 / 9_yinyangSingleStep / 16_missileRelay / 40_daduoshaonv / 4_battleInteraction 通过 5/5，失败 0，日志无 SCRIPT ERROR/Parse Error。",
+      "files_changed": [
+        "scripts/ui/battle_mobile.gd",
+        "tests/cases/43_clientRoleFeatures.gd"
+      ],
+      "finished_at": "2026-10-28T01:51:37",
+      "reviewed_at": "2026-10-28T01:55:35",
+      "previous_implementer": "W7"
     },
     {
       "id": "DOCS",
@@ -733,10 +1041,21 @@
       "size": "S",
       "acceptance": "更新角色数/技能数/自检数/公共能力约定；记录 13 角色实现与测试结果；自检全过。",
       "desc": "最后做；不要改代码。",
-      "status": "pending",
-      "implementer": "",
-      "reviewer": "",
-      "issues": []
+      "status": "done",
+      "implementer": "W8",
+      "reviewer": "R14",
+      "issues": [],
+      "claimed_at": "2026-10-28T01:56:16",
+      "summary": "更新三份文档：项目说明（可用角色 41→54、技能 414 条含本批 59、自检 34→62、目录/规模/8.5 新增 13 角色与公共能力、附录）；技能维护约定（新增「公共能力与借用技约定」：角色特性集中配置、魔弹传递/10603 双牌、额外行动白名单、基础效果目标/触发、独有技 helper 转发、额外回合/角色替换、跨玩家/提炼、牌库顶/星杯/士气、数据提示，并补检查清单）；开发计划（新增第 0 节完成状态：13/13 角色、59/59 技能、F1~F9 落地、DATA/CLIENT 收口、30/30 评审，记录 10603 响应传递由主代理补引擎、逐角色结果、口径与 7 项遗留）。未改代码/数据/他人 claim。 [主代理释放评审] R13 评审代理异常退出，未写 reviews/DOCS.json；主代理释放评审锁，交新评审复审。",
+      "tests": "文档一致性检查 202 项全过（链接、13 角色脚本/用例、59 技能行、44 条提示、62 用例、关键接口与承诺数字）；headless 全量自检 res://tests/selfCheck.tscn 输出 [自检] 用例 62 个：通过 62，失败 0（2026-10-28，退出仅 Godot headless 资源清理提示）",
+      "files_changed": [
+        "项目文档/项目说明.md",
+        "项目文档/技能维护约定.md",
+        "项目文档/禁用3星与3.5星角色开发计划.md"
+      ],
+      "finished_at": "2026-10-28T02:03:27",
+      "reviewing_at": "2026-10-28T02:04:58",
+      "reviewed_at": "2026-10-28T02:11:43"
     }
   ]
 }

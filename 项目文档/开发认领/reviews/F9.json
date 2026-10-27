@@ -1,0 +1,17 @@
+{
+  "id": "F9",
+  "title": "F9 跨玩家操作",
+  "reviewer": "R2",
+  "implementer": "W1",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】按 db695f4 逐文件核对：F9 实际改动在 battle_engine.gd（nearest_teammate_id、强制摸牌、随机弃手牌、调整手牌到 + SHandAdjust、请求跳过行动阶段与跳过标记、提炼前/后钩子、p_after_special 的 action_id）、battle_role.gd（p_before_extract / p_after_extract / nearest_teammate_id 包装、询问支持非当前行动者）以及新增 tests/cases/29_crossPlayer.gd。同文件里还含 F2/F3/F4/F6/F7/F8 等核心任务改动（行动计数、指示物、基础效果、弃牌拦截、额外回合、牌库顶/星杯），与本任务无关；battle_player.gd / battle_deck.gd 的 diff 全部不是 F9 改动，与 summary 的 files_changed 一致。未改数据表/客户端，无提交，未发现临时文件；test dummy 常量未与真实技能号冲突。\n【右手边最近队友】engine.nearest_teammate_id(from_id, post_dir) 沿 post/pre 走 order.size() 步、排除自己、找不到返回 -1；BattleRole 同名包装直接委托。用例覆盖 1→2、2→1（绕一圈）、3→4、4→3、pre 方向 1→2、不存在玩家 -1。\n【随机弃手牌】从真实手牌 duplicate 后随机取 n 张（不足取现有），take_from_hand 离手、to_discard 入弃牌堆、_log_discard 写日志，展示=true 时额外触发 p_show_hand；n<=0/玩家不存在返回空，手牌不足只弃现有。用例覆盖随机 1 张（来源/余量/弃牌堆）、手牌不足、非法参数与 0 张。\n【强制摸牌】deck.draw + add_hand_cards + 广播，不走 p_before_draw（与特殊行动摸牌同口径，供 10601 目标强制摸牌、7804 补牌）；手牌超限由已存在的状态边界 _check_hand_overflow 统一结算。用例覆盖补到 4 张且返回 false（当场完成）。\n【调整手牌到】不足时强制摸牌补齐；超出且随机弃牌=true 时随机弃；否则 push SHandAdjust → SRequestDiscard(keep=目标张数) 交牌主自选，返回 true 表示已挂起；支持任意玩家；相同/非法参数不改动。用例覆盖补到 4、超出手牌由 2 号自选弃 2 张并二次握手成功、随机弃到 4、调整其他角色、相同与非法目标。\n【跳过行动阶段】请求跳过行动阶段(来源) 置 skip_action_phase 与来源；SActionPhase 消费时置 本回合跳过行动阶段/来源；SCheckTurnStart 清零。用例覆盖跳过标记被消费、来源 9906、回合结束钩子能读到跳过记录、跳过后正常轮到 3 号、下回合开始清零。10602 在回合开始钩子里调用有效。\n【提炼前/后钩子】p_before_extract 在 v_extract 通过后、移动星石/写日志前对全体角色同步调用，ctx.forbidden 可取消，取消走 _reject_action 且不移动战绩区/个人能量、不触发后钩子；p_after_extract 在星石与个人能量已移动、p_after_special 之前压入（可等待），ctx 带 player/gem/crystal/args/dst_ids/is_heaven；购买/合成/提炼的 p_after_special ctx 补 action_id。用例覆盖前后钩子的星石移动前后快照、个人能量、action_id、forbidden 驳回。\n【跨玩家询问】ask_skill 已对任意 pid 发询问并 wait_for(pid)，on_message 只认 _await_id，回复回到发起询问的钩子；询问包装与注释明确队友可应答。用例覆盖由 1 号在回合开始钩子问队友 2 号选目标 → 随机弃 1 号 1 张 → 目标 3 号强制摸 1 张，且队友应答不产生 ErrorInput。跨玩家选目标的头像/提示交互按 summary 由 CLIENT 任务接入，符合本任务不改客户端。\n【提示/多玩家顺序】多玩家顺序（双手方向最近队友、跨玩家应答、对他人调整手牌、对他人提炼的观察）已覆盖；提示文案部分依赖后续 R106/R78 角色的 提示 调用与 CLIENT，不在 F9 原语范围。\n【自检】本评审按指定命令实跑全量：godot --headless --path ... res://tests/selfCheck.tscn，结果 [自检] 用例 55 个：通过 55，失败 0；无 [失败] / SCRIPT ERROR / Parse Error；仅退出期 RID / ObjectDB / 资源在用警告。用例已注册 selfCheck（[通过] 跨玩家操作）。\n【回归】全量自检 55/55；新增 p_before_extract / p_after_extract 默认空实现、nearest_teammate_id 与强制摸牌/随机弃手牌/调整手牌到均为新增接口，现有角色未使用；提炼路径只多两个 no-op 钩子与 p_after_special 的 action_id 追加键，旧处理器（如神官/游击士/巫女/圣女）不读 action_id，未发现行为变化；跳过标记仅在 SActionPhase 消费时写入，虚弱/常规路径不受影响。\n【非阻塞提示，后续任务处理】1) 请求跳过行动阶段 的注释「或更早调用都有效」不严谨：SCheckTurnStart 在回合开始会先把 skip_action_phase 清零，若在上一回合结束等更早位置设置会被清掉；10602 在 p_before_turn_begin/p_turn_begin 调用不受影响，建议改注释或按需保留。2) 调整手牌到 返回 true 时调用方必须返回 URGENT/让出栈，否则玩家选弃询问会延后执行；文档已写明，R106/R78 实现时需遵守。3) 随机弃手牌(展示=true) 时 p_show_hand 钩子压在弃牌拦截钩子之下（先拦截、后公开），10601 不需要展示，若以后与 4704 组合需确认顺序。4) p_before_extract 只能取消、不能改写 args/dst_ids（设计如此）；p_after_extract 的 is_heaven/冒险者天堂路径未被用例覆盖，属角色任务联调项。5) 跨玩家询问没有专门的 ask_text / 客户端提示断言，属 CLIENT 任务；6) 106/78 的角色脚本仍待 R106/R78 实现，F9 只交付原语，与任务 desc 一致。",
+  "reviewed_at": "2026-10-27T23:11:03",
+  "files": [
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_role.gd",
+    "scripts/battle/battle_mobile.gd",
+    "tests/cases/29_crossPlayer.gd"
+  ]
+}

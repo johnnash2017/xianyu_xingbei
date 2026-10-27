@@ -1,0 +1,23 @@
+{
+  "id": "F7",
+  "title": "F7 额外回合/角色替换（spike）",
+  "agent": "W1",
+  "claimed_at": "2026-10-27T22:40:15",
+  "status": "review",
+  "files": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_role.gd",
+    "scripts/battle/battle_deck.gd",
+    "tests/cases/29_extraTurn.gd"
+  ],
+  "acceptance": "实现额外回合状态机（不推进 current_id）与角色替换为风之剑圣（重 setup/上限/技能）；或给出明确的降级接口与限制；测试覆盖回合边界/角色替换；自检。",
+  "summary": "F7 额外回合 / 角色替换：1) 额外回合：引擎新增 额外回合玩家/额外回合攻击加伤/额外回合来源（待执行）与 当前额外回合玩家/当前额外回合攻击加伤（执行中），新增 安排额外回合(pid, 攻击加伤, 来源) / 是否额外回合() / 额外回合加伤(pid) / 攻击基础伤害(pid)；SNextPlayer 在待执行时把行动者切到该玩家（不推进 current_id 到下家、不增加 round_id），走完整 SCheckTurnStart（回合开始钩子、中毒/虚弱、行动计数/额外行动/启动标记重置），结束后再正常轮转；p_turn_begin/p_before_turn_begin/p_boot/p_before_action/p_between_weak_and_action 与 p_turn_end/p_after_turn_end 的 ctx 增加 extra_turn/attack_bonus，TurnBegin 广播带 extra_turn/extra_cause/attack_bonus；引擎普通攻击与应战反击的伤害改走 攻击基础伤害(pid)，额外回合攻击 +N 由引擎统一加（先安排再替换角色也不丢）。2) 角色替换：新增 engine.替换角色(pid, 新角色id, 重置上限) 与 BattleRole.替换角色/安排额外回合 包装、BattleRole.p_before_role_replace 清理钩子；顺序为旧角色清理→解绑→退出形态/清额外行动/行动计数/启动标记/reattacker→恢复基础手牌/能量/治疗上限→清指示物槽与盖牌上限→写新角色号并按角色表重新 setup（白板角色按表初始化）→公告+快照；手牌/盖牌/基础效果/能量/治疗/战绩区保留，旧角色对象之后不再收到钩子。开始新对局时重置额外回合字段。未改 battle_player.gd / battle_deck.gd。限制：额外回合在当前回合结束时开始（10803 触发时机即回合结束）；+1 只接入引擎普通攻击/应战反击，角色自建 harm 的攻击技能需自行读 攻击基础伤害；p_before_role_replace 必须同步；旧角色有盖牌槽而新角色没有时盖牌保留在盖牌区不自动清空。",
+  "tests": "按协议并发期未跑全量自检、未用 --check-only 判定、未 --import。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，跑完已删除，仓库未留临时文件）只加载 tests/cases/29_extraTurn.gd 实跑：[通过] 额外回合与角色替换，失败 0，退出码 0，无 SCRIPT ERROR/Parse Error；覆盖额外回合不推进 current_id/不增加 round_id、状态与行动计数重置、回合开始钩子 extra_turn、TurnBegin 广播、结束后正常轮转与 round 边界、额外回合攻击 +1（普通攻击真实进 harm）、10803 顺序（安排+1额外回合并替换为风之剑圣后新角色正常行动）、替换清理钩子/解绑/上限与指示物重算/资源保留/非法参数。同 runner 定向回归 18 例全部 [通过]：7_roleAssign、12_yuenvCangBaiStage、12_yuenvCangBaiNoReattack、17_actionBroadcast、26_actionCount、28_basicEffectTarget、27_tokensCover、4_battleInteraction、9_yinyangEngine、23_liewuren、32_jianzhimoni、41_jidushaonv、12_yuenvXinyueEngine、29_redirectIntercept、16_missileRelay、25_missileElements、f5_sword。",
+  "files_changed": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_role.gd",
+    "tests/cases/29_extraTurn.gd"
+  ],
+  "finished_at": "2026-10-27T22:50:09"
+}

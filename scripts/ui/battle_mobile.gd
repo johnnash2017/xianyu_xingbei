@@ -300,21 +300,9 @@ func _日志标签(kind: int) -> String:
 		_:
 			return "系统"
 
-## 能把地系 / 火系牌当【魔弹】打出去的角色（【魔弹融合】：魔导师 803 / 节日魔导 7602，
-## 对照 role_modao / role_spmodao）
-const 地火可作魔弹角色: Array[int] = [8, 76]
-## 拥有【魔弹掌控】/【魔弹掌握】的角色：主动打【魔弹】时左右两个方向都能选
-## （魔导师 802 / 节日魔导 7601「可选逆向传递」）。
-## 注意只在「主动使用」那一步生效 —— 魔弹打出后传递方向就固定了，传递时不能改向
-const 魔弹掌控角色: Array[int] = [8, 76]
-## 【黑暗束缚】2903 的「响应侧」：不能用【魔弹】转弹、也不能用【圣光】格挡（对照 role_moqiang 的
-## v_remissile / v_block）。「主动阶段整片禁用法术牌」那半条在下面的 行动阶段禁用法术牌角色 里
-const 魔弹全禁角色: Array[int] = [29]
-## 行动阶段不能使用法术牌的角色：
-##   魔剑士【暗影抗拒】904（对照 role_mojian 的 v_allow_action）
-##   魔枪【黑暗束缚】2903「你始终不能使用法术牌」（对照 role_moqiang 的 v_allow_action；
-##   同参考客户端 MoQiang::normal() 里的 handArea->disableMagic()，「充盈」这类要选法术牌的技能询问不受影响）
-const 行动阶段禁用法术牌角色: Array[int] = [9, 29]
+## 「哪些角色能把哪些系别的牌当【魔弹】/ 有【魔弹掌控】/ 不能成为基础效果目标」这类角色特性
+## 统一放在 GConst.角色特性（见 const.gd），本文件不再写 [8, 76] 之类名单。
+## 客户端只按 GConst.可当魔弹 / 魔弹掌控 / 基础效果免疫 等查询函数取。
 ## 仲裁者：审判满上限时本回合只能发动【末日审判】（对照 ZhongCai::v_allow_action）
 const 仲裁者角色: int = 14
 ## 苍炎魔女：【烈焰形态】下除水系、暗系外的攻击牌视为火系（对照 role_monv._is_fire_like）
@@ -338,6 +326,15 @@ var _日志简洁: String = ""
 var _日志简洁模式: bool = true
 ## 当前回合玩家 id（用于面板高亮）
 var _当前回合: int = -1
+## 上一次 TurnBegin 的玩家 / 回合号：额外回合（F7 / 10803）不会推进 round，
+## 连上就靠「同一名玩家 + 同一回合号」认出来（协议 TurnBegin 只带 id / round）。
+var _上一回合玩家: int = -1
+var _上一回合号: int = 0
+## 本次 TurnBegin 是不是额外回合（面板提示 / 日志用）
+var _额外回合中: bool = false
+## 每名玩家上次看到的角色号：角色卡被替换（F7 / 10803）时快照里的 role_id 会变，
+## 客户端据此刷新面板（_填面板 已按新 role_id 重画）并在提示里点名「角色卡替换为【…】」。
+var _上次角色号: Dictionary = {}
 ## 当前「背后的 Turn 亮着」的玩家 id：轮到谁行动 / 在等谁回复都算，变了才重播动画
 var _高亮玩家id: int = -2
 ## 正在等谁回复、还剩多少秒（由对局快照刷新）
@@ -743,6 +740,11 @@ func _on_game_info(info: Dictionary) -> void:
 		# 房间等待阶段仍是大厅音乐，真开打才换战斗曲
 		Audio.播放音乐(Audio.场景战斗)
 		_日志追加("房间 %d 对局开始" % int(info.get("room_id", 0)), "系统")
+		# 新一局：角色替换检测与额外回合判定不沿用上一局的记录
+		_上次角色号.clear()
+		_上一回合玩家 = -1
+		_上一回合号 = 0
+		_额外回合中 = false
 	_处理数值变化(info, 之前已开局 and started)
 	_刷新队伍(info)
 	_刷新玩家面板()
@@ -984,6 +986,12 @@ func _刷新玩家面板() -> void:
 
 ## 把一名玩家的视图数据塞进一块面板（setter 的取值形状见 PlayerStatusMobile.gd）
 func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
+	# 角色卡替换（F7 / 10803 剑之子 → 风之剑圣）：快照里的 role_id 变了就按新角色重画，
+	# 并弹一次提示。首次填充 / 重连（旧值 0）不提示，避免开局重复报。
+	var 旧角色号: int = int(_上次角色号.get(p.id, 0))
+	_上次角色号[p.id] = p.role_id
+	if 旧角色号 > 0 and 旧角色号 != p.role_id and _已开局:
+		_提示("%s 的角色卡替换为【%s】" % [p.nickname, Data.role_name(p.role_id)])
 	面板.set("ID", p.id)
 	面板.set("NickName", p.nickname)
 	# 未分队时不改队色（参考工程的 Team 只有蓝 0 / 红 1，没有「未分队」）
@@ -1047,6 +1055,12 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 
 
 func _on_turn(player_id: int, round_id: int) -> void:
+	# 额外回合（F7 / 10803 / 苍白之月）：不推进 current_id、不增加 round，同一名玩家连着开回合。
+	# TurnBegin 协议只带 id / round，所以用「同一名玩家 + 同一回合号」认；第一回合不会误判。
+	var 额外回合: bool = _上一回合玩家 >= 0 and player_id == _上一回合玩家 and round_id == _上一回合号
+	_上一回合玩家 = player_id
+	_上一回合号 = round_id
+	_额外回合中 = 额外回合
 	_当前回合 = player_id
 	# 新回合开始：上一回合可能残留的「同命格」许可 / 回退记录作废
 	_应战同命格 = false
@@ -1063,7 +1077,11 @@ func _on_turn(player_id: int, round_id: int) -> void:
 	if p != null and Audio.有声效(str(p.role_id)):
 		Audio.播音效(str(p.role_id))
 	if p != null:
-		_日志追加("第 %d 回合，轮到 %s" % [round_id, _称号(player_id)], "回合")
+		if _额外回合中:
+			_日志追加("第 %d 回合，%s 的额外回合" % [round_id, _称号(player_id)], "回合")
+			_提示("额外回合：%s 连续行动" % _称号(player_id))
+		else:
+			_日志追加("第 %d 回合，轮到 %s" % [round_id, _称号(player_id)], "回合")
 
 
 ## 把某个玩家面板背后的 Turn 点亮（自己 / 别人都有）。
@@ -1551,8 +1569,8 @@ func _卡牌播报文本(msg: Dictionary) -> String:
 	return "、".join(名表)
 
 
-## 这条出牌消息是不是「地/火牌当【魔弹】」的【魔弹融合】出牌：
-## as_card_id 指向【魔弹】，且出牌者是拥有 803 的魔导 / 特殊魔导。
+## 这条出牌消息是不是「某系牌当【魔弹】」的【魔弹融合 / 相思病 / 炼金术】出牌：
+## as_card_id 指向【魔弹】，且出牌者能把这张真牌的系别当【魔弹】（见 GConst.可当魔弹）。
 ## 这种牌仍会摊出真卡面，但头像播报只飘技能名，避免「魔弹融合 + 地裂斩」两条名字挤在一起。
 func _是魔弹融合出牌(msg: Dictionary) -> bool:
 	if int(msg.get("type", 0)) != GConst.CardMsgType.Use:
@@ -1564,7 +1582,14 @@ func _是魔弹融合出牌(msg: Dictionary) -> bool:
 	if 视为牌 == null or 视为牌.card_name_enum() != GConst.CardName.Missile:
 		return false
 	var 出牌人: GPlayer = Data.get_player_by_id(int(msg.get("src_id", -1)))
-	return 出牌人 != null and 地火可作魔弹角色.has(出牌人.role_id)
+	if 出牌人 == null:
+		return false
+	# 用真牌的系别判断（47 水/火、87 雷/火、107 地/风、旧 8/76 地/火）；没有真牌时退回「会魔弹融合」即可
+	for raw: Variant in msg.get("card_ids", []):
+		var 真牌: GCard = Data.get_card(int(raw))
+		if 真牌 != null:
+			return GConst.可当魔弹(出牌人.role_id, 真牌.element_enum())
+	return not GConst.魔弹系别(出牌人.role_id).is_empty()
 
 
 ## 技能播报文本：直接写技能名；技能号无效时返回空串（不飘一个空壳）
@@ -1970,18 +1995,25 @@ func _进入待选() -> void:
 		_need_players = 0
 		# 额外行动（【疾风技】【不屈意志】【戒骄戒躁】等给的行动）不写「轮到你了」，按本阶段放行的种类点名
 		if bool(_pending.get("is_extra", false)):
-			match respond_id:
-				GConst.ActionType.Attack, GConst.ActionType.AttackSkill:
-					# 苍白之月给的那次额外攻击本身无法应战，提示点名
-					var 这份来源: int = int(_pending.get("extra_cause", _额外行动来源))
-					if 这份来源 == GConst.技能_苍白之月:
-						_指令提示("获得额外【无法应战】攻击行动")
-					else:
-						_指令提示("获得额外攻击行动")
-				GConst.ActionType.Magic, GConst.ActionType.MagicSkill:
-					_指令提示("获得额外法术行动")
-				_:
-					_指令提示("获得额外行动")
+			# 这份额外行动的来源（服务端随行动询问下发 extra_cause）：先查集中的「额外行动提示」，
+			# 10702「只能出【魔弹】且可逆向」、10704 / 10804 的「只能攻击某类对手」等都在那里；
+			# 没配的技能退回按放行种类说话。
+			var 这份来源: int = int(_pending.get("extra_cause", _额外行动来源))
+			var 特性提示: String = str(GConst.额外行动提示.get(这份来源, ""))
+			if not 特性提示.is_empty():
+				_指令提示(特性提示)
+			else:
+				match respond_id:
+					GConst.ActionType.Attack, GConst.ActionType.AttackSkill:
+						# 苍白之月给的那次额外攻击本身无法应战，提示点名
+						if 这份来源 == GConst.技能_苍白之月:
+							_指令提示("获得额外【无法应战】攻击行动")
+						else:
+							_指令提示("获得额外攻击行动")
+					GConst.ActionType.Magic, GConst.ActionType.MagicSkill:
+						_指令提示("获得额外法术行动")
+					_:
+						_指令提示("获得额外行动")
 		else:
 			# 普通行动/其他阶段到了：上一次额外行动的来源不再沿用
 			_额外行动来源 = 0
@@ -2078,10 +2110,15 @@ func _进入待选() -> void:
 				_指令提示("用治疗抵挡本次 %d 点%s伤害，「确定」使用" % [伤害点数, 类型名])
 			GConst.RespondType.Bullet:
 				_mode = 2
-				_need_cards = 1
+				# 选牌上限：10603 可以选 2 张同系牌（服务端 card_max=2），其余仍为 1
+				var 魔弹上限: int = maxi(1, int(_pending.get("card_max", 1)))
+				_need_cards = 魔弹上限
 				# 当前魔弹伤害（服务端随询问下发，args[1]）：写在提示开头，说明放弃传递要挨多少
 				var 魔弹伤害: int = int(args[1]) if args.size() > 1 else GConst.魔弹基础伤害
-				_指令提示("受到 %d 伤害魔弹攻击，出【魔弹】继续传递，或出【圣光】抵挡，或点「取消」承受伤害" % 魔弹伤害)
+				var 魔弹提示: String = str(_pending.get("ask_text", ""))
+				if 魔弹提示.is_empty():
+					魔弹提示 = "受到 %d 伤害魔弹攻击，出【魔弹】继续传递，或出【圣光】抵挡，或点「取消」承受伤害" % 魔弹伤害
+				_指令提示(魔弹提示)
 			_:
 				_mode = 2
 				_need_cards = 0
@@ -3403,8 +3440,9 @@ func _on_player_clicked(player_id: int) -> void:
 		_发送应答(GConst.RespondType.ReplyAttack, [player_id], _sel_cards, [GConst.Reattack.Attack])
 		_应战同命格 = false
 		return
-	# 魔弹传递：选好【魔弹】后点亮起的敌人头像就把伤害传下去
+	# 魔弹传递：选好合法的传递牌后点亮起的敌人头像就把伤害传下去
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet:
+		# 「能不能点」已由 _玩家可选 按 _魔弹响应提交方式 卡住（单张同系牌 / 两张不同系都点不亮）
 		_发送应答(GConst.RespondType.Bullet, [player_id], _sel_cards, [GConst.Reattack.Attack])
 		return
 	if _sel_players.has(player_id):
@@ -3708,6 +3746,22 @@ func _符合选牌槽位(card_id: int) -> bool:
 	return true
 
 
+## 本次行动询问里「普通行动」的手牌白名单（F2：额外行动 / 出牌限制）。
+## 空表＝不限制；服务端用 [GConst.手牌白名单_全禁]（-1）表示本次一张手牌都不给点。
+func _行动手牌白名单() -> Array:
+	if _行动命令.is_empty():
+		return []
+	return (_行动命令[0] as Dictionary).get("card_ids", [])
+
+
+## 本次行动询问里「普通行动」的目标白名单（F2：如 10704 只能攻击手牌更多的对手、10804 只能打指定目标）。
+## 空表＝不限制；服务端用 [GConst.目标白名单_无]（-1）表示本次一个目标都没有。
+func _行动目标白名单() -> Array:
+	if _行动命令.is_empty():
+		return []
+	return (_行动命令[0] as Dictionary).get("dst_ids", [])
+
+
 ## 行动阶段能不能拿这张牌出手：攻击牌，以及能主动施放的【圣盾 / 虚弱 / 中毒 / 魔弹】。
 ## 【圣光】只作响应（应战攻击 / 抵挡魔弹），回合内打出去只会被服务端拒，所以直接置灰。
 func _可主动使用牌(card_id: int) -> bool:
@@ -3717,13 +3771,19 @@ func _可主动使用牌(card_id: int) -> bool:
 	# 仲裁者审判已满：手牌一律不给点，必须去点【末日审判】
 	if _末日审判锁死行动():
 		return false
+	# 额外行动 / 出牌限制（F2）：服务端随行动询问下发的白名单（如 10702 的额外法术行动只能出【魔弹】、
+	# 3803 的额外攻击只能出同系攻击牌）。白名单外的牌整片置灰，[手牌白名单_全禁] 则是全禁。
+	if _mode == 1:
+		var 白名单: Array = _行动手牌白名单()
+		if not 白名单.is_empty() and not 白名单.has(card_id):
+			return false
 	# 本阶段放行哪几类动作由服务端下发（额外攻击行动只放行攻击）：
 	# 不放行的牌整片置灰，不要等点了才被服务端拒
 	if 牌.is_attack():
 		return GConst.放行动作(GConst.ActionType.Attack, _行动允许)
-	# 【暗影抗拒】（904）：行动阶段不能使用法术牌 —— 整片置灰，点了必被服务端拒
+	# 【暗影抗拒】（904）/【黑暗束缚】（2903）：行动阶段不能使用法术牌 —— 整片置灰，点了必被服务端拒
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	if 我 != null and 行动阶段禁用法术牌角色.has(我.role_id):
+	if 我 != null and GConst.行动阶段禁用法术牌(我.role_id):
 		return false
 	match 牌.card_name_enum():
 		GConst.CardName.Shield, GConst.CardName.Weaken, GConst.CardName.Poison, GConst.CardName.Missile:
@@ -3771,23 +3831,88 @@ func _末日审判锁死行动() -> bool:
 
 ## 这张牌能不能用来回应【魔弹】：
 ##   任何角色：出【魔弹】继续传递、出【圣光】抵挡；
-##   魔导 / 特殊魔导（【魔弹融合】803）：地系、火系牌也能当【魔弹】打出去传递；
+##   能把某系牌当【魔弹】的角色（GConst.角色特性：8/76 地·火、47 水·火、87 雷·火、107 地·风）：
+##     该系别的牌也能当【魔弹】传递；
 ##   魔枪（【黑暗束缚】2903）：既不能转弹也不能圣光格挡，只能放弃。
-## role_id 对照 battle_role.gd 的角色工厂与 role_modao / role_spmodao / role_moqiang 的校验覆写。
 func _可回魔弹牌(card_id: int) -> bool:
 	var 牌: GCard = Data.get_card(card_id)
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	if 牌 == null or 我 == null:
 		return false
-	if 魔弹全禁角色.has(我.role_id):
+	if GConst.魔弹全禁(我.role_id):
 		return false
+	var 上限: int = maxi(1, int(_pending.get("card_max", 1)))
+	if 上限 > 1:
+		# 10603：可以选 2 张同系牌；第一张必须本身能单出（圣光/魔弹）或手里还有一张同系搭档，
+		# 第二张必须与第一张同系。服务端仍会复核。
+		# 已经选中的牌始终可点（再点一下＝取消）——否则选满 2 张后整片置灰，既取消不了也换不了牌
+		if _sel_cards.has(card_id):
+			return true
+		if _sel_cards.size() >= 2:
+			return false
+		if 牌.is_virtual or 牌.element_enum() <= 0:
+			return false
+		if not _sel_cards.is_empty():
+			var 第一: GCard = Data.get_card(int(_sel_cards[0]))
+			return 第一 != null and 第一.element_enum() == 牌.element_enum()
+		var 卡名: int = 牌.card_name_enum()
+		if 卡名 == GConst.CardName.HolyLight or 卡名 == GConst.CardName.Missile:
+			return true
+		return _有同系搭档(牌) >= 0
 	var 卡名: int = 牌.card_name_enum()
 	if 卡名 == GConst.CardName.HolyLight or 卡名 == GConst.CardName.Missile:
 		return true
-	if not 地火可作魔弹角色.has(我.role_id):
-		return false
+	# 47 / 87 / 107 等：把角色特性里登记的系别当【魔弹】传递（地/火只是 8/76 的登记值）
+	return GConst.可当魔弹(我.role_id, 牌.element_enum())
+
+
+## 当前「回应【魔弹】」选中的牌该怎么提交：-1＝还不能提交，Block＝【圣光】抵挡，
+## Attack＝继续传递（真【魔弹】，或 10603 恰好 2 张同系牌视为【魔弹】）。
+## 服务端只认这三种：10603 的 v_remissile 只认真【魔弹】，单张同系牌会被当成「放弃」；
+## 两张牌若以 Block 提交，服务端也只处理第一张。所以「确定」置灰 / 点目标提交都走这一处判定。
+func _魔弹响应提交方式() -> int:
+	if _sel_cards.is_empty():
+		return -1
+	var 上限: int = maxi(1, int(_pending.get("card_max", 1)))
+	if _sel_cards.size() == 1:
+		var 牌: GCard = Data.get_card(int(_sel_cards[0]))
+		if 牌 == null:
+			return -1
+		if 牌.card_name_enum() == GConst.CardName.HolyLight:
+			return GConst.Reattack.Block
+		if 上限 > 1:
+			# 10603：单张同系牌服务端不认，必须凑满 2 张
+			return GConst.Reattack.Attack if 牌.card_name_enum() == GConst.CardName.Missile else -1
+		return GConst.Reattack.Attack if _可回魔弹牌(牌.id) else -1
+	if _sel_cards.size() == 2 and 上限 >= 2:
+		# 10603：恰好 2 张同系（服务端 v_remissile_multi 的同一口径：不同、非虚拟、元素相同且有效）
+		var 第一: GCard = Data.get_card(int(_sel_cards[0]))
+		var 第二: GCard = Data.get_card(int(_sel_cards[1]))
+		if 第一 == null or 第二 == null or 第一.id == 第二.id:
+			return -1
+		if 第一.is_virtual or 第二.is_virtual:
+			return -1
+		var 元素: int = 第一.element_enum()
+		if 元素 <= 0 or 第二.element_enum() != 元素:
+			return -1
+		return GConst.Reattack.Attack
+	return -1
+
+
+## 手牌里和这张牌同系的另一张（10603 要凑两张）；没有返回 -1。
+## 客户端自己的手牌在 Data.hand_cards（GPlayer 只存手牌张数，不存牌表）。
+func _有同系搭档(牌: GCard) -> int:
+	if 牌 == null:
+		return -1
 	var 元素: int = 牌.element_enum()
-	return 元素 == GConst.CardElement.Fire or 元素 == GConst.CardElement.Earth
+	if 元素 <= 0:
+		return -1
+	for 别的: GCard in Data.hand_cards:
+		if 别的 == null or 别的.id == 牌.id:
+			continue
+		if not 别的.is_virtual and 别的.element_enum() == 元素:
+			return 别的.id
+	return -1
 
 
 ## 这张牌能不能用来应战本次攻击（规则对照服务端 BattlePlayer.base_v_reattack / role_monv.v_reattack）：
@@ -3827,10 +3952,11 @@ func _实际系别(牌: GCard) -> int:
 
 ## 本次攻击能否用【圣光】抵挡：
 ##   args[4] = can_light（有技能会让本次攻击无法抵挡，如魔剑士【暗影抗拒】）；
-##   魔枪【黑暗束缚】（魔弹全禁角色）：始终不能用【圣光】格挡，这里也一并置灰（对照 role_moqiang 的 v_block）。
+##   魔枪【黑暗束缚】（GConst.角色特性·魔弹全禁）：始终不能用【圣光】格挡，这里也一并置灰
+##   （对照 role_moqiang 的 v_block）。
 func _可圣光抵挡() -> bool:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	if 我 != null and 魔弹全禁角色.has(我.role_id):
+	if 我 != null and GConst.魔弹全禁(我.role_id):
 		return false
 	var args: Array = _pending.get("args", [])
 	return int(args[4]) != 0 if args.size() > 4 else true
@@ -4102,12 +4228,18 @@ func _on_ok() -> void:
 				return
 			_发送应答(respond_id, _sel_players, _sel_cards, [GConst.Reattack.Attack])
 		GConst.RespondType.Bullet:
-			# 出【圣光】＝抵挡（魔弹终止）；出【魔弹】＝点下一个落点把伤害传下去
-			if _sel_cards.is_empty():
-				_指令提示("请先选一张手牌：出【魔弹】继续传递，或出【圣光】抵挡")
-				return
-			if _选中是圣光():
+			# 出【圣光】＝抵挡（魔弹终止）；出真【魔弹】/ 10603 的 2 张同系牌＝点下一个落点把伤害传下去。
+			# 组合是否成立统一问 _魔弹响应提交方式：单张同系牌服务端会当「放弃」，
+			# 两张牌若用 Block 提交服务端也只处理第一张。
+			var 魔弹方式: int = _魔弹响应提交方式()
+			if 魔弹方式 == GConst.Reattack.Block:
 				_发送应答(respond_id, [], _sel_cards, [GConst.Reattack.Block])
+				return
+			if 魔弹方式 != GConst.Reattack.Attack:
+				if _sel_cards.size() == 1:
+					_指令提示("回应【魔弹】：单张同系牌不行 —— 再选一张同系牌，或出【圣光】抵挡")
+				else:
+					_指令提示("请先选牌：出【魔弹】继续传递，或出【圣光】抵挡")
 				return
 			if _sel_players.is_empty():
 				_指令提示("魔弹传递请点亮起的敌人头像（选好牌后直接点他），或点「取消」承受伤害")
@@ -5894,12 +6026,19 @@ func _是队友(player_id: int) -> bool:
 ## 法术牌的可选目标：对照服务端 BattleEngine._do_magic 的分支
 ##   圣盾 / 虚弱：目标面前不能已有同名基础效果（v_shield / v_weaken 会拒）；
 ##               其中【圣盾】要把【天使之墙】也算作已有（见 _有圣盾效果）
-##   中毒：任意玩家
+##   中毒：任意玩家；但 46 灵熙之潮（GConst.角色特性·基础效果免疫）不能成为任何基础效果的目标
 ##   魔弹：默认落点是右手边最近的敌人（服务端 _nearest_enemy 沿 post 方向找），只有他亮；
-##         本地角色有【魔弹掌控】802 时左右各一个都能选
+##         本地角色有【魔弹掌控】（802 常驻 / 107 的 10702 临时）时左右各一个都能选
 ##   其余法术牌（如【圣光】只作响应）不能主动施放 → 谁都不亮
 func _可作法术目标(牌: GCard, player_id: int) -> bool:
-	match 牌.card_name_enum():
+	var 卡名: int = 牌.card_name_enum()
+	# 4601 灵枝旨意：不能成为基础效果（圣盾 / 虚弱 / 中毒）的目标。服务端 add_basic_effect 会兜底拒，
+	# 客户端提前把头像置灰，别让玩家点出一个「操作无效」
+	if 卡名 == GConst.CardName.Shield or 卡名 == GConst.CardName.Weaken or 卡名 == GConst.CardName.Poison:
+		var 目标: GPlayer = Data.get_player_by_id(player_id)
+		if 目标 != null and GConst.基础效果免疫(目标.role_id):
+			return false
+	match 卡名:
 		GConst.CardName.Shield:
 			return not _有圣盾效果(player_id)
 		GConst.CardName.Weaken:
@@ -5942,10 +6081,17 @@ func _沿方向找敌人(step: int) -> int:
 	return -1
 
 
-## 本地角色有没有【魔弹掌控】（802）：有的话打【魔弹】时左手边那个对手也亮
+## 本地角色此刻有没有【魔弹掌控】：常驻（802 / 7601）或临时（107 的 10702 那份额外法术行动）。
+## 有的话主动打【魔弹】时左手边那个对手也亮。临时那份只在「额外行动来源＝10702」时算数 ——
+## 不能把 107 静态写进常驻名单（A47：仅本次额外法术行动内，结束即清除）。
 func _有魔弹掌控() -> bool:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	return 我 != null and 魔弹掌控角色.has(我.role_id)
+	if 我 == null:
+		return false
+	var 来源: int = 0
+	if _pending_type == GConst.Msg.Action and bool(_pending.get("is_extra", false)):
+		来源 = int(_pending.get("extra_cause", _额外行动来源))
+	return GConst.魔弹掌控(我.role_id, 来源)
 
 
 ## 魔弹传递的可选落点：服务端在询问的 dst_ids 里给，只有当前传出方向上那个人
@@ -6397,6 +6543,39 @@ func _已选牌含法术() -> bool:
 	return false
 
 
+## 通用「本次伤害」预览：服务端在技能询问里带 preview_base（本次伤害数值）与 preview_ids
+## （画在谁头上）时，直接在那几名头像上写「N 点法术 / 攻击伤害」。
+## 3★ 批的 4701 甜点冲击、4702 食欲的黑洞、8701 贪欲黑洞、9704 灭茶苦茶、10701 醋意羞心
+## 等响应都用这一条，不再逐个角色写一份现算函数。
+## 已经配了静态展示配置（选中目标后会画）的技能不重复画；没选目标时仍用预览兜底。
+## 例外：3301 / 3306 的 preview_base 是「本次攻击牌 id」而非伤害（见 _开始攒应战），不在此画。
+func _预览伤害头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id <= 0:
+		return out
+	# 3301 式神咒束 / 3306 阴阳转换的 preview_base 是「本次攻击牌 id」（_开始攒应战 也按牌号读），
+	# 不是伤害数值：这两条询问一进来不能把牌号当伤害画到攻击者头像上（旧版本没有这条提示）。
+	if _skill_ask_id == GConst.技能_式神咒束 or _skill_ask_id == GConst.技能_阴阳转换:
+		return out
+	var 伤害: int = int(_pending.get("preview_base", 0))
+	if 伤害 <= 0:
+		return out
+	var 静态: Dictionary = _头像提示配置()
+	if not 静态.is_empty() and not _sel_players.is_empty():
+		return out
+	var 目标表: Array = _pending.get("preview_ids", [])
+	if 目标表.is_empty():
+		目标表 = _pending.get("dst_ids", [])
+	if 目标表.is_empty():
+		return out
+	var 词: String = "法术伤害" if int(_pending.get("preview_kind", 0)) == GConst.HarmType.Magic else "攻击伤害"
+	for 目标: Variant in 目标表:
+		var pid: int = int(目标)
+		if pid >= 0:
+			out[pid] = "%d 点%s" % [伤害, 词]
+	return out
+
+
 ## 当前技能的「展示型」指示器配置（配了「文案」/「分目标」/「自身」才算）：选中目标后把一句话画到他们头像上
 ## （只配「自身」的如【血之哀伤】：那句永远画在自己头像上，不看有没有选目标）。
 ## 分配型由 _刷新治疗分配 自己画，不走这里。发动技能（mode 4）与技能询问（mode 3）两条通道都认。
@@ -6556,6 +6735,8 @@ func _刷新头像提示() -> void:
 		动态提示 = _灌银毒刃头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _法力护盾头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _预览伤害头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
 	for 旧: int in _动态提示过的头像:
 		if not 动态提示.has(旧):
@@ -7594,7 +7775,10 @@ func _玩家可选(player_id: int) -> bool:
 			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 			if 我 != null and 我.get_special(GConst.Exclusive.TiaoXin):
 				return player_id == 我.get_special_from(GConst.Exclusive.TiaoXin)
-			return true
+			# 额外行动的目标限制（F2）：服务端随行动询问下发 dst_ids 白名单，
+			# 如 10704 的额外攻击只能打手牌数大于你的对手、10804 只能打指定目标（[-1]＝一个都没有）。
+			var 目标白名单: Array = _行动目标白名单()
+			return 目标白名单.is_empty() or 目标白名单.has(player_id)
 		return _可作法术目标(牌, player_id)
 	if _mode == 2:
 		var rid: int = int(_pending.get("respond_id", 0))
@@ -7602,8 +7786,10 @@ func _玩家可选(player_id: int) -> bool:
 			# 应战同样先选牌；选【圣光】抵挡时不需要反击目标
 			return not _sel_cards.is_empty() and not _选中是圣光() and _可作反击目标(player_id)
 		if rid == GConst.RespondType.Bullet:
-			# 魔弹传递：选好传递牌后，只有服务端给的那几个落点亮（【圣光】抵挡不需要目标）
-			return not _sel_cards.is_empty() and not _选中是圣光() and _魔弹传递目标列表().has(player_id)
+			# 魔弹传递：只有真要传下去时才点亮落点（【圣光】抵挡不用目标；
+			# 10603 只选 1 张同系牌时服务端会按「放弃」处理，不能让他点目标就提交）
+			return _魔弹响应提交方式() == GConst.Reattack.Attack \
+				and _魔弹传递目标列表().has(player_id)
 		return false
 	if _mode == 3:
 		# 分配型指示器配了「仅队友」时（如神官【神圣契约】），只有队友头像能点（不含自己）
@@ -7788,10 +7974,15 @@ func _确定不可用() -> bool:
 					return true
 				return _sel_players.is_empty()
 			GConst.RespondType.Bullet:
-				if _sel_cards.is_empty():
+				# 组合不成立（没选牌 / 10603 只选了 1 张同系牌 / 两张不同系）都灰着：
+				# 服务端只认 1 张【圣光】抵挡或 1 张真【魔弹】/ 2 张同系牌继续传递；
+				# 【圣光】抵挡不需要目标，继续传递要先点亮落点
+				var 魔弹方式: int = _魔弹响应提交方式()
+				if 魔弹方式 == GConst.Reattack.Block:
+					return false
+				if 魔弹方式 != GConst.Reattack.Attack:
 					return true
-				# 【圣光】抵挡不需要目标；【魔弹】要先点亮的落点
-				return not _选中是圣光() and _sel_players.is_empty()
+				return _sel_players.is_empty()
 			GConst.RespondType.Discard, GConst.RespondType.DiscardCover:
 				return _sel_cards.size() != _need_cards
 			GConst.RespondType.Weaken, GConst.RespondType.Heal:

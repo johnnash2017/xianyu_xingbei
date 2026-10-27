@@ -1,0 +1,19 @@
+{
+  "id": "R107",
+  "title": "R107 忌妒少女（107）4 技能",
+  "agent": "FIX1",
+  "claimed_at": "2026-10-27T21:02:58",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_jidushaonv.gd",
+    "tests/cases/41_jidushaonv.gd"
+  ],
+  "acceptance": "实现 10701~10704：未命中弃法术/2伤害、命中额外法术且只魔弹+逆向、地/风魔弹、额外攻击手牌限制；只改 role/test；测试+自检。",
+  "summary": "修复三条：1) 10702「只能使用【魔弹】」拆两套白名单：普通法术行动 extra_action_card_ids 只放行【魔弹】本体，地/风系【圣盾】/【虚弱】/【中毒】不再下发点亮也不再被服务端放行；10703 技能行动另用 missile_fusion_hand_ids 放行地/风系牌当【魔弹】（引擎把技能入口按基础种类 Magic 校验，故按当前处理状态是 10703 SkillRun 区分），并加 p_before_magic 兜底：引擎驳回额外行动后会把阶段重置成普通行动，本回合 10702 授予过额外法术行动时仍禁止非【魔弹】牌走普通法术；2) 10701 按 data-audit A46 改强制弃牌（can_cancel=false），弃不出/超时回空/硬提交非法牌仍结算 2 点法术伤害+我方战绩区 1 水晶；3) 10704 支付 1 能量后补 engine._broadcast_game()，客户端能量不再滞后。用例补地/风系法术牌白名单与真实驳回、10703 在额外行动内当魔弹的真实结算、强制弃牌 can_cancel 断言、支付后快照断言，并修掉可读性差的旧断言。备注：引擎 _reject_action 在额外行动被驳回时压回默认普通行动阶段属共享引擎既有行为（本任务只改 role+test 未动共享文件），10702 的普通法术限制已用 p_before_magic 兜住。",
+  "tests": "按协议未跑全量自检（并发修复期），未跑 --import，未用 --check-only 判定。用 %TEMP% 下临时 SceneTree runner（--script 正常启动工程、加载 Main.tscn 后跑 tests/cases/41_jidushaonv.gd）实跑：PASS:忌妒少女，失败 0，无 SCRIPT ERROR / Parse Error，退出码 0（跑后删除临时文件）。反证有效：临时分别回退三处修复复跑——旧宽白名单 15 条失败、旧可取消弃牌询问 3 条失败、10704 缺快照 1 条失败、去掉 p_before_magic 兜底 3 条失败；恢复后均重新通过。",
+  "files_changed": [
+    "scripts/battle/roles/role_jidushaonv.gd",
+    "tests/cases/41_jidushaonv.gd"
+  ],
+  "finished_at": "2026-10-27T21:19:15"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "F2",
+  "title": "F2 额外行动与行动计数",
+  "agent": "W4",
+  "claimed_at": "2026-10-27T19:10:12",
+  "status": "review",
+  "files": [
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_role.gd",
+    "tests/cases/26_actionCount.gd"
+  ],
+  "acceptance": "每回合攻击/法术/特殊/额外行动计数；行动结束通用钩子；额外行动目标/出牌限制接口；不改变现有角色行为；测试覆盖普通/额外行动、重置、限制；自检全过。",
+  "summary": "F2 额外行动与行动计数：BattlePlayer 新增每回合攻击/法术/特殊/额外行动计数（record_action/undo_action/reset_action_counts + action_count/action_count_of 只读查询），引擎 SCheckTurnStart 清零、新增 行动计数(pid) 查询；push_after_action 统一增加通用钩子 p_action_end（与 p_after_attack/magic/special 同一份上下文：kind、is_skill、action_id、is_extra、extra_cause、action_count 与四类计数），直接行动与技能行动（SkillRun 校验通过后）都记一次，启动技能不算行动，被取消的技能行动撤销计数且不触发；新增额外行动限制接口 BattleRole.extra_action_card_ids(cause, action_type)/extra_action_targets(cause)，action_commands 下发出牌白名单与目标白名单（牌白名单缺失时回退 action_card_ids，兼容剑圣 103），服务端在攻击/法术/技能行动落牌时兜底校验，默认空表不改变现有角色行为。测试 tests/cases/26_actionCount.gd 覆盖：普通攻击计 1 次、行动结束钩子上下文、额外攻击计第 2 次且 extra_action_count=1、p_action_end 授予额外行动、回合开始清零下家计数、旧接口 action_card_ids 回退、白名单外牌/受限目标被驳回不计且不触发钩子、合法牌+目标通过、法术/特殊/技能攻击计数、启动技能不计、取消技能行动撤销计数。未做：客户端行动模式的目标头像置灰需 CLIENT 任务接入（服务端已下发 dst_ids 并兜底）；9703 的「无法用【暗灭】应战」仍需引擎级扩展（data-audit Q2，不在 F2 验收内）。",
+  "tests": "按协议未跑全量自检（并发实现期间）。用临时 SceneTree runner（tests/ 下临时 tscn/gd，跑完已删除；日志在 %TEMP%）正常启动项目，定向加载并跑 9 个用例：26_actionCount、f5_sword、12_yuenvCangBaiStage、12_yuenvCangBaiNoReattack、25_missileElements、16_missileRelay、23_liewuren、10_shoulingCanxin、9_yinyangEngine，全部 [通过]，失败 0，无 SCRIPT ERROR / Parse Error。",
+  "files_changed": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_role.gd",
+    "tests/cases/26_actionCount.gd"
+  ],
+  "finished_at": "2026-10-27T19:22:06"
+}

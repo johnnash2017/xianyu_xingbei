@@ -1,0 +1,23 @@
+{
+  "id": "F9",
+  "title": "F9 跨玩家操作",
+  "agent": "W1",
+  "claimed_at": "2026-10-27T22:57:16",
+  "status": "review",
+  "files": [
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_role.gd",
+    "scripts/battle/battle_mobile.gd",
+    "tests/cases/29_crossPlayer.gd"
+  ],
+  "acceptance": "右手边最近队友、随机弃手牌、跳过行动阶段标记、提炼前/后钩子、手牌补/弃到 N；106/78 可用；测试覆盖多玩家顺序/提示；自检。",
+  "summary": "F9 跨玩家操作：1) 右手边最近队友：引擎 nearest_teammate_id(from_id, post_dir) 与 BattleRole.nearest_teammate_id 包装（沿 post/pre，不含自己）。2) 随机弃手牌：引擎 随机弃手牌(pid, n, cause, 展示) 从真实手牌随机抽 n 张、离手进弃牌堆并写日志（可选展示触发 p_show_hand），供 10601「队友随机丢弃你 1 张」。3) 强制摸牌：引擎 强制摸牌(pid, n, cause) 直接 draw（不触发 p_before_draw，与特殊行动摸牌同口径），供「目标对手摸 1 张【强制】」与补手牌。4) 手牌补/弃到 N：引擎 调整手牌到(pid, 目标, cause, 随机弃牌) 返回 bool；不足用强制摸牌补齐，超出且随机弃牌=true 时随机弃，否则压入 SHandAdjust 等待牌主自己选弃（角色可据此返回 URGENT），支持任意玩家（7804）。5) 跳过行动阶段标记：新增 请求跳过行动阶段(来源)/跳过行动阶段来源 与 本回合跳过行动阶段/本回合跳过行动阶段来源；SCheckTurnStart 清零，SActionPhase 消费 skip_action_phase 时记录来源，供 10605「跳过行动阶段后」读取。6) 提炼前/后钩子：BattleRole 新增 p_before_extract（全体同步，ctx.forbidden 可取消提炼）与 p_after_extract（星石已移动后可等待，ctx 带 player/gem/crystal/args/dst_ids/is_heaven），_do_special 提炼分支接入；p_after_special 的 ctx 补 action_id（buy/synthesize/extract）。7) 跨玩家询问：BattleRole.询问/ask_skill 支持 pid 为当前行动者以外的队友，回复仍回到发起询问的钩子状态（测试覆盖队友选目标）。只改共享引擎/角色与新增用例；scripts/battle/battle_mobile.gd 仓库不存在（实际客户端 scripts/ui/battle_mobile.gd），跨玩家选目标的头像/提示交互需 CLIENT 任务接入。限制：p_before_extract 必须同步；调整手牌补牌是强制 draw；106/78 的角色脚本仍由各自任务实现，F9 只提供原语。",
+  "tests": "按协议并发期未跑全量自检、未用 --check-only 判定、未 --import。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，跑完已删除，仓库未留临时文件）只加载 tests/cases/29_crossPlayer.gd 实跑：[通过] 跨玩家操作，失败 0，退出码 0，无 SCRIPT ERROR/Parse Error；覆盖最近队友（post/pre/不存在玩家）、随机弃 1/多/不足/非法、调整手牌补到 4、超出由牌主选弃、随机弃到 4、调整其他角色、相同/非法参数、跳过行动阶段与来源标记及下回合清零、提炼前/后钩子（星石移动前后、个人能量、p_after_special action_id、forbidden 驳回不移动资源）、跨玩家询问+10601 式组合（队友选目标→随机弃自己→目标强制摸牌）。同 runner 定向回归 12 例全部 [通过]：29_deckStars、29_extraTurn、29_redirectIntercept、26_actionCount、27_tokensCover、28_basicEffectTarget、4_battleInteraction、20_role12Skills、30_youjishi、7_roleAssign、9_yinyangEngine。",
+  "files_changed": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_role.gd",
+    "tests/cases/29_crossPlayer.gd"
+  ],
+  "finished_at": "2026-10-27T23:01:38"
+}

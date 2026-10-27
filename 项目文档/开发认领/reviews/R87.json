@@ -1,0 +1,14 @@
+{
+  "id": "R87",
+  "title": "R87 贪婪少女（87）4 技能",
+  "reviewer": "R7",
+  "implementer": "W3",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】R87 只新增 scripts/battle/roles/role_tanlanshaonv.gd（411 行，mtime 23:33:21）与 tests/cases/37_tanlanshaonv.gd（713 行，23:33:51），均早于共享文件改动（battle_engine/player/role/mobile 00:30 后属 R106 修复）；基线 db695f4 无这两个文件，git diff 为空按全文核对；未动数据表/客户端/共享代码，未见越界。\n【8701 贪欲黑洞】available_skills 下发 MagicSkill+need_card1+need_target1+cards=法术手牌+targets=对手，条件不满足只置灰；v 校验来源/技能号/回合限定/恰好 1 张/非虚拟/在手/法术牌/恰好 1 名互不相同的对手（_校验敌人目标 的 已见.append 在 for 体内，重复目标确实被挡）；结算：播报→Show 展示→离手进弃牌堆→我方战绩区+1 水晶→目标可选弃 1 张法术（card_rule=magic+白名单+can_cancel=true，符合原文「若他不如此做」）；目标无法术牌不白问直接惩罚；弃出则无惩罚；取消/空回复/非法牌（含攻击牌、不在手）一律按不弃→2 点法术伤害③+add_action(Magic,8701,direct,skip_notice) 给自己额外法术行动（与 10702 同一写法）；_used_tan_yu 回合限定、_locked_wan_nv 在发动第一步即置位，回合开始清；测试真跑引擎验证伤害条数/点数/类型/来源、额外行动阶段允许 Magic 且可放弃、放弃后正常轮转。\n【8702 殓金魔法】p_timeline_6 只认 harm.src=自己、cause=CAUSE_MISSILE、point>0，自动 +1 战绩区水晶并播报 8702；别人魔弹/非魔弹/0 点不触发；8703 主动融合的真实流水线里触发一次。口径符合 A21/⑥。\n【8703 炼金术】missile_fusion_elements=雷/火，missile_fusion_skill=8703（不借 803/7602）；可用雷/火牌主动当魔弹（技能栏入口走 v_missile_fusion→cast_missile_fusion，落点=missile_targets）与响应传递（v_missile/v_remissile 白名单=can_use_as_missile，水系/队友落点被拒）；完整结算验证发动牌离手进弃牌、Bullet 询问下发、as_card_id=魔弹、8703 播报、目标放弃后 2 点伤害并触发 8702。\n【8704 亡女的金库】v 校验能量（get_energy>=1，宝石可顶）、恰好 2 名互不相同的对手、被 8701 锁时驳回；结算先问固定两项额外移除（选项 0/1 完整下发、总数 0 项 enabled=false；无星石不白问），选 0/取消/非法回复都有明确分支：选 0 不扣星石、伤害不成长；取消=不发动（撤销行动计数、不扣费、不播报、退回行动阶段）；选 1 则清空本队战绩区并按 gem/crystal/total 计算；支付用 remove_energy(1)（先水晶后宝石，符合维护约定第 2 条）；每目标伤害=1+floor(星石/2)，宝石>=2 时通过自定义 SHook(p_wang_nv_after_harm) 在两名目标伤害都结算完后转移对方 1 点士气（A32 口径）。用例覆盖 0 星石/3 星 2 宝石/2 星 1 宝石/不额外移除/取消 5 条路径与伤害成长、士气转移、扣费快照。\n【数据/客户端依赖】角色表 87「脚本」列与 8701~8704「提示」列仍为空，属 DATA 范围（计划第 13 行与 216 行明确由设计表任务补），测试注释已声明；角色把 8701 目标弃牌询问用序号 1、8704 额外移除用序号 0，与 data-audit 的两条提示布局一致。客户端为通用能力（法术技能按钮 need_card/need_target/targets、ask 的 card_rule/cards/can_cancel、arg_choices 选项、取消），无需 87 专用改动；R87 未改 battle_mobile。\n【回归与自检】本评审实跑指定命令：exit 0，[自检] 用例 61 个：通过 61，失败 0，含 [通过] 贪婪少女；全日志无 [失败]/SCRIPT ERROR/Parse Error，仅退出期 RID/ObjectDB/resources 环境噪音。旧行为：仅在本人角色脚本内覆写 v_missile/v_remissile，未改引擎魔弹链；61 例含 16_missileRelay/24_jierimodao/25_missileElements/26_actionCount 等全过。\n【非阻塞备注】1) 8701 目标弃牌询问未传 收牌人id 与头像预览（preview_base/kind/ids）：若 DATA 按 audit 把 {dst} 写进提示2，收牌人名会为空；对比 4701 有传 targets/预览，建议 DATA 落地时一并确认。2) 8703 的响应传递只测到 v_remissile 白名单，未做「被魔弹询问→用雷/火牌继续传递→8703 播报/8702 触发」的端到端用例（引擎路径已由 16/25 覆盖）。3) 8701 目标弃牌询问的 cards 白名单在等待期间不刷新，正常流程无并发改动，影响可忽略。",
+  "reviewed_at": "2026-10-28T00:37:59",
+  "files": [
+    "scripts/battle/roles/role_tanlanshaonv.gd",
+    "tests/cases/37_tanlanshaonv.gd"
+  ]
+}

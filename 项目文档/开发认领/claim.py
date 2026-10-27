@@ -162,6 +162,9 @@ def cmd_next(data: dict, agent: str, chain: bool = False) -> None:
         for t in data["tasks"]:
             if t.get("status") != "pending":
                 continue
+            # 核心任务只交给带 --chain 的核心代理，避免普通代理抢到后把核心链卡成一颗一轮
+            if not chain and t.get("chain") == "core":
+                continue
             if not deps_ok(data, t, chain):
                 continue
             if not can_claim_files(data, t, agent, chain):
@@ -346,6 +349,27 @@ def cmd_reopen(data: dict, tid: str, summary: str, agent: str) -> None:
         unlock()
 
 
+def cmd_retry(data: dict, tid: str, summary: str) -> None:
+    """实现/评审代理异常退出、任务停在 claimed/reviewing 时，主代理重置回 pending 重新认领。"""
+    lock()
+    try:
+        t = by_id(data, tid)
+        if t.get("status") not in ("claimed", "reviewing"):
+            raise SystemExit(f"任务 {tid} 当前状态 {t.get('status')}，只有 claimed/reviewing 能 retry")
+        t["status"] = "pending"
+        t["implementer"] = ""
+        t["reviewer"] = ""
+        t["claimed_at"] = ""
+        t["reviewing_at"] = ""
+        t["fixing"] = False
+        t["summary"] = "[主代理重置重试] " + summary
+        t.setdefault("history", []).append(summary)
+        save(data)
+        print(f"RETRIED {tid} -> pending")
+    finally:
+        unlock()
+
+
 def cmd_release(data: dict, tid: str, summary: str) -> None:
     """主代理释放卡住的评审（评审代理异常退出等）：reviewing -> review，清空 reviewer。"""
     lock()
@@ -423,6 +447,11 @@ def main() -> None:
     p.add_argument("--id", required=True)
     p.add_argument("--summary", required=True)
     p.set_defaults(func=lambda data, a: cmd_release(data, a.id, a.summary))
+
+    p = sub.add_parser("retry")
+    p.add_argument("--id", required=True)
+    p.add_argument("--summary", required=True)
+    p.set_defaults(func=lambda data, a: cmd_retry(data, a.id, a.summary))
 
     a = ap.parse_args()
     data = load()

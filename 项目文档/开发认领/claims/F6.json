@@ -1,0 +1,23 @@
+{
+  "id": "F6",
+  "title": "F6 伤害转移/弃牌拦截（spike）",
+  "agent": "FIX1",
+  "claimed_at": "2026-10-27T23:13:01",
+  "status": "review",
+  "files": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_role.gd",
+    "scripts/battle/battle_mobile.gd",
+    "tests/cases/29_redirectIntercept.gd"
+  ],
+  "acceptance": "实现/验证 ⑥ 伤害改由自己承受且不掉士气；实现魔弹进弃牌前拦截钩子（或明确 best-effort 限制）；测试覆盖目标/伤害/士气/拦截；自检。",
+  "summary": "修复：1) ⑥ 转移后的后续伤害钩子 ctx.dst 仍是原目标：新增 BattleEngine.SHookTimeline6Drawn，SGateTimeline6 不再在 p_timeline_6 之前构造 p_timeline_6_drawn 的上下文，改为摸牌/超限结算完、钩子触发时按 harm 现算；新增 BattleEngine.SHookHarmEnd，push_harm 不再使用流水线入口的快照，p_harm_end 在流水线最末尾按 harm 现算 ctx。转移后 p_timeline_6_drawn / p_harm_end 的 ctx.dst 与 ctx.harm.dst 都是新目标，按 ctx.dst 判断的 501 反噬 / 802 智慧法典 / 幻影形态收尾 / 沉沦协奏曲等既有角色会自动跟到新目标；同步改掉 转移伤害 与 BattleRole.转移伤害 里与实现不符的注释，明确只有同一次 p_timeline_6 钩子轮次内是快照（那时读 harm[\"dst\"]），并写明 redirect_from。2) 29_redirectIntercept 补 dummy 钩子观察角色（转移者自身 + 原目标各一），在 p_timeline_6_drawn / p_harm_end 记录 ctx.dst、ctx.harm.dst、redirect_from 并按 ctx.dst==自己统计命中：断言转移后两个钩子都按新目标 2 触发、redirect_from=1、原目标命中 0；对照组无转移时 ctx.dst=1、命中 2、无 redirect_from。",
+  "tests": "按协议并发期未跑全量自检、未 --import、未用 --check-only 判定。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，跑完已删除，仓库未留临时文件）只加载指定用例：29_redirectIntercept [临时通过]（含新增的 p_timeline_6_drawn / p_harm_end 上下文与命中断言）；定向回归 26 例全部 [临时通过]、失败 0、无 SCRIPT ERROR/Parse Error：26_actionCount、27_tokensCover、28_basicEffectTarget、12_yuenvXinyueEngine、12_yuenvCangBaiStage、16_missileRelay、6_healBlockDefault、9_yinyangEngine、25_missileElements、23_liewuren、32_jianzhimoni、4_battleInteraction、31_zhandoufashi、30_youjishi、10_shoulingCanxin、33_lingxizhichao、12_yuenvMeidushaEngine、12_yuenvCangBaiNoReattack、12_yuenvIndicators、20_role12Skills、21_shenggong37New、24_jierimodao、35_exmogong、38_jianxizhipian、41_jidushaonv、8_forcedDiscard。",
+  "files_changed": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_role.gd",
+    "tests/cases/29_redirectIntercept.gd"
+  ],
+  "finished_at": "2026-10-27T23:18:20"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "F2",
+  "title": "F2 额外行动与行动计数",
+  "reviewer": "R3",
+  "implementer": "W4",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】按 db695f4 diff 逐文件核对：只有 battle_engine.gd / battle_player.gd / battle_role.gd 与新增 tests/cases/26_actionCount.gd，改动全部属 F2；未越界（未动 const / 数据表 / 客户端 / 其他角色），未混入后续核心任务改动；tasks.json 变化来自 claim.py。上一轮 R1 异常退出无 review，本次为首份评审。\n【计数】BattlePlayer 新增攻击/法术/特殊/额外四类计数 + record_action / undo_action / reset_action_counts / action_count / action_count_of；SCheckTurnStart 对 current_id 清零；引擎新增 行动计数(pid) 只读查询。普通与额外攻击、法术、特殊、技能攻击都各计 1 次，额外另计 extra；启动技能不计；被取消的技能行动撤销计数。\n【通用钩子】push_after_action 改为先压 p_action_end 再压具体钩子（LIFO 下具体钩子先跑），同一份 ctx 带 kind / is_skill / action_id / is_extra / extra_cause / action_count / 四类计数；直接行动与 SkillRun 校验通过后都触发一次；p_action_end 默认 SUCCESS，现有角色不受影响；启动技能仍只跑 p_after_*。\n【限制接口】BattleRole.extra_action_card_ids / extra_action_targets 默认空表；action_commands 在额外行动优先用新接口、空则回退 action_card_ids（剑圣 103 旧行为不变），目标限制写 dst_ids；服务端在攻击 / 法术 / 技能行动落子前兜底校验，越界驳回且不计、不触发钩子；cause<=0 不生效，手牌白名单_全禁 语义正确；非额外行动不走限制。\n【回归】现有角色未定义新方法，hook 默认空实现；取消技能行动只多设标记，STurnEnd 行为不变；旧接口回退与改动前等价；hook / add_action / 应战 / 特殊行动 / 客户端读 cmds[0] 路径未见回归。\n【测试】26_actionCount 覆盖普通/额外/法术/特殊/技能攻击计数、钩子上下文、p_action_end 授予额外行动、回合开始清零、旧接口回退、白名单外牌/受限目标驳回、启动技能不计、取消撤销，已注册进 selfCheck。\n【自检】本评审实跑 godot --headless res://tests/selfCheck.tscn：[自检] 用例 43 个：通过 43，失败 0，无 [失败] / SCRIPT ERROR / Parse Error（仅退出期 RID / 资源在用的引擎警告）。\n【提示不影响通过】p_action_end 注释列举了 card_id / dst / special_action，但技能行动的 ctx 只有 player / kind / is_skill / action_id，45 / 41 实现勿强依赖；合成胜利 / 终局早退不计末次行动；魔法与技能的限制驳回分支无单独用例（路径与攻击一致）。",
+  "reviewed_at": "2026-10-27T19:51:31",
+  "files": [
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_role.gd",
+    "tests/cases/26_actionCount.gd"
+  ]
+}

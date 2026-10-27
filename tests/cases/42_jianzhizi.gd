@@ -1,0 +1,736 @@
+extends 自检用例
+## R108 剑之子（108）：10801 倾慕 / 10802 风之剑 / 10803 剑守誓言 / 10804 剑残影。
+##
+## 任务范围只有 role + test：角色表「脚本」列留给 DATA，用例里手动挂角色脚本。
+## 覆盖：
+##   - 数据：角色名 / 姓名 / 星数 / 四颗技能行 / 技能说明 / 脚本文件；
+##   - 10802：技类命格主动攻击才触发；星石类型二选一（宝石 / 水晶，做不了的置灰）；
+##            101 给额外攻击行动、102 在目标有圣盾时禁止应战且不查圣盾；取消 / 无星石 /
+##            非技类牌 / 应战反击 不触发；
+##   - 10804：攻击行动结束后问发动 → 选目标 → 目标强制弃 1 张 → 扣 1 能量、额外 +1 攻击行动；
+##            本回合下次主动攻击只能打该目标（extra_action_targets + v_attack 兜底，命中一次后解除）；
+##            取消发动 / 取消目标不扣费；无能量 / 无目标 / 回合限定不询问；
+##   - 10801：剑之魔女在场时获得 4503 / 4504，且 10803 不发动；
+##            4503 第 1/2/4 次攻击行动后的档位；4504 支付宝石 + 弃 2 + 摸 1 + 额外攻击；
+##   - 10803：主动攻击命中 / 任一方星杯增加的回合结束后触发；X＝双方星杯和、牌库顶 X+1 不洗回；
+##            选项选 1 张入手、其余进弃牌；有法术牌时 +2 水晶、安排 +1 额外回合、永久替换为风之剑圣；
+##            取消发动 / 无触发条件 / 剑之魔女在场时不发动。
+
+const 角色脚本: GDScript = preload("res://scripts/battle/roles/role_jianzhizi.gd")
+
+var 引擎: BattleEngine = null
+var 玩家: BattlePlayer = null
+var 靶: BattlePlayer = null
+var 队友: BattlePlayer = null
+var 敌二: BattlePlayer = null
+var 角色: BattleRole = null
+## send_cb 记录：{pid, msg, data}
+var 发送记录: Array = []
+
+var 疾风牌: GCard = null
+var 烈风牌: GCard = null
+var 非技击牌: GCard = null
+var 盾牌: GCard = null
+var 魔法牌: GCard = null
+var 非魔牌表: Array = []
+
+
+func _init() -> void:
+	名称 = "剑之子"
+
+
+# ============================================================
+# 找牌 / 查消息
+# ============================================================
+func _取牌(条件: Callable) -> GCard:
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual:
+			continue
+		if bool(条件.call(c)):
+			return c
+	return null
+
+
+func _取牌表(条件: Callable, 数量: int = 0) -> Array:
+	var out: Array = []
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual:
+			continue
+		if bool(条件.call(c)):
+			out.append(c)
+			if 数量 > 0 and out.size() >= 数量:
+				break
+	return out
+
+
+## 连取 数量 张互不相同的实体牌（排除虚拟牌 / 指定牌）
+func _取实体牌号(数量: int, 排除: Array = []) -> Array:
+	var out: Array = []
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual or 排除.has(c.id) or out.has(c.id):
+			continue
+		out.append(c.id)
+		if out.size() >= 数量:
+			break
+	return out
+
+
+func _取询问(pid: int, respond_id: int) -> Dictionary:
+	for r: Dictionary in 引擎._最后询问.get(pid, {}).get("commands", []):
+		if int(r.get("respond_id", 0)) == respond_id:
+			return r
+	return {}
+
+
+func _播报次数(技能号: int) -> int:
+	var n: int = 0
+	for r: Dictionary in 发送记录:
+		if int(r.get("msg", 0)) != GConst.Msg.Skill:
+			continue
+		if int((r.get("data", {}) as Dictionary).get("skill_id", 0)) == 技能号:
+			n += 1
+	return n
+
+
+## 展示（CardMsgType.Show）里是否一次展示过这些牌
+func _展示过(牌表: Array) -> bool:
+	for r: Dictionary in 发送记录:
+		if int(r.get("msg", 0)) != GConst.Msg.Card:
+			continue
+		var 数据: Dictionary = r.get("data", {})
+		if int(数据.get("type", -1)) != GConst.CardMsgType.Show:
+			continue
+		var 发牌: Array = 数据.get("card_ids", [])
+		var 全含: bool = true
+		for c: Variant in 牌表:
+			if not 发牌.has(int(c)):
+				全含 = false
+				break
+		if 全含:
+			return true
+	return false
+
+
+# ============================================================
+# 建引擎 / 重置
+# ============================================================
+func _建引擎() -> void:
+	引擎 = BattleEngine.new()
+	发送记录.clear()
+	引擎.send_cb = func(pid: int, msg: int, data: Dictionary) -> void:
+		发送记录.append({"pid": pid, "msg": msg, "data": data})
+	引擎.add_player(1, GConst.BLUE, "剑之子")
+	引擎.add_player(2, GConst.RED, "靶子")
+	引擎.add_player(3, GConst.BLUE, "队友")
+	引擎.add_player(4, GConst.RED, "敌二")
+	引擎.start_with_roles({})
+	玩家 = 引擎.p(1)
+	靶 = 引擎.p(2)
+	队友 = 引擎.p(3)
+	敌二 = 引擎.p(4)
+	玩家.role_id = 108
+	角色 = 角色脚本.new()
+	角色.setup(玩家, 引擎)
+	玩家.role = 角色
+
+
+## 清空战斗状态：轮到玩家 1、行动阶段、无资源 / 无牌、无额外行动
+func _重置战斗() -> void:
+	引擎._states.clear()
+	引擎._清空等待()
+	引擎._最后询问.clear()
+	引擎._最后行动命令.clear()
+	引擎.phase = BattleEngine.Phase.Playing
+	引擎.current_id = 1
+	引擎.round_id = 1
+	引擎.行动允许 = GConst.ActionType.Any
+	引擎.行动可放弃 = false
+	引擎.行动额外 = false
+	引擎.行动额外来源 = 0
+	引擎.行动禁特殊 = false
+	引擎.skip_action_phase = false
+	引擎.额外回合玩家 = -1
+	引擎.额外回合攻击加伤 = 0
+	引擎.额外回合来源 = 0
+	引擎.当前额外回合玩家 = -1
+	引擎.当前额外回合攻击加伤 = 0
+	引擎.deck.pile.clear()
+	引擎.deck.discard.clear()
+	引擎.team_gem[GConst.BLUE] = 0
+	引擎.team_crystal[GConst.BLUE] = 0
+	引擎.team_gem[GConst.RED] = 0
+	引擎.team_crystal[GConst.RED] = 0
+	引擎.team_grail = [0, 0]
+	发送记录.clear()
+	队友.role_id = 0
+	for pid: int in 引擎.order:
+		_清空玩家(引擎.p(pid))
+	角色.p_before_turn_begin({})
+
+
+func _清空玩家(p0: BattlePlayer) -> void:
+	p0.hand_cards.clear()
+	p0.cover_cards.clear()
+	p0.basic_effects.clear()
+	p0.additional_actions.clear()
+	p0.cross_num = 0
+	p0.set_crystal(0)
+	p0.set_gem(0)
+	p0.tap = false
+	p0.boot_skill_used = false
+	p0.reset_action_counts()
+
+
+## 剑之魔女「在场」：本工程没有离场机制，只需要把队友的角色卡设成 45
+func _挂剑之魔女() -> void:
+	队友.role_id = 45
+
+
+func _设牌库顶(从顶到底: Array) -> void:
+	引擎.deck.pile.clear()
+	for i: int in range(从顶到底.size() - 1, -1, -1):
+		引擎.deck.pile.append(int(从顶到底[i]))
+
+
+## 攻击上下文（p_timeline_1 / p_timeline_2_hit 共用）
+func _攻击上下文(牌号: int, 伤害: int = 2, 主动: bool = true, 目标: int = 2) -> Dictionary:
+	var harm: Dictionary = {
+		"src": 1, "dst": 目标, "point": 伤害, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "card_id": 牌号, "is_active": 主动,
+	}
+	return {
+		"card_id": 牌号, "dst": 目标, "src": 1, "is_active": 主动,
+		"hit_rate": GConst.HitRate.Normal, "check_shield": true, "can_light": true, "harm": harm,
+	}
+
+
+## 直接调用角色钩子时预置一份回复
+func _应答(args: Array, dst_ids: Array = [], cards: Array = []) -> void:
+	引擎._reply = {"args": args, "card_ids": cards, "dst_ids": dst_ids}
+	引擎._has_reply = true
+
+
+func _有额外行动(cause: int) -> bool:
+	for a: Dictionary in 玩家.additional_actions:
+		if int(a.get("cause", 0)) == cause:
+			return true
+	return false
+
+
+# ============================================================
+# 用例主体
+# ============================================================
+func 跑() -> void:
+	await 等帧(1)
+
+	# ---- 数据 ----
+	检(str(Data.role_list.get(108, "")) == "剑之子", "108 号角色名不是「剑之子」")
+	检(Data.role_personal_name(108) == "威斯特姆", "108 号角色姓名不是「威斯特姆」")
+	检(absf(Data.role_star(108) - 3.0) < 0.01, "剑之子应是 3.0 星，实际 %s" % str(Data.role_star(108)))
+	检(Data.role_skills(108) == [10801, 10802, 10803, 10804],
+		"剑之子技能号不对：%s" % str(Data.role_skills(108)))
+	检(ResourceLoader.exists("res://scripts/battle/roles/role_jianzhizi.gd"),
+		"剑之子的角色脚本文件不存在")
+	for 技能号: int in [10801, 10802, 10803, 10804]:
+		检(not GConst.技能行(技能号).is_empty(), "技能表里查不到 %d" % 技能号)
+	var 技能说明: String = Data.role_skill_info(108)
+	for 技能名: String in ["倾慕", "风之剑", "剑守誓言", "剑残影"]:
+		检(技能说明.contains(技能名), "角色技能说明里缺【%s】：%s" % [技能名, 技能说明])
+
+	# ---- 卡库前提 ----
+	疾风牌 = _取牌(func(c: GCard) -> bool: return c.is_attack() and c.fate_pattern_enum() == GConst.FatePattern.Martial and c.has_skill_id(101))
+	烈风牌 = _取牌(func(c: GCard) -> bool: return c.is_attack() and c.fate_pattern_enum() == GConst.FatePattern.Martial and c.has_skill_id(102))
+	非技击牌 = _取牌(func(c: GCard) -> bool: return c.is_attack() and c.fate_pattern_enum() != GConst.FatePattern.Martial)
+	盾牌 = _取牌(func(c: GCard) -> bool: return c.card_name_enum() == GConst.CardName.Shield)
+	魔法牌 = _取牌(func(c: GCard) -> bool: return c.is_magic() and c.card_name_enum() != GConst.CardName.Shield)
+	非魔牌表 = _取牌表(func(c: GCard) -> bool: return c.is_attack(), 6)
+	检(疾风牌 != null, "卡库找不到带【疾风技】的技类攻击牌")
+	检(烈风牌 != null, "卡库找不到带【烈风技】的技类攻击牌")
+	检(非技击牌 != null, "卡库找不到非技类攻击牌")
+	检(盾牌 != null, "卡库找不到【圣盾】")
+	检(魔法牌 != null, "卡库找不到法术牌")
+	检(非魔牌表.size() >= 4, "卡库找不到足够的非法术牌")
+	if 疾风牌 == null or 烈风牌 == null or 非技击牌 == null \
+			or 盾牌 == null or 魔法牌 == null or 非魔牌表.size() < 4:
+		return
+
+	_建引擎()
+	_测风之剑()
+	_测剑残影()
+	_测倾慕与梦想剑断念()
+	_测剑守誓言条件()
+	_测剑守誓言结算()
+	_测剑守誓言替换角色()
+
+
+# ============================================================
+# 10802 风之剑
+# ============================================================
+func _测风之剑() -> void:
+	# 101 疾风技：选宝石 → 扣 1 宝石 + 额外攻击行动
+	_重置战斗()
+	引擎.set_team_gem(GConst.BLUE, 1)
+	玩家.hand_cards = [疾风牌.id]
+	var 上下文: Dictionary = _攻击上下文(疾风牌.id)
+	var r: int = 角色.p_timeline_1(上下文)
+	检(r == BattleRole.WAIT, "技类牌主动攻击应询问【风之剑】是否发动")
+	var 问: Dictionary = _取询问(1, 10802)
+	检(not 问.is_empty(), "没有下发【风之剑】询问")
+	检((问.get("notes", []) as Array).size() == 2, "【风之剑】应完整下发宝石 / 水晶两个星石选项")
+	检(问.get("option_enabled", []) == [true, false],
+		"只有宝石时选项应为「宝石可用 / 水晶置灰」：%s" % str(问.get("option_enabled", [])))
+	_应答([1])
+	r = 角色.p_timeline_1(上下文)
+	检(r == BattleRole.SUCCESS, "确认【风之剑】后应结算完")
+	检(引擎.team_gem[GConst.BLUE] == 0, "选宝石应扣战绩区 1 宝石，实际 %d"
+		% 引擎.team_gem[GConst.BLUE])
+	检(_有额外行动(10802), "101 疾风技应额外 +1 攻击行动")
+	检(_播报次数(10802) == 1, "【风之剑】发动应播报一次，实际 %d 次" % _播报次数(10802))
+	检(int(上下文.get("hit_rate", -1)) == GConst.HitRate.Normal, "101 不应改命中率")
+
+	# 102 烈风技 + 目标有圣盾：选水晶 → 扣 1 水晶、无法应战、不查圣盾
+	_重置战斗()
+	引擎.set_team_crystal(GConst.BLUE, 1)
+	玩家.hand_cards = [烈风牌.id]
+	引擎.add_basic_effect(2, 盾牌.id, 1)
+	上下文 = _攻击上下文(烈风牌.id)
+	r = 角色.p_timeline_1(上下文)
+	检(r == BattleRole.WAIT, "目标有【圣盾】时 102 应询问是否发动【风之剑】")
+	问 = _取询问(1, 10802)
+	检(问.get("option_enabled", []) == [false, true],
+		"只有水晶时选项应为「宝石置灰 / 水晶可用」：%s" % str(问.get("option_enabled", [])))
+	_应答([2])
+	r = 角色.p_timeline_1(上下文)
+	检(r == BattleRole.SUCCESS, "确认【风之剑】后应结算完")
+	检(引擎.team_crystal[GConst.BLUE] == 0, "选水晶应扣 1 水晶，实际 %d"
+		% 引擎.team_crystal[GConst.BLUE])
+	检(int(上下文.get("hit_rate", -1)) == GConst.HitRate.NoReattack,
+		"102 烈风技应让本次攻击无法应战")
+	检(not bool(上下文.get("check_shield", true)), "102 烈风技应不查 / 不消耗圣盾")
+	检(_有额外行动(10802) == false, "102 不应给额外攻击行动")
+
+	# 取消：不扣星石
+	_重置战斗()
+	引擎.set_team_gem(GConst.BLUE, 1)
+	玩家.hand_cards = [疾风牌.id]
+	检(角色.p_timeline_1(_攻击上下文(疾风牌.id)) == BattleRole.WAIT, "应询问【风之剑】")
+	_应答([])
+	检(角色.p_timeline_1(_攻击上下文(疾风牌.id)) == BattleRole.SUCCESS, "取消【风之剑】应直接收尾")
+	检(引擎.team_gem[GConst.BLUE] == 1, "取消【风之剑】不应扣星石")
+	检(_有额外行动(10802) == false, "取消【风之剑】不应给额外攻击行动")
+
+	# 不满足条件：无星石 / 非技类牌 / 应战反击 / 102 目标无圣盾
+	_重置战斗()
+	玩家.hand_cards = [疾风牌.id]
+	发送记录.clear()
+	检(角色.p_timeline_1(_攻击上下文(疾风牌.id)) == BattleRole.SUCCESS, "没有星石时不应询问")
+	检(_取询问(1, 10802).is_empty(), "没有星石时不应下发【风之剑】询问")
+	_重置战斗()
+	引擎.set_team_gem(GConst.BLUE, 1)
+	玩家.hand_cards = [非技击牌.id]
+	检(角色.p_timeline_1(_攻击上下文(非技击牌.id)) == BattleRole.SUCCESS, "非技类命格牌不应触发【风之剑】")
+	_重置战斗()
+	引擎.set_team_gem(GConst.BLUE, 1)
+	玩家.hand_cards = [疾风牌.id]
+	检(角色.p_timeline_1(_攻击上下文(疾风牌.id, 2, false)) == BattleRole.SUCCESS,
+		"应战反击不应触发【风之剑】")
+	_重置战斗()
+	引擎.set_team_gem(GConst.BLUE, 1)
+	玩家.hand_cards = [烈风牌.id]
+	检(角色.p_timeline_1(_攻击上下文(烈风牌.id)) == BattleRole.SUCCESS,
+		"只有 102 且目标没有【圣盾】时不应询问")
+
+
+# ============================================================
+# 10804 剑残影
+# ============================================================
+func _测剑残影() -> void:
+	# 完整流程：问发动 → 选目标 → 目标弃 1 张 → 扣能量 + 额外攻击 + 目标限制
+	_重置战斗()
+	玩家.set_crystal(1)
+	靶.hand_cards = [非魔牌表[0].id, 非魔牌表[1].id]
+	var 上下文: Dictionary = {"player": 1, "kind": "attack", "card_id": 非技击牌.id, "dst": 2}
+	var r: int = 角色.p_after_attack(上下文)
+	检(r == BattleRole.WAIT, "攻击行动结束后应询问是否发动【剑残影】")
+	检(not _取询问(1, 10804).is_empty(), "没有下发【剑残影】发动询问")
+	_应答([1])
+	r = 角色.p_after_attack(上下文)
+	检(r == BattleRole.WAIT, "确认【剑残影】后应让玩家选目标对手")
+	var 目标问: Dictionary = _取询问(1, 10804)
+	检(not 目标问.is_empty(), "没有下发【剑残影】目标询问")
+	检(int((目标问.get("args", [0, 0]) as Array)[1]) == 1, "【剑残影】应要求 1 名目标")
+	检((目标问.get("dst_ids", []) as Array).has(2) and (目标问.get("dst_ids", []) as Array).has(4),
+		"【剑残影】的目标白名单应是所有对手：%s" % str(目标问.get("dst_ids", [])))
+	_应答([1], [2])
+	r = 角色.p_after_attack(上下文)
+	检(r == BattleRole.WAIT, "选好目标后应等待目标弃 1 张牌")
+	var 弃牌问: Dictionary = _取询问(2, 10804)
+	检(not 弃牌问.is_empty(), "没有向目标下发【剑残影】弃牌询问")
+	检(int((弃牌问.get("args", [0]) as Array)[0]) == 1, "【剑残影】目标应弃 1 张牌")
+	检(not bool(弃牌问.get("can_cancel", true)), "【剑残影】的目标弃牌是强制的，不能取消")
+	var 目标弃牌号: int = 靶.hand_cards[0]
+	_应答([1], [], [目标弃牌号])
+	r = 角色.p_after_attack(上下文)
+	检(r == BattleRole.SUCCESS, "【剑残影】应结算完")
+	检(玩家.get_energy() == 0, "【剑残影】应支付 1 能量，实际 %d" % 玩家.get_energy())
+	检(_有额外行动(10804), "【剑残影】应额外 +1 攻击行动")
+	检(_播报次数(10804) == 1, "【剑残影】发动应播报一次，实际 %d 次" % _播报次数(10804))
+	检(靶.hand_cards.size() == 1, "目标应弃 1 张手牌，实际剩 %d 张" % 靶.hand_cards.size())
+	检(not 靶.hand_cards.has(目标弃牌号), "目标弃掉的牌应离开手牌")
+	检(引擎.deck.discard.has(目标弃牌号),
+		"目标弃的牌应进弃牌堆，实际弃牌堆 %s" % str(引擎.deck.discard))
+	检(角色.extra_action_targets(10804) == [2], "【剑残影】的额外攻击行动目标应锁定为 2")
+	检(角色.extra_action_targets(4504) == [2], "其他额外行动也受「下次主动攻击只打该目标」限制")
+	# 引擎下发的额外行动目标白名单
+	var 额外命令: Array = 引擎.action_commands(1, GConst.ActionType.Attack, true, true, false, 10804)
+	检(not 额外命令.is_empty() and (额外命令[0].get("dst_ids", []) as Array) == [2],
+		"额外攻击行动应把目标白名单下发为 [2]：%s"
+		% str(额外命令[0].get("dst_ids", []) if not 额外命令.is_empty() else []))
+	# v_attack 兜底：其他对手被拒，指定目标通过
+	玩家.hand_cards = [非技击牌.id]
+	检(玩家.v_attack(非技击牌.id, 4, 引擎.players) == GConst.GE_INVALID_PLAYERID,
+		"本回合下次主动攻击打其他对手应被驳回")
+	检(玩家.v_attack(非技击牌.id, 2, 引擎.players) == GConst.GE_SUCCESS,
+		"打【剑残影】指定目标应通过")
+	# 下一次主动攻击宣告后解除限制
+	var 宣告上下文: Dictionary = _攻击上下文(非技击牌.id)
+	角色.p_timeline_1(宣告上下文)
+	检(角色.extra_action_targets(10804).is_empty(), "指定目标被攻击过后应解除【剑残影】目标限制")
+	检(玩家.v_attack(非技击牌.id, 4, 引擎.players) == GConst.GE_SUCCESS,
+		"限制解除后打其他对手应通过")
+
+	# 目标没有手牌：不弹弃牌询问，仍给额外攻击行动
+	_重置战斗()
+	玩家.set_gem(1)
+	上下文 = {"player": 1, "kind": "attack"}
+	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问【剑残影】")
+	_应答([1])
+	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问目标")
+	_应答([1], [2])
+	检(角色.p_after_attack(上下文) == BattleRole.SUCCESS,
+		"目标没有手牌时应直接结算完（不弹弃牌询问）")
+	检(_有额外行动(10804), "目标没有手牌也应给额外攻击行动")
+	检(玩家.gem == 0, "【剑残影】可用宝石顶水晶，实际剩 %d" % 玩家.gem)
+
+	# 取消发动 / 取消目标：都不扣费、不给额外行动
+	_重置战斗()
+	玩家.set_crystal(1)
+	上下文 = {"player": 1, "kind": "attack"}
+	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问【剑残影】")
+	_应答([])
+	检(角色.p_after_attack(上下文) == BattleRole.SUCCESS, "取消发动应直接收尾")
+	检(玩家.get_energy() == 1 and not _有额外行动(10804), "取消发动不应扣费 / 给额外行动")
+	_重置战斗()
+	玩家.set_crystal(1)
+	上下文 = {"player": 1, "kind": "attack"}
+	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问【剑残影】")
+	_应答([1])
+	检(角色.p_after_attack(上下文) == BattleRole.WAIT, "应询问目标")
+	_应答([1], [])
+	检(角色.p_after_attack(上下文) == BattleRole.SUCCESS, "取消目标选择应直接收尾")
+	检(玩家.get_energy() == 1 and not _有额外行动(10804), "取消目标不应扣费 / 给额外行动")
+	检(角色._used_剑残影 == false, "取消目标不应消耗回合限定")
+
+	# 无能量 / 回合限定：不询问
+	_重置战斗()
+	上下文 = {"player": 1, "kind": "attack"}
+	检(角色.p_after_attack(上下文) == BattleRole.SUCCESS, "没有能量时不应询问【剑残影】")
+	_重置战斗()
+	玩家.set_crystal(1)
+	角色._used_剑残影 = true
+	发送记录.clear()
+	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
+		"本回合已发动过【剑残影】后不应再询问")
+	检(_取询问(1, 10804).is_empty(), "回合限定时不应下发【剑残影】询问")
+	# 新回合重置
+	角色.p_before_turn_begin({})
+	玩家.set_crystal(1)
+	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.WAIT,
+		"新回合应重新可以发动【剑残影】")
+
+
+# ============================================================
+# 10801 倾慕：借用 4503 梦想剑 / 4504 剑影*断念
+# ============================================================
+func _测倾慕与梦想剑断念() -> void:
+	# ---- 4503 梦想剑：第 1 / 2 / 4 次攻击行动后的档位 ----
+	_重置战斗()
+	_挂剑之魔女()
+	玩家.reset_action_counts()
+	for 次数: int in range(1, 5):
+		玩家.record_action("attack", false)
+		角色.p_action_end({"player": 1, "kind": "attack"})
+		if 次数 == 1:
+			检(角色._dream_ignore_shield, "第 1 次攻击行动后梦想剑应激活「无视圣盾」")
+			检(not 角色._dream_no_reattack and not 角色._dream_no_miss,
+				"第 1 次攻击行动后不应同时激活后两档")
+		elif 次数 == 2:
+			检(角色._dream_no_reattack, "第 2 次攻击行动后梦想剑应激活「无法应战」")
+			检(not 角色._dream_no_miss, "第 2 次攻击行动后不应已激活「强制命中」")
+		elif 次数 == 3:
+			检(not 角色._dream_no_miss, "第 3 次攻击行动后不应有新档位")
+		else:
+			检(角色._dream_no_miss, "第 4 次攻击行动后梦想剑应激活「强制命中」")
+	检(_播报次数(4503) == 3, "梦想剑第 1 / 2 / 4 档各应播报一次，实际 %d 次" % _播报次数(4503))
+	# 第 4 档：主动攻击强制命中 + 无视圣盾；应战反击不受影响
+	var 梦想主动: Dictionary = _攻击上下文(非技击牌.id)
+	角色.p_timeline_1(梦想主动)
+	检(int(梦想主动.get("hit_rate", -1)) == GConst.HitRate.NoMiss,
+		"梦想剑第 4 档应把主动攻击置为强制命中")
+	检(not bool(梦想主动.get("check_shield", true)), "梦想剑第 1 档应让主动攻击无视圣盾")
+	var 梦想应战: Dictionary = _攻击上下文(非技击牌.id, 2, false)
+	角色.p_timeline_1(梦想应战)
+	检(int(梦想应战.get("hit_rate", -1)) == GConst.HitRate.Normal,
+		"梦想剑不应改应战反击的命中率")
+	检(bool(梦想应战.get("check_shield", true)), "梦想剑不应改应战反击的圣盾检查")
+	# 新回合清空；剑之魔女不在场时不触发
+	角色.p_before_turn_begin({})
+	检(not 角色._dream_ignore_shield and not 角色._dream_no_reattack and not 角色._dream_no_miss,
+		"新回合应清空梦想剑档位")
+	队友.role_id = 0
+	玩家.reset_action_counts()
+	玩家.record_action("attack", false)
+	角色.p_action_end({"player": 1, "kind": "attack"})
+	检(not 角色._dream_ignore_shield, "剑之魔女不在场时不应获得梦想剑")
+
+	# ---- 4504 剑影*断念：支付 1 真宝石 → 弃 2 张 → 摸 1 张 → 额外攻击行动 ----
+	_重置战斗()
+	_挂剑之魔女()
+	# 本用例只看 4504：把 10804 标成本回合已发动，避免它先用掉宝石并弹出自己的询问
+	角色._used_剑残影 = true
+	玩家.set_gem(1)
+	玩家.hand_cards = [非魔牌表[0].id, 非魔牌表[1].id, 非魔牌表[2].id]
+	var 上下文: Dictionary = {"player": 1, "kind": "attack"}
+	var r: int = 角色.p_after_attack(上下文)
+	检(r == BattleRole.WAIT, "剑之魔女在场时攻击结束应询问【剑影*断念】")
+	检(not _取询问(1, 4504).is_empty(), "没有下发【剑影*断念】询问")
+	_应答([1])
+	r = 角色.p_after_attack(上下文)
+	检(r == BattleRole.WAIT, "支付宝石后应让玩家选 2 张牌弃掉")
+	var 弃牌问: Dictionary = _取询问(1, 4504)
+	检(int((弃牌问.get("args", [0]) as Array)[0]) == 2, "【剑影*断念】应弃 2 张牌")
+	检(not bool(弃牌问.get("can_cancel", true)), "【剑影*断念】弃牌是强制的，不能取消")
+	检(玩家.gem == 0, "【剑影*断念】应支付 1 真宝石，实际剩 %d" % 玩家.gem)
+	_应答([2], [], [非魔牌表[0].id, 非魔牌表[1].id])
+	r = 角色.p_after_attack(上下文)
+	检(r == BattleRole.URGENT, "弃牌后应先摸 1 张牌（返回 URGENT）")
+	检(_有额外行动(4504), "【剑影*断念】应额外 +1 攻击行动")
+	检(引擎.deck.discard.has(非魔牌表[0].id) and 引擎.deck.discard.has(非魔牌表[1].id),
+		"【剑影*断念】弃的 2 张牌应进弃牌堆")
+
+	# 剑之魔女不在场：不询问（同样先跳过 10804）
+	_重置战斗()
+	角色._used_剑残影 = true
+	玩家.set_gem(1)
+	玩家.hand_cards = [非魔牌表[0].id, 非魔牌表[1].id]
+	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
+		"剑之魔女不在场时不应获得 / 发动【剑影*断念】")
+	检(_取询问(1, 4504).is_empty(), "剑之魔女不在场时不应下发 4504 询问")
+
+	# 只有水晶没有宝石：4504 的真宝石费用不能用【水晶】顶
+	_重置战斗()
+	_挂剑之魔女()
+	角色._used_剑残影 = true
+	玩家.set_crystal(2)
+	玩家.hand_cards = [非魔牌表[0].id, 非魔牌表[1].id]
+	发送记录.clear()
+	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
+		"没有真宝石时不应询问【剑影*断念】")
+	检(_取询问(1, 4504).is_empty(), "没有真宝石时不应下发 4504 询问")
+
+	# 手牌不足 2 张：不询问
+	_重置战斗()
+	_挂剑之魔女()
+	角色._used_剑残影 = true
+	玩家.set_gem(1)
+	玩家.hand_cards = [非魔牌表[0].id]
+	发送记录.clear()
+	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
+		"手牌不足 2 张时不应询问【剑影*断念】")
+	检(_取询问(1, 4504).is_empty(), "手牌不足 2 张时不应下发 4504 询问")
+
+	# 取消发动：不扣宝石、不弃牌、不给额外行动
+	_重置战斗()
+	_挂剑之魔女()
+	角色._used_剑残影 = true
+	玩家.set_gem(1)
+	玩家.hand_cards = [非魔牌表[0].id, 非魔牌表[1].id]
+	var 取消上下文: Dictionary = {"player": 1, "kind": "attack"}
+	检(角色.p_after_attack(取消上下文) == BattleRole.WAIT, "应询问【剑影*断念】")
+	_应答([])
+	检(角色.p_after_attack(取消上下文) == BattleRole.SUCCESS, "取消【剑影*断念】应直接收尾")
+	检(玩家.gem == 1, "取消【剑影*断念】不应扣宝石")
+	检(玩家.hand_cards.size() == 2, "取消【剑影*断念】不应弃牌")
+	检(_有额外行动(4504) == false, "取消【剑影*断念】不应给额外攻击行动")
+
+
+# ============================================================
+# 10803 剑守誓言：触发条件 / 10801 封锁 / 取消
+# ============================================================
+func _测剑守誓言条件() -> void:
+	# 没有主动攻击命中、星杯也没增加：不触发
+	_重置战斗()
+	发送记录.clear()
+	角色.p_after_turn_end({})
+	检(_取询问(1, 10803).is_empty(), "没有触发条件时不应下发【剑守誓言】询问")
+
+	# 主动攻击命中：回合结束后触发
+	_重置战斗()
+	角色.p_timeline_2_hit(_攻击上下文(非技击牌.id))
+	_设牌库顶([非魔牌表[0].id])
+	角色.p_after_turn_end({})
+	检(not _取询问(1, 10803).is_empty(), "主动攻击命中的回合结束后应询问【剑守誓言】")
+
+	# 应战反击命中不算「主动攻击命中」
+	_重置战斗()
+	角色.p_timeline_2_hit(_攻击上下文(非技击牌.id, 2, false))
+	角色.p_after_turn_end({})
+	检(_取询问(1, 10803).is_empty(), "应战反击命中不应触发【剑守誓言】")
+
+	# 任意一方星杯数增加：回合结束后触发
+	_重置战斗()
+	角色.p_before_turn_begin({})
+	引擎.team_grail[GConst.RED] += 1
+	_设牌库顶([非魔牌表[0].id])
+	角色.p_after_turn_end({})
+	检(not _取询问(1, 10803).is_empty(), "任一方星杯数增加后应询问【剑守誓言】")
+
+	# 10801：剑之魔女在场时无法发动
+	_重置战斗()
+	_挂剑之魔女()
+	引擎.team_grail[GConst.BLUE] += 1
+	_设牌库顶([非魔牌表[0].id])
+	发送记录.clear()
+	角色.p_after_turn_end({})
+	检(_取询问(1, 10803).is_empty(), "剑之魔女在场时不应询问【剑守誓言】")
+	检(引擎.deck.pile.size() == 1, "剑之魔女在场时不应动牌库")
+
+	# 牌库为空：没有任何牌可弃置 / 加入手牌，不弹无用询问
+	_重置战斗()
+	角色.p_timeline_2_hit(_攻击上下文(非技击牌.id))
+	发送记录.clear()
+	角色.p_after_turn_end({})
+	检(_取询问(1, 10803).is_empty(), "牌库为空时不应下发【剑守誓言】询问")
+
+	# 取消发动：牌库不动
+	_重置战斗()
+	角色.p_timeline_2_hit(_攻击上下文(非技击牌.id))
+	_设牌库顶([非魔牌表[0].id])
+	var 上下文: Dictionary = {}
+	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT, "应询问【剑守誓言】")
+	_应答([])
+	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "取消【剑守誓言】应直接收尾")
+	检(引擎.deck.pile == [非魔牌表[0].id] and 引擎.deck.discard.is_empty(),
+		"取消【剑守誓言】不应动牌库")
+
+
+# ============================================================
+# 10803 剑守誓言：X+1 弃置展示、选 1 张入手、有法术牌的额外回合 / 角色替换
+# ============================================================
+func _测剑守誓言结算() -> void:
+	# ---- 无 45：X=2（双方各 1 星杯）→ 牌库顶 3 张，选第 2 张；
+	#      这批牌无法术牌 → 不 +水晶、不额外回合、不替换角色 ----
+	_重置战斗()
+	角色.p_timeline_2_hit(_攻击上下文(非技击牌.id))
+	引擎.team_grail = [1, 1]
+	var 三张: Array = [非魔牌表[0].id, 非魔牌表[1].id, 非魔牌表[2].id]
+	_设牌库顶(三张)
+	引擎.deck.discard.append(非魔牌表[3].id)
+	玩家.set_crystal(0)
+	发送记录.clear()
+	var 上下文: Dictionary = {}
+	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT, "应询问【剑守誓言】")
+	_应答([1])
+	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT,
+		"发动后应先移除并展示牌库顶，再让玩家选 1 张")
+	检(引擎.deck.pile.is_empty(), "X=2 时应移除 3 张，牌库应为空（实际 %s）" % str(引擎.deck.pile))
+	检(_展示过(三张), "移除的牌应一次展示给全场：%s" % str(发送记录))
+	var 选择问: Dictionary = _取询问(1, 10803)
+	检((选择问.get("notes", []) as Array).size() == 3, "应完整下发 3 张牌的选项")
+	检(_播报次数(10803) == 1, "【剑守誓言】发动应播报一次，实际 %d 次" % _播报次数(10803))
+	_应答([2])
+	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "选好牌后【剑守誓言】应结算完")
+	检(玩家.hand_cards.has(三张[1]), "选中的第 2 张应加入手牌")
+	检(引擎.deck.discard.has(三张[0]) and 引擎.deck.discard.has(三张[2]),
+		"其余牌应进弃牌堆")
+	检(引擎.deck.discard.has(非魔牌表[3].id), "牌库不足不应把原有弃牌洗回 / 清掉")
+	检(_有额外行动(10803) == false, "没有法术牌时不应给额外回合")
+	检(引擎.额外回合玩家 == -1, "没有法术牌时不应安排额外回合")
+	检(玩家.role_id == 108, "没有法术牌时不应替换角色")
+	检(玩家.crystal == 0, "没有法术牌时不应 +2 水晶")
+
+	# ---- 选 1 张时取消：整批进弃牌堆，不给牌 ----
+	_重置战斗()
+	角色.p_timeline_2_hit(_攻击上下文(非技击牌.id))
+	引擎.team_grail = [1, 1]
+	_设牌库顶(三张)
+	上下文 = {}
+	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT, "应询问【剑守誓言】")
+	_应答([1])
+	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT, "应让玩家选 1 张")
+	_应答([])
+	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "取消选牌应直接收尾")
+	检(玩家.hand_cards.is_empty(), "取消选牌不应拿牌")
+	检(引擎.deck.discard.size() == 3, "取消选牌时 3 张应全部进弃牌堆，实际 %d 张"
+		% 引擎.deck.discard.size())
+
+	# ---- 牌库不足：X+1=4，实际只有 2 张；不洗回，按实际张数结算 ----
+	_重置战斗()
+	角色.p_timeline_2_hit(_攻击上下文(非技击牌.id))
+	引擎.team_grail = [1, 2]
+	_设牌库顶([非魔牌表[0].id, 非魔牌表[1].id])
+	上下文 = {}
+	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT, "应询问【剑守誓言】")
+	_应答([1])
+	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT, "牌库不足也应先移除展示")
+	检(引擎.deck.pile.is_empty(), "牌库不足时应只取实际张数")
+	检((_取询问(1, 10803).get("notes", []) as Array).size() == 2,
+		"应按实际取到的 2 张下发选项")
+	_应答([1])
+	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "牌库不足时也应正常结算")
+	检(玩家.hand_cards.has(非魔牌表[0].id), "选中的牌应加入手牌")
+
+
+# ============================================================
+# 10803：有法术牌 → +2 水晶、额外回合 +1、替换为风之剑圣（放最后：会解绑旧角色）
+# ============================================================
+func _测剑守誓言替换角色() -> void:
+	_重置战斗()
+	角色.p_timeline_2_hit(_攻击上下文(非技击牌.id))
+	引擎.team_grail = [1, 2]
+	# 第 2 张放法术牌；选第 1 张（非法术），弃牌中仍留有法术牌 → 触发额外回合 / 替换。
+	# 实现按「这次从牌库顶弃置的整批牌」判定（含被选入手的 1 张）；本用例两种口径下都成立。
+	var 四张: Array = [非魔牌表[0].id, 魔法牌.id, 非魔牌表[1].id, 非魔牌表[2].id]
+	_设牌库顶(四张)
+	玩家.set_crystal(0)
+	var 上下文: Dictionary = {}
+	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT, "应询问【剑守誓言】")
+	_应答([1])
+	检(角色.p_after_turn_end(上下文) == BattleRole.WAIT, "应移除牌库顶 4 张并让玩家选 1 张")
+	检(引擎.deck.pile.is_empty(), "X=3 时应移除 4 张（双方星杯和 3 + 1）")
+	_应答([1])
+	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "选牌后【剑守誓言】应结算完")
+	检(玩家.hand_cards.has(四张[0]), "选中的非法术牌应加入手牌")
+	检(引擎.deck.discard.has(魔法牌.id), "没被选中的法术牌应进弃牌堆")
+	检(玩家.crystal == 2, "有法术牌应 +2 水晶，实际 %d" % 玩家.crystal)
+	检(引擎.额外回合玩家 == 1, "有法术牌应安排 1 个自己的额外回合")
+	检(引擎.额外回合攻击加伤 == 1, "额外回合的攻击伤害应 +1")
+	检(引擎.额外回合来源 == 10803, "额外回合来源应记为 10803")
+	检(玩家.role_id == 1, "有法术牌应永久替换为风之剑圣（角色号 1）")
+	检(Data.role_name(玩家.role_id) == "风之剑圣", "替换后的角色名应是「风之剑圣」")
+	检(玩家.role != null and 玩家.role.player == 玩家 and 玩家.role.engine == 引擎,
+		"替换后的新角色应重新绑定到玩家")
+	检(角色.player == null and 角色.engine == null, "替换后旧角色应解绑，不再收到钩子")
+	检(玩家.role.available_skills().is_empty(), "风之剑圣没有技能栏主动技，available_skills 应为空")
+	# 额外回合真的能开始：正常走一次回合结束，进入 1 号的额外回合
+	引擎._states.clear()
+	引擎._清空等待()
+	引擎.current_id = 1
+	引擎.phase = BattleEngine.Phase.Playing
+	引擎.push(BattleEngine.STurnEnd.new())
+	引擎.run()
+	检(引擎.当前额外回合玩家 == 1 and 引擎.是否额外回合(),
+		"替换后的额外回合应正常开始（当前 %s）" % str(引擎.当前额外回合玩家))
+	检(引擎.额外回合加伤(1) == 1, "额外回合里 1 号攻击应 +1")
+	检(引擎.攻击基础伤害(1) == 3, "额外回合的攻击基础伤害应为 3，实际 %d"
+		% 引擎.攻击基础伤害(1))

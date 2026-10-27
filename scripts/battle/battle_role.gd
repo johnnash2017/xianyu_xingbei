@@ -75,6 +75,9 @@ func _按表初始化标识物() -> void:
 func p_before_turn_begin(_ctx: Dictionary) -> int: return SUCCESS
 func p_turn_begin(_ctx: Dictionary) -> int: return SUCCESS
 func p_turn_begin_shiren(_ctx: Dictionary) -> int: return SUCCESS
+## 角色卡被替换前（F7 / 10803）：旧角色在这里清理自己的形态 / 标记 / 临时变量。
+## 必须同步返回（不能等待玩家输入）；替换后旧角色对象会解绑 player / engine，不会再收到任何钩子。
+func p_before_role_replace(_ctx: Dictionary) -> int: return SUCCESS
 func p_between_weak_and_action(_ctx: Dictionary) -> int: return SUCCESS
 func p_before_action(_ctx: Dictionary) -> int: return SUCCESS
 func p_boot(_ctx: Dictionary) -> int: return SUCCESS
@@ -84,6 +87,14 @@ func p_before_magic(_ctx: Dictionary) -> int: return SUCCESS
 func p_after_magic(_ctx: Dictionary) -> int: return SUCCESS
 func p_before_special(_ctx: Dictionary) -> int: return SUCCESS
 func p_after_special(_ctx: Dictionary) -> int: return SUCCESS
+## 提炼前（F9）：某玩家宣告【提炼】且校验通过、真正移动战绩区星石之前，对全体角色同步调用一次。
+## 必须同步返回（不能等待玩家输入）；把 ctx["forbidden"] 置 true 可取消本次提炼。
+## ctx: {player 提炼者, args 原始参数, dst_ids, forbidden=false}
+func p_before_extract(_ctx: Dictionary) -> int: return SUCCESS
+## 提炼后（F9 / 10604）：提炼结算完成（星石已经移动）后对全体角色触发一次，可等待玩家输入。
+## ctx: {player 提炼者, gem 本次提炼的宝石数, crystal 本次提炼的水晶数,
+##       args 原始参数, dst_ids, is_heaven 是否【冒险者天堂】}
+func p_after_extract(_ctx: Dictionary) -> int: return SUCCESS
 func p_attacked(_ctx: Dictionary) -> int: return SUCCESS
 func p_timeline_1(_ctx: Dictionary) -> int: return SUCCESS
 func p_timeline_2_hit(_ctx: Dictionary) -> int: return SUCCESS
@@ -113,8 +124,40 @@ func p_hand_change(_ctx: Dictionary) -> int: return SUCCESS
 ## 摸牌前（引擎把牌发到某玩家手里之前对全体角色调用一次）：角色可在此询问该玩家是否发动响应
 ## （如暗杀者【水影】：除【特殊行动】外，当你摸牌前发动）。ctx: {player 摸牌者, count 张数, cause 来源}
 func p_before_draw(_ctx: Dictionary) -> int: return SUCCESS
+## 弃牌前拦截（F6 / 4704）：某玩家手牌 / 盖牌里的牌即将进入弃牌堆前，对全体角色各触发一次。
+## 角色可在此询问自己的玩家是否响应（可 WAIT），并「认领」其中的牌：
+##   在 ctx 里写 taker = 自己 player.id、taken = [要拿走的牌号]；
+##   引擎结算时把这些牌从待弃牌里剔除、加进认领者手牌（原主手里若还留着也会兜底清掉）。
+## 一次弃牌只支持一名认领者（先问到的座位先得）：后问到的角色看到 ctx.taker >= 0 必须放弃。
+## ctx: {owner 牌主（-1＝未知）, cards 待弃牌, source "hand"/"cover"/"other"/"basic",
+##       cause 来源, face_up 是否公开进入弃牌（默认 true）}
+## 只有 wants_before_discard(ctx) 返回 true 时，引擎才会把这次弃牌推迟到本钩子之后；
+## 默认 false 保持同步弃牌，既有角色行为不变。例：4704 在「牌里有【魔弹】且牌主是队友」时返回 true。
+func p_before_discard(_ctx: Dictionary) -> int: return SUCCESS
+## 是否要参与本次弃牌前的拦截（同步预判，F6）：只有任一角色返回 true，引擎才推迟这次弃牌。
+## 不要在这里询问玩家 / 改状态，只按 ctx 里的牌与牌主判断「有没有可能响应」。
+func wants_before_discard(_ctx: Dictionary) -> bool: return false
 func p_basic_effect_change(_ctx: Dictionary) -> int: return SUCCESS
+## 基础效果触发并结算完成（F4 / 4604）：某角色面前的一张基础效果因其自身效果被触发、且这次效果
+## 已经结算完成时，对全体角色触发一次。
+## ctx: {dst 基础效果拥有者（触发者）, card 触发的基础效果牌,
+##       doer 放置者（-1 = 引擎内部结算，如【中毒】/【圣盾】被动结算）, cause 触发来源}
+## 只在「触发」时来：中毒结算、圣盾 / 天使之墙抵挡、封印 / 赐福被消耗……
+## 被拿走 / 被【风之洁净】移除这类不算触发（对应 p_basic_effect_change 的 remove）。
+## 例：4604「目标角色触发基础效果并结算完成后 → 你 +1【灵涌】」。
+func p_basic_effect_triggered(_ctx: Dictionary) -> int: return SUCCESS
 func p_additional_action(_ctx: Dictionary) -> int: return SUCCESS
+## 行动结束（通用钩子，F2）：本回合任何一次「行动阶段」的行动结束时触发一次，
+## 在具体的 p_after_attack / p_after_magic / p_after_special 之后（同一轮里各角色按座位序调用）。
+## 同一次行动的两个钩子收到同一份上下文：
+## {player, kind（"attack" / "magic" / "special"，技能行动归入它对应的基础种类）,
+##  is_skill 是否技能行动, action_id 技能号（非技能为 0）, card_id, dst, special_action,
+##  is_extra 是不是额外行动, extra_cause 这份额外行动的来源（非额外为 0）,
+##  action_count 本回合第几次行动（含本次）, attack_action_count / magic_action_count /
+##  special_action_count / extra_action_count 本回合各类次数}
+## 「启动」技能不是一次行动，不触发本钩子（它照旧只触发 p_after_special）。
+## 例：4103「本回合第三次行动结束时」看 action_count == 3；4104「每次额外行动结束时」看 is_extra。
+func p_action_end(_ctx: Dictionary) -> int: return SUCCESS
 func p_turn_end(_ctx: Dictionary) -> int: return SUCCESS
 func p_after_turn_end(_ctx: Dictionary) -> int: return SUCCESS
 ## 应战成立后（对照服务端 PlayerEntity::p_reattack）：可把应战打出的这张牌「视为」另一张。
@@ -147,9 +190,24 @@ func v_shield(_dst_id: int, _players: Dictionary) -> int: return V_NOT_OVERRIDE
 func v_weaken(_dst_id: int, _players: Dictionary) -> int: return V_NOT_OVERRIDE
 func v_missile(_card_id: int, _dst_id: int) -> int: return V_NOT_OVERRIDE
 func v_remissile(_card_id: int) -> int: return V_NOT_OVERRIDE
+## 多牌响应魔弹（10603「弃 2 张同系牌视为魔弹」这类）：默认不支持，返回 V_NOT_OVERRIDE。
+## 引擎在 SMissileAsk 收到 2 张牌时先调它；返回 GE_SUCCESS 才按多牌响应结算。
+func v_remissile_multi(_cards: Array) -> int: return V_NOT_OVERRIDE
+## 魔弹传递询问允许选的最多牌数（默认 1；10603 在能凑出两张同系牌时为 2）。
+## 客户端据此把「选牌上限」放宽到 2；服务端仍用 v_remissile_multi 逐张复核。
+func missile_relay_card_max() -> int: return 1
+## 多牌响应成功时补发的技能号（0 = 不播报；10603 为 10603），客户端据此飘技能名。
+func remissile_multi_skill() -> int: return 0
 func v_buy(_args: Array) -> int: return V_NOT_OVERRIDE
 func v_extract(_args: Array, _team_gem: int, _team_crystal: int, _dst_ids: Array) -> int: return V_NOT_OVERRIDE
 func v_attacked() -> int: return V_NOT_OVERRIDE
+## 目标资格校验（F4 / 4601）：目标角色自己判断「能不能被放上这张基础效果」，默认成功。
+## 引擎在【圣盾】/【虚弱】/【中毒】的出牌校验、技能行动的基础效果放置声明
+## （basic_effect_placements）与 add_basic_effect 兜底里统一调用它；
+## 客户端的目标过滤也应走同一口径（角色在 available_skills 的 targets 里用引擎方法筛）。
+## 例：4601「你无法成为基础效果的目标」→ 返回 GConst.GE_INVALID_PLAYERID。
+## 注意：这只挡「成为目标」，不阻止已经在自己面前的基础效果继续生效。
+func v_basic_effect_target(_dst: BattlePlayer, _card_id: int) -> int: return GConst.GE_SUCCESS
 func v_additional_action(_cause: int) -> int: return V_NOT_OVERRIDE
 
 
@@ -173,6 +231,15 @@ func available_skills() -> Array:
 	return []
 
 
+## 本次技能行动会把哪些手牌作为「基础效果」放到谁面前（F4，供引擎统一做目标资格校验）。
+## 返回 [{card: 牌号, dst: 目标玩家 id}, …]；默认空数组＝这次技能不放置基础效果。
+## 封印 401~405 / 迅捷·威力赐福 1601~1602 / 天使之墙 701 这类「把牌放到角色面前」的技能应覆写它。
+## 引擎在技能行动校验后、执行前逐条问目标角色 v_basic_effect_target：任一被拒就驳回整个技能行动
+## （不扣牌、不挂效果）。客户端目标列表仍按 available_skills 的 targets 过滤，两边用同一口径。
+func basic_effect_placements(_action: Dictionary) -> Array:
+	return []
+
+
 ## 该主动技能是不是「启动」：引擎只在**特殊技能**这一类上问它（见 battle_engine），
 ## 认定后决定「结算完重新进入行动阶段」而不是回合结束，
 ## 同时受「每回合只能发动一个启动技能」限制（player.boot_skill_used，引擎统一下发/校验）。
@@ -184,6 +251,23 @@ func is_free_skill(_skill_id: int) -> bool:
 ## 本阶段「普通行动」（非技能，如直接打出手牌）能用的手牌白名单（空＝不限制）。
 ## 如【修罗连斩】的额外攻击行动期间只能出火系攻击牌，界面据此把其余牌置灰
 func action_card_ids(_action_type: int) -> Array:
+	return []
+
+
+## 额外行动的「出牌限制」（F2，可覆写）：本份额外行动（cause）允许使用的手牌白名单；
+## 空数组＝不限制（退回 action_card_ids，兼容剑圣 103 那类老实现）。引擎在 action_commands 里
+## 下发给客户端（其余手牌置灰），并在普通攻击 / 法术以及技能行动落牌时兜底校验。
+## action_type 是本次行动阶段放行的行动种类（GConst.ActionType.Attack / Magic / …）。
+## 「本次一张牌都不允许」要返回 [GConst.手牌白名单_全禁]（空表会被当成「没配」）。
+## 例：4501 只允许「技类」攻击牌、3803 只允许与本次攻击同系的攻击牌、10702 只允许【魔弹】。
+func extra_action_card_ids(_cause: int, _action_type: int) -> Array:
+	return []
+
+
+## 额外行动的「目标限制」（F2，可覆写）：本份额外行动（cause）允许选择的目标；空数组＝不限制。
+## 引擎在 action_commands 里下发（dst_ids），并在普通攻击 / 技能行动时兜底校验。
+## 按「当前状态」现算（如 10704 比较双方手牌数、10804 只允许指定目标），不要缓存结果。
+func extra_action_targets(_cause: int) -> Array:
 	return []
 
 
@@ -221,6 +305,8 @@ func _收牌人称号(收牌人id: int) -> String:
 ## 询问某玩家（自己或别人）选牌 / 是否发动：参数与 engine.ask_skill 一致，只是「提示」文案
 ## 不用每个调用点手写 —— 自动取技能表「提示」列的第 序号 条，并把 {src}=本技能发起者（自己）、
 ## {n}=要交/弃的张数、{dst}=收牌人 填好（收牌人id 只在「我交给别人」的场合给）。
+## pid 可以是当前行动者以外的玩家（F9 / 10601：由右手边队友指定目标对手）——
+## 回复仍然回到发起本次询问的钩子 / 技能状态，用 take_skill_reply / take_skill_reply_full 读取。
 ## 同一个技能有多次询问且要不同文案时，靠 序号 区分；表里没配就退回默认文案（「是否发动【X】？」）
 ## 预览基准 / 预览类型 见 engine.ask_skill：客户端现算头像提示要用到的数值与它的伤害类型
 ## （如【战纹碎击】本次攻击原本的伤害、【朝圣】本次受到的伤害是法术还是攻击）。
@@ -260,6 +346,36 @@ func 施加治疗(dst_id: int, amount: int) -> void:
 ## 封顶 > 0 时治疗后不超过它（如最高到 4）。普通加治疗仍用 施加治疗()。
 func 施加治疗_突破(dst_id: int, amount: int, 封顶: int) -> void:
 	engine.add_cross_pierce(dst_id, amount, player.id, 封顶)
+
+
+## ⑥ 伤害转移（F6 / 4702）：只能在 p_timeline_6 里调用。把这次伤害的承受者改成新目标，
+## 并由引擎声明「这次伤害不因手牌超限掉士气」（超限牌照弃、士气不扣）；返回错误码。
+## 必须在按点数摸牌之前调用 —— 新目标不会再有一次治疗回应（⑥ 在治疗之后）。
+## 之后的摸牌 / 超限都按 harm["dst"] 走；p_timeline_6_drawn / p_harm_end 的 ctx 由引擎在钩子触发时
+## 重建（ctx.dst = 转移后的新目标），所以按 ctx.dst 判断的角色（501 反噬、802 智慧法典等）会自动跟到新目标。
+## 只有同一次 p_timeline_6 钩子轮次里的其它角色拿到的是轮次开始时的快照，那时要看最新目标请读 harm["dst"]；
+## 发生转移时 harm["redirect_from"] 记录原目标。客户端头像提示 / 伤害对象由 CLIENT 任务接入。
+func 转移伤害(harm: Dictionary, 新目标id: int, 免士气: bool = true) -> int:
+	if engine == null:
+		return GConst.GE_INVALID_PLAYERID
+	return engine.转移伤害(harm, 新目标id, 免士气)
+
+
+## 安排自己的额外回合（F7 / 10803）：当前回合结束后立即开始，不推进 current_id、不增加 round_id；
+## 攻击加伤只作用于这个额外回合里自己的普通攻击 / 应战反击（角色自建 harm 的攻击技能需自行读取
+## engine.攻击基础伤害 / engine.额外回合加伤）。
+func 安排额外回合(攻击加伤: int = 0, 来源: int = 0) -> int:
+	if engine == null or player == null:
+		return GConst.GE_INVALID_PLAYERID
+	return engine.安排额外回合(player.id, 攻击加伤, 来源)
+
+
+## 永久替换自己的角色卡（F7 / 10803：剑之子 → 风之剑圣）。在技能结算末尾调用；
+## 旧角色会先收到 p_before_role_replace 清理形态 / 标记，随后被解绑，之后只走新角色的钩子。
+func 替换角色(新角色id: int, 重置上限: bool = true) -> int:
+	if engine == null or player == null:
+		return GConst.GE_INVALID_PLAYERID
+	return engine.替换角色(player.id, 新角色id, 重置上限)
 
 
 ## 手牌里的法术牌牌号（不少技能要求「弃 N 张法术牌」，available_skills 的 "cards" 用它，
@@ -351,6 +467,14 @@ func nearest_enemy_id(from_id: int, post_dir: bool) -> int:
 			return nid
 		nid = pp.post_id if post_dir else pp.pre_id
 	return -1
+
+
+## 从 from_id 出发、沿 post（右手边）或 pre 方向最近的一名队友（不含自己）；没有则 -1。
+## F9 / 10601「你右手边最近的队友」用 nearest_teammate_id(player.id, true)。
+func nearest_teammate_id(from_id: int, post_dir: bool = true) -> int:
+	if engine == null:
+		return -1
+	return engine.nearest_teammate_id(from_id, post_dir)
 
 
 ## 群伤结算顺序：服务端对多名目标一贯「从自己上家起、沿座位逆序」逐个压栈（状态是栈，LIFO →

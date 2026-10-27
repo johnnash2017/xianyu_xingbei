@@ -1,0 +1,14 @@
+{
+  "id": "R107",
+  "title": "R107 忌妒少女（107）4 技能",
+  "reviewer": "R4",
+  "implementer": "FIX1",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】R107 只新增 scripts/battle/roles/role_jidushaonv.gd（400 行）与 tests/cases/41_jidushaonv.gd（924 行）；两者都是基线 db695f4 未入库的新文件（git diff 为空，按全文核对）。工作区 battle_engine.gd / battle_player.gd / battle_role.gd 的改动属 F2（W4；R3 已 approve、任务 done），claim.py / tasks.json 属认领工具；本轮 21:00 后除这两个文件只有认领记录变动，未改数据表 / 客户端 / 共享代码，无越界、无 git 提交。\n【数据与同名技能】107 忌妒少女 / 妮亚 / 3.0 星 / 技能 10701~10704 唯一且不借号；10703 播报 10703、10702 额外行动来源 10702、10704 播报 10704；用例覆盖角色名 / 星数 / 技能号 / 技能说明 / 脚本存在，未借用 803 / 7602。\n【10702 上轮问题已修】extra_action_card_ids 拆两套白名单：普通法术行动只放行 card_name==Missile 本体；10703 技能行动（engine._当前状态 为 SkillRun、kind=magic、action_id=10703）才放行 missile_fusion_hand_ids 的地 / 风牌；没有可用牌时显式 [全禁]。真实引擎负例：额外法术行动里把地系【圣盾】当普通法术提交被 校验额外行动限制 驳回（ErrorInput、牌不离手、不放置），引擎驳回后压回默认普通行动，p_before_magic 按本回合 10702 授予标记继续驳回，改包重提同样驳回；正例：同一额外行动内用 10703 把地系法术牌当【魔弹】未被驳回、as_card_id=魔弹、逆向传递到 4 并结算 2 点；action_commands 普通 card_ids 只含【魔弹】，10703 技能按钮亮地 / 风牌。临时逆向 has_missile_mastery 只在 行动额外 且 来源=10702 时 true（落点 [2,4]），完整命中流水线逆向到 4、不误伤 2；没有可当魔弹的牌不问、非主动 / 他人命中不触发均已断言。\n【10701 上轮问题已修】按 data-audit A46 强制弃：目标弃牌询问 can_cancel=false；弃出→展示广播 + 离手 + 进弃牌，无伤害无水晶；无可弃法术牌→直接 2 点法术伤害 + 我方战绩区 +1 水晶；硬提交取消 / 超时回空 / 非法牌 / 牌已不在手→同一惩罚且不重复结算（STEP_DONE + URGENT 重入断言）；完整攻击流水线（圣光格挡未命中→发动→目标硬提交取消）结算正确。\n【10704 上轮问题已修】remove_energy(1) 后补 engine._broadcast_game()，用例断言发送记录里存在能量=0 的对局快照；extra_action_targets 现算严格大于手牌，无合法目标下发 [-1] 占位，引擎 校验额外行动限制 对进攻目标兜底（打队友 / 非更多手牌驳回）；完整流水线额外攻击结算后不再追问；回合限定新回合清零；特殊 / 他人行动不触发；能量支付先水晶后宝石（宝石可顶水晶）。\n【测试 / 自检】本评审独立跑 godot --headless --path <仓库> res://tests/selfCheck.tscn：[自检] 用例 47 个：通过 47，失败 0，无 [失败] / SCRIPT ERROR / Parse Error（仅既有退出期 leaked 告警）；用例 41 由 selfCheck 自动发现并执行（[通过] 忌妒少女）。上一轮的三条阻塞 / 小问题均已落实并有对应用例，未发现新的回归或越界。\n【非阻塞备注】1) A47 CLIENT：plain【魔弹】本体的逆向落点仍按 battle_mobile.gd 静态 魔弹掌控角色=[8,76] 亮目标，107 的临时逆向需 CLIENT 侧协议 / 临时标记接入；本任务用 10703 技能入口的 targets 已能下发左右落点，服务端逆向可用。2) DATA 补齐 10701 提示第 1 条（含 {dst}）时，目标弃牌那次 询问 需传 收牌人id=dst.id（当前提示列为空，暂无影响；同 R45/4502 型）。3) p_before_magic 兜底在 10702 授予后一直生效到回合开始，当前没有同回合再给 107 另一份法术行动的合法路径，无实际影响；将来若新增需按额外行动期间收窄。4) 角色读 engine._当前状态 区分 10703 技能行动属实现耦合，已注释说明；后续引擎可提供显式钩子。5) 新 role/test 无 .uid（Godot 下次导入生成），非阻塞。",
+  "reviewed_at": "2026-10-27T21:24:00",
+  "files": [
+    "scripts/battle/roles/role_jidushaonv.gd",
+    "tests/cases/41_jidushaonv.gd"
+  ]
+}

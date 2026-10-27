@@ -1,0 +1,19 @@
+{
+  "id": "R87",
+  "title": "R87 贪婪少女（87）4 技能",
+  "agent": "W3",
+  "claimed_at": "2026-10-27T23:23:08",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_tanlanshaonv.gd",
+    "tests/cases/37_tanlanshaonv.gd"
+  ],
+  "acceptance": "实现 8701~8704：弃法术+水晶、额外法术、雷/火魔弹、清空星石/伤害成长/士气转移；只改 role/test；测试+自检。",
+  "summary": "新增 scripts/battle/roles/role_tanlanshaonv.gd 实现 8701~8704：8701 贪欲黑洞＝弃 1 张法术牌【展示】+我方战绩区+1水晶→目标可选弃 1 张法术牌（取消/非法牌/无牌即惩罚）否则 2 点法术伤害③+自己+1法术行动，回合限定，发动后本回合 8704 置灰且校验驳回；8702 殓金魔法＝p_timeline_6 中自己【魔弹】伤害后+1水晶（自动，不额外询问）；8703 炼金术＝missile_fusion_elements 雷/火，v_missile/v_remissile 与技能栏魔弹融合入口，播报用 8703；8704 亡女的金库＝宝石可顶水晶支付 1 能量、2 名对手各 1 点法术伤害③，可选额外移除战绩区全部星石（固定两项选项、取消=不发动退回行动阶段），每 2 星石伤害+1（向下取整），移除宝石≥2 时伤害结算完成后经自定义钩子转移对方 1 点士气；回合开始清回合限定/封锁/分步进度。只改 role+test 两个文件。",
+  "tests": "用 D:\\tmp 下临时 SceneTree runner（--headless --script 正常启动工程并加载 Main.tscn，跑完删除，仓库无临时文件）只加载 tests/cases/37_tanlanshaonv.gd 实跑：[通过] 贪婪少女，失败 0，无 SCRIPT ERROR/Parse Error；同 runner 定向回归 41_jidushaonv、38_jianxizhipian、24_jierimodao、25_missileElements、26_actionCount、16_missileRelay、29_redirectIntercept、29_deckStars 全部 [通过]、失败 0。未跑全量自检（并发实现期间按协议不跑）、未用 --check-only 判定、未 --import。",
+  "files_changed": [
+    "scripts/battle/roles/role_tanlanshaonv.gd",
+    "tests/cases/37_tanlanshaonv.gd"
+  ],
+  "finished_at": "2026-10-27T23:34:48"
+}

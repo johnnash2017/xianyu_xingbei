@@ -1,0 +1,19 @@
+{
+  "id": "R108",
+  "title": "R108 剑之子（108）4 技能",
+  "agent": "W5",
+  "claimed_at": "2026-10-27T23:29:00",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_jianzhizi.gd",
+    "tests/cases/42_jianzhizi.gd"
+  ],
+  "acceptance": "实现 10801~10804：倾慕借用、风之剑、剑守誓言（额外出牌/星杯/额外回合/角色替换）、剑残影；只改 role/test；测试+自检。",
+  "summary": "实现 108 剑之子：10801 倾慕（剑之魔女在场时获得 4503/4504 并封锁 10803；4503 档位/4504 支付宝石弃2摸1额外攻击按 45 逻辑复制，不改 45）；10802 风之剑（技类命格主动攻击、牌上 101/102 判定；移除我方战绩区 1 星石，宝石/水晶二选一且按资源置灰；101 额外攻击、102 禁应战且不查圣盾；未直接用 F5-sword helper，因为 helper 不含星石费用/类型选择，仅复用其判定口径）；10803 剑守誓言（主动攻击命中或任一方星杯增加的回合结束后触发；X=双方星杯和，牌库顶 X+1 不洗回；展示后选项选 1 张入手、其余进弃牌；本次弃置的整批牌中有法术牌时 +2 个人水晶、安排攻击+1 额外回合、永久替换为风之剑圣，先安排再替换）；10804 剑残影（攻击结束后问发动→选对手→对手强制弃1→扣1能量、额外攻击、本回合下次主动攻击只能打该目标；extra_action_targets + v_attack 双保险，命中一次后解除，回合限定）。只改 role+test；客户端目标过滤/技能栏显示留给 CLIENT。",
+  "tests": "临时 SceneTree runner 只加载 tests/cases/42_jianzhizi.gd：[临时通过] 剑之子，失败 0；同 runner 顺序回归 39_luolifanzhang / 42_jianzhizi / f5_sword / 29_extraTurn：[临时回归] 4 个用例通过 4、失败 0；未跑全量自检（并发实现期按协议），未用 --check-only 判定。",
+  "files_changed": [
+    "scripts/battle/roles/role_jianzhizi.gd",
+    "tests/cases/42_jianzhizi.gd"
+  ],
+  "finished_at": "2026-10-27T23:45:34"
+}

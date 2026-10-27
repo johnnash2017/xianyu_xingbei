@@ -1,0 +1,22 @@
+{
+  "id": "F8",
+  "title": "F8 牌库顶/星杯/士气",
+  "agent": "W1",
+  "claimed_at": "2026-10-27T22:50:12",
+  "status": "review",
+  "files": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_deck.gd",
+    "tests/cases/29_deckStars.gd"
+  ],
+  "acceptance": "牌库顶逐张移除/展示/入弃牌；双方星杯数读取；移除战绩区全部星石并记录构成；士气转移；测试覆盖牌库不足/星杯 0/士气上限；自检。",
+  "summary": "F8 牌库顶/星杯/战绩区/士气：1) 牌库顶：BattleDeck 新增 remove_top(n)/peek_top(n)（从 pile 末尾取，牌库不足只返回实际张数，**不把弃牌堆洗回**，与 draw 的洗回语义分开）；引擎新增 移除牌库顶(张数)、展示牌库顶(展示者id, cards)（Card Show 广播）、逐张移除牌库顶(张数, 展示者id)（逐张移除+逐张展示）、弃置牌库顶(张数, 展示者id, 展示)（移除+展示+统一进弃牌堆），供 9701「逐张移除展示」与 10803「弃置牌堆顶」使用。2) 星杯：新增 星杯数(color)、星杯总数()（10803 的 X＝双方星杯之和）。3) 战绩区：新增 战绩区构成(color)->{gem,crystal,total} 与 清空战绩区(color)（一次清空该队全部星石并返回移除前构成，8704 用）。4) 士气：新增 转移士气(从颜色, 到颜色, 点)（返回实际转移点数；来源最多扣到 0，目标不超过 士气上限()，目标已满/同队/越界/0 点不转移；转移后来源归零走正常败北判定；写公告+快照）。只改共享引擎/牌堆与新增用例，未改 battle_player.gd。限制：9701/10803 的逐张条件判断与「选 1 张入手」仍由角色脚本用这些原语组合；弃置牌库顶是一次性全部入弃牌堆。",
+  "tests": "按协议并发期未跑全量自检、未用 --check-only 判定、未 --import。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，跑完已删除，仓库未留临时文件）只加载 tests/cases/29_deckStars.gd 实跑：[通过] 牌库顶星杯战绩区与士气，失败 0，退出码 0，无 SCRIPT ERROR/Parse Error；覆盖 peek_top 不改牌库、remove_top 顺序、牌库不足只取实际张数且不洗回弃牌堆、空牌库安全返回、逐张移除逐张展示、弃置牌库顶展示+入弃牌、空牌库弃置；星杯 0/双方/总数/越界；战绩区构成与清空及另一队不受影响、越界空构成；士气正常转移、目标已满不转移、部分空间只转 1、0 点/同队/越界不转移。另分两批定向回归（每批 8 例，均失败 0）：A＝29_deckStars/29_extraTurn/29_redirectIntercept/26_actionCount/28_basicEffectTarget/27_tokensCover/12_yuenvXinyueEngine/9_yinyangEngine；B＝23_liewuren/32_jianzhimoni/41_jidushaonv/f5_sword/f5_seal/16_missileRelay/25_missileElements/4_battleInteraction。",
+  "files_changed": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_deck.gd",
+    "tests/cases/29_deckStars.gd"
+  ],
+  "finished_at": "2026-10-27T22:57:14"
+}

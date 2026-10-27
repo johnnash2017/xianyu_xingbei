@@ -1,0 +1,14 @@
+{
+  "id": "R45",
+  "title": "R45 剑之魔女（45）4 技能",
+  "reviewer": "R5",
+  "implementer": "FIX1",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】R45 本轮只涉及 scripts/battle/roles/role_jianzhimoni.gd 与 tests/cases/32_jianzhimoni.gd（两者均是基线 db695f4 未入库的新文件，git diff 为空，故按全文核对）；工作区其余改动属 F2（已 done）与 R41/R75 等其它任务，未见越界；仓库无遗留临时 tscn/gd。\n\n【上一轮 issue 已修复】4502 目标弃牌后，先广播【展示】并 take_from_hand(..., true)（压入 p_show_hand），随即把 ctx 步骤置为 YI_XIANG_STEP_SHOWED 并 return URGENT；等展示响应（含等待型）结算完、SHook 用同一 ctx 重入后，第 2 步才判牌型：法术牌 +2、攻击牌进第 3 步问「是否获得」。核对引擎：SHook.handle 在角色返回 URGENT 时 return SUSPEND 且保留 _iter/ctx（battle_engine.gd:1919-1936），run() 遇 SUSPEND 不弹栈、先跑新压入的状态（451-495），take_from_hand 把 p_show_hand 压在本轮次之上（1543-1553），因此「是否获得」不会再抢在展示响应之前；第 3 步答复后立即置 STEP_DONE，不会重复询问。法术 +2 用 ctx.get(\"harm\")，与 harm_ctx 存的是同一份字典引用（1730-1737），SHarmTimeline3 结算时读 harm.point（2541），加伤确实生效；攻击牌若被展示响应移出弃牌堆则用 discard.has 兜底不再询问。旧「连问两次、第一次回答被丢弃」的路径已不存在。\n\n【回归用例】32_jianzhimoni.gd:552-596 新增：给目标临时挂真实 role_shengnv.gd，弃水系攻击牌触发 603 等待型 p_show_hand，断言弃牌后返回 URGENT、展示结算前对 p1 的 4502 询问 0 次、603 等待中仍 0 次、响应结算后重入只问 1 次、获得后收尾并给额外行动；原有 4502 时序断言同步改为「URGENT → 展示响应 → 问获得」。该用例在自检中实跑通过。\n\n【4501/4503/4504】本轮修复未改这三条；复核与上一轮一致：4501 仅在攻击行动结束、自己的行动时询问，额外攻击白名单只放技类命格攻击牌、空表下全禁；4503 第 1/2/4 次攻击行动后置档、只作用于主动攻击、回合开始清零；4504 真宝石（水晶不能顶）、强制弃 2 张、摸 1 张走 push_draw 后 URGENT、额外攻击行动，回合限定与宝石/手牌不足分支齐全。\n\n【数据 / 客户端 / 同名 ID】技能表 4501-4504 唯一且说明与实现一致；角色表 45 号「禁用」与基线分支口径一致，脚本列仍空（DATA 范围，非本任务，用例内手动挂角色）；4502 的 Show 广播字段与既有角色一致；108 的借用逻辑在 R108/F7 范围，不属本任务。\n\n【全量自检】按指定命令实跑 res://tests/selfCheck.tscn：用例 45 个，通过 45，失败 0，无 [失败]/SCRIPT ERROR/Parse Error，退出码 0；退出时 RID/ObjectDB/resources leaked 为既有环境告警。\n\n【非阻塞备注】1) 「攻击牌被展示响应移出弃牌堆则不询问」是防御分支，当前仅圣女/封印师实现 p_show_hand，都不会把弃牌移出弃牌堆，用例未直接覆盖，出现此类技能时再补测；2) 4502 目标弃牌的询问仍未传收牌人id，日后配 {dst} 提示时要补（DATA 范围）；3) 4502 法术牌 +2 暂未下发 preview_base/preview_kind（CLIENT/DATA 范围）。",
+  "reviewed_at": "2026-10-27T20:30:16",
+  "files": [
+    "scripts/battle/roles/role_jianzhimoni.gd",
+    "tests/cases/32_jianzhimoni.gd"
+  ]
+}

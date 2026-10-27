@@ -1,0 +1,19 @@
+{
+  "id": "R97",
+  "title": "R97 萝莉番长（97）4 技能",
+  "agent": "W5",
+  "claimed_at": "2026-10-27T23:23:09",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_luolifanzhang.gd",
+    "tests/cases/39_luolifanzhang.gd"
+  ],
+  "acceptance": "实现 9701~9704：牌库顶加伤、借用狂战士201/202、改写202、宝石/水晶二选一；只改 role/test；测试+自检。",
+  "summary": "实现 97 萝莉番长：9701 喧哗上等（攻击命中后逐张移除牌库顶并展示，血类命格且法术牌才继续、累计 3 张必停，伤害+X，移出牌入弃牌堆且牌库不足不洗回）；9702 夜露死苦（复用 F5 狂战士 helper，201/202 的询问与播报都按本角色 9702）；9703 爱死天流（血腥咆哮条件改为目标治疗>0，效果改为关闭【圣光】抵挡、不再强制命中；「无法用【暗灭】应战」需 battle_engine.gd 的应战标志（data-audit Q2），角色任务范围无法落地，已在代码注明待引擎任务）；9704 灭茶苦茶（命中后二选一：宝石+2 / 水晶+1，固定两项按资源置灰，宝石可顶水晶，支付前复核资源；与 9701 同次命中时 9704 预览基准含 9701 加伤）。只改 role+test，未改共享文件/数据表。",
+  "tests": "%TEMP% 临时 SceneTree runner 正常启动工程、只加载 tests/cases/39_luolifanzhang.gd：结果 [临时通过] 萝莉番长，失败 0；未跑全量自检（并发实现期间按协议），未用 --check-only 判定。",
+  "files_changed": [
+    "scripts/battle/roles/role_luolifanzhang.gd",
+    "tests/cases/39_luolifanzhang.gd"
+  ],
+  "finished_at": "2026-10-27T23:28:58"
+}

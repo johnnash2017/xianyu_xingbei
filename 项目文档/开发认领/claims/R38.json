@@ -1,0 +1,19 @@
+{
+  "id": "R38",
+  "title": "R38 游击士（38）5 技能",
+  "agent": "FIX1",
+  "claimed_at": "2026-10-27T21:52:58",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_youjishi.gd",
+    "tests/cases/30_youjishi.gd"
+  ],
+  "acceptance": "实现 3801~3805：开局 6 子弹、元素射击分支、同系额外攻击、提炼补子弹、攻击牌视为风系；只改 role/test；数据启用留给 DATA；测试+自检。",
+  "summary": "修复：1) 3805 v_attack_skill 补 dst.v_attacked() 校验（暗杀者潜行/横置期间不能成为主动攻击目标），非法目标返回 GE_INVALID_PLAYERID，与猎魔人 4201 / 冒险家 1201 同口径；2) 3805 的 available_skills targets 改为新增的 _可攻击目标()，按 v_attacked 过滤敌方不可攻击目标（服务端仍自查，客户端白名单不再给出被拒目标）；3) 明确 3805 命格口径：本次攻击按风系虚牌 66 结算，虚牌既不继承真实攻击牌命格、也不采用 66 卡面的【幻】命格，harm 标 virtual_no_fate（与欺诈 1201 同口径），同步更新文件头与常量注释。只改 role/test，未动数据表/共享文件。",
+  "tests": "按并发修复约定未跑全量自检；用 %TEMP% 临时 SceneTree runner（--script 正常启动工程、等一帧后加载用例，60s 看门狗，跑完删除）实跑 tests/cases/30_youjishi.gd：[通过] 游击士，失败 0，无 SCRIPT ERROR/Parse Error。新增用例：挂 role_ansha 并横置后 3805 目标白名单只剩 [4]、v_attack_skill 拒绝该目标、解除横置后恢复；3805 压栈攻击 card/harm.card_id=66 且 harm.virtual_no_fate=true；挂 role_yinyang 实测 3805 攻击时 3306 option_enabled=[true,false,false]（不被 66 的幻命格误触发），对照组真实 66 攻击 + 手里 67（同幻命格）时阴阳转换档位可用。同 runner 定向回归 9_yinyangEngine、17_actionBroadcast、1_dataAssets 均通过。",
+  "files_changed": [
+    "scripts/battle/roles/role_youjishi.gd",
+    "tests/cases/30_youjishi.gd"
+  ],
+  "finished_at": "2026-10-27T22:07:40"
+}

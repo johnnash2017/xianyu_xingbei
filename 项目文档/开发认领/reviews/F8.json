@@ -1,0 +1,16 @@
+{
+  "id": "F8",
+  "title": "F8 牌库顶/星杯/士气",
+  "reviewer": "R3",
+  "implementer": "W1",
+  "approve": true,
+  "issues": [],
+  "notes": "逐条核对：1) 范围：F8 仅新增 battle_deck.gd 的 remove_top/peek_top（牌库顶=pile 末尾；不足只返回实际张数且不把弃牌堆洗回；draw 旧洗回语义未动）与 battle_engine.gd 的 星杯数/星杯总数/战绩区构成/清空战绩区/转移士气/移除牌库顶/展示牌库顶/逐张移除牌库顶/弃置牌库顶，另新增 29_deckStars.gd；F8 未改 battle_player.gd（其工作区改动属 F2/F3/F4 共享链，另需注意 engine diff 含同代理 F6/F7/F9 改动，按 F8 acceptance 与 29_deckStars 判定）。2) acceptance：牌库顶逐张移除/展示/入弃牌均已实现且顺序一致（先移除先返回），空牌库安全；双方星杯数+总数可读；清空战绩区一次清空本队全部星石并返回移除前 gem/crystal/total，另一队不受影响；转移士气返回实际点数，来源扣到 0、目标截至士气上限，同队/越界/0 点不转移，来源归零走 _check_game_over，写公告+快照。3) 用例覆盖牌库不足/空牌库、星杯 0/双方/总数/越界、士气上限/部分空间/0 点/同队/越界，F8 用例在自检中通过。4) 自检：全量 55 个用例通过 55、失败 0，退出码 0，无 [失败]/SCRIPT ERROR/Parse Error（仅 Godot 退出时 8 resources still in use 的已知噪音）。5) 上下游：9701/10803/8704 角色任务尚未实现，新增原语暂无调用方；Card Show 字段与现有角色展示一致，未改数据/客户端/旧路径，未新增技能 ID。备注：转移士气用 set_morale 实现（按“转移”口径，不走 lose_morale 掉士气钩子），R87 实现 8704 时若需联动蝶舞/天使等掉士气钩子，请主代理确认口径。",
+  "reviewed_at": "2026-10-27T23:08:08",
+  "files": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_deck.gd",
+    "tests/cases/29_deckStars.gd"
+  ]
+}

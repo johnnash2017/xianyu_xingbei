@@ -1,0 +1,19 @@
+{
+  "id": "R78",
+  "title": "R78 矜贵之女（78）5 技能",
+  "agent": "FIX3",
+  "claimed_at": "2026-10-28T00:43:55",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_jinguizhinv.gd",
+    "tests/cases/36_jinguizhinv.gd"
+  ],
+  "acceptance": "实现 7801~7805：提炼+水晶、魔法入门多段、Magic!三分支、强予愿行手牌4、友情羁绊改写；只改 role/test；测试+自检。",
+  "summary": "修复：7805 的 2 张选定弃牌改为选定时就 take_from_hand 离手（入弃牌堆统一放结算，避开弃牌前拦截与后续询问串链），7803「弃 2 张」询问不再能选到这两张；7803 结算改为逐张只处理还真实在手里的牌，避免整组 take_from_hand 遇已离手牌整组失败后仍整组入弃（同一张牌在弃牌堆出现两次）。7804 选星石/选角色子询问的取消与超时（空 args / 空 dst）或非法选择统一按「放弃额外移除」处理，不再用 _默认可选星石 / _取目标 补齐，不默认扣星石、不调整他人手牌；结算额外移除增加目标已选中守卫。测试补充 7805+7803 牌数守恒（手牌≥2 触发 7803 分支1，回复夹带已离手牌）、7803 结算夹带已离手牌、7804 选星石/选角色取消与超时。",
+  "tests": "按并发约定未跑全量自检、未 --import、未用 --check-only 判定；用 %TEMP% 临时 SceneTree runner 正常启动工程加载 Main.tscn，只跑 tests/cases/36_jinguizhinv.gd 与 1_dataAssets：[临时通过] 矜贵之女 / [临时通过] 数据与素材，退出码 0，无 SCRIPT ERROR / Parse Error（仅 headless 退出噪音），临时文件已删除。",
+  "files_changed": [
+    "scripts/battle/roles/role_jinguizhinv.gd",
+    "tests/cases/36_jinguizhinv.gd"
+  ],
+  "finished_at": "2026-10-28T00:54:01"
+}

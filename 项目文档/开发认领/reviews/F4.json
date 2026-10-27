@@ -1,0 +1,17 @@
+{
+  "id": "F4",
+  "title": "F4 基础效果目标/触发钩子",
+  "reviewer": "R1",
+  "implementer": "W5",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】按 db695f4 逐文件核对：F4 实际改动只在 battle_engine.gd / battle_player.gd / battle_role.gd 与新增 tests/cases/28_basicEffectTarget.gd；同文件里的 p_action_end / 额外行动限制 / 行动计数（F2，R3 已审）与指示物 / 盖牌（F3，R1 已审）部分属前序核心任务，未发现 F4 改写其逻辑；未改 const、数据表、角色脚本、客户端；仓库未见 F4 留下的临时文件，无 git 提交。任务 files 里的 scripts/battle/battle_mobile.gd 实际不存在（客户端在 scripts/ui/battle_mobile.gd，属 CLIENT 任务），与 F3 同情况。\n【v_basic_effect_target / 4601】BattleRole.v_basic_effect_target(dst, card) 默认 GE_SUCCESS；BattlePlayer 转发给目标自己的角色；引擎同名包装供出牌校验 / 客户端口径使用。add_basic_effect 放置前问目标，被拒返回错误码且不挂效果（返回 int）；_do_magic 的圣盾 / 虚弱 / 中毒在 take_from_hand 之前校验并 _reject_action，被拒牌不离手；SkillRun 在校验 / 执行前按 BattleRole.basic_effect_placements 逐条问目标，任一被拒驳回整个技能行动、不扣牌不挂效果；默认空表不改变现有角色。用例覆盖默认成功 / 免疫拒绝 / 自己指定自己 / add_basic_effect 兜底 / 技能声明放置被拒与通过。\n【4602】add 的 p_basic_effect_change 仍是 add=true、doer=放置者、cause=CAUSE_USE，新增 triggered=false；用例按 4602 的 add+doer 口径断言。\n【4604 / 触发钩子】BattleRole 新增 p_basic_effect_triggered；BattleEngine.remove_basic_effect 新增 triggered 参数：牌在场上且 triggered=true 或 cause 等于该牌自身技能号时，先压 triggered 再压 change（LIFO 下 change 先跑）；显式触发点：中毒 / 虚弱结算、圣盾 / 天使之墙挡攻击、圣盾 / 天使之墙挡魔弹；封印 401~405 / 赐福 1601~1602 按牌自身技能号自动识别；被拿走（封印破碎 408、风之洁净 703 等）不算触发。triggered 压在伤害 / 落空 / 摸牌状态之下，用例验证「结算完成后」顺序（落空·伤害·摸牌之后）和 ctx 的 dst / card / doer / cause。\n【4601/4602/4604 可用性】dummy 免疫角色 + dummy 观察角色覆盖：默认成功、免疫拒绝、自己指定自己、add 兜底、普通放置 4602、圣盾挡攻击触发、中毒 / 虚弱触发、封印 / 赐福自动识别、被拿走走非触发、技能声明放置被拒 / 通过；真实角色侧依赖 R46 覆写 v_basic_effect_target 及借用技能的放置声明。\n【回归】本评审实跑全量自检：godot --headless res://tests/selfCheck.tscn，结果 [自检] 用例 50 个：通过 50，失败 0，无 [失败] / SCRIPT ERROR / Parse Error（仅退出期 RID / 资源在用警告）。静态核对：已启用角色未覆写 v_basic_effect_target（默认成功）；新 triggered 钩子默认 SUCCESS；天使 704 按 cause 过滤，新增的移除 change 事件 cause 为 CAUSE_ATTACK / CAUSE_POISON / 0 或牌自身技能号，不会误触发；封印师 / 祈祷师原 remove 调用参数向后兼容；f5_seal / f5_bless / 32_jianzhimoni / 4_battleInteraction 等全过。\n【非阻塞（后续处理）】1) 客户端目标置灰未做：本任务 files 指向不存在的 scripts/battle/battle_mobile.gd，实际 scripts/ui/battle_mobile.gd 归 CLIENT；服务端目前只暴露 engine.v_basic_effect_target（服务端）与技能 targets，普通法术牌的客户端目标选择没有服务端下发的无效目标信息，CLIENT 接入时可能还需服务端字段（是否扩展 F4 files 由主代理决定）。2) 封印 / 赐福 / 天使之墙的技能放置路径没有角色实现 basic_effect_placements：add_basic_effect 兜底会静默拒绝，但 role_fengyin._cast_seal、role_qidao._place_ci_fu、role_tianshi._tian_shi_zhi_qiang 及 F5 helper 忽略返回值，仍扣牌 / 展示 → R46 上线后 4601 对封印 / 赐福只在效果层成立，施放方可能白吃一张牌；建议后续在 role_fengyin / role_qidao / role_tianshi 或引擎通用路径补预校验（超出本任务 files）。3) 中毒 / 虚弱 / 圣盾挡攻击的移除现在也会发 p_basic_effect_change（此前只发移除日志），现有 704 按 cause 过滤不受影响，但后续 p_basic_effect_change 实现需知道这个契约变化。4) 用例 dummy 技能号 9401 与真实技能#记录者#传说之地重号（仅测试 dummy，不影响）；建议后续换未用号。5) 自检中没有专门的天使 / 圣女 / 封印师角色用例，acceptance 的「不回归」主要靠全量自检 + 静态核对。\n结论：核心机制、默认值、向后兼容与用例满足 F4 验收，通过；上述 1 / 2 是否要在 F4 内补齐由主代理按分工决定。",
+  "reviewed_at": "2026-10-27T22:29:07",
+  "files": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_role.gd",
+    "scripts/battle/battle_mobile.gd",
+    "tests/cases/28_basicEffectTarget.gd"
+  ]
+}

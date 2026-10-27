@@ -1,0 +1,19 @@
+{
+  "id": "R106",
+  "title": "R106 怠惰少女（106）5 技能",
+  "agent": "MAIN",
+  "claimed_at": "2026-10-28T00:19:54",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_daduoshaonv.gd",
+    "tests/cases/40_daduoshaonv.gd"
+  ],
+  "acceptance": "实现 10601~10605：队友随机弃牌/选目标、跳过行动、弃2同系魔弹、禁提炼/队友提炼奖励、跳过后的群疗/士气；只改 role/test；测试+自检。",
+  "summary": "[主代理修复] 主代理补 10603 的响应传递半边：SMissileAsk 放宽选牌上限、v_remissile_multi、双牌结算/再询问、客户端 card_max/提示/同系过滤；自检 61/61。10604/10601 的询问兜底由修复代理完成。",
+  "tests": "按并发约定未跑全量自检、未 --import、未用 --check-only 判定。%TEMP% 临时 SceneTree runner（--script 启动工程并加载 Main.tscn，跑完已删除）实跑：[通过] 怠惰少女、跨玩家操作、额外回合与角色替换、伤害转移与弃牌拦截、忌妒少女、F5-祈祷师赐福；[临时自检] 用例 6 个：失败 0，无 SCRIPT ERROR / Parse Error。",
+  "files_changed": [
+    "scripts/battle/roles/role_daduoshaonv.gd",
+    "tests/cases/40_daduoshaonv.gd"
+  ],
+  "finished_at": "2026-10-28T00:32:19"
+}

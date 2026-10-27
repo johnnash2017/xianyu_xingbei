@@ -1,0 +1,14 @@
+{
+  "id": "R75",
+  "title": "R75 EX魔弓（75）4 技能",
+  "reviewer": "R2",
+  "implementer": "W2",
+  "approve": true,
+  "issues": [],
+  "notes": "范围：只新增 scripts/battle/roles/role_exmogong.gd 与 tests/cases/35_exmogong.gd（均为新文件），未改共享/数据/客户端；工作区里 battle_engine / battle_player / battle_role 与 tasks.json 的改动属 F2(W4) 与认领工具，已排除在 R75 范围外。数据：75 号角色名 / 3.0 星 / 技能号 7501~7504 / 301·302 源技能行均已在基线，脚本列按 DATA 任务约定留空（DATA 依赖 R75）。7501：p_timeline_1 对风系攻击牌置 hit_rate=NoReattack（同 304 闪电箭口径），暗系仍由引擎处理、check_shield 不动（A23）；带 301 时先播 7501 再询问，WAIT 重入不重复播报。7502：只对主动攻击未命中（is_active）询问；cards 白名单 + card_rule=magic，服务端再校验 has_hand_card / is_magic；弃 1 张法术牌【展示】→ 对本次攻击目标 2 点法术伤害③；STEP_DONE 挡 URGENT 重入、p_timeline_1 清标记；取消 / 非法牌 / 无牌 / 非主动 / 他人 / 空目标均不生效。7503：只把 301 / 302 路由到 F5-archer helper，不借 303；302 需带技能发动牌 + 合法目标；播报/提示按源技能号 301 / 302。7504：本角色独立技能行（不是 303）；get_energy / remove_energy 支付 1 水晶（宝石可顶，猎巫人复盘第 2 条）；push_draw 补到 5（≥5 不摸、仍给额外攻击，A25）；add_action(Attack, 7504, direct, skip_notice)；URGENT 先摸牌再行动结束；缺目标按自己、目标不存在驳回；7504 与 303 同名不同号已在测试固定。测试覆盖数据 / 技能栏置灰 / 四技能主路径与关键边界，7501 走完整攻击流水线，7504 与 302 走 resolve_action 实跑。自检：当前工作区实跑全量 43/43、失败 0、无 SCRIPT ERROR / Parse Error（仅引擎退出时 resources / ObjectDB leaked 告警）。备注（不阻塞）：7502 手里没有法术牌时不弹询问（305 会弹），属体验差异；7502 的询问未下发固定目标（targets / 预览目标），与 305 现状一致，后续 DATA 补提示/头像时需留意；301 同一牌号经弃牌洗回后再次打出时，F5-archer helper 按牌号重置、可能不再询问，属该 helper 既有行为，不在本任务范围。",
+  "reviewed_at": "2026-10-27T19:32:14",
+  "files": [
+    "scripts/battle/roles/role_exmogong.gd",
+    "tests/cases/35_exmogong.gd"
+  ]
+}

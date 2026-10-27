@@ -1,0 +1,14 @@
+{
+  "id": "R38",
+  "title": "R38 游击士（38）5 技能",
+  "reviewer": "R5",
+  "implementer": "FIX1",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】R38 修复只改 scripts/battle/roles/role_youjishi.gd（408→437 行）与 tests/cases/30_youjishi.gd（759→851 行）：两文件在基线 db695f4 均不存在（untracked，git diff db695f4 为空，按全文核对）；送修后仅这两个文件 mtime 变化（21:57 / 22:06），battle_engine.gd / battle_player.gd / battle_role.gd 的 mtime 为 20:35（F2/W4、F3/W3 早于 R38 开工），Table/Csv 未改动，角色表 38 的「脚本」列仍空（数据启用留给 DATA）；未改任务范围外文件，无 git 提交。\n【数据与同名技能】角色表 38 行：游击士 / 索拉 / 3.5 星 / 特典 / 禁用 / 盖牌槽 6 / 指示物 2:子弹:6，技能列 3801~3805；技能表五行（3801 精灵赠礼 被动、3802 元素射击*SORA 响应、3803 二重剑影【回合限定】、3804 附魔之术、3805 精灵的剑舞 响应/必杀技/Crystal）各一行且唯一；角色脚本常量 3801~3805 与表一致，未见同名/重号冲突。\n【issue1 复核】v_attack_skill 在 base_v_attack 后补 dst.v_attacked() 校验，非法目标返回 GE_INVALID_PLAYERID（role_youjishi.gd:83-85），与猎魔人 4201（role_liewuren.gd:109-110）、冒险家 1201（role_maoxian.gd:139-140）同口径；引擎 SkillRun.handle 先 v_attack_skill 校验再 p_attack_skill（battle_engine.gd:3037-3051），普通攻击 _do_attack 的 v_attacked 检查（battle_engine.gd:3173-3176）未被改动。暗杀者潜行横置时 v_attacked 返回 GE_INVALID_ACTION（role_ansha.gd:156-159）；用例 615-640 覆盖「横置时白名单只剩 [4] + 服务端拒绝 + 解除横置后恢复 [3,4] 且通过」。\n【issue2 复核】available_skills 的 targets 改为 _可攻击目标()（role_youjishi.gd:57、405-415），逐个按 enemy 的 v_attacked 过滤；引擎对「声明了 targets 但为空」的技能自动置灰（battle_engine.gd:1162-1166），不会因空表被客户端当作不限制，服务端 v_attack_skill 仍自查，双端口径一致；用例同段断言白名单与服务端驳回。\n【issue3 复核】3805 压栈的 harm 增加 virtual_no_fate=true（role_youjishi.gd:98-106），文件头与常量注释明确口径：本次按风系虚牌 66 结算，既不继承真实攻击牌命格、也不采用 66 卡面的【幻】命格，与 1201 欺诈虚牌同口径；role_yinyang 的 p_attacked 与 3301 分支读 harm.virtual_no_fate（role_yinyang.gd:162、396-398）。用例 642-663 直接断言压栈 SAttackCard 的 card=66、harm.card_id=66、virtual_no_fate=true；720-755 走真实 resolve_action/run：3805 攻击时阴阳师 3306 的 option_enabled=[true,false,false]，对照组真实 66（幻）攻击 + 手里 67（同幻命格）时 [1] 档可用。修复选择的是上一轮 issue 明确允许的两种口径之一，且注释与用例同步。\n【acceptance 复核】3801 setup 用 engine.draw_cover(6, 3801) 从牌库顶取 6 张；3802 火伤害+1 / 水命中治疗+1 / 风行动结束额外攻击 / 雷 NoReattack / 地命中 1 点法术伤害 / 光暗五系视为，移除子弹展示入弃牌、重入保护；3803 命中且回合限定给同系额外攻击行动，白名单空时全禁，服务端校验额外行动限制；3804 提炼且无子弹时问是否发动，扣提炼的 1 能量 + 1 张手牌面朝下补子弹，取消不扣；3805 支付 1 能量（水晶优先、宝石可顶，与 7504/10704/4104 约定一致）、真牌展示弃置、本次攻击按风系 66 结算（应战同系判定、3803 白名单按风系）。测试覆盖主路径与关键边界；脚本列留空符合「数据启用留给 DATA」；只改 role/test 符合范围。\n【自检】按指定命令实跑 godot --headless --path D:/星杯传说工程/星杯传说2/xianyu_xingbei res://tests/selfCheck.tscn：输出 [自检] 用例 49 个：通过 49，失败 0，无 [失败] / SCRIPT ERROR / Parse Error（仅引擎退出期 RID/ObjectDB/resources 告警）；30_youjishi 在列表中 [通过] 游击士。\n【非阻塞备注】1) 3805 仍以「攻击技能」实现响应技（上一轮已接受并文档化的 workaround），DATA 提示 / CLIENT 展示口径需后续接；2) 3802 水/地子弹未命中时 _子弹待命中 未在 p_after_attack 清掉，下一次主动攻击 p_timeline_1 会重置、当前无可触发路径，建议顺手清并补未命中用例；3) 新 role/test 的 .uid 留待 Godot 下次导入生成。",
+  "reviewed_at": "2026-10-27T22:12:04",
+  "files": [
+    "scripts/battle/roles/role_youjishi.gd",
+    "tests/cases/30_youjishi.gd"
+  ]
+}

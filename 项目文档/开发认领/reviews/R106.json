@@ -1,0 +1,18 @@
+{
+  "id": "R106",
+  "title": "R106 怠惰少女（106）5 技能",
+  "reviewer": "R7",
+  "implementer": "MAIN",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】R106 本轮 files 6 个：role_daduoshaonv.gd（545 行）/40_daduoshaonv.gd（814 行）与 MAIN 补的 battle_engine.gd、battle_player.gd、battle_role.gd、battle_mobile.gd。共享文件里还混有 F2/F6/F7/F9 等其它任务的旧改动，逐 hunk 归属核对，R106 相关只有：ask_respond 新增 card_max/card_rule/ask_text、SMissileAsk 的选牌上限/双牌分支/非法双牌再询问/10603 播报、battle_player 的 v_remissile_multi/missile_relay_card_max/remissile_multi_skill、battle_role 的三个默认钩子、battle_mobile 的 Bullet card_max/ask_text/同系过滤。未改数据表；proto_schema 的 Respond 命令已有 card_max(7)/can_cancel(10)/ask_text(11)，无需新增字段；未发现越界改动、未提交 git。\n【历史 issue 1：10603 A43 响应传递】已实现：被魔弹询问时 106 的选牌上限由 missile_relay_card_max 放宽到 2（手牌能凑同系两张时），SMissileAsk 在 cards.size()>1 且 Attack 时走 v_remissile_multi 校验，校验失败会 ask_respond+wait_for 重新询问（不落单张分支、不弃牌）；通过则弃两张、按「视为魔弹」压下一枚 SMissileAsk（point+1）、广播 10603 技能与 as_card_id=魔弹的用牌广播。我另写临时用例（已删除、未入库）实跑：合法两张风系 → 两牌离手进弃牌堆、10603 播报 1 次、下一询问发给 4 号且 args=[4,3,1]（伤害 +1、来源=106）、4 号放弃后摸 3 张；非法两张（风+火）→ 询问次数 1→2、两牌仍在手且未进弃牌堆、无 10603 播报、继续等 106。客户端：mode 2 Bullet 读 _pending.card_max 放宽到 2、读 ask_text 显示、同系过滤要求第一张有同系搭档或为魔弹/圣光、第二张与第一张同系，确认时 _发送应答 带两张 card_ids+[Attack]；单张圣光挡/单张魔弹传仍可用（确定门控只要求至少 1 张牌），未见主动使用回归。\n【历史 issue 2/3：10604 / 10601】10604 的选星石询问 can_cancel=false，空/非法/超时按「第一种可移除星石」兜底且 +1 宝石照给、战绩区空时不问仍 +1；10601 的队友指定目标询问 can_cancel=false，超时由引擎从下发合法目标代选，硬发取消/空回复/非法目标按 A41 取第一名合法对手并正常结算（不撤销行动）。用例已同步：10601 非法目标/超时、10604 硬取消/空回复分支。\n【acceptance 其余】10601 队友随机弃 1 张+目标强制摸 1+战绩区水晶+目标弃法术/惩罚；10602 回合开始手牌>3 且有队友才问、治疗效果、请求跳过；10605 真宝石支付、所有队友治疗、溢出转士气；10603 主动使用照旧。测试与自检覆盖。\n【自检】按指定命令实跑 res://tests/selfCheck.tscn：exit 0，[自检] 用例 61 个：通过 61，失败 0，含 [通过] 怠惰少女；无 [失败]/SCRIPT ERROR/Parse Error，仅退出期 RID/ObjectDB/resources 环境噪音。另用临时用例跑出 62/62（含我补的响应传递检查）后已删除，仓库无残留。\n【非阻塞备注】1) 仓库用例的响应传递只断言了合法两张的弃牌/播报，未覆盖「非法两张重新询问」和「伤害 +1/下一落点」，建议后续把这两条补进 40_daduoshaonv.gd（本次由我临时验证通过，非阻塞）。2) SMissileAsk 给 card_max>1 的传递询问硬编码了一段提示文案，与 ask_respond 注释「ask_text 取自技能表提示列」不完全一致；DATA 之后补 10603 提示列时这段不会被使用，后续可按需改为角色提供。3) 客户端 card_max=2 时先选【圣光】再选同系牌会发 Block 且服务端只取第一张（第二张留在手里），不构成收益泄漏，建议收紧选择组合。4) claims/R106.json 的 files_changed 仍只列 role/test，实际还改了 4 个共享文件（任务 files 已列全），属记录不完整，非代码问题。",
+  "reviewed_at": "2026-10-28T00:43:14",
+  "files": [
+    "scripts/battle/roles/role_daduoshaonv.gd",
+    "tests/cases/40_daduoshaonv.gd",
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_role.gd",
+    "scripts/ui/battle_mobile.gd"
+  ]
+}

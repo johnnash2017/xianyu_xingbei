@@ -19,7 +19,7 @@ func 跑() -> void:
 	检(not Data.card_db.is_empty(), "卡表为空（DataTables.gd 的卡表没读到）")
 	检(not Data.role_list.is_empty(), "角色表为空（数据/角色表 没读到）")
 
-	# 维基补录角色：只录入数据，暂设为禁用；sp魔导师 已改名节日魔导、改到 76 并启用
+	# 维基补录角色：第三批 13 名已启用；其余仍只录入数据、保持禁用；sp魔导师 已改名节日魔导、改到 76 并启用
 	检(str(Data.role_list.get(38, "")) == "游击士", "38 号角色名不是「游击士」")
 	检(Data.role_personal_name(38) == "索拉", "38 号游击士姓名不是「索拉」")
 	检(str(Data.role_list.get(108, "")) == "剑之子", "108 号角色名不是「剑之子」")
@@ -27,16 +27,20 @@ func 跑() -> void:
 	检(str(Data.role_list.get(111, "")) == "红衣主教", "111 号角色名不是「红衣主教」")
 	for 补录号: int in [43, 47, 75, 78, 87, 106, 107]:
 		检(str(Data.role_list.get(补录号, "")) != "", "补录角色 %d 缺失" % 补录号)
-	检(not Data.role_pool.has(38) and not Data.role_pool.has(108),
-		"补充角色/停用角色不应进入选角池")
+	检(Data.role_pool.has(38) and Data.role_pool.has(108),
+		"第三批已启用角色应进入选角池")
 	检(Data.role_pool.has(76), "节日魔导已启用，应进入选角池")
 
-	# 维基技能补录：只配置了表，没有脚本；每个新角色至少有一个能查到的技能行
+	# 维基技能补录：第三批 13 名已配脚本并启用，其余仍只配置表、没有脚本
+	var 已启用: Array[int] = [38, 41, 45, 46, 47, 75, 78, 87, 93, 97, 106, 107, 108]
 	var 新角色号: Array[int] = [38, 39, 40, 41, 43, 45, 46, 47, 75, 78, 79, 80, 81, 82, 83, 84, 86, 87, 92, 93, 94, 95, 96, 97, 106, 107, 108, 109, 111]
 	for 新角色: int in 新角色号:
 		var 技能号列表: Array[int] = Data.role_skills(新角色)
 		检(not 技能号列表.is_empty(), "%d 号补录角色没有技能引用" % 新角色)
-		检(Data.role_script(新角色) == "", "%d 号补录角色不应有脚本" % 新角色)
+		if 已启用.has(新角色):
+			检(Data.role_script(新角色) != "", "%d 号已启用角色应有脚本" % 新角色)
+		else:
+			检(Data.role_script(新角色) == "", "%d 号未启用补录角色不应有脚本" % 新角色)
 		for 技能号: int in 技能号列表:
 			检(not GConst.技能行(技能号).is_empty(), "%d 号角色的技能 %d 查不到技能表行" % [新角色, 技能号])
 	检(str(Data.role_skill_info(38)).contains("精灵赠礼"), "38 号补录角色的技能文本未生成")

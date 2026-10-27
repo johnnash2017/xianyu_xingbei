@@ -1,0 +1,20 @@
+{
+  "id": "CLIENT",
+  "title": "CLIENT 客户端角色特性收口",
+  "agent": "FIX5",
+  "claimed_at": "2026-10-28T01:45:18",
+  "status": "review",
+  "files": [
+    "scripts/ui/battle_mobile.gd",
+    "scripts/core/const.gd",
+    "tests/cases/43_clientRoleFeatures.gd"
+  ],
+  "acceptance": "把 13 角色需要的目标/牌过滤、技能指示器、头像提示、选项集中接入；避免角色号硬编码散落；测试+自检。",
+  "summary": "修复评审 3 条：1) _预览伤害头像提示 排除 3301/3306（这两条询问的 preview_base 是本次攻击牌 id，不是伤害），不再把牌号画成攻击者头像上的「N 点攻击伤害」，并补回归断言；2) 10603 双张魔弹收口提交/取消：新增 _魔弹响应提交方式 统一判定（1 张真【魔弹】继续传递 / 1 张【圣光】抵挡 / 10603 恰好 2 张同系视为魔弹），_玩家可选（点亮落点）、_确定不可用、_on_ok（提交）全部按它卡住，单张同系牌不再能以单牌 Attack 提交（服务端会按放弃）；_可回魔弹牌 在选满 2 张时允许点已选牌取消、第二张必须与第一张同系，改不了牌的问题解决；两张同系【圣光】改按 Attack 提交（服务端多牌分支），不再按 Block 只处理第一张；补真实点击/提交路径用例；3) 43 用例把「技能指示器缺文案」断言从 continue 之后挪进非空分支内真正执行。本轮未改 const.gd。",
+  "tests": "定向验证（%TEMP% 临时 SceneTree runner，正常启动 Main.tscn，跑完已删；未 --import、未跑全量、未用 --check-only）：第一批 43_clientRoleFeatures / 9_yinyangSingleStep / 40_daduoshaonv 通过 3/3；第二批 4_battleInteraction / 5_indicatorSwitch / 16_missileRelay / 19_optionVisibility / 25_missileElements / 9_yinyangShiShenUI / 38_jianxizhipian / 41_jidushaonv / 42_jianzhizi 通过 9/9；变异验证（临时去掉 3301/3306 排除与已选牌可取消两处修复）43 用例报 6 条失败（3301/3306 头像误画「39 点攻击伤害」、2 张后无法取消/换牌），恢复后最终批次 43 / 9_yinyangSingleStep / 16_missileRelay / 40_daduoshaonv / 4_battleInteraction 通过 5/5，失败 0，日志无 SCRIPT ERROR/Parse Error。",
+  "files_changed": [
+    "scripts/ui/battle_mobile.gd",
+    "tests/cases/43_clientRoleFeatures.gd"
+  ],
+  "finished_at": "2026-10-28T01:51:37"
+}

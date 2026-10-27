@@ -1,0 +1,19 @@
+{
+  "id": "R45",
+  "title": "R45 剑之魔女（45）4 技能",
+  "agent": "FIX1",
+  "claimed_at": "2026-10-27T20:21:03",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_jianzhimoni.gd",
+    "tests/cases/32_jianzhimoni.gd"
+  ],
+  "acceptance": "实现 4501~4504：技类额外攻击、臆想剑弃牌/获得/加伤、梦想剑三种形态标记、剑影*断念；只改 role/test；测试+自检。",
+  "summary": "修复：4502 目标弃牌【展示】后先置 ctx 步骤并 return URGENT，等 p_show_hand（含等待型响应，如圣女弃水系牌触发 603）结算完再重入问「是否获得」；法术牌 +2 同样移到展示结算后；攻击牌被展示响应移出弃牌堆时不再询问；补带等待型 p_show_hand 的回归用例并更新原有 4502 时序用例。",
+  "tests": "临时 %TEMP% SceneTree runner 只加载 tests/cases/32_jianzhimoni.gd 实跑：FIX1_CASE_PASS 剑之魔女，失败 0，无 SCRIPT ERROR / Parse Error；另用临时全引擎流水线复现（真实攻击 + 圣女 603 等待型展示）验证：弃牌后 p1 未被问获得（0 次）→ 圣女 603 结算 → 重入后只问一次获得 → 获得牌 + 额外攻击行动；临时文件已删。未跑全量自检（并发修复期间按协议）。",
+  "files_changed": [
+    "scripts/battle/roles/role_jianzhimoni.gd",
+    "tests/cases/32_jianzhimoni.gd"
+  ],
+  "finished_at": "2026-10-27T20:25:33"
+}

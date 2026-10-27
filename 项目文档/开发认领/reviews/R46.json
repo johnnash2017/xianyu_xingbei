@@ -1,0 +1,14 @@
+{
+  "id": "R46",
+  "title": "R46 灵熙之潮（46）6 技能",
+  "reviewer": "R4",
+  "implementer": "FIX2",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】本轮只改 scripts/battle/roles/role_lingxizhichao.gd 与 tests/cases/33_lingxizhichao.gd（两文件在基线 db695f4 后为新增，按工作区当前内容核对）；battle_engine.gd / battle_role.gd / 29_redirectIntercept.gd 在 23:16 的改动属并发 F6（claim F6 于 23:18 完成、files 含这三项），不是 R46 越界；未改 helper / 角色表 / 技能表 / 客户端。角色表脚本列仍留空、由 DATA 任务统一处理，与之前一致。\n【上轮 issue 1 已修复】role 补 p_show_hand（转 skill_seal.p_show_hand）与 p_timeline_2_hit / p_after_attack / p_after_magic / p_additional_action（转 skill_bless）；v_additional_action 原样转发，非 1601 回退 V_NOT_OVERRIDE、1601 按自己面前有无赐福返回 SUCCESS/INVALID。核对引擎：SHook 按座位对所有角色调用同名钩子且共享同一份 ctx，seals_triggered 去重成立；1602 按 source＝46 找赐福、1601 按持有者面前有无赐福并靠已有额外行动去重，与 role_fengyin / role_qidao 口径一致；4602 / 4606 弃牌流程未改，借用 1602 场景实测 4606 放置→4602→必弃 1 张，顺序正常。\n【上轮 issue 2 已修复】33 用例新增三段借用效果断言：404 异系展示不触发、同系展示返回 URGENT 且 3 点 Magic、src＝46、封印移除+进弃牌堆+404 播报；1602 命中询问持有者（preview_base＝2）、发动后 2→4、赐福移除进弃牌堆；1601 行动结束授予 +1 攻击额外行动、不重复授予、v_additional_action(1601) 拒绝且 (9999) 回退 V_NOT_OVERRIDE、选中该额外行动后移除+弃牌。若没有这些转发，base 钩子返回 SUCCESS / 无额外行动，上述断言都会失败，能钉住修复。\n【回归/上下游】4601~4605 原用例仍全过；无同名技能号冲突（4601~4606 与借用源 401~405 / 1601 / 1602 均唯一）；F5-seal / F5-bless 用例全过；未动共享文件。\n【自检】实跑 godot --headless --path ... res://tests/selfCheck.tscn 两次：exit 0，[自检] 用例 55 个：通过 55，失败 0；完整日志无 [失败] / SCRIPT ERROR / Parse Error（仅退出期 RID / ObjectDB / 资源 warning）。\n【非阻塞备注】新用例与 f5_seal/f5_bless 同口径直接调用角色钩子，未走引擎真实 show / 攻击命中完整流程（引擎 SHook 逐座位调用已人工核对）；借用封印的伤害来源为转发角色（helper 设计，role_fengyin 同口径），属 F5 范围，不影响本任务结论。\n【结论】approve：acceptance 的 4601~4606（含借用封印/祈祷技真正生效）、只改 role/test、测试与自检均达标。",
+  "reviewed_at": "2026-10-27T23:22:44",
+  "files": [
+    "scripts/battle/roles/role_lingxizhichao.gd",
+    "tests/cases/33_lingxizhichao.gd"
+  ]
+}

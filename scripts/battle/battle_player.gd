@@ -143,6 +143,112 @@ func cover_count() -> int:
 	return cover_cards.size()
 
 
+## 盖牌区还剩几个空位（上限来自角色表「指示物」列的槽 2）
+func cover_space() -> int:
+	return maxi(cover_cards_max - cover_cards.size(), 0)
+
+
+## 现在还能不能再放 n 张盖牌：角色没配盖牌槽（上限 0）时永远不能放，已满时也不能放。
+## 只做通用判断；真正把牌放进盖牌区走引擎 add_cover（会广播快照 / 触发 p_cover_change）。
+func can_add_cover_cards(n: int = 1) -> bool:
+	return cover_cards_max > 0 and cover_cards.size() + n <= cover_cards_max
+
+
+# ============================================================
+# 指示物（F3）
+# 槽位名称 / 上限来自角色表「指示物」列（Data.role_token_def）；槽 0 / 1 是计数型指示物，
+# 槽 2 是盖牌（实际牌在 cover_cards，不在这里）。角色脚本不要自己拼 tokens 字典或
+# 自己判上限，统一用下面这几个方法，数值始终与角色表一致。
+# ============================================================
+## 某槽位的指示物定义 {name, max, num}；该角色没配这个槽位返回空字典。
+## 槽 2 不在这里（盖牌看 cover_cards / cover_cards_max）。
+func token_def(slot: int) -> Dictionary:
+	if slot < 0 or slot >= tokens.size():
+		return {}
+	var 槽: Variant = tokens[slot]
+	return 槽 if 槽 is Dictionary else {}
+
+
+func token_name(slot: int) -> String:
+	return str(token_def(slot).get("name", ""))
+
+
+func token_num(slot: int) -> int:
+	return int(token_def(slot).get("num", 0))
+
+
+func token_max(slot: int) -> int:
+	return int(token_def(slot).get("max", 0))
+
+
+## 加指示物并按角色表上限截断，返回实际增加的数量（没配槽位 / 已满时返回 0）。
+## 如 46 灵涌（上限 4）：3 → add_token(0, 3) 只加 1；93 元子（上限 3）同理。
+func add_token(slot: int, n: int = 1) -> int:
+	if n <= 0:
+		return 0
+	var 定义: Dictionary = token_def(slot)
+	if 定义.is_empty():
+		return 0
+	var 当前: int = int(定义.get("num", 0))
+	var 上限: int = int(定义.get("max", 0))
+	var 实际: int = clampi(上限 - 当前, 0, n)
+	if 实际 > 0:
+		定义["num"] = 当前 + 实际
+	return 实际
+
+
+## 消耗指示物：不够 n 个时不改动并返回 false（调用方据此判「能不能发动」）；
+## n = 0 视为成功（无操作）。如 93 元子重塑花 2、4605 清空灵涌见 clear_token。
+func remove_token(slot: int, n: int = 1) -> bool:
+	if n < 0:
+		return false
+	if n == 0:
+		return true
+	var 定义: Dictionary = token_def(slot)
+	if 定义.is_empty():
+		return false
+	var 当前: int = int(定义.get("num", 0))
+	if 当前 < n:
+		return false
+	定义["num"] = 当前 - n
+	return true
+
+
+## 清空某槽位指示物（如 46 怒潮荒涛移除全部灵涌），返回清掉的数量。
+func clear_token(slot: int) -> int:
+	var 定义: Dictionary = token_def(slot)
+	if 定义.is_empty():
+		return 0
+	var 当前: int = int(定义.get("num", 0))
+	定义["num"] = 0
+	return 当前
+
+
+## 直接设成 n（按 0..角色表上限夹取），返回设完的值；用于「设为上限 / 归零」这类明确写法。
+func set_token_num(slot: int, n: int) -> int:
+	var 定义: Dictionary = token_def(slot)
+	if 定义.is_empty():
+		return 0
+	var 值: int = clampi(n, 0, int(定义.get("max", 0)))
+	定义["num"] = 值
+	return 值
+
+
+## 按角色表「指示物」列初始化槽 0 / 1 的计数指示物与槽 2 的盖牌上限。
+## 角色脚本的 BattleRole.setup() 会按同一份数据初始化；这里给「还没写角色脚本的白板角色」兜底，
+## 让 38 子弹 / 46 灵涌 / 93 元子这类纯数据指示物也能正确显示 / 计数。
+## 名称、上限只认设计表；计数一律从 0 开始（38 开局 6 张子弹属于角色技能效果，不在这里）。
+func 按表初始化指示物() -> void:
+	for 槽: int in [0, 1]:
+		var 定义: Dictionary = Data.role_token_def(role_id, 槽)
+		if 定义.is_empty():
+			tokens[槽] = null
+			continue
+		tokens[槽] = {"name": str(定义["name"]), "max": int(定义["max"]), "num": 0}
+	var 盖牌: Dictionary = Data.role_token_def(role_id, 2)
+	cover_cards_max = int(盖牌.get("max", 0))
+
+
 # ============================================================
 # 基础效果
 # ============================================================
@@ -277,6 +383,64 @@ func contains_action() -> bool:
 
 func clear_additional_action() -> void:
 	additional_actions.clear()
+
+
+# ============================================================
+# 每回合行动计数（F2）
+# 攻击 / 法术 / 特殊各自累加；「额外行动」不单独占一个种类，而是计入它实际使用的种类
+# （额外攻击仍算攻击行动），另用 extra_action_count 记其中有多少次是额外行动 ——
+# 所以四项计数分开看，总次数不重复计。
+# 引擎在行动宣告成立时记一次（record_action），回合开始（SCheckTurnStart）清零；
+# 被取消的技能行动由引擎撤销（undo_action）。
+# ============================================================
+var attack_action_count: int = 0
+var magic_action_count: int = 0
+var special_action_count: int = 0
+var extra_action_count: int = 0
+
+
+## 本回合已行动的总次数（额外行动也计一次，不会因为「额外」重复计）
+func action_count() -> int:
+	return attack_action_count + magic_action_count + special_action_count
+
+
+## 某一类行动本回合的次数：kind = "attack" / "magic" / "special"
+## （额外行动按其实际种类计，额外次数另见 extra_action_count）
+func action_count_of(kind: String) -> int:
+	match kind:
+		"attack": return attack_action_count
+		"magic": return magic_action_count
+		"special": return special_action_count
+	return 0
+
+
+## 记一次行动，返回记完后的本回合总次数（引擎在行动宣告成立时调用）
+func record_action(kind: String, is_extra: bool) -> int:
+	match kind:
+		"attack": attack_action_count += 1
+		"magic": magic_action_count += 1
+		"special": special_action_count += 1
+	if is_extra:
+		extra_action_count += 1
+	return action_count()
+
+
+## 撤销一次行动计数（技能行动被取消时由引擎调用）：那次行动没真正发生，不能留在计数里
+func undo_action(kind: String, is_extra: bool) -> void:
+	match kind:
+		"attack": attack_action_count = maxi(attack_action_count - 1, 0)
+		"magic": magic_action_count = maxi(magic_action_count - 1, 0)
+		"special": special_action_count = maxi(special_action_count - 1, 0)
+	if is_extra:
+		extra_action_count = maxi(extra_action_count - 1, 0)
+
+
+## 回合开始清零（引擎在 SCheckTurnStart 调用）
+func reset_action_counts() -> void:
+	attack_action_count = 0
+	magic_action_count = 0
+	special_action_count = 0
+	extra_action_count = 0
 
 
 # ============================================================
@@ -422,6 +586,27 @@ func base_v_remissile(card_id: int) -> int:
 	return GConst.GE_SUCCESS
 
 
+## 多牌响应魔弹（10603）：角色不覆写/不合法一律拒绝；返回 V_NOT_OVERRIDE 也按拒绝处理。
+func v_remissile_multi(cards: Array) -> int:
+	if role != null:
+		var rc: int = role.v_remissile_multi(cards)
+		if rc != BattleRole.V_NOT_OVERRIDE:
+			return rc
+	return GConst.GE_INVALID_CARDID
+
+
+func missile_relay_card_max() -> int:
+	if role != null:
+		return role.missile_relay_card_max()
+	return 1
+
+
+func remissile_multi_skill() -> int:
+	if role != null:
+		return role.remissile_multi_skill()
+	return 0
+
+
 ## 圣盾校验
 func v_shield(dst_id: int, players: Dictionary) -> int:
 	if role != null:
@@ -488,6 +673,15 @@ func v_attacked() -> int:
 		var rc: int = role.v_attacked()
 		if rc != BattleRole.V_NOT_OVERRIDE:
 			return rc
+	return GConst.GE_SUCCESS
+
+
+## 目标资格校验（F4 / 4601）：自己能不能被放上这张基础效果；由自己的角色判定，默认可以。
+## 引擎在 add_basic_effect、【圣盾】/【虚弱】/【中毒】的出牌校验与技能行动的基础效果放置校验里
+## 统一走这里，所以角色只需要覆写 BattleRole.v_basic_effect_target，不用改各条施放路径。
+func v_basic_effect_target(card_id: int) -> int:
+	if role != null:
+		return role.v_basic_effect_target(self, card_id)
 	return GConst.GE_SUCCESS
 
 

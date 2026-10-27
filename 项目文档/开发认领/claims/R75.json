@@ -1,0 +1,19 @@
+{
+  "id": "R75",
+  "title": "R75 EX魔弓（75）4 技能",
+  "agent": "W2",
+  "claimed_at": "2026-10-27T19:10:13",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_exmogong.gd",
+    "tests/cases/35_exmogong.gd"
+  ],
+  "acceptance": "实现 7501~7504：风系无法应战、未命中弃法术2伤害、借用301/302、7504狙击；只改 role/test；测试+自检。",
+  "summary": "新增 role_exmogong.gd 实现 7501~7504：7501 神风矢=攻击宣告时把风系攻击牌命中率置 NoReattack（与弓之女神 304 闪电箭同口径，暗系仍由引擎处理）；7502 疾风追射=主动攻击未命中时先问是否发动，弃 1 张法术牌【展示】（cards 白名单+card_rule=magic，服务端再校验）→ 对所攻击目标 2 点法术伤害③，无 7502 牌/非主动/他人未命中不弹询问，取消与非法牌提交不生效；7503 弓神候补=路由到 F5-archer 的 skill_archer helper（只借用 301/302、必须有牌在手的发动牌，播报/提示用源技能号，不借用 303）；7504 狙击=本角色独立技能行（不是 303），用 get_energy/remove_energy 支付 1 水晶（宝石可顶），目标角色手牌补到 5 张【强制】（push_draw 尊重【水影】等摸牌前响应，返回 URGENT 保证先摸牌再行动结束）、额外 +1 攻击行动（direct，不再二次询问）。7501/7502 分步标记按攻击宣告重置并挡 URGENT 重入。只改 role/test 两个文件。",
+  "tests": "协议给的 --check-only 在本工程对引用 autoload 的脚本必然报 Identifier not found: Data，不作为依据；改用 %TEMP% 下临时 SceneTree runner（--script 正常启动工程、autoload 就绪）只加载 tests/cases/35_exmogong.gd 与 role_exmogong.gd 并实跑：输出 W2_CASE_PASS：EX魔弓、失败 0、无 SCRIPT ERROR/Parse Error（runner/watchdog 已删除，仓库无临时文件）。用例覆盖数据（角色名/7501~7504 技能行/301·302 源技能行/7504≠303）、技能栏置灰与不借用303、7504 水晶与宝石支付/目标不存在/队友目标/目标已满5/缺目标按自己、7501 风系与完整攻击流水线 NoReattack 标记、7502 取消/发动2点法术伤害/无牌/非主动/他人/空目标/非法牌、7503 的 302 完整结算与 301 询问播报源号。未跑全量自检（并发实现期间按协议不跑）。",
+  "files_changed": [
+    "scripts/battle/roles/role_exmogong.gd",
+    "tests/cases/35_exmogong.gd"
+  ],
+  "finished_at": "2026-10-27T19:25:00"
+}

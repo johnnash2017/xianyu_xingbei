@@ -1,0 +1,19 @@
+{
+  "id": "R47",
+  "title": "R47 爆食少女（47）5 技能",
+  "agent": "W4",
+  "claimed_at": "2026-10-27T23:23:02",
+  "status": "review",
+  "files": [
+    "scripts/battle/roles/role_baoshishaonv.gd",
+    "tests/cases/34_baoshishaonv.gd"
+  ],
+  "acceptance": "实现 4701~4705：2目标弃法术、⑥伤害转移、水/火魔弹、弃牌前拦截、2目标2伤害；只改 role/test；测试+自检。",
+  "summary": "新增 role_baoshishaonv.gd 实现 4701~4705：4701 弃1张法术牌【展示】→我方战绩区+1宝石，逐个询问2名对手各弃1张法术牌（可取消），每名不弃者吃2点法术伤害且你各弃1张（手牌不足时弃现有的、强制弃），伤害按点选顺序结算；4702 仅队友（同色不含自己）受伤⑥时问，弃1张真【魔弹】【展示】→转移伤害给自己并带 redirect_from/no_morale，敌方/自己/无魔弹/0点不问，同一次伤害只问一次；4703 按 A21 只扩展响应传递（水系/火系牌走 v_remissile），不提供主动使用入口；4704 接 F6 的 wants_before_discard + p_before_discard：队友手牌/盖牌、face_up、自己有代价牌时弃1张获得该【魔弹】，一次多张取待弃顺序第一张；4705 真宝石支付、2名不同对手各2点法术伤害。未改共享/数据/客户端文件。提示列依赖 DATA：4701 目标弃牌序号2、自己弃牌序号3，4702/4704 序号0；4704 多张魔弹的逐张选择交互属 CLIENT 范围。",
+  "tests": "并发实现期按协议未跑全量自检、未 --import、未用 --check-only 判定。用仓库临时 SceneTree runner（tests/_w4t_run.*，跑完已删除，仓库无残留；日志在 %TEMP%）正常启动工程并加载 Main.tscn，只加载 tests/cases/34_baoshishaonv.gd 实跑：输出「[W4] 用例 爆食少女：通过，失败 0」，退出码 0，无 SCRIPT ERROR / Parse Error；覆盖数据、五技能主路径与边界（目标弃/取消/硬提交非法牌/无法术牌、自己无代价牌、无魔弹/敌方/自己受伤、免士气超限、多张魔弹、盖牌来源、face_up=false、宝石不能用晶体顶等）。",
+  "files_changed": [
+    "scripts/battle/roles/role_baoshishaonv.gd",
+    "tests/cases/34_baoshishaonv.gd"
+  ],
+  "finished_at": "2026-10-27T23:44:48"
+}

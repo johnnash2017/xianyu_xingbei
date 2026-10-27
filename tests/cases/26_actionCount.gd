@@ -1,0 +1,363 @@
+extends 自检用例
+## F2 额外行动与行动计数：
+## - 每回合「攻击 / 法术 / 特殊 / 额外」行动计数：普通行动、额外行动都记，回合开始清零；
+## - 行动结束通用钩子 p_action_end（与 p_after_* 同一份上下文，带本回合第几次行动 / 是否额外）；
+## - 额外行动的目标 / 出牌限制接口（extra_action_card_ids / extra_action_targets）：
+##   下发给客户端做白名单，服务端攻击 / 法术 / 技能行动落子时兜底校验；
+## - 边界：「启动」技能不是行动（不计、不触发 p_action_end）；被取消的技能行动撤销计数。
+
+## dummy 角色：记录 p_action_end，按需授予额外攻击行动、声明额外行动的牌 / 目标限制
+class 计数角色:
+	extends BattleRole
+
+	## 本份额外攻击行动的来源（模拟 4501 / 101 授予的那一份）
+	const 额外攻击来源: int = 9001
+	## 技能行动用例：攻击技能 / 启动技能 / 会被取消的特殊技能
+	const 攻击技能号: int = 9002
+	const 启动技能号: int = 9003
+	const 取消技能号: int = 9004
+
+	## p_action_end 收到的上下文（按先后顺序）
+	var 行动结束记录: Array = []
+	## 第一次普通攻击行动结束时授予一次额外攻击行动
+	var 授予额外攻击: bool = false
+	## 本份额外攻击行动的出牌 / 目标限制（空＝不限制）
+	var 额外攻击牌: Array = []
+	var 额外攻击目标: Array = []
+	## 旧接口 action_card_ids（只配它时，额外行动仍按它下发白名单，兼容剑圣 103 那类实现）
+	var 旧接口白名单: Array = []
+
+	func action_card_ids(_action_type: int) -> Array:
+		return 旧接口白名单
+
+	func p_action_end(ctx: Dictionary) -> int:
+		if int(ctx.get("player", -1)) != player.id:
+			return SUCCESS
+		行动结束记录.append(ctx.duplicate())
+		if 授予额外攻击 and not bool(ctx.get("is_extra", false)) \
+				and str(ctx.get("kind", "")) == "attack" and int(ctx.get("action_id", 0)) == 0:
+			授予额外攻击 = false
+			player.add_action(GConst.ActionType.Attack, 额外攻击来源)
+		return SUCCESS
+
+	func extra_action_card_ids(cause: int, _action_type: int) -> Array:
+		if cause == 额外攻击来源:
+			return 额外攻击牌
+		return []
+
+	func extra_action_targets(cause: int) -> Array:
+		if cause == 额外攻击来源:
+			return 额外攻击目标
+		return []
+
+	func v_attack_skill(action: Dictionary) -> int:
+		if int(action.get("action_id", 0)) == 攻击技能号:
+			return GConst.GE_SUCCESS
+		return GConst.GE_EMPTY_HANDLE
+
+	func p_attack_skill(_action: Dictionary) -> int:
+		return SUCCESS
+
+	func is_free_skill(skill_id: int) -> bool:
+		return skill_id == 启动技能号
+
+	func v_special_skill(action: Dictionary) -> int:
+		var aid: int = int(action.get("action_id", 0))
+		if aid == 启动技能号 or aid == 取消技能号:
+			return GConst.GE_SUCCESS
+		return GConst.GE_EMPTY_HANDLE
+
+	func p_special_skill(action: Dictionary) -> int:
+		# 模拟角色在技能询问里点「取消」：这次技能行动没发生，引擎应撤销 F2 计数
+		if int(action.get("action_id", 0)) == 取消技能号:
+			engine.取消技能行动()
+		return SUCCESS
+
+
+var 引擎: BattleEngine = null
+var 玩家1: BattlePlayer = null
+var 角色: 计数角色 = null
+## send_cb 记录：{pid, msg, data}
+var 发送记录: Array = []
+var 攻击牌甲: GCard = null
+var 攻击牌乙: GCard = null
+var 圣盾牌: GCard = null
+
+
+func _init() -> void:
+	名称 = "额外行动与行动计数"
+
+
+## 卡库里第一张非暗系攻击牌（暗系攻击无法应战，这里要能走到应战询问）
+func _取攻击牌(排除: int = -1) -> GCard:
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual or not c.is_attack():
+			continue
+		if c.element_enum() == GConst.CardElement.Darkness:
+			continue
+		if c.id == 排除:
+			continue
+		return c
+	return null
+
+
+## 卡库里第一张指定卡名的牌
+func _取卡名(卡名: int) -> GCard:
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.card_name_enum() == 卡名:
+			return c
+	return null
+
+
+## 是否给某玩家发过「操作无效」错误
+func _有错误输入(pid: int) -> bool:
+	for r: Dictionary in 发送记录:
+		if int(r["pid"]) == pid and int(r["msg"]) == GConst.Msg.ErrorInput:
+			return true
+	return false
+
+
+## 清空战斗状态：回到「轮到玩家 1、行动阶段、无手牌」的同一起点
+func _重置战斗() -> void:
+	引擎._states.clear()
+	引擎._清空等待()
+	引擎._最后询问.clear()
+	引擎._最后行动命令.clear()
+	引擎.phase = BattleEngine.Phase.Playing
+	引擎.current_id = 1
+	引擎.行动允许 = GConst.ActionType.Any
+	引擎.行动可放弃 = false
+	引擎.行动额外 = false
+	引擎.行动额外来源 = 0
+	引擎.行动禁特殊 = false
+	引擎.skip_action_phase = false
+	引擎.测试跳过回合 = -1
+	发送记录.clear()
+	for pid: int in 引擎.order:
+		var p0: BattlePlayer = 引擎.p(pid)
+		p0.hand_cards.clear()
+		p0.cover_cards.clear()
+		p0.basic_effects.clear()
+		p0.cross_num = 0
+		p0.additional_actions.clear()
+		p0.boot_skill_used = false
+		p0.reset_action_counts()
+	角色.行动结束记录.clear()
+	角色.授予额外攻击 = false
+	角色.额外攻击牌 = []
+	角色.额外攻击目标 = []
+	角色.旧接口白名单 = []
+
+
+## 最近一条行动结束记录（没有则空字典）
+func _最后记录() -> Dictionary:
+	return 角色.行动结束记录[-1] if not 角色.行动结束记录.is_empty() else {}
+
+
+func 跑() -> void:
+	await 等帧(1)
+	攻击牌甲 = _取攻击牌()
+	if 攻击牌甲 != null:
+		攻击牌乙 = _取攻击牌(攻击牌甲.id)
+	圣盾牌 = _取卡名(GConst.CardName.Shield)
+	检(攻击牌甲 != null and 攻击牌乙 != null, "卡库里找不到两张非暗系攻击牌")
+	检(圣盾牌 != null, "卡库里找不到【圣盾】")
+	if 攻击牌甲 == null or 攻击牌乙 == null or 圣盾牌 == null:
+		return
+
+	# 4 人交替座次：1 / 2 蓝，3 / 4 红；dummy 计数角色挂在玩家 1 身上
+	引擎 = BattleEngine.new()
+	引擎.send_cb = func(pid: int, msg: int, data: Dictionary) -> void:
+		发送记录.append({"pid": pid, "msg": msg, "data": data})
+	引擎.add_player(1, GConst.BLUE, "计数者")
+	引擎.add_player(2, GConst.BLUE, "队友")
+	引擎.add_player(3, GConst.RED, "对手甲")
+	引擎.add_player(4, GConst.RED, "对手乙")
+	引擎.start_with_roles({})
+	玩家1 = 引擎.p(1)
+	角色 = 计数角色.new()
+	角色.setup(玩家1, 引擎)
+	玩家1.role = 角色
+
+	# ---- 场景 1：普通攻击计 1 次 → 行动结束钩子授予额外攻击 → 额外攻击计第 2 次 ----
+	_重置战斗()
+	角色.授予额外攻击 = true
+	角色.额外攻击牌 = [攻击牌甲.id]
+	角色.额外攻击目标 = [3]
+	玩家1.hand_cards.append(攻击牌甲.id)
+	引擎.resolve_action(GConst.ActionType.Attack, {"card_ids": [攻击牌甲.id], "dst_ids": [3], "args": []})
+	引擎.run()
+	检(引擎._await_id == 3, "攻击宣告后应等对手应战（等待 %s）" % str(引擎._await_id))
+	引擎.on_message(3, GConst.Msg.Respond, {
+		"respond_id": GConst.RespondType.ReplyAttack, "src_id": 3,
+		"args": [GConst.Reattack.GiveUp], "card_ids": [], "dst_ids": [],
+	})
+	检(玩家1.action_count() == 1, "第一次普通攻击后本回合行动数应为 1，实际 %d" % 玩家1.action_count())
+	检(玩家1.attack_action_count == 1 and 玩家1.extra_action_count == 0,
+		"普通攻击应只记攻击、不记额外：攻击 %d / 额外 %d" % [玩家1.attack_action_count, 玩家1.extra_action_count])
+	var 首次: Dictionary = _最后记录()
+	检(not 首次.is_empty(), "普通行动结束没有触发通用钩子 p_action_end")
+	检(str(首次.get("kind", "")) == "attack", "普通攻击的行动结束 kind 应为 attack：%s" % str(首次))
+	检(not bool(首次.get("is_extra", true)) and int(首次.get("extra_cause", -1)) == 0,
+		"普通攻击不应被标成额外行动：%s" % str(首次))
+	检(int(首次.get("action_count", 0)) == 1 and int(首次.get("attack_action_count", 0)) == 1,
+		"行动结束钩子的计数不对：%s" % str(首次))
+	检(not bool(首次.get("is_skill", false)), "普通出牌不应被标成技能行动")
+	# p_action_end 里授予的那份额外攻击行动现在应问是否进入
+	检(引擎._await_id == 1, "攻击结束后应询问玩家 1 是否进入额外攻击行动（等待 %s）" % str(引擎._await_id))
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": GConst.RespondType.AdditionalAction, "src_id": 1,
+		"args": [计数角色.额外攻击来源], "card_ids": [], "dst_ids": [],
+	})
+	检(引擎._await_id == 1 and 引擎.行动额外 and 引擎.行动额外来源 == 计数角色.额外攻击来源,
+		"进入额外攻击行动后应处于额外行动阶段（额外 %s / 来源 %s）" % [str(引擎.行动额外), str(引擎.行动额外来源)])
+	# 额外行动的目标 / 出牌限制随行动命令下发（客户端据此置灰）
+	var 额外命令表: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	var 额外命令: Dictionary = 额外命令表[0] if not 额外命令表.is_empty() else {}
+	检((额外命令.get("card_ids", []) as Array) == [攻击牌甲.id],
+		"额外行动的出牌白名单没有随行动命令下发：%s" % str(额外命令.get("card_ids", [])))
+	检((额外命令.get("dst_ids", []) as Array) == [3],
+		"额外行动的目标白名单没有随行动命令下发：%s" % str(额外命令.get("dst_ids", [])))
+	# 角色只实现旧接口 action_card_ids 时，额外行动的牌白名单退回它（剑圣 103 的现状不能回归）
+	角色.额外攻击牌 = []
+	角色.旧接口白名单 = [攻击牌乙.id]
+	var 回退命令表: Array = 引擎.action_commands(1, GConst.ActionType.Attack, true, true, false,
+		计数角色.额外攻击来源)
+	var 回退命令: Dictionary = 回退命令表[0] if not 回退命令表.is_empty() else {}
+	检((回退命令.get("card_ids", []) as Array) == [攻击牌乙.id],
+		"额外行动没配新接口时应退回 action_card_ids：%s" % str(回退命令.get("card_ids", [])))
+	角色.旧接口白名单 = []
+	角色.额外攻击牌 = [攻击牌甲.id]
+	# 额外攻击用白名单里的牌打被允许的目标
+	玩家1.hand_cards.append(攻击牌甲.id)
+	# 先给下家预置一份计数：回合开始（SCheckTurnStart）必须清零它
+	引擎.p(2).attack_action_count = 5
+	引擎.p(2).extra_action_count = 2
+	引擎.resolve_action(GConst.ActionType.Attack, {"card_ids": [攻击牌甲.id], "dst_ids": [3], "args": []})
+	引擎.run()
+	检(引擎._await_id == 3, "额外攻击宣告后应等对手应战（等待 %s）" % str(引擎._await_id))
+	引擎.on_message(3, GConst.Msg.Respond, {
+		"respond_id": GConst.RespondType.ReplyAttack, "src_id": 3,
+		"args": [GConst.Reattack.GiveUp], "card_ids": [], "dst_ids": [],
+	})
+	检(玩家1.action_count() == 2 and 玩家1.attack_action_count == 2 and 玩家1.extra_action_count == 1,
+		"额外攻击应记成第 2 次攻击行动 / 其中 1 次额外：总 %d 攻击 %d 额外 %d" % [
+			玩家1.action_count(), 玩家1.attack_action_count, 玩家1.extra_action_count])
+	var 再次: Dictionary = _最后记录()
+	检(str(再次.get("kind", "")) == "attack" and bool(再次.get("is_extra", false)),
+		"额外攻击的行动结束钩子应标成额外攻击：%s" % str(再次))
+	检(int(再次.get("extra_cause", 0)) == 计数角色.额外攻击来源,
+		"行动结束钩子的额外来源不对：%s" % str(再次))
+	检(int(再次.get("action_count", 0)) == 2 and int(再次.get("extra_action_count", 0)) == 1,
+		"第 2 次行动结束的计数不对：%s" % str(再次))
+	# 回合已交给玩家 2：回合开始（SCheckTurnStart）把行动计数清零
+	检(引擎.current_id == 2, "额外行动结束后应轮到下家，实际 %d" % 引擎.current_id)
+	检(玩家1.action_count() == 2, "非自己回合不应清掉玩家 1 本回合计数")
+	检(引擎.行动计数(2).get("action_count", -1) == 0,
+		"新回合开始没有清零下家的行动计数：%s" % str(引擎.行动计数(2)))
+
+	# ---- 场景 2：非法额外行动被服务端驳回（出牌 / 目标限制）----
+	_重置战斗()
+	引擎.行动允许 = GConst.ActionType.Attack
+	引擎.行动可放弃 = true
+	引擎.行动额外 = true
+	引擎.行动额外来源 = 计数角色.额外攻击来源
+	角色.额外攻击牌 = [攻击牌甲.id]
+	角色.额外攻击目标 = [3]
+	# 2a：白名单外的牌
+	玩家1.hand_cards.append(攻击牌乙.id)
+	引擎.resolve_action(GConst.ActionType.Attack, {"card_ids": [攻击牌乙.id], "dst_ids": [3], "args": []})
+	引擎.run()
+	检(_有错误输入(1), "额外行动用了白名单外的牌应被驳回")
+	检(玩家1.hand_cards.has(攻击牌乙.id), "被驳回的额外攻击不应把牌打出去")
+	检(玩家1.action_count() == 0 and 玩家1.extra_action_count == 0,
+		"被驳回的行动不应计入 F2 行动计数：%s" % str(引擎.行动计数(1)))
+	检(角色.行动结束记录.is_empty(), "被驳回的行动不应触发 p_action_end")
+	# 2b：目标不在允许范围
+	_重置战斗()
+	引擎.行动允许 = GConst.ActionType.Attack
+	引擎.行动可放弃 = true
+	引擎.行动额外 = true
+	引擎.行动额外来源 = 计数角色.额外攻击来源
+	角色.额外攻击牌 = [攻击牌甲.id]
+	角色.额外攻击目标 = [3]
+	玩家1.hand_cards.append(攻击牌甲.id)
+	引擎.resolve_action(GConst.ActionType.Attack, {"card_ids": [攻击牌甲.id], "dst_ids": [4], "args": []})
+	引擎.run()
+	检(_有错误输入(1), "额外行动攻击了受限目标应被驳回")
+	检(玩家1.hand_cards.has(攻击牌甲.id), "被驳回的额外攻击不应把牌打出去")
+	检(玩家1.action_count() == 0, "目标被驳回时不应计入行动计数")
+	# 2c：合法牌 + 合法目标通过并记一次额外行动
+	_重置战斗()
+	引擎.行动允许 = GConst.ActionType.Attack
+	引擎.行动可放弃 = true
+	引擎.行动额外 = true
+	引擎.行动额外来源 = 计数角色.额外攻击来源
+	角色.额外攻击牌 = [攻击牌甲.id]
+	角色.额外攻击目标 = [3]
+	玩家1.hand_cards.append(攻击牌甲.id)
+	引擎.resolve_action(GConst.ActionType.Attack, {"card_ids": [攻击牌甲.id], "dst_ids": [3], "args": []})
+	检(not _有错误输入(1), "合法牌 + 合法目标的额外攻击不应被驳回")
+	检(玩家1.action_count() == 1 and 玩家1.extra_action_count == 1,
+		"合法的额外攻击应记 1 次行动 / 1 次额外：%s" % str(引擎.行动计数(1)))
+	引擎.run()
+
+	# ---- 场景 3：法术行动计数 ----
+	_重置战斗()
+	玩家1.hand_cards.append(圣盾牌.id)
+	引擎.resolve_action(GConst.ActionType.Magic, {"card_ids": [圣盾牌.id], "dst_ids": [1], "args": []})
+	引擎.run()
+	检(玩家1.magic_action_count == 1 and 玩家1.action_count() == 1,
+		"法术行动应记 1 次法术 / 1 次行动：%s" % str(引擎.行动计数(1)))
+	var 法术记录: Dictionary = _最后记录()
+	检(str(法术记录.get("kind", "")) == "magic" and int(法术记录.get("action_count", 0)) == 1,
+		"法术行动结束钩子不对：%s" % str(法术记录))
+	检(not bool(法术记录.get("is_skill", false)), "直接打法术牌不应标成技能行动")
+
+	# ---- 场景 4：特殊行动计数 ----
+	_重置战斗()
+	引擎.resolve_action(GConst.ActionType.Special,
+		{"action_id": GConst.SpecialAction.Buy, "args": [0, 0], "card_ids": [], "dst_ids": []})
+	引擎.run()
+	检(玩家1.special_action_count == 1 and 玩家1.action_count() == 1,
+		"特殊行动应记 1 次特殊 / 1 次行动：%s" % str(引擎.行动计数(1)))
+	var 特殊记录: Dictionary = _最后记录()
+	检(str(特殊记录.get("kind", "")) == "special" and bool(特殊记录.get("special_action", false)),
+		"特殊行动结束钩子不对：%s" % str(特殊记录))
+
+	# ---- 场景 5：技能攻击算一次攻击行动（is_skill 标出来）----
+	_重置战斗()
+	引擎.resolve_action(GConst.ActionType.AttackSkill,
+		{"action_id": 计数角色.攻击技能号, "card_ids": [], "dst_ids": [], "args": []})
+	引擎.run()
+	检(玩家1.attack_action_count == 1 and 玩家1.action_count() == 1,
+		"技能攻击应记 1 次攻击行动：%s" % str(引擎.行动计数(1)))
+	var 技能记录: Dictionary = _最后记录()
+	检(str(技能记录.get("kind", "")) == "attack" and bool(技能记录.get("is_skill", false)),
+		"技能攻击的 kind 应为 attack 且 is_skill=true：%s" % str(技能记录))
+	检(int(技能记录.get("action_id", 0)) == 计数角色.攻击技能号,
+		"技能行动结束钩子应带技能号：%s" % str(技能记录))
+
+	# ---- 场景 6：「启动」技能不是行动：不计、不触发 p_action_end、行动阶段继续 ----
+	_重置战斗()
+	引擎.resolve_action(GConst.ActionType.SpecialSkill,
+		{"action_id": 计数角色.启动技能号, "args": [], "card_ids": [], "dst_ids": []})
+	引擎.run()
+	检(玩家1.action_count() == 0 and 玩家1.special_action_count == 0,
+		"「启动」技能不应计入 F2 行动计数：%s" % str(引擎.行动计数(1)))
+	检(角色.行动结束记录.is_empty(), "「启动」技能不应触发通用 p_action_end")
+	检(引擎.current_id == 1 and 引擎._await_id == 1,
+		"「启动」技能结算完应继续让玩家 1 行动（当前 %d / 等待 %s）" % [引擎.current_id, str(引擎._await_id)])
+
+	# ---- 场景 7：被取消的技能行动撤销计数、不触发 p_action_end、退回行动阶段 ----
+	_重置战斗()
+	引擎.resolve_action(GConst.ActionType.SpecialSkill,
+		{"action_id": 计数角色.取消技能号, "args": [], "card_ids": [], "dst_ids": []})
+	引擎.run()
+	检(玩家1.action_count() == 0 and 玩家1.special_action_count == 0,
+		"被取消的技能行动应撤销计数：%s" % str(引擎.行动计数(1)))
+	检(角色.行动结束记录.is_empty(), "被取消的技能行动不应触发通用 p_action_end")
+	检(引擎.current_id == 1 and 引擎._await_id == 1,
+		"取消技能行动应退回行动阶段而不是结束回合（当前 %d / 等待 %s）" % [引擎.current_id, str(引擎._await_id)])
+	引擎._states.clear()
+	引擎._清空等待()

@@ -1,0 +1,24 @@
+{
+  "id": "F4",
+  "title": "F4 基础效果目标/触发钩子",
+  "agent": "W5",
+  "claimed_at": "2026-10-27T22:12:58",
+  "status": "review",
+  "files": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_role.gd",
+    "scripts/battle/battle_mobile.gd",
+    "tests/cases/28_basicEffectTarget.gd"
+  ],
+  "acceptance": "新增 v_basic_effect_target（默认成功），add_basic_effect/出牌校验/客户端目标统一走它；新增基础效果触发并结算完成钩子；4601/4602/4604 可用；封印师/天使/圣女不回归；测试+自检。",
+  "summary": "F4 基础效果目标/触发钩子：BattleRole 新增 v_basic_effect_target（默认成功，目标角色自己判定）+ p_basic_effect_triggered 钩子，BattlePlayer/引擎加同口径包装；add_basic_effect 放置前统一走目标资格校验（被拒返回错误码、不挂效果，返回 int）；_do_magic 的圣盾/虚弱/中毒在扣牌前校验并驳回；新增 BattleRole.basic_effect_placements 声明接口，SkillRun 执行前统一校验技能放置目标（封印/赐福/天使之墙类可声明，R46 借用时用）；remove_basic_effect 新增 triggered 参数并在 p_basic_effect_change 带 triggered 标记，触发点（中毒/虚弱结算、圣盾·天使之墙挡攻击/挡魔弹）显式标记，封印 401~405/赐福 1601~1602 这类『cause＝牌自身技能号』的移除自动识别为触发，triggered 钩子压在后续结算状态之下以满足『结算完成后』；4602 仍用 p_basic_effect_change(add=true, doer=放置者)。只改共享核心三个文件与新增用例，未改 role_fengyin/role_qidao/role_tianshi 与 F5 helper。客户端目标过滤未做：任务 files 里的 scripts/battle/battle_mobile.gd 不存在，实际客户端在 scripts/ui/battle_mobile.gd（属 CLIENT 任务，F3 同情况）；服务端已提供 engine.v_basic_effect_target 与技能 targets 同口径供角色/CLIENT 过滤。",
+  "tests": "按协议未跑全量自检（并发实现期间），未跑 --import，未用 --check-only 判定。用 %TEMP% 临时 SceneTree runner（--script 正常启动工程并加载 Main.tscn，与 selfCheck 同路径，跑完已删除，仓库无临时文件）实跑：新增 tests/cases/28_basicEffectTarget.gd [通过]（失败 0），覆盖默认成功/免疫拒绝、圣盾·虚弱·中毒被拒时牌未离手且不挂效果、自己指定自己、add_basic_effect 兜底、普通放置与 4602 钩子上下文、圣盾挡攻击/中毒/虚弱触发及『结算完成后』顺序（落空·伤害·摸牌之后）、封印与赐福的自动触发识别、被拿走不算触发、技能行动 basic_effect_placements 校验；同 runner 定向回归 4_battleInteraction、6_healBlockDefault、16_missileRelay、26_actionCount、27_tokensCover、f5_seal、f5_bless、f5_sword、9_yinyangEngine、41_jidushaonv、32_jianzhimoni、35_exmogong、23_liewuren、20_role12Skills、25_missileElements 全部 [通过]，失败 0，无 SCRIPT ERROR / Parse Error。",
+  "files_changed": [
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_role.gd",
+    "tests/cases/28_basicEffectTarget.gd"
+  ],
+  "finished_at": "2026-10-27T22:22:41"
+}

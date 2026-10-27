@@ -1,0 +1,15 @@
+{
+  "id": "CLIENT",
+  "title": "CLIENT 客户端角色特性收口",
+  "reviewer": "R12",
+  "implementer": "FIX5",
+  "approve": true,
+  "issues": [],
+  "notes": "复检 FIX5 修复后的 3 条问题。【范围】git diff db695f4 核对：本任务涉及 scripts/core/const.gd、scripts/ui/battle_mobile.gd、tests/cases/43_clientRoleFeatures.gd；43 用例为未跟踪新文件，直接读源（522 行）。const.gd 修改时间 01:34:46（FIX5 01:45 认领前），本轮确未再改；本轮变更只在 battle_mobile.gd 与 43 用例，未越界到角色脚本/数据表/引擎/协议。旧硬编码名单 4 处删除并改走 GConst，范围与验收一致。\n【问题1 3301/3306 头像误画】已修：_预览伤害头像提示 在读取 preview_base 前直接排除 技能_式神咒束/技能_阴阳转换。实机链路 _skill_ask_id 在 is_skill 命令到达时赋值（battle_mobile 1952），3301/3306 在 _进入技能询问 里调 _开始攒应战，故排除确实生效；选中目标后仍由 _攒应战头像提示 正确写伤害。核对服务端传 preview_base 的其余技能（4701/4702/9704/狂战等）传的都是伤害值，只有这两条传攻击牌 id。43 用例 467-474 对两条询问断言头像提示为空。\n【问题2 10603 提交/取消】已修：新增 _魔弹响应提交方式 作唯一口径（单张圣光 Block；10603 单张真魔弹 Attack、单张同系 -1；恰好 2 张同系 Attack；不同系/同 id/虚拟/无元素 -1），_玩家可选、_确定不可用、_on_ok 三处统一走它，硬提交单张同系被拦并提示「同系」；_可回魔弹牌 在 card_max=2 时允许点已选牌取消、第二张必须同系、不再选满即全灰。与服务端 role_daduoshaonv._校验同系牌（恰好 2 张、不同、在手、非虚拟、同元素）及 SMissileAsk cards.size()>1 分支一致；两张同系圣光按 Attack 提交，服务端 v_remissile_multi 可收。43 用例 278-360 已走真实点击/落点/确定/提交链路（单张同系被拦、2 张可取消与换回、两圣光 Attack、单圣光 Block、单真魔弹）。\n【问题3 死断言】已修：43 用例 142-150 的「文案」断言移进非空分支内，13 颗指示器实际校验文案与数值键。\n【自检】评审自跑全量：用例 62 个：通过 62，失败 0；退出码 0，全日志无 [失败]/SCRIPT ERROR/Parse Error；仅退出时资源清理 WARNING/ERROR（非用例失败）。相关内容（43 / 9 阴阳 / 16 魔弹 / 40 怠惰 / 41 忌妒 / 42 剑之子 等）均通过。\n【结论】通过。",
+  "reviewed_at": "2026-10-28T01:55:35",
+  "files": [
+    "scripts/ui/battle_mobile.gd",
+    "scripts/core/const.gd",
+    "tests/cases/43_clientRoleFeatures.gd"
+  ]
+}

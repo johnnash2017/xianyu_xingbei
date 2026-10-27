@@ -1,0 +1,16 @@
+{
+  "id": "F3",
+  "title": "F3 指示物/盖牌通用能力",
+  "reviewer": "R1",
+  "implementer": "W3",
+  "approve": true,
+  "issues": [],
+  "notes": "【范围】按 db695f4 diff 逐文件核对：F3 实际新增 battle_player.gd 的 token_def/token_name/token_num/token_max/add_token/remove_token/clear_token/set_token_num、cover_space/can_add_cover_cards、按表初始化指示物；battle_engine.gd 的白板角色开局按表初始化与 draw_cover；新增 tests/cases/27_tokensCover.gd。未改角色表数值、const、客户端、其他角色；任务 files 里的 scripts/battle/battle_mobile.gd 不存在，客户端实际是 scripts/ui/battle_mobile.gd + scripts/PlayerStatusMobile.gd，实现方未改客户端、改用例验证既有通用渲染（data-audit §5.3 也是该结论）。同文件的 F2 行动计数/额外行动限制改动属 R3 已审的 F2，本任务未改其逻辑，按 F3 acceptance 判定。\n【数据/初始化】38 槽2 子弹 6、46 槽0 灵涌 4、93 槽0 元子 3 与角色表一致；按表初始化建槽0/1 token（num=0）、槽2 cover_cards_max，未配槽位置空；引擎在 start_with_roles 只对 role==null 的白板角色兜底，有脚本角色仍走 BattleRole.setup（各角色 setup 均 super.setup），不覆盖角色脚本的开局数量（27 英灵人形 setup 的 +3 战纹不受影响）。查角色表：带指示物但无脚本的 16 个角色全部是「禁用」新角色，不影响已启用角色。\n【上限/消耗】add_token 按表上限截断并返回实际增加数；remove_token 不足返回 false 不改数值；clear_token 返回清空数；set_token_num 按 0..上限夹取；cover_space/can_add_cover_cards 以槽2上限判断；draw_cover 只取剩余空位张数、从牌库顶抽、经 add_cover 广播快照并触发 p_cover_change、放不下留牌库；SCoverOverflow 沿用现有引擎逻辑选牌弃到上限，用例验证。\n【UI/名称】快照 third_token/yellow_token/covered_count 与 max_covered 和客户端 Data._apply_player_info、战斗玩家面板一致；面板按 Data.role_token_def 显示 38「子弹盖牌 6/6」、46「灵涌 3/4」、93「元子 2/3」，角色技能提示.标识物一览(38/46/93) 各自正确，风之剑圣(1) 为空；未发现串名或写死角色号。\n【测试】27_tokensCover 覆盖数据、白板与真实开局初始化、上限截断、消耗不足、清空/夹取、draw_cover 上限与牌库扣减、SCoverOverflow、快照字段、面板/技能提示名字区分；已注册进 selfCheck（输出 [通过] 指示物与盖牌）。\n【自检】本评审实跑 godot --headless res://tests/selfCheck.tscn：[自检] 用例 47 个：通过 47，失败 0，无 [失败] / SCRIPT ERROR / Parse Error；仅退出期 RID / 资源在用引擎警告（F2 评审时同样存在）。\n【非阻塞提示】1) BattleRole._按表初始化标识物 与 BattlePlayer.按表初始化指示物 是同一份表的两处实现（前者不清空未配槽位），后续改表格式需同步；2) draw_cover 的 src_id 默认 -1，角色调用时应传自己 id，否则 p_cover_change 的 doer 为 -1；3) 38 真正「开局 6 子弹」按 data-audit 属角色脚本责任，本任务只提供 draw_cover 并用例验证，R38 需在 setup/技能里调用；4) 用例注释写「开局」实际是手动 draw_cover，建议角色用例补真实开局路径；5) battle_engine 注释举例「灵魂术士 +3 战纹」实际是 27 英灵人形，建议改注释。以上不影响本任务通过。",
+  "reviewed_at": "2026-10-27T20:56:04",
+  "files": [
+    "scripts/battle/battle_player.gd",
+    "scripts/battle/battle_engine.gd",
+    "scripts/battle/battle_mobile.gd",
+    "tests/cases/27_tokensCover.gd"
+  ]
+}
