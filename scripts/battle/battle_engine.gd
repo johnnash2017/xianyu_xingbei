@@ -999,8 +999,12 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 	首选额外行动 = cause
 	var 牌表: Array = data.get("card_ids", [])
 	var 目标表: Array = data.get("dst_ids", [])
-	首选额外行动卡 = int(牌表[0]) if not 牌表.is_empty() else 0
-	首选额外行动目标 = int(目标表[0]) if not 目标表.is_empty() else 0
+	var 攻击牌: int = int(牌表[0]) if not 牌表.is_empty() \
+		else (int(args[1]) if args.size() > 1 else 0)
+	var 攻击目标: int = int(目标表[0]) if not 目标表.is_empty() \
+		else (int(args[2]) if args.size() > 2 else 0)
+	首选额外行动卡 = 攻击牌
+	首选额外行动目标 = 攻击目标
 	_await_id = -1
 	_has_reply = false
 	wait_deadline_ms = 0

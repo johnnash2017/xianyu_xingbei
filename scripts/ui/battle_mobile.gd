@@ -2683,7 +2683,14 @@ func _选中额外攻击响应(cause: int, 牌白: Array = [], 目标白: Array 
 	_额外攻击响应选择 = cause
 	_额外攻击响应_牌白 = 牌白.duplicate()
 	_额外攻击响应_目标白 = 目标白.duplicate()
-	_sel_cards.clear()
+	# 已经选好的攻击牌如果仍在新白名单里就保留，避免玩家先选牌再点额外攻击按钮时把牌清掉
+	var 保留牌: Array[int] = []
+	for cid: int in _sel_cards:
+		var card: GCard = Data.get_card(cid)
+		if card != null and card.is_attack() \
+				and (_额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(cid)):
+			保留牌.append(cid)
+	_sel_cards = 保留牌
 	_sel_players.clear()
 	# 响应技能选项保留可见，但取消它的选中（改由这次额外攻击接管）
 	_二级选中 = -1
@@ -3752,8 +3759,10 @@ func _on_player_clicked(player_id: int) -> void:
 		# 备份这次技能询问；先收起界面（避免攻击已开始时响应选项还亮着），
 		# 服务端如果拒绝，on_invalid_input 会用它把选项恢复回来。
 		_额外攻击请求备份 = _pending.duplicate(true)
+		var 攻击牌: int = _sel_cards[0]
+		# 卡/目标同时写进 args 兜底：避免某些 Respond 路径只带到其中一组字段
 		_发送应答(GConst.RespondType.ChooseExtraAction, [player_id],
-			[_sel_cards[0]], [_额外攻击响应选择])
+			[攻击牌], [_额外攻击响应选择, 攻击牌, player_id])
 		return
 	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：点头像什么都不做
 	if _目标锁死:
