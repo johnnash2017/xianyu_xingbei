@@ -36,10 +36,7 @@ const 加宽步长: float = 120.0
 ## 行距减半用的「压到多紧」：默认那截空隙本来就是 0 时（间距全来自字体行高），
 ## 往回压这么多像素，保证「减半」看得出效果。
 const 行距下限: int = -3
-## 角色说明里失效技能的粗删除线（由 _画失效线 画在富文本上层）：
-## 字体自带的 [s] 只有 1~2px，这里按 5px 画，颜色用低透明度青灰。
-const 失效线粗细: float = 5.0
-const 失效线颜色: Color = Color(0.78, 0.82, 0.86, 0.62)
+
 
 ## 深色圆角底板（结构在 TipBox.tscn 里，可所见即所得地改）
 @export var 框: PanelContainer
@@ -49,8 +46,6 @@ const 失效线颜色: Color = Color(0.78, 0.82, 0.86, 0.62)
 @export var 星数标签: Label
 ## 自定义内容节点（如一张完整的卡牌视图，见 显示内容）；非空时文字隐藏，整框改按它的尺寸走
 var 内容: Control = null
-## 富文本上层的失效技能粗删除线层（零宽起止标记见 角色技能提示.失效起标记 / 失效止标记）
-var 失效线层: Control = null
 ## 本次说明的「基准整体缩放」（角色说明按设置窗里的档位取）。摆框时若按它仍塞不进宿主，会在它基础上再等比缩小兜底
 var _基缩放: float = 1.0
 ## 本次说明被上下夹住、和图标重叠时，是否横向让到图标一侧（角色说明用；
@@ -75,45 +70,6 @@ func _ready() -> void:
 		_折半行距(文本.get_theme_constant("line_separation")))
 	文本.add_theme_constant_override("paragraph_separation",
 		_折半行距(文本.get_theme_constant("paragraph_separation")))
-	# 失效技能粗删除线画在富文本上层：零宽起止标记只负责定位，线本身由这里自绘
-	失效线层 = Control.new()
-	失效线层.name = "失效线层"
-	失效线层.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	失效线层.z_index = 10
-	文本.add_child(失效线层)
-	失效线层.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	失效线层.draw.connect(_画失效线)
-	文本.resized.connect(_刷新失效线)
-
-
-## 富文本重新排版后按零宽起止标记重画失效线；由显示流程和 文本.resized 调用。
-func _刷新失效线() -> void:
-	if 失效线层 != null:
-		失效线层.queue_redraw()
-
-
-## 给每一段失效技能画粗删除线：从起标记所在可视行到止标记所在可视行，
-## 每行的线从行首画到 get_line_width()，以行高中心为基线；颜色半透明，文字本身另有半透明置灰。
-func _画失效线() -> void:
-	if 文本 == null or 失效线层 == null or not 文本.visible:
-		return
-	var 纯文: String = 文本.get_parsed_text()
-	var 起: int = -1
-	for i: int in range(纯文.length()):
-		var 字: String = 纯文[i]
-		if 字 == 角色技能提示.失效起标记:
-			起 = i
-		elif 字 == 角色技能提示.失效止标记 and 起 >= 0:
-			var 首行: int = 文本.get_character_line(起)
-			var 尾行: int = 文本.get_character_line(i)
-			for 行: int in range(首行, 尾行 + 1):
-				var 宽: float = 文本.get_line_width(行)
-				if 宽 <= 0.0:
-					continue
-				var 高: float = 文本.get_line_height(行)
-				var 纵: float = 文本.get_line_offset(行) + 高 * 0.5
-				失效线层.draw_line(Vector2(0.0, 纵), Vector2(宽, 纵), 失效线颜色, 失效线粗细, true)
-			起 = -1
 
 
 ## 显示一段说明：图标矩形取「视图坐标」，框摆在它正上方并夹在宿主内。
@@ -131,7 +87,6 @@ func 显示(说明: String, 图标矩形: Rect2, 宽度: float, 字号: int, 整
 	文本.visible = true
 	文本.add_theme_font_size_override("normal_font_size", 字号)
 	文本.text = 说明
-	_刷新失效线.call_deferred()
 	# 折行宽度：角色说明这类长文本按「放得下为止尽量窄」同步定档（见 _算角色说明宽度）；其余按给定宽度
 	# （宽度 ≤ 0 时也不折行，整框贴住内容 —— 指示物那种一行短提示不该为填满固定宽度把底板撑大）
 	文本.autowrap_mode = TextServer.AUTOWRAP_OFF if 宽度 <= 0.0 else TextServer.AUTOWRAP_WORD_SMART
@@ -245,7 +200,6 @@ func _排重摆(图标矩形: Rect2) -> void:
 func _重摆() -> void:
 	_待摆中 = false
 	_摆(_待摆矩形)
-	_刷新失效线()
 
 
 ## 排一次「下一帧再显示」（同上：只挂一个回调，避免重复连接被丢弃）
@@ -266,7 +220,6 @@ func _沉降显示() -> void:
 	框.reset_size()
 	框.visible = true
 	_摆(_待摆矩形)
-	_刷新失效线()
 	_排重摆(_待摆矩形)
 
 
