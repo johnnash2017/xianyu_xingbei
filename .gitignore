@@ -1,3 +1,7 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Python 缓存（认领/导表脚本运行产生）
+__pycache__/
+*.pyc
