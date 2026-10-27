@@ -237,10 +237,10 @@ func _预览分组() -> Array:
 		if not 分组.has(v):
 			分组[v] = []
 		(分组[v] as Array).append(rid)
-	var 版本列表: Array = 分组.keys()
-	版本列表.sort()
+	var 版本号列表: Array = 分组.keys()
+	版本号列表.sort()
 	var out: Array = []
-	for v: int in 版本列表:
+	for v: int in 版本号列表:
 		var ids: Array = 分组[v]
 		out.append({
 			"version": v,
