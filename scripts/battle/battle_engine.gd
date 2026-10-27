@@ -97,6 +97,8 @@ var 行动额外来源: int = 0
 var 行动禁特殊: bool = false
 ## 攻击结束响应里玩家点了「额外攻击行动」快捷按钮：下一次 SAdditionalAction 直接进入它（不弹额外行动选择）
 var 首选额外行动: int = -1
+## 当前额外行动阶段的原始数据（客户端切到另一份额外行动时，提交攻击一并携带 cause，这里据此换队）
+var 当前额外行动数据: Dictionary = {}
 ## 测试指令「跳过自己回合」（战斗界面按 8）：记下是谁按的，行动阶段轮到他直接收尾（-1 = 无）
 var 测试跳过回合: int = -1
 ## 角色的 p_after_turn_end 要求「接下来的回合还是他」时写这里（月女【苍白之月】），
@@ -1443,9 +1445,14 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				continue
 			if not pl.role.extra_action_switchable(c):
 				continue
+			var 切换牌: Array = pl.role.extra_action_card_ids(c, GConst.ActionType.Attack)
+			if 切换牌.is_empty():
+				切换牌 = pl.role.action_card_ids(GConst.ActionType.Attack)
 			cmds.append({
 				"respond_id": GConst.ActionType.ChooseExtraAction, "src_id": pid,
-				"dst_ids": [], "card_ids": [], "args": [c], "extra_cause": c,
+				"dst_ids": pl.role.extra_action_targets(c),
+				"card_ids": 切换牌,
+				"args": [c], "extra_cause": c,
 			})
 	return cmds
 
@@ -2707,6 +2714,7 @@ class SActionPhase:
 		e.行动额外 = 额外
 		e.行动禁特殊 = 禁特殊
 		e.行动额外来源 = 额外来源
+		e.当前额外行动数据 = 额外数据
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
 			var at: int = int(r.get("action_type", GConst.ActionType.None))
@@ -2747,6 +2755,33 @@ func 切换额外攻击(状态: SActionPhase, cur: BattlePlayer, cause: int) -> 
 	状态.允许 = int(新.get("allow_action", GConst.ActionType.Attack))
 	状态.额外来源 = cause
 	状态.禁特殊 = false
+	return true
+
+
+## 提交攻击时按客户端本地选择的 cause 换队（不重发行动询问）。只允许 direct / 角色认可可切换的行动。
+func _直接切换额外攻击(cur: BattlePlayer, cause: int) -> bool:
+	if cur == null or cur.role == null or not 行动额外 or 当前额外行动数据.is_empty():
+		return false
+	if not bool(当前额外行动数据.get("direct", false)):
+		return false
+	if not cur.role.extra_action_switchable(int(行动额外来源)):
+		return false
+	var idx: int = -1
+	for i: int in range(cur.additional_actions.size()):
+		var a: Dictionary = cur.additional_actions[i]
+		if int(a.get("cause", 0)) == cause and bool(a.get("direct", false)) \
+				and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))) \
+				and cur.role.extra_action_switchable(cause):
+			idx = i
+			break
+	if idx < 0:
+		return false
+	var 新: Dictionary = cur.additional_actions[idx].duplicate()
+	cur.additional_actions.remove_at(idx)
+	cur.additional_actions.append(当前额外行动数据)
+	当前额外行动数据 = 新
+	行动额外来源 = cause
+	行动允许 = int(新.get("allow_action", GConst.ActionType.Attack))
 	return true
 
 
@@ -3980,6 +4015,12 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		# 客户端没给出牌或目标（改包 / 界面状态错乱）：当作放弃这次行动
 		push(STurnEnd.new())
 		return CONTINUE
+	# 额外攻击阶段里客户端本地切到了另一份额外行动：提交攻击时再换队（不重发行动询问，避免界面闪烁）
+	if 行动额外:
+		var 参数: Array = data.get("args", [])
+		var 选中来源: int = int(参数[0]) if not 参数.is_empty() else 0
+		if 选中来源 > 0 and 选中来源 != 行动额外来源:
+			_直接切换额外攻击(cur, 选中来源)
 	var cid: int = int(cards[0])
 	var dst_id: int = int(dsts[0])
 	if cur.v_attack(cid, dst_id, players) != GConst.GE_SUCCESS:

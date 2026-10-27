@@ -421,6 +421,12 @@ var _额外行动按钮表: Array = []
 ## 攻击结束响应里的额外攻击快捷按钮（按钮, cause）：点按钮只选中，可切换，按「确定」才放弃响应进入
 var _额外攻击响应选择: int = -1
 var _额外攻击响应按钮: Array = []
+## 额外攻击阶段本地选中的额外攻击 cause / 该行动的牌与目标白名单（点切换只改本地，不提交、不重排）
+var _当前额外攻击选择: int = 0
+var _额外手牌白名单_选择: Array = []
+var _额外目标白名单_选择: Array = []
+## 额外攻击阶段的红色行动按钮（按钮, cause, card_ids, dst_ids）：顺序固定，只切换高亮
+var _额外攻击切换项: Array = []
 ## 触发本次额外行动的 cause（如苍白之月 3507）：提示据此写成「获得额外【无法应战】攻击行动」
 var _额外行动来源: int = 0
 ## 上面那份额外行动此刻能不能发动（引擎在询问的 dst_ids 里下发「可发动」列表）：
@@ -2389,7 +2395,8 @@ func _进入技能询问() -> void:
 			var 额外按钮: 技能按钮 = _新技能按钮(0)
 			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack), 额外攻击按钮色, 0)
 			额外按钮.设置说明(_额外行动按钮说明(c))
-			额外按钮.connect("点击", func(_技能号: int) -> void: _选中额外攻击响应(c))
+			额外按钮.connect("点击", func(_技能号: int) -> void:
+				_发送应答(GConst.RespondType.ChooseExtraAction, [], [], [c]))
 			_额外攻击响应按钮.append({"按钮": 额外按钮, "cause": c})
 		_排技能栏.call_deferred()
 	# 技能询问同时写一行日志：它只挂在提示条上，错过就会一直等（看着像「点了确定没反应」）
@@ -2950,17 +2957,32 @@ func _构建技能按钮(cmds: Array) -> void:
 	# 存一份，取消技能 / 取消特殊行动时要把这批技能按钮重新摆回来。
 	# 复制而不是直接引用：_清空待选 会 clear 这份缓存，不能把服务端下发的 commands 一起清掉。
 	_行动命令 = cmds.duplicate()
-	# 额外行动阶段：最左摆一颗当前额外行动按钮（红底 / 特性），让玩家知道这一击属于哪份额外行动
+	_额外攻击切换项.clear()
+	_当前额外攻击选择 = 0
+	_额外手牌白名单_选择.clear()
+	_额外目标白名单_选择.clear()
+	# 额外行动阶段：最左摆一颗当前额外行动按钮（红底 / 特性），再排其余可切换的额外攻击
 	var 首位: Dictionary = cmds[0] if not cmds.is_empty() else {}
 	if bool(首位.get("is_extra", false)) and int(首位.get("extra_cause", 0)) > 0:
 		var 当前来源: int = int(首位.get("extra_cause", 0))
 		var 当前类型: int = int(首位.get("respond_id", 0))
 		var 当前攻击: bool = _是攻击额外行动(当前来源, 当前类型)
+		var 当前牌: Array = 首位.get("card_ids", [])
+		var 当前目标: Array = 首位.get("dst_ids", [])
+		_当前额外攻击选择 = 当前来源
+		_额外手牌白名单_选择 = 当前牌.duplicate()
+		_额外目标白名单_选择 = 当前目标.duplicate()
 		var 当前按钮: 技能按钮 = _新技能按钮(0)
 		当前按钮.设置选项(_额外行动按钮文本(当前来源, 当前类型),
 			额外攻击按钮色 if 当前攻击 else GConst.skill_type_color(当前来源), 0)
 		当前按钮.设置说明(_额外行动按钮说明(当前来源))
 		当前按钮.设置选中(true)
+		当前按钮.connect("点击", func(_技能号: int) -> void:
+			_本地选择额外攻击(当前来源, 当前牌, 当前目标))
+		_额外攻击切换项.append({
+			"按钮": 当前按钮, "cause": 当前来源,
+			"card_ids": 当前牌, "dst_ids": 当前目标,
+		})
 	for i: int in range(1, cmds.size()):
 		var c: Dictionary = cmds[i]
 		var 技能类型: int = int(c.get("respond_id", 0))
@@ -2970,11 +2992,17 @@ func _构建技能按钮(cmds: Array) -> void:
 		var args: Array = c.get("args", [])
 		if 技能类型 == GConst.ActionType.ChooseExtraAction:
 			var cause: int = int(args[0]) if not args.is_empty() else 0
+			var 切换牌: Array = c.get("card_ids", [])
+			var 切换目标: Array = c.get("dst_ids", [])
 			var 切换按钮: 技能按钮 = _新技能按钮(0)
 			切换按钮.设置选项(_额外行动按钮文本(cause, GConst.ActionType.Attack), 额外攻击按钮色, 0)
 			切换按钮.设置说明(_额外行动按钮说明(cause))
 			切换按钮.connect("点击", func(_技能号: int) -> void:
-				_发送行动(GConst.ActionType.ChooseExtraAction, 0, [], [], [cause]))
+				_本地选择额外攻击(cause, 切换牌, 切换目标))
+			_额外攻击切换项.append({
+				"按钮": 切换按钮, "cause": cause,
+				"card_ids": 切换牌, "dst_ids": 切换目标,
+			})
 			continue
 		if args.is_empty():
 			continue
@@ -3005,6 +3033,18 @@ func _构建技能按钮(cmds: Array) -> void:
 	if not _行动禁特殊 and GConst.放行动作(GConst.ActionType.Special, _行动允许):
 		_摆特殊行动入口()
 	_排技能栏.call_deferred()
+
+
+## 额外攻击阶段点另一份额外攻击：只切换本地高亮与白名单，不提交、不重发询问（画面不闪、顺序不变）
+func _本地选择额外攻击(cause: int, 牌白: Array, 目标白: Array) -> void:
+	_当前额外攻击选择 = cause
+	_额外手牌白名单_选择 = 牌白.duplicate()
+	_额外目标白名单_选择 = 目标白.duplicate()
+	for 项: Dictionary in _额外攻击切换项:
+		var b: Variant = 项.get("按钮")
+		if is_instance_valid(b):
+			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
+	_刷新交互()
 
 
 ## 造一颗技能按钮挂进技能区（只 Instantiate + 设置技能 + 接悬停说明，点击回调由调用方做）
@@ -3235,8 +3275,6 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		return
 	# 点中选项后先收起悬停卡面，避免它挡着选项按钮 / 确认栏
 	_隐藏技能说明()
-	# 改选响应技能＝取消之前选中的额外攻击快捷项
-	_清除额外攻击响应选择()
 	_二级选中 = 序号
 	_已选参数 = (_二级选项[序号]["参数"] as Array).duplicate()
 	for i: int in range(_二级选项.size()):
@@ -3998,6 +4036,8 @@ func _符合选牌槽位(card_id: int) -> bool:
 ## 本次行动询问里「普通行动」的手牌白名单（F2：额外行动 / 出牌限制）。
 ## 空表＝不限制；服务端用 [GConst.手牌白名单_全禁]（-1）表示本次一张手牌都不给点。
 func _行动手牌白名单() -> Array:
+	if _当前额外攻击选择 > 0 and not _额外攻击切换项.is_empty():
+		return _额外手牌白名单_选择
 	if _行动命令.is_empty():
 		return []
 	return (_行动命令[0] as Dictionary).get("card_ids", [])
@@ -4006,6 +4046,8 @@ func _行动手牌白名单() -> Array:
 ## 本次行动询问里「普通行动」的目标白名单（F2：如 10704 只能攻击手牌更多的对手、10804 只能打指定目标）。
 ## 空表＝不限制；服务端用 [GConst.目标白名单_无]（-1）表示本次一个目标都没有。
 func _行动目标白名单() -> Array:
+	if _当前额外攻击选择 > 0 and not _额外攻击切换项.is_empty():
+		return _额外目标白名单_选择
 	if _行动命令.is_empty():
 		return []
 	return (_行动命令[0] as Dictionary).get("dst_ids", [])
@@ -4351,10 +4393,6 @@ func _刷新攒应战提示() -> void:
 
 # ---------------- 确定 / 取消 / 放弃 ----------------
 func _on_ok() -> void:
-	# 攻击结束响应里选中的额外攻击快捷项：确定＝放弃剩余响应，直接进入该额外攻击
-	if _额外攻击响应选择 >= 0:
-		_发送应答(GConst.RespondType.ChooseExtraAction, [], [], [_额外攻击响应选择])
-		return
 	# 攒应战（式神咒束 / 阴阳转换）：应战牌和反击目标都在本地选好后，
 	# 把「技能号 + 效果 + 牌 + 目标」一次性提交；3301 的参数前面多一个「发动 3301」。
 	if _攒应战应答号 > 0:
@@ -4449,7 +4487,10 @@ func _on_ok() -> void:
 			if _sel_players.is_empty():
 				_指令提示("攻击请点敌方头像出手（选好攻击牌后直接点要打的人）")
 				return
-			_发送行动(GConst.ActionType.Attack, 0, _sel_players, _sel_cards, [])
+			var 额外参数: Array = []
+			if _当前额外攻击选择 > 0 and not _额外攻击切换项.is_empty():
+				额外参数 = [_当前额外攻击选择]
+			_发送行动(GConst.ActionType.Attack, 0, _sel_players, _sel_cards, 额外参数)
 		else:
 			var dst: Array = _sel_players
 			if dst.is_empty():
@@ -8108,9 +8149,6 @@ func _更新按键() -> void:
 
 
 func _确定不可用() -> bool:
-	# 攻击结束响应里选中的额外攻击快捷项：只要选中就允许确定（确定＝放弃响应进入它）
-	if _额外攻击响应选择 >= 0:
-		return false
 	# 额外行动提示：点按钮只选中，选中后才允许确定
 	if _额外行动单选 >= 0 and not _是技能询问:
 		return not _额外行动可选
@@ -8332,6 +8370,10 @@ func _清空技能按钮() -> void:
 	_清空二级选项()
 	_额外行动按钮表.clear()
 	_额外攻击响应按钮.clear()
+	_额外攻击切换项.clear()
+	_当前额外攻击选择 = 0
+	_额外手牌白名单_选择.clear()
+	_额外目标白名单_选择.clear()
 	for b: Node in _技能按钮:
 		if is_instance_valid(b):
 			b.queue_free()
