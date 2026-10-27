@@ -416,6 +416,11 @@ var _是技能询问: bool = false
 ## 额外行动询问里只有一份可选额外行动时，记下它的 cause：不再摆「选项」按钮，
 ## 直接问「是否发动？」，点「确定」发动 / 「取消」跳过（-1 表示没有，仍走多选项按钮）
 var _额外行动单选: int = -1
+## 额外行动提示里的按钮（按钮, cause）：点按钮只选中，可切换，按「确定」才进入
+var _额外行动按钮表: Array = []
+## 攻击结束响应里的额外攻击快捷按钮（按钮, cause）：点按钮只选中，可切换，按「确定」才放弃响应进入
+var _额外攻击响应选择: int = -1
+var _额外攻击响应按钮: Array = []
 ## 触发本次额外行动的 cause（如苍白之月 3507）：提示据此写成「获得额外【无法应战】攻击行动」
 var _额外行动来源: int = 0
 ## 上面那份额外行动此刻能不能发动（引擎在询问的 dst_ids 里下发「可发动」列表）：
@@ -2376,14 +2381,16 @@ func _进入技能询问() -> void:
 		_进入二级技能栏(_skill_ask_id, null, [])
 	# 攻击结束响应期间：已获得但还没用的攻击行动摆成红色快捷按钮，点一个就放弃剩余响应、直接进入它
 	var 额外攻击: Array = _pending.get("extra_attack_causes", [])
+	_额外攻击响应选择 = -1
+	_额外攻击响应按钮.clear()
 	if not 额外攻击.is_empty():
 		for cause: Variant in 额外攻击:
 			var c: int = int(cause)
 			var 额外按钮: 技能按钮 = _新技能按钮(0)
 			额外按钮.设置选项(_额外行动按钮文本(c), 额外攻击按钮色, 0)
 			额外按钮.设置说明(_额外行动按钮说明(c))
-			额外按钮.connect("点击", func(_技能号: int) -> void:
-				_发送应答(GConst.RespondType.ChooseExtraAction, [], [], [c]))
+			额外按钮.connect("点击", func(_技能号: int) -> void: _选中额外攻击响应(c))
+			_额外攻击响应按钮.append({"按钮": 额外按钮, "cause": c})
 		_排技能栏.call_deferred()
 	# 技能询问同时写一行日志：它只挂在提示条上，错过就会一直等（看着像「点了确定没反应」）
 	# 被问的人看到的应是「要我做什么」：服务端下发了技能表「提示」列里对应的那一条
@@ -2616,6 +2623,43 @@ func _额外行动按钮说明(cause: int) -> String:
 	return 说明 if not 说明.is_empty() else "额外行动"
 
 
+## 额外行动提示里点一个按钮：只选中（可切换），按「确定」才真正进入
+func _选中额外行动(cause: int) -> void:
+	_额外行动单选 = cause
+	_额外行动可选 = true
+	for 项: Dictionary in _额外行动按钮表:
+		var b: Variant = 项.get("按钮")
+		if is_instance_valid(b):
+			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
+	_更新按键()
+
+
+## 攻击结束响应里点额外攻击快捷按钮：只选中（可切换），按「确定」才放弃响应进入
+func _选中额外攻击响应(cause: int) -> void:
+	_额外攻击响应选择 = cause
+	for 项: Dictionary in _额外攻击响应按钮:
+		var b: Variant = 项.get("按钮")
+		if is_instance_valid(b):
+			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
+	# 额外攻击和响应技能二选一：取消技能选项的选中，但保留全部按钮可见
+	_二级选中 = -1
+	_已选参数.clear()
+	for 项: Dictionary in _二级选项:
+		var 技能钮: Variant = 项.get("按钮")
+		if is_instance_valid(技能钮):
+			(技能钮 as 技能按钮).设置选中(false)
+	_指令提示("确定＝进入所选额外攻击行动")
+	_刷新交互()
+
+
+func _清除额外攻击响应选择() -> void:
+	_额外攻击响应选择 = -1
+	for 项: Dictionary in _额外攻击响应按钮:
+		var b: Variant = 项.get("按钮")
+		if is_instance_valid(b):
+			(b as 技能按钮).设置选中(false)
+
+
 ## 额外行动询问：把每个可选 cause 变成一个按钮，点哪个就直接进入哪个额外行动
 func _进入额外行动(causes: Array, 可发动: Array) -> void:
 	_mode = 3
@@ -2624,6 +2668,7 @@ func _进入额外行动(causes: Array, 可发动: Array) -> void:
 	_额外行动单选 = -1
 	_额外行动可选 = true
 	_额外行动用二级栏 = false
+	_额外行动按钮表.clear()
 	_pending = {"args": causes}
 	_pending_type = GConst.Msg.Respond
 	_sel_cards.clear()
@@ -2637,7 +2682,8 @@ func _进入额外行动(causes: Array, 可发动: Array) -> void:
 			额外攻击按钮色 if 攻击 else GConst.skill_type_color(c), 0)
 		按钮.设置说明(_额外行动按钮说明(c))
 		按钮.设置选项可用(可发动.has(c))
-		按钮.connect("点击", func(_技能号: int) -> void: _选择额外行动(c))
+		按钮.connect("点击", func(_技能号: int) -> void: _选中额外行动(c))
+		_额外行动按钮表.append({"按钮": 按钮, "cause": c})
 	if causes.size() == 1:
 		# 单份：提示条写技能效果（保留原行为），点击按钮直接进入
 		var 唯一: int = int(causes[0])
@@ -3178,6 +3224,8 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		return
 	# 点中选项后先收起悬停卡面，避免它挡着选项按钮 / 确认栏
 	_隐藏技能说明()
+	# 改选响应技能＝取消之前选中的额外攻击快捷项
+	_清除额外攻击响应选择()
 	_二级选中 = 序号
 	_已选参数 = (_二级选项[序号]["参数"] as Array).duplicate()
 	for i: int in range(_二级选项.size()):
@@ -4292,6 +4340,10 @@ func _刷新攒应战提示() -> void:
 
 # ---------------- 确定 / 取消 / 放弃 ----------------
 func _on_ok() -> void:
+	# 攻击结束响应里选中的额外攻击快捷项：确定＝放弃剩余响应，直接进入该额外攻击
+	if _额外攻击响应选择 >= 0:
+		_发送应答(GConst.RespondType.ChooseExtraAction, [], [], [_额外攻击响应选择])
+		return
 	# 攒应战（式神咒束 / 阴阳转换）：应战牌和反击目标都在本地选好后，
 	# 把「技能号 + 效果 + 牌 + 目标」一次性提交；3301 的参数前面多一个「发动 3301」。
 	if _攒应战应答号 > 0:
@@ -8045,6 +8097,12 @@ func _更新按键() -> void:
 
 
 func _确定不可用() -> bool:
+	# 攻击结束响应里选中的额外攻击快捷项：只要选中就允许确定（确定＝放弃响应进入它）
+	if _额外攻击响应选择 >= 0:
+		return false
+	# 额外行动提示：点按钮只选中，选中后才允许确定
+	if _额外行动单选 >= 0 and not _是技能询问:
+		return not _额外行动可选
 	# 本地二级栏选项步骤（冒险者天堂选提炼方式 / 特殊行动选星石）：选好一项才让点「确定」
 	# （冒险者天堂最后一步走 mode 3 的分配通道，确定＝分满才可用，见下面 _分配配置 那一段）
 	if _本地选项阶段 > 0:
@@ -8261,6 +8319,8 @@ func _标记选中技能(按钮: Node) -> void:
 func _清空技能按钮() -> void:
 	# 二级技能栏的选项按钮也登记在 _技能按钮 里，先按二级栏那本账把它们摘掉
 	_清空二级选项()
+	_额外行动按钮表.clear()
+	_额外攻击响应按钮.clear()
 	for b: Node in _技能按钮:
 		if is_instance_valid(b):
 			b.queue_free()
