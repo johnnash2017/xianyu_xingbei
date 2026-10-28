@@ -2709,7 +2709,19 @@ func _选中额外行动(_技能号: int, cause: int) -> void:
 	_更新按键()
 
 
-## 攻击结束响应里点额外攻击快捷按钮：只选中（可切换），按「确定」才放弃响应进入
+## 额外行动的统一提示：和正常额外行动阶段一样，优先用额外行动特性文案，
+## 没有就按行动种类说「获得额外攻击行动」。
+func _额外行动获得提示(cause: int, 行动种类: int = GConst.ActionType.Attack) -> String:
+	var 特性: String = str(GConst.额外行动提示.get(cause, ""))
+	if not 特性.is_empty():
+		return 特性
+	match 行动种类:
+		GConst.ActionType.Attack, GConst.ActionType.AttackSkill:
+			return "获得额外攻击行动"
+		GConst.ActionType.Magic, GConst.ActionType.MagicSkill:
+			return "获得额外法术行动"
+		_:
+			return "获得额外行动"
 func _选中额外攻击响应(_技能号: int, cause: int, 牌白: Array = [], 目标白: Array = []) -> void:
 	_额外攻击响应选择 = cause
 	_额外攻击响应_牌白 = 牌白.duplicate()
@@ -2734,7 +2746,7 @@ func _选中额外攻击响应(_技能号: int, cause: int, 牌白: Array = [], 
 		var b: Variant = 项.get("按钮")
 		if is_instance_valid(b):
 			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
-	_指令提示("点击手牌 + 敌方头像＝发起该额外攻击")
+	_指令提示(_额外行动获得提示(cause))
 	_刷新交互()
 
 
