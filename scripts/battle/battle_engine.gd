@@ -1231,7 +1231,6 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 	if not 有:
 		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
-	首选额外行动 = cause
 	var 牌表: Array = data.get("card_ids", [])
 	var 目标表: Array = data.get("dst_ids", [])
 	var 攻击牌: int = int(牌表[0]) if not 牌表.is_empty() \
@@ -1243,9 +1242,18 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
 	var 卡: GCard = Data.get_card(攻击牌)
-	if 卡 == null or not 卡.is_attack() or not cur.has_hand_card(攻击牌) \
-			or cur.v_attack(攻击牌, 攻击目标, players) != GConst.GE_SUCCESS \
-			or 校验额外行动限制(cur, GConst.ActionType.Attack, [攻击牌], [攻击目标]) != GConst.GE_SUCCESS:
+	var 原额外: bool = 行动额外
+	var 原来源: int = 行动额外来源
+	# 校验必须按「选中的这份额外行动」算，不能按当前正在行动的那份算。
+	行动额外 = true
+	行动额外来源 = cause
+	var 校验通过: bool = 卡 != null and 卡.is_attack() and cur.has_hand_card(攻击牌) \
+		and cur.v_attack(攻击牌, 攻击目标, players) == GConst.GE_SUCCESS \
+		and 校验额外行动限制(cur, GConst.ActionType.Attack, [攻击牌], [攻击目标],
+			1, cause) == GConst.GE_SUCCESS
+	行动额外 = 原额外
+	行动额外来源 = 原来源
+	if not 校验通过:
 		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
 	首选额外行动 = cause
