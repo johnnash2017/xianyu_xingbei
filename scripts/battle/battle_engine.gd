@@ -170,6 +170,13 @@ var _pending_is_skill: bool = false
 ## 攻击结束响应里被合并进「选项」的额外行动（目前是迅捷赐福）：玩家选它时由引擎直接
 ## 走额外行动确认流程，不交给角色当成普通技能选项处理。
 var _额外确认选项: Array = []
+## 本次攻击结束响应里已经确认过迅捷赐福：之后重问剩余选项时不再把 1601 塞回去
+var _迅捷赐福已确认: bool = false
+
+
+## 迅捷赐福是否已经在本次攻击结束响应里确认过
+func 迅捷赐福已确认() -> bool:
+	return _迅捷赐福已确认
 ## 本次技能询问「能不能取消」「要选几名目标」「合法目标白名单」：超时兜底要据此判断
 ## 「不许回取消」以及「从谁里面随机挑目标」（如【念弹】：问之前就已记上 +1【斗气】，不能白拿）
 var _pending_skill_can_cancel: bool = true
@@ -962,12 +969,19 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 		var 选项参数: Array = data.get("args", [])
 		var 选项号: int = int(选项参数[0]) if not 选项参数.is_empty() else 0
 		if _额外确认选项.has(选项号):
-			_选择额外攻击响应(pid, {
-				"args": [选项号], "card_ids": [], "dst_ids": [],
-			})
+			if 选项号 == GConst.技能_迅捷赐福:
+				# 只确认赐福：移除赐福、把 1601 额外行动标成 direct，
+				# 然后回到当前攻击结束钩子继续问剩下的剑影 / 风怒追击，不跳过响应阶段。
+				_确认迅捷赐福(pid)
+				_迅捷赐福已确认 = true
+				_额外确认选项.clear()
+				_await_id = -1
+				_has_reply = false
+				wait_deadline_ms = 0
+				wait_total_ms = 0
+				run()
+				return
 			_额外确认选项.clear()
-			return
-		_额外确认选项.clear()
 	# 分步应答（如【剑气斩】先在弹窗选好「移除几点剑气」）：只记下这一步，不算本次询问的最终回复，
 	# 继续等玩家选目标 / 目标超时兜底时再拿它用
 	if bool(data.get("partial", false)):
@@ -981,6 +995,26 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	# 等待已结束：先广播一次，客户端会收起等待进度条；随后 run() 若又进入等待会再广播
 	_broadcast_game()
 	run()
+
+
+## 确认迅捷赐福：移除持有者面前的赐福，并把 1601 额外行动标成 direct，
+## 让它和 103/105 一样在响应阶段结束后再进入，不打断当前响应询问。
+func _确认迅捷赐福(pid: int) -> void:
+	var cur: BattlePlayer = players.get(pid)
+	if cur == null:
+		return
+	for pid2: int in order:
+		var p0: BattlePlayer = players.get(pid2)
+		if p0 != null and p0.role != null:
+			p0.role.p_additional_action({"player": pid, "cause": GConst.技能_迅捷赐福})
+	var 有: bool = false
+	for a: Dictionary in cur.additional_actions:
+		if int(a.get("cause", 0)) == GConst.技能_迅捷赐福:
+			a["direct"] = true
+			有 = true
+			break
+	if not 有:
+		cur.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福, true)
 
 
 ## 攻击结束响应里点了「额外攻击行动」快捷按钮：记录首选，跳过当前响应钩子剩余角色，
@@ -1548,7 +1582,13 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 而不是只挂成红色快捷按钮。选中后由引擎走额外行动确认（移除赐福、获得攻击行动）。
 	var 用选项: Array = options.duplicate(true)
 	_额外确认选项.clear()
-	if 允许额外攻击快捷:
+	if _迅捷赐福已确认:
+		var 过滤后: Array = []
+		for o: Dictionary in 用选项:
+			if int(o.get("value", 0)) != GConst.技能_迅捷赐福:
+				过滤后.append(o)
+		用选项 = 过滤后
+	if 允许额外攻击快捷 and not _迅捷赐福已确认:
 		var 问者: BattlePlayer = players.get(pid)
 		if 问者 != null:
 			# 迅捷赐福的「授予额外行动」可能在另一个角色的 p_after_attack 里、晚于本角色询问；
@@ -2645,6 +2685,7 @@ class SCheckTurnStart:
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
 		cur.clear_additional_action()
+		e._迅捷赐福已确认 = false
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
 		cur.reset_action_counts()
 		# 「启动」技能每回合只能发动一个：新回合开始清零

@@ -211,8 +211,8 @@ func _攻击结束额外选项() -> Array:
 	if not used_jian_ying and not _contains_action(JIAN_YING) and player.get_energy() > 0:
 		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING})
 	# 迅捷赐福是独立挂在身上的额外行动：103/105 都选完后仍要留在同一轮询问里，
-	# 不能等它们入队就提前结束、直接进入攻击阶段。
-	if _contains_action(GConst.技能_迅捷赐福):
+	# 不能等它们入队就提前结束、直接进入攻击阶段。已经确认过就不再重复问。
+	if not engine.迅捷赐福已确认() and _contains_action(GConst.技能_迅捷赐福):
 		out.append({"value": GConst.技能_迅捷赐福, "label": "迅捷赐福",
 			"skill_id": GConst.技能_迅捷赐福})
 	return out
