@@ -159,6 +159,11 @@ func p_after_attack(ctx: Dictionary) -> int:
 ## 交给行动聚合器的技能选项：用过、已在队列里、能量不够的不出现。
 func action_end_options(_ctx: Dictionary) -> Array:
 	var out: Array = []
+	# 正在打 103 / 105 自己这一刀时，不能在自己的攻击结束响应里再次摆出同一技能。
+	# used 标记在 p_action_end 才落，聚合器跑在它之前，所以按当前额外行动来源判断。
+	if engine.行动额外 and (int(engine.行动额外来源) == LIAN_XU_JI \
+			or int(engine.行动额外来源) == JIAN_YING):
+		return out
 	if not used_lian_xu_ji and not _contains_action(LIAN_XU_JI):
 		out.append({"value": LIAN_XU_JI, "label": "风怒追击", "skill_id": LIAN_XU_JI,
 			"enabled": true})

@@ -1173,6 +1173,26 @@ func 跑() -> void:
 			% [str(引擎._await_id), str(引擎._await_kind), 引擎.首选额外行动,
 			引擎.行动额外来源, str(引擎.行动额外)])
 
+	# ---- 场景 38：正在打 901 / 103 / 105 自己那一刀时，不在自己的攻击结束响应里再次出现 ----
+	_重置战斗()
+	var 自查魔剑类 = preload("res://scripts/battle/roles/role_mojian.gd")
+	var 自查魔剑: BattleRole = 自查魔剑类.new()
+	自查魔剑.setup(玩家1, 引擎)
+	引擎.current_id = 1
+	引擎.行动额外 = true
+	引擎.行动额外来源 = 901
+	检(自查魔剑.action_end_options({}).is_empty(),
+		"修罗连斩自己的攻击结束时不应再次提供修罗连斩")
+	_重置战斗()
+	var 自查剑圣类 = preload("res://scripts/battle/roles/role_jiansheng.gd")
+	var 自查剑圣: BattleRole = 自查剑圣类.new()
+	自查剑圣.setup(玩家1, 引擎)
+	引擎.current_id = 1
+	引擎.行动额外 = true
+	引擎.行动额外来源 = 103
+	检(自查剑圣.action_end_options({}).is_empty(),
+		"风怒追击自己的攻击结束时不应再次提供风怒追击")
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

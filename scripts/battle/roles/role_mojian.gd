@@ -321,6 +321,10 @@ func p_after_attack(_ctx: Dictionary) -> int:
 func action_end_options(_ctx: Dictionary) -> Array:
 	if used_xiu_luo_lian_zhan or _contains_action(XIU_LUO_LIAN_ZHAN):
 		return []
+	# 正在打「修罗连斩」自己这一刀时，不能在自己的攻击结束响应里再给一次；
+	# used 要等 p_action_end 才置位，这里按当前额外行动来源判断。
+	if engine.行动额外 and int(engine.行动额外来源) == XIU_LUO_LIAN_ZHAN:
+		return []
 	return [{"value": XIU_LUO_LIAN_ZHAN, "label": GConst.skill_name(XIU_LUO_LIAN_ZHAN),
 		"skill_id": XIU_LUO_LIAN_ZHAN, "enabled": true}]
 
