@@ -2622,7 +2622,8 @@ const 额外攻击按钮色: Color = Color("c0392b")
 ## 按钮代表的是赐福本身，不是攻击行动，用技能类型默认色；其余攻击额外行动用红色。
 func _额外攻击按钮底色(cause: int, 攻击: bool = true) -> Color:
 	if cause == GConst.技能_迅捷赐福:
-		return GConst.skill_type_color(cause)
+		# 迅捷赐福施加时是法术，但贴到目标身上后是响应；给出来的额外行动按钮按响应紫色显示
+		return GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
 	return 额外攻击按钮色 if 攻击 else GConst.skill_type_color(cause)
 
 
