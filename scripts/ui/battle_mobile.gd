@@ -2407,7 +2407,8 @@ func _进入技能询问() -> void:
 			var 目标白: Array = (额外目标表[i] as Dictionary).get("ids", []) if i < 额外目标表.size() else []
 			var 系别: int = int(额外系别表[i]) if i < 额外系别表.size() else 0
 			var 额外按钮: 技能按钮 = _新技能按钮(0)
-			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack, 系别), 额外攻击按钮色, 0)
+			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack, 系别),
+				_额外攻击按钮底色(c), 0)
 			额外按钮.设置说明(_额外行动按钮说明(c))
 			额外按钮.connect("点击", _选中额外攻击响应.bind(c, 牌白, 目标白))
 			_额外攻击响应按钮.append({"按钮": 额外按钮, "cause": c})
@@ -2615,6 +2616,14 @@ func _换选项后重校验() -> void:
 
 ## 额外攻击行动按钮的红底（与普通技能/参数选项区分）
 const 额外攻击按钮色: Color = Color("c0392b")
+
+
+## 额外攻击行动按钮底色：迅捷赐福这种「赐福/基础效果」给出来的行动，
+## 按钮代表的是赐福本身，不是攻击行动，用技能类型默认色；其余攻击额外行动用红色。
+func _额外攻击按钮底色(cause: int, 攻击: bool = true) -> Color:
+	if cause == GConst.技能_迅捷赐福:
+		return GConst.skill_type_color(cause)
+	return 额外攻击按钮色 if 攻击 else GConst.skill_type_color(cause)
 
 
 ## 这份额外行动是不是攻击行动：优先看服务端下发的 allow_action，没给才退回「额外行动提示」文字
@@ -3018,7 +3027,7 @@ func _构建技能按钮(cmds: Array) -> void:
 		var 当前按钮: 技能按钮 = _新技能按钮(0)
 		当前按钮.设置选项(_额外行动按钮文本(当前来源, 当前类型,
 			int(首位.get("extra_element", 0))),
-			额外攻击按钮色 if 当前攻击 else GConst.skill_type_color(当前来源), 0)
+			_额外攻击按钮底色(当前来源, 当前攻击), 0)
 		当前按钮.设置说明(_额外行动按钮说明(当前来源))
 		当前按钮.设置选中(true)
 		当前按钮.connect("点击", _本地选择额外攻击.bind(当前来源, 当前牌, 当前目标))
@@ -3039,7 +3048,7 @@ func _构建技能按钮(cmds: Array) -> void:
 			var 切换目标: Array = c.get("dst_ids", [])
 			var 切换按钮: 技能按钮 = _新技能按钮(0)
 			切换按钮.设置选项(_额外行动按钮文本(cause, GConst.ActionType.Attack,
-				int(c.get("extra_element", 0))), 额外攻击按钮色, 0)
+				int(c.get("extra_element", 0))), _额外攻击按钮底色(cause), 0)
 			切换按钮.设置说明(_额外行动按钮说明(cause))
 			切换按钮.connect("点击", _本地选择额外攻击.bind(cause, 切换牌, 切换目标))
 			_额外攻击切换项.append({
