@@ -3065,12 +3065,14 @@ class SNextPlayer:
 ## 额外行动询问
 class SAdditionalAction:
 	func handle(e: BattleEngine) -> int:
-		# 行动结束响应点了取消：本回合不再处理任何额外行动，直接收尾
+		var cur: BattlePlayer = e.p(e.current_id)
+		# 行动结束响应点了取消：本回合不再处理额外攻击行动；
+		# 若队列里还有法术/特殊类额外行动，仍按原逻辑处理。
 		if e._跳过额外攻击行动:
 			e._清除额外攻击行动(e.current_id)
-			e.push(STurnEnd.new())
-			return BattleEngine.CONTINUE
-		var cur: BattlePlayer = e.p(e.current_id)
+			if cur == null or not cur.contains_action():
+				e.push(STurnEnd.new())
+				return BattleEngine.CONTINUE
 		if cur == null or not cur.contains_action():
 			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
