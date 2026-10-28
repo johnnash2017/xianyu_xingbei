@@ -183,7 +183,6 @@ var _行动聚合流程: bool = false
 ## 已下发过的询问次数（测试用：确认取消后没有再次询问）
 var _询问计数: int = 0
 ## 玩家在这个响应里点了取消：本回合后面的额外攻击行动全部跳过，不再二次询问
-var _跳过额外攻击行动: bool = false
 ## 本次攻击结束响应里已经确认过的基础效果额外行动（技能号 -> true）
 var _基础效果额外行动已确认: Dictionary = {}
 
@@ -1155,7 +1154,9 @@ func _清除额外攻击行动(pid: int) -> void:
 ## 行动结束响应被取消：这是行动结束策略，不属于聚合器。
 ## 统一在这里清队列、关闭聚合等待、标记本回合不再询问基础效果额外行动。
 func _处理行动结束取消(pid: int) -> void:
-	_跳过额外攻击行动 = true
+	var 取消者: BattlePlayer = players.get(pid)
+	if 取消者 != null:
+		取消者.跳过额外攻击行动 = true
 	_行动聚合流程 = false
 	_清除额外攻击行动(pid)
 	for cause: int in _本次已询问基础效果额外行动:
@@ -2893,8 +2894,8 @@ class SCheckTurnStart:
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
 		cur.clear_additional_action()
+		cur.跳过额外攻击行动 = false
 		e._基础效果额外行动已确认.clear()
-		e._跳过额外攻击行动 = false
 		e._行动聚合流程 = false
 		e._已拒绝基础效果额外行动.clear()
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
@@ -3273,7 +3274,7 @@ class S行动聚合器:
 		if e.首选额外行动 >= 0:
 			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
-		if e._跳过额外攻击行动:
+		if cur.跳过额外攻击行动:
 			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		# 角色技能的多步结算：上次已经分派，等待本状态再次被唤醒
@@ -3344,7 +3345,7 @@ class SAdditionalAction:
 		var cur: BattlePlayer = e.p(e.current_id)
 		# 行动结束响应点了取消：本回合不再处理额外攻击行动；
 		# 若队列里还有法术/特殊类额外行动，仍按原逻辑处理。
-		if e._跳过额外攻击行动:
+		if cur.跳过额外攻击行动:
 			e._清除额外攻击行动(e.current_id)
 			if cur == null or not cur.contains_action():
 				e.push(STurnEnd.new())
