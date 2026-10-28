@@ -1105,6 +1105,47 @@ func 跑() -> void:
 		"封印师从 406 切到 1601 后提交攻击应进入应战，实际等待 %s/%s"
 		% [str(引擎._await_id), str(引擎._await_kind)])
 
+	# ---- 场景 36：封印师真实法术牌结束后，406 + 1601 的攻击提交 ----
+	_重置战斗()
+	var 封印三: BattleRole = 封印类.new()
+	封印三.setup(玩家1, 引擎)
+	玩家1.role = 封印三
+	玩家1.hand_cards = [攻击牌甲.id]
+	var 封印法术: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.is_magic() and not c.is_attack():
+			封印法术 = c
+			break
+	var 封印赐福: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			封印赐福 = c
+			break
+	if 封印法术 != null and 封印赐福 != null:
+		玩家1.hand_cards.append(封印法术.id)
+		检(引擎.add_basic_effect(1, 封印赐福.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"封印师测试的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎.resolve_action(GConst.ActionType.Magic, {
+			"card_ids": [封印法术.id], "dst_ids": [2], "args": [],
+		})
+		引擎.run()
+		# 法术结束后应同时有 406 与 1601；选 1601 后进入额外攻击
+		if not 引擎._最后询问.get(1, {}).get("commands", []).is_empty():
+			引擎.on_message(1, GConst.Msg.Respond, {
+				"respond_id": GConst.技能_迅捷赐福, "src_id": 1,
+				"args": [GConst.技能_迅捷赐福], "card_ids": [], "dst_ids": [],
+			})
+			引擎.run()
+		if 引擎._await_kind == GConst.Msg.Action:
+			引擎.on_message(1, GConst.Msg.Action, {
+				"action_type": GConst.ActionType.Attack,
+				"card_ids": [攻击牌甲.id], "dst_ids": [3], "args": [406],
+			})
+		检(引擎._await_kind == GConst.Msg.Respond,
+			"封印师真实法术后 406 的攻击应进入应战，实际等待 %s/%s"
+			% [str(引擎._await_id), str(引擎._await_kind)])
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()
