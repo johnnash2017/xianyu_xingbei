@@ -154,9 +154,12 @@ func 跑() -> void:
 	猎.set_crystal(1)
 	引擎._states.clear()
 	引擎._清空等待()
+	引擎.current_id = 1
 	角色._touxi_step = 0
 	角色._used_touxi = false
-	检(角色.p_after_attack({"player": 1, "dst": 2}) == BattleRole.WAIT,
+	引擎._push_action_end_hooks("p_after_attack", {"player": 1, "dst": 2}, false, 0)
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
 		"满足 1 水晶 + 2 魔力瓶 + 法术牌时，偷袭应弹出询问")
 	var 偷袭问: Dictionary = {}
 	for r: Dictionary in 引擎._最后询问.get(1, {}).get("commands", []):
@@ -174,9 +177,12 @@ func 跑() -> void:
 	猎.set_gem(1)
 	引擎._states.clear()
 	引擎._清空等待()
+	引擎.current_id = 1
 	角色._touxi_step = 0
 	角色._used_touxi = false
-	检(角色.p_after_attack({"player": 1, "dst": 2}) == BattleRole.WAIT,
+	引擎._push_action_end_hooks("p_after_attack", {"player": 1, "dst": 2}, false, 0)
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
 		"只有宝石没有水晶时，宝石应可作为水晶的替代支付偷袭")
 
 	# 法术剥离：先问发动者，确认后目标弃 1 张牌成瓶

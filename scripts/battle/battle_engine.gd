@@ -3201,7 +3201,12 @@ class S行动聚合器:
 				e._行动聚合中 = true
 				e._行动聚合询问中 = true
 				var 首: int = int(待问[0].get("value", 0))
-				e.ask_skill(pid, 首, 0, 0, GConst.CardSource.Hand,
+				var 选牌来源: int = GConst.CardSource.Hand
+				for o: Dictionary in 待问:
+					if int(o.get("need_card", 0)) > 0 and o.has("card_source"):
+						选牌来源 = int(o.get("card_source", 选牌来源))
+						break
+				e.ask_skill(pid, 首, 0, 0, 选牌来源,
 					待问, 0, "", [], true,
 					"行动结束时可以发动以下行动，选择一项（发动后还能发动另一项）",
 					[], 0, 0, false, [], true, -1, 0, true)

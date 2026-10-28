@@ -314,114 +314,106 @@ func p_timeline_6(ctx: Dictionary) -> int:
 #   · 若这 2 张都是攻击牌 → 额外 +1 攻击行动
 #   · 若这 2 张同系 → 对原攻击目标追加 1 点法术伤害
 # ============================================================
-## 偷袭作为普通技能选项摆出；引擎会把迅捷赐福合并进同一个列表。
-## 牌数挂在该选项上（2 张盖牌），这样迅捷赐福选项不需要先选 2 张盖牌。
-func _偷袭询问() -> void:
-	engine.ask_skill(player.id, TOU_XI, 0, 0, GConst.CardSource.Cover,
-		[{"value": TOU_XI, "label": GConst.skill_name(TOU_XI), "skill_id": TOU_XI,
-			"need_card": 2}],
-		0, "", [], true, "攻击结束时可以发动偷袭", [],
-		0, 0, false, [], true, -1, 0, true)
+func p_after_attack(_ctx: Dictionary) -> int:
+	return SUCCESS
 
 
-func p_after_attack(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	if _used_touxi and _touxi_step != 2:
-		return SUCCESS
-	if _touxi_step == 0 and (player.get_energy() <= 0 or player.cover_cards.size() < 2):
-		return SUCCESS
+func action_end_options(_ctx: Dictionary) -> Array:
+	if _touxi_step != 0 or _used_touxi:
+		return []
+	if player.get_energy() <= 0 or player.cover_cards.size() < 2:
+		return []
+	return [{"value": TOU_XI, "label": GConst.skill_name(TOU_XI), "skill_id": TOU_XI,
+		"need_card": 2, "card_source": GConst.CardSource.Cover}]
+
+
+func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -> int:
+	if cause != TOU_XI:
+		return resolve_queued_extra_action(cause)
 	if _touxi_step == 0:
 		_touxi_step = 1
 		_touxi_target = int(ctx.get("dst", _last_attack_dst))
-		if not engine.has_reply():
-			_偷袭询问()
-			return WAIT
-	if _touxi_step == 1:
-		if not engine.has_reply():
-			_偷袭询问()
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var chosen: Array = r.get("card_ids", [])
-		var bottles: Array[int] = []
-		for c: Variant in chosen:
-			var cid: int = int(c)
-			if player.cover_cards.has(cid) and not bottles.has(cid):
-				bottles.append(cid)
-			if bottles.size() >= 2:
-				break
-		if bottles.size() < 2:
-			_touxi_step = 0
-			_touxi_target = -1
-			return SUCCESS
-		# 支付 1 点能量：统一走 get_energy / remove_energy，先扣水晶、再扣宝石。
-		player.remove_energy(1)
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": bottles, "is_real": true,
-		})
-		engine.remove_cover(player.id, bottles, player.id, TOU_XI)
-		engine.to_discard(bottles)
-		_used_touxi = true
-		_touxi_step = 2
-		# 以移除并展示的这 2 张牌本身结算（不是看当前手牌）
-		var 法术数: int = 0
-		var 攻击数: int = 0
-		var 系别: int = -1
-		var 同系: bool = true
-		for cid2: int in bottles:
-			var card: GCard = Data.get_card(cid2)
-			if card == null:
-				同系 = false
-				continue
-			if card.is_magic():
-				法术数 += 1
-			if card.is_attack():
-				攻击数 += 1
-			if 系别 < 0:
-				系别 = card.element_enum()
-			elif card.element_enum() != 系别:
-				同系 = false
-		_touxi_x = mini(法术数, enemy_ids().size())
-		_touxi_two_attack = 攻击数 >= 2
-		_touxi_same = 同系 and bottles.size() == 2
-		if _touxi_x > 0:
-			if not engine.has_reply():
-				var 候选: Array[int] = enemy_ids()
-				# 序号 1：对 X 名目标对手造成 1 点法术伤害。
-				询问(player.id, TOU_XI, 0, _touxi_x, GConst.CardSource.Hand, [], 0,
-					"", [], true, 1, -1, 候选, _touxi_x)
-				return WAIT
+		return _touxi_process_cards(reply)
 	if _touxi_step == 2:
-		var 目标: Array = []
-		if _touxi_x > 0:
-			if not engine.has_reply():
-				return WAIT
-			var r2: Dictionary = take_skill_reply_full()
-			for d: Variant in r2.get("dst_ids", []):
-				var pid: int = int(d)
-				if not 目标.has(pid) and enemy_ids().has(pid):
-					目标.append(pid)
-				if 目标.size() >= _touxi_x:
-					break
-		# 同系追加不是在选 X 目标时一起结算：先压追加钩子，再压 X 点法术伤害。
-		# LIFO 下伤害先结算完，最后才回到 p_touxi_same 让玩家重新选追加目标。
-		if _touxi_same:
-			engine.push(BattleEngine.SHook.new("p_touxi_same", {"player": player.id}, []))
-		for pid2: int in 目标:
-			engine.push_harm({
-				"src": player.id, "dst": pid2, "point": 1,
-				"cause": TOU_XI, "type": GConst.HarmType.Magic, "is_active": false,
-			})
-		if _touxi_two_attack:
-			player.add_action(GConst.ActionType.Attack, TOU_XI, true, true)
-		notice_skill(TOU_XI, 目标)
-		engine._broadcast_game()
+		return _touxi_process_targets(reply)
+	return SUCCESS
+
+
+func _touxi_process_cards(r: Dictionary) -> int:
+	var chosen: Array = r.get("card_ids", [])
+	var bottles: Array[int] = []
+	for c: Variant in chosen:
+		var cid: int = int(c)
+		if player.cover_cards.has(cid) and not bottles.has(cid):
+			bottles.append(cid)
+		if bottles.size() >= 2:
+			break
+	if bottles.size() < 2:
 		_touxi_step = 0
 		_touxi_target = -1
-		_touxi_x = 0
-		_touxi_same = false
-		_touxi_two_attack = false
+		return SUCCESS
+	player.remove_energy(1)
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": bottles, "is_real": true,
+	})
+	engine.remove_cover(player.id, bottles, player.id, TOU_XI)
+	engine.to_discard(bottles)
+	_used_touxi = true
+	_touxi_step = 2
+	var 法术数: int = 0
+	var 攻击数: int = 0
+	var 系别: int = -1
+	var 同系: bool = true
+	for cid2: int in bottles:
+		var card: GCard = Data.get_card(cid2)
+		if card == null:
+			同系 = false
+			continue
+		if card.is_magic():
+			法术数 += 1
+		if card.is_attack():
+			攻击数 += 1
+		if 系别 < 0:
+			系别 = card.element_enum()
+		elif card.element_enum() != 系别:
+			同系 = false
+	_touxi_x = mini(法术数, enemy_ids().size())
+	_touxi_two_attack = 攻击数 >= 2
+	_touxi_same = 同系 and bottles.size() == 2
+	if _touxi_x > 0:
+		var 候选: Array[int] = enemy_ids()
+		询问(player.id, TOU_XI, 0, _touxi_x, GConst.CardSource.Hand, [], 0,
+			"", [], true, 1, -1, 候选, _touxi_x)
+		return WAIT
+	return _touxi_process_targets({})
+
+
+func _touxi_process_targets(r: Dictionary) -> int:
+	var 目标: Array = []
+	if _touxi_x > 0:
+		for d: Variant in r.get("dst_ids", []):
+			var pid: int = int(d)
+			if not 目标.has(pid) and enemy_ids().has(pid):
+				目标.append(pid)
+			if 目标.size() >= _touxi_x:
+				break
+	if _touxi_same:
+		engine.push(BattleEngine.SHook.new("p_touxi_same", {"player": player.id}, []))
+	for pid2: int in 目标:
+		engine.push_harm({
+			"src": player.id, "dst": pid2, "point": 1,
+			"cause": TOU_XI, "type": GConst.HarmType.Magic, "is_active": false,
+		})
+	if _touxi_two_attack:
+		player.add_action(GConst.ActionType.Attack, TOU_XI, true, true)
+	notice_skill(TOU_XI, 目标)
+	engine._broadcast_game()
+	_touxi_step = 0
+	_touxi_target = -1
+	_touxi_x = 0
+	_touxi_same = false
+	_touxi_two_attack = false
 	return SUCCESS
 
 
