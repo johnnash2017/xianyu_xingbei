@@ -156,7 +156,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 
 
 func action_end_options(ctx: Dictionary) -> Array:
-	return _攻击结束选项(ctx)
+	return _攻击结束选项(ctx, true)
 
 
 func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -> int:
@@ -173,14 +173,18 @@ func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -
 
 
 ## 本次攻击结束还能发动的技能：两项都满足条件就一起摆出来；用过 / 条件不满足的不再出现。
-func _攻击结束选项(ctx: Dictionary) -> Array:
+func _攻击结束选项(ctx: Dictionary, 显示全部: bool = false) -> Array:
 	var out: Array = []
-	if not bool(ctx.get(KEY_4501_DONE, false)) and not _martial_attack_hand_ids().is_empty():
-		out.append({"value": JI_ZHI_JIAN_YI, "label": "技之剑意", "skill_id": JI_ZHI_JIAN_YI})
-	if not bool(ctx.get(KEY_4504_DONE, false)) and not used_jian_ying_duan_nian \
-			and player.gem > 0 and player.hand_cards.size() >= 2:
-		out.append({"value": JIAN_YING_DUAN_NIAN, "label": "剑影*断念", "skill_id": JIAN_YING_DUAN_NIAN,
-			"need_card": 2})
+	if not bool(ctx.get(KEY_4501_DONE, false)):
+		var 可用: bool = not _martial_attack_hand_ids().is_empty()
+		if 显示全部 or 可用:
+			out.append({"value": JI_ZHI_JIAN_YI, "label": "技之剑意",
+				"skill_id": JI_ZHI_JIAN_YI, "enabled": 可用})
+	if not bool(ctx.get(KEY_4504_DONE, false)) and not used_jian_ying_duan_nian:
+		var 可用二: bool = player.gem > 0 and player.hand_cards.size() >= 2
+		if 显示全部 or 可用二:
+			out.append({"value": JIAN_YING_DUAN_NIAN, "label": "剑影*断念",
+				"skill_id": JIAN_YING_DUAN_NIAN, "need_card": 2, "enabled": 可用二})
 	return out
 
 

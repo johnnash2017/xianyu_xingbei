@@ -1008,6 +1008,24 @@ func 跑() -> void:
 		% [圣剑原手, 玩家1.hand_cards.size()])
 	检(玩家1.hand_cards.size() >= 2, "圣剑自动弃牌后不应把手牌弃空")
 
+	# ---- 场景 32：聚合器仍然列出不可发动的角色技能，只是置灰 ----
+	_重置战斗()
+	var 剑圣灰: BattleRole = 剑圣类.new()
+	剑圣灰.setup(玩家1, 引擎)
+	玩家1.role = 剑圣灰
+	玩家1.set_gem(0)
+	玩家1.set_crystal(0)
+	引擎.current_id = 1
+	引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+	引擎.run()
+	var 灰问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	var 灰选: Array = (灰问[0] as Dictionary).get("args", []) if not 灰问.is_empty() else []
+	var 灰可用: Array = (灰问[0] as Dictionary).get("option_enabled", []) if not 灰问.is_empty() else []
+	var 剑影位: int = 灰选.slice(4).find(105)
+	检(剑影位 >= 0, "没有能量时剑影仍应列在聚合器里：%s" % str(灰选))
+	if 剑影位 >= 0 and 剑影位 < 灰可用.size():
+		检(not bool(灰可用[剑影位]), "没有能量时剑影选项应置灰不可发动")
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

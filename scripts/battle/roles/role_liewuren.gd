@@ -321,10 +321,9 @@ func p_after_attack(_ctx: Dictionary) -> int:
 func action_end_options(_ctx: Dictionary) -> Array:
 	if _touxi_step != 0 or _used_touxi:
 		return []
-	if player.get_energy() <= 0 or player.cover_cards.size() < 2:
-		return []
+	var 可用: bool = player.get_energy() > 0 and player.cover_cards.size() >= 2
 	return [{"value": TOU_XI, "label": GConst.skill_name(TOU_XI), "skill_id": TOU_XI,
-		"need_card": 2, "card_source": GConst.CardSource.Cover}]
+		"need_card": 2, "card_source": GConst.CardSource.Cover, "enabled": 可用}]
 
 
 func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -> int:

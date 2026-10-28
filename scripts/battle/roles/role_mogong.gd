@@ -334,13 +334,13 @@ func p_after_attack(_ctx: Dictionary) -> int:
 
 
 func action_end_options(_ctx: Dictionary) -> Array:
-	if not _available_duo_chong or not _cover_has_element(GConst.CardElement.Wind):
+	if _using_duo_chong or not _available_duo_chong:
 		return []
 	var 可攻目标: Array[int] = player_ids_where(_duo_chong_dst_ok)
-	if 可攻目标.is_empty():
-		return []
+	var 有风: bool = _cover_has_element(GConst.CardElement.Wind)
 	return [{"value": DUO_CHONG_SHE_JI, "label": GConst.skill_name(DUO_CHONG_SHE_JI),
-		"skill_id": DUO_CHONG_SHE_JI, "need_target": 1, "targets": 可攻目标}]
+		"skill_id": DUO_CHONG_SHE_JI, "need_target": 1, "targets": 可攻目标,
+		"enabled": 有风 and not 可攻目标.is_empty()}]
 
 
 func resolve_action_end_option(cause: int, reply: Dictionary, _ctx: Dictionary) -> int:

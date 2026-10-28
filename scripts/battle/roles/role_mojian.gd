@@ -323,7 +323,7 @@ func action_end_options(_ctx: Dictionary) -> Array:
 	if used_xiu_luo_lian_zhan or _contains_action(XIU_LUO_LIAN_ZHAN):
 		return []
 	return [{"value": XIU_LUO_LIAN_ZHAN, "label": GConst.skill_name(XIU_LUO_LIAN_ZHAN),
-		"skill_id": XIU_LUO_LIAN_ZHAN}]
+		"skill_id": XIU_LUO_LIAN_ZHAN, "enabled": true}]
 
 
 func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary) -> int:

@@ -160,9 +160,11 @@ func p_after_attack(ctx: Dictionary) -> int:
 func action_end_options(_ctx: Dictionary) -> Array:
 	var out: Array = []
 	if not used_lian_xu_ji and not _contains_action(LIAN_XU_JI):
-		out.append({"value": LIAN_XU_JI, "label": "风怒追击", "skill_id": LIAN_XU_JI})
-	if not used_jian_ying and not _contains_action(JIAN_YING) and player.get_energy() > 0:
-		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING})
+		out.append({"value": LIAN_XU_JI, "label": "风怒追击", "skill_id": LIAN_XU_JI,
+			"enabled": true})
+	if not used_jian_ying and not _contains_action(JIAN_YING):
+		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING,
+			"enabled": player.get_energy() > 0})
 	return out
 
 

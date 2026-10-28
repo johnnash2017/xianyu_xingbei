@@ -995,6 +995,9 @@ func _清空等待() -> void:
 	链总时长_ms = 0
 	# 中止流程时一并清掉「弃牌前拦截」标记，免得残留成 true 让之后的弃牌永远走同步分支
 	_弃牌拦截中 = false
+	# 中止时也不要残留行动聚合器的流程标记，否则角色自己的 p_after_attack 会被跳过
+	_行动聚合中 = false
+	_行动聚合流程 = false
 
 
 func on_message(pid: int, kind: int, data: Dictionary) -> void:
@@ -3206,6 +3209,7 @@ class S行动聚合器:
 						"value": cause,
 						"label": GConst.skill_name(cause),
 						"skill_id": cause,
+						"enabled": e.额外行动可发动(cur, cause),
 					})
 			# 3) 基础效果额外行动（迅捷赐福）固定排在角色技能之后
 			for o: Dictionary in e.基础效果额外行动选项(pid):
@@ -3217,6 +3221,17 @@ class S行动聚合器:
 				if not 已有:
 					待问.append(o)
 			if 待问.is_empty():
+				e._行动聚合中 = false
+				e._行动聚合流程 = false
+				return BattleEngine.CONTINUE
+			# 全部不可发动时不要弹一张全是灰按钮的询问；只要有一项可发动，
+			# 其余不可发动的技能也照样列出来（客户端置灰）。
+			var 有可用: bool = false
+			for o: Dictionary in 待问:
+				if bool(o.get("enabled", true)):
+					有可用 = true
+					break
+			if not 有可用:
 				e._行动聚合中 = false
 				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
@@ -3238,6 +3253,15 @@ class S行动聚合器:
 			var r: Dictionary = _取回复(e)
 			var args: Array = r.get("args", [])
 			var 选中: int = int(args[0]) if not args.is_empty() else 0
+			var 选中可用: bool = true
+			for o: Dictionary in 待问:
+				if int(o.get("value", 0)) == 选中:
+					选中可用 = bool(o.get("enabled", true))
+					break
+			if not 选中可用:
+				e._行动聚合中 = false
+				e._行动聚合流程 = false
+				return BattleEngine.CONTINUE
 			# 基础效果选项会被 on_message 先行截获并确认；这里只分派角色/额外行动
 			var 结果: int = _分派(e, cur, 选中, r)
 			if 结果 >= 0:
