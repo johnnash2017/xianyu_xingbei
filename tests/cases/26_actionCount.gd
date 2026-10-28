@@ -666,6 +666,35 @@ func 跑() -> void:
 		检(引擎.基础效果额外行动选项(1).is_empty(),
 			"取消攻击结束响应后本回合不应再提供迅捷赐福选项")
 
+	# ---- 场景 22：祈祷师本人没有攻击结束角色响应，确认迅捷赐福后必须能直接用 1601 攻击 ----
+	_重置战斗()
+	var 祈祷丁 = preload("res://scripts/battle/roles/role_qidao.gd").new()
+	祈祷丁.setup(玩家1, 引擎)
+	玩家1.role = 祈祷丁
+	玩家1.hand_cards.append(攻击牌甲.id)
+	var 自贴牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			自贴牌 = c
+			break
+	if 自贴牌 != null:
+		检(引擎.add_basic_effect(1, 自贴牌.id, 1, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"祈祷师自己面前也应能贴迅捷赐福")
+		引擎.current_id = 1
+		引擎.push(BattleEngine.STurnEnd.new())
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+		引擎.run()
+		var 自问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 自选: Array = (自问[0] as Dictionary).get("args", []) if not 自问.is_empty() else []
+		检(自选.slice(4).has(GConst.技能_迅捷赐福), "祈祷师本人应收到迅捷赐福响应：%s" % str(自选))
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.技能_迅捷赐福, "src_id": 1,
+			"args": [GConst.技能_迅捷赐福], "card_ids": [], "dst_ids": [],
+		})
+		检(引擎.行动额外来源 == GConst.技能_迅捷赐福 and 引擎._await_kind == GConst.Msg.Action,
+			"祈祷师确认迅捷赐福后应直接进入 1601 攻击行动：来源 %d / 等待 %s"
+			% [引擎.行动额外来源, str(引擎._await_kind)])
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

@@ -1040,6 +1040,14 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	run()
 
 
+## 一份额外行动现在能不能发动：基础效果授予的行动已经确认使用后，
+## 赐福牌已经移除，不能再让角色的 v_additional_action 因“找不到牌”而拒绝。
+func 额外行动可发动(cur: BattlePlayer, cause: int) -> bool:
+	if GConst.基础效果额外行动.has(cause) and 基础效果额外行动已确认(cause):
+		return true
+	return cur != null and cur.v_additional_action(cause) == GConst.GE_SUCCESS
+
+
 ## 一份额外行动能不能被切换：优先看行动数据自带的「可切换」标记
 ## （基础效果授予的行动属于这里，与当前玩家角色无关），否则再看角色覆写。
 func 额外行动可切换(cur: BattlePlayer, 行动: Dictionary) -> bool:
@@ -3126,7 +3134,7 @@ class SAdditionalAction:
 			e.首选额外行动 = -1
 			for i: int in range(cur.additional_actions.size()):
 				if int(cur.additional_actions[i].get("cause", 0)) == 期望 \
-						and cur.v_additional_action(期望) == GConst.GE_SUCCESS:
+						and e.额外行动可发动(cur, 期望):
 					return _进入(e, cur, i, 期望)
 		# 声明了 direct 的额外行动（如圣女【圣疗】）不用先问：直接进入它的额外行动阶段。
 		# 该阶段允许「放弃行动」，想跳过在那里放弃即可，省掉「再点一次技能按钮」这一步。
@@ -3135,7 +3143,7 @@ class SAdditionalAction:
 				if not bool(cur.additional_actions[i].get("direct", false)):
 					continue
 				var 直接: int = int(cur.additional_actions[i]["cause"])
-				if cur.v_additional_action(直接) == GConst.GE_SUCCESS:
+				if e.额外行动可发动(cur, 直接):
 					return _进入(e, cur, i, 直接)
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
@@ -3147,10 +3155,10 @@ class SAdditionalAction:
 					if int(cur.additional_actions[i]["cause"]) == chosen:
 						idx = i
 						break
-			if idx >= 0 and cur.v_additional_action(chosen) != GConst.GE_SUCCESS:
+			if idx >= 0 and not e.额外行动可发动(cur, chosen):
 				# 角色二次校验未通过（服务端 v_additional_action）：提示并重新询问
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
-				var 参数2: Array = _询问参数(cur)
+				var 参数2: Array = _询问参数(e, cur)
 				e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, 参数2[0], 参数2[1],
 					-1, 0, "", "", 参数2[2])
 				e.wait_for(cur.id, GConst.Msg.Respond)
@@ -3161,7 +3169,7 @@ class SAdditionalAction:
 			cur.clear_additional_action()
 			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
-		var 参数: Array = _询问参数(cur)
+		var 参数: Array = _询问参数(e, cur)
 		e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, 参数[0], 参数[1],
 			-1, 0, "", "", 参数[2])
 		e.wait_for(cur.id, GConst.Msg.Respond)
@@ -3171,7 +3179,7 @@ class SAdditionalAction:
 	## 额外行动询问参数：causes = 全部可选；可发动 = 当前 v_additional_action 认可的；
 	## 允许 = 每份额外行动各自允许的行动种类（客户端据此写「额外【攻击行动】」）。
 	## 可发动作为询问的 dst_ids 下发，客户端据此把「确定」/选项按钮置灰（不能发动也能点「取消」跳过）
-	func _询问参数(cur: BattlePlayer) -> Array:
+	func _询问参数(e: BattleEngine, cur: BattlePlayer) -> Array:
 		var causes: Array = []
 		var 可发动: Array = []
 		var 允许: Array = []
@@ -3179,7 +3187,7 @@ class SAdditionalAction:
 			var c: int = int(a["cause"])
 			causes.append(c)
 			允许.append(int(a.get("allow_action", 0)))
-			if cur.v_additional_action(c) == GConst.GE_SUCCESS:
+			if e.额外行动可发动(cur, c):
 				可发动.append(c)
 		return [causes, 可发动, 允许]
 
