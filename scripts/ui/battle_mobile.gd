@@ -2689,14 +2689,9 @@ func _额外攻击行动参数() -> Array:
 
 ## 额外行动按钮的悬停说明：优先用完整技能提示（含技能名 / 类型），不要只给一小段效果
 func _额外行动按钮说明(cause: int) -> String:
-	# 迅捷赐福贴在目标身上触发时是响应，不是发动时的法术；悬停也按响应写
+	# 迅捷赐福选项的提示只写它换来的效果，不再摊整段技能说明
 	if cause == GConst.技能_迅捷赐福:
-		var 正文: String = GConst.skill_desc(cause).replace("\\n", "\n")
-		if 正文.is_empty():
-			正文 = "移除迅捷赐福，获得额外攻击行动"
-		var 色: Color = GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
-		return "[color=#%s]【响应】[/color]%s：%s" % [
-			色.to_html(false), GConst.skill_name(cause), 正文]
+		return "额外+1【攻击行动】"
 	var 单个: String = 角色技能提示.单个技能(cause)
 	if not 单个.is_empty():
 		return 单个
@@ -3705,6 +3700,10 @@ func _刷新二级栏提示() -> void:
 			_指令提示(爆裂说明)
 			return
 	var 选中技能号: int = int(选中项.get("技能号", 0))
+	# 迅捷赐福选项选中后只提示它换来的效果，不显示整段技能说明
+	if 选中技能号 == GConst.技能_迅捷赐福:
+		_指令提示("额外+1【攻击行动】")
+		return
 	var 父技能号: int = _二级栏父技能号
 	var 锁定父说明: bool = _固定父说明(父技能号)
 	# 响应技能里选项本身就是另一个技能（怒火压制 / 魔纹融合、蓄力一击 / 气绝崩击）：
