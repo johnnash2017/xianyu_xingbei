@@ -1003,14 +1003,19 @@ func _确认迅捷赐福(pid: int) -> void:
 	var cur: BattlePlayer = players.get(pid)
 	if cur == null:
 		return
-	var 已有: bool = false
-	for a: Dictionary in cur.additional_actions:
-		if int(a.get("cause", 0)) == GConst.技能_迅捷赐福:
-			a["direct"] = true
-			已有 = true
+	var 数据: Dictionary = {}
+	for i: int in range(cur.additional_actions.size()):
+		if int(cur.additional_actions[i].get("cause", 0)) == GConst.技能_迅捷赐福:
+			数据 = cur.additional_actions[i].duplicate()
+			cur.additional_actions.remove_at(i)
 			break
-	if not 已有:
+	# 迅捷赐福可能在攻击结束钩子的前半段就被祈祷师补进队列了；
+	# 确认使用时把它移到队尾，按“现在才获得”的顺序排在已有额外行动后面。
+	if 数据.is_empty():
 		cur.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福, true)
+	else:
+		数据["direct"] = true
+		cur.additional_actions.append(数据)
 	for pid2: int in order:
 		var p0: BattlePlayer = players.get(pid2)
 		if p0 != null and p0.role != null:

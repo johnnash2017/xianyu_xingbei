@@ -2403,14 +2403,13 @@ func _进入技能询问() -> void:
 	_额外攻击响应_牌白.clear()
 	_额外攻击响应_目标白.clear()
 	if not 额外攻击.is_empty():
-		# 迅捷赐福是响应类，排在响应选项后面、其它攻击额外行动前面；
-		# 不能因为给的是攻击行动就把它当成攻击行动按钮排到最后。
+		# 迅捷赐福给到的行动排在其它额外攻击行动后面（它是刚刚才获得的）
 		var 快捷顺序: Array = []
 		for i: int in range(额外攻击.size()):
-			if int(额外攻击[i]) == GConst.技能_迅捷赐福:
+			if int(额外攻击[i]) != GConst.技能_迅捷赐福:
 				快捷顺序.append(i)
 		for i: int in range(额外攻击.size()):
-			if int(额外攻击[i]) != GConst.技能_迅捷赐福:
+			if int(额外攻击[i]) == GConst.技能_迅捷赐福:
 				快捷顺序.append(i)
 		for i: int in 快捷顺序:
 			var c: int = int(额外攻击[i])
