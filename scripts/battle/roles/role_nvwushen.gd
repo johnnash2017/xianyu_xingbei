@@ -294,7 +294,7 @@ func _shen_sheng_zhui_ji(pid: int) -> int:
 # 引擎在选中时会统一广播技能通知；服务端选中后会把「已授予」标记置回 false，
 # 使本次额外攻击结束后仍可再次授予，故此处同步重置
 # ============================================================
-func extra_action_switchable(_cause: int) -> bool: return false
+
 
 
 ## 神圣追击属于行动结束响应，和迅捷赐福合并成一次询问

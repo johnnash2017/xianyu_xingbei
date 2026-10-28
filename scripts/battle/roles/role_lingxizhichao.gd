@@ -406,7 +406,7 @@ func v_additional_action(cause: int) -> int:
 	return int(_赐福.v_additional_action(cause))
 
 
-func extra_action_switchable(_cause: int) -> bool: return false
+
 
 
 func p_additional_action(ctx: Dictionary) -> int:

@@ -129,7 +129,7 @@ func v_additional_action(cause: int) -> int:
 
 
 ## 玩家选中额外行动时：-1【鲜血】，自己受 2 点法术伤害
-func extra_action_switchable(_cause: int) -> bool: return false
+
 
 
 ## 赤色一闪属于行动结束响应，和迅捷赐福合并成一次询问
