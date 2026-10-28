@@ -175,6 +175,8 @@ var _本次已询问基础效果额外行动: Dictionary = {}
 var _已拒绝基础效果额外行动: Dictionary = {}
 ## 本次询问是否是可放弃的「行动结束响应」，且里面有额外行动选项
 var _本次询问可选额外行动: bool = false
+## 快捷额外攻击已经转成普通回复，聚合器分派成功后立即收尾
+var _快捷提前收尾: bool = false
 ## 正在「行动聚合器」里等待：取消时同样要清空后续额外攻击
 ## 当前这次行动结束是否走行动聚合器（角色自己的 p_after_attack 在聚合流程里只做优先结算）
 var _行动聚合流程: bool = false
@@ -1079,6 +1081,41 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	# 攻击结束响应里的「额外攻击行动」快捷按钮：放弃剩余响应，下一次直接进入所选额外攻击
 	if kind == GConst.Msg.Respond \
 			and int(data.get("respond_id", 0)) == GConst.RespondType.ChooseExtraAction:
+		if _当前状态 is S行动聚合器:
+			var 快参: Array = data.get("args", [])
+			var 快因: int = int(快参[0]) if not 快参.is_empty() else 0
+			var 快牌表: Array = data.get("card_ids", [])
+			var 快目标表: Array = data.get("dst_ids", [])
+			var 快牌: int = int(快牌表[0]) if not 快牌表.is_empty() \
+				else (int(快参[1]) if 快参.size() > 1 else 0)
+			var 快目标: int = int(快目标表[0]) if not 快目标表.is_empty() \
+				else (int(快参[2]) if 快参.size() > 2 else 0)
+			var 快者: BattlePlayer = players.get(pid)
+			var 快卡: GCard = Data.get_card(快牌)
+			var 原额外2: bool = 行动额外
+			var 原来源2: int = 行动额外来源
+			行动额外 = true
+			行动额外来源 = 快因
+			var 快通过: bool = 快者 != null and 快因 > 0 and 快卡 != null \
+				and 快卡.is_attack() and 快者.has_hand_card(快牌) \
+				and 快者.v_attack(快牌, 快目标, players) == GConst.GE_SUCCESS \
+				and 校验额外行动限制(快者, GConst.ActionType.Attack, [快牌], [快目标],
+					1, 快因) == GConst.GE_SUCCESS
+			行动额外 = 原额外2
+			行动额外来源 = 原来源2
+			if not 快通过:
+				send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
+				return
+			首选额外行动 = 快因
+			首选额外行动卡 = 快牌
+			首选额外行动目标 = 快目标
+			_快捷提前收尾 = true
+			_reply = {"args": [快因], "card_ids": [快牌], "dst_ids": [快目标]}
+			_has_reply = true
+			_await_id = -1
+			_await_state = null
+			run()
+			return
 		_选择额外攻击响应(pid, data)
 		return
 	# 行动结束响应里点了「取消」：响应界面已经替玩家做过选择，后面不再问额外攻击行动
@@ -3316,6 +3353,9 @@ class S行动聚合器:
 			var 结果: int = _分派(e, cur, 选中, r, 选中类型)
 			if 结果 >= 0:
 				return 结果
+			if e._快捷提前收尾:
+				e._快捷提前收尾 = false
+				return BattleEngine.CONTINUE
 		return BattleEngine.CONTINUE
 
 
