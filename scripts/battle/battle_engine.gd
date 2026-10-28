@@ -178,6 +178,8 @@ var _已拒绝基础效果额外行动: Dictionary = {}
 var _本次询问可选额外行动: bool = false
 ## 正在「行动结束额外行动」聚合响应里等待：取消时同样要清空后续额外攻击
 var _聚合响应中: bool = false
+## 当前 ask_skill 是否由聚合响应发出（也允许下发红色额外攻击快捷按钮）
+var _聚合询问中: bool = false
 ## 已下发过的询问次数（测试用：确认取消后没有再次询问）
 var _询问计数: int = 0
 ## 玩家在这个响应里点了取消：本回合后面的额外攻击行动全部跳过，不再二次询问
@@ -1783,7 +1785,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	_pending_args = args.duplicate()
 	_pending_is_skill = true
 	# 攻击结束响应期间，把「已获得但还没用的攻击行动」一并下发给客户端做红色快捷按钮
-	if 允许额外攻击快捷 and _当前状态 is SHook and (_当前状态 as SHook).hook == "p_after_attack" and pid == current_id:
+	if 允许额外攻击快捷 and ( _聚合询问中 or (_当前状态 is SHook and (_当前状态 as SHook).hook == "p_after_attack" and pid == current_id)):
 		var 额外攻击: Array = []
 		var 额外牌表: Array = []
 		var 额外目标表: Array = []
@@ -3149,11 +3151,13 @@ class S行动结束额外行动响应:
 				return BattleEngine.CONTINUE
 			if not e.has_reply():
 				e._聚合响应中 = true
+				e._聚合询问中 = true
 				var 首: int = int(待问[0].get("value", 0))
 				e.ask_skill(pid, 首, 0, 0, GConst.CardSource.Hand,
 					待问, 0, "", [], true,
 					"行动结束时可以发动以下额外行动，选择一项（发动后还能发动另一项）",
 					[], 0, 0, false, [], true, -1, 0, true)
+				e._聚合询问中 = false
 				return BattleEngine.WAIT
 			var r: Dictionary = e._reply
 			e._has_reply = false

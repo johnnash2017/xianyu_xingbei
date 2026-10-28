@@ -795,9 +795,20 @@ func 跑() -> void:
 			"未确认的修罗连斩只能作为技能选项，不能再重复挂快捷按钮：%s" % str(聚合快捷))
 		检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
 			"聚合响应应在等玩家 1 的 Respond：id=%d kind=%s" % [引擎._await_id, str(引擎._await_kind)])
-		检(引擎._await_state is BattleEngine.S行动结束额外行动响应,
-			"聚合响应的等待状态不对：%s / 额外确认=%s"
-			% [str(引擎._await_state), str(引擎._额外确认选项)])
+		# 确认修罗连斩后，应和剑圣选中 103/105 一样：行动标 direct，并在剩余响应里变红色快捷按钮
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.技能_迅捷赐福, "src_id": 1,
+			"args": [901], "card_ids": [], "dst_ids": [],
+		})
+		var 聚合再问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 聚合再选: Array = (聚合再问[0] as Dictionary).get("args", []) \
+			if not 聚合再问.is_empty() else []
+		var 聚合再快捷: Array = (聚合再问[0] as Dictionary).get("extra_attack_causes", []) \
+			if not 聚合再问.is_empty() else []
+		检(聚合再选.slice(4).has(GConst.技能_迅捷赐福),
+			"确认修罗连斩后迅捷赐福仍应留在响应里：%s" % str(聚合再选))
+		检(聚合再快捷.has(901),
+			"确认修罗连斩后应像剑圣的额外攻击一样变成红色快捷按钮：%s" % str(聚合再快捷))
 		# 取消聚合响应＝所有后续额外攻击都不再处理
 		引擎.on_message(1, GConst.Msg.Respond, {
 			"respond_id": GConst.技能_迅捷赐福, "src_id": 1,

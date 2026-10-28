@@ -318,17 +318,29 @@ func p_timeline_2_miss(_ctx: Dictionary) -> int:
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if used_xiu_luo_lian_zhan or _contains_action(XIU_LUO_LIAN_ZHAN):
 		return SUCCESS
-	step = STEP_DONE
-	if used_xiu_luo_lian_zhan:
-		return SUCCESS
-	if _contains_action(XIU_LUO_LIAN_ZHAN):
-		return SUCCESS
-	# 不以「直接」方式授予：回合结束时统一询问玩家是否发动（对照服务端 addAction 不带直接标志）。
-	# 手里有没有火系牌都照问，发动后由 v_attack 限定只能出火系攻击牌
-	player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN)
-	engine._broadcast_game()
+	# 和剑圣的风怒追击同款：先作为攻击结束响应选项，确认后 direct 入队。
+	var 阶段: int = int(ctx.get("xiu_luo_after_step", 0))
+	if 阶段 == 0:
+		阶段 = 1
+		ctx["xiu_luo_after_step"] = 阶段
+	if 阶段 == 1:
+		if not engine.has_reply():
+			engine.ask_skill(player.id, XIU_LUO_LIAN_ZHAN, 0, 0, GConst.CardSource.Hand,
+				[{"value": XIU_LUO_LIAN_ZHAN, "label": GConst.skill_name(XIU_LUO_LIAN_ZHAN),
+					"skill_id": XIU_LUO_LIAN_ZHAN}],
+				0, "", [], true, "攻击结束时可以发动修罗连斩", [],
+				0, 0, false, [], true, -1, 0, true)
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		var args: Array = r.get("args", [])
+		var 选中: int = int(args[0]) if not args.is_empty() else 0
+		if 选中 != XIU_LUO_LIAN_ZHAN:
+			return SUCCESS
+		notice_skill(XIU_LUO_LIAN_ZHAN, [])
+		player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN, true, true)
+		engine._broadcast_game()
 	return SUCCESS
 
 
@@ -351,11 +363,6 @@ func v_additional_action(cause: int) -> int:
 # （对照服务端 p_additional_action：选中修罗连斩置位 used/using，其余额外行动清除 using）
 # ============================================================
 func extra_action_switchable(_cause: int) -> bool: return false
-
-
-## 修罗连斩属于行动结束响应，和迅捷赐福合并成一次询问
-func extra_action_is_response(cause: int) -> bool:
-	return cause == XIU_LUO_LIAN_ZHAN
 
 
 func p_additional_action(ctx: Dictionary) -> int:
