@@ -2708,7 +2708,10 @@ func _选中额外行动(_技能号: int, cause: int) -> void:
 	if GConst.技能行(cause).is_empty():
 		_指令提示("确定＝发动所选额外行动")
 	else:
-		_指令提示("确定＝发动【%s】" % GConst.skill_name(cause))
+		var 说明: String = _技能效果提示(cause)
+		if 说明.is_empty():
+			说明 = 角色技能提示.单个技能(cause)
+		_指令提示(说明)
 	_更新按键()
 
 
@@ -2782,13 +2785,12 @@ func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = []) ->
 		var idx: int = causes.find(cause)
 		var allow: int = int(允许[idx]) if idx >= 0 and idx < 允许.size() else 0
 		var 按钮: 技能按钮 = _新技能按钮(0)
-		# 这里是「发动哪份额外行动」的选项，不是额外攻击行动本身：
-		# 有技能名的就显示来源技能名（修罗连斩 / 剑影 / 风怒追击等），
-		# 没有技能行时才退回「额外【攻击行动】」；只有进入攻击阶段后的行动按钮才统一用红色。
+		# 这里是「发动哪份额外行动」的选项，按普通技能选项处理：
+		# 按钮显示自己的技能名，悬停显示技能说明，不按来源/类型做特殊文案。
 		var 来源名: String = GConst.skill_name(c) if not GConst.技能行(c).is_empty() else ""
 		var 文案: String = 来源名 if not 来源名.is_empty() else _额外行动按钮文本(c, allow)
 		按钮.设置选项(文案, _额外行动选项底色(c), 0)
-		按钮.设置说明(_额外行动按钮说明(c))
+		按钮.设置说明(角色技能提示.单个技能(c))
 		按钮.设置选项可用(可发动.has(c))
 		按钮.connect("点击", _选中额外行动.bind(c))
 		_额外行动按钮表.append({"按钮": 按钮, "cause": c})
