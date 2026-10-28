@@ -3,12 +3,13 @@ extends BattleRole
 ## 技能：
 ##   疾风技（101，响应：带此特技的攻击牌作为主动攻击打出时发动，额外 +1 攻击行动）
 ##   烈风技（102，响应：带此特技的主动攻击，目标拥有圣盾或天使之墙时无视其圣盾、且对方无法应战）
-##   风怒追击（103，回合限定，攻击行动结束时额外 +1 攻击行动）
+##   风怒追击（103，回合限定，攻击行动结束时额外 +1 攻击行动，只允许风系攻击牌）
 ##   圣剑（104，本回合第 3 次主动攻击强制命中，该次【攻击行动】结束后摸 X 张、弃 X 张，X＝1~3）
 ##   剑影（105，回合限定，消耗 1 能量，攻击行动结束时额外 +1 攻击行动）
 ##
-## v_attack 覆写：服务端 JianSheng::v_attack 限制「风怒追击」额外攻击只能用风系攻击牌
-## （服务端在 p_additional_action 里置 using_LianXuJi，其余额外行动清除），此处对应为 using_lian_xu_ji。
+## 103 / 105 照剑之子：攻击结束时一起摆出来问；确认后以 direct 额外行动入队，
+## 不立刻进入，等攻击结束响应处理完、回合收尾时再依次进入。
+## 剑影的 1 能量在确认发动时支付，之后切换行动不再重复扣。
 
 const JI_FENG_JI: int = 101
 const LIE_FENG_JI: int = 102
@@ -144,7 +145,7 @@ func _sheng_jian(ctx: Dictionary) -> void:
 
 
 # ============================================================
-# 攻击行动结束时（after_attack）：风怒追击 → 剑影 → 圣剑收尾
+# 攻击行动结束时（after_attack）：先问 103 / 105 是否发动，再做圣剑收尾
 # ============================================================
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
@@ -270,28 +271,9 @@ func _sheng_jian_cycle() -> int:
 	return SUCCESS
 
 
-## 风怒追击（103）：回合限定，额外 +1 攻击行动。
-## 只挂行动、不置 direct —— 好让引擎在攻击行动结束后统一问「是否发动」；
-## 能不能发动只看「本回合用过没有」（v_additional_action）：手里没有风系攻击牌也照样给这份行动，
-## 出牌时才由 v_attack 要求风系（没牌就只能放弃行动）
-func _lian_xu_ji() -> void:
-	if used_lian_xu_ji or _contains_action(LIAN_XU_JI):
-		return
-	player.add_action(GConst.ActionType.Attack, LIAN_XU_JI)
-
-
-## 剑影：回合限定，额外 +1 攻击行动（授予只挂行动，代价在玩家选中时结算）
-func _jian_ying() -> void:
-	if player.hand_cards.is_empty() or player.get_energy() <= 0:
-		return
-	if used_jian_ying or _contains_action(JIAN_YING):
-		return
-	player.add_action(GConst.ActionType.Attack, JIAN_YING)
-
-
 # ============================================================
 # 玩家选中额外行动时的二次校验（服务端 JianSheng::v_additional_action）：
-# 风怒追击本回合限一次；剑影本回合限一次且需仍有能量
+# 风怒追击本回合限一次；剑影本回合限一次且需仍有能量（已付款的除外）
 # ============================================================
 func v_additional_action(cause: int) -> int:
 	if cause == LIAN_XU_JI:
@@ -301,18 +283,20 @@ func v_additional_action(cause: int) -> int:
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	if cause == JIAN_YING:
-		if used_jian_ying or player.get_energy() <= 0:
+		# 已在本回合攻击结束确认时付过能量（_jian_ying_paid）的，即使当前能量为 0 也应允许进入
+		if used_jian_ying:
+			return GConst.GE_INVALID_ACTION
+		if not _jian_ying_paid and player.get_energy() <= 0:
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	return V_NOT_OVERRIDE
 
 
 # ============================================================
-# 玩家选中额外行动时：结算风怒追击/剑影的代价
-# 引擎在选中时会统一广播技能通知，故此处只处理回合限定标记与能量扣除
+# 玩家选中额外行动时：标记回合限定 / 补付剑影能量（确认时已付过的不再扣）
 # ============================================================
 func extra_action_switchable(cause: int) -> bool:
-	# 风怒追击没有资源代价；剑影可切换，但必须还有能量支付它 1 点能量
+	# 风怒追击没有资源代价；剑影已付款或还有能量可付时都可切换
 	if cause == LIAN_XU_JI:
 		return true
 	if cause == JIAN_YING:
@@ -347,34 +331,36 @@ func p_additional_action(ctx: Dictionary) -> int:
 
 # ============================================================
 # 牌类校验覆写：风怒追击（103）额外攻击行动期间只能用风系攻击牌
-# （对照服务端 JianSheng::v_attack；using_lian_xu_ji 由 p_additional_action 置位/清除）
+# 按「当前额外行动来源」判断，避免切到剑影后 still 带着 103 的旧 using 标记
 # ============================================================
 func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 	var rc: int = player.base_v_attack(card_id, dst_id, players)
 	if rc != GConst.GE_SUCCESS:
 		return rc
-	if using_lian_xu_ji or (engine != null and engine.行动额外 and engine.行动额外来源 == LIAN_XU_JI):
-		# 中途切换过来时 p_additional_action 没跑过，这里补记本回合已用并置位
-		if engine != null and engine.行动额外 and engine.行动额外来源 == LIAN_XU_JI:
+	var 额外来源: int = 0
+	if engine != null and engine.行动额外:
+		额外来源 = engine.行动额外来源
+	match 额外来源:
+		LIAN_XU_JI:
 			using_lian_xu_ji = true
 			used_lian_xu_ji = true
-		var card: GCard = Data.get_card(card_id)
-		if card.element_enum() != GConst.CardElement.Wind:
-			return GConst.GE_INVALID_ACTION
-	if engine != null and engine.行动额外 and engine.行动额外来源 == JIAN_YING:
-		# 剑影：询问确认时已经付过能量；这里只补记已用/兼容未付过的旧路径
-		using_lian_xu_ji = false
-		if not used_jian_ying:
-			if not _jian_ying_paid:
-				if player.get_energy() <= 0:
-					return GConst.GE_INVALID_ACTION
-				if player.crystal > 0:
-					player.set_crystal(player.crystal - 1)
-				else:
-					player.set_gem(player.gem - 1)
-				_jian_ying_paid = true
-			used_jian_ying = true
-			engine._broadcast_game()
+			var card: GCard = Data.get_card(card_id)
+			if card.element_enum() != GConst.CardElement.Wind:
+				return GConst.GE_INVALID_ACTION
+		JIAN_YING:
+			# 询问确认时已经付过能量；这里只补记已用/兼容未付过的旧路径
+			using_lian_xu_ji = false
+			if not used_jian_ying:
+				if not _jian_ying_paid:
+					if player.get_energy() <= 0:
+						return GConst.GE_INVALID_ACTION
+					if player.crystal > 0:
+						player.set_crystal(player.crystal - 1)
+					else:
+						player.set_gem(player.gem - 1)
+					_jian_ying_paid = true
+				used_jian_ying = true
+				engine._broadcast_game()
 	return GConst.GE_SUCCESS
 
 

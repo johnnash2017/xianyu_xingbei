@@ -533,6 +533,34 @@ func 跑() -> void:
 			break
 	检(剩103, "换队后未使用的 103 应退回队列：%s" % str(玩家1.additional_actions))
 
+	# ---- 场景 15：剑影已在确认时付能量，即使当前能量 0 也应允许进入 / 切换，且不继承 103 的风系限制 ----
+	_重置战斗()
+	var 剑圣五: BattleRole = 剑圣类.new()
+	剑圣五.setup(玩家1, 引擎)
+	玩家1.role = 剑圣五
+	玩家1.set_gem(0)
+	剑圣五._jian_ying_paid = true
+	玩家1.add_action(GConst.ActionType.Attack, 105, true, true)
+	引擎.push(BattleEngine.SAdditionalAction.new())
+	引擎.run()
+	检(引擎.行动额外来源 == 105 and 引擎._await_kind == GConst.Msg.Action,
+		"已付能量的剑影应能进入额外攻击阶段（来源 %d / 等待 %s）"
+		% [引擎.行动额外来源, str(引擎._await_kind)])
+	# 从 103 切到 105 时 using 标记可能仍是 true，v_attack 不能因此套用风系限制
+	var 非风五: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.is_attack() \
+				and c.element_enum() != GConst.CardElement.Wind:
+			非风五 = c
+			break
+	剑圣五.using_lian_xu_ji = true
+	玩家1.hand_cards.append(非风五.id)
+	引擎.行动额外 = true
+	引擎.行动额外来源 = 105
+	检(剑圣五.v_attack(非风五.id, 3, {3: 引擎.p(3)}) == GConst.GE_SUCCESS,
+		"剑影额外攻击不应继承风怒追击的风系限制")
+	检(not 剑圣五.using_lian_xu_ji, "切到剑影后应清除风怒追击的 using 标记")
+
 	# ---- 场景 13：攻击结束响应里点红色快捷按钮，跳过响应钩子后要接到额外行动 ----
 	_重置战斗()
 	var 剑圣四: BattleRole = 剑圣类.new()
