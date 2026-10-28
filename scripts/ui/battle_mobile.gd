@@ -2442,7 +2442,11 @@ func _进入技能询问() -> void:
 		or (not _skill_ask_can_cancel and not 专属询问文案.is_empty()) \
 		or (_skill_ask_id == GConst.技能_偷袭 and _skill_ask_need_target > 0)
 	var 指示提示: String = _发动提示(_skill_ask_id)
-	if 是响应技能 and not 有专属提示:
+	var 赐福响应提示: String = _响应赐福提示(_skill_ask_id)
+	if not 赐福响应提示.is_empty():
+		# 迅捷赐福 / 威力赐福的响应：提示要写清「移除赐福 + 换来的效果」
+		询问文案 = 赐福响应提示
+	elif 是响应技能 and not 有专属提示:
 		if not 指示提示.is_empty():
 			# 技能指示器里有专门写的完整效果（如贯穿射击、赤色一闪）时优先用它
 			询问文案 = 指示提示
@@ -2687,11 +2691,20 @@ func _额外攻击行动参数() -> Array:
 	return []
 
 
-## 额外行动按钮的悬停说明：优先用完整技能提示（含技能名 / 类型），不要只给一小段效果
-func _额外行动按钮说明(cause: int) -> String:
-	# 迅捷赐福选项的提示只写「移除赐福 + 换来的效果」，不再摊整段技能说明
+## 赐福类作为响应时的提示：明确先移除赐福，再说换来的效果
+func _响应赐福提示(cause: int) -> String:
 	if cause == GConst.技能_迅捷赐福:
 		return "移除迅捷赐福，额外+1【攻击行动】"
+	if cause == GConst.技能_威力赐福:
+		return "移除威力赐福，本次攻击伤害+2"
+	return ""
+
+
+## 额外行动按钮的悬停说明：优先用「移除赐福 + 效果」，其余用完整技能提示
+func _额外行动按钮说明(cause: int) -> String:
+	var 赐福说明: String = _响应赐福提示(cause)
+	if not 赐福说明.is_empty():
+		return 赐福说明
 	var 单个: String = 角色技能提示.单个技能(cause)
 	if not 单个.is_empty():
 		return 单个
@@ -3703,9 +3716,10 @@ func _刷新二级栏提示() -> void:
 			_指令提示(爆裂说明)
 			return
 	var 选中技能号: int = int(选中项.get("技能号", 0))
-	# 迅捷赐福选项选中后只提示「移除赐福 + 换来效果」，不显示整段技能说明
-	if 选中技能号 == GConst.技能_迅捷赐福:
-		_指令提示("移除迅捷赐福，额外+1【攻击行动】")
+	# 迅捷赐福 / 威力赐福选项选中后只提示「移除赐福 + 换来效果」，不显示整段技能说明
+	var 赐福提示: String = _响应赐福提示(选中技能号)
+	if not 赐福提示.is_empty():
+		_指令提示(赐福提示)
 		return
 	var 父技能号: int = _二级栏父技能号
 	var 锁定父说明: bool = _固定父说明(父技能号)
