@@ -974,6 +974,36 @@ func 跑() -> void:
 			序二.append(int(a.get("cause", 0)))
 		检(序二 == [101, 103], "再切到 105 后队列应保持 [101,103]：%s" % str(序二))
 
+	# ---- 场景 31：圣剑超时/跳过时必须把自动抽到的牌自动弃掉 ----
+	_重置战斗()
+	var 圣剑类 = preload("res://scripts/battle/roles/role_jiansheng.gd")
+	var 圣剑: BattleRole = 圣剑类.new()
+	圣剑.setup(玩家1, 引擎)
+	玩家1.role = 圣剑
+	玩家1.hand_cards = [攻击牌甲.id, 攻击牌乙.id, 攻击牌甲.id]
+	var 圣剑原手: int = 玩家1.hand_cards.size()
+	圣剑._sheng_jian_active = true
+	圣剑._sheng_jian_step = 0
+	引擎.current_id = 1
+	引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+	引擎.run()
+	# 选摸 2 张
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 104, "src_id": 1,
+		"args": [2], "card_ids": [], "dst_ids": [],
+	})
+	引擎.run()
+	# 弃牌询问直接跳过（模拟超时）：服务端应自动补弃 2 张
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 104, "src_id": 1,
+		"args": [], "card_ids": [], "dst_ids": [],
+	})
+	引擎.run()
+	检(玩家1.hand_cards.size() == 圣剑原手,
+		"圣剑自动摸 2 张后跳过弃牌，应自动弃 2 张，手牌应回到 %d，实际 %d"
+		% [圣剑原手, 玩家1.hand_cards.size()])
+	检(玩家1.hand_cards.size() >= 2, "圣剑自动弃牌后不应把手牌弃空")
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

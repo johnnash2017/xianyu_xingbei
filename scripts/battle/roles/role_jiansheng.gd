@@ -230,16 +230,28 @@ func _sheng_jian_cycle() -> int:
 	var r1: Dictionary = take_skill_reply_full()
 	_sheng_jian_active = false
 	_sheng_jian_step = STEP_DONE
+	var 需要弃: int = _sheng_jian_弃张数
 	_sheng_jian_弃张数 = 0
 	var cards1: Array = r1.get("card_ids", [])
 	# 收尾弃牌：只弃「确实还在手牌」的牌（客户端可能回带已离手的旧牌 id）。
 	# take_from_hand 遇到任一张不在手牌就整体失败、一张不扣，若仍调 to_discard 会把牌塞进弃牌堆造成牌张重复。
-	# 故先过滤成合法牌再弃，数量不足时宁少不多。
+	# 故先过滤成合法牌再弃。超时/跳过时回复为空：既然已经自动抽了 X 张，
+	# 就必须自动从手牌补弃到 X 张，不能因为没选牌就整段跳过。
 	var 弃牌: Array = []
 	for c: Variant in cards1:
 		var cid: int = int(c)
 		if not 弃牌.has(cid) and player.has_hand_card(cid):
 			弃牌.append(cid)
+		if 弃牌.size() >= 需要弃:
+			break
+	if 弃牌.size() < 需要弃:
+		for cid2: int in player.hand_cards:
+			if not 弃牌.has(cid2):
+				弃牌.append(cid2)
+			if 弃牌.size() >= 需要弃:
+				break
+	if 弃牌.size() > 需要弃:
+		弃牌.resize(需要弃)
 	if 弃牌.is_empty():
 		return SUCCESS
 	engine.take_from_hand(player.id, 弃牌)
