@@ -314,6 +314,14 @@ func p_timeline_6(ctx: Dictionary) -> int:
 #   · 若这 2 张都是攻击牌 → 额外 +1 攻击行动
 #   · 若这 2 张同系 → 对原攻击目标追加 1 点法术伤害
 # ============================================================
+## 偷袭作为普通技能选项摆出；引擎会把迅捷赐福合并进同一个列表。
+func _偷袭询问() -> void:
+	engine.ask_skill(player.id, TOU_XI, 2, 0, GConst.CardSource.Cover,
+		[{"value": TOU_XI, "label": GConst.skill_name(TOU_XI), "skill_id": TOU_XI}],
+		0, "", [], true, "攻击结束时可以发动偷袭", [],
+		0, 0, false, [], true, -1, 0, true)
+
+
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
@@ -325,11 +333,11 @@ func p_after_attack(ctx: Dictionary) -> int:
 		_touxi_step = 1
 		_touxi_target = int(ctx.get("dst", _last_attack_dst))
 		if not engine.has_reply():
-			# 确认发动的同一步直接选 2 个【魔力瓶】；选中后点「确定」即发动，取消＝不发动。
-			询问(player.id, TOU_XI, 2, 0, GConst.CardSource.Cover, [], 0, "", [], true)
+			_偷袭询问()
 			return WAIT
 	if _touxi_step == 1:
 		if not engine.has_reply():
+			_偷袭询问()
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var chosen: Array = r.get("card_ids", [])

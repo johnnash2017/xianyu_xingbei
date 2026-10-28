@@ -844,6 +844,70 @@ func 跑() -> void:
 		检(玩家1.additional_actions.is_empty(), "付费后取消聚合响应应跳过剩余额外攻击")
 		检(玩家1.get_energy() == 0, "取消聚合响应不退还已付费用（方案 A）")
 
+	# ---- 场景 27：猎羽人的偷袭也作为普通技能选项，与迅捷赐福同列表 ----
+	_重置战斗()
+	var 猎人类 = preload("res://scripts/battle/roles/role_liewuren.gd")
+	var 猎人: BattleRole = 猎人类.new()
+	猎人.setup(玩家1, 引擎)
+	玩家1.role = 猎人
+	玩家1.set_gem(1)
+	var 猎人迅捷牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			猎人迅捷牌 = c
+			break
+	var 盖牌材料: Array[GCard] = []
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and not c.is_magic() and not c.is_attack():
+			盖牌材料.append(c)
+		if 盖牌材料.size() >= 2:
+			break
+	if 猎人迅捷牌 != null and 盖牌材料.size() >= 2:
+		for c: GCard in 盖牌材料:
+			玩家1.cover_cards.append(c.id)
+		玩家1.hand_cards.append(攻击牌甲.id)
+		检(引擎.add_basic_effect(1, 猎人迅捷牌.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"猎人的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+		引擎.run()
+		var 猎人问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 猎人选项: Array = (猎人问[0] as Dictionary).get("args", []) \
+			if not 猎人问.is_empty() else []
+		检(猎人选项.slice(4).has(4205) and 猎人选项.slice(4).has(GConst.技能_迅捷赐福),
+			"偷袭和迅捷赐福应在同一响应列表：%s" % str(猎人选项))
+
+	# ---- 场景 28：魔弓的多重射击与迅捷赐福同列表 ----
+	_重置战斗()
+	var 魔弓类 = preload("res://scripts/battle/roles/role_mogong.gd")
+	var 魔弓: BattleRole = 魔弓类.new()
+	魔弓.setup(玩家1, 引擎)
+	玩家1.role = 魔弓
+	魔弓._available_duo_chong = true
+	魔弓._last_target = -1
+	var 魔弓迅捷牌: GCard = null
+	var 风充能: GCard = null
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual:
+			continue
+		if 魔弓迅捷牌 == null and c.has_skill_id(GConst.技能_迅捷赐福):
+			魔弓迅捷牌 = c
+		if 风充能 == null and c.element_enum() == GConst.CardElement.Wind:
+			风充能 = c
+	if 魔弓迅捷牌 != null and 风充能 != null:
+		玩家1.cover_cards.append(风充能.id)
+		玩家1.hand_cards.append(攻击牌甲.id)
+		检(引擎.add_basic_effect(1, 魔弓迅捷牌.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"魔弓的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+		引擎.run()
+		var 魔弓问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 魔弓选项: Array = (魔弓问[0] as Dictionary).get("args", []) \
+			if not 魔弓问.is_empty() else []
+		检(魔弓选项.slice(4).has(2603) and 魔弓选项.slice(4).has(GConst.技能_迅捷赐福),
+			"多重射击和迅捷赐福应在同一响应列表：%s" % str(魔弓选项))
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

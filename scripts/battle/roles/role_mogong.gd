@@ -345,14 +345,16 @@ func _duo_chong_she_ji_ask() -> int:
 	if 可攻目标.is_empty():
 		return SUCCESS
 	if not engine.has_reply():
-		# 不要求玩家选牌（need_card=0，界面上一张牌都点不动，但盖牌区照样亮出来给他看），
-		# 移除哪张风系【充能】由服务端自动挑；张数传 1 只为让提示文案说「移除 1 个风系【充能】」
-		询问(player.id, DUO_CHONG_SHE_JI, 0, 1, GConst.CardSource.Cover, [], 0, "",
-			[], true, 0, -1, 可攻目标, 1)
+		# 多重射击作为普通技能选项；引擎会把迅捷赐福合并进同一列表。
+		engine.ask_skill(player.id, DUO_CHONG_SHE_JI, 0, 1, GConst.CardSource.Cover,
+			[{"value": DUO_CHONG_SHE_JI, "label": GConst.skill_name(DUO_CHONG_SHE_JI),
+				"skill_id": DUO_CHONG_SHE_JI}],
+			0, "", [], true, "攻击结束时可以发动多重射击", 可攻目标,
+			0, 0, false, [], true, -1, 0, true)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
+	if args.is_empty() or (int(args[0]) != 1 and int(args[0]) != DUO_CHONG_SHE_JI):
 		return SUCCESS
 	var 风系: Array[int] = _cover_ids_of_element(GConst.CardElement.Wind)
 	if 风系.is_empty():
