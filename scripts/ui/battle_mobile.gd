@@ -2415,6 +2415,9 @@ func _进入技能询问() -> void:
 				快捷顺序.append(i)
 		for i: int in 快捷顺序:
 			var c: int = int(额外攻击[i])
+			# 迅捷赐福已经作为普通选项合并进同一列表，不再重复出现在快捷按钮里
+			if c == GConst.技能_迅捷赐福:
+				continue
 			var 牌白: Array = (额外牌表[i] as Dictionary).get("ids", []) if i < 额外牌表.size() else []
 			var 目标白: Array = (额外目标表[i] as Dictionary).get("ids", []) if i < 额外目标表.size() else []
 			var 系别: int = int(额外系别表[i]) if i < 额外系别表.size() else 0
@@ -3303,6 +3306,9 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 		var 按钮: 技能按钮 = _新技能按钮(0)
 		var 项技能号: int = int(d.get("技能号", 0))
 		var 用底色: Color = GConst.skill_type_color(项技能号) if 项技能号 > 0 else 选项底色
+		# 迅捷赐福合并进攻击结束选项时，贴到目标后是响应，按响应紫色显示
+		if 项技能号 == GConst.技能_迅捷赐福:
+			用底色 = GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
 		# 该项本身就是技能时绑上技能号：鼠标指向它就和普通技能按钮一样弹技能说明
 		var 字色: Color = d.get("字色", Color.TRANSPARENT)
 		按钮.设置选项(_选项文案(str(d.get("文本", ""))), 用底色, 项技能号, 字色)

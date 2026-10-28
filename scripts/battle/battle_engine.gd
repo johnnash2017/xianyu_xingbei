@@ -167,6 +167,9 @@ var _pending_args: Array = []
 ## 本次询问是不是「是否发动某技能」的技能询问（ask_skill=true / ask_respond=false）：
 ## 超时兜底要按它区分「技能询问」与应战、弃牌之类的通用应答，而不是靠询问号的大小去猜
 var _pending_is_skill: bool = false
+## 攻击结束响应里被合并进「选项」的额外行动（目前是迅捷赐福）：玩家选它时由引擎直接
+## 走额外行动确认流程，不交给角色当成普通技能选项处理。
+var _额外确认选项: Array = []
 ## 本次技能询问「能不能取消」「要选几名目标」「合法目标白名单」：超时兜底要据此判断
 ## 「不许回取消」以及「从谁里面随机挑目标」（如【念弹】：问之前就已记上 +1【斗气】，不能白拿）
 var _pending_skill_can_cancel: bool = true
@@ -953,6 +956,18 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 			and int(data.get("respond_id", 0)) == GConst.RespondType.ChooseExtraAction:
 		_选择额外攻击响应(pid, data)
 		return
+	# 攻击结束响应里合并进选项的额外行动（迅捷赐福）：选它就按额外行动确认流程走，
+	# 不交给角色当成普通技能选项处理。
+	if kind == GConst.Msg.Respond and not _额外确认选项.is_empty():
+		var 选项参数: Array = data.get("args", [])
+		var 选项号: int = int(选项参数[0]) if not 选项参数.is_empty() else 0
+		if _额外确认选项.has(选项号):
+			_选择额外攻击响应(pid, {
+				"args": [选项号], "card_ids": [], "dst_ids": [],
+			})
+			_额外确认选项.clear()
+			return
+		_额外确认选项.clear()
 	# 分步应答（如【剑气斩】先在弹窗选好「移除几点剑气」）：只记下这一步，不算本次询问的最终回复，
 	# 继续等玩家选目标 / 目标超时兜底时再拿它用
 	if bool(data.get("partial", false)):
@@ -1529,6 +1544,24 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## can_light=false 时随询问下发 can_light=false（如【阴阳转换】：这次攻击不能用【圣光】抵挡，
 ## 客户端据此把【圣光】置灰；默认 true 时不下发，客户端按可用处理）
 func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false) -> void:
+	# 迅捷赐福是攻击结束时可以发动的「响应类额外行动」：和 103/105 一样合并进同一个选项列表，
+	# 而不是只挂成红色快捷按钮。选中后由引擎走额外行动确认（移除赐福、获得攻击行动）。
+	var 用选项: Array = options.duplicate(true)
+	_额外确认选项.clear()
+	if 允许额外攻击快捷:
+		var 问者: BattlePlayer = players.get(pid)
+		if 问者 != null:
+			for a: Dictionary in 问者.additional_actions:
+				if int(a.get("cause", 0)) == GConst.技能_迅捷赐福 \
+						and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
+					用选项.append({
+						"value": GConst.技能_迅捷赐福,
+						"label": GConst.skill_name(GConst.技能_迅捷赐福),
+						"skill_id": GConst.技能_迅捷赐福,
+					})
+					_额外确认选项.append(GConst.技能_迅捷赐福)
+					break
+	options = 用选项
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
 	var 选项技能号: Array = []
@@ -1623,6 +1656,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 				if not GConst.放行动作(GConst.ActionType.Attack, 类):
 					continue
 				var c: int = int(a.get("cause", 0))
+				# 迅捷赐福已经合并进上面的选项列表，不再重复挂红色快捷按钮
+				if c == GConst.技能_迅捷赐福:
+					continue
 				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
 					if 问者.role != null else []
 				if 牌.is_empty() and 问者.role != null:
