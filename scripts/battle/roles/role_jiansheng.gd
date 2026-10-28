@@ -283,10 +283,8 @@ func v_additional_action(cause: int) -> int:
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	if cause == JIAN_YING:
-		# 已在本回合攻击结束确认时付过能量（_jian_ying_paid）的，即使当前能量为 0 也应允许进入
+		# 只限制本回合一次；费用在确认发动时已结算，不在进入/切换时再拦
 		if used_jian_ying:
-			return GConst.GE_INVALID_ACTION
-		if not _jian_ying_paid and player.get_energy() <= 0:
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	return V_NOT_OVERRIDE
@@ -296,11 +294,11 @@ func v_additional_action(cause: int) -> int:
 # 玩家选中额外行动时：标记回合限定 / 补付剑影能量（确认时已付过的不再扣）
 # ============================================================
 func extra_action_switchable(cause: int) -> bool:
-	# 疾风技 / 风怒追击没有资源代价；剑影已付款或还有能量可付时都可切换
+	# 只看这份额外行动还在不在、本回合用没用过；费用在确认发动时已经结算，不再参与切换判断。
 	if cause == JI_FENG_JI or cause == LIAN_XU_JI:
 		return true
 	if cause == JIAN_YING:
-		return _jian_ying_paid or (player.get_energy() > 0 and not used_jian_ying)
+		return not used_jian_ying
 	return false
 
 
@@ -352,11 +350,9 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 			using_lian_xu_ji = false
 			if not used_jian_ying:
 				if not _jian_ying_paid:
-					if player.get_energy() <= 0:
-						return GConst.GE_INVALID_ACTION
 					if player.crystal > 0:
 						player.set_crystal(player.crystal - 1)
-					else:
+					elif player.gem > 0:
 						player.set_gem(player.gem - 1)
 					_jian_ying_paid = true
 				used_jian_ying = true
