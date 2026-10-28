@@ -2732,13 +2732,15 @@ func _选中额外攻击响应(_技能号: int, cause: int, 牌白: Array = [], 
 	_额外攻击响应选择 = cause
 	_额外攻击响应_牌白 = 牌白.duplicate()
 	_额外攻击响应_目标白 = 目标白.duplicate()
-	# 已经选好的攻击牌如果仍在新白名单里就保留，避免玩家先选牌再点额外攻击按钮时把牌清掉
+	# 已经选好的攻击牌如果仍在新白名单里就保留，避免玩家先选牌再点额外攻击按钮时把牌清掉；
+	# 但响应里的额外攻击永远只对应一张攻击牌，不能把之前多选的牌一起保留。
 	var 保留牌: Array[int] = []
 	for cid: int in _sel_cards:
 		var card: GCard = Data.get_card(cid)
 		if card != null and card.is_attack() \
 				and (_额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(cid)):
 			保留牌.append(cid)
+			break
 	_sel_cards = 保留牌
 	_sel_players.clear()
 	# 响应技能选项保留可见，但取消它的选中（改由这次额外攻击接管）
@@ -3775,7 +3777,14 @@ func _on_card_clicked(card_id: int) -> void:
 	# 置灰（不可用）的牌不做任何响应，也不弹提示
 	if not _卡牌能点(card_id):
 		return
-	if _sel_cards.has(card_id):
+	if _额外攻击响应选择 > 0:
+		# 响应里的额外攻击是「一张攻击牌 + 一个敌方目标」：再点第二张牌直接替换第一张，
+		# 不能因为当前技能询问的 _need_cards 是 0 就累积成两张。
+		if _sel_cards.has(card_id):
+			_sel_cards.erase(card_id)
+		else:
+			_sel_cards = [card_id]
+	elif _sel_cards.has(card_id):
 		_sel_cards.erase(card_id)
 	else:
 		if _need_cards > 0 and _sel_cards.size() >= _need_cards:

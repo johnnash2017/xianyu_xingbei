@@ -144,6 +144,22 @@ func 跑() -> void:
 	检(int(窗.get("_mode")) == 0 and (窗.get("_sel_cards") as Array).is_empty(),
 		"点敌方头像没有直接发起攻击（_mode=%d）" % int(窗.get("_mode")))
 
+	# 响应里的额外攻击永远只能带一张攻击牌：先选一张，再选第二张必须替换而不是累积
+	var 响应攻击牌: Array[int] = []
+	for c: GCard in Data.hand_cards:
+		if c != null and c.is_attack():
+			响应攻击牌.append(c.id)
+		if 响应攻击牌.size() >= 2:
+			break
+	if 响应攻击牌.size() >= 2:
+		窗.call("_选中额外攻击响应", 0, 101, [], [])
+		窗.call("_on_card_clicked", 响应攻击牌[0])
+		窗.call("_on_card_clicked", 响应攻击牌[1])
+		var 响应已选: Array = 窗.get("_sel_cards")
+		检(响应已选.size() == 1 and int(响应已选[0]) == 响应攻击牌[1],
+			"响应额外攻击选第二张攻击牌时应替换第一张，实际 %s" % str(响应已选))
+		窗.call("_清除额外攻击响应选择")
+
 	# 重新开一次行动询问：验证「取消」清空已选
 	Logic.command_received.emit({
 		"cmd_type": GConst.CmdType.Action,
