@@ -150,6 +150,12 @@ func _sheng_jian(ctx: Dictionary) -> void:
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
+	# 【圣剑】第三刀：先结算摸 X / 弃 X，再进入风怒追击 / 剑影等攻击结束响应。
+	# 这段可能跨“选摸牌数 / 选弃牌”两次询问，没结算完不能先问别的响应。
+	if _sheng_jian_active:
+		var 圣剑结果: int = _sheng_jian_cycle()
+		if 圣剑结果 == WAIT:
+			return WAIT
 	# 【风怒追击 / 剑影】像剑之子那样在攻击结束时一起摆出来问；
 	# 选中后以 direct 额外行动入队，之后由引擎直接进入，不再在回合结束二次询问。
 	var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
@@ -197,9 +203,6 @@ func p_after_attack(ctx: Dictionary) -> int:
 				# 正常由引擎在 on_message 里截获并走基础效果额外行动确认；这里兜底结束本轮询问
 				ctx[KEY_AFTER_STEP] = 2
 				break
-	# 【圣剑】：本次（第 3 次）【攻击行动】触发强制命中后，结束这次攻击时摸 X 张、弃 X 张（跨一次询问）
-	if _sheng_jian_active:
-		return _sheng_jian_cycle()
 	return SUCCESS
 
 
