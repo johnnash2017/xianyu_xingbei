@@ -2560,6 +2560,11 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 		_本次已询问基础效果额外行动.clear()
 		push(S行动结束额外行动响应.new())
 	push(SHook.new(hook, 上下文, []))
+	# 最高优先级行动结束结算（如格斗家念弹）：必须排在普通行动结束响应之前
+	if hook == "p_after_magic":
+		var 当前: BattlePlayer = players.get(int(上下文.get("player", current_id)))
+		if 当前 != null and 当前.role != null and 当前.role.has_priority_action_end():
+			push(SHook.new("p_priority_action_end", 上下文, []))
 
 
 ## 本回合的行动计数（只读查询，F2）：供角色 / 头像提示 / 测试读取

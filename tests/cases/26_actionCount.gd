@@ -908,6 +908,31 @@ func 跑() -> void:
 		检(魔弓选项.slice(4).has(2603) and 魔弓选项.slice(4).has(GConst.技能_迅捷赐福),
 			"多重射击和迅捷赐福应在同一响应列表：%s" % str(魔弓选项))
 
+	# ---- 场景 29：格斗家念弹必须最先结算，之后再问迅捷赐福 ----
+	_重置战斗()
+	var 格斗类 = preload("res://scripts/battle/roles/role_gedou.gd")
+	var 格斗: BattleRole = 格斗类.new()
+	格斗.setup(玩家1, 引擎)
+	玩家1.role = 格斗
+	玩家1.tokens[0]["num"] = 0
+	玩家1.tokens[0]["max"] = 3
+	var 格斗迅捷牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			格斗迅捷牌 = c
+			break
+	if 格斗迅捷牌 != null:
+		玩家1.hand_cards.append(攻击牌甲.id)
+		检(引擎.add_basic_effect(1, 格斗迅捷牌.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"格斗家的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_magic", {"player": 1, "kind": "magic"}, false, 0)
+		引擎.run()
+		var 念弹问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 念弹号: int = int((念弹问[0] as Dictionary).get("respond_id", 0)) \
+			if not 念弹问.is_empty() else 0
+		检(念弹号 == 2003, "法术结束后应先问念弹，而不是先问迅捷赐福：%s" % str(念弹问))
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

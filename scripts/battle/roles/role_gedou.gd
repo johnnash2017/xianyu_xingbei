@@ -345,7 +345,25 @@ var _nian_dan_step: int = 0
 # ============================================================
 # 法术行动结束后：念弹
 # ============================================================
+## 念弹必须在其它行动结束响应之前完整结算
+func has_priority_action_end() -> bool:
+	return true
+
+
+func p_priority_action_end(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	ctx["nian_dan_priority_done"] = true
+	return _nian_dan_after_magic(ctx)
+
+
 func p_after_magic(ctx: Dictionary) -> int:
+	if bool(ctx.get("nian_dan_priority_done", false)):
+		return SUCCESS
+	return _nian_dan_after_magic(ctx)
+
+
+func _nian_dan_after_magic(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	# 本次行动已处理：URGENT 回来后引擎会用同一 ctx 再进本钩子，直接挡掉，别重复询问/重复伤害

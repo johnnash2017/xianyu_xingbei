@@ -209,6 +209,16 @@ func v_attacked() -> int: return V_NOT_OVERRIDE
 ## 注意：这只挡「成为目标」，不阻止已经在自己面前的基础效果继续生效。
 func v_basic_effect_target(_dst: BattlePlayer, _card_id: int) -> int: return GConst.GE_SUCCESS
 func v_additional_action(_cause: int) -> int: return V_NOT_OVERRIDE
+## 行动结束时的最高优先级结算：在其它角色的普通 p_after_attack / p_after_magic
+## 以及额外行动响应之前执行（如格斗家念弹必须先结算完）。
+func has_priority_action_end() -> bool:
+	return false
+
+
+func p_priority_action_end(_ctx: Dictionary) -> int:
+	return SUCCESS
+
+
 ## 在「行动结束响应」里确认使用某份额外行动时立即结算费用（方案 A：点选即付）。
 ## 返回 SUCCESS / URGENT；默认无费用。真正进入行动时仍走 p_additional_action 结算效果。
 func confirm_extra_action(_cause: int) -> int:
