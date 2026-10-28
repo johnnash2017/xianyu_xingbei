@@ -219,6 +219,83 @@ func 基础效果额外行动选项(pid: int) -> Array:
 			"skill_id": cause,
 		})
 	return out
+
+
+## 收集本次行动结束响应的所有选项。聚合器不关心来源类型，只消费这里合并后的描述。
+## kind：role＝角色技能；extra＝队列里的额外行动；basic＝基础效果额外行动。
+func _收集行动结束选项(pid: int, ctx: Dictionary) -> Array:
+	var out: Array = []
+	var cur: BattlePlayer = players.get(pid)
+	if cur == null:
+		return out
+	var 序号: int = 0
+	if cur.role != null:
+		for o: Dictionary in cur.role.action_end_options(ctx):
+			var 项: Dictionary = o.duplicate()
+			项["_kind"] = "role"
+			项["_sort"] = 0
+			项["_seq"] = 序号
+			序号 += 1
+			out.append(项)
+	for a: Dictionary in cur.additional_actions:
+		if bool(a.get("direct", false)):
+			continue
+		var cause: int = int(a.get("cause", 0))
+		if cause <= 0 or GConst.基础效果额外行动.has(cause):
+			continue
+		if cur.role == null or not cur.role.extra_action_is_response(cause):
+			continue
+		var 已有: bool = false
+		for old: Dictionary in out:
+			if int(old.get("value", 0)) == cause:
+				已有 = true
+				break
+		if 已有:
+			continue
+		out.append({
+			"value": cause, "label": GConst.skill_name(cause), "skill_id": cause,
+			"enabled": 额外行动可发动(cur, cause),
+			"_kind": "extra", "_sort": 1, "_seq": 序号,
+		})
+		序号 += 1
+	for o: Dictionary in 基础效果额外行动选项(pid):
+		var 已有: bool = false
+		for old: Dictionary in out:
+			if int(old.get("value", 0)) == int(o.get("value", 0)):
+				已有 = true
+				break
+		if 已有:
+			continue
+		var 项: Dictionary = o.duplicate()
+		项["_kind"] = "basic"
+		项["_sort"] = 2
+		项["_seq"] = 序号
+		序号 += 1
+		out.append(项)
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var sa: int = int(a.get("_sort", 0))
+		var sb: int = int(b.get("_sort", 0))
+		if sa == sb:
+			return int(a.get("_seq", 0)) < int(b.get("_seq", 0))
+		return sa < sb)
+	return out
+
+
+## 把选中的行动结束选项分派回来源。返回 result（SUCCESS/WAIT/URGENT）+ terminal。
+## terminal=true：该来源的 URGENT 已经结算完，不需要回来继续；false：多步角色技能还要回来。
+func _分派行动结束选项(pid: int, cause: int, reply: Dictionary, kind: String,
+		ctx: Dictionary) -> Dictionary:
+	if kind == "basic":
+		_确认基础效果额外行动(pid, cause)
+		_基础效果额外行动已确认[cause] = true
+		_额外确认选项.clear()
+		return {"result": BattleRole.SUCCESS, "terminal": true}
+	var cur: BattlePlayer = players.get(pid)
+	if cur == null or cur.role == null:
+		return {"result": GConst.GE_INVALID_ACTION, "terminal": true}
+	if kind == "extra":
+		return {"result": cur.role.resolve_queued_extra_action(cause), "terminal": true}
+	return {"result": cur.role.resolve_action_end_option(cause, reply, ctx), "terminal": false}
 ## 本次技能询问「能不能取消」「要选几名目标」「合法目标白名单」：超时兜底要据此判断
 ## 「不许回取消」以及「从谁里面随机挑目标」（如【念弹】：问之前就已记上 +1【斗气】，不能白拿）
 var _pending_skill_can_cancel: bool = true
@@ -1010,7 +1087,7 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 		return
 	# 攻击结束响应里合并进选项的额外行动（迅捷赐福）：选它就按额外行动确认流程走，
 	# 不交给角色当成普通技能选项处理。
-	if kind == GConst.Msg.Respond and not _额外确认选项.is_empty():
+	if kind == GConst.Msg.Respond and not _行动聚合中 and not _额外确认选项.is_empty():
 		var 选项参数: Array = data.get("args", [])
 		var 选项号: int = int(选项参数[0]) if not 选项参数.is_empty() else 0
 		if _额外确认选项.has(选项号):
@@ -3145,7 +3222,7 @@ class SNextPlayer:
 class S行动聚合器:
 	var 上下文: Dictionary = {}
 	var 待决: int = 0
-	var 待决队列: bool = false
+	var 待决类型: String = ""
 
 	func _init(ctx: Dictionary = {}) -> void:
 		上下文 = ctx
@@ -3159,33 +3236,29 @@ class S行动聚合器:
 		e._pending_partial = {}
 		return r
 
-	## 把选中项分派回来源；返回 -1 表示成功可继续，其他为引擎状态。
+	## 把选中项交回引擎的来源分派器；返回 -1 表示成功可继续，其他为引擎状态。
 	func _分派(e: BattleEngine, cur: BattlePlayer, cause: int, reply: Dictionary,
-			是队列额外: bool = false) -> int:
-		if cur.role == null:
-			e._行动聚合中 = false
-			e._行动聚合流程 = false
-			return BattleEngine.CONTINUE
-		var 结果: int = cur.role.resolve_action_end_option(cause, reply, 上下文)
+			kind: String) -> int:
+		var 分派: Dictionary = e._分派行动结束选项(cur.id, cause, reply, kind, 上下文)
+		var 结果: int = int(分派.get("result", GConst.GE_INVALID_ACTION))
+		var 终结: bool = bool(分派.get("terminal", true))
 		if 结果 == BattleRole.WAIT:
 			待决 = cause
-			待决队列 = 是队列额外
+			待决类型 = kind
 			return BattleEngine.WAIT
 		if 结果 == BattleRole.URGENT:
-			# 队列额外行动的确认（扣费/自伤/摸牌）已经完成，不能再重复分派；
-			# 角色技能的多步结算（如剑影断念摸牌后还要入队）才需要回来继续。
-			if 是队列额外:
+			if 终结:
 				待决 = 0
 			else:
 				待决 = cause
-				待决队列 = false
+				待决类型 = kind
 			return BattleEngine.SUSPEND
 		待决 = 0
 		if 结果 != BattleRole.SUCCESS:
 			e._行动聚合中 = false
 			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
-		待决队列 = false
+		待决 = 0
 		return -1
 
 	func handle(e: BattleEngine) -> int:
@@ -3206,51 +3279,12 @@ class S行动聚合器:
 		# 角色技能的多步结算：上次已经分派，等待本状态再次被唤醒
 		if 待决 > 0:
 			var 续回复: Dictionary = _取回复(e) if e.has_reply() else {}
-			var 续结果: int = _分派(e, cur, 待决, 续回复, 待决队列)
+			var 续结果: int = _分派(e, cur, 待决, 续回复, 待决类型)
 			if 续结果 >= 0:
 				return 续结果
 		while true:
-			var 待问: Array = []
-			# 1) 角色登记的行动结束技能（角色技能永远排在迅捷赐福前面）
-			if cur.role != null:
-				for o: Dictionary in cur.role.action_end_options(上下文):
-					var 已有: bool = false
-					for old: Dictionary in 待问:
-						if int(old.get("value", 0)) == int(o.get("value", 0)):
-							已有 = true
-							break
-					if not 已有:
-						待问.append(o)
-			# 2) 队列里已获得、但还没确认的额外行动
-			for a: Dictionary in cur.additional_actions:
-				if bool(a.get("direct", false)):
-					continue
-				var cause: int = int(a.get("cause", 0))
-				if cause <= 0 or GConst.基础效果额外行动.has(cause):
-					continue
-				if cur.role == null or not cur.role.extra_action_is_response(cause):
-					continue
-				var 已有: bool = false
-				for o: Dictionary in 待问:
-					if int(o.get("value", 0)) == cause:
-						已有 = true
-						break
-				if not 已有:
-					待问.append({
-						"value": cause,
-						"label": GConst.skill_name(cause),
-						"skill_id": cause,
-						"enabled": e.额外行动可发动(cur, cause),
-					})
-			# 3) 基础效果额外行动（迅捷赐福）固定排在角色技能之后
-			for o: Dictionary in e.基础效果额外行动选项(pid):
-				var 已有: bool = false
-				for old: Dictionary in 待问:
-					if int(old.get("value", 0)) == int(o.get("value", 0)):
-						已有 = true
-						break
-				if not 已有:
-					待问.append(o)
+			# 来源收集全部交给引擎；聚合器不认识角色技能 / 队列额外行动 / 基础效果
+			var 待问: Array = e._收集行动结束选项(pid, 上下文)
 			if 待问.is_empty():
 				e._行动聚合中 = false
 				e._行动聚合流程 = false
@@ -3285,21 +3319,17 @@ class S行动聚合器:
 			var args: Array = r.get("args", [])
 			var 选中: int = int(args[0]) if not args.is_empty() else 0
 			var 选中可用: bool = true
+			var 选中类型: String = "role"
 			for o: Dictionary in 待问:
 				if int(o.get("value", 0)) == 选中:
 					选中可用 = bool(o.get("enabled", true))
+					选中类型 = str(o.get("_kind", "role"))
 					break
 			if not 选中可用:
 				e._行动聚合中 = false
 				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
-			# 基础效果选项会被 on_message 先行截获并确认；这里只分派角色/额外行动
-			var 选中队列: bool = false
-			for a: Dictionary in cur.additional_actions:
-				if int(a.get("cause", 0)) == 选中 and not bool(a.get("direct", false)):
-					选中队列 = true
-					break
-			var 结果: int = _分派(e, cur, 选中, r, 选中队列)
+			var 结果: int = _分派(e, cur, 选中, r, 选中类型)
 			if 结果 >= 0:
 				return 结果
 		return BattleEngine.CONTINUE
