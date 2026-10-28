@@ -2409,8 +2409,7 @@ func _进入技能询问() -> void:
 			var 额外按钮: 技能按钮 = _新技能按钮(0)
 			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack, 系别), 额外攻击按钮色, 0)
 			额外按钮.设置说明(_额外行动按钮说明(c))
-			额外按钮.connect("点击", func(_技能号: int) -> void:
-				_选中额外攻击响应(c, 牌白, 目标白))
+			额外按钮.connect("点击", _选中额外攻击响应.bind(c, 牌白, 目标白))
 			_额外攻击响应按钮.append({"按钮": 额外按钮, "cause": c})
 		_排技能栏.call_deferred()
 	# 技能询问同时写一行日志：它只挂在提示条上，错过就会一直等（看着像「点了确定没反应」）
@@ -2679,7 +2678,7 @@ func _选中额外行动(cause: int) -> void:
 
 
 ## 攻击结束响应里点额外攻击快捷按钮：只选中（可切换），按「确定」才放弃响应进入
-func _选中额外攻击响应(cause: int, 牌白: Array = [], 目标白: Array = []) -> void:
+func _选中额外攻击响应(_技能号: int, cause: int, 牌白: Array = [], 目标白: Array = []) -> void:
 	_额外攻击响应选择 = cause
 	_额外攻击响应_牌白 = 牌白.duplicate()
 	_额外攻击响应_目标白 = 目标白.duplicate()
@@ -2741,7 +2740,7 @@ func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = []) ->
 			额外攻击按钮色 if 攻击 else GConst.skill_type_color(c), 0)
 		按钮.设置说明(_额外行动按钮说明(c))
 		按钮.设置选项可用(可发动.has(c))
-		按钮.connect("点击", func(_技能号: int) -> void: _选择额外行动(c))
+		按钮.connect("点击", _选择额外行动.bind(c))
 		_额外行动按钮表.append({"按钮": 按钮, "cause": c})
 	if causes.size() == 1:
 		# 单份：提示条写技能效果（保留原行为），点击按钮直接进入
@@ -3020,8 +3019,7 @@ func _构建技能按钮(cmds: Array) -> void:
 			额外攻击按钮色 if 当前攻击 else GConst.skill_type_color(当前来源), 0)
 		当前按钮.设置说明(_额外行动按钮说明(当前来源))
 		当前按钮.设置选中(true)
-		当前按钮.connect("点击", func(_技能号: int) -> void:
-			_本地选择额外攻击(当前来源, 当前牌, 当前目标))
+		当前按钮.connect("点击", _本地选择额外攻击.bind(当前来源, 当前牌, 当前目标))
 		_额外攻击切换项.append({
 			"按钮": 当前按钮, "cause": 当前来源,
 			"card_ids": 当前牌, "dst_ids": 当前目标,
@@ -3041,8 +3039,7 @@ func _构建技能按钮(cmds: Array) -> void:
 			切换按钮.设置选项(_额外行动按钮文本(cause, GConst.ActionType.Attack,
 				int(c.get("extra_element", 0))), 额外攻击按钮色, 0)
 			切换按钮.设置说明(_额外行动按钮说明(cause))
-			切换按钮.connect("点击", func(_技能号: int) -> void:
-				_本地选择额外攻击(cause, 切换牌, 切换目标))
+			切换按钮.connect("点击", _本地选择额外攻击.bind(cause, 切换牌, 切换目标))
 			_额外攻击切换项.append({
 				"按钮": 切换按钮, "cause": cause,
 				"card_ids": 切换牌, "dst_ids": 切换目标,
@@ -3080,7 +3077,7 @@ func _构建技能按钮(cmds: Array) -> void:
 
 
 ## 额外攻击阶段点另一份额外攻击：只切换本地高亮与白名单，不提交、不重发询问（画面不闪、顺序不变）
-func _本地选择额外攻击(cause: int, 牌白: Array, 目标白: Array) -> void:
+func _本地选择额外攻击(_技能号: int, cause: int, 牌白: Array, 目标白: Array) -> void:
 	_当前额外攻击选择 = cause
 	_额外手牌白名单_选择 = 牌白.duplicate()
 	_额外目标白名单_选择 = 目标白.duplicate()
@@ -4530,7 +4527,7 @@ func _on_ok() -> void:
 			return
 		# 单份额外行动（如【迅捷赐福】）：确定＝发动它
 		if _额外行动单选 >= 0:
-			_选择额外行动(_额外行动单选)
+			_选择额外行动(0, _额外行动单选)
 			return
 		if not _分配配置().is_empty():
 			_发送治疗分配()
@@ -6253,7 +6250,7 @@ func _发送治疗分配() -> void:
 		_发送行动(_pending_skill_type, _pending_skill_id, 目标表, _sel_cards, 点数表)
 
 
-func _选择额外行动(cause: int) -> void:
+func _选择额外行动(_技能号: int, cause: int) -> void:
 	# 记下这份额外行动的来源：服务端随后的行动询问只带 is_extra，不带 cause
 	_额外行动来源 = cause
 	Logic.send_respond(GConst.RespondType.AdditionalAction, [], [], [cause])

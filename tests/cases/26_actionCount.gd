@@ -132,6 +132,9 @@ func _重置战斗() -> void:
 	引擎.行动禁特殊 = false
 	引擎.skip_action_phase = false
 	引擎.测试跳过回合 = -1
+	引擎.首选额外行动 = -1
+	引擎.首选额外行动卡 = 0
+	引擎.首选额外行动目标 = 0
 	发送记录.clear()
 	for pid: int in 引擎.order:
 		var p0: BattlePlayer = 引擎.p(pid)
@@ -504,6 +507,31 @@ func 跑() -> void:
 			"风系攻击牌 + 目标应直接进入应战询问（等待 %s / %s）" % [str(引擎._await_id), str(引擎._await_kind)])
 	else:
 		检(false, "卡库里找不到风系攻击牌")
+
+	# ---- 场景 14：额外攻击阶段点另一份行动再出手，应按选择消耗，不按队列顺序 ----
+	_重置战斗()
+	玩家1.role = 角色
+	玩家1.hand_cards.append(攻击牌甲.id)
+	玩家1.add_action(GConst.ActionType.Attack, 103, true, true)
+	玩家1.add_action(GConst.ActionType.Attack, 105, true, true)
+	引擎.push(BattleEngine.SAdditionalAction.new())
+	引擎.run()
+	检(引擎.行动额外来源 == 103 and 引擎._await_kind == GConst.Msg.Action,
+		"多份 direct 额外行动应先进入第一份（来源 %d / 等待 %s）"
+		% [引擎.行动额外来源, str(引擎._await_kind)])
+	引擎.on_message(1, GConst.Msg.Action, {
+		"action_type": GConst.ActionType.Attack, "src_id": 1,
+		"card_ids": [攻击牌甲.id], "dst_ids": [3], "args": [105],
+	})
+	检(引擎.行动额外来源 == 105,
+		"出手时应按客户端选择的 105 换队，而不是按顺序消耗 103：来源 %d"
+		% 引擎.行动额外来源)
+	var 剩103: bool = false
+	for a: Dictionary in 玩家1.additional_actions:
+		if int(a.get("cause", 0)) == 103:
+			剩103 = true
+			break
+	检(剩103, "换队后未使用的 103 应退回队列：%s" % str(玩家1.additional_actions))
 
 	# ---- 场景 13：攻击结束响应里点红色快捷按钮，跳过响应钩子后要接到额外行动 ----
 	_重置战斗()
