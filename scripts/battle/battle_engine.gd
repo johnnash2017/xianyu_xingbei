@@ -181,8 +181,6 @@ var _本次询问可选额外行动: bool = false
 ## 快捷额外攻击已经转成普通回复，聚合器分派成功后立即收尾
 var _快捷提前收尾: bool = false
 ## 正在「行动聚合器」里等待：取消时同样要清空后续额外攻击
-## 当前这次行动结束是否走行动聚合器（角色自己的 p_after_attack 在聚合流程里只做优先结算）
-var _行动聚合流程: bool = false
 ## 已下发过的询问次数（测试用：确认取消后没有再次询问）
 var _询问计数: int = 0
 ## 玩家在这个响应里点了取消：本回合后面的额外攻击行动全部跳过，不再二次询问
@@ -1053,7 +1051,6 @@ func _清空等待() -> void:
 	# 中止流程时一并清掉「弃牌前拦截」标记，免得残留成 true 让之后的弃牌永远走同步分支
 	_弃牌拦截中 = false
 	# 中止时也不要残留行动聚合器的流程标记，否则角色自己的 p_after_attack 会被跳过
-	_行动聚合流程 = false
 
 
 func on_message(pid: int, kind: int, data: Dictionary) -> void:
@@ -1160,7 +1157,6 @@ func _处理行动结束取消(pid: int) -> void:
 	var 取消者: BattlePlayer = players.get(pid)
 	if 取消者 != null:
 		取消者.跳过额外攻击行动 = true
-	_行动聚合流程 = false
 	_清除额外攻击行动(pid)
 	for cause: int in _本次已询问基础效果额外行动:
 		_已拒绝基础效果额外行动[cause] = true
@@ -2673,7 +2669,6 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 	if hook == "p_after_attack" or hook == "p_after_magic":
 		# 行动聚合器：只聚合当前时点可执行的行动选项
 		_本次已询问基础效果额外行动.clear()
-		_行动聚合流程 = true
 		push(S行动聚合器.new(上下文))
 	push(SHook.new(hook, 上下文, []))
 	# 最高优先级行动结束结算（如格斗家念弹）：必须排在普通行动结束响应之前
@@ -2899,7 +2894,6 @@ class SCheckTurnStart:
 		cur.clear_additional_action()
 		cur.跳过额外攻击行动 = false
 		e._基础效果额外行动已确认.clear()
-		e._行动聚合流程 = false
 		e._已拒绝基础效果额外行动.clear()
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
 		cur.reset_action_counts()
@@ -3263,7 +3257,6 @@ class S行动聚合器:
 			return BattleEngine.SUSPEND
 		待决 = 0
 		if 结果 != BattleRole.SUCCESS:
-			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		待决 = 0
 		return -1
@@ -3275,10 +3268,8 @@ class S行动聚合器:
 			return BattleEngine.CONTINUE
 		# 响应里已经点红色额外攻击按钮：放弃剩余响应选项，直接进入所选额外攻击
 		if e.首选额外行动 >= 0:
-			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		if cur.跳过额外攻击行动:
-			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		# 角色技能的多步结算：上次已经分派，等待本状态再次被唤醒
 		if 待决 > 0:
@@ -3290,7 +3281,6 @@ class S行动聚合器:
 			# 来源收集全部交给引擎；聚合器不认识角色技能 / 队列额外行动 / 基础效果
 			var 待问: Array = e._收集行动结束选项(pid, 上下文)
 			if 待问.is_empty():
-				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
 			# 全部不可发动时不要弹一张全是灰按钮的询问；只要有一项可发动，
 			# 其余不可发动的技能也照样列出来（客户端置灰）。
@@ -3300,7 +3290,6 @@ class S行动聚合器:
 					有可用 = true
 					break
 			if not 有可用:
-				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
 			if not e.has_reply():
 				var 首: int = int(待问[0].get("value", 0))

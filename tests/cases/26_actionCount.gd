@@ -762,7 +762,8 @@ func 跑() -> void:
 		var 火白: Array = 魔剑.extra_action_card_ids(901, GConst.ActionType.Attack)
 		检(火白.has(火攻.id) and not 火白.has(非火攻.id),
 			"修罗连斩的额外攻击白名单应只有火系攻击牌：%s" % str(火白))
-		魔剑.using_xiu_luo_lian_zhan = true
+		引擎.行动额外 = true
+		引擎.行动额外来源 = 901
 		检(魔剑.v_attack(非火攻.id, 3, {3: 引擎.p(3)}) != GConst.GE_SUCCESS,
 			"修罗连斩额外攻击不能用非火系攻击牌")
 		检(魔剑.v_attack(火攻.id, 3, {3: 引擎.p(3)}) == GConst.GE_SUCCESS,
