@@ -170,6 +170,8 @@ var _pending_is_skill: bool = false
 ## 攻击结束响应里被合并进「选项」的额外行动（目前是迅捷赐福）：玩家选它时由引擎直接
 ## 走额外行动确认流程，不交给角色当成普通技能选项处理。
 var _额外确认选项: Array = []
+## 本次行动结束响应里已经摆过的基础效果额外行动（技能号 -> true）
+var _本次已询问基础效果额外行动: Dictionary = {}
 ## 本次询问是否是可放弃的「行动结束响应」，且里面有额外行动选项
 var _本次询问可选额外行动: bool = false
 ## 玩家在这个响应里点了取消：本回合后面的额外攻击行动全部跳过，不再二次询问
@@ -1666,6 +1668,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	if 允许额外攻击快捷:
 		for o: Dictionary in 基础效果额外行动选项(pid):
 			var 选项号: int = int(o.get("value", 0))
+			_本次已询问基础效果额外行动[选项号] = true
 			var 已有: bool = false
 			for old: Dictionary in 用选项:
 				if int(old.get("value", 0)) == 选项号:
@@ -2528,6 +2531,11 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 		上下文["special_action_count"] = cur.special_action_count
 		上下文["extra_action_count"] = cur.extra_action_count
 	push(SHook.new("p_action_end", 上下文, []))
+	if hook == "p_after_attack" or hook == "p_after_magic":
+		# 所有人统一在行动结束响应里处理基础效果授予的额外行动；
+		# 角色自己的响应已经摆过它时，这个状态会直接跳过。
+		_本次已询问基础效果额外行动.clear()
+		push(S基础效果额外行动响应.new())
 	push(SHook.new(hook, 上下文, []))
 
 
@@ -3059,6 +3067,31 @@ class SNextPlayer:
 		e.current_id = nid
 		e.broadcast(GConst.Msg.TurnBegin, {"id": e.current_id, "round": e.round_id})
 		e.push(SCheckTurnStart.new())
+		return BattleEngine.CONTINUE
+
+
+## 行动结束后统一处理基础效果授予的额外行动（迅捷赐福等）：
+## 角色自己的攻击结束响应已经摆过该选项就不重复问；没有响应阶段的角色在这里补问一次。
+class S基础效果额外行动响应:
+	func handle(e: BattleEngine) -> int:
+		var pid: int = e.current_id
+		var 待问: Array = []
+		for o: Dictionary in e.基础效果额外行动选项(pid):
+			var 技能号: int = int(o.get("value", 0))
+			if not e._本次已询问基础效果额外行动.has(技能号):
+				待问.append(o)
+		if 待问.is_empty():
+			return BattleEngine.CONTINUE
+		if not e.has_reply():
+			var 项: Dictionary = 待问[0]
+			var 技能号: int = int(项.get("value", 0))
+			e._本次已询问基础效果额外行动[技能号] = true
+			e.ask_skill(pid, 技能号, 0, 0, GConst.CardSource.Hand,
+				[项], 0, "", [], true,
+				"行动结束时可以发动%s" % str(项.get("label", GConst.skill_name(技能号))),
+				[], 0, 0, false, [], true, -1, 0, true)
+			return BattleEngine.WAIT
+		e.take_skill_reply_full()
 		return BattleEngine.CONTINUE
 
 

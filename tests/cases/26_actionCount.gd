@@ -593,6 +593,41 @@ func 跑() -> void:
 			break
 	检(退回101, "未使用的疾风技额外行动应退回队列：%s" % str(玩家1.additional_actions))
 
+	# ---- 场景 20：没有角色攻击结束响应的玩家，也要在同一次行动结束响应里处理迅捷赐福 ----
+	_重置战斗()
+	var 无响应迅捷牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			无响应迅捷牌 = c
+			break
+	if 无响应迅捷牌 != null:
+		玩家1.role = null
+		var 祈祷乙 = preload("res://scripts/battle/roles/role_qidao.gd").new()
+		祈祷乙.setup(引擎.p(2), 引擎)
+		引擎.p(2).role = 祈祷乙
+		玩家1.hand_cards.append(攻击牌甲.id)
+		检(引擎.add_basic_effect(1, 无响应迅捷牌.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"无角色响应时迅捷赐福也应能贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+		引擎.run()
+		var 无响应问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 无响应选项: Array = (无响应问[0] as Dictionary).get("args", []) \
+			if not 无响应问.is_empty() else []
+		检(无响应选项.slice(4).has(GConst.技能_迅捷赐福),
+			"没有角色攻击结束响应时也应补一次迅捷赐福响应：%s" % str(无响应选项))
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.技能_迅捷赐福, "src_id": 1,
+			"args": [GConst.技能_迅捷赐福], "card_ids": [], "dst_ids": [],
+		})
+		检(玩家1.basic_effects.is_empty(), "无角色响应时确认迅捷赐福也应立即移除赐福")
+		var 无响应直接: bool = false
+		for a: Dictionary in 玩家1.additional_actions:
+			if int(a.get("cause", 0)) == GConst.技能_迅捷赐福 and bool(a.get("direct", false)):
+				无响应直接 = true
+		检(无响应直接, "无角色响应时得到的 1601 行动也应是 direct：%s"
+			% str(玩家1.additional_actions))
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()
