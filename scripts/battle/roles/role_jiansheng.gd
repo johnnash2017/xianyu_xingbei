@@ -193,6 +193,10 @@ func p_after_attack(ctx: Dictionary) -> int:
 					engine._broadcast_game()
 				notice_skill(JIAN_YING, [])
 				player.add_action(GConst.ActionType.Attack, JIAN_YING, true, true)
+			elif 选中 == GConst.技能_迅捷赐福:
+				# 正常由引擎在 on_message 里截获并走额外行动确认；这里兜底结束本轮询问
+				ctx[KEY_AFTER_STEP] = 2
+				break
 	# 【圣剑】：本次（第 3 次）【攻击行动】触发强制命中后，结束这次攻击时摸 X 张、弃 X 张（跨一次询问）
 	if _sheng_jian_active:
 		return _sheng_jian_cycle()
@@ -206,6 +210,11 @@ func _攻击结束额外选项() -> Array:
 		out.append({"value": LIAN_XU_JI, "label": "风怒追击", "skill_id": LIAN_XU_JI})
 	if not used_jian_ying and not _contains_action(JIAN_YING) and player.get_energy() > 0:
 		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING})
+	# 迅捷赐福是独立挂在身上的额外行动：103/105 都选完后仍要留在同一轮询问里，
+	# 不能等它们入队就提前结束、直接进入攻击阶段。
+	if _contains_action(GConst.技能_迅捷赐福):
+		out.append({"value": GConst.技能_迅捷赐福, "label": "迅捷赐福",
+			"skill_id": GConst.技能_迅捷赐福})
 	return out
 
 

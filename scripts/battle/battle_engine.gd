@@ -1554,11 +1554,17 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 			for a: Dictionary in 问者.additional_actions:
 				if int(a.get("cause", 0)) == GConst.技能_迅捷赐福 \
 						and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
-					用选项.append({
-						"value": GConst.技能_迅捷赐福,
-						"label": GConst.skill_name(GConst.技能_迅捷赐福),
-						"skill_id": GConst.技能_迅捷赐福,
-					})
+					var 已有祝福选项: bool = false
+					for o: Dictionary in 用选项:
+						if int(o.get("value", 0)) == GConst.技能_迅捷赐福:
+							已有祝福选项 = true
+							break
+					if not 已有祝福选项:
+						用选项.append({
+							"value": GConst.技能_迅捷赐福,
+							"label": GConst.skill_name(GConst.技能_迅捷赐福),
+							"skill_id": GConst.技能_迅捷赐福,
+						})
 					_额外确认选项.append(GConst.技能_迅捷赐福)
 					break
 	options = 用选项
