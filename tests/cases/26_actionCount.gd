@@ -135,6 +135,7 @@ func _重置战斗() -> void:
 	引擎.首选额外行动 = -1
 	引擎.首选额外行动卡 = 0
 	引擎.首选额外行动目标 = 0
+	引擎._迅捷赐福已确认 = false
 	引擎._额外确认选项.clear()
 	发送记录.clear()
 	for pid: int in 引擎.order:
@@ -618,9 +619,15 @@ func 跑() -> void:
 	})
 	var 剩余问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
 	var 剩余选项: Array = (剩余问[0] as Dictionary).get("args", []) if not 剩余问.is_empty() else []
+	检(剩余选项.slice(4).has(103) and not 剩余选项.slice(4).has(GConst.技能_迅捷赐福),
+		"使用迅捷赐福后应保留剑影 / 风怒追击选项，不能吞掉：%s" % str(剩余选项))
+	# 未使用的额外行动已经立即入队；放弃剩余响应后才进入它
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [],
+	})
 	检(引擎.行动额外来源 == GConst.技能_迅捷赐福 and 引擎._await_kind == GConst.Msg.Action,
-		"确定迅捷赐福就是使用它：应直接获得额外攻击行动（来源 %d / 等待 %s / 剩余 %s）"
-		% [引擎.行动额外来源, str(引擎._await_kind), str(剩余选项)])
+		"放弃剩余响应后应进入迅捷赐福的额外攻击行动（来源 %d / 等待 %s）"
+		% [引擎.行动额外来源, str(引擎._await_kind)])
 
 	# ---- 场景 18：迅捷赐福由「持有者面前的赐福」在攻击结束前补授予，选中后移除赐福 ----
 	_重置战斗()
@@ -653,8 +660,16 @@ func 跑() -> void:
 			"card_ids": [], "dst_ids": [],
 		})
 		检(玩家1.basic_effects.is_empty(), "确认迅捷赐福后应立即移除赐福牌")
+		var 赐福剩余问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 赐福剩余选项: Array = (赐福剩余问[0] as Dictionary).get("args", []) \
+			if not 赐福剩余问.is_empty() else []
+		检(赐福剩余选项.slice(4).has(103) and not 赐福剩余选项.slice(4).has(GConst.技能_迅捷赐福),
+			"确认迅捷赐福后应保留剩余响应选项：%s" % str(赐福剩余选项))
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": 103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [],
+		})
 		检(引擎.行动额外来源 == GConst.技能_迅捷赐福 and 引擎._await_kind == GConst.Msg.Action,
-			"确定迅捷赐福应直接获得额外攻击行动（来源 %d / 等待 %s）"
+			"放弃剩余响应后进入 1601 额外行动（来源 %d / 等待 %s）"
 			% [引擎.行动额外来源, str(引擎._await_kind)])
 	else:
 		检(false, "卡库里找不到带迅捷赐福的牌")
