@@ -3056,28 +3056,47 @@ func _构建技能按钮(cmds: Array) -> void:
 	_当前额外攻击选择 = 0
 	_额外手牌白名单_选择.clear()
 	_额外目标白名单_选择.clear()
-	# 额外行动阶段：最左摆一颗当前额外行动按钮（红底 / 特性），再排其余可切换的额外攻击
+	# 额外行动阶段：所有额外行动按获取序号固定排列；当前行动只高亮，不强制挪到最左
 	var 首位: Dictionary = cmds[0] if not cmds.is_empty() else {}
 	if bool(首位.get("is_extra", false)) and int(首位.get("extra_cause", 0)) > 0:
 		var 当前来源: int = int(首位.get("extra_cause", 0))
 		var 当前类型: int = int(首位.get("respond_id", 0))
-		var 当前攻击: bool = _是攻击额外行动(当前来源, 当前类型)
 		var 当前牌: Array = 首位.get("card_ids", [])
 		var 当前目标: Array = 首位.get("dst_ids", [])
 		_当前额外攻击选择 = 当前来源
 		_额外手牌白名单_选择 = 当前牌.duplicate()
 		_额外目标白名单_选择 = 当前目标.duplicate()
-		var 当前按钮: 技能按钮 = _新技能按钮(0)
-		当前按钮.设置选项(_额外行动按钮文本(当前来源, 当前类型,
-			int(首位.get("extra_element", 0))),
-			_额外攻击按钮底色(当前来源, 当前攻击), 0)
-		当前按钮.设置说明(_额外行动按钮说明(当前来源))
-		当前按钮.设置选中(true)
-		当前按钮.connect("点击", _本地选择额外攻击.bind(当前来源, 当前牌, 当前目标))
-		_额外攻击切换项.append({
-			"按钮": 当前按钮, "cause": 当前来源,
-			"card_ids": 当前牌, "dst_ids": 当前目标,
-		})
+		var 额外项: Array = [首位]
+		for i: int in range(1, cmds.size()):
+			if int((cmds[i] as Dictionary).get("respond_id", 0)) == GConst.ActionType.ChooseExtraAction:
+				额外项.append(cmds[i])
+		额外项.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var oa: int = int(a.get("extra_order", 0))
+			var ob: int = int(b.get("extra_order", 0))
+			if oa == ob:
+				return int(a.get("extra_cause", 0)) < int(b.get("extra_cause", 0))
+			return oa < ob)
+		for 项: Dictionary in 额外项:
+			var cause: int = int(项.get("extra_cause", 0))
+			var 项牌: Array = 项.get("card_ids", [])
+			var 项目标: Array = 项.get("dst_ids", [])
+			var 是当前: bool = bool(项.get("is_extra", false)) and cause == 当前来源
+			var 显示类型: int = int(项.get("respond_id", 0))
+			if 显示类型 == GConst.ActionType.ChooseExtraAction:
+				显示类型 = GConst.ActionType.Attack
+			var 项攻击: bool = _是攻击额外行动(cause, 显示类型)
+			var 项按钮: 技能按钮 = _新技能按钮(0)
+			项按钮.设置选项(_额外行动按钮文本(cause, 显示类型,
+				int(项.get("extra_element", 0))),
+				_额外攻击按钮底色(cause, 项攻击), 0)
+			项按钮.设置说明(_额外行动按钮说明(cause))
+			if 是当前:
+				项按钮.设置选中(true)
+			项按钮.connect("点击", _本地选择额外攻击.bind(cause, 项牌, 项目标))
+			_额外攻击切换项.append({
+				"按钮": 项按钮, "cause": cause,
+				"card_ids": 项牌, "dst_ids": 项目标,
+			})
 	for i: int in range(1, cmds.size()):
 		var c: Dictionary = cmds[i]
 		var 技能类型: int = int(c.get("respond_id", 0))
@@ -3086,18 +3105,6 @@ func _构建技能按钮(cmds: Array) -> void:
 		var 阶段放行: bool = GConst.放行动作(技能类型, _行动允许)
 		var args: Array = c.get("args", [])
 		if 技能类型 == GConst.ActionType.ChooseExtraAction:
-			var cause: int = int(args[0]) if not args.is_empty() else 0
-			var 切换牌: Array = c.get("card_ids", [])
-			var 切换目标: Array = c.get("dst_ids", [])
-			var 切换按钮: 技能按钮 = _新技能按钮(0)
-			切换按钮.设置选项(_额外行动按钮文本(cause, GConst.ActionType.Attack,
-				int(c.get("extra_element", 0))), _额外攻击按钮底色(cause), 0)
-			切换按钮.设置说明(_额外行动按钮说明(cause))
-			切换按钮.connect("点击", _本地选择额外攻击.bind(cause, 切换牌, 切换目标))
-			_额外攻击切换项.append({
-				"按钮": 切换按钮, "cause": cause,
-				"card_ids": 切换牌, "dst_ids": 切换目标,
-			})
 			continue
 		if args.is_empty():
 			continue

@@ -1537,6 +1537,8 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		"is_extra": extra,
 		# 这份额外行动的来源（如苍白之月 3507）；普通行动不带
 		"extra_cause": extra_cause,
+		# 获取序号：技能栏按它固定排列，当前行动只高亮
+		"extra_order": int(当前额外行动数据.get("order", 0)) if extra else 0,
 		# 禁止特殊行动（发动过「启动」技能后）：客户端据此把「特殊行动」按钮收掉
 		"no_special": no_special,
 	}]
@@ -1631,6 +1633,7 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				"dst_ids": pl.role.extra_action_targets(c),
 				"card_ids": 切换牌,
 				"args": [c], "extra_cause": c,
+				"extra_order": int(a.get("order", 0)),
 				"extra_element": 系别,
 			})
 	return cmds
