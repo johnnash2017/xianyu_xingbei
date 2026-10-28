@@ -629,6 +629,9 @@ func 跑() -> void:
 			if not 赐福剩余问.is_empty() else []
 		检(赐福剩余选项.slice(4).has(103) and not 赐福剩余选项.slice(4).has(GConst.技能_迅捷赐福),
 			"确认迅捷赐福后应保留剩余响应选项：%s" % str(赐福剩余选项))
+		检(((赐福剩余问[0] as Dictionary).get("extra_attack_causes", []) as Array)\
+			.has(GConst.技能_迅捷赐福),
+			"确认迅捷赐福后新获得的攻击行动应作为通用快捷按钮出现在剩余响应里")
 		引擎.on_message(1, GConst.Msg.Respond, {
 			"respond_id": 103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [],
 		})

@@ -2414,9 +2414,6 @@ func _进入技能询问() -> void:
 				快捷顺序.append(i)
 		for i: int in 快捷顺序:
 			var c: int = int(额外攻击[i])
-			# 迅捷赐福已经作为普通选项合并进同一列表，不再重复出现在快捷按钮里
-			if c == GConst.技能_迅捷赐福:
-				continue
 			var 牌白: Array = (额外牌表[i] as Dictionary).get("ids", []) if i < 额外牌表.size() else []
 			var 目标白: Array = (额外目标表[i] as Dictionary).get("ids", []) if i < 额外目标表.size() else []
 			var 系别: int = int(额外系别表[i]) if i < 额外系别表.size() else 0
