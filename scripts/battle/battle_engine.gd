@@ -3173,23 +3173,19 @@ class S行动结束额外行动响应:
 			for i: int in range(cur.additional_actions.size()):
 				var a: Dictionary = cur.additional_actions[i]
 				if int(a.get("cause", 0)) == 选中 and not bool(a.get("direct", false)):
-					var 确认: int = cur.role.confirm_extra_action(选中) if cur.role != null \
-						else BattleRole.SUCCESS
-					if 确认 == BattleRole.URGENT:
-						a["direct"] = true
-						cur.additional_actions[i] = a
-						找到 = true
-						return BattleEngine.SUSPEND
-					if 确认 != BattleRole.SUCCESS:
-						# 付不起：这份行动本回合不再提供，避免之后绕过 confirm 免费进入
-						cur.additional_actions.remove_at(i)
-						e._聚合响应中 = false
-						return BattleEngine.CONTINUE
-					a["direct"] = true
-					cur.additional_actions[i] = a
 					找到 = true
 					break
 			if not 找到:
+				e._聚合响应中 = false
+				return BattleEngine.CONTINUE
+			# 聚合器只分派：扣费 / 标记 direct 由角色自己处理
+			var 确认: int = cur.role.resolve_action_end_option(选中) if cur.role != null \
+				else GConst.GE_INVALID_ACTION
+			if 确认 == BattleRole.URGENT:
+				return BattleEngine.SUSPEND
+			if 确认 == BattleRole.WAIT:
+				return BattleEngine.WAIT
+			if 确认 != BattleRole.SUCCESS:
 				e._聚合响应中 = false
 				return BattleEngine.CONTINUE
 			# 继续问剩下的（和剑圣“发动后还能发动另一项”一致）

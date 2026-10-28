@@ -219,6 +219,24 @@ func p_priority_action_end(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 聚合器选中一份「行动结束响应」额外行动后的处理：角色自己决定扣费、标记 direct。
+## 聚合器只负责分派，不直接改 additional_actions。
+func resolve_action_end_option(cause: int) -> int:
+	var rc: int = confirm_extra_action(cause)
+	if rc == SUCCESS or rc == URGENT:
+		for i: int in range(player.additional_actions.size()):
+			if int(player.additional_actions[i].get("cause", 0)) == cause:
+				player.additional_actions[i]["direct"] = true
+				break
+	else:
+		# 付不起 / 条件不满足：这份行动不再保留，避免以后绕过 confirm 免费进入
+		for i: int in range(player.additional_actions.size()):
+			if int(player.additional_actions[i].get("cause", 0)) == cause:
+				player.additional_actions.remove_at(i)
+				break
+	return rc
+
+
 ## 在「行动结束响应」里确认使用某份额外行动时立即结算费用（方案 A：点选即付）。
 ## 返回 SUCCESS / URGENT；默认无费用。真正进入行动时仍走 p_additional_action 结算效果。
 func confirm_extra_action(_cause: int) -> int:
