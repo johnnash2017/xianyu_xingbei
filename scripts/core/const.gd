@@ -981,6 +981,7 @@ const 基础效果额外行动: Dictionary = {
 ## 额外攻击行动的固定限定系别（服务端 extra_element 没下发时兜底）；风怒追击 103 限风系
 const 额外行动系别: Dictionary = {
 	103: CardElement.Wind,
+	901: CardElement.Fire,
 }
 
 

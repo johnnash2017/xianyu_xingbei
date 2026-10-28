@@ -313,7 +313,7 @@ func extra_action_switchable(cause: int) -> bool:
 
 
 ## 风怒追击给的额外攻击行动只允许风系攻击牌
-func extra_action_element(cause: int) -> int:
+func 额外行动限定系(cause: int) -> int:
 	return GConst.CardElement.Wind if cause == LIAN_XU_JI else 0
 
 
@@ -363,9 +363,7 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 		LIAN_XU_JI:
 			using_lian_xu_ji = true
 			used_lian_xu_ji = true
-			var card: GCard = Data.get_card(card_id)
-			if card.element_enum() != GConst.CardElement.Wind:
-				return GConst.GE_INVALID_ACTION
+			return 校验额外行动限系(LIAN_XU_JI, card_id)
 		JIAN_YING:
 			# 询问确认时已经付过能量；这里只补记已用/兼容未付过的旧路径
 			using_lian_xu_ji = false
@@ -390,12 +388,7 @@ func extra_action_card_ids(cause: int, action_type: int) -> Array:
 		return player.hand_cards.duplicate()
 	if cause != LIAN_XU_JI:
 		return []
-	var out: Array = []
-	for cid: int in player.hand_cards:
-		var card: GCard = Data.get_card(cid)
-		if card != null and card.is_attack() and card.element_enum() == GConst.CardElement.Wind:
-			out.append(cid)
-	return out if not out.is_empty() else [GConst.手牌白名单_全禁]
+	return 额外行动系攻击牌(cause)
 
 
 ## 风怒追击的额外攻击行动期间，本阶段「普通出牌」的手牌白名单只剩手里的风系攻击牌
@@ -405,12 +398,7 @@ func extra_action_card_ids(cause: int, action_type: int) -> Array:
 func action_card_ids(action_type: int) -> Array:
 	if not using_lian_xu_ji or action_type != GConst.ActionType.Attack:
 		return []
-	var out: Array = []
-	for cid: int in player.hand_cards:
-		var card: GCard = Data.get_card(cid)
-		if card != null and card.is_attack() and card.element_enum() == GConst.CardElement.Wind:
-			out.append(cid)
-	return out if not out.is_empty() else [GConst.手牌白名单_全禁]
+	return 额外行动系攻击牌(LIAN_XU_JI)
 
 
 # ============================================================

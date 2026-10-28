@@ -212,7 +212,39 @@ func v_additional_action(_cause: int) -> int: return V_NOT_OVERRIDE
 ## 这份额外行动能不能在选牌阶段切换到别的额外行动（默认可以；有「选中代价」的角色覆写为 false）
 func extra_action_switchable(_cause: int) -> bool: return true
 ## 这份额外攻击行动是否限定某一系（CardElement；0＝不限）。客户端据此把按钮写成「额外X系【攻击行动】」。
-func extra_action_element(_cause: int) -> int: return 0
+## 角色只需覆写 额外行动限定系()，这里的通用逻辑会按它给系别、白名单和出牌校验。
+func extra_action_element(cause: int) -> int:
+	return 额外行动限定系(cause)
+
+
+## 本角色某份额外行动限定的牌系；0＝不限。剑圣 103＝风、魔剑士 901＝火。
+func 额外行动限定系(_cause: int) -> int:
+	return 0
+
+
+## 按「额外行动限定系」筛出手里能用的攻击牌；一张都没有时返回「全禁」白名单。
+func 额外行动系攻击牌(cause: int) -> Array:
+	var 系: int = 额外行动限定系(cause)
+	if 系 <= 0:
+		return []
+	var out: Array = []
+	for cid: int in player.hand_cards:
+		var c: GCard = Data.get_card(cid)
+		if c != null and c.is_attack() and c.element_enum() == 系:
+			out.append(cid)
+	return out if not out.is_empty() else [GConst.手牌白名单_全禁]
+
+
+## 通用出牌校验：这份额外行动限定了系别时，攻击牌必须同系；未限定则不管。
+func 校验额外行动限系(cause: int, card_id: int) -> int:
+	var 系: int = 额外行动限定系(cause)
+	if 系 <= 0:
+		return GConst.GE_SUCCESS
+	var c: GCard = Data.get_card(card_id)
+	if c == null or not c.is_attack() or c.element_enum() != 系:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
 ## 梦想剑（4503）本回合当前档位：0=未启用 / 1=无视圣盾 / 2=对方无法应战 / 3=强制命中。
 ## 供客户端角色说明把梦想剑那一行标绿（45 / 108 覆写），默认 0。
 func dream_tier() -> int: return 0

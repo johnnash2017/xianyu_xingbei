@@ -97,30 +97,32 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 	if rc != GConst.GE_SUCCESS:
 		return rc
 	if using_xiu_luo_lian_zhan:
-		var card: GCard = Data.get_card(card_id)
-		if card.element_enum() != GConst.CardElement.Fire:
-			return GConst.GE_INVALID_ACTION
+		return 校验额外行动限系(XIU_LUO_LIAN_ZHAN, card_id)
 	return GConst.GE_SUCCESS
 
 
+## 【修罗连斩】的额外攻击行动限定火系：和剑圣 103 走同一套通用系别逻辑
+func 额外行动限定系(cause: int) -> int:
+	return GConst.CardElement.Fire if cause == XIU_LUO_LIAN_ZHAN else 0
+
+
+## 额外行动的手牌白名单：修罗连斩只给火系攻击牌；一张都没有时显式「全禁」
+func extra_action_card_ids(cause: int, action_type: int) -> Array:
+	if cause != XIU_LUO_LIAN_ZHAN or action_type != GConst.ActionType.Attack:
+		return []
+	return 额外行动系攻击牌(XIU_LUO_LIAN_ZHAN)
+
+
 ## 【修罗连斩】的额外攻击行动期间只能出火系攻击牌：给界面一份合法手牌白名单，其余牌置灰
-## （同【风怒追击】：一张火系攻击牌都没有时显式发「全禁」白名单，
-##   免得空列表被当成「不限制」、手牌又全亮起来）
 func action_card_ids(action_type: int) -> Array:
 	if not using_xiu_luo_lian_zhan or action_type != GConst.ActionType.Attack:
 		return []
-	var out: Array = _fire_attack_card_ids()
-	return out if not out.is_empty() else [GConst.手牌白名单_全禁]
+	return 额外行动系攻击牌(XIU_LUO_LIAN_ZHAN)
 
 
-## 手里能用于【修罗连斩】的火系攻击牌（一张都没有时这次额外攻击行动出不了任何牌，只能放弃行动）
+## 手里能用于【修罗连斩】的火系攻击牌（供旧调用/调试）
 func _fire_attack_card_ids() -> Array:
-	var out: Array = []
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.is_attack() and c.element_enum() == GConst.CardElement.Fire:
-			out.append(cid)
-	return out
+	return 额外行动系攻击牌(XIU_LUO_LIAN_ZHAN)
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:

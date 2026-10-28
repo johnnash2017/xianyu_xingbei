@@ -738,6 +738,37 @@ func 跑() -> void:
 			"祈祷师确认迅捷赐福后应直接进入 1601 攻击行动：来源 %d / 等待 %s"
 			% [引擎.行动额外来源, str(引擎._await_kind)])
 
+	# ---- 场景 24：修罗连斩的额外攻击走通用系别功能，限定火系 ----
+	_重置战斗()
+	var 魔剑类 = preload("res://scripts/battle/roles/role_mojian.gd")
+	var 魔剑: BattleRole = 魔剑类.new()
+	魔剑.setup(玩家1, 引擎)
+	玩家1.role = 魔剑
+	var 火攻: GCard = null
+	var 非火攻: GCard = null
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual or not c.is_attack():
+			continue
+		if c.element_enum() == GConst.CardElement.Fire and 火攻 == null:
+			火攻 = c
+		elif c.element_enum() != GConst.CardElement.Fire and 非火攻 == null:
+			非火攻 = c
+	if 火攻 != null and 非火攻 != null:
+		玩家1.hand_cards.append(火攻.id)
+		玩家1.hand_cards.append(非火攻.id)
+		检(魔剑.额外行动限定系(901) == GConst.CardElement.Fire,
+			"修罗连斩应通过通用系别功能限定火系")
+		检(魔剑.extra_action_element(901) == GConst.CardElement.Fire,
+			"修罗连斩的额外行动应下发火系，界面才能显示额外火系【攻击行动】")
+		var 火白: Array = 魔剑.extra_action_card_ids(901, GConst.ActionType.Attack)
+		检(火白.has(火攻.id) and not 火白.has(非火攻.id),
+			"修罗连斩的额外攻击白名单应只有火系攻击牌：%s" % str(火白))
+		魔剑.using_xiu_luo_lian_zhan = true
+		检(魔剑.v_attack(非火攻.id, 3, {3: 引擎.p(3)}) != GConst.GE_SUCCESS,
+			"修罗连斩额外攻击不能用非火系攻击牌")
+		检(魔剑.v_attack(火攻.id, 3, {3: 引擎.p(3)}) == GConst.GE_SUCCESS,
+			"修罗连斩额外攻击应能使用火系攻击牌")
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()
