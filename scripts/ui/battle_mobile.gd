@@ -2667,13 +2667,14 @@ func _额外行动按钮说明(cause: int) -> String:
 
 
 ## 额外行动提示里点一个按钮：只选中（可切换），按「确定」才真正进入
-func _选中额外行动(cause: int) -> void:
+func _选中额外行动(_技能号: int, cause: int) -> void:
 	_额外行动单选 = cause
 	_额外行动可选 = true
 	for 项: Dictionary in _额外行动按钮表:
 		var b: Variant = 项.get("按钮")
 		if is_instance_valid(b):
 			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
+	_指令提示("确定＝发动所选额外行动")
 	_更新按键()
 
 
@@ -2740,7 +2741,7 @@ func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = []) ->
 			额外攻击按钮色 if 攻击 else GConst.skill_type_color(c), 0)
 		按钮.设置说明(_额外行动按钮说明(c))
 		按钮.设置选项可用(可发动.has(c))
-		按钮.connect("点击", _选择额外行动.bind(c))
+		按钮.connect("点击", _选中额外行动.bind(c))
 		_额外行动按钮表.append({"按钮": 按钮, "cause": c})
 	if causes.size() == 1:
 		# 单份：提示条写技能效果（保留原行为），点击按钮直接进入
