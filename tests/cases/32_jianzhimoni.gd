@@ -85,6 +85,14 @@ func _取询问(pid: int, respond_id: int) -> Dictionary:
 	return {}
 
 
+## 聚合器把全部选项塞在同一条询问里，respond_id 只是第一项；按选项值找那条询问。
+func _取选项询问(pid: int, 选项值: int) -> Dictionary:
+	for r: Dictionary in 引擎._最后询问.get(pid, {}).get("commands", []):
+		if (r.get("args", []) as Array).slice(4).has(选项值):
+			return r
+	return {}
+
+
 ## 最近一份对局快照里某玩家的 dream_tier（没有快照返回 -1）
 func _最后快照档(pid: int) -> int:
 	for i: int in range(发送记录.size() - 1, -1, -1):
@@ -156,6 +164,7 @@ func _清空玩家(p0: BattlePlayer) -> void:
 	p0.cross_num = 0
 	p0.set_crystal(0)
 	p0.set_gem(0)
+	p0.跳过额外攻击行动 = false
 	p0.reset_action_counts()
 
 
@@ -174,6 +183,30 @@ func _攻击上下文(牌: GCard, src: int, dst: int, 主动: bool, 伤害: int)
 func _应答(args: Array, cards: Array = []) -> void:
 	引擎._reply = {"args": args, "card_ids": cards, "dst_ids": []}
 	引擎._has_reply = true
+
+
+## 通过行动聚合器入口驱动一次「攻击结束」响应（等价于生产流程里的 _push_action_end_hooks）。
+func _驱动攻击结束(上下文: Dictionary = {}) -> void:
+	var ctx: Dictionary = {"player": 1, "kind": "attack"}
+	ctx.merge(上下文, true)
+	引擎.current_id = 1
+	引擎._push_action_end_hooks("p_after_attack", ctx, false, 0)
+	引擎.run()
+
+
+## 通过聚合器下发的询问回复一条；on_message 内部会继续 run。
+func _应答询问(pid: int, respond_id: int, args: Array, cards: Array = [], dsts: Array = []) -> void:
+	引擎.on_message(pid, GConst.Msg.Respond, {
+		"respond_id": respond_id, "src_id": pid, "args": args,
+		"card_ids": cards, "dst_ids": dsts,
+	})
+
+
+## 把一张牌放到牌库顶，避免【剑影*断念】摸牌时随机摸到技类攻击牌、又触发 4501 询问
+func _设牌库顶(cid: int) -> void:
+	引擎.deck.pile.erase(cid)
+	引擎.deck.discard.erase(cid)
+	引擎.deck.pile.append(cid)
 
 
 ## 用一张手牌对目标发起一次完整攻击；目标放弃应战
@@ -436,6 +469,7 @@ func 跑() -> void:
 		角色.p_timeline_1({"src": 1, "is_active": true})
 		检(角色.dream_tier() == 宣告前档,
 			"第 %d 次攻击宣告时不应提前变绿" % 次数)
+		# 展示档是 p_after_attack 自身的职责（行动选项已交给聚合器），这里单独验证钩子推进
 		角色.p_after_attack({"player": 1, "kind": "attack"})
 		if 次数 == 1:
 			检(角色.dream_tier() == 1 and not 角色.dream_ignore_shield,
@@ -497,16 +531,23 @@ func 跑() -> void:
 	_给牌(玩家, 非技击.id)
 	_给牌(玩家, 攻击牌.id)
 	_给牌(玩家, 法术牌.id)
-	var 断念上下文: Dictionary = {"player": 1, "kind": "attack", "card_id": 0, "dst": 2}
-	检(角色.p_after_attack(断念上下文) == BattleRole.WAIT, "攻击结束时应有宝石可发动【剑影*断念】")
-	var 断念问: Dictionary = _取询问(1, 4504)
+	# 摸牌固定摸一张非法术 / 非技类攻击牌，避免摸到技类攻击牌后又触发 4501 询问
+	var 牌库顶: GCard = _取法术([法术牌.id])
+	检(牌库顶 != null, "卡库找不到第二张法术牌")
+	if 牌库顶 != null:
+		_设牌库顶(牌库顶.id)
+	_驱动攻击结束({"card_id": 0, "dst": 2})
+	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
+		"攻击结束时应有宝石可发动【剑影*断念】")
+	var 断念问: Dictionary = _取选项询问(1, 4504)
 	检(not 断念问.is_empty(), "没有下发【剑影*断念】二选一询问")
-	检((断念问.get("option_need_cards", []) as Array) == [2],
+	var 断念选项: Array = 断念问.get("args", [])
+	var 断念下标: int = (断念选项.slice(4) as Array).find(4504)
+	检(断念下标 >= 0 and int((断念问.get("option_need_cards", []) as Array)[断念下标]) == 2,
 		"【剑影*断念】选项应要求选 2 张弃牌：%s" % str(断念问.get("option_need_cards", [])))
 	检(玩家.gem == 1, "未确认弃牌前不应扣宝石，实际剩 %d" % 玩家.gem)
-	_应答([4504], [非技击.id, 攻击牌.id])
-	检(角色.p_after_attack(断念上下文) == BattleRole.URGENT,
-		"弃牌选完并确认后应先摸 1 张牌，返回 URGENT 让摸牌先结算")
+	_应答询问(1, 4504, [4504], [非技击.id, 攻击牌.id])
+	检(引擎._await_id == -1, "【剑影*断念】应结算完（摸牌也应在聚合器回来前跑完）")
 	检(玩家.gem == 0, "选完弃牌按确定后才扣 1 点宝石，实际剩 %d" % 玩家.gem)
 	检(_播报次数(4504) == 1, "【剑影*断念】发动应播报一次，实际 %d 次" % _播报次数(4504))
 	检(not 玩家.hand_cards.has(非技击.id) and not 玩家.hand_cards.has(攻击牌.id),
@@ -514,7 +555,6 @@ func 跑() -> void:
 	检(引擎.deck.discard.has(非技击.id) and 引擎.deck.discard.has(攻击牌.id),
 		"【剑影*断念】弃的 2 张牌应进弃牌堆")
 	检(_有额外行动(4504), "【剑影*断念】应额外 +1 攻击行动")
-	引擎.run()
 	检(玩家.hand_cards.size() == 2, "弃 2 张再摸 1 张后手牌应为 2 张，实际 %d 张"
 		% 玩家.hand_cards.size())
 
@@ -525,14 +565,13 @@ func 跑() -> void:
 	_给牌(玩家, 非技击.id)
 	_给牌(玩家, 攻击牌.id)
 	_给牌(玩家, 法术牌.id)
-	引擎._清空等待()
-	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
-		"回合限定：本回合发动过【剑影*断念】后不应再询问")
-	检(引擎._await_id == -1, "回合限定时不应再下发【剑影*断念】询问")
+	_驱动攻击结束({"card_id": 0, "dst": 2})
+	检(引擎._await_id == -1, "回合限定：本回合发动过【剑影*断念】后不应再询问")
+	检(_取选项询问(1, 4504).is_empty(), "回合限定时不应再下发【剑影*断念】询问")
 	# 新回合重置
 	角色.p_before_turn_begin({})
-	引擎._清空等待()
-	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.WAIT,
+	_驱动攻击结束({"card_id": 0, "dst": 2})
+	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
 		"新回合应重新可以发动【剑影*断念】")
 
 	# 只有水晶（没有真宝石）不能发动：费用必须是真宝石
@@ -541,10 +580,9 @@ func 跑() -> void:
 	_给牌(玩家, 非技击.id)
 	_给牌(玩家, 攻击牌.id)
 	_给牌(玩家, 法术牌.id)
-	引擎._清空等待()
-	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
-		"【剑影*断念】的【宝石】费用不能用【水晶】顶")
-	检(引擎._await_id == -1, "没有真宝石时不应下发【剑影*断念】询问")
+	_驱动攻击结束({"card_id": 0, "dst": 2})
+	检(引擎._await_id == -1, "【剑影*断念】的【宝石】费用不能用【水晶】顶")
+	检(_取选项询问(1, 4504).is_empty(), "没有真宝石时不应下发【剑影*断念】询问")
 
 	# 没有宝石 / 手牌不足 2 张：不询问
 	_重置战斗()
@@ -552,15 +590,13 @@ func 跑() -> void:
 	玩家.set_gem(0)
 	_给牌(玩家, 非技击.id)
 	_给牌(玩家, 攻击牌.id)
-	引擎._清空等待()
-	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
-		"没有宝石时不应询问【剑影*断念】")
+	_驱动攻击结束({"card_id": 0, "dst": 2})
+	检(引擎._await_id == -1, "没有宝石时不应询问【剑影*断念】")
 	_重置战斗()
 	玩家.set_gem(1)
 	_给牌(玩家, 非技击.id)
-	引擎._清空等待()
-	检(角色.p_after_attack({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
-		"手里不足 2 张牌时不应询问【剑影*断念】")
+	_驱动攻击结束({"card_id": 0, "dst": 2})
+	检(引擎._await_id == -1, "手里不足 2 张牌时不应询问【剑影*断念】")
 
 	# 取消发动：不支付宝石、不弃牌、不给额外行动
 	_重置战斗()
@@ -568,10 +604,11 @@ func 跑() -> void:
 	_给牌(玩家, 非技击.id)
 	_给牌(玩家, 攻击牌.id)
 	_给牌(玩家, 法术牌.id)
-	var 取消上下文: Dictionary = {"player": 1, "kind": "attack"}
-	检(角色.p_after_attack(取消上下文) == BattleRole.WAIT, "有宝石时应先问是否发动【剑影*断念】")
-	_应答([0])
-	检(角色.p_after_attack(取消上下文) == BattleRole.SUCCESS, "不发动【剑影*断念】应直接收尾")
+	_驱动攻击结束({"card_id": 0, "dst": 2})
+	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
+		"有宝石时应先问是否发动【剑影*断念】")
+	_应答询问(1, 4504, [])
+	检(引擎._await_id == -1, "不发动【剑影*断念】应直接收尾")
 	检(玩家.gem == 1, "不发动【剑影*断念】不应支付宝石")
 	检(玩家.hand_cards.size() == 3, "不发动【剑影*断念】不应弃牌")
 	检(_有额外行动(4504) == false, "不发动【剑影*断念】不应给额外攻击行动")
@@ -581,8 +618,9 @@ func 跑() -> void:
 	玩家.set_gem(1)
 	_给牌(玩家, 技击甲.id)
 	_给牌(玩家, 非技击.id)
-	var 二选一上下文: Dictionary = {"player": 1, "kind": "attack"}
-	检(角色.p_after_attack(二选一上下文) == BattleRole.WAIT, "两项都可发动时应弹二选一")
+	_驱动攻击结束({"card_id": 0, "dst": 2})
+	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
+		"两项都可发动时应弹二选一")
 	var 二选一问: Dictionary = _取询问(1, 4501)
 	检(not 二选一问.is_empty(), "没有下发 4501 / 4504 的二选一询问")
 	var 二选一参数: Array = 二选一问.get("args", [])
@@ -604,17 +642,17 @@ func 跑() -> void:
 	var 额外解码: Dictionary = ProtoCodec.decode_named("Command", 额外编码)
 	检((额外解码.get("extra_attack_causes", []) as Array) == [4501],
 		"Command 协议应包含 extra_attack_causes：%s" % str(额外解码.get("extra_attack_causes", [])))
-	_应答([4501])
-	检(角色.p_after_attack(二选一上下文) == BattleRole.WAIT,
+	_应答询问(1, 4501, [4501])
+	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
 		"用掉 4501 后应继续问 4504")
 	检(_有额外行动(4501), "选 4501 应获得额外攻击行动")
-	var 二问: Dictionary = _取询问(1, 4504)
+	var 二问: Dictionary = _取选项询问(1, 4504)
 	检(not 二问.is_empty(), "4501 用掉后应只剩 4504 询问")
 	var 二问参数: Array = 二问.get("args", [])
 	检(二问参数.size() >= 5 and int(二问参数[3]) == 1 and int(二问参数[4]) == 4504,
 		"第二问应只剩 4504：%s" % str(二问参数))
-	_应答([])
-	检(角色.p_after_attack(二选一上下文) == BattleRole.SUCCESS, "取消剩余的 4504 应收尾")
+	_应答询问(1, 4504, [])
+	检(引擎._await_id == -1, "取消剩余的 4504 应收尾")
 
 	# 自己的额外行动阶段结束后，别家的攻击结束钩子不应处理
 	_重置战斗()

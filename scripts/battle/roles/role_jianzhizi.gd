@@ -47,10 +47,7 @@ const 剑守誓言水晶: int = 2
 # ============================================================
 # 分步进度键（都放在钩子 ctx 里：同一次钩子重入拿同一份 ctx，不会串到下一次）
 # ============================================================
-## 攻击行动结束：10804 / 4504 同时二选一；选中的结算完再回来问另一项
-const KEY_AFTER_STEP: String = "_jianzhizi_after_step"
-const AFTER_STEP_CHOOSE: int = 0
-const AFTER_STEP_RESOLVE: int = 1
+## 攻击行动结束：10804 / 4504 的选项由行动聚合器收集，选中的直接结算。
 const KEY_AFTER_CHOSEN: String = "_jianzhizi_after_chosen"
 ## 攻击结束二选一的同一条回复里带上的目标 / 弃牌（选剑残影时 1 名目标；选 4504 时 2 张弃牌）
 const KEY_AFTER_TARGET: String = "_jianzhizi_after_target"
@@ -282,57 +279,15 @@ func p_action_end(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击行动结束后（after_attack）：剑残影 10804 → 借用的剑影*断念 4504
+# 攻击行动结束后（after_attack）：展示档由本钩子推进，行动选项交给行动聚合器
 # ============================================================
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	# 聚合流程里本角色只负责优先展示档；选项交给行动聚合器。
-	if engine._行动聚合流程:
-		if _剑之魔女在场():
-			_更新梦想剑展示档()
 		return SUCCESS
 	# 攻击已经结算完、进入「攻击结束」响应：此时才推进展示档，既不会在攻击宣告时就变绿，
 	# 也能让 10804 / 4504 这类响应技能在决定时看到本回合的新档位（实际效果仍在 p_action_end 生效）。
 	if _剑之魔女在场():
 		_更新梦想剑展示档()
-	while true:
-		var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
-		if 阶段 == AFTER_STEP_RESOLVE:
-			var 所选: int = int(ctx.get(KEY_AFTER_CHOSEN, 0))
-			var r: int = _解决攻击结束技能(ctx, 所选)
-			if r == WAIT:
-				return WAIT
-			if r == URGENT:
-				return URGENT
-			ctx[KEY_AFTER_STEP] = AFTER_STEP_CHOOSE
-			ctx.erase(KEY_AFTER_CHOSEN)
-			continue
-		# 二选一：10804 / 4504 同时摆出来，选一项；结算完再回来问另一项
-		var 选项: Array = _攻击结束选项(ctx)
-		if 选项.is_empty():
-			return SUCCESS
-		if not engine.has_reply():
-			engine.ask_skill(player.id, int(选项[0]["value"]), 0, 0, GConst.CardSource.Hand,
-				选项, 0, "", [], true,
-				"攻击结束时可以发动以下技能，选择一项（发动后还能发动另一项）", enemy_ids(),
-				0, 0, false, [], true, -1, 0, true)
-			return WAIT
-		var r2: Dictionary = take_skill_reply_full()
-		var args: Array = r2.get("args", [])
-		var 选中: int = int(args[0]) if not args.is_empty() else 0
-		if not _选项里有(选项, 选中):
-			return SUCCESS
-		# 同一条回复里已经把该选项要求的目标 / 弃牌选好了（客户端按 option_need_targets / option_need_cards 放开）
-		var 目标表: Array = r2.get("dst_ids", [])
-		ctx[KEY_AFTER_TARGET] = int(目标表[0]) if not 目标表.is_empty() else -1
-		ctx[KEY_AFTER_CARDS] = (r2.get("card_ids", []) as Array).duplicate()
-		ctx[KEY_AFTER_CHOSEN] = 选中
-		ctx[KEY_AFTER_STEP] = AFTER_STEP_RESOLVE
-		if 选中 == 剑残影:
-			ctx[KEY_10804_DONE] = true
-		elif 选中 == 剑影断念:
-			ctx[KEY_4504_DONE] = true
 	return SUCCESS
 
 
@@ -352,7 +307,7 @@ func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -
 			ctx[KEY_10804_DONE] = true
 		else:
 			ctx[KEY_4504_DONE] = true
-	return _解决攻击结束技能(ctx, cause)
+	return _解决攻击结束技能(ctx, cause, reply)
 
 
 ## 本次攻击结束还能发动的技能：两项都满足条件就一起摆出来；用过 / 条件不满足的不再出现。
@@ -371,67 +326,34 @@ func _攻击结束选项(ctx: Dictionary, 显示全部: bool = false) -> Array:
 	return out
 
 
-## 结算二选一里选中的那一项（跳过它自己的「是否发动」询问，选择即确认）。
-func _解决攻击结束技能(ctx: Dictionary, 技能号: int) -> int:
+## 结算二选一里选中的那一项（选择即确认，不再单独问一次「是否发动」）。
+## reply 是聚合器分派回来的回复：选定时带目标 / 弃牌，目标弃牌重入时带弃牌。
+func _解决攻击结束技能(ctx: Dictionary, 技能号: int, reply: Dictionary = {}) -> int:
 	match 技能号:
-		剑残影: return _jian_can_ying(ctx, true)
-		剑影断念: return _diao_ying_duan_nian(ctx, true)
+		剑残影: return _jian_can_ying(ctx, reply)
+		剑影断念: return _diao_ying_duan_nian(ctx)
 	return SUCCESS
-
-
-func _选项里有(选项: Array, 技能号: int) -> bool:
-	for o: Dictionary in 选项:
-		if int(o.get("value", 0)) == 技能号:
-			return true
-	return false
 
 
 # ============================================================
 # 10804 剑残影
 # ============================================================
 ## 分步：选目标 → 目标弃 1 张 → 额外攻击行动 + 目标限制。
-## 跳过发动=true：二选一已经确认过，直接从选目标开始，不再问一次「是否发动」。
-## 付款放在目标选好之后：目标步骤取消＝整颗技能不发动，不扣水晶。
-func _jian_can_ying(ctx: Dictionary, 跳过发动: bool = false) -> int:
+## 选项由聚合器确认后直接从选目标开始；付款放在目标选好之后：目标无效＝整颗不发动，不扣能量。
+func _jian_can_ying(ctx: Dictionary, reply: Dictionary = {}) -> int:
 	var 阶段: int = int(ctx.get(KEY_10804_STEP, 0))
 	if 阶段 >= STEP_DONE:
 		return SUCCESS
-	if 跳过发动 and 阶段 == 0:
-		阶段 = 2
-		ctx[KEY_10804_STEP] = 2
 	if 阶段 == 0:
-		if _used_剑残影 or player.get_energy() < 剑残影费用 or enemy_ids().is_empty():
-			return SUCCESS
-		ctx[KEY_10804_STEP] = 1
-		if not engine.has_reply():
-			# 响应技能先问发动者；不发动走「取消」（见《技能维护约定》猎巫人复盘第 1 条）
-			询问(player.id, 剑残影)
-			return WAIT
-	if 阶段 == 1:
-		if not engine.has_reply():
-			return WAIT
-		if not take_skill_reply():
-			ctx[KEY_10804_STEP] = STEP_DONE
-			return SUCCESS
 		ctx[KEY_10804_STEP] = 2
 		阶段 = 2
 	if 阶段 == 2:
-		# 条件复核：跳过「是否发动」后资源仍可能已经变化
+		# 条件复核：确认选项之后资源仍可能已经变化
 		if _used_剑残影 or player.get_energy() < 剑残影费用 or enemy_ids().is_empty():
 			ctx[KEY_10804_STEP] = STEP_DONE
 			return SUCCESS
-		var 目标: int = -1
-		if 跳过发动:
-			# 目标和「选哪一项」在同一条回复里；没选目标＝放弃剑残影
-			目标 = int(ctx.get(KEY_AFTER_TARGET, -1))
-		else:
-			if not engine.has_reply():
-				# 目标只能是任意一名对手（原文「目标对手」）；固定白名单交给客户端过滤
-				询问(player.id, 剑残影, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, enemy_ids())
-				return WAIT
-			var r: Dictionary = take_skill_reply_full()
-			var dsts: Array = r.get("dst_ids", [])
-			目标 = int(dsts[0]) if not dsts.is_empty() else -1
+		# 目标和「选哪一项」在同一条回复里；没选目标＝放弃剑残影
+		var 目标: int = int(ctx.get(KEY_AFTER_TARGET, -1))
 		if not enemy_ids().has(目标):
 			ctx[KEY_10804_STEP] = STEP_DONE
 			return SUCCESS
@@ -445,18 +367,13 @@ func _jian_can_ying(ctx: Dictionary, 跳过发动: bool = false) -> int:
 		if 靶 == null or 靶.hand_cards.is_empty():
 			_settle_jian_can_ying(ctx, 目标)
 			return SUCCESS
-		if not engine.has_reply():
-			# 目标弃牌是强制的（不能取消）；空回复/非法牌由服务端从手牌补齐
-			询问(目标, 剑残影, 1, 0, GConst.CardSource.Hand, [], 0, "", [], false)
-			return WAIT
+		# 目标弃牌是强制的（不能取消）；空回复/非法牌由服务端从手牌补齐
+		询问(目标, 剑残影, 1, 0, GConst.CardSource.Hand, [], 0, "", [], false)
+		return WAIT
 	if 阶段 == 3:
-		if not engine.has_reply():
-			return WAIT
-		var r2: Dictionary = take_skill_reply_full()
 		var 目标2: int = int(ctx.get(KEY_10804_TARGET, -1))
-		_目标弃一张(目标2, r2)
+		_目标弃一张(目标2, reply)
 		_settle_jian_can_ying(ctx, 目标2)
-		return SUCCESS
 	return SUCCESS
 
 
@@ -510,9 +427,8 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 # ============================================================
 # 借用 4504 剑影*断念（10801）
 # ============================================================
-## 跳过发动=true：二选一已经确认过，直接进入弃牌步骤，不再问一次「是否发动」。
-## 宝石在弃牌选完、确认之后才扣：中途取消不会先付代价。
-func _diao_ying_duan_nian(ctx: Dictionary, 跳过发动: bool = false) -> int:
+## 选项由聚合器确认后直接进入弃牌步骤；宝石在弃牌选完、确认之后才扣，中途放弃不会先付代价。
+func _diao_ying_duan_nian(ctx: Dictionary) -> int:
 	if not _剑之魔女在场():
 		return SUCCESS
 	var 阶段: int = int(ctx.get(KEY_4504_STEP, 0))
@@ -520,44 +436,25 @@ func _diao_ying_duan_nian(ctx: Dictionary, 跳过发动: bool = false) -> int:
 		return SUCCESS
 	if 阶段 == 0:
 		if _used_剑影断念 or player.gem <= 0 or player.hand_cards.size() < 2:
-			return SUCCESS
-		ctx[KEY_4504_STEP] = 1
-		if 跳过发动:
-			阶段 = 1
-		else:
-			if not engine.has_reply():
-				询问(player.id, 剑影断念)
-				return WAIT
-			if not take_skill_reply():
-				ctx[KEY_4504_STEP] = STEP_DONE
-				return SUCCESS
-			阶段 = 1
-	if 阶段 == 1:
-		var 弃: Array
-		if 跳过发动:
-			# 弃牌和「选哪一项」在同一条回复里；不足 2 张＝放弃 4504，不扣宝石
-			弃 = _选中的手牌(ctx.get(KEY_AFTER_CARDS, []), 2)
-		else:
-			if not engine.has_reply():
-				询问(player.id, 剑影断念, 2, 0, GConst.CardSource.Hand, [], 0, "", [], false)
-				return WAIT
-			var r: Dictionary = take_skill_reply_full()
-			弃 = _选并补齐(player, r.get("card_ids", []), 2)
-		# 选完弃牌按确定才付宝石；凑不齐 2 张就整颗不发动，不扣代价
-		if 弃.size() < 2 or player.gem <= 0:
 			ctx[KEY_4504_STEP] = STEP_DONE
 			return SUCCESS
-		engine.take_from_hand(player.id, 弃)
-		_启动剑影断念()
-		engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": 剑影断念})
-		engine._log_discard(player.id, 弃)
-		engine._broadcast_game()
+		ctx[KEY_4504_STEP] = 1
+	# 弃牌和「选哪一项」在同一条回复里；不足 2 张＝放弃 4504，不扣宝石
+	var 弃: Array = _选中的手牌(ctx.get(KEY_AFTER_CARDS, []), 2)
+	# 选完弃牌按确定才付宝石；凑不齐 2 张就整颗不发动，不扣代价
+	if 弃.size() < 2 or player.gem <= 0:
 		ctx[KEY_4504_STEP] = STEP_DONE
-		# 先挂额外攻击行动，再摸牌：摸牌可能触发摸牌前响应 / 手牌超限，都排在行动结束之前结算
-		player.add_action(GConst.ActionType.Attack, 剑影断念, true, true)
-		engine.push_draw(player.id, 1, 剑影断念)
-		return URGENT
-	return SUCCESS
+		return SUCCESS
+	engine.take_from_hand(player.id, 弃)
+	_启动剑影断念()
+	engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": 剑影断念})
+	engine._log_discard(player.id, 弃)
+	engine._broadcast_game()
+	ctx[KEY_4504_STEP] = STEP_DONE
+	# 先挂额外攻击行动，再摸牌：摸牌可能触发摸牌前响应 / 手牌超限，都排在行动结束之前结算
+	player.add_action(GConst.ActionType.Attack, 剑影断念, true, true)
+	engine.push_draw(player.id, 1, 剑影断念)
+	return URGENT
 
 
 ## 4504 的付款与播报：弃牌确认后走这里，只付一次。
@@ -720,7 +617,7 @@ func _剑之魔女在场() -> bool:
 	return false
 
 
-## 只保留回复里真实存在、不重复的 n 张牌（不补齐）；二选一同一条回复用。
+## 只保留回复里真实存在、不重复的 n 张牌（不补齐）；聚合器选项的同一条回复用。
 func _选中的手牌(ids: Array, n: int) -> Array:
 	var out: Array = []
 	for v: Variant in ids:
@@ -729,21 +626,4 @@ func _选中的手牌(ids: Array, n: int) -> Array:
 			out.append(cid)
 		if out.size() >= n:
 			break
-	return out
-
-
-## 从候选 id 里只保留真实在手牌中、不重复的牌；不足 n 张时按手牌顺序补齐。
-func _选并补齐(持有人: BattlePlayer, ids: Array, n: int) -> Array:
-	var out: Array = []
-	for v: Variant in ids:
-		if out.size() >= n:
-			break
-		var cid: int = int(v)
-		if 持有人.has_discard_card(cid) and not out.has(cid):
-			out.append(cid)
-	for cid: int in 持有人.hand_cards:
-		if out.size() >= n:
-			break
-		if not out.has(cid):
-			out.append(cid)
 	return out

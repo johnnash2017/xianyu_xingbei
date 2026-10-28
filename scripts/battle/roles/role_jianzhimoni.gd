@@ -20,11 +20,7 @@ const YI_XIANG_JIAN: int = 4502
 const MENG_XIANG_JIAN: int = 4503
 const JIAN_YING_DUAN_NIAN: int = 4504
 
-## 4501 / 4504 在同一份「攻击行动结束」上下文里的推进进度。
-## 存在 ctx 里而不是角色实例：同一次攻击的钩子重入拿的是同一份 ctx，天然不会把上一击的进度带过来。
-const KEY_AFTER_STEP: String = "_jianzhimoni_after_step"
-const AFTER_STEP_CHOOSE: int = 0
-const AFTER_STEP_RESOLVE: int = 1
+## 4501 / 4504 的选项由行动聚合器收集，选中的直接结算。
 const KEY_AFTER_CHOSEN: String = "_jianzhimoni_after_chosen"
 ## 攻击结束二选一的同一条回复里带上的弃牌（选 4504 时 2 张；选 4501 时为空）
 const KEY_AFTER_CARDS: String = "_jianzhimoni_after_cards"
@@ -106,52 +102,15 @@ func p_timeline_1(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击行动结束时（after_attack）：技之剑意（4501）/ 剑影*断念（4504）同时二选一
+# 攻击行动结束后（after_attack）：展示档由本钩子推进；
+# 技之剑意（4501）/ 剑影*断念（4504）的选项交给行动聚合器
 # ============================================================
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 聚合流程里本角色只负责优先展示档；选项交给行动聚合器。
-	if engine._行动聚合流程:
-		_更新梦想剑展示档()
-		return SUCCESS
 	# 攻击已经结算完、进入「攻击结束」响应：此时才推进展示档，既不会在攻击宣告时就变绿，
 	# 也能让 4501 / 4504 这类响应技能在决定时看到本回合的新档位（实际效果仍在 p_action_end 生效）。
 	_更新梦想剑展示档()
-	while true:
-		var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
-		if 阶段 == AFTER_STEP_RESOLVE:
-			var 所选: int = int(ctx.get(KEY_AFTER_CHOSEN, 0))
-			var r: int = _解决攻击结束技能(ctx, 所选)
-			if r == WAIT:
-				return WAIT
-			if r == URGENT:
-				return URGENT
-			ctx[KEY_AFTER_STEP] = AFTER_STEP_CHOOSE
-			ctx.erase(KEY_AFTER_CHOSEN)
-			continue
-		# 二选一：两项都满足条件就一起摆出来，选一项；结算完再回来问另一项
-		var 选项: Array = _攻击结束选项(ctx)
-		if 选项.is_empty():
-			return SUCCESS
-		if not engine.has_reply():
-			engine.ask_skill(player.id, int(选项[0]["value"]), 0, 0, GConst.CardSource.Hand,
-				选项, 0, "", [], true,
-				"攻击结束时可以发动以下技能，选择一项（发动后还能发动另一项）", [],
-				0, 0, false, [], true, -1, 0, true)
-			return WAIT
-		var r2: Dictionary = take_skill_reply_full()
-		var args: Array = r2.get("args", [])
-		var 选中: int = int(args[0]) if not args.is_empty() else 0
-		if not _选项里有(选项, 选中):
-			return SUCCESS
-		ctx[KEY_AFTER_CARDS] = (r2.get("card_ids", []) as Array).duplicate()
-		ctx[KEY_AFTER_CHOSEN] = 选中
-		ctx[KEY_AFTER_STEP] = AFTER_STEP_RESOLVE
-		if 选中 == JI_ZHI_JIAN_YI:
-			ctx[KEY_4501_DONE] = true
-		elif 选中 == JIAN_YING_DUAN_NIAN:
-			ctx[KEY_4504_DONE] = true
 	return SUCCESS
 
 
@@ -188,22 +147,15 @@ func _攻击结束选项(ctx: Dictionary, 显示全部: bool = false) -> Array:
 	return out
 
 
-## 结算二选一里选中的那一项（跳过它自己的「是否发动」询问，选择即确认）。
+## 结算二选一里选中的那一项（选择即确认，不再单独问一次「是否发动」）。
 func _解决攻击结束技能(ctx: Dictionary, 技能号: int) -> int:
 	match 技能号:
 		JI_ZHI_JIAN_YI:
 			_发动技之剑意()
 			return SUCCESS
 		JIAN_YING_DUAN_NIAN:
-			return _jian_ying_duan_nian(ctx, true)
+			return _jian_ying_duan_nian(ctx)
 	return SUCCESS
-
-
-func _选项里有(选项: Array, 技能号: int) -> bool:
-	for o: Dictionary in 选项:
-		if int(o.get("value", 0)) == 技能号:
-			return true
-	return false
 
 
 ## 4501 技之剑意：攻击行动结束时，额外 +1 只能使用「技类命格攻击牌」的攻击行动。
@@ -214,58 +166,35 @@ func _发动技之剑意() -> void:
 	player.add_action(GConst.ActionType.Attack, JI_ZHI_JIAN_YI, true, true)
 
 
+## 选项由聚合器确认后直接进入弃牌步骤；宝石在弃牌选完、确认之后才扣，中途放弃不会先付代价。
 ## 4504 剑影*断念：支付 1【宝石】（不能用宝石顶水晶那套，必须是真宝石）→ 弃 2 张手牌
 ## → 摸 1 张【强制】→ 额外 +1 攻击行动。摸牌走 push_draw，故返回 URGENT 让摸牌先结算。
-## 跳过发动=true：二选一已经确认过，直接进入弃牌步骤，不再问一次「是否发动」。
-## 宝石在弃牌选完、确认之后才扣：中途取消不会先付代价。
-func _jian_ying_duan_nian(ctx: Dictionary, 跳过发动: bool = false) -> int:
+func _jian_ying_duan_nian(ctx: Dictionary) -> int:
 	var 阶段: int = int(ctx.get(KEY_DUAN_NIAN_STEP, 0))
 	if 阶段 >= STEP_DONE:
 		return SUCCESS
 	if 阶段 == 0:
 		# 回合限定只挡「新的一次发动」；付款前再复核一次资源
-		if used_jian_ying_duan_nian:
-			return SUCCESS
-		if player.gem <= 0 or player.hand_cards.size() < 2:
-			return SUCCESS
-		ctx[KEY_DUAN_NIAN_STEP] = 1
-		if 跳过发动:
-			阶段 = 1
-		else:
-			if not engine.has_reply():
-				engine.ask_skill(player.id, JIAN_YING_DUAN_NIAN)
-				return WAIT
-			if not take_skill_reply():
-				ctx[KEY_DUAN_NIAN_STEP] = STEP_DONE
-				return SUCCESS
-			阶段 = 1
-	if 阶段 == 1:
-		var 弃牌: Array
-		if 跳过发动:
-			# 弃牌和「选哪一项」在同一条回复里；不足 2 张＝放弃 4504，不扣宝石
-			弃牌 = _pick_hand_cards(player, ctx.get(KEY_AFTER_CARDS, []), 2)
-		else:
-			if not engine.has_reply():
-				询问(player.id, JIAN_YING_DUAN_NIAN, 2, 0, GConst.CardSource.Hand, [], 0, "", [], false, 0)
-				return WAIT
-			var r: Dictionary = take_skill_reply_full()
-			弃牌 = _pick_hand_cards(player, r.get("card_ids", []), 2)
-			_fill_from_hand(player, 弃牌, 2)
-		# 选完弃牌按确定才付宝石；凑不齐 2 张就整颗不发动，不扣代价
-		if 弃牌.size() < 2 or player.gem <= 0:
+		if used_jian_ying_duan_nian or player.gem <= 0 or player.hand_cards.size() < 2:
 			ctx[KEY_DUAN_NIAN_STEP] = STEP_DONE
 			return SUCCESS
-		engine.take_from_hand(player.id, 弃牌)
-		_启动剑影断念()
-		engine.to_discard(弃牌)
-		engine._log_discard(player.id, 弃牌)
-		engine._broadcast_game()
+		ctx[KEY_DUAN_NIAN_STEP] = 1
+	# 弃牌和「选哪一项」在同一条回复里；不足 2 张＝放弃 4504，不扣宝石
+	var 弃牌: Array = _pick_hand_cards(player, ctx.get(KEY_AFTER_CARDS, []), 2)
+	# 选完弃牌按确定才付宝石；凑不齐 2 张就整颗不发动，不扣代价
+	if 弃牌.size() < 2 or player.gem <= 0:
 		ctx[KEY_DUAN_NIAN_STEP] = STEP_DONE
-		# 先挂上额外攻击行动，再摸牌：摸牌可能触发摸牌前响应 / 手牌超限，都排在行动结束之前结算
-		player.add_action(GConst.ActionType.Attack, JIAN_YING_DUAN_NIAN, true, true)
-		engine.push_draw(player.id, 1, JIAN_YING_DUAN_NIAN)
-		return URGENT
-	return SUCCESS
+		return SUCCESS
+	engine.take_from_hand(player.id, 弃牌)
+	_启动剑影断念()
+	engine.to_discard(弃牌)
+	engine._log_discard(player.id, 弃牌)
+	engine._broadcast_game()
+	ctx[KEY_DUAN_NIAN_STEP] = STEP_DONE
+	# 先挂上额外攻击行动，再摸牌：摸牌可能触发摸牌前响应 / 手牌超限，都排在行动结束之前结算
+	player.add_action(GConst.ActionType.Attack, JIAN_YING_DUAN_NIAN, true, true)
+	engine.push_draw(player.id, 1, JIAN_YING_DUAN_NIAN)
+	return URGENT
 
 
 ## 4504 的付款与播报：弃牌确认后走这里，只付一次。
