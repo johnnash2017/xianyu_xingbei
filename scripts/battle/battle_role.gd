@@ -219,6 +219,12 @@ func p_priority_action_end(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 行动聚合器的唯一来源入口：角色只需要实现/覆写 action_end_options()，
+## 队列里的“行动结束响应”额外行动由基类统一补进来。
+func 行动结束来源(ctx: Dictionary) -> Array:
+	return action_end_options(ctx)
+
+
 ## 角色在「行动聚合器」里登记的可选行动；只给描述，不负责发询问。
 ## 默认把队列里「角色声明为行动结束响应」的额外行动也作为选项返回，
 ## 这样角色不必同时维护 action_end_options 和队列两套来源。

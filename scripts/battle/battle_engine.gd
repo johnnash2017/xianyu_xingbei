@@ -246,7 +246,7 @@ func _收集行动结束选项(pid: int, ctx: Dictionary) -> Array:
 		return out
 	var 序号: int = 0
 	if cur.role != null:
-		for o: Dictionary in cur.role.action_end_options(ctx):
+		for o: Dictionary in cur.role.行动结束来源(ctx):
 			var 项: Dictionary = o.duplicate()
 			项["_kind"] = str(项.get("_kind", 行动来源_角色))
 			项["_sort"] = int(项.get("_sort", 0))
