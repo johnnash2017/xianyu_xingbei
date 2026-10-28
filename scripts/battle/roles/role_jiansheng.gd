@@ -145,78 +145,46 @@ func _sheng_jian(ctx: Dictionary) -> void:
 
 
 # ============================================================
-# 攻击行动结束时（after_attack）：先问 103 / 105 是否发动，再做圣剑收尾
+# 攻击行动结束时：圣剑优先，其余风怒追击/剑影交给行动聚合器
 # ============================================================
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 【圣剑】第三刀：先结算摸 X / 弃 X，再进入风怒追击 / 剑影等攻击结束响应。
-	# 这段可能跨“选摸牌数 / 选弃牌”两次询问，没结算完不能先问别的响应。
+	# 【圣剑】第三刀：先结算摸 X / 弃 X，再进入风怒追击 / 剑影等响应。
 	if _sheng_jian_active:
-		var 圣剑结果: int = _sheng_jian_cycle()
-		if 圣剑结果 == WAIT:
-			return WAIT
-	# 【风怒追击 / 剑影】像剑之子那样在攻击结束时一起摆出来问；
-	# 选中后以 direct 额外行动入队，之后由引擎直接进入，不再在回合结束二次询问。
-	var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
-	if 阶段 == 0:
-		阶段 = 1
-		ctx[KEY_AFTER_STEP] = 阶段
-	if 阶段 == 1:
-		while true:
-			var 选项: Array = _攻击结束额外选项()
-			if 选项.is_empty():
-				ctx[KEY_AFTER_STEP] = 2
-				break
-			if not engine.has_reply():
-				engine.ask_skill(player.id, int(选项[0]["value"]), 0, 0, GConst.CardSource.Hand,
-					选项, 0, "", [], true,
-					"攻击结束时可以发动以下技能，选择一项（发动后还能发动另一项）", [],
-					0, 0, false, [], true, -1, 0, true)
-				return WAIT
-			var r: Dictionary = take_skill_reply_full()
-			var args: Array = r.get("args", [])
-			var 选中: int = int(args[0]) if not args.is_empty() else 0
-			if not _选项里有(选项, 选中):
-				ctx[KEY_AFTER_STEP] = 2
-				break
-			# 照剑之子：这里只确认「发动」并把额外行动以 direct 入队，
-			# 不立刻进入。等攻击结束响应都处理完、回合收尾时再依次进入，
-			# 这样还能继续发动另一项 / 处理其它响应。
-			if 选中 == LIAN_XU_JI:
-				notice_skill(LIAN_XU_JI, [])
-				player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true, true)
-			elif 选中 == JIAN_YING:
-				# 剑影的 1 能量在确认发动时就付（询问释放即付），之后切换给的行动不再重复扣
-				if not _jian_ying_paid:
-					if player.get_energy() <= 0:
-						continue
-					if player.crystal > 0:
-						player.set_crystal(player.crystal - 1)
-					else:
-						player.set_gem(player.gem - 1)
-					_jian_ying_paid = true
-					engine._broadcast_game()
-				notice_skill(JIAN_YING, [])
-				player.add_action(GConst.ActionType.Attack, JIAN_YING, true, true)
-			elif GConst.基础效果额外行动.has(选中):
-				# 正常由引擎在 on_message 里截获并走基础效果额外行动确认；这里兜底结束本轮询问
-				ctx[KEY_AFTER_STEP] = 2
-				break
+		return _sheng_jian_cycle()
 	return SUCCESS
 
 
-## 本次攻击结束还能发动的 103 / 105；用过、已在队列里、能量不够的不再出现。
-func _攻击结束额外选项() -> Array:
+## 交给行动聚合器的技能选项：用过、已在队列里、能量不够的不出现。
+func action_end_options(_ctx: Dictionary) -> Array:
 	var out: Array = []
 	if not used_lian_xu_ji and not _contains_action(LIAN_XU_JI):
 		out.append({"value": LIAN_XU_JI, "label": "风怒追击", "skill_id": LIAN_XU_JI})
 	if not used_jian_ying and not _contains_action(JIAN_YING) and player.get_energy() > 0:
 		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING})
-	# 基础效果授予的额外行动（迅捷赐福等）：103/105 选完后仍要留在同一轮询问里
-	for o: Dictionary in engine.基础效果额外行动选项(player.id):
-		out.append(o)
 	return out
+
+
+func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary) -> int:
+	if cause == LIAN_XU_JI:
+		notice_skill(LIAN_XU_JI, [])
+		player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true, true)
+		return SUCCESS
+	if cause == JIAN_YING:
+		if not _jian_ying_paid:
+			if player.get_energy() <= 0:
+				return GConst.GE_INVALID_ACTION
+			if player.crystal > 0:
+				player.set_crystal(player.crystal - 1)
+			else:
+				player.set_gem(player.gem - 1)
+			_jian_ying_paid = true
+			engine._broadcast_game()
+		notice_skill(JIAN_YING, [])
+		player.add_action(GConst.ActionType.Attack, JIAN_YING, true, true)
+		return SUCCESS
+	return resolve_queued_extra_action(cause)
 
 
 func _选项里有(选项: Array, 技能号: int) -> bool:

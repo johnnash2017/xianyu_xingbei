@@ -219,9 +219,18 @@ func p_priority_action_end(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 聚合器选中一份「行动结束响应」额外行动后的处理：角色自己决定扣费、标记 direct。
-## 聚合器只负责分派，不直接改 additional_actions。
-func resolve_action_end_option(cause: int) -> int:
+## 角色在「行动聚合器」里登记的可选行动；只给描述，不负责发询问。
+func action_end_options(_ctx: Dictionary) -> Array:
+	return []
+
+
+## 行动聚合器选中一项后分派回角色；选中后怎样付费/入队/结算由角色自己处理。
+func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary) -> int:
+	return resolve_queued_extra_action(cause)
+
+
+## 队列里已获得、但还没确认的额外行动的默认处理：扣费后标 direct。
+func resolve_queued_extra_action(cause: int) -> int:
 	var rc: int = confirm_extra_action(cause)
 	if rc == SUCCESS or rc == URGENT:
 		for i: int in range(player.additional_actions.size()):

@@ -329,10 +329,57 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 # 每次【多重射击】本身也是一次暗系主动攻击，其攻击行动结束会再走到这里——
 # 只要盖牌区里还有风系【充能】，就能一次接一次地继续发动（无每回合次数限制）
 # ============================================================
-func p_after_attack(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
+func p_after_attack(_ctx: Dictionary) -> int:
+	return SUCCESS
+
+
+func action_end_options(_ctx: Dictionary) -> Array:
+	if not _available_duo_chong or not _cover_has_element(GConst.CardElement.Wind):
+		return []
+	var 可攻目标: Array[int] = player_ids_where(_duo_chong_dst_ok)
+	if 可攻目标.is_empty():
+		return []
+	return [{"value": DUO_CHONG_SHE_JI, "label": GConst.skill_name(DUO_CHONG_SHE_JI),
+		"skill_id": DUO_CHONG_SHE_JI, "need_target": 1, "targets": 可攻目标}]
+
+
+func resolve_action_end_option(cause: int, reply: Dictionary, _ctx: Dictionary) -> int:
+	if cause != DUO_CHONG_SHE_JI:
+		return resolve_queued_extra_action(cause)
+	var dsts: Array = reply.get("dst_ids", [])
+	if dsts.is_empty():
 		return SUCCESS
-	return _duo_chong_she_ji_ask()
+	return _resolve_duo_chong(int(dsts[0]))
+
+
+## 多重射击已经确认选好目标：移除风系充能并压入这一次暗系攻击。
+func _resolve_duo_chong(dst_id: int) -> int:
+	var 风系: Array[int] = _cover_ids_of_element(GConst.CardElement.Wind)
+	if 风系.is_empty() or not _duo_chong_dst_ok(engine.p(dst_id)):
+		return SUCCESS
+	var 充能: int = 风系[0]
+	notice_skill(DUO_CHONG_SHE_JI, [dst_id])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": [充能], "is_real": true,
+	})
+	_remove_cover([充能], DUO_CHONG_SHE_JI)
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id,
+		"card_ids": [VIRTUAL_DUO_CHONG_CARD], "is_real": false,
+	})
+	_available_mo_guan = false
+	_using_duo_chong = true
+	var harm: Dictionary = {
+		"src": player.id, "dst": dst_id, "point": 2,
+		"cause": DUO_CHONG_SHE_JI, "type": GConst.HarmType.Attack,
+		"card_id": VIRTUAL_DUO_CHONG_CARD, "is_active": true,
+	}
+	engine.push(BattleEngine.SHook.new("p_after_attack",
+		{"player": player.id, "card_id": VIRTUAL_DUO_CHONG_CARD, "dst": dst_id}, []))
+	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, VIRTUAL_DUO_CHONG_CARD, harm))
+	engine._broadcast_game()
+	return SUCCESS
 
 
 ## 【多重射击】：问玩家是否发动（以及打谁）；发动时移除哪张风系【充能】由服务端自动挑。

@@ -315,32 +315,23 @@ func p_timeline_2_miss(_ctx: Dictionary) -> int:
 # ============================================================
 # 攻击行动结束后：修罗连斩（901，追加 1 次火系攻击行动）
 # ============================================================
-func p_after_attack(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
+func p_after_attack(_ctx: Dictionary) -> int:
+	return SUCCESS
+
+
+func action_end_options(_ctx: Dictionary) -> Array:
 	if used_xiu_luo_lian_zhan or _contains_action(XIU_LUO_LIAN_ZHAN):
-		return SUCCESS
-	# 和剑圣的风怒追击同款：先作为攻击结束响应选项，确认后 direct 入队。
-	var 阶段: int = int(ctx.get("xiu_luo_after_step", 0))
-	if 阶段 == 0:
-		阶段 = 1
-		ctx["xiu_luo_after_step"] = 阶段
-	if 阶段 == 1:
-		if not engine.has_reply():
-			engine.ask_skill(player.id, XIU_LUO_LIAN_ZHAN, 0, 0, GConst.CardSource.Hand,
-				[{"value": XIU_LUO_LIAN_ZHAN, "label": GConst.skill_name(XIU_LUO_LIAN_ZHAN),
-					"skill_id": XIU_LUO_LIAN_ZHAN}],
-				0, "", [], true, "攻击结束时可以发动修罗连斩", [],
-				0, 0, false, [], true, -1, 0, true)
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		var 选中: int = int(args[0]) if not args.is_empty() else 0
-		if 选中 != XIU_LUO_LIAN_ZHAN:
-			return SUCCESS
-		notice_skill(XIU_LUO_LIAN_ZHAN, [])
-		player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN, true, true)
-		engine._broadcast_game()
+		return []
+	return [{"value": XIU_LUO_LIAN_ZHAN, "label": GConst.skill_name(XIU_LUO_LIAN_ZHAN),
+		"skill_id": XIU_LUO_LIAN_ZHAN}]
+
+
+func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary) -> int:
+	if cause != XIU_LUO_LIAN_ZHAN:
+		return resolve_queued_extra_action(cause)
+	notice_skill(XIU_LUO_LIAN_ZHAN, [])
+	player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN, true, true)
+	engine._broadcast_game()
 	return SUCCESS
 
 

@@ -459,7 +459,7 @@ func 跑() -> void:
 	剑圣二.setup(玩家1, 引擎)
 	玩家1.role = 剑圣二
 	玩家1.set_gem(1)
-	引擎.push(BattleEngine.SHook.new("p_after_attack", {"player": 1}, []))
+	引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
 	引擎.run()
 	var 一问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
 	var 一选项: Array = (一问[0] as Dictionary).get("args", []) if not 一问.is_empty() else []
