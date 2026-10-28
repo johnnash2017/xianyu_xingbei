@@ -3146,14 +3146,30 @@ class S行动结束额外行动响应:
 					"行动结束时可以发动以下额外行动，选择一项（发动后还能发动另一项）",
 					[], 0, 0, false, [], true, -1, 0, true)
 				return BattleEngine.WAIT
-			var r: Dictionary = e.take_skill_reply_full()
+			var r: Dictionary = e._reply
+			e._has_reply = false
+			e._await_id = -1
+			e._await_state = null
+			e._reply = {}
+			e._pending_partial = {}
 			var args: Array = r.get("args", [])
 			var 选中: int = int(args[0]) if not args.is_empty() else 0
-			# 基础效果选项会被 on_message 先行截获并确认；这里只处理队列里的额外行动
+			# 基础效果选项会被 on_message 先行截获并确认；这里处理队列里的额外行动。
+			# 方案 A：在响应里点选就立即结算费用，再标 direct。
 			var 找到: bool = false
 			for i: int in range(cur.additional_actions.size()):
 				var a: Dictionary = cur.additional_actions[i]
 				if int(a.get("cause", 0)) == 选中 and not bool(a.get("direct", false)):
+					var 确认: int = cur.role.confirm_extra_action(选中) if cur.role != null \
+						else BattleRole.SUCCESS
+					if 确认 == BattleRole.URGENT:
+						a["direct"] = true
+						cur.additional_actions[i] = a
+						找到 = true
+						return BattleRole.URGENT
+					if 确认 != BattleRole.SUCCESS:
+						e._聚合响应中 = false
+						return BattleEngine.CONTINUE
 					a["direct"] = true
 					cur.additional_actions[i] = a
 					找到 = true

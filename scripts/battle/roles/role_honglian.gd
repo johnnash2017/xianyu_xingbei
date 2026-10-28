@@ -256,13 +256,23 @@ func extra_action_is_response(cause: int) -> bool:
 	return cause == JIE_JIAO_JIE_ZAO
 
 
-func p_additional_action(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id or int(ctx.get("cause", 0)) != JIE_JIAO_JIE_ZAO:
+## 行动结束响应点选戒骄戒躁时立即扣 1 能量（方案 A）
+func confirm_extra_action(cause: int) -> int:
+	if cause != JIE_JIAO_JIE_ZAO:
 		return SUCCESS
+	if player.get_energy() <= 0:
+		return GConst.GE_INVALID_ACTION
 	if player.crystal > 0:
 		player.set_crystal(player.crystal - 1)
 	else:
 		player.set_gem(player.gem - 1)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+func p_additional_action(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id or int(ctx.get("cause", 0)) != JIE_JIAO_JIE_ZAO:
+		return SUCCESS
 	player.tap = false
 	engine._broadcast_game()
 	return SUCCESS

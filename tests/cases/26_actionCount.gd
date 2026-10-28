@@ -803,6 +803,47 @@ func 跑() -> void:
 		检(玩家1.additional_actions.is_empty(), "聚合响应取消后应跳过所有额外攻击：%s"
 			% str(玩家1.additional_actions))
 
+	# ---- 场景 26：方案 A：在聚合响应里点选有代价的额外行动，立刻扣费 ----
+	_重置战斗()
+	var 剑帝类 = preload("res://scripts/battle/roles/role_jiandi.gd")
+	var 剑帝: BattleRole = 剑帝类.new()
+	剑帝.setup(玩家1, 引擎)
+	玩家1.role = 剑帝
+	玩家1.set_gem(1)
+	玩家1.hand_cards.append(攻击牌甲.id)
+	var 付费迅捷牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			付费迅捷牌 = c
+			break
+	if 付费迅捷牌 != null:
+		检(引擎.add_basic_effect(1, 付费迅捷牌.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"付费测试的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+		引擎.run()
+		var 付费问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 付费选: Array = (付费问[0] as Dictionary).get("args", []) if not 付费问.is_empty() else []
+		检(付费选.slice(4).has(1907) and 付费选.slice(4).has(GConst.技能_迅捷赐福),
+			"不屈意志和迅捷赐福应在同一列表：%s" % str(付费选))
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.技能_迅捷赐福, "src_id": 1,
+			"args": [1907], "card_ids": [], "dst_ids": [],
+		})
+		检(玩家1.get_energy() == 0, "点选不屈意志时应立即扣 1 能量（方案 A），实际 %d"
+			% 玩家1.get_energy())
+		var 付费直接: bool = false
+		for a: Dictionary in 玩家1.additional_actions:
+			if int(a.get("cause", 0)) == 1907 and bool(a.get("direct", false)):
+				付费直接 = true
+		检(付费直接, "扣费后的不屈意志应标记 direct：%s" % str(玩家1.additional_actions))
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.技能_迅捷赐福, "src_id": 1,
+			"args": [], "card_ids": [], "dst_ids": [],
+		})
+		检(玩家1.additional_actions.is_empty(), "付费后取消聚合响应应跳过剩余额外攻击")
+		检(玩家1.get_energy() == 0, "取消聚合响应不退还已付费用（方案 A）")
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

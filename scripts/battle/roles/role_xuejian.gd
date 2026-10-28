@@ -137,16 +137,12 @@ func extra_action_is_response(cause: int) -> bool:
 	return cause == CHI_SE_YI_SHAN
 
 
-func p_additional_action(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
+## 行动结束响应点选赤色一闪时立即扣 1 鲜血并受 2 点法术伤害（方案 A）
+func confirm_extra_action(cause: int) -> int:
+	if cause != CHI_SE_YI_SHAN:
 		return SUCCESS
-	if int(ctx.get("cause", 0)) != CHI_SE_YI_SHAN:
-		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	step = STEP_DONE
 	if int(player.tokens[0]["num"]) < 1:
-		return SUCCESS
+		return GConst.GE_INVALID_ACTION
 	player.tokens[0]["num"] = int(player.tokens[0]["num"]) - 1
 	engine._broadcast_game()
 	engine.push_harm({
@@ -154,6 +150,10 @@ func p_additional_action(ctx: Dictionary) -> int:
 		"cause": CHI_SE_YI_SHAN, "type": GConst.HarmType.Magic,
 	})
 	return URGENT
+
+
+func p_additional_action(_ctx: Dictionary) -> int:
+	return SUCCESS
 
 
 # ============================================================

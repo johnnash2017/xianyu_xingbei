@@ -302,12 +302,22 @@ func extra_action_is_response(cause: int) -> bool:
 	return cause == SHEN_SHENG_ZHUI_JI
 
 
+## 行动结束响应点选神圣追击时立即扣 1 治疗（方案 A）
+func confirm_extra_action(cause: int) -> int:
+	if cause != SHEN_SHENG_ZHUI_JI:
+		return SUCCESS
+	if player.cross_num < 1:
+		return GConst.GE_INVALID_ACTION
+	player.sub_cross_num(1)
+	engine._broadcast_game()
+	return SUCCESS
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	if int(ctx.get("cause", 0)) != SHEN_SHENG_ZHUI_JI:
 		return SUCCESS
-	player.sub_cross_num(1)
 	added_shen_sheng_zhui_ji = false
 	engine._broadcast_game()
 	return SUCCESS

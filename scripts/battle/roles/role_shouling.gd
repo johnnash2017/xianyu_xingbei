@@ -517,11 +517,21 @@ func extra_action_is_response(cause: int) -> bool:
 	return cause == YI_JI_WU_NIAN
 
 
+## 行动结束响应点选一击无念时立即扣 4 点残心（方案 A）
+func confirm_extra_action(cause: int) -> int:
+	if cause != YI_JI_WU_NIAN:
+		return SUCCESS
+	if _can_xin() < YI_JI_COST:
+		return GConst.GE_INVALID_ACTION
+	_set_token(TOKEN_CAN_XIN, _can_xin() - YI_JI_COST)
+	engine._broadcast_game()
+	return SUCCESS
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	if int(ctx.get("cause", 0)) == YI_JI_WU_NIAN:
-		_set_token(TOKEN_CAN_XIN, _can_xin() - YI_JI_COST)
 		yi_ji_atk = true
 		engine._broadcast_game()
 	else:
