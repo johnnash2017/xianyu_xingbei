@@ -1701,6 +1701,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 				if not GConst.放行动作(GConst.ActionType.Attack, 类):
 					continue
 				var c: int = int(a.get("cause", 0))
+				# 迅捷赐福在“确认使用”之前只是响应选项，不能同时当快捷攻击按钮；
+				# 确认后（_迅捷赐福已确认）它就是普通的额外攻击行动，按统一逻辑显示。
+				if c == GConst.技能_迅捷赐福 and not _迅捷赐福已确认:
+					continue
 				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
 					if 问者.role != null else []
 				if 牌.is_empty() and 问者.role != null:
