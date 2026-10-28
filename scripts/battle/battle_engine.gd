@@ -1590,33 +1590,22 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		用选项 = 过滤后
 	if 允许额外攻击快捷 and not _迅捷赐福已确认:
 		var 问者: BattlePlayer = players.get(pid)
-		if 问者 != null:
-			# 迅捷赐福的「授予额外行动」可能在另一个角色的 p_after_attack 里、晚于本角色询问；
-			# 这里在攻击结束询问前先按目标身上的赐福牌补授予，保证它和 103/105 一起出现在响应里。
-			if 问者.check_basic_effect_skill(GConst.技能_迅捷赐福) and not 问者.hand_cards.is_empty():
-				var 已有祝福行动: bool = false
-				for a: Dictionary in 问者.additional_actions:
-					if int(a.get("cause", 0)) == GConst.技能_迅捷赐福:
-						已有祝福行动 = true
-						break
-				if not 已有祝福行动:
-					问者.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福)
-			for a: Dictionary in 问者.additional_actions:
-				if int(a.get("cause", 0)) == GConst.技能_迅捷赐福 \
-						and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
-					var 已有祝福选项: bool = false
-					for o: Dictionary in 用选项:
-						if int(o.get("value", 0)) == GConst.技能_迅捷赐福:
-							已有祝福选项 = true
-							break
-					if not 已有祝福选项:
-						用选项.append({
-							"value": GConst.技能_迅捷赐福,
-							"label": GConst.skill_name(GConst.技能_迅捷赐福),
-							"skill_id": GConst.技能_迅捷赐福,
-						})
-					_额外确认选项.append(GConst.技能_迅捷赐福)
+		if 问者 != null and 问者.check_basic_effect_skill(GConst.技能_迅捷赐福) \
+				and not 问者.hand_cards.is_empty():
+			# 迅捷赐福还没使用时：只把它作为「响应选项」摆出来，不提前生成额外攻击行动。
+			# 确认使用后才由 _确认迅捷赐福 入队，届时再按统一的额外行动快捷按钮显示。
+			var 已有祝福选项: bool = false
+			for o: Dictionary in 用选项:
+				if int(o.get("value", 0)) == GConst.技能_迅捷赐福:
+					已有祝福选项 = true
 					break
+			if not 已有祝福选项:
+				用选项.append({
+					"value": GConst.技能_迅捷赐福,
+					"label": GConst.skill_name(GConst.技能_迅捷赐福),
+					"skill_id": GConst.技能_迅捷赐福,
+				})
+			_额外确认选项.append(GConst.技能_迅捷赐福)
 	options = 用选项
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
@@ -1712,9 +1701,6 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 				if not GConst.放行动作(GConst.ActionType.Attack, 类):
 					continue
 				var c: int = int(a.get("cause", 0))
-				# 迅捷赐福已经合并进上面的选项列表，不再重复挂红色快捷按钮
-				if c == GConst.技能_迅捷赐福:
-					continue
 				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
 					if 问者.role != null else []
 				if 牌.is_empty() and 问者.role != null:

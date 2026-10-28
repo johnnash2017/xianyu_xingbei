@@ -456,24 +456,20 @@ func 跑() -> void:
 	剑圣二.setup(玩家1, 引擎)
 	玩家1.role = 剑圣二
 	玩家1.set_gem(1)
-	# 迅捷赐福即使给了攻击行动，也不能出现在「响应里直接开打」的快捷按钮里
-	玩家1.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福, false)
 	引擎.push(BattleEngine.SHook.new("p_after_attack", {"player": 1}, []))
 	引擎.run()
 	var 一问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
 	var 一选项: Array = (一问[0] as Dictionary).get("args", []) if not 一问.is_empty() else []
-	检(一选项.size() >= 7 and 一选项.slice(4) == [103, 105, GConst.技能_迅捷赐福],
-		"攻击结束应把迅捷赐福和风怒追击、剑影放在同一选项列表：%s" % str(一选项))
-	检(not ((一问[0] as Dictionary).get("extra_attack_causes", []) as Array).has(GConst.技能_迅捷赐福),
-		"迅捷赐福应作为普通选项，不应再当快捷攻击按钮")
+	检(一选项.size() >= 6 and 一选项.slice(4) == [103, 105],
+		"攻击结束应同时摆出风怒追击和剑影：%s" % str(一选项))
 	# 确认风怒追击后只入队，还应继续问剑影；不立即进入、不先消耗
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 103, "src_id": 1, "args": [103], "card_ids": [], "dst_ids": [],
 	})
 	var 二问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
 	var 二选项: Array = (二问[0] as Dictionary).get("args", []) if not 二问.is_empty() else []
-	检(二选项.size() >= 6 and 二选项.slice(4) == [105, GConst.技能_迅捷赐福],
-		"选完风怒追击后应继续问剑影（迅捷赐福仍在同一列表）：%s" % str(二选项))
+	检(二选项.size() >= 5 and 二选项.slice(4) == [105],
+		"选完风怒追击后还应继续问剑影：%s" % str(二选项))
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 105, "src_id": 1, "args": [105], "card_ids": [], "dst_ids": [],
 	})
@@ -596,38 +592,6 @@ func 跑() -> void:
 			退回101 = true
 			break
 	检(退回101, "未使用的疾风技额外行动应退回队列：%s" % str(玩家1.additional_actions))
-
-	# ---- 场景 17：迅捷赐福作为同一列表里的选项，选中后走额外行动确认而不是直接开打 ----
-	_重置战斗()
-	var 剑圣七: BattleRole = 剑圣类.new()
-	剑圣七.setup(玩家1, 引擎)
-	玩家1.role = 剑圣七
-	玩家1.set_gem(1)
-	玩家1.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福, false)
-	# 完整行动结束栈：跳过 p_after_attack 后还要经过 p_action_end / STurnEnd 才到 SAdditionalAction
-	引擎.push(BattleEngine.STurnEnd.new())
-	引擎.push(BattleEngine.SHook.new("p_action_end", {"player": 1}, []))
-	引擎.push(BattleEngine.SHook.new("p_after_attack", {"player": 1}, []))
-	引擎.run()
-	var 祝福问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
-	var 祝福选项: Array = (祝福问[0] as Dictionary).get("args", []) if not 祝福问.is_empty() else []
-	检(祝福选项.size() >= 7 and 祝福选项.slice(4) == [103, 105, GConst.技能_迅捷赐福],
-		"迅捷赐福应与 103/105 在同一选项列表：%s" % str(祝福选项))
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 103, "src_id": 1, "args": [GConst.技能_迅捷赐福],
-		"card_ids": [], "dst_ids": [],
-	})
-	var 剩余问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
-	var 剩余选项: Array = (剩余问[0] as Dictionary).get("args", []) if not 剩余问.is_empty() else []
-	检(剩余选项.slice(4).has(103) and not 剩余选项.slice(4).has(GConst.技能_迅捷赐福),
-		"使用迅捷赐福后应保留剑影 / 风怒追击选项，不能吞掉：%s" % str(剩余选项))
-	# 未使用的额外行动已经立即入队；放弃剩余响应后才进入它
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [],
-	})
-	检(引擎.行动额外来源 == GConst.技能_迅捷赐福 and 引擎._await_kind == GConst.Msg.Action,
-		"放弃剩余响应后应进入迅捷赐福的额外攻击行动（来源 %d / 等待 %s）"
-		% [引擎.行动额外来源, str(引擎._await_kind)])
 
 	# ---- 场景 18：迅捷赐福由「持有者面前的赐福」在攻击结束前补授予，选中后移除赐福 ----
 	_重置战斗()
