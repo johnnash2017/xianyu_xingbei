@@ -84,6 +84,11 @@ func 设置技能(id: int) -> void:
 		selectBorder.visible = false
 
 
+## 只改按钮底色（不动技能号 / 文案）：赐福类作为响应时用响应色，而不是技能表里的法术色
+func 设置底色(色: Color) -> void:
+	(plateButton.material as ShaderMaterial).set_shader_parameter("button_color", 色)
+
+
 ## 当成「二级技能栏」里的一个选项按钮：只显示一段文案，底色由调用方给。
 ## 选项本身带技能号时只用于悬停弹它的技能说明，不再按技能类型色染色 ——
 ## 二级栏所有选项统一用调用方给的普通底色。

@@ -2290,6 +2290,8 @@ func _进入技能询问() -> void:
 	# 有选项的走 _进入二级技能栏，那里本来就会摆父技能按钮。
 	if _skill_options.is_empty() and _skill_ask_card_source != GConst.CardSource.HandAndBasicEffect:
 		var 展示按钮: 技能按钮 = _新技能按钮(_skill_ask_id)
+		if _是响应赐福(_skill_ask_id):
+			展示按钮.设置底色(GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87)))
 		展示按钮.设置选中(true)
 		_排技能栏.call_deferred()
 	# 带选项的询问（如英灵人形【怒火压制/魔纹融合】的二选一、【百鬼夜行】的展示与否）：
@@ -2630,10 +2632,15 @@ func _换选项后重校验() -> void:
 const 额外攻击按钮色: Color = Color("c0392b")
 
 
+## 赐福类技能施加时是法术，贴到目标身上触发时是响应
+func _是响应赐福(cause: int) -> bool:
+	return cause == GConst.技能_迅捷赐福 or cause == GConst.技能_威力赐福
+
+
 ## 额外行动询问里的选项是一个「发动哪份额外行动」的按钮，不是攻击行动本体：
-## 迅捷赐福按贴到目标后的响应紫色，其余按技能类型默认色。
+## 赐福类按贴到目标后的响应紫色，其余按技能类型默认色。
 func _额外行动选项底色(cause: int) -> Color:
-	if cause == GConst.技能_迅捷赐福:
+	if _是响应赐福(cause):
 		return GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
 	return GConst.skill_type_color(cause)
 
@@ -2641,8 +2648,8 @@ func _额外行动选项底色(cause: int) -> Color:
 ## 额外攻击行动按钮底色：迅捷赐福这种「赐福/基础效果」给出来的行动，
 ## 按钮代表的是赐福本身，不是攻击行动，用响应紫色；其余攻击额外行动用红色。
 func _额外攻击按钮底色(cause: int, 攻击: bool = true) -> Color:
-	if cause == GConst.技能_迅捷赐福:
-		# 迅捷赐福施加时是法术，但贴到目标身上后是响应；给出来的额外行动按钮按响应紫色显示
+	if _是响应赐福(cause):
+		# 迅捷赐福 / 威力赐福施加时是法术，但贴到目标身上触发的是响应
 		return GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
 	return 额外攻击按钮色 if 攻击 else GConst.skill_type_color(cause)
 
@@ -3269,6 +3276,8 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 	if 父 != null:
 		ChildrenSkillArea.move_child(父, 0)
 		父.设置选中(true)
+		if _是响应赐福(父技能号):
+			父.设置底色(GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87)))
 		if 返回回调.is_valid():
 			_添加返回按钮(返回回调)
 	# 选项本身就是技能（带技能号）时，按它自己的技能类型色上色，和普通技能按钮一致 ——
@@ -3279,8 +3288,8 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 		var 按钮: 技能按钮 = _新技能按钮(0)
 		var 项技能号: int = int(d.get("技能号", 0))
 		var 用底色: Color = GConst.skill_type_color(项技能号) if 项技能号 > 0 else 选项底色
-		# 迅捷赐福合并进攻击结束选项时，贴到目标后是响应，按响应紫色显示
-		if 项技能号 == GConst.技能_迅捷赐福:
+		# 迅捷赐福 / 威力赐福合并进响应选项时，贴到目标后是响应，按响应紫色显示
+		if _是响应赐福(项技能号):
 			用底色 = GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
 		# 该项本身就是技能时绑上技能号：鼠标指向它就和普通技能按钮一样弹技能说明
 		var 字色: Color = d.get("字色", Color.TRANSPARENT)
