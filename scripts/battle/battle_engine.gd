@@ -9,6 +9,9 @@ extends RefCounted
 ##
 ## 角色钩子：SHook 状态对「每个玩家」按座位序调用同名钩子；角色返回 WAIT 则整个钩子轮次暂停。
 
+const 行动来源_角色: String = "role"
+const 行动来源_额外: String = "extra"
+const 行动来源_基础: String = "basic"
 const CONTINUE: int = 0
 const WAIT: int = 1
 const SUSPEND: int = 2
@@ -227,7 +230,7 @@ func _收集行动结束选项(pid: int, ctx: Dictionary) -> Array:
 	if cur.role != null:
 		for o: Dictionary in cur.role.action_end_options(ctx):
 			var 项: Dictionary = o.duplicate()
-			项["_kind"] = str(项.get("_kind", "role"))
+			项["_kind"] = str(项.get("_kind", 行动来源_角色))
 			项["_sort"] = int(项.get("_sort", 0))
 			项["_seq"] = 序号
 			序号 += 1
@@ -241,7 +244,7 @@ func _收集行动结束选项(pid: int, ctx: Dictionary) -> Array:
 		if 已有:
 			continue
 		var 项: Dictionary = o.duplicate()
-		项["_kind"] = "basic"
+		项["_kind"] = 行动来源_基础
 		项["_sort"] = 2
 		项["_seq"] = 序号
 		序号 += 1
@@ -259,7 +262,7 @@ func _收集行动结束选项(pid: int, ctx: Dictionary) -> Array:
 ## terminal=true：该来源的 URGENT 已经结算完，不需要回来继续；false：多步角色技能还要回来。
 func _分派行动结束选项(pid: int, cause: int, reply: Dictionary, kind: String,
 		ctx: Dictionary) -> Dictionary:
-	if kind == "basic":
+	if kind == 行动来源_基础:
 		var 基础cur: BattlePlayer = players.get(pid)
 		if 基础cur == null or not 基础cur.check_basic_effect_skill(cause) \
 				or 基础效果额外行动已确认(cause):
@@ -270,7 +273,7 @@ func _分派行动结束选项(pid: int, cause: int, reply: Dictionary, kind: St
 	var cur: BattlePlayer = players.get(pid)
 	if cur == null or cur.role == null:
 		return {"result": GConst.GE_INVALID_ACTION, "terminal": true}
-	if kind == "extra":
+	if kind == 行动来源_额外:
 		return {"result": cur.role.resolve_queued_extra_action(cause), "terminal": true}
 	return {"result": cur.role.resolve_action_end_option(cause, reply, ctx), "terminal": false}
 ## 本次技能询问「能不能取消」「要选几名目标」「合法目标白名单」：超时兜底要据此判断
@@ -3315,12 +3318,12 @@ class S行动聚合器:
 			var args: Array = r.get("args", [])
 			var 选中: int = int(args[0]) if not args.is_empty() else 0
 			var 选中可用: bool = true
-			var 选中类型: String = "role"
+			var 选中类型: String = 行动来源_角色
 			var 找到选中: bool = false
 			for o: Dictionary in 待问:
 				if int(o.get("value", 0)) == 选中:
 					选中可用 = bool(o.get("enabled", true))
-					选中类型 = str(o.get("_kind", "role"))
+					选中类型 = str(o.get("_kind", 行动来源_角色))
 					找到选中 = true
 					break
 			# 客户端提交了不在本次选项表里的 cause（旧界面/改包）：不能直接分派给角色
