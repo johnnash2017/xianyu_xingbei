@@ -345,11 +345,11 @@ func _duo_chong_she_ji_ask() -> int:
 	if 可攻目标.is_empty():
 		return SUCCESS
 	if not engine.has_reply():
-		# 多重射击作为普通技能选项；引擎会把迅捷赐福合并进同一列表。
-		engine.ask_skill(player.id, DUO_CHONG_SHE_JI, 0, 1, GConst.CardSource.Cover,
+		# 多重射击作为普通技能选项；目标要求挂在该选项上，迅捷赐福选项不需要选目标。
+		engine.ask_skill(player.id, DUO_CHONG_SHE_JI, 0, 0, GConst.CardSource.Cover,
 			[{"value": DUO_CHONG_SHE_JI, "label": GConst.skill_name(DUO_CHONG_SHE_JI),
-				"skill_id": DUO_CHONG_SHE_JI}],
-			0, "", [], true, "攻击结束时可以发动多重射击", 可攻目标,
+				"skill_id": DUO_CHONG_SHE_JI, "need_target": 1, "targets": 可攻目标}],
+			0, "", [], true, "攻击结束时可以发动多重射击", [],
 			0, 0, false, [], true, -1, 0, true)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

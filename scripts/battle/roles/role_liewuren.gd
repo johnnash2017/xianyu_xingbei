@@ -315,9 +315,11 @@ func p_timeline_6(ctx: Dictionary) -> int:
 #   · 若这 2 张同系 → 对原攻击目标追加 1 点法术伤害
 # ============================================================
 ## 偷袭作为普通技能选项摆出；引擎会把迅捷赐福合并进同一个列表。
+## 牌数挂在该选项上（2 张盖牌），这样迅捷赐福选项不需要先选 2 张盖牌。
 func _偷袭询问() -> void:
-	engine.ask_skill(player.id, TOU_XI, 2, 0, GConst.CardSource.Cover,
-		[{"value": TOU_XI, "label": GConst.skill_name(TOU_XI), "skill_id": TOU_XI}],
+	engine.ask_skill(player.id, TOU_XI, 0, 0, GConst.CardSource.Cover,
+		[{"value": TOU_XI, "label": GConst.skill_name(TOU_XI), "skill_id": TOU_XI,
+			"need_card": 2}],
 		0, "", [], true, "攻击结束时可以发动偷袭", [],
 		0, 0, false, [], true, -1, 0, true)
 

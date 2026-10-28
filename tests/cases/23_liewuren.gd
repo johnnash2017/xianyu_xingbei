@@ -163,9 +163,11 @@ func 跑() -> void:
 		if int(r.get("respond_id", 0)) == 4205:
 			偷袭问 = r
 	var 偷袭参数: Array = 偷袭问.get("args", [])
-	检(偷袭参数.size() >= 3 and int(偷袭参数[0]) == 2
-		and int(偷袭参数[2]) == GConst.CardSource.Cover,
-		"偷袭发动询问应让发动者同一步选择 2 张盖牌：%s" % str(偷袭参数))
+	var 偷袭需牌: Array = 偷袭问.get("option_need_cards", [])
+	检(偷袭参数.size() >= 3 and int(偷袭参数[2]) == GConst.CardSource.Cover
+		and not 偷袭需牌.is_empty() and int(偷袭需牌[0]) == 2,
+		"偷袭发动询问应让发动者同一步选择 2 张盖牌：参数=%s 选项需牌=%s"
+		% [str(偷袭参数), str(偷袭需牌)])
 
 	# 水晶可以用宝石替代：只有 1 宝石、没有水晶时也要能触发偷袭
 	猎.set_crystal(0)

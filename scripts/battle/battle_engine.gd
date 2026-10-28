@@ -3171,8 +3171,10 @@ class S行动结束额外行动响应:
 						a["direct"] = true
 						cur.additional_actions[i] = a
 						找到 = true
-						return BattleRole.URGENT
+						return BattleEngine.SUSPEND
 					if 确认 != BattleRole.SUCCESS:
+						# 付不起：这份行动本回合不再提供，避免之后绕过 confirm 免费进入
+						cur.additional_actions.remove_at(i)
 						e._聚合响应中 = false
 						return BattleEngine.CONTINUE
 					a["direct"] = true
