@@ -1798,6 +1798,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 				# 基础效果授予的行动在“确认使用”之前只是响应选项，不能同时当快捷攻击按钮
 				if GConst.基础效果额外行动.has(c) and not 基础效果额外行动已确认(c):
 					continue
+				# 非 direct 的「行动结束响应」额外行动会作为技能选项出现，不能再挂快捷按钮
+				if not bool(a.get("direct", false)) and 问者.role != null \
+						and 问者.role.extra_action_is_response(c):
+					continue
 				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
 					if 问者.role != null else []
 				if 牌.is_empty() and 问者.role != null \

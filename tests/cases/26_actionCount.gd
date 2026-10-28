@@ -790,6 +790,9 @@ func 跑() -> void:
 		var 聚合选: Array = (聚合问[0] as Dictionary).get("args", []) if not 聚合问.is_empty() else []
 		检(聚合选.slice(4).has(901) and 聚合选.slice(4).has(GConst.技能_迅捷赐福),
 			"修罗连斩和迅捷赐福应在同一攻击结束响应列表：%s" % str(聚合选))
+		var 聚合快捷: Array = (聚合问[0] as Dictionary).get("extra_attack_causes", [])
+		检(not 聚合快捷.has(901),
+			"未确认的修罗连斩只能作为技能选项，不能再重复挂快捷按钮：%s" % str(聚合快捷))
 		检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
 			"聚合响应应在等玩家 1 的 Respond：id=%d kind=%s" % [引擎._await_id, str(引擎._await_kind)])
 		检(引擎._await_state is BattleEngine.S行动结束额外行动响应,
