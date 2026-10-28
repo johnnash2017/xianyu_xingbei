@@ -296,8 +296,8 @@ func v_additional_action(cause: int) -> int:
 # 玩家选中额外行动时：标记回合限定 / 补付剑影能量（确认时已付过的不再扣）
 # ============================================================
 func extra_action_switchable(cause: int) -> bool:
-	# 风怒追击没有资源代价；剑影已付款或还有能量可付时都可切换
-	if cause == LIAN_XU_JI:
+	# 疾风技 / 风怒追击没有资源代价；剑影已付款或还有能量可付时都可切换
+	if cause == JI_FENG_JI or cause == LIAN_XU_JI:
 		return true
 	if cause == JIAN_YING:
 		return _jian_ying_paid or (player.get_energy() > 0 and not used_jian_ying)

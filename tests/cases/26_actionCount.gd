@@ -561,6 +561,36 @@ func 跑() -> void:
 		"剑影额外攻击不应继承风怒追击的风系限制")
 	检(not 剑圣五.using_lian_xu_ji, "切到剑影后应清除风怒追击的 using 标记")
 
+	# ---- 场景 16：当前是疾风技给的额外行动时，切到风怒追击再出手应消耗风怒追击 ----
+	_重置战斗()
+	var 剑圣六: BattleRole = 剑圣类.new()
+	剑圣六.setup(玩家1, 引擎)
+	玩家1.role = 剑圣六
+	var 风击六: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.is_attack() \
+				and c.element_enum() == GConst.CardElement.Wind:
+			风击六 = c
+			break
+	玩家1.hand_cards.append(风击六.id)
+	玩家1.add_action(GConst.ActionType.Attack, 101, true, true)
+	玩家1.add_action(GConst.ActionType.Attack, 103, true, true)
+	引擎.push(BattleEngine.SAdditionalAction.new())
+	引擎.run()
+	检(引擎.行动额外来源 == 101, "应先进入疾风技给的额外行动：%d" % 引擎.行动额外来源)
+	引擎.on_message(1, GConst.Msg.Action, {
+		"action_type": GConst.ActionType.Attack, "src_id": 1,
+		"card_ids": [风击六.id], "dst_ids": [3], "args": [103],
+	})
+	检(引擎.行动额外来源 == 103,
+		"从疾风技切到风怒追击后应按选择消耗 103，实际 %d" % 引擎.行动额外来源)
+	var 退回101: bool = false
+	for a: Dictionary in 玩家1.additional_actions:
+		if int(a.get("cause", 0)) == 101:
+			退回101 = true
+			break
+	检(退回101, "未使用的疾风技额外行动应退回队列：%s" % str(玩家1.additional_actions))
+
 	# ---- 场景 13：攻击结束响应里点红色快捷按钮，跳过响应钩子后要接到额外行动 ----
 	_重置战斗()
 	var 剑圣四: BattleRole = 剑圣类.new()
