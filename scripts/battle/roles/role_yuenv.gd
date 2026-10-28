@@ -115,7 +115,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	var src: int = int(ctx.get("src", -1))
 	if src == player.id:
 		# 自己的攻击只处理【苍白之月】授予的那次额外攻击：本次无法应战
-		if _cang_bai_attack:
+		if _cang_bai_attack and engine.行动额外 \
+				and int(engine.行动额外来源) == CANG_BAI_ZHI_YUE:
 			ctx["hit_rate"] = GConst.HitRate.NoReattack
 			_cang_bai_attack = false
 		return SUCCESS
@@ -411,8 +412,9 @@ func p_magic_skill(action: Dictionary) -> int:
 	notice_skill(CANG_BAI_ZHI_YUE, action.get("dst_ids", []))
 	if choice == 1:
 		# 移除 3【石化】：额外 1 次攻击行动 + 额外回合；该次额外攻击无法应战
-		# （标记在玩家点中这份额外行动时由 p_additional_action 置位）
+		# 标记属于技能释放，不放在额外行动进入时处理
 		_add_token(1, -3)
+		_cang_bai_attack = true
 		player.add_action(GConst.ActionType.Attack, CANG_BAI_ZHI_YUE, true, true)
 		_cang_bai_add_turn = true
 		engine._broadcast_game()
@@ -443,10 +445,7 @@ func p_magic_skill(action: Dictionary) -> int:
 
 
 
-func p_additional_action(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	_cang_bai_attack = int(ctx.get("cause", 0)) == CANG_BAI_ZHI_YUE
+func p_additional_action(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 

@@ -22,15 +22,12 @@ var used_tian_shi_zhi_hun: bool = false
 var used_e_mo_zhi_hun: bool = false
 ## 本回合是否已授予【不屈意志】的额外行动（服务端 added_BU_QU_YI_ZHI）
 var added_bu_qu_yi_zhi: bool = false
-## 当前这份【不屈意志】的「+1 剑气 / 摸 1」是否已经结算（切换走再切回不重复结算）
-var _bu_qu_effect_done: bool = false
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_tian_shi_zhi_hun = false
 	used_e_mo_zhi_hun = false
 	added_bu_qu_yi_zhi = false
-	_bu_qu_effect_done = false
 	return SUCCESS
 
 
@@ -317,26 +314,14 @@ func confirm_extra_action(cause: int) -> int:
 		player.set_crystal(player.crystal - 1)
 	else:
 		player.set_gem(player.gem - 1)
+	# 不屈意志的效果属于技能释放，不属于额外攻击行动：+1 剑气、摸 1 张
+	if int(player.tokens[0]["num"]) < int(player.tokens[0]["max"]):
+		player.tokens[0]["num"] = int(player.tokens[0]["num"]) + 1
+	engine.push_draw(player.id, 1)
+	added_bu_qu_yi_zhi = false
 	engine._broadcast_game()
 	return SUCCESS
 
 
-func p_additional_action(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id or int(ctx.get("cause", 0)) != BU_QU_YI_ZHI:
-		return SUCCESS
-	if not _bu_qu_effect_done:
-		_bu_qu_effect_done = true
-		# +1 剑气（上限封顶）
-		if int(player.tokens[0]["num"]) < int(player.tokens[0]["max"]):
-			player.tokens[0]["num"] = int(player.tokens[0]["num"]) + 1
-		engine.push_draw(player.id, 1)
-		engine._broadcast_game()
-	# 服务端 BuQuYiZhi 结束时复位标记：本次额外攻击结算完后，若仍有能量可再次获得
-	added_bu_qu_yi_zhi = false
-	return SUCCESS
-
-
-func p_action_end(ctx: Dictionary) -> int:
-	if bool(ctx.get("is_extra", false)) and int(ctx.get("extra_cause", 0)) == BU_QU_YI_ZHI:
-		_bu_qu_effect_done = false
+func p_additional_action(_ctx: Dictionary) -> int:
 	return SUCCESS

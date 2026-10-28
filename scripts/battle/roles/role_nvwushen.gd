@@ -309,17 +309,13 @@ func confirm_extra_action(cause: int) -> int:
 	if player.cross_num < 1:
 		return GConst.GE_INVALID_ACTION
 	player.sub_cross_num(1)
+	# 神圣追击的“已授予”状态属于技能释放，不属于额外攻击行动
+	added_shen_sheng_zhui_ji = false
 	engine._broadcast_game()
 	return SUCCESS
 
 
-func p_additional_action(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	if int(ctx.get("cause", 0)) != SHEN_SHENG_ZHUI_JI:
-		return SUCCESS
-	added_shen_sheng_zhui_ji = false
-	engine._broadcast_game()
+func p_additional_action(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 

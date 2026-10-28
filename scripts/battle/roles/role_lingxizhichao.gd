@@ -409,10 +409,8 @@ func v_additional_action(cause: int) -> int:
 
 
 
-func p_additional_action(ctx: Dictionary) -> int:
-	if _赐福 == null:
-		return SUCCESS
-	return int(_赐福.p_additional_action(ctx))
+func p_additional_action(_ctx: Dictionary) -> int:
+	return SUCCESS
 
 
 # ============================================================

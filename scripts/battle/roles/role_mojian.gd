@@ -21,7 +21,6 @@ const HEI_AN_ZHEN_CHAN_BU_PAI: int = 9061
 const HEI_AN_ZHEN_CHAN_QI_PAI: int = 9062
 
 var used_xiu_luo_lian_zhan: bool = false
-var using_xiu_luo_lian_zhan: bool = false
 var used_hei_an_zhen_chan: bool = false
 var using_hei_an_zhen_chan: bool = false
 
@@ -96,7 +95,7 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 	var rc: int = player.base_v_attack(card_id, dst_id, players)
 	if rc != GConst.GE_SUCCESS:
 		return rc
-	if using_xiu_luo_lian_zhan:
+	if engine.行动额外 and int(engine.行动额外来源) == XIU_LUO_LIAN_ZHAN:
 		return 校验额外行动限系(XIU_LUO_LIAN_ZHAN, card_id)
 	return GConst.GE_SUCCESS
 
@@ -115,7 +114,8 @@ func extra_action_card_ids(cause: int, action_type: int) -> Array:
 
 ## 【修罗连斩】的额外攻击行动期间只能出火系攻击牌：给界面一份合法手牌白名单，其余牌置灰
 func action_card_ids(action_type: int) -> Array:
-	if not using_xiu_luo_lian_zhan or action_type != GConst.ActionType.Attack:
+	if not (engine.行动额外 and int(engine.行动额外来源) == XIU_LUO_LIAN_ZHAN) \
+			or action_type != GConst.ActionType.Attack:
 		return []
 	return 额外行动系攻击牌(XIU_LUO_LIAN_ZHAN)
 
@@ -127,7 +127,6 @@ func _fire_attack_card_ids() -> Array:
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_xiu_luo_lian_zhan = false
-	using_xiu_luo_lian_zhan = false
 	used_hei_an_zhen_chan = false
 	using_hei_an_zhen_chan = false
 	return SUCCESS
@@ -320,7 +319,7 @@ func p_after_attack(_ctx: Dictionary) -> int:
 
 
 func action_end_options(_ctx: Dictionary) -> Array:
-	if used_xiu_luo_lian_zhan or using_xiu_luo_lian_zhan or _contains_action(XIU_LUO_LIAN_ZHAN):
+	if used_xiu_luo_lian_zhan or _contains_action(XIU_LUO_LIAN_ZHAN):
 		return []
 	return [{"value": XIU_LUO_LIAN_ZHAN, "label": GConst.skill_name(XIU_LUO_LIAN_ZHAN),
 		"skill_id": XIU_LUO_LIAN_ZHAN, "enabled": true}]
@@ -360,15 +359,10 @@ func extra_action_switchable(cause: int) -> bool:
 func p_action_end(ctx: Dictionary) -> int:
 	if bool(ctx.get("is_extra", false)) and int(ctx.get("extra_cause", 0)) == XIU_LUO_LIAN_ZHAN:
 		used_xiu_luo_lian_zhan = true
-		using_xiu_luo_lian_zhan = false
 	return SUCCESS
 
 
-func p_additional_action(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	var cause: int = int(ctx.get("cause", 0))
-	using_xiu_luo_lian_zhan = cause == XIU_LUO_LIAN_ZHAN
+func p_additional_action(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 

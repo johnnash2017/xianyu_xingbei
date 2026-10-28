@@ -733,12 +733,11 @@ func 跑() -> void:
 		"借用 1601：46 自己面前不可能有赐福，二次校验应拒绝")
 	检(角色.v_additional_action(9999) == BattleRole.V_NOT_OVERRIDE,
 		"借用 1601：非迅捷赐福的额外行动必须回退 V_NOT_OVERRIDE，不能覆写成失败")
-	检(角色.p_additional_action({"player": 3, "cause": 迅捷赐福技能号}) == BattleRole.SUCCESS,
-		"借用 1601：选中额外行动时移除赐福应安全返回")
-	检(队友.basic_effects.is_empty(), "借用 1601：选中额外行动后迅捷赐福应被移除")
+	引擎._确认基础效果额外行动(3, 迅捷赐福技能号)
+	检(队友.basic_effects.is_empty(), "借用 1601：确认额外行动后迅捷赐福应被移除")
 	检(引擎.deck.discard.has(迅捷牌.id), "借用 1601：移除的迅捷赐福应进弃牌堆")
-	检(角色.p_additional_action({"player": 3, "cause": 迅捷赐福技能号}) == BattleRole.SUCCESS,
-		"借用 1601：赐福已移除后重复触发应安全返回")
+	引擎._确认基础效果额外行动(3, 迅捷赐福技能号)
+	检(队友.basic_effects.is_empty(), "借用 1601：赐福已移除后重复确认应安全")
 	引擎._states.clear()
 	引擎._清空等待()
 

@@ -23,23 +23,23 @@ func 跑() -> void:
 	月女.gem = 1
 	月女.tokens[1]["num"] = 3
 	角色.p_magic_skill({"action_id": 3507, "args": [1]})
-	检(not 角色._cang_bai_attack, "刚发动苍白之月时不应立刻标记“下次任意主动攻击”")
+	检(角色._cang_bai_attack, "苍白之月释放时就应标记本次授予的攻击无法应战")
 
-	# 点中其它额外行动：不置位
+	# 点其它额外行动：不改变苍白之月标记（标记属于技能，不属于行动进入）
 	角色.p_additional_action({"player": 1, "cause": 0})
-	检(not 角色._cang_bai_attack, "点其它额外行动不应标记苍白之月")
-
-	# 点中苍白之月授予的额外攻击行动：置位
-	角色.p_additional_action({"player": 1, "cause": 3507})
-	检(角色._cang_bai_attack, "点中苍白之月的额外攻击后应标记该次攻击无法应战")
+	检(角色._cang_bai_attack, "其它额外行动不应清掉苍白之月标记")
 
 	# 该次额外攻击吃标记并清除
+	引擎.行动额外 = true
+	引擎.行动额外来源 = 3507
 	var 额外攻击: Dictionary = {"src": 1, "is_active": true, "hit_rate": GConst.HitRate.Normal}
 	角色.p_timeline_1(额外攻击)
 	检(int(额外攻击["hit_rate"]) == GConst.HitRate.NoReattack, "苍白之月的额外攻击应无法应战")
 	检(not 角色._cang_bai_attack, "该次额外攻击后应清除标记")
 
 	# 后续普通主动攻击恢复普通
+	引擎.行动额外 = false
+	引擎.行动额外来源 = 0
 	var 后续攻击: Dictionary = {"src": 1, "is_active": true, "hit_rate": GConst.HitRate.Normal}
 	角色.p_timeline_1(后续攻击)
 	检(int(后续攻击["hit_rate"]) == GConst.HitRate.Normal, "后续主动攻击应恢复可应战")

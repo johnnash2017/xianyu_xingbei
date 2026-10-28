@@ -221,6 +221,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 func _yi_ji_wu_nian(ctx: Dictionary) -> void:
 	if not yi_ji_atk:
 		return
+	# 标记必须对应正在进行的「一击无念」额外攻击行动，避免切到别的额外行动还吃加成
+	if not engine.行动额外 or int(engine.行动额外来源) != YI_JI_WU_NIAN:
+		return
 	# 只认自己主动打出的那一次攻击：应战反击（is_active=false）不能吃这个加成，
 	# 也不消耗标记（标记留到回合结束由 p_turn_end 清掉）
 	if not bool(ctx.get("is_active", false)):
@@ -524,18 +527,13 @@ func confirm_extra_action(cause: int) -> int:
 	if _can_xin() < YI_JI_COST:
 		return GConst.GE_INVALID_ACTION
 	_set_token(TOKEN_CAN_XIN, _can_xin() - YI_JI_COST)
+	# 一击无念的标记属于技能释放，不属于额外攻击行动
+	yi_ji_atk = true
 	engine._broadcast_game()
 	return SUCCESS
 
 
-func p_additional_action(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	if int(ctx.get("cause", 0)) == YI_JI_WU_NIAN:
-		yi_ji_atk = true
-		engine._broadcast_game()
-	else:
-		yi_ji_atk = false
+func p_additional_action(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 

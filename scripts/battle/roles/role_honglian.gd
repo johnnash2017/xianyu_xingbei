@@ -266,15 +266,13 @@ func confirm_extra_action(cause: int) -> int:
 		player.set_crystal(player.crystal - 1)
 	else:
 		player.set_gem(player.gem - 1)
+	# 戒骄戒躁是技能释放的一部分：解除热血沸腾形态；行动本身不再处理代价
+	player.tap = false
 	engine._broadcast_game()
 	return SUCCESS
 
 
-func p_additional_action(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id or int(ctx.get("cause", 0)) != JIE_JIAO_JIE_ZAO:
-		return SUCCESS
-	player.tap = false
-	engine._broadcast_game()
+func p_additional_action(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
