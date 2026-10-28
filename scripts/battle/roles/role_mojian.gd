@@ -278,14 +278,13 @@ func _hei_an_zhen_chan_bu_pai() -> int:
 		var r: Dictionary = take_skill_reply_full()
 		_timeline_2_hit_step = HEI_AN_ZHEN_CHAN_QI_PAI
 		using_hei_an_zhen_chan = false
-		notice_skill(HEI_AN_ZHEN_CHAN_BU_PAI, [player.id])
 		_discard_exact(num, r.get("card_ids", []))
 		engine._broadcast_game()
 		return SUCCESS
 	_timeline_2_hit_step = HEI_AN_ZHEN_CHAN_QI_PAI
 	using_hei_an_zhen_chan = false
 	if num < 0:
-		notice_skill(HEI_AN_ZHEN_CHAN_BU_PAI, [player.id])
+		# 9061 只是黄泉震颤的内部补牌子步骤，不是独立技能，不能 notice_skill(9061)
 		# 先摸牌（push_draw，含【水影】等摸牌前响应）再弃 2 张：这里返回 URGENT，让引擎先把摸牌跑完，
 		# 之后再回到本钩子走 QI_PAI 那一步 —— 摸牌改走 push_draw 后是延迟结算的，
 		# 直接往下走会变成先弃 2 张、最后才补牌
