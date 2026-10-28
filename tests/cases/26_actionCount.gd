@@ -136,6 +136,9 @@ func _重置战斗() -> void:
 	引擎.首选额外行动卡 = 0
 	引擎.首选额外行动目标 = 0
 	引擎._基础效果额外行动已确认.clear()
+	引擎._本次已询问基础效果额外行动.clear()
+	引擎._已拒绝基础效果额外行动.clear()
+	引擎._跳过额外攻击行动 = false
 	引擎._额外确认选项.clear()
 	发送记录.clear()
 	for pid: int in 引擎.order:
@@ -627,6 +630,41 @@ func 跑() -> void:
 				无响应直接 = true
 		检(无响应直接, "无角色响应时得到的 1601 行动也应是 direct：%s"
 			% str(玩家1.additional_actions))
+
+	# ---- 场景 21：风之剑圣在攻击结束响应取消后，不应被同一个迅捷赐福再问第二次 ----
+	_重置战斗()
+	var 剑圣十: BattleRole = 剑圣类.new()
+	剑圣十.setup(玩家1, 引擎)
+	玩家1.role = 剑圣十
+	var 祈祷丙 = preload("res://scripts/battle/roles/role_qidao.gd").new()
+	祈祷丙.setup(引擎.p(2), 引擎)
+	引擎.p(2).role = 祈祷丙
+	玩家1.hand_cards.append(攻击牌甲.id)
+	var 双问牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			双问牌 = c
+			break
+	if 双问牌 != null:
+		检(引擎.add_basic_effect(1, 双问牌.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"第二次询问测试的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+		引擎.run()
+		检(引擎._本次已询问基础效果额外行动.has(GConst.技能_迅捷赐福),
+			"攻击结束响应应记录已经摆过迅捷赐福")
+		var 取消前询问数: int = 引擎._询问计数
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": 103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [],
+		})
+		检(引擎._询问计数 == 取消前询问数,
+			"取消攻击结束响应后不应再次询问迅捷赐福（询问数 %d→%d）"
+			% [取消前询问数, 引擎._询问计数])
+		检(引擎._跳过额外攻击行动, "取消攻击结束响应应标记跳过后续额外攻击")
+		检(not (引擎._await_state is BattleEngine.SAdditionalAction),
+			"取消攻击结束响应后不应进入额外行动询问：%s" % str(引擎._await_state))
+		检(引擎.基础效果额外行动选项(1).is_empty(),
+			"取消攻击结束响应后本回合不应再提供迅捷赐福选项")
 
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()

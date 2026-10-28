@@ -172,8 +172,12 @@ var _pending_is_skill: bool = false
 var _额外确认选项: Array = []
 ## 本次行动结束响应里已经摆过的基础效果额外行动（技能号 -> true）
 var _本次已询问基础效果额外行动: Dictionary = {}
+## 本轮已经明确取消/放弃的基础效果额外行动：本回合不再重复询问（技能号 -> true）
+var _已拒绝基础效果额外行动: Dictionary = {}
 ## 本次询问是否是可放弃的「行动结束响应」，且里面有额外行动选项
 var _本次询问可选额外行动: bool = false
+## 已下发过的询问次数（测试用：确认取消后没有再次询问）
+var _询问计数: int = 0
 ## 玩家在这个响应里点了取消：本回合后面的额外攻击行动全部跳过，不再二次询问
 var _跳过额外攻击行动: bool = false
 ## 本次攻击结束响应里已经确认过的基础效果额外行动（技能号 -> true）
@@ -193,6 +197,8 @@ func 基础效果额外行动选项(pid: int) -> Array:
 		return out
 	for cause: int in GConst.基础效果额外行动:
 		if 基础效果额外行动已确认(cause):
+			continue
+		if bool(_已拒绝基础效果额外行动.get(cause, false)):
 			continue
 		if not cur.check_basic_effect_skill(cause):
 			continue
@@ -1016,6 +1022,9 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	if 取消应答 and _本次询问可选额外行动:
 		_跳过额外攻击行动 = true
 		_清除额外攻击行动(pid)
+		# 这次响应里已经摆过的基础效果额外行动，被取消＝本回合不再重复问
+		for cause: int in _本次已询问基础效果额外行动:
+			_已拒绝基础效果额外行动[cause] = true
 	# 分步应答（如【剑气斩】先在弹窗选好「移除几点剑气」）：只记下这一步，不算本次询问的最终回复，
 	# 继续等玩家选目标 / 目标超时兜底时再拿它用
 	if bool(data.get("partial", false)):
@@ -1466,6 +1475,7 @@ func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bo
 
 ## 下发一条询问给某玩家，并把它记下来：玩家重连回来时照原样补发（见 重发当前询问）
 func _询问(pid: int, cmd_type: int, commands: Array) -> void:
+	_询问计数 += 1
 	_最后询问[pid] = {"cmd_type": cmd_type, "commands": commands}
 	send(pid, GConst.Msg.CmdReq, {"cmd_type": cmd_type, "commands": commands})
 
@@ -2755,6 +2765,7 @@ class SCheckTurnStart:
 		cur.clear_additional_action()
 		e._基础效果额外行动已确认.clear()
 		e._跳过额外攻击行动 = false
+		e._已拒绝基础效果额外行动.clear()
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
 		cur.reset_action_counts()
 		# 「启动」技能每回合只能发动一个：新回合开始清零
