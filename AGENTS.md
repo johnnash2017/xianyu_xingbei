@@ -3,7 +3,7 @@
 > 这份文档写给**第一次打开这个工程的人**。
 > 读完它，你应该能回答四个问题：**这是什么、怎么跑起来、代码在哪、想改的东西去哪找。**
 >
-> 更偏“历史记录 / 开发细节”的内容见 [README.md](../README.md)；本文件是**通俗版总览**，两者不冲突。
+> 更偏“历史记录 / 开发细节”的内容见 [README.md](README.md)；本文件是**通俗版总览**，两者不冲突。
 
 **快速跳转：** 想跑起来 → 第 2 节；想找代码 → 第 4、12 节；想懂架构 → 第 5~8 节；改表 / 改技能 → 第 8.4、9 节。
 
@@ -95,7 +95,7 @@
 
 注意 `--slot=0` 前面的 **`--`**：它是 Godot 的“用户参数分隔符”。少了它，`--slot` 会被引擎当成自己的参数而报错。
 
-本地模式判定规则（见 [config.gd](../scripts/client/config.gd)）：**带 `--slot` / `--count` / `--auto` 任一，就是本地模式；什么都不带才是 Steam 模式。**
+本地模式判定规则（见 [config.gd](scripts/client/config.gd)）：**带 `--slot` / `--count` / `--auto` 任一，就是本地模式；什么都不带才是 Steam 模式。**
 
 ### 2.4 启动参数小抄
 
@@ -112,9 +112,9 @@
 
 ### 2.5 打包
 
-- 导出配置在 [export_presets.cfg](../export_presets.cfg)，当前预设是 **Windows Desktop**。
+- 导出配置在 [export_presets.cfg](export_presets.cfg)，当前预设是 **Windows Desktop**。
 - 版本号只改 `project.godot` 一处；也可以勾选编辑器插件「版本号工具」，让每次导出自动把末位 +1。
-- 想裁剪引擎体积时看 [编译设置.gdbuild](../编译设置.gdbuild)（自定义 Godot 构建的 build profile，**不影响**用编辑器运行）。
+- 想裁剪引擎体积时看 [编译设置.gdbuild](编译设置.gdbuild)（自定义 Godot 构建的 build profile，**不影响**用编辑器运行）。
 
 ---
 
@@ -141,9 +141,9 @@
 ```text
 xianyu_xingbei/
 ├─ project.godot                ← 工程配置：主场景、autoload、分辨率、渲染驱动、版本号
+├─ AGENTS.md                    ← 本文件：项目总览与协作约定
 ├─ README.md                    ← 原有开发记录/细节说明
 ├─ 项目文档/                     ← 项目文档
-│  ├─ 项目说明.md                ← 本文件
 │  └─ 技能维护约定.md            ← 改技能前必读
 ├─ export_presets.cfg           ← 导出预设（Windows Desktop）
 ├─ 编译设置.gdbuild             ← 自定义引擎构建的裁剪配置（可选）
@@ -183,28 +183,28 @@ xianyu_xingbei/
 
 | 目录 | 文件数 / 行数 | 职责 | 先看哪个文件 |
 | --- | --- | --- | --- |
-| `scripts/ui/` | 16 / 约 1.1 万 | 界面逻辑：登录、大厅、准备室、战斗、选将、设置 | [ui_manager.gd](../scripts/ui/ui_manager.gd) |
-| `scripts/battle/` | 4 / 约 5800 | 权威战斗引擎、角色基类、玩家状态、牌库 | [battle_engine.gd](../scripts/battle/battle_engine.gd) |
+| `scripts/ui/` | 16 / 约 1.1 万 | 界面逻辑：登录、大厅、准备室、战斗、选将、设置 | [ui_manager.gd](scripts/ui/ui_manager.gd) |
+| `scripts/battle/` | 4 / 约 5800 | 权威战斗引擎、角色基类、玩家状态、牌库 | [battle_engine.gd](scripts/battle/battle_engine.gd) |
 | `scripts/battle/roles/` | 54 / 约 2.3 万 | 每个角色一个脚本，实现技能与时机钩子 | 任选一个 `role_*.gd` |
-| `scripts/battle/skills/` | 6 / 约 1500 | 跨角色独有技 helper（神箭手/狂战士/元素师/封印师/祈祷师/剑圣） | [skill_archer.gd](../scripts/battle/skills/skill_archer.gd) |
-| `scripts/net/` | 12 / 约 3000 | 房主/加入编排、TCP、Steam、局域网发现、协议收发 | [net_manager.gd](../scripts/net/net_manager.gd) |
-| `scripts/client/` | 3 / 约 1300 | 客户端逻辑（收包分派）、启动配置、音频 | [client_logic.gd](../scripts/client/client_logic.gd) |
-| `scripts/data/` | 4 / 约 850 | 卡牌 `GCard`、玩家 `GPlayer`、队伍 `GTeam`、数据接口 | [data_interface.gd](../scripts/data/data_interface.gd) |
-| `scripts/core/` | 4 / 约 2600 | 常量/枚举、协议号、protobuf 编解码、帧格式 | [const.gd](../scripts/core/const.gd) |
-| `scripts/framework/` | 4 / 约 480 | 资源名索引、消息总线 | [AssetIndex.gd](../scripts/framework/AssetIndex.gd) |
-| `scripts/effects/` | 11 / 约 1100 | 斩击、魔弹、发牌、弃牌、点击星屑等特效 | [effect_warmer.gd](../scripts/effects/effect_warmer.gd) |
-| `scripts/*.gd`（根级） | 10 / 约 2400 | 从参考工程搬来的控件脚本：卡牌 UI、玩家面板、技能按钮等 | [PlayerStatusMobile.gd](../scripts/PlayerStatusMobile.gd) |
+| `scripts/battle/skills/` | 6 / 约 1500 | 跨角色独有技 helper（神箭手/狂战士/元素师/封印师/祈祷师/剑圣） | [skill_archer.gd](scripts/battle/skills/skill_archer.gd) |
+| `scripts/net/` | 12 / 约 3000 | 房主/加入编排、TCP、Steam、局域网发现、协议收发 | [net_manager.gd](scripts/net/net_manager.gd) |
+| `scripts/client/` | 3 / 约 1300 | 客户端逻辑（收包分派）、启动配置、音频 | [client_logic.gd](scripts/client/client_logic.gd) |
+| `scripts/data/` | 4 / 约 850 | 卡牌 `GCard`、玩家 `GPlayer`、队伍 `GTeam`、数据接口 | [data_interface.gd](scripts/data/data_interface.gd) |
+| `scripts/core/` | 4 / 约 2600 | 常量/枚举、协议号、protobuf 编解码、帧格式 | [const.gd](scripts/core/const.gd) |
+| `scripts/framework/` | 4 / 约 480 | 资源名索引、消息总线 | [AssetIndex.gd](scripts/framework/AssetIndex.gd) |
+| `scripts/effects/` | 11 / 约 1100 | 斩击、魔弹、发牌、弃牌、点击星屑等特效 | [effect_warmer.gd](scripts/effects/effect_warmer.gd) |
+| `scripts/*.gd`（根级） | 10 / 约 2400 | 从参考工程搬来的控件脚本：卡牌 UI、玩家面板、技能按钮等 | [PlayerStatusMobile.gd](scripts/PlayerStatusMobile.gd) |
 
 ### 4.2 建议的阅读顺序
 
 如果你是第一次接触这个工程，**按这个顺序读**会最省力：
 
-1. [project.godot](../project.godot) → [scenes/Main.tscn](../scenes/Main.tscn) → [main.gd](../scripts/ui/main.gd)：搞清楚游戏怎么启动。
-2. [ui_manager.gd](../scripts/ui/ui_manager.gd)：界面是怎么一层层切过去的。
-3. [enter.gd](../scripts/ui/enter.gd) → [lobby.gd](../scripts/ui/lobby.gd)：登录和大厅做了哪些事。
-4. [net_manager.gd](../scripts/net/net_manager.gd) → [local_server.gd](../scripts/net/local_server.gd)：联机是怎么搭起来的。
-5. [battle_engine.gd](../scripts/battle/battle_engine.gd) → [battle_role.gd](../scripts/battle/battle_role.gd) → 随便挑一个 `role_*.gd`：战斗规则和技能怎么写。
-6. [battle_mobile.gd](../scripts/ui/battle_mobile.gd)：战斗界面怎么把服务端数据画出来、怎么收集玩家操作。
+1. [project.godot](project.godot) → [scenes/Main.tscn](scenes/Main.tscn) → [main.gd](scripts/ui/main.gd)：搞清楚游戏怎么启动。
+2. [ui_manager.gd](scripts/ui/ui_manager.gd)：界面是怎么一层层切过去的。
+3. [enter.gd](scripts/ui/enter.gd) → [lobby.gd](scripts/ui/lobby.gd)：登录和大厅做了哪些事。
+4. [net_manager.gd](scripts/net/net_manager.gd) → [local_server.gd](scripts/net/local_server.gd)：联机是怎么搭起来的。
+5. [battle_engine.gd](scripts/battle/battle_engine.gd) → [battle_role.gd](scripts/battle/battle_role.gd) → 随便挑一个 `role_*.gd`：战斗规则和技能怎么写。
+6. [battle_mobile.gd](scripts/ui/battle_mobile.gd)：战斗界面怎么把服务端数据画出来、怎么收集玩家操作。
 
 ### 4.3 编辑器插件
 
@@ -265,16 +265,16 @@ Godot 启动
 
 | 界面 | 场景 | 脚本 | 什么时候出现 |
 | --- | --- | --- | --- |
-| 主场景 / 背景 | `scenes/Main.tscn` | [main.gd](../scripts/ui/main.gd) | 始终存在 |
-| 登录 | `scenes/enter.tscn` | [enter.gd](../scripts/ui/enter.gd) | 启动后的第一个界面 |
-| 大厅 | `scenes/lobby.tscn` | [lobby.gd](../scripts/ui/lobby.gd) | 点「进入游戏」并连上房主后 |
-| 准备室 | `scenes/ReadyRoom.tscn` | [ready_room.gd](../scripts/ui/ready_room.gd) | 进房后、开局前 |
-| 战斗 | `scenes/BattleUIMobile.tscn` | [battle_mobile.gd](../scripts/ui/battle_mobile.gd) | 收到 `started = true` 的快照后 |
-| 选将浮层 | `scenes/role_pick.tscn` | [role_pick.gd](../scripts/ui/role_pick.gd) | 服务端下发 `RoleReq` 时叠在当前界面上 |
-| 设置浮层 | `scenes/Settings.tscn` | [settings.gd](../scripts/ui/settings.gd) | 任意界面点设置按钮 |
-| 玩家列表 | 内嵌在 `Main.tscn` | [main.gd](../scripts/ui/main.gd) | 在房间里按住 **TAB** |
+| 主场景 / 背景 | `scenes/Main.tscn` | [main.gd](scripts/ui/main.gd) | 始终存在 |
+| 登录 | `scenes/enter.tscn` | [enter.gd](scripts/ui/enter.gd) | 启动后的第一个界面 |
+| 大厅 | `scenes/lobby.tscn` | [lobby.gd](scripts/ui/lobby.gd) | 点「进入游戏」并连上房主后 |
+| 准备室 | `scenes/ReadyRoom.tscn` | [ready_room.gd](scripts/ui/ready_room.gd) | 进房后、开局前 |
+| 战斗 | `scenes/BattleUIMobile.tscn` | [battle_mobile.gd](scripts/ui/battle_mobile.gd) | 收到 `started = true` 的快照后 |
+| 选将浮层 | `scenes/role_pick.tscn` | [role_pick.gd](scripts/ui/role_pick.gd) | 服务端下发 `RoleReq` 时叠在当前界面上 |
+| 设置浮层 | `scenes/Settings.tscn` | [settings.gd](scripts/ui/settings.gd) | 任意界面点设置按钮 |
+| 玩家列表 | 内嵌在 `Main.tscn` | [main.gd](scripts/ui/main.gd) | 在房间里按住 **TAB** |
 
-切换逻辑全部集中在 [ui_manager.gd](../scripts/ui/ui_manager.gd)：`goto_*()` 负责换主界面，`显示选角()` / `切换设置()` 负责叠浮层，切界面时浮层会被一并清掉。
+切换逻辑全部集中在 [ui_manager.gd](scripts/ui/ui_manager.gd)：`goto_*()` 负责换主界面，`显示选角()` / `切换设置()` 负责叠浮层，切界面时浮层会被一并清掉。
 
 ### 5.3 12 个全局单例（autoload）
 
@@ -282,18 +282,18 @@ Godot 启动
 
 | 名字 | 文件 | 管什么 | 常用接口 |
 | --- | --- | --- | --- |
-| `Cfg` | [config.gd](../scripts/client/config.gd) | 启动参数、槽位、昵称、本地配置、窗口摆位、ESC 重启 | `Cfg.nickname`、`Cfg.本地模式`、`Cfg.无Steam()` |
-| `SteamNet` | [steam_net.gd](../scripts/net/steam_net.gd) | Steam 初始化、Steam 身份、大厅的建/查/进/退 | `SteamNet.就绪`、`SteamNet.建房()`、`SteamNet.查询大厅()` |
-| `Data` | [data_interface.gd](../scripts/data/data_interface.gd) | 把数据表读进内存；维护当前对局的玩家、手牌、队伍 | `Data.player_list`、`Data.get_card()`、`Data.role_pool` |
-| `Net` | [net_manager.gd](../scripts/net/net_manager.gd) | 房主/加入编排；选传输底座；统一收发 | `Net.host_game()`、`Net.join_game()`、`Net.send()` |
-| `Logic` | [client_logic.gd](../scripts/client/client_logic.gd) | 把收到的协议分派成信号；封装所有上行操作 | `Logic.send_action()`、`Logic.turn_changed`、`Logic.game_info_updated` |
-| `UI` | [ui_manager.gd](../scripts/ui/ui_manager.gd) | 界面切换、浮层管理、Steam 状态行 | `UI.goto_lobby()`、`UI.确保对局界面()`、`UI.显示选角()` |
-| `Art` | [art.gd](../scripts/ui/art.gd) | 按名字取贴图/音效，带缓存 | `Art.tex()`、`Art.card_face()`、`Art.role_hero()`、`Art.play_sfx()` |
-| `Audio` | [audio.gd](../scripts/client/audio.gd) | 背景音乐、战斗音效、音量设置、失焦静音 | `Audio.播放音乐()`、`Audio.播音效()`、`Audio.设置音乐音量()` |
-| `AssetIndex` | [AssetIndex.gd](../scripts/framework/AssetIndex.gd) | 启动时扫描 `assets/`，按文件名建立索引 | `AssetIndex.image()`、`AssetIndex.audio()` |
-| `MessageSystem` | [MessageSystem.gd](../scripts/framework/MessageSystem.gd) | 全局消息总线（参考工程遗留，用得较少） | `MessageSystem.regist()` / `notify()` |
-| `ClickDust` | [clickStardust.gd](../scripts/effects/clickStardust.gd) | 全游戏鼠标点击星屑/涟漪 | 自动生效，不需要调用 |
-| `EffectWarmer` | [effect_warmer.gd](../scripts/effects/effect_warmer.gd) | 启动时预热所有出手特效的着色器，避免第一次放特效卡顿 | 自动生效；特效预制表也在这里 |
+| `Cfg` | [config.gd](scripts/client/config.gd) | 启动参数、槽位、昵称、本地配置、窗口摆位、ESC 重启 | `Cfg.nickname`、`Cfg.本地模式`、`Cfg.无Steam()` |
+| `SteamNet` | [steam_net.gd](scripts/net/steam_net.gd) | Steam 初始化、Steam 身份、大厅的建/查/进/退 | `SteamNet.就绪`、`SteamNet.建房()`、`SteamNet.查询大厅()` |
+| `Data` | [data_interface.gd](scripts/data/data_interface.gd) | 把数据表读进内存；维护当前对局的玩家、手牌、队伍 | `Data.player_list`、`Data.get_card()`、`Data.role_pool` |
+| `Net` | [net_manager.gd](scripts/net/net_manager.gd) | 房主/加入编排；选传输底座；统一收发 | `Net.host_game()`、`Net.join_game()`、`Net.send()` |
+| `Logic` | [client_logic.gd](scripts/client/client_logic.gd) | 把收到的协议分派成信号；封装所有上行操作 | `Logic.send_action()`、`Logic.turn_changed`、`Logic.game_info_updated` |
+| `UI` | [ui_manager.gd](scripts/ui/ui_manager.gd) | 界面切换、浮层管理、Steam 状态行 | `UI.goto_lobby()`、`UI.确保对局界面()`、`UI.显示选角()` |
+| `Art` | [art.gd](scripts/ui/art.gd) | 按名字取贴图/音效，带缓存 | `Art.tex()`、`Art.card_face()`、`Art.role_hero()`、`Art.play_sfx()` |
+| `Audio` | [audio.gd](scripts/client/audio.gd) | 背景音乐、战斗音效、音量设置、失焦静音 | `Audio.播放音乐()`、`Audio.播音效()`、`Audio.设置音乐音量()` |
+| `AssetIndex` | [AssetIndex.gd](scripts/framework/AssetIndex.gd) | 启动时扫描 `assets/`，按文件名建立索引 | `AssetIndex.image()`、`AssetIndex.audio()` |
+| `MessageSystem` | [MessageSystem.gd](scripts/framework/MessageSystem.gd) | 全局消息总线（参考工程遗留，用得较少） | `MessageSystem.regist()` / `notify()` |
+| `ClickDust` | [clickStardust.gd](scripts/effects/clickStardust.gd) | 全游戏鼠标点击星屑/涟漪 | 自动生效，不需要调用 |
+| `EffectWarmer` | [effect_warmer.gd](scripts/effects/effect_warmer.gd) | 启动时预热所有出手特效的着色器，避免第一次放特效卡顿 | 自动生效；特效预制表也在这里 |
 
 > **顺序有意义**：`Cfg` 要最先读启动参数，`SteamNet` 要在 `Net` 之前决定底座，`Logic` 要在 `UI` 之前准备好信号。
 
@@ -335,10 +335,10 @@ Godot 启动
 
 | 角色 | 抽象类 | 局域网实现 | Steam 实现 |
 | --- | --- | --- | --- |
-| 客户端 | `NetworkClient` | [net_client.gd](../scripts/net/net_client.gd)（TCP 长连接） | [steam_client.gd](../scripts/net/steam_client.gd)（SteamNetworkingMessages） |
-| 服务端 | `NetworkServer` | [net_server.gd](../scripts/net/net_server.gd)（TCP 监听） | [steam_server.gd](../scripts/net/steam_server.gd)（Steam P2P） |
+| 客户端 | `NetworkClient` | [net_client.gd](scripts/net/net_client.gd)（TCP 长连接） | [steam_client.gd](scripts/net/steam_client.gd)（SteamNetworkingMessages） |
+| 服务端 | `NetworkServer` | [net_server.gd](scripts/net/net_server.gd)（TCP 监听） | [steam_server.gd](scripts/net/steam_server.gd)（Steam P2P） |
 
-Steam 模式下，服务端用的是**多路复用底座** [multi_server.gd](../scripts/net/multi_server.gd)：
+Steam 模式下，服务端用的是**多路复用底座** [multi_server.gd](scripts/net/multi_server.gd)：
 
 - 同时挂 `SteamServer` + `NetServer`；
 - 因此 Steam 房里，**同一局域网、没登 Steam 的机器也能连进来**；
@@ -357,7 +357,7 @@ Steam P2P 有两个细节：
 | **局域网模式** | 带 `--lan` | 局域网 TCP | 同网段发现的主机 + 本机服务端 | 内网联调 |
 | **Steam 模式** | 裸启动（编辑器 F5 / 导出包） | Steam P2P（+ 局域网 TCP 兜底） | Steam 大厅 | 正式玩家联机 |
 
-判定集中在 [config.gd](../scripts/client/config.gd)（简化写法）：
+判定集中在 [config.gd](scripts/client/config.gd)（简化写法）：
 
 ```gdscript
 本地模式 = 带启动参数 or --auto or --count > 0
@@ -385,7 +385,7 @@ Steam P2P 有两个细节：
 
 ### 6.5 局域网发现
 
-[discovery.gd](../scripts/net/discovery.gd) 有两条互补的发现路径：
+[discovery.gd](scripts/net/discovery.gd) 有两条互补的发现路径：
 
 1. **跨机 UDP 广播**：默认端口 `11112`。搜索方周期性广播探测，房主应答；房主再广播一次，让同网段其他客户端也能收到。
 2. **同机 TCP 探测**：对 `127.0.0.1` 和各网卡地址逐个尝试连接，连上即说明“本机有房”，随即断开。
@@ -396,16 +396,16 @@ Steam P2P 有两个细节：
 
 ### 6.6 协议长什么样
 
-所有消息都走同一个帧格式（小端），见 [framing.gd](../scripts/core/framing.gd)：
+所有消息都走同一个帧格式（小端），见 [framing.gd](scripts/core/framing.gd)：
 
 ```text
 [ uint32 外层长度 L ][ uint16 帧头长度 ][ uint16 协议号 ][ protobuf 消息体（可为 0 字节） ]
 总帧长 = 4 + L；单帧上限 65535 字节
 ```
 
-- [proto_schema.gd](../scripts/core/proto_schema.gd) 用**字段表**描述每个协议号有哪些字段，不依赖 `.proto` 编译；
-- [proto_codec.gd](../scripts/core/proto_codec.gd) 按字段表做 protobuf 线格式的编码/解码；
-- 协议号在 [const.gd](../scripts/core/const.gd) 的 `GConst.Msg` 中：
+- [proto_schema.gd](scripts/core/proto_schema.gd) 用**字段表**描述每个协议号有哪些字段，不依赖 `.proto` 编译；
+- [proto_codec.gd](scripts/core/proto_codec.gd) 按字段表做 protobuf 线格式的编码/解码；
+- 协议号在 [const.gd](scripts/core/const.gd) 的 `GConst.Msg` 中：
 
 | 区间 | 内容 |
 | --- | --- |
@@ -413,7 +413,7 @@ Steam P2P 有两个细节：
 | 101 ~ 112 | 战斗：选角、行动、回复、询问、命中、伤害、技能、卡牌 |
 | 113 / 114 | 本项目扩展：调试指令 `DebugReq`、受伤飘字 `HurtFloat` |
 
-登录包示例（[net_manager.gd](../scripts/net/net_manager.gd)）：
+登录包示例（[net_manager.gd](scripts/net/net_manager.gd)）：
 
 ```gdscript
 Net.send(GConst.Msg.LoginReq, {
@@ -466,7 +466,7 @@ Net.send(GConst.Msg.LoginReq, {
 - **重连补发**：玩家掉线重连回来，服务端会把“正等他的那份询问”原样再发一次，否则他手里没有界面，只能干等超时。
 - **客户端只做体验过滤**：置灰、限制可点目标是为了少点错；**最终合法性一律由服务端校验**。
 
-结算后客户端会收到这些事件（[client_logic.gd](../scripts/client/client_logic.gd) 把它们转成信号）：
+结算后客户端会收到这些事件（[client_logic.gd](scripts/client/client_logic.gd) 把它们转成信号）：
 
 | 消息 | 含义 | 界面反应 |
 | --- | --- | --- |
@@ -486,7 +486,7 @@ Net.send(GConst.Msg.LoginReq, {
 
 ### 8.1 栈式状态机
 
-[BattleEngine](../scripts/battle/battle_engine.gd) 是**权威规则实现**，每个房间一个实例。它不用协程、不阻塞，而是用“状态栈”推进：
+[BattleEngine](scripts/battle/battle_engine.gd) 是**权威规则实现**，每个房间一个实例。它不用协程、不阻塞，而是用“状态栈”推进：
 
 ```text
 状态栈（后进先出）—— 越靠上越先执行：
@@ -534,7 +534,7 @@ Net.send(GConst.Msg.LoginReq, {
 
 ### 8.3 角色钩子：技能是怎么“插”进去的
 
-所有角色脚本都继承 [BattleRole](../scripts/battle/battle_role.gd)。基类里定义了一大批 `p_*` 钩子，**默认什么都不做**，角色只覆写自己关心的那些：
+所有角色脚本都继承 [BattleRole](scripts/battle/battle_role.gd)。基类里定义了一大批 `p_*` 钩子，**默认什么都不做**，角色只覆写自己关心的那些：
 
 ```gdscript
 func p_before_action(_ctx: Dictionary) -> int: return SUCCESS
@@ -586,10 +586,10 @@ func p_timeline_4(_ctx: Dictionary) -> int: return SUCCESS
 4. 把角色立绘/图标放进 `assets/`（命名与表的「图标名 / 形态图」对应）；
 5. 导表（Ctrl+Shift+T）；
 6. 补一个自检用例，跑 `tests/runSelfCheck.ps1`；
-7. 需要头像提示 / 技能指示器 / 魔弹系别等客户端特性时，按 [技能维护约定](技能维护约定.md) 的「公共能力与借用技约定」接进 `const.gd`；
+7. 需要头像提示 / 技能指示器 / 魔弹系别等客户端特性时，按 [技能维护约定](项目文档/技能维护约定.md) 的「公共能力与借用技约定」接进 `const.gd`；
 8. 最后跑一遍全量自检（当前 62 例）。
 
-> 角色技能有一份更细的规范：[技能维护约定](技能维护约定.md)。改技能前建议先读一遍。
+> 角色技能有一份更细的规范：[技能维护约定](项目文档/技能维护约定.md)。改技能前建议先读一遍。
 
 ### 8.5 13 名 3★/3.5★ 角色（本轮新增）
 
@@ -613,8 +613,8 @@ func p_timeline_4(_ctx: Dictionary) -> int: return SUCCESS
 
 - 角色表由 41 条启用变为 **54 条启用**（数据仍 71 条，其余 16 条补录角色 + 1 条 0 号占位保持禁用）；技能表仍 414 行，本批 59 行全部使用已有技能行。
 - 为支撑这些角色，新增了 F1~F9 公共能力（魔弹泛化、额外行动计数、指示物/盖牌、基础效果钩子、独有技 helper、伤害转移/弃牌拦截、额外回合/角色替换、牌库顶/星杯/士气、跨玩家操作），6 份独有技 helper 在 `scripts/battle/skills/`。
-- 客户端把角色号相关的魔弹系别、基础效果免疫、双张魔弹等集中到 [const.gd](../scripts/core/const.gd) 的 `角色特性` 表，并补了本批的技能指示器 / 额外行动提示。
-- 验证：`tests/cases/` 34 → **62** 例，headless 自检 `[自检] 用例 62 个：通过 62，失败 0`（2026-10-28）；逐角色实现要点、口径与遗留见 [禁用3星与3.5星角色开发计划](禁用3星与3.5星角色开发计划.md) 第 0 节。
+- 客户端把角色号相关的魔弹系别、基础效果免疫、双张魔弹等集中到 [const.gd](scripts/core/const.gd) 的 `角色特性` 表，并补了本批的技能指示器 / 额外行动提示。
+- 验证：`tests/cases/` 34 → **62** 例，headless 自检 `[自检] 用例 62 个：通过 62，失败 0`（2026-10-28）；逐角色实现要点、口径与遗留见 [禁用3星与3.5星角色开发计划](项目文档/禁用3星与3.5星角色开发计划.md) 第 0 节。
 
 ---
 
@@ -655,7 +655,7 @@ Table/Design/设计表.xlsx
 3. 检查生成的 `Table/Csv/*.csv` 和 `DataTables.gd` 是否符合预期；
 4. 重新运行游戏。
 
-生成器实现见 [Run.gd](../addons/excel_to_gd/Run.gd)（`ExcelToCsv.gd` → `CsvToGd.gd`）。
+生成器实现见 [Run.gd](addons/excel_to_gd/Run.gd)（`ExcelToCsv.gd` → `CsvToGd.gd`）。
 
 ### 9.3 三条铁律
 
@@ -682,13 +682,13 @@ Table/Design/设计表.xlsx
 
 ### 10.2 按名字取资源
 
-[AssetIndex](../scripts/framework/AssetIndex.gd) 在启动时扫描 `assets/`，按**文件名**（忽略大小写和扩展名）建索引；[Art](../scripts/ui/art.gd) 再封装成 `card_face()` / `role_hero()` / `status_icon()` 这类语义接口。
+[AssetIndex](scripts/framework/AssetIndex.gd) 在启动时扫描 `assets/`，按**文件名**（忽略大小写和扩展名）建索引；[Art](scripts/ui/art.gd) 再封装成 `card_face()` / `role_hero()` / `status_icon()` 这类语义接口。
 
 索引顺序有讲究：**先收本层文件、再进子目录，且两层都按名字排序**。否则编辑器里和导出包里可能取到同名但不同路径的两张图（比如正式卡面和备用图）。
 
 ### 10.3 音频
 
-[audio.gd](../scripts/client/audio.gd) 负责：
+[audio.gd](scripts/client/audio.gd) 负责：
 
 - 主界面音乐、战斗音乐（随机且不重复）、胜负音乐；
 - 出牌、命中、受伤、治疗、士气、星石、选将等音效；
@@ -701,7 +701,7 @@ Table/Design/设计表.xlsx
 
 - 斩击、魔弹：3D 素材放在 `scenes/prefabs/effects/slash3D/`、`magicBullet3D/`，通过 `SubViewport` 渲染成 2D 预制体再挂到战斗界面；
 - 发牌、弃牌、治疗、受击飘字、行动播报（出牌 / 技能名）、状态图标、点击星屑：2D 预制体；
-- [EffectWarmer](../scripts/effects/effect_warmer.gd) 在启动时把每种特效离屏渲染两帧，**提前编译着色器**，避免第一次出手卡一下；
+- [EffectWarmer](scripts/effects/effect_warmer.gd) 在启动时把每种特效离屏渲染两帧，**提前编译着色器**，避免第一次出手卡一下；
 - 要加新特效：在 `scenes/prefabs/effects/` 做预制体 → 在 `EffectWarmer.特效预制表` 登记 → 在战斗界面按卡名/技能触发。
 
 ---
@@ -716,7 +716,7 @@ powershell -ExecutionPolicy Bypass -File tests\runSelfCheck.ps1
 # "D:\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe" --headless --path <工程目录> res://tests/selfCheck.tscn
 ```
 
-- 运行器是 [selfCheck.tscn](../tests/selfCheck.tscn) / [selfCheck.gd](../tests/selfCheck.gd)；
+- 运行器是 [selfCheck.tscn](tests/selfCheck.tscn) / [selfCheck.gd](tests/selfCheck.gd)；
 - 会遍历 `tests/cases/` 下全部用例（当前 62 个），逐条打印 `[通过] / [失败]`，最后一行是汇总；
 - 有失败时退出码为 1；
 - 增删了素材/场景后，加 `-导入` 先重导一次；
@@ -754,7 +754,7 @@ powershell -ExecutionPolicy Bypass -File tests\runLanPlay.ps1 -窗口数 4
 
 建房面板有「开启作弊 / 调试模式」勾选项；勾上后**房间内所有玩家**都能用测试键（不是房主特权）。F10/F11 自动开局拉起的窗口默认开启。
 
-战斗界面左上角会出现一块可拖拽的提示，键位如下（见 [battle_mobile.gd](../scripts/ui/battle_mobile.gd) 的 `测试指令表`）：
+战斗界面左上角会出现一块可拖拽的提示，键位如下（见 [battle_mobile.gd](scripts/ui/battle_mobile.gd) 的 `测试指令表`）：
 
 | 按键 | 效果 |
 | --- | --- |
@@ -778,31 +778,31 @@ powershell -ExecutionPolicy Bypass -File tests\runLanPlay.ps1 -窗口数 4
 
 | 我想改… | 先看这里 | 备注 |
 | --- | --- | --- |
-| 登录界面 | [scenes/enter.tscn](../scenes/enter.tscn) / [enter.gd](../scripts/ui/enter.gd) | 布局在场景里，逻辑在脚本里 |
-| 大厅、建房面板 | [scenes/lobby.tscn](../scenes/lobby.tscn) / [lobby.gd](../scripts/ui/lobby.gd) | 人数/选角/座位按钮的 `metadata` 决定取值 |
-| 准备室、分队 | [scenes/ReadyRoom.tscn](../scenes/ReadyRoom.tscn) / [ready_room.gd](../scripts/ui/ready_room.gd) | 座位数据来自 `Game` 快照 |
-| 战斗界面排版 | [scenes/BattleUIMobile.tscn](../scenes/BattleUIMobile.tscn) | 节点通过 `@export` 绑到脚本 |
-| 战斗交互（出牌/选目标/技能/应战） | [battle_mobile.gd](../scripts/ui/battle_mobile.gd) | 最大的脚本，建议先看目录注释 |
-| 玩家头像面板 | [PlayerStatusMobile.gd](../scripts/PlayerStatusMobile.gd) | 头像、状态图标、治疗/星石显示 |
-| 卡牌控件 / 技能按钮 | [CardUI.gd](../scripts/CardUI.gd) / [SkillUI.gd](../scripts/SkillUI.gd) | |
-| 战斗规则 | [battle_engine.gd](../scripts/battle/battle_engine.gd) | 状态机 + 伤害流水线 |
+| 登录界面 | [scenes/enter.tscn](scenes/enter.tscn) / [enter.gd](scripts/ui/enter.gd) | 布局在场景里，逻辑在脚本里 |
+| 大厅、建房面板 | [scenes/lobby.tscn](scenes/lobby.tscn) / [lobby.gd](scripts/ui/lobby.gd) | 人数/选角/座位按钮的 `metadata` 决定取值 |
+| 准备室、分队 | [scenes/ReadyRoom.tscn](scenes/ReadyRoom.tscn) / [ready_room.gd](scripts/ui/ready_room.gd) | 座位数据来自 `Game` 快照 |
+| 战斗界面排版 | [scenes/BattleUIMobile.tscn](scenes/BattleUIMobile.tscn) | 节点通过 `@export` 绑到脚本 |
+| 战斗交互（出牌/选目标/技能/应战） | [battle_mobile.gd](scripts/ui/battle_mobile.gd) | 最大的脚本，建议先看目录注释 |
+| 玩家头像面板 | [PlayerStatusMobile.gd](scripts/PlayerStatusMobile.gd) | 头像、状态图标、治疗/星石显示 |
+| 卡牌控件 / 技能按钮 | [CardUI.gd](scripts/CardUI.gd) / [SkillUI.gd](scripts/SkillUI.gd) | |
+| 战斗规则 | [battle_engine.gd](scripts/battle/battle_engine.gd) | 状态机 + 伤害流水线 |
 | 某个角色的技能 | `scripts/battle/roles/role_*.gd` | 对照设计表里的技能号/提示列 |
 | 跨角色独有技（借用 301/201/401…） | `scripts/battle/skills/` | 借用角色要连同触发钩子一起转发，见技能维护约定 |
-| 角色特性（魔弹系别/基础效果免疫/双张魔弹） | [const.gd](../scripts/core/const.gd) 的 `角色特性` 表 | 客户端与服务端共用，不要在界面里写角色号名单 |
-| 技能指示器 / 头像提示 / 额外行动提示 | [const.gd](../scripts/core/const.gd) 的 `技能指示器` / `额外行动提示` 表 | 技能号按当前角色的技能行取 |
-| 角色/技能/卡牌数值与文案 | [Table/Design/设计表.xlsx](../Table/Design/设计表.xlsx) | **改完必须导表** |
-| 选角流程、随机分配 | [local_server.gd](../scripts/net/local_server.gd) + [role_pick.gd](../scripts/ui/role_pick.gd) | 候选池来自角色表「启用」列 |
-| 网络协议字段 | [proto_schema.gd](../scripts/core/proto_schema.gd) + [const.gd](../scripts/core/const.gd) | 要同时改服务端、客户端、UI、测试 |
-| 房主/加入/重连 | [net_manager.gd](../scripts/net/net_manager.gd) / [local_server.gd](../scripts/net/local_server.gd) | |
-| 传输底座（TCP/Steam） | [scripts/net/](../scripts/net) | 抽象类 + 两套实现 + 多路复用 |
-| 局域网发现 | [discovery.gd](../scripts/net/discovery.gd) | UDP 11112 + 同机 TCP 探测 |
-| 多开/窗口摆位 | [config.gd](../scripts/client/config.gd) / [启动多开.ps1](../tests/启动多开.ps1) | 槽位端口 11130+ |
-| 音效/音乐 | `assets/media/` + [audio.gd](../scripts/client/audio.gd) | 按文件名查找，换文件即可 |
-| 特效 | `scenes/prefabs/effects/` + [effect_warmer.gd](../scripts/effects/effect_warmer.gd) | 新特效记得登记预热表 |
-| 界面主题/字体 | `assets/textures/lobby/ui_theme.tres` + [ui_manager.gd](../scripts/ui/ui_manager.gd) | 默认字号 20（按 1920×1080） |
-| 版本号 | [project.godot](../project.godot) | 只改这一处；或用「版本号工具」自动 +1 |
-| 导出/打包 | [export_presets.cfg](../export_presets.cfg) | 当前只有 Windows Desktop |
-| 引擎裁剪 | [编译设置.gdbuild](../编译设置.gdbuild) | 自定义构建用，不影响编辑器运行 |
+| 角色特性（魔弹系别/基础效果免疫/双张魔弹） | [const.gd](scripts/core/const.gd) 的 `角色特性` 表 | 客户端与服务端共用，不要在界面里写角色号名单 |
+| 技能指示器 / 头像提示 / 额外行动提示 | [const.gd](scripts/core/const.gd) 的 `技能指示器` / `额外行动提示` 表 | 技能号按当前角色的技能行取 |
+| 角色/技能/卡牌数值与文案 | [Table/Design/设计表.xlsx](Table/Design/设计表.xlsx) | **改完必须导表** |
+| 选角流程、随机分配 | [local_server.gd](scripts/net/local_server.gd) + [role_pick.gd](scripts/ui/role_pick.gd) | 候选池来自角色表「启用」列 |
+| 网络协议字段 | [proto_schema.gd](scripts/core/proto_schema.gd) + [const.gd](scripts/core/const.gd) | 要同时改服务端、客户端、UI、测试 |
+| 房主/加入/重连 | [net_manager.gd](scripts/net/net_manager.gd) / [local_server.gd](scripts/net/local_server.gd) | |
+| 传输底座（TCP/Steam） | [scripts/net/](scripts/net) | 抽象类 + 两套实现 + 多路复用 |
+| 局域网发现 | [discovery.gd](scripts/net/discovery.gd) | UDP 11112 + 同机 TCP 探测 |
+| 多开/窗口摆位 | [config.gd](scripts/client/config.gd) / [启动多开.ps1](tests/启动多开.ps1) | 槽位端口 11130+ |
+| 音效/音乐 | `assets/media/` + [audio.gd](scripts/client/audio.gd) | 按文件名查找，换文件即可 |
+| 特效 | `scenes/prefabs/effects/` + [effect_warmer.gd](scripts/effects/effect_warmer.gd) | 新特效记得登记预热表 |
+| 界面主题/字体 | `assets/textures/lobby/ui_theme.tres` + [ui_manager.gd](scripts/ui/ui_manager.gd) | 默认字号 20（按 1920×1080） |
+| 版本号 | [project.godot](project.godot) | 只改这一处；或用「版本号工具」自动 +1 |
+| 导出/打包 | [export_presets.cfg](export_presets.cfg) | 当前只有 Windows Desktop |
+| 引擎裁剪 | [编译设置.gdbuild](编译设置.gdbuild) | 自定义构建用，不影响编辑器运行 |
 
 ---
 
@@ -819,7 +819,7 @@ powershell -ExecutionPolicy Bypass -File tests\runLanPlay.ps1 -窗口数 4
 9. **改完跑自检**：至少跑一遍 `tests/runSelfCheck.ps1`（当前 62 例）；区分“新增失败”和“原有失败”。
 10. **提交前清理**：用 Excel 插件改表会生成 `.bak` / `.patch.json`，确认无误后删掉，不要提交。
 11. **角色号/技能号集中配置**：客户端角色名单、魔弹系别、基础效果免疫、双张魔弹、额外行动限制文案都进 `const.gd` 的 `角色特性` / `额外行动提示` 表，不要在 `battle_mobile.gd` 里再散落 `[8, 76]` 之类的名单。
-12. **借用别人独有技要转发触发钩子**：`scripts/battle/skills/` 的 helper 只负责校验与结算；借用角色必须把 `p_show_hand`、`p_timeline_2_hit`、`p_after_attack`、`v_additional_action` 等触发钩子转发过去，否则“放置了但永远不触发”。完整约定见 [技能维护约定](技能维护约定.md) 的「公共能力与借用技约定」。
+12. **借用别人独有技要转发触发钩子**：`scripts/battle/skills/` 的 helper 只负责校验与结算；借用角色必须把 `p_show_hand`、`p_timeline_2_hit`、`p_after_attack`、`v_additional_action` 等触发钩子转发过去，否则“放置了但永远不触发”。完整约定见 [技能维护约定](项目文档/技能维护约定.md) 的「公共能力与借用技约定」。
 13. **只做要求内的事**：没有明确要求时，不改任务范围外的代码、文案、配置和资源，不顺手重构、不顺手换图。工作区里未提交的改动（尤其立绘、图片、表格）一律不自行还原、覆盖或提交；发现冲突先报告，由需求方决定。
 14. **清理缓存只能清缓存**：清理 `.import` 噪音只能按精确路径还原 `.import`，禁止 `git checkout` 整个资源目录；`PNG` / `JPG` / `webp` 等源资源文件不得批量还原，也不得为了“让工作区干净”而丢弃未提交的资源改动。
 
@@ -888,21 +888,21 @@ A：做角色立绘“绿幕抠图”的一次性脚本（依赖 numpy/Pillow/sc
 
 | 文件 | 作用 |
 | --- | --- |
-| [project.godot](../project.godot) | 工程入口：主场景、autoload、分辨率、渲染、版本号 |
-| [scenes/Main.tscn](../scenes/Main.tscn) | 唯一主场景 |
-| [scripts/ui/main.gd](../scripts/ui/main.gd) | 主场景逻辑：背景、界面层、TAB 玩家列表、自动开局 |
-| [scripts/ui/ui_manager.gd](../scripts/ui/ui_manager.gd) | 界面切换与浮层管理 |
-| [scripts/net/net_manager.gd](../scripts/net/net_manager.gd) | 房主/加入编排、统一收发 |
-| [scripts/net/local_server.gd](../scripts/net/local_server.gd) | 权威服务端：房间、座位、选角、开局、心跳 |
-| [scripts/battle/battle_engine.gd](../scripts/battle/battle_engine.gd) | 战斗状态机与规则 |
-| [scripts/battle/battle_role.gd](../scripts/battle/battle_role.gd) | 角色基类与全部钩子定义 |
-| [scripts/ui/battle_mobile.gd](../scripts/ui/battle_mobile.gd) | 战斗界面与交互 |
-| [scripts/core/const.gd](../scripts/core/const.gd) | 协议号、枚举、规则常量、技能号 |
-| [scripts/core/proto_schema.gd](../scripts/core/proto_schema.gd) | 协议字段表 |
-| [Table/TableScripts/DataTables.gd](../Table/TableScripts/DataTables.gd) | 生成的数据表（勿手改） |
-| [tests/启动多开.ps1](../tests/启动多开.ps1) | 多开脚本 |
-| [tests/runSelfCheck.ps1](../tests/runSelfCheck.ps1) | headless 自检入口 |
-| [tests/runLanPlay.ps1](../tests/runLanPlay.ps1) | 端到端联机测试入口 |
+| [project.godot](project.godot) | 工程入口：主场景、autoload、分辨率、渲染、版本号 |
+| [scenes/Main.tscn](scenes/Main.tscn) | 唯一主场景 |
+| [scripts/ui/main.gd](scripts/ui/main.gd) | 主场景逻辑：背景、界面层、TAB 玩家列表、自动开局 |
+| [scripts/ui/ui_manager.gd](scripts/ui/ui_manager.gd) | 界面切换与浮层管理 |
+| [scripts/net/net_manager.gd](scripts/net/net_manager.gd) | 房主/加入编排、统一收发 |
+| [scripts/net/local_server.gd](scripts/net/local_server.gd) | 权威服务端：房间、座位、选角、开局、心跳 |
+| [scripts/battle/battle_engine.gd](scripts/battle/battle_engine.gd) | 战斗状态机与规则 |
+| [scripts/battle/battle_role.gd](scripts/battle/battle_role.gd) | 角色基类与全部钩子定义 |
+| [scripts/ui/battle_mobile.gd](scripts/ui/battle_mobile.gd) | 战斗界面与交互 |
+| [scripts/core/const.gd](scripts/core/const.gd) | 协议号、枚举、规则常量、技能号 |
+| [scripts/core/proto_schema.gd](scripts/core/proto_schema.gd) | 协议字段表 |
+| [Table/TableScripts/DataTables.gd](Table/TableScripts/DataTables.gd) | 生成的数据表（勿手改） |
+| [tests/启动多开.ps1](tests/启动多开.ps1) | 多开脚本 |
+| [tests/runSelfCheck.ps1](tests/runSelfCheck.ps1) | headless 自检入口 |
+| [tests/runLanPlay.ps1](tests/runLanPlay.ps1) | 端到端联机测试入口 |
 
 ## 附录 B：规模一览
 
@@ -920,13 +920,13 @@ A：做角色立绘“绿幕抠图”的一次性脚本（依赖 numpy/Pillow/sc
 
 ## 附录 C：更多文档
 
-- [README.md](../README.md)：原开发记录、插件说明、历史约定；
-- [tests/多开测试说明.md](../tests/多开测试说明.md)：多开脚本的详细用法；
+- [README.md](README.md)：原开发记录、插件说明、历史约定；
+- [tests/多开测试说明.md](tests/多开测试说明.md)：多开脚本的详细用法；
 - `../多开与局域网实现说明.md`：联机/多开/发现机制的完整设计（工程上层目录）；
 - `../Steam迁移完成度.md`：Steam 接入进度（工程上层目录）；
-- [技能维护约定](技能维护约定.md)：角色技能修改规范（改技能前必读）；
-- [禁用3星与3.5星角色开发计划](禁用3星与3.5星角色开发计划.md)：本轮 13 角色的完成状态、口径与遗留（第 0 节）；
-- [开发认领任务板](开发认领/任务板.md) / [多代理协议](开发认领/protocol.md)：本轮任务、认领与互审记录。
+- [技能维护约定](项目文档/技能维护约定.md)：角色技能修改规范（改技能前必读）；
+- [禁用3星与3.5星角色开发计划](项目文档/禁用3星与3.5星角色开发计划.md)：本轮 13 角色的完成状态、口径与遗留（第 0 节）；
+- [开发认领任务板](项目文档/开发认领/任务板.md) / [多代理协议](项目文档/开发认领/protocol.md)：本轮任务、认领与互审记录。
 
 ---
 

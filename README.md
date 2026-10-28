@@ -1,4 +1,4 @@
-> 新人先读：[项目说明](项目文档/项目说明.md)（通俗版总览：这是什么、怎么跑、代码在哪、改东西去哪）。
+> 新人先读：[AGENTS.md](AGENTS.md)（项目总览、协作约定：这是什么、怎么跑、代码在哪、改东西去哪）。
 > 本文件保留原有开发细节与历史约定。
 
 原工程地址：https://github.com/chntujia/CodfiyAsteriatedGrailServer/
