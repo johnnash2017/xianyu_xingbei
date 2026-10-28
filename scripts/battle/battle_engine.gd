@@ -1044,7 +1044,7 @@ func _确认基础效果额外行动(pid: int, cause: int) -> void:
 			break
 	# 可能在攻击结束钩子前半段已经被补进队列；确认时移到队尾，按“现在才获得”排序
 	if 数据.is_empty():
-		cur.add_action(允许, cause, true)
+		cur.add_action(允许, cause, true, true)
 		for a: Dictionary in cur.additional_actions:
 			if int(a.get("cause", 0)) == cause:
 				数据 = a
@@ -1053,6 +1053,7 @@ func _确认基础效果额外行动(pid: int, cause: int) -> void:
 	else:
 		数据["direct"] = true
 		数据["可切换"] = true
+		数据["skip_notice"] = true
 		cur.additional_actions.append(数据)
 	# 移除对应的基础效果牌并弃置
 	for be: Dictionary in cur.basic_effects:
