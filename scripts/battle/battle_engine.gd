@@ -98,11 +98,33 @@ var 行动额外来源: int = 0
 ## 本次行动阶段是否禁止「特殊行动」（购买/合成/提炼）。发动过「启动」技能后，行动阶段照旧继续，
 ## 但只能再攻击 / 法术，不能再走特殊行动（启动技与特殊行动互斥）
 var 行动禁特殊: bool = false
-## 攻击结束响应里玩家点了「额外攻击行动」快捷按钮：下一次 SAdditionalAction 直接进入它（不弹额外行动选择）
-var 首选额外行动: int = -1
+## 攻击结束响应里玩家点了「额外攻击行动」快捷按钮：下一次 SAdditionalAction 直接进入它。
+## 数据存在当前玩家身上，不再用引擎全局字段跨状态携带。
+var 首选额外行动: int:
+	get:
+		var cur: BattlePlayer = p(current_id)
+		return cur.快捷额外行动 if cur != null else -1
+	set(value):
+		var cur: BattlePlayer = p(current_id)
+		if cur != null:
+			cur.快捷额外行动 = value
 ## 响应里点额外攻击时已经选好的攻击牌 / 目标：进入该额外行动后直接用它们发起攻击
-var 首选额外行动卡: int = 0
-var 首选额外行动目标: int = 0
+var 首选额外行动卡: int:
+	get:
+		var cur: BattlePlayer = p(current_id)
+		return cur.快捷额外行动卡 if cur != null else 0
+	set(value):
+		var cur: BattlePlayer = p(current_id)
+		if cur != null:
+			cur.快捷额外行动卡 = value
+var 首选额外行动目标: int:
+	get:
+		var cur: BattlePlayer = p(current_id)
+		return cur.快捷额外行动目标 if cur != null else 0
+	set(value):
+		var cur: BattlePlayer = p(current_id)
+		if cur != null:
+			cur.快捷额外行动目标 = value
 ## 当前额外行动阶段的原始数据（客户端切到另一份额外行动时，提交攻击一并携带 cause，这里据此换队）
 var 当前额外行动数据: Dictionary = {}
 ## 当前额外行动进入时的原始队列位置（切走后退回原位，避免重建时排序乱跳）
@@ -176,8 +198,6 @@ var _pending_is_skill: bool = false
 var _本次已询问基础效果额外行动: Dictionary = {}
 ## 本轮已经明确取消/放弃的基础效果额外行动：本回合不再重复询问（技能号 -> true）
 var _已拒绝基础效果额外行动: Dictionary = {}
-## 本次询问是否是可放弃的「行动结束响应」，且里面有额外行动选项
-var _本次询问可选额外行动: bool = false
 ## 快捷额外攻击已经转成普通回复，聚合器分派成功后立即收尾
 var _快捷提前收尾: bool = false
 ## 正在「行动聚合器」里等待：取消时同样要清空后续额外攻击
@@ -1100,7 +1120,12 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	var 取消应答: bool = (data.get("args", []) as Array).is_empty() \
 		and (data.get("card_ids", []) as Array).is_empty() \
 		and (data.get("dst_ids", []) as Array).is_empty()
-	if 取消应答 and (_本次询问可选额外行动 or _当前状态 is S行动聚合器):
+	var 可取消额外: bool = _当前状态 is S行动聚合器
+	if not 可取消额外 and _最后询问.has(pid):
+		var 当前命令: Array = _最后询问[pid].get("commands", [])
+		if not 当前命令.is_empty():
+			可取消额外 = bool((当前命令[0] as Dictionary).get("has_extra_options", false))
+	if 取消应答 and 可取消额外:
 		_处理行动结束取消(pid)
 	# 分步应答（如【剑气斩】先在弹窗选好「移除几点剑气」）：只记下这一步，不算本次询问的最终回复，
 	# 继续等玩家选目标 / 目标超时兜底时再拿它用
@@ -1111,7 +1136,7 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	_has_reply = true
 	_await_id = -1
 	# 这次询问已经答复完：取消标记不能遗留到后面的应战 / 其它 Respond 询问上
-	_本次询问可选额外行动 = false
+
 	wait_deadline_ms = 0
 	wait_total_ms = 0
 	# 等待已结束：先广播一次，客户端会收起等待进度条；随后 run() 若又进入等待会再广播
@@ -1790,7 +1815,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
-	_本次询问可选额外行动 = false
+
 	if not _基础效果额外行动已确认.is_empty():
 		var 过滤后: Array = []
 		for o: Dictionary in 用选项:
@@ -1925,7 +1950,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 			cmd["extra_attack_cards"] = 额外牌表
 			cmd["extra_attack_targets"] = 额外目标表
 			cmd["extra_attack_elements"] = 额外系别表
-		_本次询问可选额外行动 = not 用选项.is_empty() or not 额外攻击.is_empty()
+		cmd["has_extra_options"] = not 用选项.is_empty() or not 额外攻击.is_empty()
 	# 超时兜底要用的三项（见 _build_timeout_reply）：不可取消的技能询问不许按「取消」收尾
 	# 超时兜底要用的三项（见 _build_timeout_reply）：不可取消的技能询问不许按「取消」收尾
 	_pending_skill_can_cancel = can_cancel
