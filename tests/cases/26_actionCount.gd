@@ -593,6 +593,30 @@ func 跑() -> void:
 			break
 	检(退回101, "未使用的疾风技额外行动应退回队列：%s" % str(玩家1.additional_actions))
 
+	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
+	_重置战斗()
+	var 剑圣九: BattleRole = 剑圣类.new()
+	剑圣九.setup(玩家1, 引擎)
+	玩家1.role = 剑圣九
+	玩家1.add_action(GConst.ActionType.Attack, 101, true, true)
+	玩家1.add_action(GConst.ActionType.Attack, 105, true, true)
+	玩家1.add_action(GConst.ActionType.Attack, 103, true, true)
+	玩家1.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福, true)
+	for a: Dictionary in 玩家1.additional_actions:
+		if int(a.get("cause", 0)) == GConst.技能_迅捷赐福:
+			a["可切换"] = true
+	引擎.push(BattleEngine.SAdditionalAction.new())
+	引擎.run()
+	var 多命令表: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	var 有迅捷切换: bool = false
+	for c: Dictionary in 多命令表:
+		if int(c.get("respond_id", 0)) == GConst.ActionType.ChooseExtraAction \
+				and (c.get("args", []) as Array).has(GConst.技能_迅捷赐福):
+			有迅捷切换 = true
+			break
+	检(有迅捷切换, "疾风技/剑影/风怒追击/迅捷赐福同队列时，迅捷赐福应作为切换项显示：%s"
+		% str(多命令表))
+
 	# ---- 场景 18：迅捷赐福由「持有者面前的赐福」在攻击结束前补授予，选中后移除赐福 ----
 	_重置战斗()
 	var 迅捷牌: GCard = null

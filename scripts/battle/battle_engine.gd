@@ -1018,6 +1018,16 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	run()
 
 
+## 一份额外行动能不能被切换：优先看行动数据自带的「可切换」标记
+## （基础效果授予的行动属于这里，与当前玩家角色无关），否则再看角色覆写。
+func 额外行动可切换(cur: BattlePlayer, 行动: Dictionary) -> bool:
+	if bool(行动.get("可切换", false)):
+		return true
+	if cur == null or cur.role == null:
+		return false
+	return cur.role.extra_action_switchable(int(行动.get("cause", 0)))
+
+
 ## 确认基础效果授予的额外行动（迅捷赐福等）：
 ## 按配置表取出 allow_action，立即把行动移到队尾并标 direct，同时移除对应的赐福牌。
 func _确认基础效果额外行动(pid: int, cause: int) -> void:
@@ -1035,8 +1045,14 @@ func _确认基础效果额外行动(pid: int, cause: int) -> void:
 	# 可能在攻击结束钩子前半段已经被补进队列；确认时移到队尾，按“现在才获得”排序
 	if 数据.is_empty():
 		cur.add_action(允许, cause, true)
+		for a: Dictionary in cur.additional_actions:
+			if int(a.get("cause", 0)) == cause:
+				数据 = a
+				数据["可切换"] = true
+				break
 	else:
 		数据["direct"] = true
+		数据["可切换"] = true
 		cur.additional_actions.append(数据)
 	# 移除对应的基础效果牌并弃置
 	for be: Dictionary in cur.basic_effects:
@@ -1475,7 +1491,7 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		var 行动牌: Array = []
 		if extra and extra_cause > 0:
 			行动牌 = pl.role.extra_action_card_ids(extra_cause, action_type)
-		if 行动牌.is_empty():
+		if 行动牌.is_empty() and not GConst.基础效果额外行动.has(extra_cause):
 			行动牌 = pl.role.action_card_ids(action_type)
 		if not 行动牌.is_empty():
 			cmds[0]["card_ids"] = 行动牌
@@ -1541,10 +1557,10 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				continue
 			if not GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
 				continue
-			if not pl.role.extra_action_switchable(c):
+			if not 额外行动可切换(pl, a):
 				continue
 			var 切换牌: Array = pl.role.extra_action_card_ids(c, GConst.ActionType.Attack)
-			if 切换牌.is_empty():
+			if 切换牌.is_empty() and not GConst.基础效果额外行动.has(c):
 				切换牌 = pl.role.action_card_ids(GConst.ActionType.Attack)
 			var 系别: int = pl.role.extra_action_element(c)
 			cmds.append({
@@ -1731,7 +1747,8 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 					continue
 				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
 					if 问者.role != null else []
-				if 牌.is_empty() and 问者.role != null:
+				if 牌.is_empty() and 问者.role != null \
+						and not GConst.基础效果额外行动.has(c):
 					牌 = 问者.role.action_card_ids(GConst.ActionType.Attack)
 				var 目标: Array = 问者.role.extra_action_targets(c) if 问者.role != null else []
 				额外攻击.append(c)
@@ -2879,14 +2896,14 @@ func 切换额外攻击(状态: SActionPhase, cur: BattlePlayer, cause: int) -> 
 		return false
 	if not bool(状态.额外数据.get("direct", false)):
 		return false
-	if not cur.role.extra_action_switchable(int(状态.额外来源)):
+	if not 额外行动可切换(cur, 状态.额外数据):
 		return false
 	var idx: int = -1
 	for i: int in range(cur.additional_actions.size()):
 		var a: Dictionary = cur.additional_actions[i]
 		if int(a.get("cause", 0)) == cause and bool(a.get("direct", false)) \
 				and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))) \
-				and cur.role.extra_action_switchable(cause):
+				and 额外行动可切换(cur, a):
 			idx = i
 			break
 	if idx < 0:
@@ -2907,14 +2924,14 @@ func _直接切换额外攻击(cur: BattlePlayer, cause: int) -> bool:
 		return false
 	if not bool(当前额外行动数据.get("direct", false)):
 		return false
-	if not cur.role.extra_action_switchable(int(行动额外来源)):
+	if not 额外行动可切换(cur, 当前额外行动数据):
 		return false
 	var idx: int = -1
 	for i: int in range(cur.additional_actions.size()):
 		var a: Dictionary = cur.additional_actions[i]
 		if int(a.get("cause", 0)) == cause and bool(a.get("direct", false)) \
 				and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))) \
-				and cur.role.extra_action_switchable(cause):
+				and 额外行动可切换(cur, a):
 			idx = i
 			break
 	if idx < 0:
