@@ -220,8 +220,28 @@ func p_priority_action_end(_ctx: Dictionary) -> int:
 
 
 ## 角色在「行动聚合器」里登记的可选行动；只给描述，不负责发询问。
+## 默认把队列里「角色声明为行动结束响应」的额外行动也作为选项返回，
+## 这样角色不必同时维护 action_end_options 和队列两套来源。
 func action_end_options(_ctx: Dictionary) -> Array:
-	return []
+	var out: Array = []
+	if player == null:
+		return out
+	for a: Dictionary in player.additional_actions:
+		if bool(a.get("direct", false)):
+			continue
+		var cause: int = int(a.get("cause", 0))
+		if cause <= 0:
+			continue
+		if not extra_action_is_response(cause):
+			continue
+		var 可用: bool = true
+		if engine != null:
+			可用 = engine.额外行动可发动(player, cause)
+		out.append({
+			"value": cause, "label": GConst.skill_name(cause), "skill_id": cause,
+			"enabled": 可用, "_kind": "extra", "_sort": 1,
+		})
+	return out
 
 
 ## 行动聚合器选中一项后分派回角色；选中后怎样付费/入队/结算由角色自己处理。

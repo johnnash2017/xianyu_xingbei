@@ -228,32 +228,11 @@ func _收集行动结束选项(pid: int, ctx: Dictionary) -> Array:
 	if cur.role != null:
 		for o: Dictionary in cur.role.action_end_options(ctx):
 			var 项: Dictionary = o.duplicate()
-			项["_kind"] = "role"
-			项["_sort"] = 0
+			项["_kind"] = str(项.get("_kind", "role"))
+			项["_sort"] = int(项.get("_sort", 0))
 			项["_seq"] = 序号
 			序号 += 1
 			out.append(项)
-	for a: Dictionary in cur.additional_actions:
-		if bool(a.get("direct", false)):
-			continue
-		var cause: int = int(a.get("cause", 0))
-		if cause <= 0 or GConst.基础效果额外行动.has(cause):
-			continue
-		if cur.role == null or not cur.role.extra_action_is_response(cause):
-			continue
-		var 已有: bool = false
-		for old: Dictionary in out:
-			if int(old.get("value", 0)) == cause:
-				已有 = true
-				break
-		if 已有:
-			continue
-		out.append({
-			"value": cause, "label": GConst.skill_name(cause), "skill_id": cause,
-			"enabled": 额外行动可发动(cur, cause),
-			"_kind": "extra", "_sort": 1, "_seq": 序号,
-		})
-		序号 += 1
 	for o: Dictionary in 基础效果额外行动选项(pid):
 		var 已有: bool = false
 		for old: Dictionary in out:
