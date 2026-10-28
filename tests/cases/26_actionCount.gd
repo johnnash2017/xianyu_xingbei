@@ -1063,6 +1063,48 @@ func 跑() -> void:
 			"修罗连斩 + 迅捷赐福后技能栏应显示两个额外攻击行动，实际 %d：%s"
 			% [双刀额外数, str(双刀命令)])
 
+	# ---- 场景 34：封印师 406 + 迅捷赐福 两份额外攻击，提交攻击不应被驳回 ----
+	_重置战斗()
+	var 封印类 = preload("res://scripts/battle/roles/role_fengyin.gd")
+	var 封印: BattleRole = 封印类.new()
+	封印.setup(玩家1, 引擎)
+	玩家1.role = 封印
+	玩家1.hand_cards.append(攻击牌甲.id)
+	玩家1.add_action(GConst.ActionType.Attack, 406, true, true)
+	玩家1.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福, true, true)
+	引擎.current_id = 1
+	引擎.push(BattleEngine.SAdditionalAction.new())
+	引擎.run()
+	var 封印前: int = 引擎.行动额外来源
+	引擎.on_message(1, GConst.Msg.Action, {
+		"action_type": GConst.ActionType.Attack,
+		"card_ids": [攻击牌甲.id], "dst_ids": [3],
+		"args": [封印前],
+	})
+	检(引擎._await_kind == GConst.Msg.Respond,
+		"封印师 406/1601 的额外攻击提交后应进入应战询问，实际等待 %s/%s"
+		% [str(引擎._await_id), str(引擎._await_kind)])
+
+	# ---- 场景 35：封印师 406 当前、切到 1601 后提交攻击也不应被驳回 ----
+	_重置战斗()
+	var 封印二: BattleRole = 封印类.new()
+	封印二.setup(玩家1, 引擎)
+	玩家1.role = 封印二
+	玩家1.hand_cards.append(攻击牌甲.id)
+	玩家1.add_action(GConst.ActionType.Attack, 406, true, true)
+	玩家1.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福, true, true)
+	引擎.current_id = 1
+	引擎.push(BattleEngine.SAdditionalAction.new())
+	引擎.run()
+	引擎.on_message(1, GConst.Msg.Action, {
+		"action_type": GConst.ActionType.Attack,
+		"card_ids": [攻击牌甲.id], "dst_ids": [3],
+		"args": [GConst.技能_迅捷赐福],
+	})
+	检(引擎._await_kind == GConst.Msg.Respond,
+		"封印师从 406 切到 1601 后提交攻击应进入应战，实际等待 %s/%s"
+		% [str(引擎._await_id), str(引擎._await_kind)])
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()
