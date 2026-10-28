@@ -1194,6 +1194,35 @@ func 跑() -> void:
 	检(自查剑圣.action_end_options({}).is_empty(),
 		"风怒追击自己的攻击结束时不应再次提供风怒追击")
 
+	# ---- 场景 39：聚合器收到不在选项表里的 cause，应回错误并继续询问 ----
+	_重置战斗()
+	var 非法聚合类 = preload("res://scripts/battle/roles/role_mojian.gd")
+	var 非法聚合: BattleRole = 非法聚合类.new()
+	非法聚合.setup(玩家1, 引擎)
+	玩家1.role = 非法聚合
+	玩家1.hand_cards.append(攻击牌甲.id)
+	var 非法迅捷: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			非法迅捷 = c
+			break
+	if 非法迅捷 != null:
+		检(引擎.add_basic_effect(1, 非法迅捷.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"非法 cause 测试的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+		引擎.run()
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": 901, "src_id": 1, "args": [999], "card_ids": [], "dst_ids": [],
+		})
+		var 非法再问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 非法选项: Array = (非法再问[0] as Dictionary).get("args", []) \
+			if not 非法再问.is_empty() else []
+		检(引擎._await_kind == GConst.Msg.Respond
+			and 非法选项.slice(4).has(901) and 非法选项.slice(4).has(GConst.技能_迅捷赐福),
+			"非法 cause 后应继续询问原选项：等待 %s/%s，选项 %s"
+			% [str(引擎._await_id), str(引擎._await_kind), str(非法选项)])
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

@@ -3313,12 +3313,10 @@ class S行动聚合器:
 			# 客户端提交了不在本次选项表里的 cause（旧界面/改包）：不能直接分派给角色
 			if not 找到选中:
 				e.send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
-				e._行动聚合流程 = false
-				return BattleEngine.CONTINUE
+				continue
 			if not 选中可用:
 				e.send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
-				e._行动聚合流程 = false
-				return BattleEngine.CONTINUE
+				continue
 			var 结果: int = _分派(e, cur, 选中, r, 选中类型)
 			if 结果 >= 0:
 				return 结果
