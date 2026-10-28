@@ -552,6 +552,54 @@ func p_timeline_4(_ctx: Dictionary) -> int: return SUCCESS
 
 钩子覆盖的时机包括：回合开始/结束、行动前、攻击前后、法术前后、特殊行动前后、被攻击、伤害时间线 1~6、士气变化、盖牌变化、手牌变化、横置、展示手牌等。
 
+### 8.3.1 行动聚合器（攻击/法术结束统一入口）
+
+攻击结束和法术结束时，**所有可选的行动**统一由 [battle_engine.gd](scripts/battle/battle_engine.gd) 里的 `S行动聚合器` 收集并合成一次询问，不再由各角色自己 `ask_skill`。
+
+聚合器只做四件事：
+
+1. 收集角色登记的行动选项；
+2. 收集目标身上未确认的基础效果额外行动（迅捷赐福等）；
+3. 收集队列里尚未确认的额外行动；
+4. 发询问，并把选中的 `cause` 分派回来源。
+
+聚合器**不负责**扣费、标 `direct`、改 `additional_actions`、决定行动何时进入。
+
+角色接口：
+
+```gdscript
+func action_end_options(ctx: Dictionary) -> Array:
+	# 返回值描述：value / label / skill_id / need_card / need_target /
+	# card_source / targets / enabled
+	return []
+
+func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -> int:
+	# 自己扣费、入队、标 direct、执行技能；多步时返回 WAIT/URGENT
+	return SUCCESS
+```
+
+已接入的行动：
+
+- 风之剑圣 103 风怒追击 / 105 剑影
+- 剑之子 10804 剑残影 / 4504 剑影断念
+- 剑之魔女 4501 技之剑意 / 4504 剑影断念
+- 魔剑士 901 修罗连斩
+- 猎巫人 4205 偷袭
+- 魔弓 2603 多重射击
+- 剑帝 1907、红莲 2808、女武神 2501、兽灵 3602、血剑 3402、游击士 3802/3803
+- 迅捷赐福 1601（基础效果来源）
+
+多步技能（如偷袭选 X 名追加目标、剑影断念弃牌摸牌）由角色返回 `WAIT` / `URGENT`，聚合器进入“待决”状态，**等该技能完全结算完**再继续问剩余选项；中途不会插问迅捷赐福。
+
+有代价的额外行动采用“点选即付”：在聚合器中确认时调用角色的 `confirm_extra_action()` 扣能量/治疗/指示物等；之后 `p_additional_action` 只做剩余效果，避免二次扣费。取消聚合响应会跳过本回合后续额外攻击，已付费用不退还。
+
+不放进聚合器的特殊结算：
+
+- 圣剑第三刀：在 `p_after_attack` 里先摸弃，属于优先结算；
+- 格斗家念弹：`has_priority_action_end() = true` + `p_priority_action_end()`，强制且先加斗气，排在所有普通响应之前。
+
+新增角色若在攻击/法术结束提供可选行动，必须实现 `action_end_options()` / `resolve_action_end_option()`，不要再自己开 `ask_skill` 选项循环。
+
 ### 8.4 角色、技能、数据三者的关系
 
 ```text
