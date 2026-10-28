@@ -111,6 +111,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
+	# 聚合流程里本角色只负责优先展示档；选项交给行动聚合器。
+	if engine._行动聚合流程:
+		_更新梦想剑展示档()
+		return SUCCESS
 	# 攻击已经结算完、进入「攻击结束」响应：此时才推进展示档，既不会在攻击宣告时就变绿，
 	# 也能让 4501 / 4504 这类响应技能在决定时看到本回合的新档位（实际效果仍在 p_action_end 生效）。
 	_更新梦想剑展示档()
@@ -149,6 +153,23 @@ func p_after_attack(ctx: Dictionary) -> int:
 		elif 选中 == JIAN_YING_DUAN_NIAN:
 			ctx[KEY_4504_DONE] = true
 	return SUCCESS
+
+
+func action_end_options(ctx: Dictionary) -> Array:
+	return _攻击结束选项(ctx)
+
+
+func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -> int:
+	if cause != JI_ZHI_JIAN_YI and cause != JIAN_YING_DUAN_NIAN:
+		return resolve_queued_extra_action(cause)
+	if int(ctx.get(KEY_AFTER_CHOSEN, 0)) != cause:
+		ctx[KEY_AFTER_CARDS] = (reply.get("card_ids", []) as Array).duplicate()
+		ctx[KEY_AFTER_CHOSEN] = cause
+		if cause == JI_ZHI_JIAN_YI:
+			ctx[KEY_4501_DONE] = true
+		else:
+			ctx[KEY_4504_DONE] = true
+	return _解决攻击结束技能(ctx, cause)
 
 
 ## 本次攻击结束还能发动的技能：两项都满足条件就一起摆出来；用过 / 条件不满足的不再出现。

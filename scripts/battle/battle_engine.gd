@@ -180,6 +180,8 @@ var _本次询问可选额外行动: bool = false
 var _行动聚合中: bool = false
 ## 当前 ask_skill 是否由行动聚合器发出（也允许下发红色额外攻击快捷按钮）
 var _行动聚合询问中: bool = false
+## 当前这次行动结束是否走行动聚合器（角色自己的 p_after_attack 在聚合流程里只做优先结算）
+var _行动聚合流程: bool = false
 ## 已下发过的询问次数（测试用：确认取消后没有再次询问）
 var _询问计数: int = 0
 ## 玩家在这个响应里点了取消：本回合后面的额外攻击行动全部跳过，不再二次询问
@@ -2563,6 +2565,7 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 	if hook == "p_after_attack" or hook == "p_after_magic":
 		# 行动聚合器：只聚合当前时点可执行的行动选项
 		_本次已询问基础效果额外行动.clear()
+		_行动聚合流程 = true
 		push(S行动聚合器.new(上下文))
 	push(SHook.new(hook, 上下文, []))
 	# 最高优先级行动结束结算（如格斗家念弹）：必须排在普通行动结束响应之前
@@ -2789,6 +2792,7 @@ class SCheckTurnStart:
 		e._基础效果额外行动已确认.clear()
 		e._跳过额外攻击行动 = false
 		e._行动聚合中 = false
+		e._行动聚合流程 = false
 		e._已拒绝基础效果额外行动.clear()
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
 		cur.reset_action_counts()
@@ -3130,6 +3134,7 @@ class S行动聚合器:
 	func _分派(e: BattleEngine, cur: BattlePlayer, cause: int, reply: Dictionary) -> int:
 		if cur.role == null:
 			e._行动聚合中 = false
+			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		var 结果: int = cur.role.resolve_action_end_option(cause, reply, 上下文)
 		if 结果 == BattleRole.WAIT:
@@ -3141,6 +3146,7 @@ class S行动聚合器:
 		待决 = 0
 		if 结果 != BattleRole.SUCCESS:
 			e._行动聚合中 = false
+			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		return -1
 
@@ -3151,6 +3157,7 @@ class S行动聚合器:
 			return BattleEngine.CONTINUE
 		if e._跳过额外攻击行动:
 			e._行动聚合中 = false
+			e._行动聚合流程 = false
 			e._清除额外攻击行动(pid)
 			return BattleEngine.CONTINUE
 		# 角色技能的多步结算：上次已经分派，等待本状态再次被唤醒
@@ -3196,6 +3203,7 @@ class S行动聚合器:
 					})
 			if 待问.is_empty():
 				e._行动聚合中 = false
+				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
 			if not e.has_reply():
 				e._行动聚合中 = true
