@@ -353,6 +353,11 @@ func v_additional_action(cause: int) -> int:
 func extra_action_switchable(_cause: int) -> bool: return false
 
 
+## 修罗连斩属于行动结束响应，和迅捷赐福合并成一次询问
+func extra_action_is_response(cause: int) -> bool:
+	return cause == XIU_LUO_LIAN_ZHAN
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS

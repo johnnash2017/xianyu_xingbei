@@ -512,6 +512,11 @@ func p_after_attack(ctx: Dictionary) -> int:
 func extra_action_switchable(_cause: int) -> bool: return false
 
 
+## 一击无念属于行动结束响应，和迅捷赐福合并成一次询问
+func extra_action_is_response(cause: int) -> bool:
+	return cause == YI_JI_WU_NIAN
+
+
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS

@@ -769,6 +769,40 @@ func 跑() -> void:
 		检(魔剑.v_attack(火攻.id, 3, {3: 引擎.p(3)}) == GConst.GE_SUCCESS,
 			"修罗连斩额外攻击应能使用火系攻击牌")
 
+	# ---- 场景 25：魔剑士的攻击结束响应应把修罗连斩和迅捷赐福放在同一列表 ----
+	_重置战斗()
+	var 魔剑二: BattleRole = preload("res://scripts/battle/roles/role_mojian.gd").new()
+	魔剑二.setup(玩家1, 引擎)
+	玩家1.role = 魔剑二
+	var 聚合迅捷牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			聚合迅捷牌 = c
+			break
+	if 聚合迅捷牌 != null:
+		玩家1.hand_cards.append(攻击牌甲.id)
+		检(引擎.add_basic_effect(1, 聚合迅捷牌.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"聚合器测试的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+		引擎.run()
+		var 聚合问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 聚合选: Array = (聚合问[0] as Dictionary).get("args", []) if not 聚合问.is_empty() else []
+		检(聚合选.slice(4).has(901) and 聚合选.slice(4).has(GConst.技能_迅捷赐福),
+			"修罗连斩和迅捷赐福应在同一攻击结束响应列表：%s" % str(聚合选))
+		检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
+			"聚合响应应在等玩家 1 的 Respond：id=%d kind=%s" % [引擎._await_id, str(引擎._await_kind)])
+		检(引擎._await_state is BattleEngine.S行动结束额外行动响应,
+			"聚合响应的等待状态不对：%s / 额外确认=%s"
+			% [str(引擎._await_state), str(引擎._额外确认选项)])
+		# 取消聚合响应＝所有后续额外攻击都不再处理
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.技能_迅捷赐福, "src_id": 1,
+			"args": [], "card_ids": [], "dst_ids": [],
+		})
+		检(玩家1.additional_actions.is_empty(), "聚合响应取消后应跳过所有额外攻击：%s"
+			% str(玩家1.additional_actions))
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

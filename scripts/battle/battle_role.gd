@@ -209,6 +209,12 @@ func v_attacked() -> int: return V_NOT_OVERRIDE
 ## 注意：这只挡「成为目标」，不阻止已经在自己面前的基础效果继续生效。
 func v_basic_effect_target(_dst: BattlePlayer, _card_id: int) -> int: return GConst.GE_SUCCESS
 func v_additional_action(_cause: int) -> int: return V_NOT_OVERRIDE
+## 这份额外行动是否属于「行动结束响应」：为 true 时，引擎在攻击/法术结束钩子跑完后
+## 把它和迅捷赐福等基础效果额外行动合并成一次响应列表；默认 false，只有明确需要提前确认的角色覆写。
+func extra_action_is_response(_cause: int) -> bool:
+	return false
+
+
 ## 这份额外行动能不能在选牌阶段切换到别的额外行动（默认可以；有「选中代价」的角色覆写为 false）
 func extra_action_switchable(_cause: int) -> bool: return true
 ## 这份额外攻击行动是否限定某一系（CardElement；0＝不限）。客户端据此把按钮写成「额外X系【攻击行动】」。

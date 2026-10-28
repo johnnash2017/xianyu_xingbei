@@ -325,6 +325,11 @@ func p_after_attack(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 3802 / 3803 属于行动结束响应，和迅捷赐福合并成一次询问
+func extra_action_is_response(cause: int) -> bool:
+	return cause == YUAN_SU_SHE_JI or cause == ER_CHONG_JIAN_YING
+
+
 ## 3803 的额外攻击行动：只能使用与本次攻击同系的攻击牌（界面按白名单置灰，服务端兜底校验）
 func extra_action_card_ids(cause: int, action_type: int) -> Array:
 	if cause != ER_CHONG_JIAN_YING or action_type != GConst.ActionType.Attack:
