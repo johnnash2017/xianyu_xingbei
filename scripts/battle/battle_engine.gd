@@ -176,10 +176,10 @@ var _本次已询问基础效果额外行动: Dictionary = {}
 var _已拒绝基础效果额外行动: Dictionary = {}
 ## 本次询问是否是可放弃的「行动结束响应」，且里面有额外行动选项
 var _本次询问可选额外行动: bool = false
-## 正在「行动结束额外行动」聚合响应里等待：取消时同样要清空后续额外攻击
-var _聚合响应中: bool = false
-## 当前 ask_skill 是否由聚合响应发出（也允许下发红色额外攻击快捷按钮）
-var _聚合询问中: bool = false
+## 正在「行动聚合器」里等待：取消时同样要清空后续额外攻击
+var _行动聚合中: bool = false
+## 当前 ask_skill 是否由行动聚合器发出（也允许下发红色额外攻击快捷按钮）
+var _行动聚合询问中: bool = false
 ## 已下发过的询问次数（测试用：确认取消后没有再次询问）
 var _询问计数: int = 0
 ## 玩家在这个响应里点了取消：本回合后面的额外攻击行动全部跳过，不再二次询问
@@ -1023,9 +1023,9 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	var 取消应答: bool = (data.get("args", []) as Array).is_empty() \
 		and (data.get("card_ids", []) as Array).is_empty() \
 		and (data.get("dst_ids", []) as Array).is_empty()
-	if 取消应答 and (_本次询问可选额外行动 or _聚合响应中):
+	if 取消应答 and (_本次询问可选额外行动 or _行动聚合中):
 		_跳过额外攻击行动 = true
-		_聚合响应中 = false
+		_行动聚合中 = false
 		_清除额外攻击行动(pid)
 		# 这次响应里已经摆过的基础效果额外行动，被取消＝本回合不再重复问
 		for cause: int in _本次已询问基础效果额外行动:
@@ -1785,7 +1785,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	_pending_args = args.duplicate()
 	_pending_is_skill = true
 	# 攻击结束响应期间，把「已获得但还没用的攻击行动」一并下发给客户端做红色快捷按钮
-	if 允许额外攻击快捷 and ( _聚合询问中 or (_当前状态 is SHook and (_当前状态 as SHook).hook == "p_after_attack" and pid == current_id)):
+	if 允许额外攻击快捷 and ( _行动聚合询问中 or (_当前状态 is SHook and (_当前状态 as SHook).hook == "p_after_attack" and pid == current_id)):
 		var 额外攻击: Array = []
 		var 额外牌表: Array = []
 		var 额外目标表: Array = []
@@ -2561,10 +2561,9 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 		上下文["extra_action_count"] = cur.extra_action_count
 	push(SHook.new("p_action_end", 上下文, []))
 	if hook == "p_after_attack" or hook == "p_after_magic":
-		# 所有人统一在行动结束响应里处理基础效果授予的额外行动；
-		# 角色自己的响应已经摆过它时，这个状态会直接跳过。
+		# 行动聚合器：只聚合当前时点可执行的行动选项
 		_本次已询问基础效果额外行动.clear()
-		push(S行动结束额外行动响应.new())
+		push(S行动聚合器.new())
 	push(SHook.new(hook, 上下文, []))
 	# 最高优先级行动结束结算（如格斗家念弹）：必须排在普通行动结束响应之前
 	if hook == "p_after_magic":
@@ -2789,7 +2788,7 @@ class SCheckTurnStart:
 		cur.clear_additional_action()
 		e._基础效果额外行动已确认.clear()
 		e._跳过额外攻击行动 = false
-		e._聚合响应中 = false
+		e._行动聚合中 = false
 		e._已拒绝基础效果额外行动.clear()
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
 		cur.reset_action_counts()
@@ -3106,18 +3105,19 @@ class SNextPlayer:
 		return BattleEngine.CONTINUE
 
 
-## 行动结束后统一处理「额外行动响应」：
+## 行动聚合器：专门用于聚合「行动」选项。
+## 只负责收集、合并、发询问、把选中的 cause 分派回来源；
+## 扣费、direct 标记、入队等行动本身由角色 / 基础效果自己处理。
 ## 1) 目标身上未确认的基础效果额外行动（迅捷赐福等）；
-## 2) 队列里已获得、但还没确认的额外行动（修罗连斩、不屈意志等，由角色声明 extra_action_is_response）。
-## 合成一次 ask_skill 列表，和剑圣的风怒追击/剑影/迅捷赐福同一体验。
-class S行动结束额外行动响应:
+## 2) 队列里已获得、但还没确认的额外行动（由角色声明 extra_action_is_response）。
+class S行动聚合器:
 	func handle(e: BattleEngine) -> int:
 		var pid: int = e.current_id
 		var cur: BattlePlayer = e.p(pid)
 		if cur == null:
 			return BattleEngine.CONTINUE
 		if e._跳过额外攻击行动:
-			e._聚合响应中 = false
+			e._行动聚合中 = false
 			e._清除额外攻击行动(pid)
 			return BattleEngine.CONTINUE
 		while true:
@@ -3147,17 +3147,17 @@ class S行动结束额外行动响应:
 						"skill_id": cause,
 					})
 			if 待问.is_empty():
-				e._聚合响应中 = false
+				e._行动聚合中 = false
 				return BattleEngine.CONTINUE
 			if not e.has_reply():
-				e._聚合响应中 = true
-				e._聚合询问中 = true
+				e._行动聚合中 = true
+				e._行动聚合询问中 = true
 				var 首: int = int(待问[0].get("value", 0))
 				e.ask_skill(pid, 首, 0, 0, GConst.CardSource.Hand,
 					待问, 0, "", [], true,
 					"行动结束时可以发动以下额外行动，选择一项（发动后还能发动另一项）",
 					[], 0, 0, false, [], true, -1, 0, true)
-				e._聚合询问中 = false
+				e._行动聚合询问中 = false
 				return BattleEngine.WAIT
 			var r: Dictionary = e._reply
 			e._has_reply = false
@@ -3176,7 +3176,7 @@ class S行动结束额外行动响应:
 					找到 = true
 					break
 			if not 找到:
-				e._聚合响应中 = false
+				e._行动聚合中 = false
 				return BattleEngine.CONTINUE
 			# 聚合器只分派：扣费 / 标记 direct 由角色自己处理
 			var 确认: int = cur.role.resolve_action_end_option(选中) if cur.role != null \
@@ -3186,7 +3186,7 @@ class S行动结束额外行动响应:
 			if 确认 == BattleRole.WAIT:
 				return BattleEngine.WAIT
 			if 确认 != BattleRole.SUCCESS:
-				e._聚合响应中 = false
+				e._行动聚合中 = false
 				return BattleEngine.CONTINUE
 			# 继续问剩下的（和剑圣“发动后还能发动另一项”一致）
 			# 若选中的是基础效果，选中值不会走到这里（引擎会重入本状态）
