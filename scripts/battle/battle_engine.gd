@@ -102,6 +102,8 @@ var 首选额外行动卡: int = 0
 var 首选额外行动目标: int = 0
 ## 当前额外行动阶段的原始数据（客户端切到另一份额外行动时，提交攻击一并携带 cause，这里据此换队）
 var 当前额外行动数据: Dictionary = {}
+## 当前额外行动进入时的原始队列位置（切走后退回原位，避免重建时排序乱跳）
+var 当前额外位置: int = -1
 ## 测试指令「跳过自己回合」（战斗界面按 8）：记下是谁按的，行动阶段轮到他直接收尾（-1 = 无）
 var 测试跳过回合: int = -1
 ## 角色的 p_after_turn_end 要求「接下来的回合还是他」时写这里（月女【苍白之月】），
@@ -1107,6 +1109,7 @@ func _确认基础效果额外行动(pid: int, cause: int) -> void:
 		数据["direct"] = true
 		数据["可切换"] = true
 		数据["skip_notice"] = true
+		数据["order"] = cur.额外行动新序号()
 		cur.additional_actions.append(数据)
 	# 移除对应的基础效果牌并弃置
 	for be: Dictionary in cur.basic_effects:
@@ -2911,6 +2914,8 @@ class SActionPhase:
 	var 额外来源: int = 0
 	## 当前这份额外行动的原始数据（切换额外攻击时退回队列用）
 	var 额外数据: Dictionary = {}
+	## 进入行动阶段时它在额外行动队列里的原位置（切走再退回时保持排序）
+	var 额外位置: int = -1
 	## 玩家挂机超时：本阶段已作废，直接收尾（tick 里置位，不替他出牌，也不宣告「无法行动」换手牌）
 	var 跳过: bool = false
 
@@ -2988,6 +2993,8 @@ func 切换额外攻击(状态: SActionPhase, cur: BattlePlayer, cause: int) -> 
 	var 新: Dictionary = cur.additional_actions[idx].duplicate()
 	cur.additional_actions.remove_at(idx)
 	cur.additional_actions.append(状态.额外数据)
+	cur.additional_actions.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("order", 0)) < int(b.get("order", 0)))
 	状态.额外数据 = 新
 	状态.允许 = int(新.get("allow_action", GConst.ActionType.Attack))
 	状态.额外来源 = cause
@@ -3016,6 +3023,8 @@ func _直接切换额外攻击(cur: BattlePlayer, cause: int) -> bool:
 	var 新: Dictionary = cur.additional_actions[idx].duplicate()
 	cur.additional_actions.remove_at(idx)
 	cur.additional_actions.append(当前额外行动数据)
+	cur.additional_actions.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("order", 0)) < int(b.get("order", 0)))
 	当前额外行动数据 = 新
 	行动额外来源 = cause
 	行动允许 = int(新.get("allow_action", GConst.ActionType.Attack))
@@ -3168,10 +3177,7 @@ class S行动聚合器:
 				return 续结果
 		while true:
 			var 待问: Array = []
-			# 1) 基础效果额外行动（迅捷赐福）
-			for o: Dictionary in e.基础效果额外行动选项(pid):
-				待问.append(o)
-			# 2) 角色登记的行动结束技能
+			# 1) 角色登记的行动结束技能（角色技能永远排在迅捷赐福前面）
 			if cur.role != null:
 				for o: Dictionary in cur.role.action_end_options(上下文):
 					var 已有: bool = false
@@ -3181,7 +3187,7 @@ class S行动聚合器:
 							break
 					if not 已有:
 						待问.append(o)
-			# 3) 队列里已获得、但还没确认的额外行动
+			# 2) 队列里已获得、但还没确认的额外行动
 			for a: Dictionary in cur.additional_actions:
 				if bool(a.get("direct", false)):
 					continue
@@ -3201,6 +3207,15 @@ class S行动聚合器:
 						"label": GConst.skill_name(cause),
 						"skill_id": cause,
 					})
+			# 3) 基础效果额外行动（迅捷赐福）固定排在角色技能之后
+			for o: Dictionary in e.基础效果额外行动选项(pid):
+				var 已有: bool = false
+				for old: Dictionary in 待问:
+					if int(old.get("value", 0)) == int(o.get("value", 0)):
+						已有 = true
+						break
+				if not 已有:
+					待问.append(o)
 			if 待问.is_empty():
 				e._行动聚合中 = false
 				e._行动聚合流程 = false
@@ -3313,6 +3328,8 @@ class SAdditionalAction:
 		var 允许: int = int(cur.additional_actions[idx]["allow_action"])
 		var 跳过宣告: bool = bool(cur.additional_actions[idx].get("skip_notice", false))
 		var 数据: Dictionary = cur.additional_actions[idx].duplicate()
+		if not 数据.has("order"):
+			数据["order"] = cur.额外行动新序号()
 		cur.additional_actions.remove_at(idx)
 		if not 跳过宣告:
 			e.broadcast(GConst.Msg.Skill, {"skill_id": cause, "src_id": cur.id, "dst_ids": []})
@@ -3321,6 +3338,8 @@ class SAdditionalAction:
 		# PlayerEntity::p_additional_action → StateActionPhase(it->allowAction, true)）
 		var 阶段: SActionPhase = SActionPhase.new(允许, true, true, false, cause)
 		阶段.额外数据 = 数据
+		阶段.额外位置 = idx
+		e.当前额外位置 = idx
 		# 响应里已经点好手牌 + 敌方：进入该额外行动后不再问，直接发起这次攻击
 		if e.首选额外行动卡 > 0 and e.首选额外行动目标 > 0:
 			var 卡: int = e.首选额外行动卡

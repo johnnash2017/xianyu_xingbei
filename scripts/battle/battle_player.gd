@@ -353,6 +353,14 @@ func remove_energy(n: int) -> void:
 # ============================================================
 ## 代替应战者 id（-1 表示无）：本玩家受到攻击时由其代替应战（如阴阳师式神咒束）
 var reattacker: int = -1
+## 额外行动获取序号：切换当前额外行动时按它恢复原队列顺序，避免用掉一份后整体重排
+var _额外行动序号: int = 0
+
+
+## 取下一个额外行动序号（切换/补授予时保持稳定顺序）
+func 额外行动新序号() -> int:
+	_额外行动序号 += 1
+	return _额外行动序号
 
 
 ## direct=true 的额外行动不需要询问、也不用玩家再点一次技能按钮：引擎会直接进入它的额外行动阶段
@@ -364,7 +372,7 @@ var reattacker: int = -1
 func add_action(allow_action: int, cause: int, direct: bool = false, skip_notice: bool = false) -> void:
 	additional_actions.append({
 		"allow_action": allow_action, "cause": cause, "direct": direct,
-		"skip_notice": skip_notice,
+		"skip_notice": skip_notice, "order": 额外行动新序号(),
 	})
 
 

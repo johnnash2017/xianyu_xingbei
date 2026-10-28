@@ -370,13 +370,13 @@ func 跑() -> void:
 	var 当前额外: int = 计数角色.额外攻击来源
 	var 另一额外: int = GConst.技能_剑影断念
 	玩家1.add_action(GConst.ActionType.Attack, 另一额外, true)
-	var 额外阶段: BattleEngine.SActionPhase = BattleEngine.SActionPhase.new(
+	var 排序阶段: BattleEngine.SActionPhase = BattleEngine.SActionPhase.new(
 		GConst.ActionType.Attack, true, true, false, 当前额外)
-	额外阶段.额外数据 = {
+	排序阶段.额外数据 = {
 		"allow_action": GConst.ActionType.Attack, "cause": 当前额外,
 		"direct": true, "skip_notice": true,
 	}
-	引擎.push(额外阶段)
+	引擎.push(排序阶段)
 	引擎.run()
 	检(引擎.行动额外 and 引擎.行动额外来源 == 当前额外,
 		"应进入当前额外攻击阶段（额外 %s / 来源 %s）" % [str(引擎.行动额外), str(引擎.行动额外来源)])
@@ -793,6 +793,8 @@ func 跑() -> void:
 		var 聚合快捷: Array = (聚合问[0] as Dictionary).get("extra_attack_causes", [])
 		检(not 聚合快捷.has(901),
 			"未确认的修罗连斩只能作为技能选项，不能再重复挂快捷按钮：%s" % str(聚合快捷))
+		检(聚合选.slice(4).find(901) < 聚合选.slice(4).find(GConst.技能_迅捷赐福),
+			"迅捷赐福必须排在角色技能后面：%s" % str(聚合选))
 		检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
 			"聚合响应应在等玩家 1 的 Respond：id=%d kind=%s" % [引擎._await_id, str(引擎._await_kind)])
 		# 确认修罗连斩后，应和剑圣选中 103/105 一样：行动标 direct，并在剩余响应里变红色快捷按钮
@@ -946,6 +948,31 @@ func 跑() -> void:
 		var 念弹号: int = int((念弹问[0] as Dictionary).get("respond_id", 0)) \
 			if not 念弹问.is_empty() else 0
 		检(念弹号 == 2003, "法术结束后应先问念弹，而不是先问迅捷赐福：%s" % str(念弹问))
+
+	# ---- 场景 30：切换额外攻击不应把退回的行动挪到队尾，整体顺序保持稳定 ----
+	_重置战斗()
+	var 剑圣序: BattleRole = 剑圣类.new()
+	剑圣序.setup(玩家1, 引擎)
+	玩家1.role = 剑圣序
+	玩家1.add_action(GConst.ActionType.Attack, 101, true, true)
+	玩家1.add_action(GConst.ActionType.Attack, 103, true, true)
+	玩家1.add_action(GConst.ActionType.Attack, 105, true, true)
+	引擎.push(BattleEngine.SAdditionalAction.new())
+	引擎.run()
+	检(引擎.行动额外来源 == 101, "应先进入 101：%d" % 引擎.行动额外来源)
+	var 队列阶段 = 引擎._当前状态
+	检(队列阶段 is BattleEngine.SActionPhase, "当前应是额外行动阶段")
+	if 队列阶段 is BattleEngine.SActionPhase:
+		引擎.切换额外攻击(队列阶段, 玩家1, 103)
+		var 序一: Array = []
+		for a: Dictionary in 玩家1.additional_actions:
+			序一.append(int(a.get("cause", 0)))
+		检(序一 == [101, 105], "切到 103 后队列应保持 [101,105]：%s" % str(序一))
+		引擎.切换额外攻击(队列阶段, 玩家1, 105)
+		var 序二: Array = []
+		for a: Dictionary in 玩家1.additional_actions:
+			序二.append(int(a.get("cause", 0)))
+		检(序二 == [101, 103], "再切到 105 后队列应保持 [101,103]：%s" % str(序二))
 
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
