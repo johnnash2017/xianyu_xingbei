@@ -1551,6 +1551,16 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	if 允许额外攻击快捷:
 		var 问者: BattlePlayer = players.get(pid)
 		if 问者 != null:
+			# 迅捷赐福的「授予额外行动」可能在另一个角色的 p_after_attack 里、晚于本角色询问；
+			# 这里在攻击结束询问前先按目标身上的赐福牌补授予，保证它和 103/105 一起出现在响应里。
+			if 问者.check_basic_effect_skill(GConst.技能_迅捷赐福) and not 问者.hand_cards.is_empty():
+				var 已有祝福行动: bool = false
+				for a: Dictionary in 问者.additional_actions:
+					if int(a.get("cause", 0)) == GConst.技能_迅捷赐福:
+						已有祝福行动 = true
+						break
+				if not 已有祝福行动:
+					问者.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福)
 			for a: Dictionary in 问者.additional_actions:
 				if int(a.get("cause", 0)) == GConst.技能_迅捷赐福 \
 						and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):

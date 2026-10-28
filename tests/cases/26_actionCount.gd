@@ -619,6 +619,42 @@ func 跑() -> void:
 		"选中迅捷赐福后应进入其额外行动阶段，而不是直接开打（来源 %d / 等待 %s）"
 		% [引擎.行动额外来源, str(引擎._await_kind)])
 
+	# ---- 场景 18：迅捷赐福由「持有者面前的赐福」在攻击结束前补授予，选中后移除赐福 ----
+	_重置战斗()
+	var 迅捷牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			迅捷牌 = c
+			break
+	if 迅捷牌 != null:
+		var 剑圣八: BattleRole = 剑圣类.new()
+		剑圣八.setup(玩家1, 引擎)
+		玩家1.role = 剑圣八
+		var 祈祷类 = preload("res://scripts/battle/roles/role_qidao.gd")
+		var 祈祷: BattleRole = 祈祷类.new()
+		祈祷.setup(引擎.p(2), 引擎)
+		引擎.p(2).role = 祈祷
+		玩家1.hand_cards.append(攻击牌甲.id)
+		检(引擎.add_basic_effect(1, 迅捷牌.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"迅捷赐福应能贴到风之剑圣面前")
+		引擎.push(BattleEngine.STurnEnd.new())
+		引擎.push(BattleEngine.SHook.new("p_action_end", {"player": 1}, []))
+		引擎.push(BattleEngine.SHook.new("p_after_attack", {"player": 1}, []))
+		引擎.run()
+		var 赐福问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+		var 赐福选项: Array = (赐福问[0] as Dictionary).get("args", []) if not 赐福问.is_empty() else []
+		检(赐福选项.size() >= 6 and 赐福选项.slice(4).has(GConst.技能_迅捷赐福),
+			"有迅捷赐福时攻击结束选项应包含它：%s" % str(赐福选项))
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": 103, "src_id": 1, "args": [GConst.技能_迅捷赐福],
+			"card_ids": [], "dst_ids": [],
+		})
+		检(引擎.行动额外来源 == GConst.技能_迅捷赐福,
+			"选中迅捷赐福后应进入 1601 额外行动：%d" % 引擎.行动额外来源)
+		检(玩家1.basic_effects.is_empty(), "进入迅捷赐福额外行动后应移除赐福牌")
+	else:
+		检(false, "卡库里找不到带迅捷赐福的牌")
+
 	# ---- 场景 13：攻击结束响应里点红色快捷按钮，跳过响应钩子后要接到额外行动 ----
 	_重置战斗()
 	var 剑圣四: BattleRole = 剑圣类.new()
