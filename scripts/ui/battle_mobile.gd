@@ -2645,13 +2645,9 @@ func _额外行动选项底色(cause: int) -> Color:
 	return GConst.skill_type_color(cause)
 
 
-## 额外攻击行动按钮底色：迅捷赐福这种「赐福/基础效果」给出来的行动，
-## 按钮代表的是赐福本身，不是攻击行动，用响应紫色；其余攻击额外行动用红色。
-func _额外攻击按钮底色(cause: int, 攻击: bool = true) -> Color:
-	if _是响应赐福(cause):
-		# 迅捷赐福 / 威力赐福施加时是法术，但贴到目标身上触发的是响应
-		return GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
-	return 额外攻击按钮色 if 攻击 else GConst.skill_type_color(cause)
+## 额外攻击阶段里的攻击行动按钮：不论来源是不是赐福，都是普通攻击行动，用红色。
+func _额外攻击按钮底色(_cause: int, 攻击: bool = true) -> Color:
+	return 额外攻击按钮色 if 攻击 else GConst.skill_type_color(_cause)
 
 
 ## 这份额外行动是不是攻击行动：优先看服务端下发的 allow_action，没给才退回「额外行动提示」文字
@@ -2667,9 +2663,6 @@ func _额外行动按钮文本(cause: int, allow_action: int = 0, element: int =
 	# 剑残影给的那次攻击：锁定目标写在技能说明里，按钮用通用「额外【攻击行动】」即可
 	if cause == GConst.技能_剑残影:
 		return "额外【攻击行动】"
-	# 迅捷赐福贴到目标身上后还没被消耗，按钮代表的就是迅捷赐福本身，不叫额外【攻击行动】
-	if cause == GConst.技能_迅捷赐福:
-		return GConst.skill_name(cause)
 	var 提示: String = str(GConst.额外行动提示.get(cause, ""))
 	var 行动: String = ""
 	if allow_action > 0:
@@ -2781,8 +2774,9 @@ func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = []) ->
 		var 按钮: 技能按钮 = _新技能按钮(0)
 		# 这里是「发动哪份额外行动」的选项，不是额外攻击行动本身：按技能类型默认色，
 		# 只有额外攻击阶段里的攻击行动按钮才用红色。
-		按钮.设置选项(_额外行动按钮文本(c, allow),
-			_额外行动选项底色(c), 0)
+		var 文案: String = GConst.skill_name(c) if _是响应赐福(c) \
+			else _额外行动按钮文本(c, allow)
+		按钮.设置选项(文案, _额外行动选项底色(c), 0)
 		按钮.设置说明(_额外行动按钮说明(c))
 		按钮.设置选项可用(可发动.has(c))
 		按钮.connect("点击", _选中额外行动.bind(c))
