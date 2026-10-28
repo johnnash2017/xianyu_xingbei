@@ -170,6 +170,10 @@ var _pending_is_skill: bool = false
 ## 攻击结束响应里被合并进「选项」的额外行动（目前是迅捷赐福）：玩家选它时由引擎直接
 ## 走额外行动确认流程，不交给角色当成普通技能选项处理。
 var _额外确认选项: Array = []
+## 本次询问是否是可放弃的「行动结束响应」，且里面有额外行动选项
+var _本次询问可选额外行动: bool = false
+## 玩家在这个响应里点了取消：本回合后面的额外攻击行动全部跳过，不再二次询问
+var _跳过额外攻击行动: bool = false
 ## 本次攻击结束响应里已经确认过的基础效果额外行动（技能号 -> true）
 var _基础效果额外行动已确认: Dictionary = {}
 
@@ -1003,6 +1007,13 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 			run()
 			return
 		_额外确认选项.clear()
+	# 行动结束响应里点了「取消」：响应界面已经替玩家做过选择，后面不再问额外攻击行动
+	var 取消应答: bool = (data.get("args", []) as Array).is_empty() \
+		and (data.get("card_ids", []) as Array).is_empty() \
+		and (data.get("dst_ids", []) as Array).is_empty()
+	if 取消应答 and _本次询问可选额外行动:
+		_跳过额外攻击行动 = true
+		_清除额外攻击行动(pid)
 	# 分步应答（如【剑气斩】先在弹窗选好「移除几点剑气」）：只记下这一步，不算本次询问的最终回复，
 	# 继续等玩家选目标 / 目标超时兜底时再拿它用
 	if bool(data.get("partial", false)):
@@ -1026,6 +1037,20 @@ func 额外行动可切换(cur: BattlePlayer, 行动: Dictionary) -> bool:
 	if cur == null or cur.role == null:
 		return false
 	return cur.role.extra_action_switchable(int(行动.get("cause", 0)))
+
+
+## 行动结束响应点取消＝本回合不再使用任何额外攻击行动：
+## 清掉队列里所有能执行攻击的额外行动，并阻止之后再由角色补进队列。
+func _清除额外攻击行动(pid: int) -> void:
+	var cur: BattlePlayer = players.get(pid)
+	if cur == null:
+		return
+	var 保留: Array = []
+	for a: Dictionary in cur.additional_actions:
+		if GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
+			continue
+		保留.append(a)
+	cur.additional_actions.assign(保留)
 
 
 ## 确认基础效果授予的额外行动（迅捷赐福等）：
@@ -1631,6 +1656,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
 	_额外确认选项.clear()
+	_本次询问可选额外行动 = false
 	if not _基础效果额外行动已确认.is_empty():
 		var 过滤后: Array = []
 		for o: Dictionary in 用选项:
@@ -1761,6 +1787,8 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 			cmd["extra_attack_cards"] = 额外牌表
 			cmd["extra_attack_targets"] = 额外目标表
 			cmd["extra_attack_elements"] = 额外系别表
+		_本次询问可选额外行动 = not 用选项.is_empty() or not 额外攻击.is_empty()
+	# 超时兜底要用的三项（见 _build_timeout_reply）：不可取消的技能询问不许按「取消」收尾
 	# 超时兜底要用的三项（见 _build_timeout_reply）：不可取消的技能询问不许按「取消」收尾
 	_pending_skill_can_cancel = can_cancel
 	_pending_skill_need_target = need_target
@@ -2718,6 +2746,7 @@ class SCheckTurnStart:
 		var cur: BattlePlayer = e.p(e.current_id)
 		cur.clear_additional_action()
 		e._基础效果额外行动已确认.clear()
+		e._跳过额外攻击行动 = false
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
 		cur.reset_action_counts()
 		# 「启动」技能每回合只能发动一个：新回合开始清零
@@ -3036,6 +3065,11 @@ class SNextPlayer:
 ## 额外行动询问
 class SAdditionalAction:
 	func handle(e: BattleEngine) -> int:
+		# 行动结束响应点了取消：本回合不再处理任何额外行动，直接收尾
+		if e._跳过额外攻击行动:
+			e._清除额外攻击行动(e.current_id)
+			e.push(STurnEnd.new())
+			return BattleEngine.CONTINUE
 		var cur: BattlePlayer = e.p(e.current_id)
 		if cur == null or not cur.contains_action():
 			e.push(STurnEnd.new())

@@ -633,6 +633,7 @@ func 跑() -> void:
 		祈祷.setup(引擎.p(2), 引擎)
 		引擎.p(2).role = 祈祷
 		玩家1.hand_cards.append(攻击牌甲.id)
+		玩家1.add_action(GConst.ActionType.Attack, 101, true, true)
 		检(引擎.add_basic_effect(1, 迅捷牌.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
 			"迅捷赐福应能贴到风之剑圣面前")
 		引擎.push(BattleEngine.STurnEnd.new())
@@ -653,15 +654,17 @@ func 跑() -> void:
 			if not 赐福剩余问.is_empty() else []
 		检(赐福剩余选项.slice(4).has(103) and not 赐福剩余选项.slice(4).has(GConst.技能_迅捷赐福),
 			"确认迅捷赐福后应保留剩余响应选项：%s" % str(赐福剩余选项))
+		检(引擎._本次询问可选额外行动, "剩余响应应被标记为可放弃的额外行动询问")
 		检(((赐福剩余问[0] as Dictionary).get("extra_attack_causes", []) as Array)\
 			.has(GConst.技能_迅捷赐福),
 			"确认迅捷赐福后新获得的攻击行动应作为通用快捷按钮出现在剩余响应里")
 		引擎.on_message(1, GConst.Msg.Respond, {
 			"respond_id": 103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [],
 		})
-		检(引擎.行动额外来源 == GConst.技能_迅捷赐福 and 引擎._await_kind == GConst.Msg.Action,
-			"放弃剩余响应后进入 1601 额外行动（来源 %d / 等待 %s）"
-			% [引擎.行动额外来源, str(引擎._await_kind)])
+		检(玩家1.additional_actions.is_empty(), "取消后队列里的额外攻击行动应被清空：%s"
+			% str(玩家1.additional_actions))
+		检(引擎.行动额外来源 != GConst.技能_迅捷赐福,
+			"取消后不应再进入迅捷赐福的额外攻击：%d" % 引擎.行动额外来源)
 	else:
 		检(false, "卡库里找不到带迅捷赐福的牌")
 
