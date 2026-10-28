@@ -3290,6 +3290,8 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 		if b is Control:
 			(b as Control).visible = b == 父
 	if 父 != null:
+		# 注意：只有「二级技能栏」才把父技能强制移到最左。
+		# 主行动技能栏的额外行动一律按获取序号排列，当前行动只高亮，不得复用这条规则。
 		ChildrenSkillArea.move_child(父, 0)
 		父.设置选中(true)
 		if _是响应赐福(父技能号):
