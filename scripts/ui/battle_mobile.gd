@@ -2735,10 +2735,11 @@ func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = []) ->
 		var c: int = int(cause)
 		var idx: int = causes.find(cause)
 		var allow: int = int(允许[idx]) if idx >= 0 and idx < 允许.size() else 0
-		var 攻击: bool = _是攻击额外行动(c, allow)
 		var 按钮: 技能按钮 = _新技能按钮(0)
+		# 这里是「发动哪份额外行动」的选项，不是额外攻击行动本身：按技能类型默认色，
+		# 只有额外攻击阶段里的攻击行动按钮才用红色。
 		按钮.设置选项(_额外行动按钮文本(c, allow),
-			额外攻击按钮色 if 攻击 else GConst.skill_type_color(c), 0)
+			GConst.skill_type_color(c), 0)
 		按钮.设置说明(_额外行动按钮说明(c))
 		按钮.设置选项可用(可发动.has(c))
 		按钮.connect("点击", _选中额外行动.bind(c))
