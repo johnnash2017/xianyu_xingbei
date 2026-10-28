@@ -1161,6 +1161,17 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 		else (int(args[1]) if args.size() > 1 else 0)
 	var 攻击目标: int = int(目标表[0]) if not 目标表.is_empty() \
 		else (int(args[2]) if args.size() > 2 else 0)
+	# 校验不过时不要先清等待退出响应；保留当前响应让客户端恢复选项，玩家可以重选牌/目标。
+	if 攻击牌 <= 0 or 攻击目标 <= 0:
+		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
+		return
+	var 卡: GCard = Data.get_card(攻击牌)
+	if 卡 == null or not 卡.is_attack() or not cur.has_hand_card(攻击牌) \
+			or cur.v_attack(攻击牌, 攻击目标, players) != GConst.GE_SUCCESS \
+			or 校验额外行动限制(cur, GConst.ActionType.Attack, [攻击牌], [攻击目标]) != GConst.GE_SUCCESS:
+		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
+		return
+	首选额外行动 = cause
 	首选额外行动卡 = 攻击牌
 	首选额外行动目标 = 攻击目标
 	_await_id = -1
