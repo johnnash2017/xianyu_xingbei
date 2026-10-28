@@ -1033,6 +1033,8 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	_reply = data
 	_has_reply = true
 	_await_id = -1
+	# 这次询问已经答复完：取消标记不能遗留到后面的应战 / 其它 Respond 询问上
+	_本次询问可选额外行动 = false
 	wait_deadline_ms = 0
 	wait_total_ms = 0
 	# 等待已结束：先广播一次，客户端会收起等待进度条；随后 run() 若又进入等待会再广播

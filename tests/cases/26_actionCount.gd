@@ -606,6 +606,39 @@ func 跑() -> void:
 			break
 	检(退回101, "未使用的疾风技额外行动应退回队列：%s" % str(玩家1.additional_actions))
 
+	# ---- 场景 23：风怒追击进入后切到剑影并真正用掉剑影，风怒追击还应能再进入 ----
+	_重置战斗()
+	var 剑圣十一: BattleRole = 剑圣类.new()
+	剑圣十一.setup(玩家1, 引擎)
+	玩家1.role = 剑圣十一
+	var 风击十一: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.is_attack() \
+				and c.element_enum() == GConst.CardElement.Wind:
+			风击十一 = c
+			break
+	if 风击十一 != null:
+		玩家1.hand_cards.append(风击十一.id)
+		玩家1.add_action(GConst.ActionType.Attack, 103, true, true)
+		玩家1.add_action(GConst.ActionType.Attack, 105, true, true)
+		引擎.push(BattleEngine.SAdditionalAction.new())
+		引擎.run()
+		检(引擎.行动额外来源 == 103, "应先进入风怒追击：%d" % 引擎.行动额外来源)
+		检(not 剑圣十一.used_lian_xu_ji, "刚进入风怒追击、还没出手时不应标记已用")
+		引擎.on_message(1, GConst.Msg.Action, {
+			"action_type": GConst.ActionType.Attack, "src_id": 1,
+			"card_ids": [风击十一.id], "dst_ids": [3], "args": [105],
+		})
+		# 被攻击方放弃应战，让剑影这次攻击结算完
+		引擎.on_message(引擎._await_id, GConst.Msg.Respond, {
+			"respond_id": GConst.RespondType.ReplyAttack, "src_id": 3,
+			"args": [], "card_ids": [], "dst_ids": [],
+		})
+		检(引擎.行动额外来源 == 103 and 引擎._await_kind == GConst.Msg.Action,
+			"剑影用掉后应能重新进入风怒追击，不能只剩取消：来源 %d / 等待 %s / 已用103=%s / 队列=%s / 最后=%s"
+			% [引擎.行动额外来源, str(引擎._await_kind), str(剑圣十一.used_lian_xu_ji),
+				str(玩家1.additional_actions), str(引擎._最后询问)])
+
 	# ---- 场景 20：没有角色攻击结束响应的玩家，也要在同一次行动结束响应里处理迅捷赐福 ----
 	_重置战斗()
 	var 无响应迅捷牌: GCard = null

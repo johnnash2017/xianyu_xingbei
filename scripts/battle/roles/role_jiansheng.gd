@@ -320,10 +320,7 @@ func p_additional_action(ctx: Dictionary) -> int:
 	var cause: int = int(ctx.get("cause", 0))
 	# 对照服务端 p_additional_action：仅选中「风怒追击」时置位，其余额外行动一律清除
 	using_lian_xu_ji = cause == LIAN_XU_JI
-	if cause == LIAN_XU_JI:
-		used_lian_xu_ji = true
-	elif cause == JIAN_YING:
-		used_jian_ying = true
+	if cause == JIAN_YING:
 		if not _jian_ying_paid:
 			if player.crystal > 0:
 				player.set_crystal(player.crystal - 1)
@@ -331,6 +328,20 @@ func p_additional_action(ctx: Dictionary) -> int:
 				player.set_gem(player.gem - 1)
 			_jian_ying_paid = true
 		engine._broadcast_game()
+	return SUCCESS
+
+
+## 额外攻击行动真正结束时才记「本回合已用」。
+## 进入行动阶段后还可以切走再切回来；若在 p_additional_action 就记已用，
+## 切回来时 v_additional_action 会把这份未消耗的行动判成已用，只剩取消。
+func p_action_end(ctx: Dictionary) -> int:
+	if not bool(ctx.get("is_extra", false)):
+		return SUCCESS
+	match int(ctx.get("extra_cause", 0)):
+		LIAN_XU_JI:
+			used_lian_xu_ji = true
+		JIAN_YING:
+			used_jian_ying = true
 	return SUCCESS
 
 
