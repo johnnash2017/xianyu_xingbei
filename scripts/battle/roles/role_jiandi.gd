@@ -320,7 +320,8 @@ func confirm_extra_action(cause: int) -> int:
 	engine.push_draw(player.id, 1)
 	added_bu_qu_yi_zhi = false
 	engine._broadcast_game()
-	return SUCCESS
+	# 摸牌走引擎的摸牌状态，先结算完再继续聚合响应
+	return URGENT
 
 
 func p_additional_action(_ctx: Dictionary) -> int:
