@@ -3129,6 +3129,7 @@ class SNextPlayer:
 class S行动聚合器:
 	var 上下文: Dictionary = {}
 	var 待决: int = 0
+	var 待决队列: bool = false
 
 	func _init(ctx: Dictionary = {}) -> void:
 		上下文 = ctx
@@ -3143,7 +3144,8 @@ class S行动聚合器:
 		return r
 
 	## 把选中项分派回来源；返回 -1 表示成功可继续，其他为引擎状态。
-	func _分派(e: BattleEngine, cur: BattlePlayer, cause: int, reply: Dictionary) -> int:
+	func _分派(e: BattleEngine, cur: BattlePlayer, cause: int, reply: Dictionary,
+			是队列额外: bool = false) -> int:
 		if cur.role == null:
 			e._行动聚合中 = false
 			e._行动聚合流程 = false
@@ -3151,15 +3153,23 @@ class S行动聚合器:
 		var 结果: int = cur.role.resolve_action_end_option(cause, reply, 上下文)
 		if 结果 == BattleRole.WAIT:
 			待决 = cause
+			待决队列 = 是队列额外
 			return BattleEngine.WAIT
 		if 结果 == BattleRole.URGENT:
-			待决 = cause
+			# 队列额外行动的确认（扣费/自伤/摸牌）已经完成，不能再重复分派；
+			# 角色技能的多步结算（如剑影断念摸牌后还要入队）才需要回来继续。
+			if 是队列额外:
+				待决 = 0
+			else:
+				待决 = cause
+				待决队列 = false
 			return BattleEngine.SUSPEND
 		待决 = 0
 		if 结果 != BattleRole.SUCCESS:
 			e._行动聚合中 = false
 			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
+		待决队列 = false
 		return -1
 
 	func handle(e: BattleEngine) -> int:
@@ -3175,7 +3185,7 @@ class S行动聚合器:
 		# 角色技能的多步结算：上次已经分派，等待本状态再次被唤醒
 		if 待决 > 0:
 			var 续回复: Dictionary = _取回复(e) if e.has_reply() else {}
-			var 续结果: int = _分派(e, cur, 待决, 续回复)
+			var 续结果: int = _分派(e, cur, 待决, 续回复, 待决队列)
 			if 续结果 >= 0:
 				return 续结果
 		while true:
@@ -3263,7 +3273,12 @@ class S行动聚合器:
 				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
 			# 基础效果选项会被 on_message 先行截获并确认；这里只分派角色/额外行动
-			var 结果: int = _分派(e, cur, 选中, r)
+			var 选中队列: bool = false
+			for a: Dictionary in cur.additional_actions:
+				if int(a.get("cause", 0)) == 选中 and not bool(a.get("direct", false)):
+					选中队列 = true
+					break
+			var 结果: int = _分派(e, cur, 选中, r, 选中队列)
 			if 结果 >= 0:
 				return 结果
 		return BattleEngine.CONTINUE
