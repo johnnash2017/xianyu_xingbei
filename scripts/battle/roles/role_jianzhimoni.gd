@@ -133,7 +133,8 @@ func p_after_attack(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			engine.ask_skill(player.id, int(选项[0]["value"]), 0, 0, GConst.CardSource.Hand,
 				选项, 0, "", [], true,
-				"攻击结束时可以发动以下技能，选择一项（发动后还能发动另一项）")
+				"攻击结束时可以发动以下技能，选择一项（发动后还能发动另一项）", [],
+				0, 0, false, [], true, -1, 0, true)
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		var args: Array = r2.get("args", [])
