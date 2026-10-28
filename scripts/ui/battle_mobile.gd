@@ -2697,19 +2697,9 @@ func _响应赐福提示(cause: int) -> String:
 	return ""
 
 
-## 额外行动按钮的悬停说明：优先用「移除赐福 + 效果」，其余用完整技能提示
+## 额外行动按钮的悬停提示：只写来源技能名，不再摊整段技能说明
 func _额外行动按钮说明(cause: int) -> String:
-	var 赐福说明: String = _响应赐福提示(cause)
-	if not 赐福说明.is_empty():
-		return 赐福说明
-	var 单个: String = 角色技能提示.单个技能(cause)
-	if not 单个.is_empty():
-		return 单个
-	var 提示: String = str(GConst.额外行动提示.get(cause, ""))
-	if not 提示.is_empty():
-		return 提示
-	var 说明: String = GConst.skill_desc(cause)
-	return 说明 if not 说明.is_empty() else "额外行动"
+	return "来自 %s" % GConst.skill_name(cause)
 
 
 ## 额外行动提示里点一个按钮：只选中（可切换），按「确定」才真正进入
