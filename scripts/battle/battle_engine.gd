@@ -1137,9 +1137,8 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 			if 候选.hook == "p_after_attack" or 候选.hook == "p_after_magic":
 				钩 = 候选
 				break
-	if 钩 == null:
-		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
-		return
+	# 聚合器发问时，p_after_magic / p_after_attack 那个 SHook 可能已经执行完出栈了；
+	# 这时不能因为找不到钩子就判无效，仍要记录首选额外行动，让聚合器跳过剩余选项。
 	var args: Array = data.get("args", [])
 	var cause: int = int(args[0]) if not args.is_empty() else 0
 	var cur: BattlePlayer = players.get(pid)
@@ -1168,7 +1167,8 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 	_has_reply = false
 	wait_deadline_ms = 0
 	wait_total_ms = 0
-	钩._iter = order.size()
+	if 钩 != null:
+		钩._iter = order.size()
 	_broadcast_game()
 	run()
 

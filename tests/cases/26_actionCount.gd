@@ -1168,9 +1168,9 @@ func 跑() -> void:
 			"args": [406, 攻击牌甲.id, 3], "card_ids": [攻击牌甲.id], "dst_ids": [3],
 		})
 		引擎.run()
-		检(引擎._await_kind == GConst.Msg.Respond,
-			"法术结束响应点红色额外攻击后应进入应战，实际等待 %s/%s"
-			% [str(引擎._await_id), str(引擎._await_kind)])
+		检(引擎._await_kind == GConst.Msg.Respond and 引擎.首选额外行动 == -1,
+			"法术结束响应点红色额外攻击后应进入应战，实际等待 %s/%s，首选=%d"
+			% [str(引擎._await_id), str(引擎._await_kind), 引擎.首选额外行动])
 
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
