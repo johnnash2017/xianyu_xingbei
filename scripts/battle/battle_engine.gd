@@ -1912,7 +1912,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 					continue
 				# 非 direct 的「行动结束响应」额外行动会作为技能选项出现，不能再挂快捷按钮
 				if not bool(a.get("direct", false)) and 问者.role != null \
-						and 问者.role.extra_action_is_response(c):
+						and 问者.role.额外行动属于结束响应(c):
 					continue
 				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
 					if 问者.role != null else []
@@ -3226,7 +3226,7 @@ class SNextPlayer:
 ## 只负责收集、合并、发询问、把选中的 cause 分派回来源；
 ## 扣费、direct 标记、入队等行动本身由角色 / 基础效果自己处理。
 ## 1) 目标身上未确认的基础效果额外行动（迅捷赐福等）；
-## 2) 队列里已获得、但还没确认的额外行动（由角色声明 extra_action_is_response）。
+## 2) 队列里已获得、但还没确认的额外行动（由角色声明 额外行动属于结束响应）。
 class S行动聚合器:
 	var 上下文: Dictionary = {}
 	var 待决: int = 0

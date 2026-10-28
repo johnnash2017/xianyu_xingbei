@@ -232,7 +232,7 @@ func action_end_options(_ctx: Dictionary) -> Array:
 		var cause: int = int(a.get("cause", 0))
 		if cause <= 0:
 			continue
-		if not extra_action_is_response(cause):
+		if not 额外行动属于结束响应(cause):
 			continue
 		var 可用: bool = true
 		if engine != null:
@@ -251,7 +251,7 @@ func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary)
 
 ## 队列里已获得、但还没确认的额外行动的默认处理：扣费后标 direct。
 func resolve_queued_extra_action(cause: int) -> int:
-	var rc: int = confirm_extra_action(cause)
+	var rc: int = 行动结束确认代价(cause)
 	if rc == SUCCESS or rc == URGENT:
 		for i: int in range(player.additional_actions.size()):
 			if int(player.additional_actions[i].get("cause", 0)) == cause:
@@ -268,13 +268,13 @@ func resolve_queued_extra_action(cause: int) -> int:
 
 ## 在「行动结束响应」里确认使用某份额外行动时立即结算费用（方案 A：点选即付）。
 ## 返回 SUCCESS / URGENT；默认无费用。真正进入行动时仍走 p_additional_action 结算效果。
-func confirm_extra_action(_cause: int) -> int:
+func 行动结束确认代价(_cause: int) -> int:
 	return SUCCESS
 
 
 ## 这份额外行动是否属于「行动结束响应」：为 true 时，引擎在攻击/法术结束钩子跑完后
 ## 把它和迅捷赐福等基础效果额外行动合并成一次响应列表；默认 false，只有明确需要提前确认的角色覆写。
-func extra_action_is_response(_cause: int) -> bool:
+func 额外行动属于结束响应(_cause: int) -> bool:
 	return false
 
 

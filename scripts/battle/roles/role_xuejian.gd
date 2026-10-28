@@ -133,12 +133,12 @@ func v_additional_action(cause: int) -> int:
 
 
 ## 赤色一闪属于行动结束响应，和迅捷赐福合并成一次询问
-func extra_action_is_response(cause: int) -> bool:
+func 额外行动属于结束响应(cause: int) -> bool:
 	return cause == CHI_SE_YI_SHAN
 
 
 ## 行动结束响应点选赤色一闪时立即扣 1 鲜血并受 2 点法术伤害（方案 A）
-func confirm_extra_action(cause: int) -> int:
+func 行动结束确认代价(cause: int) -> int:
 	if cause != CHI_SE_YI_SHAN:
 		return SUCCESS
 	if int(player.tokens[0]["num"]) < 1:

@@ -298,12 +298,12 @@ func _shen_sheng_zhui_ji(pid: int) -> int:
 
 
 ## 神圣追击属于行动结束响应，和迅捷赐福合并成一次询问
-func extra_action_is_response(cause: int) -> bool:
+func 额外行动属于结束响应(cause: int) -> bool:
 	return cause == SHEN_SHENG_ZHUI_JI
 
 
 ## 行动结束响应点选神圣追击时立即扣 1 治疗（方案 A）
-func confirm_extra_action(cause: int) -> int:
+func 行动结束确认代价(cause: int) -> int:
 	if cause != SHEN_SHENG_ZHUI_JI:
 		return SUCCESS
 	if player.cross_num < 1:
