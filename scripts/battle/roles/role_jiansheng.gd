@@ -23,8 +23,6 @@ var attack_count: int = 0
 ## 剑影的 1 能量是否已经在「攻击结束询问确认」时付过（之后切换行动不再重复付）
 var _jian_ying_paid: bool = false
 
-## 攻击结束的 103 / 105 二选一：本次攻击内是否已经问过（问过就不再在后续额外攻击结束时重复问）
-var _after_skill_asked: bool = false
 ## p_after_attack 的推进阶段（0＝未开始 / 1＝正在问 103、105 / 2＝问完）
 const KEY_AFTER_STEP: String = "_jiansheng_after_step"
 
@@ -48,7 +46,6 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_jian_ying = false
 	using_lian_xu_ji = false
 	attack_count = 0
-	_after_skill_asked = false
 	_jian_ying_paid = false
 	_sheng_jian_active = false
 	_sheng_jian_step = 0
@@ -156,7 +153,7 @@ func p_after_attack(ctx: Dictionary) -> int:
 	# 选中后以 direct 额外行动入队，之后由引擎直接进入，不再在回合结束二次询问。
 	var 阶段: int = int(ctx.get(KEY_AFTER_STEP, 0))
 	if 阶段 == 0:
-		阶段 = 2 if _after_skill_asked else 1
+		阶段 = 1
 		ctx[KEY_AFTER_STEP] = 阶段
 	if 阶段 == 1:
 		while true:
@@ -164,7 +161,6 @@ func p_after_attack(ctx: Dictionary) -> int:
 			if 选项.is_empty():
 				ctx[KEY_AFTER_STEP] = 2
 				break
-			_after_skill_asked = true
 			if not engine.has_reply():
 				engine.ask_skill(player.id, int(选项[0]["value"]), 0, 0, GConst.CardSource.Hand,
 					选项, 0, "", [], true,
