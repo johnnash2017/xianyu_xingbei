@@ -454,12 +454,16 @@ func 跑() -> void:
 	剑圣二.setup(玩家1, 引擎)
 	玩家1.role = 剑圣二
 	玩家1.set_gem(1)
+	# 迅捷赐福即使给了攻击行动，也不能出现在「响应里直接开打」的快捷按钮里
+	玩家1.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福, false)
 	引擎.push(BattleEngine.SHook.new("p_after_attack", {"player": 1}, []))
 	引擎.run()
 	var 一问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
 	var 一选项: Array = (一问[0] as Dictionary).get("args", []) if not 一问.is_empty() else []
 	检(一选项.size() >= 6 and 一选项.slice(4) == [103, 105],
 		"攻击结束应同时摆出风怒追击和剑影：%s" % str(一选项))
+	检(not ((一问[0] as Dictionary).get("extra_attack_causes", []) as Array).has(GConst.技能_迅捷赐福),
+		"迅捷赐福不应作为响应直接开打的快捷项")
 	# 确认风怒追击后只入队，还应继续问剑影；不立即进入、不先消耗
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 103, "src_id": 1, "args": [103], "card_ids": [], "dst_ids": [],

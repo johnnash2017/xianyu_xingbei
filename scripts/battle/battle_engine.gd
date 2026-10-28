@@ -983,6 +983,10 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 		return
 	var args: Array = data.get("args", [])
 	var cause: int = int(args[0]) if not args.is_empty() else 0
+	if cause == GConst.技能_迅捷赐福:
+		# 迅捷赐福必须走额外行动询问的「确定」流程，不能从这里直接开打
+		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
+		return
 	var cur: BattlePlayer = players.get(pid)
 	if cur == null or cause <= 0:
 		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
@@ -1623,6 +1627,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 				if not GConst.放行动作(GConst.ActionType.Attack, 类):
 					continue
 				var c: int = int(a.get("cause", 0))
+				# 迅捷赐福不是「直接点手牌开打」的快捷攻击：它要在额外行动询问里
+				# 点确定、移除赐福后才获得攻击行动。不能塞进红色快捷按钮里跳过移除步骤。
+				if c == GConst.技能_迅捷赐福:
+					continue
 				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
 					if 问者.role != null else []
 				if 牌.is_empty() and 问者.role != null:
