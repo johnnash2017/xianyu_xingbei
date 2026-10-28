@@ -139,7 +139,6 @@ func _重置战斗() -> void:
 	引擎._本次已询问基础效果额外行动.clear()
 	引擎._已拒绝基础效果额外行动.clear()
 	引擎._跳过额外攻击行动 = false
-	引擎._额外确认选项.clear()
 	发送记录.clear()
 	for pid: int in 引擎.order:
 		var p0: BattlePlayer = 引擎.p(pid)

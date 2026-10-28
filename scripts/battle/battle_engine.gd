@@ -169,9 +169,6 @@ var _pending_args: Array = []
 ## 本次询问是不是「是否发动某技能」的技能询问（ask_skill=true / ask_respond=false）：
 ## 超时兜底要按它区分「技能询问」与应战、弃牌之类的通用应答，而不是靠询问号的大小去猜
 var _pending_is_skill: bool = false
-## 攻击结束响应里被合并进「选项」的额外行动（目前是迅捷赐福）：玩家选它时由引擎直接
-## 走额外行动确认流程，不交给角色当成普通技能选项处理。
-var _额外确认选项: Array = []
 ## 本次行动结束响应里已经摆过的基础效果额外行动（技能号 -> true）
 var _本次已询问基础效果额外行动: Dictionary = {}
 ## 本轮已经明确取消/放弃的基础效果额外行动：本回合不再重复询问（技能号 -> true）
@@ -179,7 +176,6 @@ var _已拒绝基础效果额外行动: Dictionary = {}
 ## 本次询问是否是可放弃的「行动结束响应」，且里面有额外行动选项
 var _本次询问可选额外行动: bool = false
 ## 正在「行动聚合器」里等待：取消时同样要清空后续额外攻击
-var _行动聚合中: bool = false
 ## 当前 ask_skill 是否由行动聚合器发出（也允许下发红色额外攻击快捷按钮）
 var _行动聚合询问中: bool = false
 ## 当前这次行动结束是否走行动聚合器（角色自己的 p_after_attack 在聚合流程里只做优先结算）
@@ -292,7 +288,6 @@ func _分派行动结束选项(pid: int, cause: int, reply: Dictionary, kind: St
 			return {"result": GConst.GE_INVALID_ACTION, "terminal": true}
 		_确认基础效果额外行动(pid, cause)
 		_基础效果额外行动已确认[cause] = true
-		_额外确认选项.clear()
 		return {"result": BattleRole.SUCCESS, "terminal": true}
 	var cur: BattlePlayer = players.get(pid)
 	if cur == null or cur.role == null:
@@ -1077,7 +1072,6 @@ func _清空等待() -> void:
 	# 中止流程时一并清掉「弃牌前拦截」标记，免得残留成 true 让之后的弃牌永远走同步分支
 	_弃牌拦截中 = false
 	# 中止时也不要残留行动聚合器的流程标记，否则角色自己的 p_after_attack 会被跳过
-	_行动聚合中 = false
 	_行动聚合流程 = false
 
 
@@ -1089,29 +1083,11 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 			and int(data.get("respond_id", 0)) == GConst.RespondType.ChooseExtraAction:
 		_选择额外攻击响应(pid, data)
 		return
-	# 攻击结束响应里合并进选项的额外行动（迅捷赐福）：选它就按额外行动确认流程走，
-	# 不交给角色当成普通技能选项处理。
-	if kind == GConst.Msg.Respond and not _行动聚合中 and not _额外确认选项.is_empty():
-		var 选项参数: Array = data.get("args", [])
-		var 选项号: int = int(选项参数[0]) if not 选项参数.is_empty() else 0
-		if _额外确认选项.has(选项号):
-			# 基础效果授予的额外行动（迅捷赐福等）：确定＝使用它。
-			# 立即移除对应赐福、立即入队额外行动，再回原响应继续问剩余选项。
-			_确认基础效果额外行动(pid, 选项号)
-			_基础效果额外行动已确认[选项号] = true
-			_额外确认选项.clear()
-			_await_id = -1
-			_has_reply = false
-			wait_deadline_ms = 0
-			wait_total_ms = 0
-			run()
-			return
-		_额外确认选项.clear()
 	# 行动结束响应里点了「取消」：响应界面已经替玩家做过选择，后面不再问额外攻击行动
 	var 取消应答: bool = (data.get("args", []) as Array).is_empty() \
 		and (data.get("card_ids", []) as Array).is_empty() \
 		and (data.get("dst_ids", []) as Array).is_empty()
-	if 取消应答 and (_本次询问可选额外行动 or _行动聚合中):
+	if 取消应答 and (_本次询问可选额外行动 or _当前状态 is S行动聚合器):
 		_处理行动结束取消(pid)
 	# 分步应答（如【剑气斩】先在弹窗选好「移除几点剑气」）：只记下这一步，不算本次询问的最终回复，
 	# 继续等玩家选目标 / 目标超时兜底时再拿它用
@@ -1166,7 +1142,6 @@ func _清除额外攻击行动(pid: int) -> void:
 ## 统一在这里清队列、关闭聚合等待、标记本回合不再询问基础效果额外行动。
 func _处理行动结束取消(pid: int) -> void:
 	_跳过额外攻击行动 = true
-	_行动聚合中 = false
 	_行动聚合流程 = false
 	_清除额外攻击行动(pid)
 	for cause: int in _本次已询问基础效果额外行动:
@@ -1801,7 +1776,6 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
-	_额外确认选项.clear()
 	_本次询问可选额外行动 = false
 	if not _基础效果额外行动已确认.is_empty():
 		var 过滤后: Array = []
@@ -1820,7 +1794,6 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 					break
 			if not 已有:
 				用选项.append(o)
-			_额外确认选项.append(选项号)
 	options = 用选项
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
@@ -2908,7 +2881,6 @@ class SCheckTurnStart:
 		cur.clear_additional_action()
 		e._基础效果额外行动已确认.clear()
 		e._跳过额外攻击行动 = false
-		e._行动聚合中 = false
 		e._行动聚合流程 = false
 		e._已拒绝基础效果额外行动.clear()
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
@@ -3273,7 +3245,6 @@ class S行动聚合器:
 			return BattleEngine.SUSPEND
 		待决 = 0
 		if 结果 != BattleRole.SUCCESS:
-			e._行动聚合中 = false
 			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		待决 = 0
@@ -3286,11 +3257,9 @@ class S行动聚合器:
 			return BattleEngine.CONTINUE
 		# 响应里已经点红色额外攻击按钮：放弃剩余响应选项，直接进入所选额外攻击
 		if e.首选额外行动 >= 0:
-			e._行动聚合中 = false
 			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		if e._跳过额外攻击行动:
-			e._行动聚合中 = false
 			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		# 角色技能的多步结算：上次已经分派，等待本状态再次被唤醒
@@ -3303,7 +3272,6 @@ class S行动聚合器:
 			# 来源收集全部交给引擎；聚合器不认识角色技能 / 队列额外行动 / 基础效果
 			var 待问: Array = e._收集行动结束选项(pid, 上下文)
 			if 待问.is_empty():
-				e._行动聚合中 = false
 				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
 			# 全部不可发动时不要弹一张全是灰按钮的询问；只要有一项可发动，
@@ -3314,11 +3282,9 @@ class S行动聚合器:
 					有可用 = true
 					break
 			if not 有可用:
-				e._行动聚合中 = false
 				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
 			if not e.has_reply():
-				e._行动聚合中 = true
 				e._行动聚合询问中 = true
 				var 首: int = int(待问[0].get("value", 0))
 				var 选牌来源: int = GConst.CardSource.Hand
@@ -3347,12 +3313,10 @@ class S行动聚合器:
 			# 客户端提交了不在本次选项表里的 cause（旧界面/改包）：不能直接分派给角色
 			if not 找到选中:
 				e.send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
-				e._行动聚合中 = false
 				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
 			if not 选中可用:
 				e.send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
-				e._行动聚合中 = false
 				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
 			var 结果: int = _分派(e, cur, 选中, r, 选中类型)
