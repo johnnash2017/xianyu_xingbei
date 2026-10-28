@@ -320,7 +320,7 @@ func p_after_attack(_ctx: Dictionary) -> int:
 
 
 func action_end_options(_ctx: Dictionary) -> Array:
-	if used_xiu_luo_lian_zhan or _contains_action(XIU_LUO_LIAN_ZHAN):
+	if used_xiu_luo_lian_zhan or using_xiu_luo_lian_zhan or _contains_action(XIU_LUO_LIAN_ZHAN):
 		return []
 	return [{"value": XIU_LUO_LIAN_ZHAN, "label": GConst.skill_name(XIU_LUO_LIAN_ZHAN),
 		"skill_id": XIU_LUO_LIAN_ZHAN, "enabled": true}]
@@ -353,7 +353,15 @@ func v_additional_action(cause: int) -> int:
 # 玩家选中额外行动时：置「修罗连斩」标记供 v_attack 限制火系牌
 # （对照服务端 p_additional_action：选中修罗连斩置位 used/using，其余额外行动清除 using）
 # ============================================================
-func extra_action_switchable(_cause: int) -> bool: return false
+func extra_action_switchable(cause: int) -> bool:
+	return cause == XIU_LUO_LIAN_ZHAN
+
+
+func p_action_end(ctx: Dictionary) -> int:
+	if bool(ctx.get("is_extra", false)) and int(ctx.get("extra_cause", 0)) == XIU_LUO_LIAN_ZHAN:
+		used_xiu_luo_lian_zhan = true
+		using_xiu_luo_lian_zhan = false
+	return SUCCESS
 
 
 func p_additional_action(ctx: Dictionary) -> int:
@@ -361,8 +369,6 @@ func p_additional_action(ctx: Dictionary) -> int:
 		return SUCCESS
 	var cause: int = int(ctx.get("cause", 0))
 	using_xiu_luo_lian_zhan = cause == XIU_LUO_LIAN_ZHAN
-	if using_xiu_luo_lian_zhan:
-		used_xiu_luo_lian_zhan = true
 	return SUCCESS
 
 

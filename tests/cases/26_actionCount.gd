@@ -1026,6 +1026,43 @@ func 跑() -> void:
 	if 剑影位 >= 0 and 剑影位 < 灰可用.size():
 		检(not bool(灰可用[剑影位]), "没有能量时剑影选项应置灰不可发动")
 
+	# ---- 场景 33：修罗连斩 + 迅捷赐福两个额外攻击行动都要出现在技能栏 ----
+	_重置战斗()
+	var 双刀类 = preload("res://scripts/battle/roles/role_mojian.gd")
+	var 双刀: BattleRole = 双刀类.new()
+	双刀.setup(玩家1, 引擎)
+	玩家1.role = 双刀
+	玩家1.hand_cards.append(攻击牌甲.id)
+	var 双刀迅捷: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			双刀迅捷 = c
+			break
+	if 双刀迅捷 != null:
+		检(引擎.add_basic_effect(1, 双刀迅捷.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"双刀测试的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+		引擎.run()
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": 901, "src_id": 1, "args": [901], "card_ids": [], "dst_ids": [],
+		})
+		引擎.run()
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.技能_迅捷赐福, "src_id": 1,
+			"args": [GConst.技能_迅捷赐福], "card_ids": [], "dst_ids": [],
+		})
+		引擎.run()
+		var 双刀命令: Array = 引擎._最后行动命令.get(1, [])
+		var 双刀额外数: int = 0
+		for c: Dictionary in 双刀命令:
+			if bool(c.get("is_extra", false)) \
+					or int(c.get("respond_id", 0)) == GConst.ActionType.ChooseExtraAction:
+				双刀额外数 += 1
+		检(双刀额外数 == 2,
+			"修罗连斩 + 迅捷赐福后技能栏应显示两个额外攻击行动，实际 %d：%s"
+			% [双刀额外数, str(双刀命令)])
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()
