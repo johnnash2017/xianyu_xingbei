@@ -788,6 +788,8 @@ func 跑() -> void:
 		引擎.run()
 		var 聚合问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
 		var 聚合选: Array = (聚合问[0] as Dictionary).get("args", []) if not 聚合问.is_empty() else []
+		检(bool(GConst.技能指示器.get(901, {}).get("无父技能", false)),
+			"修罗连斩作为选项时不应再摆父技能按钮")
 		检(聚合选.slice(4).has(901) and 聚合选.slice(4).has(GConst.技能_迅捷赐福),
 			"修罗连斩和迅捷赐福应在同一攻击结束响应列表：%s" % str(聚合选))
 		var 聚合快捷: Array = (聚合问[0] as Dictionary).get("extra_attack_causes", [])
@@ -809,6 +811,8 @@ func 跑() -> void:
 			if not 聚合再问.is_empty() else []
 		检(聚合再选.slice(4).has(GConst.技能_迅捷赐福),
 			"确认修罗连斩后迅捷赐福仍应留在响应里：%s" % str(聚合再选))
+		检(not 聚合再选.slice(4).has(901),
+			"确认修罗连斩后不能再出现第二份修罗连斩选项：%s" % str(聚合再选))
 		检(聚合再快捷.has(901),
 			"确认修罗连斩后应像剑圣的额外攻击一样变成红色快捷按钮：%s" % str(聚合再快捷))
 		# 取消聚合响应＝所有后续额外攻击都不再处理
