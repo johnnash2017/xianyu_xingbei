@@ -1108,12 +1108,7 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 		and (data.get("card_ids", []) as Array).is_empty() \
 		and (data.get("dst_ids", []) as Array).is_empty()
 	if 取消应答 and (_本次询问可选额外行动 or _行动聚合中):
-		_跳过额外攻击行动 = true
-		_行动聚合中 = false
-		_清除额外攻击行动(pid)
-		# 这次响应里已经摆过的基础效果额外行动，被取消＝本回合不再重复问
-		for cause: int in _本次已询问基础效果额外行动:
-			_已拒绝基础效果额外行动[cause] = true
+		_处理行动结束取消(pid)
 	# 分步应答（如【剑气斩】先在弹窗选好「移除几点剑气」）：只记下这一步，不算本次询问的最终回复，
 	# 继续等玩家选目标 / 目标超时兜底时再拿它用
 	if bool(data.get("partial", false)):
@@ -1161,6 +1156,17 @@ func _清除额外攻击行动(pid: int) -> void:
 			continue
 		保留.append(a)
 	cur.additional_actions.assign(保留)
+
+
+## 行动结束响应被取消：这是行动结束策略，不属于聚合器。
+## 统一在这里清队列、关闭聚合等待、标记本回合不再询问基础效果额外行动。
+func _处理行动结束取消(pid: int) -> void:
+	_跳过额外攻击行动 = true
+	_行动聚合中 = false
+	_行动聚合流程 = false
+	_清除额外攻击行动(pid)
+	for cause: int in _本次已询问基础效果额外行动:
+		_已拒绝基础效果额外行动[cause] = true
 
 
 ## 确认基础效果授予的额外行动（迅捷赐福等）：
@@ -3282,7 +3288,6 @@ class S行动聚合器:
 		if e._跳过额外攻击行动:
 			e._行动聚合中 = false
 			e._行动聚合流程 = false
-			e._清除额外攻击行动(pid)
 			return BattleEngine.CONTINUE
 		# 角色技能的多步结算：上次已经分派，等待本状态再次被唤醒
 		if 待决 > 0:
@@ -3337,10 +3342,12 @@ class S行动聚合器:
 					break
 			# 客户端提交了不在本次选项表里的 cause（旧界面/改包）：不能直接分派给角色
 			if not 找到选中:
+				e.send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 				e._行动聚合中 = false
 				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
 			if not 选中可用:
+				e.send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 				e._行动聚合中 = false
 				e._行动聚合流程 = false
 				return BattleEngine.CONTINUE
