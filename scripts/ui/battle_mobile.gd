@@ -2403,13 +2403,13 @@ func _进入技能询问() -> void:
 	_额外攻击响应_牌白.clear()
 	_额外攻击响应_目标白.clear()
 	if not 额外攻击.is_empty():
-		# 迅捷赐福给到的行动排在其它额外攻击行动后面（它是刚刚才获得的）
+		# 标记「排序最后」的基础效果额外行动排在其它额外攻击行动后面
 		var 快捷顺序: Array = []
 		for i: int in range(额外攻击.size()):
-			if int(额外攻击[i]) != GConst.技能_迅捷赐福:
+			if not bool(GConst.基础效果额外行动.get(int(额外攻击[i]), {}).get("排序最后", false)):
 				快捷顺序.append(i)
 		for i: int in range(额外攻击.size()):
-			if int(额外攻击[i]) == GConst.技能_迅捷赐福:
+			if bool(GConst.基础效果额外行动.get(int(额外攻击[i]), {}).get("排序最后", false)):
 				快捷顺序.append(i)
 		for i: int in 快捷顺序:
 			var c: int = int(额外攻击[i])
@@ -2634,7 +2634,7 @@ const 额外攻击按钮色: Color = Color("c0392b")
 
 ## 赐福类技能施加时是法术，贴到目标身上触发时是响应
 func _是响应赐福(cause: int) -> bool:
-	return cause == GConst.技能_迅捷赐福 or cause == GConst.技能_威力赐福
+	return GConst.响应赐福.has(cause)
 
 
 ## 额外行动询问里的选项是一个「发动哪份额外行动」的按钮，不是攻击行动本体：
@@ -2689,11 +2689,7 @@ func _额外攻击行动参数() -> Array:
 
 ## 赐福类作为响应时的提示：明确先移除赐福，再说换来的效果
 func _响应赐福提示(cause: int) -> String:
-	if cause == GConst.技能_迅捷赐福:
-		return "移除迅捷赐福，额外+1【攻击行动】"
-	if cause == GConst.技能_威力赐福:
-		return "移除威力赐福，本次攻击伤害+2"
-	return ""
+	return str(GConst.响应赐福.get(cause, {}).get("提示", ""))
 
 
 ## 额外行动按钮的悬停提示：只写来源技能名，不再摊整段技能说明

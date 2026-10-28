@@ -170,13 +170,35 @@ var _pending_is_skill: bool = false
 ## 攻击结束响应里被合并进「选项」的额外行动（目前是迅捷赐福）：玩家选它时由引擎直接
 ## 走额外行动确认流程，不交给角色当成普通技能选项处理。
 var _额外确认选项: Array = []
-## 本次攻击结束响应里已经确认过迅捷赐福：剩余选项继续问，但不再把 1601 塞回选项列表
-var _迅捷赐福已确认: bool = false
+## 本次攻击结束响应里已经确认过的基础效果额外行动（技能号 -> true）
+var _基础效果额外行动已确认: Dictionary = {}
 
 
-## 迅捷赐福是否已经在本次攻击结束响应里确认过
-func 迅捷赐福已确认() -> bool:
-	return _迅捷赐福已确认
+## 某份基础效果额外行动是否已经确认过
+func 基础效果额外行动已确认(cause: int) -> bool:
+	return bool(_基础效果额外行动已确认.get(cause, false))
+
+
+## 目标身上还有哪些未确认的基础效果额外行动（供角色询问循环继续问）
+func 基础效果额外行动选项(pid: int) -> Array:
+	var cur: BattlePlayer = players.get(pid)
+	var out: Array = []
+	if cur == null:
+		return out
+	for cause: int in GConst.基础效果额外行动:
+		if 基础效果额外行动已确认(cause):
+			continue
+		if not cur.check_basic_effect_skill(cause):
+			continue
+		if cur.hand_cards.is_empty():
+			continue
+		var 配置: Dictionary = GConst.基础效果额外行动[cause]
+		out.append({
+			"value": cause,
+			"label": str(配置.get("label", GConst.skill_name(cause))),
+			"skill_id": cause,
+		})
+	return out
 ## 本次技能询问「能不能取消」「要选几名目标」「合法目标白名单」：超时兜底要据此判断
 ## 「不许回取消」以及「从谁里面随机挑目标」（如【念弹】：问之前就已记上 +1【斗气】，不能白拿）
 var _pending_skill_can_cancel: bool = true
@@ -969,19 +991,18 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 		var 选项参数: Array = data.get("args", [])
 		var 选项号: int = int(选项参数[0]) if not 选项参数.is_empty() else 0
 		if _额外确认选项.has(选项号):
-			if 选项号 == GConst.技能_迅捷赐福:
-				# 确定迅捷赐福＝使用它：立即移除赐福、立即获得额外攻击行动，
-				# 但返回原响应继续问剩下的剑影 / 风怒追击，不把其他选项吞掉。
-				_确认迅捷赐福(pid)
-				_迅捷赐福已确认 = true
-				_额外确认选项.clear()
-				_await_id = -1
-				_has_reply = false
-				wait_deadline_ms = 0
-				wait_total_ms = 0
-				run()
-				return
+			# 基础效果授予的额外行动（迅捷赐福等）：确定＝使用它。
+			# 立即移除对应赐福、立即入队额外行动，再回原响应继续问剩余选项。
+			_确认基础效果额外行动(pid, 选项号)
+			_基础效果额外行动已确认[选项号] = true
 			_额外确认选项.clear()
+			_await_id = -1
+			_has_reply = false
+			wait_deadline_ms = 0
+			wait_total_ms = 0
+			run()
+			return
+		_额外确认选项.clear()
 	# 分步应答（如【剑气斩】先在弹窗选好「移除几点剑气」）：只记下这一步，不算本次询问的最终回复，
 	# 继续等玩家选目标 / 目标超时兜底时再拿它用
 	if bool(data.get("partial", false)):
@@ -997,29 +1018,35 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	run()
 
 
-## 确认迅捷赐福：立即把 1601 额外攻击行动加入队列（direct），再移除持有者面前的赐福。
-## 行动是立即“获得”的；等响应阶段处理完才进入它，避免吞掉剑影 / 风怒追击选项。
-func _确认迅捷赐福(pid: int) -> void:
+## 确认基础效果授予的额外行动（迅捷赐福等）：
+## 按配置表取出 allow_action，立即把行动移到队尾并标 direct，同时移除对应的赐福牌。
+func _确认基础效果额外行动(pid: int, cause: int) -> void:
 	var cur: BattlePlayer = players.get(pid)
-	if cur == null:
+	var 配置: Dictionary = GConst.基础效果额外行动.get(cause, {})
+	if cur == null or 配置.is_empty():
 		return
+	var 允许: int = int(配置.get("allow_action", GConst.ActionType.Attack))
 	var 数据: Dictionary = {}
 	for i: int in range(cur.additional_actions.size()):
-		if int(cur.additional_actions[i].get("cause", 0)) == GConst.技能_迅捷赐福:
+		if int(cur.additional_actions[i].get("cause", 0)) == cause:
 			数据 = cur.additional_actions[i].duplicate()
 			cur.additional_actions.remove_at(i)
 			break
-	# 迅捷赐福可能在攻击结束钩子的前半段就被祈祷师补进队列了；
-	# 确认使用时把它移到队尾，按“现在才获得”的顺序排在已有额外行动后面。
+	# 可能在攻击结束钩子前半段已经被补进队列；确认时移到队尾，按“现在才获得”排序
 	if 数据.is_empty():
-		cur.add_action(GConst.ActionType.Attack, GConst.技能_迅捷赐福, true)
+		cur.add_action(允许, cause, true)
 	else:
 		数据["direct"] = true
 		cur.additional_actions.append(数据)
-	for pid2: int in order:
-		var p0: BattlePlayer = players.get(pid2)
-		if p0 != null and p0.role != null:
-			p0.role.p_additional_action({"player": pid, "cause": GConst.技能_迅捷赐福})
+	# 移除对应的基础效果牌并弃置
+	for be: Dictionary in cur.basic_effects:
+		var 牌id: int = int(be.get("card", 0))
+		var 牌: GCard = Data.get_card(牌id)
+		if 牌 != null and 牌.has_skill_id(cause):
+			remove_basic_effect(pid, 牌id, cause, int(be.get("src", pid)))
+			to_discard([牌id])
+			_broadcast_game()
+			break
 
 
 ## 攻击结束响应里点了「额外攻击行动」快捷按钮：记录首选，跳过当前响应钩子剩余角色，
@@ -1583,34 +1610,27 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## can_light=false 时随询问下发 can_light=false（如【阴阳转换】：这次攻击不能用【圣光】抵挡，
 ## 客户端据此把【圣光】置灰；默认 true 时不下发，客户端按可用处理）
 func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false) -> void:
-	# 迅捷赐福是攻击结束时可以发动的「响应类额外行动」：和 103/105 一样合并进同一个选项列表，
-	# 而不是只挂成红色快捷按钮。选中后由引擎走额外行动确认（移除赐福、获得攻击行动）。
+	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
+	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
 	_额外确认选项.clear()
-	if _迅捷赐福已确认:
+	if not _基础效果额外行动已确认.is_empty():
 		var 过滤后: Array = []
 		for o: Dictionary in 用选项:
-			if int(o.get("value", 0)) != GConst.技能_迅捷赐福:
+			if not _基础效果额外行动已确认.has(int(o.get("value", 0))):
 				过滤后.append(o)
 		用选项 = 过滤后
-	if 允许额外攻击快捷 and not _迅捷赐福已确认:
-		var 问者: BattlePlayer = players.get(pid)
-		if 问者 != null and 问者.check_basic_effect_skill(GConst.技能_迅捷赐福) \
-				and not 问者.hand_cards.is_empty():
-			# 迅捷赐福还没使用时：只把它作为「响应选项」摆出来，不提前生成额外攻击行动。
-			# 确认使用后才由 _确认迅捷赐福 入队，届时再按统一的额外行动快捷按钮显示。
-			var 已有祝福选项: bool = false
-			for o: Dictionary in 用选项:
-				if int(o.get("value", 0)) == GConst.技能_迅捷赐福:
-					已有祝福选项 = true
+	if 允许额外攻击快捷:
+		for o: Dictionary in 基础效果额外行动选项(pid):
+			var 选项号: int = int(o.get("value", 0))
+			var 已有: bool = false
+			for old: Dictionary in 用选项:
+				if int(old.get("value", 0)) == 选项号:
+					已有 = true
 					break
-			if not 已有祝福选项:
-				用选项.append({
-					"value": GConst.技能_迅捷赐福,
-					"label": GConst.skill_name(GConst.技能_迅捷赐福),
-					"skill_id": GConst.技能_迅捷赐福,
-				})
-			_额外确认选项.append(GConst.技能_迅捷赐福)
+			if not 已有:
+				用选项.append(o)
+			_额外确认选项.append(选项号)
 	options = 用选项
 	var args: Array = [need_card, need_target, card_source, options.size()]
 	var notes: Array = []
@@ -1706,9 +1726,8 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 				if not GConst.放行动作(GConst.ActionType.Attack, 类):
 					continue
 				var c: int = int(a.get("cause", 0))
-				# 迅捷赐福在“确认使用”之前只是响应选项，不能同时当快捷攻击按钮；
-				# 确认后（_迅捷赐福已确认）它就是普通的额外攻击行动，按统一逻辑显示。
-				if c == GConst.技能_迅捷赐福 and not _迅捷赐福已确认:
+				# 基础效果授予的行动在“确认使用”之前只是响应选项，不能同时当快捷攻击按钮
+				if GConst.基础效果额外行动.has(c) and not 基础效果额外行动已确认(c):
 					continue
 				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
 					if 问者.role != null else []
@@ -2680,7 +2699,7 @@ class SCheckTurnStart:
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
 		cur.clear_additional_action()
-		e._迅捷赐福已确认 = false
+		e._基础效果额外行动已确认.clear()
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
 		cur.reset_action_counts()
 		# 「启动」技能每回合只能发动一个：新回合开始清零

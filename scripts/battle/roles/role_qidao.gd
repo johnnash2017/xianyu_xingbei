@@ -232,10 +232,10 @@ func v_additional_action(cause: int) -> int:
 # （引擎已在选中时广播该额外行动的技能宣告，此处不再重复）
 # ============================================================
 func extra_action_switchable(cause: int) -> bool:
-	# 迅捷赐福使用后已经没有额外代价/待移除牌，就是普通额外攻击行动，允许切换；
+	# 基础效果授予的额外行动使用后已经没有待移除牌，就是普通额外行动，允许切换；
 	# 确认使用前它还不能被当快捷攻击使用。
-	if cause == XUN_JIE_CI_FU:
-		return engine != null and engine.迅捷赐福已确认()
+	if GConst.基础效果额外行动.has(cause):
+		return engine != null and engine.基础效果额外行动已确认(cause)
 	return false
 
 
