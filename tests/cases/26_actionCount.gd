@@ -462,8 +462,8 @@ func 跑() -> void:
 	var 一选项: Array = (一问[0] as Dictionary).get("args", []) if not 一问.is_empty() else []
 	检(一选项.size() >= 6 and 一选项.slice(4) == [103, 105],
 		"攻击结束应同时摆出风怒追击和剑影：%s" % str(一选项))
-	检(not ((一问[0] as Dictionary).get("extra_attack_causes", []) as Array).has(GConst.技能_迅捷赐福),
-		"迅捷赐福不应作为响应直接开打的快捷项")
+	检(((一问[0] as Dictionary).get("extra_attack_causes", []) as Array).has(GConst.技能_迅捷赐福),
+		"迅捷赐福应保留在响应快捷项里，但不能直接开打")
 	# 确认风怒追击后只入队，还应继续问剑影；不立即进入、不先消耗
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 103, "src_id": 1, "args": [103], "card_ids": [], "dst_ids": [],

@@ -420,6 +420,8 @@ var _额外行动单选: int = -1
 var _额外行动按钮表: Array = []
 ## 攻击结束响应里的额外攻击快捷按钮（按钮, cause）：点按钮只选中，可切换，按「确定」才放弃响应进入
 var _额外攻击响应选择: int = -1
+## true＝这次选中的是迅捷赐福这类「点确定移除祝福、获得额外行动」的项，不是直接点手牌开打
+var _额外攻击响应_仅确认: bool = false
 var _额外攻击响应按钮: Array = []
 var _额外攻击响应_牌白: Array = []
 var _额外攻击响应_目标白: Array = []
@@ -2397,6 +2399,7 @@ func _进入技能询问() -> void:
 	var 额外目标表: Array = _pending.get("extra_attack_targets", [])
 	var 额外系别表: Array = _pending.get("extra_attack_elements", [])
 	_额外攻击响应选择 = -1
+	_额外攻击响应_仅确认 = false
 	_额外攻击响应按钮.clear()
 	_额外攻击响应_牌白.clear()
 	_额外攻击响应_目标白.clear()
@@ -2419,7 +2422,10 @@ func _进入技能询问() -> void:
 			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack, 系别),
 				_额外攻击按钮底色(c), 0)
 			额外按钮.设置说明(_额外行动按钮说明(c))
-			额外按钮.connect("点击", _选中额外攻击响应.bind(c, 牌白, 目标白))
+			if c == GConst.技能_迅捷赐福:
+				额外按钮.connect("点击", _选中迅捷赐福.bind(c))
+			else:
+				额外按钮.connect("点击", _选中额外攻击响应.bind(c, 牌白, 目标白))
 			_额外攻击响应按钮.append({"按钮": 额外按钮, "cause": c})
 		_排技能栏.call_deferred()
 	# 技能询问同时写一行日志：它只挂在提示条上，错过就会一直等（看着像「点了确定没反应」）
@@ -2711,6 +2717,7 @@ func _选中额外行动(_技能号: int, cause: int) -> void:
 ## 攻击结束响应里点额外攻击快捷按钮：只选中（可切换），按「确定」才放弃响应进入
 func _选中额外攻击响应(_技能号: int, cause: int, 牌白: Array = [], 目标白: Array = []) -> void:
 	_额外攻击响应选择 = cause
+	_额外攻击响应_仅确认 = false
 	_额外攻击响应_牌白 = 牌白.duplicate()
 	_额外攻击响应_目标白 = 目标白.duplicate()
 	# 已经选好的攻击牌如果仍在新白名单里就保留，避免玩家先选牌再点额外攻击按钮时把牌清掉
@@ -2737,8 +2744,31 @@ func _选中额外攻击响应(_技能号: int, cause: int, 牌白: Array = [], 
 	_刷新交互()
 
 
+## 迅捷赐福：点按钮只选中，确定后移除赐福并获得额外攻击行动；不直接点手牌开打
+func _选中迅捷赐福(_技能号: int, cause: int) -> void:
+	_额外攻击响应选择 = cause
+	_额外攻击响应_仅确认 = true
+	_额外攻击响应_牌白.clear()
+	_额外攻击响应_目标白.clear()
+	_sel_cards.clear()
+	_sel_players.clear()
+	_二级选中 = -1
+	_已选参数.clear()
+	for 项: Dictionary in _二级选项:
+		var 技能钮: Variant = 项.get("按钮")
+		if is_instance_valid(技能钮):
+			(技能钮 as 技能按钮).设置选中(false)
+	for 项: Dictionary in _额外攻击响应按钮:
+		var b: Variant = 项.get("按钮")
+		if is_instance_valid(b):
+			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
+	_指令提示("确定＝移除迅捷赐福并获得额外攻击行动")
+	_刷新交互()
+
+
 func _清除额外攻击响应选择() -> void:
 	_额外攻击响应选择 = -1
+	_额外攻击响应_仅确认 = false
 	_额外攻击响应_牌白.clear()
 	_额外攻击响应_目标白.clear()
 	for 项: Dictionary in _额外攻击响应按钮:
@@ -3848,6 +3878,8 @@ func _on_player_clicked(player_id: int) -> void:
 func _卡牌能点(card_id: int) -> bool:
 	# 攻击结束响应里选中额外攻击后：只让点该额外攻击白名单内的攻击牌
 	if _额外攻击响应选择 > 0:
+		if _额外攻击响应_仅确认:
+			return false
 		var 在手中: bool = false
 		for c: GCard in Data.hand_cards:
 			if c.id == card_id:
@@ -4500,6 +4532,12 @@ func _刷新攒应战提示() -> void:
 
 # ---------------- 确定 / 取消 / 放弃 ----------------
 func _on_ok() -> void:
+	# 迅捷赐福：确定＝移除赐福并获得额外攻击行动，不带牌/目标，不直接开打
+	if _额外攻击响应选择 > 0 and _额外攻击响应_仅确认:
+		_额外攻击请求备份 = _pending.duplicate(true)
+		_发送应答(GConst.RespondType.ChooseExtraAction, [], [],
+			[_额外攻击响应选择])
+		return
 	# 攒应战（式神咒束 / 阴阳转换）：应战牌和反击目标都在本地选好后，
 	# 把「技能号 + 效果 + 牌 + 目标」一次性提交；3301 的参数前面多一个「发动 3301」。
 	if _攒应战应答号 > 0:
@@ -6349,6 +6387,7 @@ func _清空待选() -> void:
 	_sel_players.clear()
 	# 额外攻击待发选择也要一起清：否则 _玩家可选 / _卡牌能点 仍走待发分支，提交后牌和头像还亮着
 	_额外攻击响应选择 = -1
+	_额外攻击响应_仅确认 = false
 	_额外攻击响应_牌白.clear()
 	_额外攻击响应_目标白.clear()
 	_重置治疗分配()
@@ -8169,6 +8208,8 @@ func _玩家可选(player_id: int) -> bool:
 		return false
 	# 攻击结束响应里选中额外攻击后：只点亮该额外攻击的目标白名单内敌方
 	if _额外攻击响应选择 > 0:
+		if _额外攻击响应_仅确认:
+			return false
 		if not _是敌方(player_id):
 			return false
 		return _额外攻击响应_目标白.is_empty() or _额外攻击响应_目标白.has(player_id)
@@ -8273,9 +8314,10 @@ func _更新按键() -> void:
 
 
 func _确定不可用() -> bool:
-	# 攻击结束响应里选中额外攻击：靠点手牌 + 敌方头像发起，不靠确定
+	# 攻击结束响应里选中额外攻击：靠点手牌 + 敌方头像发起，不靠确定；
+	# 迅捷赐福例外：它只是移除赐福获得额外攻击行动，点确定提交。
 	if _额外攻击响应选择 > 0:
-		return true
+		return not _额外攻击响应_仅确认
 	# 额外行动提示：点按钮只选中，选中后才允许确定
 	if _额外行动单选 >= 0 and not _是技能询问:
 		return not _额外行动可选
