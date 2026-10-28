@@ -858,7 +858,7 @@ func 跑() -> void:
 		检(玩家1.additional_actions.is_empty(), "付费后取消聚合响应应跳过剩余额外攻击")
 		检(玩家1.get_energy() == 0, "取消聚合响应不退还已付费用（方案 A）")
 
-	# ---- 场景 27：猎羽人的偷袭也作为普通技能选项，与迅捷赐福同列表 ----
+	# ---- 场景 27：猎巫人的偷袭也作为普通技能选项，与迅捷赐福同列表 ----
 	_重置战斗()
 	var 猎人类 = preload("res://scripts/battle/roles/role_liewuren.gd")
 	var 猎人: BattleRole = 猎人类.new()
