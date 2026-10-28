@@ -21,6 +21,8 @@ const HEI_AN_ZHEN_CHAN_BU_PAI: int = 9061
 const HEI_AN_ZHEN_CHAN_QI_PAI: int = 9062
 
 var used_xiu_luo_lian_zhan: bool = false
+## 当前这一刀修罗连斩已经从技能响应进入行动队列（尚未结算完）
+var active_xiu_luo_lian_zhan: bool = false
 var used_hei_an_zhen_chan: bool = false
 var using_hei_an_zhen_chan: bool = false
 
@@ -127,6 +129,7 @@ func _fire_attack_card_ids() -> Array:
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_xiu_luo_lian_zhan = false
+	active_xiu_luo_lian_zhan = false
 	used_hei_an_zhen_chan = false
 	using_hei_an_zhen_chan = false
 	return SUCCESS
@@ -319,11 +322,8 @@ func p_after_attack(_ctx: Dictionary) -> int:
 
 
 func action_end_options(_ctx: Dictionary) -> Array:
-	if used_xiu_luo_lian_zhan or _contains_action(XIU_LUO_LIAN_ZHAN):
-		return []
-	# 正在打「修罗连斩」自己这一刀时，不能在自己的攻击结束响应里再给一次；
-	# used 要等 p_action_end 才置位，这里按当前额外行动来源判断。
-	if engine.行动额外 and int(engine.行动额外来源) == XIU_LUO_LIAN_ZHAN:
+	if used_xiu_luo_lian_zhan or active_xiu_luo_lian_zhan \
+			or _contains_action(XIU_LUO_LIAN_ZHAN):
 		return []
 	return [{"value": XIU_LUO_LIAN_ZHAN, "label": GConst.skill_name(XIU_LUO_LIAN_ZHAN),
 		"skill_id": XIU_LUO_LIAN_ZHAN, "enabled": true}]
@@ -332,6 +332,7 @@ func action_end_options(_ctx: Dictionary) -> Array:
 func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary) -> int:
 	if cause != XIU_LUO_LIAN_ZHAN:
 		return resolve_queued_extra_action(cause)
+	active_xiu_luo_lian_zhan = true
 	notice_skill(XIU_LUO_LIAN_ZHAN, [])
 	player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN, true, true)
 	engine._broadcast_game()
@@ -363,6 +364,7 @@ func extra_action_switchable(cause: int) -> bool:
 func p_action_end(ctx: Dictionary) -> int:
 	if bool(ctx.get("is_extra", false)) and int(ctx.get("extra_cause", 0)) == XIU_LUO_LIAN_ZHAN:
 		used_xiu_luo_lian_zhan = true
+		active_xiu_luo_lian_zhan = false
 	return SUCCESS
 
 

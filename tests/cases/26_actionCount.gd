@@ -1181,6 +1181,7 @@ func 跑() -> void:
 	引擎.current_id = 1
 	引擎.行动额外 = true
 	引擎.行动额外来源 = 901
+	自查魔剑.active_xiu_luo_lian_zhan = true
 	检(自查魔剑.action_end_options({}).is_empty(),
 		"修罗连斩自己的攻击结束时不应再次提供修罗连斩")
 	_重置战斗()
@@ -1190,6 +1191,7 @@ func 跑() -> void:
 	引擎.current_id = 1
 	引擎.行动额外 = true
 	引擎.行动额外来源 = 103
+	自查剑圣.active_lian_xu_ji = true
 	检(自查剑圣.action_end_options({}).is_empty(),
 		"风怒追击自己的攻击结束时不应再次提供风怒追击")
 

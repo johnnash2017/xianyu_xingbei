@@ -20,6 +20,9 @@ const JIAN_YING: int = 105
 var used_lian_xu_ji: bool = false
 var used_jian_ying: bool = false
 var using_lian_xu_ji: bool = false
+## 当前这一刀 103 / 105 已经从技能响应进入行动队列（尚未结算完）
+var active_lian_xu_ji: bool = false
+var active_jian_ying: bool = false
 var attack_count: int = 0
 ## 剑影的 1 能量是否已经在「攻击结束询问确认」时付过（之后切换行动不再重复付）
 var _jian_ying_paid: bool = false
@@ -46,6 +49,8 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_lian_xu_ji = false
 	used_jian_ying = false
 	using_lian_xu_ji = false
+	active_lian_xu_ji = false
+	active_jian_ying = false
 	attack_count = 0
 	_jian_ying_paid = false
 	_sheng_jian_active = false
@@ -159,15 +164,11 @@ func p_after_attack(ctx: Dictionary) -> int:
 ## 交给行动聚合器的技能选项：用过、已在队列里、能量不够的不出现。
 func action_end_options(_ctx: Dictionary) -> Array:
 	var out: Array = []
-	# 正在打 103 / 105 自己这一刀时，不能在自己的攻击结束响应里再次摆出同一技能。
-	# used 标记在 p_action_end 才落，聚合器跑在它之前，所以按当前额外行动来源判断。
-	if engine.行动额外 and (int(engine.行动额外来源) == LIAN_XU_JI \
-			or int(engine.行动额外来源) == JIAN_YING):
-		return out
-	if not used_lian_xu_ji and not _contains_action(LIAN_XU_JI):
+	# 103 / 105 各自管理自己的“当前正在打 / 本回合已用”，互不隐藏。
+	if not used_lian_xu_ji and not active_lian_xu_ji and not _contains_action(LIAN_XU_JI):
 		out.append({"value": LIAN_XU_JI, "label": "风怒追击", "skill_id": LIAN_XU_JI,
 			"enabled": true})
-	if not used_jian_ying and not _contains_action(JIAN_YING):
+	if not used_jian_ying and not active_jian_ying and not _contains_action(JIAN_YING):
 		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING,
 			"enabled": player.get_energy() > 0})
 	return out
@@ -177,6 +178,7 @@ func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary)
 	if cause == LIAN_XU_JI:
 		notice_skill(LIAN_XU_JI, [])
 		player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true, true)
+		active_lian_xu_ji = true
 		return SUCCESS
 	if cause == JIAN_YING:
 		if not _jian_ying_paid:
@@ -190,6 +192,7 @@ func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary)
 			engine._broadcast_game()
 		notice_skill(JIAN_YING, [])
 		player.add_action(GConst.ActionType.Attack, JIAN_YING, true, true)
+		active_jian_ying = true
 		return SUCCESS
 	return resolve_queued_extra_action(cause)
 
@@ -330,8 +333,10 @@ func p_action_end(ctx: Dictionary) -> int:
 	match int(ctx.get("extra_cause", 0)):
 		LIAN_XU_JI:
 			used_lian_xu_ji = true
+			active_lian_xu_ji = false
 		JIAN_YING:
 			used_jian_ying = true
+			active_jian_ying = false
 	return SUCCESS
 
 
