@@ -286,6 +286,10 @@ func _收集行动结束选项(pid: int, ctx: Dictionary) -> Array:
 func _分派行动结束选项(pid: int, cause: int, reply: Dictionary, kind: String,
 		ctx: Dictionary) -> Dictionary:
 	if kind == "basic":
+		var 基础cur: BattlePlayer = players.get(pid)
+		if 基础cur == null or not 基础cur.check_basic_effect_skill(cause) \
+				or 基础效果额外行动已确认(cause):
+			return {"result": GConst.GE_INVALID_ACTION, "terminal": true}
 		_确认基础效果额外行动(pid, cause)
 		_基础效果额外行动已确认[cause] = true
 		_额外确认选项.clear()
@@ -3379,6 +3383,9 @@ class SAdditionalAction:
 				if int(cur.additional_actions[i].get("cause", 0)) == 期望 \
 						and e.额外行动可发动(cur, 期望):
 					return _进入(e, cur, i, 期望)
+			# 选中的额外行动已经不在队列/已不可发动：清掉预选牌和目标，避免错误地打第一份 direct 行动
+			e.首选额外行动卡 = 0
+			e.首选额外行动目标 = 0
 		# 声明了 direct 的额外行动（如圣女【圣疗】）不用先问：直接进入它的额外行动阶段。
 		# 该阶段允许「放弃行动」，想跳过在那里放弃即可，省掉「再点一次技能按钮」这一步。
 		if not e.has_reply():
