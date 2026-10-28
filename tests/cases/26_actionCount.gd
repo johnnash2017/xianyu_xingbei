@@ -1146,6 +1146,32 @@ func 跑() -> void:
 			"封印师真实法术后 406 的攻击应进入应战，实际等待 %s/%s"
 			% [str(引擎._await_id), str(引擎._await_kind)])
 
+	# ---- 场景 37：法术结束响应里点红色额外攻击按钮，应直接进入攻击而不是报无效 ----
+	_重置战斗()
+	var 封印四: BattleRole = 封印类.new()
+	封印四.setup(玩家1, 引擎)
+	玩家1.role = 封印四
+	玩家1.hand_cards = [攻击牌甲.id]
+	var 封印赐福二: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(GConst.技能_迅捷赐福):
+			封印赐福二 = c
+			break
+	if 封印赐福二 != null:
+		检(引擎.add_basic_effect(1, 封印赐福二.id, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+			"封印师快捷额外攻击测试的迅捷赐福应贴上")
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_magic", {"player": 1, "kind": "magic"}, false, 0)
+		引擎.run()
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": GConst.RespondType.ChooseExtraAction, "src_id": 1,
+			"args": [406, 攻击牌甲.id, 3], "card_ids": [攻击牌甲.id], "dst_ids": [3],
+		})
+		引擎.run()
+		检(引擎._await_kind == GConst.Msg.Respond,
+			"法术结束响应点红色额外攻击后应进入应战，实际等待 %s/%s"
+			% [str(引擎._await_id), str(引擎._await_kind)])
+
 	# ---- 场景 19：疾风技 + 剑影 + 风怒追击 + 迅捷赐福 都在队列时，1601 也应作为可切换项 ----
 	_重置战斗()
 	var 剑圣九: BattleRole = 剑圣类.new()

@@ -1132,9 +1132,11 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 		return
 	var 钩: SHook = null
 	for i: int in range(_states.size() - 1, -1, -1):
-		if _states[i] is SHook and (_states[i] as SHook).hook == "p_after_attack":
-			钩 = _states[i]
-			break
+		if _states[i] is SHook:
+			var 候选: SHook = _states[i] as SHook
+			if 候选.hook == "p_after_attack" or 候选.hook == "p_after_magic":
+				钩 = 候选
+				break
 	if 钩 == null:
 		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
@@ -3176,6 +3178,11 @@ class S行动聚合器:
 		var pid: int = e.current_id
 		var cur: BattlePlayer = e.p(pid)
 		if cur == null:
+			return BattleEngine.CONTINUE
+		# 响应里已经点红色额外攻击按钮：放弃剩余响应选项，直接进入所选额外攻击
+		if e.首选额外行动 >= 0:
+			e._行动聚合中 = false
+			e._行动聚合流程 = false
 			return BattleEngine.CONTINUE
 		if e._跳过额外攻击行动:
 			e._行动聚合中 = false
