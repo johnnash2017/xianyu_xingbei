@@ -367,11 +367,12 @@ func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 	return GConst.GE_SUCCESS
 
 
-## 103 / 105 给的那份攻击行动：103 限风系攻击牌；105 不限制（返回全部手牌，避免回落到当前 103 的 using 状态）
+## 103 / 105 / 101 给的那份攻击行动：103 限风系攻击牌；105 / 101 不限制
+## （105 / 101 显式返回全部手牌，避免回落到当前 103 的 using 状态、把别的系攻击牌也锁成风系）。
 func extra_action_card_ids(cause: int, action_type: int) -> Array:
 	if action_type != GConst.ActionType.Attack:
 		return []
-	if cause == JIAN_YING:
+	if cause == JIAN_YING or cause == 101:
 		return player.hand_cards.duplicate()
 	if cause != LIAN_XU_JI:
 		return []

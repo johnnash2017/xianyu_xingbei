@@ -578,6 +578,16 @@ func 跑() -> void:
 			风击六 = c
 			break
 	玩家1.hand_cards.append(风击六.id)
+	var 非风六: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.is_attack() \
+				and c.element_enum() != GConst.CardElement.Wind:
+			非风六 = c
+			break
+	if 非风六 != null:
+		玩家1.hand_cards.append(非风六.id)
+		检(剑圣六.extra_action_card_ids(101, GConst.ActionType.Attack).has(非风六.id),
+			"疾风技给的额外攻击不应继承风怒追击的风系白名单")
 	玩家1.add_action(GConst.ActionType.Attack, 101, true, true)
 	玩家1.add_action(GConst.ActionType.Attack, 103, true, true)
 	引擎.push(BattleEngine.SAdditionalAction.new())
