@@ -3444,8 +3444,6 @@ class SAdditionalAction:
 		var 允许: int = int(cur.additional_actions[idx]["allow_action"])
 		var 跳过宣告: bool = bool(cur.additional_actions[idx].get("skip_notice", false))
 		var 数据: Dictionary = cur.additional_actions[idx].duplicate()
-		if not 数据.has("order"):
-			数据["order"] = cur.额外行动新序号()
 		cur.additional_actions.remove_at(idx)
 		if not 跳过宣告:
 			e.broadcast(GConst.Msg.Skill, {"skill_id": cause, "src_id": cur.id, "dst_ids": []})
