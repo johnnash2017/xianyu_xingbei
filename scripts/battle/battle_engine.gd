@@ -1201,7 +1201,7 @@ func _确认基础效果额外行动(pid: int, cause: int) -> void:
 			数据 = cur.additional_actions[i].duplicate()
 			cur.additional_actions.remove_at(i)
 			break
-	# 可能在攻击结束钩子前半段已经被补进队列；确认时移到队尾，按“现在才获得”排序
+	# 可能在攻击结束钩子前半段已经被补进队列；确认时保持原获取序号，避免把早先获得的赐福排到新行动后面。
 	if 数据.is_empty():
 		cur.add_action(允许, cause, true, true)
 		for a: Dictionary in cur.additional_actions:
@@ -1213,7 +1213,9 @@ func _确认基础效果额外行动(pid: int, cause: int) -> void:
 		数据["direct"] = true
 		数据["可切换"] = true
 		数据["skip_notice"] = true
-		数据["order"] = cur.额外行动新序号()
+		# 保留它最初获得时的序号：确认只是把“未确认”变“可使用”，不是重新获得一次行动。
+		if not 数据.has("order"):
+			数据["order"] = cur.额外行动新序号()
 		cur.additional_actions.append(数据)
 	# 移除对应的基础效果牌并弃置
 	for be: Dictionary in cur.basic_effects:
