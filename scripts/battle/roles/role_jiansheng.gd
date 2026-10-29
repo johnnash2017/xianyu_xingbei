@@ -176,16 +176,11 @@ func action_end_options(_ctx: Dictionary) -> Array:
 
 func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary) -> int:
 	if cause == LIAN_XU_JI:
-		if _contains_action(LIAN_XU_JI):
-			return SUCCESS
 		notice_skill(LIAN_XU_JI, [])
 		player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true, true)
 		active_lian_xu_ji = true
 		return SUCCESS
 	if cause == JIAN_YING:
-		if _contains_action(JIAN_YING):
-			# 同一份剑影已经在队列里（重复提交/旧界面）：不能再次入队
-			return SUCCESS
 		if not _jian_ying_paid:
 			if player.get_energy() <= 0:
 				return GConst.GE_INVALID_ACTION
