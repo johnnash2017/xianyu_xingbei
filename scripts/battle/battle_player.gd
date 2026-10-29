@@ -365,7 +365,10 @@ var 快捷额外行动目标: int = 0
 
 ## 取下一个额外行动序号（切换/补授予时保持稳定顺序）
 func 额外行动新序号() -> int:
-	_额外行动序号 += 1
+	var 最大: int = _额外行动序号
+	for a: Dictionary in additional_actions:
+		最大 = maxi(最大, int(a.get("order", 0)))
+	_额外行动序号 = 最大 + 1
 	return _额外行动序号
 
 
