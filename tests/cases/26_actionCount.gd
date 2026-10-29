@@ -637,6 +637,13 @@ func 跑() -> void:
 			"剑影用掉后应能重新进入风怒追击，不能只剩取消：来源 %d / 等待 %s / 已用103=%s / 队列=%s / 最后=%s"
 			% [引擎.行动额外来源, str(引擎._await_kind), str(剑圣十一.used_lian_xu_ji),
 				str(玩家1.additional_actions), str(引擎._最后询问)])
+		检(剑圣十一.used_jian_ying, "剑影出手后应立即标记本回合已用")
+		var 再用选项: Array = 剑圣十一.action_end_options({})
+		var 再有剑影: bool = false
+		for o: Dictionary in 再用选项:
+			if int(o.get("value", 0)) == 105:
+				再有剑影 = true
+		检(not 再有剑影, "剑影本回合用过后不能再出现在攻击结束选项里：%s" % str(再用选项))
 
 	# ---- 场景 20：没有角色攻击结束响应的玩家，也要在同一次行动结束响应里处理迅捷赐福 ----
 	_重置战斗()
