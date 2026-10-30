@@ -23,6 +23,9 @@ extends BattleRole
 const FU_WEN_ZHI_HUAN: int = 4101      # 符文置换（法术 / 回合限定）
 const FU_MO_DA_JI: int = 4102          # 附魔打击（响应 / 回合限定）
 const SHANG_BIAN: int = 4103           # 熵变（响应）
+## 熵变「选支付来源 + 点队友」的内部询问号：客户端按它取「先弹选项 / 选项目标数」，
+## 伤害头像提示仍挂 4103（只在选敌人那一步显示）
+const SHANG_BIAN_PAY: int = GConst.技能_熵变支付
 const MO_LI_SHANG_ZENG: int = 4104     # 魔力熵增（响应 / 必杀技 / 水晶）
 
 ## 4101【符文置换】本回合是否已发动（技能名带【回合限定】）
@@ -250,9 +253,10 @@ func _处理_shang_bian(ctx: Dictionary) -> int:
 			return SUCCESS
 		_shang_bian_step = 1
 		if not engine.has_reply():
-			# 一次问完：选支付来源；选「队友能量」那一档时顺手点 1 名队友，按确定一起提交
-			询问(player.id, SHANG_BIAN, 0, 0, GConst.CardSource.Hand, _shang_bian支付选项(),
-				0, "", [], true, 0, -1, _shang_bian队友们())
+			# 一次问完：选支付来源；选「队友能量」那一档时顺手点 1 名队友，按确定一起提交。
+			# 用内部询问号 41031：它不带伤害文案，队友头像不会冒出「1 法术伤害」（技能表提示借用 4103 的）
+			engine.ask_skill(player.id, SHANG_BIAN_PAY, 0, 0, GConst.CardSource.Hand,
+				_shang_bian支付选项(), 0, "", [], true, 提示(SHANG_BIAN, 0), _shang_bian队友们())
 			return WAIT
 	if _shang_bian_step == 1:
 		if not engine.has_reply():

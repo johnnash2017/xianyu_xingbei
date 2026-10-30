@@ -525,7 +525,7 @@ func 跑() -> void:
 	_打一张圣盾()
 	检(玩家.action_count() == 3, "第 3 次行动后计数应为 3，实际 %d" % 玩家.action_count())
 	检(引擎._await_id == 1, "第 3 次行动结束应问是否发动【熵变】（等待 %s）" % str(引擎._await_id))
-	var 熵变支付问: Dictionary = _取询问(1, 4103)
+	var 熵变支付问: Dictionary = _取询问(1, 41031)
 	检(not 熵变支付问.is_empty(), "第 3 次行动结束没有下发【熵变】支付询问")
 	检(int((熵变支付问.get("args", []) as Array)[1]) == 0, "【熵变】第一步不应要求目标")
 	检(int(熵变支付问.get("args", [])[3] if (熵变支付问.get("args", []) as Array).size() > 3 else 0) == 2,
@@ -533,7 +533,7 @@ func 跑() -> void:
 	检((熵变支付问.get("option_enabled", []) as Array) == [true, false],
 		"只有我方战绩区有宝石时，队友能量项应置灰：%s" % str(熵变支付问.get("option_enabled", [])))
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4103, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
+		"respond_id": 41031, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
 	})
 	检(引擎._await_id == 1, "选完支付方式后应继续问【熵变】的目标（等待 %s）" % str(引擎._await_id))
 	var 熵变目标问: Dictionary = _取询问(1, 4103)
@@ -558,16 +558,16 @@ func 跑() -> void:
 	发送记录.clear()
 	_打一张圣盾()
 	检(引擎._await_id == 1, "第 3 次行动结束应问【熵变】（等待 %s）" % str(引擎._await_id))
-	检((_取询问(1, 4103).get("option_enabled", []) as Array) == [false, true],
+	检((_取询问(1, 41031).get("option_enabled", []) as Array) == [false, true],
 		"只有队友有能量时，我方宝石项应置灰")
-	var 支付问: Dictionary = _取询问(1, 4103)
+	var 支付问: Dictionary = _取询问(1, 41031)
 	检((支付问.get("dst_ids", []) as Array) == [队友.id],
 		"支付询问应把有能量的队友列入可点头像：%s" % str(支付问.get("dst_ids", [])))
 	检((支付问.get("option_need_targets", []) as Array) == [0, 1],
 		"「队友能量」选项应自带需目标 1：%s" % str(支付问.get("option_need_targets", [])))
 	var 队友手牌前: int = 队友.hand_cards.size()
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4103, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [队友.id],
+		"respond_id": 41031, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [队友.id],
 	})
 	检(引擎._await_id == 1, "选完支付来源与队友后应继续问【熵变】的 2 名目标对手")
 	var 目标问: Dictionary = _取询问(1, 4103)
@@ -600,7 +600,7 @@ func 跑() -> void:
 	玩家.magic_action_count = 1
 	发送记录.clear()
 	_打一张圣盾()
-	var 客户端支付问: Dictionary = _取询问(1, 4103)
+	var 客户端支付问: Dictionary = _取询问(1, 41031)
 	检(not 客户端支付问.is_empty(), "客户端用例：应先下发【熵变】支付询问")
 	引擎._清空等待()
 	Logic.my_player_id = 1
@@ -617,6 +617,19 @@ func 跑() -> void:
 	await 等帧(1)
 	检(not bool(窗.call("_确定不可用")), "点了队友后应可确定")
 	检((窗.get("_sel_players") as Array) == [队友.id], "应只选中被点的那名队友")
+	# 支付询问（内部号 41031）只是选支付来源：队友头像不能画「1 法术伤害」；
+	# 敌人询问（4103）才挂伤害提示
+	检((窗.call("_头像提示配置") as Dictionary).is_empty(),
+		"熵变支付询问不应给队友画伤害提示：%s" % str(窗.call("_头像提示配置")))
+	var 敌人问: Dictionary = {
+		"respond_id": GConst.技能_熵变, "src_id": 1, "is_skill": true,
+		"args": [0, 2, GConst.CardSource.Hand, 0], "dst_ids": [3, 4],
+		"card_ids": [], "ask_text": "选择最多 2 名目标对手",
+	}
+	窗.call("_on_command", {"cmd_type": GConst.CmdType.Respond, "commands": [敌人问]})
+	await 等帧(1)
+	检(str((窗.call("_头像提示配置") as Dictionary).get("文案", "")) == "%d 法术伤害",
+		"熵变选敌人时应挂「%%d 法术伤害」头像提示：%s" % str(窗.call("_头像提示配置")))
 	窗.queue_free()
 	await 等帧(1)
 
@@ -628,7 +641,7 @@ func 跑() -> void:
 	发送记录.clear()
 	_打一张圣盾()
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4103, "src_id": 1, "args": [0], "card_ids": [], "dst_ids": [],
+		"respond_id": 41031, "src_id": 1, "args": [0], "card_ids": [], "dst_ids": [],
 	})
 	检(int(引擎.team_gem[GConst.BLUE]) == 1, "取消【熵变】不应扣我方宝石")
 	检(对手甲.hand_cards.is_empty() and 对手乙.hand_cards.is_empty(), "取消【熵变】不应造成伤害")
@@ -753,10 +766,10 @@ func 跑() -> void:
 	引擎.行动额外来源 = 9001
 	发送记录.clear()
 	_打一张圣盾()
-	检(not _取询问(1, 4103).is_empty(), "第 3 次（额外）行动结束应先问【熵变】")
+	检(not _取询问(1, 41031).is_empty(), "第 3 次（额外）行动结束应先问【熵变】")
 	检(_取询问(1, 4104).is_empty(), "【熵变】的选择还没完成时不应先问【魔力熵增】")
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4103, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
+		"respond_id": 41031, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
 	})
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [3, 4],
