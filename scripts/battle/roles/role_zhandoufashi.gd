@@ -23,8 +23,6 @@ extends BattleRole
 const FU_WEN_ZHI_HUAN: int = 4101      # 符文置换（法术 / 回合限定）
 const FU_MO_DA_JI: int = 4102          # 附魔打击（响应 / 回合限定）
 const SHANG_BIAN: int = 4103           # 熵变（响应）
-## 4103 支付选项里「消耗某名队友能量」的取值偏移：值＝偏移＋队友 id（1 仍是战绩区宝石）
-const 熵变队友选项偏移: int = 1000
 const MO_LI_SHANG_ZENG: int = 4104     # 魔力熵增（响应 / 必杀技 / 水晶）
 
 ## 4101【符文置换】本回合是否已发动（技能名带【回合限定】）
@@ -239,7 +237,8 @@ func p_action_end(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 4103 熵变：本回合第 3 次行动结束时，先选支付来源，再选 2 名目标对手
+## 4103 熵变：本回合第 3 次行动结束时，先选支付来源，再（走队友能量时）点队友头像选人，
+## 最后选 2 名目标对手
 func _处理_shang_bian(ctx: Dictionary) -> int:
 	if _shang_bian_step >= STEP_DONE:
 		return SUCCESS
@@ -259,27 +258,33 @@ func _处理_shang_bian(ctx: Dictionary) -> int:
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
-		var 值: int = int(args[0]) if not args.is_empty() else 0
-		if 值 == 1:
-			if not _shang_bian可支付(1):
-				_shang_bian_step = STEP_DONE
-				return SUCCESS
-			_shang_bian_支付方式 = 1
-			_shang_bian_队友 = -1
-		elif 值 >= 熵变队友选项偏移:
-			# 消耗队友能量：选项值里带了是哪名队友（由玩家自己选，见 _shang_bian支付选项）
-			var pid: int = 值 - 熵变队友选项偏移
-			var p0: BattlePlayer = engine.p(pid)
-			if p0 == null or p0.get_energy() < 1 or not ally_ids().has(pid):
-				_shang_bian_step = STEP_DONE
-				return SUCCESS
-			_shang_bian_支付方式 = 2
-			_shang_bian_队友 = pid
-		else:
+		var 方式: int = int(args[0]) if not args.is_empty() else 0
+		if (方式 != 1 and 方式 != 2) or not _shang_bian可支付(方式):
 			_shang_bian_step = STEP_DONE
 			return SUCCESS
-		_shang_bian_step = 2
-	if _shang_bian_step != 2:
+		_shang_bian_支付方式 = 方式
+		_shang_bian_队友 = -1
+		# 消耗队友能量：多一步「点头像选哪名队友」；宝石支付直接进目标选择
+		_shang_bian_step = 2 if 方式 == 2 else 3
+	# 消耗队友能量：点队友头像选人（白名单＝有能量的队友，客户端只亮这几个头像）
+	if _shang_bian_step == 2:
+		var 候选: Array[int] = _shang_bian队友们()
+		if _shang_bian_支付方式 != 2 or 候选.is_empty():
+			_shang_bian_step = STEP_DONE
+			return SUCCESS
+		if not engine.has_reply():
+			engine.ask_skill(player.id, SHANG_BIAN, 0, 1, GConst.CardSource.Hand, [], 0, "",
+				[], true, "选择 1 名有能量的队友", 候选)
+			return WAIT
+		var r队友: Dictionary = take_skill_reply_full()
+		var dsts: Array = r队友.get("dst_ids", [])
+		var 队友id: int = int(dsts[0]) if not dsts.is_empty() else -1
+		if not 候选.has(队友id):
+			_shang_bian_step = STEP_DONE
+			return SUCCESS
+		_shang_bian_队友 = 队友id
+		_shang_bian_step = 3
+	if _shang_bian_step != 3:
 		return SUCCESS
 	var 目标数: int = mini(2, enemy_ids().size())
 	if 目标数 <= 0:
@@ -327,17 +332,13 @@ func _shang_bian队友们() -> Array[int]:
 	return out
 
 
-## 二级选项：战绩区宝石一条；每名「有能量的队友」各一条 —— 值＝偏移 + 队友 id，
-## 玩家点谁就消耗谁的能量（不再替玩家默认拿第一个队友）。做不了的项只置灰、不删项。
+## 二级选项：固定两项都下发，当前做不了的标 enabled=false 置灰（不删项）。
+## 具体消耗哪名队友的能量不在选项里选 —— 选完「队友能量」后再点队友头像选人（见 _处理_shang_bian）。
 func _shang_bian支付选项() -> Array:
-	var out: Array = [{"value": 1, "label": "我方战绩区 1【宝石】", "enabled": _shang_bian可支付(1)}]
-	for pid: int in _shang_bian队友们():
-		var p0: BattlePlayer = engine.p(pid)
-		out.append({
-			"value": 熵变队友选项偏移 + pid, "enabled": true,
-			"label": "消耗 %s 1【能量】" % engine._称号(p0),
-		})
-	return out
+	return [
+		{"value": 1, "label": "我方战绩区 1【宝石】", "enabled": _shang_bian可支付(1)},
+		{"value": 2, "label": "队友 1【能量】", "enabled": _shang_bian可支付(2)},
+	]
 
 
 func _支付_shang_bian代价() -> bool:
