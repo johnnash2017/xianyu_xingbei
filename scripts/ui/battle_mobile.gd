@@ -7390,6 +7390,12 @@ func _预览伤害头像提示() -> Dictionary:
 	var 目标表: Array = _pending.get("preview_ids", [])
 	if 目标表.is_empty():
 		目标表 = _pending.get("dst_ids", [])
+	# 选目标的询问：只在「已点选」的目标头像上画（与技能指示器同一套体验），
+	# 不给每个候选人都画一遍 ——【元素射击】水/地命中后选目标就是这条
+	if _skill_ask_need_target > 0:
+		if _sel_players.is_empty():
+			return out
+		目标表 = _sel_players.duplicate()
 	if 目标表.is_empty():
 		return out
 	var 类型: int = int(_pending.get("preview_kind", 0))

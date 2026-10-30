@@ -863,12 +863,22 @@ func 跑() -> void:
 			GConst.技能_二重剑影, GConst.ActionType.Attack, GConst.CardElement.Wind)))
 	窗.set("_mode", 3)
 	窗.set("_skill_ask_id", GConst.技能_元素射击SORA)
+	窗.set("_skill_ask_need_target", 1)
 	窗.set("_pending", {"preview_base": 1, "preview_kind": GConst.预览类型_治疗, "preview_ids": [1, 2]})
+	窗.set("_sel_players", [] as Array[int])
+	检((窗.call("_预览伤害头像提示") as Dictionary).is_empty(),
+		"还没选目标时不应给每个候选人画治疗预览")
+	窗.set("_sel_players", [2] as Array[int])
 	var 提示: Dictionary = 窗.call("_预览伤害头像提示")
-	检(str(提示.get(1, "")) == "+1 治疗", "水系选目标应预览「+1 治疗」：%s" % str(提示))
+	检(str(提示.get(2, "")) == "+1 治疗" and not 提示.has(1),
+		"只应在点选的目标头像上预览「+1 治疗」：%s" % str(提示))
 	窗.set("_pending", {"preview_base": 1, "preview_kind": GConst.HarmType.Magic, "preview_ids": [1]})
+	窗.set("_sel_players", [1] as Array[int])
 	提示 = 窗.call("_预览伤害头像提示")
 	检(str(提示.get(1, "")) == "1 点法术伤害", "地系选目标应预览「1 点法术伤害」：%s" % str(提示))
+	窗.set("_sel_players", [] as Array[int])
+	检((窗.call("_预览伤害头像提示") as Dictionary).is_empty(),
+		"取消选中后不应再画伤害预览")
 	窗.queue_free()
 	await 等帧(1)
 

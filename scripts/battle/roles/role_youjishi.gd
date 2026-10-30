@@ -278,12 +278,12 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not engine.has_reply():
 		# 直接问「选 1 名角色」（水系提示 3 / 地系提示 4），目标不限敌我。
-		# 头像预览：水系 +1 治疗、地系 1 点法术伤害，画在所有候选角色头上
+		# 头像预览：水系 +1 治疗、地系 1 点法术伤害 —— 客户端只在「已点选」的目标头像上画
+		# （与技能指示器同一套体验），不给每个候选人都画一遍
 		询问(player.id, YUAN_SU_SHE_JI, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 			2 if _子弹系别 == GConst.CardElement.Water else 3,
 			-1, [], -1, {}, 1,
-			GConst.预览类型_治疗 if _子弹系别 == GConst.CardElement.Water else GConst.HarmType.Magic,
-			false, _全部角色())
+			GConst.预览类型_治疗 if _子弹系别 == GConst.CardElement.Water else GConst.HarmType.Magic)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var 目标: int = int(harm.get("dst", -1))
@@ -418,11 +418,3 @@ func _取手牌(ids: Array) -> int:
 func _牌系别(card_id: int) -> int:
 	var card: GCard = Data.get_card(card_id)
 	return card.element_enum() if card != null else 0
-
-
-## 全部角色 id（3802 水 / 地选目标时，头像预览画在所有候选角色头上）
-func _全部角色() -> Array:
-	var out: Array = []
-	for pid: int in engine.players:
-		out.append(pid)
-	return out
