@@ -282,12 +282,16 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		if card == null or not card.is_attack() or not engine.deck.discard.has(cid2):
 			ctx[KEY_YI_XIANG_STEP] = STEP_DONE
 			return SUCCESS
+		# 攻击牌：额外 +1【攻击行动】**与是否获得无关**（"获得该牌"只是可选的那一半效果），
+		# 所以在这里就先挂上，再去问要不要把牌拿走。
+		player.add_action(GConst.ActionType.Attack, YI_XIANG_JIAN, true, true)
+		engine._broadcast_game()
 		ctx[KEY_YI_XIANG_STEP] = YI_XIANG_STEP_ASK_OBTAIN
 		阶段 = YI_XIANG_STEP_ASK_OBTAIN
 	if 阶段 == YI_XIANG_STEP_ASK_OBTAIN:
 		var cid3: int = int(ctx.get(KEY_YI_XIANG_CARD, -1))
 		if not engine.has_reply():
-			# 两个选项：获得这张攻击牌 / 不获得。
+			# 两个选项：获得这张攻击牌 / 不获得。额外 +1【攻击行动】在上一步已经给过，与这里的选择无关。
 			# card_id 只用于客户端悬停选项时摊出牌面（同剑之子【剑守誓言】），服务端按选项值结算。
 			# 取消或超时都按「不获得」：空 args 时 take_skill_reply() 返回 false。
 			var 弃牌: GCard = Data.get_card(cid3) if cid3 >= 0 else null
@@ -298,7 +302,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			], 0, "", [], true, 1)
 			return WAIT
 		ctx[KEY_YI_XIANG_STEP] = STEP_DONE
-		# 只有选项 1（获得）才算拿到；选项 2、取消、超时都不获得
+		# 只有选项 1（获得）才算拿到牌；选项 2、取消、超时都不获得（额外行动不受影响）
 		if not take_skill_reply():
 			return SUCCESS
 		# 弃牌堆按实例号取出（同牌面可能有副本）：拿到实际那一份再入手，不能删完再拿牌号补一张
@@ -306,7 +310,6 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		if 实例 < 0:
 			return SUCCESS
 		player.add_hand_cards([实例])
-		player.add_action(GConst.ActionType.Attack, YI_XIANG_JIAN, true, true)
 		engine._broadcast_game()
 	return SUCCESS
 
