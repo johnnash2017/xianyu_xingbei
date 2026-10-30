@@ -180,6 +180,10 @@ func p_attack_preview(_ctx: Dictionary) -> int: return 0
 # ============================================================
 # 牌类校验覆写（返回 V_NOT_OVERRIDE 表示不覆写，退回通用实现）
 # 想「通用校验 + 追加限制」时，先调 player.base_v_xxx(...) 再判断
+# 注意：v_* 是纯校验，不得扣资源、不得置「本回合已用 / 形态」这类结算标记 ——
+# 引擎除了在真正落子前问它，还会在「响应里点红色额外攻击按钮」时用它做预校验
+# （BattleEngine._选择额外攻击响应），预校验里改状态会让那份额外行动当场变成不可发动。
+# 扣费放 resolve_action_end_option / p_additional_action，标记放 p_* 钩子。
 # ============================================================
 func v_allow_action(_action_type: int, _args: Array, _allow: int, _can_give_up: bool) -> int: return V_NOT_OVERRIDE
 func v_unactional() -> int: return V_NOT_OVERRIDE
@@ -208,7 +212,6 @@ func v_attacked() -> int: return V_NOT_OVERRIDE
 ## 例：4601「你无法成为基础效果的目标」→ 返回 GConst.GE_INVALID_PLAYERID。
 ## 注意：这只挡「成为目标」，不阻止已经在自己面前的基础效果继续生效。
 func v_basic_effect_target(_dst: BattlePlayer, _card_id: int) -> int: return GConst.GE_SUCCESS
-func v_additional_action(_cause: int) -> int: return V_NOT_OVERRIDE
 ## 行动结束时的最高优先级结算：在其它角色的普通 p_after_attack / p_after_magic
 ## 以及额外行动响应之前执行（如格斗家念弹必须先结算完）。
 func has_priority_action_end() -> bool:
@@ -226,8 +229,9 @@ func 行动结束来源(ctx: Dictionary) -> Array:
 
 
 ## 角色在「行动聚合器」里登记的可选行动；只给描述，不负责发询问。
-## 默认把队列里「角色声明为行动结束响应」的额外行动也作为选项返回，
+## 默认把队列里「声明为行动结束响应」的额外行动也作为选项返回（in_end_response 由授予它的技能写进行动规格），
 ## 这样角色不必同时维护 action_end_options 和队列两套来源。
+## 排序（_sort）：额外行动在最前（队列额外行动 0 → 基础效果 1），角色响应技能在后（2）。
 func action_end_options(_ctx: Dictionary) -> Array:
 	var out: Array = []
 	if player == null:
@@ -236,16 +240,11 @@ func action_end_options(_ctx: Dictionary) -> Array:
 		if bool(a.get("direct", false)):
 			continue
 		var cause: int = int(a.get("cause", 0))
-		if cause <= 0:
+		if cause <= 0 or not bool(a.get("in_end_response", false)):
 			continue
-		if not 额外行动属于结束响应(cause):
-			continue
-		var 可用: bool = true
-		if engine != null:
-			可用 = engine.额外行动可发动(player, cause)
 		out.append({
 			"value": cause, "label": GConst.skill_name(cause), "skill_id": cause,
-			"enabled": 可用, "_kind": "extra", "_sort": 1,
+			"enabled": true, "_kind": "extra", "_sort": 0,
 		})
 	return out
 
@@ -256,51 +255,38 @@ func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary)
 
 
 ## 队列里已获得、但还没确认的额外行动的默认处理：扣费后标 direct。
+## 一定要找**队列里**那一份（额外行动队列数据），不能用 额外行动数据()：后者优先返回
+## 引擎的「当前额外行动数据」—— 上一个同来源的行动用完后那份数据还留着，
+## 会把新入队的这一份顶掉，结果新行动一直没标 direct、响应结束又把它当选项问一次
+## （血色剑灵【赤色一闪】连续两次踩过：确认第二次时会再弹一次相同的询问）。
 func resolve_queued_extra_action(cause: int) -> int:
 	var rc: int = 行动结束确认代价(cause)
 	if rc == SUCCESS or rc == URGENT:
-		for i: int in range(player.additional_actions.size()):
-			if int(player.additional_actions[i].get("cause", 0)) == cause:
-				player.additional_actions[i]["direct"] = true
-				break
+		# 只找「还没确认」的那一份：同一来源可能已经有一份确认过、还没用掉排在前头
+		# （迅捷赐福的行动先确认、赤色一闪后确认；前一份没用掉时下一轮又入队一份新的）。
+		var 数据: Dictionary = player.额外行动队列数据(cause, true)
+		if not 数据.is_empty():
+			数据["direct"] = true
+			# 代价已在响应里付过：取消响应后进额外行动阶段使用这份行动时不能再扣一次
+			数据["已付费"] = true
 	else:
 		# 付不起 / 条件不满足：这份行动不再保留，避免以后绕过 confirm 免费进入
-		for i: int in range(player.additional_actions.size()):
-			if int(player.additional_actions[i].get("cause", 0)) == cause:
-				player.additional_actions.remove_at(i)
-				break
+		player.撤回额外行动(cause)
 	return rc
 
 
 ## 在「行动结束响应」里确认使用某份额外行动时立即结算费用（方案 A：点选即付）。
 ## 返回 SUCCESS / URGENT；默认无费用。真正进入行动时仍走 p_additional_action 结算效果。
+## 这是**技能自己的**费用逻辑（如剑帝【不屈意志】扣能量、兽灵【一击无念】扣残心），
+## 引擎只提供确认时机，不认识具体技能号。
 func 行动结束确认代价(_cause: int) -> int:
 	return SUCCESS
 
 
-## 这份额外行动是否属于「行动结束响应」：为 true 时，引擎在攻击/法术结束钩子跑完后
-## 把它和迅捷赐福等基础效果额外行动合并成一次响应列表；默认 false，只有明确需要提前确认的角色覆写。
-func 额外行动属于结束响应(_cause: int) -> bool:
-	return false
-
-
-## 这份额外行动能不能在选牌阶段切换到别的额外行动（默认可以；有「选中代价」的角色覆写为 false）
-func extra_action_switchable(_cause: int) -> bool: return true
-## 这份额外攻击行动是否限定某一系（CardElement；0＝不限）。客户端据此把按钮写成「额外X系【攻击行动】」。
-## 角色只需覆写 额外行动限定系()，这里的通用逻辑会按它给系别、白名单和出牌校验。
-func extra_action_element(cause: int) -> int:
-	return 额外行动限定系(cause)
-
-
-## 本角色某份额外行动限定的牌系；0＝不限。剑圣 103＝风、魔剑士 901＝火。
-func 额外行动限定系(_cause: int) -> int:
-	return 0
-
-
-## 按「额外行动限定系」筛出手里能用的攻击牌；一张都没有时返回「全禁」白名单。
-func 额外行动系攻击牌(cause: int) -> Array:
-	var 系: int = 额外行动限定系(cause)
-	if 系 <= 0:
+## 手牌里指定系别的攻击牌（给「限定系别」的额外攻击行动算白名单用）。
+## 一张都没有时返回「全禁」白名单：空表会被引擎当成「不限制」，界面会把手牌全点亮。
+func 按系攻击牌(系: int) -> Array:
+	if player == null or 系 <= 0:
 		return []
 	var out: Array = []
 	for cid: int in player.hand_cards:
@@ -309,16 +295,6 @@ func 额外行动系攻击牌(cause: int) -> Array:
 			out.append(cid)
 	return out if not out.is_empty() else [GConst.手牌白名单_全禁]
 
-
-## 通用出牌校验：这份额外行动限定了系别时，攻击牌必须同系；未限定则不管。
-func 校验额外行动限系(cause: int, card_id: int) -> int:
-	var 系: int = 额外行动限定系(cause)
-	if 系 <= 0:
-		return GConst.GE_SUCCESS
-	var c: GCard = Data.get_card(card_id)
-	if c == null or not c.is_attack() or c.element_enum() != 系:
-		return GConst.GE_INVALID_ACTION
-	return GConst.GE_SUCCESS
 
 ## 梦想剑（4503）本回合当前档位：0=未启用 / 1=无视圣盾 / 2=对方无法应战 / 3=强制命中。
 ## 供客户端角色说明把梦想剑那一行标绿（45 / 108 覆写），默认 0。
@@ -362,27 +338,20 @@ func is_free_skill(_skill_id: int) -> bool:
 	return false
 
 
-## 本阶段「普通行动」（非技能，如直接打出手牌）能用的手牌白名单（空＝不限制）。
-## 如【修罗连斩】的额外攻击行动期间只能出火系攻击牌，界面据此把其余牌置灰
-func action_card_ids(_action_type: int) -> Array:
-	return []
+## 技能本体压入状态并返回 URGENT 之后，结算完还要不要重新进入技能本体接着做。
+## 默认 false：引擎按「技能已经执行完」收尾（直接压 p_after_* / 行动结束）。
+## 需要「中间插一段必须等状态结算的事、之后再继续」的多步技能按 action_id 返回 true ——
+## 典型是「摸牌可能把手牌摸超限」：摸完要先压 SHandOverflow 让玩家弃牌 / 掉士气，
+## 回来还得接着选目标 / 结算（如 7802 魔法入门、10601 别烦我……）。
+## 返回 true 的场景：技能本体要把当前步骤推进到下一步再返回 URGENT，否则重入会重复执行刚做过的事。
+## 只对声明过的技能号生效：同一个角色的其它技能返回 URGENT 仍按「执行完」处理。
+func 技能URGENT后重入(_action: Dictionary = {}) -> bool:
+	return false
 
 
-## 额外行动的「出牌限制」（F2，可覆写）：本份额外行动（cause）允许使用的手牌白名单；
-## 空数组＝不限制（退回 action_card_ids，兼容剑圣 103 那类老实现）。引擎在 action_commands 里
-## 下发给客户端（其余手牌置灰），并在普通攻击 / 法术以及技能行动落牌时兜底校验。
-## action_type 是本次行动阶段放行的行动种类（GConst.ActionType.Attack / Magic / …）。
-## 「本次一张牌都不允许」要返回 [GConst.手牌白名单_全禁]（空表会被当成「没配」）。
-## 例：4501 只允许「技类」攻击牌、3803 只允许与本次攻击同系的攻击牌、10702 只允许【魔弹】。
-func extra_action_card_ids(_cause: int, _action_type: int) -> Array:
-	return []
-
-
-## 额外行动的「目标限制」（F2，可覆写）：本份额外行动（cause）允许选择的目标；空数组＝不限制。
-## 引擎在 action_commands 里下发（dst_ids），并在普通攻击 / 技能行动时兜底校验。
-## 按「当前状态」现算（如 10704 比较双方手牌数、10804 只允许指定目标），不要缓存结果。
-func extra_action_targets(_cause: int) -> Array:
-	return []
+## 额外行动的「出牌 / 目标限制」不再由角色按 cause 提供：授予行动时用 spec 写进那份行动
+## （见 BattlePlayer.add_action 的 cards / targets / element），引擎照单执行。
+## 技能自己算白名单可用下面的 helper（按系攻击牌），或直接遍历 player.hand_cards。
 
 
 ## 引擎按名字调用钩子

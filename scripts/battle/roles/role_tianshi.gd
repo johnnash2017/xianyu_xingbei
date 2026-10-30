@@ -275,10 +275,18 @@ func _tian_shi_zhu_fu(action: Dictionary) -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var want: int = mini(每人张数, t.hand_cards.size())
 	var chosen: Array = _pick_cards(t, r.get("card_ids", []), want)
+	# 移动要带实例号：从目标手里取出实际那一份再交给天使，不能拿牌号重新发一张
+	var 实例: Array = []
+	for c: Variant in chosen:
+		var 号: int = t.取出一张手牌(int(c))
+		if 号 >= 0:
+			实例.append(号)
+	if 实例.is_empty():
+		step += 1
+		return _tian_shi_zhu_fu(action)
 	# 交牌不公开亮牌：交/接双方在日志里看到具体牌名，其他人只看到张数（与水之神力给牌同一处理）
-	engine._log_give_cards(t.id, player.id, chosen)
-	engine.take_from_hand(t.id, chosen)
-	player.add_hand_cards(chosen)
+	engine._log_give_cards(t.id, player.id, 实例)
+	player.add_hand_cards(实例)
 	engine._broadcast_game()
 	step += 1
 	return _tian_shi_zhu_fu(action)

@@ -217,6 +217,10 @@ func _pan_jue_tian_ping(action: Dictionary) -> int:
 		var need: int = player.hand_cards_max - player.hand_cards.size()
 		if need > 0:
 			engine.push_draw(player.id, need)
+			engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
+			engine._broadcast_game()
+			# 摸牌延迟结算：压了就必须 URGENT，先补完手牌再压行动结束响应
+			return URGENT
 		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 	engine._broadcast_game()
 	return SUCCESS

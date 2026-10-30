@@ -240,7 +240,9 @@ func p_after_magic(ctx: Dictionary) -> int:
 func _jie_jiao_jie_zao(pid: int) -> int:
 	if pid != player.id or not player.tap or player.get_energy() < 1:
 		return SUCCESS
-	player.add_action(GConst.ActionType.AttackMagic, JIE_JIAO_JIE_ZAO)
+	player.add_action(GConst.ActionType.AttackMagic, JIE_JIAO_JIE_ZAO, false, false, {
+		"in_end_response": true,
+	})
 	return SUCCESS
 
 
@@ -249,11 +251,6 @@ func _jie_jiao_jie_zao(pid: int) -> int:
 # （引擎已在选中时广播该额外行动的技能宣告，此处不再重复）
 # ============================================================
 
-
-
-## 戒骄戒躁属于行动结束响应，和迅捷赐福合并成一次询问
-func 额外行动属于结束响应(cause: int) -> bool:
-	return cause == JIE_JIAO_JIE_ZAO
 
 
 ## 行动结束响应点选戒骄戒躁时立即扣 1 能量（方案 A）

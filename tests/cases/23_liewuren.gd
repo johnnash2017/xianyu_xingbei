@@ -119,6 +119,26 @@ func 跑() -> void:
 	角色.p_timeline_1({"src": 1, "dst": 2, "is_active": true, "harm": {}})
 	检(猎.cover_cards.size() == 1, "狩魔刺弃牌应成为 1 个【魔力瓶】")
 
+	# 狩魔刺：目标超时（空回复）也必须弃 1 张、照样成瓶
+	引擎._states.clear()
+	引擎._清空等待()
+	猎.cover_cards.clear()
+	靶.hand_cards.clear()
+	for i: int in range(3):
+		靶.hand_cards.append(int(Data.card_db[i].id))
+	角色._shou_step = 0
+	var 刺前手牌: int = 靶.hand_cards.size()
+	角色.p_timeline_1({"src": 1, "dst": 2, "is_active": true, "harm": {}})
+	引擎._reply = {"args": [1], "card_ids": [], "dst_ids": []}
+	引擎._has_reply = true
+	角色.p_timeline_1({"src": 1, "dst": 2, "is_active": true, "harm": {}})
+	引擎._reply = {"args": [], "card_ids": [], "dst_ids": [], "is_timeout": true}
+	引擎._has_reply = true
+	角色.p_timeline_1({"src": 1, "dst": 2, "is_active": true, "harm": {}})
+	检(靶.hand_cards.size() == 刺前手牌 - 1,
+		"狩魔刺目标超时应自动补弃 1 张（%d → %d）" % [刺前手牌, 靶.hand_cards.size()])
+	检(猎.cover_cards.size() == 1, "狩魔刺目标超时也应拿到 1 个【魔力瓶】")
+
 	# 灌银毒刃：移除 1 瓶，伤害 -1，瓶入目标手牌，自己 +1 水晶
 	引擎._states.clear()
 	引擎._清空等待()
@@ -203,6 +223,26 @@ func 跑() -> void:
 	角色.p_timeline_2_hit({"src": 1, "dst": 2, "is_active": true, "harm": {}})
 	检(猎.cover_cards.size() == 1, "法术剥离弃牌应成为 1 个魔力瓶")
 
+	# 法术剥离：目标超时（空回复）也必须弃 1 张、照样成瓶
+	猎.cover_cards.clear()
+	靶.hand_cards.clear()
+	for i: int in range(3):
+		靶.hand_cards.append(int(Data.card_db[i].id))
+	引擎._states.clear()
+	引擎._清空等待()
+	角色._boshi_step = 0
+	var 剥前手牌: int = 靶.hand_cards.size()
+	角色.p_timeline_2_hit({"src": 1, "dst": 2, "is_active": true, "harm": {}})
+	引擎._reply = {"args": [1], "card_ids": [], "dst_ids": []}
+	引擎._has_reply = true
+	角色.p_timeline_2_hit({"src": 1, "dst": 2, "is_active": true, "harm": {}})
+	引擎._reply = {"args": [], "card_ids": [], "dst_ids": [], "is_timeout": true}
+	引擎._has_reply = true
+	角色.p_timeline_2_hit({"src": 1, "dst": 2, "is_active": true, "harm": {}})
+	检(靶.hand_cards.size() == 剥前手牌 - 1,
+		"法术剥离目标超时应自动补弃 1 张（%d → %d）" % [剥前手牌, 靶.hand_cards.size()])
+	检(猎.cover_cards.size() == 1, "法术剥离目标超时也应拿到 1 个魔力瓶")
+
 	# 同系追加：伤害后单独选目标
 	引擎._states.clear()
 	引擎._清空等待()
@@ -213,3 +253,57 @@ func 跑() -> void:
 	引擎._has_reply = true
 	角色.p_touxi_same({"player": 1})
 	检(not 引擎._states.is_empty(), "偷袭同系追加应压入 1 点法术伤害")
+
+	# 偷袭（4205）走聚合器并真正结算：收到 2 张盖牌后要扣能量、移除魔力瓶、继续问追加目标。
+	# 缺陷背景：客户端只认指示器「攻击结束二选一」配置，偷袭没配 → 选中后牌点不动、
+	# 空手点「确定」→ `_touxi_process_cards` 拿不到牌，技能静默失败。
+	var 法2: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.is_magic() and c.id != 法术.id:
+			法2 = c
+			break
+	if 法2 != null:
+		猎.cover_cards = [法术.id, 法2.id] as Array[int]
+		猎.set_gem(0)
+		猎.set_crystal(1)
+		靶.cross_num = 2
+		# 同时挂一张迅捷赐福：偷袭的伤害没结算完，不能先把「是否发动迅捷赐福」问出来
+		var 赐福牌23: GCard = null
+		for c2: GCard in Data.card_db:
+			if c2 != null and not c2.is_virtual and c2.has_skill_id(GConst.技能_迅捷赐福):
+				赐福牌23 = c2
+				break
+		if 赐福牌23 != null:
+			引擎.add_basic_effect(1, 赐福牌23.id, 2, GConst.技能_迅捷赐福)
+		角色._used_touxi = false
+		角色._touxi_step = 0
+		引擎._states.clear()
+		引擎._清空等待()
+		引擎.current_id = 1
+		引擎._push_action_end_hooks("p_after_attack", {"player": 1, "dst": 2}, false, 0)
+		引擎.run()
+		var 偷袭结算问: Dictionary = {}
+		for r: Dictionary in 引擎._最后询问.get(1, {}).get("commands", []):
+			if (r.get("args", []) as Array).has(4205):
+				偷袭结算问 = r
+		检(not 偷袭结算问.is_empty(), "攻击结束响应里应摆出【偷袭】选项")
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": 4205, "src_id": 1, "args": [4205],
+			"card_ids": [法术.id, 法2.id], "dst_ids": [],
+		})
+		引擎.run()
+		检(猎.get_energy() == 0, "偷袭应支付 1 点能量，实际剩余 %d" % 猎.get_energy())
+		检(猎.cover_cards.is_empty(), "偷袭应移除选的 2 个魔力瓶：%s" % str(猎.cover_cards))
+		检(bool(角色._used_touxi), "偷袭结算后应标记本回合已用")
+		检(引擎._await_id == 1 and int(引擎._pending_respond_id) == 4205,
+			"两张法术牌应继续询问 X 名追加目标（await=%s respond=%s）"
+			% [str(引擎._await_id), str(引擎._pending_respond_id)])
+		# 目标选完：必须先把 1 点法术伤害结算掉（等受伤者用治疗抵挡），
+		# 不能先弹迅捷赐福 —— 技能本体压了状态就要返回 URGENT，让聚合器挂起
+		引擎.on_message(1, GConst.Msg.Respond, {
+			"respond_id": 4205, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [2],
+		})
+		引擎.run()
+		检(int(引擎._await_id) == 2,
+			"偷袭的伤害应先结算（应等受伤者用治疗抵挡），实际等待 %s（询问号 %s）"
+			% [str(引擎._await_id), str(引擎._pending_respond_id)])

@@ -17,9 +17,6 @@ const JUN_SHEN_WEI_GUANG: int = 2504
 const YING_LING_ZHAO_HUAN: int = 2505
 
 
-## 本回合是否已授予过「神圣追击」（服务端 added_SHEN_SHENG_ZHUI_JI）
-var added_shen_sheng_zhui_ji: bool = false
-
 ## 军神威光的推进阶段：两段询问 ——
 ##   0                              ＝ 还没开始（进第 1 段问「选项① 还是 选项②」）
 ##   JUN_SHEN_JIEDUAN_XUAN_XING_SHI ＝ 第 2 段：选「移除哪几个星石（组合）」+ 点一名目标 +X【治疗】
@@ -33,7 +30,6 @@ func available_skills() -> Array:
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
-	added_shen_sheng_zhui_ji = false
 	_jun_shen_链中 = false
 	return SUCCESS
 
@@ -75,10 +71,11 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 ## 第 1 段：问「选项① 还是 选项②」。不能取消（客户端「取消」键灰掉）；整条链超时＝自动选选项①。
 func _jun_shen_wen_guo_ju() -> int:
 	if not engine.has_reply():
-		# 提示里的 {取消说明} 留空：这一段不能取消，也不提供返回按钮。
+		# 提示条不写「二选一，选好后点确定」这类操作说明：这一段不传技能表提示（序号 -1），
+		# 客户端按「被动技能」的默认口径显示技能说明（说明列已经写清两个选项）。
 		# 保留倒计时＝已在链中就沿用最早的截止时刻（从第 2 段退回来重问时不重新计时）
 		询问(player.id, JUN_SHEN_WEI_GUANG, 0, 0, GConst.CardSource.Hand, _jun_shen_wei_guang_choices(),
-			0, "", [], false, 0, -1, [], -1, {"取消说明": ""}, 0, 0, _jun_shen_链中)
+			0, "", [], false, -1, -1, [], -1, {}, 0, 0, _jun_shen_链中)
 		_jun_shen_链中 = true
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
@@ -280,26 +277,27 @@ func p_after_magic(ctx: Dictionary) -> int:
 
 
 ## 神圣追击：攻击/法术结束后治疗≥1 时授予一次额外攻击行动
-## 只挂行动并置回合内的「已授予」标记，扣治疗与技能通知在玩家选中时结算
+## 只挂行动（in_end_response＝本次响应里的选项），扣治疗与技能通知在玩家选中时结算。
+## 队列里已经有这一份就不再加：确认过的会标 direct 并留在队列里直到被使用，
+## 响应里没确认的由引擎在响应结束时撤回（见 BattleEngine._撤回未确认额外行动），
+## 所以不需要额外的「本回合已授予」标记 —— 撤回之后下一次行动结束就能重新摆出来。
 func _shen_sheng_zhui_ji(pid: int) -> int:
-	if pid != player.id or player.cross_num < 1 or added_shen_sheng_zhui_ji:
+	if pid != player.id or player.cross_num < 1:
 		return SUCCESS
-	player.add_action(GConst.ActionType.Attack, SHEN_SHENG_ZHUI_JI)
-	added_shen_sheng_zhui_ji = true
+	if not player.额外行动队列数据(SHEN_SHENG_ZHUI_JI).is_empty():
+		return SUCCESS
+	player.add_action(GConst.ActionType.Attack, SHEN_SHENG_ZHUI_JI, false, false, {
+		"in_end_response": true,
+	})
 	return SUCCESS
 
 
 # ============================================================
 # 玩家选中额外行动时：结算神圣追击的代价（-1 治疗）
-# 引擎在选中时会统一广播技能通知；服务端选中后会把「已授予」标记置回 false，
-# 使本次额外攻击结束后仍可再次授予，故此处同步重置
+# 引擎在选中时会统一广播技能通知；确认后这份行动标 direct 留在队列里，
+# 被使用（进入额外行动阶段）时才离开队列，之后的攻击/法术结束可以再次授予
 # ============================================================
 
-
-
-## 神圣追击属于行动结束响应，和迅捷赐福合并成一次询问
-func 额外行动属于结束响应(cause: int) -> bool:
-	return cause == SHEN_SHENG_ZHUI_JI
 
 
 ## 行动结束响应点选神圣追击时立即扣 1 治疗（方案 A）
@@ -309,8 +307,6 @@ func 行动结束确认代价(cause: int) -> int:
 	if player.cross_num < 1:
 		return GConst.GE_INVALID_ACTION
 	player.sub_cross_num(1)
-	# 神圣追击的“已授予”状态属于技能释放，不属于额外攻击行动
-	added_shen_sheng_zhui_ji = false
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -334,9 +330,11 @@ func p_magic_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != ZHI_XU_ZHI_YIN:
 		return GConst.GE_INVALID_ACTION
 	notice_skill(ZHI_XU_ZHI_YIN, [player.id])
-	# 服务端先压入「摸 2 张」状态（URGENT），再执行 +1 治疗 +1 水晶
+	# 服务端先压入「摸 2 张」状态（URGENT），再执行 +1 治疗 +1 水晶。
+	# 必须返回 URGENT：返回 SUCCESS 的话 SkillRun 会把「法术行动结束响应」压到摸牌上面，
+	# 变成先弹神圣追击 / 迅捷赐福响应、牌要等响应结束才摸（与技能本体不符）。
 	engine.push_draw(player.id, 2)
 	施加治疗(player.id, 1)
 	player.set_crystal(player.crystal + 1)
 	engine._broadcast_game()
-	return SUCCESS
+	return URGENT

@@ -7,9 +7,13 @@ extends RefCounted
 class BasicStatus extends RefCounted:
 	var type: int = 0
 	var card: GCard = null
-	func _init(t: int, c: GCard) -> void:
+	## 这张基础效果牌的**实例号**（-1＝没记，退回按牌面）。同牌面可能有多份副本，
+	## 点选 / 带走 / 悬停都要按它认人，不然克隆牌会被当成同牌面的另一张。
+	var 实例号: int = -1
+	func _init(t: int, c: GCard, 实例: int = -1) -> void:
 		type = t
 		card = c
+		实例号 = 实例
 
 ## 指示物
 class Token extends RefCounted:
@@ -41,6 +45,9 @@ var role_id: int = 0
 var tap: bool = false               # 横置/锁定
 ## 梦想剑 4503 当前档位（0=未启用 / 1=无视圣盾 / 2=无法应战 / 3=强制命中）
 var dream_tier: int = 0
+## 本回合「下一次主动攻击只能攻击这名玩家」（0＝无限制）：剑之子【剑残影】10804 的回合级标记。
+## 服务端在 base_v_attack 里按它校验；客户端据此把其余敌方头像置灰（见 battle_mobile._玩家可选）
+var attack_lock: int = 0
 ## 血色剑灵【血蔷薇庭院】独立状态：状态图标区显示庭院图标，不占横置形态
 var xue_qiang_wei: bool = false
 ## 圣弓专属技正反面：0=【圣煌辉光炮】、1=【圣煌余辉】、2=已移除
@@ -138,8 +145,8 @@ func get_token(idx: int) -> Variant:
 	return null
 
 
-func add_basic_status(t: int, c: GCard) -> void:
-	basic_status_list.append(BasicStatus.new(t, c))
+func add_basic_status(t: int, c: GCard, 实例: int = -1) -> void:
+	basic_status_list.append(BasicStatus.new(t, c, 实例))
 
 
 func remove_basic_status(c: GCard) -> void:

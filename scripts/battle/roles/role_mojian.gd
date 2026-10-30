@@ -92,39 +92,10 @@ func v_weaken(_dst_id: int, _players: Dictionary) -> int:
 	return GConst.GE_INVALID_CARDID
 
 
-## 修罗连斩额外攻击行动期间只能用火系攻击牌
-func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
-	var rc: int = player.base_v_attack(card_id, dst_id, players)
-	if rc != GConst.GE_SUCCESS:
-		return rc
-	if engine.行动额外 and int(engine.行动额外来源) == XIU_LUO_LIAN_ZHAN:
-		return 校验额外行动限系(XIU_LUO_LIAN_ZHAN, card_id)
-	return GConst.GE_SUCCESS
-
-
-## 【修罗连斩】的额外攻击行动限定火系：和剑圣 103 走同一套通用系别逻辑
-func 额外行动限定系(cause: int) -> int:
-	return GConst.CardElement.Fire if cause == XIU_LUO_LIAN_ZHAN else 0
-
-
-## 额外行动的手牌白名单：修罗连斩只给火系攻击牌；一张都没有时显式「全禁」
-func extra_action_card_ids(cause: int, action_type: int) -> Array:
-	if cause != XIU_LUO_LIAN_ZHAN or action_type != GConst.ActionType.Attack:
-		return []
-	return 额外行动系攻击牌(XIU_LUO_LIAN_ZHAN)
-
-
-## 【修罗连斩】的额外攻击行动期间只能出火系攻击牌：给界面一份合法手牌白名单，其余牌置灰
-func action_card_ids(action_type: int) -> Array:
-	if not (engine.行动额外 and int(engine.行动额外来源) == XIU_LUO_LIAN_ZHAN) \
-			or action_type != GConst.ActionType.Attack:
-		return []
-	return 额外行动系攻击牌(XIU_LUO_LIAN_ZHAN)
-
-
-## 手里能用于【修罗连斩】的火系攻击牌（供旧调用/调试）
+## 修罗连斩额外攻击行动的火系限制由它自己的规格（cards 白名单）承担，这里不再按来源分支。
+## 手里能用于【修罗连斩】的火系攻击牌（供调试 / 提示）
 func _fire_attack_card_ids() -> Array:
-	return 额外行动系攻击牌(XIU_LUO_LIAN_ZHAN)
+	return 按系攻击牌(GConst.CardElement.Fire)
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
@@ -315,50 +286,25 @@ func p_timeline_2_miss(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击行动结束后：修罗连斩（901，追加 1 次火系攻击行动）
+# 攻击行动结束后：修罗连斩（901）自动生效，追加 1 次「只能用火系攻击牌」的攻击行动
 # ============================================================
-func p_after_attack(_ctx: Dictionary) -> int:
-	return SUCCESS
-
-
-func action_end_options(_ctx: Dictionary) -> Array:
+func p_after_attack(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	# 【修罗连斩】不再弹确认：攻击行动一结束就自动生效（与封印师【法术激荡】同一套体验）。
+	# 这份行动带 direct，引擎会直接进入；不想打就在那个阶段点「放弃行动」。
 	if used_xiu_luo_lian_zhan or active_xiu_luo_lian_zhan \
-			or _contains_action(XIU_LUO_LIAN_ZHAN):
-		return []
-	return [{"value": XIU_LUO_LIAN_ZHAN, "label": GConst.skill_name(XIU_LUO_LIAN_ZHAN),
-		"skill_id": XIU_LUO_LIAN_ZHAN, "enabled": true}]
-
-
-func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary) -> int:
-	if cause != XIU_LUO_LIAN_ZHAN:
-		return resolve_queued_extra_action(cause)
+			or _contains_action(XIU_LUO_LIAN_ZHAN) or player.跳过额外攻击行动:
+		return SUCCESS
 	active_xiu_luo_lian_zhan = true
 	notice_skill(XIU_LUO_LIAN_ZHAN, [])
-	player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN, true, true)
+	# 修罗连斩限火系攻击牌：只写系别，引擎按「该系攻击牌」规则算可用牌与校验
+	# （不写手牌快照：授予之后再摸到 / 留下的火系攻击牌都要能出）
+	player.add_action(GConst.ActionType.Attack, XIU_LUO_LIAN_ZHAN, true, true, {
+		"element": GConst.CardElement.Fire,
+	})
 	engine._broadcast_game()
 	return SUCCESS
-
-
-# ============================================================
-# 玩家选中额外行动时的二次校验（服务端 MoJian::v_additional_action）：
-# 修罗连斩本回合限一次
-# ============================================================
-func v_additional_action(cause: int) -> int:
-	if cause != XIU_LUO_LIAN_ZHAN:
-		return V_NOT_OVERRIDE
-	# 只限「本回合一次」；手里有没有火系攻击牌不再拦「确定」——
-	# 没有火系牌时也照样给这一份额外攻击行动（出牌时才由 v_attack 要求火系，没牌就只能放弃行动）
-	if used_xiu_luo_lian_zhan:
-		return GConst.GE_INVALID_ACTION
-	return GConst.GE_SUCCESS
-
-
-# ============================================================
-# 玩家选中额外行动时：置「修罗连斩」标记供 v_attack 限制火系牌
-# （对照服务端 p_additional_action：选中修罗连斩置位 used/using，其余额外行动清除 using）
-# ============================================================
-func extra_action_switchable(cause: int) -> bool:
-	return cause == XIU_LUO_LIAN_ZHAN
 
 
 func p_action_end(ctx: Dictionary) -> int:

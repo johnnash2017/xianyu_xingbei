@@ -184,6 +184,119 @@ func 跑() -> void:
 	窗.call("_on_cancel")
 	await 等帧(2)
 
+	# 行动结束响应（聚合器）把两颗技能塞进同一条询问：respond_id 只是列表第一项，
+	# 指示器 / 头像提示 / 可点目标必须按「选中项自己的技能号」取，不能全都套第一项的配置。
+	# 复现的缺陷：选【剑影*断念】仍画出【剑残影】的「弃 N 张牌」，且自己 / 队友头像也能点。
+	窗.set("_是技能询问", true)
+	窗.set("_pending_type", GConst.Msg.Respond)
+	窗.set("_skill_ask_id", GConst.技能_剑残影)
+	窗.set("_pending", {
+		"respond_id": GConst.技能_剑残影, "is_skill": true, "no_parent": true,
+		"default_option": 0, "can_cancel": true,
+		"args": [0, 0, GConst.CardSource.Hand, 2, GConst.技能_剑残影, GConst.技能_剑影断念],
+		"notes": ["剑残影", "剑影*断念"],
+		"option_skill_ids": [GConst.技能_剑残影, GConst.技能_剑影断念],
+		"option_need_targets": [1, 0],
+		"option_need_cards": [0, 2],
+		"option_targets": [{"ids": [2, 3]}, {"ids": []}],
+	})
+	窗.call("_进入技能询问")
+	await 等帧(2)
+	检(bool(窗.get("_攻击结束二选一")), "剑之子二选一没进「攻击结束二选一」流程")
+	检(int((窗.call("_指示器配置") as Dictionary).get("每目标", 0)) == 1,
+		"选中【剑残影】时应按 10804 的指示器取配置")
+	检(bool(窗.call("_玩家可选", 2)) and bool(窗.call("_玩家可选", 3)),
+		"选中【剑残影】时对手头像应可点")
+	检(not bool(窗.call("_玩家可选", 1)), "选中【剑残影】时自己头像不应可点")
+	检(not bool(窗.call("_玩家可选", 4)), "选中【剑残影】时队友头像不应可点")
+	窗.call("_选中二级选项", GConst.技能_剑残影, 1)
+	await 等帧(2)
+	检(not (窗.call("_指示器配置") as Dictionary).has("文案"),
+		"选中【剑影*断念】时不应再套用【剑残影】的「弃 N 张牌」")
+	检(int(窗.get("_skill_ask_need_card")) == 2, "选中【剑影*断念】后应放开选 2 张弃牌")
+	检(not bool(窗.call("_玩家可选", 2)), "【剑影*断念】不选目标，头像不应可点")
+	窗.call("_on_cancel")
+	await 等帧(2)
+
+	# 行动结束响应（聚合器，no_parent）里每个选项都是独立技能，各自带 need_card / need_target / targets：
+	# 选中哪一项就要按哪一项放开点选。复现的缺陷：以前只认指示器里的「攻击结束二选一」配置，
+	# 猎巫人【偷袭】（2 张盖牌）、魔弓【多重射击】（1 名可攻目标）没配 → 选中后需求不生效，
+	# 牌和头像都点不动、只能空手点「确定」，技能静默失败。
+	var 盖牌卡: GCard = null
+	var 手牌卡: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and not (Data.hand_cards as Array).has(c):
+			盖牌卡 = c
+			break
+	if not (Data.hand_cards as Array).is_empty():
+		手牌卡 = Data.hand_cards[0]
+	if 盖牌卡 != null:
+		Data.cover_cards = [盖牌卡] as Array[GCard]
+		窗.set("_是技能询问", true)
+		窗.set("_pending_type", GConst.Msg.Respond)
+		窗.set("_skill_ask_id", 4205)
+		窗.set("_pending", {
+			"respond_id": 4205, "is_skill": true, "no_parent": true, "default_option": 0,
+			"can_cancel": true, "args": [0, 0, GConst.CardSource.Cover, 1, 4205],
+			"notes": ["偷袭"], "option_skill_ids": [4205], "option_need_cards": [2],
+		})
+		窗.call("_进入技能询问")
+		await 等帧(2)
+		检(bool(窗.get("_攻击结束二选一")), "聚合器询问应进入「选项自带需求」流程")
+		检(int(窗.get("_skill_ask_need_card")) == 2,
+			"选中【偷袭】后应按它要求 2 张牌（实际 %d）" % int(窗.get("_skill_ask_need_card")))
+		检(bool(窗.call("_卡牌能点", 盖牌卡.id)), "【偷袭】应能点盖牌")
+		if 手牌卡 != null:
+			检(not bool(窗.call("_卡牌能点", 手牌卡.id)),
+				"【偷袭】只收盖牌，手牌不应可点")
+		窗.call("_清空待选")
+
+		# 魔弓【多重射击】：need_target 1 + 目标白名单
+		窗.set("_是技能询问", true)
+		窗.set("_pending_type", GConst.Msg.Respond)
+		窗.set("_skill_ask_id", 2603)
+		窗.set("_pending", {
+			"respond_id": 2603, "is_skill": true, "no_parent": true, "default_option": 0,
+			"can_cancel": true, "args": [0, 0, GConst.CardSource.Hand, 1, 2603],
+			"notes": ["多重射击"], "option_skill_ids": [2603],
+			"option_need_targets": [1], "option_targets": [{"ids": [2, 4]}],
+		})
+		窗.call("_进入技能询问")
+		await 等帧(2)
+		检(int(窗.get("_skill_ask_need_target")) == 1,
+			"选中【多重射击】后应按它要求 1 名目标（实际 %d）" % int(窗.get("_skill_ask_need_target")))
+		检(bool(窗.call("_玩家可选", 2)) and bool(窗.call("_玩家可选", 4)),
+			"【多重射击】白名单里的对手应可点")
+		检(not bool(窗.call("_玩家可选", 3)), "不在白名单里的对手不应可点")
+		窗.call("_清空待选")
+		Data.cover_cards = []
+	await 等帧(2)
+
+	# 本回合「下次主动攻击只能打该目标」的玩家级标记（剑残影 10804）：客户端按快照里的
+	# attack_lock 只点亮标记那名对手，服务端 base_v_attack 用的是同一份状态。
+	var 攻击牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.is_attack():
+			攻击牌 = c
+			break
+	检(攻击牌 != null, "卡库里找不到攻击牌")
+	if 攻击牌 != null:
+		窗.call("_清空待选")
+		窗.set("_mode", 1)
+		# _sel_cards / _sel_players 是 Array[int]，set 时也要传同类型的数组
+		var 选中牌: Array[int] = [攻击牌.id]
+		var 空目标: Array[int] = []
+		窗.set("_sel_cards", 选中牌)
+		窗.set("_sel_players", 空目标)
+		玩家[0].attack_lock = 0
+		检(bool(窗.call("_玩家可选", 3)), "没有攻击目标标记时敌方头像应可点")
+		玩家[0].attack_lock = 2
+		检(bool(窗.call("_玩家可选", 2)), "有攻击目标标记时被标记的对手应可点")
+		检(not bool(窗.call("_玩家可选", 3)), "有攻击目标标记时其他对手不应可点")
+		玩家[0].attack_lock = 0
+		窗.call("_清空待选")
+	await 等帧(2)
+
 	Logic.my_player_id = 旧id
 	Data.player_list = 旧玩家
 	Data.hand_cards = 旧手牌

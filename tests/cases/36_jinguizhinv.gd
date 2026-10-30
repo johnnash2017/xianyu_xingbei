@@ -375,6 +375,38 @@ func 跑() -> void:
 	检(引擎.team_gem[GConst.BLUE] == 0, "7803：分支 1 不应给战绩区宝石")
 
 	# ============================================================
+	# 7802：摸到的展示牌把手牌摸超上限 → 先超限弃牌 + 掉士气，再接着问法术目标
+	# ============================================================
+	_重置战斗()
+	玩家.set_gem(0)   # 没有宝石 → 不询问 7805
+	var 满手六张: Array[int] = []
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual or 满手六张.has(c.id) or c.id == 法术牌.id:
+			continue
+		满手六张.append(c.id)
+		if 满手六张.size() >= GConst.HAND_CARDS_MAX:
+			break
+	检(满手六张.size() == GConst.HAND_CARDS_MAX, "卡库找不到 6 张实体牌")
+	if 满手六张.size() == GConst.HAND_CARDS_MAX:
+		_填手牌(玩家, 满手六张)
+		_置牌库顶(法术牌)
+		引擎.team_morale[GConst.BLUE] = 15
+		_开魔法入门()
+		检(引擎._await_id == 1 and int(引擎._pending_respond_id) == GConst.RespondType.Discard,
+			"7802：摸到 7 张时应先走超限弃牌，实际等待 %s / 询问号 %s"
+			% [str(引擎._await_id), str(引擎._pending_respond_id)])
+		检(玩家.hand_cards.size() == GConst.HAND_CARDS_MAX + 1,
+			"7802：摸牌后手牌应为 7 张，实际 %d" % 玩家.hand_cards.size())
+		_回复(1, GConst.RespondType.Discard, [1, GConst.CAUSE_OVERLOAD, 1], [满手六张[0]], [1])
+		检(int(引擎.team_morale[GConst.BLUE]) == 14,
+			"7802：超限 1 张应掉 1 点士气，实际 %d" % int(引擎.team_morale[GConst.BLUE]))
+		检(玩家.hand_cards.size() == GConst.HAND_CARDS_MAX,
+			"7802：超限弃牌后应回到上限 6，实际 %d" % 玩家.hand_cards.size())
+		var 问法术2: Dictionary = _取询问(1, 魔法入门)
+		检(not 问法术2.is_empty(), "7802：超限结算完应继续问法术目标")
+		检(玩家.hand_cards.has(法术牌.id), "7802：展示牌应还在手里")
+
+	# ============================================================
 	# 7802 三组效果依序触发（法术 + 咏 + 水）
 	# ============================================================
 	_重置战斗()
@@ -494,6 +526,29 @@ func 跑() -> void:
 	检(_伤害记录(2, 魔法入门).is_empty() and _伤害记录(4, 魔法入门).is_empty(),
 		"7805：水系牌展示不应造成伤害")
 	检(_播报次数(友情羁绊) == 1 and _播报次数(魔法入门) == 1, "7805：应各播报一次")
+
+	# 7805 弃牌是强制的（原文「我方 2 名角色各弃 1 张牌【强制】【展示】」）：
+	# 目标超时（空回复）也要按手牌顺序自动补弃 1 张，不能白跳过（少一张会连带改变 X）
+	_重置战斗()
+	玩家.set_gem(1)
+	_填手牌(玩家, [水系牌.id, 无效果牌.id])
+	_填手牌(队友, [水系牌乙.id])
+	_置牌库顶(法术牌)
+	_开魔法入门()
+	_回复(1, 友情羁绊, [1])
+	检(not _取询问(1, 友情羁绊).is_empty(), "7805 超时用例：应询问 2 名我方角色")
+	_回复(1, 友情羁绊, [], [], [1, 3])
+	var 弃前: int = 玩家.hand_cards.size()
+	_回复(1, 友情羁绊, [])   # 1 号超时：空回复
+	检(玩家.hand_cards.size() == 弃前 - 1,
+		"7805：1 号超时也应自动补弃 1 张（%d → %d）" % [弃前, 玩家.hand_cards.size()])
+	检(not _取询问(3, 友情羁绊).is_empty(), "7805：1 号超时后应继续问 3 号弃牌")
+	var 展示记录: Array = 角色._7802友情弃牌
+	检(展示记录.size() >= 1 and int((展示记录[0] as Dictionary).get("card", -1)) == 水系牌.id,
+		"7805：1 号超时自动补弃的牌应记进展示集合：%s" % str(展示记录))
+	_回复(3, 友情羁绊, [水系牌乙.id])
+	检((角色._7802友情弃牌 as Array).size() == 2,
+		"7805：2 名角色的展示弃牌都应有真实牌：%s" % str(角色._7802友情弃牌))
 
 	# 7805 不满足条件时不询问
 	_重置战斗()

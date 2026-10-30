@@ -417,6 +417,46 @@ func _测试_10601() -> void:
 	检(玩家3.hand_cards.size() == 3, "目标取消弃牌应吃惩罚（初始 1 张法术牌 + 强制 1 张 + 惩罚 1 张）")
 	检(玩家2.cross_num == 1, "目标取消弃牌时队友应 +1 治疗")
 
+	# ---- 目标满手牌：强制摸 1 张先走超限弃牌 + 掉士气，再问「弃 1 张法术牌」----
+	_重置战斗()
+	引擎.deck.pile = [攻牌1.id, 攻牌2.id, 攻牌3.id]
+	var 满手法术: GCard = 法术牌
+	var 五张非法术: Array[int] = []
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual or c.is_magic() or c.id == 满手法术.id:
+			continue
+		五张非法术.append(c.id)
+		if 五张非法术.size() >= 5:
+			break
+	检(五张非法术.size() == 5, "卡库找不到 5 张非法术牌")
+	if 五张非法术.size() == 5:
+		玩家3.hand_cards.clear()
+		玩家3.add_hand_cards([满手法术.id])
+		for cid: int in 五张非法术:
+			玩家3.add_hand_cards([cid])
+		玩家2.hand_cards.clear()
+		_换手牌(玩家1, _取牌组(3))
+		_发动10601()
+		检(引擎._await_id == 2, "10601 应由队友指定目标")
+		_回复(2, 10601, [1], [], [3])
+		# 目标 6 张 + 强制摸 1 张 = 7 张 → 先走超限弃牌（不是直接问弃法术牌）
+		检(引擎._await_id == 3 and int(引擎._pending_respond_id) == GConst.RespondType.Discard,
+			"目标被摸到 7 张时应先走超限弃牌，实际等待 %s / 询问号 %s"
+			% [str(引擎._await_id), str(引擎._pending_respond_id)])
+		检(玩家3.hand_cards.size() == 7, "强制摸牌后目标应有 7 张手牌，实际 %d" % 玩家3.hand_cards.size())
+		var 超限弃: Array = [五张非法术[0]]
+		_回复(3, GConst.RespondType.Discard, [3, GConst.CAUSE_OVERLOAD, 1], 超限弃, [3])
+		检(int(引擎.team_morale[GConst.RED]) == 14,
+			"超限 1 张应掉 1 点士气，实际 %d" % int(引擎.team_morale[GConst.RED]))
+		检(玩家3.hand_cards.size() == 6, "超限弃牌后目标应回到上限 6，实际 %d" % 玩家3.hand_cards.size())
+		检(引擎._await_id == 3 and int(引擎._pending_respond_id) == 10601,
+			"超限结算完应继续问目标弃 1 张法术牌，实际询问号 %s" % str(引擎._pending_respond_id))
+		_回复(3, 10601, [1], [满手法术.id])
+		检(玩家3.hand_cards.size() == 5, "再弃 1 张法术牌后目标应剩 5 张，实际 %d"
+			% 玩家3.hand_cards.size())
+		检(not 玩家3.hand_cards.has(满手法术.id), "弃出的法术牌应离开手牌")
+		检(玩家2.cross_num == 0, "目标弃出法术牌则队友不加治疗")
+
 
 # ============================================================
 # 10602 让我躺平

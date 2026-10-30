@@ -242,7 +242,7 @@ func _bai_gui_cast() -> bool:
 	if args.is_empty() or cards.is_empty():
 		return false
 	var cid: int = int(cards[0])
-	if not player.cover_cards.has(cid):
+	if not player.有盖牌(cid):
 		return false
 	var dsts: Array = r.get("dst_ids", [])
 	_expose_dsts = []

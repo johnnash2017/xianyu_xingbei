@@ -458,6 +458,9 @@ func _jing_xiang(action: Dictionary) -> int:
 		engine._broadcast_game()
 	if draw_num > 0:
 		engine.push_draw(dst_id, draw_num)
+		engine._broadcast_game()
+		# 摸牌延迟结算：压了就必须 URGENT，先摸完再压行动结束响应
+		return URGENT
 	engine._broadcast_game()
 	return SUCCESS
 

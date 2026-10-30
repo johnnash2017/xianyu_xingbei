@@ -235,7 +235,7 @@ func _收尾_3802(ctx: Dictionary) -> int:
 ## 移除选中的【子弹】、展示牌面并按系别挂上后续效果
 func _结算子弹(ctx: Dictionary) -> int:
 	var cid: int = _子弹牌
-	if cid < 0 or not player.cover_cards.has(cid):
+	if cid < 0 or not player.有盖牌(cid):
 		return _收尾_3802(ctx)
 	notice_skill(YUAN_SU_SHE_JI, [_本次攻击目标])
 	engine.broadcast(GConst.Msg.Card, {
@@ -312,41 +312,23 @@ func p_after_attack(ctx: Dictionary) -> int:
 		return SUCCESS
 	var 命中: bool = _本次攻击命中
 	_本次攻击命中 = false
-	# 3802 风系：攻击行动结束后额外 +1 攻击行动（无出牌限制，选中时引擎再问是否使用）
+	# 3802 风系：攻击行动结束后额外 +1 攻击行动（无出牌限制）
 	if _子弹待行动结束:
 		_子弹待行动结束 = false
-		player.add_action(GConst.ActionType.Attack, YUAN_SU_SHE_JI, false, true)
+		player.add_action(GConst.ActionType.Attack, YUAN_SU_SHE_JI, false, true, {
+			"in_end_response": true,
+		})
 	# 3803 二重剑影：本次攻击命中②、回合限定，额外 +1「与本次攻击同系」的攻击行动
 	if 命中 and not _3803_已用:
 		_3803_已用 = true
 		_3803_系别 = _本次攻击系别
 		notice_skill(ER_CHONG_JIAN_YING, [_本次攻击目标])
-		player.add_action(GConst.ActionType.Attack, ER_CHONG_JIAN_YING, false, true)
+		# 同系限制只写系别（授予时已定系别），引擎按「该系攻击牌」规则算可用牌
+		player.add_action(GConst.ActionType.Attack, ER_CHONG_JIAN_YING, false, true, {
+			"element": _3803_系别,
+			"in_end_response": true,
+		})
 	return SUCCESS
-
-
-## 3802 / 3803 属于行动结束响应，和迅捷赐福合并成一次询问
-func 额外行动属于结束响应(cause: int) -> bool:
-	return cause == YUAN_SU_SHE_JI or cause == ER_CHONG_JIAN_YING
-
-
-## 3803 的额外攻击行动：只能使用与本次攻击同系的攻击牌（界面按白名单置灰，服务端兜底校验）
-func extra_action_card_ids(cause: int, action_type: int) -> Array:
-	if cause != ER_CHONG_JIAN_YING or action_type != GConst.ActionType.Attack:
-		return []
-	var out: Array = []
-	for cid: int in player.hand_cards:
-		var card: GCard = Data.get_card(cid)
-		if card != null and card.is_attack() and card.element_enum() == _3803_系别:
-			out.append(cid)
-	# 一张同系攻击牌都没有时显式「全禁」：空表会被当成不限制
-	return out if not out.is_empty() else [GConst.手牌白名单_全禁]
-
-
-## 二重剑影给的额外攻击行动限定的系别（授予时已定）
-func extra_action_element(cause: int) -> int:
-	return _3803_系别 if cause == ER_CHONG_JIAN_YING else 0
-
 
 # ============================================================
 # 附魔之术（3804）：执行提炼时若没有【子弹】，消耗提炼的 1 能量补 1 张盖牌
@@ -428,7 +410,7 @@ func _可攻击目标() -> Array[int]:
 ## 取回复里第一张自己真实拥有的盖牌（没有则 -1）
 func _取盖牌(ids: Array) -> int:
 	for c: Variant in ids:
-		if player.cover_cards.has(int(c)):
+		if player.有盖牌(int(c)):
 			return int(c)
 	return -1
 
@@ -436,7 +418,7 @@ func _取盖牌(ids: Array) -> int:
 ## 取回复里第一张自己真实拥有的手牌（没有则 -1）
 func _取手牌(ids: Array) -> int:
 	for c: Variant in ids:
-		if player.hand_cards.has(int(c)):
+		if player.有手牌(int(c)):
 			return int(c)
 	return -1
 

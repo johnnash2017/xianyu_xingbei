@@ -516,17 +516,22 @@ func debug_key(kind: int) -> void:
 	Net.send(GConst.Msg.DebugReq, {"kind": kind})
 
 
-func send_action(action_type: int, action_id: int, dst_ids: Array, card_ids: Array, args: Array) -> void:
+func send_action(action_type: int, action_id: int, dst_ids: Array, card_ids: Array, args: Array,
+		extra_uid: int = 0) -> void:
 	if not Net.is_connected_to_host():
 		return
-	Net.send(GConst.Msg.Action, {
+	var 消息: Dictionary = {
 		"action_type": action_type,
 		"action_id": action_id,
 		"src_id": my_player_id,
 		"dst_ids": dst_ids,
 		"card_ids": card_ids,
 		"args": args,
-	})
+	}
+	# 额外行动阶段选了另一份额外行动：把它随这一手一起提交，服务端据此换队后再判合法性
+	if extra_uid > 0:
+		消息["extra_uid"] = extra_uid
+	Net.send(GConst.Msg.Action, 消息)
 
 
 func send_respond(respond_id: int, dst_ids: Array, card_ids: Array, args: Array, partial: bool = false) -> void:

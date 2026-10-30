@@ -167,6 +167,22 @@ func _take_target_card_to_bottle(target_id: int, cid: int, cause: int) -> bool:
 	return true
 
 
+## 解析目标「弃 1 张牌」的回复：回复里没有合法牌（超时 / 取消 / 改包 / 牌已离手）时
+## 按手牌顺序补一张。这两颗技能的弃牌是强制的（原文没有「可」也没有「否则」），
+## 不能因为目标超时跳过，否则白少一张牌、瓶子也拿不到。
+func _回复里的一张牌(target: BattlePlayer, r: Dictionary) -> int:
+	if target == null:
+		return -1
+	for v: Variant in r.get("card_ids", []):
+		var cid: int = int(v)
+		if target.has_discard_card(cid):
+			return cid
+	for cid2: int in target.hand_cards:
+		if target.has_discard_card(cid2):
+			return cid2
+	return -1
+
+
 func _take_first_bottle() -> int:
 	if player.cover_cards.is_empty():
 		return -1
@@ -214,8 +230,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		_shou_step = 0
-		var chosen: Array = r2.get("card_ids", [])
-		var cid: int = int(chosen[0]) if not chosen.is_empty() else -1
+		var 目标: BattlePlayer = engine.p(_shou_target)
+		var cid: int = _回复里的一张牌(目标, r2)
 		if cid >= 0:
 			_take_target_card_to_bottle(_shou_target, cid, SHOU_MO_CI)
 		_shou_target = -1
@@ -255,9 +271,10 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
-		var chosen: Array = r2.get("card_ids", [])
-		var cid: int = int(chosen[0]) if not chosen.is_empty() else -1
-		_take_target_card_to_bottle(_boshi_target, cid, FA_SHU_BO_LI)
+		var 目标: BattlePlayer = engine.p(_boshi_target)
+		var cid: int = _回复里的一张牌(目标, r2)
+		if cid >= 0:
+			_take_target_card_to_bottle(_boshi_target, cid, FA_SHU_BO_LI)
 		_boshi_step = 0
 		_boshi_target = -1
 	return SUCCESS
@@ -295,13 +312,17 @@ func p_timeline_6(ctx: Dictionary) -> int:
 		if chosen.is_empty():
 			return SUCCESS
 		var bottle: int = int(chosen[0])
-		if bottle < 0 or not player.cover_cards.has(bottle):
+		if bottle < 0 or not player.有盖牌(bottle):
 			return SUCCESS
-		engine.remove_cover(player.id, [bottle], player.id, GUAN_YIN_DU_REN)
+		# 移动要带实例号：先认出盖牌区里实际那一份，删除与交给受伤者用同一个号
+		var 实例: int = player.盖牌实例(bottle)
+		if 实例 < 0:
+			return SUCCESS
+		engine.remove_cover(player.id, [实例], player.id, GUAN_YIN_DU_REN)
 		harm["point"] = maxi(int(harm.get("point", 0)) - 1, 0)
 		var dst: BattlePlayer = engine.p(int(harm.get("dst", -1)))
 		if dst != null:
-			dst.add_hand_cards([bottle])
+			dst.add_hand_cards([实例])
 		施加治疗(player.id, 1)
 		notice_skill(GUAN_YIN_DU_REN, [int(harm.get("dst", player.id))])
 		engine._broadcast_game()
@@ -343,7 +364,7 @@ func _touxi_process_cards(r: Dictionary) -> int:
 	var bottles: Array[int] = []
 	for c: Variant in chosen:
 		var cid: int = int(c)
-		if player.cover_cards.has(cid) and not bottles.has(cid):
+		if player.有盖牌(cid) and not bottles.has(cid):
 			bottles.append(cid)
 		if bottles.size() >= 2:
 			break
@@ -397,13 +418,16 @@ func _touxi_process_targets(r: Dictionary) -> int:
 				目标.append(pid)
 			if 目标.size() >= _touxi_x:
 				break
+	var 压了状态: bool = false
 	if _touxi_same:
 		engine.push(BattleEngine.SHook.new("p_touxi_same", {"player": player.id}, []))
+		压了状态 = true
 	for pid2: int in 目标:
 		engine.push_harm({
 			"src": player.id, "dst": pid2, "point": 1,
 			"cause": TOU_XI, "type": GConst.HarmType.Magic, "is_active": false,
 		})
+		压了状态 = true
 	if _touxi_two_attack:
 		player.add_action(GConst.ActionType.Attack, TOU_XI, true, true)
 	notice_skill(TOU_XI, 目标)
@@ -413,7 +437,10 @@ func _touxi_process_targets(r: Dictionary) -> int:
 	_touxi_x = 0
 	_touxi_same = false
 	_touxi_two_attack = false
-	return SUCCESS
+	# 压了伤害 / 同系追加钩子就必须返回 URGENT：聚合器会挂起，等这些状态结算完再继续问
+	# 剩余的行动结束响应（迅捷赐福等）。返回 SUCCESS 会让聚合器立刻把下一个响应问出来，
+	# 玩家会先看到「是否发动迅捷赐福」，伤害还没落地（踩过）。
+	return URGENT if 压了状态 else SUCCESS
 
 
 ## 【偷袭】同系追加：等 X 点法术伤害结算完再询问一次追加目标，然后造成 1 点法术伤害。

@@ -14,13 +14,13 @@ extends BattleRole
 ##     （没有 / 硬提交非法牌 / 超时回空）就直接吃 2 点法术伤害，同时我方【战绩区】+1【水晶】；
 ##   - 10702 的逆向只在它授予的那份额外法术行动内有效：has_missile_mastery() 只在
 ##     「当前额外行动阶段的来源＝10702」时返回 true；「只能使用【魔弹】」由
-##     extra_action_card_ids(10702, Magic) 的两套白名单实现：普通法术行动只放行【魔弹】本体，
+##     行动规格里的两套白名单（cards / skill_cards）：普通法术行动只放行【魔弹】本体，
 ##     10703 技能行动另放行地/风系牌当【魔弹】——地/风系【圣盾】/【虚弱】/【中毒】不能借
 ##     普通法术行动结算；
 ##   - 10703 同时扩展「主动使用」（技能栏里的魔弹融合入口 10703）与「响应传递」（v_remissile），
 ##     按 A21：10703 原文写「使用」，两组都扩；
 ##   - 10704 的【水晶】费用按约定用 get_energy() 判断、remove_energy(1) 支付（宝石可顶水晶）；
-##     目标限制按「宣告时比较双方手牌数」现算（extra_action_targets）。
+##     目标限制写进行动规格（targets），进入时按当时双方手牌数重算。
 ##
 ## 牌类校验与魔导师（8）/ 节日魔导（76）的【魔弹融合】同一条链：系别由 missile_fusion_elements()
 ## 配置，本角色是地 / 风；播报 / 提示用本角色自己的 10703，不借用 803 / 7602。
@@ -51,7 +51,7 @@ const KEY_JI_DU_STEP: String = "_jidushaonv_ji_du_step"
 const JI_DU_STEP_ASK: int = 1
 
 ## 10704 没有合法目标时下发的占位玩家号（-1 不可能是真玩家）：
-## extra_action_targets 返回空表会被引擎当成「没配限制」，这里显式挡住硬提交。
+## 规格里的空表会被引擎当成「没配限制」，所以「一个合法目标都没有」要显式给哨兵挡住硬提交。
 const TARGET_NONE: int = -1
 
 
@@ -238,9 +238,25 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	notice_skill(XU_RONG_ZHANG_WO, [])
 	_xu_rong_extra_granted = true
 	# direct=true：选中即进入额外法术行动，不再二次追问；skip_notice=true：上面已播报过 10702。
-	# 逆向传递与「只能使用【魔弹】」由 has_missile_mastery / extra_action_card_ids 在该阶段内提供。
-	player.add_action(GConst.ActionType.Magic, XU_RONG_ZHANG_WO, true, true)
+	# 「本次只能出【魔弹】」写在行动自己的规格里，见 虚荣掌握规格()
+	player.add_action(GConst.ActionType.Magic, XU_RONG_ZHANG_WO, true, true, 虚荣掌握规格())
 	return SUCCESS
+
+
+## 10702 那份额外法术行动的规格：
+##   cards       —— 普通法术行动可出的牌：只放行【魔弹】本体（地/风系牌不能按普通法术结算）
+##   skill_cards —— 技能行动可出的牌：10703 魔弹融合能用能当【魔弹】的地/风系牌
+## 授予与进入时各算一次（手牌可能变过）。
+func 虚荣掌握规格() -> Dictionary:
+	return {
+		"cards": _白名单或全禁(_missile_body_hand_ids()),
+		"skill_cards": _白名单或全禁(missile_fusion_hand_ids()),
+	}
+
+
+## 10704 那份额外攻击行动的规格：只能打手牌数大于你的对手（一个都没有时给 TARGET_NONE）。
+func 嫉妒追放规格() -> Dictionary:
+	return {"targets": _白名单或全禁(_more_hand_enemies(), TARGET_NONE)}
 
 
 ## 10702 的普通法术兜底：引擎把被驳回的额外行动重置成默认普通行动阶段时，额外标志会丢，
@@ -260,28 +276,15 @@ func p_before_magic(ctx: Dictionary) -> int:
 # ============================================================
 # 额外行动限制（F2）
 # ============================================================
-## 10702 的额外法术行动只能使用【魔弹】。引擎把技能入口归入基础种类，普通法术行动与
-## 10703 技能行动都按 ActionType.Magic 送进这里，所以拆成两套白名单：
-##   - 普通法术行动（直接打出手牌）：只放行【魔弹】本体。地/风系【圣盾】【虚弱】【中毒】
-##     虽然带地/风系，但不能在本次额外行动里当普通法术结算（只能走 10703 技能当【魔弹】）；
-##   - 10703 技能行动（技能栏里的魔弹融合）：放行能当【魔弹】的地/风系牌（见 _正在_10703技能行动）。
-## 没有可用的牌时显式「全禁」，避免空表被引擎当成「没配限制」而放行任意法术牌。
-func extra_action_card_ids(cause: int, action_type: int) -> Array:
-	if cause != XU_RONG_ZHANG_WO or action_type != GConst.ActionType.Magic:
-		return []
-	var 牌表: Array[int] = missile_fusion_hand_ids() if _正在_10703技能行动() else _missile_body_hand_ids()
-	return 牌表 if not 牌表.is_empty() else [GConst.手牌白名单_全禁]
+## 10702 的「只能出【魔弹】」写在行动自己的规格里（cards＝普通法术行动可出的牌、
+## skill_cards＝技能行动可出的牌），授予 / 进入时由本角色的 _白名单或全禁 算好；
+## 引擎照单执行，不再按 cause 回问角色。
 
 
-## 引擎当前正在处理的是不是 10703 的法术技能行动（SkillRun）。
-## 校验额外行动限制 对技能行动传的是基础种类 Magic，与普通法术行动同值；只能靠
-## 「当前正在处理的状态」区分，才能在同一个额外行动里给出两套白名单。
-## 普通法术行动走 _do_magic（当前状态是行动阶段），不会命中这里。
-func _正在_10703技能行动() -> bool:
-	if engine == null or not (engine._当前状态 is BattleEngine.SkillRun):
-		return false
-	var 运行: BattleEngine.SkillRun = engine._当前状态
-	return 运行.kind == "magic" and int(运行.action.get("action_id", 0)) == XIANG_SI_BING
+## 空表在行动规格里等于「不限制」：一张都没有时要显式给全禁 / 无目标哨兵。
+## 10702 与 10704 共用（前者是手牌白名单，后者是目标白名单）。
+func _白名单或全禁(表: Array, 哨兵: int = GConst.手牌白名单_全禁) -> Array:
+	return 表 if not 表.is_empty() else [哨兵]
 
 
 ## 手里【魔弹】本体的牌 id：10702 的额外法术行动里，普通法术行动只能出它。
@@ -290,13 +293,17 @@ func _missile_body_hand_ids() -> Array[int]:
 		return c.card_name_enum() == GConst.CardName.Missile)
 
 
-## 10704 的额外攻击行动只能攻击手牌数大于你的目标对手（按当前状态现算）。
-## 一个合法目标都没有时下发 TARGET_NONE（-1），同样避免空表被当成「没配限制」。
-func extra_action_targets(cause: int) -> Array:
-	if cause != JI_DU_ZHUI_FANG:
-		return []
-	var 目标: Array[int] = _more_hand_enemies()
-	return 目标 if not 目标.is_empty() else [TARGET_NONE]
+## 进入额外行动那一刻按「此刻」的手牌 / 手牌数重算规格：
+## 授予到进入之间手牌可能变过（摸牌、弃牌），白名单与目标限制不能停在授予那一刻。
+func p_additional_action(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	match int(ctx.get("cause", 0)):
+		XU_RONG_ZHANG_WO:
+			player.改写额外行动(XU_RONG_ZHANG_WO, 虚荣掌握规格())
+		JI_DU_ZHUI_FANG:
+			player.改写额外行动(JI_DU_ZHUI_FANG, 嫉妒追放规格())
+	return SUCCESS
 
 
 # ============================================================
@@ -337,8 +344,9 @@ func p_action_end(ctx: Dictionary) -> int:
 	player.remove_energy(1)
 	# 支付后立刻补一次对局快照（与 7504 / 4504 同口径）：否则客户端能量显示要等下一次快照
 	engine._broadcast_game()
-	# direct=true：代价已付、已问过，直接进入额外攻击行动；目标限制由 extra_action_targets 现算
-	player.add_action(GConst.ActionType.Attack, JI_DU_ZHUI_FANG, true, true)
+	# direct=true：代价已付、已问过，直接进入额外攻击行动；
+	# 「只能打手牌数大于你的对手」写在行动自己的规格里（targets，进入时还会按当时手牌数重算）
+	player.add_action(GConst.ActionType.Attack, JI_DU_ZHUI_FANG, true, true, 嫉妒追放规格())
 	return SUCCESS
 
 

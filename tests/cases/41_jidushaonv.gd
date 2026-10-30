@@ -602,7 +602,9 @@ func 跑() -> void:
 	检(角色.has_missile_mastery(), "10702 的额外法术行动内应临时获得【魔弹掌控】")
 	检(角色.missile_targets(1) == [2, 4],
 		"临时【魔弹掌控】应让左右两个对手都能选：%s" % str(角色.missile_targets(1)))
-	var 白名单: Array = 角色.extra_action_card_ids(10702, GConst.ActionType.Magic)
+	玩家.add_action(GConst.ActionType.Magic, 10702, true, true, 角色.虚荣掌握规格())
+	var 规格: Dictionary = 玩家.额外行动数据(10702)
+	var 白名单: Array = 规格.get("cards", [])
 	检(白名单.has(魔弹牌.id), "10702 普通法术行动的白名单应包含【魔弹】本体")
 	检(not 白名单.has(地攻击.id), "普通法术行动的白名单不应包含地系攻击牌（那只能走 10703 技能）")
 	检(not 白名单.has(风攻击.id), "普通法术行动的白名单不应包含风系攻击牌（那只能走 10703 技能）")
@@ -628,25 +630,27 @@ func 跑() -> void:
 	检((相思命令.get("card_ids", []) as Array).has(地攻击.id), "10703 技能按钮应亮出地系攻击牌")
 	检((相思命令.get("card_ids", []) as Array).has(地法术.id), "10703 技能按钮应亮出地系法术牌（可当魔弹）")
 	检((相思命令.get("card_ids", []) as Array).has(风法术.id), "10703 技能按钮应亮出风系法术牌（可当魔弹）")
-	# 引擎兜底：普通法术行动用地/风系牌一律驳回
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Magic, [魔弹牌.id], [2], 1, 10702)
+	# 引擎兜底：普通法术行动用地/风系牌一律驳回（白名单来自这份行动的规格）
+	检(引擎.校验额外行动限制(玩家, 规格, GConst.ActionType.Magic, [魔弹牌.id], [2])
 		== GConst.GE_SUCCESS, "10702 的额外法术行动使用【魔弹】应通过引擎兜底校验")
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Magic, [地法术.id], [2], 1, 10702)
+	检(引擎.校验额外行动限制(玩家, 规格, GConst.ActionType.Magic, [地法术.id], [2])
 		!= GConst.GE_SUCCESS, "普通法术行动里用地系【圣盾】应被引擎驳回")
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Magic, [风法术.id], [2], 1, 10702)
+	检(引擎.校验额外行动限制(玩家, 规格, GConst.ActionType.Magic, [风法术.id], [2])
 		!= GConst.GE_SUCCESS, "普通法术行动里用风系【圣盾】应被引擎驳回")
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Magic, [地攻击.id], [2], 1, 10702)
+	检(引擎.校验额外行动限制(玩家, 规格, GConst.ActionType.Magic, [地攻击.id], [2])
 		!= GConst.GE_SUCCESS, "普通法术行动里用地系攻击牌应被引擎驳回")
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Magic, [火法术.id], [2], 1, 10702)
+	检(引擎.校验额外行动限制(玩家, 规格, GConst.ActionType.Magic, [火法术.id], [2])
 		!= GConst.GE_SUCCESS, "10702 的额外法术行动使用非魔弹法术牌应被引擎驳回")
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Magic, [火法术.id], [2], 0, 0)
+	检(引擎.校验额外行动限制(玩家, {}, GConst.ActionType.Magic, [火法术.id], [2])
 		== GConst.GE_SUCCESS, "普通法术行动不应受 10702 白名单限制")
-	检(角色.extra_action_card_ids(10702, GConst.ActionType.Attack).is_empty(),
-		"10702 只限制法术行动")
-	检(角色.extra_action_card_ids(10704, GConst.ActionType.Magic).is_empty(),
+	检(引擎.校验额外行动限制(玩家, 规格, GConst.ActionType.Attack, [火攻击.id], [2])
+		!= GConst.GE_SUCCESS, "10702 只放行法术行动")
+	检((角色.嫉妒追放规格().get("cards", []) as Array).is_empty(),
 		"10704 不应限制法术行动的出牌")
 	玩家.hand_cards.clear()
-	检(角色.extra_action_card_ids(10702, GConst.ActionType.Magic) == [GConst.手牌白名单_全禁],
+	玩家.撤回额外行动(10702)
+	玩家.add_action(GConst.ActionType.Magic, 10702, true, true, 角色.虚荣掌握规格())
+	检((玩家.额外行动数据(10702).get("cards", []) as Array) == [GConst.手牌白名单_全禁],
 		"一张能当魔弹的牌都没有时应下发全禁白名单")
 	引擎.行动额外 = false
 	引擎.行动额外来源 = 0
@@ -825,13 +829,12 @@ func 跑() -> void:
 			break
 	检(not 支付快照.is_empty(),
 		"【嫉妒追放】支付 1 能量后应立刻补发对局快照（快照里的能量应是扣除后的 0）")
-	检(角色.extra_action_targets(10704) == [2],
-		"【嫉妒追放】的目标应只有手牌数大于你的对手：%s" % str(角色.extra_action_targets(10704)))
-	引擎.行动额外 = true
-	引擎.行动额外来源 = 10704
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Attack, [火攻击.id], [2], 1, 10704)
+	var 追放数据: Dictionary = 玩家.额外行动数据(10704)
+	检((追放数据.get("targets", []) as Array) == [2],
+		"【嫉妒追放】的目标应只有手牌数大于你的对手：%s" % str(追放数据.get("targets", [])))
+	检(引擎.校验额外行动限制(玩家, 追放数据, GConst.ActionType.Attack, [火攻击.id], [2])
 		== GConst.GE_SUCCESS, "【嫉妒追放】的额外攻击打手牌更多的对手应通过")
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Attack, [火攻击.id], [3], 1, 10704)
+	检(引擎.校验额外行动限制(玩家, 追放数据, GConst.ActionType.Attack, [火攻击.id], [3])
 		!= GConst.GE_SUCCESS, "【嫉妒追放】的额外攻击不能打队友")
 	引擎.行动额外 = false
 	引擎.行动额外来源 = 0
@@ -876,9 +879,9 @@ func 跑() -> void:
 	靶.hand_cards.clear()
 	检(角色.p_action_end({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
 		"没有手牌数大于你的对手时不应询问【嫉妒追放】")
-	检(角色.extra_action_targets(10704) == [-1],
+	检((角色.嫉妒追放规格().get("targets", []) as Array) == [-1],
 		"没有合法目标时应下发占位 -1，避免空表被当成不限制")
-	检(角色.extra_action_targets(10702).is_empty(), "10704 的目标限制不应影响别的额外行动")
+	检(not 角色.虚荣掌握规格().has("targets"), "10704 的目标限制不应影响别的额外行动")
 
 	# 完整流水线：真实攻击结束 → 发动 10704 → 额外攻击行动（目标白名单）→ 额外攻击结算
 	_重置战斗()

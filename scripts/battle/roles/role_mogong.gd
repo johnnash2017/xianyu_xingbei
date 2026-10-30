@@ -379,7 +379,9 @@ func _resolve_duo_chong(dst_id: int) -> int:
 		{"player": player.id, "card_id": VIRTUAL_DUO_CHONG_CARD, "dst": dst_id}, []))
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, VIRTUAL_DUO_CHONG_CARD, harm))
 	engine._broadcast_game()
-	return SUCCESS
+	# 压了这次攻击就必须返回 URGENT：聚合器会挂起，等攻击（命中 / 应战 / 伤害）结算完
+	# 再继续问剩余的行动结束响应（迅捷赐福等）。返回 SUCCESS 会先弹下一个响应，攻击还没打出去。
+	return URGENT
 
 
 ## 【多重射击】：问玩家是否发动（以及打谁）；发动时移除哪张风系【充能】由服务端自动挑。
@@ -523,13 +525,13 @@ func p_cover_after_skill(ctx: Dictionary) -> int:
 ## 盖牌不在这里问，而是压在摸牌状态之前、由 p_cover_after_skill 承接：
 ## 摸牌顶过手牌上限时，引擎会先结算爆牌 + 掉士气，再回来问盖牌（顺序：弃牌 → 摸牌 → 爆牌 → 盖牌）
 func _run_chong_neng(action: Dictionary) -> int:
-	_chong_neng(action)
+	var r: int = _chong_neng(action)
 	# 没实际发动（没给摸牌数）：直接结束，连盖牌步骤也不挂
 	if not player.boot_skill_used:
 		return SUCCESS
 	_待盖牌技能 = CHONG_NENG
 	_待盖牌上限 = _chong_neng_num
-	return SUCCESS
+	return r
 
 
 ## 充能的摸牌数选项（二级技能栏）：1~4 张各一颗，文案取技能表「提示」列第 2 条（"摸 {n} 张"）。
@@ -582,8 +584,9 @@ func _chong_neng(action: Dictionary) -> int:
 	engine.push_draw(player.id, draw_n)
 	engine._broadcast_game()
 	# 摸牌顶过手牌上限不用在这里处理：引擎在每个状态跑完后都会补 _check_hand_overflow()，
-	# 爆牌 + 掉士气会在盖牌步骤之前先结算完
-	return SUCCESS
+	# 爆牌 + 掉士气会在盖牌步骤之前先结算完。
+	# 压了摸牌（和盖牌钩子）就必须 URGENT：先摸完 / 爆完 / 问完盖牌，再压行动结束响应。
+	return URGENT
 
 
 ## 魔眼的两个选项（二级技能栏二选一，对照原服务端 MoGong::MoYan）：
@@ -623,7 +626,8 @@ func _mo_yan(action: Dictionary) -> int:
 	# 其余（选「自己摸 3 张牌」，或异常没带目标）：自己摸 3 张
 	engine.push_draw(player.id, 3)
 	engine._broadcast_game()
-	return SUCCESS
+	# 压了摸牌（和盖牌钩子）就必须 URGENT：先摸完 / 问完盖牌，再压行动结束响应
+	return URGENT
 
 
 ## 充能改牌 / 魔眼改牌：把至多 max_n 张手牌作为【充能】。skill_id 用主技能 id，

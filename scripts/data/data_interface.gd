@@ -24,6 +24,11 @@ var _角色索引到行: Dictionary = {}
 var player_list: Array[GPlayer] = []
 var hand_cards: Array[GCard] = []
 var cover_cards: Array[GCard] = []
+## 手牌 / 盖牌各自的**实例号**，与上面两个数组一一对应。
+## 服务端下发的 hands / covereds 就是实例号（同一牌面可能有多份副本，身份靠它区分）；
+## 界面渲染、选中、节点复用都用这里的值，规则比较一律先折回牌面（GConst.牌号）。
+var hand_iids: Array[int] = []
+var cover_iids: Array[int] = []
 var red: GTeam
 var blue: GTeam
 var my_team: GTeam
@@ -367,10 +372,15 @@ func 技能分段(技能号: int) -> String:
 	return str(行[int(列索引["大类"])]).strip_edges()
 
 
-## 按卡号取牌（虚拟牌号是 1000+，与数组下标不一致，所以走 id 索引）
+## 按卡号取牌（虚拟牌号是 1000+，与数组下标不一致，所以走 id 索引）。
+## 也接受「实例号」：实例号 = 序号 × GConst.实例步长 + 牌号，取牌面时先折回牌号（见 GConst.牌号），
+## 这样服务端区域里存的实例号可以直接拿去查牌面，规则侧不用关心是哪一份副本。
 func get_card(cid: int) -> GCard:
 	if _card_by_id.has(cid):
 		return _card_by_id[cid]
+	var 面: int = GConst.牌号(cid)
+	if 面 != cid and _card_by_id.has(面):
+		return _card_by_id[面]
 	return null
 
 
@@ -434,6 +444,8 @@ func build_player_list(info: Dictionary) -> void:
 func _sync_my_cards(infos: Array, my_pos: int) -> void:
 	hand_cards.clear()
 	cover_cards.clear()
+	hand_iids.clear()
+	cover_iids.clear()
 	if my_pos < 0 or my_pos >= infos.size():
 		return
 	var me: Dictionary = infos[my_pos]
@@ -441,10 +453,12 @@ func _sync_my_cards(infos: Array, my_pos: int) -> void:
 		var c: GCard = get_card(int(cid))
 		if c != null:
 			hand_cards.append(c)
+			hand_iids.append(int(cid))
 	for cid: Variant in me.get("covereds", []):
 		var c2: GCard = get_card(int(cid))
 		if c2 != null:
 			cover_cards.append(c2)
+			cover_iids.append(int(cid))
 
 
 ## 把单条 SinglePlayerInfo 应用到玩家视图
@@ -460,6 +474,8 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.tap = bool(pi.get("is_knelt", false))
 	# 梦想剑档位：客户端角色说明据此把梦想剑标绿
 	p.dream_tier = int(pi.get("dream_tier", 0))
+	# 本回合「下次主动攻击只能打谁」（剑残影 10804）：客户端据此把其余敌方头像置灰
+	p.attack_lock = int(pi.get("attack_lock", 0))
 	# 血色剑灵【血蔷薇庭院】：独立状态，不是横置形态
 	p.xue_qiang_wei = bool(pi.get("xue_qiang_wei", false))
 	# 圣弓专属技正反面：客户端画【圣煌辉光炮】/【圣煌余辉】状态图标
@@ -484,7 +500,8 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	for cid: Variant in pi.get("basic_cards", []):
 		var card: GCard = get_card(int(cid))
 		if card != null:
-			p.add_basic_status(0, card)
+			# 存原始 id（可能是实例号）：点选 / 带走基础效果牌时要按它认人
+			p.add_basic_status(0, card, int(cid))
 	# 独有效果
 	for idx: int in range(GConst.EXCLUSIVE_NUM):
 		p.specials[idx] = false
@@ -549,3 +566,5 @@ func clean_room() -> void:
 	blue.set_morale(0)
 	hand_cards.clear()
 	cover_cards.clear()
+	hand_iids.clear()
+	cover_iids.clear()

@@ -118,12 +118,12 @@ func v_special_skill(action: Dictionary) -> int:
 func p_special_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != FU_WEN_GAI_ZAO:
 		return GConst.GE_INVALID_ACTION
-	_apply_fu_wen_gai_zao(action)
-	return SUCCESS
+	return _apply_fu_wen_gai_zao(action)
 
 
 ## 符文改造：消耗 1 宝石转为蓄势迸发形态，手牌上限 +1 并摸 1 张牌，再按所选值重排【战纹】/【魔纹】
-func _apply_fu_wen_gai_zao(action: Dictionary) -> void:
+## 摸 1 张走 push_draw（延迟结算），压了就必须返回 URGENT：先摸完再压行动结束响应。
+func _apply_fu_wen_gai_zao(action: Dictionary) -> int:
 	var args: Array = action.get("args", [])
 	# 对照原版：重排值缺省（超时）时按 1 处理
 	var num: int = int(args[0]) if not args.is_empty() else 1
@@ -136,6 +136,7 @@ func _apply_fu_wen_gai_zao(action: Dictionary) -> void:
 	_set_zhan_wen(num)
 	_set_mo_wen(_wen_max() - _zhan_wen())
 	engine._broadcast_game()
+	return URGENT
 
 
 # ============================================================

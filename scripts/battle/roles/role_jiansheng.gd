@@ -19,7 +19,6 @@ const JIAN_YING: int = 105
 
 var used_lian_xu_ji: bool = false
 var used_jian_ying: bool = false
-var using_lian_xu_ji: bool = false
 ## 当前这一刀 103 / 105 已经从技能响应进入行动队列（尚未结算完）
 var active_lian_xu_ji: bool = false
 var active_jian_ying: bool = false
@@ -48,7 +47,6 @@ var _sheng_jian_弃张数: int = 0
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_lian_xu_ji = false
 	used_jian_ying = false
-	using_lian_xu_ji = false
 	active_lian_xu_ji = false
 	active_jian_ying = false
 	attack_count = 0
@@ -150,24 +148,38 @@ func _sheng_jian(ctx: Dictionary) -> void:
 
 
 # ============================================================
-# 攻击行动结束时：圣剑优先，其余风怒追击/剑影交给行动聚合器
+# 攻击行动结束时：风怒追击自动生效；圣剑先摸弃；其余（剑影）交给行动聚合器
 # ============================================================
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 【圣剑】第三刀：先结算摸 X / 弃 X，再进入风怒追击 / 剑影等响应。
+	# 【风怒追击】不再弹确认：攻击行动一结束就自动生效（与封印师【法术激荡】同一套体验）
+	_自动风怒追击()
+	# 【圣剑】第三刀：先结算摸 X / 弃 X，再进入剑影等响应。
 	if _sheng_jian_active:
 		return _sheng_jian_cycle()
 	return SUCCESS
 
 
+## 【风怒追击】自动生效：本次攻击行动结束 → 直接获得 1 份「只能用风系攻击牌」的额外攻击行动，
+## 不再询问是否发动。这份行动带 direct，引擎会直接进入；不想打就在那个阶段点「放弃行动」。
+## 【回合限定】：本回合已经用过 / 这份已经在队列里 / 本回合取消过额外攻击 → 不再给。
+func _自动风怒追击() -> void:
+	if used_lian_xu_ji or active_lian_xu_ji or _contains_action(LIAN_XU_JI):
+		return
+	if player.跳过额外攻击行动:
+		return
+	notice_skill(LIAN_XU_JI, [])
+	player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true, true, {
+		"element": GConst.CardElement.Wind,
+	})
+	active_lian_xu_ji = true
+
+
 ## 交给行动聚合器的技能选项：用过、已在队列里、能量不够的不出现。
+## （风怒追击已改为结束后自动生效，不再出现在这里）
 func action_end_options(_ctx: Dictionary) -> Array:
 	var out: Array = []
-	# 103 / 105 各自管理自己的“当前正在打 / 本回合已用”，互不隐藏。
-	if not used_lian_xu_ji and not active_lian_xu_ji and not _contains_action(LIAN_XU_JI):
-		out.append({"value": LIAN_XU_JI, "label": "风怒追击", "skill_id": LIAN_XU_JI,
-			"enabled": true})
 	if not used_jian_ying and not active_jian_ying and not _contains_action(JIAN_YING):
 		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING,
 			"enabled": player.get_energy() > 0})
@@ -175,11 +187,6 @@ func action_end_options(_ctx: Dictionary) -> Array:
 
 
 func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary) -> int:
-	if cause == LIAN_XU_JI:
-		notice_skill(LIAN_XU_JI, [])
-		player.add_action(GConst.ActionType.Attack, LIAN_XU_JI, true, true)
-		active_lian_xu_ji = true
-		return SUCCESS
 	if cause == JIAN_YING:
 		if not _jian_ying_paid:
 			if player.get_energy() <= 0:
@@ -191,6 +198,7 @@ func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary)
 			_jian_ying_paid = true
 			engine._broadcast_game()
 		notice_skill(JIAN_YING, [])
+		# 剑影不限制出牌，就是一份普通额外攻击行动
 		player.add_action(GConst.ActionType.Attack, JIAN_YING, true, true)
 		active_jian_ying = true
 		return SUCCESS
@@ -207,6 +215,10 @@ func _选项里有(选项: Array, 技能号: int) -> bool:
 ## 【圣剑】收尾（先摸后弃）：第一步在二级技能栏里给「摸 1 / 2 / 3 张牌」三个选项（取消＝不摸牌，本次收尾结束），
 ## 取所选张数为 X → 摸 X 张；第二步再从手牌（此时含刚摸进来的牌）里弃 X 张。
 ## 两次询问文案分别取技能表「提示」列第 1、2 条（序号从 0 起），{n} 传入对应张数。
+## 摸牌必须走 push_draw（压状态后返回 URGENT）：先让【水影】这类「摸牌前」响应结算，
+## 再按状态边界统一判手牌超限 —— 摸完超上限就先弃到上限、按超限张数掉士气，然后才结算「弃 X 张」。
+## 以前直接 engine.draw 把牌塞进手里，紧接着就在同一个钩子里问「弃 X 张」，
+## 中间没有状态边界，超限从来没被判定过。
 func _sheng_jian_cycle() -> int:
 	if _sheng_jian_step >= STEP_DONE:
 		return SUCCESS
@@ -226,9 +238,9 @@ func _sheng_jian_cycle() -> int:
 			_sheng_jian_step = STEP_DONE
 			return SUCCESS
 		_sheng_jian_弃张数 = int(args0[0])
-		engine.draw(player.id, _sheng_jian_弃张数)
 		_sheng_jian_step = 1
-		engine._broadcast_game()
+		engine.push_draw(player.id, _sheng_jian_弃张数, SHENG_JIAN)
+		return URGENT
 	# 第二步：从手牌（含刚摸进来的）里弃 X 张
 	if _sheng_jian_step == 1 and not engine.has_reply():
 		询问(player.id, SHENG_JIAN, _sheng_jian_弃张数, 0, GConst.CardSource.Hand, [], _sheng_jian_弃张数, "",
@@ -272,61 +284,26 @@ func _sheng_jian_cycle() -> int:
 
 
 # ============================================================
-# 玩家选中额外行动时的二次校验（服务端 JianSheng::v_additional_action）：
-# 风怒追击本回合限一次；剑影本回合限一次且需仍有能量（已付款的除外）
+# 额外行动：行动本身是通用工具（只带规格），这里只负责「确认时付费 / 进入时结算 / 结束时记账」
 # ============================================================
-func v_additional_action(cause: int) -> int:
-	if cause == LIAN_XU_JI:
-		# 只限「本回合一次」；手里有没有风系攻击牌不再拦「确定」——
-		# 没有风系牌时也照样给这一份额外攻击行动（出牌时才由 v_attack 要求风系，没牌就只能放弃行动）
-		if used_lian_xu_ji:
-			return GConst.GE_INVALID_ACTION
-		return GConst.GE_SUCCESS
-	if cause == JIAN_YING:
-		# 只限制本回合一次；费用在确认发动时已结算，不在进入/切换时再拦
-		if used_jian_ying:
-			return GConst.GE_INVALID_ACTION
-		return GConst.GE_SUCCESS
-	return V_NOT_OVERRIDE
-
-
-# ============================================================
-# 玩家选中额外行动时：标记回合限定 / 补付剑影能量（确认时已付过的不再扣）
-# ============================================================
-func extra_action_switchable(cause: int) -> bool:
-	# 只看这份额外行动还在不在、本回合用没用过；费用在确认发动时已经结算，不再参与切换判断。
-	if cause == JI_FENG_JI or cause == LIAN_XU_JI:
-		return true
-	if cause == JIAN_YING:
-		return not used_jian_ying
-	return false
-
-
-## 风怒追击给的额外攻击行动只允许风系攻击牌
-func 额外行动限定系(cause: int) -> int:
-	return GConst.CardElement.Wind if cause == LIAN_XU_JI else 0
-
-
+## 进入某份额外行动时：剑影若还没付过能量（旧路径 / 测试直接入队），在这里补付一次。
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	var cause: int = int(ctx.get("cause", 0))
-	# 对照服务端 p_additional_action：仅选中「风怒追击」时置位，其余额外行动一律清除
-	using_lian_xu_ji = cause == LIAN_XU_JI
-	if cause == JIAN_YING:
-		if not _jian_ying_paid:
-			if player.crystal > 0:
-				player.set_crystal(player.crystal - 1)
-			else:
-				player.set_gem(player.gem - 1)
-			_jian_ying_paid = true
+	if int(ctx.get("cause", 0)) != JIAN_YING:
+		return SUCCESS
+	if not _jian_ying_paid:
+		if player.crystal > 0:
+			player.set_crystal(player.crystal - 1)
+		else:
+			player.set_gem(player.gem - 1)
+		_jian_ying_paid = true
 		engine._broadcast_game()
 	return SUCCESS
 
 
 ## 额外攻击行动真正结束时才记「本回合已用」。
-## 进入行动阶段后还可以切走再切回来；若在 p_additional_action 就记已用，
-## 切回来时 v_additional_action 会把这份未消耗的行动判成已用，只剩取消。
+## 进入行动阶段后还可以切走再切回来；若一进入就记已用，切回来时这份还没消耗的行动就没法再用了。
 func p_action_end(ctx: Dictionary) -> int:
 	if not bool(ctx.get("is_extra", false)):
 		return SUCCESS
@@ -338,59 +315,6 @@ func p_action_end(ctx: Dictionary) -> int:
 			used_jian_ying = true
 			active_jian_ying = false
 	return SUCCESS
-
-
-# ============================================================
-# 牌类校验覆写：风怒追击（103）额外攻击行动期间只能用风系攻击牌
-# 按「当前额外行动来源」判断，避免切到剑影后 still 带着 103 的旧 using 标记
-# ============================================================
-func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
-	var rc: int = player.base_v_attack(card_id, dst_id, players)
-	if rc != GConst.GE_SUCCESS:
-		return rc
-	var 额外来源: int = 0
-	if engine != null and engine.行动额外:
-		额外来源 = engine.行动额外来源
-	match 额外来源:
-		LIAN_XU_JI:
-			using_lian_xu_ji = true
-			used_lian_xu_ji = true
-			return 校验额外行动限系(LIAN_XU_JI, card_id)
-		JIAN_YING:
-			# 询问确认时已经付过能量；这里只补记已用/兼容未付过的旧路径
-			using_lian_xu_ji = false
-			if not used_jian_ying:
-				if not _jian_ying_paid:
-					if player.crystal > 0:
-						player.set_crystal(player.crystal - 1)
-					elif player.gem > 0:
-						player.set_gem(player.gem - 1)
-					_jian_ying_paid = true
-				used_jian_ying = true
-				engine._broadcast_game()
-	return GConst.GE_SUCCESS
-
-
-## 103 / 105 / 101 给的那份攻击行动：103 限风系攻击牌；105 / 101 不限制
-## （105 / 101 显式返回全部手牌，避免回落到当前 103 的 using 状态、把别的系攻击牌也锁成风系）。
-func extra_action_card_ids(cause: int, action_type: int) -> Array:
-	if action_type != GConst.ActionType.Attack:
-		return []
-	if cause == JIAN_YING or cause == 101:
-		return player.hand_cards.duplicate()
-	if cause != LIAN_XU_JI:
-		return []
-	return 额外行动系攻击牌(cause)
-
-
-## 风怒追击的额外攻击行动期间，本阶段「普通出牌」的手牌白名单只剩手里的风系攻击牌
-## （对应上面 v_attack 的同一条限制：不收紧的话界面上别的系攻击牌也会亮，点了会被服务端判无效）。
-## 一张风系攻击牌都没有时（没有风也允许确认的那条路）显式发「全禁」白名单，
-## 免得空列表被当成「不限制」、手牌又全亮起来
-func action_card_ids(action_type: int) -> Array:
-	if not using_lian_xu_ji or action_type != GConst.ActionType.Attack:
-		return []
-	return 额外行动系攻击牌(LIAN_XU_JI)
 
 
 # ============================================================

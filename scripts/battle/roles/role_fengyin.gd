@@ -97,9 +97,13 @@ func p_before_action(_ctx: Dictionary) -> int:
 		# 摸牌可能把手牌顶过上限 → 配 SHandOverflow 走「强制弃牌 + 掉士气」（对照引擎其它摸牌点）
 		engine.push(BattleEngine.SHandOverflow.new())
 		engine.push_draw(cur.id, 摸数)
-	else:
-		# 跳过行动阶段走引擎通用标记 skip_action_phase（SActionPhase 自己收尾进回合结束）
-		engine.skip_action_phase = true
+		engine._broadcast_game()
+		# 压了摸牌 / 超限就必须 URGENT：钩子的「后续状态」是 p_boot + 行动阶段，
+		# 返回 SUCCESS 会把行动阶段压到摸牌上面 —— 玩家先行动、束缚的摸牌到行动结束后才结算。
+		# 重入时 step 已是 STEP_DONE，直接返回 SUCCESS（见函数开头）。
+		return URGENT
+	# 跳过行动阶段走引擎通用标记 skip_action_phase（SActionPhase 自己收尾进回合结束）
+	engine.skip_action_phase = true
 	engine._broadcast_game()
 	return SUCCESS
 

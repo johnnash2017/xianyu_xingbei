@@ -20,14 +20,11 @@ const BU_QU_YI_ZHI: int = 1907
 
 var used_tian_shi_zhi_hun: bool = false
 var used_e_mo_zhi_hun: bool = false
-## 本回合是否已授予【不屈意志】的额外行动（服务端 added_BU_QU_YI_ZHI）
-var added_bu_qu_yi_zhi: bool = false
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_tian_shi_zhi_hun = false
 	used_e_mo_zhi_hun = false
-	added_bu_qu_yi_zhi = false
 	return SUCCESS
 
 
@@ -44,7 +41,7 @@ func _soul_form() -> int:
 ## 取回复中第一张自己真实拥有的盖牌（无则 -1）
 func _cover_card_of(ids: Array) -> int:
 	for c: Variant in ids:
-		if player.cover_cards.has(int(c)):
+		if player.有盖牌(int(c)):
 			return int(c)
 	return -1
 
@@ -285,10 +282,16 @@ func _tian_shi_zhi_hun_miss() -> void:
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if added_bu_qu_yi_zhi or player.get_energy() <= 0:
+	if player.get_energy() <= 0:
 		return SUCCESS
-	added_bu_qu_yi_zhi = true
-	player.add_action(GConst.ActionType.Attack, BU_QU_YI_ZHI)
+	# 队列里已经有这一份就不再加：确认过的会标 direct 并留到被使用，
+	# 响应里没确认的由引擎在响应结束时撤回（见 BattleEngine._撤回未确认额外行动），
+	# 撤回之后下一次攻击结束就能重新摆出来 —— 不需要额外的「本回合已授予」标记。
+	if not player.额外行动队列数据(BU_QU_YI_ZHI).is_empty():
+		return SUCCESS
+	player.add_action(GConst.ActionType.Attack, BU_QU_YI_ZHI, false, false, {
+		"in_end_response": true,
+	})
 	return SUCCESS
 
 
@@ -297,11 +300,6 @@ func p_after_attack(ctx: Dictionary) -> int:
 # （引擎已在选中时广播该额外行动的技能宣告，此处不再重复）
 # ============================================================
 
-
-
-## 不屈意志属于行动结束响应，和迅捷赐福合并成一次询问
-func 额外行动属于结束响应(cause: int) -> bool:
-	return cause == BU_QU_YI_ZHI
 
 
 ## 行动结束响应点选不屈意志时立即扣 1 能量（方案 A）
@@ -318,7 +316,6 @@ func 行动结束确认代价(cause: int) -> int:
 	if int(player.tokens[0]["num"]) < int(player.tokens[0]["max"]):
 		player.tokens[0]["num"] = int(player.tokens[0]["num"]) + 1
 	engine.push_draw(player.id, 1)
-	added_bu_qu_yi_zhi = false
 	engine._broadcast_game()
 	# 摸牌走引擎的摸牌状态，先结算完再继续聚合响应
 	return URGENT

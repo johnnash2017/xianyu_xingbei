@@ -526,10 +526,11 @@ func 跑() -> void:
 	检(玩家.additional_actions.size() == 1, "命中后应给 1 份额外攻击行动")
 	if 玩家.additional_actions.size() == 1:
 		检(int(玩家.additional_actions[0].get("cause", 0)) == 3803, "额外行动来源应是 3803")
-	var 白名单: Array = 角色.extra_action_card_ids(3803, GConst.ActionType.Attack)
-	检(白名单 == [风攻击牌.id], "3803 的额外攻击应只允许同系攻击牌：%s" % str(白名单))
-	检(角色.extra_action_card_ids(3803, GConst.ActionType.Magic).is_empty(),
-		"3803 的额外行动只限制攻击行动，不应限制法术")
+	var 白名单: Array = 引擎.额外行动出牌白名单(玩家.额外行动数据(3803))
+	检(白名单.has(风攻击牌.id) and not 白名单.has(火攻击牌.id),
+		"3803 的额外攻击应只允许同系攻击牌：%s" % str(白名单))
+	检(int(玩家.额外行动数据(3803).get("element", 0)) == GConst.CardElement.Wind,
+		"3803 的额外行动应把「与本次攻击同系」写进规格：%s" % str(玩家.额外行动数据(3803)))
 	# 同一次回合的第二次命中不再给（【回合限定】）
 	玩家.additional_actions.clear()
 	玩家.reset_action_counts()
@@ -557,15 +558,16 @@ func 跑() -> void:
 	角色.p_after_attack({"player": 1, "card_id": 风攻击牌.id, "dst": 3})
 	检(玩家.additional_actions.is_empty(), "未命中时【二重剑影】不应给额外行动")
 	检(_播报次数(3803) == 0, "未命中时不应播报 3803")
-	# 一张同系攻击牌都没有：白名单显式全禁
+	# 限定系别是规则不是手牌快照：手里此刻没有风系攻击牌，规则仍只放行风系攻击牌
+	# （之后再摸到风系攻击牌也能出；以前这里会算成「全禁」，把玩家手里的风系牌全灰掉）
 	_重置战斗()
 	玩家.hand_cards = [火攻击牌.id]
 	角色.p_timeline_1(_攻击上下文(风攻击牌, 1, 3, true))
 	角色.p_timeline_2_hit(_攻击上下文(风攻击牌, 1, 3, true))
 	角色.p_after_attack({"player": 1, "card_id": 风攻击牌.id, "dst": 3})
-	白名单 = 角色.extra_action_card_ids(3803, GConst.ActionType.Attack)
-	检(白名单 == [GConst.手牌白名单_全禁],
-		"手里没有同系攻击牌时 3803 的白名单应是显式全禁：%s" % str(白名单))
+	白名单 = 引擎.额外行动出牌白名单(玩家.额外行动数据(3803))
+	检(白名单.has(风攻击牌.id) and not 白名单.has(火攻击牌.id),
+		"手里没有风系攻击牌时，3803 的白名单仍应只含风系攻击牌：%s" % str(白名单))
 
 	# ============================================================
 	# 3805 精灵的剑舞
@@ -696,13 +698,15 @@ func 跑() -> void:
 	检(玩家.additional_actions.size() == 1, "3805 攻击命中后【二重剑影】应给 1 份额外攻击行动")
 	if 玩家.additional_actions.size() == 1:
 		检(int(玩家.additional_actions[0].get("cause", 0)) == 3803, "3805 攻击后的额外行动来源应是 3803")
-	白名单 = 角色.extra_action_card_ids(3803, GConst.ActionType.Attack)
-	检(白名单 == [风攻击牌.id],
+	白名单 = 引擎.额外行动出牌白名单(玩家.额外行动数据(3803))
+	检(白名单.has(风攻击牌.id) and not 白名单.has(火攻击牌.id),
 		"3805 视为风系后，3803 的额外攻击应只允许风系攻击牌：%s" % str(白名单))
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Attack, [火攻击牌2.id], [3], true, 3803)
-		!= GConst.GE_SUCCESS, "额外攻击行动里提交火系攻击牌应被服务端驳回")
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Attack, [风攻击牌.id], [3], true, 3803)
-		== GConst.GE_SUCCESS, "额外攻击行动里提交风系攻击牌应通过校验")
+	检(引擎.校验额外行动限制(玩家, 玩家.额外行动数据(3803), GConst.ActionType.Attack,
+		[火攻击牌2.id], [3]) != GConst.GE_SUCCESS,
+		"额外攻击行动里提交火系攻击牌应被服务端驳回")
+	检(引擎.校验额外行动限制(玩家, 玩家.额外行动数据(3803), GConst.ActionType.Attack,
+		[风攻击牌.id], [3]) == GConst.GE_SUCCESS,
+		"额外攻击行动里提交风系攻击牌应通过校验")
 
 	# 3805 的费用【水晶】可用宝石顶（完整流水线再验一次）
 	_重置战斗()

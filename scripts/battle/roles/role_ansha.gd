@@ -89,7 +89,9 @@ func p_special_skill(action: Dictionary) -> int:
 		# 自己尚未横置，只会走「弃 X 张水系牌」那半段，不会连带触发「额外弃 1 张法术牌」
 		engine.push(BattleEngine.SHook.new("p_qian_xing_enter", {"player": player.id}, []))
 		engine.push_draw(player.id, 1)
-		return SUCCESS
+		# 压了状态必须返回 URGENT：SkillRun 会先跑完摸牌 / 进入潜行，再压「行动结束响应」。
+		# 返回 SUCCESS 会让行动结束响应（神圣追击 / 迅捷赐福等）插到摸牌之前。
+		return URGENT
 	# 没选摸牌：直接进入潜行
 	_qian_xing_enter()
 	return SUCCESS

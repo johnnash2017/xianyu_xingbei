@@ -346,10 +346,13 @@ func _shui_zhi_shen_li(action: Dictionary) -> int:
 		give = int(picked[0])
 	else:
 		give = player.hand_cards[0]
-	player.remove_hand_cards([give])
-	dst.add_hand_cards([give])
+	# 移动要带实例号：交出去的是手里「实际那一份」，不能拿牌号重新发一张（同牌面的副本会撞号）
+	var 实例: int = player.取出一张手牌(give)
+	if 实例 < 0:
+		return SUCCESS
+	dst.add_hand_cards([实例])
 	# 交牌不发公共亮牌：交/接双方在日志里看到牌名，其他人只看到张数
-	engine._log_give_cards(player.id, dst.id, [give])
+	engine._log_give_cards(player.id, dst.id, [实例])
 	施加治疗(player.id, 1)
 	施加治疗(dst.id, 1)
 	engine._broadcast_game()

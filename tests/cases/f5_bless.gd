@@ -45,11 +45,6 @@ class 借用角色 extends BattleRole:
 			return SUCCESS
 		return int(赐福.p_after_magic(ctx))
 
-	func v_additional_action(cause: int) -> int:
-		if 赐福 == null:
-			return V_NOT_OVERRIDE
-		return int(赐福.v_additional_action(cause))
-
 	func 可选目标(技能号: int) -> Array:
 		if 赐福 == null:
 			return []
@@ -254,15 +249,6 @@ func 跑() -> void:
 	检(借用.p_additional_action({"player": 3, "cause": 1601}) == BattleRole.SUCCESS,
 		"赐福牌已移除后重复触发应安全返回")
 
-	# v_additional_action 的自身分支：只有「本角色面前确实有自己放的迅捷赐福」才放行
-	# （借用的常规流程里，额外行动由持有者自己的角色校验；这里单独验证 helper 的守卫）
-	祈.basic_effects.clear()
-	祈.add_basic_effect(迅捷三.id, 1)
-	检(借用.v_additional_action(1601) == GConst.GE_SUCCESS, "自己面前有迅捷赐福时应认可该额外行动")
-	祈.basic_effects.clear()
-	检(借用.v_additional_action(1601) == GConst.GE_INVALID_ACTION, "没有迅捷赐福时该额外行动应被拒")
-	检(借用.v_additional_action(9999) == BattleRole.V_NOT_OVERRIDE, "非赐福来源不应被 helper 覆写")
-
 	# ---- 威力赐福：放置 ----
 	祈.hand_cards.clear()
 	祈.hand_cards.append(威力.id)
@@ -336,9 +322,9 @@ func 跑() -> void:
 	检(借用.p_timeline_2_hit({}) == BattleRole.SUCCESS, "没有伤害上下文时应安全返回")
 	检(借用.p_after_attack({}) == BattleRole.SUCCESS, "没有行动者时应安全返回")
 
-	# ---- 跨来源的迅捷赐福：别人放到「我」面前，也要能校验、触发、移除 ----
+	# ---- 跨来源的迅捷赐福：别人放到「我」面前，也要能触发、移除 ----
 	# 场景：祈祷师把 1601 贴到 46 面前；46 的角色转发本 helper 时，
-	# v_additional_action / p_additional_action / 触发都不能按「谁放的」过滤。
+	# p_additional_action / 触发都不能按「谁放的」过滤。
 	_清局()
 	友.basic_effects.clear()
 	友.additional_actions.clear()
@@ -349,8 +335,6 @@ func 跑() -> void:
 	友.role = 友角色
 	友角色.setup(友, 引擎)
 	友角色.赐福 = 赐福脚本.new(友角色)
-	检(友角色.v_additional_action(1601) == GConst.GE_SUCCESS,
-		"持有者面前有别人放的迅捷赐福时，v_additional_action 也应认可")
 	检(not (借用.可选目标(1601) as Array).has(3),
 		"别人放的同类迅捷赐福也要挡住重复放置（同类全局不叠加）")
 	检(借用.p_after_attack({"player": 3}) == BattleRole.SUCCESS, "跨来源迅捷赐福的行动结束钩子应安全返回")
@@ -363,8 +347,6 @@ func 跑() -> void:
 		"持有者选择跨来源迅捷赐福的额外行动时应安全返回")
 	检(赐福.find_blessing(友, 1601, -1) < 0, "跨来源迅捷赐福也应被移除")
 	检(引擎.deck.discard.has(迅捷三.id), "跨来源迅捷赐福应进入弃牌堆")
-	检(友角色.v_additional_action(1601) == GConst.GE_INVALID_ACTION,
-		"跨来源迅捷赐福移除后，该额外行动应被拒")
 	友.basic_effects.clear()
 	友.additional_actions.clear()
 	友.role = null

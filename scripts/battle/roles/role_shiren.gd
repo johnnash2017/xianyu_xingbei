@@ -618,7 +618,8 @@ func _xi_wang_fu_ge_qu(action: Dictionary) -> int:
 			engine.push_draw(player.id, 1)
 			engine._broadcast_game()
 			xi_wang_phase = 1
-			return SUCCESS
+			# 压了摸牌就必须 URGENT：先摸完（含【水影】响应），再压行动结束响应 / 继续选效果
+			return URGENT
 		engine._broadcast_game()
 		xi_wang_phase = 1
 	return _xi_wang_effects()
@@ -774,7 +775,8 @@ func _bu_xie_he_xian(action: Dictionary) -> int:
 			engine.push_draw(player.id, bu_xie_num - 1)
 			engine._broadcast_game()
 			bu_xie_phase = 0
-			return SUCCESS
+			# 压了摸牌就必须 URGENT：先摸完再压行动结束响应
+			return URGENT
 		bu_xie_phase = 2
 	if bu_xie_phase == 2:
 		# 服务端先压目标弃牌、后压自己弃牌（LIFO）→ 自己先弃，再让目标弃

@@ -275,20 +275,27 @@ func 跑() -> void:
 	_重置战斗()
 	_给牌(玩家, 技击甲.id)
 	_给牌(玩家, 非技击.id)
-	检(角色.extra_action_card_ids(4501, GConst.ActionType.Attack) == [技击甲.id],
-		"4501 的额外攻击白名单应只含技类命格攻击牌：%s"
-		% str(角色.extra_action_card_ids(4501, GConst.ActionType.Attack)))
-	检(角色.extra_action_card_ids(4501, GConst.ActionType.Magic).is_empty(),
-		"4501 只限制攻击行动，不应影响法术行动")
-	检(角色.extra_action_card_ids(4504, GConst.ActionType.Attack).is_empty(),
-		"4504 的额外攻击行动不限制出牌")
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Attack, [非技击.id], [2], 1, 4501)
+	# 4501 的限制写在它授予的那份行动里（命格规则），不再按 cause 回问角色
+	角色.resolve_action_end_option(4501, {}, {})
+	var 技数据: Dictionary = 玩家.额外行动数据(4501)
+	# 限定命格是**规则**（技类攻击牌），由引擎按卡库现算，与授予那一刻的手牌无关
+	var 技白: Array = 引擎.额外行动出牌白名单(技数据)
+	检(技白.has(技击甲.id) and not 技白.has(非技击.id),
+		"4501 的可用牌应只含技类命格攻击牌：%s" % str(技白))
+	检(引擎.校验额外行动限制(玩家, 技数据, GConst.ActionType.Attack, [非技击.id], [2])
 		!= GConst.GE_SUCCESS, "4501 的额外攻击用非技类攻击牌应被驳回")
-	检(引擎.校验额外行动限制(玩家, GConst.ActionType.Attack, [技击甲.id], [2], 1, 4501)
+	检(引擎.校验额外行动限制(玩家, 技数据, GConst.ActionType.Attack, [技击甲.id], [2])
 		== GConst.GE_SUCCESS, "4501 的额外攻击用技类攻击牌应通过")
+	玩家.add_action(GConst.ActionType.Attack, 4504, true, true)
+	检(引擎.校验额外行动限制(玩家, 玩家.额外行动数据(4504), GConst.ActionType.Attack,
+		[非技击.id], [2]) == GConst.GE_SUCCESS, "4504 的额外攻击行动不限制出牌")
 	玩家.hand_cards.clear()
-	检(角色.extra_action_card_ids(4501, GConst.ActionType.Attack) == [GConst.手牌白名单_全禁],
-		"手里没有技类攻击牌时应下发全禁白名单，避免空表被当成不限制")
+	玩家.撤回额外行动(4501)
+	角色.resolve_action_end_option(4501, {}, {})
+	# 手里没有技类攻击牌时，规则仍只放行技类攻击牌（不会退化成「不限制」）
+	var 空手白: Array = 引擎.额外行动出牌白名单(玩家.额外行动数据(4501))
+	检(空手白.has(技击甲.id) and not 空手白.has(非技击.id),
+		"手里没有技类攻击牌时，4501 的白名单仍应只含技类攻击牌：%s" % str(空手白))
 
 	# 完整攻击流水线：攻击结束 → 问 4501 → 确认 → 直接进入额外攻击行动
 	_重置战斗()

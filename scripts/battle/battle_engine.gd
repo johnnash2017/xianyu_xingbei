@@ -125,10 +125,11 @@ var 首选额外行动目标: int:
 		var cur: BattlePlayer = p(current_id)
 		if cur != null:
 			cur.快捷额外行动目标 = value
-## 当前额外行动阶段的原始数据（客户端切到另一份额外行动时，提交攻击一并携带 cause，这里据此换队）
+## 当前额外行动阶段的原始数据（同一份引用：技能在 p_additional_action 里改写规格也改它）
 var 当前额外行动数据: Dictionary = {}
-## 当前额外行动进入时的原始队列位置（切走后退回原位，避免重建时排序乱跳）
-var 当前额外位置: int = -1
+## 按「系别 / 命格」规则算出的可用攻击牌 id 表缓存（"系别_命格" → 卡库 id 表），
+## 见 额外行动出牌白名单
+var _规则攻击牌缓存: Dictionary = {}
 ## 测试指令「跳过自己回合」（战斗界面按 8）：记下是谁按的，行动阶段轮到他直接收尾（-1 = 无）
 var 测试跳过回合: int = -1
 ## 角色的 p_after_turn_end 要求「接下来的回合还是他」时写这里（月女【苍白之月】），
@@ -194,16 +195,10 @@ var _pending_args: Array = []
 ## 本次询问是不是「是否发动某技能」的技能询问（ask_skill=true / ask_respond=false）：
 ## 超时兜底要按它区分「技能询问」与应战、弃牌之类的通用应答，而不是靠询问号的大小去猜
 var _pending_is_skill: bool = false
-## 本次行动结束响应里已经摆过的基础效果额外行动（技能号 -> true）
-var _本次已询问基础效果额外行动: Dictionary = {}
-## 本轮已经明确取消/放弃的基础效果额外行动：本回合不再重复询问（技能号 -> true）
-var _已拒绝基础效果额外行动: Dictionary = {}
 ## 快捷额外攻击已经转成普通回复，聚合器分派成功后立即收尾
 var _快捷提前收尾: bool = false
-## 正在「行动聚合器」里等待：取消时同样要清空后续额外攻击
 ## 已下发过的询问次数（测试用：确认取消后没有再次询问）
 var _询问计数: int = 0
-## 玩家在这个响应里点了取消：本回合后面的额外攻击行动全部跳过，不再二次询问
 ## 本次攻击结束响应里已经确认过的基础效果额外行动（技能号 -> true）
 var _基础效果额外行动已确认: Dictionary = {}
 
@@ -222,8 +217,6 @@ func 基础效果额外行动选项(pid: int) -> Array:
 	for cause: int in GConst.基础效果额外行动:
 		if 基础效果额外行动已确认(cause):
 			continue
-		if bool(_已拒绝基础效果额外行动.get(cause, false)):
-			continue
 		if not cur.check_basic_effect_skill(cause):
 			continue
 		if cur.hand_cards.is_empty():
@@ -239,17 +232,21 @@ func 基础效果额外行动选项(pid: int) -> Array:
 
 ## 收集本次行动结束响应的所有选项。聚合器不关心来源类型，只消费这里合并后的描述。
 ## kind：role＝角色技能；extra＝队列里的额外行动；basic＝基础效果额外行动。
-func _收集行动结束选项(pid: int, ctx: Dictionary) -> Array:
+## 排序：行动在前、响应在后 —— 队列额外行动（_sort 0）→ 基础效果（1）→ 角色响应技能（2）；
+## 同一组内按收集顺序（_seq）排。
+## 只基础＝玩家已经取消过本回合的行动结束响应：不再提供角色 / 队列的额外攻击行动，
+## 但基础效果（迅捷赐福）是「每次攻击 / 法术行动结束都可以发动」的独立响应，仍要提供。
+func _收集行动结束选项(pid: int, ctx: Dictionary, 只基础: bool = false) -> Array:
 	var out: Array = []
 	var cur: BattlePlayer = players.get(pid)
 	if cur == null:
 		return out
 	var 序号: int = 0
-	if cur.role != null:
+	if not 只基础 and cur.role != null:
 		for o: Dictionary in cur.role.行动结束来源(ctx):
 			var 项: Dictionary = o.duplicate()
 			项["_kind"] = str(项.get("_kind", 行动来源_角色))
-			项["_sort"] = int(项.get("_sort", 0))
+			项["_sort"] = int(项.get("_sort", 2))
 			项["_seq"] = 序号
 			序号 += 1
 			out.append(项)
@@ -263,7 +260,7 @@ func _收集行动结束选项(pid: int, ctx: Dictionary) -> Array:
 			continue
 		var 项: Dictionary = o.duplicate()
 		项["_kind"] = 行动来源_基础
-		项["_sort"] = 2
+		项["_sort"] = 1
 		项["_seq"] = 序号
 		序号 += 1
 		out.append(项)
@@ -292,7 +289,13 @@ func _分派行动结束选项(pid: int, cause: int, reply: Dictionary, kind: St
 	if cur == null or cur.role == null:
 		return {"result": GConst.GE_INVALID_ACTION, "terminal": true}
 	if kind == 行动来源_额外:
-		return {"result": cur.role.resolve_queued_extra_action(cause), "terminal": true}
+		var 结果: int = cur.role.resolve_queued_extra_action(cause)
+		# 基础效果额外行动（迅捷赐福）从队列路径点选时，代价（移除赐福牌）也要在响应点选时结算，
+		# 不能等进入额外行动阶段 —— 与「响应里点选就扣代价」保持一致。
+		if (结果 == BattleRole.SUCCESS or 结果 == BattleRole.URGENT) \
+				and GConst.基础效果额外行动.has(cause):
+			_支付基础效果额外行动(pid, cause)
+		return {"result": 结果, "terminal": true}
 	return {"result": cur.role.resolve_action_end_option(cause, reply, ctx), "terminal": false}
 ## 本次技能询问「能不能取消」「要选几名目标」「合法目标白名单」：超时兜底要据此判断
 ## 「不许回取消」以及「从谁里面随机挑目标」（如【念弹】：问之前就已记上 +1【斗气】，不能白拿）
@@ -1081,7 +1084,7 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 			and int(data.get("respond_id", 0)) == GConst.RespondType.ChooseExtraAction:
 		if _当前状态 is S行动聚合器:
 			var 快参: Array = data.get("args", [])
-			var 快因: int = int(快参[0]) if not 快参.is_empty() else 0
+			var 快ID: int = int(快参[0]) if not 快参.is_empty() else 0
 			var 快牌表: Array = data.get("card_ids", [])
 			var 快目标表: Array = data.get("dst_ids", [])
 			var 快牌: int = int(快牌表[0]) if not 快牌表.is_empty() \
@@ -1089,26 +1092,43 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 			var 快目标: int = int(快目标表[0]) if not 快目标表.is_empty() \
 				else (int(快参[2]) if 快参.size() > 2 else 0)
 			var 快者: BattlePlayer = players.get(pid)
+			# 按唯一 ID 认人（同一技能可以同时挂两份攻击行动）；拿到 cause 时退回按 cause 找
+			var 快行动: Dictionary = {}
+			if 快者 != null:
+				快行动 = 快者.额外行动按ID(快ID)
+				if 快行动.is_empty():
+					快行动 = 快者.额外行动数据(快ID)
+			var 快uid: int = int(快行动.get("uid", 0))
+			var 快因: int = int(快行动.get("cause", 0))
 			var 快卡: GCard = Data.get_card(快牌)
 			var 原额外2: bool = 行动额外
 			var 原来源2: int = 行动额外来源
 			行动额外 = true
 			行动额外来源 = 快因
-			var 快通过: bool = 快者 != null and 快因 > 0 and 快卡 != null \
+			var 快通过: bool = 快者 != null and not 快行动.is_empty() and 快卡 != null \
 				and 快卡.is_attack() and 快者.has_hand_card(快牌) \
 				and 快者.v_attack(快牌, 快目标, players) == GConst.GE_SUCCESS \
-				and 校验额外行动限制(快者, GConst.ActionType.Attack, [快牌], [快目标],
-					1, 快因) == GConst.GE_SUCCESS
+				and 校验额外行动限制(快者, 快行动, GConst.ActionType.Attack,
+					[快牌], [快目标]) == GConst.GE_SUCCESS
 			行动额外 = 原额外2
 			行动额外来源 = 原来源2
 			if not 快通过:
+				if OS.is_debug_build():
+					print("[额外行动排查] 快捷攻击被拒(聚合器)：id=%d cause=%d 牌=%d 目标=%d 卡=%s 攻击=%s 在手=%s v_attack=%d 限制=%d 在队列=%s 规格=%s" % [
+						快ID, 快因, 快牌, 快目标, str(快卡 != null),
+						str(快卡 != null and 快卡.is_attack()),
+						str(快者 != null and 快者.has_hand_card(快牌)),
+						快者.v_attack(快牌, 快目标, players) if 快者 != null else -1,
+						校验额外行动限制(快者, 快行动, GConst.ActionType.Attack,
+							[快牌], [快目标]) if 快者 != null else -1,
+						str(额外行动在队列ID(快者, 快uid)), str(快行动)])
 				send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 				return
-			首选额外行动 = 快因
+			首选额外行动 = 快uid
 			首选额外行动卡 = 快牌
 			首选额外行动目标 = 快目标
 			_快捷提前收尾 = true
-			_reply = {"args": [快因], "card_ids": [快牌], "dst_ids": [快目标]}
+			_reply = {"args": [快uid], "card_ids": [快牌], "dst_ids": [快目标]}
 			_has_reply = true
 			_await_id = -1
 			_await_state = null
@@ -1144,51 +1164,99 @@ func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	run()
 
 
-## 一份额外行动现在能不能发动：基础效果授予的行动已经确认使用后，
-## 赐福牌已经移除，不能再让角色的 v_additional_action 因“找不到牌”而拒绝。
-func 额外行动可发动(cur: BattlePlayer, cause: int) -> bool:
-	if GConst.基础效果额外行动.has(cause) and 基础效果额外行动已确认(cause):
-		return true
-	return cur != null and cur.v_additional_action(cause) == GConst.GE_SUCCESS
-
-
-## 一份额外行动能不能被切换：优先看行动数据自带的「可切换」标记
-## （基础效果授予的行动属于这里，与当前玩家角色无关），否则再看角色覆写。
-func 额外行动可切换(cur: BattlePlayer, 行动: Dictionary) -> bool:
-	if bool(行动.get("可切换", false)):
-		return true
-	if cur == null or cur.role == null:
+## 一份额外行动现在还在不在队列里（授予它的技能若不再可用，会自己撤回它，见 BattlePlayer.撤回额外行动）。
+## 行动本身是通用工具：能不能出牌 / 打谁只看它自带的规格，不再回头问来源技能。
+func 额外行动在队列(cur: BattlePlayer, cause: int) -> bool:
+	if cur == null:
 		return false
-	return cur.role.extra_action_switchable(int(行动.get("cause", 0)))
+	for a: Dictionary in cur.additional_actions:
+		if int(a.get("cause", 0)) == cause:
+			return true
+	return false
+
+
+## 按唯一 ID 判断这份行动还在不在队列里：同一技能挂了两份时只能靠 ID 认人。
+func 额外行动在队列ID(cur: BattlePlayer, uid: int) -> bool:
+	if cur == null or uid <= 0:
+		return false
+	return cur.额外行动下标按ID(uid) >= 0
+
+
+## 取某份额外行动的数据：正在行动的这份或队列里的那份（同一份数据，含技能写好的规格）。
+func _额外行动数据(cur: BattlePlayer, cause: int) -> Dictionary:
+	if cur != null:
+		return cur.额外行动数据(cause)
+	if not 当前额外行动数据.is_empty() and int(当前额外行动数据.get("cause", 0)) == cause:
+		return 当前额外行动数据
+	return {}
+
+
+## 一份额外行动能不能被切换：看行动自带规格（默认可以），与来源技能无关。
+func 额外行动可切换(_cur: BattlePlayer, 行动: Dictionary) -> bool:
+	return bool(行动.get("switchable", true))
 
 
 ## 行动结束响应点取消＝本回合不再使用任何额外攻击行动：
 ## 清掉队列里所有能执行攻击的额外行动，并阻止之后再由角色补进队列。
+## 例外：已经由基础效果（迅捷赐福）确认、标了 direct 的那一份要保留 ——
+## 它是玩家取消之后又主动选的，必须能真正进入（见 方案A / _处理行动结束取消）。
 func _清除额外攻击行动(pid: int) -> void:
 	var cur: BattlePlayer = players.get(pid)
 	if cur == null:
 		return
 	var 保留: Array = []
 	for a: Dictionary in cur.additional_actions:
+		var cause: int = int(a.get("cause", 0))
+		if GConst.基础效果额外行动.has(cause) and bool(a.get("direct", false)):
+			保留.append(a)
+			continue
 		if GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
 			continue
 		保留.append(a)
 	cur.additional_actions.assign(保留)
 
 
-## 行动结束响应被取消：这是行动结束策略，不属于聚合器。
-## 统一在这里清队列、关闭聚合等待、标记本回合不再询问基础效果额外行动。
+## 行动结束响应被取消：只结束这一次响应，不再清空 / 跳过任何额外行动。
+## 已获得的额外行动全部保留，响应结束后由额外行动阶段（SAdditionalAction）逐个选择使用 / 放弃。
+## 保留这个入口是为了让上层（on_message 的取消识别）有一个统一落点，并记录语义。
+## 注意：还没确认的「响应选项」由 S行动聚合器 在出栈时撤回（见 _撤回未确认额外行动）。
 func _处理行动结束取消(pid: int) -> void:
-	var 取消者: BattlePlayer = players.get(pid)
-	if 取消者 != null:
-		取消者.跳过额外攻击行动 = true
-	_清除额外攻击行动(pid)
-	for cause: int in _本次已询问基础效果额外行动:
-		_已拒绝基础效果额外行动[cause] = true
+	# 新规则下取消响应与额外行动无关：这里刻意什么都不做。
+	pass
+
+
+## 撤回「本次行动结束响应里摆出来、但玩家没确认」的额外行动选项。
+## 这类行动是技能在 p_after_* 里以 in_end_response＝true、direct＝false 预先入队的，
+## 只作为响应询问里的选项存在（如女武神【神圣追击】、剑帝【不屈意志】）；
+## 玩家确认时 resolve_queued_extra_action 才会把它标成 direct 并结算代价。
+## 基础效果授予的行动（祈祷师【迅捷赐福】等）同理：它是被提前垫进队列的「占位」，
+## 玩家在响应里确认时 _确认基础效果额外行动 才把它换成 direct 的真行动；没确认就结束响应，
+## 占位也要一并撤回，否则额外行动阶段会冒出一颗玩家从没确认过的红色「迅捷赐福」按钮。
+## 响应结束时仍没确认的（取消 / 超时 / 点了红色额外攻击提前收尾）都必须撤回。
+func _撤回未确认额外行动(pid: int) -> void:
+	var cur: BattlePlayer = players.get(pid)
+	if cur == null or cur.additional_actions.is_empty():
+		return
+	var 保留: Array = []
+	for a: Dictionary in cur.additional_actions:
+		if not bool(a.get("direct", false)):
+			var cause: int = int(a.get("cause", 0))
+			# ① 响应选项占位（in_end_response）；② 基础效果授予的行动占位（迅捷赐福 1601 等）。
+			# 确认过的基础效果行动会被换成 direct 的真行动，不会走到这里。
+			if bool(a.get("in_end_response", false)) or GConst.基础效果额外行动.has(cause):
+				continue
+		保留.append(a)
+	if 保留.size() == cur.additional_actions.size():
+		return
+	cur.additional_actions.assign(保留)
+	_broadcast_game()
 
 
 ## 确认基础效果授予的额外行动（迅捷赐福等）：
-## 按配置表取出 allow_action，立即把行动移到队尾并标 direct，同时移除对应的赐福牌。
+## 按配置表取出 allow_action，把行动加进队列并标 direct，同时移除对应的赐福牌。
+## 「获取序号」＝这份额外行动真正进入队列的时刻，而不是赐福牌贴在身上的时刻：
+## 赐福可能在前几个回合就贴上了，若沿用贴牌时的序号，它授予的行动会被排到之后获得的行动前面
+## （行动结束响应的快捷按钮、额外行动阶段的技能栏都按这个序号排列）。
 func _确认基础效果额外行动(pid: int, cause: int) -> void:
 	var cur: BattlePlayer = players.get(pid)
 	var 配置: Dictionary = GConst.基础效果额外行动.get(cause, {})
@@ -1201,22 +1269,27 @@ func _确认基础效果额外行动(pid: int, cause: int) -> void:
 			数据 = cur.additional_actions[i].duplicate()
 			cur.additional_actions.remove_at(i)
 			break
-	# 可能在攻击结束钩子前半段已经被补进队列；确认时保持原获取序号，避免把早先获得的赐福排到新行动后面。
 	if 数据.is_empty():
-		cur.add_action(允许, cause, true, true)
+		# 这份行动此刻才获得：add_action 取一个新序号，队列顺序＝获取顺序。
+		cur.add_action(允许, cause, true, true, {"in_end_response": true})
 		for a: Dictionary in cur.additional_actions:
 			if int(a.get("cause", 0)) == cause:
 				数据 = a
-				数据["可切换"] = true
 				break
 	else:
+		# 攻击结束钩子前半段已经由赐福转发补进队列（如祈祷师）：确认那一刻**重新取号** ——
+		# 「获取时刻」是玩家确认使用的时刻，不是转发提前入队的时刻。提前入队发生在演员顺序里，
+		# 可能比同一回合自动获得的额外行动（如魔剑士【修罗连斩】）还早，沿用旧序号就会让
+		# 「我确认的迅捷赐福」排在「自动获得的修罗连斩」前面，看着像没按顺序排。
 		数据["direct"] = true
-		数据["可切换"] = true
 		数据["skip_notice"] = true
-		# 保留它最初获得时的序号：确认只是把“未确认”变“可使用”，不是重新获得一次行动。
-		if not 数据.has("order"):
-			数据["order"] = cur.额外行动新序号()
+		数据["in_end_response"] = true
+		数据["order"] = cur.额外行动新序号()
+		if not 数据.has("uid"):
+			数据["uid"] = cur.额外行动新ID()
 		cur.additional_actions.append(数据)
+		# 重新入队后按获取序号排回去（数组顺序必须始终等于获取顺序）
+		cur.额外行动排序()
 	# 移除对应的基础效果牌并弃置
 	for be: Dictionary in cur.basic_effects:
 		var 牌id: int = int(be.get("card", 0))
@@ -1226,6 +1299,70 @@ func _确认基础效果额外行动(pid: int, cause: int) -> void:
 			to_discard([牌id])
 			_broadcast_game()
 			break
+
+
+## 进入基础效果授予的额外行动时补齐一次性代价：移除并弃置对应的赐福牌。
+## 响应里点选确认（_确认基础效果额外行动）时已经移除过的，这里看到牌不在了就只补确认标记；
+## 响应里没点、取消后直接进额外行动阶段使用的那份，由这里统一移除，避免借用赐福的角色漏掉。
+func _支付基础效果额外行动(pid: int, cause: int) -> void:
+	var cur: BattlePlayer = players.get(pid)
+	if cur == null or 基础效果额外行动已确认(cause):
+		return
+	for be: Dictionary in cur.basic_effects:
+		var 牌id: int = int(be.get("card", 0))
+		var 牌: GCard = Data.get_card(牌id)
+		if 牌 != null and 牌.has_skill_id(cause):
+			remove_basic_effect(pid, 牌id, cause, int(be.get("src", pid)))
+			to_discard([牌id])
+			break
+	_基础效果额外行动已确认[cause] = true
+	_broadcast_game()
+
+
+## 额外行动的**唯一排序入口**：队列（按获取序号）＋可选的「当前正在行动的那份」。
+## 数组顺序就是任何界面看到的顺序——行动结束响应里的快捷按钮、额外行动阶段的技能栏、
+## 额外行动选择框都按它渲染，客户端不排序、不重排。要改排列方式只改这里。
+func 额外行动序列(pid: int, 含当前: bool = false) -> Array:
+	var cur: BattlePlayer = players.get(pid)
+	var 原表: Array = []
+	if cur != null:
+		原表 = cur.additional_actions.duplicate()
+	if 含当前 and not 当前额外行动数据.is_empty() \
+			and int(当前额外行动数据.get("cause", 0)) > 0:
+		原表.append(当前额外行动数据)
+	原表.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("order", 0)) < int(b.get("order", 0)))
+	var 序列: Array = []
+	for a: Dictionary in 原表:
+		# 兜底：手工塞进队列、没走过 add_action 的行动也补一个唯一 ID（老数据 / 脚本自测）
+		if int(a.get("uid", 0)) <= 0 and cur != null and not bool(a.get("current", false)):
+			a["uid"] = cur.额外行动新ID()
+		序列.append({
+			"uid": int(a.get("uid", 0)),
+			"cause": int(a.get("cause", 0)),
+			"allow_action": int(a.get("allow_action", 0)),
+			"cards": a.get("cards", []),
+			"targets": a.get("targets", []),
+			"element": int(a.get("element", 0)),
+			"direct": bool(a.get("direct", false)),
+			"switchable": bool(a.get("switchable", true)),
+			"in_end_response": bool(a.get("in_end_response", false)),
+			"current": 含当前 and a == 当前额外行动数据,
+		})
+	return 序列
+
+
+## 攻击结束响应里的快速攻击按钮只认「已确认、可直接出手的攻击额外行动」：
+## 排除未确认的基础效果、非 direct 的响应型行动。
+func _可快捷攻击(项: Dictionary) -> bool:
+	if not GConst.放行动作(GConst.ActionType.Attack, int(项.get("allow_action", 0))):
+		return false
+	var c: int = int(项.get("cause", 0))
+	if GConst.基础效果额外行动.has(c) and not 基础效果额外行动已确认(c):
+		return false
+	if not bool(项.get("direct", false)) and bool(项.get("in_end_response", false)):
+		return false
+	return true
 
 
 ## 攻击结束响应里点了「额外攻击行动」快捷按钮：记录首选，跳过当前响应钩子剩余角色，
@@ -1243,20 +1380,21 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 	# 聚合器发问时，p_after_magic / p_after_attack 那个 SHook 可能已经执行完出栈了；
 	# 这时不能因为找不到钩子就判无效，仍要记录首选额外行动，让聚合器跳过剩余选项。
 	var args: Array = data.get("args", [])
-	var cause: int = int(args[0]) if not args.is_empty() else 0
+	var 选中ID: int = int(args[0]) if not args.is_empty() else 0
 	var cur: BattlePlayer = players.get(pid)
-	if cur == null or cause <= 0:
+	if cur == null or 选中ID <= 0:
 		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
-	var 有: bool = false
-	for a: Dictionary in cur.additional_actions:
-		if int(a.get("cause", 0)) == cause \
-				and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
-			有 = true
-			break
-	if not 有:
+	# 按唯一 ID 认人（同一技能挂了两份行动时必须能分开）；万一拿到的是 cause 就退回按 cause 找
+	var 选中行动: Dictionary = cur.额外行动按ID(选中ID)
+	if 选中行动.is_empty():
+		选中行动 = cur.额外行动数据(选中ID)
+	if 选中行动.is_empty() \
+			or not GConst.放行动作(GConst.ActionType.Attack, int(选中行动.get("allow_action", 0))):
 		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
+	var uid: int = int(选中行动.get("uid", 0))
+	var cause: int = int(选中行动.get("cause", 0))
 	var 牌表: Array = data.get("card_ids", [])
 	var 目标表: Array = data.get("dst_ids", [])
 	var 攻击牌: int = int(牌表[0]) if not 牌表.is_empty() \
@@ -1275,14 +1413,18 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 	行动额外来源 = cause
 	var 校验通过: bool = 卡 != null and 卡.is_attack() and cur.has_hand_card(攻击牌) \
 		and cur.v_attack(攻击牌, 攻击目标, players) == GConst.GE_SUCCESS \
-		and 校验额外行动限制(cur, GConst.ActionType.Attack, [攻击牌], [攻击目标],
-			1, cause) == GConst.GE_SUCCESS
+		and 校验额外行动限制(cur, 选中行动, GConst.ActionType.Attack,
+			[攻击牌], [攻击目标]) == GConst.GE_SUCCESS
 	行动额外 = 原额外
 	行动额外来源 = 原来源
-	if not 校验通过:
+	# v_* 只做校验：校验完这份行动必须仍然在队列里。
+	# 角色若在校验里撤了自己的单（撤回额外行动），这里就会对不上——
+	# 那种情况下直接驳回并保留响应界面（客户端 on_invalid_input 会恢复），
+	# 不能悄悄改成进入队列里的另一份额外行动（玩家点的是这一份）。
+	if not 校验通过 or not 额外行动在队列ID(cur, uid):
 		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
-	首选额外行动 = cause
+	首选额外行动 = uid
 	首选额外行动卡 = 攻击牌
 	首选额外行动目标 = 攻击目标
 	_await_id = -1
@@ -1602,8 +1744,33 @@ func 转移士气(从颜色: int, 到颜色: int, 点: int = 1) -> int:
 # 消息发送
 # ============================================================
 func send(target: int, msg_type: int, data: Dictionary) -> void:
-	if send_cb.is_valid():
-		send_cb.call(target, msg_type, data)
+	if not send_cb.is_valid():
+		return
+	# 卡牌消息只用于展示 / 音效 / 动画：一律按牌面下发。
+	# 服务端内部（手牌 / 盖牌 / 牌堆 / 弃牌堆）按实例号走，两者不能混，否则客户端按牌面找节点会找错。
+	if msg_type == GConst.Msg.Card:
+		data = _卡牌消息折面(data)
+	send_cb.call(target, msg_type, data)
+
+
+## 把一组牌 id 折成牌面（规则比较 / 下发给客户端用）。
+## 实例号在正常牌上就等于牌号，只有调试克隆出来的副本不同（见 GConst.实例号）。
+func _牌面表(ids: Array) -> Array:
+	var 出: Array = []
+	for v: Variant in ids:
+		出.append(GConst.牌号(int(v)))
+	return 出
+
+
+## Card 消息折成牌面：card_ids 与 as_card_id 都是给客户端找卡面 / 展示位用的
+func _卡牌消息折面(data: Dictionary) -> Dictionary:
+	var 出: Dictionary = data.duplicate()
+	var ids: Array = 出.get("card_ids", [])
+	if not ids.is_empty():
+		出["card_ids"] = _牌面表(ids)
+	if 出.has("as_card_id"):
+		出["as_card_id"] = GConst.牌号(int(出.get("as_card_id", 0)))
+	return 出
 
 
 func broadcast(msg_type: int, data: Dictionary) -> void:
@@ -1659,8 +1826,8 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		"is_extra": extra,
 		# 这份额外行动的来源（如苍白之月 3507）；普通行动不带
 		"extra_cause": extra_cause,
-		# 获取序号：技能栏按它固定排列，当前行动只高亮
-		"extra_order": int(当前额外行动数据.get("order", 0)) if extra else 0,
+		# 这份额外行动的唯一 ID：客户端提交切换 / 出手时回这个 ID（同一技能挂两份也分得清）
+		"extra_uid": int(当前额外行动数据.get("uid", 0)) if extra else 0,
 		# 禁止特殊行动（发动过「启动」技能后）：客户端据此把「特殊行动」按钮收掉
 		"no_special": no_special,
 	}]
@@ -1671,22 +1838,17 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		})
 	var pl: BattlePlayer = players.get(pid)
 	if pl != null and pl.role != null:
-		# 本阶段「普通行动」能用的手牌白名单（如【修罗连斩】额外攻击期间只能出火系攻击牌）：
-		# 非空时下发给界面，客户端据此把其余手牌置灰。
-		# 额外行动阶段优先走向角色声明的额外行动限制（F2），它没配再退回 action_card_ids；
-		# 目标限制同理：非空时写进 dst_ids（服务端在攻击 / 技能落子时同样按它兜底校验）。
-		var 行动牌: Array = []
+		# 额外行动阶段：出牌白名单 / 目标白名单 / 系别全部读这份行动自己的规格
+		# （授予时由技能算好，见 BattlePlayer.add_action 的 spec）。引擎不按 cause 回问角色。
 		if extra and extra_cause > 0:
-			行动牌 = pl.role.extra_action_card_ids(extra_cause, action_type)
-		if 行动牌.is_empty() and not GConst.基础效果额外行动.has(extra_cause):
-			行动牌 = pl.role.action_card_ids(action_type)
-		if not 行动牌.is_empty():
-			cmds[0]["card_ids"] = 行动牌
-		if extra and extra_cause > 0:
-			var 目标限制: Array = pl.role.extra_action_targets(extra_cause)
+			var 额外数据: Dictionary = _额外行动数据(pl, extra_cause)
+			var 行动牌: Array = 额外行动出牌白名单(额外数据)
+			if not 行动牌.is_empty():
+				cmds[0]["card_ids"] = _牌面表(行动牌)
+			var 目标限制: Array = 额外数据.get("targets", [])
 			if not 目标限制.is_empty():
 				cmds[0]["dst_ids"] = 目标限制
-			var 系别: int = pl.role.extra_action_element(extra_cause)
+			var 系别: int = int(额外数据.get("element", 0))
 			if 系别 > 0:
 				cmds[0]["extra_element"] = 系别
 		for sk: Dictionary in pl.role.available_skills():
@@ -1709,8 +1871,9 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				"enabled": 技能可用,
 				# targets 非空时，客户端只把这几名玩家点亮（如【魔弹融合】的落点固定是右手边最近的对手）
 				"dst_ids": sk.get("targets", []),
-				# cards 非空时，客户端只让这几张牌可点（如【暗影流星】只能弃法术牌）
-				"card_ids": sk.get("cards", []),
+				# cards 非空时，客户端只让这几张牌可点（如【暗影流星】只能弃法术牌）。
+				# 角色给出的白名单可能取自手牌（带实例号），下发前统一折成牌面
+				"card_ids": _牌面表(sk.get("cards", [])),
 				# card_max 非空时，客户端点选上限放宽到它（如【欺诈】弃 2~3 张）
 				"card_max": int(sk.get("card_max", 0)),
 				# arg_choices 非空时，客户端把每项渲染成一个按钮，点哪个就用当前已选的牌/目标提交该项 args
@@ -1735,34 +1898,57 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				"args": [int(sk.get("id", 0)), int(sk.get("need_card", 0)), int(sk.get("need_target", 0)),
 					int(sk.get("target_max", 0)), int(sk.get("card_source", GConst.CardSource.Hand))],
 			})
-	# 额外攻击行动阶段：把队列里其它「无选中代价」的攻击额外行动也摆出来，点一个就切换过去
-	if extra and extra_cause > 0 and GConst.放行动作(GConst.ActionType.Attack, action_type) \
-			and pl != null and pl.role != null:
-		for a: Dictionary in pl.additional_actions:
-			var c: int = int(a.get("cause", 0))
-			if c <= 0 or not bool(a.get("direct", false)):
+	# 额外行动阶段：这次询问里可用的额外行动整份下发，**顺序由 额外行动序列 定死**，
+	# 客户端照着摆（不排序、不重排）；当前正在行动的那份也在这份列表里（is_extra 那条）。
+	# 这里**不按动作种类过滤**：额外行动可能是攻击、法术或两类都行（如元素师【元素点燃】+1 法术行动
+	# 与迅捷赐福 +1 攻击行动同时挂着），玩家要能看到全部并自由切换；
+	# 切换后能做什么由那份行动自己的 allow_action 决定（客户端按照它点亮手牌 / 技能，服务端按它校验）。
+	if extra and extra_cause > 0 and pl != null and pl.role != null:
+		var 序列原因: Array = []
+		var 序列ID: Array = []
+		var 序列允许: Array = []
+		var 序列牌: Array = []
+		var 序列目标: Array = []
+		var 序列系别: Array = []
+		for 项: Dictionary in 额外行动序列(pid, true):
+			var c: int = int(项.get("cause", 0))
+			var uid: int = int(项.get("uid", 0))
+			var 允许: int = int(项.get("allow_action", 0))
+			if c <= 0 or uid <= 0 or 允许 <= 0:
 				continue
-			if not GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))):
+			var 是当前: bool = bool(项.get("current", false))
+			# 队列里的其它额外行动：只有 direct 且允许切换的才摆出来（点一个就切过去）
+			if not 是当前 and (not bool(项.get("direct", false)) or not bool(项.get("switchable", true))):
 				continue
-			if not 额外行动可切换(pl, a):
-				continue
-			var 切换牌: Array = pl.role.extra_action_card_ids(c, GConst.ActionType.Attack)
-			if 切换牌.is_empty() and not GConst.基础效果额外行动.has(c):
-				切换牌 = pl.role.action_card_ids(GConst.ActionType.Attack)
-			var 系别: int = pl.role.extra_action_element(c)
-			cmds.append({
-				"respond_id": GConst.ActionType.ChooseExtraAction, "src_id": pid,
-				"dst_ids": pl.role.extra_action_targets(c),
-				"card_ids": 切换牌,
-				"args": [c], "extra_cause": c,
-				"extra_order": int(a.get("order", 0)),
-				"extra_element": 系别,
-			})
+			序列原因.append(c)
+			序列ID.append(uid)
+			序列允许.append(允许)
+			序列牌.append({"ids": _牌面表(额外行动出牌白名单(项))})
+			序列目标.append({"ids": 项.get("targets", [])})
+			序列系别.append(int(项.get("element", 0)))
+			if not 是当前:
+				cmds.append({
+					"respond_id": GConst.ActionType.ChooseExtraAction, "src_id": pid,
+					"dst_ids": 项.get("targets", []),
+					"card_ids": _牌面表(项.get("cards", [])),
+					"args": [uid], "extra_cause": c, "extra_uid": uid,
+					"extra_element": int(项.get("element", 0)),
+				})
+		if not 序列原因.is_empty():
+			cmds[0]["extra_attack_causes"] = 序列原因
+			cmds[0]["extra_attack_uids"] = 序列ID
+			# 与 extra_attack_causes 一一对应的动作种类：客户端据此把「攻击/法术/两类都行」
+			# 写成对应文案（AttackMagic 要写成「额外【攻击行动】或【法术行动】」）
+			cmds[0]["allow_actions"] = 序列允许
+			cmds[0]["extra_attack_cards"] = 序列牌
+			cmds[0]["extra_attack_targets"] = 序列目标
+			cmds[0]["extra_attack_elements"] = 序列系别
 	return cmds
 
 
 func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], src_id: int = -1,
-		card_max: int = 0, card_rule: String = "", ask_text: String = "", allow_actions: Array = []) -> void:
+		card_max: int = 0, card_rule: String = "", ask_text: String = "", allow_actions: Array = [],
+		option_uids: Array = []) -> void:
 	# 记录本次询问，供超时构造默认回复
 	_pending_respond_id = respond_id
 	_pending_args = args.duplicate()
@@ -1777,6 +1963,9 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 	}
 	if not allow_actions.is_empty():
 		cmd["allow_actions"] = allow_actions
+	# 与 args 里每个选项一一对应的「额外行动唯一 ID」：客户端提交时回这个 ID（同一技能挂两份也分得清）
+	if not option_uids.is_empty():
+		cmd["option_uids"] = option_uids
 	# 魔弹传递等少数应答需要放宽选牌上限 / 给提示（10603 弃 2 张同系牌视为魔弹）
 	if card_max > 0:
 		cmd["card_max"] = card_max
@@ -1813,7 +2002,7 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 保留倒计时=true 时沿用这条链当前那次等待的截止时刻（见 wait_for），用于同一条链上的后续询问
 ## can_light=false 时随询问下发 can_light=false（如【阴阳转换】：这次攻击不能用【圣光】抵挡，
 ## 客户端据此把【圣光】置灰；默认 true 时不下发，客户端按可用处理）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false) -> void:
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false) -> void:
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
@@ -1827,7 +2016,6 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	if 允许额外攻击快捷:
 		for o: Dictionary in 基础效果额外行动选项(pid):
 			var 选项号: int = int(o.get("value", 0))
-			_本次已询问基础效果额外行动[选项号] = true
 			var 已有: bool = false
 			for old: Dictionary in 用选项:
 				if int(old.get("value", 0)) == 选项号:
@@ -1864,7 +2052,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		"is_skill": true,
 		# targets 非空时客户端只让这几名玩家可点（如【天使之歌】只能选面前有基础效果的人）
 		"dst_ids": targets,
-		"card_ids": cards,
+		# 角色给出的白名单可能取自手牌（带实例号），下发前统一折成牌面：
+		# 客户端按牌面比较可点性，服务端自己的校验也按牌面
+		"card_ids": _牌面表(cards),
 		"args": args,
 		"card_max": maxi(need_card, card_max),
 		"card_rule": card_rule,
@@ -1881,7 +2071,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		cmd["option_skill_ids"] = 选项技能号
 	# 选项对应一张牌时（如剑之子【剑守誓言】的「选 1 张加入手牌」）：客户端悬停选项按钮时直接摊卡面
 	if not 选项牌号.is_empty() and 选项牌号.max() > 0:
-		cmd["option_card_ids"] = 选项牌号
+		cmd["option_card_ids"] = _牌面表(选项牌号)
 	# 有不可用选项时才下发（如魔纹不够时的额外翻转档）：客户端据此置灰、点不动
 	if not 选项可用.is_empty() and 选项可用.has(false):
 		cmd["option_enabled"] = 选项可用
@@ -1895,6 +2085,14 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 「转移」含自己）：客户端选中某项后按它收紧可点头像（未选＝按并集）
 	if 有选项目标:
 		cmd["option_targets"] = 选项目标
+	# 默认替玩家选中哪一项（0 基下标；行动结束响应用）：不传＝不预选。
+	# 客户端据此在选项摆出来的同时先点亮第一项，玩家不用先点一次选项才能按「确定」。
+	if default_option >= 0:
+		cmd["default_option"] = default_option
+	# 不摆「被问的技能」本体（行动结束响应用）：选项本身就是全部可选项，没有父技能。
+	# 否则 respond_id（只是列表第一项）会多摆一颗与选项同名的按钮。
+	if no_parent:
+		cmd["no_parent"] = true
 	# 客户端现算头像提示要用的基准数值（如【战纹碎击】要显示「原伤害 + 弃牌加伤」、
 	# 【双重回响】要显示它复制出来的那份伤害）
 	if 预览基准 > 0:
@@ -1917,38 +2115,29 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	_pending_respond_id = skill_id
 	_pending_args = args.duplicate()
 	_pending_is_skill = true
-	# 攻击结束响应期间，把「已获得但还没用的攻击行动」一并下发给客户端做红色快捷按钮
+	# 攻击结束响应期间，把「已获得但还没用的攻击行动」一并下发给客户端做红色快捷按钮。
+	# 顺序来自 额外行动序列（唯一排序入口），和额外行动阶段的技能栏完全一致。
 	if 允许额外攻击快捷:
 		var 额外攻击: Array = []
+		var 额外攻击ID: Array = []
+		var 额外允许: Array = []
 		var 额外牌表: Array = []
 		var 额外目标表: Array = []
 		var 额外系别表: Array = []
-		var 问者: BattlePlayer = players.get(pid)
-		if 问者 != null:
-			for a: Dictionary in 问者.additional_actions:
-				var 类: int = int(a.get("allow_action", 0))
-				if not GConst.放行动作(GConst.ActionType.Attack, 类):
-					continue
-				var c: int = int(a.get("cause", 0))
-				# 基础效果授予的行动在“确认使用”之前只是响应选项，不能同时当快捷攻击按钮
-				if GConst.基础效果额外行动.has(c) and not 基础效果额外行动已确认(c):
-					continue
-				# 非 direct 的「行动结束响应」额外行动会作为技能选项出现，不能再挂快捷按钮
-				if not bool(a.get("direct", false)) and 问者.role != null \
-						and 问者.role.额外行动属于结束响应(c):
-					continue
-				var 牌: Array = 问者.role.extra_action_card_ids(c, GConst.ActionType.Attack) \
-					if 问者.role != null else []
-				if 牌.is_empty() and 问者.role != null \
-						and not GConst.基础效果额外行动.has(c):
-					牌 = 问者.role.action_card_ids(GConst.ActionType.Attack)
-				var 目标: Array = 问者.role.extra_action_targets(c) if 问者.role != null else []
-				额外攻击.append(c)
-				额外牌表.append({"ids": 牌})
-				额外目标表.append({"ids": 目标})
-				额外系别表.append(问者.role.extra_action_element(c) if 问者.role != null else 0)
+		for 项: Dictionary in 额外行动序列(pid, false):
+			if not _可快捷攻击(项):
+				continue
+			额外攻击.append(int(项.get("cause", 0)))
+			额外攻击ID.append(int(项.get("uid", 0)))
+			额外允许.append(int(项.get("allow_action", 0)))
+			额外牌表.append({"ids": _牌面表(额外行动出牌白名单(项))})
+			额外目标表.append({"ids": 项.get("targets", [])})
+			额外系别表.append(int(项.get("element", 0)))
 		if not 额外攻击.is_empty():
 			cmd["extra_attack_causes"] = 额外攻击
+			cmd["extra_attack_uids"] = 额外攻击ID
+			# 与 extra_attack_causes 一一对应的动作种类：客户端据此写对按钮文案
+			cmd["allow_actions"] = 额外允许
 			cmd["extra_attack_cards"] = 额外牌表
 			cmd["extra_attack_targets"] = 额外目标表
 			cmd["extra_attack_elements"] = 额外系别表
@@ -2230,10 +2419,8 @@ func _结算待弃牌(ctx: Dictionary) -> void:
 			if 原主 != null:
 				for c1: Variant in 被认领:
 					var cid: int = int(c1)
-					if 原主.hand_cards.has(cid):
-						原主.remove_hand_cards([cid])
-					elif 原主.cover_cards.has(cid):
-						原主.remove_cover_cards([cid])
+					if 原主.取出实例(原主.hand_cards, cid) < 0:
+						原主.取出实例(原主.cover_cards, cid)
 			认领者.add_hand_cards(被认领)
 			broadcast(GConst.Msg.Gossip, {
 				"type": GConst.GossipType.Discard,
@@ -2241,6 +2428,20 @@ func _结算待弃牌(ctx: Dictionary) -> void:
 				"id": taker,
 			})
 	_broadcast_game()
+
+
+## 在某一列牌里认一张「还没被选过」的牌：实例号优先、牌面兜底，返回实际实例号或 -1。
+## 弃牌 / 弃盖牌的回复只带牌号（玩家点的是牌面），同一牌面有多份副本时要按份数逐个认；
+## 按牌号去重的话，两张同牌面永远只能选出 1 张，另一张会被当成「已经选过」。
+func _认一张(列: Array, id: int, 已选: Array) -> int:
+	for 实例: Variant in 列:
+		if int(实例) == id and not 已选.has(int(实例)):
+			return int(实例)
+	var 面: int = GConst.牌号(id)
+	for 实例2: Variant in 列:
+		if GConst.牌号(int(实例2)) == 面 and not 已选.has(int(实例2)):
+			return int(实例2)
+	return -1
 
 
 # ============================================================
@@ -2434,11 +2635,10 @@ func debug_key(pid: int, kind: int) -> void:
 	if p0 == null:
 		return
 	if kind == GConst.DebugKey.GiveHolyLight:
-		# 测试用（战斗界面按 1）：给自己发 4 张【圣光】（挑 4 张不同牌号的，免得手里出现重复牌号）
+		# 测试用（战斗界面按 1）：给自己发 4 张【圣光】。
+		# 牌库里还有就发牌库里那张，已经全在场就克隆（见 _发一张到手里），所以按几次都不会撞号
 		var 圣光候选: Array[int] = []
 		for cid: int in range(GConst.CARDSUM):
-			if p0.has_hand_card(cid):
-				continue
 			var c: GCard = Data.get_card(cid)
 			if c != null and c.card_name_enum() == GConst.CardName.HolyLight:
 				圣光候选.append(cid)
@@ -2449,8 +2649,6 @@ func debug_key(pid: int, kind: int) -> void:
 		for 技能号: int in Data.role_skills(p0.role_id):
 			var 候选: Array[int] = []
 			for cid: int in range(GConst.CARDSUM):
-				if p0.has_hand_card(cid):
-					continue
 				var c: GCard = Data.get_card(cid)
 				if c != null and c.has_skill_id(技能号):
 					候选.append(cid)
@@ -2539,20 +2737,40 @@ func debug_key(pid: int, kind: int) -> void:
 	_broadcast_game()
 
 
-## 测试发牌：把这张牌从牌堆 / 弃牌堆拿走再加进手里（避免同一张牌凭空多出来）
+## 测试发牌：把一张【cid 这个牌面】的牌加进手里。
+## 牌库 / 弃牌堆里还有这张实体，就直接拿那一份（实例号就是牌号）；
+## 已经全部在场时克隆一份新的实例号（序号*实例步长 + 牌号，见 GConst.实例号）——
+## 克隆牌的身份唯一，客户端按实例号选中/渲染，不会再出现「点一张、好几张一起亮」。
 func _发一张到手里(p0: BattlePlayer, cid: int) -> void:
-	deck.remove_one(cid)
-	p0.add_hand_cards([cid])
+	var 面: int = GConst.牌号(cid)
+	var 实例: int = deck.取出实例(面)
+	if 实例 < 0:
+		实例 = _新克隆实例(面)
+	p0.add_hand_cards([实例])
+
+
+## 给调试克隆牌找一个还没被占用的实例号（序号从 1 起）
+func _新克隆实例(面: int) -> int:
+	var 序号: int = 1
+	while _实例在场(GConst.实例号(面, 序号)):
+		序号 += 1
+	return GConst.实例号(面, 序号)
+
+
+## 这个实例号现在是不是已经在某个区域里（手牌 / 盖牌 / 牌堆 / 弃牌堆）
+func _实例在场(实例: int) -> bool:
+	for p: BattlePlayer in players.values():
+		if p.hand_cards.has(实例) or p.cover_cards.has(实例):
+			return true
+	return deck.pile.has(实例) or deck.discard.has(实例)
 
 
 ## 测试发牌：给某玩家发 count 张牌。
 ## 要攻击 = true 发攻击牌（斩）、false 发法术牌；同系 = true 这 count 张要同一种系别，
-## false 则要互不相同的系别。候选只从「手里还没有的牌」里挑。
+## false 则要互不相同的系别。候选不再排除手里的牌 —— 同牌面可以克隆（见 _发一张到手里）。
 func _发测试牌(p0: BattlePlayer, count: int, 要攻击: bool, 同系: bool) -> void:
 	var 分组: Dictionary = {}
 	for cid: int in range(GConst.CARDSUM):
-		if p0.has_hand_card(cid):
-			continue
 		var c: GCard = Data.get_card(cid)
 		if c == null or c.is_attack() != 要攻击:
 			continue
@@ -2695,7 +2913,6 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 	push(SHook.new("p_action_end", 上下文, []))
 	if hook == "p_after_attack" or hook == "p_after_magic":
 		# 行动聚合器：只聚合当前时点可执行的行动选项
-		_本次已询问基础效果额外行动.clear()
 		push(S行动聚合器.new(上下文))
 	push(SHook.new(hook, 上下文, []))
 	# 最高优先级行动结束结算（如格斗家念弹）：必须排在普通行动结束响应之前
@@ -2703,6 +2920,45 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 		var 当前: BattlePlayer = players.get(int(上下文.get("player", current_id)))
 		if 当前 != null and 当前.role != null and 当前.role.has_priority_action_end():
 			push(SHook.new("p_priority_action_end", 上下文, []))
+
+
+## 额外行动的单份行动"可用牌"白名单：技能直接给的 id 表优先；没给 id 表但给了
+## 系别 / 命格规则时，按规则现算（对照卡库，不看当前手牌快照）。
+## 为什么不能拿手牌快照：手牌会变。技能授予时算一次 id 表，等玩家再摸到同类牌就出不了了
+## （修罗连斩 / 风怒追击 / 二重剑影 的「该系攻击牌」、技之剑意的「技类攻击牌」都踩过）。
+func 额外行动出牌白名单(行动: Dictionary) -> Array:
+	if 行动.is_empty():
+		return []
+	var 表: Array = 行动.get("cards", [])
+	if not 表.is_empty():
+		return 表
+	var 系: int = int(行动.get("element", 0))
+	var 命格: int = int(行动.get("card_fate", 0))
+	if 系 <= 0 and 命格 <= 0:
+		return []
+	return _规则攻击牌(系, 命格)
+
+
+## 卡库里符合「该系 / 该命格」的全部攻击牌 id（按规则缓存一次）：
+## 界面据此点亮可出的牌，服务端据此校验。一张都没有时给「全禁」哨兵，
+## 避免空表被当成「不限制」。系别与命格都为 0 时按「不限」处理（调用方已挡掉）。
+func _规则攻击牌(系: int, 命格: int) -> Array:
+	var 键: String = "%d_%d" % [系, 命格]
+	if _规则攻击牌缓存.has(键):
+		return _规则攻击牌缓存[键]
+	var 表: Array = []
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual or not c.is_attack():
+			continue
+		if 系 > 0 and c.element_enum() != 系:
+			continue
+		if 命格 > 0 and c.fate_pattern_enum() != 命格:
+			continue
+		表.append(c.id)
+	if 表.is_empty():
+		表 = [GConst.手牌白名单_全禁]
+	_规则攻击牌缓存[键] = 表
+	return 表
 
 
 ## 本回合的行动计数（只读查询，F2）：供角色 / 头像提示 / 测试读取
@@ -2719,22 +2975,27 @@ func 行动计数(pid: int) -> Dictionary:
 	}
 
 
-## 额外行动的出牌 / 目标限制校验（F2）：本次若是某份额外行动，牌与目标必须落在角色给的范围内
-## （BattleRole.extra_action_card_ids / extra_action_targets；角色没覆写＝空表＝不限制）。
-## is_extra / cause 传 -1 时取当前行动阶段的状态；技能行动用 _进入技能行动 时快照的值显式传入。
-func 校验额外行动限制(cur: BattlePlayer, action_type: int, card_ids: Array, dst_ids: Array,
-		is_extra: int = -1, cause: int = -1) -> int:
-	if cur == null or cur.role == null:
+## 额外行动的出牌 / 目标限制校验（F2）：本次若是某份额外行动，牌与目标必须落在**这份行动自己的规格**里
+## （BattlePlayer.add_action 的 spec.cards / spec.targets；空表＝不限制，[-1] 哨兵＝全禁）。
+## 只给了系别、没给 id 白名单的行动（如「只能用火系攻击牌」）按系别规则算，见 额外行动出牌白名单。
+## 技能行动（技能栏里的招式，如 10703 魔弹融合）读 spec.skill_cards，缺省沿用 cards：
+## 同一份额外行动里，普通出牌与技能招式可用的牌不一定是同一批。
+func 校验额外行动限制(cur: BattlePlayer, 行动: Dictionary, action_type: int,
+		card_ids: Array, dst_ids: Array, is_skill: bool = false) -> int:
+	if cur == null or 行动.is_empty():
 		return GConst.GE_SUCCESS
-	var 额外: bool = 行动额外 if is_extra < 0 else is_extra != 0
-	var 来源: int = (行动额外来源 if 额外 else 0) if cause < 0 else cause
-	if not 额外 or 来源 <= 0:
-		return GConst.GE_SUCCESS
-	var 白名单: Array = cur.role.extra_action_card_ids(来源, action_type)
+	if not GConst.放行动作(action_type, int(行动.get("allow_action", action_type))):
+		return GConst.GE_INVALID_ACTION
+	var 白名单: Array
+	if is_skill and 行动.has("skill_cards"):
+		白名单 = 行动.get("skill_cards", [])
+	else:
+		白名单 = 额外行动出牌白名单(行动)
 	for c: Variant in card_ids:
-		if not 白名单.is_empty() and not 白名单.has(int(c)):
+		# 提交上来的是实例号，规格里的白名单是牌面：比较前先折回牌面（克隆牌也按同一张牌面算）
+		if not 白名单.is_empty() and not 白名单.has(GConst.牌号(int(c))):
 			return GConst.GE_INVALID_CARDID
-	var 目标表: Array = cur.role.extra_action_targets(来源)
+	var 目标表: Array = 行动.get("targets", [])
 	if not 目标表.is_empty():
 		for d: Variant in dst_ids:
 			if not 目标表.has(int(d)):
@@ -2921,11 +3182,13 @@ class SCheckTurnStart:
 		cur.clear_additional_action()
 		cur.跳过额外攻击行动 = false
 		e._基础效果额外行动已确认.clear()
-		e._已拒绝基础效果额外行动.clear()
 		# F2 行动计数：新回合从零开始记（攻击 / 法术 / 特殊 / 额外）
 		cur.reset_action_counts()
 		# 「启动」技能每回合只能发动一个：新回合开始清零
 		cur.boot_skill_used = false
+		# 回合级标记「本回合下次主动攻击只能打谁」：新回合重来（正常在攻击打出时就消费掉了，
+		# 没打出去（放弃行动 / 回合被跳过）也不带到下一回合）
+		cur.set_attack_lock(0)
 		e.skip_action_phase = false
 		e.跳过行动阶段来源 = 0
 		e.本回合跳过行动阶段 = false
@@ -3039,8 +3302,6 @@ class SActionPhase:
 	var 额外来源: int = 0
 	## 当前这份额外行动的原始数据（切换额外攻击时退回队列用）
 	var 额外数据: Dictionary = {}
-	## 进入行动阶段时它在额外行动队列里的原位置（切走再退回时保持排序）
-	var 额外位置: int = -1
 	## 玩家挂机超时：本阶段已作废，直接收尾（tick 里置位，不替他出牌，也不宣告「无法行动」换手牌）
 	var 跳过: bool = false
 
@@ -3118,8 +3379,7 @@ func 切换额外攻击(状态: SActionPhase, cur: BattlePlayer, cause: int) -> 
 	var 新: Dictionary = cur.additional_actions[idx].duplicate()
 	cur.additional_actions.remove_at(idx)
 	cur.additional_actions.append(状态.额外数据)
-	cur.additional_actions.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return int(a.get("order", 0)) < int(b.get("order", 0)))
+	cur.额外行动排序()
 	状态.额外数据 = 新
 	状态.允许 = int(新.get("allow_action", GConst.ActionType.Attack))
 	状态.额外来源 = cause
@@ -3127,33 +3387,45 @@ func 切换额外攻击(状态: SActionPhase, cur: BattlePlayer, cause: int) -> 
 	return true
 
 
-## 提交攻击时按客户端本地选择的 cause 换队（不重发行动询问）。只允许 direct / 角色认可可切换的行动。
-func _直接切换额外攻击(cur: BattlePlayer, cause: int) -> bool:
-	if cur == null or cur.role == null or not 行动额外 or 当前额外行动数据.is_empty():
+## 换到队列里指定的那一份额外行动，作为「马上要做的动作种类」（攻击 / 法术 / 特殊按各自放行判断）。
+## 按唯一 ID 认人（拿到 cause 时退回按 cause 找）。打牌、技能行动都走这里：
+## 换成功后原当前那份退回队列、新的成为当前，行动允许 / 来源一起更新。
+func _切换额外行动(cur: BattlePlayer, 选中: int, 作为: int) -> bool:
+	if cur == null or not 行动额外 or 当前额外行动数据.is_empty():
 		return false
 	if not bool(当前额外行动数据.get("direct", false)):
 		return false
 	if not 额外行动可切换(cur, 当前额外行动数据):
 		return false
-	var idx: int = -1
-	for i: int in range(cur.additional_actions.size()):
-		var a: Dictionary = cur.additional_actions[i]
-		if int(a.get("cause", 0)) == cause and bool(a.get("direct", false)) \
-				and GConst.放行动作(GConst.ActionType.Attack, int(a.get("allow_action", 0))) \
-				and 额外行动可切换(cur, a):
-			idx = i
-			break
+	var idx: int = cur.额外行动下标按ID(选中)
+	if idx < 0:
+		for i: int in range(cur.additional_actions.size()):
+			if int(cur.additional_actions[i].get("cause", 0)) == 选中:
+				idx = i
+				break
 	if idx < 0:
 		return false
-	var 新: Dictionary = cur.additional_actions[idx].duplicate()
+	var 候选: Dictionary = cur.additional_actions[idx]
+	# 「放弃行动」不真正执行某类动作：不需要过 放行动作 这一关（否则切到只放行攻击的行动再放弃
+	# 会被判非法，服务端把放弃驳回，玩家看到的是「放弃后另一份额外行动不见了」）。
+	if not bool(候选.get("direct", false)) \
+			or (作为 != GConst.ActionType.None \
+				and not GConst.放行动作(作为, int(候选.get("allow_action", 0)))) \
+			or not 额外行动可切换(cur, 候选):
+		return false
+	var 新: Dictionary = 候选.duplicate()
 	cur.additional_actions.remove_at(idx)
 	cur.additional_actions.append(当前额外行动数据)
-	cur.additional_actions.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return int(a.get("order", 0)) < int(b.get("order", 0)))
+	cur.额外行动排序()
 	当前额外行动数据 = 新
-	行动额外来源 = cause
+	行动额外来源 = int(新.get("cause", 0))
 	行动允许 = int(新.get("allow_action", GConst.ActionType.Attack))
 	return true
+
+
+## 出攻击牌时的换队（历史入口，等同「作为＝攻击」的通用换队）
+func _直接切换额外攻击(cur: BattlePlayer, 选中: int) -> bool:
+	return _切换额外行动(cur, 选中, GConst.ActionType.Attack)
 
 
 ## 响应里选额外攻击时已经点好手牌 + 敌方：进入额外行动（含选中代价钩子）后直接发起攻击
@@ -3247,7 +3519,7 @@ class SNextPlayer:
 ## 只负责收集、合并、发询问、把选中的 cause 分派回来源；
 ## 扣费、direct 标记、入队等行动本身由角色 / 基础效果自己处理。
 ## 1) 目标身上未确认的基础效果额外行动（迅捷赐福等）；
-## 2) 队列里已获得、但还没确认的额外行动（由角色声明 额外行动属于结束响应）。
+## 2) 队列里已获得、但还没确认的额外行动（行动规格里 in_end_response＝true，由授予它的技能写）。
 class S行动聚合器:
 	var 上下文: Dictionary = {}
 	var 待决: int = 0
@@ -3289,6 +3561,17 @@ class S行动聚合器:
 		return -1
 
 	func handle(e: BattleEngine) -> int:
+		var 结果: int = _跑(e)
+		# 响应结束（CONTINUE＝本状态出栈）：把本次响应里**还没确认**的额外行动选项撤回。
+		# 它们只是「摆出来给玩家选」的选项（in_end_response＝true、direct＝false），不是已获得的行动；
+		# 不撤回的话，取消 / 超时 / 点了红色额外攻击提前收尾之后，它们会以「额外行动」身份冒到
+		# 额外行动阶段（女武神【神圣追击】、剑帝【不屈意志】踩过：取消响应后弹出红色行动按钮）。
+		# WAIT / SUSPEND 说明还在响应里，不动。
+		if 结果 == BattleEngine.CONTINUE:
+			e._撤回未确认额外行动(e.current_id)
+		return 结果
+
+	func _跑(e: BattleEngine) -> int:
 		var pid: int = e.current_id
 		var cur: BattlePlayer = e.p(pid)
 		if cur == null:
@@ -3296,7 +3579,11 @@ class S行动聚合器:
 		# 响应里已经点红色额外攻击按钮：放弃剩余响应选项，直接进入所选额外攻击
 		if e.首选额外行动 >= 0:
 			return BattleEngine.CONTINUE
-		if cur.跳过额外攻击行动:
+		# 取消过本回合的行动结束响应：不再提供角色 / 队列的额外攻击行动；
+		# 但基础效果（迅捷赐福）是「每次攻击 / 法术行动结束都可以发动」的独立响应，
+		# 取消只结束当时那一次，后续行动结束仍要再问（见 _处理行动结束取消）。
+		var 只基础效果: bool = cur.跳过额外攻击行动
+		if 只基础效果 and e.基础效果额外行动选项(pid).is_empty():
 			return BattleEngine.CONTINUE
 		# 角色技能的多步结算：上次已经分派，等待本状态再次被唤醒
 		if 待决 > 0:
@@ -3306,7 +3593,7 @@ class S行动聚合器:
 				return 续结果
 		while true:
 			# 来源收集全部交给引擎；聚合器不认识角色技能 / 队列额外行动 / 基础效果
-			var 待问: Array = e._收集行动结束选项(pid, 上下文)
+			var 待问: Array = e._收集行动结束选项(pid, 上下文, 只基础效果)
 			if 待问.is_empty():
 				return BattleEngine.CONTINUE
 			# 全部不可发动时不要弹一张全是灰按钮的询问；只要有一项可发动，
@@ -3328,10 +3615,14 @@ class S行动聚合器:
 				e.ask_skill(pid, 首, 0, 0, 选牌来源,
 					待问, 0, "", [], true,
 					"行动结束时可以发动以下行动，选择一项（发动后还能发动另一项）",
-					[], 0, 0, false, [], true, -1, 0, true)
+					[], 0, 0, false, [], true, -1, 0, true, 0, true)
 				return BattleEngine.WAIT
 			var r: Dictionary = _取回复(e)
 			var args: Array = r.get("args", [])
+			# 取消 / 超时（空应答）：只结束本次响应，不清空任何已获得的额外行动；
+			# 它们会在响应结束后的「额外行动阶段」（SAdditionalAction）里由玩家选择使用 / 放弃。
+			if args.is_empty() and (r.get("dst_ids", []) as Array).is_empty():
+				return BattleEngine.CONTINUE
 			var 选中: int = int(args[0]) if not args.is_empty() else 0
 			var 选中可用: bool = true
 			var 选中类型: String = 行动来源_角色
@@ -3360,8 +3651,17 @@ class S行动聚合器:
 
 ## 额外行动询问
 class SAdditionalAction:
+	## 响应里没点选、取消后直接进额外行动阶段使用的那份行动：代价钩子返回 URGENT 时，
+	## 等它压入的结算（如血剑【赤色一闪】的伤害）跑完再回来进入
+	var 待进入: int = -1
+
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
+		if 待进入 >= 0:
+			var 下标: int = 待进入
+			待进入 = -1
+			if cur != null and 下标 >= 0 and 下标 < cur.additional_actions.size():
+				return _进入(e, cur, 下标, int(cur.additional_actions[下标]["cause"]))
 		# 行动结束响应点了取消：本回合不再处理额外攻击行动；
 		# 若队列里还有法术/特殊类额外行动，仍按原逻辑处理。
 		if cur.跳过额外攻击行动:
@@ -3372,15 +3672,20 @@ class SAdditionalAction:
 		if cur == null or not cur.contains_action():
 			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
-		# 攻击结束响应里玩家点了某份额外攻击行动：直接进入它（不再弹额外行动选择）
+		# 攻击结束响应里玩家点了某份额外攻击行动：直接进入它（不再弹额外行动选择）。
+		# 首选记的是唯一 ID（同一技能挂两份时只能靠它区分）；拿到 cause 的旧格式按要求退回按 cause 找。
 		if e.首选额外行动 >= 0:
 			var 期望: int = e.首选额外行动
 			e.首选额外行动 = -1
-			for i: int in range(cur.additional_actions.size()):
-				if int(cur.additional_actions[i].get("cause", 0)) == 期望 \
-						and e.额外行动可发动(cur, 期望):
-					return _进入(e, cur, i, 期望)
-			# 选中的额外行动已经不在队列/已不可发动：清掉预选牌和目标，避免错误地打第一份 direct 行动
+			var 期望下标: int = cur.额外行动下标按ID(期望)
+			if 期望下标 < 0:
+				for i: int in range(cur.additional_actions.size()):
+					if int(cur.additional_actions[i].get("cause", 0)) == 期望:
+						期望下标 = i
+						break
+			if 期望下标 >= 0:
+				return _进入(e, cur, 期望下标, int(cur.additional_actions[期望下标]["cause"]))
+			# 选中的额外行动已经不在队列：清掉预选牌和目标，避免错误地打第一份 direct 行动
 			e.首选额外行动卡 = 0
 			e.首选额外行动目标 = 0
 		# 声明了 direct 的额外行动（如圣女【圣疗】）不用先问：直接进入它的额外行动阶段。
@@ -3389,61 +3694,80 @@ class SAdditionalAction:
 			for i: int in range(cur.additional_actions.size()):
 				if not bool(cur.additional_actions[i].get("direct", false)):
 					continue
-				var 直接: int = int(cur.additional_actions[i]["cause"])
-				if e.额外行动可发动(cur, 直接):
-					return _进入(e, cur, i, 直接)
+				return _进入(e, cur, i, int(cur.additional_actions[i]["cause"]))
 		if e.has_reply():
 			var r: Dictionary = e.take_reply()
 			var args: Array = r.get("args", [])
 			var chosen: int = int(args[0]) if args.size() > 0 else -1
-			var idx: int = -1
-			if chosen >= 0:
+			# 玩家选的是唯一 ID；万一拿到的是 cause（旧格式 / 脚本自测）就退回按 cause 找
+			var idx: int = cur.额外行动下标按ID(chosen) if chosen > 0 else -1
+			if idx < 0 and chosen > 0:
 				for i: int in range(cur.additional_actions.size()):
 					if int(cur.additional_actions[i]["cause"]) == chosen:
 						idx = i
 						break
-			if idx >= 0 and not e.额外行动可发动(cur, chosen):
-				# 角色二次校验未通过（服务端 v_additional_action）：提示并重新询问
-				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
-				var 参数2: Array = _询问参数(e, cur)
-				e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, 参数2[0], 参数2[1],
-					-1, 0, "", "", 参数2[2])
-				e.wait_for(cur.id, GConst.Msg.Respond)
-				return BattleEngine.WAIT
 			if idx >= 0:
-				return _进入(e, cur, idx, chosen)
+				return _进入(e, cur, idx, int(cur.additional_actions[idx]["cause"]))
 			# 放弃/无匹配：清空待办并继续结束回合
 			cur.clear_additional_action()
 			e.push(STurnEnd.new())
 			return BattleEngine.CONTINUE
 		var 参数: Array = _询问参数(e, cur)
 		e.ask_respond(cur.id, GConst.RespondType.AdditionalAction, 参数[0], 参数[1],
-			-1, 0, "", "", 参数[2])
+			-1, 0, "", "", 参数[2], 参数[3])
 		e.wait_for(cur.id, GConst.Msg.Respond)
 		return BattleEngine.WAIT
 
 
-	## 额外行动询问参数：causes = 全部可选；可发动 = 当前 v_additional_action 认可的；
-	## 允许 = 每份额外行动各自允许的行动种类（客户端据此写「额外【攻击行动】」）。
-	## 可发动作为询问的 dst_ids 下发，客户端据此把「确定」/选项按钮置灰（不能发动也能点「取消」跳过）
+	## 额外行动询问参数：causes = 队列里的全部（顺序来自 额外行动序列，先获得的在前）；
+	## 允许 = 每份额外行动各自允许的行动种类（客户端据此写「额外【攻击行动】」）；
+	## uids = 与 causes 一一对应的唯一 ID（客户端提交时用它认人，不按 cause 认）。
+	## 能不能用只看行动自带规格、由技能在授予时保证；不再做「按来源的二次校验」。
 	func _询问参数(e: BattleEngine, cur: BattlePlayer) -> Array:
 		var causes: Array = []
 		var 可发动: Array = []
 		var 允许: Array = []
-		for a: Dictionary in cur.additional_actions:
-			var c: int = int(a["cause"])
+		var uids: Array = []
+		for 项: Dictionary in e.额外行动序列(cur.id, false):
+			var c: int = int(项.get("cause", 0))
+			var uid: int = int(项.get("uid", 0))
+			if c <= 0 or uid <= 0:
+				continue
 			causes.append(c)
-			允许.append(int(a.get("allow_action", 0)))
-			if e.额外行动可发动(cur, c):
-				可发动.append(c)
-		return [causes, 可发动, 允许]
+			uids.append(uid)
+			允许.append(int(项.get("allow_action", 0)))
+			可发动.append(uid)
+		return [causes, 可发动, 允许, uids]
 
 	## 进入某份额外行动：移除它、广播技能通知（授予者已宣告过时不重复），
-	## 再压入额外行动阶段（允许放弃）与其「被选中」代价钩子
+	## 再压入额外行动阶段（允许放弃）与其「被选中」代价钩子。
+	## 数据保持同一份引用（不复制）：技能在 p_additional_action 里改写规格（如按当前手牌重算白名单）
+	## 时，改的就是这份正在行动的行动。
 	func _进入(e: BattleEngine, cur: BattlePlayer, idx: int, cause: int) -> int:
 		var 允许: int = int(cur.additional_actions[idx]["allow_action"])
 		var 跳过宣告: bool = bool(cur.additional_actions[idx].get("skip_notice", false))
-		var 数据: Dictionary = cur.additional_actions[idx].duplicate()
+		var 数据: Dictionary = cur.additional_actions[idx]
+		# 响应里点选过的额外行动已在当时付过代价（已付费）；取消响应后直接进额外行动阶段
+		# 使用的那份，在这里补付一次，避免「取消一下就能免费使用」。
+		if not bool(数据.get("已付费", false)):
+			var 代价: int = BattleRole.SUCCESS
+			if cur.role != null:
+				代价 = cur.role.行动结束确认代价(cause)
+			if 代价 == BattleRole.URGENT:
+				数据["已付费"] = true
+				待进入 = idx
+				return BattleEngine.SUSPEND
+			if 代价 != BattleRole.SUCCESS:
+				# 付不起 / 条件已失效：这份行动不再保留，继续问剩下的
+				cur.additional_actions.remove_at(idx)
+				if cur.contains_action():
+					e.push(SAdditionalAction.new())
+				else:
+					e.push(STurnEnd.new())
+				return BattleEngine.CONTINUE
+			数据["已付费"] = true
+		if GConst.基础效果额外行动.has(cause) and not e.基础效果额外行动已确认(cause):
+			e._支付基础效果额外行动(cur.id, cause)
 		cur.additional_actions.remove_at(idx)
 		if not 跳过宣告:
 			e.broadcast(GConst.Msg.Skill, {"skill_id": cause, "src_id": cur.id, "dst_ids": []})
@@ -3452,8 +3776,7 @@ class SAdditionalAction:
 		# PlayerEntity::p_additional_action → StateActionPhase(it->allowAction, true)）
 		var 阶段: SActionPhase = SActionPhase.new(允许, true, true, false, cause)
 		阶段.额外数据 = 数据
-		阶段.额外位置 = idx
-		e.当前额外位置 = idx
+		e.当前额外行动数据 = 数据
 		# 响应里已经点好手牌 + 敌方：进入该额外行动后不再问，直接发起这次攻击
 		if e.首选额外行动卡 > 0 and e.首选额外行动目标 > 0:
 			var 卡: int = e.首选额外行动卡
@@ -4001,8 +4324,12 @@ class SCoverOverflow:
 			var cards: Array = r.get("card_ids", [])
 			var chosen: Array = []
 			for c: Variant in cards:
-				if chosen.size() < over and target.cover_cards.has(int(c)) and not chosen.has(int(c)):
-					chosen.append(int(c))
+				if chosen.size() >= over:
+					break
+				# 同牌面的副本按份数逐个认（不能按牌号去重，否则两张同牌面只能选出一张）
+				var 实例: int = e._认一张(target.cover_cards, int(c), chosen)
+				if 实例 >= 0:
+					chosen.append(实例)
 			if chosen.size() < over:
 				for cid: int in target.cover_cards:
 					if chosen.size() >= over:
@@ -4044,8 +4371,12 @@ class SRequestDiscard:
 			var r: Dictionary = e.take_reply()
 			var chosen: Array = []
 			for c: Variant in r.get("card_ids", []):
-				if chosen.size() < want and p0.has_discard_card(int(c)) and not chosen.has(int(c)):
-					chosen.append(int(c))
+				if chosen.size() >= want:
+					break
+				# 只认真实手牌（弃牌不能弃盖牌），同牌面的副本按份数逐个认
+				var 实例: int = e._认一张(p0.hand_cards, int(c), chosen)
+				if 实例 >= 0:
+					chosen.append(实例)
 			if chosen.size() < want:
 				for cid: int in p0.hand_cards:
 					if chosen.size() >= want:
@@ -4105,9 +4436,10 @@ class SDiscardChosen:
 			return BattleEngine.CONTINUE
 		var chosen: Array = []
 		for c: Variant in cards:
-			var cid: int = int(c)
-			if p0.has_discard_card(cid) and not chosen.has(cid):
-				chosen.append(cid)
+			# 只认真实手牌；同牌面的副本各认一份，不能按牌号去重
+			var 实例: int = e._认一张(p0.hand_cards, int(c), chosen)
+			if 实例 >= 0:
+				chosen.append(实例)
 		if chosen.is_empty():
 			return BattleEngine.CONTINUE
 		e.take_from_hand(pid, chosen)
@@ -4219,8 +4551,12 @@ class SHandOverflow:
 			var cards: Array = r.get("card_ids", [])
 			var chosen: Array = []
 			for c: Variant in cards:
-				if chosen.size() < over and target.has_discard_card(int(c)) and not chosen.has(int(c)):
-					chosen.append(int(c))
+				if chosen.size() >= over:
+					break
+				# 同牌面的副本按份数逐个认（不能按牌号去重，否则两张同牌面只能选出一张）
+				var 实例: int = e._认一张(target.hand_cards, int(c), chosen)
+				if 实例 >= 0:
+					chosen.append(实例)
 			if chosen.size() < over:
 				for cid: int in target.hand_cards:
 					if chosen.size() >= over:
@@ -4393,9 +4729,10 @@ class SkillRun:
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
 				e.push(SActionPhase.new())
 				return BattleEngine.CONTINUE
-			# 额外行动的出牌 / 目标限制（F2）：角色声明了限制时，技能行动用到的牌与目标也要落在范围内
-			if e.校验额外行动限制(cur, _基本种类(), action.get("card_ids", []),
-					action.get("dst_ids", []), 额外, 额外来源) != GConst.GE_SUCCESS:
+			# 额外行动的出牌 / 目标限制（F2）：这份行动自带的规格同样约束技能行动里的牌与目标
+			if e.校验额外行动限制(cur, e._额外行动数据(cur, 额外来源) if 额外 else {},
+					_基本种类(), action.get("card_ids", []),
+					action.get("dst_ids", []), true) != GConst.GE_SUCCESS:
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
 				e.push(SActionPhase.new())
 				return BattleEngine.CONTINUE
@@ -4415,10 +4752,14 @@ class SkillRun:
 			if not 启动 and not 计数已记:
 				计数已记 = true
 				cur.record_action(kind, 额外)
-		# 已经执行过一次且角色压入了状态（URGENT）→ 不再重复执行技能本体
+		# 已经执行过一次且角色压入了状态（URGENT）→ 不再重复执行技能本体。
+		# 例外：角色声明「URGENT 结算完还要接着做」（技能URGENT后重入，如摸牌要先走超限结算的
+		# 7802 / 10601）—— 这时把 invoked 复位、再进一次本体，由角色自己按分步继续。
 		if invoked:
-			_push_after(e, cur.id)
-			return BattleEngine.CONTINUE
+			if cur.role == null or not cur.role.技能URGENT后重入(action):
+				_push_after(e, cur.id)
+				return BattleEngine.CONTINUE
+			invoked = false
 		var res: int = cur.role.call("p_" + kind + "_skill", action)
 		if res == BattleRole.WAIT:
 			return BattleEngine.WAIT
@@ -4442,6 +4783,14 @@ func _reject_action(cur: BattlePlayer) -> int:
 
 func resolve_action(action_type: int, data: Dictionary) -> int:
 	var cur: BattlePlayer = players.get(current_id)
+	# 额外行动阶段：客户端选了「这一手要消耗哪份额外行动」（Action.extra_uid）→ 先换队，
+	# 再按换后的放行种类过总闸。打牌、技能行动都走这里 ——
+	# 以前只有出攻击牌会换队，所以「先点行动、再点技能」永远消耗服务端当前那一份。
+	if cur != null and 行动额外:
+		var 选中ID: int = int(data.get("extra_uid", 0))
+		if 选中ID > 0 and 选中ID != int(当前额外行动数据.get("uid", 0)):
+			if not _切换额外行动(cur, 选中ID, action_type):
+				return _reject_action(cur)
 	# 行动合法性总闸：对照原版 StateActionPhase → PlayerEntity::v_allow_action(action, allowAction, canGiveUp)。
 	# 角色可覆写 v_allow_action 追加限制（如「审判满 4 时该阶段只能发动末日审判」「暗影抗拒禁用法术牌」）
 	var 总闸: int = cur.v_allow_action(action_type, data.get("args", []), 行动允许, 行动可放弃) if cur != null else GConst.GE_SUCCESS
@@ -4545,23 +4894,41 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		# 客户端没给出牌或目标（改包 / 界面状态错乱）：当作放弃这次行动
 		push(STurnEnd.new())
 		return CONTINUE
-	# 额外攻击阶段里客户端本地切到了另一份额外行动：提交攻击时再换队（不重发行动询问，避免界面闪烁）
+	# 额外攻击阶段里客户端本地切到了另一份额外行动：提交攻击时再换队（不重发行动询问，避免界面闪烁）。
+	# 客户端回的是那一份行动的唯一 ID（同一技能挂两份时也能分开）；与当前这份不同才换。
 	if 行动额外:
 		var 参数: Array = data.get("args", [])
-		var 选中来源: int = int(参数[0]) if not 参数.is_empty() else 0
-		if 选中来源 > 0 and 选中来源 != 行动额外来源:
-			_直接切换额外攻击(cur, 选中来源)
-	var cid: int = int(cards[0])
+		var 选中ID: int = int(参数[0]) if not 参数.is_empty() else 0
+		if 选中ID > 0 and 选中ID != int(当前额外行动数据.get("uid", 0)):
+			_直接切换额外攻击(cur, 选中ID)
+	# 提交上来的是实例号：删手牌 / 进弃牌堆按它走，牌的实例身份才不会被折成牌面；
+	# 规则判定、钩子上下文、广播一律按牌面（同牌面的副本对规则完全等价）
+	var 提交号: int = int(cards[0])
+	var cid: int = GConst.牌号(提交号)
 	var dst_id: int = int(dsts[0])
 	if cur.v_attack(cid, dst_id, players) != GConst.GE_SUCCESS:
+		if OS.is_debug_build() and 行动额外:
+			print("[额外行动排查] 攻击被拒(v_attack)：来源=%d 牌=%d 目标=%d 结果=%d 在手=%s" % [
+				行动额外来源, cid, dst_id, cur.v_attack(cid, dst_id, players),
+				str(cur.has_hand_card(cid))])
 		return _reject_action(cur)
 	# 防守方角色可拒绝被选为目标（如暗杀者潜行中「不能成为主动攻击的目标」）
 	var dst_p: BattlePlayer = players.get(dst_id)
 	if dst_p != null and dst_p.v_attacked() != GConst.GE_SUCCESS:
+		if OS.is_debug_build() and 行动额外:
+			print("[额外行动排查] 攻击被拒(v_attacked)：来源=%d 目标=%d 结果=%d" % [
+				行动额外来源, dst_id, dst_p.v_attacked()])
 		return _reject_action(cur)
 	# 额外行动的目标 / 出牌限制（F2，如 10704 只能打手牌更多的对手、4501 只能用技类攻击牌）
-	if 校验额外行动限制(cur, GConst.ActionType.Attack, [cid], [dst_id]) != GConst.GE_SUCCESS:
+	if 校验额外行动限制(cur, 当前额外行动数据 if 行动额外 else {},
+			GConst.ActionType.Attack, [cid], [dst_id]) != GConst.GE_SUCCESS:
+		if OS.is_debug_build() and 行动额外:
+			print("[额外行动排查] 攻击被拒(额外行动限制)：来源=%d 牌=%d 目标=%d 规格=%s" % [
+				行动额外来源, cid, dst_id, str(当前额外行动数据)])
 		return _reject_action(cur)
+	# 这次主动攻击已经成立：「本回合的下次主动攻击只能打谁」的回合级标记到此消费
+	# （剑之子【剑残影】10804；它是玩家身上的标记，与这份行动 / 这张牌的规格无关）
+	cur.set_attack_lock(0)
 	_记录行动并收尾(cur, "attack", "p_after_attack", {"player": cur.id, "card_id": cid, "dst": dst_id})
 	# 攻击方向也跑一次「视为」判定（与应战的 p_reattack 同一套）：角色可把这张攻击牌换成另一张，
 	# 如苍炎魔女【烈焰形态】下除水系 / 暗系外的攻击牌一律视为火系虚拟【火焰斩】。
@@ -4577,8 +4944,8 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	push(SAttackCard.new(cur.id, dst_id, 用牌, harm))
 	# 攻击牌是公开打出的：带 已展示，take_from_hand 会顺手压「展示手牌」钩子。
 	# 放在 push(SAttackCard) 之后，钩子才压在这次攻击之上、先结算（封印伤害先于本次攻击，同服务端 LIFO）
-	take_from_hand(cur.id, [cid], true)
-	to_discard([cid], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
+	take_from_hand(cur.id, [提交号], true)
+	to_discard([提交号], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
 	# 广播里面把「视为」的那张放 as_card_id（同应战那条）：客户端按它出声、出特效
 	# （如苍炎魔女【烈焰形态】下普通攻击视为火系【火焰斩】→ 播火斩特效与火系攻击音）；
 	# 摊牌与日志仍用真正打出的牌
@@ -4593,9 +4960,10 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 	if cards.is_empty():
 		push(STurnEnd.new())
 		return CONTINUE
-	var cid: int = int(cards[0])
-	var card: GCard = Data.get_card(cid)
-	if card == null or not cur.has_hand_card(cid):
+	var 提交号: int = int(cards[0])
+	var cid: int = GConst.牌号(提交号)
+	var card: GCard = Data.get_card(提交号)
+	if card == null or not cur.has_hand_card(提交号):
 		return _reject_action(cur)
 	# 角色可用 p_before_magic 禁止本次法术（如「暗影形态不能使用法术牌」；该钩子不得等待玩家输入）
 	var gate: Dictionary = {"player": cur.id, "card_id": cid, "forbidden": false}
@@ -4604,7 +4972,8 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 	if bool(gate.get("forbidden", false)):
 		return _reject_action(cur)
 	# 额外行动的出牌 / 目标限制（F2，如 10702 的额外法术行动只能用【魔弹】）
-	if 校验额外行动限制(cur, GConst.ActionType.Magic, [cid], dsts) != GConst.GE_SUCCESS:
+	if 校验额外行动限制(cur, 当前额外行动数据 if 行动额外 else {},
+			GConst.ActionType.Magic, [cid], dsts) != GConst.GE_SUCCESS:
 		return _reject_action(cur)
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else cur.id
 	var name_enum: int = card.card_name_enum()
@@ -4617,13 +4986,13 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 	if name_enum == GConst.CardName.Shield:
 		if cur.v_shield(dst_id, players) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
-		take_from_hand(cur.id, [cid])
+		take_from_hand(cur.id, [提交号])
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 先压「行动结束」再压基础效果变更钩子：LIFO 下钩子先跑（对照服务端 basicMagic：
 		# StateAfterMagic 先入栈、随后 setStateUseCard 把 StateBasicEffectChange 压在其上）。
 		# 顺序颠倒会把钩子压在回合结束乃至下家整回合之下，天使羁绊这类钩子实际不会触发
 		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": cid})
-		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
+		add_basic_effect(dst_id, 提交号, cur.id, GConst.CAUSE_USE)
 		# 「展示手牌」钩子必须最后压（同 _do_attack 与应战抵挡那条）：压在动作状态之上才先执行。
 		# 跟着 take_from_hand(已展示=true) 在开头就压的话，它会被埋在「回合结束」之下，而栈上又不断
 		# 压入下一回合的状态 —— 这个钩子永远轮不到执行，冰霜祷言这种「公开打出水系牌时发动」的响应
@@ -4634,20 +5003,20 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 	if name_enum == GConst.CardName.Weaken:
 		if cur.v_weaken(dst_id, players) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
-		take_from_hand(cur.id, [cid])
+		take_from_hand(cur.id, [提交号])
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
 		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": cid})
-		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
+		add_basic_effect(dst_id, 提交号, cur.id, GConst.CAUSE_USE)
 		push_show_hand(cur.id, [cid])
 		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Poison:
-		take_from_hand(cur.id, [cid])
+		take_from_hand(cur.id, [提交号])
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
 		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": cid})
-		add_basic_effect(dst_id, cid, cur.id, GConst.CAUSE_USE)
+		add_basic_effect(dst_id, 提交号, cur.id, GConst.CAUSE_USE)
 		push_show_hand(cur.id, [cid])
 		_broadcast_game()
 		return CONTINUE
@@ -4669,8 +5038,8 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		# 角色可用 v_missile 禁止使用魔弹（如魔剑/魔枪的牌类禁止）
 		if target >= 0 and cur.v_missile(cid, target) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
-		take_from_hand(cur.id, [cid])
-		to_discard([cid], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_MISSILE})
+		take_from_hand(cur.id, [提交号])
+		to_discard([提交号], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_MISSILE})
 		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": cid})
 		if target >= 0:
 			broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": target, "card_ids": [cid], "is_real": true})

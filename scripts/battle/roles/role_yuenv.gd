@@ -266,7 +266,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 	if choice == 1:
 		var dsts: Array = r.get("dst_ids", [])
 		var cids: Array = r.get("card_ids", [])
-		if cids.size() != 1 or dsts.size() != 1 or not player.cover_cards.has(int(cids[0])):
+		if cids.size() != 1 or dsts.size() != 1 or not player.有盖牌(int(cids[0])):
 			return SUCCESS
 		var dst: BattlePlayer = engine.p(int(dsts[0]))
 		if dst == null:
@@ -349,7 +349,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	var cards: Array = []
 	for c: Variant in r.get("card_ids", []):
-		if player.cover_cards.has(int(c)) and not cards.has(int(c)):
+		if player.有盖牌(int(c)) and not cards.has(int(c)):
 			cards.append(int(c))
 	if cards.is_empty() or cards.size() > 2:
 		return SUCCESS

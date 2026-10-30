@@ -169,6 +169,14 @@ const 盖牌显示下移: float = 40.0
 const 盖牌间距: float = 8.0
 ## 技能按钮最小尺寸（Skill.tscn 根按钮的实际尺寸是 110×90）
 const 技能尺寸: Vector2 = Vector2(110.0, 90.0)
+## 技能栏整体缩放：整排按钮（按钮、文字、发光、间距）按同一比例缩，改这一个值就能调大小。
+## 缩放锚点放在整排的左下角（见 _ready），底边与左边不动，只向上 / 向右收。
+const 技能栏缩放: float = 0.8
+## 技能按钮上记「这颗按钮要求的动作种类 / 服务端本次是否允许」的元数据名。
+## 必须是 ASCII 标识符：Godot 拒绝中文元数据名（Invalid metadata identifier，set_meta 静默失败），
+## 写成中文会让切换额外行动时的重算整段失效（键读不到、按钮不置灰）。
+const 元数据_行动技能类型: StringName = &"extra_action_kind"
+const 元数据_行动服务端可用: StringName = &"extra_action_enabled"
 ## 玩家面板：常态 / 选中（目标）颜色
 const 面板常态色: Color = Color(1.0, 1.0, 1.0)
 const 面板选中色: Color = Color(1.0, 1.0, 0.55)
@@ -413,23 +421,34 @@ var _skill_ask_id: int = -1
 ## 当前这条应答是不是「是否发动某技能」的技能询问：
 ## 由服务端在命令里显式标记 is_skill 下发，客户端不再拿询问号大小去猜
 var _是技能询问: bool = false
-## 额外行动询问里只有一份可选额外行动时，记下它的 cause：不再摆「选项」按钮，
+## 额外行动询问里只有一份可选额外行动时，记下它的唯一 ID（uid）：不再摆「选项」按钮，
 ## 直接问「是否发动？」，点「确定」发动 / 「取消」跳过（-1 表示没有，仍走多选项按钮）
 var _额外行动单选: int = -1
-## 额外行动提示里的按钮（按钮, cause）：点按钮只选中，可切换，按「确定」才进入
+## 上面选中的那份额外行动的来源技能号（uid 只用来认份，展示 / 判定技能仍按 cause）
+var _额外行动单选原因: int = -1
+## 额外行动提示里的按钮（按钮, uid, cause）：点按钮只选中，可切换，按「确定」才进入
 var _额外行动按钮表: Array = []
-## 攻击结束响应里的额外攻击快捷按钮（按钮, cause）：点按钮只选中，可切换，按「确定」才放弃响应进入
+## 攻击结束响应里的额外攻击快捷按钮（按钮, uid, cause）：点按钮只选中，可切换，按「确定」才放弃响应进入
 var _额外攻击响应选择: int = -1
 var _额外攻击响应按钮: Array = []
 var _额外攻击响应_牌白: Array = []
 var _额外攻击响应_目标白: Array = []
 ## 响应里点手牌 + 目标发起额外攻击时，先备份当前技能询问：服务端拒绝时用它恢复选项
 var _额外攻击请求备份: Dictionary = {}
-## 额外攻击阶段本地选中的额外攻击 cause / 该行动的牌与目标白名单（点切换只改本地，不提交、不重排）
+## 额外攻击阶段本地选中的那份额外行动的唯一 ID / 该行动的牌与目标白名单（点切换只改本地，不提交、不重排）
 var _当前额外攻击选择: int = 0
 var _额外手牌白名单_选择: Array = []
 var _额外目标白名单_选择: Array = []
-## 额外攻击阶段的红色行动按钮（按钮, cause, card_ids, dst_ids）：顺序固定，只切换高亮
+## 本地选中的那份额外行动放行的动作种类（0＝沿用本阶段的 _行动允许）。
+## 切换额外行动时它可能和本阶段最初那份不同（如从「攻击或法术」的【偷天换日】切到只能攻击的
+## 【迅捷赐福】），手牌点亮必须跟着换一份口径，否则法术牌会一直亮着。
+var _额外行动放行_选择: int = 0
+## 已经随行动提交给服务端的那份额外行动（uid / cause / allow / element）：
+## 服务端随后可能再发技能选项询问（二级技能栏），那边要把「这一手消耗的行动」显示出来。
+var _已提交额外行动: Dictionary = {}
+## 刚提交的是技能行动、还在等它的技能询问：只让紧接着的那一次技能询问带出 _已提交额外行动
+var _等待技能选项: bool = false
+## 额外攻击阶段的红色行动按钮（按钮, uid, cause, card_ids, dst_ids）：顺序固定，只切换高亮
 var _额外攻击切换项: Array = []
 ## 触发本次额外行动的 cause（如苍白之月 3507）：提示据此写成「获得额外【无法应战】攻击行动」
 var _额外行动来源: int = 0
@@ -542,6 +561,8 @@ var _圣光爆裂第二步: bool = false
 ## 二级栏最左那颗「被点的技能」按钮（没有就是 null）。目标变化后要重填选项时沿用它，
 ## 免得重造一颗、把玩家刚点的那颗藏起来（见 _刷新基础效果选项）
 var _二级栏父按钮: 技能按钮 = null
+## 二级技能栏里带进来的「这一手要消耗的那份额外行动」按钮（额外行动阶段点技能才摆，见 _进入二级技能栏）
+var _二级栏行动钮: 技能按钮 = null
 ## 技能区当前渲染出来的按钮（行动阶段技能 / 选项 / 额外行动 / 特殊行动共用）
 var _技能按钮: Array[Node] = []
 ## 技能栏在场景里的初始左边界（设计坐标）。技能按钮整排超宽时从这里向左补偿，
@@ -584,6 +605,9 @@ func _ready() -> void:
 	# 技能栏整排超出屏幕时向左补偿（见 _排技能栏）：
 	# grow 改成 BEGIN，避免容器因最小宽度变化自己向左长、把「基准左边界」弄漂。
 	ChildrenSkillArea.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	# 技能栏整体缩放：锚点取整排的左下角，缩放后底边 / 左边不动，只向上、向右收
+	ChildrenSkillArea.pivot_offset = Vector2(0.0, 技能尺寸.y)
+	ChildrenSkillArea.scale = Vector2(技能栏缩放, 技能栏缩放)
 	_技能栏基准左 = ChildrenSkillArea.offset_left + Root.size.x * ChildrenSkillArea.anchor_left
 	ChildrenSkillArea.resized.connect(_排技能栏)
 	Root.resized.connect(_排技能栏)
@@ -1051,7 +1075,8 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 	var 基础牌: Array = []
 	for st: GPlayer.BasicStatus in p.basic_status_list:
 		if st.card != null:
-			基础牌.append(st.card.id)
+			# 传实例号（没记就退回牌面）：图标点击要能认出「哪一张」
+			基础牌.append(st.实例号 if st.实例号 >= 0 else st.card.id)
 	面板.set("BasicAndExCards", 基础牌)
 	var 独有效果: Array = []
 	for i: int in range(GConst.EXCLUSIVE_NUM):
@@ -1988,6 +2013,15 @@ func _on_command(data: Dictionary) -> void:
 	var cmds: Array = data.get("commands", [])
 	if cmds.is_empty():
 		return
+	# 「随这一手提交的额外行动」只服务于紧接着的那一次技能询问：来的是别的询问
+	# （应战 / 行动结束响应 / 下一次行动）就不再带进二级技能栏，免得显示上一手已经用掉的行动。
+	var 首命令: Dictionary = cmds[0]
+	var 保留额外行动: bool = _等待技能选项 \
+		and int(data.get("cmd_type", 0)) == GConst.CmdType.Respond \
+		and bool(首命令.get("is_skill", false))
+	_等待技能选项 = false
+	if not 保留额外行动:
+		_已提交额外行动 = {}
 	# 攒应战的同命格许可只给紧接着的那条应战询问；来的是别的询问就作废
 	var 新应答号: int = int((cmds[0] as Dictionary).get("respond_id", 0))
 	if 新应答号 == GConst.RespondType.ReplyAttack:
@@ -2009,6 +2043,7 @@ func _on_command(data: Dictionary) -> void:
 	_是技能询问 = false
 	_本地询问 = false
 	_额外行动单选 = -1
+	_额外行动单选原因 = -1
 	_额外行动可选 = true
 	_skill_ask_need_card = 0
 	_skill_ask_need_target = 0
@@ -2064,7 +2099,8 @@ func _on_command(data: Dictionary) -> void:
 			# 魔弹传递询问：args[0] = 当前持有者（也就是该由谁来应答）
 			target_id = int(args[0]) if args.size() > 0 else -1
 		elif respond_id == GConst.RespondType.AdditionalAction:
-			_进入额外行动(args, cmd.get("dst_ids", []), cmd.get("allow_actions", []))
+			_进入额外行动(args, cmd.get("dst_ids", []), cmd.get("allow_actions", []),
+				cmd.get("option_uids", []))
 			return
 		if target_id != Logic.my_player_id:
 			return
@@ -2299,8 +2335,15 @@ func _进入技能询问() -> void:
 	# 默认选好一项再按「确定」提交；攻击结束二选一也是选中后可切换、选够目标/弃牌再按一次确定。
 	var 指示配置: Dictionary = GConst.技能指示器.get(_skill_ask_id, {})
 	_先弹选项 = bool(指示配置.get("先弹选项", false)) and not _skill_options.is_empty()
-	# 攻击结束二选一：选选项之前不让点目标 / 点牌，选完由该项自己的需目标 / 需牌放开
-	_攻击结束二选一 = bool(指示配置.get("攻击结束二选一", false)) and not _skill_options.is_empty()
+	# 「选中项自带需牌 / 需目标」型：选选项之前不让点目标 / 点牌，选完由该项自己的需目标 / 需牌放开。
+	# 两种来源都要认：
+	#   ① 指示器里配了「攻击结束二选一」的技能（剑之子 10804/4504、剑之魔女 4501/4504）；
+	#   ② 行动结束响应（聚合器）：它下发的询问带 no_parent，每个选项本身就是一颗技能，
+	#      各自带 need_card / need_target / targets。以前只认 ①，漏配的技能（猎巫人【偷袭】要 2 张盖牌、
+	#      魔弓【多重射击】要 1 名可攻目标）选中后需求不生效 —— 牌和头像都点不动，只能空手点「确定」，
+	#      技能静默失败。
+	_攻击结束二选一 = not _skill_options.is_empty() and (
+		bool(指示配置.get("攻击结束二选一", false)) or bool(_pending.get("no_parent", false)))
 	if _攻击结束二选一:
 		_选项原始目标数 = _skill_ask_need_target
 		_选项原始需牌 = _skill_ask_need_card
@@ -2365,8 +2408,10 @@ func _进入技能询问() -> void:
 		if 圣弓_自动填充.has(_skill_ask_id):
 			_自动填充第一层选项 = 项们.duplicate(true)
 		# 「无父技能」型（格斗【蓄力一击 / 气绝崩击】这条询问）：选项本身就是技能，
-		# 这一排只摆选项，不摆「被问的技能」那颗本体（否则会多出一颗与选项同名的按钮）
-		var 父技能号: int = 0 if bool(指示配置.get("无父技能", false)) else _skill_ask_id
+		# 这一排只摆选项，不摆「被问的技能」那颗本体（否则会多出一颗与选项同名的按钮）。
+		# 行动结束响应（no_parent）同理：它的 respond_id 只是列表第一项，本来就没有父技能。
+		var 父技能号: int = 0 if (bool(_pending.get("no_parent", false)) \
+			or bool(指示配置.get("无父技能", false))) else _skill_ask_id
 		# 魔纹融合：有怒火压制时不摆父技能（四颗都是选项）；只有魔纹融合选项时
 		# 把父技能本体放出来，凑成「本体 + 3 个魔纹选项」。
 		# 第二段（3 个翻转档）的父按钮右侧摆「返回」，退回第一段二选一。
@@ -2385,6 +2430,24 @@ func _进入技能询问() -> void:
 			# 服务端把空应答当作「退回第一段重问」，所以这里必须摆一颗「返回」。
 			返回 = _军神威光返回
 		_进入二级技能栏(父技能号, null, 项们, 二级选项底色, 返回)
+		# 服务端标了默认选项（行动结束响应）：选项摆出来的同时先替玩家选中它，
+		# 不用先点一次选项才能按「确定」。第一项不可发动时顺延到下一项可用的；
+		# 只是本地选中（等同玩家点了那一项），不会自动提交，玩家仍可改选 / 取消。
+		if _pending.has("default_option"):
+			var 默认序号: int = int(_pending.get("default_option", -1))
+			if 默认序号 >= 0:
+				var 选号: int = -1
+				for i: int in range(mini(默认序号, _二级选项.size()), _二级选项.size()):
+					if bool((_二级选项[i] as Dictionary).get("可用", true)):
+						选号 = i
+						break
+				if 选号 < 0:
+					for i: int in range(_二级选项.size()):
+						if bool((_二级选项[i] as Dictionary).get("可用", true)):
+							选号 = i
+							break
+				if 选号 >= 0:
+					_选中二级选项(_skill_ask_id, 选号)
 		# 式神咒束（3301）与阴阳转换（3306）共用同一套本地攒应战：
 		# 先记下本次攻击牌 / 攻击者，玩家在二级技能栏点中效果后立即进入选牌 / 选目标。
 		if _skill_ask_id == GConst.技能_阴阳转换 or _skill_ask_id == GConst.技能_式神咒束:
@@ -2393,8 +2456,11 @@ func _进入技能询问() -> void:
 		# 【天使之歌】：询问一到就把二级技能栏摆出来（此刻只有技能本体一颗），
 		# 选完目标再由 _刷新基础效果选项 把该目标面前的基础效果填进去 —— 不用先按一次「确定」
 		_进入二级技能栏(_skill_ask_id, null, [])
-	# 攻击结束响应期间：已获得但还没用的攻击行动摆成红色快捷按钮，点一个就放弃剩余响应、直接进入它
+	# 攻击结束响应期间：已获得但还没用的攻击行动摆成红色快捷按钮，只用来显示「有几个额外行动」；
+	# 按新规则响应阶段不能使用行动，所以这些按钮一律置灰不可点，真正使用留到响应结束后的额外行动阶段。
 	var 额外攻击: Array = _pending.get("extra_attack_causes", [])
+	var 额外攻击ID: Array = _pending.get("extra_attack_uids", [])
+	var 额外允许: Array = _pending.get("allow_actions", [])
 	var 额外牌表: Array = _pending.get("extra_attack_cards", [])
 	var 额外目标表: Array = _pending.get("extra_attack_targets", [])
 	var 额外系别表: Array = _pending.get("extra_attack_elements", [])
@@ -2403,25 +2469,34 @@ func _进入技能询问() -> void:
 	_额外攻击响应_牌白.clear()
 	_额外攻击响应_目标白.clear()
 	if not 额外攻击.is_empty():
-		# 标记「排序最后」的基础效果额外行动排在其它额外攻击行动后面
-		var 快捷顺序: Array = []
+		# 服务端已按「获取序号」下发（先获得的行动在前，含迅捷赐福这类基础效果授予的行动）：
+		# 这里只按下发顺序摆按钮，不再按来源重排。
 		for i: int in range(额外攻击.size()):
-			if not bool(GConst.基础效果额外行动.get(int(额外攻击[i]), {}).get("排序最后", false)):
-				快捷顺序.append(i)
-		for i: int in range(额外攻击.size()):
-			if bool(GConst.基础效果额外行动.get(int(额外攻击[i]), {}).get("排序最后", false)):
-				快捷顺序.append(i)
-		for i: int in 快捷顺序:
 			var c: int = int(额外攻击[i])
+			var uid: int = int(额外攻击ID[i]) if i < 额外攻击ID.size() else 0
 			var 牌白: Array = (额外牌表[i] as Dictionary).get("ids", []) if i < 额外牌表.size() else []
 			var 目标白: Array = (额外目标表[i] as Dictionary).get("ids", []) if i < 额外目标表.size() else []
 			var 系别: int = int(额外系别表[i]) if i < 额外系别表.size() else 0
+			var 允许项: int = int(额外允许[i]) if i < 额外允许.size() else GConst.ActionType.Attack
+			if 允许项 <= 0:
+				允许项 = GConst.ActionType.Attack
 			var 额外按钮: 技能按钮 = _新技能按钮(0)
-			额外按钮.设置选项(_额外行动按钮文本(c, GConst.ActionType.Attack, 系别),
-				_额外攻击按钮底色(c), 0)
+			额外按钮.设置选项(_额外行动按钮文本(c, 允许项, 系别),
+				_额外行动按钮底色(), 0)
 			额外按钮.设置说明(_额外行动按钮说明(c))
-			额外按钮.connect("点击", _选中额外攻击响应.bind(c, 牌白, 目标白))
-			_额外攻击响应按钮.append({"按钮": 额外按钮, "cause": c})
+			# 新规则：响应阶段只显示「已获得几个额外行动」，不能在这里点用；
+			# 按钮保留（红色、数量不变），但置灰不可点，真正使用留到响应结束后的额外行动阶段。
+			额外按钮.设置选项可用(false)
+			_额外攻击响应按钮.append({"按钮": 额外按钮, "uid": uid, "cause": c})
+		# 行动在左、响应在右：当前额外行动按钮固定最左，红色额外行动按钮紧随其后，响应选项排最后。
+		var 插入位: int = 0
+		if is_instance_valid(_二级栏行动钮) and _二级栏行动钮.get_parent() == ChildrenSkillArea:
+			ChildrenSkillArea.move_child(_二级栏行动钮, 0)
+			插入位 = 1
+		for i: int in range(_额外攻击响应按钮.size()):
+			var 快捷钮: Node = _额外攻击响应按钮[i].get("按钮")
+			if 快捷钮 != null and 快捷钮.get_parent() == ChildrenSkillArea:
+				ChildrenSkillArea.move_child(快捷钮, 插入位 + i)
 		_排技能栏.call_deferred()
 	# 技能询问同时写一行日志：它只挂在提示条上，错过就会一直等（看着像「点了确定没反应」）
 	# 被问的人看到的应是「要我做什么」：服务端下发了技能表「提示」列里对应的那一条
@@ -2628,8 +2703,9 @@ func _换选项后重校验() -> void:
 	_更新按键()
 
 
-## 额外攻击行动按钮的红底（与普通技能/参数选项区分）
-const 额外攻击按钮色: Color = Color("c0392b")
+## 行动选项（额外行动）的按钮红底：攻击 / 法术 / 特殊、以及「两类都行」都用同一个红，
+## 和普通技能 / 参数选项的杂色区分开 —— 玩家一眼就能认出「这是要消耗 / 获得的额外行动」。
+const 额外行动按钮色: Color = Color("c0392b")
 
 
 ## 赐福类技能施加时是法术，贴到目标身上触发时是响应
@@ -2637,46 +2713,59 @@ func _是响应赐福(cause: int) -> bool:
 	return GConst.响应赐福.has(cause)
 
 
-## 额外行动询问里的选项是一个「发动哪份额外行动」的按钮，不是攻击行动本体：
-## 赐福类按贴到目标后的响应紫色，其余按技能类型默认色。
-func _额外行动选项底色(cause: int) -> Color:
-	if _是响应赐福(cause):
-		return GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
-	return GConst.skill_type_color(cause)
-
-
-## 额外攻击阶段里的攻击行动按钮：不论来源是不是赐福，都是普通攻击行动，用红色。
-func _额外攻击按钮底色(_cause: int, 攻击: bool = true) -> Color:
-	return 额外攻击按钮色 if 攻击 else GConst.skill_type_color(_cause)
-
-
-## 这份额外行动是不是攻击行动：优先看服务端下发的 allow_action，没给才退回「额外行动提示」文字
-func _是攻击额外行动(cause: int, allow_action: int = 0) -> bool:
-	if allow_action > 0:
-		return GConst.放行动作(GConst.ActionType.Attack, allow_action)
-	return str(GConst.额外行动提示.get(cause, "")).contains("攻击行动")
+## 额外行动按钮统一用红底：不再按来源技能的类型上色 —— 以前攻击额外行动是红色、
+## 法术 / 特殊额外行动退回技能类型色（如法力潮汐给的法术行动是响应紫），同一排行动两种颜色。
+func _额外行动按钮底色() -> Color:
+	return 额外行动按钮色
 
 
 ## 额外行动按钮文案：默认「额外【攻击行动】」（【攻击行动】由词缀表换成图标）；
 ## 有特定限制的（如「只能使用技类攻击牌」）把特性接在后面。
+## 来源技能不写进按钮文字：鼠标指向按钮时由「额外行动按钮说明」显示技能名。
+## allow_action 是这份行动放行的动作种类：只放行攻击＝攻击行动；只放行法术＝法术行动；
+## 两类都放行（AttackMagic，如【偷天换日】【圣疗】）＝「额外【攻击行动】或【法术行动】」。
 func _额外行动按钮文本(cause: int, allow_action: int = 0, element: int = 0) -> String:
+	# 整段文案覆盖（如 3602 一击无念：这次攻击的规则特殊，直接把规则写在按钮上）
+	var 整段: String = str(GConst.额外行动按钮文案.get(cause, ""))
+	if not 整段.is_empty():
+		return 整段
 	# 剑残影给的那次攻击：锁定目标写在技能说明里，按钮用通用「额外【攻击行动】」即可
 	if cause == GConst.技能_剑残影:
 		return "额外【攻击行动】"
 	var 提示: String = str(GConst.额外行动提示.get(cause, ""))
+	var 攻: bool = false
+	var 法: bool = false
 	var 行动: String = ""
 	if allow_action > 0:
-		var 攻: bool = GConst.放行动作(GConst.ActionType.Attack, allow_action)
-		var 法: bool = GConst.放行动作(GConst.ActionType.Magic, allow_action)
-		行动 = "攻击行动" if 攻 and not 法 else ("法术行动" if 法 and not 攻 else "行动")
-	if 行动.is_empty():
-		行动 = "攻击行动" if 提示.contains("攻击行动") \
-			else ("法术行动" if 提示.contains("法术行动") else "行动")
+		攻 = GConst.放行动作(GConst.ActionType.Attack, allow_action)
+		法 = GConst.放行动作(GConst.ActionType.Magic, allow_action)
+		if 攻 and not 法:
+			行动 = "攻击行动"
+		elif 法 and not 攻:
+			行动 = "法术行动"
+		elif not 攻 and not 法:
+			行动 = "行动"
+	if 行动.is_empty() and not 攻 and not 法:
+		# 没拿到动作种类（老数据 / 纯选项按钮）：按提示文案猜一次
+		if 提示.contains("攻击行动"):
+			行动 = "攻击行动"
+		elif 提示.contains("法术行动"):
+			行动 = "法术行动"
+		else:
+			行动 = "行动"
+	# 系别优先用服务端随行动下发的 extra_element；没下发时按技能号查兜底表
 	var 系: int = element if element > 0 else int(GConst.额外行动系别.get(cause, 0))
+	var 系前缀: String = ("%s系" % GConst.element_to_chinese(系)) if 系 > 0 else ""
 	var 冒号: int = 提示.find("：")
 	var 特性: String = 提示.substr(冒号 + 1).strip_edges() if 冒号 >= 0 else ""
-	var 底: String = ("额外%s系【%s】" % [GConst.element_to_chinese(系), 行动]) if 系 > 0 \
-		else ("额外【%s】" % 行动)
+	var 底: String = ""
+	if 攻 and 法:
+		# 既能攻击又能施法：两类都要写出来，不能只写「额外【行动】」
+		底 = "额外%s【攻击行动】或【法术行动】" % 系前缀
+	elif 系前缀.is_empty():
+		底 = "额外【%s】" % 行动
+	else:
+		底 = "额外%s【%s】" % [系前缀, 行动]
 	return 底 if 特性.is_empty() else 底 + "：" + 特性
 
 
@@ -2697,14 +2786,16 @@ func _额外行动按钮说明(cause: int) -> String:
 	return "来自 %s" % GConst.skill_name(cause)
 
 
-## 额外行动提示里点一个按钮：只选中（可切换），按「确定」才真正进入
-func _选中额外行动(_技能号: int, cause: int) -> void:
-	_额外行动单选 = cause
+## 额外行动提示里点一个按钮：只选中（可切换），按「确定」才真正进入。
+## uid＝这份行动的唯一 ID（同一技能挂两份时靠它区分），cause 只用于文案 / 技能名。
+func _选中额外行动(_技能号: int, uid: int, cause: int) -> void:
+	_额外行动单选 = uid
+	_额外行动单选原因 = cause
 	_额外行动可选 = true
 	for 项: Dictionary in _额外行动按钮表:
 		var b: Variant = 项.get("按钮")
 		if is_instance_valid(b):
-			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
+			(b as 技能按钮).设置选中(int(项.get("uid", 0)) == uid)
 	if GConst.技能行(cause).is_empty():
 		_指令提示("确定＝发动所选额外行动")
 	else:
@@ -2726,10 +2817,12 @@ func _额外行动获得提示(cause: int, 行动种类: int = GConst.ActionType
 			return "获得额外攻击行动"
 		GConst.ActionType.Magic, GConst.ActionType.MagicSkill:
 			return "获得额外法术行动"
+		GConst.ActionType.AttackMagic:
+			return "获得额外攻击行动或法术行动"
 		_:
 			return "获得额外行动"
-func _选中额外攻击响应(_技能号: int, cause: int, 牌白: Array = [], 目标白: Array = []) -> void:
-	_额外攻击响应选择 = cause
+func _选中额外攻击响应(_技能号: int, uid: int, cause: int, 牌白: Array = [], 目标白: Array = []) -> void:
+	_额外攻击响应选择 = uid
 	_额外攻击响应_牌白 = 牌白.duplicate()
 	_额外攻击响应_目标白 = 目标白.duplicate()
 	# 已经选好的攻击牌如果仍在新白名单里就保留，避免玩家先选牌再点额外攻击按钮时把牌清掉；
@@ -2738,7 +2831,7 @@ func _选中额外攻击响应(_技能号: int, cause: int, 牌白: Array = [], 
 	for cid: int in _sel_cards:
 		var card: GCard = Data.get_card(cid)
 		if card != null and card.is_attack() \
-				and (_额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(cid)):
+				and (_额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(GConst.牌号(cid))):
 			保留牌.append(cid)
 			break
 	_sel_cards = 保留牌
@@ -2753,7 +2846,7 @@ func _选中额外攻击响应(_技能号: int, cause: int, 牌白: Array = [], 
 	for 项: Dictionary in _额外攻击响应按钮:
 		var b: Variant = 项.get("按钮")
 		if is_instance_valid(b):
-			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
+			(b as 技能按钮).设置选中(int(项.get("uid", 0)) == uid)
 	_指令提示(_额外行动获得提示(cause))
 	_刷新交互()
 
@@ -2768,12 +2861,15 @@ func _清除额外攻击响应选择() -> void:
 			(b as 技能按钮).设置选中(false)
 
 
-## 额外行动询问：把每个可选 cause 变成一个按钮，点哪个就直接进入哪个额外行动
-func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = []) -> void:
+## 额外行动询问：把每个可选额外行动变成一个按钮，点哪个就直接进入哪个额外行动。
+## causes 只用来显示（技能名 / 文案），**选中与提交都按 uids 里的唯一 ID**：
+## 同一个技能可能同时挂着两份行动（连续两张【疾风技】），按 cause 认会两份一起点亮、进错份。
+func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = [], uids: Array = []) -> void:
 	_mode = 3
 	_是技能询问 = false
 	_skill_ask_id = -1
 	_额外行动单选 = -1
+	_额外行动单选原因 = -1
 	_额外行动可选 = true
 	_额外行动用二级栏 = false
 	_额外行动按钮表.clear()
@@ -2782,20 +2878,20 @@ func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = []) ->
 	_sel_cards.clear()
 	_sel_players.clear()
 	_清空技能按钮()
-	for cause: Variant in causes:
-		var c: int = int(cause)
-		var idx: int = causes.find(cause)
-		var allow: int = int(允许[idx]) if idx >= 0 and idx < 允许.size() else 0
+	for i: int in range(causes.size()):
+		var c: int = int(causes[i])
+		var uid: int = int(uids[i]) if i < uids.size() else 0
+		var allow: int = int(允许[i]) if i < 允许.size() else 0
 		var 按钮: 技能按钮 = _新技能按钮(0)
 		# 这里是「发动哪份额外行动」的选项，按普通技能选项处理：
 		# 按钮显示自己的技能名，悬停显示技能说明，不按来源/类型做特殊文案。
 		var 来源名: String = GConst.skill_name(c) if not GConst.技能行(c).is_empty() else ""
 		var 文案: String = 来源名 if not 来源名.is_empty() else _额外行动按钮文本(c, allow)
-		按钮.设置选项(文案, _额外行动选项底色(c), 0)
+		按钮.设置选项(文案, _额外行动按钮底色(), 0)
 		按钮.设置说明(角色技能提示.单个技能(c))
-		按钮.设置选项可用(可发动.has(c))
-		按钮.connect("点击", _选中额外行动.bind(c))
-		_额外行动按钮表.append({"按钮": 按钮, "cause": c})
+		按钮.设置选项可用(可发动.has(uid) if uid > 0 else 可发动.has(c))
+		按钮.connect("点击", _选中额外行动.bind(uid, c))
+		_额外行动按钮表.append({"按钮": 按钮, "uid": uid, "cause": c})
 	if causes.size() == 1:
 		# 单份：提示条写技能效果（保留原行为），点击按钮直接进入
 		var 唯一: int = int(causes[0])
@@ -2848,6 +2944,10 @@ const 状态图标预览边长: float = 72.0
 func _显示技能说明(按钮: 技能按钮) -> void:
 	if 按钮 == null:
 		return
+	# 技能栏整排缩放过：get_global_rect() 的位置已含缩放，尺寸还是布局尺寸 ——
+	# 按视觉尺寸还原，说明框才会贴着按钮的顶边 / 底边（否则会高出一截）
+	var 视觉矩形: Rect2 = 按钮.get_global_rect()
+	视觉矩形.size = 按钮.size * 技能栏缩放
 	# 二级栏里「选项对应一张牌」的（如【剑守誓言】选 1 张加入手牌）：悬停直接摊这张牌的卡面，
 	# 比只显示「卡名 元素」文字更直观；取不到卡面时再退回普通说明。
 	if _二级栏:
@@ -2861,7 +2961,7 @@ func _显示技能说明(按钮: 技能按钮) -> void:
 					_悬停角色面板 = null
 					_悬停状态图标 = false
 					_悬停技能按钮 = 按钮
-					_说明提示.显示内容(卡面, 按钮.get_global_rect())
+					_说明提示.显示内容(卡面, 视觉矩形)
 					return
 			break
 	var 文本: String = 按钮.说明文本
@@ -2872,7 +2972,7 @@ func _显示技能说明(按钮: 技能按钮) -> void:
 	_悬停角色面板 = null
 	_悬停状态图标 = false
 	_悬停技能按钮 = 按钮
-	_说明提示.显示(文本, 按钮.get_global_rect(), 技能说明宽度, 技能说明字号)
+	_说明提示.显示(文本, 视觉矩形, 技能说明宽度, 技能说明字号)
 
 
 ## 鼠标离开技能按钮（或点了按钮）：延后一帧再收 —— 从一个按钮移到另一个时引擎会先报「离开」，
@@ -3056,45 +3156,64 @@ func _构建技能按钮(cmds: Array) -> void:
 	_当前额外攻击选择 = 0
 	_额外手牌白名单_选择.clear()
 	_额外目标白名单_选择.clear()
-	# 额外行动阶段：所有额外行动按获取序号固定排列；当前行动只高亮，不强制挪到最左
+	_额外行动放行_选择 = 0
+	# 新的一次行动询问＝上一手已经结算完：不再把「要消耗的行动」带进二级栏
+	_已提交额外行动 = {}
+	_等待技能选项 = false
+	# 额外行动阶段：这一排行动的顺序**完全按服务端给的那一份**（引擎 额外行动序列 排好：
+	# 先获得的在前，当前行动在它原来的位置只高亮）。这里不排序、不重排 —— 与行动结束响应
+	# 里的红色快捷按钮读的是同一份有序列表，保证两个界面看到的顺序永远一致。
 	var 首位: Dictionary = cmds[0] if not cmds.is_empty() else {}
 	if bool(首位.get("is_extra", false)) and int(首位.get("extra_cause", 0)) > 0:
 		var 当前来源: int = int(首位.get("extra_cause", 0))
+		var 当前ID: int = int(首位.get("extra_uid", 0))
 		var 当前类型: int = int(首位.get("respond_id", 0))
 		var 当前牌: Array = 首位.get("card_ids", [])
 		var 当前目标: Array = 首位.get("dst_ids", [])
-		_当前额外攻击选择 = 当前来源
+		_当前额外攻击选择 = 当前ID
 		_额外手牌白名单_选择 = 当前牌.duplicate()
 		_额外目标白名单_选择 = 当前目标.duplicate()
-		var 额外项: Array = [首位]
-		for i: int in range(1, cmds.size()):
-			if int((cmds[i] as Dictionary).get("respond_id", 0)) == GConst.ActionType.ChooseExtraAction:
-				额外项.append(cmds[i])
-		额外项.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-			var oa: int = int(a.get("extra_order", 0))
-			var ob: int = int(b.get("extra_order", 0))
-			if oa == ob:
-				return int(a.get("extra_cause", 0)) < int(b.get("extra_cause", 0))
-			return oa < ob)
-		for 项: Dictionary in 额外项:
-			var cause: int = int(项.get("extra_cause", 0))
-			var 项牌: Array = 项.get("card_ids", [])
-			var 项目标: Array = 项.get("dst_ids", [])
-			var 是当前: bool = bool(项.get("is_extra", false)) and cause == 当前来源
-			var 显示类型: int = int(项.get("respond_id", 0))
-			if 显示类型 == GConst.ActionType.ChooseExtraAction:
+		# 当前这份自己的放行种类（=本阶段服务端下发的行动种类）
+		_额外行动放行_选择 = 当前类型
+		var 序列原因: Array = 首位.get("extra_attack_causes", [])
+		var 序列ID: Array = 首位.get("extra_attack_uids", [])
+		var 序列允许: Array = 首位.get("allow_actions", [])
+		var 序列牌: Array = 首位.get("extra_attack_cards", [])
+		var 序列目标: Array = 首位.get("extra_attack_targets", [])
+		var 序列系别: Array = 首位.get("extra_attack_elements", [])
+		# 服务端没给这份列表（额外的法术行动等）：只摆当前这一份，等同于旧行为
+		if 序列原因.is_empty():
+			序列原因 = [当前来源]
+			序列ID = [int(首位.get("extra_uid", 0))]
+			序列允许 = [当前类型]
+			序列牌 = [{"ids": 当前牌}]
+			序列目标 = [{"ids": 当前目标}]
+			序列系别 = [int(首位.get("extra_element", 0))]
+		for i: int in range(序列原因.size()):
+			var cause: int = int(序列原因[i])
+			var uid: int = int(序列ID[i]) if i < 序列ID.size() else 0
+			if cause <= 0:
+				continue
+			var 项牌: Array = (序列牌[i] as Dictionary).get("ids", []) if i < 序列牌.size() else []
+			var 项目标: Array = (序列目标[i] as Dictionary).get("ids", []) if i < 序列目标.size() else []
+			var 项系别: int = int(序列系别[i]) if i < 序列系别.size() else 0
+			var 是当前: bool = uid > 0 and uid == 当前ID
+			# 动作种类按这一份自己的 allow_action 写文案（既能攻击又能施法时写两类）
+			var 显示类型: int = int(序列允许[i]) if i < 序列允许.size() \
+				else (当前类型 if 是当前 else GConst.ActionType.Attack)
+			if 显示类型 <= 0:
 				显示类型 = GConst.ActionType.Attack
-			var 项攻击: bool = _是攻击额外行动(cause, 显示类型)
 			var 项按钮: 技能按钮 = _新技能按钮(0)
 			项按钮.设置选项(_额外行动按钮文本(cause, 显示类型,
-				int(项.get("extra_element", 0))),
-				_额外攻击按钮底色(cause, 项攻击), 0)
+				int(项系别)),
+				_额外行动按钮底色(), 0)
 			项按钮.设置说明(_额外行动按钮说明(cause))
 			if 是当前:
 				项按钮.设置选中(true)
-			项按钮.connect("点击", _本地选择额外攻击.bind(cause, 项牌, 项目标))
+			项按钮.connect("点击", _本地选择额外攻击.bind(uid, cause, 项牌, 项目标, 显示类型))
 			_额外攻击切换项.append({
-				"按钮": 项按钮, "cause": cause,
+				"按钮": 项按钮, "uid": uid, "cause": cause,
+				"allow": 显示类型, "element": 项系别,
 				"card_ids": 项牌, "dst_ids": 项目标,
 			})
 	for i: int in range(1, cmds.size()):
@@ -3126,6 +3245,12 @@ func _构建技能按钮(cmds: Array) -> void:
 		# 服务端标了「本次不可用」（条件不满足）或本阶段不放行的：半透明、点不动，悬停说明照常可看
 		if not 阶段放行 or not bool(c.get("enabled", true)):
 			go.设置选项可用(false)
+		# 记下「这颗按钮要求哪种动作种类 / 服务端是否允许」：额外行动阶段本地切换行动后
+		# 要按新行动的放行种类重算可用性（见 _本地选择额外攻击）。
+		# 元数据名必须是 ASCII 标识符 —— Godot 会拒绝中文名（Invalid metadata identifier），
+		# 写中文键名会让 set_meta 静默失败、has_meta 永远 false，过滤整段失效。
+		go.set_meta(元数据_行动技能类型, 技能类型)
+		go.set_meta(元数据_行动服务端可用, bool(c.get("enabled", true)))
 		go.connect("点击", _选择技能.bind(技能类型, 需牌, 需目标, 合法目标, 合法牌, 最多牌,
 			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go, 盖牌需数))
 		# 点下去就把挂着的技能说明收掉，别挡着选牌选目标（悬停 / 离开悬停由 _新技能按钮 统一接）
@@ -3137,19 +3262,92 @@ func _构建技能按钮(cmds: Array) -> void:
 	_排技能栏.call_deferred()
 
 
-## 额外攻击阶段点另一份额外攻击：只切换本地高亮与白名单，不提交、不重发询问（画面不闪、顺序不变）
-func _本地选择额外攻击(_技能号: int, cause: int, 牌白: Array, 目标白: Array) -> void:
-	_当前额外攻击选择 = cause
+## 额外攻击阶段点另一份额外攻击：只切换本地高亮与白名单，不提交、不重发询问（画面不闪、顺序不变）。
+## 放行种类也要跟着换（放行 = 选中那份自己的 allow_action）：从「攻击或法术」切到「只能攻击」后，
+## 手里的法术牌要立刻暗掉，否则界面亮着、点下去会被服务端拒。
+## 已经选好的牌 / 目标**只要在新行动下仍然合法就保留**（不合法才收回）：
+## 来回比两份额外行动时，不该把玩家已经点好的那几张牌清掉重选。
+func _本地选择额外攻击(_技能号: int, uid: int, _cause: int, 牌白: Array, 目标白: Array,
+		放行: int) -> void:
+	_当前额外攻击选择 = uid
 	_额外手牌白名单_选择 = 牌白.duplicate()
 	_额外目标白名单_选择 = 目标白.duplicate()
-	# 换了一份额外行动：旧的选牌 / 选目标可能不再合法，清掉重选（不重发询问、不重排按钮）
-	_sel_cards.clear()
-	_sel_players.clear()
+	_额外行动放行_选择 = 放行
+	# 已经点开、正在准备的技能（mode 4）如果在新行动下不能发动，就整手取消：
+	# 否则会停在「已经切成攻击行动，冰冻还亮着、还能继续选目标」的状态，提交时必被服务端驳回。
+	# 新行动仍放行这个技能时一律保留（已选的牌 / 目标原样不动）。
+	if _mode == 4 and _pending_skill_id > 0 and not GConst.放行动作(_pending_skill_type, 放行):
+		_取消失效的当前技能()
+	# 旧选择先按新行动的规矩复检（白名单 / 放行种类都已换成新的）：
+	# 技能已准备（mode 4）先过技能自己的选牌规则，再叠一层「这份行动放不放行」；其余按普通出牌判。
+	var 留牌: Array[int] = []
+	if _mode == 4:
+		var 行动牌白: Array = _额外手牌白名单_选择
+		for cid: Variant in _筛出当前技能可留的牌(_sel_cards):
+			# mode 4 时 _可主动使用牌 只判「放行种类」，这里补上这份行动自己的出牌白名单
+			# （白名单是牌面，选中的是实例号，比较前先折回牌面）
+			if not 行动牌白.is_empty() and not 行动牌白.has(GConst.牌号(int(cid))):
+				continue
+			if _可主动使用牌(int(cid)):
+				留牌.append(int(cid))
+	else:
+		for cid: Variant in _sel_cards:
+			if _可主动使用牌(int(cid)):
+				留牌.append(int(cid))
+	_sel_cards = 留牌
+	var 留目标: Array[int] = []
+	for pid: Variant in _sel_players:
+		if _玩家可选(int(pid)):
+			留目标.append(int(pid))
+	_sel_players = 留目标
+	# 技能按钮的可用性也跟着换：切到只放行法术的行动后，攻击技能要置灰（反之亦然），
+	# 否则界面亮着、点下去被服务端按新行动的种类驳回。
+	for 钮: Node in _技能按钮:
+		if not (钮 is 技能按钮) or not 钮.has_meta(元数据_行动技能类型):
+			continue
+		var 类: int = int(钮.get_meta(元数据_行动技能类型))
+		(钮 as 技能按钮).设置选项可用(
+			bool(钮.get_meta(元数据_行动服务端可用)) and GConst.放行动作(类, 放行))
 	for 项: Dictionary in _额外攻击切换项:
 		var b: Variant = 项.get("按钮")
 		if is_instance_valid(b):
-			(b as 技能按钮).设置选中(int(项.get("cause", 0)) == cause)
+			(b as 技能按钮).设置选中(int(项.get("uid", 0)) == uid)
 	_刷新交互()
+
+
+## 切换额外行动时，把「已经点开、但在新行动下不能发动」的技能整手取消：
+## 退出技能准备态，收回技能高亮 / 头像指示器 / 已选目标，回到普通行动阶段。
+## **不重建技能栏**：玩家刚点中的那份额外行动（按钮选中、放行种类、白名单）全部保留 ——
+## 重建会把当前行动顶回服务端那份，看起来像「点了却没切」。
+## 新行动仍放行这个技能时不走这里（调用方先用 放行动作 判过）。
+func _取消失效的当前技能() -> void:
+	_mode = 1
+	_pending_skill_id = -1
+	_复位行动阶段选牌状态()
+	_sel_cards.clear()
+	_sel_players.clear()
+	_重置治疗分配()
+	_先弹选项 = false
+	_已选参数.clear()
+	_目标锁死 = false
+	_提炼阶段 = 0
+	_本地选项阶段 = 0
+	_本地询问 = false
+	_selecting_cover = false
+	_skill_cover_need = 0
+	# 二级栏开着时：收掉选项与「要消耗的行动」按钮，把被它们藏起来的主技能栏重新显示出来
+	if _二级栏:
+		_清空二级选项()
+		for b: Node in _技能按钮:
+			if b is Control:
+				(b as Control).visible = true
+	# 技能高亮撤掉；额外行动按钮不参与（见 _标记选中技能），保住刚点中的那一份
+	_标记选中技能(null)
+	_指令提示("已切换额外行动：原技能不能在新行动下发动，已取消")
+	刷新手牌()
+	刷新盖牌()
+	刷新选中面板()
+	_更新按键()
 
 
 ## 造一颗技能按钮挂进技能区（只 Instantiate + 设置技能 + 接悬停说明，点击回调由调用方做）
@@ -3179,6 +3377,9 @@ func _摆特殊行动入口() -> void:
 	go.设置说明(特殊行动入口说明)
 	if not (可用[0] or 可用[1] or 可用[2]) or _末日审判锁死行动():
 		go.设置选项可用(false)
+	# 供「额外行动阶段本地切换行动」时按新行动的放行种类重算（特殊行动只在放行特殊时能用）
+	go.set_meta(元数据_行动技能类型, GConst.ActionType.Special)
+	go.set_meta(元数据_行动服务端可用, 可用[0] or 可用[1] or 可用[2])
 	go.connect("点击", func(_技能号: int) -> void: _进入特殊行动())
 	ChildrenSkillArea.move_child(go, 0)
 
@@ -3281,18 +3482,56 @@ func _选项文案(原文: String) -> String:
 func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: Array,
 		选项底色: Color = 二级选项底色, 返回回调: Callable = Callable()) -> void:
 	_清空二级选项()
+	# 额外行动阶段点技能进二级栏：把「这一手要消耗的那份额外行动」带进来，摆在本体前面。
+	# 行动的选择与技能自己的选择是两条独立的线：这里只是把已经选好的那份显示出来，
+	# 点它可以退回主技能栏重新挑。两种来源都认：
+	#   ① 还没提交出手（本地正在选技能，mode 1 / 4）→ 用当前选中的那份
+	#   ② 已经把技能交上去了，服务端又发来它的选项询问（mode 2 / 3）→ 用随那一手提交的那份
+	var 行动钮: 技能按钮 = null
+	var 行动描述: Dictionary = {}
+	if _当前额外攻击选择 > 0 and not _额外攻击切换项.is_empty():
+		for 项: Dictionary in _额外攻击切换项:
+			if int(项.get("uid", 0)) != _当前额外攻击选择:
+				continue
+			行动描述 = {"cause": int(项.get("cause", 0)), "allow": int(项.get("allow", 0)),
+				"element": int(项.get("element", 0))}
+			break
+	elif not _已提交额外行动.is_empty():
+		行动描述 = _已提交额外行动
+	if not 行动描述.is_empty():
+		var 因: int = int(行动描述.get("cause", 0))
+		var 允: int = int(行动描述.get("allow", 0))
+		var 元: int = int(行动描述.get("element", 0))
+		行动钮 = _新技能按钮(0)
+		行动钮.设置选项(_额外行动按钮文本(因, 允, 元), _额外行动按钮底色(), 0)
+		行动钮.设置说明(_额外行动按钮说明(因))
+		# 服务端正在等这次询问的回复时不能退回行动栏（mode 2/3），那颗只作展示；
+		# 响应阶段同样不能使用行动：不仅置灰，还要**取消选中高亮**（只有响应选项可选）。
+		if _mode == 1 or _mode == 4:
+			行动钮.设置选中(true)
+			行动钮.connect("点击", func(_技能号: int) -> void: _回到行动阶段())
+		else:
+			行动钮.设置选中(false)
+			行动钮.设置选项可用(false)
+		_二级栏行动钮 = 行动钮
 	# 父按钮要现造时（技能询问那条通道没有现成的按钮）：只摆出来当「这次在问哪个技能」的牌子，
 	# 查看说明用；回退统一走它右边那颗「返回」。
 	var 父: 技能按钮 = 父按钮
 	if 父 == null and 父技能号 > 0:
 		父 = _新技能按钮(父技能号)
+	# 先记下本体：下面 _添加返回按钮 要按它的位置把「返回」插到**本体右边**，
+	# 记晚了会拿到上一栏的旧值，返回就夹在「要消耗的行动」和本体之间了。
+	_二级栏父按钮 = 父
 	for b: Node in _技能按钮:
 		if b is Control:
-			(b as Control).visible = b == 父
+			(b as Control).visible = b == 父 or b == 行动钮
 	if 父 != null:
 		# 注意：只有「二级技能栏」才把父技能强制移到最左。
 		# 主行动技能栏的额外行动一律按获取序号排列，当前行动只高亮，不得复用这条规则。
 		ChildrenSkillArea.move_child(父, 0)
+		if 行动钮 != null:
+			# 要消耗的行动摆在本体前面（它仍是高亮选中状态）
+			ChildrenSkillArea.move_child(行动钮, 0)
 		父.设置选中(true)
 		if _是响应赐福(父技能号):
 			父.设置底色(GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87)))
@@ -3365,6 +3604,11 @@ func _军神威光返回(_技能号: int = 0) -> void:
 
 ## 清掉二级栏的状态与选项按钮（技能本体按钮与其余技能由 _清空技能按钮 统一收）
 func _清空二级选项() -> void:
+	# 二级栏里带进来的「要消耗的额外行动」按钮也一起收掉（它不在 _二级选项 里）
+	if is_instance_valid(_二级栏行动钮):
+		_技能按钮.erase(_二级栏行动钮)
+		_二级栏行动钮.queue_free()
+	_二级栏行动钮 = null
 	for 项: Dictionary in _二级选项:
 		var b: Node = 项["按钮"]
 		if is_instance_valid(b):
@@ -3894,11 +4138,14 @@ func _on_player_clicked(player_id: int) -> void:
 ## 这张牌此刻能不能点选
 ## 同一条判定同时决定「是否置灰」与「点击是否响应」，两者不会不一致
 func _卡牌能点(card_id: int) -> bool:
+	# 进来的是实例号（手牌 / 盖牌节点带实例号），也可能是牌号（服务端列表）。
+	# 规则比较一律按牌面：白名单、选项牌系、技能选牌规则都是牌面语义
+	var 面: int = GConst.牌号(card_id)
 	# 攻击结束响应里选中额外攻击后：只让点该额外攻击白名单内的攻击牌
 	if _额外攻击响应选择 > 0:
 		var 在手中: bool = false
 		for c: GCard in Data.hand_cards:
-			if c.id == card_id:
+			if c.id == 面:
 				在手中 = true
 				break
 		if not 在手中:
@@ -3906,7 +4153,7 @@ func _卡牌能点(card_id: int) -> bool:
 		var 牌: GCard = Data.get_card(card_id)
 		if 牌 == null or not 牌.is_attack():
 			return false
-		return _额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(card_id)
+		return _额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(面)
 	# 式神咒束 / 阴阳转换的同一步选牌：按当前选项过滤，不走普通技能栏的牌数规则；盖牌不能当手牌应战
 	if _攒应战选应战:
 		if _是普通盖牌(card_id):
@@ -3967,7 +4214,7 @@ func _卡牌能点(card_id: int) -> bool:
 	# 服务端给了普通行动的手牌白名单时（如【修罗连斩】的额外攻击只能出火系攻击牌），只有白名单里的牌可点
 	if _mode == 1:
 		var 白名单: Array = _行动手牌白名单()
-		if not 白名单.is_empty() and not 白名单.has(card_id):
+		if not 白名单.is_empty() and not 白名单.has(面):
 			return false
 		return _可主动使用牌(card_id)
 	# 发动技能 / 技能询问：按服务端给的选牌来源过滤（手牌 / 盖牌区 / 场上基础效果牌），
@@ -3989,7 +4236,7 @@ func _卡牌能点(card_id: int) -> bool:
 			_:
 				if _是普通盖牌(card_id):
 					return false
-		if not _skill_cards.is_empty() and not _skill_cards.has(card_id):
+		if not _skill_cards.is_empty() and not _skill_cards.has(面):
 			return false
 		return _符合选牌规则(card_id)
 	# 特殊行动（购买/合成/提炼）与本地选项步骤期间不点牌
@@ -4210,7 +4457,14 @@ func _行动目标白名单() -> Array:
 
 ## 行动阶段能不能拿这张牌出手：攻击牌，以及能主动施放的【圣盾 / 虚弱 / 中毒 / 魔弹】。
 ## 【圣光】只作响应（应战攻击 / 抵挡魔弹），回合内打出去只会被服务端拒，所以直接置灰。
+## 本阶段此刻放行的动作种类：额外行动阶段点了切换后，以选中那一份的规格为准
+func _当前放行() -> int:
+	return _额外行动放行_选择 if _额外行动放行_选择 > 0 else _行动允许
+
+
 func _可主动使用牌(card_id: int) -> bool:
+	# 规则按牌面：进来的是实例号，白名单与牌名判定都用折回后的牌面
+	var 面: int = GConst.牌号(card_id)
 	var 牌: GCard = Data.get_card(card_id)
 	if 牌 == null:
 		return false
@@ -4221,19 +4475,21 @@ func _可主动使用牌(card_id: int) -> bool:
 	# 3803 的额外攻击只能出同系攻击牌）。白名单外的牌整片置灰，[手牌白名单_全禁] 则是全禁。
 	if _mode == 1:
 		var 白名单: Array = _行动手牌白名单()
-		if not 白名单.is_empty() and not 白名单.has(card_id):
+		if not 白名单.is_empty() and not 白名单.has(面):
 			return false
 	# 本阶段放行哪几类动作由服务端下发（额外攻击行动只放行攻击）：
-	# 不放行的牌整片置灰，不要等点了才被服务端拒
+	# 不放行的牌整片置灰，不要等点了才被服务端拒。
+	# 额外行动阶段还要叠加「本地选中的那一份」的放行种类 —— 从「攻击或法术」切到「只能攻击」后，
+	# 法术牌必须立刻暗掉（否则点了会被服务端拒，而且界面在骗人）。
 	if 牌.is_attack():
-		return GConst.放行动作(GConst.ActionType.Attack, _行动允许)
+		return GConst.放行动作(GConst.ActionType.Attack, _当前放行())
 	# 【暗影抗拒】（904）/【黑暗束缚】（2903）：行动阶段不能使用法术牌 —— 整片置灰，点了必被服务端拒
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	if 我 != null and GConst.行动阶段禁用法术牌(我.role_id):
 		return false
 	match 牌.card_name_enum():
 		GConst.CardName.Shield, GConst.CardName.Weaken, GConst.CardName.Poison, GConst.CardName.Missile:
-			return GConst.放行动作(GConst.ActionType.Magic, _行动允许)
+			return GConst.放行动作(GConst.ActionType.Magic, _当前放行())
 		_:
 			return false
 
@@ -4839,7 +5095,11 @@ func _添加返回按钮(回退: Callable) -> void:
 	钮.设置选项("返回", 二级选项底色_返回, 0)
 	钮.设置说明("返回上一级")
 	钮.connect("点击", func(_技能号: int) -> void: 回退.call())
-	ChildrenSkillArea.move_child(钮, 1)
+	# 紧跟在父技能后面（父技能前面可能还带着「要消耗的额外行动」那一颗）
+	var 位: int = 1
+	if is_instance_valid(_二级栏父按钮):
+		位 = _二级栏父按钮.get_index() + 1
+	ChildrenSkillArea.move_child(钮, 位)
 
 
 ## 行动阶段点技能栏最左那颗「特殊行动」进来：购买 / 合成 / 提炼 三选一 —— 选项摆进二级技能栏（本地步骤）。
@@ -4952,7 +5212,8 @@ func _基础效果选项() -> Array:
 		for 组合: Dictionary in 能量组合:
 			选项.append({
 				"text": "%s【%s】%s" % [动作, 效果.card.card_name, str(组合["后缀"])],
-				"args": (组合["args"] as Array) + [效果.card.id],
+				# 带实例号：服务端按它从基础效果区取走「点的那一张」（克隆牌与同牌面原件要分开）
+				"args": (组合["args"] as Array) + [效果.实例号 if 效果.实例号 >= 0 else 效果.card.id],
 			})
 	return 选项
 
@@ -5734,7 +5995,8 @@ func _指示器配置() -> Dictionary:
 	if _mode == 4:
 		技能号 = _pending_skill_id
 	elif _mode == 3:
-		技能号 = _skill_ask_id
+		# 行动结束响应里的选项本身是另一颗技能：按选中项取配置，不能拿询问号当它的
+		技能号 = _询问技能号()
 	if 技能号 < 0:
 		return {}
 	return GConst.技能指示器.get(技能号, {})
@@ -6330,16 +6592,35 @@ func _发送治疗分配() -> void:
 		_发送行动(_pending_skill_type, _pending_skill_id, 目标表, _sel_cards, 点数表)
 
 
-func _选择额外行动(_技能号: int, cause: int) -> void:
-	# 记下这份额外行动的来源：服务端随后的行动询问只带 is_extra，不带 cause
-	_额外行动来源 = cause
-	Logic.send_respond(GConst.RespondType.AdditionalAction, [], [], [cause])
+func _选择额外行动(_技能号: int, uid: int) -> void:
+	# 提交的是这份行动的唯一 ID（同一技能挂两份时分得清）；来源技能号只留着写提示
+	_额外行动来源 = _额外行动单选原因
+	Logic.send_respond(GConst.RespondType.AdditionalAction, [], [], [uid])
 	_清空待选()
 
 
 # ---------------- 提交 / 复位 ----------------
 func _发送行动(action_type: int, action_id: int, dst: Array, cards: Array, args: Array) -> void:
-	Logic.send_action(action_type, action_id, dst, cards, args)
+	# 额外行动阶段：把「本地选中的那份额外行动」随这一手一起提交，服务端据此换队、消耗玩家点的那份。
+	# 打牌和技能行动都带这一项（技能点了之后是 mode 4，也要带，否则点技能永远消耗当前那份）——
+	# 行动的选择和技能自己的选择是两件独立的事，先点行动、再去技能栏点技能就能组合出想要的那一手。
+	var 额外ID: int = 0
+	var 额外记录: Dictionary = {}
+	if _当前额外攻击选择 > 0 and not _额外攻击切换项.is_empty():
+		额外ID = _当前额外攻击选择
+		for 项: Dictionary in _额外攻击切换项:
+			if int(项.get("uid", 0)) != 额外ID:
+				continue
+			额外记录 = {"uid": 额外ID, "cause": int(项.get("cause", 0)),
+				"allow": int(项.get("allow", 0)), "element": int(项.get("element", 0))}
+			break
+	# 记住「这一手消耗的是它」：服务端可能还有二级询问（技能选项），那边也要把这份行动显示出来
+	_已提交额外行动 = 额外记录
+	_等待技能选项 = not 额外记录.is_empty() \
+		and (action_type == GConst.ActionType.AttackSkill \
+			or action_type == GConst.ActionType.MagicSkill \
+			or action_type == GConst.ActionType.SpecialSkill)
+	Logic.send_action(action_type, action_id, dst, cards, args, 额外ID)
 	_清空待选()
 
 
@@ -6356,6 +6637,7 @@ func _清空待选() -> void:
 	_skill_ask_id = -1
 	_是技能询问 = false
 	_额外行动单选 = -1
+	_额外行动单选原因 = -1
 	_额外行动可选 = true
 	_skill_ask_need_card = 0
 	_skill_ask_need_target = 0
@@ -6622,9 +6904,18 @@ func _选中是法术牌() -> bool:
 
 
 ## 该卡牌是否为自己的盖牌
+## 这张牌是不是我盖牌区里的（传进来的可能是实例号，也可能是牌号：两种都认）。
+## 同一牌面可能有多份副本，实例号能精确对上；给的是牌号时按牌面匹配。
+## 兜底再扫一遍 Data.cover_cards（有些路径只填了卡面列表，没填并行的实例号）。
 func _is_my_cover(card_id: int) -> bool:
+	if Data.cover_iids.has(card_id):
+		return true
+	var 面: int = GConst.牌号(card_id)
+	for 号: int in Data.cover_iids:
+		if GConst.牌号(号) == 面:
+			return true
 	for cc: GCard in Data.cover_cards:
-		if cc != null and cc.id == card_id:
+		if cc != null and cc.id == 面:
 			return true
 	return false
 
@@ -6709,13 +7000,15 @@ func _单行间距与起点(张数: int, 可用宽: float, 尺寸: Vector2, 最�
 ## 我的手牌：固定排成一行并水平居中；位置够就摊开，不够才压间距（压到负数会叠着放），绝不换行
 ## 每张牌按 _卡牌能点 单独判定：够格的亮起来，其余的置灰且点不动
 func 刷新手牌() -> void:
-	# 复用同 id 的已有卡牌节点：每份快照都销毁重建整排手牌的话，每张都要重新实例化、重画卡面，
+	# 复用同实例号的已有卡牌节点：每份快照都销毁重建整排手牌的话，每张都要重新实例化、重画卡面，
 	# 快照一多客户端就卡（见性能诊断报告）。只新建「新出现的牌」，旧牌原地更新。
+	# 节点的身份是**实例号**（card.id 只是牌面）：同一牌面可能同时有多份副本，按牌面复用会撞在一起。
 	var 旧: Dictionary = {}
 	for c: Node in HandArea.get_children():
 		var 旧卡: GCard = c.get("card") as GCard
 		if 旧卡 != null:
-			旧[旧卡.id] = c
+			var 旧号: int = int(c.get("实例号"))
+			旧[旧号 if 旧号 >= 0 else 旧卡.id] = c
 	var 张数: int = Data.hand_cards.size()
 	var 排布: Array = _单行间距与起点(maxi(张数, 1), HandArea.size.x, 手牌尺寸, 手牌最多重叠比例)
 	var 间距: float = float(排布[0])
@@ -6724,22 +7017,23 @@ func 刷新手牌() -> void:
 	var 还在手: Array[int] = []
 	for i: int in range(张数):
 		var card: GCard = Data.hand_cards[i]
-		还在手.append(card.id)
-		var 可用: bool = _卡牌能点(card.id)
-		var go: Node = 旧.get(card.id)
+		var 实例: int = Data.hand_iids[i] if i < Data.hand_iids.size() else card.id
+		还在手.append(实例)
+		var 可用: bool = _卡牌能点(实例)
+		var go: Node = 旧.get(实例)
 		var 是新建: bool = go == null
 		if 是新建:
 			# 这一轮才补进来的牌：记下起算时刻，接下来按「已经过多久」往下落
-			if not _上次手牌.has(card.id) and not _补牌起点.has(card.id):
-				_补牌起点[card.id] = 现在
-			go = _加卡牌(HandArea, card, 手牌尺寸, 可用)
+			if not _上次手牌.has(实例) and not _补牌起点.has(实例):
+				_补牌起点[实例] = 现在
+			go = _加卡牌(HandArea, card, 手牌尺寸, 可用, true, 实例)
 		else:
-			旧.erase(card.id)
+			旧.erase(实例)
 			# 复用节点也要按最新的可用性重画（省去重新实例化）
 			go.call("设置卡牌", card, 可用, true)
 			go.call("设置弃牌询问", _正在弃牌())
 		HandArea.move_child(go, i)
-		var 选中: bool = _sel_cards.has(card.id)
+		var 选中: bool = _sel_cards.has(实例)
 		go.call("设置选中", 选中)
 		var ctl: Control = go as Control
 		# 选中的牌往上抽出一截：表示「已经拿出来，等你按确定」
@@ -6748,7 +7042,7 @@ func 刷新手牌() -> void:
 		ctl.position = Vector2(起点 + 间距 * float(i), 目标y)
 		if 是新建:
 			# 只有新补的牌才从高处落下（复用/重画不重播这个动画）
-			var 落高: float = _补牌落高(card.id, 现在)
+			var 落高: float = _补牌落高(实例, 现在)
 			if 落高 > 0.0:
 				ctl.position.y = 目标y - 落高
 				var 剩余: float = maxf(补牌落下时长 * (1.0 - _补牌进度(card.id, 现在)), 0.05)
@@ -6797,12 +7091,14 @@ func _盖牌纯展示() -> bool:
 
 
 func 刷新盖牌() -> void:
-	# 与手牌一样复用节点：盖牌没变时不重建（每份快照都重建同样很重）
+	# 与手牌一样复用节点：盖牌没变时不重建（每份快照都重建同样很重）。
+	# 节点身份同样是实例号，不是牌面
 	var 旧: Dictionary = {}
 	for c: Node in ChooseArea.get_children():
 		var 旧卡: GCard = c.get("card") as GCard
 		if 旧卡 != null:
-			旧[旧卡.id] = c
+			var 旧号: int = int(c.get("实例号"))
+			旧[旧号 if 旧号 >= 0 else 旧卡.id] = c
 	var 张数: int = 0
 	for cc: GCard in Data.cover_cards:
 		if cc != null:
@@ -6834,17 +7130,19 @@ func 刷新盖牌() -> void:
 	var 可点控: bool = (not 纯展示) and (_selecting_cover or 当手牌)
 	var 可置灰: bool = 可点控 and not 纯展示
 	var 序: int = 0
-	for cc: GCard in Data.cover_cards:
+	for k: int in range(Data.cover_cards.size()):
+		var cc: GCard = Data.cover_cards[k]
 		if cc == null:
 			continue
-		var 可点: bool = 可点控 and _卡牌能点(cc.id)
+		var 实例: int = Data.cover_iids[k] if k < Data.cover_iids.size() else cc.id
+		var 可点: bool = 可点控 and _卡牌能点(实例)
 		# 只是「点盖牌按钮查看」时一律保持原色（只读、不给点，但牌面要看得清）；
 		# 只有在「要选盖牌」的询问里、或「视同手牌」时选不了的那几张才置灰
-		var go: Node = 旧.get(cc.id)
+		var go: Node = 旧.get(实例)
 		if go == null:
-			go = _加卡牌(ChooseArea, cc, 尺寸, 可点, 可置灰)
+			go = _加卡牌(ChooseArea, cc, 尺寸, 可点, 可置灰, 实例)
 		else:
-			旧.erase(cc.id)
+			旧.erase(实例)
 			var 复: Control = go as Control
 			复.custom_minimum_size = 尺寸
 			复.size = 尺寸
@@ -6856,7 +7154,7 @@ func 刷新盖牌() -> void:
 				(ChooseArea.size.x - 总宽) * 0.5 + float(序) * (尺寸.x + 间距),
 				(ChooseArea.size.y - 尺寸.y) * 0.5 + 盖牌显示下移)
 		# 盖牌太小：选中的整张牌染黄（学头像选中色），不只看边框
-		go.call("设置选中", _sel_cards.has(cc.id), true)
+		go.call("设置选中", _sel_cards.has(实例), true)
 		序 += 1
 	# 空槽紧跟最后一张盖牌，用与牌完全相同的定位算式摆（同一行、同一间距）；
 	# 槽里写的是「整行的第几个位置」，所以编号接着已有的盖牌往下数
@@ -6903,7 +7201,7 @@ func _刷新盖牌空槽(个数: int) -> void:
 
 ## 造一张卡牌节点挂到指定容器下（Card.tscn + scripts/CardUI.gd），点击回调统一接进来。
 ## 可置灰 = false 时「不可用」也保持原色（如只读查看自己的盖牌）
-func _加卡牌(父: Node, card: GCard, 尺寸: Vector2, 可用: bool, 可置灰: bool = true) -> Node:
+func _加卡牌(父: Node, card: GCard, 尺寸: Vector2, 可用: bool, 可置灰: bool = true, 实例号: int = -1) -> Node:
 	var go: Node = 卡牌预制.instantiate()
 	var ctl: Control = go as Control
 	ctl.set_anchors_preset(Control.PRESET_TOP_LEFT)
@@ -6913,6 +7211,9 @@ func _加卡牌(父: Node, card: GCard, 尺寸: Vector2, 可用: bool, 可置灰
 	父.add_child(go)
 	go.call("设置卡牌", card, 可用, 可置灰)
 	go.call("设置弃牌询问", _正在弃牌())
+	# 手牌 / 盖牌节点带上实例号：同一牌面可能有多份副本，点击要报「点的是哪一份」
+	if 实例号 >= 0:
+		go.set("实例号", 实例号)
 	go.connect("点击", _on_card_clicked)
 	return go
 
@@ -6955,8 +7256,22 @@ func _当前技能号() -> int:
 	if _mode == 4:
 		return _pending_skill_id
 	if _mode == 3:
-		return _skill_ask_id
+		return _询问技能号()
 	return -1
+
+
+## 这条询问里「当前选中那一项」自己的技能号。
+## 行动结束响应（no_parent）把好几颗技能塞进同一条询问，respond_id 只是列表第一项；
+## 指示器 / 头像提示必须按选中项自己的技能号取，否则选【剑影*断念】会把
+## 【剑残影】的「弃 N 张牌」画出来。选项没有技能号（纯参数选项）时退回询问号。
+func _询问技能号() -> int:
+	if _mode == 3 and bool(_pending.get("no_parent", false)):
+		var 项: Dictionary = _二级选中项()
+		if not 项.is_empty():
+			var 项技能号: int = int(项.get("技能号", 0))
+			if 项技能号 > 0:
+				return 项技能号
+	return _skill_ask_id
 
 
 ## 「目标随牌」配置（技能指示器）：已选牌数达到该值时，才需要（且才允许）选 1 名目标
@@ -7918,7 +8233,7 @@ func _生命结界头像提示() -> Dictionary:
 ## 在自家头像上写「2 点法术伤害」，让玩家在按确定前就看到代价。
 func _赤色一闪头像提示() -> Dictionary:
 	var out: Dictionary = {}
-	if _mode != 3 or _额外行动单选 != GConst.技能_赤色一闪 or not _额外行动可选:
+	if _mode != 3 or _额外行动单选原因 != GConst.技能_赤色一闪 or not _额外行动可选:
 		return out
 	out[Logic.my_player_id] = "2 法术伤害"
 	return out
@@ -8202,7 +8517,12 @@ func _参数选项目标白名单() -> Array:
 func _是场上基础效果牌(card_id: int) -> bool:
 	for p: GPlayer in Data.player_list:
 		for st: GPlayer.BasicStatus in p.basic_status_list:
-			if st.card != null and st.card.id == card_id:
+			if st.card == null:
+				continue
+			# 先认实例号，再按牌面兜底（_状态基础牌 传的是实例号，旧路径/测试可能直接给牌号）
+			if st.实例号 >= 0 and st.实例号 == card_id:
+				return true
+			if GConst.牌号(card_id) == st.card.id:
 				return true
 	return false
 
@@ -8219,7 +8539,20 @@ func _玩家可选(player_id: int) -> bool:
 	if _额外攻击响应选择 > 0:
 		if not _是敌方(player_id):
 			return false
-		return _额外攻击响应_目标白.is_empty() or _额外攻击响应_目标白.has(player_id)
+		var 响应白: Array = _额外攻击响应_目标白
+		if not 响应白.is_empty() and not 响应白.has(player_id):
+			return false
+		# 与普通主动攻击同一口径（服务端 base_v_attack 会拒，客户端先挡住，别让玩家白点一次）：
+		# 潜行中的对手不能被主动攻击选中；自己面前有【挑衅】时只能打放挑衅的那个人
+		if _潜行中(player_id):
+			return false
+		var 攻击者: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+		if 攻击者 != null and 攻击者.get_special(GConst.Exclusive.TiaoXin):
+			return player_id == 攻击者.get_special_from(GConst.Exclusive.TiaoXin)
+		# 本回合「下次主动攻击只能打谁」的标记（剑残影 10804）：服务端 base_v_attack 同一口径
+		if 攻击者 != null and 攻击者.attack_lock > 0 and player_id != 攻击者.attack_lock:
+			return false
+		return true
 	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：头像一律不可点，改不了目标
 	if _目标锁死:
 		return false
@@ -8241,8 +8574,12 @@ func _玩家可选(player_id: int) -> bool:
 			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 			if 我 != null and 我.get_special(GConst.Exclusive.TiaoXin):
 				return player_id == 我.get_special_from(GConst.Exclusive.TiaoXin)
+			# 本回合「下次主动攻击只能打谁」的标记（剑残影 10804）：玩家身上的回合级标记，
+			# 不是这份行动 / 这张牌的规格；服务端 base_v_attack 按同一标记校验。
+			if 我 != null and 我.attack_lock > 0 and player_id != 我.attack_lock:
+				return false
 			# 额外行动的目标限制（F2）：服务端随行动询问下发 dst_ids 白名单，
-			# 如 10704 的额外攻击只能打手牌数大于你的对手、10804 只能打指定目标（[-1]＝一个都没有）。
+			# 如 10704 的额外攻击只能打手牌数大于你的对手（[-1]＝一个都没有）。
 			var 目标白名单: Array = _行动目标白名单()
 			return 目标白名单.is_empty() or 目标白名单.has(player_id)
 		return _可作法术目标(牌, player_id)
@@ -8504,7 +8841,9 @@ func _排技能栏() -> void:
 	if _技能栏基准左 <= 0.0:
 		var 根宽: float = Root.size.x if Root.size.x > 0.0 else 1280.0
 		_技能栏基准左 = ChildrenSkillArea.offset_left + 根宽 * ChildrenSkillArea.anchor_left
-	var 间距: float = float(ChildrenSkillArea.get_theme_constant("separation"))
+	# 缩放锚点跟着整排底边（容器高度可能随内容变，grow 是双向的）：底边对齐、只向上收
+	ChildrenSkillArea.pivot_offset = Vector2(0.0, ChildrenSkillArea.size.y)
+	var 间距: float = float(ChildrenSkillArea.get_theme_constant("separation")) * 技能栏缩放
 	var 总宽: float = 0.0
 	var 有按钮: bool = false
 	for 子: Node in ChildrenSkillArea.get_children():
@@ -8512,7 +8851,8 @@ func _排技能栏() -> void:
 			continue
 		if 有按钮:
 			总宽 += 间距
-		总宽 += maxf((子 as Control).size.x, (子 as Control).get_combined_minimum_size().x)
+		# 整排按 技能栏缩放 缩放过：宽度按视觉尺寸算，否则右溢出补偿会多推一截
+		总宽 += maxf((子 as Control).size.x, (子 as Control).get_combined_minimum_size().x) * 技能栏缩放
 		有按钮 = true
 	var 屏宽: float = Root.size.x if Root.size.x > 0.0 else 1280.0
 	var 右溢出: float = maxf(_技能栏基准左 + 总宽 - 屏宽, 0.0)
@@ -8535,10 +8875,24 @@ func _隐藏技能区() -> void:
 ## 点中的技能按钮亮起黄色外发光，其余熄灭。
 ## 取消 / 提交行动都会 _清空技能按钮（或重建），发光随之复位，不用额外清；
 ## 二级技能栏里被点的父技能也保持发光（见 _进入二级技能栏）。
+## 额外行动按钮**不跟着熄灭**：它标的是「这一手要消耗哪一份额外行动」，不是「点中了哪个技能」。
+## 带二级技能栏的技能会另外摆一颗额外行动按钮（见 _进入二级技能栏）；没有二级栏的技能不会重建，
+## 若这里把这些按钮一起熄灭，玩家就看不到这次技能消耗的是哪份行动了。
 func _标记选中技能(按钮: Node) -> void:
 	for b: Node in _技能按钮:
-		if b is 技能按钮:
-			(b as 技能按钮).设置选中(b == 按钮)
+		if not (b is 技能按钮) or _是额外行动按钮(b):
+			continue
+		(b as 技能按钮).设置选中(b == 按钮)
+
+
+## 这颗按钮是不是技能栏上的「额外行动」按钮（点它切换这一手消耗哪份额外行动）。
+## 额外行动按钮也登记在 _技能按钮 里，但它的选中由 _构建技能按钮 / _本地选择额外攻击 自己管，
+## 不参与「点中了哪个技能」的高亮。
+func _是额外行动按钮(按钮: Node) -> bool:
+	for 项: Dictionary in _额外攻击切换项:
+		if 项.get("按钮") == 按钮:
+			return true
+	return false
 
 
 func _清空技能按钮() -> void:
@@ -8550,6 +8904,7 @@ func _清空技能按钮() -> void:
 	_当前额外攻击选择 = 0
 	_额外手牌白名单_选择.clear()
 	_额外目标白名单_选择.clear()
+	_额外行动放行_选择 = 0
 	_额外攻击响应_牌白.clear()
 	_额外攻击响应_目标白.clear()
 	for b: Node in _技能按钮:

@@ -8,7 +8,7 @@ extends 自检用例
 ##            101 给额外攻击行动、102 在目标有圣盾时禁止应战且不查圣盾；取消 / 无星石 /
 ##            非技类牌 / 应战反击 不触发；
 ##   - 10804：攻击行动结束后问发动 → 选目标 → 目标强制弃 1 张 → 扣 1 能量、额外 +1 攻击行动；
-##            本回合下次主动攻击只能打该目标（extra_action_targets + v_attack 兜底，命中一次后解除）；
+##            本回合下次主动攻击只能打该目标（目标白名单写进行动规格 + v_attack 兜底，命中一次后解除）；
 ##            取消发动 / 取消目标不扣费；无能量 / 无目标 / 回合限定不询问；
 ##   - 10801：剑之魔女在场时获得 4503 / 4504，且 10803 不发动；
 ##            4503 第 1/2/4 次攻击行动后的档位；4504 支付宝石 + 弃 2 + 摸 1 + 额外攻击；
@@ -277,6 +277,14 @@ func _有额外行动(cause: int) -> bool:
 	return false
 
 
+## 本轮是否给玩家 1 回过「操作无效」（ErrorInput）
+func _有错误输入() -> bool:
+	for r: Dictionary in 发送记录:
+		if int(r.get("msg", 0)) == GConst.Msg.ErrorInput:
+			return true
+	return false
+
+
 # ============================================================
 # 用例主体
 # ============================================================
@@ -449,23 +457,33 @@ func _测剑残影() -> void:
 	检(not 靶.hand_cards.has(目标弃牌号), "目标弃掉的牌应离开手牌")
 	检(引擎.deck.discard.has(目标弃牌号),
 		"目标弃的牌应进弃牌堆，实际弃牌堆 %s" % str(引擎.deck.discard))
-	检(角色.extra_action_targets(10804) == [2], "【剑残影】的额外攻击行动目标应锁定为 2")
-	检(角色.extra_action_targets(4504) == [2], "其他额外行动也受「下次主动攻击只打该目标」限制")
-	# 引擎下发的额外行动目标白名单
+	# 剑残影给的是「最普通的攻击行动」：限制是本回合的玩家级标记（attack_lock），
+	# 不写进行动规格 —— 否则限制被别的主动攻击消费掉之后，这份行动还会一直锁着那个目标。
+	检((玩家.额外行动数据(10804).get("targets", []) as Array).is_empty(),
+		"【剑残影】给的应是普通攻击行动，不该自带目标白名单：%s" % str(玩家.额外行动数据(10804)))
+	检(玩家.v_attack(非技击牌.id, 4, 引擎.players) == GConst.GE_INVALID_PLAYERID,
+		"其他额外行动的主动攻击同样受「下次主动攻击只打该目标」限制")
+	# 普通攻击行动不下发目标白名单：目标限制由玩家身上的标记在提交时校验
 	var 额外命令: Array = 引擎.action_commands(1, GConst.ActionType.Attack, true, true, false, 10804)
-	检(not 额外命令.is_empty() and (额外命令[0].get("dst_ids", []) as Array) == [2],
-		"额外攻击行动应把目标白名单下发为 [2]：%s"
+	检(not 额外命令.is_empty() and (额外命令[0].get("dst_ids", []) as Array).is_empty(),
+		"【剑残影】的额外攻击行动是普通攻击行动，不该下发目标白名单：%s"
 		% str(额外命令[0].get("dst_ids", []) if not 额外命令.is_empty() else []))
-	# v_attack 兜底：其他对手被拒，指定目标通过
+	# 标记本身：服务端校验 + 随快照下发（客户端据此把其余敌方头像置灰）
 	玩家.hand_cards = [非技击牌.id]
+	检(玩家.attack_lock_id == 2, "【剑残影】结算后应留下「下次主动攻击只能打 2」的标记")
 	检(玩家.v_attack(非技击牌.id, 4, 引擎.players) == GConst.GE_INVALID_PLAYERID,
 		"本回合下次主动攻击打其他对手应被驳回")
 	检(玩家.v_attack(非技击牌.id, 2, 引擎.players) == GConst.GE_SUCCESS,
 		"打【剑残影】指定目标应通过")
-	# 下一次主动攻击宣告后解除限制
-	var 宣告上下文: Dictionary = _攻击上下文(非技击牌.id)
-	角色.p_timeline_1(宣告上下文)
-	检(角色.extra_action_targets(10804).is_empty(), "指定目标被攻击过后应解除【剑残影】目标限制")
+	var 玩家信息: Dictionary = 玩家.to_proto(1)
+	检(int(玩家信息.get("attack_lock", 0)) == 2, "快照应带 attack_lock：%s" % str(玩家信息.get("attack_lock", -1)))
+	var 信息编码: PackedByteArray = ProtoCodec.encode_named("SinglePlayerInfo", 玩家信息)
+	var 信息解码: Dictionary = ProtoCodec.decode_named("SinglePlayerInfo", 信息编码)
+	检(int(信息解码.get("attack_lock", 0)) == 2, "SinglePlayerInfo 协议应包含 attack_lock")
+	# 打出下一次主动攻击：引擎在 _do_attack 里消费标记（不是靠这份行动 / 这张牌的规格）
+	引擎._do_attack(玩家, {"card_ids": [非技击牌.id], "dst_ids": [2]})
+	检(玩家.attack_lock_id == 0, "主动攻击打出后应消费「下次主动攻击只能打该目标」的标记")
+	玩家.hand_cards = [非技击牌.id]
 	检(玩家.v_attack(非技击牌.id, 4, 引擎.players) == GConst.GE_SUCCESS,
 		"限制解除后打其他对手应通过")
 
@@ -492,10 +510,15 @@ func _测剑残影() -> void:
 	玩家.set_crystal(1)
 	_驱动攻击结束({"card_id": 非技击牌.id, "dst": 2})
 	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond, "应询问【剑残影】")
+	# 选了一项却没选目标：驳回重选（不能静默结束、也不能把这一项用掉），不扣费
 	_应答询问(1, 10804, [10804], [], [])
-	检(引擎._await_id == -1, "取消目标选择应直接收尾")
-	检(玩家.get_energy() == 1 and not _有额外行动(10804), "取消目标不应扣费 / 给额外行动")
-	检(角色._used_剑残影 == false, "取消目标不应消耗回合限定")
+	检(引擎._await_id == 1 and not _取询问(1, 10804).is_empty(),
+		"没选目标应驳回并重新询问【剑残影】")
+	检(玩家.get_energy() == 1 and not _有额外行动(10804), "没选目标不应扣费 / 给额外行动")
+	检(角色._used_剑残影 == false, "没选目标不应消耗回合限定")
+	# 再按「取消」（空应答）＝不发动，直接收尾
+	_应答询问(1, 10804, [])
+	检(引擎._await_id == -1, "取消发动应直接收尾")
 
 	# 无能量 / 回合限定：不询问
 	_重置战斗()
@@ -684,6 +707,12 @@ func _测攻击结束二选一() -> void:
 		"剑残影项要求 1 名目标、4504 项不要求目标：%s" % str(问.get("option_need_targets", [])))
 	检((问.get("option_need_cards", []) as Array) == [0, 2],
 		"4504 项要求 2 张弃牌、剑残影项不要求：%s" % str(问.get("option_need_cards", [])))
+	# 选项自带的目标白名单：聚合器把整条响应包成同一次询问，客户端只能靠它只点亮对手头像
+	var 选项目标: Array = 问.get("option_targets", [])
+	检(选项目标.size() == 2 and (选项目标[0] as Dictionary).get("ids", []) == [2, 4],
+		"【剑残影】选项应带敌方目标白名单（1 号自己、3 号队友不能点）：%s" % str(选项目标))
+	检((选项目标[1] as Dictionary).get("ids", []).is_empty(),
+		"【剑影*断念】不选目标，白名单应为空：%s" % str(选项目标))
 	# 两项需求都必须过协议：否则联机时客户端不知道选中后要放开目标还是弃牌
 	var 二选一编码: PackedByteArray = ProtoCodec.encode_named("Command", 问)
 	var 二选一解码: Dictionary = ProtoCodec.decode_named("Command", 二选一编码)
@@ -695,6 +724,14 @@ func _测攻击结束二选一() -> void:
 		"10804 二选一应配「攻击结束二选一」")
 	检(bool(GConst.技能指示器.get(4504, {}).get("攻击结束二选一", false)),
 		"4504 二选一应配「攻击结束二选一」")
+	# 点了自己 / 队友（非敌方）：驳回重选，不扣费、不消耗这一项
+	发送记录.clear()
+	_应答询问(1, 10804, [10804], [], [1])
+	检(_有错误输入(), "选了非敌方目标应回 ErrorInput")
+	检(引擎._await_id == 1 and not _取询问(1, 10804).is_empty(),
+		"选了非敌方目标应驳回并重新询问【剑残影】")
+	检(玩家.get_energy() == 2 and not _有额外行动(10804), "非法目标不应扣费 / 给额外行动")
+	检(角色._used_剑残影 == false, "非法目标不应消耗回合限定")
 	# 目标没有手牌：同一条回复里选 10804 + 目标即可结算，然后应继续问 4504
 	_应答询问(1, 10804, [10804], [], [2])
 	检(引擎._await_id == 1 and 引擎._await_kind == GConst.Msg.Respond,
@@ -705,6 +742,14 @@ func _测攻击结束二选一() -> void:
 	var 二问参数: Array = 二问.get("args", [])
 	检(二问参数.size() >= 5 and int(二问参数[3]) == 1 and int(二问参数[4]) == 4504,
 		"第二问应只剩 4504：%s" % str(二问参数))
+	# 弃牌不足 2 张：驳回重选，不扣宝石、不消耗这一项
+	发送记录.clear()
+	_应答询问(1, 4504, [4504], [非魔牌表[0].id])
+	检(_有错误输入(), "【剑影*断念】弃牌不足应回 ErrorInput")
+	检(玩家.gem == 1, "弃牌不足不应扣宝石，实际剩 %d" % 玩家.gem)
+	检(引擎._await_id == 1 and not _取询问(1, 4504).is_empty(),
+		"弃牌不足应驳回并重新询问 4504")
+	检(角色._used_剑影断念 == false, "弃牌不足不应消耗回合限定")
 	_应答询问(1, 4504, [])
 	检(引擎._await_id == -1, "取消剩余的 4504 应收尾")
 

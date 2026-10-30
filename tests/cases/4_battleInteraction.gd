@@ -152,7 +152,7 @@ func 跑() -> void:
 		if 响应攻击牌.size() >= 2:
 			break
 	if 响应攻击牌.size() >= 2:
-		窗.call("_选中额外攻击响应", 0, 101, [], [])
+		窗.call("_选中额外攻击响应", 0, 1, 101, [], [])
 		窗.call("_on_card_clicked", 响应攻击牌[0])
 		窗.call("_on_card_clicked", 响应攻击牌[1])
 		var 响应已选: Array = 窗.get("_sel_cards")
@@ -513,13 +513,15 @@ func 跑() -> void:
 		"commands": [{
 			"respond_id": GConst.RespondType.AdditionalAction, "src_id": Logic.my_player_id,
 			"args": [赤色], "dst_ids": [赤色],
+			# 与 args 一一对应的唯一 ID（真实服务端一定会带上；这里让 uid 就等于技能号）
+			"option_uids": [赤色],
 		}],
 	})
 	await 等帧(2)
 	检(str(窗.get("_提示原文")) == 赤色说明,
 		"额外行动没有走通用说明：%s" % str(窗.get("_提示原文")))
 	# 点额外行动按钮只选中，不能立即提交
-	窗.call("_选中额外行动", 0, 赤色)
+	窗.call("_选中额外行动", 0, 赤色, 赤色)
 	检(int(窗.get("_额外行动单选")) == 赤色,
 		"点额外行动选项应只选中，不能立即提交")
 	窗.call("_清空待选")

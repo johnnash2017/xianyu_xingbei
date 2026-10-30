@@ -203,11 +203,14 @@ func _ju_ji(action: Dictionary) -> int:
 		player.set_gem(player.gem - 1)
 	# 额外一次攻击行动
 	player.add_action(GConst.ActionType.Attack, JU_JI, true, true)
-	# 目标手牌补到 5 张
+	# 目标手牌补到 5 张（摸牌走状态、延迟结算：压了就必须 URGENT，
+	# 先补完再压行动结束响应 / 进入这份额外攻击行动）
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst != null:
 		var need: int = 5 - dst.hand_cards.size()
 		if need > 0:
 			engine.push_draw(dst_id, need)
+			engine._broadcast_game()
+			return URGENT
 	engine._broadcast_game()
 	return SUCCESS

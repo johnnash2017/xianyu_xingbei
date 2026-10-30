@@ -83,12 +83,26 @@ func discard_size() -> int:
 	return discard.size()
 
 
+## 从牌堆/弃牌堆取出一张，返回它**实际的实例号**（找不到返回 -1，且什么都不删）。
+## 实例号优先、牌面兜底 —— 调用方常常只给牌号。「把这张牌拿去用」要带着返回的实例号走，
+## 不要 remove 完再拿牌号重新发一张，否则同牌面的副本会撞号。
+func 取出实例(cid: int) -> int:
+	for 列: Array in [pile, discard]:
+		var idx: int = 列.find(cid)
+		if idx >= 0:
+			var 实例: int = int(列[idx])
+			列.remove_at(idx)
+			return 实例
+	var 面: int = GConst.牌号(cid)
+	for 列2: Array in [pile, discard]:
+		for i: int in range(列2.size()):
+			if GConst.牌号(int(列2[i])) == 面:
+				var 实例2: int = int(列2[i])
+				列2.remove_at(i)
+				return 实例2
+	return -1
+
+
 ## 从牌堆/弃牌堆移除指定牌（用于盖牌、基础效果等离开牌堆的牌）
 func remove_one(cid: int) -> void:
-	var idx: int = pile.find(cid)
-	if idx >= 0:
-		pile.remove_at(idx)
-		return
-	idx = discard.find(cid)
-	if idx >= 0:
-		discard.remove_at(idx)
+	取出实例(cid)

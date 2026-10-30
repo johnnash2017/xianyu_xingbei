@@ -614,7 +614,7 @@ func 跑() -> void:
 	# ============================================================
 	# 4606 借用技的「触发」：本尊（4 封印师 / 16 祈祷师）不在场时，
 	# 也必须由 46 自己转发 helper 的 p_show_hand / p_timeline_2_hit /
-	# p_after_attack / p_after_magic / v_additional_action / p_additional_action
+	# p_after_attack / p_after_magic / p_additional_action
 	# ============================================================
 	# ---- 借用的 404：目标展示同系牌 → 3 点法术伤害 + 移除；异系不触发 ----
 	var 地系牌: GCard = _取元素牌(封印牌.element_enum(), [封印牌.id, 圣盾牌.id, 普通牌.id])
@@ -729,10 +729,6 @@ func 跑() -> void:
 			"借用 1601：额外行动应是 1601 授予的 1 次攻击")
 	角色.p_after_magic({"player": 3, "card_id": 普通牌.id})
 	检(队友.additional_actions.size() == 1, "借用 1601：同一份额外行动不应重复授予")
-	检(角色.v_additional_action(迅捷赐福技能号) == GConst.GE_INVALID_ACTION,
-		"借用 1601：46 自己面前不可能有赐福，二次校验应拒绝")
-	检(角色.v_additional_action(9999) == BattleRole.V_NOT_OVERRIDE,
-		"借用 1601：非迅捷赐福的额外行动必须回退 V_NOT_OVERRIDE，不能覆写成失败")
 	引擎._确认基础效果额外行动(3, 迅捷赐福技能号)
 	检(队友.basic_effects.is_empty(), "借用 1601：确认额外行动后迅捷赐福应被移除")
 	检(引擎.deck.discard.has(迅捷牌.id), "借用 1601：移除的迅捷赐福应进弃牌堆")

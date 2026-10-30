@@ -315,7 +315,8 @@ func _tong_sheng_gong_si(action: Dictionary) -> int:
 	engine.push(BattleEngine.SHook.new("p_tong_sheng_after_draw", {"player": player.id, "dst": dst_id}, []))
 	engine.push_draw(player.id, 2)
 	engine._broadcast_game()
-	return SUCCESS
+	# 压了摸牌 / 改上限钩子就必须 URGENT：先摸完、改完上限，再压行动结束响应
+	return URGENT
 
 
 ## 同生共死：摸完那 2 张牌之后，才挂独有效果并联动双方手牌上限

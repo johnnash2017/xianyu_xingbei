@@ -130,7 +130,9 @@ func _wu_dong(action: Dictionary) -> int:
 	else:
 		_discard_hand_cards(action.get("card_ids", []), 1)
 	engine._broadcast_game()
-	return SUCCESS
+	# 压了「取茧」钩子（和可能的摸牌）必须返回 URGENT：先结算摸牌 / 取茧，再压行动结束响应。
+	# 返回 SUCCESS 会让行动结束响应插到取茧之前，玩家看到的手牌也与茧错位。
+	return URGENT
 
 
 ## 舞动：摸 1 张牌（或弃 1 张牌）结算完之后，再把牌库顶 1 张面朝下作为【茧】
@@ -265,7 +267,7 @@ func _jing_hua_shui_yue(harm: Dictionary) -> int:
 		return SUCCESS
 	var cards: Array = []
 	for c: Variant in r.get("card_ids", []):
-		if player.cover_cards.has(int(c)) and not cards.has(int(c)):
+		if player.有盖牌(int(c)) and not cards.has(int(c)):
 			cards.append(int(c))
 	if cards.size() != 2 or _cover_elements_differ(cards[0], cards[1]):
 		return SUCCESS
@@ -497,7 +499,7 @@ func _discard_hand_cards(cards: Array, n: int) -> void:
 ## 从回复中取第一张合法【茧】
 func _cover_card_from_reply(r: Dictionary) -> int:
 	for c: Variant in r.get("card_ids", []):
-		if player.cover_cards.has(int(c)):
+		if player.有盖牌(int(c)):
 			return int(c)
 	return -1
 
@@ -508,7 +510,7 @@ func _chao_sheng_card(r: Dictionary) -> int:
 	if cid >= 0:
 		return cid
 	var args: Array = r.get("args", [])
-	if args.size() > 1 and player.cover_cards.has(int(args[1])):
+	if args.size() > 1 and player.有盖牌(int(args[1])):
 		return int(args[1])
 	return -1
 
@@ -517,7 +519,7 @@ func _chao_sheng_card(r: Dictionary) -> int:
 func _交牌里的茧(cards: Array) -> Array:
 	var out: Array = []
 	for c: Variant in cards:
-		if player.cover_cards.has(int(c)) and not out.has(int(c)):
+		if player.有盖牌(int(c)) and not out.has(int(c)):
 			out.append(int(c))
 	return out
 

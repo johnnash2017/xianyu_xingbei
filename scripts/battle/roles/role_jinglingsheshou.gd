@@ -84,10 +84,11 @@ func p_special_skill(_action: Dictionary) -> int:
 	player.boot_skill_used = true
 	engine.set_tap(player.id, true)
 	player.set_gem(player.gem - 1)
-	# 牌库顶 3 张面朝下放置于角色旁作为【祝福】
-	var cards: Array = engine.draw(player.id, 3)
+	# 牌库顶 3 张面朝下放置于角色旁作为【祝福】：直接取牌库顶，不经过手牌 ——
+	# 先摸进手再拿走会让手牌瞬时超过上限（超限判定被绕过），
+	# 而且 deck.draw 在牌库不足时会先把弃牌堆洗回来，与「牌库顶」的口径不符（F8：不足只取实际张数）。
+	var cards: Array[int] = engine.deck.remove_top(3)
 	if not cards.is_empty():
-		engine.take_from_hand(player.id, cards)
 		engine.add_cover(player.id, cards, player.id, JING_LING_MI_YI_BOOT)
 	engine._broadcast_game()
 	return SUCCESS
@@ -172,7 +173,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	var cid: int = int(cards[0])
 	# 没有选项：选中的是盖牌就移除【祝福】，是手牌就必须是法术牌
-	var 用盖牌: bool = player.cover_cards.has(cid)
+	var 用盖牌: bool = player.有盖牌(cid)
 	if not 用盖牌:
 		var card: GCard = Data.get_card(cid)
 		if card == null or not card.is_magic() or not player.has_hand_card(cid):

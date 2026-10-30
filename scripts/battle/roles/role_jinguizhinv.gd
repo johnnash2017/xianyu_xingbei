@@ -97,6 +97,8 @@ var _7802咏目标: Array[int] = []
 var _7802水目标: Array[int] = []
 var _7802_7803弃牌: Array[int] = []
 var _7802_7803额外行动: bool = false
+## 本次 7802 是否已经结算过：结算会返回 URGENT，引擎重入技能本体时据此直接收尾、不重复结算
+var _7802已结算: bool = false
 var _7802_7803加宝石: bool = false
 
 ## 7804 本次发动的分步数据
@@ -142,6 +144,12 @@ func is_free_skill(skill_id: int) -> bool:
 	return skill_id == 强予愿行
 
 
+## 7802 摸展示牌后要先让超限结算，再接着选目标 / 结算：让引擎在 URGENT 结算完重入技能本体。
+## 只对 7802 生效（7804 的 URGENT 是技能收尾，不能重入）。
+func 技能URGENT后重入(action: Dictionary = {}) -> bool:
+	return int(action.get("action_id", 0)) == 魔法入门
+
+
 # ============================================================
 # 高岭之花（7801）：执行提炼时若至少含 1 宝石，你 +1 水晶
 # ============================================================
@@ -184,6 +192,10 @@ func v_magic_skill(action: Dictionary) -> int:
 func p_magic_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != 魔法入门:
 		return EMPTY_HANDLE
+	# 已经结算过（URGENT 挂起后引擎重入本体）：不要再结算一次，直接收尾。
+	# 见 技能URGENT后重入()：7802 摸牌后要挂起走超限，挂起结束会重入这里。
+	if _7802已结算:
+		return SUCCESS
 	if step == 0:
 		_初始化魔法入门()
 		_本回合魔法入门次数 += 1
@@ -229,6 +241,15 @@ func p_magic_skill(action: Dictionary) -> int:
 				var r弃: Dictionary = take_skill_reply_full()
 				var 选牌: Array[int] = _取手牌(弃牌人, r弃.get("card_ids", []), 1)
 				var 弃出: int = int(选牌[0]) if not 选牌.is_empty() else -1
+				if 弃出 < 0:
+					# 7805 原文是「各弃 1 张牌【强制】【展示】」：目标超时 / 空回复时按手牌顺序补一张，
+					# 不能白跳过（少一张展示牌会连带改变 7802 的 X 和后续效果）
+					var 弃牌者: BattlePlayer = engine.p(弃牌人)
+					if 弃牌者 != null:
+						for cid替: int in 弃牌者.hand_cards:
+							if 弃牌者.has_discard_card(cid替):
+								弃出 = cid替
+								break
 				# 7805：选定的牌当场离手 —— 7803 的「弃 2 张」询问比技能结算更早，
 				# 牌留在手里会被再选一次。入弃牌堆统一放到 _结算魔法入门：那时不再向玩家提问，
 				# 不会把「弃牌前拦截」的等待链夹在后续询问中间。
@@ -240,6 +261,10 @@ func p_magic_skill(action: Dictionary) -> int:
 			步_准备展示:
 				_准备7802展示()
 				step = 步_法术目标
+				# 摸到的展示牌可能把手牌摸超上限：先压超限结算（弃到上限 + 掉士气），
+				# 回来再从「选目标」继续（本角色覆写 技能URGENT后重入()＝true，引擎会重入技能本体）。
+				engine.push(BattleEngine.SHandOverflow.new())
+				return URGENT
 			步_法术目标:
 				var 法术目标数: int = mini(法术目标上限, enemy_ids().size()) if _7802有法术牌 else 0
 				if 法术目标数 <= 0:
@@ -317,6 +342,8 @@ func p_magic_skill(action: Dictionary) -> int:
 						_7802_7803加宝石 = true
 				step = 步_结算
 			步_结算:
+				# 先记「已结算」再结算：结算会压伤害 / 钩子并返回 URGENT，引擎重入本体时不能再来一次
+				_7802已结算 = true
 				return _结算魔法入门()
 	return SUCCESS
 
@@ -336,6 +363,7 @@ func _初始化魔法入门() -> void:
 	_7802_7803弃牌.clear()
 	_7802_7803额外行动 = false
 	_7802_7803加宝石 = false
+	_7802已结算 = false
 
 
 ## 7802 准备阶段：确定展示牌集合并算出三类效果的触发情况

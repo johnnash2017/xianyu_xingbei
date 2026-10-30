@@ -135,7 +135,7 @@ func _request_discard(pid: int, n: int, cause: int, 必须弃: bool = false) -> 
 		# 不是手里实际能弃的张数（want）—— 手牌不够时照样要让他看到差多少会掉士气
 		if 必须弃:
 			engine.ask_skill(pid, cause, want, 0, GConst.CardSource.Hand, [], 0, "", [], false,
-				提示原文(NI_FAN_ZHAN, 0, {"n": n}))
+				提示原文(cause, 0, {"n": n}))
 		else:
 			询问(pid, cause, want)
 		return WAIT
@@ -417,8 +417,8 @@ func p_timeline_3(ctx: Dictionary) -> int:
 			engine.to_discard(chosen)
 		_shou_fan_step = SHOU_FAN_TARGET_DISCARD
 	if _shou_fan_step == SHOU_FAN_TARGET_DISCARD:
-		# 施害者弃 1 张牌
-		var r2: int = _request_discard(int(harm.get("src", -1)), 1, SHOU_FAN)
+		# 施害者弃 1 张牌（原文「他弃1张牌【展示】」是强制的：超时按手牌顺序补一张）
+		var r2: int = _request_discard(int(harm.get("src", -1)), 1, SHOU_FAN, true)
 		if r2 == WAIT:
 			return WAIT
 		notice_skill(SHOU_FAN, [int(harm.get("src", -1))])
@@ -468,9 +468,9 @@ func p_tap(ctx: Dictionary) -> int:
 		engine._broadcast_game()
 		_jing_jie_step = SHOU_HUN_JING_JIE_DISCARD
 	if _jing_jie_step == SHOU_HUN_JING_JIE_DISCARD:
-		# 服务端由玩家指定的目标弃 1 张（不是被横置的那个角色）
+		# 服务端由玩家指定的目标弃 1 张（不是被横置的那个角色）；原文是强制弃牌，超时补一张
 		var 弃牌目标: int = jing_jie_dst if jing_jie_dst >= 0 else int(ctx.get("id", -1))
-		var r2: int = _request_discard(弃牌目标, 1, SHOU_HUN_JING_JIE)
+		var r2: int = _request_discard(弃牌目标, 1, SHOU_HUN_JING_JIE, true)
 		if r2 == WAIT:
 			return WAIT
 		jing_jie_dst = -1
@@ -504,7 +504,9 @@ func p_after_attack(ctx: Dictionary) -> int:
 	if step == YI_JI_WU_NIAN:
 		# 授予额外攻击行动；移除 4 点残心并开启一击无念改在玩家选择时结算
 		if _can_xin() >= YI_JI_COST:
-			player.add_action(GConst.ActionType.Attack, YI_JI_WU_NIAN)
+			player.add_action(GConst.ActionType.Attack, YI_JI_WU_NIAN, false, false, {
+				"in_end_response": true,
+			})
 		step = STEP_DONE
 	return SUCCESS
 
@@ -513,11 +515,6 @@ func p_after_attack(ctx: Dictionary) -> int:
 # 玩家选择额外行动时：一击无念（移除 4 点残心并让本次攻击无视圣盾与圣光）
 # ============================================================
 
-
-
-## 一击无念属于行动结束响应，和迅捷赐福合并成一次询问
-func 额外行动属于结束响应(cause: int) -> bool:
-	return cause == YI_JI_WU_NIAN
 
 
 ## 行动结束响应点选一击无念时立即扣 4 点残心（方案 A）
@@ -635,5 +632,8 @@ func p_special_skill(action: Dictionary) -> int:
 		engine._log_discard(player.id, 弃牌)
 	elif choose == 2:
 		engine.push_draw(player.id, 1)
+		engine._broadcast_game()
+		# 摸牌延迟结算：压了就必须 URGENT，先摸完再压行动结束响应
+		return URGENT
 	engine._broadcast_game()
 	return SUCCESS

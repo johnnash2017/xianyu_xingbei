@@ -162,8 +162,12 @@ func _解决攻击结束技能(ctx: Dictionary, 技能号: int) -> int:
 ## 手里一张技类攻击牌都没有时不会出现在选项里（这份额外行动一张牌都出不了）。
 func _发动技之剑意() -> void:
 	notice_skill(JI_ZHI_JIAN_YI, [player.id])
+	# 限制只写「命格 = 技」这条规则：可用牌由引擎按卡库现算，
+	# 不写手牌快照 —— 授予之后再摸到的技类攻击牌也要能出
 	# direct=true：选中即进入额外攻击行动，不再二次追问；skip_notice=true：上面已经播报过 4501
-	player.add_action(GConst.ActionType.Attack, JI_ZHI_JIAN_YI, true, true)
+	player.add_action(GConst.ActionType.Attack, JI_ZHI_JIAN_YI, true, true, {
+		"card_fate": GConst.FatePattern.Martial,
+	})
 
 
 ## 选项由聚合器确认后直接进入弃牌步骤；宝石在弃牌选完、确认之后才扣，中途放弃不会先付代价。
@@ -289,10 +293,11 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		if not take_skill_reply():
 			return SUCCESS
 		var cid3: int = int(ctx.get(KEY_YI_XIANG_CARD, -1))
-		if cid3 < 0 or not engine.deck.discard.has(cid3):
+		# 弃牌堆按实例号取出（同牌面可能有副本）：拿到实际那一份再入手，不能删完再拿牌号补一张
+		var 实例: int = engine.deck.取出实例(cid3) if cid3 >= 0 else -1
+		if 实例 < 0:
 			return SUCCESS
-		engine.deck.remove_one(cid3)
-		player.add_hand_cards([cid3])
+		player.add_hand_cards([实例])
 		player.add_action(GConst.ActionType.Attack, YI_XIANG_JIAN, true, true)
 		engine._broadcast_game()
 	return SUCCESS
@@ -318,17 +323,6 @@ func p_action_end(ctx: Dictionary) -> int:
 		notice_skill(MENG_XIANG_JIAN, [player.id])
 	_同步梦想剑展示档()
 	return SUCCESS
-
-
-# ============================================================
-# 额外行动限制（F2）：4501 的攻击行动只能使用技类命格攻击牌
-# ============================================================
-func extra_action_card_ids(cause: int, action_type: int) -> Array:
-	if cause != JI_ZHI_JIAN_YI or action_type != GConst.ActionType.Attack:
-		return []
-	var 牌表: Array[int] = _martial_attack_hand_ids()
-	# 空表会被引擎当成「没配限制」；一张都没有时显式给全禁
-	return 牌表 if not 牌表.is_empty() else [GConst.手牌白名单_全禁]
 
 
 # ============================================================

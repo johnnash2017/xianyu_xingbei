@@ -15,7 +15,6 @@ extends RefCounted
 ##   func p_timeline_2_hit(ctx: Dictionary) -> int: return _赐福.p_timeline_2_hit(ctx)
 ##   func p_after_attack(ctx: Dictionary) -> int: return _赐福.p_after_attack(ctx)
 ##   func p_after_magic(ctx: Dictionary) -> int: return _赐福.p_after_magic(ctx)
-##   func v_additional_action(cause: int) -> int: return _赐福.v_additional_action(cause)
 ##   func p_additional_action(ctx: Dictionary) -> int: return _赐福.p_additional_action(ctx)
 ##
 ## 赐福是「放在队友面前的基础效果」，与普通主动技能不同：
@@ -239,19 +238,8 @@ func 触发迅捷赐福(pid: int) -> void:
 			return
 	if find_blessing(持有者, XUN_JIE_CI_FU, -1) < 0:
 		return
+	# 作为「基础效果授予的额外行动」交给引擎统一确认（确认时移除赐福牌）
 	持有者.add_action(GConst.ActionType.Attack, XUN_JIE_CI_FU)
-
-
-## 牌的所有者选择【迅捷赐福】给的额外行动时的二次校验（该额外行动必须仍有赐福牌支撑）。
-## 引擎问的是「选择该额外行动的角色」自己的角色脚本：赐福可能是别人放的，
-## 所以这里只校验「自己面前有没有 1601」，不按来源过滤；否则借用角色（如 46）会把
-## 祈祷师贴在自己面前的赐福误判成非法。
-func v_additional_action(cause: int) -> int:
-	if cause != XUN_JIE_CI_FU:
-		return BattleRole.V_NOT_OVERRIDE
-	if 可用() and find_blessing(角色.player, XUN_JIE_CI_FU, -1) >= 0:
-		return GConst.GE_SUCCESS
-	return GConst.GE_INVALID_ACTION
 
 
 ## 牌的所有者选择该额外行动时：移除并弃置赐福牌

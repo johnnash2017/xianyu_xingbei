@@ -194,11 +194,13 @@ func _xun_jie_effect(pid: int) -> void:
 	var target: BattlePlayer = engine.p(pid)
 	if target == null or target.hand_cards.is_empty():
 		return
-	for a: Dictionary in target.additional_actions:
-		if int(a.get("cause", 0)) == XUN_JIE_CI_FU:
-			return
+	# 只认队列里那一份：正在行动的那份不算「已经排着」（否则目标刚用完一次赐福行动，就再也不会被授予）
+	if not target.额外行动队列数据(XUN_JIE_CI_FU).is_empty():
+		return
 	if _find_effect_card(target, XUN_JIE_CI_FU) < 0:
 		return
+	# 这份行动作为「基础效果授予的额外行动」由引擎统一确认（_确认基础效果额外行动 会移除赐福牌），
+	# 不走「行动结束响应」那条选项通道，避免同一次响应里出现两遍
 	target.add_action(GConst.ActionType.Attack, XUN_JIE_CI_FU)
 
 
@@ -208,37 +210,15 @@ func _fa_li_chao_xi() -> void:
 		return
 	if used_FaLiChaoXi or player.get_energy() <= 0:
 		return
-	player.add_action(GConst.ActionType.Magic, FA_LI_CHAO_XI)
-
-
-# ============================================================
-# 玩家选择额外行动时的二次校验（服务端 QiDao::v_additional_action）：
-# 迅捷赐福需该玩家面前仍有【迅捷赐福】；法力潮汐需非本回合已用且仍有能量
-# ============================================================
-func v_additional_action(cause: int) -> int:
-	if cause == XUN_JIE_CI_FU:
-		if _find_effect_card(player, XUN_JIE_CI_FU) < 0:
-			return GConst.GE_INVALID_ACTION
-		return GConst.GE_SUCCESS
-	if cause == FA_LI_CHAO_XI:
-		if used_FaLiChaoXi or player.get_energy() <= 0:
-			return GConst.GE_INVALID_ACTION
-		return GConst.GE_SUCCESS
-	return V_NOT_OVERRIDE
+	player.add_action(GConst.ActionType.Magic, FA_LI_CHAO_XI, false, false, {
+		"in_end_response": true,
+	})
 
 
 # ============================================================
 # 玩家选择额外行动时：迅捷赐福移除赐福牌 → 法力潮汐消耗 1 能量
 # （引擎已在选中时广播该额外行动的技能宣告，此处不再重复）
 # ============================================================
-func extra_action_switchable(cause: int) -> bool:
-	# 基础效果授予的额外行动使用后已经没有待移除牌，就是普通额外行动，允许切换；
-	# 确认使用前它还不能被当快捷攻击使用。
-	if GConst.基础效果额外行动.has(cause):
-		return engine != null and engine.基础效果额外行动已确认(cause)
-	return false
-
-
 func p_additional_action(ctx: Dictionary) -> int:
 	var cause: int = int(ctx.get("cause", 0))
 	var pid: int = int(ctx.get("player", -1))

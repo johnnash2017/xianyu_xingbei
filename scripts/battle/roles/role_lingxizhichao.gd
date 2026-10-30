@@ -16,7 +16,7 @@ extends BattleRole
 ##   scripts/battle/skills/skill_seal.gd 与 skill_bless.gd，不改 role_fengyin / role_qidao。
 ##   放置只是第一步：helper 头注释（借用角色接法）要求借用角色继续转发触发钩子，
 ##   所以本角色还有 p_show_hand（封印展示触发）与 p_timeline_2_hit / p_after_attack /
-##   p_after_magic / v_additional_action / p_additional_action（赐福的命中 +2、行动结束
+##   p_after_magic / p_additional_action（赐福的命中 +2、行动结束
 ##   授予额外攻击、选中后移除）—— 缺了这些，4606 放出去的封印 / 赐福在本尊不在场时不会生效。
 ##   【灵涌】是角色表「指示物」槽 0 的计数指示物（名称 / 上限从表里读，上限 4），
 ##   计数一律走 player.add_token / clear_token，不在这里写死上限。
@@ -396,17 +396,6 @@ func p_after_magic(ctx: Dictionary) -> int:
 	if _赐福 == null:
 		return SUCCESS
 	return int(_赐福.p_after_magic(ctx))
-
-
-## 额外行动「被选中」时的二次校验：非迅捷赐福时 helper 返回 V_NOT_OVERRIDE，
-## 原样回退给引擎（不能当成失败码，否则别的角色给的额外行动会被误拒）
-func v_additional_action(cause: int) -> int:
-	if _赐福 == null:
-		return V_NOT_OVERRIDE
-	return int(_赐福.v_additional_action(cause))
-
-
-
 
 
 func p_additional_action(_ctx: Dictionary) -> int:

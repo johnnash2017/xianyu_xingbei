@@ -874,6 +874,7 @@ func _hui_guang_pao(action: Dictionary) -> int:
 			hui_guang_index += 1
 		for i: int in range(hui_guang_draws.size() - 1, -1, -1):
 			engine.push_draw(int(hui_guang_draws[i]["pid"]), int(hui_guang_draws[i]["n"]), aid)
+		var 压了摸牌: bool = not hui_guang_draws.is_empty()
 		hui_guang_draws.clear()
 		var my_color: int = player.color
 		var en_color: int = _enemy_color()
@@ -894,4 +895,7 @@ func _hui_guang_pao(action: Dictionary) -> int:
 		if engine.team_grail[my_color] >= GConst.GRAIL_WIN:
 			engine._game_over(my_color)
 		hui_guang_index = -1
+		# 压了补牌就必须 URGENT：先补完手牌，再压行动结束响应 / 进入额外行动
+		if 压了摸牌:
+			return URGENT
 	return SUCCESS

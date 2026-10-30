@@ -115,26 +115,14 @@ func p_after_attack(ctx: Dictionary) -> int:
 	if step >= STEP_DONE:
 		return SUCCESS
 	step = STEP_DONE
-	player.add_action(GConst.ActionType.Attack, CHI_SE_YI_SHAN)
+	player.add_action(GConst.ActionType.Attack, CHI_SE_YI_SHAN, false, false, {
+		"in_end_response": true,
+	})
 	return SUCCESS
-
-
-## 选中额外行动前的二次校验：没有【鲜血】时不能发动
-func v_additional_action(cause: int) -> int:
-	if cause != CHI_SE_YI_SHAN:
-		return V_NOT_OVERRIDE
-	if int(player.tokens[0]["num"]) < 1:
-		return GConst.GE_INVALID_ACTION
-	return GConst.GE_SUCCESS
 
 
 ## 玩家选中额外行动时：-1【鲜血】，自己受 2 点法术伤害
 
-
-
-## 赤色一闪属于行动结束响应，和迅捷赐福合并成一次询问
-func 额外行动属于结束响应(cause: int) -> bool:
-	return cause == CHI_SE_YI_SHAN
 
 
 ## 行动结束响应点选赤色一闪时立即扣 1 鲜血并受 2 点法术伤害（方案 A）

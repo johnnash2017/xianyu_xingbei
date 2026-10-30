@@ -22,8 +22,10 @@ extends BattleRole
 ##     「弃牌中有法术牌」按这次从牌库顶弃置的整批牌判断（含被选入手的 1 张，见下方结算注释）。
 ##   - 10803 先安排额外回合、再替换角色（F7 的顺序；替换会清旧角色的额外行动 / 行动计数，
 ##     所以必须把额外回合安排在替换之前）；角色替换后旧角色被解绑，之后不再调用本脚本任何方法。
-##   - 10804 的「本回合你的下次主动攻击只能攻击该目标」用角色状态 + v_attack 兜底；
-##     额外行动的界面白名单走 extra_action_targets。客户端目标过滤留给 CLIENT（任务范围外）。
+##   - 10804 的「本回合你的下次主动攻击只能攻击该目标」是玩家身上的回合级标记
+##     （player.set_attack_lock / 快照 attack_lock）：不写进行动规格，行动就是最普通的攻击行动；
+##     服务端 base_v_attack 校验、引擎在攻击打出时消费，客户端按标记把其余敌方头像置灰。
+##     聚合器里的【剑残影】选项另带敌方白名单，只约束「选谁来弃牌」这一步（服务端按 enemy_ids 复核）。
 
 const 倾慕: int = 10801
 const 风之剑: int = 10802
@@ -75,8 +77,6 @@ const 星石_水晶: int = 2
 ## 本回合的 10804 / 4504 回合限定
 var _used_剑残影: bool = false
 var _used_剑影断念: bool = false
-## 10804 的「下次主动攻击只能攻击该目标」（-1＝无限制）
-var _剑残影目标: int = -1
 ## 4503 梦想剑本回合已激活的档位
 var _dream_ignore_shield: bool = false
 var _dream_no_reattack: bool = false
@@ -116,12 +116,12 @@ var _回合开始星杯总数: int = 0
 
 
 # ============================================================
-# 回合开始：清回合限定 / 梦想剑档位 / 10804 目标限制，重置 10803 的星杯基准
+# 回合开始：清回合限定 / 梦想剑档位，重置 10803 的星杯基准
+# （10804 的「下次主动攻击只能打谁」是玩家身上的标记，由引擎在攻击打出 / 回合开始时清）
 # ============================================================
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	_used_剑残影 = false
 	_used_剑影断念 = false
-	_剑残影目标 = -1
 	_dream_ignore_shield = false
 	_dream_no_reattack = false
 	_dream_no_miss = false
@@ -132,16 +132,14 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击宣告（timeline_1）：10804 限制消费 / 10802 风之剑 / 借用 4503 梦想剑
+# 攻击宣告（timeline_1）：10802 风之剑 / 借用 4503 梦想剑
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
 		return SUCCESS
-	# 应战反击不是主动攻击：10802 / 4503 都不触发，10804 的目标限制也不在这里消费
+	# 应战反击不是主动攻击：10802 / 4503 都不触发
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	# 这次主动攻击已经由 v_attack 校验过目标：10804 的「下次主动攻击只能打该目标」到此消费
-	_剑残影目标 = -1
 	var r: int = _feng_zhi_jian(ctx)
 	if r == WAIT:
 		return WAIT
@@ -311,13 +309,16 @@ func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -
 
 
 ## 本次攻击结束还能发动的技能：两项都满足条件就一起摆出来；用过 / 条件不满足的不再出现。
+## 选项要自带目标白名单（targets）：聚合器把整条响应包成同一次询问，客户端靠这项白名单
+## 只点亮敌方头像 —— 少了它自己 / 队友也会亮，点了必被 _jian_can_ying 拒掉。
 func _攻击结束选项(ctx: Dictionary, 显示全部: bool = false) -> Array:
 	var out: Array = []
 	if not bool(ctx.get(KEY_10804_DONE, false)) and not _used_剑残影:
-		var 可用: bool = player.get_energy() >= 剑残影费用 and not enemy_ids().is_empty()
+		var 目标们: Array = enemy_ids()
+		var 可用: bool = player.get_energy() >= 剑残影费用 and not 目标们.is_empty()
 		if 显示全部 or 可用:
 			out.append({"value": 剑残影, "label": "剑残影", "skill_id": 剑残影,
-				"need_target": 1, "enabled": 可用})
+				"need_target": 1, "targets": 目标们, "enabled": 可用})
 	if not bool(ctx.get(KEY_4504_DONE, false)) and not _used_剑影断念:
 		var 可用二: bool = _剑之魔女在场() and player.gem > 0 and player.hand_cards.size() >= 2
 		if 显示全部 or 可用二:
@@ -332,6 +333,20 @@ func _解决攻击结束技能(ctx: Dictionary, 技能号: int, reply: Dictionar
 	match 技能号:
 		剑残影: return _jian_can_ying(ctx, reply)
 		剑影断念: return _diao_ying_duan_nian(ctx)
+	return SUCCESS
+
+
+## 提交的目标 / 弃牌不成立：驳回并让聚合器重新问这一项。
+## 不能静默作废 —— 那样玩家按了「确定」只会看到选项消失、技能也没发动。
+## 引擎收到 SUCCESS 会重新收集选项；这里清掉「本次已用」标记，这一项就会原样摆回来。
+func _驳回攻击结束选项(ctx: Dictionary, 完成键: String, 阶段键: String) -> int:
+	ctx[阶段键] = 0
+	ctx.erase(完成键)
+	ctx.erase(KEY_AFTER_CHOSEN)
+	ctx.erase(KEY_AFTER_TARGET)
+	ctx.erase(KEY_AFTER_CARDS)
+	engine.send(player.id, GConst.Msg.ErrorInput,
+		{"error_type": GConst.CmdType.Respond, "commands": []})
 	return SUCCESS
 
 
@@ -352,11 +367,10 @@ func _jian_can_ying(ctx: Dictionary, reply: Dictionary = {}) -> int:
 		if _used_剑残影 or player.get_energy() < 剑残影费用 or enemy_ids().is_empty():
 			ctx[KEY_10804_STEP] = STEP_DONE
 			return SUCCESS
-		# 目标和「选哪一项」在同一条回复里；没选目标＝放弃剑残影
+		# 目标和「选哪一项」在同一条回复里；没选目标 / 选的不是对手＝驳回重选，不消耗这一项
 		var 目标: int = int(ctx.get(KEY_AFTER_TARGET, -1))
 		if not enemy_ids().has(目标):
-			ctx[KEY_10804_STEP] = STEP_DONE
-			return SUCCESS
+			return _驳回攻击结束选项(ctx, KEY_10804_DONE, KEY_10804_STEP)
 		_used_剑残影 = true
 		player.remove_energy(剑残影费用)
 		notice_skill(剑残影, [目标])
@@ -401,27 +415,15 @@ func _目标弃一张(目标id: int, r: Dictionary) -> void:
 	engine._broadcast_game()
 
 
-## 10804 收尾：额外 +1 攻击行动，并记下「下次主动攻击只能打该目标」
+## 10804 收尾：额外 +1【攻击行动】—— 就是一次最普通的攻击行动，不写任何出牌 / 目标白名单。
+## 「本回合你的下次主动攻击只能攻击该目标对手」是玩家身上的回合级标记（player.attack_lock）：
+## 服务端在 base_v_attack 里校验、下一次主动攻击打出时由引擎消费；客户端按快照把它余下敌方头像置灰。
+## 它不是这份行动自带的规格 —— 限制被别的主动攻击消费掉之后，这份行动不该还锁着那个目标。
 func _settle_jian_can_ying(ctx: Dictionary, 目标id: int) -> void:
 	ctx[KEY_10804_STEP] = STEP_DONE
 	player.add_action(GConst.ActionType.Attack, 剑残影, true, true)
-	_剑残影目标 = 目标id
+	player.set_attack_lock(目标id)
 	engine._broadcast_game()
-
-
-## 10804 的目标限制：这次额外行动只允许攻击该目标（引擎还会在 v_attack 里兜底）
-func extra_action_targets(cause: int) -> Array:
-	if cause > 0 and _剑残影目标 >= 0:
-		return [_剑残影目标]
-	return []
-
-
-## 10804 的「下次主动攻击只能攻击该目标」：v_attack 只在主动攻击时被引擎调用；
-## 应战反击走另一条校验，不受它限制（原文只写「主动攻击」）。
-func v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
-	if _剑残影目标 >= 0 and dst_id != _剑残影目标:
-		return GConst.GE_INVALID_PLAYERID
-	return player.base_v_attack(card_id, dst_id, players)
 
 
 # ============================================================
@@ -441,10 +443,9 @@ func _diao_ying_duan_nian(ctx: Dictionary) -> int:
 		ctx[KEY_4504_STEP] = 1
 	# 弃牌和「选哪一项」在同一条回复里；不足 2 张＝放弃 4504，不扣宝石
 	var 弃: Array = _选中的手牌(ctx.get(KEY_AFTER_CARDS, []), 2)
-	# 选完弃牌按确定才付宝石；凑不齐 2 张就整颗不发动，不扣代价
+	# 选完弃牌按确定才付宝石；凑不齐 2 张＝驳回重选，不扣代价、也不消耗这一项
 	if 弃.size() < 2 or player.gem <= 0:
-		ctx[KEY_4504_STEP] = STEP_DONE
-		return SUCCESS
+		return _驳回攻击结束选项(ctx, KEY_4504_DONE, KEY_4504_STEP)
 	engine.take_from_hand(player.id, 弃)
 	_启动剑影断念()
 	engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": 剑影断念})
@@ -560,7 +561,8 @@ func _settle_jian_shou_shi_yan(牌表: Array, 选中: int) -> void:
 	var 弃: Array = []
 	for v: Variant in 牌表:
 		var cid: int = int(v)
-		if cid == 选中 and 选中 >= 0:
+		# 牌表里是从牌库顶弃下来的实例，选中值是玩家点的牌面：按牌面比较（同牌面可能有多份副本）
+		if 选中 >= 0 and GConst.牌号(cid) == GConst.牌号(选中):
 			player.add_hand_cards([cid])
 			# 牌面从展示位飞向角色头像（其他人也看得到）；不再回展示区二次展示
 			engine.选走展示牌(player.id, cid)

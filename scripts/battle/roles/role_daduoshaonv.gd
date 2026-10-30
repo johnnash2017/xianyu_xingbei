@@ -47,7 +47,7 @@ const 再睡弃牌数: int = 1
 const 再睡治疗数: int = 1
 
 ## 10601 的分步进度（主动技能走 SkillRun，不经钩子轮次，用实例变量记进度）：
-## 0＝还没开始 / 1＝在等右手边队友指定目标 / 2＝在等目标弃法术牌 / STEP_DONE＝已完成
+## 0＝还没开始 / 1＝在等右手边队友指定目标 / 2＝目标已定：等超限结算 / 等目标弃法术牌 / STEP_DONE＝已完成
 var _bie_fan_step: int = 0
 ## 本次 10601 的队友与目标（等回复期间可能被别的钩子插入，不能现算）
 var _bie_fan_队友: int = -1
@@ -119,6 +119,12 @@ func _rang_wo_tang_ping(ctx: Dictionary) -> int:
 # ============================================================
 # 技能栏：别烦我……（10601）/ 想用魔弹（10603）
 # ============================================================
+## 10601 摸牌后要先让超限结算，再回来问「弃 1 张法术牌」：让引擎在 URGENT 结算完重入技能本体。
+## 只对 10601 生效 —— 10603 的 URGENT 是「魔弹结算完技能就结束」，重入会再打一发。
+func 技能URGENT后重入(action: Dictionary = {}) -> bool:
+	return int(action.get("action_id", 0)) == BIE_FAN_WO
+
+
 func available_skills() -> Array:
 	var 有队友: bool = nearest_teammate_id(player.id, true) >= 0
 	var 魔弹牌: Array[int] = _可作魔弹的牌()
@@ -237,16 +243,20 @@ func _p_bie_fan_wo() -> int:
 		engine.强制摸牌(dst_id, 目标摸牌数, BIE_FAN_WO)
 		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
 		engine._broadcast_game()
-		var 可弃: Array[int] = _手牌法术牌(engine.p(dst_id))
+		# 目标这一摸可能把手牌摸超上限：先压超限结算（弃到上限 + 按超限张数掉士气），
+		# 结算完再回来问「弃 1 张法术牌」。摸牌是【强制】（不走 p_before_draw），所以这里显式补一次；
+		# 否则下一步「弃 1 张法术牌」正好把牌弃回上限，超限永远判不到。
+		engine.push(BattleEngine.SHandOverflow.new())
+		return URGENT
+	if _bie_fan_step != 2:
+		return SUCCESS
+	# 第二步：超限结算完之后问目标「弃 1 张法术牌」（超时 / 取消＝不走，按惩罚结算）
+	if not engine.has_reply():
+		var 可弃: Array[int] = _手牌法术牌(engine.p(_bie_fan_目标))
 		if 可弃.is_empty():
 			# 手里没有法术牌：弃不了，直接结算惩罚（不再白问一次）
 			return _bie_fan_惩罚()
-		if not engine.has_reply():
-			询问(dst_id, BIE_FAN_WO, 1, 0, GConst.CardSource.Hand, [], 0, "magic", 可弃, true, 1)
-			return WAIT
-	if _bie_fan_step != 2:
-		return SUCCESS
-	if not engine.has_reply():
+		询问(_bie_fan_目标, BIE_FAN_WO, 1, 0, GConst.CardSource.Hand, [], 0, "magic", 可弃, true, 1)
 		return WAIT
 	var r2: Dictionary = take_skill_reply_full()
 	_bie_fan_step = STEP_DONE
