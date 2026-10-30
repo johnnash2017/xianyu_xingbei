@@ -560,20 +560,24 @@ func 跑() -> void:
 	检(引擎._await_id == 1, "第 3 次行动结束应问【熵变】（等待 %s）" % str(引擎._await_id))
 	检((_取询问(1, 4103).get("option_enabled", []) as Array) == [false, true],
 		"只有队友有能量时，我方宝石项应置灰")
+	var 支付问: Dictionary = _取询问(1, 4103)
+	检((支付问.get("dst_ids", []) as Array) == [队友.id],
+		"支付询问应把有能量的队友列入可点头像：%s" % str(支付问.get("dst_ids", [])))
+	检((支付问.get("option_need_targets", []) as Array) == [0, 1],
+		"「队友能量」选项应自带需目标 1：%s" % str(支付问.get("option_need_targets", [])))
+	var 队友手牌前: int = 队友.hand_cards.size()
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4103, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [],
+		"respond_id": 4103, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [队友.id],
 	})
-	var 队友问: Dictionary = _取询问(1, 4103)
-	检(int((队友问.get("args", []) as Array)[1]) == 1
-		and (队友问.get("dst_ids", []) as Array) == [队友.id],
-		"选队友能量后应点头像选 1 名队友（白名单＝有能量的队友）：%s" % str(队友问))
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [队友.id],
-	})
-	检(引擎._await_id == 1, "选完队友后应继续问【熵变】的 2 名目标对手")
+	检(引擎._await_id == 1, "选完支付来源与队友后应继续问【熵变】的 2 名目标对手")
+	var 目标问: Dictionary = _取询问(1, 4103)
+	检(int((目标问.get("args", []) as Array)[1]) == 2
+		and (目标问.get("dst_ids", []) as Array) == [3, 4],
+		"【熵变】第二步应只亮两名对手：%s" % str(目标问))
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [3, 4],
 	})
+	检(队友.hand_cards.size() == 队友手牌前, "被消耗能量的队友不应受到【熵变】伤害（不应摸牌）")
 	检(队友.get_energy() == 0, "选队友支付时【熵变】应消耗队友 1 点能量")
 	检(int(引擎.team_gem[GConst.BLUE]) == 0, "选队友支付时不应扣我方宝石")
 	检(对手甲.hand_cards.size() == 1 and 对手乙.hand_cards.size() == 1,
@@ -588,6 +592,33 @@ func 跑() -> void:
 	检(_取询问(1, 4103).is_empty(), "没有宝石、队友也没有能量时不应询问【熵变】")
 	检(_伤害条数(4103) == 0, "不能支付时【熵变】不应造成伤害")
 	检(_播报次数(4103) == 0, "不能支付时【熵变】不应播报")
+
+	# ---- 客户端：熵变支付「先弹选项」——选「队友能量」后点队友头像，按确定一次性提交 ----
+	_重置战斗()
+	队友.set_crystal(1)
+	玩家.attack_action_count = 1
+	玩家.magic_action_count = 1
+	发送记录.clear()
+	_打一张圣盾()
+	var 客户端支付问: Dictionary = _取询问(1, 4103)
+	检(not 客户端支付问.is_empty(), "客户端用例：应先下发【熵变】支付询问")
+	引擎._清空等待()
+	Logic.my_player_id = 1
+	var 窗: Control = (load("res://scenes/BattleUIMobile.tscn") as PackedScene).instantiate()
+	get_tree().root.add_child(窗)
+	await 等帧(1)
+	窗.call("_on_command", {"cmd_type": GConst.CmdType.Respond, "commands": [客户端支付问]})
+	await 等帧(1)
+	检(bool(窗.call("_确定不可用")), "熵变支付未选来源时不能确定")
+	窗.call("_选中二级选项", GConst.技能_熵变, 1)
+	await 等帧(1)
+	检(bool(窗.call("_确定不可用")), "选了队友能量但没点队友时不能确定")
+	窗.call("_on_player_clicked", 队友.id)
+	await 等帧(1)
+	检(not bool(窗.call("_确定不可用")), "点了队友后应可确定")
+	检((窗.get("_sel_players") as Array) == [队友.id], "应只选中被点的那名队友")
+	窗.queue_free()
+	await 等帧(1)
 
 	# ---- 4103：取消支付 → 不结算 ----
 	_重置战斗()

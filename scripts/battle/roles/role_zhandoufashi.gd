@@ -250,8 +250,9 @@ func _处理_shang_bian(ctx: Dictionary) -> int:
 			return SUCCESS
 		_shang_bian_step = 1
 		if not engine.has_reply():
+			# 一次问完：选支付来源；选「队友能量」那一档时顺手点 1 名队友，按确定一起提交
 			询问(player.id, SHANG_BIAN, 0, 0, GConst.CardSource.Hand, _shang_bian支付选项(),
-				0, "", [], true, 0)
+				0, "", [], true, 0, -1, _shang_bian队友们())
 			return WAIT
 	if _shang_bian_step == 1:
 		if not engine.has_reply():
@@ -264,25 +265,15 @@ func _处理_shang_bian(ctx: Dictionary) -> int:
 			return SUCCESS
 		_shang_bian_支付方式 = 方式
 		_shang_bian_队友 = -1
-		# 消耗队友能量：多一步「点头像选哪名队友」；宝石支付直接进目标选择
-		_shang_bian_step = 2 if 方式 == 2 else 3
-	# 消耗队友能量：点队友头像选人（白名单＝有能量的队友，客户端只亮这几个头像）
-	if _shang_bian_step == 2:
-		var 候选: Array[int] = _shang_bian队友们()
-		if _shang_bian_支付方式 != 2 or 候选.is_empty():
-			_shang_bian_step = STEP_DONE
-			return SUCCESS
-		if not engine.has_reply():
-			engine.ask_skill(player.id, SHANG_BIAN, 0, 1, GConst.CardSource.Hand, [], 0, "",
-				[], true, "选择 1 名有能量的队友", 候选)
-			return WAIT
-		var r队友: Dictionary = take_skill_reply_full()
-		var dsts: Array = r队友.get("dst_ids", [])
-		var 队友id: int = int(dsts[0]) if not dsts.is_empty() else -1
-		if not 候选.has(队友id):
-			_shang_bian_step = STEP_DONE
-			return SUCCESS
-		_shang_bian_队友 = 队友id
+		if 方式 == 2:
+			# 队友是同一次提交里点头像选的：必须是「有能量的队友」之一
+			var 候选: Array[int] = _shang_bian队友们()
+			var dsts: Array = r.get("dst_ids", [])
+			var 队友id: int = int(dsts[0]) if not dsts.is_empty() else -1
+			if not 候选.has(队友id):
+				_shang_bian_step = STEP_DONE
+				return SUCCESS
+			_shang_bian_队友 = 队友id
 		_shang_bian_step = 3
 	if _shang_bian_step != 3:
 		return SUCCESS
@@ -333,11 +324,13 @@ func _shang_bian队友们() -> Array[int]:
 
 
 ## 二级选项：固定两项都下发，当前做不了的标 enabled=false 置灰（不删项）。
-## 具体消耗哪名队友的能量不在选项里选 —— 选完「队友能量」后再点队友头像选人（见 _处理_shang_bian）。
+## 「队友能量」那一档带 need_target/targets：玩家点完选项再点 1 名队友，按确定一次性提交。
 func _shang_bian支付选项() -> Array:
+	var 队友们: Array[int] = _shang_bian队友们()
 	return [
 		{"value": 1, "label": "我方战绩区 1【宝石】", "enabled": _shang_bian可支付(1)},
-		{"value": 2, "label": "队友 1【能量】", "enabled": _shang_bian可支付(2)},
+		{"value": 2, "label": "队友 1【能量】", "enabled": not 队友们.is_empty(),
+			"need_target": 1, "targets": 队友们},
 	]
 
 
