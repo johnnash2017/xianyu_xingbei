@@ -528,10 +528,10 @@ func 跑() -> void:
 	var 熵变支付问: Dictionary = _取询问(1, 4103)
 	检(not 熵变支付问.is_empty(), "第 3 次行动结束没有下发【熵变】支付询问")
 	检(int((熵变支付问.get("args", []) as Array)[1]) == 0, "【熵变】第一步不应要求目标")
-	检(int(熵变支付问.get("args", [])[3] if (熵变支付问.get("args", []) as Array).size() > 3 else 0) == 2,
-		"【熵变】支付应有 2 个固定选项：%s" % str(熵变支付问.get("args", [])))
-	检((熵变支付问.get("option_enabled", []) as Array) == [true, false],
-		"只有我方战绩区有宝石时，队友能量项应置灰：%s" % str(熵变支付问.get("option_enabled", [])))
+	检(int(熵变支付问.get("args", [])[3] if (熵变支付问.get("args", []) as Array).size() > 3 else 0) == 1,
+		"没有队友有能量时，【熵变】支付只剩宝石 1 个选项：%s" % str(熵变支付问.get("args", [])))
+	检(not (熵变支付问.get("option_enabled", []) as Array).has(false),
+		"只有我方战绩区有宝石时，宝石项应可点：%s" % str(熵变支付问.get("option_enabled", [])))
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4103, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
 	})
@@ -560,8 +560,12 @@ func 跑() -> void:
 	检(引擎._await_id == 1, "第 3 次行动结束应问【熵变】（等待 %s）" % str(引擎._await_id))
 	检((_取询问(1, 4103).get("option_enabled", []) as Array) == [false, true],
 		"只有队友有能量时，我方宝石项应置灰")
+	var 队友支付问: Dictionary = _取询问(1, 4103)
+	var 队友选项: Array = 队友支付问.get("notes", [])
+	检(队友选项.size() == 2 and str(队友选项[1]).contains("队友"),
+		"消耗队友能量时应把该队友列成选项（由玩家选）：%s" % str(队友选项))
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4103, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [],
+		"respond_id": 4103, "src_id": 1, "args": [1000 + 队友.id], "card_ids": [], "dst_ids": [],
 	})
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [3, 4],
