@@ -472,6 +472,9 @@ const TABLE: Dictionary = {
 		1: {"n": "skill_id", "t": "u32"},
 		2: {"n": "src_id", "t": "u32"},
 		3: {"n": "dst_ids", "t": "u32", "r": true},
+		# 本次播报用的技能显示名（覆盖技能表里的名字）：如元素射击按子弹系别显示
+		# 「元素射击*SORA*风系」。空＝用技能表里的名字。
+		4: {"n": "name", "t": "str"},
 	},
 	# 测试用（本项目本地扩展）：按测试按键做的操作，kind 见 GConst.DebugKey
 	GConst.Msg.DebugReq: {

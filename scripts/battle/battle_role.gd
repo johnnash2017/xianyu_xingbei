@@ -423,8 +423,13 @@ func take_skill_reply_full() -> Dictionary:
 
 
 ## 广播技能发动
-func notice_skill(skill_id: int, dst_ids: Array = []) -> void:
-	engine.broadcast(GConst.Msg.Skill, {"skill_id": skill_id, "src_id": player.id, "dst_ids": dst_ids})
+## 广播技能发动。名称（可选）覆盖本次播报 / 战斗日志里的技能名：
+## 同一技能按选择分支显示不同名字时用（如 3802 元素射击按子弹系别显示「元素射击*SORA*风系」）。
+func notice_skill(skill_id: int, dst_ids: Array = [], 名称: String = "") -> void:
+	var 数据: Dictionary = {"skill_id": skill_id, "src_id": player.id, "dst_ids": dst_ids}
+	if not 名称.is_empty():
+		数据["name"] = 名称
+	engine.broadcast(GConst.Msg.Skill, 数据)
 
 
 ## 施加治疗：一律经引擎入口（写日志，按输出量记、并带上施术者），不要直接调 add_cross_num

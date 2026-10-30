@@ -1659,7 +1659,7 @@ func _on_skill(msg: Dictionary) -> void:
 	# 技能全称带分类，如「发动【独有技·响应】疾风技」（对照设计表「技能表」的大类/类型列）
 	_日志追加("%s 发动%s" % [
 		_称号(src),
-		GConst.skill_title(skill_id),
+		_技能播报标题(msg, skill_id),
 	], "行动")
 	if not 技能文本.is_empty():
 		_排行动播报(src, 技能文本)
@@ -1718,7 +1718,21 @@ func _技能播报文本(msg: Dictionary) -> String:
 	var skill_id: int = int(msg.get("skill_id", 0))
 	if skill_id <= 0:
 		return ""
+	# 服务端给了本次显示名（如「元素射击*SORA*风系」）就用它，否则用技能表「技能名」
+	var 覆盖: String = str(msg.get("name", "")).strip_edges()
+	if not 覆盖.is_empty():
+		return 覆盖
 	return GConst.skill_name(skill_id)
+
+
+## 战斗日志里的技能全称（分类标签 + 名字）：名字同样认服务端下发的 name 覆盖，
+## 如「【响应】元素射击*SORA*风系」。
+func _技能播报标题(msg: Dictionary, skill_id: int) -> String:
+	var 覆盖: String = str(msg.get("name", "")).strip_edges()
+	if 覆盖.is_empty():
+		return GConst.skill_title(skill_id)
+	var 标签: String = GConst.skill_tag(skill_id)
+	return ("【%s】%s" % [标签, 覆盖]) if not 标签.is_empty() else ("【%s】" % 覆盖)
 
 
 ## 特殊行动（购买 / 合成 / 提炼）在头像上飘的名字

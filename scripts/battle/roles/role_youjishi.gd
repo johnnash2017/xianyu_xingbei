@@ -233,7 +233,9 @@ func _结算子弹(ctx: Dictionary) -> int:
 	var cid: int = _子弹牌
 	if cid < 0 or not player.有盖牌(cid):
 		return _收尾_3802(ctx)
-	notice_skill(YUAN_SU_SHE_JI, [_本次攻击目标])
+	# 按子弹系别显示技能名（如「元素射击*SORA*风系」）：播报与战斗日志都用这个名字
+	notice_skill(YUAN_SU_SHE_JI, [_本次攻击目标],
+		"%s*%s系" % [GConst.skill_name(YUAN_SU_SHE_JI), GConst.element_to_chinese(_子弹系别)])
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [cid], "is_real": true,

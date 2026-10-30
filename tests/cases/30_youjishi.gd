@@ -133,6 +133,18 @@ func _播报次数(技能号: int) -> int:
 	return n
 
 
+## 某技能最近一次 Skill 播报里的显示名（服务端下发的 name 覆盖；没有 name 返回空）
+func _播报名(技能号: int) -> String:
+	var 名: String = ""
+	for r: Dictionary in 发送记录:
+		if int(r.get("msg", 0)) != GConst.Msg.Skill:
+			continue
+		var 数据: Dictionary = r.get("data", {})
+		if int(数据.get("skill_id", 0)) == 技能号:
+			名 = str(数据.get("name", ""))
+	return 名
+
+
 ## 状态栈里找一条指定来源 / 目标的伤害，返回它的伤害字典；找不到返回空字典
 func _找伤害(cause: int, dst: int) -> Dictionary:
 	for st: Variant in 引擎._states:
@@ -359,6 +371,8 @@ func 跑() -> void:
 	检(玩家.cover_count() == 0, "发动【元素射击】后应移除 1 个【子弹】")
 	检(引擎.deck.discard.has(火子弹.id), "移除的【子弹】应进入弃牌堆")
 	检(_播报次数(3802) == 1, "【元素射击】应播报一次，实际 %d 次" % _播报次数(3802))
+	检(_播报名(3802) == "元素射击*SORA*火系",
+		"【元素射击】的技能播报应按子弹系别显示名字，实际「%s」" % _播报名(3802))
 	引擎._最后询问.clear()
 	检(角色.p_timeline_1(火上下文) == BattleRole.SUCCESS, "同一次攻击重入【元素射击】应直接跳过")
 	检(_取询问(1, 3802).is_empty(), "同一次攻击不应重复询问【元素射击】")
@@ -370,6 +384,8 @@ func 跑() -> void:
 	var 水上下文: Dictionary = _攻击上下文(水攻击牌, 1, 3, true)
 	_发动3802(水上下文, 水子弹)
 	检(角色.p_timeline_1(水上下文) == BattleRole.SUCCESS, "水系【子弹】应正常收尾")
+	检(_播报名(3802) == "元素射击*SORA*水系",
+		"水系【子弹】的播报名应为「元素射击*SORA*水系」，实际「%s」" % _播报名(3802))
 	检(对手甲.cross_num == 0, "水系【子弹】命中前不应加治疗")
 	检(角色.p_timeline_2_hit(水上下文) == BattleRole.WAIT, "水系【子弹】命中后应先问选哪名角色加治疗")
 	var 水问: Dictionary = _取询问(1, 3802)
@@ -456,6 +472,8 @@ func 跑() -> void:
 	_应答([GConst.CardElement.Water], [光子弹.id])
 	检(角色.p_timeline_1(光上下文) == BattleRole.SUCCESS, "选完视为系别后应正常收尾")
 	检(玩家.cover_count() == 0, "光系【子弹】也应按移除 1 个子弹结算")
+	检(_播报名(3802) == "元素射击*SORA*水系",
+		"光系子弹视为水系后，播报名应按视为的系别显示，实际「%s」" % _播报名(3802))
 	检(引擎.deck.discard.has(光子弹.id), "光系【子弹】移除后应进入弃牌堆")
 	检(角色.p_timeline_2_hit(光上下文) == BattleRole.WAIT, "光系子弹视为水系后命中应先问选目标")
 	_应答([1], [], [队友.id])
@@ -861,6 +879,13 @@ func 跑() -> void:
 		GConst.CardElement.Wind)) == "额外风系【攻击行动】",
 		"二重剑影按钮应只写「额外风系【攻击行动】」：%s" % str(窗.call("_额外行动按钮文本",
 			GConst.技能_二重剑影, GConst.ActionType.Attack, GConst.CardElement.Wind)))
+	# 技能播报 / 战斗日志认服务端下发的 name：元素射击按系别显示不同名字
+	var 播报样例: Dictionary = {"skill_id": GConst.技能_元素射击SORA, "name": "元素射击*SORA*风系"}
+	检(str(窗.call("_技能播报文本", 播报样例)) == "元素射击*SORA*风系",
+		"技能飘字应使用服务端下发的名字：%s" % str(窗.call("_技能播报文本", 播报样例)))
+	检(str(窗.call("_技能播报标题", 播报样例, GConst.技能_元素射击SORA)).contains("元素射击*SORA*风系"),
+		"战斗日志标题应使用服务端下发的名字：%s"
+		% str(窗.call("_技能播报标题", 播报样例, GConst.技能_元素射击SORA)))
 	窗.set("_mode", 3)
 	窗.set("_skill_ask_id", GConst.技能_元素射击SORA)
 	窗.set("_skill_ask_need_target", 1)
