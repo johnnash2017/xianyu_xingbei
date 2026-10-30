@@ -20,12 +20,11 @@ const YI_XIANG_JIAN: int = 4502
 const MENG_XIANG_JIAN: int = 4503
 const JIAN_YING_DUAN_NIAN: int = 4504
 
-## 4501 / 4504 的选项由行动聚合器收集，选中的直接结算。
+## 4504 的选项由行动聚合器收集，选中的直接结算（4501 已改为攻击结束自动生效）。
 const KEY_AFTER_CHOSEN: String = "_jianzhimoni_after_chosen"
-## 攻击结束二选一的同一条回复里带上的弃牌（选 4504 时 2 张；选 4501 时为空）
+## 攻击结束二选一的同一条回复里带上的弃牌（选 4504 时 2 张）
 const KEY_AFTER_CARDS: String = "_jianzhimoni_after_cards"
-## 本次攻击结束已经选过的技能（防止同一技能在一次攻击结束里重复弹）
-const KEY_4501_DONE: String = "_jianzhimoni_4501_done"
+## 本次攻击结束已经选过 4504（防止同一技能在一次攻击结束里重复弹）
 const KEY_4504_DONE: String = "_jianzhimoni_4504_done"
 ## 4502 的分步进度：0 未开始 / 1 已发动、等目标弃牌 / 2 已弃牌、等【展示】响应结算 /
 ##                 3 等是否获得攻击牌。
@@ -103,14 +102,16 @@ func p_timeline_1(ctx: Dictionary) -> int:
 
 # ============================================================
 # 攻击行动结束后（after_attack）：展示档由本钩子推进；
-# 技之剑意（4501）/ 剑影*断念（4504）的选项交给行动聚合器
+# 技之剑意（4501）在这里自动生效，剑影*断念（4504）的选项交给行动聚合器
 # ============================================================
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	# 攻击已经结算完、进入「攻击结束」响应：此时才推进展示档，既不会在攻击宣告时就变绿，
-	# 也能让 4501 / 4504 这类响应技能在决定时看到本回合的新档位（实际效果仍在 p_action_end 生效）。
+	# 也能让 4504 这类响应技能在决定时看到本回合的新档位（实际效果仍在 p_action_end 生效）。
 	_更新梦想剑展示档()
+	# 4501 技之剑意：攻击行动结束自动生效，不再询问（同剑圣【风怒追击】）
+	_自动技之剑意()
 	return SUCCESS
 
 
@@ -119,26 +120,19 @@ func action_end_options(ctx: Dictionary) -> Array:
 
 
 func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -> int:
-	if cause != JI_ZHI_JIAN_YI and cause != JIAN_YING_DUAN_NIAN:
+	if cause != JIAN_YING_DUAN_NIAN:
 		return resolve_queued_extra_action(cause)
 	if int(ctx.get(KEY_AFTER_CHOSEN, 0)) != cause:
 		ctx[KEY_AFTER_CARDS] = (reply.get("card_ids", []) as Array).duplicate()
 		ctx[KEY_AFTER_CHOSEN] = cause
-		if cause == JI_ZHI_JIAN_YI:
-			ctx[KEY_4501_DONE] = true
-		else:
-			ctx[KEY_4504_DONE] = true
+		ctx[KEY_4504_DONE] = true
 	return _解决攻击结束技能(ctx, cause)
 
 
-## 本次攻击结束还能发动的技能：两项都满足条件就一起摆出来；用过 / 条件不满足的不再出现。
+## 本次攻击结束还能发动的技能：剑影*断念（4504）满足条件就摆出来；用过 / 条件不满足的不再出现。
+## 技之剑意（4501）已改为「攻击结束自动生效」，不再经过这里（见 _自动技之剑意）。
 func _攻击结束选项(ctx: Dictionary, 显示全部: bool = false) -> Array:
 	var out: Array = []
-	if not bool(ctx.get(KEY_4501_DONE, false)):
-		var 可用: bool = not _martial_attack_hand_ids().is_empty()
-		if 显示全部 or 可用:
-			out.append({"value": JI_ZHI_JIAN_YI, "label": "技之剑意",
-				"skill_id": JI_ZHI_JIAN_YI, "enabled": 可用})
 	if not bool(ctx.get(KEY_4504_DONE, false)) and not used_jian_ying_duan_nian:
 		var 可用二: bool = player.gem > 0 and player.hand_cards.size() >= 2
 		if 显示全部 or 可用二:
@@ -150,24 +144,39 @@ func _攻击结束选项(ctx: Dictionary, 显示全部: bool = false) -> Array:
 ## 结算二选一里选中的那一项（选择即确认，不再单独问一次「是否发动」）。
 func _解决攻击结束技能(ctx: Dictionary, 技能号: int) -> int:
 	match 技能号:
-		JI_ZHI_JIAN_YI:
-			_发动技之剑意()
-			return SUCCESS
 		JIAN_YING_DUAN_NIAN:
 			return _jian_ying_duan_nian(ctx)
 	return SUCCESS
 
 
-## 4501 技之剑意：攻击行动结束时，额外 +1 只能使用「技类命格攻击牌」的攻击行动。
-## 手里一张技类攻击牌都没有时不会出现在选项里（这份额外行动一张牌都出不了）。
+## 【技之剑意】攻击行动结束自动生效：直接给 1 份「只能用技类命格攻击牌」的额外攻击行动，
+## 不再询问是否发动，也**与手里有没有技类牌无关**（一张都打不出去就在那个阶段点「放弃行动」）。
+## 同剑圣【风怒追击】：本回合取消过行动结束响应（跳过额外攻击行动）时不再给；
+## 这一份已经在队列里时也不重复给。
+func _自动技之剑意() -> void:
+	if player.跳过额外攻击行动 or _contains_action(JI_ZHI_JIAN_YI):
+		return
+	_发动技之剑意()
+
+
+## 4501 的实际授予：播报 + 一份「命格 = 技」的额外攻击行动。
+## 限制只写「命格 = 技」这条规则：可用牌由引擎按卡库现算，
+## 不写手牌快照 —— 授予之后再摸到的技类攻击牌也要能出。
+## direct=true：直接进入额外攻击行动，不再二次追问；skip_notice=true：上面已经播报过 4501
 func _发动技之剑意() -> void:
 	notice_skill(JI_ZHI_JIAN_YI, [player.id])
-	# 限制只写「命格 = 技」这条规则：可用牌由引擎按卡库现算，
-	# 不写手牌快照 —— 授予之后再摸到的技类攻击牌也要能出
-	# direct=true：选中即进入额外攻击行动，不再二次追问；skip_notice=true：上面已经播报过 4501
 	player.add_action(GConst.ActionType.Attack, JI_ZHI_JIAN_YI, true, true, {
 		"card_fate": GConst.FatePattern.Martial,
 	})
+	engine._broadcast_game()
+
+
+## 是否已挂有某来源的额外行动
+func _contains_action(cause: int) -> bool:
+	for a: Dictionary in player.additional_actions:
+		if int(a.get("cause", -1)) == cause:
+			return true
+	return false
 
 
 ## 选项由聚合器确认后直接进入弃牌步骤；宝石在弃牌选完、确认之后才扣，中途放弃不会先付代价。
@@ -339,14 +348,6 @@ func p_action_end(ctx: Dictionary) -> int:
 # ============================================================
 # 工具
 # ============================================================
-## 手牌里的「技类命格攻击牌」
-func _martial_attack_hand_ids() -> Array[int]:
-	var out: Array[int] = []
-	for cid: int in player.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.is_attack() and c.fate_pattern_enum() == GConst.FatePattern.Martial:
-			out.append(cid)
-	return out
 
 
 ## 只保留玩家真正选中的、确实还在手牌里的牌（不补牌）
