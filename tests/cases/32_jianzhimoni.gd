@@ -371,6 +371,21 @@ func 跑() -> void:
 	检(引擎._await_id == -1, "没有等待型展示响应时应能直接结算完（当前在等 %d）" % 引擎._await_id)
 	r4502 = 角色.p_timeline_2_hit(臆想上下文)
 	检(r4502 == BattleRole.WAIT, "展示响应结算后才应问是否获得该牌")
+	# 「是否获得」给两个选项：第一个「获得 <卡名>」并带 card_id（客户端悬停摊卡面），第二个「不获得」
+	var 获得问: Dictionary = _取询问(1, 4502)
+	var 询问参数: Array = 获得问.get("args", [])
+	检(询问参数.size() >= 6 and int(询问参数[3]) == 2,
+		"「是否获得」应给 2 个选项（实际 args=%s）" % str(询问参数))
+	检(int(询问参数[4]) == 1 and int(询问参数[5]) == 2 if 询问参数.size() >= 6 else false,
+		"两个选项的值应分别是 1（获得）/ 2（不获得）")
+	var 选项文案: Array = 获得问.get("notes", [])
+	检(选项文案.size() == 2, "两个选项都应带文案")
+	检(not 选项文案.is_empty() and str(选项文案[0]).begins_with("获得"),
+		"第一个选项应写成「获得 <卡名>」（实际 %s）" % (str(选项文案[0]) if not 选项文案.is_empty() else ""))
+	检(选项文案.size() == 2 and str(选项文案[1]) == "不获得", "第二个选项应是「不获得」")
+	var 选项牌: Array = 获得问.get("option_card_ids", [])
+	检(not 选项牌.is_empty() and int(选项牌[0]) == 攻击牌.id,
+		"第一个选项要带这张攻击牌（牌面），供客户端悬停摊卡面")
 	_应答([1])
 	r4502 = 角色.p_timeline_2_hit(臆想上下文)
 	检(r4502 == BattleRole.SUCCESS, "获得攻击牌后【臆想剑】应正常收尾")
@@ -408,7 +423,7 @@ func 跑() -> void:
 	检(角色.p_timeline_2_hit(放弃上下文) == BattleRole.SUCCESS, "不发动【臆想剑】应直接收尾")
 	检(靶.hand_cards.has(攻击牌.id), "不发动【臆想剑】不应让目标弃牌")
 
-	# 攻击牌分支但选择不获得：不给额外行动，牌留在弃牌堆
+	# 选第二个选项「不获得」：不给额外行动，牌留在弃牌堆
 	_重置战斗()
 	_给牌(靶, 攻击牌.id)
 	var 不获得上下文: Dictionary = _攻击上下文(非技击, 1, 2, true, BattleEngine.ATTACK_BASE_POINT)
@@ -421,10 +436,11 @@ func 跑() -> void:
 	引擎.run()
 	检(角色.p_timeline_2_hit(不获得上下文) == BattleRole.WAIT,
 		"展示响应结算后才应问是否获得")
-	_应答([0])
-	检(角色.p_timeline_2_hit(不获得上下文) == BattleRole.SUCCESS, "不获得攻击牌应正常收尾")
+	_应答([2])
+	检(角色.p_timeline_2_hit(不获得上下文) == BattleRole.SUCCESS, "选「不获得」应正常收尾")
 	检(引擎.deck.discard.has(攻击牌.id), "不获得时该牌应留在弃牌堆")
-	检(_有额外行动(4502) == false, "不获得攻击牌不应给额外攻击行动")
+	检(not 玩家.hand_cards.has(攻击牌.id), "选「不获得」不应把牌拿进手里")
+	检(_有额外行动(4502) == false, "选「不获得」不应给额外攻击行动")
 
 	# 回合限定：本回合发动过就不再问；回合开始重置
 	_重置战斗()
@@ -442,8 +458,10 @@ func 跑() -> void:
 		"目标弃出攻击牌【展示】后应先返回 URGENT 让展示响应结算")
 	引擎.run()
 	检(角色.p_timeline_2_hit(限定上下文2) == BattleRole.WAIT, "展示响应结算后才应问是否获得")
-	_应答([0])
-	检(角色.p_timeline_2_hit(限定上下文2) == BattleRole.SUCCESS, "收尾")
+	# 取消 / 超时都按「不获得」：回空 args
+	_应答([])
+	检(角色.p_timeline_2_hit(限定上下文2) == BattleRole.SUCCESS, "取消/超时按「不获得」收尾")
+	检(not 玩家.hand_cards.has(攻击牌.id), "取消/超时不应把牌拿进手里")
 	引擎._清空等待()
 	检(角色.p_timeline_2_hit(_攻击上下文(非技击, 1, 2, true, BattleEngine.ATTACK_BASE_POINT))
 		== BattleRole.SUCCESS, "回合限定：本回合发动过【臆想剑】后不应再询问")
