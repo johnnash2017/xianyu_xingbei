@@ -1344,6 +1344,8 @@ func 额外行动序列(pid: int, 含当前: bool = false) -> Array:
 			"cards": a.get("cards", []),
 			"targets": a.get("targets", []),
 			"element": int(a.get("element", 0)),
+			# 命格限制也要带给客户端：只按命格限制的行动不下发牌号名单，客户端靠它比对牌面
+			"card_fate": int(a.get("card_fate", 0)),
 			"direct": bool(a.get("direct", false)),
 			"switchable": bool(a.get("switchable", true)),
 			"in_end_response": bool(a.get("in_end_response", false)),
@@ -1842,9 +1844,17 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		# （授予时由技能算好，见 BattlePlayer.add_action 的 spec）。引擎不按 cause 回问角色。
 		if extra and extra_cause > 0:
 			var 额外数据: Dictionary = _额外行动数据(pl, extra_cause)
-			var 行动牌: Array = 额外行动出牌白名单(额外数据)
-			if not 行动牌.is_empty():
-				cmds[0]["card_ids"] = _牌面表(行动牌)
+			var 命格: int = int(额外数据.get("card_fate", 0))
+			# 只按命格限制（如技之剑意＝技类攻击牌）：下发规则本身，客户端直接比对牌面的「命格」字段，
+			# 不再塞一张「全部技类攻击牌」的牌号名单（牌号表会随卡表变化，也没必要占带宽）
+			var 只按命格: bool = 命格 > 0 and int(额外数据.get("element", 0)) <= 0 \
+					and (额外数据.get("cards", []) as Array).is_empty()
+			if 只按命格:
+				cmds[0]["extra_fate"] = 命格
+			else:
+				var 行动牌: Array = 额外行动出牌白名单(额外数据)
+				if not 行动牌.is_empty():
+					cmds[0]["card_ids"] = _牌面表(行动牌)
 			var 目标限制: Array = 额外数据.get("targets", [])
 			if not 目标限制.is_empty():
 				cmds[0]["dst_ids"] = 目标限制
@@ -1910,6 +1920,7 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		var 序列牌: Array = []
 		var 序列目标: Array = []
 		var 序列系别: Array = []
+		var 序列命格: Array = []
 		for 项: Dictionary in 额外行动序列(pid, true):
 			var c: int = int(项.get("cause", 0))
 			var uid: int = int(项.get("uid", 0))
@@ -1920,12 +1931,17 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			# 队列里的其它额外行动：只有 direct 且允许切换的才摆出来（点一个就切过去）
 			if not 是当前 and (not bool(项.get("direct", false)) or not bool(项.get("switchable", true))):
 				continue
+			# 只按命格限制的那一份（技之剑意等）不下发牌号名单，只给命格，客户端比对牌面字段
+			var 项命格: int = int(项.get("card_fate", 0))
+			var 只按命格: bool = 项命格 > 0 and int(项.get("element", 0)) <= 0 \
+					and (项.get("cards", []) as Array).is_empty()
 			序列原因.append(c)
 			序列ID.append(uid)
 			序列允许.append(允许)
-			序列牌.append({"ids": _牌面表(额外行动出牌白名单(项))})
+			序列牌.append({"ids": [] if 只按命格 else _牌面表(额外行动出牌白名单(项))})
 			序列目标.append({"ids": 项.get("targets", [])})
 			序列系别.append(int(项.get("element", 0)))
+			序列命格.append(项命格 if 只按命格 else 0)
 			if not 是当前:
 				cmds.append({
 					"respond_id": GConst.ActionType.ChooseExtraAction, "src_id": pid,
@@ -1943,6 +1959,8 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			cmds[0]["extra_attack_cards"] = 序列牌
 			cmds[0]["extra_attack_targets"] = 序列目标
 			cmds[0]["extra_attack_elements"] = 序列系别
+			# 与 extra_attack_causes 一一对应的命格限制（0＝那一份不限）：客户端切换后按它比对牌面
+			cmds[0]["extra_attack_fates"] = 序列命格
 	return cmds
 
 

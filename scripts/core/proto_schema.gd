@@ -199,6 +199,11 @@ const SUB: Dictionary = {
 		# 行动结束响应（聚合器）固定下发：它的 respond_id 只是列表里的第一项，并不存在「父技能」，
 		# 摆出来会和同名选项并排成两个一模一样的按钮（如女武神【神圣追击】）。
 		42: {"n": "no_parent", "t": "bool"},
+		# 当前额外行动限定的命格（GConst.FatePattern）。只按命格限制的额外行动（如技之剑意＝技类）
+		# 不再下发「全部技类攻击牌」的牌号名单，客户端直接比对牌面的「命格」字段。
+		43: {"n": "extra_fate", "t": "u32"},
+		# 与 extra_attack_causes 一一对应的命格（额外行动切换列表用，0＝那一份不限命格）
+		44: {"n": "extra_attack_fates", "t": "u32", "r": true},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {

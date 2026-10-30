@@ -3181,6 +3181,7 @@ func _构建技能按钮(cmds: Array) -> void:
 		var 序列牌: Array = 首位.get("extra_attack_cards", [])
 		var 序列目标: Array = 首位.get("extra_attack_targets", [])
 		var 序列系别: Array = 首位.get("extra_attack_elements", [])
+		var 序列命格: Array = 首位.get("extra_attack_fates", [])
 		# 服务端没给这份列表（额外的法术行动等）：只摆当前这一份，等同于旧行为
 		if 序列原因.is_empty():
 			序列原因 = [当前来源]
@@ -3189,6 +3190,7 @@ func _构建技能按钮(cmds: Array) -> void:
 			序列牌 = [{"ids": 当前牌}]
 			序列目标 = [{"ids": 当前目标}]
 			序列系别 = [int(首位.get("extra_element", 0))]
+			序列命格 = [int(首位.get("extra_fate", 0))]
 		for i: int in range(序列原因.size()):
 			var cause: int = int(序列原因[i])
 			var uid: int = int(序列ID[i]) if i < 序列ID.size() else 0
@@ -3197,6 +3199,8 @@ func _构建技能按钮(cmds: Array) -> void:
 			var 项牌: Array = (序列牌[i] as Dictionary).get("ids", []) if i < 序列牌.size() else []
 			var 项目标: Array = (序列目标[i] as Dictionary).get("ids", []) if i < 序列目标.size() else []
 			var 项系别: int = int(序列系别[i]) if i < 序列系别.size() else 0
+			# 这一份限定的命格（0＝不限）：只按命格限制的行动不下发牌号名单，靠它比对牌面
+			var 项命格: int = int(序列命格[i]) if i < 序列命格.size() else 0
 			var 是当前: bool = uid > 0 and uid == 当前ID
 			# 动作种类按这一份自己的 allow_action 写文案（既能攻击又能施法时写两类）
 			var 显示类型: int = int(序列允许[i]) if i < 序列允许.size() \
@@ -3213,7 +3217,7 @@ func _构建技能按钮(cmds: Array) -> void:
 			项按钮.connect("点击", _本地选择额外攻击.bind(uid, cause, 项牌, 项目标, 显示类型))
 			_额外攻击切换项.append({
 				"按钮": 项按钮, "uid": uid, "cause": cause,
-				"allow": 显示类型, "element": 项系别,
+				"allow": 显示类型, "element": 项系别, "fate": 项命格,
 				"card_ids": 项牌, "dst_ids": 项目标,
 			})
 	for i: int in range(1, cmds.size()):
@@ -4459,11 +4463,17 @@ func _行动目标白名单() -> Array:
 	return (_行动命令[0] as Dictionary).get("dst_ids", [])
 
 
-## 当前这份额外行动限定的命格（如技之剑意 = 技类）；不是额外行动阶段 / 没有限制时返回 0
+## 当前这份额外行动限定的命格（如技之剑意 = 技类攻击牌）；0＝不限制。
+## 本地切到哪一份就以那一份的命格为准（切换列表里带 fate），没切换就用本次询问下发的 extra_fate。
+## 服务端只下发「限什么命格」，不下发牌号名单 —— 这里直接比对牌面自己的「命格」字段。
 func _额外限命格() -> int:
 	if not bool(_pending.get("is_extra", false)):
 		return 0
-	return int(GConst.额外行动命格.get(int(_pending.get("extra_cause", 0)), 0))
+	if _当前额外攻击选择 > 0 and not _额外攻击切换项.is_empty():
+		for 项: Dictionary in _额外攻击切换项:
+			if int(项.get("uid", 0)) == _当前额外攻击选择:
+				return int(项.get("fate", 0))
+	return int(_pending.get("extra_fate", 0))
 
 
 ## 这张牌（牌面）能不能出：命格不符的攻击牌在额外行动阶段一律点不动

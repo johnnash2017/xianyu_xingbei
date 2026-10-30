@@ -292,9 +292,20 @@ func 跑() -> void:
 	检(角色.dream_ignore_shield, "真实攻击行动结束后梦想剑应激活「无视圣盾」")
 	var 额外命令表: Array = 引擎._最后询问.get(1, {}).get("commands", [])
 	var 额外命令: Dictionary = 额外命令表[0] if not 额外命令表.is_empty() else {}
-	var 额外白名单: Array = 额外命令.get("card_ids", [])
-	检(额外白名单.has(技击乙.id), "4501 的额外攻击白名单应包含手里的技类攻击牌")
-	检(not 额外白名单.has(非技击.id), "4501 的额外攻击白名单不应包含非技类攻击牌")
+	# 只按命格限制的行动不再下发牌号名单：只给「限什么命格」，客户端比对牌面的命格字段
+	检((额外命令.get("card_ids", []) as Array).is_empty(),
+		"4501 不应再下发「全部技类攻击牌」的牌号名单：%s" % str(额外命令.get("card_ids", [])))
+	检(int(额外命令.get("extra_fate", 0)) == GConst.FatePattern.Martial,
+		"4501 应下发命格限制（技）：%s" % str(额外命令.get("extra_fate", 0)))
+	var 序列命格: Array = 额外命令.get("extra_attack_fates", [])
+	检(序列命格.has(GConst.FatePattern.Martial),
+		"切换列表里 4501 那一份也应带命格限制：%s" % str(序列命格))
+	var 命格编码: PackedByteArray = ProtoCodec.encode_named("Command", {
+		"extra_fate": GConst.FatePattern.Martial,
+	})
+	var 命格解码: Dictionary = ProtoCodec.decode_named("Command", 命格编码)
+	检(int(命格解码.get("extra_fate", 0)) == GConst.FatePattern.Martial,
+		"Command 协议应包含 extra_fate：%s" % str(命格解码))
 	检(_播报次数(4501) == 1, "【技之剑意】发动应播报一次，实际 %d 次" % _播报次数(4501))
 	# 限制写在它授予的那份行动里（命格规则），由引擎按卡库现算，与授予那一刻的手牌无关
 	var 技数据: Dictionary = 玩家.额外行动数据(4501)
@@ -325,13 +336,13 @@ func 跑() -> void:
 	await 等帧(1)
 	检(bool(窗.call("_卡牌能点", 技击甲.id)), "技类攻击牌在 4501 额外行动里应可点")
 	检(not bool(窗.call("_卡牌能点", 非技击.id)), "非技类攻击牌在 4501 额外行动里应点不动")
-	# 白名单为空时也要拦住：命格兜底表（额外行动命格）单独生效
+	# 没有牌号名单、切换列表也清空时，仍按询问里的 extra_fate 拦（纯靠牌面命格字段）
 	窗.set("_当前额外攻击选择", 0)
 	窗.set("_额外攻击切换项", [])
 	窗.set("_额外手牌白名单_选择", [])
 	窗.set("_行动命令", [{"respond_id": GConst.ActionType.Attack, "card_ids": [], "dst_ids": []}])
-	检(bool(窗.call("_卡牌能点", 技击甲.id)), "白名单为空时，技类攻击牌仍应可点")
-	检(not bool(窗.call("_卡牌能点", 非技击.id)), "白名单为空时，命格兜底仍应拦住非技类攻击牌")
+	检(bool(窗.call("_卡牌能点", 技击甲.id)), "没有牌号名单时，技类攻击牌仍应可点")
+	检(not bool(窗.call("_卡牌能点", 非技击.id)), "没有牌号名单时，命格限制仍应拦住非技类攻击牌")
 	窗.queue_free()
 	await 等帧(1)
 	Data.hand_cards = 旧手牌
