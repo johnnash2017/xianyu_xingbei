@@ -973,29 +973,47 @@ func 跑() -> void:
 		"args": [GConst.技能_精灵的剑舞, 1, 1, 0, GConst.CardSource.Hand],
 		"card_ids": [], "dst_ids": [],
 	}
+	# 一条「只放行法术」的技能：用来验证切换行动后动作种类的置灰也会整体重算
+	var 法术技能命令: Dictionary = {
+		"respond_id": GConst.ActionType.MagicSkill, "src_id": 1, "enabled": true,
+		"args": [GConst.技能_元素射击SORA, 0, 0, 0, GConst.CardSource.Hand],
+		"card_ids": [], "dst_ids": [],
+	}
 	var 火行动命令: Dictionary = {
 		"respond_id": GConst.ActionType.Attack, "src_id": 1, "is_extra": true,
 		"extra_cause": GConst.技能_二重剑影, "extra_uid": 11,
 		"extra_element": GConst.CardElement.Fire,
-		"allow_actions": [GConst.ActionType.Attack],
-		"extra_attack_causes": [GConst.技能_二重剑影, GConst.技能_二重剑影],
-		"extra_attack_uids": [11, 12],
-		"extra_attack_elements": [GConst.CardElement.Fire, GConst.CardElement.Wind],
-		"extra_attack_cards": [{"ids": []}, {"ids": []}],
-		"extra_attack_targets": [{"ids": []}, {"ids": []}],
+		"allow_actions": [GConst.ActionType.Attack, GConst.ActionType.Attack,
+			GConst.ActionType.AttackMagic],
+		"extra_attack_causes": [GConst.技能_二重剑影, GConst.技能_二重剑影, GConst.技能_剑影断念],
+		"extra_attack_uids": [11, 12, 13],
+		"extra_attack_elements": [GConst.CardElement.Fire, GConst.CardElement.Wind, 0],
+		"extra_attack_cards": [{"ids": []}, {"ids": []}, {"ids": []}],
+		"extra_attack_targets": [{"ids": []}, {"ids": []}, {"ids": []}],
 	}
-	窗3.call("_on_command", {"cmd_type": GConst.CmdType.Action, "commands": [火行动命令, 剑舞命令]})
+	窗3.call("_on_command", {"cmd_type": GConst.CmdType.Action,
+		"commands": [火行动命令, 剑舞命令, 法术技能命令]})
 	await 等帧(1)
 	var 剑舞钮: Node = _找技能按钮(窗3, GConst.技能_精灵的剑舞)
+	var 法术钮: Node = _找技能按钮(窗3, GConst.技能_元素射击SORA)
 	检(剑舞钮 != null and 剑舞钮.modulate.a < 0.99,
 		"当前额外行动是火系时，精灵的剑舞应置灰")
-	if 剑舞钮 != null:
+	检(法术钮 != null and 法术钮.modulate.a < 0.99,
+		"当前额外行动只放行攻击时，法术技能应置灰")
+	if 剑舞钮 != null and 法术钮 != null:
 		窗3.call("_本地选择额外攻击", 0, 12, GConst.技能_二重剑影, [], [], GConst.ActionType.Attack)
 		await 等帧(1)
 		检(剑舞钮.modulate.a > 0.99, "切到额外风系攻击行动后，精灵的剑舞应恢复可点")
+		检(法术钮.modulate.a < 0.99, "切到只放行攻击的行动后，法术技能应保持置灰")
+		窗3.call("_本地选择额外攻击", 0, 13, GConst.技能_剑影断念, [], [],
+			GConst.ActionType.AttackMagic)
+		await 等帧(1)
+		检(法术钮.modulate.a > 0.99, "切到「攻击或法术都行」的行动后，法术技能应恢复可点")
+		检(剑舞钮.modulate.a > 0.99, "该行动不限系别时，精灵的剑舞应可点")
 		窗3.call("_本地选择额外攻击", 0, 11, GConst.技能_二重剑影, [], [], GConst.ActionType.Attack)
 		await 等帧(1)
 		检(剑舞钮.modulate.a < 0.99, "切回额外火系攻击行动后，精灵的剑舞应再次置灰")
+		检(法术钮.modulate.a < 0.99, "切回只放行攻击的行动后，法术技能应再次置灰")
 	窗3.queue_free()
 	await 等帧(1)
 
