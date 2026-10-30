@@ -142,6 +142,17 @@ func _找技能命令(命令列表: Array, 技能号: int) -> Dictionary:
 	return {}
 
 
+## 在界面当前摆出的技能按钮里按技能号找一颗
+func _找技能按钮(窗: Control, 技能号: int) -> Node:
+	for 钮: Variant in 窗.get("_技能按钮"):
+		if 钮 == null:
+			continue
+		var 号: Variant = 钮.get("技能号")
+		if 号 != null and int(号) == 技能号:
+			return 钮
+	return null
+
+
 ## 某技能最近一次 Skill 播报里的显示名（服务端下发的 name 覆盖；没有 name 返回空）
 func _播报名(技能号: int) -> String:
 	var 名: String = ""
@@ -951,6 +962,43 @@ func 跑() -> void:
 	Data.cover_cards = 旧盖牌
 	Data.cover_iids = 旧盖牌实例
 
+	# 客户端：额外行动阶段「会改系别的技能」按当前 / 切换后的行动系别置灰（3805＝风系）
+	var 窗3: Control = (load("res://scenes/BattleUIMobile.tscn") as PackedScene).instantiate()
+	get_tree().root.add_child(窗3)
+	await 等帧(1)
+	Logic.my_player_id = 1
+	var 剑舞命令: Dictionary = {
+		"respond_id": GConst.ActionType.AttackSkill, "src_id": 1, "enabled": true,
+		"skill_element": GConst.CardElement.Wind,
+		"args": [GConst.技能_精灵的剑舞, 1, 1, 0, GConst.CardSource.Hand],
+		"card_ids": [], "dst_ids": [],
+	}
+	var 火行动命令: Dictionary = {
+		"respond_id": GConst.ActionType.Attack, "src_id": 1, "is_extra": true,
+		"extra_cause": GConst.技能_二重剑影, "extra_uid": 11,
+		"extra_element": GConst.CardElement.Fire,
+		"allow_actions": [GConst.ActionType.Attack],
+		"extra_attack_causes": [GConst.技能_二重剑影, GConst.技能_二重剑影],
+		"extra_attack_uids": [11, 12],
+		"extra_attack_elements": [GConst.CardElement.Fire, GConst.CardElement.Wind],
+		"extra_attack_cards": [{"ids": []}, {"ids": []}],
+		"extra_attack_targets": [{"ids": []}, {"ids": []}],
+	}
+	窗3.call("_on_command", {"cmd_type": GConst.CmdType.Action, "commands": [火行动命令, 剑舞命令]})
+	await 等帧(1)
+	var 剑舞钮: Node = _找技能按钮(窗3, GConst.技能_精灵的剑舞)
+	检(剑舞钮 != null and 剑舞钮.modulate.a < 0.99,
+		"当前额外行动是火系时，精灵的剑舞应置灰")
+	if 剑舞钮 != null:
+		窗3.call("_本地选择额外攻击", 0, 12, GConst.技能_二重剑影, [], [], GConst.ActionType.Attack)
+		await 等帧(1)
+		检(剑舞钮.modulate.a > 0.99, "切到额外风系攻击行动后，精灵的剑舞应恢复可点")
+		窗3.call("_本地选择额外攻击", 0, 11, GConst.技能_二重剑影, [], [], GConst.ActionType.Attack)
+		await 等帧(1)
+		检(剑舞钮.modulate.a < 0.99, "切回额外火系攻击行动后，精灵的剑舞应再次置灰")
+	窗3.queue_free()
+	await 等帧(1)
+
 	# 3803 + 3805 联动：3803 给「只能用风系攻击牌」的额外攻击行动，
 	# 3805 能把任意攻击牌视为风系 —— 不能再按真实牌（地系）的系别驳回
 	var 地攻击牌: GCard = _取攻击牌(GConst.CardElement.Earth)
@@ -1005,14 +1053,16 @@ func 跑() -> void:
 		var 暗系技能: Dictionary = _找技能命令(
 			引擎.action_commands(1, GConst.ActionType.Attack, true, true, false, GConst.技能_二重剑影),
 			GConst.技能_精灵的剑舞)
-		检(not 暗系技能.is_empty() and not bool(暗系技能.get("enabled", true)),
-			"额外行动要求暗系时，精灵的剑舞应置灰：%s" % str(暗系技能))
+		检(not 暗系技能.is_empty() and int(暗系技能.get("skill_element", 0)) == GConst.CardElement.Wind,
+			"3805 的技能命令应带固定系别（风系）：%s" % str(暗系技能))
 		引擎.当前额外行动数据 = 风行动.duplicate()
 		var 风系技能: Dictionary = _找技能命令(
 			引擎.action_commands(1, GConst.ActionType.Attack, true, true, false, GConst.技能_二重剑影),
 			GConst.技能_精灵的剑舞)
 		检(not 风系技能.is_empty() and bool(风系技能.get("enabled", true)),
 			"额外行动要求风系时，精灵的剑舞应保持可点：%s" % str(风系技能))
+		检(int(风系技能.get("skill_element", 0)) == GConst.CardElement.Wind,
+			"技能命令应带固定系别（3805＝风系）：%s" % str(风系技能))
 
 	# 收尾：清掉本次用例留下的等待 / 状态
 	引擎._states.clear()

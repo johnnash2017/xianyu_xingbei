@@ -1861,20 +1861,17 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			var 系别: int = int(额外数据.get("element", 0))
 			if 系别 > 0:
 				cmds[0]["extra_element"] = 系别
-		# 额外行动的系别限制：会改系别的技能（3805 视为风系）和这份行动要求的系别不符时置灰，
-		# 否则玩家点了只会被服务端驳回（3803 要求暗系时精灵的剑舞还能点，踩过）。
-		var 额外系别: int = 0
-		if extra and extra_cause > 0:
-			额外系别 = int(_额外行动数据(pl, extra_cause).get("element", 0))
+		# 额外行动的系别限制交给客户端判：会改系别的技能（3805 视为风系）在额外行动阶段
+		# 可能被本地切换行动，服务端这里只把「这条技能固定视为哪个系别」带下去。
 		for sk: Dictionary in pl.role.available_skills():
 			# 技能一律下发（界面默认全摆出来），当前不可用的只把 enabled 置 false —— 客户端据此置灰、
 			# 点不动，玩家能看见「这个技能存在、但现在用不了」，而不是整条消失
 			var 技能可用: bool = bool(sk.get("enabled", true))
-			if 额外系别 > 0:
-				var 视为: int = int(pl.role.call("技能视为系别",
-					{"action_id": int(sk.get("id", 0)), "src_id": pid}))
-				if 视为 > 0 and 视为 != 额外系别:
-					技能可用 = false
+			# 会改系别的技能（3805 视为风系）：把系别带给客户端，由客户端按「当前/切换后的行动」
+			# 的系别要求置灰 —— 不能在这里写死 enabled：额外行动可以在本地切换，
+			# 服务端算的这次 enabled 只对应「下发那一刻」的那份行动（切换后就会过时）。
+			var 技能视为: int = int(pl.role.call("技能视为系别",
+				{"action_id": int(sk.get("id", 0)), "src_id": pid}))
 			# 「启动」技能每回合只能发动一个：本回合已发动过就置灰
 			# （「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不受这条限制）
 			if pl.boot_skill_used and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
@@ -1889,6 +1886,9 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				"respond_id": int(sk.get("type", 0)), "src_id": pid,
 				# false＝这条技能本次不可用：界面照样摆出来，但半透明、点不动
 				"enabled": 技能可用,
+				# 这条技能把本次出牌固定视为哪个系别（0＝不固定）：额外行动阶段客户端本地切换
+				# 行动时据此重算置灰（服务端的 enabled 只按「当前那份行动」算过一次）
+				"skill_element": 技能视为,
 				# targets 非空时，客户端只把这几名玩家点亮（如【魔弹融合】的落点固定是右手边最近的对手）
 				"dst_ids": sk.get("targets", []),
 				# cards 非空时，客户端只让这几张牌可点（如【暗影流星】只能弃法术牌）。

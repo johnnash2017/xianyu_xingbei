@@ -177,6 +177,9 @@ const 技能栏缩放: float = 0.8
 ## 写成中文会让切换额外行动时的重算整段失效（键读不到、按钮不置灰）。
 const 元数据_行动技能类型: StringName = &"extra_action_kind"
 const 元数据_行动服务端可用: StringName = &"extra_action_enabled"
+## 这条技能会把本次出牌固定视为哪个系别（0＝不固定）：额外行动阶段本地切换行动后，
+## 要用它重算「与所选行动的系别要求是否相符」（如 3805 精灵的剑舞＝风系）
+const 元数据_行动技能系别: StringName = &"extra_action_element"
 ## 玩家面板：常态 / 选中（目标）颜色
 const 面板常态色: Color = Color(1.0, 1.0, 1.0)
 const 面板选中色: Color = Color(1.0, 1.0, 0.55)
@@ -3241,6 +3244,8 @@ func _构建技能按钮(cmds: Array) -> void:
 				"allow": 显示类型, "element": 项系别, "fate": 项命格,
 				"card_ids": 项牌, "dst_ids": 项目标,
 			})
+	# 当前这份额外行动的系别要求（0＝不限）：会改系别的技能按钮按它置灰/恢复
+	var 阶段系别: int = int(首位.get("extra_element", 0))
 	for i: int in range(1, cmds.size()):
 		var c: Dictionary = cmds[i]
 		var 技能类型: int = int(c.get("respond_id", 0))
@@ -3276,6 +3281,12 @@ func _构建技能按钮(cmds: Array) -> void:
 		# 写中文键名会让 set_meta 静默失败、has_meta 永远 false，过滤整段失效。
 		go.set_meta(元数据_行动技能类型, 技能类型)
 		go.set_meta(元数据_行动服务端可用, bool(c.get("enabled", true)))
+		go.set_meta(元数据_行动技能系别, int(c.get("skill_element", 0)))
+		# 会改系别的技能（3805＝风系）：当前这份额外行动的系别要求不符时置灰
+		# （本地切换行动时再按切换后的系别重算，见 _本地选择额外攻击）
+		var 固定系: int = int(c.get("skill_element", 0))
+		if 固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别:
+			go.设置选项可用(false)
 		go.connect("点击", _选择技能.bind(技能类型, 需牌, 需目标, 合法目标, 合法牌, 最多牌,
 			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go, 盖牌需数))
 		# 点下去就把挂着的技能说明收掉，别挡着选牌选目标（悬停 / 离开悬停由 _新技能按钮 统一接）
@@ -3327,12 +3338,22 @@ func _本地选择额外攻击(_技能号: int, uid: int, _cause: int, 牌白: A
 	_sel_players = 留目标
 	# 技能按钮的可用性也跟着换：切到只放行法术的行动后，攻击技能要置灰（反之亦然），
 	# 否则界面亮着、点下去被服务端按新行动的种类驳回。
+	# 另外还要看系别：会改系别的技能（3805 精灵的剑舞＝风系）切到「要求火系/暗系」的行动后要置灰，
+	# 否则点了必被服务端按系别驳回（服务端只按切换前那份行动算过一次 enabled）。
+	var 选中系别: int = 0
+	for 项: Dictionary in _额外攻击切换项:
+		if int(项.get("uid", 0)) == uid:
+			选中系别 = int(项.get("element", 0))
+			break
 	for 钮: Node in _技能按钮:
 		if not (钮 is 技能按钮) or not 钮.has_meta(元数据_行动技能类型):
 			continue
 		var 类: int = int(钮.get_meta(元数据_行动技能类型))
-		(钮 as 技能按钮).设置选项可用(
-			bool(钮.get_meta(元数据_行动服务端可用)) and GConst.放行动作(类, 放行))
+		var 可用: bool = bool(钮.get_meta(元数据_行动服务端可用)) and GConst.放行动作(类, 放行)
+		var 固定系: int = int(钮.get_meta(元数据_行动技能系别)) if 钮.has_meta(元数据_行动技能系别) else 0
+		if 可用 and 固定系 > 0 and 选中系别 > 0 and 固定系 != 选中系别:
+			可用 = false
+		(钮 as 技能按钮).设置选项可用(可用)
 	for 项: Dictionary in _额外攻击切换项:
 		var b: Variant = 项.get("按钮")
 		if is_instance_valid(b):
