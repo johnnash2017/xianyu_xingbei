@@ -86,9 +86,9 @@ func 跑() -> void:
 		检(not GConst.技能行(技能号).is_empty(), "技能号 %d 在技能表里查不到" % 技能号)
 
 	# 魔弹系别：47 水/火、87 雷/火、107 地/风；旧 8/76 地/火仍保留
-	检(GConst.可当魔弹(GConst.角色_爆食少女, GConst.CardElement.Water), "47 应能用水系牌传递魔弹")
-	检(GConst.可当魔弹(GConst.角色_爆食少女, GConst.CardElement.Fire), "47 应能用火系牌传递魔弹")
-	检(not GConst.可当魔弹(GConst.角色_爆食少女, GConst.CardElement.Thunder), "47 不应能用雷系牌")
+	检(GConst.可当魔弹(GConst.角色_暴食少女, GConst.CardElement.Water), "47 应能用水系牌传递魔弹")
+	检(GConst.可当魔弹(GConst.角色_暴食少女, GConst.CardElement.Fire), "47 应能用火系牌传递魔弹")
+	检(not GConst.可当魔弹(GConst.角色_暴食少女, GConst.CardElement.Thunder), "47 不应能用雷系牌")
 	检(GConst.可当魔弹(GConst.角色_贪婪少女, GConst.CardElement.Thunder), "87 应能用雷系牌")
 	检(GConst.可当魔弹(GConst.角色_贪婪少女, GConst.CardElement.Fire), "87 应能用火系牌")
 	检(not GConst.可当魔弹(GConst.角色_贪婪少女, GConst.CardElement.Water), "87 不应能用水系牌")
@@ -226,7 +226,7 @@ func 跑() -> void:
 
 	# ---------------- 3. 魔弹响应 / 传递的出牌过滤 ----------------
 	窗.set("_pending", {"card_max": 1})
-	玩家[0].role_id = GConst.角色_爆食少女
+	玩家[0].role_id = GConst.角色_暴食少女
 	检(bool(窗.call("_可回魔弹牌", 水牌.id)), "47 应能用水系牌传递魔弹")
 	检(bool(窗.call("_可回魔弹牌", 火牌.id)), "47 应能用火系牌传递魔弹")
 	检(not bool(窗.call("_可回魔弹牌", 雷牌.id)), "47 不应用雷系牌传递魔弹")

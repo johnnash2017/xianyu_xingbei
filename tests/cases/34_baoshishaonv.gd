@@ -1,5 +1,5 @@
 extends 自检用例
-## R47 爆食少女（47）：4701 甜点冲击 / 4702 食欲的黑洞 / 4703 美味融合 /
+## R47 暴食少女（47）：4701 甜点冲击 / 4702 食欲的黑洞 / 4703 美味融合 /
 ## 4704 三秒原则 / 4705 美食风暴。
 ##
 ## 任务范围只有 role + test：角色表「脚本 / 启用」列留给 DATA，用例里手动挂角色脚本。
@@ -45,7 +45,7 @@ class 触发弃牌:
 
 
 var 引擎: BattleEngine = null
-var 玩家1: BattlePlayer = null   # 47 爆食少女（蓝）
+var 玩家1: BattlePlayer = null   # 47 暴食少女（蓝）
 var 玩家2: BattlePlayer = null   # 队友（蓝）
 var 玩家3: BattlePlayer = null   # 对手甲（红）
 var 玩家4: BattlePlayer = null   # 对手乙（红）
@@ -67,7 +67,7 @@ var 普通牌2: GCard = null
 
 
 func _init() -> void:
-	名称 = "爆食少女"
+	名称 = "暴食少女"
 
 
 # ============================================================
@@ -314,32 +314,32 @@ func _准备() -> void:
 
 ## 数据：角色 / 技能号 / 技能行 / 技能说明 / 脚本 / 无指示物
 func _测试数据() -> void:
-	检(str(Data.role_list.get(47, "")) == "爆食少女", "47 号角色名不是「爆食少女」")
+	检(str(Data.role_list.get(47, "")) == "暴食少女", "47 号角色名不是「暴食少女」")
 	检(Data.role_personal_name(47) == "妮亚", "47 号角色姓名不是「妮亚」")
-	检(absf(Data.role_star(47) - 3.0) < 0.01, "爆食少女应是 3.0 星，实际 %s" % str(Data.role_star(47)))
+	检(absf(Data.role_star(47) - 3.0) < 0.01, "暴食少女应是 3.0 星，实际 %s" % str(Data.role_star(47)))
 	检(Data.role_skills(47) == [4701, 4702, 4703, 4704, 4705],
-		"爆食少女技能号不对：%s" % str(Data.role_skills(47)))
+		"暴食少女技能号不对：%s" % str(Data.role_skills(47)))
 	检(ResourceLoader.exists("res://scripts/battle/roles/role_baoshishaonv.gd"),
-		"爆食少女的角色脚本文件不存在")
+		"暴食少女的角色脚本文件不存在")
 	for 技能号: int in [4701, 4702, 4703, 4704, 4705]:
 		检(not GConst.技能行(技能号).is_empty(), "技能表里查不到 %d" % 技能号)
-	检(GConst.技能号("技能#爆食少女#甜点冲击") == 4701, "【甜点冲击】技能号应为 4701")
-	检(GConst.技能号("技能#爆食少女#食欲的黑洞") == 4702, "【食欲的黑洞】技能号应为 4702")
-	检(GConst.技能号("技能#爆食少女#美味融合") == 4703, "【美味融合】技能号应为 4703")
-	检(GConst.技能号("技能#爆食少女#三秒原则") == 4704, "【三秒原则】技能号应为 4704")
-	检(GConst.技能号("技能#爆食少女#美食风暴") == 4705, "【美食风暴】技能号应为 4705")
+	检(GConst.技能号("技能#暴食少女#甜点冲击") == 4701, "【甜点冲击】技能号应为 4701")
+	检(GConst.技能号("技能#暴食少女#食欲的黑洞") == 4702, "【食欲的黑洞】技能号应为 4702")
+	检(GConst.技能号("技能#暴食少女#美味融合") == 4703, "【美味融合】技能号应为 4703")
+	检(GConst.技能号("技能#暴食少女#三秒原则") == 4704, "【三秒原则】技能号应为 4704")
+	检(GConst.技能号("技能#暴食少女#美食风暴") == 4705, "【美食风暴】技能号应为 4705")
 	var 技能说明: String = Data.role_skill_info(47)
 	for 技能名: String in ["甜点冲击", "食欲的黑洞", "美味融合", "三秒原则", "美食风暴"]:
 		检(技能说明.contains(技能名), "角色技能说明里缺【%s】：%s" % [技能名, 技能说明])
 	检(Data.role_token_def(47, 0).is_empty() and Data.role_token_def(47, 1).is_empty()
-		and Data.role_token_def(47, 2).is_empty(), "爆食少女不应配置指示物 / 盖牌槽")
+		and Data.role_token_def(47, 2).is_empty(), "暴食少女不应配置指示物 / 盖牌槽")
 
 
 func _建引擎() -> void:
 	引擎 = BattleEngine.new()
 	引擎.send_cb = func(pid: int, msg: int, data: Dictionary) -> void:
 		发送记录.append({"pid": pid, "msg": msg, "data": data})
-	引擎.add_player(1, GConst.BLUE, "爆食")
+	引擎.add_player(1, GConst.BLUE, "暴食")
 	引擎.add_player(2, GConst.BLUE, "队友")
 	引擎.add_player(3, GConst.RED, "对手甲")
 	引擎.add_player(4, GConst.RED, "对手乙")
@@ -363,7 +363,7 @@ func _测试4701() -> void:
 	# ---- 技能栏：两张法术技能都常驻下发，条件不满足只置灰 ----
 	_重置战斗()
 	var 栏: Array = 角色.available_skills()
-	检(栏.size() == 2, "爆食少女技能栏只应有 4701 / 4705 两项，实际 %d 项：%s" % [栏.size(), str(栏)])
+	检(栏.size() == 2, "暴食少女技能栏只应有 4701 / 4705 两项，实际 %d 项：%s" % [栏.size(), str(栏)])
 	var 甜点项: Dictionary = _找技能(栏, 4701)
 	检(not 甜点项.is_empty(), "【甜点冲击】(4701) 应下发到技能栏")
 	检(int(甜点项.get("type", 0)) == GConst.ActionType.MagicSkill, "4701 应作为法术技能按钮下发")

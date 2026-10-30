@@ -4,7 +4,7 @@ extends 自检用例
 ## - dummy 水 / 火角色只接受水、火发动【魔弹融合】，地系被拒；
 ## - 【魔弹】本身始终能当魔弹使用 / 响应传递，但不算【魔弹融合】的发动牌。
 
-## dummy 借用角色：模拟 47 爆食少女的「水 / 火可当魔弹」配置。
+## dummy 借用角色：模拟 47 暴食少女的「水 / 火可当魔弹」配置。
 ## 真实角色（47 / 87 / 107）在各自脚本里覆写 missile_fusion_elements()，
 ## 并在 v_missile / v_remissile 里路由到 can_use_as_missile() 即可复用同一套配置。
 class 水火魔弹角色 extends BattleRole:

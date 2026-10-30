@@ -668,7 +668,7 @@ func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -
 | 41 | 战斗法师 | 4101~4104 | `role_zhandoufashi.gd` | `tests/cases/31_zhandoufashi.gd` |
 | 45 | 剑之魔女 | 4501~4504 | `role_jianzhimoni.gd` | `tests/cases/32_jianzhimoni.gd` |
 | 46 | 灵熙之潮 | 4601~4606 | `role_lingxizhichao.gd` | `tests/cases/33_lingxizhichao.gd` |
-| 47 | 爆食少女 | 4701~4705 | `role_baoshishaonv.gd` | `tests/cases/34_baoshishaonv.gd` |
+| 47 | 暴食少女 | 4701~4705 | `role_baoshishaonv.gd` | `tests/cases/34_baoshishaonv.gd` |
 | 75 | EX魔弓 | 7501~7504 | `role_exmogong.gd` | `tests/cases/35_exmogong.gd` |
 | 78 | 矜贵之女 | 7801~7805 | `role_jinguizhinv.gd` | `tests/cases/36_jinguizhinv.gd` |
 | 87 | 贪婪少女 | 8701~8704 | `role_tanlanshaonv.gd` | `tests/cases/37_tanlanshaonv.gd` |

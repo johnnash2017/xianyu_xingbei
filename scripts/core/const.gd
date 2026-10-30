@@ -692,7 +692,7 @@ const 技能_伴响魂灵: int = 4603
 const 技能_波涌之力: int = 4604
 const 技能_怒潮荒涛: int = 4605
 const 技能_海神御巫: int = 4606
-## 爆食少女（47）
+## 暴食少女（47）
 const 技能_甜点冲击: int = 4701
 const 技能_食欲的黑洞: int = 4702
 const 技能_美味融合: int = 4703
@@ -903,7 +903,7 @@ const 角色_游击士: int = 38
 const 角色_战斗法师: int = 41
 const 角色_剑之魔女: int = 45
 const 角色_灵熙之潮: int = 46
-const 角色_爆食少女: int = 47
+const 角色_暴食少女: int = 47
 const 角色_EX魔弓: int = 75
 const 角色_矜贵之女: int = 78
 const 角色_贪婪少女: int = 87
@@ -913,7 +913,7 @@ const 角色_怠惰少女: int = 106
 const 角色_忌妒少女: int = 107
 const 角色_剑之子: int = 108
 const 本批角色: Array[int] = [
-	角色_游击士, 角色_战斗法师, 角色_剑之魔女, 角色_灵熙之潮, 角色_爆食少女,
+	角色_游击士, 角色_战斗法师, 角色_剑之魔女, 角色_灵熙之潮, 角色_暴食少女,
 	角色_EX魔弓, 角色_矜贵之女, 角色_贪婪少女, 角色_见习制片, 角色_萝莉番长,
 	角色_怠惰少女, 角色_忌妒少女, 角色_剑之子,
 ]
@@ -931,7 +931,7 @@ const 角色特性: Dictionary = {
 	76: {"魔弹系别": [GConst.CardElement.Earth, GConst.CardElement.Fire], "魔弹掌控": true},
 	9: {"行动阶段禁用法术牌": true},
 	29: {"魔弹全禁": true, "行动阶段禁用法术牌": true},
-	角色_爆食少女: {"魔弹系别": [GConst.CardElement.Water, GConst.CardElement.Fire]},
+	角色_暴食少女: {"魔弹系别": [GConst.CardElement.Water, GConst.CardElement.Fire]},
 	角色_贪婪少女: {"魔弹系别": [GConst.CardElement.Thunder, GConst.CardElement.Fire]},
 	角色_忌妒少女: {"魔弹系别": [GConst.CardElement.Earth, GConst.CardElement.Wind], "临时掌控来源": 技能_虚荣掌握},
 	角色_怠惰少女: {"双张魔弹": true},
