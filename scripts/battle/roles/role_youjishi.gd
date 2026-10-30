@@ -162,6 +162,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 
 # ============================================================
 # 元素射击*SORA（3802）：主动攻击时①移除 1 个【子弹】并按系别追加效果
+# 一次询问完成：直接选 1 个【子弹】（选完按确定即发动，取消＝不发动），不再先问一次「是否发动」。
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id:
@@ -185,15 +186,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			return SUCCESS
 		_timeline_1_step = 1
 	if _timeline_1_step == 1:
-		# 响应技能先问是否发动；不发动走「取消」
-		if not engine.has_reply():
-			询问(player.id, YUAN_SU_SHE_JI, 0, 0)
-			return WAIT
-		if not take_skill_reply():
-			return _收尾_3802(ctx)
-		_timeline_1_step = 2
-	if _timeline_1_step == 2:
-		# 选 1 个【子弹】（盖牌；本人可见牌面）
+		# 直接选 1 个【子弹】（盖牌，本人可见牌面）：选中＋确定即发动，取消＝不发动
 		if not engine.has_reply():
 			询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.Cover)
 			return WAIT
@@ -203,11 +196,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			return _收尾_3802(ctx)
 		_子弹牌 = cid
 		_子弹系别 = _牌系别(cid)
-		if _子弹系别 == GConst.CardElement.Light or _子弹系别 == GConst.CardElement.Darkness:
-			_timeline_1_step = 3
-		else:
-			_timeline_1_step = 4
-	if _timeline_1_step == 3:
+		_timeline_1_step = 2 if (_子弹系别 == GConst.CardElement.Light
+			or _子弹系别 == GConst.CardElement.Darkness) else 3
+	if _timeline_1_step == 2:
 		# 光 / 暗子弹：视为任一系别（固定五系选项，选一个才结算）
 		if not engine.has_reply():
 			询问(player.id, YUAN_SU_SHE_JI, 0, 0, GConst.CardSource.Hand, _视为系别选项(), 0, "", [], true, 1)
@@ -218,8 +209,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		if not _视为系别表().has(视为):
 			return _收尾_3802(ctx)
 		_子弹系别 = 视为
-		_timeline_1_step = 4
-	if _timeline_1_step == 4:
+		_timeline_1_step = 3
+	if _timeline_1_step == 3:
 		return _结算子弹(ctx)
 	return SUCCESS
 
@@ -277,7 +268,9 @@ func _视为系别选项() -> Array:
 	return out
 
 
-## 3802 的命中②：水系目标 +1 治疗；地系对目标 1 点法术伤害③
+## 3802 的命中②：水系给「玩家选的目标」+1 治疗；地系对「玩家选的目标」造成 1 点法术伤害③。
+## 目标由玩家选（技能原文是「目标角色」，不限被攻击者）；超时 / 取消按被攻击者结算——
+## 子弹已经花掉，不能白弃。
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id:
@@ -287,16 +280,25 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	_本次攻击命中 = true
 	if not _子弹待命中:
 		return SUCCESS
+	if not engine.has_reply():
+		# 阶段里直接问「选 1 名角色」（水系提示 3 / 地系提示 4），目标不限敌我
+		询问(player.id, YUAN_SU_SHE_JI, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
+			2 if _子弹系别 == GConst.CardElement.Water else 3)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var 目标: int = int(harm.get("dst", -1))
+	var dsts: Array = r.get("dst_ids", [])
+	if not dsts.is_empty() and engine.p(int(dsts[0])) != null:
+		目标 = int(dsts[0])
 	# 先消费掉标记：地系压入伤害后本钩子会重入，不能重复结算
 	_子弹待命中 = false
-	var dst_id: int = int(harm.get("dst", -1))
 	if _子弹系别 == GConst.CardElement.Water:
-		施加治疗(dst_id, 1)
+		施加治疗(目标, 1)
 		engine._broadcast_game()
 		return SUCCESS
 	if _子弹系别 == GConst.CardElement.Earth:
 		engine.push_harm({
-			"src": player.id, "dst": dst_id, "point": 1,
+			"src": player.id, "dst": 目标, "point": 1,
 			"cause": YUAN_SU_SHE_JI, "type": GConst.HarmType.Magic,
 		})
 		engine._broadcast_game()
@@ -312,12 +314,10 @@ func p_after_attack(ctx: Dictionary) -> int:
 		return SUCCESS
 	var 命中: bool = _本次攻击命中
 	_本次攻击命中 = false
-	# 3802 风系：攻击行动结束后额外 +1 攻击行动（无出牌限制）
+	# 3802 风系：攻击行动结束后额外 +1 攻击行动（无出牌限制），直接给、不再弹一次响应询问
 	if _子弹待行动结束:
 		_子弹待行动结束 = false
-		player.add_action(GConst.ActionType.Attack, YUAN_SU_SHE_JI, false, true, {
-			"in_end_response": true,
-		})
+		player.add_action(GConst.ActionType.Attack, YUAN_SU_SHE_JI, true, true)
 	# 3803 二重剑影：本次攻击命中②、回合限定，额外 +1「与本次攻击同系」的攻击行动
 	if 命中 and not _3803_已用:
 		_3803_已用 = true

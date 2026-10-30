@@ -7,11 +7,11 @@ extends 自检用例
 ## 覆盖：
 ##   - 数据：角色名 / 姓名 / 星数 / 技能号 / 技能行 / 技能说明 / 脚本 / 【子弹】槽；
 ##   - 3801：开局从牌库顶取 6 张进盖牌区，牌面互不相同且不再留在牌堆；
-##   - 3802：无子弹 / 非主动攻击 / 别人的攻击不询问；取消（是否发动 / 选子弹）不生效；
-##            火 +1 伤害、水命中 +1 治疗、风行动结束 +1 攻击行动、雷无法应战、
-##            地命中 1 点法术伤害、光/暗子弹选择视为系别；移除后进弃牌堆、播报一次、
-##            URGENT 重入不重复结算；子弹系别与 3805 的攻击牌系别互相独立；
-##            完整攻击流水线：问是否发动 → 选子弹 → 应战提示伤害 +1 → 结算后进弃牌堆；
+##   - 3802：无子弹 / 非主动攻击 / 别人的攻击不询问；取消（选子弹即发动）不生效；
+##            火 +1 伤害、水命中后玩家选目标 +1 治疗、风行动结束直接给 +1 攻击行动（不再弹响应）、
+##            雷无法应战、地命中后玩家选目标 1 点法术伤害、光/暗子弹选择视为系别；
+##            移除后进弃牌堆、播报一次、URGENT 重入不重复结算；子弹系别与 3805 的攻击牌系别互相独立；
+##            完整攻击流水线：选子弹（一步发动）→ 应战提示伤害 +1 → 结算后进弃牌堆；
 ##   - 3803：命中后给 1 份「同系攻击行动」、未命中不给、回合限定只给一次、回合开始重置、
 ##            白名单只含同系攻击牌 / 无同系牌时全禁；3805 视为风系后白名单按风系；
 ##            额外行动阶段里服务端兜底校验同系限制；
@@ -211,20 +211,14 @@ func _重置战斗() -> void:
 
 ## 3802：走完「是否发动 → 选子弹」两步询问（返回第二步的询问）
 func _发动3802(ctx: Dictionary, 子弹: GCard) -> Dictionary:
-	检(角色.p_timeline_1(ctx) == BattleRole.WAIT, "有【子弹】时主动攻击宣告应先问【元素射击】是否发动")
-	var 问一: Dictionary = _取询问(1, 3802)
-	检(not 问一.is_empty(), "没有下发【元素射击】发动询问")
-	检(int((问一.get("args", []) as Array)[0] if (问一.get("args", []) as Array).size() > 0 else -1) == 0,
-		"【元素射击】第一步只问是否发动，不应要求选牌")
-	_应答([1])
-	检(角色.p_timeline_1(ctx) == BattleRole.WAIT, "确认发动后应继续问选哪个【子弹】")
-	var 问二: Dictionary = _取询问(1, 3802)
-	检(not 问二.is_empty(), "没有下发【元素射击】选子弹询问")
-	var 参数: Array = 问二.get("args", [])
+	检(角色.p_timeline_1(ctx) == BattleRole.WAIT, "有【子弹】时主动攻击宣告应直接问选【子弹】")
+	var 问: Dictionary = _取询问(1, 3802)
+	检(not 问.is_empty(), "没有下发【元素射击】询问")
+	var 参数: Array = 问.get("args", [])
 	检(参数.size() >= 3 and int(参数[0]) == 1 and int(参数[2]) == GConst.CardSource.Cover,
-		"【元素射击】第二步应要求 1 张盖牌：%s" % str(参数))
+		"【元素射击】应一步到位（直接要求选 1 张盖牌子弹）：%s" % str(参数))
 	_应答([1], [子弹.id])
-	return 问二
+	return 问
 
 
 # ============================================================
@@ -329,29 +323,16 @@ func 跑() -> void:
 	检(角色.p_timeline_1(应战上下文) == BattleRole.SUCCESS, "应战反击不应触发【元素射击】")
 	检(_取询问(1, 3802).is_empty(), "应战反击不应下发【元素射击】询问")
 
-	# 取消（是否发动）：子弹保留、不播报
+	# 取消（一步到位：取消选子弹＝不发动）：子弹保留、不播报
 	_重置战斗()
 	_放子弹(火子弹)
 	发送记录.clear()
 	var 火上下文: Dictionary = _攻击上下文(火攻击牌, 1, 3, true)
-	检(角色.p_timeline_1(火上下文) == BattleRole.WAIT, "有【子弹】时主动攻击宣告应先问【元素射击】")
+	检(角色.p_timeline_1(火上下文) == BattleRole.WAIT, "有【子弹】时主动攻击宣告应直接问选【子弹】")
 	_应答([])
-	检(角色.p_timeline_1(火上下文) == BattleRole.SUCCESS, "不发动【元素射击】时应正常收尾")
-	检(玩家.cover_count() == 1, "不发动【元素射击】不应移除【子弹】")
-	检(_播报次数(3802) == 0, "不发动【元素射击】不应播报")
-
-	# 取消（选子弹）：子弹保留、不播报
-	_重置战斗()
-	_放子弹(火子弹)
-	发送记录.clear()
-	火上下文 = _攻击上下文(火攻击牌, 1, 3, true)
-	检(角色.p_timeline_1(火上下文) == BattleRole.WAIT, "有【子弹】时应先问是否发动【元素射击】")
-	_应答([1])
-	检(角色.p_timeline_1(火上下文) == BattleRole.WAIT, "确认发动后应继续问选哪个【子弹】")
-	_应答([], [])
-	检(角色.p_timeline_1(火上下文) == BattleRole.SUCCESS, "选子弹时取消应按不发动收尾")
-	检(玩家.cover_count() == 1, "选子弹时取消不应移除【子弹】")
-	检(_播报次数(3802) == 0, "选子弹时取消不应播报")
+	检(角色.p_timeline_1(火上下文) == BattleRole.SUCCESS, "取消选子弹应按不发动收尾")
+	检(玩家.cover_count() == 1, "取消选子弹不应移除【子弹】")
+	检(_播报次数(3802) == 0, "取消选子弹不应播报")
 
 	# 火系：本次攻击伤害 +1，子弹移除进弃牌堆，播报一次；URGENT 重入不重复结算
 	_重置战斗()
@@ -369,7 +350,7 @@ func 跑() -> void:
 	检(角色.p_timeline_1(火上下文) == BattleRole.SUCCESS, "同一次攻击重入【元素射击】应直接跳过")
 	检(_取询问(1, 3802).is_empty(), "同一次攻击不应重复询问【元素射击】")
 
-	# 水系：命中时目标 +1 治疗
+	# 水系：命中后由玩家选 1 名角色 +1 治疗（不是固定给被攻击者）
 	_重置战斗()
 	_放子弹(水子弹)
 	发送记录.clear()
@@ -377,10 +358,27 @@ func 跑() -> void:
 	_发动3802(水上下文, 水子弹)
 	检(角色.p_timeline_1(水上下文) == BattleRole.SUCCESS, "水系【子弹】应正常收尾")
 	检(对手甲.cross_num == 0, "水系【子弹】命中前不应加治疗")
-	检(角色.p_timeline_2_hit(水上下文) == BattleRole.SUCCESS, "水系【子弹】命中结算不应等待")
-	检(对手甲.cross_num == 1, "水系【子弹】应让攻击目标 +1 治疗，实际 %d" % 对手甲.cross_num)
+	检(角色.p_timeline_2_hit(水上下文) == BattleRole.WAIT, "水系【子弹】命中后应先问选哪名角色加治疗")
+	var 水问: Dictionary = _取询问(1, 3802)
+	检(not 水问.is_empty(), "水系【子弹】没有下发选目标询问")
+	var 水参数: Array = 水问.get("args", [])
+	检(水参数.size() >= 2 and int(水参数[1]) == 1, "水系【子弹】应要求选 1 名目标：%s" % str(水参数))
+	_应答([1], [], [队友.id])
+	检(角色.p_timeline_2_hit(水上下文) == BattleRole.SUCCESS, "水系【子弹】选完目标应结算")
+	检(队友.cross_num == 1, "水系【子弹】应对玩家选的目标 +1 治疗，实际 %d" % 队友.cross_num)
+	检(对手甲.cross_num == 0, "水系【子弹】不应把治疗加给被攻击者")
 	检(角色.p_timeline_2_hit(水上下文) == BattleRole.SUCCESS, "水系【子弹】已结算过，重入不应再加治疗")
-	检(对手甲.cross_num == 1, "水系【子弹】重入不应重复加治疗")
+	检(队友.cross_num == 1, "水系【子弹】重入不应重复加治疗")
+	# 取消选目标：退回被攻击者（子弹已经花掉，效果不能白弃）
+	_重置战斗()
+	_放子弹(水子弹)
+	水上下文 = _攻击上下文(水攻击牌, 1, 3, true)
+	_发动3802(水上下文, 水子弹)
+	检(角色.p_timeline_1(水上下文) == BattleRole.SUCCESS, "水系【子弹】应正常收尾")
+	检(角色.p_timeline_2_hit(水上下文) == BattleRole.WAIT, "水系【子弹】命中后应先问选目标")
+	_应答([])
+	检(角色.p_timeline_2_hit(水上下文) == BattleRole.SUCCESS, "水系【子弹】取消选目标应正常结算")
+	检(对手甲.cross_num == 1, "水系【子弹】取消选目标应退回被攻击者，实际 %d" % 对手甲.cross_num)
 
 	# 风系：攻击行动结束后额外 +1 攻击行动
 	_重置战斗()
@@ -393,8 +391,13 @@ func 跑() -> void:
 		"风系【子弹】的攻击行动结束应正常收尾")
 	检(玩家.additional_actions.size() == 1, "风系【子弹】应在攻击行动结束后给 1 份额外行动")
 	if 玩家.additional_actions.size() == 1:
-		检(int(玩家.additional_actions[0].get("cause", 0)) == 3802,
-			"风系【子弹】的额外行动来源应是 3802：%s" % str(玩家.additional_actions[0]))
+		var 风行动: Dictionary = 玩家.additional_actions[0]
+		检(int(风行动.get("cause", 0)) == 3802,
+			"风系【子弹】的额外行动来源应是 3802：%s" % str(风行动))
+		检(bool(风行动.get("direct", false)),
+			"风系【子弹】的额外攻击行动应直接给出（direct），不能再弹一次响应询问：%s" % str(风行动))
+		检(not bool(风行动.get("in_end_response", false)),
+			"风系【子弹】不应再作为行动结束响应下发：%s" % str(风行动))
 
 	# 雷系：本次攻击无法应战
 	_重置战斗()
@@ -405,28 +408,33 @@ func 跑() -> void:
 	检(int(雷上下文.get("hit_rate", -1)) == GConst.HitRate.NoReattack,
 		"雷系【子弹】应把本次攻击置为「无法应战」，实际 %s" % str(雷上下文.get("hit_rate")))
 
-	# 地系：命中时对目标 1 点法术伤害③
+	# 地系：命中后由玩家选 1 名角色，对其造成 1 点法术伤害③
 	_重置战斗()
 	_放子弹(地子弹)
 	发送记录.clear()
 	var 地上下文: Dictionary = _攻击上下文(火攻击牌, 1, 3, true)
 	_发动3802(地上下文, 地子弹)
 	检(角色.p_timeline_1(地上下文) == BattleRole.SUCCESS, "地系【子弹】应正常收尾")
-	检(角色.p_timeline_2_hit(地上下文) == BattleRole.URGENT, "地系【子弹】命中应压入 1 点法术伤害")
-	var 地伤害: Dictionary = _找伤害(3802, 3)
+	检(角色.p_timeline_2_hit(地上下文) == BattleRole.WAIT, "地系【子弹】命中后应先问选哪名角色承受伤害")
+	var 地问: Dictionary = _取询问(1, 3802)
+	检(not 地问.is_empty(), "地系【子弹】没有下发选目标询问")
+	var 地参数: Array = 地问.get("args", [])
+	检(地参数.size() >= 2 and int(地参数[1]) == 1, "地系【子弹】应要求选 1 名目标：%s" % str(地参数))
+	_应答([1], [], [队友.id])
+	检(角色.p_timeline_2_hit(地上下文) == BattleRole.URGENT, "地系【子弹】选完目标应压入 1 点法术伤害")
+	var 地伤害: Dictionary = _找伤害(3802, 队友.id)
 	检(not 地伤害.is_empty(), "地系【子弹】没有压入法术伤害")
 	if not 地伤害.is_empty():
 		检(int(地伤害.get("point", 0)) == 1, "地系【子弹】应是 1 点伤害：%s" % str(地伤害))
 		检(int(地伤害.get("type", 0)) == GConst.HarmType.Magic, "地系【子弹】应是法术伤害")
+	检(_找伤害(3802, 对手甲.id).is_empty(), "地系【子弹】不应把伤害直接给被攻击者")
 	检(角色.p_timeline_2_hit(地上下文) == BattleRole.SUCCESS, "地系【子弹】已结算过，重入不应再加伤害")
 
 	# 光系子弹：选视为水系 → 命中 +1 治疗
 	_重置战斗()
 	_放子弹(光子弹)
 	var 光上下文: Dictionary = _攻击上下文(火攻击牌, 1, 3, true)
-	检(角色.p_timeline_1(光上下文) == BattleRole.WAIT, "有光系【子弹】时应先问【元素射击】是否发动")
-	_应答([1])
-	检(角色.p_timeline_1(光上下文) == BattleRole.WAIT, "确认发动后应继续问选哪个【子弹】")
+	检(角色.p_timeline_1(光上下文) == BattleRole.WAIT, "有光系【子弹】时应直接问选【子弹】")
 	_应答([1], [光子弹.id])
 	检(角色.p_timeline_1(光上下文) == BattleRole.WAIT, "光系【子弹】应继续问视为哪一种系别")
 	var 光问: Dictionary = _取询问(1, 3802)
@@ -437,16 +445,17 @@ func 跑() -> void:
 	检(角色.p_timeline_1(光上下文) == BattleRole.SUCCESS, "选完视为系别后应正常收尾")
 	检(玩家.cover_count() == 0, "光系【子弹】也应按移除 1 个子弹结算")
 	检(引擎.deck.discard.has(光子弹.id), "光系【子弹】移除后应进入弃牌堆")
-	检(角色.p_timeline_2_hit(光上下文) == BattleRole.SUCCESS, "光系子弹视为水系后命中应加治疗")
-	检(对手甲.cross_num == 1, "光系子弹视为水系后应让目标 +1 治疗，实际 %d" % 对手甲.cross_num)
+	检(角色.p_timeline_2_hit(光上下文) == BattleRole.WAIT, "光系子弹视为水系后命中应先问选目标")
+	_应答([1], [], [队友.id])
+	检(角色.p_timeline_2_hit(光上下文) == BattleRole.SUCCESS, "光系子弹视为水系后命中应结算")
+	检(队友.cross_num == 1, "光系子弹视为水系后应对玩家选的目标 +1 治疗，实际 %d" % 队友.cross_num)
 
 	# 暗系子弹：选项里选视为雷系 → 本次攻击无法应战
 	_重置战斗()
 	_放子弹(暗子弹)
 	var 暗上下文: Dictionary = _攻击上下文(火攻击牌, 1, 3, true)
 	角色.p_timeline_1(暗上下文)
-	_应答([1])
-	角色.p_timeline_1(暗上下文)
+	检(角色.p_timeline_1(暗上下文) == BattleRole.WAIT, "暗系【子弹】应先问选【子弹】")
 	_应答([1], [暗子弹.id])
 	检(角色.p_timeline_1(暗上下文) == BattleRole.WAIT, "暗系【子弹】应继续问视为哪一种系别")
 	_应答([GConst.CardElement.Thunder])
@@ -459,8 +468,7 @@ func 跑() -> void:
 	_放子弹(光子弹)
 	var 取消上下文: Dictionary = _攻击上下文(火攻击牌, 1, 3, true)
 	角色.p_timeline_1(取消上下文)
-	_应答([1])
-	角色.p_timeline_1(取消上下文)
+	检(角色.p_timeline_1(取消上下文) == BattleRole.WAIT, "光系【子弹】应先问选【子弹】")
 	_应答([1], [光子弹.id])
 	检(角色.p_timeline_1(取消上下文) == BattleRole.WAIT, "光系【子弹】应继续问视为哪一种系别")
 	_应答([])
@@ -477,7 +485,7 @@ func 跑() -> void:
 	检(int((剑舞攻击.get("harm", {}) as Dictionary).get("point", 0)) == BattleEngine.ATTACK_BASE_POINT + 1,
 		"3805 视为风系只改攻击牌，火系子弹仍应 +1 伤害")
 
-	# 完整攻击流水线：询问 → 选子弹 → 应战提示伤害 +1 → 结算后子弹进弃牌堆
+	# 完整攻击流水线：选子弹（一步发动）→ 应战提示伤害 +1 → 结算后子弹进弃牌堆
 	_重置战斗()
 	_放子弹(火子弹)
 	玩家.hand_cards = [火攻击牌.id]
@@ -486,12 +494,8 @@ func 跑() -> void:
 		"card_ids": [火攻击牌.id], "dst_ids": [3], "args": [],
 	})
 	引擎.run()
-	检(引擎._await_id == 1, "完整攻击流水线里应先问攻击者是否发动【元素射击】（等待 %s）" % str(引擎._await_id))
+	检(引擎._await_id == 1, "完整攻击流水线里应先问攻击者选哪个【子弹】（等待 %s）" % str(引擎._await_id))
 	检(not _取询问(1, 3802).is_empty(), "完整攻击流水线没有下发【元素射击】询问")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3802, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
-	})
-	检(引擎._await_id == 1, "确认发动后应继续问选哪个【子弹】（等待 %s）" % str(引擎._await_id))
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 3802, "src_id": 1, "args": [1], "card_ids": [火子弹.id], "dst_ids": [],
 	})
