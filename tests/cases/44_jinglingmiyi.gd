@@ -78,3 +78,68 @@ func 跑() -> void:
 	检(引擎.deck.discard.size() == 3,
 		"牌库不足时不应把弃牌堆洗回：弃牌堆 %s" % str(引擎.deck.discard))
 	检(我.hand_cards.size() == 六张.size(), "第二次发动同样不应碰手牌")
+
+	# ---- 元素射击（3201）的技能名按攻击牌系别显示（如「元素射击*风之矢」）----
+	我.hand_cards.clear()
+	我.cover_cards.clear()
+	我.cross_num = 0
+	我.tap = false
+	var 风攻击牌: GCard = null
+	var 水攻击牌: GCard = null
+	var 法术牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual:
+			continue
+		if 风攻击牌 == null and c.is_attack() and c.element_enum() == GConst.CardElement.Wind:
+			风攻击牌 = c
+		elif 水攻击牌 == null and c.is_attack() and c.element_enum() == GConst.CardElement.Water:
+			水攻击牌 = c
+		elif 法术牌 == null and c.is_magic():
+			法术牌 = c
+	检(风攻击牌 != null and 水攻击牌 != null and 法术牌 != null,
+		"卡库找不到风 / 水系攻击牌或法术牌")
+	if 风攻击牌 != null and 法术牌 != null:
+		var 播报: Array = []
+		引擎.send_cb = func(_pid: int, msg: int, data: Dictionary) -> void:
+			if msg == GConst.Msg.Skill and int(data.get("skill_id", 0)) == 3201:
+				播报.append(str(data.get("name", "")))
+		# 风系攻击牌宣告：选 1 张法术牌发动 → 播报名应为「元素射击*风之矢」
+		我.hand_cards = [法术牌.id]
+		角色.used_yuan_su_she_ji = false
+		角色.step = 0
+		var 风上下文: Dictionary = {
+			"src": 1, "dst": 2, "card_id": 风攻击牌.id, "is_active": true,
+			"hit_rate": GConst.HitRate.Normal,
+			"harm": {"src": 1, "dst": 2, "point": 2, "is_active": true},
+		}
+		角色.p_timeline_1(风上下文)
+		引擎._reply = {"args": [1], "card_ids": [法术牌.id], "dst_ids": []}
+		引擎._has_reply = true
+		角色.p_timeline_1(风上下文)
+		检(播报.size() == 1 and str(播报[0]) == "元素射击*风之矢",
+			"元素射击按风系攻击牌应播报「元素射击*风之矢」，实际 %s" % str(播报))
+		if 水攻击牌 != null:
+			我.hand_cards = [法术牌.id]
+			我.additional_actions.clear()
+			角色.used_yuan_su_she_ji = false
+			角色.step = 0
+			角色.shui_zhi_shi = false
+			角色.di_zhi_shi = false
+			var 水上下文: Dictionary = {
+				"src": 1, "dst": 2, "card_id": 水攻击牌.id, "is_active": true,
+				"hit_rate": GConst.HitRate.Normal,
+				"harm": {"src": 1, "dst": 2, "point": 2, "is_active": true},
+			}
+			播报.clear()
+			角色.p_timeline_1(水上下文)
+			引擎._reply = {"args": [1], "card_ids": [法术牌.id], "dst_ids": []}
+			引擎._has_reply = true
+			角色.p_timeline_1(水上下文)
+			检(播报.size() == 1 and str(播报[0]) == "元素射击*水之矢",
+				"元素射击按水系攻击牌应播报「元素射击*水之矢」，实际 %s" % str(播报))
+			引擎._reply = {"args": [1], "card_ids": [], "dst_ids": [2]}
+			引擎._has_reply = true
+			角色.step = 0   # 新的钩子轮次（真实对局里 step 按钩子轮次隔离）
+			角色.p_timeline_2_hit(水上下文)
+			检(播报.size() == 2 and str(播报[1]) == "元素射击*水之矢",
+				"水之矢命中结算也应播报「元素射击*水之矢」，实际 %s" % str(播报))

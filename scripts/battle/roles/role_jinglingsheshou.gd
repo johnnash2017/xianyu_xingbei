@@ -140,6 +140,12 @@ func p_turn_end(ctx: Dictionary) -> int:
 	return URGENT
 
 
+## 元素射击按攻击牌系别显示的名字：如「元素射击*风之矢」（播报与战斗日志用；
+## 元素箭的命中结算也沿用箭自己的系别：水之矢 / 地之矢）。
+func _元素射击名(元素: int) -> String:
+	return "%s*%s之矢" % [GConst.skill_name(YUAN_SU_SHE_JI), GConst.element_to_chinese(元素)]
+
+
 # ============================================================
 # 主动攻击宣告时：元素射击（弃 1 张法术牌或移除 1 张【祝福】，按攻击牌系别附加元素箭）
 # ============================================================
@@ -178,7 +184,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		var card: GCard = Data.get_card(cid)
 		if card == null or not card.is_magic() or not player.has_hand_card(cid):
 			return SUCCESS
-	notice_skill(YUAN_SU_SHE_JI, [int(ctx.get("dst", -1))])
+	notice_skill(YUAN_SU_SHE_JI, [int(ctx.get("dst", -1))], _元素射击名(atk.element_enum()))
 	used_yuan_su_she_ji = true
 	var harm: Dictionary = ctx.get("harm", {})
 	match atk.element_enum():
@@ -247,14 +253,14 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id
 	if shui_zhi_shi:
 		shui_zhi_shi = false
-		notice_skill(YUAN_SU_SHE_JI, [dst_id])
+		notice_skill(YUAN_SU_SHE_JI, [dst_id], _元素射击名(GConst.CardElement.Water))
 		var dp: BattlePlayer = engine.p(dst_id)
 		if dp != null:
 			施加治疗(dp.id, 1)
 		engine._broadcast_game()
 		return SUCCESS
 	di_zhi_shi = false
-	notice_skill(YUAN_SU_SHE_JI, [dst_id])
+	notice_skill(YUAN_SU_SHE_JI, [dst_id], _元素射击名(GConst.CardElement.Earth))
 	engine.push_harm({
 		"src": player.id, "dst": dst_id, "point": 1,
 		"cause": DI_ZHI_SHI, "type": GConst.HarmType.Magic,
