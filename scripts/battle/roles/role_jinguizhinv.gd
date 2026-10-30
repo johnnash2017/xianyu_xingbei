@@ -52,7 +52,6 @@ const 强予愿行: int = 7804          # 启动 / 必杀技 / 水晶：手牌�
 const 友情羁绊: int = 7805          # 响应 / 必杀技 / 宝石 / 回合限定：改写 7802 的摸牌
 
 ## 7802 每一步的进度（step 由引擎按当前 SkillRun 实例隔离，每次发动从 0 开始）
-const 步_友情询问: int = 1
 const 步_友情选角色: int = 2
 const 步_友情弃牌: int = 3
 const 步_准备展示: int = 4
@@ -66,7 +65,6 @@ const 步_7803第三次: int = 11
 const 步_结算: int = 12
 
 ## 7804 每一步的进度
-const 步_强予问额外: int = 1
 const 步_强予选星石: int = 2
 const 步_强予选角色: int = 3
 const 步_强予结算: int = 4
@@ -199,18 +197,15 @@ func p_magic_skill(action: Dictionary) -> int:
 	if step == 0:
 		_初始化魔法入门()
 		_本回合魔法入门次数 += 1
-		step = 步_友情询问
+		step = 步_友情选角色
 	while true:
 		match step:
-			步_友情询问:
-				if _可发动友情羁绊():
-					if not engine.has_reply():
-						询问(player.id, 友情羁绊, 0, 0)
-						return WAIT
-					if take_skill_reply():
-						_7802启用友情羁绊 = true
-				step = 步_友情选角色 if _7802启用友情羁绊 else 步_准备展示
 			步_友情选角色:
+				# 一步到位：直接选 2 名角色＝发动【友情羁绊】；取消＝不发动，按普通【魔法入门】继续
+				if not _可发动友情羁绊():
+					_7802启用友情羁绊 = false
+					step = 步_准备展示
+					continue
 				var 候选: Array[int] = _友情羁绊候选角色()
 				if 候选.size() < 2:
 					# 候选在询问前已保证 ≥2；这里兜底回退成普通【魔法入门】
@@ -219,10 +214,16 @@ func p_magic_skill(action: Dictionary) -> int:
 					continue
 				if not engine.has_reply():
 					询问(player.id, 友情羁绊, 0, 2, GConst.CardSource.Hand, [], 0, "",
-						[], false, 0, -1, 候选)
+						[], true, 0, -1, 候选)
 					return WAIT
 				var r角色: Dictionary = take_skill_reply_full()
 				_7802友情角色 = _取目标(r角色.get("dst_ids", []), 候选, 2)
+				if _7802友情角色.size() < 2:
+					# 取消 / 没选够：不发动友情羁绊，按普通【魔法入门】继续
+					_7802启用友情羁绊 = false
+					step = 步_准备展示
+					continue
+				_7802启用友情羁绊 = true
 				# 选好 2 名角色后才付 1 宝石（取消/非法选择不付费）
 				player.set_gem(player.gem - 1)
 				_本回合已用友情羁绊 = true
@@ -303,27 +304,30 @@ func p_magic_skill(action: Dictionary) -> int:
 				step = 步_7803触发
 			步_7803触发:
 				if _7802触发效果():
-					# 分支 1：展示牌触发了效果 → 可选弃 2 张牌（需求 2 张手牌才问）
+					# 分支 1：展示牌触发了效果 → 直接选 2 张牌弃掉（选中＋确定＝发动；取消＝不弃）
 					if player.hand_cards.size() >= 2:
-						if not engine.has_reply():
-							询问(player.id, MAGIC_BANG, 0, 0)
-							return WAIT
-						if take_skill_reply():
-							step = 步_7803弃牌
-							continue
+						step = 步_7803弃牌
+						continue
 					step = 步_7803第三次
-				else:
-					# 分支 2：展示牌未触发任何效果 → 可选额外 +1 法术行动
-					step = 步_7803未触发
+					continue
+				# 分支 2：展示牌未触发任何效果 → 可选额外 +1 法术行动
+				step = 步_7803未触发
 				continue
 			步_7803弃牌:
 				if not engine.has_reply():
 					询问(player.id, MAGIC_BANG, 2, 0, GConst.CardSource.Hand, [], 0, "",
-						[], false, 0)
+						[], true, 0)
 					return WAIT
 				var r弃2: Dictionary = take_skill_reply_full()
-				_7802_7803弃牌 = _取手牌(player.id, r弃2.get("card_ids", []), 2)
+				var 选牌2: Array = r弃2.get("card_ids", [])
+				# 空应答＝取消（7803 的弃 2 张是可选的）：不能走 _取手牌 的「不够就补手牌」口径，
+				# 否则取消也会被强制弃 2 张
+				if 选牌2.is_empty():
+					_7802_7803弃牌.clear()
+				else:
+					_7802_7803弃牌 = _取手牌(player.id, 选牌2, 2)
 				step = 步_7803第三次
+				continue
 			步_7803未触发:
 				if not engine.has_reply():
 					询问(player.id, MAGIC_BANG, 0, 0)
@@ -528,20 +532,15 @@ func p_special_skill(action: Dictionary) -> int:
 		_7804额外移除 = false
 		_7804移除类型 = 0
 		_7804目标 = -1
-		step = 步_强予问额外
+		step = 步_强予选星石
 	while true:
 		match step:
-			步_强予问额外:
-				# 战绩区没有星石时没有「额外移除」这一档，直接结算
-				if _有战绩区星石():
-					if not engine.has_reply():
-						询问(player.id, 强予愿行, 0, 0)
-						return WAIT
-					if take_skill_reply():
-						_7804额外移除 = true
-				step = 步_强予选星石 if _7804额外移除 else 步_强予结算
 			步_强予选星石:
-				# 子询问保留「可取消」：这里还没付任何星石，取消 / 超时就是反悔「不做额外移除」。
+				# 一步到位：直接选 1 种星石＝做额外移除（取消＝不做额外移除，直接进结算）。
+				# 战绩区没有星石时没有「额外移除」这一档，直接结算。
+				if not _有战绩区星石():
+					step = 步_强予结算
+					continue
 				if not engine.has_reply():
 					询问(player.id, 强予愿行, 0, 0, GConst.CardSource.Hand, _星石选项(), 0, "",
 						[], true, 0)
@@ -555,6 +554,7 @@ func p_special_skill(action: Dictionary) -> int:
 					_放弃强予额外移除()
 					step = 步_强予结算
 					continue
+				_7804额外移除 = true
 				_7804移除类型 = 类型
 				step = 步_强予选角色
 			步_强予选角色:
