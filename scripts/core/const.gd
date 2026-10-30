@@ -686,12 +686,23 @@ const 技能_熵变: int = 4103
 ## 客户端按它取「先弹选项 / 选项目标数」配置；伤害头像提示仍挂在 4103 上（只在选敌人时显示）。
 const 技能_熵变支付: int = 41031
 
+## 精灵射手【元素射击】母技能（3201）：水之矢 / 地之矢两个内部询问号按它取类型色与说明
+const 技能_元素射击: int = 3201
+
 ## 内部询问号（不占技能表行）显示在技能按钮 / 日志上的名字：没配的退回「技能N」。
 ## 这些号只用于「同一次技能的不同步骤」，名字照母技能或该步的效果名写。
 const 内部询问显示名: Dictionary = {
 	技能_水之矢: "水之矢",
 	技能_地之矢: "地之矢",
 	技能_熵变支付: "熵变",
+}
+
+## 内部询问号归属的母技能：按钮底色（技能类型色）、分类标签、技能说明都按母技能取 ——
+## 否则内部号查不到技能表行，按钮会变成白色（熵变支付询问踩过）。
+const 内部询问归属: Dictionary = {
+	技能_水之矢: 技能_元素射击,
+	技能_地之矢: 技能_元素射击,
+	技能_熵变支付: 技能_熵变,
 }
 const 技能_魔力熵增: int = 4104
 ## 剑之魔女（45）；101 / 102 是剑圣（1）的独有技，108 的 10802 借用
@@ -1554,7 +1565,7 @@ static func skill_name(skill_id: int) -> String:
 ## 日志、提示条、单个技能悬停说明等其他地方仍用 skill_name()。
 ## 该列为空时回退到「技能名」列，避免新列漏填时按钮变成空白。
 static func skill_desc_name(skill_id: int) -> String:
-	var row: Array = 技能行(skill_id)
+	var row: Array = 技能行(母技能号(skill_id))
 	if row.is_empty():
 		return skill_name(skill_id)
 	var 名: String = str(row[_技能列("说明说明名")]).strip_edges()
@@ -1565,7 +1576,7 @@ static func skill_desc_name(skill_id: int) -> String:
 
 ## 技能表「说明」列的正文（技能按钮的悬停说明用）；查不到返回空串
 static func skill_desc(skill_id: int) -> String:
-	var row: Array = 技能行(skill_id)
+	var row: Array = 技能行(母技能号(skill_id))
 	if row.is_empty():
 		return ""
 	# 说明里写的词缀关键字（如「【治疗】」）换成图标，见 词缀文本。
@@ -1636,7 +1647,7 @@ static var _技能文本连续空格正则: RegEx = null
 
 ## 技能的大类标签（大类·类型，如「独有技·响应」）；技能表里查不到就返回空串
 static func skill_tag(skill_id: int) -> String:
-	var row: Array = 技能行(skill_id)
+	var row: Array = 技能行(母技能号(skill_id))
 	if row.is_empty():
 		return ""
 	var BroadCategory: String = str(row[_技能列("大类")]).strip_edges()
@@ -1652,8 +1663,13 @@ static func skill_tag(skill_id: int) -> String:
 
 
 ## 技能表「类型」列（响应 / 启动 / 被动 / 法术…）；技能表里查不到就返回空串
+## 内部询问号归到母技能：类型 / 标签 / 说明 / 按钮底色都按母技能取（查不到归属就返回原号）
+static func 母技能号(skill_id: int) -> int:
+	return int(内部询问归属.get(skill_id, skill_id))
+
+
 static func skill_type(skill_id: int) -> String:
-	var row: Array = 技能行(skill_id)
+	var row: Array = 技能行(母技能号(skill_id))
 	if row.is_empty():
 		return ""
 	return str(row[_技能列("类型")]).strip_edges()

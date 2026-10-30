@@ -251,6 +251,13 @@ func 跑() -> void:
 	检(ResourceLoader.exists("res://scripts/battle/roles/role_zhandoufashi.gd"), "战斗法师的角色脚本文件不存在")
 	for 技能号: int in [4101, 4102, 4103, 4104]:
 		检(not GConst.技能行(技能号).is_empty(), "技能表里查不到 %d" % 技能号)
+	# 熵变支付用的内部询问号（41031）不占技能表行：类型 / 底色 / 说明都归到母技能 4103
+	检(GConst.母技能号(GConst.技能_熵变支付) == GConst.技能_熵变,
+		"熵变支付询问号应归属母技能 4103")
+	检(GConst.skill_type_color(GConst.技能_熵变支付) == GConst.skill_type_color(GConst.技能_熵变),
+		"熵变支付询问的按钮底色应与熵变一致（不能变白）")
+	检(GConst.skill_desc_name(GConst.技能_熵变支付) == "熵变",
+		"熵变支付询问的按钮名字应是「熵变」：%s" % GConst.skill_desc_name(GConst.技能_熵变支付))
 	var 技能说明: String = Data.role_skill_info(41)
 	for 技能名: String in ["符文置换", "附魔打击", "熵变", "魔力熵增"]:
 		检(技能说明.contains(技能名), "角色技能说明里缺【%s】：%s" % [技能名, 技能说明])
