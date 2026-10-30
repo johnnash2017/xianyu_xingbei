@@ -655,18 +655,18 @@ func 跑() -> void:
 	窗.set("_skill_ask_id", GConst.技能_灭茶苦茶)
 	窗.set("_pending", {"preview_base": 5, "preview_kind": GConst.HarmType.Attack, "preview_ids": [2]})
 	var 预览: Dictionary = 窗.call("_预览伤害头像提示")
-	检(str(预览.get(2, "")) == "5 点攻击伤害", "9704 的通用 preview 头像提示不对：%s" % str(预览.get(2, "")))
+	检(str(预览.get(2, "")) == "5 攻击伤害", "9704 的通用 preview 头像提示不对：%s" % str(预览.get(2, "")))
 	窗.set("_skill_ask_id", GConst.技能_食欲的黑洞)
 	窗.set("_pending", {"preview_base": 3, "preview_kind": GConst.HarmType.Magic, "preview_ids": [1]})
 	预览 = 窗.call("_预览伤害头像提示")
-	检(str(预览.get(1, "")) == "3 点法术伤害", "4702 的通用 preview 头像提示不对：%s" % str(预览.get(1, "")))
+	检(str(预览.get(1, "")) == "3 法术伤害", "4702 的通用 preview 头像提示不对：%s" % str(预览.get(1, "")))
 	# 已经选了目标、由静态指示器负责时不重复画
 	窗.set("_skill_ask_id", GConst.技能_甜点冲击)
 	窗.set("_sel_players", [2] as Array[int])
 	窗.set("_pending", {"preview_base": 2, "preview_kind": GConst.HarmType.Magic, "preview_ids": [2]})
 	预览 = 窗.call("_预览伤害头像提示")
 	检(预览.is_empty(), "有静态指示器且已选目标时 preview 不应重复画")
-	# 3301 / 3306 的 preview_base 是「本次攻击牌 id」，不是伤害：不能把牌号画成「107 点攻击伤害」
+	# 3301 / 3306 的 preview_base 是「本次攻击牌 id」，不是伤害：不能把牌号画成「107 攻击伤害」
 	for 应战技能号: int in [GConst.技能_式神咒束, GConst.技能_阴阳转换]:
 		窗.set("_skill_ask_id", 应战技能号)
 		窗.set("_sel_players", [] as Array[int])
