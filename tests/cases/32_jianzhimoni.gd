@@ -310,6 +310,34 @@ func 跑() -> void:
 	检(引擎.校验额外行动限制(玩家, 玩家.额外行动数据(4504), GConst.ActionType.Attack,
 		[非技击.id], [2]) == GConst.GE_SUCCESS, "4504 的额外攻击行动不限制出牌")
 
+	# 客户端选牌：非技类攻击牌必须点不动（服务端白名单 + 客户端命格兜底两道）
+	var 旧我: int = Logic.my_player_id
+	var 旧手牌: Array[GCard] = Data.hand_cards
+	var 旧实例: Array[int] = Data.hand_iids
+	Logic.my_player_id = 1
+	Data.hand_cards = [Data.get_card(技击甲.id), Data.get_card(非技击.id)] as Array[GCard]
+	Data.hand_iids = [技击甲.id, 非技击.id]
+	var 窗: Control = (load("res://scenes/BattleUIMobile.tscn") as PackedScene).instantiate()
+	get_tree().root.add_child(窗)
+	await 等帧(1)
+	窗.call("_on_command", {"cmd_type": GConst.CmdType.Action,
+		"commands": 引擎._最后询问.get(1, {}).get("commands", [])})
+	await 等帧(1)
+	检(bool(窗.call("_卡牌能点", 技击甲.id)), "技类攻击牌在 4501 额外行动里应可点")
+	检(not bool(窗.call("_卡牌能点", 非技击.id)), "非技类攻击牌在 4501 额外行动里应点不动")
+	# 白名单为空时也要拦住：命格兜底表（额外行动命格）单独生效
+	窗.set("_当前额外攻击选择", 0)
+	窗.set("_额外攻击切换项", [])
+	窗.set("_额外手牌白名单_选择", [])
+	窗.set("_行动命令", [{"respond_id": GConst.ActionType.Attack, "card_ids": [], "dst_ids": []}])
+	检(bool(窗.call("_卡牌能点", 技击甲.id)), "白名单为空时，技类攻击牌仍应可点")
+	检(not bool(窗.call("_卡牌能点", 非技击.id)), "白名单为空时，命格兜底仍应拦住非技类攻击牌")
+	窗.queue_free()
+	await 等帧(1)
+	Data.hand_cards = 旧手牌
+	Data.hand_iids = 旧实例
+	Logic.my_player_id = 旧我
+
 	# 手里没有技类攻击牌：照样自动给（打不出去就在那个阶段点「放弃行动」）
 	_重置战斗()
 	_给牌(玩家, 非技击.id)

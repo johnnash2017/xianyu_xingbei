@@ -4213,6 +4213,10 @@ func _卡牌能点(card_id: int) -> bool:
 	# 行动阶段：只有能主动出手的牌可点（【圣光】只作响应，回合内置灰点不动）。
 	# 服务端给了普通行动的手牌白名单时（如【修罗连斩】的额外攻击只能出火系攻击牌），只有白名单里的牌可点
 	if _mode == 1:
+		# 额外行动自己带的命格限制（如技之剑意 = 只能出技类攻击牌）：与「额外行动系别」同一套兜底表。
+		# 白名单之外再兜一道 —— 白名单没下发时也不会给出必被服务端驳回的牌。
+		if not _额外命格允许(面):
+			return false
 		var 白名单: Array = _行动手牌白名单()
 		if not 白名单.is_empty() and not 白名单.has(面):
 			return false
@@ -4453,6 +4457,22 @@ func _行动目标白名单() -> Array:
 	if _行动命令.is_empty():
 		return []
 	return (_行动命令[0] as Dictionary).get("dst_ids", [])
+
+
+## 当前这份额外行动限定的命格（如技之剑意 = 技类）；不是额外行动阶段 / 没有限制时返回 0
+func _额外限命格() -> int:
+	if not bool(_pending.get("is_extra", false)):
+		return 0
+	return int(GConst.额外行动命格.get(int(_pending.get("extra_cause", 0)), 0))
+
+
+## 这张牌（牌面）能不能出：命格不符的攻击牌在额外行动阶段一律点不动
+func _额外命格允许(面: int) -> bool:
+	var 限命格: int = _额外限命格()
+	if 限命格 <= 0:
+		return true
+	var 牌: GCard = Data.get_card(面)
+	return 牌 != null and 牌.is_attack() and 牌.fate_pattern_enum() == 限命格
 
 
 ## 行动阶段能不能拿这张牌出手：攻击牌，以及能主动施放的【圣盾 / 虚弱 / 中毒 / 魔弹】。
