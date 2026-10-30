@@ -700,7 +700,9 @@ func 跑() -> void:
 	}
 	检(角色.p_action_end(二次上下文) == BattleRole.WAIT, "第二次额外行动结束应再次询问【魔力熵增】")
 	_应答([], [], [3])
-	检(角色.p_action_end(二次上下文) == BattleRole.SUCCESS, "第二次【魔力熵增】应正常收尾")
+	# 选完目标立刻压自己的伤害：返回 URGENT 让引擎先结算，再回来收尾
+	检(角色.p_action_end(二次上下文) == BattleRole.URGENT,
+		"第二次【魔力熵增】选完目标应立刻压入伤害（URGENT）")
 	引擎.run()
 	检(玩家.get_energy() == 0, "第二次【魔力熵增】也应支付 1 点水晶")
 	检(int(引擎.team_gem[GConst.BLUE]) == 2, "第二次没掉士气也应 +1 宝石，实际 %d"
@@ -781,7 +783,11 @@ func 跑() -> void:
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4103, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [3, 4],
 	})
-	检(not _取询问(1, 4104).is_empty(), "【熵变】选完后应继续问【魔力熵增】")
+	# 两个技能互不影响：熵变选完目标立刻结算，再去问魔力熵增
+	检(_伤害条数(4103) == 2 and _伤害条数(4104) == 0,
+		"【熵变】选完目标应立刻结算，不等【魔力熵增】：熵变 %d 条 / 魔力熵增 %d 条"
+		% [_伤害条数(4103), _伤害条数(4104)])
+	检(not _取询问(1, 4104).is_empty(), "【熵变】结算完才应继续问【魔力熵增】")
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4104, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [3],
 	})

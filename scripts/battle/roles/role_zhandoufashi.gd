@@ -227,16 +227,23 @@ func _fu_mo_da_ji() -> int:
 ## 两个技能都挂在通用「行动结束」钩子上：同一次行动结束可能同时满足
 ## （第 3 次行动本身就是额外行动），所以一次 p_action_end 里顺序跑完两者的询问，
 ## 最后统一把伤害压进状态栈（等回复期间不提前压伤害，避免下一次询问被夹在伤害结算中间）。
+## 两个技能互不影响：各自问完、各自选完目标就立刻把自己的伤害压栈结算，
+## 用 URGENT 先跑完这一份伤害再回来跑另一个（以前是两者都问完再一起压栈，
+## 会出现「熵变选完还要等魔力熵增选目标」的问题）。
 func p_action_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	var r1: int = _处理_shang_bian(ctx)
 	if r1 == WAIT:
 		return WAIT
+	# 熵变选完目标立刻结算；URGENT 回来后再轮到魔力熵增
+	if _推送熵变伤害():
+		return URGENT
 	var r2: int = _处理_mo_li_shang_zeng(ctx)
 	if r2 == WAIT:
 		return WAIT
-	_推送待结算伤害()
+	if _推送魔力熵增伤害():
+		return URGENT
 	return SUCCESS
 
 
@@ -390,33 +397,41 @@ func _处理_mo_li_shang_zeng(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 把本轮攒下的伤害一起压栈（先压 4103，再压 4104：后压先结算，4104 的士气对比不会被 4103 的伤害干扰）
-func _推送待结算伤害() -> void:
-	if not _shang_bian_待结算目标.is_empty():
-		var 目标: Array[int] = _shang_bian_待结算目标.duplicate()
-		_shang_bian_待结算目标.clear()
-		notice_skill(SHANG_BIAN, 目标)
-		for pid: int in 目标:
-			engine.push_harm({
-				"src": player.id, "dst": pid, "point": 1,
-				"cause": SHANG_BIAN, "type": GConst.HarmType.Magic, "is_active": false,
-			})
-		engine._broadcast_game()
-	if _mo_li_待结算目标 >= 0:
-		var dst_id: int = _mo_li_待结算目标
-		_mo_li_待结算目标 = -1
-		var dst: BattlePlayer = engine.p(dst_id)
-		if dst == null:
-			return
-		# 记录伤害前的队伍士气：p_harm_end 比较它判断「是否因此造成士气下降」
-		_mo_li_伤害前士气 = engine.team_morale[dst.color]
-		_mo_li_已压伤害目标 = dst_id
-		notice_skill(MO_LI_SHANG_ZENG, [dst_id])
+## 4103 熵变的伤害：选完目标就压栈（返回 true＝压了，调用方返回 URGENT 让它先结算）
+func _推送熵变伤害() -> bool:
+	if _shang_bian_待结算目标.is_empty():
+		return false
+	var 目标: Array[int] = _shang_bian_待结算目标.duplicate()
+	_shang_bian_待结算目标.clear()
+	notice_skill(SHANG_BIAN, 目标)
+	for pid: int in 目标:
 		engine.push_harm({
-			"src": player.id, "dst": dst_id, "point": 1,
-			"cause": MO_LI_SHANG_ZENG, "type": GConst.HarmType.Magic, "is_active": false,
+			"src": player.id, "dst": pid, "point": 1,
+			"cause": SHANG_BIAN, "type": GConst.HarmType.Magic, "is_active": false,
 		})
-		engine._broadcast_game()
+	engine._broadcast_game()
+	return true
+
+
+## 4104 魔力熵增的伤害：选完目标就压栈（返回 true＝压了，调用方返回 URGENT 让它先结算）
+func _推送魔力熵增伤害() -> bool:
+	if _mo_li_待结算目标 < 0:
+		return false
+	var dst_id: int = _mo_li_待结算目标
+	_mo_li_待结算目标 = -1
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst == null:
+		return false
+	# 记录伤害前的队伍士气：p_harm_end 比较它判断「是否因此造成士气下降」
+	_mo_li_伤害前士气 = engine.team_morale[dst.color]
+	_mo_li_已压伤害目标 = dst_id
+	notice_skill(MO_LI_SHANG_ZENG, [dst_id])
+	engine.push_harm({
+		"src": player.id, "dst": dst_id, "point": 1,
+		"cause": MO_LI_SHANG_ZENG, "type": GConst.HarmType.Magic, "is_active": false,
+	})
+	engine._broadcast_game()
+	return true
 
 
 ## 4104 伤害结算完：若这次伤害没有让目标队伍掉士气，我方战绩区 +1 宝石
