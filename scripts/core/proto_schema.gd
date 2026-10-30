@@ -204,6 +204,9 @@ const SUB: Dictionary = {
 		43: {"n": "extra_fate", "t": "u32"},
 		# 与 extra_attack_causes 一一对应的命格（额外行动切换列表用，0＝那一份不限命格）
 		44: {"n": "extra_attack_fates", "t": "u32", "r": true},
+		# 当前额外行动限定的系别（GConst.CardElement）：按钮写成「额外X系【攻击行动】」用。
+		# 以前引擎写了这个字段、字段表里却没有，真实联机时被丢掉，客户端只能按技能号查兜底表。
+		45: {"n": "extra_element", "t": "u32"},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {

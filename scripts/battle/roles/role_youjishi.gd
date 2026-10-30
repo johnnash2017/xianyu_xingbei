@@ -186,9 +186,11 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			return SUCCESS
 		_timeline_1_step = 1
 	if _timeline_1_step == 1:
-		# 直接选 1 个【子弹】（盖牌，本人可见牌面）：选中＋确定即发动，取消＝不发动
+		# 一步到位：直接选 1 个【子弹】（盖牌，本人可见牌面），选中＋确定即发动，取消＝不发动。
+		# 光/暗子弹「视为任一系别」也合并在同一次询问里：五个系别选项一直下发，
+		# 客户端只在选中光/暗子弹时点亮，普通子弹直接确定。
 		if not engine.has_reply():
-			询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.Cover)
+			询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.Cover, _视为系别选项())
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var cid: int = _取盖牌(r.get("card_ids", []))
@@ -196,19 +198,13 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			return _收尾_3802(ctx)
 		_子弹牌 = cid
 		_子弹系别 = _牌系别(cid)
-		_timeline_1_step = 2 if (_子弹系别 == GConst.CardElement.Light
-			or _子弹系别 == GConst.CardElement.Darkness) else 3
-	if _timeline_1_step == 2:
-		# 光 / 暗子弹：视为任一系别（固定五系选项，选一个才结算）
-		if not engine.has_reply():
-			询问(player.id, YUAN_SU_SHE_JI, 0, 0, GConst.CardSource.Hand, _视为系别选项(), 0, "", [], true, 1)
-			return WAIT
-		var r3: Dictionary = take_skill_reply_full()
-		var args3: Array = r3.get("args", [])
-		var 视为: int = int(args3[0]) if not args3.is_empty() else 0
-		if not _视为系别表().has(视为):
-			return _收尾_3802(ctx)
-		_子弹系别 = 视为
+		if _子弹系别 == GConst.CardElement.Light or _子弹系别 == GConst.CardElement.Darkness:
+			# 光/暗必须选一种视为系别（客户端在选中光/暗子弹前会把选项置灰、不让确定）
+			var args: Array = r.get("args", [])
+			var 视为: int = int(args[0]) if not args.is_empty() else 0
+			if not _视为系别表().has(视为):
+				return _收尾_3802(ctx)
+			_子弹系别 = 视为
 		_timeline_1_step = 3
 	if _timeline_1_step == 3:
 		return _结算子弹(ctx)
@@ -281,9 +277,13 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if not _子弹待命中:
 		return SUCCESS
 	if not engine.has_reply():
-		# 阶段里直接问「选 1 名角色」（水系提示 3 / 地系提示 4），目标不限敌我
+		# 直接问「选 1 名角色」（水系提示 3 / 地系提示 4），目标不限敌我。
+		# 头像预览：水系 +1 治疗、地系 1 点法术伤害，画在所有候选角色头上
 		询问(player.id, YUAN_SU_SHE_JI, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-			2 if _子弹系别 == GConst.CardElement.Water else 3)
+			2 if _子弹系别 == GConst.CardElement.Water else 3,
+			-1, [], -1, {}, 1,
+			GConst.预览类型_治疗 if _子弹系别 == GConst.CardElement.Water else GConst.HarmType.Magic,
+			false, _全部角色())
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var 目标: int = int(harm.get("dst", -1))
@@ -357,23 +357,14 @@ func p_after_special(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _附魔_step >= STEP_DONE:
 		return SUCCESS
-	if _附魔_step == 0:
-		# 发动条件：提炼出了能量、能量够付、没有【子弹】（盖牌区空）、手里有牌可扣置
-		var 可发动: bool = _提炼获得能量 >= 1 and player.get_energy() >= 1 \
-			and player.cover_count() == 0 and player.can_add_cover_cards(1) \
-			and not player.hand_cards.is_empty()
-		if not 可发动:
-			_提炼待补子弹 = false
-			return SUCCESS
-		# 响应技能先问是否发动
-		if not engine.has_reply():
-			询问(player.id, FU_MO_ZHI_SHU, 0, 0)
-			return WAIT
-		if not take_skill_reply():
-			_提炼待补子弹 = false
-			return SUCCESS
-		_附魔_step = 1
-	# 选 1 张手牌面朝下作为【子弹】
+	# 发动条件：提炼出了能量、能量够付、没有【子弹】（盖牌区空）、手里有牌可扣置
+	var 可发动: bool = _提炼获得能量 >= 1 and player.get_energy() >= 1 \
+		and player.cover_count() == 0 and player.can_add_cover_cards(1) \
+		and not player.hand_cards.is_empty()
+	if not 可发动:
+		_提炼待补子弹 = false
+		return SUCCESS
+	# 一步到位：直接选 1 张手牌面朝下作为【子弹】，选中＋确定即发动，取消＝不发动
 	if not engine.has_reply():
 		询问(player.id, FU_MO_ZHI_SHU, 1, 0, GConst.CardSource.Hand)
 		return WAIT
@@ -427,3 +418,11 @@ func _取手牌(ids: Array) -> int:
 func _牌系别(card_id: int) -> int:
 	var card: GCard = Data.get_card(card_id)
 	return card.element_enum() if card != null else 0
+
+
+## 全部角色 id（3802 水 / 地选目标时，头像预览画在所有候选角色头上）
+func _全部角色() -> Array:
+	var out: Array = []
+	for pid: int in engine.players:
+		out.append(pid)
+	return out

@@ -85,6 +85,17 @@ func _取法术牌() -> GCard:
 	return null
 
 
+## 二级技能栏里的选项是不是全部置灰（元素射击的「视为系别」用）
+func _选项全灰(窗: Control) -> bool:
+	var 项们: Array = 窗.get("_二级选项")
+	if 项们.is_empty():
+		return false
+	for 项: Dictionary in 项们:
+		if bool(项.get("可用", true)):
+			return false
+	return true
+
+
 func _取技能(表: Array, id: int) -> Dictionary:
 	for sk: Dictionary in 表:
 		if int(sk.get("id", 0)) == id:
@@ -210,14 +221,16 @@ func _重置战斗() -> void:
 
 
 ## 3802：走完「是否发动 → 选子弹」两步询问（返回第二步的询问）
-func _发动3802(ctx: Dictionary, 子弹: GCard) -> Dictionary:
+func _发动3802(ctx: Dictionary, 子弹: GCard, 视为: int = 0) -> Dictionary:
 	检(角色.p_timeline_1(ctx) == BattleRole.WAIT, "有【子弹】时主动攻击宣告应直接问选【子弹】")
 	var 问: Dictionary = _取询问(1, 3802)
 	检(not 问.is_empty(), "没有下发【元素射击】询问")
 	var 参数: Array = 问.get("args", [])
 	检(参数.size() >= 3 and int(参数[0]) == 1 and int(参数[2]) == GConst.CardSource.Cover,
 		"【元素射击】应一步到位（直接要求选 1 张盖牌子弹）：%s" % str(参数))
-	_应答([1], [子弹.id])
+	检(参数.size() > 3 and int(参数[3]) == 5,
+		"【元素射击】应同时下发 5 个视为系别选项（光/暗子弹用）：%s" % str(参数))
+	_应答([1] if 视为 <= 0 else [视为], [子弹.id])
 	return 问
 
 
@@ -430,18 +443,17 @@ func 跑() -> void:
 	检(_找伤害(3802, 对手甲.id).is_empty(), "地系【子弹】不应把伤害直接给被攻击者")
 	检(角色.p_timeline_2_hit(地上下文) == BattleRole.SUCCESS, "地系【子弹】已结算过，重入不应再加伤害")
 
-	# 光系子弹：选视为水系 → 命中 +1 治疗
+	# 光系子弹：同一次询问里选子弹＋视为水系 → 命中 +1 治疗
 	_重置战斗()
 	_放子弹(光子弹)
 	var 光上下文: Dictionary = _攻击上下文(火攻击牌, 1, 3, true)
 	检(角色.p_timeline_1(光上下文) == BattleRole.WAIT, "有光系【子弹】时应直接问选【子弹】")
-	_应答([1], [光子弹.id])
-	检(角色.p_timeline_1(光上下文) == BattleRole.WAIT, "光系【子弹】应继续问视为哪一种系别")
 	var 光问: Dictionary = _取询问(1, 3802)
 	var 光参数: Array = 光问.get("args", [])
-	检(光参数.size() > 3 and int(光参数[3]) == 5, "光系【子弹】应下发 5 个固定系别选项：%s" % str(光参数))
+	检(光参数.size() > 3 and int(光参数[3]) == 5,
+		"光/暗【子弹】的视为系别选项应与选子弹在同一次询问里：%s" % str(光参数))
 	检((光问.get("notes", []) as Array).size() == 5, "光系【子弹】的 5 个选项应都有文案")
-	_应答([GConst.CardElement.Water])
+	_应答([GConst.CardElement.Water], [光子弹.id])
 	检(角色.p_timeline_1(光上下文) == BattleRole.SUCCESS, "选完视为系别后应正常收尾")
 	检(玩家.cover_count() == 0, "光系【子弹】也应按移除 1 个子弹结算")
 	检(引擎.deck.discard.has(光子弹.id), "光系【子弹】移除后应进入弃牌堆")
@@ -456,9 +468,7 @@ func 跑() -> void:
 	var 暗上下文: Dictionary = _攻击上下文(火攻击牌, 1, 3, true)
 	角色.p_timeline_1(暗上下文)
 	检(角色.p_timeline_1(暗上下文) == BattleRole.WAIT, "暗系【子弹】应先问选【子弹】")
-	_应答([1], [暗子弹.id])
-	检(角色.p_timeline_1(暗上下文) == BattleRole.WAIT, "暗系【子弹】应继续问视为哪一种系别")
-	_应答([GConst.CardElement.Thunder])
+	_应答([GConst.CardElement.Thunder], [暗子弹.id])
 	检(角色.p_timeline_1(暗上下文) == BattleRole.SUCCESS, "暗系子弹选完视为系别后应正常收尾")
 	检(int(暗上下文.get("hit_rate", -1)) == GConst.HitRate.NoReattack,
 		"暗系子弹视为雷系后本次攻击应无法应战")
@@ -469,11 +479,9 @@ func 跑() -> void:
 	var 取消上下文: Dictionary = _攻击上下文(火攻击牌, 1, 3, true)
 	角色.p_timeline_1(取消上下文)
 	检(角色.p_timeline_1(取消上下文) == BattleRole.WAIT, "光系【子弹】应先问选【子弹】")
-	_应答([1], [光子弹.id])
-	检(角色.p_timeline_1(取消上下文) == BattleRole.WAIT, "光系【子弹】应继续问视为哪一种系别")
-	_应答([])
-	检(角色.p_timeline_1(取消上下文) == BattleRole.SUCCESS, "取消视为系别应按不发动收尾")
-	检(玩家.cover_count() == 1, "取消视为系别不应移除【子弹】")
+	_应答([], [光子弹.id])
+	检(角色.p_timeline_1(取消上下文) == BattleRole.SUCCESS, "光/暗子弹没选视为系别应按不发动收尾")
+	检(玩家.cover_count() == 1, "没选视为系别不应移除【子弹】")
 
 	# 子弹系别独立于 3805 的攻击牌系别（A3）：攻击牌视为风系，火系子弹仍 +1 伤害
 	_重置战斗()
@@ -767,22 +775,18 @@ func 跑() -> void:
 	# ============================================================
 	# 3804 附魔之术
 	# ============================================================
-	# 提炼时没有子弹：先问是否发动，再选 1 张手牌扣置，扣 1 能量
+	# 提炼时没有子弹：直接问选 1 张手牌扣置（选中＋确定即发动），扣 1 能量
 	_重置战斗()
 	玩家.hand_cards = [法术牌.id]
 	玩家.set_gem(1)   # 模拟提炼刚拿到的 1 点能量
 	检(角色.v_extract([1, 0], 1, 0, []) == GConst.GE_SUCCESS, "常规提炼应通过校验")
 	发送记录.clear()
 	检(角色.p_after_special({"player": 1, "special_action": true}) == BattleRole.WAIT,
-		"提炼后没有【子弹】时应先问是否发动【附魔之术】")
-	var 附魔问一: Dictionary = _取询问(1, 3804)
-	检(not 附魔问一.is_empty(), "没有下发【附魔之术】发动询问")
-	_应答([1])
-	检(角色.p_after_special({"player": 1, "special_action": true}) == BattleRole.WAIT,
-		"确认发动后应继续问选 1 张手牌扣置")
-	var 附魔问二: Dictionary = _取询问(1, 3804)
-	var 附魔参数: Array = 附魔问二.get("args", [])
-	检(附魔参数.size() >= 1 and int(附魔参数[0]) == 1, "【附魔之术】第二步应要求 1 张手牌：%s" % str(附魔参数))
+		"提炼后没有【子弹】时应直接问选 1 张手牌扣置")
+	var 附魔问: Dictionary = _取询问(1, 3804)
+	检(not 附魔问.is_empty(), "没有下发【附魔之术】询问")
+	var 附魔参数: Array = 附魔问.get("args", [])
+	检(附魔参数.size() >= 1 and int(附魔参数[0]) == 1, "【附魔之术】应要求 1 张手牌：%s" % str(附魔参数))
 	_应答([1], [法术牌.id])
 	检(角色.p_after_special({"player": 1, "special_action": true}) == BattleRole.SUCCESS,
 		"选完手牌后【附魔之术】应正常收尾")
@@ -839,12 +843,8 @@ func 跑() -> void:
 		"action_id": GConst.SpecialAction.Extract, "args": [1, 0], "card_ids": [], "dst_ids": [],
 	})
 	引擎.run()
-	检(引擎._await_id == 1, "完整提炼流水线里应问是否发动【附魔之术】（等待 %s）" % str(引擎._await_id))
+	检(引擎._await_id == 1, "完整提炼流水线里应直接问选 1 张手牌扣置（等待 %s）" % str(引擎._await_id))
 	检(not _取询问(1, 3804).is_empty(), "完整提炼流水线没有下发【附魔之术】询问")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3804, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
-	})
-	检(引擎._await_id == 1, "确认发动后应继续问选 1 张手牌扣置（等待 %s）" % str(引擎._await_id))
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 3804, "src_id": 1, "args": [1], "card_ids": [法术牌.id], "dst_ids": [],
 	})
@@ -852,6 +852,60 @@ func 跑() -> void:
 	检(玩家.cover_count() == 1 and 玩家.cover_cards.has(法术牌.id),
 		"完整提炼流水线里扣置的牌应成为【子弹】：%s" % str(玩家.cover_cards))
 	检(int(引擎.team_gem[GConst.BLUE]) == 0, "提炼应已把战绩区 1 宝石取走")
+
+	# 客户端：3803 按钮文案（与修罗连斩同口径）＋ 3802 水 / 地选目标的头像预览
+	var 窗: Control = (load("res://scenes/BattleUIMobile.tscn") as PackedScene).instantiate()
+	get_tree().root.add_child(窗)
+	await 等帧(1)
+	检(str(窗.call("_额外行动按钮文本", GConst.技能_二重剑影, GConst.ActionType.Attack,
+		GConst.CardElement.Wind)) == "额外风系【攻击行动】",
+		"二重剑影按钮应只写「额外风系【攻击行动】」：%s" % str(窗.call("_额外行动按钮文本",
+			GConst.技能_二重剑影, GConst.ActionType.Attack, GConst.CardElement.Wind)))
+	窗.set("_mode", 3)
+	窗.set("_skill_ask_id", GConst.技能_元素射击SORA)
+	窗.set("_pending", {"preview_base": 1, "preview_kind": GConst.预览类型_治疗, "preview_ids": [1, 2]})
+	var 提示: Dictionary = 窗.call("_预览伤害头像提示")
+	检(str(提示.get(1, "")) == "+1 治疗", "水系选目标应预览「+1 治疗」：%s" % str(提示))
+	窗.set("_pending", {"preview_base": 1, "preview_kind": GConst.HarmType.Magic, "preview_ids": [1]})
+	提示 = 窗.call("_预览伤害头像提示")
+	检(str(提示.get(1, "")) == "1 点法术伤害", "地系选目标应预览「1 点法术伤害」：%s" % str(提示))
+	窗.queue_free()
+	await 等帧(1)
+
+	# 客户端：选子弹与视为系别合成一次询问 —— 选项默认置灰，只有选中光/暗子弹才亮
+	_重置战斗()
+	_放子弹(水子弹)
+	_放子弹(光子弹)
+	var 合成上下文: Dictionary = _攻击上下文(水攻击牌, 1, 3, true)
+	角色.p_timeline_1(合成上下文)
+	var 合成命令: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	Logic.my_player_id = 1
+	var 旧盖牌: Array[GCard] = Data.cover_cards
+	var 旧盖牌实例: Array[int] = Data.cover_iids
+	Data.cover_cards = [Data.get_card(水子弹.id), Data.get_card(光子弹.id)] as Array[GCard]
+	Data.cover_iids = [水子弹.id, 光子弹.id]
+	var 窗2: Control = (load("res://scenes/BattleUIMobile.tscn") as PackedScene).instantiate()
+	get_tree().root.add_child(窗2)
+	await 等帧(1)
+	窗2.call("_on_command", {"cmd_type": GConst.CmdType.Respond, "commands": 合成命令})
+	await 等帧(1)
+	检((窗2.get("_二级选项") as Array).size() == 5, "元素射击应把 5 个视为系别选项摆出来")
+	检(_选项全灰(窗2), "还没选子弹时 5 个视为系别选项应全灰")
+	检(bool(窗2.call("_确定不可用")), "还没选子弹时不能点确定")
+	窗2.call("_on_card_clicked", 水子弹.id)
+	await 等帧(1)
+	检(not bool(窗2.call("_选中子弹是光暗")), "普通子弹不应被认作光/暗")
+	检(_选项全灰(窗2), "选中普通子弹时视为系别选项应仍全灰")
+	检(not bool(窗2.call("_确定不可用")), "普通子弹选中后应可直接确定")
+	窗2.call("_on_card_clicked", 光子弹.id)
+	await 等帧(1)
+	检(bool(窗2.call("_选中子弹是光暗")), "光子弹应被认作光/暗")
+	检(not _选项全灰(窗2), "选中光子弹后 5 个视为系别选项应点亮")
+	检(bool(窗2.call("_确定不可用")), "光子弹还没选视为系别时不能确定")
+	窗2.queue_free()
+	await 等帧(1)
+	Data.cover_cards = 旧盖牌
+	Data.cover_iids = 旧盖牌实例
 
 	# 收尾：清掉本次用例留下的等待 / 状态
 	引擎._states.clear()

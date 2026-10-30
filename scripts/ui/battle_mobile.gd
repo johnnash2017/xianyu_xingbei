@@ -2456,6 +2456,10 @@ func _进入技能询问() -> void:
 		# 【天使之歌】：询问一到就把二级技能栏摆出来（此刻只有技能本体一颗），
 		# 选完目标再由 _刷新基础效果选项 把该目标面前的基础效果填进去 —— 不用先按一次「确定」
 		_进入二级技能栏(_skill_ask_id, null, [])
+	# 【元素射击】把「选子弹」与「视为系别」合成一次询问：五个系别选项先全部置灰，
+	# 选中光/暗子弹后才点亮（普通子弹不需要选系别，直接按「确定」）
+	if _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
+		_刷新视为系别可用()
 	# 攻击结束响应期间：已获得但还没用的攻击行动摆成红色快捷按钮，只用来显示「有几个额外行动」；
 	# 按新规则响应阶段不能使用行动，所以这些按钮一律置灰不可点，真正使用留到响应结束后的额外行动阶段。
 	var 额外攻击: Array = _pending.get("extra_attack_causes", [])
@@ -2766,7 +2770,10 @@ func _额外行动按钮文本(cause: int, allow_action: int = 0, element: int =
 		底 = "额外【%s】" % 行动
 	else:
 		底 = "额外%s【%s】" % [系前缀, 行动]
-	return 底 if 特性.is_empty() else 底 + "：" + 特性
+	# 系别前缀已经把限制说清楚了的不再接特性（如 3803 二重剑影，与修罗连斩同一口径）
+	if 特性.is_empty() or GConst.额外行动按钮不接特性.has(cause):
+		return 底
+	return 底 + "：" + 特性
 
 
 ## 攻击额外行动里本地选中的 cause：只在本次确实要出手时随行动一起提交（服务端据此换队消耗）
@@ -4060,6 +4067,9 @@ func _on_card_clicked(card_id: int) -> void:
 				_sel_players.erase(pid)
 	刷新手牌()
 	刷新盖牌()
+	# 【元素射击】选/换【子弹】后，刷新「视为系别」选项的可点状态（只有光/暗子弹才点亮）
+	if _mode == 3 and _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
+		_刷新视为系别可用()
 	# 换了牌就要重算「哪些敌人能打」：攻击牌选出后目标才亮
 	刷新选中面板()
 	_更新按键()
@@ -7001,6 +7011,9 @@ func _刷新交互() -> void:
 	var 基础可点: bool = _mode == 4 and _skill_card_source == GConst.CardSource.BasicEffect
 	for 面板: 战斗玩家面板 in _面板列表:
 		面板.set_基础牌可点(基础可点)
+	# 【元素射击】选/取消子弹后，刷新「视为系别」选项的可点状态
+	if _mode == 3 and _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
+		_刷新视为系别可用()
 
 
 ## 点了场上的某枚基础效果图标（CardSource.BasicEffect 要选的就是它）：连它所在的玩家一起记下来
@@ -7379,11 +7392,16 @@ func _预览伤害头像提示() -> Dictionary:
 		目标表 = _pending.get("dst_ids", [])
 	if 目标表.is_empty():
 		return out
-	var 词: String = "法术伤害" if int(_pending.get("preview_kind", 0)) == GConst.HarmType.Magic else "攻击伤害"
+	var 类型: int = int(_pending.get("preview_kind", 0))
 	for 目标: Variant in 目标表:
 		var pid: int = int(目标)
 		if pid >= 0:
-			out[pid] = "%d 点%s" % [伤害, 词]
+			if 类型 == GConst.预览类型_治疗:
+				out[pid] = "+%d 治疗" % 伤害
+			elif 类型 == GConst.HarmType.Magic:
+				out[pid] = "%d 点法术伤害" % 伤害
+			else:
+				out[pid] = "%d 点攻击伤害" % 伤害
 	return out
 
 
@@ -8692,6 +8710,37 @@ func _更新按键() -> void:
 	BtnResign.disabled = not _模式可放弃行动()
 
 
+## 【元素射击】合成的询问：只有选中的【子弹】是光/暗时才让选「视为系别」
+func _选中子弹是光暗() -> bool:
+	for cid: int in _sel_cards:
+		var 牌: GCard = Data.get_card(cid)
+		if 牌 == null:
+			continue
+		var 元: int = 牌.element_enum()
+		if 元 == GConst.CardElement.Light or 元 == GConst.CardElement.Darkness:
+			return true
+	return false
+
+
+## 【元素射击】的「视为系别」选项：普通【子弹】不需要选系别 → 整排置灰；
+## 选中光/暗【子弹】后才点亮。切回普通子弹时把之前选过的系别作废。
+func _刷新视为系别可用() -> void:
+	var 光暗: bool = _选中子弹是光暗()
+	for 项: Dictionary in _二级选项:
+		var 钮: Variant = 项.get("按钮")
+		if not is_instance_valid(钮):
+			continue
+		(钮 as 技能按钮).设置选项可用(光暗)
+		项["可用"] = 光暗
+	if not 光暗 and _二级选中 >= 0:
+		for 项: Dictionary in _二级选项:
+			var 钮2: Variant = 项.get("按钮")
+			if is_instance_valid(钮2):
+				(钮2 as 技能按钮).设置选中(false)
+		_二级选中 = -1
+		_已选参数.clear()
+
+
 func _确定不可用() -> bool:
 	# 攻击结束响应里选中额外攻击：靠点手牌 + 敌方头像发起，不靠确定；
 	# 迅捷赐福例外：它只是移除赐福获得额外攻击行动，点确定提交。
@@ -8742,6 +8791,12 @@ func _确定不可用() -> bool:
 			return false
 		if not _是技能询问:
 			return true
+		# 【元素射击】把「选子弹」与「视为系别」合成一次询问：
+		# 普通【子弹】选 1 张就能确定；光/暗【子弹】必须先选一种视为系别
+		if _skill_ask_id == GConst.技能_元素射击SORA and _二级栏:
+			if _sel_cards.is_empty():
+				return true
+			return _选中子弹是光暗() and _二级选中 < 0
 		# 「需盖牌系别」的询问（如魔弓【魔贯冲击】）：盖牌区里已经没有该系的牌可移除 → 发动不了，
 		# 「确定」灰着（盖牌区照样摆着给他看，只能按「取消」放弃）
 		var 需系: int = _需盖牌系别()
