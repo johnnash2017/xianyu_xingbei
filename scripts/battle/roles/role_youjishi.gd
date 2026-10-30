@@ -86,6 +86,15 @@ func v_attack_skill(action: Dictionary) -> int:
 	return GConst.GE_SUCCESS
 
 
+## 3805「视为风系」：额外行动的白名单校验要按风系攻击牌放行（如 3803 二重剑影给的同系攻击行动）。
+## 3803+3805 联动踩过：先 3805 出风系牌 → 3803 给「只能用风系攻击牌」的额外攻击行动 →
+## 再用 3805 把地系牌视为风系打出去，服务端按真实牌（地系）驳回。
+func 技能视为系别(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) == JING_LING_DE_JIAN_WU:
+		return GConst.CardElement.Wind
+	return 0
+
+
 func p_attack_skill(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])

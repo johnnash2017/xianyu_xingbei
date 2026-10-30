@@ -917,6 +917,45 @@ func 跑() -> void:
 	Data.cover_cards = 旧盖牌
 	Data.cover_iids = 旧盖牌实例
 
+	# 3803 + 3805 联动：3803 给「只能用风系攻击牌」的额外攻击行动，
+	# 3805 能把任意攻击牌视为风系 —— 不能再按真实牌（地系）的系别驳回
+	var 地攻击牌: GCard = _取攻击牌(GConst.CardElement.Earth)
+	检(地攻击牌 != null, "卡库找不到地系攻击牌")
+	if 地攻击牌 != null:
+		var 风行动: Dictionary = {
+			"cause": GConst.技能_二重剑影, "allow_action": GConst.ActionType.Attack,
+			"element": GConst.CardElement.Wind, "cards": [], "targets": [], "direct": true,
+		}
+		检(引擎.校验额外行动限制(玩家, 风行动, GConst.ActionType.Attack, [地攻击牌.id], [3])
+			!= GConst.GE_SUCCESS, "3803 的额外行动用真实地系牌（非技能）应被驳回")
+		检(角色.技能视为系别({"action_id": GConst.技能_精灵的剑舞}) == GConst.CardElement.Wind,
+			"3805 应声明本次出牌视为风系")
+		检(角色.技能视为系别({"action_id": GConst.技能_精灵赠礼}) == 0, "其它技能不应改变出牌系别")
+		检(引擎.校验额外行动限制(玩家, 风行动, GConst.ActionType.Attack, [地攻击牌.id], [3],
+			true, 角色.技能视为系别({"action_id": GConst.技能_精灵的剑舞})) == GConst.GE_SUCCESS,
+			"3805 视为风系时，3803 的额外行动应按视为系别放行")
+		# 走一遍真实行动流水线：额外行动阶段用 3805 出地系牌，应进入对手应战而不是被驳回
+		_重置战斗()
+		玩家.hand_cards = [地攻击牌.id]
+		玩家.set_gem(1)
+		引擎.行动额外 = true
+		引擎.行动允许 = GConst.ActionType.Attack
+		引擎.行动额外来源 = GConst.技能_二重剑影
+		引擎.当前额外行动数据 = 风行动.duplicate()
+		发送记录.clear()
+		引擎.resolve_action(GConst.ActionType.AttackSkill, {
+			"src_id": 1, "action_id": GConst.技能_精灵的剑舞,
+			"card_ids": [地攻击牌.id], "dst_ids": [3],
+		})
+		引擎.run()
+		var 有驳回3805: bool = false
+		for r: Dictionary in 发送记录:
+			if int(r.get("msg", 0)) == GConst.Msg.ErrorInput:
+				有驳回3805 = true
+				break
+		检(not 有驳回3805, "3805 视为风系出地系牌不应被 3803 的额外行动驳回")
+		检(引擎._await_id == 3, "3805 视为风系出牌后应进入对手应战（等待 %s）" % str(引擎._await_id))
+
 	# 收尾：清掉本次用例留下的等待 / 状态
 	引擎._states.clear()
 	引擎._清空等待()

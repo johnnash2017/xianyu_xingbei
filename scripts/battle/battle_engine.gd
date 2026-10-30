@@ -2999,18 +2999,24 @@ func 行动计数(pid: int) -> Dictionary:
 ## 技能行动（技能栏里的招式，如 10703 魔弹融合）读 spec.skill_cards，缺省沿用 cards：
 ## 同一份额外行动里，普通出牌与技能招式可用的牌不一定是同一批。
 func 校验额外行动限制(cur: BattlePlayer, 行动: Dictionary, action_type: int,
-		card_ids: Array, dst_ids: Array, is_skill: bool = false) -> int:
+		card_ids: Array, dst_ids: Array, is_skill: bool = false, 视为系别: int = 0) -> int:
 	if cur == null or 行动.is_empty():
 		return GConst.GE_SUCCESS
 	if not GConst.放行动作(action_type, int(行动.get("allow_action", action_type))):
 		return GConst.GE_INVALID_ACTION
 	var 白名单: Array
+	# 技能把这次出牌视为某系（如 3805 精灵的剑舞 = 风）：系别白名单不再按真实牌面卡，
+	# 牌本身是否合法由技能自己的 v_* 校验（3803 同系额外攻击 + 3805 视为风系 的联动踩过）。
+	# 技能自己给了 skill_cards 名单的仍按名单校验。
+	var 按视为系别放行: bool = is_skill and 视为系别 > 0 and not 行动.has("skill_cards")
 	if is_skill and 行动.has("skill_cards"):
 		白名单 = 行动.get("skill_cards", [])
 	else:
 		白名单 = 额外行动出牌白名单(行动)
 	for c: Variant in card_ids:
 		# 提交上来的是实例号，规格里的白名单是牌面：比较前先折回牌面（克隆牌也按同一张牌面算）
+		if 按视为系别放行:
+			continue
 		if not 白名单.is_empty() and not 白名单.has(GConst.牌号(int(c))):
 			return GConst.GE_INVALID_CARDID
 	var 目标表: Array = 行动.get("targets", [])
@@ -4747,10 +4753,14 @@ class SkillRun:
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
 				e._回当前行动阶段()
 				return BattleEngine.CONTINUE
-			# 额外行动的出牌 / 目标限制（F2）：这份行动自带的规格同样约束技能行动里的牌与目标
+			# 额外行动的出牌 / 目标限制（F2）：这份行动自带的规格同样约束技能行动里的牌与目标。
+			# 技能把这次出牌视为某系时（如 3805 精灵的剑舞＝风系），系别白名单按视为系别放行。
+			var 视为系别2: int = 0
+			if 额外 and cur.role != null:
+				视为系别2 = int(cur.role.call("技能视为系别", action))
 			if e.校验额外行动限制(cur, e._额外行动数据(cur, 额外来源) if 额外 else {},
 					_基本种类(), action.get("card_ids", []),
-					action.get("dst_ids", []), true) != GConst.GE_SUCCESS:
+					action.get("dst_ids", []), true, 视为系别2) != GConst.GE_SUCCESS:
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
 				e._回当前行动阶段()
 				return BattleEngine.CONTINUE

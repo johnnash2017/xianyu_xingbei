@@ -403,6 +403,13 @@ func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, c
 		提示(skill_id, 序号, n, 收牌人id, 额外), targets, 预览基准, 预览类型, 保留倒计时, 预览目标, 可圣光, 预览伤害, cover_need)
 
 
+## 技能行动提交的牌本次「视为」哪个系别（如 3805 精灵的剑舞 = 风系）。
+## 0＝按牌面本身（默认）。额外行动的「该系攻击牌」白名单校验据此放行：
+## 视为系别的技能不再按真实牌的系别驳回（牌本身是否合法由技能自己的 v_* 校验）。
+func 技能视为系别(_action: Dictionary) -> int:
+	return 0
+
+
 ## 读取技能询问回复：返回 true=发动、false=放弃
 func take_skill_reply() -> bool:
 	var r: Dictionary = engine.take_reply()
