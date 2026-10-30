@@ -133,6 +133,15 @@ func _播报次数(技能号: int) -> int:
 	return n
 
 
+## 在行动命令列表里找某个技能的按钮，返回那条命令（没有返回空字典）
+func _找技能命令(命令列表: Array, 技能号: int) -> Dictionary:
+	for 命令: Dictionary in 命令列表:
+		var 参数: Array = 命令.get("args", [])
+		if not 参数.is_empty() and int(参数[0]) == 技能号:
+			return 命令
+	return {}
+
+
 ## 某技能最近一次 Skill 播报里的显示名（服务端下发的 name 覆盖；没有 name 返回空）
 func _播报名(技能号: int) -> String:
 	var 名: String = ""
@@ -980,6 +989,30 @@ func 跑() -> void:
 				break
 		检(not 有驳回3805, "3805 视为风系出地系牌不应被 3803 的额外行动驳回")
 		检(引擎._await_id == 3, "3805 视为风系出牌后应进入对手应战（等待 %s）" % str(引擎._await_id))
+		# 要求暗系的额外行动：3805 会把牌变成风系，必须被驳回，技能按钮也要置灰
+		var 暗行动: Dictionary = 风行动.duplicate()
+		暗行动["element"] = GConst.CardElement.Darkness
+		检(引擎.校验额外行动限制(玩家, 暗行动, GConst.ActionType.Attack, [地攻击牌.id], [3],
+			true, 角色.技能视为系别({"action_id": GConst.技能_精灵的剑舞})) != GConst.GE_SUCCESS,
+			"额外行动要求暗系时，3805 视为风系应被驳回")
+		_重置战斗()
+		玩家.hand_cards = [地攻击牌.id]
+		玩家.set_gem(1)
+		引擎.行动额外 = true
+		引擎.行动允许 = GConst.ActionType.Attack
+		引擎.行动额外来源 = GConst.技能_二重剑影
+		引擎.当前额外行动数据 = 暗行动.duplicate()
+		var 暗系技能: Dictionary = _找技能命令(
+			引擎.action_commands(1, GConst.ActionType.Attack, true, true, false, GConst.技能_二重剑影),
+			GConst.技能_精灵的剑舞)
+		检(not 暗系技能.is_empty() and not bool(暗系技能.get("enabled", true)),
+			"额外行动要求暗系时，精灵的剑舞应置灰：%s" % str(暗系技能))
+		引擎.当前额外行动数据 = 风行动.duplicate()
+		var 风系技能: Dictionary = _找技能命令(
+			引擎.action_commands(1, GConst.ActionType.Attack, true, true, false, GConst.技能_二重剑影),
+			GConst.技能_精灵的剑舞)
+		检(not 风系技能.is_empty() and bool(风系技能.get("enabled", true)),
+			"额外行动要求风系时，精灵的剑舞应保持可点：%s" % str(风系技能))
 
 	# 收尾：清掉本次用例留下的等待 / 状态
 	引擎._states.clear()

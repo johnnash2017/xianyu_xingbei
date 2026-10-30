@@ -1861,10 +1861,20 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			var 系别: int = int(额外数据.get("element", 0))
 			if 系别 > 0:
 				cmds[0]["extra_element"] = 系别
+		# 额外行动的系别限制：会改系别的技能（3805 视为风系）和这份行动要求的系别不符时置灰，
+		# 否则玩家点了只会被服务端驳回（3803 要求暗系时精灵的剑舞还能点，踩过）。
+		var 额外系别: int = 0
+		if extra and extra_cause > 0:
+			额外系别 = int(_额外行动数据(pl, extra_cause).get("element", 0))
 		for sk: Dictionary in pl.role.available_skills():
 			# 技能一律下发（界面默认全摆出来），当前不可用的只把 enabled 置 false —— 客户端据此置灰、
 			# 点不动，玩家能看见「这个技能存在、但现在用不了」，而不是整条消失
 			var 技能可用: bool = bool(sk.get("enabled", true))
+			if 额外系别 > 0:
+				var 视为: int = int(pl.role.call("技能视为系别",
+					{"action_id": int(sk.get("id", 0)), "src_id": pid}))
+				if 视为 > 0 and 视为 != 额外系别:
+					技能可用 = false
 			# 「启动」技能每回合只能发动一个：本回合已发动过就置灰
 			# （「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不受这条限制）
 			if pl.boot_skill_used and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
@@ -3005,19 +3015,30 @@ func 校验额外行动限制(cur: BattlePlayer, 行动: Dictionary, action_type
 	if not GConst.放行动作(action_type, int(行动.get("allow_action", action_type))):
 		return GConst.GE_INVALID_ACTION
 	var 白名单: Array
-	# 技能把这次出牌视为某系（如 3805 精灵的剑舞 = 风）：系别白名单不再按真实牌面卡，
-	# 牌本身是否合法由技能自己的 v_* 校验（3803 同系额外攻击 + 3805 视为风系 的联动踩过）。
-	# 技能自己给了 skill_cards 名单的仍按名单校验。
-	var 按视为系别放行: bool = is_skill and 视为系别 > 0 and not 行动.has("skill_cards")
+	var 显式牌表: Array = 行动.get("cards", [])
+	var 行动系: int = int(行动.get("element", 0))
+	var 行动命格: int = int(行动.get("card_fate", 0))
+	# 技能把这次出牌视为某系（如 3805 精灵的剑舞 = 风）：按「视为后的系别」过规则，
+	# 不能整段跳过 —— 额外行动要求暗系时，把牌变成风系打出去仍然违规（3803 踩过）。
+	# 只有规则型白名单（系别 / 命格）才按视为算；显式 cards 名单 / skill_cards 仍按真实牌面。
+	var 按视为: bool = is_skill and 视为系别 > 0 and not 行动.has("skill_cards") and 显式牌表.is_empty()
 	if is_skill and 行动.has("skill_cards"):
 		白名单 = 行动.get("skill_cards", [])
 	else:
 		白名单 = 额外行动出牌白名单(行动)
 	for c: Variant in card_ids:
 		# 提交上来的是实例号，规格里的白名单是牌面：比较前先折回牌面（克隆牌也按同一张牌面算）
-		if 按视为系别放行:
+		var 面: int = GConst.牌号(int(c))
+		if 按视为:
+			var 卡: GCard = Data.get_card(面)
+			if 卡 == null or not 卡.is_attack():
+				return GConst.GE_INVALID_CARDID
+			if 行动系 > 0 and 视为系别 != 行动系:
+				return GConst.GE_INVALID_CARDID
+			if 行动命格 > 0 and 卡.fate_pattern_enum() != 行动命格:
+				return GConst.GE_INVALID_CARDID
 			continue
-		if not 白名单.is_empty() and not 白名单.has(GConst.牌号(int(c))):
+		if not 白名单.is_empty() and not 白名单.has(面):
 			return GConst.GE_INVALID_CARDID
 	var 目标表: Array = 行动.get("targets", [])
 	if not 目标表.is_empty():
