@@ -316,6 +316,25 @@ func 跑() -> void:
 		!= GConst.GE_SUCCESS, "4501 的额外攻击用非技类攻击牌应被驳回")
 	检(引擎.校验额外行动限制(玩家, 技数据, GConst.ActionType.Attack, [技击甲.id], [2])
 		== GConst.GE_SUCCESS, "4501 的额外攻击用技类攻击牌应通过")
+	# 服务端驳回后必须仍停在这份额外行动：退回普通行动阶段会让客户端整排额外行动按钮消失
+	发送记录.clear()
+	引擎.resolve_action(GConst.ActionType.Attack, {"card_ids": [非技击.id], "dst_ids": [2], "args": []})
+	引擎.run()
+	var 有驳回: bool = false
+	for r: Dictionary in 发送记录:
+		if int(r.get("msg", 0)) == GConst.Msg.ErrorInput:
+			有驳回 = true
+			break
+	检(有驳回, "额外行动里出非技类攻击牌应回 ErrorInput")
+	检(引擎.行动额外 and 引擎.行动额外来源 == 4501,
+		"驳回后应仍停在这份额外行动（额外=%s 来源=%s）"
+		% [str(引擎.行动额外), str(引擎.行动额外来源)])
+	检(引擎._await_kind == GConst.Msg.Action and 引擎._await_id == 1,
+		"驳回后应重新问这份额外行动（等待 %s/%s）" % [str(引擎._await_id), str(引擎._await_kind)])
+	var 驳回后询问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
+	检(not 驳回后询问.is_empty()
+		and int((驳回后询问[0] as Dictionary).get("extra_fate", 0)) == GConst.FatePattern.Martial,
+		"驳回后的询问仍应带命格限制")
 	# 对照 4504：它的额外攻击行动不限制出牌
 	玩家.add_action(GConst.ActionType.Attack, 4504, true, true)
 	检(引擎.校验额外行动限制(玩家, 玩家.额外行动数据(4504), GConst.ActionType.Attack,
@@ -336,6 +355,14 @@ func 跑() -> void:
 	await 等帧(1)
 	检(bool(窗.call("_卡牌能点", 技击甲.id)), "技类攻击牌在 4501 额外行动里应可点")
 	检(not bool(窗.call("_卡牌能点", 非技击.id)), "非技类攻击牌在 4501 额外行动里应点不动")
+	# 切到这份额外行动时，旧选择里不合法的牌要被收起（否则提交必被驳回、界面闪一下）
+	var 当前uid: int = int(额外命令.get("extra_uid", 0))
+	窗.set("_sel_cards", [非技击.id, 技击甲.id] as Array[int])
+	窗.call("_本地选择额外攻击", 0, 当前uid, 4501, [], [], GConst.ActionType.Attack)
+	检(not (窗.get("_sel_cards") as Array).has(非技击.id),
+		"切到技类额外行动后，非技类牌应从已选里收起：%s" % str(窗.get("_sel_cards")))
+	检((窗.get("_sel_cards") as Array).has(技击甲.id),
+		"技类攻击牌应保留在已选里：%s" % str(窗.get("_sel_cards")))
 	# 没有牌号名单、切换列表也清空时，仍按询问里的 extra_fate 拦（纯靠牌面命格字段）
 	窗.set("_当前额外攻击选择", 0)
 	窗.set("_额外攻击切换项", [])

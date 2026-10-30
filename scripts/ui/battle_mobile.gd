@@ -4495,6 +4495,11 @@ func _当前放行() -> int:
 func _可主动使用牌(card_id: int) -> bool:
 	# 规则按牌面：进来的是实例号，白名单与牌名判定都用折回后的牌面
 	var 面: int = GConst.牌号(card_id)
+	# 额外行动的命格限制（如技之剑意 = 只能出技类攻击牌）：
+	# 切换额外行动时 _本地选择额外攻击 会用本函数复检旧选择，必须在这里也拦住，
+	# 否则会留着不合法的牌去提交，服务端驳回后界面整排选项消失。
+	if not _额外命格允许(面):
+		return false
 	var 牌: GCard = Data.get_card(card_id)
 	if 牌 == null:
 		return false

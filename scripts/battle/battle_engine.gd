@@ -4745,25 +4745,25 @@ class SkillRun:
 			if cur.boot_skill_used and kind == "special" \
 					and cur.role.is_free_skill(int(action.get("action_id", 0))):
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
-				e.push(SActionPhase.new())
+				e._回当前行动阶段()
 				return BattleEngine.CONTINUE
 			# 额外行动的出牌 / 目标限制（F2）：这份行动自带的规格同样约束技能行动里的牌与目标
 			if e.校验额外行动限制(cur, e._额外行动数据(cur, 额外来源) if 额外 else {},
 					_基本种类(), action.get("card_ids", []),
 					action.get("dst_ids", []), true) != GConst.GE_SUCCESS:
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
-				e.push(SActionPhase.new())
+				e._回当前行动阶段()
 				return BattleEngine.CONTINUE
 			# 基础效果的目标资格（F4 / 4601）：角色声明这次会把牌放到谁面前，就逐条问目标角色；
 			# 被拒就驳回整个技能行动（不扣牌、不挂效果），与普攻 / 法术的校验同一口径
 			if not e.校验基础效果放置目标(action):
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
-				e.push(SActionPhase.new())
+				e._回当前行动阶段()
 				return BattleEngine.CONTINUE
 			var rc: int = cur.role.call("v_" + kind + "_skill", action)
 			if rc != GConst.GE_SUCCESS:
 				e.send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
-				e.push(SActionPhase.new())
+				e._回当前行动阶段()
 				return BattleEngine.CONTINUE
 			checked = true
 			# F2：校验通过、行动成立时记一次（「启动」技能不算行动）
@@ -4795,8 +4795,24 @@ class SkillRun:
 ## （服务端返回 GE_INVALID_ACTION 后同样会回一条错误；不提示会变成「点了没反应」，还会让客户端反复重试）
 func _reject_action(cur: BattlePlayer) -> int:
 	send(cur.id, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Action, "commands": []})
-	push(SActionPhase.new())
+	_回当前行动阶段()
 	return CONTINUE
+
+
+## 驳回后回到「当前这个阶段」，而不是无条件退回普通行动阶段：
+## 额外行动阶段被驳回时还要保持 额外 / 来源 / 当前那份行动的规格，
+## 否则客户端会整排额外行动按钮消失（玩家表现就是「点确定后闪一下，选项全没了」）。
+func _回当前行动阶段() -> void:
+	if 行动额外 and not 当前额外行动数据.is_empty():
+		var 允许: int = int(当前额外行动数据.get("allow_action", 行动允许))
+		if 允许 <= 0:
+			允许 = 行动允许
+		var 阶段: SActionPhase = SActionPhase.new(允许, true, true, false,
+			int(当前额外行动数据.get("cause", 0)))
+		阶段.额外数据 = 当前额外行动数据
+		push(阶段)
+	else:
+		push(SActionPhase.new())
 
 
 func resolve_action(action_type: int, data: Dictionary) -> int:
