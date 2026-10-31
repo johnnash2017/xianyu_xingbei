@@ -223,6 +223,40 @@ func 跑() -> void:
 	_测喧哗上等引擎链路()
 	_测灭茶苦茶()
 	_测夜露死苦与爱死天流()
+	_测借用独有技()
+
+
+## 9702 夜露死苦：狂战士 201/202 走统一的「借用独有技」表
+## （卡面标绿 / 测试指令 2 / 角色说明三处共用，见 GConst.角色借用独有技）
+func _测借用独有技() -> void:
+	检(GConst.借用独有技(97) == [201, 202],
+		"97 的借用独有技应为狂战士 201/202：%s" % str(GConst.借用独有技(97)))
+	# 卡面技能名标绿：拿到带 201/202 的牌时按「自己会」显示
+	var 卡面脚本: GDScript = load("res://scripts/CardUI.gd")
+	var 卡面技能: Array = 卡面脚本.显示技能(97, Data.role_skills(97))
+	检(卡面技能.has(201) and 卡面技能.has(202),
+		"萝莉番长的卡面应把狂战士 201/202 显示成自己会：%s" % str(卡面技能))
+	检(not 卡面脚本.显示技能(38, Data.role_skills(38)).has(201),
+		"别的角色不应白拿 201")
+	# 测试指令 2：按 2 应能拿到 201/202 的发动牌
+	_重置()
+	引擎.debug_key(1, GConst.DebugKey.SkillCards)
+	var 有201: bool = false
+	var 有202: bool = false
+	for cid: int in 玩家.hand_cards:
+		var c: GCard = Data.get_card(cid)
+		if c == null:
+			continue
+		有201 = 有201 or c.has_skill_id(201)
+		有202 = 有202 or c.has_skill_id(202)
+	检(有201 and 有202, "测试指令 2 应给萝莉番长发 201/202 技能牌：%s" % str(玩家.hand_cards))
+	# 角色说明：追加到「独有技」分段，视作自己的独有技（不置灰）
+	var 说明文本: String = 角色技能提示.悬浮提示(97)
+	检(说明文本.contains("独有技") and 说明文本.contains("血影狂刀") and 说明文本.contains("血腥咆哮"),
+		"萝莉番长的角色说明应显示狂战士的独有技：%s" % 说明文本)
+	检(not 说明文本.contains(角色技能提示.失效行标记 + "血影狂刀")
+		and not 说明文本.contains(角色技能提示.失效行标记 + "血腥咆哮"),
+		"萝莉番长借用的狂战士独有技应视作自己的，不能置灰")
 
 
 ## 真实引擎链路：喧哗上等的逐张确认要走完整攻击 / 伤害流水线，
