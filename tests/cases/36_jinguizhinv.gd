@@ -500,8 +500,9 @@ func 跑() -> void:
 	_开魔法入门()
 	var 问第3: Dictionary = _取询问(1, MAGIC_BANG)
 	检(not 问第3.is_empty(), "7803：第 3 次魔法入门应先询问 Magic! 选项")
-	检((问第3.get("option_enabled", []) as Array) == [false, true, true],
-		"7803：第 3 次时「额外+1【法术行动】」与「+2【宝石】」都应可点：%s"
+	# 第 3 次的宝石奖励要等前一档结算完、下一次弹出的选项才亮（同一问里只亮一档）
+	检((问第3.get("option_enabled", []) as Array) == [false, true, false],
+		"7803：第 3 次的第一问只应亮「额外+1【法术行动】」，+2【宝石】留到下一问：%s"
 		% str(问第3.get("option_enabled", [])))
 	_回复(1, MAGIC_BANG, [2])
 	var 问第3宝石: Dictionary = _取询问(1, MAGIC_BANG)

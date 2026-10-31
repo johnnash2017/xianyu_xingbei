@@ -506,15 +506,18 @@ func _7802触发效果() -> bool:
 ##   3 我方【战绩区】+2【宝石】—— 本回合第 3 次【魔法入门】结算时
 func _7803选项() -> Array:
 	var 触发: bool = _7802触发效果()
+	var 可弃: bool = 触发 and player.hand_cards.size() >= 2 and not _7803弃牌已处理
+	var 可行动: bool = not 触发 and not _7803行动已处理
+	# 第 3 次的「战绩区 +2 宝石」要等「弃 2 张牌 / 额外行动」这一档结算完、
+	# 下一次弹出的选项才亮：同一问里两档同时亮会被误读成可以一起选。
+	var 可宝石: bool = _本回合魔法入门次数 == 3 and not _7803宝石已处理 \
+		and not 可弃 and not 可行动
 	return [
-		{"value": 1, "label": "弃 2 张牌",
-			"enabled": 触发 and player.hand_cards.size() >= 2 and not _7803弃牌已处理,
+		{"value": 1, "label": "弃 2 张牌", "enabled": 可弃,
 			# 选项自带选牌需求：选中它就点 2 张手牌、按一次确定一起提交（不再单独发选牌询问）
 			"need_card": 2},
-		{"value": 2, "label": "额外+1【法术行动】",
-			"enabled": not 触发 and not _7803行动已处理},
-		{"value": 3, "label": "我方【战绩区】+2【宝石】",
-			"enabled": _本回合魔法入门次数 == 3 and not _7803宝石已处理},
+		{"value": 2, "label": "额外+1【法术行动】", "enabled": 可行动},
+		{"value": 3, "label": "我方【战绩区】+2【宝石】", "enabled": 可宝石},
 	]
 
 
