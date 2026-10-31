@@ -165,9 +165,12 @@ static func _在分段底部插入(行列表: Array[String], 分段标题: Strin
 
 
 ## 生成一颗借用技能的正文行；正常显示＝false 时逐行打上失效（置灰）标记。
-static func _构造借用技能行(技能号: int, 正常显示: bool) -> Array[String]:
+## 角色号用于取「被该角色改写后的说明」（GConst.技能说明覆盖；省略＝按技能表原说明）。
+static func _构造借用技能行(技能号: int, 正常显示: bool, 角色号: int = -1) -> Array[String]:
 	var 行列表: Array[String] = []
-	var 说明: String = GConst.skill_desc(技能号)
+	var 说明: String = GConst.技能说明覆盖(角色号, 技能号)
+	if 说明 == "":
+		说明 = GConst.skill_desc(技能号)
 	if 说明 == "":
 		return 行列表
 	var 条目: String = GConst.词缀文本("【%s】%s：%s" % [
@@ -196,7 +199,7 @@ static func 追加借用独有技(原文: String, 角色号: int) -> String:
 	var 正常显示: bool = not GConst.借用独有技置灰(角色号)
 	var 独有行: Array[String] = []
 	for 技能号: int in 技能表:
-		独有行.append_array(_构造借用技能行(技能号, 正常显示))
+		独有行.append_array(_构造借用技能行(技能号, 正常显示, 角色号))
 	_插入独有技分段(行列表, 独有行)
 	return "\n".join(行列表)
 
@@ -292,14 +295,28 @@ static func 标识物一览(角色号: int) -> String:
 
 ## 单个技能的说明文本（技能按钮的悬停提示用）：一行「【类型】技能名：说明」，【类型】按类型上色。
 ## 查不到该技能或没写说明就返回空串（调用方据此不弹提示）。
-static func 单个技能(技能号: int, 正文字号: int = 0) -> String:
-	var 说明: String = 还原换行(GConst.skill_desc(技能号))
+## 单颗技能的说明（悬停技能按钮 / 技能按钮自带说明用）。
+## 角色号省略时按「当前玩家自己的角色」取 —— 有角色改写了别人技能（GConst.角色技能说明覆盖）时用它，
+## 例：萝莉番长 9703 覆盖【血腥咆哮】的说明。
+static func 单个技能(技能号: int, 正文字号: int = 0, 角色号: int = -1) -> String:
+	if 角色号 < 0:
+		角色号 = 当前角色号()
+	var 覆盖: String = GConst.技能说明覆盖(角色号, 技能号)
+	var 说明: String = 还原换行(覆盖 if 覆盖 != "" else GConst.skill_desc(技能号))
 	if 说明 == "":
 		return ""
 	var 行: String = "【%s】%s：%s" % [GConst.skill_type(技能号), GConst.skill_name(技能号), 说明]
 	if 正文字号 > 0:
 		行 = "[font_size=%d]%s[/font_size]" % [正文字号, 行]
 	return _染类型(行)
+
+
+## 当前玩家自己的角色号（不在对局 / 没选角时 0＝没有覆盖）
+static func 当前角色号() -> int:
+	if Logic == null or Logic.my_player_id < 0:
+		return 0
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	return 我.role_id if 我 != null else 0
 
 
 ## 给一段拼好的技能说明上色并排版：
