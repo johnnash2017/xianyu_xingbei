@@ -88,6 +88,17 @@ func 跑() -> void:
 		ProtoCodec.encode_named("ArgChoice", 选项原名))
 	检(int(选项解码.get("element", -1)) == GConst.CardElement.Wind,
 		"选项系别没有过 ArgChoice 协议：%s" % str(选项解码.get("element", null)))
+	# 选项绑技能号（如矜贵之女 7802 第 2 档＝响应 7805 友情羁绊）：字段要过协议，
+	# 客户端才能按响应色显示、悬停弹技能说明。
+	var 技能选项原名: Dictionary = {"text": "响应友情羁绊", "args": [2], "skill_id": 7805}
+	var 技能选项解码: Dictionary = ProtoCodec.decode_named("ArgChoice",
+		ProtoCodec.encode_named("ArgChoice", 技能选项原名))
+	检(int(技能选项解码.get("skill_id", 0)) == 7805,
+		"选项技能号没有过 ArgChoice 协议：%s" % str(技能选项解码.get("skill_id", null)))
+	var 技能选项归一: Array = 窗.call("_选项项", [技能选项解码])
+	检(not 技能选项归一.is_empty()
+		and int((技能选项归一[0] as Dictionary).get("技能号", 0)) == 7805,
+		"选项技能号应归一成二级栏的『技能号』：%s" % str(技能选项归一))
 	var 归一选项: Array = 窗.call("_选项项", [选项解码])
 	var 选项文本: String = ""
 	var 选项字色: Color = Color.TRANSPARENT
