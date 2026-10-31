@@ -62,7 +62,7 @@ const 步_7803触发: int = 8
 const 步_结算: int = 12
 
 ## 7804 每一步的进度
-const 步_强予选星石: int = 2
+const 步_强予选项: int = 2
 const 步_强予结算: int = 4
 
 ## 7802 三类效果的目标数上限 / 伤害点数
@@ -106,6 +106,8 @@ var _7803宝石已处理: bool = false
 var _7804额外移除: bool = false
 var _7804移除类型: int = 0             # 1＝宝石 / 2＝水晶（0＝不额外移除）
 var _7804目标: int = -1
+## 7804 里「弃到 4 张」的牌：跟选项在同一个询问里提交，结算时先弃掉再补足 / 兜底
+var _7804弃牌: Array[int] = []
 
 
 # ============================================================
@@ -621,57 +623,57 @@ func p_special_skill(action: Dictionary) -> int:
 		_7804额外移除 = false
 		_7804移除类型 = 0
 		_7804目标 = -1
-		step = 步_强予选星石
+		_7804弃牌.clear()
+		step = 步_强予选项
 	while true:
 		match step:
-			步_强予选星石:
-				# 一步到位：直接选 1 种星石＝做额外移除（取消＝不做额外移除，直接进结算）。
-				# 战绩区没有星石时没有「额外移除」这一档，直接结算。
-				if not _有战绩区星石():
-					step = 步_强予结算
-					continue
+			步_强予选项:
+				# 三个固定选项（点击技能直接打开二级技能栏）：
+				#   1 仅调整自己手牌为 4
+				#   2 -1【水晶】调整其他角色手牌为 4
+				#   3 -1【宝石】调整其他角色手牌为 4
+				# 每项自带「弃到 4 张」（need_card＝当前超出的张数）；后两项再自带选 1 名其他角色。
+				# 选好后一次「确定」提交；取消 / 返回＝不发动技能，回行动阶段（不扣费）。
 				if not engine.has_reply():
-					询问(player.id, 强予愿行, 0, 0, GConst.CardSource.Hand, _星石选项(), 0, "",
+					询问(player.id, 强予愿行, 0, 0, GConst.CardSource.Hand, _强予选项(), 0, "",
 						[], true, 0)
 					return WAIT
-				var r星: Dictionary = take_skill_reply_full()
-				var 参数: Array = r星.get("args", [])
-				var 类型: int = int(参数[0]) if not 参数.is_empty() else 0
-				# 取消 / 超时（空 args）或选了不可用的星石 → 放弃额外移除：
-				# 不替玩家默认扣一颗星石（见 A29；额外移除本来就是可选分支）。
-				if not _星石可选(类型):
-					_放弃强予额外移除()
-					step = 步_强予结算
-					continue
-				# 星石选项自带「选 1 名其他角色」（need_target + targets 挂在选项上）：
-				# 选中星石后同一步点头像选人、按一次确定把「星石 + 角色」一起提交，不再单独发选角色询问。
-				var 候选: Array[int] = _其他角色id()
-				var 目标: Array[int] = []
-				for 值: Variant in r星.get("dst_ids", []):
-					var pid2: int = int(值)
-					if 候选.has(pid2) and not 目标.has(pid2):
-						目标.append(pid2)
-						break
-				# 取消 / 超时（空 args）或没给出合法目标 → 放弃额外移除：
-				# 不替玩家默认扣一颗星石、也不按候选顺序补第一名角色（见 A29）。
-				if 目标.is_empty():
-					_放弃强予额外移除()
-					step = 步_强予结算
-					continue
-				_7804额外移除 = true
-				_7804移除类型 = 类型
-				_7804目标 = 目标[0]
+				var r选: Dictionary = take_skill_reply_full()
+				var 参数: Array = r选.get("args", [])
+				var 选择: int = int(参数[0]) if not 参数.is_empty() else 0
+				if 选择 < 1 or 选择 > 3 or not _强予选项可选(选择):
+					# 取消 / 返回 / 超时 / 硬提交了置灰项：不发动技能（不扣能量、不改手牌）
+					engine.取消技能行动()
+					return SUCCESS
+				if 选择 != 1:
+					# 选项 2/3 自带「选 1 名其他角色」：跟选项同一步提交
+					var 候选: Array[int] = _其他角色id()
+					var 目标: Array[int] = []
+					for 值: Variant in r选.get("dst_ids", []):
+						var pid2: int = int(值)
+						if 候选.has(pid2) and not 目标.has(pid2):
+							目标.append(pid2)
+							break
+					if 目标.is_empty():
+						# 选了星石但没给合法角色：按取消处理，不扣费
+						engine.取消技能行动()
+						return SUCCESS
+					_7804额外移除 = true
+					_7804移除类型 = 2 if 选择 == 2 else 1
+					_7804目标 = 目标[0]
+				# 「弃到 4 张」的牌跟选项一起提交：只收真实手牌，最多收当前超出的张数
+				_7804弃牌 = _取提交弃牌(r选.get("card_ids", []))
 				step = 步_强予结算
 			步_强予结算:
 				return _结算强予愿行()
 	return SUCCESS
 
 
-## 7804 结算：付 1 水晶 → 可选移除 1 星石 → 自己（与他人的）手牌调整为 4 张
+## 7804 结算：付 1 水晶 →（选项 2/3）移除 1 星石 → 自己（与他人的）手牌调整为 4 张
 func _结算强予愿行() -> int:
 	# 费用：水晶可用宝石顶（remove_energy 先扣水晶再扣宝石）
 	player.remove_energy(1)
-	# 只有「星石类型选中且目标也选中」才真的额外移除（子询问取消 / 超时会走 _放弃强予额外移除）
+	# 选项 2/3 的额外移除：选项可点已保证战绩区有对应星石，这里再兜一次底
 	if _7804额外移除 and _7804目标 >= 0:
 		if _7804移除类型 == 1 and engine.team_gem[player.color] > 0:
 			engine.set_team_gem(player.color, engine.team_gem[player.color] - 1)
@@ -680,47 +682,61 @@ func _结算强予愿行() -> int:
 	player.boot_skill_used = true
 	notice_skill(强予愿行, [_7804目标] if _7804目标 >= 0 else [player.id])
 	var 挂起: bool = false
-	# 先自己、再其他角色：不足强制摸、超出由牌主自己选弃（F9 调整手牌到）
+	# 自己的手牌调整到 4：同一问里选好的弃牌先离手入弃（正常提交正好弃到 4 张）；
+	# 不足 4 张的再强制摸；若提交的牌不够（异常提交）剩下的交给 调整手牌到 再问牌主。
+	if not _7804弃牌.is_empty():
+		_离手入弃(player.id, _7804弃牌, 强予愿行)
+		_7804弃牌.clear()
 	if engine.调整手牌到(player.id, 强予手牌数, 强予愿行, false):
 		挂起 = true
+	# 选项 2/3：其他角色手牌调整到 4（超出由牌主自己选弃，见 A29）
 	if _7804目标 >= 0 and engine.调整手牌到(_7804目标, 强予手牌数, 强予愿行, false):
 		挂起 = true
 	engine._broadcast_game()
 	return URGENT if 挂起 else SUCCESS
 
 
-## 战绩区有没有可移除的星石（宝石 / 水晶）
-func _有战绩区星石() -> bool:
-	return engine.team_gem[player.color] > 0 or engine.team_crystal[player.color] > 0
-
-
-## 某类星石此刻能不能选：1＝宝石 / 2＝水晶
-func _星石可选(类型: int) -> bool:
-	if 类型 == 1:
-		return engine.team_gem[player.color] > 0
-	if 类型 == 2:
-		return engine.team_crystal[player.color] > 0
-	return false
-
-
-## 两档星石固定下发，当前没有的置灰（不删项）。
-## 每项都自带「选 1 名其他角色」：选中星石后直接点头像选人，再按一次确定一起提交。
-func _星石选项() -> Array:
+## 7804 的三个固定选项（文案固定下发，不可用的置灰）：
+##   1 仅调整自己手牌为 4
+##   2 -1【水晶】调整其他角色手牌为 4
+##   3 -1【宝石】调整其他角色手牌为 4
+## 每项都自带「弃到 4 张」：need_card＝当前手牌超出的张数；2/3 再自带选 1 名其他角色。
+func _强予选项() -> Array:
+	var 需弃: int = maxi(player.hand_cards.size() - 强予手牌数, 0)
 	var 候选: Array[int] = _其他角色id()
 	return [
-		{"value": 1, "label": "宝石", "enabled": _星石可选(1),
-			"need_target": 1, "targets": 候选},
-		{"value": 2, "label": "水晶", "enabled": _星石可选(2),
-			"need_target": 1, "targets": 候选},
+		{"value": 1, "label": "仅调整自己手牌为 4", "enabled": true, "need_card": 需弃},
+		{"value": 2, "label": "-1【水晶】调整其他角色手牌为 4",
+			"enabled": engine.team_crystal[player.color] > 0,
+			"need_card": 需弃, "need_target": 1, "targets": 候选},
+		{"value": 3, "label": "-1【宝石】调整其他角色手牌为 4",
+			"enabled": engine.team_gem[player.color] > 0,
+			"need_card": 需弃, "need_target": 1, "targets": 候选},
 	]
 
 
-## 弃掉 7804 的「额外移除 1 星石」这一可选分支（子询问取消 / 超时 / 无合法选择时走这里）：
-## 不扣星石、不调整其他角色，结算时只把自己的手牌调整到 4 张
-func _放弃强予额外移除() -> void:
-	_7804额外移除 = false
-	_7804移除类型 = 0
-	_7804目标 = -1
+## 某个选项此刻能不能提交（1 恒可；2 要战绩区有水晶；3 要有宝石）
+func _强予选项可选(选择: int) -> bool:
+	if 选择 == 1:
+		return true
+	if 选择 == 2:
+		return engine.team_crystal[player.color] > 0
+	if 选择 == 3:
+		return engine.team_gem[player.color] > 0
+	return false
+
+
+## 7804：从回复里取「弃到 4 张」的牌 —— 只认真实手牌，最多收当前超出的张数
+func _取提交弃牌(ids: Array) -> Array[int]:
+	var 超出: int = maxi(player.hand_cards.size() - 强予手牌数, 0)
+	var 有效: Array[int] = []
+	for 值: Variant in ids:
+		if 有效.size() >= 超出:
+			break
+		var cid: int = int(值)
+		if player.has_discard_card(cid) and not 有效.has(cid):
+			有效.append(cid)
+	return 有效
 
 
 ## 其他角色的 id（「将一名其他角色手牌调整为 4 张」）

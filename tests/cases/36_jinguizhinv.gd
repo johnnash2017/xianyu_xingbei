@@ -686,7 +686,7 @@ func 跑() -> void:
 	检(_播报次数(MAGIC_BANG) == 1, "7803：实际弃掉 1 张后应播报一次")
 
 	# ============================================================
-	# 7804 强予愿行：启动 / 水晶（宝石可顶）/ 额外移除星石 / 双方手牌调整为 4
+	# 7804 强予愿行：三档选项（仅自己 / -1 水晶 / -1 宝石），同一问里选牌 + 选角色再确定
 	# ============================================================
 	_重置战斗()
 	玩家.set_gem(1)
@@ -695,30 +695,30 @@ func 跑() -> void:
 	引擎.set_team_gem(GConst.BLUE, 1)
 	引擎.set_team_crystal(GConst.BLUE, 1)
 	_开强予愿行()
-	var 问星石: Dictionary = _取询问(1, 强予愿行)
-	检(not 问星石.is_empty(), "7804：应直接询问额外移除哪种星石")
-	检((问星石.get("notes", []) as Array) == ["宝石", "水晶"], "7804：星石两档应固定完整下发")
-	检(not (问星石.get("option_enabled", [true, true]) as Array).has(false),
-		"7804：两种星石都有时应都可选")
-	# 星石选项自带「选 1 名其他角色」：同一问里选人，不再另发一条选角色询问
-	检((问星石.get("option_need_targets", []) as Array) == [1, 1],
-		"7804：星石选项应自带 need_target=1：%s" % str(问星石.get("option_need_targets", [])))
-	var 星石目标表: Array = 问星石.get("option_targets", [])
-	检(星石目标表.size() == 2
-		and not ((星石目标表[0] as Dictionary).get("ids", []) as Array).has(1),
-		"7804：选项的合法目标应是不含自己的其他角色：%s" % str(星石目标表))
-	_回复(1, 强予愿行, [1], [], [3])
+	var 问选项: Dictionary = _取询问(1, 强予愿行)
+	检(not 问选项.is_empty(), "7804：点技能后应直接打开三档选项")
+	检((问选项.get("notes", []) as Array) == [
+		"仅调整自己手牌为 4", "-1【水晶】调整其他角色手牌为 4", "-1【宝石】调整其他角色手牌为 4"],
+		"7804：三个选项文案不对：%s" % str(问选项.get("notes", [])))
+	检(not (问选项.get("option_enabled", [true, true, true]) as Array).has(false),
+		"7804：战绩区有水晶和宝石时三档都应可点：%s" % str(问选项.get("option_enabled", [])))
+	# 每档自带「弃到 4 张」（手牌 5 → 1 张）；后两档再自带选 1 名其他角色
+	检((问选项.get("option_need_cards", [0, 0, 0]) as Array) == [1, 1, 1],
+		"7804：每档都应自带「弃到 4 张」：%s" % str(问选项.get("option_need_cards", [])))
+	检((问选项.get("option_need_targets", []) as Array) == [0, 1, 1],
+		"7804：后两档应自带选 1 名其他角色：%s" % str(问选项.get("option_need_targets", [])))
+	# 选「-1 水晶」+ 弃 1 张 + 选队友 3，一次确定提交
+	_回复(1, 强予愿行, [2], [咏牌.id], [3])
 	检(引擎._await_id == 3, "7804：先由目标牌主 3 选择要弃的牌")
 	检(玩家.get_energy() == 0, "7804：应已支付 1 能量（宝石顶水晶）")
-	检(引擎.team_gem[GConst.BLUE] == 0 and 引擎.team_crystal[GConst.BLUE] == 1,
-		"7804：应只额外移除 1 颗宝石，水晶保留")
+	检(引擎.team_gem[GConst.BLUE] == 1 and 引擎.team_crystal[GConst.BLUE] == 0,
+		"7804：应额外移除 1 颗水晶，宝石保留")
+	检(玩家.hand_cards.size() == 4 and not 玩家.hand_cards.has(咏牌.id),
+		"7804：自己的弃牌应在同一问里一起交掉，实际 %s" % str(玩家.hand_cards))
 	检(玩家.boot_skill_used, "7804：发动启动技能后应置 boot_skill_used")
 	_回复(3, GConst.RespondType.Discard, [3, 强予愿行, 1], [法术牌.id], [3])
-	检(引擎._await_id == 1, "7804：目标弃完牌后应由自己选择弃到 4 张")
-	_回复(1, GConst.RespondType.Discard, [1, 强予愿行, 1], [咏牌.id], [1])
 	检(玩家.hand_cards.size() == 4 and 队友.hand_cards.size() == 4,
 		"7804：双方手牌都应调整为 4 张，实际 %d / %d" % [玩家.hand_cards.size(), 队友.hand_cards.size()])
-	检(玩家.hand_cards.has(咏牌.id) == false, "7804：自己选择弃掉的牌不应还在手里")
 	检(引擎.deck.discard.has(咏牌.id) and 引擎.deck.discard.has(法术牌.id),
 		"7804：双方弃掉的牌应进弃牌堆")
 	检(_播报次数(强予愿行) == 1, "7804：应播报一次")
@@ -733,97 +733,87 @@ func 跑() -> void:
 	检(not 启动后技能.is_empty() and not bool(启动后技能.get("enabled", true)),
 		"7804：本回合发动过启动技能后应置灰")
 
-	# 7804：没有战绩区星石 → 不问额外移除，只调整自己
+	# 7804：没有战绩区星石 → 后两档置灰，选「仅调整自己」
 	_重置战斗()
 	玩家.set_crystal(1)
 	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
 	_置牌库顶(无效果牌)
 	_开强予愿行()
-	检(玩家.crystal == 0 and 玩家.get_energy() == 0, "7804：无星石时仍应支付 1 水晶")
-	检(玩家.hand_cards.size() == 4, "7804：自己不足 4 张时应强制摸到 4 张")
-	检(队友.hand_cards.is_empty(), "7804：未额外移除星石时不应调整其他角色")
-	检(引擎._await_id == 1, "7804：无星石路径应直接完成并回到行动阶段")
-	检(_播报次数(强予愿行) == 1, "7804：无星石路径也应播报一次")
-
-	# 7804：放弃额外移除星石
-	_重置战斗()
-	玩家.set_gem(1)
-	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
-	引擎.set_team_gem(GConst.BLUE, 1)
-	_置牌库顶(无效果牌)
-	_开强予愿行()
-	检(not _取询问(1, 强予愿行).is_empty(), "7804：有星石时应直接询问移除哪种星石")
-	_回复(1, 强予愿行, [0])
-	检(引擎.team_gem[GConst.BLUE] == 1, "7804：放弃额外移除时星石应保留")
-	检(玩家.hand_cards.size() == 4 and 队友.hand_cards.is_empty(),
-		"7804：放弃额外移除时只调整自己")
-	检(玩家.get_energy() == 0, "7804：放弃额外移除仍应支付 1 能量")
-
-	# 7804 子询问取消：选星石时取消 = 放弃额外移除（不扣星石、不调整他人手牌）
-	_重置战斗()
-	玩家.set_gem(1)
-	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
-	引擎.set_team_gem(GConst.BLUE, 1)
-	引擎.set_team_crystal(GConst.BLUE, 1)
-	_置牌库顶(无效果牌)
-	_开强予愿行()
-	检(not _取询问(1, 强予愿行).is_empty(), "7804：取消前应已在等选星石")
-	_回复(1, 强予愿行, [])
-	检(引擎.team_gem[GConst.BLUE] == 1 and 引擎.team_crystal[GConst.BLUE] == 1,
-		"7804：取消选星石不应扣星石，实际 宝石 %d / 水晶 %d"
-		% [引擎.team_gem[GConst.BLUE], 引擎.team_crystal[GConst.BLUE]])
-	检(玩家.get_energy() == 0, "7804：取消额外移除仍应支付 1 能量")
-	检(玩家.hand_cards.size() == 4, "7804：取消选星石后只调整自己的手牌，实际 %s" % str(玩家.hand_cards))
-	检(队友.hand_cards.is_empty(), "7804：取消选星石不应调整其他角色手牌")
-	检(引擎._await_id == 1, "7804：取消选星石后应回到自己的行动阶段")
-
-	# 7804 同一步取消：选了星石但没选角色（空 dst）= 放弃额外移除（已选中的星石也不扣）
-	_重置战斗()
-	玩家.set_gem(1)
-	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
-	引擎.set_team_gem(GConst.BLUE, 1)
-	引擎.set_team_crystal(GConst.BLUE, 1)
-	_置牌库顶(无效果牌)
-	_开强予愿行()
-	检(not _取询问(1, 强予愿行).is_empty(), "7804：取消前应已在等选星石/角色")
+	var 问无石: Dictionary = _取询问(1, 强予愿行)
+	检((问无石.get("option_enabled", []) as Array) == [true, false, false],
+		"7804：没有星石时后两档应置灰：%s" % str(问无石.get("option_enabled", [])))
+	检((问无石.get("option_need_cards", [0, 0, 0]) as Array) == [0, 0, 0],
+		"7804：手牌不足 4 张时不需要弃牌：%s" % str(问无石.get("option_need_cards", [])))
 	_回复(1, 强予愿行, [1])
-	检(引擎.team_gem[GConst.BLUE] == 1 and 引擎.team_crystal[GConst.BLUE] == 1,
-		"7804：没选角色时已选中的星石也不应被扣")
-	检(队友.hand_cards.is_empty(), "7804：没选角色不应调整其他角色手牌")
-	检(玩家.hand_cards.size() == 4 and 玩家.get_energy() == 0,
-		"7804：没选角色时应只调整自己并支付能量，实际手牌 %s / 能量 %d"
-		% [str(玩家.hand_cards), 玩家.get_energy()])
+	检(玩家.crystal == 0 and 玩家.get_energy() == 0, "7804：应支付 1 水晶")
+	检(玩家.hand_cards.size() == 4, "7804：自己不足 4 张时应强制摸到 4 张")
+	检(队友.hand_cards.is_empty(), "7804：选「仅调整自己」不应调整其他角色")
+	检(引擎._await_id == 1, "7804：选「仅调整自己」后应回到行动阶段")
+	检(_播报次数(强予愿行) == 1, "7804：应播报一次")
 
-	# 7804 子询问超时：选星石超时同样按放弃额外移除处理
+	# 7804：有星石但选「仅调整自己」→ 不扣星石、不调整他人
 	_重置战斗()
 	玩家.set_gem(1)
 	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
 	引擎.set_team_gem(GConst.BLUE, 1)
 	_置牌库顶(无效果牌)
 	_开强予愿行()
-	检(not _取询问(1, 强予愿行).is_empty(), "7804：超时前应已在等选星石")
+	检(not _取询问(1, 强予愿行).is_empty(), "7804：有星石时应打开三档选项")
+	_回复(1, 强予愿行, [1])
+	检(引擎.team_gem[GConst.BLUE] == 1, "7804：选「仅调整自己」不应移除星石")
+	检(玩家.hand_cards.size() == 4 and 队友.hand_cards.is_empty(),
+		"7804：选「仅调整自己」只调整自己")
+	检(玩家.get_energy() == 0, "7804：仍应支付 1 能量")
+
+	# 7804 取消 / 返回：不发动技能 —— 不扣能量、不动星石、不调整手牌，回行动阶段
+	_重置战斗()
+	玩家.set_gem(1)
+	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
+	引擎.set_team_gem(GConst.BLUE, 1)
+	引擎.set_team_crystal(GConst.BLUE, 1)
+	_置牌库顶(无效果牌)
+	_开强予愿行()
+	检(not _取询问(1, 强予愿行).is_empty(), "7804：取消前应已在等三档选项")
+	_回复(1, 强予愿行, [])
+	检(玩家.get_energy() == 1 and 引擎.team_gem[GConst.BLUE] == 1
+		and 引擎.team_crystal[GConst.BLUE] == 1,
+		"7804：返回＝不发动技能，能量 / 星石都不应扣")
+	检(玩家.hand_cards.size() == 3, "7804：返回后手牌不应调整")
+	检(not 玩家.boot_skill_used, "7804：返回后不应置 boot_skill_used")
+	检(not 引擎.行动禁特殊, "7804：返回后不应残留「禁特殊」")
+	检(引擎._await_id == 1, "7804：返回后应回到行动阶段")
+	检(_播报次数(强予愿行) == 0, "7804：返回不应播报")
+
+	# 7804 超时：按不发动处理（不扣费、不动手牌）
+	_重置战斗()
+	玩家.set_gem(1)
+	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
+	引擎.set_team_gem(GConst.BLUE, 1)
+	_置牌库顶(无效果牌)
+	_开强予愿行()
+	检(not _取询问(1, 强予愿行).is_empty(), "7804：超时前应已在等三档选项")
 	引擎.wait_deadline_ms = maxi(Time.get_ticks_msec() - 1, 1)
 	引擎.tick()
-	检(引擎.team_gem[GConst.BLUE] == 1,
-		"7804：选星石超时应放弃额外移除（星石保留），实际 %d" % 引擎.team_gem[GConst.BLUE])
-	检(玩家.hand_cards.size() == 4 and 队友.hand_cards.is_empty(),
-		"7804：选星石超时后只调整自己，实际自己 %d / 队友 %d"
-		% [玩家.hand_cards.size(), 队友.hand_cards.size()])
-	检(引擎._await_id == 1, "7804：选星石超时后应回到自己的行动阶段")
+	检(玩家.get_energy() == 1 and 引擎.team_gem[GConst.BLUE] == 1,
+		"7804：超时按不发动处理，能量 / 星石不应扣")
+	检(玩家.hand_cards.size() == 3 and not 玩家.boot_skill_used,
+		"7804：超时后手牌不应调整、也不应置 boot_skill_used")
+	检(not 引擎.行动禁特殊 and 引擎._await_id == 1,
+		"7804：超时后应回到行动阶段")
 
-	# 7804 同一步提交了非法角色（选自己）→ 放弃额外移除（星石保留、不调整他人）
+	# 7804 硬提交了非法目标（选自己）→ 按不发动处理
 	_重置战斗()
 	玩家.set_gem(1)
 	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
 	引擎.set_team_gem(GConst.BLUE, 1)
 	_置牌库顶(无效果牌)
 	_开强予愿行()
-	_回复(1, 强予愿行, [1], [], [1])
-	检(引擎.team_gem[GConst.BLUE] == 1,
-		"7804：角色非法时应放弃额外移除（星石保留），实际 %d" % 引擎.team_gem[GConst.BLUE])
-	检(队友.hand_cards.is_empty(), "7804：角色非法时不应调整其他角色手牌")
-	检(玩家.hand_cards.size() == 4 and 玩家.get_energy() == 0,
-		"7804：角色非法时应只调整自己并支付能量")
+	_回复(1, 强予愿行, [2], [], [1])
+	检(玩家.get_energy() == 1 and 引擎.team_gem[GConst.BLUE] == 1,
+		"7804：目标非法时不发动技能，能量 / 星石不应扣")
+	检(玩家.hand_cards.size() == 3 and 队友.hand_cards.is_empty(),
+		"7804：目标非法时不应调整任何人的手牌")
+	检(引擎._await_id == 1, "7804：目标非法时应回到行动阶段")
 
 	# 7804：能量不足时被引擎驳回
 	_重置战斗()
