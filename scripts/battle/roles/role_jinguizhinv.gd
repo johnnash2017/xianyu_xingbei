@@ -334,7 +334,7 @@ func p_magic_skill(action: Dictionary) -> int:
 						[], false, 0, -1, enemy_ids(), -1, {}, 法术伤害值, GConst.HarmType.Magic)
 					return WAIT
 				var r法: Dictionary = take_skill_reply_full()
-				_7802法术目标 = _取目标(r法.get("dst_ids", []), enemy_ids(), 法术目标数)
+				_7802法术目标 = _取目标(r法.get("dst_ids", []), enemy_ids(), 法术目标数, enemy_ids())
 				# 一个效果一个效果结算：选完这个效果的目标就把它的伤害压栈算完（含展示牌响应），
 				# 回来再问下一个效果 —— 不能把三个效果的目标都选完再一起结算。
 				step = 步_咏目标
@@ -355,7 +355,8 @@ func p_magic_skill(action: Dictionary) -> int:
 						[], false, 1, -1, _全体角色id(), _7802咏数量, {}, 法术伤害值, GConst.HarmType.Magic)
 					return WAIT
 				var r咏: Dictionary = take_skill_reply_full()
-				_7802咏目标 = _取目标(r咏.get("dst_ids", []), _全体角色id(), 咏目标数)
+				# 超时 / 跳过（空回复）：伤害类按敌人补，不能补成队友 / 自己
+				_7802咏目标 = _取目标(r咏.get("dst_ids", []), _全体角色id(), 咏目标数, enemy_ids())
 				step = 步_水目标
 				for pid5: int in _倒序结算(_7802咏目标):
 					engine.push_harm({
@@ -374,7 +375,8 @@ func p_magic_skill(action: Dictionary) -> int:
 						[], false, 2, -1, _全体角色id(), _7802水数量, {}, 基础治疗值, GConst.预览类型_治疗)
 					return WAIT
 				var r水: Dictionary = take_skill_reply_full()
-				_7802水目标 = _取目标(r水.get("dst_ids", []), _全体角色id(), 水目标数)
+				# 超时 / 跳过（空回复）：治疗类按自己 / 队友补，不能补成敌人
+				_7802水目标 = _取目标(r水.get("dst_ids", []), _全体角色id(), 水目标数, _友方角色id())
 				# 水系治疗是「依序」里的最后一项：压成钩子，等它结算完再回来问 7803。
 				step = 步_7803触发
 				engine.push(BattleEngine.SHook.new("p_jinguizhinv_水系治疗", {
@@ -785,6 +787,16 @@ func _全体角色id() -> Array[int]:
 	return out
 
 
+## 我方角色 id（含自己）：7802 水系治疗超时 / 跳过时的兜底目标
+func _友方角色id() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		var p0: BattlePlayer = engine.p(pid)
+		if p0 != null and p0.color == player.color:
+			out.append(pid)
+	return out
+
+
 ## 把牌真正移出该玩家手牌并送进弃牌堆：只处理「还真实在手里」的牌（逐张判断）。
 ## 引擎的 take_from_hand 是整组原子操作 —— 组里有一张已经离手就一张都不移除，调用方若照样 to_discard
 ## 就会让同一张牌在弃牌堆出现两次、另一张还留在手里（R78 7805↔7803 的坑）。返回实际离手入弃的牌。
@@ -804,7 +816,9 @@ func _离手入弃(pid: int, cards: Array, cause: int, 播特效: bool = true) -
 
 
 ## 取回复里的合法目标：去重、只保留 合法 里的；不足 n 个时按 合法 顺序补齐
-func _取目标(ids: Array, 合法: Array[int], n: int) -> Array[int]:
+## 取回复里的合法目标：去重、只保留 合法 里的；不足 n 个时按 兜底 顺序补齐。
+## 兜底默认＝合法（普通情况）；魔法入门的三组效果要分开：伤害补敌人、治疗补自己 / 队友。
+func _取目标(ids: Array, 合法: Array[int], n: int, 兜底: Array[int] = []) -> Array[int]:
 	var out: Array[int] = []
 	for 值: Variant in ids:
 		if out.size() >= n:
@@ -812,10 +826,12 @@ func _取目标(ids: Array, 合法: Array[int], n: int) -> Array[int]:
 		var pid: int = int(值)
 		if 合法.has(pid) and not out.has(pid):
 			out.append(pid)
-	for pid2: int in 合法:
+	if 兜底.is_empty():
+		兜底 = 合法
+	for pid2: int in 兜底:
 		if out.size() >= n:
 			break
-		if not out.has(pid2):
+		if 合法.has(pid2) and not out.has(pid2):
 			out.append(pid2)
 	return out
 
