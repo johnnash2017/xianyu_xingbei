@@ -60,8 +60,6 @@ const 步_咏目标: int = 6
 const 步_水目标: int = 7
 const 步_7803触发: int = 8
 const 步_7803弃牌: int = 9
-const 步_7803未触发: int = 10
-const 步_7803第三次: int = 11
 const 步_结算: int = 12
 
 ## 7804 每一步的进度
@@ -101,6 +99,10 @@ var _7802_7803加宝石: bool = false
 ## 本次 7802 的「展示牌」钩子是否已压栈：一个效果一个效果结算时只压一次，
 ## 且要压在第一个效果的状态之上（先结算「展示牌」响应，再结算伤害 / 治疗）。
 var _7802展示钩子已压: bool = false
+## 本次 7802 里 Magic!（7803）三项分支是否已经处理过：处理过的分支在后续选项里置灰。
+var _7803弃牌已处理: bool = false
+var _7803行动已处理: bool = false
+var _7803宝石已处理: bool = false
 
 ## 7804 本次发动的分步数据
 var _7804额外移除: bool = false
@@ -347,15 +349,39 @@ func p_magic_skill(action: Dictionary) -> int:
 				# 三组效果都没触发时也要先把「展示牌」响应结算完，再问 7803 / 收尾
 				if _压展示钩子():
 					return URGENT
-				if _7802触发效果():
-					# 分支 1：展示牌触发了效果 → 直接选 2 张牌弃掉（选中＋确定＝发动；取消＝不弃）
-					if player.hand_cards.size() >= 2:
-						step = 步_7803弃牌
-						continue
-					step = 步_7803第三次
+				# Magic! 的三个触发固定下发成 3 个选项，只有当前场景对应的那项可点：
+				#   1 弃 2 张牌（展示牌触发了效果、且手里有 2 张牌）
+				#   2 额外 +1【法术行动】（展示牌没触发任何效果）
+				#   3 我方【战绩区】+2【宝石】（本回合第 3 次【魔法入门】结算时）
+				# 三项互相独立：选完一项若还有能用的，再问一次（用过的那项置灰）。
+				var 选项: Array = _7803选项()
+				if not _7803有可用选项(选项):
+					step = 步_结算
 					continue
-				# 分支 2：展示牌未触发任何效果 → 可选额外 +1 法术行动
-				step = 步_7803未触发
+				if not engine.has_reply():
+					询问(player.id, MAGIC_BANG, 0, 0, GConst.CardSource.Hand, 选项, 0, "",
+						[], true, 0)
+					return WAIT
+				var r选: Dictionary = take_skill_reply_full()
+				var 参数: Array = r选.get("args", [])
+				var 选择: int = int(参数[0]) if not 参数.is_empty() else 0
+				if not _7803选项可选(选项, 选择):
+					# 取消 / 超时 / 硬提交了置灰的项：按「不发动」处理，剩余分支不再问
+					_7803分支配平()
+					step = 步_结算
+					continue
+				if 选择 == 1:
+					step = 步_7803弃牌
+					continue
+				if 选择 == 2:
+					_7802_7803额外行动 = true
+					_7803行动已处理 = true
+					step = 步_7803触发
+					continue
+				# 选择 == 3
+				_7802_7803加宝石 = true
+				_7803宝石已处理 = true
+				step = 步_7803触发
 				continue
 			步_7803弃牌:
 				if not engine.has_reply():
@@ -363,6 +389,7 @@ func p_magic_skill(action: Dictionary) -> int:
 						[], true, 0)
 					return WAIT
 				var r弃2: Dictionary = take_skill_reply_full()
+				_7803弃牌已处理 = true
 				var 选牌2: Array = r弃2.get("card_ids", [])
 				# 空应答＝取消（7803 的弃 2 张是可选的）：不能走 _取手牌 的「不够就补手牌」口径，
 				# 否则取消也会被强制弃 2 张
@@ -370,25 +397,8 @@ func p_magic_skill(action: Dictionary) -> int:
 					_7802_7803弃牌.clear()
 				else:
 					_7802_7803弃牌 = _取手牌(player.id, 选牌2, 2)
-				step = 步_7803第三次
+				step = 步_7803触发
 				continue
-			步_7803未触发:
-				if not engine.has_reply():
-					询问(player.id, MAGIC_BANG, 0, 0)
-					return WAIT
-				if take_skill_reply():
-					_7802_7803额外行动 = true
-				step = 步_7803第三次
-			步_7803第三次:
-				# 分支 3：本回合第 3 次【魔法入门】结算时（每回合只在该次数上问一次）
-				if _本回合魔法入门次数 == 3:
-					if not engine.has_reply():
-						询问(player.id, MAGIC_BANG, 0, 0, GConst.CardSource.Hand, [], 0, "",
-							[], true, 1)
-						return WAIT
-					if take_skill_reply():
-						_7802_7803加宝石 = true
-				step = 步_结算
 			步_结算:
 				# 先记「已结算」再收尾：收尾可能压 7805 的摸牌钩子并返回 URGENT，
 				# 引擎重入本体时不能再结算一次。
@@ -414,6 +424,9 @@ func _初始化魔法入门() -> void:
 	_7802_7803加宝石 = false
 	_7802已结算 = false
 	_7802展示钩子已压 = false
+	_7803弃牌已处理 = false
+	_7803行动已处理 = false
+	_7803宝石已处理 = false
 
 
 ## 7802 准备阶段：确定展示牌集合并算出三类效果的触发情况
@@ -484,6 +497,46 @@ func _广播7802展示() -> void:
 ## 7802 的「展示牌触发效果」判定：三组效果任意一组成立即算触发
 func _7802触发效果() -> bool:
 	return _7802有法术牌 or _7802咏数量 > 0 or _7802水数量 > 0
+
+
+# ============================================================
+# Magic!（7803）：三项固定选项
+# ============================================================
+## 三项固定下发（文案不变），只有当前场景对应的那项 enabled=true；已处理过的也置灰：
+##   1 弃 2 张牌 —— 展示牌触发了效果、且手里还有 2 张牌
+##   2 额外 +1【法术行动】—— 展示牌没触发任何效果
+##   3 我方【战绩区】+2【宝石】—— 本回合第 3 次【魔法入门】结算时
+func _7803选项() -> Array:
+	var 触发: bool = _7802触发效果()
+	return [
+		{"value": 1, "label": "弃 2 张牌",
+			"enabled": 触发 and player.hand_cards.size() >= 2 and not _7803弃牌已处理},
+		{"value": 2, "label": "额外+1【法术行动】",
+			"enabled": not 触发 and not _7803行动已处理},
+		{"value": 3, "label": "我方【战绩区】+2【宝石】",
+			"enabled": _本回合魔法入门次数 == 3 and not _7803宝石已处理},
+	]
+
+
+func _7803有可用选项(选项: Array) -> bool:
+	for 项: Dictionary in 选项:
+		if bool(项.get("enabled", false)):
+			return true
+	return false
+
+
+func _7803选项可选(选项: Array, 值: int) -> bool:
+	for 项: Dictionary in 选项:
+		if int(项.get("value", 0)) == 值:
+			return bool(项.get("enabled", false))
+	return false
+
+
+## 玩家在 Magic! 选项里取消 / 超时 / 硬提交了置灰项：剩余分支都不再问
+func _7803分支配平() -> void:
+	_7803弃牌已处理 = true
+	_7803行动已处理 = true
+	_7803宝石已处理 = true
 
 
 ## 7802 收尾：7803 的分支代价 / 奖励、7805 的弃牌入弃与「技能结束前各摸 1 张」。

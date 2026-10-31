@@ -351,8 +351,16 @@ func 跑() -> void:
 	检(玩家.hand_cards.has(法术牌.id), "7802：摸到的展示牌应进入自己手牌")
 	_回复(1, 魔法入门, [], [], [2, 4])
 	var 问7803: Dictionary = _取询问(1, MAGIC_BANG)
-	检(not 问7803.is_empty(), "7803：展示牌触发效果后应直接询问弃 2 张")
-	检(int((问7803.get("args", []) as Array)[0]) == 2, "7803：弃牌询问应要求 2 张")
+	检(not 问7803.is_empty(), "7803：展示牌触发效果后应询问 Magic! 选项")
+	# 三项固定下发：触发效果时只有「弃 2 张牌」可点，另外两项置灰
+	检((问7803.get("notes", []) as Array) == ["弃 2 张牌", "额外+1【法术行动】", "我方【战绩区】+2【宝石】"],
+		"7803：三项选项文案不对：%s" % str(问7803.get("notes", [])))
+	检((问7803.get("option_enabled", []) as Array) == [true, false, false],
+		"7803：触发效果时应只允许「弃 2 张牌」：%s" % str(问7803.get("option_enabled", [])))
+	_回复(1, MAGIC_BANG, [1])
+	var 问弃2: Dictionary = _取询问(1, MAGIC_BANG)
+	检(not 问弃2.is_empty(), "7803：选「弃 2 张牌」后应接着要求选 2 张手牌")
+	检(int((问弃2.get("args", []) as Array)[0]) == 2, "7803：弃牌询问应要求 2 张")
 	_回复(1, MAGIC_BANG, [], [无效果牌.id, 咏牌.id])
 	检(玩家.hand_cards.size() == 1 and 玩家.hand_cards.has(法术牌.id),
 		"7803：弃 2 张后应只剩摸到的展示牌，实际 %s" % str(玩家.hand_cards))
@@ -456,8 +464,10 @@ func 跑() -> void:
 	_置牌库顶(无效果牌)
 	_开魔法入门()
 	var 问未触发: Dictionary = _取询问(1, MAGIC_BANG)
-	检(not 问未触发.is_empty(), "7803：展示牌未触发效果时应询问是否 +1 法术行动")
-	_回复(1, MAGIC_BANG, [1])
+	检(not 问未触发.is_empty(), "7803：展示牌未触发效果时应询问 Magic! 选项")
+	检((问未触发.get("option_enabled", []) as Array) == [false, true, false],
+		"7803：未触发效果时应只允许「额外+1【法术行动】」：%s" % str(问未触发.get("option_enabled", [])))
+	_回复(1, MAGIC_BANG, [2])
 	检(引擎._await_id == 1, "7803：额外法术行动应直接进入额外行动阶段")
 	检(引擎.行动额外 and int(引擎.行动允许) == GConst.ActionType.Magic,
 		"7803：额外行动阶段应只允许法术行动")
@@ -489,11 +499,17 @@ func 跑() -> void:
 	角色._本回合魔法入门次数 = 2
 	_置牌库顶(无效果牌)
 	_开魔法入门()
-	检(not _取询问(1, MAGIC_BANG).is_empty(), "7803：第 3 次魔法入门应先询问无效果分支")
-	_回复(1, MAGIC_BANG, [1])
-	var 问第三次: Dictionary = _取询问(1, MAGIC_BANG)
-	检(not 问第三次.is_empty(), "7803：第 3 次魔法入门结算时应询问 +2 宝石分支")
-	_回复(1, MAGIC_BANG, [1])
+	var 问第3: Dictionary = _取询问(1, MAGIC_BANG)
+	检(not 问第3.is_empty(), "7803：第 3 次魔法入门应先询问 Magic! 选项")
+	检((问第3.get("option_enabled", []) as Array) == [false, true, true],
+		"7803：第 3 次时「额外+1【法术行动】」与「+2【宝石】」都应可点：%s"
+		% str(问第3.get("option_enabled", [])))
+	_回复(1, MAGIC_BANG, [2])
+	var 问第3宝石: Dictionary = _取询问(1, MAGIC_BANG)
+	检(not 问第3宝石.is_empty(), "7803：选完 +1 法术行动后应再问剩余的 +2 宝石分支")
+	检((问第3宝石.get("option_enabled", []) as Array) == [false, false, true],
+		"7803：已经选过的分支应置灰：%s" % str(问第3宝石.get("option_enabled", [])))
+	_回复(1, MAGIC_BANG, [3])
 	检(引擎.team_gem[GConst.BLUE] == 2, "7803：第 3 次应给战绩区 +2 宝石，实际 %d"
 		% 引擎.team_gem[GConst.BLUE])
 	检(引擎.行动额外 and int(引擎.行动额外来源) == MAGIC_BANG, "7803：第 3 次同时授予的额外法术行动应生效")
@@ -504,8 +520,11 @@ func 跑() -> void:
 	角色._本回合魔法入门次数 = 3
 	_置牌库顶(无效果牌)
 	_开魔法入门()
-	检(not _取询问(1, MAGIC_BANG).is_empty(), "7803：第 4 次魔法入门应询问无效果分支")
-	_回复(1, MAGIC_BANG, [0])
+	var 问第4: Dictionary = _取询问(1, MAGIC_BANG)
+	检(not 问第4.is_empty(), "7803：第 4 次魔法入门应询问 Magic! 选项")
+	检((问第4.get("option_enabled", []) as Array) == [false, true, false],
+		"7803：第 4 次时不应再出现 +2 宝石选项：%s" % str(问第4.get("option_enabled", [])))
+	_回复(1, MAGIC_BANG, [])
 	检(引擎.team_gem[GConst.BLUE] == 0, "7803：第 4 次不应再给 +2 宝石（每回合只在第 3 次问一次）")
 	检(引擎._await_id == 2, "7803：放弃后应正常结束行动并轮到下家")
 
@@ -627,10 +646,15 @@ func 跑() -> void:
 	检(not 问守恒水.is_empty(), "7805+7803：2 张水系展示牌应触发水系目标询问")
 	_回复(1, 魔法入门, [], [], [1, 3])
 	var 问守恒7803: Dictionary = _取询问(1, MAGIC_BANG)
-	检(not 问守恒7803.is_empty(), "7805+7803：展示牌触发效果后应直接询问 7803（弃 2 张）")
+	检(not 问守恒7803.is_empty(), "7805+7803：展示牌触发效果后应询问 Magic! 选项")
+	检((问守恒7803.get("option_enabled", []) as Array) == [true, false, false],
+		"7805+7803：触发效果时应只允许「弃 2 张牌」：%s" % str(问守恒7803.get("option_enabled", [])))
 	检(not 玩家.hand_cards.has(水系牌.id),
 		"7805+7803：7803 弃牌询问时不能再看到 7805 已弃的牌")
-	检(int((问守恒7803.get("args", []) as Array)[0]) == 2, "7805+7803：7803 弃牌询问仍应要求 2 张")
+	_回复(1, MAGIC_BANG, [1])
+	var 问守恒弃2: Dictionary = _取询问(1, MAGIC_BANG)
+	检(not 问守恒弃2.is_empty(), "7805+7803：选「弃 2 张牌」后应要求选 2 张手牌")
+	检(int((问守恒弃2.get("args", []) as Array)[0]) == 2, "7805+7803：7803 弃牌询问仍应要求 2 张")
 	# 模拟旧客户端/旧实现把 7805 已弃的那张也塞进回复：只处理还留手里的牌，不能重复入弃
 	_回复(1, MAGIC_BANG, [], [水系牌.id, 法术牌.id])
 	检(玩家.hand_cards.size() == 1 and 玩家.hand_cards.has(全能牌.id),
