@@ -167,6 +167,12 @@ func _应答(args: Array) -> void:
 	引擎._has_reply = true
 
 
+## 模拟挂机超时：引擎超时兜底回复（args 空 + is_timeout=true）
+func _应答超时() -> void:
+	引擎._reply = {"args": [], "card_ids": [], "dst_ids": [], "is_timeout": true}
+	引擎._has_reply = true
+
+
 # ============================================================
 # 用例主体
 # ============================================================
@@ -263,6 +269,33 @@ func _测喧哗上等引擎链路() -> void:
 			"9701 真实链路：牌库顶的 %d 应【展示】一次，实际 %d 次"
 			% [血魔牌[i].id, _展示次数(血魔牌[i].id)])
 	检(_播报次数(9701) == 1, "9701 真实链路应只播报一次，实际 %d 次" % _播报次数(9701))
+
+	# 超时：真实攻击流水线里一次超时也把后续移除一路自动结算完（不再逐张等 60 秒）
+	_重置()
+	for i: int in range(2, -1, -1):
+		引擎.deck.pile.append(血魔牌[i].id)
+	玩家.hand_cards.clear()
+	玩家.hand_cards.append(攻击牌.id)
+	发送记录.clear()
+	引擎.resolve_action(GConst.ActionType.Attack, {
+		"src_id": 1, "action_id": 0, "card_ids": [攻击牌.id], "dst_ids": [2], "args": [],
+	})
+	引擎.run()
+	检(int(引擎._await_id) == 2 and int(引擎._pending_respond_id) == GConst.RespondType.ReplyAttack,
+		"超时用例：应先问靶子应战")
+	引擎.on_message(2, GConst.Msg.Respond, {
+		"respond_id": GConst.RespondType.ReplyAttack, "src_id": 2,
+		"args": [GConst.Reattack.GiveUp], "card_ids": [], "dst_ids": [],
+	})
+	引擎.run()
+	检(int(引擎._await_id) == 1 and int(引擎._pending_respond_id) == 9701,
+		"超时用例：命中后应先弹 9701 询问")
+	引擎.wait_deadline_ms = maxi(Time.get_ticks_msec() - 1, 1)
+	引擎.tick()
+	检(引擎.deck.pile.is_empty(), "一次超时也应自动移除 3 张，实际剩 %d 张" % 引擎.deck.pile.size())
+	for i: int in range(3):
+		检(_展示次数(血魔牌[i].id) == 1,
+			"超时自动移除的 %d 也应【展示】一次" % 血魔牌[i].id)
 
 
 # ============================================================
@@ -362,6 +395,32 @@ func _测喧哗上等() -> void:
 	检(角色.p_timeline_2_hit(上下文) == BattleRole.SUCCESS, "非血类攻击牌应只移除 1 张")
 	检(int(伤害["point"]) == 4, "非血类命格攻击牌应只移除 1 张（+1），实际 %d"
 		% int(伤害["point"]))
+
+	# 挂机超时：一次超时按自动确定把后续移除一路结算完（不再逐张重新等超时）
+	_重置()
+	_设牌库顶([血魔牌[0].id, 血魔牌[1].id, 血魔牌[2].id])
+	上下文 = _攻击上下文(非血攻牌.id, 3)
+	伤害 = 上下文["harm"]
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.WAIT, "9701 应先问确定")
+	_应答超时()
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.SUCCESS,
+		"超时后应自动结算完，不再等第二次超时")
+	检(int(伤害["point"]) == 6, "超时也应自动移除 3 张（+3），实际 %d" % int(伤害["point"]))
+	检(引擎.deck.pile.is_empty(), "超时自动移除后牌库应为空，实际 %d 张" % 引擎.deck.pile.size())
+	for 牌号: int in [血魔牌[0].id, 血魔牌[1].id, 血魔牌[2].id]:
+		检(_展示次数(牌号) == 1, "超时自动移除的 %d 也应【展示】一次" % 牌号)
+
+	# 超时也遵守停止条件：遇到两者都不是的牌就停
+	_重置()
+	_设牌库顶([非血魔牌.id, 非血攻牌.id])
+	上下文 = _攻击上下文(非血攻牌.id, 3)
+	伤害 = 上下文["harm"]
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.WAIT, "9701 应先问确定")
+	_应答超时()
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.SUCCESS, "超时后应自动结算到停止条件")
+	检(int(伤害["point"]) == 5, "超时应自动移除 2 张（+2），实际 %d" % int(伤害["point"]))
+	检(引擎.deck.discard == [非血魔牌.id, 非血攻牌.id],
+		"超时自动移除的 2 张应进弃牌堆，实际 %s" % str(引擎.deck.discard))
 
 	# 牌库不足 / 空牌库：不弹询问、不洗回弃牌堆，X=0
 	_重置()

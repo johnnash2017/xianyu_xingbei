@@ -121,21 +121,25 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 ## 9701 喧哗上等：攻击命中后让发动者逐张点「确定」——
 ## 每次确定移除牌库顶一张牌【展示】、本次攻击伤害 +1；累计 3 张，或移除的牌
 ## 「既非血类命格、也非法术牌」时停止（血类 或 法术，满足任意一点就继续）。不能取消
-## （空回复 / 超时也按确定处理）。
+## （空回复 / 超时也按确定处理；**超时后不再逐张重新等 60 秒**，直接把后续移除自动结算完）。
 ## 询问固定本次攻击目标（头像亮起）并带当前伤害作预览基准：
 ## 客户端据此在目标头像上画「原伤害划掉 → +1 后的伤害」。
 func _喧哗上等(harm: Dictionary) -> int:
 	if engine == null:
 		return SUCCESS
+	# 挂机超时后自动结算：本钩子中途收到 timeout 回复就不再发询问，按「确定」一路移除到停下
+	var 自动: bool = false
 	while _喧哗上等_移除数 < 喧哗上等_最多移除:
 		# 牌库空：没有可移除的牌，直接收尾（X=0，不弹无用询问、不播报）
 		if engine.deck.pile.is_empty():
 			break
-		if not engine.has_reply():
+		if not 自动 and not engine.has_reply():
 			询问(player.id, 喧哗上等, 0, 0, GConst.CardSource.Hand, [], 0, "", [], false, 0, -1,
 				[int(harm.get("dst", -1))], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
 			return WAIT
-		take_skill_reply_full()
+		if not 自动:
+			var 回复: Dictionary = take_skill_reply_full()
+			自动 = bool(回复.get("is_timeout", false))
 		var 顶: Array[int] = engine.移除牌库顶(1)
 		if 顶.is_empty():
 			break
