@@ -61,9 +61,7 @@ const 步_水目标: int = 7
 const 步_7803触发: int = 8
 const 步_结算: int = 12
 
-## 7804 每一步的进度
-const 步_强予选项: int = 2
-const 步_强予结算: int = 4
+## 7804 每一步的进度（选项由 available_skills 的 arg_choices 在客户端选，服务端一次行动内结算）
 
 ## 7802 三类效果的目标数上限 / 伤害点数
 const 法术目标上限: int = 2
@@ -136,6 +134,10 @@ func available_skills() -> Array:
 			"id": 强予愿行,
 			"need_card": 0,
 			"need_target": 0,
+			# 三个消耗档由二级技能栏选（同魔弓【魔眼】）：点技能直接进二级栏，
+			# 选中后在同一步选牌 / 选角色，最后按一次「确定」随行动一起提交。
+			"targets": _其他角色id(),
+			"arg_choices": _强予参数选项(),
 			# 能量不够时照常下发、只置灰（界面看得见技能存在）；宝石可顶水晶
 			"enabled": player.get_energy() > 0,
 		},
@@ -613,60 +615,48 @@ func v_special_skill(action: Dictionary) -> int:
 	# 【水晶】费用：宝石可顶（get_energy）
 	if player.get_energy() <= 0:
 		return GConst.GE_INVALID_ACTION
+	var 参数: Array = action.get("args", [])
+	var 选择: int = int(参数[0]) if not 参数.is_empty() else 0
+	# 只认三档；2/3 要求战绩区还有对应星石（选项置灰时硬提交驳回）
+	if 选择 < 1 or 选择 > 3:
+		return GConst.GE_INVALID_ARGUMENT
+	if 选择 == 2 and engine.team_crystal[player.color] <= 0:
+		return GConst.GE_INVALID_ARGUMENT
+	if 选择 == 3 and engine.team_gem[player.color] <= 0:
+		return GConst.GE_INVALID_ARGUMENT
+	# 弃到 4 张必须执行：张数由服务端复核（同魔弓【充能】），牌必须是真实手牌
+	var 弃牌: Array = action.get("card_ids", [])
+	if 弃牌.size() != maxi(player.hand_cards.size() - 强予手牌数, 0):
+		return GConst.GE_INVALID_ACTION
+	for c: Variant in 弃牌:
+		if not player.has_discard_card(int(c)):
+			return GConst.GE_INVALID_ACTION
+	# 2/3 必须带一个真实存在的「其他角色」
+	if 选择 != 1:
+		var 目标: Array = action.get("dst_ids", [])
+		if 目标.is_empty() or not _其他角色id().has(int(目标[0])):
+			return GConst.GE_INVALID_ARGUMENT
 	return GConst.GE_SUCCESS
 
 
 func p_special_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != 强予愿行:
 		return EMPTY_HANDLE
-	if step == 0:
-		_7804额外移除 = false
-		_7804移除类型 = 0
-		_7804目标 = -1
-		_7804弃牌.clear()
-		step = 步_强予选项
-	while true:
-		match step:
-			步_强予选项:
-				# 三个固定选项（点击技能直接打开二级技能栏）：
-				#   1 仅调整自己手牌为 4
-				#   2 -1【水晶】调整其他角色手牌为 4
-				#   3 -1【宝石】调整其他角色手牌为 4
-				# 每项自带「弃到 4 张」（need_card＝当前超出的张数）；后两项再自带选 1 名其他角色。
-				# 选好后一次「确定」提交；取消 / 返回＝不发动技能，回行动阶段（不扣费）。
-				if not engine.has_reply():
-					询问(player.id, 强予愿行, 0, 0, GConst.CardSource.Hand, _强予选项(), 0, "",
-						[], true, 0)
-					return WAIT
-				var r选: Dictionary = take_skill_reply_full()
-				var 参数: Array = r选.get("args", [])
-				var 选择: int = int(参数[0]) if not 参数.is_empty() else 0
-				if 选择 < 1 or 选择 > 3 or not _强予选项可选(选择):
-					# 取消 / 返回 / 超时 / 硬提交了置灰项：不发动技能（不扣能量、不改手牌）
-					engine.取消技能行动()
-					return SUCCESS
-				if 选择 != 1:
-					# 选项 2/3 自带「选 1 名其他角色」：跟选项同一步提交
-					var 候选: Array[int] = _其他角色id()
-					var 目标: Array[int] = []
-					for 值: Variant in r选.get("dst_ids", []):
-						var pid2: int = int(值)
-						if 候选.has(pid2) and not 目标.has(pid2):
-							目标.append(pid2)
-							break
-					if 目标.is_empty():
-						# 选了星石但没给合法角色：按取消处理，不扣费
-						engine.取消技能行动()
-						return SUCCESS
-					_7804额外移除 = true
-					_7804移除类型 = 2 if 选择 == 2 else 1
-					_7804目标 = 目标[0]
-				# 「弃到 4 张」的牌跟选项一起提交：只收真实手牌，最多收当前超出的张数
-				_7804弃牌 = _取提交弃牌(r选.get("card_ids", []))
-				step = 步_强予结算
-			步_强予结算:
-				return _结算强予愿行()
-	return SUCCESS
+	_7804额外移除 = false
+	_7804移除类型 = 0
+	_7804目标 = -1
+	_7804弃牌.clear()
+	var 参数: Array = action.get("args", [])
+	var 选择: int = int(参数[0]) if not 参数.is_empty() else 1
+	if 选择 != 1:
+		var 目标: Array = action.get("dst_ids", [])
+		if not 目标.is_empty():
+			_7804额外移除 = true
+			_7804移除类型 = 2 if 选择 == 2 else 1
+			_7804目标 = int(目标[0])
+	# 「弃到 4 张」的牌是这次行动一起提交的代价（v_special_skill 已按张数校验）
+	_7804弃牌 = _取提交弃牌(action.get("card_ids", []))
+	return _结算强予愿行()
 
 
 ## 7804 结算：付 1 水晶 →（选项 2/3）移除 1 星石 → 自己（与他人的）手牌调整为 4 张
@@ -696,34 +686,23 @@ func _结算强予愿行() -> int:
 	return URGENT if 挂起 else SUCCESS
 
 
-## 7804 的三个固定选项（文案固定下发，不可用的置灰）：
+## 7804 的三个选项（同魔弓【魔眼】走 available_skills 的 arg_choices，点技能直接进二级栏）：
 ##   1 仅调整自己手牌为 4
 ##   2 -1【水晶】调整其他角色手牌为 4
 ##   3 -1【宝石】调整其他角色手牌为 4
 ## 每项都自带「弃到 4 张」：need_card＝当前手牌超出的张数；2/3 再自带选 1 名其他角色。
-func _强予选项() -> Array:
+func _强予参数选项() -> Array:
 	var 需弃: int = maxi(player.hand_cards.size() - 强予手牌数, 0)
 	var 候选: Array[int] = _其他角色id()
 	return [
-		{"value": 1, "label": "仅调整自己手牌为 4", "enabled": true, "need_card": 需弃},
-		{"value": 2, "label": "-1【水晶】调整其他角色手牌为 4",
+		{"text": "仅调整自己手牌为 4", "args": [1], "enabled": true, "need_card": 需弃},
+		{"text": "-1【水晶】调整其他角色手牌为 4", "args": [2],
 			"enabled": engine.team_crystal[player.color] > 0,
 			"need_card": 需弃, "need_target": 1, "targets": 候选},
-		{"value": 3, "label": "-1【宝石】调整其他角色手牌为 4",
+		{"text": "-1【宝石】调整其他角色手牌为 4", "args": [3],
 			"enabled": engine.team_gem[player.color] > 0,
 			"need_card": 需弃, "need_target": 1, "targets": 候选},
 	]
-
-
-## 某个选项此刻能不能提交（1 恒可；2 要战绩区有水晶；3 要有宝石）
-func _强予选项可选(选择: int) -> bool:
-	if 选择 == 1:
-		return true
-	if 选择 == 2:
-		return engine.team_crystal[player.color] > 0
-	if 选择 == 3:
-		return engine.team_gem[player.color] > 0
-	return false
 
 
 ## 7804：从回复里取「弃到 4 张」的牌 —— 只认真实手牌，最多收当前超出的张数

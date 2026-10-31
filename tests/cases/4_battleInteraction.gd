@@ -613,55 +613,42 @@ func 跑() -> void:
 		检(int(窗.get("_mode")) == 0,
 			"选满 2 张手牌后按确定应提交（实际 _mode=%d）" % int(窗.get("_mode")))
 
-	# 【强予愿行】(7804)：星石选项自带「选 1 名其他角色」——选中星石后直接点头像选人，
-	# 再按一次「确定」把星石和角色一起提交，不再另发一条选角色询问。
-	Logic.command_received.emit({
-		"cmd_type": GConst.CmdType.Respond,
-		"commands": [{
-			"respond_id": GConst.技能_强予愿行, "src_id": Logic.my_player_id, "is_skill": true,
-			"dst_ids": [], "card_ids": [],
-			"args": [0, 0, GConst.CardSource.Hand, 3, 1, 2, 3],
-			"card_max": 0, "card_rule": "", "can_cancel": true,
-			"notes": ["仅调整自己手牌为 4", "-1【水晶】调整其他角色手牌为 4", "-1【宝石】调整其他角色手牌为 4"],
-			"option_need_cards": [0, 0, 0],
-			"option_need_targets": [0, 1, 1],
-			"option_targets": [{"ids": []}, {"ids": [2, 3]}, {"ids": [2, 3]}],
-		}],
-	})
-	await 等帧(2)
+	# 【强予愿行】(7804)：选项走 available_skills 的 arg_choices（同魔弓【魔眼】）——
+	# 点技能直接进二级技能栏；选中选项后同一步选牌 / 选角色，最后按一次「确定」提交。
+	var 强予参数: Array = [
+		{"text": "仅调整自己手牌为 4", "args": [1], "enabled": true, "need_card": 0},
+		{"text": "-1【水晶】调整其他角色手牌为 4", "args": [2], "enabled": true,
+			"need_card": 0, "need_target": 1, "targets": [2, 3]},
+		{"text": "-1【宝石】调整其他角色手牌为 4", "args": [3], "enabled": true,
+			"need_card": 0, "need_target": 1, "targets": [2, 3]},
+	]
+	窗.call("_选择技能", GConst.技能_强予愿行, GConst.ActionType.SpecialSkill, 0, 0,
+		[2, 3], [], 0, 0, 0, GConst.CardSource.Hand, "", 0, 0, 强予参数, null, 0)
+	await 等帧(1)
+	检(int(窗.get("_mode")) == 4,
+		"7804 点技能后应直接进入二级技能栏（实际 _mode=%d）" % int(窗.get("_mode")))
 	var 强予选项: Array = 窗.get("_二级选项")
 	检(强予选项.size() == 3, "7804 应摆出 3 个选项（实际 %d）" % 强予选项.size())
-	# 二级技能栏右侧有「返回」：点返回＝不发动技能（走空应答，界面收起）
+	# 二级技能栏右侧有「返回」：点返回＝退回行动阶段（不发行动、不扣费）
 	var 强予返回: 技能按钮 = _找技能栏文案按钮(窗, "返回")
 	检(强予返回 != null, "7804 的二级技能栏右侧应有「返回」按钮")
 	if 强予返回 != null and 强予返回.plateButton != null:
 		强予返回.plateButton.pressed.emit()
 		await 等帧(1)
-		检(int(窗.get("_mode")) == 0, "点 7804 的「返回」应取消这次技能（实际 _mode=%d）" % int(窗.get("_mode")))
-		# 再发一次询问，验证「选中选项 → 选角色 → 确定」一次提交
-		Logic.command_received.emit({
-			"cmd_type": GConst.CmdType.Respond,
-			"commands": [{
-				"respond_id": GConst.技能_强予愿行, "src_id": Logic.my_player_id, "is_skill": true,
-				"dst_ids": [], "card_ids": [],
-				"args": [0, 0, GConst.CardSource.Hand, 3, 1, 2, 3],
-				"card_max": 0, "card_rule": "", "can_cancel": true,
-				"notes": ["仅调整自己手牌为 4", "-1【水晶】调整其他角色手牌为 4", "-1【宝石】调整其他角色手牌为 4"],
-				"option_need_cards": [0, 0, 0],
-				"option_need_targets": [0, 1, 1],
-				"option_targets": [{"ids": []}, {"ids": [2, 3]}, {"ids": [2, 3]}],
-			}],
-		})
-		await 等帧(2)
+		检(int(窗.get("_mode")) == 1, "点 7804 的「返回」应退回行动阶段（实际 _mode=%d）" % int(窗.get("_mode")))
+		# 再进一次，验证「选中选项 → 选角色 → 确定」一次提交
+		窗.call("_选择技能", GConst.技能_强予愿行, GConst.ActionType.SpecialSkill, 0, 0,
+			[2, 3], [], 0, 0, 0, GConst.CardSource.Hand, "", 0, 0, 强予参数, null, 0)
+		await 等帧(1)
 	强予选项 = 窗.get("_二级选项")
 	var 强予提示前: String = str(窗.get("_提示原文"))
 	if not 强予选项.is_empty():
 		窗.call("_选中二级选项", GConst.技能_强予愿行, 1)
 		await 等帧(1)
-		检(int(窗.get("_mode")) == 3,
+		检(int(窗.get("_mode")) == 4,
 			"点选 7804 选项只切换选中，不应直接提交（实际 _mode=%d）" % int(窗.get("_mode")))
-		检(int(窗.get("_skill_ask_need_target")) == 1,
-			"7804 选「-1 水晶」后应要求选 1 名其他角色（实际 %d）" % int(窗.get("_skill_ask_need_target")))
+		检(int(窗.get("_skill_need_target")) == 1,
+			"7804 选「-1 水晶」后应要求选 1 名其他角色（实际 %d）" % int(窗.get("_skill_need_target")))
 		检(str(窗.get("_提示原文")) == 强予提示前,
 			"7804 选中选项后提示条不应换成专用提示（实际：%s）" % str(窗.get("_提示原文")))
 		窗.call("_on_player_clicked", 2)

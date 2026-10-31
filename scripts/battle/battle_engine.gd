@@ -3333,8 +3333,8 @@ class SWeaken:
 		return BattleEngine.WAIT
 
 
-## 「启动」技能结算完压回来的行动阶段：取消这次启动技能时把「禁特殊」撤掉，
-## 让玩家回到正常的行动阶段（启动技能本身不消耗行动）。
+## 行动阶段（对照原版 StateActionPhase(allowAction, canGiveUp)）：
+## 允许的行动种类与「能否放弃」由本状态的字段决定；被【挑衅】时强制改成「只能攻击 + 可放弃」
 class SActionPhase:
 	var 允许: int = GConst.ActionType.Any
 	var 可放弃: bool = false
@@ -3342,8 +3342,6 @@ class SActionPhase:
 	var 额外: bool = false
 	## 本阶段是否禁止特殊行动（发动过「启动」技能后：只能再攻击 / 法术）
 	var 禁特殊: bool = false
-	## 是不是「启动」技能结算后压回来的那一份（取消该技能时要拆掉它的禁特殊）
-	var 启动收尾: bool = false
 	## 额外行动的来源（cause；普通行动为 0）
 	var 额外来源: int = 0
 	## 当前这份额外行动的原始数据（切换额外攻击时退回队列用）
@@ -4900,12 +4898,8 @@ func _进入技能行动(cur: BattlePlayer, kind: String, data: Dictionary) -> v
 			and cur.role.is_free_skill(技能号)
 	if 启动:
 		# 「启动」技能不消耗本回合行动，发动后行动阶段照旧继续；但只能再攻击 / 法术，
-		# 不能再走特殊行动（启动技与特殊行动互斥）。
-		# 打上「启动收尾」标记：角色在选项里点「返回」取消这次发动时，取消技能行动()
-		# 要能找回这份行动阶段并撤掉「禁特殊」。
-		var 启动后阶段: SActionPhase = SActionPhase.new(行动允许, 行动可放弃, 行动额外, true)
-		启动后阶段.启动收尾 = true
-		push(启动后阶段)
+		# 不能再走特殊行动（启动技与特殊行动互斥）
+		push(SActionPhase.new(行动允许, 行动可放弃, 行动额外, true))
 	else:
 		push(STurnEnd.new())
 	# F2：把「是不是额外行动 / 来源」随技能行动快照下来（结算回来时引擎字段可能已被后续阶段覆盖）
@@ -4929,12 +4923,6 @@ func 取消技能行动() -> void:
 	for i: int in range(_states.size() - 1, -1, -1):
 		if _states[i] is STurnEnd:
 			(_states[i] as STurnEnd).回行动阶段 = true
-			break
-		# 「启动」技能压回来的是行动阶段（没有 STurnEnd）：把它的「禁特殊」拆掉，
-		# 取消后玩家仍能做特殊行动 / 再点别的启动技能。
-		if _states[i] is SActionPhase and (_states[i] as SActionPhase).启动收尾:
-			(_states[i] as SActionPhase).禁特殊 = false
-			(_states[i] as SActionPhase).启动收尾 = false
 			break
 	# F2：被取消的技能行动其实没发生 —— 标记给 SkillRun，让它撤销行动计数、不触发 p_action_end
 	for i: int in range(_states.size() - 1, -1, -1):
