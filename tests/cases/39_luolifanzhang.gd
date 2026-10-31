@@ -640,7 +640,7 @@ func _测夜露死苦与爱死天流() -> void:
 	检(角色.p_timeline_1(上下文) == BattleRole.SUCCESS, "取消【血影狂刀】应直接收尾")
 	检(int(伤害["point"]) == 3, "取消【血影狂刀】不应加伤")
 
-	# ---- 202 血腥咆哮：目标治疗 2 时同样套用 9703 的改写（不再强制命中） ----
+	# ---- 202 血腥咆哮：9703 直接覆盖它的响应（提示文案 / 条件 / 效果一起换） ----
 	_重置()
 	玩家.hand_cards = [咆哮牌.id]
 	靶.hand_cards = [非血攻牌.id]
@@ -648,12 +648,16 @@ func _测夜露死苦与爱死天流() -> void:
 	上下文 = _攻击上下文(咆哮牌.id, 3)
 	检(角色.p_timeline_1(上下文) == BattleRole.WAIT, "带【血腥咆哮】的攻击应询问是否发动")
 	检(not _取询问(1, 202).is_empty(), "【血腥咆哮】应直接按 202 下发询问")
+	检(str(_取询问(1, 202).get("ask_prompt", "")) == 角色脚本.爱死天流提示,
+		"9703 应把【血腥咆哮】的提示整段换成改写版：%s" % str(_取询问(1, 202).get("ask_prompt", "")))
 	_应答([1])
 	检(角色.p_timeline_1(上下文) == BattleRole.SUCCESS, "确认【血腥咆哮】后应结算完")
 	检(int(上下文.get("hit_rate", -1)) == GConst.HitRate.Normal,
 		"9703 把「治疗为 2 → 强制命中」整句替换掉，治疗为 2 也不应再改命中率（实际 %s）"
 		% str(上下文.get("hit_rate", -1)))
 	检(not bool(上下文.get("can_light", true)), "9703 应关闭本次攻击的【圣光】抵挡")
+	检((上下文.get("禁应战牌名", []) as Array).has(GConst.CardName.DarkSlash),
+		"9703 应禁用【暗灭】应战：%s" % str(上下文.get("禁应战牌名", [])))
 
 	# ---- 9703 爱死天流：目标治疗 1 也能发动，效果改为关闭【圣光】抵挡（不再强制命中） ----
 	_重置()
@@ -668,6 +672,18 @@ func _测夜露死苦与爱死天流() -> void:
 	检(int(上下文.get("hit_rate", -1)) == GConst.HitRate.Normal,
 		"9703 用「无法暗灭应战 / 无法圣光抵挡」替代强制命中，不应再改命中率")
 	检(not bool(上下文.get("can_light", true)), "9703 应关闭本次攻击的【圣光】抵挡")
+	检((上下文.get("禁应战牌名", []) as Array).has(GConst.CardName.DarkSlash),
+		"9703 应禁用【暗灭】应战：%s" % str(上下文.get("禁应战牌名", [])))
+
+	# 引擎复核：禁应战名单里的【暗灭】不能拿来应战（客户端置灰只是体验，服务端仍要拦）
+	var 暗灭牌: GCard = _取牌(func(c: GCard) -> bool: return c.card_name_enum() == GConst.CardName.DarkSlash)
+	检(暗灭牌 != null, "卡库找不到【暗灭】牌")
+	if 暗灭牌 != null:
+		检(引擎._禁应战({"禁应战牌名": [GConst.CardName.DarkSlash]}, 暗灭牌.id),
+			"引擎应拒绝用【暗灭】应战 9703 的攻击")
+		检(not 引擎._禁应战({"禁应战牌名": [GConst.CardName.DarkSlash]}, 血影牌.id),
+			"名单外的攻击牌应放行")
+	检(not 引擎._禁应战({}, 血影牌.id), "没有禁应战名单时一律放行")
 
 	# 目标没有治疗：不询问
 	_重置()

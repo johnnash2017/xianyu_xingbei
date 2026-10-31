@@ -2216,6 +2216,10 @@ func _进入待选() -> void:
 						应战句 = "打出%s命格的斩应战" % _命格着色(攻击牌.fate_pattern)
 					else:
 						应战句 = "打出同命格的斩应战"
+				# 本次攻击禁用某些应战牌（如 9703 爱死天流禁【暗灭】）：提示里点明，牌也置灰
+				if not _应战同命格 \
+						and (_pending.get("ban_reattack_card_names", []) as Array).has(GConst.CardName.DarkSlash):
+					应战句 += "（无法用【暗灭】应战）"
 					_指令提示(受伤前缀 + 应战句 + "，无法用【圣光】抵挡，或取消放弃")
 				elif _可应战():
 					if _可圣光抵挡():
@@ -2536,6 +2540,11 @@ func _进入技能询问() -> void:
 	# 带选项的询问（【军神威光】/【神之庇护】这类）例外：列出选项只代表「要你选一个效果」，
 	# 选中之前都还没发动，日志里不能写「发动【X】」——那句要等服务端广播技能通知时才出现
 	var 询问文案: String = str(_pending.get("ask_text", ""))
+	# 整段专属提示（如萝莉番长 9703 改写后的【血腥咆哮】）：提示条直接用它，
+	# 不再被「响应技能统一用技能说明」盖成技能表里的原句
+	var 整段提示: String = str(_pending.get("ask_prompt", ""))
+	if not 整段提示.is_empty():
+		询问文案 = 整段提示
 	var 是响应技能: bool = GConst.skill_type(_skill_ask_id) == "响应"
 	# 元素箭这类子步骤的 ask_text 就是母技能「提示」列里专门写给这一步的文案，
 	# 不能再被「响应技能统一用技能说明」盖掉；强制询问（can_cancel=false，如逆反居合斩的弃牌）
@@ -2543,7 +2552,8 @@ func _进入技能询问() -> void:
 	var 专属询问文案: String = str(_pending.get("ask_text", ""))
 	var 有专属提示: bool = GConst.技能子步骤母号.has(_skill_ask_id) \
 		or (not _skill_ask_can_cancel and not 专属询问文案.is_empty()) \
-		or (_skill_ask_id == GConst.技能_偷袭 and _skill_ask_need_target > 0)
+		or (_skill_ask_id == GConst.技能_偷袭 and _skill_ask_need_target > 0) \
+		or not 整段提示.is_empty()
 	var 指示提示: String = _发动提示(_skill_ask_id)
 	var 赐福响应提示: String = _响应赐福提示(_skill_ask_id)
 	if not 赐福响应提示.is_empty():
@@ -4281,7 +4291,15 @@ func _卡牌能点(card_id: int) -> bool:
 			return false
 	# 应战：只有「同系攻击牌」和【圣光】能用
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.ReplyAttack:
-		return _可应战牌(card_id)
+		if not _可应战牌(card_id):
+			return false
+		# 本次攻击禁用的应战牌（如 9703 爱死天流禁【暗灭】）：服务端随询问下发卡名，客户端置灰
+		var 禁牌名: Array = _pending.get("ban_reattack_card_names", [])
+		if not 禁牌名.is_empty():
+			var 牌面: GCard = Data.get_card(card_id)
+			if 牌面 != null and 禁牌名.has(牌面.card_name_enum()):
+				return false
+		return true
 	# 魔弹传递：只有【圣光】（抵挡）或【魔弹】/火系/地系牌（继续传递）能用
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet:
 		return _可回魔弹牌(card_id)

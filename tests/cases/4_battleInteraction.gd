@@ -761,6 +761,56 @@ func 跑() -> void:
 	(窗.get("BtnOK") as Button).pressed.emit()
 	await 等帧(1)
 
+	# 爱死天流（9703）改写后的【血腥咆哮】：整段提示直接显示 ask_prompt（不套技能表说明）
+	var 爱死提示: String = "【血腥咆哮】：(作为主动攻击打出时发动)若攻击目标拥有【治疗】，则本次攻击无法使用【暗灭】应战或使用【圣光】抵挡。"
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.技能_血腥咆哮, "src_id": Logic.my_player_id, "is_skill": true,
+			"dst_ids": [], "card_ids": [],
+			"args": [0, 0, GConst.CardSource.Hand, 0],
+			"card_max": 0, "card_rule": "", "can_cancel": true,
+			"ask_prompt": 爱死提示,
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "血腥咆哮询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
+	检(str(窗.get("_提示原文")).contains("血腥咆哮") and str(窗.get("_提示原文")).contains("无法使用【暗灭】应战"),
+		"9703 的提示条应直接显示改写版文案：%s" % str(窗.get("_提示原文")))
+	(窗.get("BtnCancel") as Button).pressed.emit()
+	await 等帧(1)
+
+	# 9703 禁【暗灭】应战：应战询问随命令下发 ban_reattack_card_names，客户端要把它置灰
+	var 暗灭牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.card_name_enum() == GConst.CardName.DarkSlash:
+			暗灭牌 = c
+			break
+	检(暗灭牌 != null, "卡库找不到【暗灭】牌")
+	if 暗灭牌 != null:
+		var 应战手牌: Array[GCard] = []
+		for c: GCard in 攻击牌:
+			应战手牌.append(c)
+		应战手牌.append(暗灭牌)
+		Data.hand_cards = 应战手牌
+		Logic.command_received.emit({
+			"cmd_type": GConst.CmdType.Respond,
+			"commands": [{
+				"respond_id": GConst.RespondType.ReplyAttack, "src_id": 2,
+				"dst_ids": [], "card_ids": [],
+				"args": [GConst.HitRate.Normal, 攻击牌[0].id, Logic.my_player_id, 2, 1, 3],
+				"ban_reattack_card_names": [GConst.CardName.DarkSlash],
+			}],
+		})
+		await 等帧(2)
+		检(int(窗.get("_mode")) == 2, "应战询问应进入应战模式（实际 %d）" % int(窗.get("_mode")))
+		检(not bool(窗.call("_卡牌能点", 暗灭牌.id)), "9703 禁【暗灭】应战：应战里【暗灭】应点不动")
+		检(str(窗.get("_提示原文")).contains("暗灭"),
+			"应战提示应点明不能用【暗灭】应战：%s" % str(窗.get("_提示原文")))
+		(窗.get("BtnCancel") as Button).pressed.emit()
+		await 等帧(1)
+		Data.hand_cards = 攻击牌
+
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
 

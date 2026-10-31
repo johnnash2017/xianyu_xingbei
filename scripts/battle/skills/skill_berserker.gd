@@ -46,8 +46,8 @@ const 进度_血腥咆哮: int = 2
 ## 借用它的角色（构造时传入；helper 不持有自己的 player / engine）
 var 角色: BattleRole = null
 
-## 播报 / 询问用哪一行技能：狂战士 201 / 202；
-## 借用角色（97 萝莉番长）两颗都填自己的技能号 9702，日志与提示才按本角色技能行取
+## 播报 / 询问用哪一行技能：默认狂战士 201 / 202（借用角色直接当自己的技能用）；
+## 要套用本角色自己的技能行（如 97 以前按 9702 播报）才改这里
 var 技能号血影狂刀: int = 牌上血影狂刀
 var 技能号血腥咆哮: int = 牌上血腥咆哮
 
@@ -55,6 +55,9 @@ var 技能号血腥咆哮: int = 牌上血腥咆哮
 var 血影狂刀加伤: Callable = Callable()
 var 血腥咆哮条件: Callable = Callable()
 var 血腥咆哮效果: Callable = Callable()
+## 血腥咆哮询问时提示条用的整段文案（留空＝按技能表 202 的提示列）；
+## 9703【爱死天流】改写后由借用角色设成改写版的完整效果说明
+var 血腥咆哮提示: String = ""
 
 ## 本次主动攻击的推进进度（0 未开始 / 1 血影狂刀 / 2 血腥咆哮）
 var _进度: int = 进度_未开始
@@ -182,7 +185,12 @@ func _处理血腥咆哮(ctx: Dictionary) -> int:
 		return BattleRole.SUCCESS
 	var 目标: BattlePlayer = _取目标(ctx)
 	if not 角色.engine.has_reply():
-		角色.询问(角色.player.id, 技能号血腥咆哮)
+		if 血腥咆哮提示.is_empty():
+			角色.询问(角色.player.id, 技能号血腥咆哮)
+		else:
+			# 整段改写后的文案（9703 这类）：ask_prompt 让客户端提示条直接用它，不套技能表说明
+			角色.询问(角色.player.id, 技能号血腥咆哮, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, 血腥咆哮提示)
 		return BattleRole.WAIT
 	if not 角色.take_skill_reply():
 		return BattleRole.SUCCESS

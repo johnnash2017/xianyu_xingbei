@@ -1976,7 +1976,7 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 
 func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], src_id: int = -1,
 		card_max: int = 0, card_rule: String = "", ask_text: String = "", allow_actions: Array = [],
-		option_uids: Array = []) -> void:
+		option_uids: Array = [], ban_reattack_card_names: Array = []) -> void:
 	# 记录本次询问，供超时构造默认回复
 	_pending_respond_id = respond_id
 	_pending_args = args.duplicate()
@@ -2001,6 +2001,9 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 		cmd["card_rule"] = card_rule
 	if not ask_text.is_empty():
 		cmd["ask_text"] = ask_text
+	# 本次攻击禁用来应战的卡名（如 9703 禁【暗灭】）：客户端据此置灰，服务端仍复核
+	if not ban_reattack_card_names.is_empty():
+		cmd["ban_reattack_card_names"] = ban_reattack_card_names
 	_询问(pid, GConst.CmdType.Respond, [cmd])
 
 
@@ -2030,7 +2033,7 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 保留倒计时=true 时沿用这条链当前那次等待的截止时刻（见 wait_for），用于同一条链上的后续询问
 ## can_light=false 时随询问下发 can_light=false（如【阴阳转换】：这次攻击不能用【圣光】抵挡，
 ## 客户端据此把【圣光】置灰；默认 true 时不下发，客户端按可用处理）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false) -> void:
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "") -> void:
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
@@ -2140,6 +2143,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 询问别人的场合（如请人交牌）：下发目标侧文案，客户端优先显示它
 	if not ask_text.is_empty():
 		cmd["ask_text"] = ask_text
+	# 整段专属提示（如 9703 改写后的【血腥咆哮】）：客户端提示条直接用它，不再套技能说明
+	if not ask_prompt.is_empty():
+		cmd["ask_prompt"] = ask_prompt
 	_pending_respond_id = skill_id
 	_pending_args = args.duplicate()
 	_pending_is_skill = true
@@ -2285,6 +2291,21 @@ func _reattack_target_ok(defender: BattlePlayer, dst_id: int, origin_src: int) -
 	if dst == null:
 		return false
 	return GConst.可作反击目标(defender.id, defender.color, dst.id, dst.color, origin_src)
+
+
+## 这张应战牌是否被本次攻击禁用（攻击 ctx 的「禁应战牌名」＝卡名枚举数组；如 9703 禁【暗灭】）。
+## 客户端按同一份名单置灰，这里再复核一次 —— 客户端过滤不能当合法性判据。
+func _禁应战(攻击ctx: Dictionary, 应战牌: int) -> bool:
+	var 禁: Variant = 攻击ctx.get("禁应战牌名", [])
+	if not (禁 is Array):
+		return false
+	var 名单: Array = 禁 as Array
+	if 名单.is_empty():
+		return false
+	var card: GCard = Data.get_card(应战牌)
+	if card == null:
+		return false
+	return 名单.has(card.card_name_enum())
 
 
 ## 本次攻击「命中时才会结算」的加伤合计（只用于给被攻击者看提示，不改变实际结算）。
@@ -3933,10 +3954,12 @@ class SAttackedAsk:
 				var 选定: Array = r.get("dst_ids", [])
 				var 反击目标: int = int(选定[0]) if not 选定.is_empty() else -1
 				if hit_rate != GConst.HitRate.Normal or not e._reattack_target_ok(defender, 反击目标, owner.src) \
-						or defender.v_reattack(cid, owner.card) != GConst.GE_SUCCESS:
+						or defender.v_reattack(cid, owner.card) != GConst.GE_SUCCESS \
+						or e._禁应战(owner.ctx, cid):
 					# args[2] 必须是「应该由谁来应战」（defender），客户端据此判断这条询问是不是给我的：
 					# 代应战（式神咒束）时 defender 是代替者，不等于被攻击的目标 dst，写成 dst.id 会让代替者的客户端把询问丢掉
-					e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, 应战询问)
+					e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, 应战询问, [], -1, 0, "", "", [], [],
+						owner.ctx.get("禁应战牌名", []))
 					e.wait_for(defender.id, GConst.Msg.Respond)
 					return BattleEngine.WAIT
 				# 应战成立：原攻击落空，应战者以自己的攻击牌对所选目标发起一次新攻击。
@@ -3984,7 +4007,8 @@ class SAttackedAsk:
 					return BattleEngine.CONTINUE
 			e.push(STimeline2Hit.new(harm))
 			return BattleEngine.CONTINUE
-		e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, 应战询问)
+		e.ask_respond(defender.id, GConst.RespondType.ReplyAttack, 应战询问, [], -1, 0, "", "", [], [],
+			owner.ctx.get("禁应战牌名", []))
 		e.wait_for(defender.id, GConst.Msg.Respond)
 		return BattleEngine.WAIT
 
