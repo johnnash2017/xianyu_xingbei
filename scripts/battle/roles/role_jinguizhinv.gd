@@ -179,6 +179,15 @@ func p_jinguizhinv_水系治疗(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 7805 的「技能效果结束前各摸 1 张【强制】」：压在伤害 / 治疗状态之下，等它们全部结算完才摸。
+## 直接在 _结算魔法入门 里当场摸牌会跑到伤害之前（那时伤害状态还没压栈）。
+func p_jinguizhinv_友情摸牌(ctx: Dictionary) -> int:
+	for 值: Variant in ctx.get("targets", []):
+		engine.强制摸牌(int(值), 1, 友情羁绊)
+	engine._broadcast_game()
+	return SUCCESS
+
+
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
@@ -391,17 +400,21 @@ func _准备7802展示() -> void:
 	_广播7802展示()
 
 
-## 把展示集合亮给全场（7805 时逐张按归属者展示；这两张牌在选定时已离手，这里只是亮牌）
+## 把展示集合亮给全场（7805 时是那 2 张弃牌）。
+## 7805 的 2 张牌分属不同角色，但它们是**同一次**【展示】；分成两条 Card 消息发出去时，
+## 客户端的展示区会「新一拨顶掉上一拨」，实际只能看到最后一张 —— 整批发一条，两张一起摊开。
+## （服务端的 p_show_hand 仍按各自的归属者分别压栈，展示归属不受这条广播影响。）
 func _广播7802展示() -> void:
 	if _7802启用友情羁绊:
+		var 展示号: Array[int] = []
 		for 项: Dictionary in _7802友情弃牌:
-			var pid: int = int(项.get("pid", -1))
 			var cid: int = int(项.get("card", -1))
-			if pid < 0 or cid < 0:
-				continue
+			if cid >= 0 and not 展示号.has(cid):
+				展示号.append(cid)
+		if not 展示号.is_empty():
 			engine.broadcast(GConst.Msg.Card, {
-				"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
-				"card_ids": [cid], "is_real": true,
+				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+				"card_ids": 展示号, "is_real": true,
 			})
 	elif not _7802展示牌.is_empty():
 		engine.broadcast(GConst.Msg.Card, {
@@ -452,6 +465,18 @@ func _结算魔法入门() -> int:
 	if _7802_7803加宝石:
 		notice_skill(MAGIC_BANG, [player.id])
 		engine.set_team_gem(player.color, engine.team_gem[player.color] + 2)
+	# 7805：技能效果结束前，2 名角色各摸 1 张【强制】（不再并入展示集合）。
+	# 先压「摸牌回调」（栈底 → 最后执行）：压在治疗 / 伤害之下，等它们全部结算完才摸，
+	# 否则当场摸牌会跑到伤害前面（那时伤害状态还没压栈）。
+	if _7802启用友情羁绊:
+		var 摸牌者: Array[int] = []
+		for 项2: Dictionary in _7802友情弃牌:
+			var pid7: int = int(项2.get("pid", -1))
+			if pid7 >= 0 and not 摸牌者.has(pid7):
+				摸牌者.append(pid7)
+		if not 摸牌者.is_empty():
+			engine.push(BattleEngine.SHook.new("p_jinguizhinv_友情摸牌",
+				{"player": player.id, "targets": 摸牌者}, []))
 	# 治疗：水系效果是「依序」里的最后一项。把它作为自定义钩子压在所有伤害状态之下，
 	# 等伤害全部结算完再 +1 治疗 —— 否则先治疗再受伤时，治疗会白挡掉本该结算的伤害。
 	if not _7802水目标.is_empty():
@@ -469,10 +494,7 @@ func _结算魔法入门() -> int:
 			"src": player.id, "dst": pid5, "point": 法术伤害值,
 			"cause": 魔法入门, "type": GConst.HarmType.Magic, "is_active": false,
 		})
-	# 7805：技能效果结束前，2 名角色各摸 1 张【强制】（不再并入展示集合）
-	if _7802启用友情羁绊:
-		for 项2: Dictionary in _7802友情弃牌:
-			engine.强制摸牌(int(项2.get("pid", -1)), 1, 友情羁绊)
+	# 7805 的「各摸 1 张」已在上方先压栈（栈底），这里不再当场摸牌。
 	# 展示牌钩子最后压：其他角色的「展示牌」响应先于伤害 / 行动结束结算
 	if _7802启用友情羁绊:
 		for 项3: Dictionary in _7802友情弃牌:

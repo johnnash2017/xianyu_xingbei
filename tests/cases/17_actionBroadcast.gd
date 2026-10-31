@@ -354,6 +354,21 @@ func 跑() -> void:
 				break
 		检(not 展示误播, "展示卡牌「%s」不应飘出卡牌名" % 期望单张)
 
+		# 真牌展示：展示区视图必须真的记住牌号。Godot 只接受 ASCII 元数据键，
+		# 写成中文会报 Invalid metadata identifier、set_meta 静默失败，选走时按牌号就找不到视图。
+		战.call("_on_card", {
+			"type": GConst.CardMsgType.Show, "src_id": 1, "dst_id": 1,
+			"card_ids": [牌.id], "is_real": true,
+		})
+		await 等帧(1)
+		var 展示区: Node = 战.get("ShowCardArea")
+		var 记住牌号: bool = false
+		if 展示区 != null:
+			for 子: Node in 展示区.get_children():
+				if 子 is Control and (子 as Control).has_meta(&"show_card_id"):
+					记住牌号 = true
+		检(记住牌号, "展示卡牌视图没有记住牌号（元数据键必须是 ASCII 标识符）")
+
 		战.call("_排行动播报", 1, "测试技能")
 		await 等帧(1)
 		var 找到: bool = false

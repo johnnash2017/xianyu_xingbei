@@ -180,6 +180,11 @@ const 元数据_行动服务端可用: StringName = &"extra_action_enabled"
 ## 这条技能会把本次出牌固定视为哪个系别（0＝不固定）：额外行动阶段本地切换行动后，
 ## 要用它重算「与所选行动的系别要求是否相符」（如 3805 精灵的剑舞＝风系）
 const 元数据_行动技能系别: StringName = &"extra_action_element"
+## 展示区卡牌视图上记的元数据：牌号（Pick 选走时按牌号找回视图）与进场飞行 tween（选走前先杀掉）。
+## 同样必须是 ASCII 标识符：中文键会报 Invalid metadata identifier、set_meta 静默失败，
+## 结果是「选走哪张」永远认不出（只能现造一张）、旧 tween 也杀不掉。
+const 元数据_展示牌号: StringName = &"show_card_id"
+const 元数据_展示飞行tween: StringName = &"show_fly_tween"
 ## 玩家面板：常态 / 选中（目标）颜色
 const 面板常态色: Color = Color(1.0, 1.0, 1.0)
 const 面板选中色: Color = Color(1.0, 1.0, 0.55)
@@ -1272,7 +1277,7 @@ var _行动播报中: Dictionary = {}
 
 
 ## 造一张展示用的卡牌视图（ShowCardArea 的子节点）；取不到卡返回 null。
-## 「展示牌号」meta 供 Pick（选走一张）时按牌号找回对应视图。
+## 「元数据_展示牌号」meta 供 Pick（选走一张）时按牌号找回对应视图。
 func _造展示卡牌视图(牌号: int) -> Control:
 	var 卡: GCard = Data.get_card(牌号)
 	if 卡 == null:
@@ -1283,7 +1288,7 @@ func _造展示卡牌视图(牌号: int) -> Control:
 	视图.custom_minimum_size = 手牌尺寸
 	视图.size = 手牌尺寸
 	视图.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	视图.set_meta("展示牌号", 牌号)
+	视图.set_meta(元数据_展示牌号, 牌号)
 	# 「不可用」+「不置灰」= 正常亮度但不显示边框（展示只是给人看，不需要可选光晕）
 	视图.call("设置卡牌", 卡, false, false)
 	return 视图
@@ -1350,7 +1355,7 @@ func _展示飞行(视图表: Array[Control], 玩家id: int) -> void:
 		var 延迟: float = 展示飞行间隔 * float(i)
 		# 三样一起走：位置飞回展示位、缩放长回原大、透明度在开头四成里亮起来
 		var t: Tween = 视图.create_tween()
-		视图.set_meta("展示飞行tween", t)
+		视图.set_meta(元数据_展示飞行tween, t)
 		t.set_parallel(true)
 		t.tween_property(视图, "position", 终点, 展示飞行时长) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT).set_delay(延迟)
@@ -1368,7 +1373,7 @@ func _选走展示牌(玩家id: int, 牌号: int) -> void:
 	for 子: Node in ShowCardArea.get_children():
 		if not (子 is Control):
 			continue
-		if 选中视图 == null and int(子.get_meta("展示牌号", 0)) == 牌号:
+		if 选中视图 == null and int(子.get_meta(元数据_展示牌号, 0)) == 牌号:
 			选中视图 = 子
 		else:
 			子.queue_free()
@@ -1387,7 +1392,7 @@ func _选走展示牌(玩家id: int, 牌号: int) -> void:
 		选中视图.queue_free()
 		return
 	# 进场飞行可能还在跑：先杀掉，免得和新 tween 抢 position
-	var 旧: Variant = 选中视图.get_meta("展示飞行tween", null)
+	var 旧: Variant = 选中视图.get_meta(元数据_展示飞行tween, null)
 	if 旧 is Tween and (旧 as Tween).is_valid():
 		(旧 as Tween).kill()
 	选中视图.pivot_offset = 手牌尺寸 * 0.5

@@ -519,6 +519,21 @@ func 跑() -> void:
 	检(_伤害记录(2, 魔法入门).is_empty() and _伤害记录(4, 魔法入门).is_empty(),
 		"7805：水系牌展示不应造成伤害")
 	检(_播报次数(友情羁绊) == 1 and _播报次数(魔法入门) == 1, "7805：应各播报一次")
+	# 7805 的 2 张弃牌是同一次【展示】：必须整批发一条 Show 消息。
+	# 分两条发时客户端的展示区会「新一拨顶掉上一拨」，实际只能看到最后一张。
+	var 展示条数: int = 0
+	var 展示两张: bool = false
+	for r: Dictionary in 发送记录:
+		if int(r.get("msg", 0)) != GConst.Msg.Card:
+			continue
+		var 展示数据: Dictionary = r.get("data", {})
+		if int(展示数据.get("type", 0)) != GConst.CardMsgType.Show:
+			continue
+		展示条数 += 1
+		if (展示数据.get("card_ids", []) as Array).size() == 2:
+			展示两张 = true
+	检(展示条数 == 1 and 展示两张,
+		"7805：两张展示牌应整批发一条 Show 消息（实际 %d 条，含两张=%s）" % [展示条数, str(展示两张)])
 
 	# 7805 弃牌是强制的（原文「我方 2 名角色各弃 1 张牌【强制】【展示】」）：
 	# 目标超时（空回复）也要按手牌顺序自动补弃 1 张，不能白跳过（少一张会连带改变 X）
