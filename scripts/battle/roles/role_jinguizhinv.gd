@@ -199,14 +199,19 @@ func v_magic_skill(action: Dictionary) -> int:
 func p_magic_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != 魔法入门:
 		return EMPTY_HANDLE
-	# 已经结算过（URGENT 挂起后引擎重入本体）：不要再结算一次，直接收尾。
-	# 见 技能URGENT后重入()：7802 摸牌后要挂起走超限，挂起结束会重入这里。
-	if _7802已结算:
-		return SUCCESS
+	# 新的一次发动（SkillRun 新建 → step 从 0 开始）：先把上一次发动留下的分步数据清掉。
+	# **必须先清再判 _7802已结算**：上一次发动结束时这个标记会一直留到下一次发动，
+	# 若先判它，第二次起的每次发动都会被当成「URGENT 挂起后的重入」直接收尾 ——
+	# 技能什么都不做、回合直接结束（表现就是「第二次开始放魔法入门会跳过自己回合」）。
+	# 真正的重入发生在 step 已被推进到后续步骤（如步_结算）的时候。
 	if step == 0:
 		_初始化魔法入门()
 		_本回合魔法入门次数 += 1
 		step = 步_友情选角色
+	# 已经结算过（URGENT 挂起后引擎重入本体）：不要再结算一次，直接收尾。
+	# 见 技能URGENT后重入()：7802 摸牌后要挂起走超限，挂起结束会重入这里。
+	if _7802已结算:
+		return SUCCESS
 	while true:
 		match step:
 			步_友情选角色:
