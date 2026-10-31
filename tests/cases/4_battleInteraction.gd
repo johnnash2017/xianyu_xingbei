@@ -805,8 +805,10 @@ func 跑() -> void:
 		await 等帧(2)
 		检(int(窗.get("_mode")) == 2, "应战询问应进入应战模式（实际 %d）" % int(窗.get("_mode")))
 		检(not bool(窗.call("_卡牌能点", 暗灭牌.id)), "9703 禁【暗灭】应战：应战里【暗灭】应点不动")
-		检(str(窗.get("_提示原文")).contains("暗灭"),
-			"应战提示应点明不能用【暗灭】应战：%s" % str(窗.get("_提示原文")))
+		检(str(窗.get("_提示原文")).contains("无法使用【暗灭】应战"),
+			"应战提示应写成「，无法使用【暗灭】应战」：%s" % str(窗.get("_提示原文")))
+		检(not str(窗.get("_提示原文")).contains("或暗系"),
+			"禁【暗灭】时应战提示不能再写「或暗系斩」：%s" % str(窗.get("_提示原文")))
 		(窗.get("BtnCancel") as Button).pressed.emit()
 		await 等帧(1)
 		Data.hand_cards = 攻击牌

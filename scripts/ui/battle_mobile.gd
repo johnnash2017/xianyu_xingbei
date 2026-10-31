@@ -2198,16 +2198,19 @@ func _进入待选() -> void:
 				var 受伤前缀: String = ""
 				if args.size() > 5:
 					受伤前缀 = "受到 %d 伤害攻击，" % (int(args[5]) + _攻击提示加伤(_原攻击者()))
-				# 应战牌必须与本次攻击同系，暗系牌可替任意系：提示点名「X或暗系斩」并给系别上色
-				var 应战句: String = "打出同系或暗系斩应战"
+				# 本次攻击禁用的应战牌（如 9703 爱死天流禁【暗灭】）：牌置灰，提示里也要点明
+				var 禁暗灭: bool = (_pending.get("ban_reattack_card_names", []) as Array).has(GConst.CardName.DarkSlash)
+				# 应战牌必须与本次攻击同系，暗系牌可替任意系：提示点名「X或暗系斩」并给系别上色；
+				# 【暗灭】被禁时不能再提「或暗系斩」，只写同系
+				var 应战句: String = "打出同系斩应战" if 禁暗灭 else "打出同系或暗系斩应战"
 				var 攻击牌: GCard = null
 				if args.size() > 1:
 					攻击牌 = Data.get_card(int(args[1]))
 					if 攻击牌 != null:
 						var 系别: String = GConst.element_to_chinese(攻击牌.element_enum())
 						if not 系别.is_empty() and 系别 != "?":
-							if 系别 == "暗":
-								应战句 = "打出%s系斩应战" % _系别着色("暗")
+							if 系别 == "暗" or 禁暗灭:
+								应战句 = "打出%s系斩应战" % _系别着色(系别)
 							else:
 								应战句 = "打出%s或%s系斩应战" % [_系别着色(系别), _系别着色("暗")]
 				if _应战同命格:
@@ -2216,12 +2219,10 @@ func _进入待选() -> void:
 						应战句 = "打出%s命格的斩应战" % _命格着色(攻击牌.fate_pattern)
 					else:
 						应战句 = "打出同命格的斩应战"
-				# 本次攻击禁用某些应战牌（如 9703 爱死天流禁【暗灭】）：提示里点明，牌也置灰
-				if not _应战同命格 \
-						and (_pending.get("ban_reattack_card_names", []) as Array).has(GConst.CardName.DarkSlash):
-					应战句 += "（无法用【暗灭】应战）"
 					_指令提示(受伤前缀 + 应战句 + "，无法用【圣光】抵挡，或取消放弃")
 				elif _可应战():
+					if 禁暗灭:
+						应战句 += "，无法使用【暗灭】应战"
 					if _可圣光抵挡():
 						_指令提示(受伤前缀 + 应战句 + " 或 【圣光】抵挡，或取消放弃")
 					else:
