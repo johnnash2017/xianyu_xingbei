@@ -2674,7 +2674,15 @@ func debug_key(pid: int, kind: int) -> void:
 		for i: int in range(mini(4, 圣光候选.size())):
 			_发一张到手里(p0, 圣光候选[i])
 	elif kind == GConst.DebugKey.SkillCards:
-		for 技能号: int in Data.role_skills(p0.role_id):
+		# 角色自己的技能 + 借用 / 视为自己拥有的独有技（统一读 GConst.角色借用独有技）：
+		# 测试 EX魔弓 / 剑之子 时按 2，也能拿到神箭手 301/302、剑圣 101/102 的发动牌。
+		var 技能表: Array[int] = []
+		for 技能号: Variant in Data.role_skills(p0.role_id):
+			技能表.append(int(技能号))
+		for 技能号: int in GConst.借用独有技(p0.role_id):
+			if not 技能表.has(技能号):
+				技能表.append(技能号)
+		for 技能号: int in 技能表:
 			var 候选: Array[int] = []
 			for cid: int in range(GConst.CARDSUM):
 				var c: GCard = Data.get_card(cid)

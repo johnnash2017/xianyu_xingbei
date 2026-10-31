@@ -535,3 +535,23 @@ func 跑() -> void:
 	检(not 说明文本.contains(角色技能提示.失效行标记 + "精准射击")
 		and not 说明文本.contains(角色技能提示.失效行标记 + "闪光陷阱"),
 		"EX魔弓借用的神箭手独有技应视作自己的独有技，不能置灰")
+
+	# 卡面标绿 / 测试指令 2 与角色说明读同一张表（GConst.角色借用独有技）
+	检(GConst.借用独有技(75) == [301, 302], "75 的借用独有技配置应为 301/302")
+	var 卡面脚本: GDScript = load("res://scripts/CardUI.gd")
+	var 空技能: Array[int] = []
+	var 卡面技能: Array = 卡面脚本.显示技能(75, 空技能)
+	检(卡面技能.has(301) and 卡面技能.has(302),
+		"EX魔弓的卡面应把神箭手 301/302 显示成自己会：%s" % str(卡面技能))
+	# 测试指令 2：按 2 应能拿到 301/302 的发动牌
+	_重置战斗()
+	引擎.debug_key(1, GConst.DebugKey.SkillCards)
+	var 有301: bool = false
+	var 有302: bool = false
+	for cid: int in 玩家.hand_cards:
+		var c: GCard = Data.get_card(cid)
+		if c == null:
+			continue
+		有301 = 有301 or c.has_skill_id(301)
+		有302 = 有302 or c.has_skill_id(302)
+	检(有301 and 有302, "测试指令 2 应给 EX魔弓发 301/302 技能牌：%s" % str(玩家.hand_cards))
