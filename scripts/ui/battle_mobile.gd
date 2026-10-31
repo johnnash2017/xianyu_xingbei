@@ -7361,6 +7361,14 @@ func 刷新选中面板() -> void:
 ## 当前正在操作的技能号（发动技能 mode 4 / 技能询问 mode 3），没有则 -1
 func _当前技能号() -> int:
 	if _mode == 4:
+		# 发动技能里带技能号的选项（如 7802【魔法入门】的第 2 档＝响应 7805【友情羁绊】）：
+		# 头像提示按选中项自己的技能号取，和 mode 3 的 _询问技能号 同一口径。
+		if _二级栏:
+			var 项: Dictionary = _二级选中项()
+			if not 项.is_empty():
+				var 项技能号: int = int(项.get("技能号", 0))
+				if 项技能号 > 0:
+					return 项技能号
 		return _pending_skill_id
 	if _mode == 3:
 		return _询问技能号()

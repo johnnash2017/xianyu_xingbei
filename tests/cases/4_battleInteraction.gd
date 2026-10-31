@@ -643,6 +643,27 @@ func 跑() -> void:
 		检(int(窗.get("_mode")) == 0,
 			"选好 2 名角色后按确定应提交（实际 _mode=%d）" % int(窗.get("_mode")))
 
+	# 友情羁绊的弃牌走标准弃牌应答（不是技能询问）：提示条应叫对方弃牌，
+	# 不能再显示发动者那句「选择 2 名我方角色各弃 1 张牌」。
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.RespondType.Discard, "src_id": 1, "is_skill": false,
+			"dst_ids": [1], "card_ids": [],
+			"args": [1, GConst.技能_友情羁绊, 1],
+			"card_max": 0, "card_rule": "", "can_cancel": false,
+		}],
+	})
+	await 等帧(2)
+	var 友情弃牌提示: String = str(窗.get("_提示原文"))
+	检(友情弃牌提示.contains("友情羁绊") and 友情弃牌提示.contains("请选择 1 张牌弃掉"),
+		"7805 的弃牌应答提示应叫对方弃牌（实际：%s）" % 友情弃牌提示)
+	if not Data.hand_cards.is_empty():
+		窗.call("_on_card_clicked", Data.hand_cards[0].id)
+		await 等帧(1)
+		(窗.get("BtnOK") as Button).pressed.emit()
+		await 等帧(1)
+
 	# 【强予愿行】(7804)：选项走 available_skills 的 arg_choices（同魔弓【魔眼】）——
 	# 点技能直接进二级技能栏；选中选项后同一步选牌 / 选角色，最后按一次「确定」提交。
 	var 强予参数: Array = [

@@ -292,8 +292,10 @@ func p_magic_skill(action: Dictionary) -> int:
 					continue
 				var 弃牌人: int = _7802友情角色[_7802友情弃牌.size()]
 				if not engine.has_reply():
-					询问(弃牌人, 友情羁绊, 1, 0, GConst.CardSource.Hand, [], 0, "",
-						[], false, 0)
+					# 用标准弃牌应答（不是技能询问）：提示条由客户端按「谁要求弃牌」写成
+					# 「【友情羁绊】：请选择 1 张牌弃掉」，不能把发动者的「选 2 名角色」提示丢给对方。
+					engine.ask_respond(弃牌人, GConst.RespondType.Discard, [弃牌人, 友情羁绊, 1], [弃牌人])
+					engine.wait_for(弃牌人, GConst.Msg.Respond)
 					return WAIT
 				var r弃: Dictionary = take_skill_reply_full()
 				var 选牌: Array[int] = _取手牌(弃牌人, r弃.get("card_ids", []), 1)
@@ -329,7 +331,7 @@ func p_magic_skill(action: Dictionary) -> int:
 					continue
 				if not engine.has_reply():
 					询问(player.id, 魔法入门, 0, 法术目标数, GConst.CardSource.Hand, [], 0, "",
-						[], false, 0, -1, enemy_ids())
+						[], false, 0, -1, enemy_ids(), -1, {}, 法术伤害值, GConst.HarmType.Magic)
 					return WAIT
 				var r法: Dictionary = take_skill_reply_full()
 				_7802法术目标 = _取目标(r法.get("dst_ids", []), enemy_ids(), 法术目标数)
@@ -350,7 +352,7 @@ func p_magic_skill(action: Dictionary) -> int:
 					continue
 				if not engine.has_reply():
 					询问(player.id, 魔法入门, 0, 咏目标数, GConst.CardSource.Hand, [], 0, "",
-						[], false, 1, -1, _全体角色id(), _7802咏数量)
+						[], false, 1, -1, _全体角色id(), _7802咏数量, {}, 法术伤害值, GConst.HarmType.Magic)
 					return WAIT
 				var r咏: Dictionary = take_skill_reply_full()
 				_7802咏目标 = _取目标(r咏.get("dst_ids", []), _全体角色id(), 咏目标数)
@@ -369,7 +371,7 @@ func p_magic_skill(action: Dictionary) -> int:
 					continue
 				if not engine.has_reply():
 					询问(player.id, 魔法入门, 0, 水目标数, GConst.CardSource.Hand, [], 0, "",
-						[], false, 2, -1, _全体角色id(), _7802水数量)
+						[], false, 2, -1, _全体角色id(), _7802水数量, {}, 基础治疗值, GConst.预览类型_治疗)
 					return WAIT
 				var r水: Dictionary = take_skill_reply_full()
 				_7802水目标 = _取目标(r水.get("dst_ids", []), _全体角色id(), 水目标数)
