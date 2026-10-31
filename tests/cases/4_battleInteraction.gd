@@ -709,6 +709,16 @@ func 跑() -> void:
 		检(int(窗.get("_mode")) == 0,
 			"选好角色后按确定应提交（实际 _mode=%d）" % int(窗.get("_mode")))
 
+	# 精准射击（301，减 1 攻击伤害）：头像提示也要写两行 —— 原伤害划掉、下面是减伤后的伤害
+	窗.set("_mode", 3)
+	窗.set("_skill_ask_id", GConst.技能_精准射击)
+	窗.set("_pending", {"preview_base": 2})
+	窗.set("_skill_targets", [2] as Array[int])
+	var 精准提示: Dictionary = 窗.call("_攻击加成头像提示")
+	检(str(精准提示.get(2, "")) == "[zwj]2 攻击伤害\n1 攻击伤害",
+		"精准射击应写原伤害划掉、下面是减 1 后的伤害（实际：%s）" % str(精准提示.get(2, "")))
+	窗.set("_mode", 0)
+
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
 

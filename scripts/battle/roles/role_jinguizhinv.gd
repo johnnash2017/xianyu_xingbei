@@ -355,8 +355,11 @@ func p_magic_skill(action: Dictionary) -> int:
 						[], false, 1, -1, _全体角色id(), _7802咏数量, {}, 法术伤害值, GConst.HarmType.Magic)
 					return WAIT
 				var r咏: Dictionary = take_skill_reply_full()
+				# 超时兜底（is_timeout）由引擎按 whitelist 随机补了一个目标（可能是队友 / 自己）：
+				# 咏类是伤害，超时时只认敌人；正常手选仍可以是任意角色。
+				var 咏合法: Array[int] = enemy_ids() if bool(r咏.get("is_timeout", false)) else _全体角色id()
 				# 超时 / 跳过（空回复）：伤害类按敌人补，不能补成队友 / 自己
-				_7802咏目标 = _取目标(r咏.get("dst_ids", []), _全体角色id(), 咏目标数, enemy_ids())
+				_7802咏目标 = _取目标(r咏.get("dst_ids", []), 咏合法, 咏目标数, enemy_ids())
 				step = 步_水目标
 				for pid5: int in _倒序结算(_7802咏目标):
 					engine.push_harm({
@@ -375,8 +378,11 @@ func p_magic_skill(action: Dictionary) -> int:
 						[], false, 2, -1, _全体角色id(), _7802水数量, {}, 基础治疗值, GConst.预览类型_治疗)
 					return WAIT
 				var r水: Dictionary = take_skill_reply_full()
+				# 超时兜底（is_timeout）由引擎按 whitelist 随机补了一个目标（可能是敌人）：
+				# 水系是治疗，超时时只认自己 / 队友；正常手选仍可以是任意角色。
+				var 水合法: Array[int] = _友方角色id() if bool(r水.get("is_timeout", false)) else _全体角色id()
 				# 超时 / 跳过（空回复）：治疗类按自己 / 队友补，不能补成敌人
-				_7802水目标 = _取目标(r水.get("dst_ids", []), _全体角色id(), 水目标数, _友方角色id())
+				_7802水目标 = _取目标(r水.get("dst_ids", []), 水合法, 水目标数, _友方角色id())
 				# 水系治疗是「依序」里的最后一项：压成钩子，等它结算完再回来问 7803。
 				step = 步_7803触发
 				engine.push(BattleEngine.SHook.new("p_jinguizhinv_水系治疗", {
