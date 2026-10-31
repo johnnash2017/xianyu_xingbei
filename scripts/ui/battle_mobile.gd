@@ -2292,12 +2292,14 @@ func _弃牌提示(cause: int, 张数: int) -> String:
 		# 「提示列本就是给这次弃牌询问写的」技能（如贤者【智慧法典】）在技能指示器里声明了
 		# 「弃牌提示取表」：直接用技能表「提示」列第 1 条（写明了 +2 宝石、请弃 1 张牌这类完整语义）。
 		# 其余技能（【魔爆冲击】/【灵符-风行】等）第 1 条是「发动【X】：…」整句，直接拿来会让弃牌提示
-		# 变长、语义怪，故仍退回默认的「【X】：请选择 N 张牌弃掉」
+		# 变长、语义怪，故仍退回默认的「【X】：请选择 N 张牌弃掉」。
+		# 「弃牌提示后缀」：补一句这次弃牌附带的后续效果（如矜贵之女【友情羁绊】的「技能结束前摸 1 张」）。
+		var 后缀: String = str(GConst.技能指示器.get(cause, {}).get("弃牌提示后缀", ""))
 		if bool(GConst.技能指示器.get(cause, {}).get("弃牌提示取表", false)):
 			var 表提示: String = GConst.提示文本(cause, 0, "", 张数)
 			if not 表提示.is_empty():
-				return 表提示
-		return "【%s】：请选择 %d 张牌弃掉" % [GConst.skill_name(cause), 张数]
+				return 表提示 + 后缀
+		return "【%s】：请选择 %d 张牌弃掉%s" % [GConst.skill_name(cause), 张数, 后缀]
 	return "请选择 %d 张牌弃掉" % 张数
 
 
