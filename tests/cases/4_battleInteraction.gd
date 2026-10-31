@@ -577,6 +577,49 @@ func 跑() -> void:
 			"3D 斩击素材 %s 缺 Slash / Particles 节点" % 名)
 		素材.free()
 
+	# 矜贵之女【Magic!】(7803)：三个选项都是「点选即生效」——
+	# 点中「弃 2 张牌」应立刻提交（进入选牌那一层），不再要求先点一次「确定」。
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.技能_Magic, "src_id": Logic.my_player_id, "is_skill": true,
+			"dst_ids": [], "card_ids": [],
+			"args": [0, 0, GConst.CardSource.Hand, 3, 1, 2, 3],
+			"card_max": 0, "card_rule": "", "can_cancel": true,
+			"notes": ["弃 2 张牌", "额外+1【法术行动】", "我方【战绩区】+2【宝石】"],
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "7803 选项询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
+	var 魔法选项: Array = 窗.get("_二级选项")
+	检(魔法选项.size() == 3, "7803 应摆出 3 个选项（实际 %d）" % 魔法选项.size())
+	if not 魔法选项.is_empty():
+		窗.call("_选中二级选项", GConst.技能_Magic, 0)
+		await 等帧(1)
+		检(int(窗.get("_mode")) == 0,
+			"点选 7803 的「弃 2 张牌」应立刻提交，不再要求按确定（实际 _mode=%d）" % int(窗.get("_mode")))
+		检((窗.get("_已选参数") as Array).is_empty(), "7803 点选即提交后不应残留已选参数")
+
+	# 【强予愿行】(7804)：选星石只是进入下一层（接着选角色），同样点中即提交。
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.技能_强予愿行, "src_id": Logic.my_player_id, "is_skill": true,
+			"dst_ids": [], "card_ids": [],
+			"args": [0, 0, GConst.CardSource.Hand, 2, 1, 2],
+			"card_max": 0, "card_rule": "", "can_cancel": true,
+			"notes": ["宝石", "水晶"],
+		}],
+	})
+	await 等帧(2)
+	var 强予选项: Array = 窗.get("_二级选项")
+	检(强予选项.size() == 2, "7804 应摆出 2 个星石选项（实际 %d）" % 强予选项.size())
+	if not 强予选项.is_empty():
+		窗.call("_选中二级选项", GConst.技能_强予愿行, 0)
+		await 等帧(1)
+		检(int(窗.get("_mode")) == 0,
+			"点选 7804 的星石选项应立刻提交（实际 _mode=%d）" % int(窗.get("_mode")))
+
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
 
