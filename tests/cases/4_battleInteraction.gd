@@ -719,6 +719,29 @@ func 跑() -> void:
 		"精准射击应写原伤害划掉、下面是减 1 后的伤害（实际：%s）" % str(精准提示.get(2, "")))
 	窗.set("_mode", 0)
 
+	# 喧哗上等（9701）：命中后弹「点确定移除牌库顶」的询问，不能取消；
+	# 目标头像画「原伤害划掉 → +1 后伤害」，每次确定移除一张。
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.技能_喧哗上等, "src_id": Logic.my_player_id, "is_skill": true,
+			"dst_ids": [2], "card_ids": [],
+			"args": [0, 0, GConst.CardSource.Hand, 0],
+			"card_max": 0, "card_rule": "", "can_cancel": false,
+			"ask_text": "（攻击命中时②）持续移除牌库顶牌",
+			"preview_base": 3, "preview_kind": GConst.HarmType.Attack,
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "9701 询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
+	检(not bool(窗.call("_取消可用")), "9701 的询问不能取消")
+	var 喧哗提示: Dictionary = 窗.call("_攻击加成头像提示")
+	检(str(喧哗提示.get(2, "")) == "[zwj]3 攻击伤害\n4 攻击伤害",
+		"9701 应在目标头像画「原伤害划掉 → +1」：%s" % str(喧哗提示.get(2, "")))
+	(窗.get("BtnOK") as Button).pressed.emit()
+	await 等帧(1)
+	检(int(窗.get("_mode")) == 0, "9701 点确定后应收起询问（实际 %d）" % int(窗.get("_mode")))
+
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
 

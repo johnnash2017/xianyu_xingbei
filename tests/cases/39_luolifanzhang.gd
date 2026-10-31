@@ -221,15 +221,33 @@ func 跑() -> void:
 # 9701 喧哗上等
 # ============================================================
 func _测喧哗上等() -> void:
-	# 血类命格法术牌：连续移除，第 3 张必停
+	# 血类命格法术牌：每次确定移除 1 张，询问 3 次、第 3 张必停
 	_重置()
 	var 三张: Array = [血魔牌[0].id, 血魔牌[1].id, 血魔牌[2].id]
 	_设牌库顶(三张)
 	var 上下文: Dictionary = _攻击上下文(非血攻牌.id, 3)
 	var 伤害: Dictionary = 上下文["harm"]
 	var r: int = 角色.p_timeline_2_hit(上下文)
-	检(r == BattleRole.SUCCESS, "9701 结算是自动的，不应等待（返回 %d）" % r)
-	检(int(伤害["point"]) == 6, "连续移除 3 张血类命格法术牌应 +3 伤害，实际 %d" % int(伤害["point"]))
+	检(r == BattleRole.WAIT, "9701 应弹询问等发动者点确定（返回 %d）" % r)
+	检(int(伤害["point"]) == 3, "还没点确定时不应加伤，实际 %d" % int(伤害["point"]))
+	var 问: Dictionary = _取询问(1, 9701)
+	检(not 问.is_empty(), "9701 应下发确定询问")
+	检(not bool(问.get("can_cancel", true)), "9701 的询问不能取消：can_cancel=%s" % str(问.get("can_cancel")))
+	检((问.get("dst_ids", []) as Array) == [2], "9701 的询问应固定本次攻击目标：%s" % str(问.get("dst_ids", [])))
+	检(int(问.get("preview_base", 0)) == 3 and int(问.get("preview_kind", -1)) == GConst.HarmType.Attack,
+		"9701 的预览应是当前伤害 3：%s" % str(问))
+	_应答([1])
+	r = 角色.p_timeline_2_hit(上下文)
+	检(r == BattleRole.WAIT and int(伤害["point"]) == 4,
+		"第 1 次确定应移除 1 张并 +1 伤害、继续询问（返回 %d / 伤害 %d）" % [r, int(伤害["point"])])
+	_应答([1])
+	r = 角色.p_timeline_2_hit(上下文)
+	检(r == BattleRole.WAIT and int(伤害["point"]) == 5,
+		"第 2 次确定应再移除 1 张并 +1（返回 %d / 伤害 %d）" % [r, int(伤害["point"])])
+	_应答([1])
+	r = 角色.p_timeline_2_hit(上下文)
+	检(r == BattleRole.SUCCESS and int(伤害["point"]) == 6,
+		"累计 3 张后应停止（返回 %d / 伤害 %d）" % [r, int(伤害["point"])])
 	检(引擎.deck.pile.is_empty(), "连续移除 3 张后牌库应为空，实际 %s" % str(引擎.deck.pile))
 	检(引擎.deck.discard == 三张, "移除的 3 张牌应按移除顺序进弃牌堆，实际 %s" % str(引擎.deck.discard))
 	for 牌号: int in 三张:
@@ -242,23 +260,28 @@ func _测喧哗上等() -> void:
 	检(int(伤害["point"]) == 6, "同一次命中重入不应再加伤，实际 %d" % int(伤害["point"]))
 	检(_播报次数(9701) == 0, "同一次命中重入不应再播报【喧哗上等】")
 
-	# 遇到非血类命格法术牌：移除 2 张停下
+	# 遇到非血类命格法术牌：确定 2 次后停下
 	_重置()
 	_设牌库顶([血魔牌[0].id, 非血魔牌.id])
 	上下文 = _攻击上下文(非血攻牌.id, 3)
 	伤害 = 上下文["harm"]
-	角色.p_timeline_2_hit(上下文)
-	检(int(伤害["point"]) == 5, "血类法术牌后遇到非血法术牌应移除 2 张（+2），实际 %d"
-		% int(伤害["point"]))
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.WAIT, "9701 应先问第 1 张")
+	_应答([1])
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.WAIT, "第 1 张是血类法术牌，应继续问第 2 张")
+	_应答([1])
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.SUCCESS, "第 2 张非血类法术牌后应停止")
+	检(int(伤害["point"]) == 5, "移除 2 张应 +2，实际 %d" % int(伤害["point"]))
 	检(引擎.deck.discard == [血魔牌[0].id, 非血魔牌.id],
 		"移除的 2 张牌应进弃牌堆，实际 %s" % str(引擎.deck.discard))
 
-	# 遇到血类命格攻击牌（非法术）：移除 1 张停下
+	# 遇到血类命格攻击牌（非法术）：确定 1 次后停下
 	_重置()
 	_设牌库顶([血攻牌.id])
 	上下文 = _攻击上下文(非血攻牌.id, 3)
 	伤害 = 上下文["harm"]
-	角色.p_timeline_2_hit(上下文)
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.WAIT, "9701 应先问确定")
+	_应答([1])
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.SUCCESS, "血类攻击牌不是法术牌，应只移除 1 张")
 	检(int(伤害["point"]) == 4, "血类命格攻击牌不是法术牌，应只移除 1 张（+1），实际 %d"
 		% int(伤害["point"]))
 	检(引擎.deck.discard == [血攻牌.id], "移除的血类攻击牌应进弃牌堆")
@@ -268,17 +291,19 @@ func _测喧哗上等() -> void:
 	_设牌库顶([非血攻牌.id])
 	上下文 = _攻击上下文(非血攻牌.id, 3)
 	伤害 = 上下文["harm"]
-	角色.p_timeline_2_hit(上下文)
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.WAIT, "9701 应先问确定")
+	_应答([1])
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.SUCCESS, "非血类攻击牌应只移除 1 张")
 	检(int(伤害["point"]) == 4, "非血类命格攻击牌应只移除 1 张（+1），实际 %d"
 		% int(伤害["point"]))
 
-	# 牌库不足 / 空牌库：不洗回弃牌堆，X=0
+	# 牌库不足 / 空牌库：不弹询问、不洗回弃牌堆，X=0
 	_重置()
 	_设牌库顶([])
 	引擎.deck.discard.append(非血攻牌.id)
 	上下文 = _攻击上下文(非血攻牌.id, 3)
 	伤害 = 上下文["harm"]
-	角色.p_timeline_2_hit(上下文)
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.SUCCESS, "空牌库时不应弹询问")
 	检(int(伤害["point"]) == 3, "空牌库时 X=0，伤害不应变化，实际 %d" % int(伤害["point"]))
 	检(引擎.deck.discard == [非血攻牌.id], "空牌库不应把弃牌堆洗回，实际 %s" % str(引擎.deck.discard))
 	检(_播报次数(9701) == 0, "没有移除任何牌时不应播报【喧哗上等】")
@@ -303,7 +328,9 @@ func _测喧哗上等() -> void:
 	_重置()
 	_设牌库顶([血魔牌[0].id])
 	上下文 = _攻击上下文(非血攻牌.id, 3, GConst.HarmType.Attack, false)
-	角色.p_timeline_2_hit(上下文)
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.WAIT, "应战反击命中应先问 9701")
+	_应答([1])
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.SUCCESS, "应战反击命中只移除 1 张")
 	检(int((上下文["harm"] as Dictionary)["point"]) == 4,
 		"应战反击命中也应触发【喧哗上等】（+1），实际 %d"
 		% int((上下文["harm"] as Dictionary)["point"]))
@@ -407,6 +434,8 @@ func _测灭茶苦茶() -> void:
 	_设牌库顶([血魔牌[0].id])
 	上下文 = _攻击上下文(非血攻牌.id, 2)
 	伤害 = 上下文["harm"]
+	检(角色.p_timeline_2_hit(上下文) == BattleRole.WAIT, "9701 应先弹确认询问")
+	_应答([1])
 	检(角色.p_timeline_2_hit(上下文) == BattleRole.WAIT,
 		"9701 结算后仍有宝石时，9704 应接着询问")
 	问 = _取询问(1, 9704)

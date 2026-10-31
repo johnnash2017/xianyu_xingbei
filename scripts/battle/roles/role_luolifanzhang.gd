@@ -1,8 +1,8 @@
 extends BattleRole
 ## 萝莉番长（roleID 97）—— 特典
 ## 技能：
-##   喧哗上等（9701，被动）：攻击命中时②，持续移除牌库顶牌【展示】，直到移除的牌
-##       非血类命格或非法术牌，或累计移除三张牌；本次攻击伤害额外 +X（X＝移除的牌数）
+##   喧哗上等（9701，被动）：攻击命中时②，让发动者逐张点「确定」移除牌库顶牌【展示】，
+##       每次确定 +1 伤害；移除到非血类命格或非法术牌，或累计移除三张牌时停止（不能取消）
 ##   夜露死苦（9702，响应）：你可以使用狂战士的独有技（201 血影狂刀 / 202 血腥咆哮）
 ##   爱死天流（9703，被动）：你发动【血腥咆哮】时，把「目标【治疗】为 2 → 本次攻击强制命中」
 ##       改为「目标拥有【治疗】→ 本次攻击无法用【暗灭】应战或使用【圣光】抵挡」
@@ -15,8 +15,9 @@ extends BattleRole
 ##
 ## 口径（见 data-audit §3.10 / A37~A40）：
 ##   - 9701 的「或」按字面口径：继续移除的条件是「血类命格 **且** 法术牌」，
-##     否则停下；累计 3 张必停。移出的牌先【展示】，再进弃牌堆（走 to_discard，
-##     保留 F6 的「进弃牌前拦截」入口）。只看牌库顶，牌库不足时不把弃牌堆洗回；
+##     否则停下；累计 3 张必停。逐张由发动者点「确定」确认（不能取消；空回复 / 超时也按确定），
+##     每次确定移除 1 张、先【展示】再 +1 伤害；移出的牌最后一起进弃牌堆
+##     （走 to_discard，保留 F6 的「进弃牌前拦截」入口）。只看牌库顶，牌库不足时不把弃牌堆洗回；
 ##   - 9702 借用 201 / 202 的原效果，不额外改写（9703 另行改写 202）；
 ##   - 9703「拥有【治疗】」按治疗 > 0；「无法用【暗灭】应战」需要引擎在应战询问里增加
 ##     「禁止指定牌应战」的标志（data-audit Q2），本任务范围改不到 battle_engine.gd，
@@ -47,6 +48,11 @@ const 灭茶苦茶_水晶加伤: int = 1
 ## 本次命中钩子的推进进度（存在 ctx：同一次命中的钩子重入拿的是同一份 ctx）
 const KEY_HIT_STEP: String = "_luolifanzhang_hit_step"
 const HIT_STEP_喧哗上等: int = 1
+const HIT_STEP_灭茶苦茶: int = 2
+
+## 9701 本次命中已确认移除的张数与移除的牌（命中钩子重入时沿用；每次新的命中在 p_timeline_2_hit 清空）
+var _喧哗上等_移除数: int = 0
+var _喧哗上等_移除牌: Array[int] = []
 
 ## 借用的狂战士独有技 helper（构造传自己；201/202 的分步状态存在 helper 实例里）
 var _狂战士技能: Variant = null
@@ -68,6 +74,8 @@ func _init() -> void:
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	if _狂战士技能 != null:
 		_狂战士技能.重置()
+	_喧哗上等_移除数 = 0
+	_喧哗上等_移除牌.clear()
 	return SUCCESS
 
 
@@ -93,38 +101,62 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if 阶段 >= STEP_DONE:
 		return SUCCESS
 	if 阶段 == 0:
-		_喧哗上等(harm)
+		# 新的一次命中：清掉上一击遗留的 9701 分步数据
+		_喧哗上等_移除数 = 0
+		_喧哗上等_移除牌.clear()
 		ctx[KEY_HIT_STEP] = HIT_STEP_喧哗上等
 	if int(ctx.get(KEY_HIT_STEP, 0)) == HIT_STEP_喧哗上等:
-		var r: int = _灭茶苦茶(harm)
+		var r: int = _喧哗上等(harm)
 		if r == WAIT:
+			return WAIT
+		ctx[KEY_HIT_STEP] = HIT_STEP_灭茶苦茶
+	if int(ctx.get(KEY_HIT_STEP, 0)) == HIT_STEP_灭茶苦茶:
+		var r2: int = _灭茶苦茶(harm)
+		if r2 == WAIT:
 			return WAIT
 		ctx[KEY_HIT_STEP] = STEP_DONE
 	return SUCCESS
 
 
-## 9701 喧哗上等：从牌库顶逐张移除并【展示】，直到「非血类命格或非法术牌」或已移除 3 张。
-## 本次攻击伤害额外 +移除张数；移出的牌进弃牌堆（to_discard 保留弃牌前拦截入口）。
-func _喧哗上等(harm: Dictionary) -> void:
+## 9701 喧哗上等：攻击命中后让发动者逐张点「确定」——
+## 每次确定移除牌库顶一张牌【展示】、本次攻击伤害 +1；累计 3 张，或移除的牌不是
+## 「血类命格 + 法术牌」时停止。不能取消（空回复 / 超时也按确定处理）。
+## 询问固定本次攻击目标（头像亮起）并带当前伤害作预览基准：
+## 客户端据此在目标头像上画「原伤害划掉 → +1 后的伤害」。
+func _喧哗上等(harm: Dictionary) -> int:
 	if engine == null:
-		return
-	var 移除: Array[int] = []
-	for _i: int in range(喧哗上等_最多移除):
+		return SUCCESS
+	while _喧哗上等_移除数 < 喧哗上等_最多移除:
+		# 牌库空：没有可移除的牌，直接收尾（X=0，不弹无用询问、不播报）
+		if engine.deck.pile.is_empty():
+			break
+		if not engine.has_reply():
+			询问(player.id, 喧哗上等, 0, 0, GConst.CardSource.Hand, [], 0, "", [], false, 0, -1,
+				[int(harm.get("dst", -1))], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
+			return WAIT
+		take_skill_reply_full()
 		var 顶: Array[int] = engine.移除牌库顶(1)
 		if 顶.is_empty():
 			break
 		var 牌号: int = int(顶[0])
-		移除.append(牌号)
+		if _喧哗上等_移除数 == 0:
+			# 只播报一次（整次命中只算发动一次）；
+			notice_skill(喧哗上等, [int(harm.get("dst", -1))])
+		_喧哗上等_移除数 += 1
+		_喧哗上等_移除牌.push_back(牌号)
 		engine.展示牌库顶(player.id, [牌号])
+		harm["point"] = int(harm.get("point", 0)) + 1
+		engine._broadcast_game()
 		var 牌: GCard = Data.get_card(牌号)
 		if 牌 == null or 牌.fate_pattern_enum() != GConst.FatePattern.Blood or not 牌.is_magic():
 			break
-	if 移除.is_empty():
-		return
-	notice_skill(喧哗上等, [int(harm.get("dst", -1))])
-	harm["point"] = int(harm.get("point", 0)) + 移除.size()
-	engine.to_discard(移除, {"source": "deck", "cause": 喧哗上等, "face_up": true})
-	engine._broadcast_game()
+	# 移出的牌进弃牌堆（to_discard 保留弃牌前拦截入口）
+	if not _喧哗上等_移除牌.is_empty():
+		engine.to_discard(_喧哗上等_移除牌.duplicate(),
+			{"source": "deck", "cause": 喧哗上等, "face_up": true})
+		_喧哗上等_移除牌.clear()
+		engine._broadcast_game()
+	return SUCCESS
 
 
 ## 9704 灭茶苦茶：攻击命中后询问二选一；资源不足的选项照常下发、只置灰。
