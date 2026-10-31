@@ -421,8 +421,18 @@ func p_magic_skill(action: Dictionary) -> int:
 					# 不够 2 张 / 非法牌＝按「不弃」处理（客户端要求选满 2 张才能确定；超时是空应答）
 					if 有效.size() >= 2:
 						_7802_7803弃牌 = 有效
-					else:
-						_7802_7803弃牌.clear()
+						# 「弃 2 张牌」当场结算完：先真正入弃牌堆 + 播弃牌提示，再弹第 3 次的宝石档。
+						# 不能把弃牌拖到 _结算魔法入门 —— 那样宝石询问会卡在弃牌前面，
+						# 玩家得先确定宝石才看到弃牌。弃牌前拦截若压了状态，交给 URGENT 先跑完。
+						var 实际弃: Array[int] = _离手入弃(player.id, _7802_7803弃牌, MAGIC_BANG)
+						if not 实际弃.is_empty():
+							notice_skill(MAGIC_BANG, [player.id])
+						engine._broadcast_game()
+						step = 步_7803触发
+						return URGENT
+					_7802_7803弃牌.clear()
+					step = 步_7803触发
+					continue
 				elif 档 == 2:
 					_7802_7803额外行动 = true
 					_7803行动已处理 = true
