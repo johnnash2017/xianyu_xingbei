@@ -549,6 +549,17 @@ func player_ids_where(条件: Callable, 含自己: bool = false) -> Array[int]:
 	return out
 
 
+## 这名玩家能不能接收「这颗技能放置的基础效果」：问目标角色自己的 v_basic_effect_target
+## （如 4601 灵枝旨意「你无法成为基础效果的目标」）；代表牌取手里带该技能的牌，没有就传 0。
+## 放基础效果的技能（封印 401~405 / 赐福 1601~1602 / 天使之墙 701 等）：
+## available_skills 的目标白名单和 v_magic_skill 校验都要用它，别只靠 add_basic_effect 兜底 ——
+## 否则客户端会把「免疫基础效果」的角色点亮，玩家点了却被服务端拒，看着像客户端判断脱节。
+func 目标可接收基础效果(dst_id: int, 技能号: int) -> bool:
+	var 候选: Array[int] = hand_ids_with_skill(技能号)
+	var 代表牌: int = 候选[0] if not 候选.is_empty() else 0
+	return engine.v_basic_effect_target(dst_id, 代表牌) == GConst.GE_SUCCESS
+
+
 ## 从 from_id 出发、沿 post（或 pre）方向最近的一名对手；没有则 -1
 func nearest_enemy_id(from_id: int, post_dir: bool) -> int:
 	var cur: BattlePlayer = engine.p(from_id)

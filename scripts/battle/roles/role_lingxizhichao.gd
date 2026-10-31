@@ -26,7 +26,8 @@ extends BattleRole
 ## 跨范围说明：F5 的封印 / 赐福 helper（以及 role_fengyin / role_qidao 的原路径）在放置前
 ## 没有先问目标角色的 v_basic_effect_target；敌方封印 / 队友赐福若直接指向 46，
 ## add_basic_effect 会兜底拒绝、效果不会挂上（4601 生效），但源技能仍会按原逻辑把发动牌离手。
-## 这是 helper / 源角色的范围（F5），本角色只保证「不能成为基础效果的目标」，不改范围外文件。
+## 这条已由源技能接上（BattleRole.目标可接收基础效果）：封印 401~405 / 赐福 1601~1602 /
+## 天使之墙 701 的目标白名单和 v_magic_skill 校验都会先把她排除，客户端据此把她置灰。
 
 const 封印技能脚本: GDScript = preload("res://scripts/battle/skills/skill_seal.gd")
 const 赐福技能脚本: GDScript = preload("res://scripts/battle/skills/skill_bless.gd")

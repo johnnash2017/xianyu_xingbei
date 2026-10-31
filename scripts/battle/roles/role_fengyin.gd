@@ -37,7 +37,9 @@ func available_skills() -> Array:
 		var 封印牌: Array[int] = hand_ids_with_skill(sid)
 		out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 1,
 			"cards": 封印牌, "enabled": not 封印牌.is_empty(),
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool: return p.color != player.color and not p.check_basic_effect_skill(sid))})
+			"targets": player_ids_where(func(p: BattlePlayer) -> bool:
+				return p.color != player.color and not p.check_basic_effect_skill(sid) \
+					and 目标可接收基础效果(p.id, sid))})
 	# 五系束缚：目标须为对手（v_magic_skill：dst.color == player.color 时拒收）；无能量时置灰
 	out.append({"type": GConst.ActionType.MagicSkill, "id": WU_XI_SHU_FU, "need_card": 0, "need_target": 1,
 		"enabled": player.get_energy() > 0,
@@ -194,6 +196,9 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_ACTION
 			var dst: BattlePlayer = engine.p(int(dsts[0]))
 			if dst == null or dst.color == player.color or dst.check_basic_effect_skill(aid):
+				return GConst.GE_INVALID_PLAYERID
+			# 4601 灵枝旨意这类「无法成为基础效果目标」：白名单已排除，这里再复核一次
+			if not 目标可接收基础效果(dst.id, aid):
 				return GConst.GE_INVALID_PLAYERID
 		WU_XI_SHU_FU:
 			if dsts.is_empty():

@@ -48,13 +48,15 @@ func available_skills() -> Array:
 	out.append({"type": GConst.ActionType.MagicSkill, "id": XUN_JIE_CI_FU, "need_card": 1, "need_target": 1,
 		"cards": 迅捷牌,
 		"targets": player_ids_where(func(p: BattlePlayer) -> bool:
-			return p.color == player.color and _find_effect_card(p, XUN_JIE_CI_FU) < 0),
+			return p.color == player.color and _find_effect_card(p, XUN_JIE_CI_FU) < 0 \
+				and 目标可接收基础效果(p.id, XUN_JIE_CI_FU)),
 		"enabled": not 迅捷牌.is_empty()})
 	var 威力牌: Array[int] = hand_ids_with_skill(WEI_LI_CI_FU)
 	out.append({"type": GConst.ActionType.MagicSkill, "id": WEI_LI_CI_FU, "need_card": 1, "need_target": 1,
 		"cards": 威力牌,
 		"targets": player_ids_where(func(p: BattlePlayer) -> bool:
-			return p.color == player.color and _find_effect_card(p, WEI_LI_CI_FU) < 0),
+			return p.color == player.color and _find_effect_card(p, WEI_LI_CI_FU) < 0 \
+				and 目标可接收基础效果(p.id, WEI_LI_CI_FU)),
 		"enabled": not 威力牌.is_empty()})
 	return out
 
@@ -383,6 +385,9 @@ func _check_ci_fu_target(action: Dictionary, 技能号: int) -> bool:
 		var c: GCard = Data.get_card(int(be["card"]))
 		if c != null and c.has_skill_id(技能号):
 			return false
+	# 4601 灵枝旨意这类「无法成为基础效果目标」：白名单已排除，这里再复核一次
+	if not 目标可接收基础效果(dst.id, 技能号):
+		return false
 	return true
 
 

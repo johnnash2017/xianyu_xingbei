@@ -39,7 +39,10 @@ func available_skills() -> Array:
 	var 墙牌: Array[int] = hand_ids_with_skill(TIAN_SHI_ZHI_QIANG)
 	out.append({"type": GConst.ActionType.MagicSkill, "id": TIAN_SHI_ZHI_QIANG, "need_card": 1, "need_target": 1,
 		"cards": 墙牌,
-		"targets": player_ids_where(func(p: BattlePlayer) -> bool: return not p.check_basic_effect_name(GConst.CardName.Shield) and not p.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG), true),
+		"targets": player_ids_where(func(p: BattlePlayer) -> bool:
+			return not p.check_basic_effect_name(GConst.CardName.Shield) \
+				and not p.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG) \
+				and 目标可接收基础效果(p.id, TIAN_SHI_ZHI_QIANG), true),
 		"enabled": not 墙牌.is_empty()})
 	# 天使祝福：只有水系手牌可作发动牌（v_magic_skill 校验同一条）
 	# 服务端允许 1~2 名目标（v_magic_skill：dsts.size() > 2 时拒收）；手里没有水系牌时置灰
@@ -160,6 +163,9 @@ func v_magic_skill(action: Dictionary) -> int:
 			if dst == null:
 				return GConst.GE_INVALID_PLAYERID
 			if dst.check_basic_effect_name(GConst.CardName.Shield) or dst.check_basic_effect_skill(TIAN_SHI_ZHI_QIANG):
+				return GConst.GE_INVALID_ACTION
+			# 4601 灵枝旨意这类「无法成为基础效果目标」：白名单已排除，这里再复核一次
+			if not 目标可接收基础效果(dst.id, TIAN_SHI_ZHI_QIANG):
 				return GConst.GE_INVALID_ACTION
 		FENG_ZHI_JIE_JING:
 			if cards.is_empty() or dsts.is_empty():

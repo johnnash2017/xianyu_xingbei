@@ -286,6 +286,9 @@ func 跑() -> void:
 	检(玩家.hand_cards.has(圣盾牌.id), "4601：被驳回的圣盾不应离手")
 	检(玩家.basic_effects.is_empty(), "4601：被驳回的圣盾不应挂到自己面前")
 
+	# 放基础效果的源技能（封印 / 赐福 / 天使之墙）也要把 46 从目标白名单里排除
+	_测源技能目标排除46()
+
 	# ============================================================
 	# 4602 邪灵退散：自己放置基础效果后 → 1 名目标对手 1 点法术伤害
 	# ============================================================
@@ -741,3 +744,85 @@ func 跑() -> void:
 	引擎._states.clear()
 	引擎._清空等待()
 	引擎.send_cb = Callable()
+
+
+## 4601 的联动：封印（401~405）/ 赐福（1601~1602）/ 天使之墙（701）这些「放置基础效果」的技能，
+## 目标白名单必须先排除 46（客户端据此置灰），服务端校验也要拒 ——
+## 不能只靠 add_basic_effect 兜底，否则界面点得亮、效果挂不上，看着像客户端和服务器判断脱节。
+func _测源技能目标排除46() -> void:
+	var e: BattleEngine = BattleEngine.new()
+	e.send_cb = func(_pid: int, _msg: int, _data: Dictionary) -> void: pass
+	e.add_player(1, GConst.BLUE, "封印")
+	e.add_player(2, GConst.RED, "灵熙")
+	e.add_player(3, GConst.RED, "祈祷")
+	e.add_player(4, GConst.RED, "天使")
+	e.start_with_roles({})
+	var 封印师: BattleRole = (load("res://scripts/battle/roles/role_fengyin.gd") as GDScript).new()
+	var 祈祷师: BattleRole = (load("res://scripts/battle/roles/role_qidao.gd") as GDScript).new()
+	var 天使: BattleRole = (load("res://scripts/battle/roles/role_tianshi.gd") as GDScript).new()
+	var 灵熙: BattleRole = (load("res://scripts/battle/roles/role_lingxizhichao.gd") as GDScript).new()
+	e.p(1).role_id = 4
+	e.p(2).role_id = 46
+	e.p(3).role_id = 16
+	e.p(4).role_id = 7
+	封印师.setup(e.p(1), e)
+	灵熙.setup(e.p(2), e)
+	祈祷师.setup(e.p(3), e)
+	天使.setup(e.p(4), e)
+	e.p(1).role = 封印师
+	e.p(2).role = 灵熙
+	e.p(3).role = 祈祷师
+	e.p(4).role = 天使
+	var 封印牌: GCard = _取技能牌(401)
+	var 迅捷牌: GCard = _取技能牌(1601)
+	var 墙牌: GCard = _取技能牌(701)
+	检(封印牌 != null and 迅捷牌 != null and 墙牌 != null,
+		"卡库找不到封印 / 赐福 / 天使之墙的发动牌")
+	if 封印牌 == null or 迅捷牌 == null or 墙牌 == null:
+		return
+	e.p(1).hand_cards.clear()
+	e.p(3).hand_cards.clear()
+	e.p(4).hand_cards.clear()
+	e.p(1).hand_cards.append(封印牌.id)
+	e.p(3).hand_cards.append(迅捷牌.id)
+	e.p(4).hand_cards.append(墙牌.id)
+	# 封印：灵熙与封印师不同色、身上也没有同种封印 —— 旧逻辑会把她点亮，现在必须排除
+	var 封印项: Dictionary = _取技能项(封印师.available_skills(), 401)
+	检(not (封印项.get("targets", []) as Array).has(2),
+		"封印（401）的目标白名单不应包含 46：%s" % str(封印项.get("targets", [])))
+	检((封印项.get("targets", []) as Array).has(4),
+		"封印（401）应仍可指向普通角色：%s" % str(封印项.get("targets", [])))
+	检(封印师.v_magic_skill({"src_id": 1, "action_id": 401, "card_ids": [封印牌.id], "dst_ids": [2]})
+		!= GConst.GE_SUCCESS, "封印（401）对 46 的服务端校验也应拒")
+	# 赐福：祈祷师与灵熙同色、她面前也没有同种赐福 —— 同样必须排除
+	var 赐福项: Dictionary = _取技能项(祈祷师.available_skills(), 1601)
+	检(not (赐福项.get("targets", []) as Array).has(2),
+		"迅捷赐福（1601）的目标白名单不应包含 46：%s" % str(赐福项.get("targets", [])))
+	检((赐福项.get("targets", []) as Array).has(4),
+		"迅捷赐福（1601）应仍可指向同色队友：%s" % str(赐福项.get("targets", [])))
+	检(祈祷师.v_magic_skill({"src_id": 3, "action_id": 1601, "card_ids": [迅捷牌.id], "dst_ids": [2]})
+		!= GConst.GE_SUCCESS, "迅捷赐福（1601）对 46 的服务端校验也应拒")
+	# 天使之墙：任何没有圣盾的人都能贴 —— 46 同样排除
+	var 墙项: Dictionary = _取技能项(天使.available_skills(), 701)
+	检(not (墙项.get("targets", []) as Array).has(2),
+		"天使之墙（701）的目标白名单不应包含 46：%s" % str(墙项.get("targets", [])))
+	检((墙项.get("targets", []) as Array).has(4),
+		"天使之墙（701）应仍可贴给自己 / 别人：%s" % str(墙项.get("targets", [])))
+	检(天使.v_magic_skill({"src_id": 4, "action_id": 701, "card_ids": [墙牌.id], "dst_ids": [2]})
+		!= GConst.GE_SUCCESS, "天使之墙（701）对 46 的服务端校验也应拒")
+
+
+## 卡库里第一张带指定技能、可作发动牌的实体牌
+func _取技能牌(技能号: int) -> GCard:
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(技能号):
+			return c
+	return null
+
+
+## available_skills 里按技能号取那一项
+func _取技能项(列表: Array, 技能号: int) -> Dictionary:
+	for 项: Dictionary in 列表:
+		if int(项.get("id", 0)) == 技能号:
+			return 项
+	return {}
