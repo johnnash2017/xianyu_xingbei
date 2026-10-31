@@ -594,6 +594,7 @@ func 跑() -> void:
 	检(int(窗.get("_mode")) == 3, "7803 选项询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
 	var 魔法选项: Array = 窗.get("_二级选项")
 	检(魔法选项.size() == 3, "7803 应摆出 3 个选项（实际 %d）" % 魔法选项.size())
+	var 魔法提示前: String = str(窗.get("_提示原文"))
 	if not 魔法选项.is_empty():
 		窗.call("_选中二级选项", GConst.技能_Magic, 0)
 		await 等帧(1)
@@ -601,6 +602,9 @@ func 跑() -> void:
 			"点选 7803 选项只切换选中，不应直接提交（实际 _mode=%d）" % int(窗.get("_mode")))
 		检(int(窗.get("_skill_ask_need_card")) == 2,
 			"7803「弃 2 张牌」选中后应要求选 2 张手牌（实际 %d）" % int(窗.get("_skill_ask_need_card")))
+		# 选项名已经说明了要做什么：选中后提示条继续显示技能说明，不写「选 N 张牌」之类的专用提示
+		检(str(窗.get("_提示原文")) == 魔法提示前,
+			"7803 选中选项后提示条不应换成专用提示（实际：%s）" % str(窗.get("_提示原文")))
 		for i: int in range(mini(2, Data.hand_cards.size())):
 			窗.call("_on_card_clicked", Data.hand_cards[i].id)
 		await 等帧(1)
@@ -626,6 +630,7 @@ func 跑() -> void:
 	await 等帧(2)
 	var 强予选项: Array = 窗.get("_二级选项")
 	检(强予选项.size() == 2, "7804 应摆出 2 个星石选项（实际 %d）" % 强予选项.size())
+	var 强予提示前: String = str(窗.get("_提示原文"))
 	if not 强予选项.is_empty():
 		窗.call("_选中二级选项", GConst.技能_强予愿行, 0)
 		await 等帧(1)
@@ -633,6 +638,8 @@ func 跑() -> void:
 			"点选 7804 星石只切换选中，不应直接提交（实际 _mode=%d）" % int(窗.get("_mode")))
 		检(int(窗.get("_skill_ask_need_target")) == 1,
 			"7804 选中星石后应要求选 1 名其他角色（实际 %d）" % int(窗.get("_skill_ask_need_target")))
+		检(str(窗.get("_提示原文")) == 强予提示前,
+			"7804 选中星石后提示条不应换成专用提示（实际：%s）" % str(窗.get("_提示原文")))
 		窗.call("_on_player_clicked", 2)
 		await 等帧(1)
 		(窗.get("BtnOK") as Button).pressed.emit()
