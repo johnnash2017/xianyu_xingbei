@@ -347,28 +347,29 @@ func p_magic_skill(action: Dictionary) -> int:
 				# 三组效果都没触发时也要先把「展示牌」响应结算完，再问 7803 / 收尾
 				if _压展示钩子():
 					return URGENT
-				# Magic! 的三个触发固定下发成 3 个选项，只有当前场景对应的那项可点：
+				# Magic! 的三档触发各自独立，每次只问「当前实际触发的那一档」：
 				#   1 弃 2 张牌（展示牌触发了效果、且手里有 2 张牌）
 				#   2 额外 +1【法术行动】（展示牌没触发任何效果）
 				#   3 我方【战绩区】+2【宝石】（本回合第 3 次【魔法入门】结算时）
-				# 三项互相独立：选完一项若还有能用的，再问一次（用过的那项置灰）。
-				var 选项: Array = _7803选项()
-				if not _7803有可用选项(选项):
+				# 选项始终三项完整下发，只有本档 enabled=true —— 前两档结算完，
+				# 下一次弹出的询问才轮到第 3 次的宝石档。
+				var 档: int = _7803下一档()
+				if 档 <= 0:
 					step = 步_结算
 					continue
 				if not engine.has_reply():
-					询问(player.id, MAGIC_BANG, 0, 0, GConst.CardSource.Hand, 选项, 0, "",
+					询问(player.id, MAGIC_BANG, 0, 0, GConst.CardSource.Hand, _7803选项(档), 0, "",
 						[], true, 0)
 					return WAIT
 				var r选: Dictionary = take_skill_reply_full()
 				var 参数: Array = r选.get("args", [])
 				var 选择: int = int(参数[0]) if not 参数.is_empty() else 0
-				if not _7803选项可选(选项, 选择):
-					# 取消 / 超时 / 硬提交了置灰的项：按「不发动」处理，剩余分支不再问
+				if 选择 != 档:
+					# 取消 / 超时 / 硬提交了置灰项：按「不发动」处理，剩余档不再问
 					_7803分支配平()
 					step = 步_结算
 					continue
-				if 选择 == 1:
+				if 档 == 1:
 					# 「弃 2 张牌」的选牌跟选项合在同一个询问里（选项自带 need_card=2）：
 					# 玩家选中选项后直接点 2 张手牌、按一次确定一起提交，不再单独发选牌询问。
 					var 选牌2: Array = r选.get("card_ids", [])
@@ -385,16 +386,12 @@ func p_magic_skill(action: Dictionary) -> int:
 						_7802_7803弃牌 = 有效
 					else:
 						_7802_7803弃牌.clear()
-					step = 步_7803触发
-					continue
-				if 选择 == 2:
+				elif 档 == 2:
 					_7802_7803额外行动 = true
 					_7803行动已处理 = true
-					step = 步_7803触发
-					continue
-				# 选择 == 3
-				_7802_7803加宝石 = true
-				_7803宝石已处理 = true
+				else:
+					_7802_7803加宝石 = true
+					_7803宝石已处理 = true
 				step = 步_7803触发
 				continue
 			步_结算:
@@ -498,44 +495,37 @@ func _7802触发效果() -> bool:
 
 
 # ============================================================
-# Magic!（7803）：三项固定选项
+# Magic!（7803）：三项固定选项，每次实际触发只问一档
 # ============================================================
-## 三项固定下发（文案不变），只有当前场景对应的那项 enabled=true；已处理过的也置灰：
+## 下一个实际触发的是哪一档（0＝没有可问的了）：
 ##   1 弃 2 张牌 —— 展示牌触发了效果、且手里还有 2 张牌
 ##   2 额外 +1【法术行动】—— 展示牌没触发任何效果
 ##   3 我方【战绩区】+2【宝石】—— 本回合第 3 次【魔法入门】结算时
-func _7803选项() -> Array:
-	var 触发: bool = _7802触发效果()
-	var 可弃: bool = 触发 and player.hand_cards.size() >= 2 and not _7803弃牌已处理
-	var 可行动: bool = not 触发 and not _7803行动已处理
-	# 第 3 次的「战绩区 +2 宝石」要等「弃 2 张牌 / 额外行动」这一档结算完、
-	# 下一次弹出的选项才亮：同一问里两档同时亮会被误读成可以一起选。
-	var 可宝石: bool = _本回合魔法入门次数 == 3 and not _7803宝石已处理 \
-		and not 可弃 and not 可行动
+## 三档各自独立：前两档处理完（或本来不可用）才会轮到第 3 次的宝石档，
+## 所以宝石不会和前两档在同一问里同时亮。
+func _7803下一档() -> int:
+	if _7802触发效果():
+		if player.hand_cards.size() >= 2 and not _7803弃牌已处理:
+			return 1
+	elif not _7803行动已处理:
+		return 2
+	if _本回合魔法入门次数 == 3 and not _7803宝石已处理:
+		return 3
+	return 0
+
+
+## 本次询问的固定三选项：文案始终完整下发，只有「本次实际触发的那一档」enabled=true。
+func _7803选项(档: int) -> Array:
 	return [
-		{"value": 1, "label": "弃 2 张牌", "enabled": 可弃,
+		{"value": 1, "label": "弃 2 张牌", "enabled": 档 == 1,
 			# 选项自带选牌需求：选中它就点 2 张手牌、按一次确定一起提交（不再单独发选牌询问）
 			"need_card": 2},
-		{"value": 2, "label": "额外+1【法术行动】", "enabled": 可行动},
-		{"value": 3, "label": "我方【战绩区】+2【宝石】", "enabled": 可宝石},
+		{"value": 2, "label": "额外+1【法术行动】", "enabled": 档 == 2},
+		{"value": 3, "label": "我方【战绩区】+2【宝石】", "enabled": 档 == 3},
 	]
 
 
-func _7803有可用选项(选项: Array) -> bool:
-	for 项: Dictionary in 选项:
-		if bool(项.get("enabled", false)):
-			return true
-	return false
-
-
-func _7803选项可选(选项: Array, 值: int) -> bool:
-	for 项: Dictionary in 选项:
-		if int(项.get("value", 0)) == 值:
-			return bool(项.get("enabled", false))
-	return false
-
-
-## 玩家在 Magic! 选项里取消 / 超时 / 硬提交了置灰项：剩余分支都不再问
+## 玩家在 Magic! 选项里取消 / 超时 / 硬提交了置灰项：剩余档都不再问
 func _7803分支配平() -> void:
 	_7803弃牌已处理 = true
 	_7803行动已处理 = true
