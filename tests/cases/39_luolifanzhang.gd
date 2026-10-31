@@ -213,8 +213,55 @@ func 跑() -> void:
 
 	_建引擎()
 	_测喧哗上等()
+	_测喧哗上等引擎链路()
 	_测灭茶苦茶()
 	_测夜露死苦与爱死天流()
+
+
+## 真实引擎链路：喧哗上等的逐张确认要走完整攻击 / 伤害流水线，
+## 不能只在角色直调时才对（hook 重入、take_reply 归属都按真实路径验一遍）。
+func _测喧哗上等引擎链路() -> void:
+	_重置()
+	# 牌库顶 3 张血类命格法术牌（从顶到底）
+	for i: int in range(2, -1, -1):
+		引擎.deck.pile.append(血魔牌[i].id)
+	var 攻击牌: GCard = _取牌(func(c: GCard) -> bool: return c.is_attack())
+	检(攻击牌 != null, "卡库找不到攻击牌")
+	if 攻击牌 == null:
+		return
+	玩家.hand_cards.clear()
+	玩家.hand_cards.append(攻击牌.id)
+	发送记录.clear()
+	引擎.resolve_action(GConst.ActionType.Attack, {
+		"src_id": 1, "action_id": 0, "card_ids": [攻击牌.id], "dst_ids": [2], "args": [],
+	})
+	引擎.run()
+	var 询问次数: int = 0
+	for _i: int in range(10):
+		if int(引擎._await_id) == 2 and int(引擎._pending_respond_id) == GConst.RespondType.ReplyAttack:
+			# 靶子不还手
+			引擎.on_message(2, GConst.Msg.Respond, {
+				"respond_id": GConst.RespondType.ReplyAttack, "src_id": 2,
+				"args": [GConst.Reattack.GiveUp], "card_ids": [], "dst_ids": [],
+			})
+			引擎.run()
+			continue
+		if int(引擎._await_id) == 1 and int(引擎._pending_respond_id) == 9701:
+			询问次数 += 1
+			引擎.on_message(1, GConst.Msg.Respond, {
+				"respond_id": 9701, "src_id": 1,
+				"args": [1], "card_ids": [], "dst_ids": [],
+			})
+			引擎.run()
+			continue
+		break
+	检(询问次数 == 3, "真实伤害流水线里 9701 应连问 3 次（血类法术牌 ×3），实际 %d 次" % 询问次数)
+	检(引擎.deck.pile.is_empty(), "3 张移除后牌库应为空，实际 %d 张" % 引擎.deck.pile.size())
+	for i: int in range(3):
+		检(_展示次数(血魔牌[i].id) == 1,
+			"9701 真实链路：牌库顶的 %d 应【展示】一次，实际 %d 次"
+			% [血魔牌[i].id, _展示次数(血魔牌[i].id)])
+	检(_播报次数(9701) == 1, "9701 真实链路应只播报一次，实际 %d 次" % _播报次数(9701))
 
 
 # ============================================================

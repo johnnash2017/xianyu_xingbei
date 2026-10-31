@@ -551,6 +551,9 @@ var _skill_card_source: int = GConst.CardSource.Hand
 var _skill_cover_need: int = 0
 ## 本次发动技能的参数选项（服务端在技能上给的 arg_choices：每项一个按钮，点它就用当前已选的牌/目标提交）
 var _skill_arg_choices: Array = []
+## 本次对局收到的询问代数：每来一条 CmdReq +1。用来判断「应答发出后，下一条询问是不是
+## 已经在同一帧里递了回来」（进程内直连 / 快速回包，见 _发送应答）。
+var _询问代: int = 0
 ## 二级技能栏：点「带选项的技能」后，技能区只留被点的技能（最左）+ 它的选项（紧挨它右边、同样用技能按钮显示），
 ## 其余技能暂时隐藏；选项先选中（亮黄），点「确定」才提交、点「取消」才退出（退出后恢复原来的技能栏）。
 var _二级栏: bool = false
@@ -2035,6 +2038,7 @@ func _on_command(data: Dictionary) -> void:
 	var cmds: Array = data.get("commands", [])
 	if cmds.is_empty():
 		return
+	_询问代 += 1
 	# 「随这一手提交的额外行动」只服务于紧接着的那一次技能询问：来的是别的询问
 	# （应战 / 行动结束响应 / 下一次行动）就不再带进二级技能栏，免得显示上一手已经用掉的行动。
 	var 首命令: Dictionary = cmds[0]
@@ -6727,8 +6731,13 @@ func _发送行动(action_type: int, action_id: int, dst: Array, cards: Array, a
 
 
 func _发送应答(respond_id: int, dst: Array, cards: Array, args: Array) -> void:
+	var 发前代: int = _询问代
 	Logic.send_respond(respond_id, dst, cards, args)
-	_清空待选()
+	# 应答一发出，下一条询问可能就在同一帧里递了回来（进程内直连 / 快速回包）：
+	# 那时界面已经按新询问重建，不能再 _清空待选 —— 否则连续的同名询问会被抹掉，
+	# 表现就是「喧哗上等只让我确定一次」「同一技能的多步询问只出第一条」。
+	if _询问代 == 发前代:
+		_清空待选()
 
 
 func _清空待选() -> void:
