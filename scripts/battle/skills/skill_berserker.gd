@@ -12,12 +12,14 @@ extends RefCounted
 ##   func setup(p: BattlePlayer, e: BattleEngine) -> void:
 ##       super.setup(p, e)
 ##       _狂战士技能 = 狂战士技能.new(self)
-##       _狂战士技能.技能号血影狂刀 = 9702   # 播报 / 询问都按本角色自己的技能行取
-##       _狂战士技能.技能号血腥咆哮 = 9702
+##       # 默认按源技能号 201 / 202 询问 / 播报（视作借用角色自己的技能，
+##       # 与 EX魔弓 借 301/302 同口径）；要套用本角色自己的技能行再改：
+##       # _狂战士技能.技能号血影狂刀 = 9702
+##       # _狂战士技能.技能号血腥咆哮 = 9702
 ##   func p_timeline_1(ctx: Dictionary) -> int:
 ##       return int(_狂战士技能.call("响应攻击", ctx))
 ##
-## 覆盖点（9702/9703 这类改写用；可不设，默认与 role_kuangzhan.gd 一致）：
+## 覆盖点（9703 这类改写用；可不设，默认与 role_kuangzhan.gd 一致）：
 ## - 血影狂刀加伤: Callable(dst: BattlePlayer) -> int
 ##     替换默认加伤（狂战士原版：目标手牌 2 张 → +2、3 张 → +1）。
 ## - 血腥咆哮条件: Callable(dst: BattlePlayer) -> bool
