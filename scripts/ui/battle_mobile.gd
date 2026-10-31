@@ -8185,7 +8185,14 @@ func _攻击加成头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	var 技能号: int = _当前技能号()
 	var 规则: Variant = GConst.攻击提示加成.get(技能号, null)
-	if 规则 == null:
+	# 灭茶苦茶（9704）：二选一按选中项现算加伤（【宝石】+2 / 【水晶】+1）。
+	# 还没选中时不出提示（目标头像先显示当前伤害），选中哪档就划掉旧值、写加伤后的新值。
+	var 选项加成: int = 0
+	if 技能号 == GConst.技能_灭茶苦茶:
+		选项加成 = _灭茶苦茶选项加成()
+		if 选项加成 <= 0:
+			return out
+	elif 规则 == null:
 		return out
 	# 格斗【蓄力一击 / 气绝崩击】共用一条二选一询问：只有选中【蓄力一击】那档才加这 1 点
 	if 技能号 == GConst.技能_蓄力一击 and not _选中蓄力一击():
@@ -8212,7 +8219,7 @@ func _攻击加成头像提示() -> Dictionary:
 			and 我.role_id == GConst.角色_格斗 and 我.tap
 	for 目标id: int in 目标们:
 		var 原伤害: int = maxi(基础 + 被动, 0)
-		var 加成: int = _攻击加成值(规则, 目标id)
+		var 加成: int = 选项加成 if 技能号 == GConst.技能_灭茶苦茶 else _攻击加成值(规则, 目标id)
 		if 破百式:
 			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [
 				原伤害 + GConst.百式幻龙拳主动加成, maxi(原伤害 + 加成, 0)]
@@ -8537,6 +8544,19 @@ func _攻击加成值(规则: Variant, 目标id: int) -> int:
 		return 2
 	if 张数 == 3:
 		return 1
+	return 0
+
+
+## 灭茶苦茶（9704）当前选中档位的加伤：1＝【宝石】+2、2＝【水晶】+1（与角色脚本里的选项值一致）；
+## 还没选中 / 非法值返回 0（此时不画加成，头像先显示当前伤害）
+func _灭茶苦茶选项加成() -> int:
+	if _已选参数.is_empty():
+		return 0
+	match int(_已选参数[0]):
+		1:
+			return 2
+		2:
+			return 1
 	return 0
 
 

@@ -813,6 +813,34 @@ func 跑() -> void:
 		await 等帧(1)
 		Data.hand_cards = 攻击牌
 
+	# 灭茶苦茶（9704）：选中【宝石】/【水晶】时，目标头像要划掉旧伤害、写加伤后的伤害
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.技能_灭茶苦茶, "src_id": Logic.my_player_id, "is_skill": true,
+			"dst_ids": [2], "card_ids": [],
+			"args": [0, 0, GConst.CardSource.Hand, 2, 1, 2],
+			"notes": ["【宝石】本次攻击伤害 +2", "【水晶】本次攻击伤害 +1"],
+			"card_max": 0, "card_rule": "", "can_cancel": true,
+			"preview_base": 3, "preview_kind": GConst.HarmType.Attack,
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "灭茶苦茶询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
+	检((窗.call("_攻击加成头像提示") as Dictionary).is_empty(), "还没选档时不应画加伤提示")
+	窗.call("_选中二级选项", GConst.技能_灭茶苦茶, 0)
+	await 等帧(1)
+	var 宝石提示: Dictionary = 窗.call("_攻击加成头像提示")
+	检(str(宝石提示.get(2, "")) == "[zwj]3 攻击伤害\n5 攻击伤害",
+		"选【宝石】应画「3 划掉 → 5」：%s" % str(宝石提示.get(2, "")))
+	窗.call("_选中二级选项", GConst.技能_灭茶苦茶, 1)
+	await 等帧(1)
+	var 水晶提示: Dictionary = 窗.call("_攻击加成头像提示")
+	检(str(水晶提示.get(2, "")) == "[zwj]3 攻击伤害\n4 攻击伤害",
+		"选【水晶】应画「3 划掉 → 4」：%s" % str(水晶提示.get(2, "")))
+	(窗.get("BtnCancel") as Button).pressed.emit()
+	await 等帧(1)
+
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
 
