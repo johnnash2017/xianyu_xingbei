@@ -49,6 +49,10 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0, 对局中: b
 	var 信息: String = Data.role_skill_info(角色号)
 	if 角色号 == 108 and 信息 != "":
 		信息 = 剑之子对局说明(信息, 对局中 and _剑之魔女在场())
+	# EX魔弓（75）：【弓神候补】7503 可以使用神箭手的独有技 301 / 302，
+	# 角色说明里补一段「独有技」把它们列出来（视作自己的独有技，不置灰）
+	if 角色号 == 75 and 信息 != "":
+		信息 = EX魔弓说明(信息)
 	# 梦想剑按当前档位逐段标绿：第 1 次攻击后第一段、第 2 次后两段、第 4 次后三段。
 	# 剑之魔女（45）与借到梦想剑的剑之子（108）都按各自快照里的 dream_tier 现算。
 	if 对局中 and (角色号 == 45 or (角色号 == 108 and _剑之魔女在场())):
@@ -164,8 +168,8 @@ static func _在分段底部插入(行列表: Array[String], 分段标题: Strin
 	行列表.assign(新行)
 
 
-## 生成一颗借用技能的正文行；剑之魔女不在场时逐行打上失效（置灰）标记。
-static func _构造借用技能行(技能号: int, 有剑之魔女: bool) -> Array[String]:
+## 生成一颗借用技能的正文行；正常显示＝false 时逐行打上失效（置灰）标记。
+static func _构造借用技能行(技能号: int, 正常显示: bool) -> Array[String]:
 	var 行列表: Array[String] = []
 	var 说明: String = GConst.skill_desc(技能号)
 	if 说明 == "":
@@ -177,10 +181,24 @@ static func _构造借用技能行(技能号: int, 有剑之魔女: bool) -> Arr
 		if 文本 == "":
 			continue
 		var 行: String = "　　" + 文本
-		if not 有剑之魔女:
+		if not 正常显示:
 			行 = _标记失效行(行)
 		行列表.append(行)
 	return 行列表
+
+
+## EX魔弓（75）的角色说明动态部分：【弓神候补】7503 可以使用神箭手的独有技 301 / 302。
+## 数据表里 75 没有「独有技」分段，在角色说明里补一段；这两颗是 7503 带来的、
+## 按自己的独有技正常显示（与剑之子继承的剑圣 101 / 102 不同，不置灰）。
+static func EX魔弓说明(原文: String) -> String:
+	var 行列表: Array[String] = []
+	for 行: String in 原文.split("\n"):
+		行列表.append(行)
+	var 独有行: Array[String] = []
+	for 技能号: int in [301, 302]:
+		独有行.append_array(_构造借用技能行(技能号, true))
+	_插入独有技分段(行列表, 独有行)
+	return "\n".join(行列表)
 
 
 ## 这一行是不是「一条新技能」的正文首行（而不是上一条技能的续行 / 分段标题）。
