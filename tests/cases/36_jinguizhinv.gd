@@ -357,11 +357,10 @@ func 跑() -> void:
 		"7803：三项选项文案不对：%s" % str(问7803.get("notes", [])))
 	检((问7803.get("option_enabled", []) as Array) == [true, false, false],
 		"7803：触发效果时应只允许「弃 2 张牌」：%s" % str(问7803.get("option_enabled", [])))
-	_回复(1, MAGIC_BANG, [1])
-	var 问弃2: Dictionary = _取询问(1, MAGIC_BANG)
-	检(not 问弃2.is_empty(), "7803：选「弃 2 张牌」后应接着要求选 2 张手牌")
-	检(int((问弃2.get("args", []) as Array)[0]) == 2, "7803：弃牌询问应要求 2 张")
-	_回复(1, MAGIC_BANG, [], [无效果牌.id, 咏牌.id])
+	# 「弃 2 张牌」的需牌挂在选项上（同一问里选牌，不再另发一条选牌询问）
+	检((问7803.get("option_need_cards", []) as Array) == [2, 0, 0],
+		"7803：「弃 2 张牌」应自带 need_card=2：%s" % str(问7803.get("option_need_cards", [])))
+	_回复(1, MAGIC_BANG, [1], [无效果牌.id, 咏牌.id])
 	检(玩家.hand_cards.size() == 1 and 玩家.hand_cards.has(法术牌.id),
 		"7803：弃 2 张后应只剩摸到的展示牌，实际 %s" % str(玩家.hand_cards))
 	检(引擎.deck.discard.has(无效果牌.id) and 引擎.deck.discard.has(咏牌.id),
@@ -651,12 +650,8 @@ func 跑() -> void:
 		"7805+7803：触发效果时应只允许「弃 2 张牌」：%s" % str(问守恒7803.get("option_enabled", [])))
 	检(not 玩家.hand_cards.has(水系牌.id),
 		"7805+7803：7803 弃牌询问时不能再看到 7805 已弃的牌")
-	_回复(1, MAGIC_BANG, [1])
-	var 问守恒弃2: Dictionary = _取询问(1, MAGIC_BANG)
-	检(not 问守恒弃2.is_empty(), "7805+7803：选「弃 2 张牌」后应要求选 2 张手牌")
-	检(int((问守恒弃2.get("args", []) as Array)[0]) == 2, "7805+7803：7803 弃牌询问仍应要求 2 张")
-	# 模拟旧客户端/旧实现把 7805 已弃的那张也塞进回复：只处理还留手里的牌，不能重复入弃
-	_回复(1, MAGIC_BANG, [], [水系牌.id, 法术牌.id])
+	# 7803 的选牌跟选项合在同一个询问里：这里直接选 2 张还留在手里的牌一起提交
+	_回复(1, MAGIC_BANG, [1], [法术牌.id, 无效果牌.id])
 	检(玩家.hand_cards.size() == 1 and 玩家.hand_cards.has(全能牌.id),
 		"7805+7803：结算后 1 号手里应只剩技能结束前摸的 1 张，实际 %s" % str(玩家.hand_cards))
 	检(队友.hand_cards.size() == 2, "7805+7803：队友弃 1 摸 1 后应仍是 2 张，实际 %d" % 队友.hand_cards.size())
@@ -704,12 +699,14 @@ func 跑() -> void:
 	检((问星石.get("notes", []) as Array) == ["宝石", "水晶"], "7804：星石两档应固定完整下发")
 	检(not (问星石.get("option_enabled", [true, true]) as Array).has(false),
 		"7804：两种星石都有时应都可选")
-	_回复(1, 强予愿行, [1])
-	var 问强予目标: Dictionary = _取询问(1, 强予愿行)
-	检(not 问强予目标.is_empty(), "7804：应询问调整哪名其他角色")
-	检(int((问强予目标.get("args", []) as Array)[1]) == 1, "7804：应要求 1 名其他角色")
-	检(not (问强予目标.get("dst_ids", []) as Array).has(1), "7804：其他角色不应包含自己")
-	_回复(1, 强予愿行, [], [], [3])
+	# 星石选项自带「选 1 名其他角色」：同一问里选人，不再另发一条选角色询问
+	检((问星石.get("option_need_targets", []) as Array) == [1, 1],
+		"7804：星石选项应自带 need_target=1：%s" % str(问星石.get("option_need_targets", [])))
+	var 星石目标表: Array = 问星石.get("option_targets", [])
+	检(星石目标表.size() == 2
+		and not ((星石目标表[0] as Dictionary).get("ids", []) as Array).has(1),
+		"7804：选项的合法目标应是不含自己的其他角色：%s" % str(星石目标表))
+	_回复(1, 强予愿行, [1], [], [3])
 	检(引擎._await_id == 3, "7804：先由目标牌主 3 选择要弃的牌")
 	检(玩家.get_energy() == 0, "7804：应已支付 1 能量（宝石顶水晶）")
 	检(引擎.team_gem[GConst.BLUE] == 0 and 引擎.team_crystal[GConst.BLUE] == 1,
@@ -779,7 +776,7 @@ func 跑() -> void:
 	检(队友.hand_cards.is_empty(), "7804：取消选星石不应调整其他角色手牌")
 	检(引擎._await_id == 1, "7804：取消选星石后应回到自己的行动阶段")
 
-	# 7804 子询问取消：选角色时取消 = 放弃额外移除（已选中的星石也不扣）
+	# 7804 同一步取消：选了星石但没选角色（空 dst）= 放弃额外移除（已选中的星石也不扣）
 	_重置战斗()
 	玩家.set_gem(1)
 	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
@@ -787,14 +784,13 @@ func 跑() -> void:
 	引擎.set_team_crystal(GConst.BLUE, 1)
 	_置牌库顶(无效果牌)
 	_开强予愿行()
+	检(not _取询问(1, 强予愿行).is_empty(), "7804：取消前应已在等选星石/角色")
 	_回复(1, 强予愿行, [1])
-	检(not _取询问(1, 强予愿行).is_empty(), "7804：取消前应已在等选目标")
-	_回复(1, 强予愿行, [], [], [])
 	检(引擎.team_gem[GConst.BLUE] == 1 and 引擎.team_crystal[GConst.BLUE] == 1,
-		"7804：取消选角色后已选中的星石也不应被扣")
-	检(队友.hand_cards.is_empty(), "7804：取消选角色不应调整其他角色手牌")
+		"7804：没选角色时已选中的星石也不应被扣")
+	检(队友.hand_cards.is_empty(), "7804：没选角色不应调整其他角色手牌")
 	检(玩家.hand_cards.size() == 4 and 玩家.get_energy() == 0,
-		"7804：取消选角色后应只调整自己并支付能量，实际手牌 %s / 能量 %d"
+		"7804：没选角色时应只调整自己并支付能量，实际手牌 %s / 能量 %d"
 		% [str(玩家.hand_cards), 玩家.get_energy()])
 
 	# 7804 子询问超时：选星石超时同样按放弃额外移除处理
@@ -814,22 +810,19 @@ func 跑() -> void:
 		% [玩家.hand_cards.size(), 队友.hand_cards.size()])
 	检(引擎._await_id == 1, "7804：选星石超时后应回到自己的行动阶段")
 
-	# 7804 子询问超时：选角色超时同样按放弃额外移除处理
+	# 7804 同一步提交了非法角色（选自己）→ 放弃额外移除（星石保留、不调整他人）
 	_重置战斗()
 	玩家.set_gem(1)
 	_填手牌(玩家, [法术牌.id, 咏牌.id, 水系牌.id])
 	引擎.set_team_gem(GConst.BLUE, 1)
 	_置牌库顶(无效果牌)
 	_开强予愿行()
-	_回复(1, 强予愿行, [1])
-	检(not _取询问(1, 强予愿行).is_empty(), "7804：超时前应已在等选目标")
-	引擎.wait_deadline_ms = maxi(Time.get_ticks_msec() - 1, 1)
-	引擎.tick()
+	_回复(1, 强予愿行, [1], [], [1])
 	检(引擎.team_gem[GConst.BLUE] == 1,
-		"7804：选目标超时应放弃额外移除（星石保留），实际 %d" % 引擎.team_gem[GConst.BLUE])
-	检(队友.hand_cards.is_empty(), "7804：选目标超时不应调整其他角色手牌")
+		"7804：角色非法时应放弃额外移除（星石保留），实际 %d" % 引擎.team_gem[GConst.BLUE])
+	检(队友.hand_cards.is_empty(), "7804：角色非法时不应调整其他角色手牌")
 	检(玩家.hand_cards.size() == 4 and 玩家.get_energy() == 0,
-		"7804：选目标超时后应只调整自己并支付能量")
+		"7804：角色非法时应只调整自己并支付能量")
 
 	# 7804：能量不足时被引擎驳回
 	_重置战斗()

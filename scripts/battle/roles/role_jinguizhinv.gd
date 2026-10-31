@@ -59,12 +59,10 @@ const 步_法术目标: int = 5
 const 步_咏目标: int = 6
 const 步_水目标: int = 7
 const 步_7803触发: int = 8
-const 步_7803弃牌: int = 9
 const 步_结算: int = 12
 
 ## 7804 每一步的进度
 const 步_强予选星石: int = 2
-const 步_强予选角色: int = 3
 const 步_强予结算: int = 4
 
 ## 7802 三类效果的目标数上限 / 伤害点数
@@ -371,7 +369,23 @@ func p_magic_skill(action: Dictionary) -> int:
 					step = 步_结算
 					continue
 				if 选择 == 1:
-					step = 步_7803弃牌
+					# 「弃 2 张牌」的选牌跟选项合在同一个询问里（选项自带 need_card=2）：
+					# 玩家选中选项后直接点 2 张手牌、按一次确定一起提交，不再单独发选牌询问。
+					var 选牌2: Array = r选.get("card_ids", [])
+					var 有效: Array[int] = []
+					for 值: Variant in 选牌2:
+						if 有效.size() >= 2:
+							break
+						var cid: int = int(值)
+						if player.has_discard_card(cid) and not 有效.has(cid):
+							有效.append(cid)
+					_7803弃牌已处理 = true
+					# 不够 2 张 / 非法牌＝按「不弃」处理（客户端要求选满 2 张才能确定；超时是空应答）
+					if 有效.size() >= 2:
+						_7802_7803弃牌 = 有效
+					else:
+						_7802_7803弃牌.clear()
+					step = 步_7803触发
 					continue
 				if 选择 == 2:
 					_7802_7803额外行动 = true
@@ -381,22 +395,6 @@ func p_magic_skill(action: Dictionary) -> int:
 				# 选择 == 3
 				_7802_7803加宝石 = true
 				_7803宝石已处理 = true
-				step = 步_7803触发
-				continue
-			步_7803弃牌:
-				if not engine.has_reply():
-					询问(player.id, MAGIC_BANG, 2, 0, GConst.CardSource.Hand, [], 0, "",
-						[], true, 0)
-					return WAIT
-				var r弃2: Dictionary = take_skill_reply_full()
-				_7803弃牌已处理 = true
-				var 选牌2: Array = r弃2.get("card_ids", [])
-				# 空应答＝取消（7803 的弃 2 张是可选的）：不能走 _取手牌 的「不够就补手牌」口径，
-				# 否则取消也会被强制弃 2 张
-				if 选牌2.is_empty():
-					_7802_7803弃牌.clear()
-				else:
-					_7802_7803弃牌 = _取手牌(player.id, 选牌2, 2)
 				step = 步_7803触发
 				continue
 			步_结算:
@@ -510,7 +508,9 @@ func _7803选项() -> Array:
 	var 触发: bool = _7802触发效果()
 	return [
 		{"value": 1, "label": "弃 2 张牌",
-			"enabled": 触发 and player.hand_cards.size() >= 2 and not _7803弃牌已处理},
+			"enabled": 触发 and player.hand_cards.size() >= 2 and not _7803弃牌已处理,
+			# 选项自带选牌需求：选中它就点 2 张手牌、按一次确定一起提交（不再单独发选牌询问）
+			"need_card": 2},
 		{"value": 2, "label": "额外+1【法术行动】",
 			"enabled": not 触发 and not _7803行动已处理},
 		{"value": 3, "label": "我方【战绩区】+2【宝石】",
@@ -650,32 +650,23 @@ func p_special_skill(action: Dictionary) -> int:
 					_放弃强予额外移除()
 					step = 步_强予结算
 					continue
-				_7804额外移除 = true
-				_7804移除类型 = 类型
-				step = 步_强予选角色
-			步_强予选角色:
+				# 星石选项自带「选 1 名其他角色」（need_target + targets 挂在选项上）：
+				# 选中星石后同一步点头像选人、按一次确定把「星石 + 角色」一起提交，不再单独发选角色询问。
 				var 候选: Array[int] = _其他角色id()
-				if 候选.is_empty():
-					_放弃强予额外移除()
-					step = 步_强予结算
-					continue
-				if not engine.has_reply():
-					询问(player.id, 强予愿行, 0, 1, GConst.CardSource.Hand, [], 0, "",
-						[], true, 1, -1, 候选)
-					return WAIT
-				var r人: Dictionary = take_skill_reply_full()
 				var 目标: Array[int] = []
-				for 值: Variant in r人.get("dst_ids", []):
+				for 值: Variant in r星.get("dst_ids", []):
 					var pid2: int = int(值)
 					if 候选.has(pid2) and not 目标.has(pid2):
 						目标.append(pid2)
 						break
-				# 取消 / 超时（空 dst）或没给出合法目标 → 放弃额外移除：
-				# 不按候选顺序补第一名角色（见 A29：宁愿不额外移除，也不替玩家扣星石 / 改他人手牌）。
+				# 取消 / 超时（空 args）或没给出合法目标 → 放弃额外移除：
+				# 不替玩家默认扣一颗星石、也不按候选顺序补第一名角色（见 A29）。
 				if 目标.is_empty():
 					_放弃强予额外移除()
 					step = 步_强予结算
 					continue
+				_7804额外移除 = true
+				_7804移除类型 = 类型
 				_7804目标 = 目标[0]
 				step = 步_强予结算
 			步_强予结算:
@@ -719,11 +710,15 @@ func _星石可选(类型: int) -> bool:
 	return false
 
 
-## 两档星石固定下发，当前没有的置灰（不删项）
+## 两档星石固定下发，当前没有的置灰（不删项）。
+## 每项都自带「选 1 名其他角色」：选中星石后直接点头像选人，再按一次确定一起提交。
 func _星石选项() -> Array:
+	var 候选: Array[int] = _其他角色id()
 	return [
-		{"value": 1, "label": "宝石", "enabled": _星石可选(1)},
-		{"value": 2, "label": "水晶", "enabled": _星石可选(2)},
+		{"value": 1, "label": "宝石", "enabled": _星石可选(1),
+			"need_target": 1, "targets": 候选},
+		{"value": 2, "label": "水晶", "enabled": _星石可选(2),
+			"need_target": 1, "targets": 候选},
 	]
 
 

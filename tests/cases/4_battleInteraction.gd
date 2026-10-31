@@ -577,8 +577,8 @@ func 跑() -> void:
 			"3D 斩击素材 %s 缺 Slash / Particles 节点" % 名)
 		素材.free()
 
-	# 矜贵之女【Magic!】(7803)：三个选项都是「点选即生效」——
-	# 点中「弃 2 张牌」应立刻提交（进入选牌那一层），不再要求先点一次「确定」。
+	# 矜贵之女【Magic!】(7803)：选项自带需牌——点选项只是「切换选中」，
+	# 在同一步选 2 张手牌后按一次「确定」一起提交，不再另发一条选牌询问。
 	Logic.command_received.emit({
 		"cmd_type": GConst.CmdType.Respond,
 		"commands": [{
@@ -587,6 +587,7 @@ func 跑() -> void:
 			"args": [0, 0, GConst.CardSource.Hand, 3, 1, 2, 3],
 			"card_max": 0, "card_rule": "", "can_cancel": true,
 			"notes": ["弃 2 张牌", "额外+1【法术行动】", "我方【战绩区】+2【宝石】"],
+			"option_need_cards": [2, 0, 0],
 		}],
 	})
 	await 等帧(2)
@@ -596,11 +597,20 @@ func 跑() -> void:
 	if not 魔法选项.is_empty():
 		窗.call("_选中二级选项", GConst.技能_Magic, 0)
 		await 等帧(1)
+		检(int(窗.get("_mode")) == 3,
+			"点选 7803 选项只切换选中，不应直接提交（实际 _mode=%d）" % int(窗.get("_mode")))
+		检(int(窗.get("_skill_ask_need_card")) == 2,
+			"7803「弃 2 张牌」选中后应要求选 2 张手牌（实际 %d）" % int(窗.get("_skill_ask_need_card")))
+		for i: int in range(mini(2, Data.hand_cards.size())):
+			窗.call("_on_card_clicked", Data.hand_cards[i].id)
+		await 等帧(1)
+		(窗.get("BtnOK") as Button).pressed.emit()
+		await 等帧(1)
 		检(int(窗.get("_mode")) == 0,
-			"点选 7803 的「弃 2 张牌」应立刻提交，不再要求按确定（实际 _mode=%d）" % int(窗.get("_mode")))
-		检((窗.get("_已选参数") as Array).is_empty(), "7803 点选即提交后不应残留已选参数")
+			"选满 2 张手牌后按确定应提交（实际 _mode=%d）" % int(窗.get("_mode")))
 
-	# 【强予愿行】(7804)：选星石只是进入下一层（接着选角色），同样点中即提交。
+	# 【强予愿行】(7804)：星石选项自带「选 1 名其他角色」——选中星石后直接点头像选人，
+	# 再按一次「确定」把星石和角色一起提交，不再另发一条选角色询问。
 	Logic.command_received.emit({
 		"cmd_type": GConst.CmdType.Respond,
 		"commands": [{
@@ -609,6 +619,8 @@ func 跑() -> void:
 			"args": [0, 0, GConst.CardSource.Hand, 2, 1, 2],
 			"card_max": 0, "card_rule": "", "can_cancel": true,
 			"notes": ["宝石", "水晶"],
+			"option_need_targets": [1, 1],
+			"option_targets": [{"ids": [2, 3]}, {"ids": [2, 3]}],
 		}],
 	})
 	await 等帧(2)
@@ -617,8 +629,16 @@ func 跑() -> void:
 	if not 强予选项.is_empty():
 		窗.call("_选中二级选项", GConst.技能_强予愿行, 0)
 		await 等帧(1)
+		检(int(窗.get("_mode")) == 3,
+			"点选 7804 星石只切换选中，不应直接提交（实际 _mode=%d）" % int(窗.get("_mode")))
+		检(int(窗.get("_skill_ask_need_target")) == 1,
+			"7804 选中星石后应要求选 1 名其他角色（实际 %d）" % int(窗.get("_skill_ask_need_target")))
+		窗.call("_on_player_clicked", 2)
+		await 等帧(1)
+		(窗.get("BtnOK") as Button).pressed.emit()
+		await 等帧(1)
 		检(int(窗.get("_mode")) == 0,
-			"点选 7804 的星石选项应立刻提交（实际 _mode=%d）" % int(窗.get("_mode")))
+			"选好角色后按确定应提交（实际 _mode=%d）" % int(窗.get("_mode")))
 
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
