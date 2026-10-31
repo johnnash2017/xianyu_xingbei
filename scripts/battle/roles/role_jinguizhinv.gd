@@ -98,6 +98,9 @@ var _7802_7803额外行动: bool = false
 ## 本次 7802 是否已经结算过：结算会返回 URGENT，引擎重入技能本体时据此直接收尾、不重复结算
 var _7802已结算: bool = false
 var _7802_7803加宝石: bool = false
+## 本次 7802 的「展示牌」钩子是否已压栈：一个效果一个效果结算时只压一次，
+## 且要压在第一个效果的状态之上（先结算「展示牌」响应，再结算伤害 / 治疗）。
+var _7802展示钩子已压: bool = false
 
 ## 7804 本次发动的分步数据
 var _7804额外移除: bool = false
@@ -207,6 +210,8 @@ func p_magic_skill(action: Dictionary) -> int:
 	if step == 0:
 		_初始化魔法入门()
 		_本回合魔法入门次数 += 1
+		# 技能宣告在发动时播报一次即可：后面三组效果各自结算，不再重复播报
+		notice_skill(魔法入门, [])
 		step = 步_友情选角色
 	# 已经结算过（URGENT 挂起后引擎重入本体）：不要再结算一次，直接收尾。
 	# 见 技能URGENT后重入()：7802 摸牌后要挂起走超限，挂起结束会重入这里。
@@ -291,7 +296,16 @@ func p_magic_skill(action: Dictionary) -> int:
 					return WAIT
 				var r法: Dictionary = take_skill_reply_full()
 				_7802法术目标 = _取目标(r法.get("dst_ids", []), enemy_ids(), 法术目标数)
+				# 一个效果一个效果结算：选完这个效果的目标就把它的伤害压栈算完（含展示牌响应），
+				# 回来再问下一个效果 —— 不能把三个效果的目标都选完再一起结算。
 				step = 步_咏目标
+				for pid4: int in _倒序结算(_7802法术目标):
+					engine.push_harm({
+						"src": player.id, "dst": pid4, "point": 法术伤害值,
+						"cause": 魔法入门, "type": GConst.HarmType.Magic, "is_active": false,
+					})
+				_压展示钩子()
+				return URGENT
 			步_咏目标:
 				var 咏目标数: int = mini(_7802咏数量, engine.order.size())
 				if 咏目标数 <= 0:
@@ -299,11 +313,18 @@ func p_magic_skill(action: Dictionary) -> int:
 					continue
 				if not engine.has_reply():
 					询问(player.id, 魔法入门, 0, 咏目标数, GConst.CardSource.Hand, [], 0, "",
-						[], false, 1, -1, _全体角色id())
+						[], false, 1, -1, _全体角色id(), _7802咏数量)
 					return WAIT
 				var r咏: Dictionary = take_skill_reply_full()
 				_7802咏目标 = _取目标(r咏.get("dst_ids", []), _全体角色id(), 咏目标数)
 				step = 步_水目标
+				for pid5: int in _倒序结算(_7802咏目标):
+					engine.push_harm({
+						"src": player.id, "dst": pid5, "point": 法术伤害值,
+						"cause": 魔法入门, "type": GConst.HarmType.Magic, "is_active": false,
+					})
+				_压展示钩子()
+				return URGENT
 			步_水目标:
 				var 水目标数: int = mini(_7802水数量, engine.order.size())
 				if 水目标数 <= 0:
@@ -311,12 +332,21 @@ func p_magic_skill(action: Dictionary) -> int:
 					continue
 				if not engine.has_reply():
 					询问(player.id, 魔法入门, 0, 水目标数, GConst.CardSource.Hand, [], 0, "",
-						[], false, 1, -1, _全体角色id())
+						[], false, 2, -1, _全体角色id(), _7802水数量)
 					return WAIT
 				var r水: Dictionary = take_skill_reply_full()
 				_7802水目标 = _取目标(r水.get("dst_ids", []), _全体角色id(), 水目标数)
+				# 水系治疗是「依序」里的最后一项：压成钩子，等它结算完再回来问 7803。
 				step = 步_7803触发
+				engine.push(BattleEngine.SHook.new("p_jinguizhinv_水系治疗", {
+					"player": player.id, "targets": _7802水目标.duplicate(),
+				}, []))
+				_压展示钩子()
+				return URGENT
 			步_7803触发:
+				# 三组效果都没触发时也要先把「展示牌」响应结算完，再问 7803 / 收尾
+				if _压展示钩子():
+					return URGENT
 				if _7802触发效果():
 					# 分支 1：展示牌触发了效果 → 直接选 2 张牌弃掉（选中＋确定＝发动；取消＝不弃）
 					if player.hand_cards.size() >= 2:
@@ -360,7 +390,8 @@ func p_magic_skill(action: Dictionary) -> int:
 						_7802_7803加宝石 = true
 				step = 步_结算
 			步_结算:
-				# 先记「已结算」再结算：结算会压伤害 / 钩子并返回 URGENT，引擎重入本体时不能再来一次
+				# 先记「已结算」再收尾：收尾可能压 7805 的摸牌钩子并返回 URGENT，
+				# 引擎重入本体时不能再结算一次。
 				_7802已结算 = true
 				return _结算魔法入门()
 	return SUCCESS
@@ -382,6 +413,7 @@ func _初始化魔法入门() -> void:
 	_7802_7803额外行动 = false
 	_7802_7803加宝石 = false
 	_7802已结算 = false
+	_7802展示钩子已压 = false
 
 
 ## 7802 准备阶段：确定展示牌集合并算出三类效果的触发情况
@@ -403,6 +435,27 @@ func _准备7802展示() -> void:
 		if card.element_enum() == GConst.CardElement.Water:
 			_7802水数量 += 1
 	_广播7802展示()
+
+
+## 把「展示牌」钩子压到栈顶：排在本次已压入的伤害 / 治疗状态之上，先结算其他角色的展示响应。
+## 一次发动只压一次（一个效果一个效果结算时，第一次需要压时调用；没有可展示的牌就只置标记）。
+## 返回 true＝这次真的压了状态（调用方需要返回 URGENT 等它跑完）。
+func _压展示钩子() -> bool:
+	if _7802展示钩子已压:
+		return false
+	_7802展示钩子已压 = true
+	var 压了: bool = false
+	if _7802启用友情羁绊:
+		for 项: Dictionary in _7802友情弃牌:
+			var pid: int = int(项.get("pid", -1))
+			var cid: int = int(项.get("card", -1))
+			if pid >= 0 and cid >= 0:
+				engine.push_show_hand(pid, [cid])
+				压了 = true
+	elif not _7802展示牌.is_empty():
+		engine.push_show_hand(player.id, _7802展示牌)
+		压了 = true
+	return 压了
 
 
 ## 把展示集合亮给全场（7805 时是那 2 张弃牌）。
@@ -433,19 +486,10 @@ func _7802触发效果() -> bool:
 	return _7802有法术牌 or _7802咏数量 > 0 or _7802水数量 > 0
 
 
-## 7802 结算：先播报 / 展示，再结算 7803，再造成伤害 / 治疗，最后压展示钩子（LIFO 先跑）
+## 7802 收尾：7803 的分支代价 / 奖励、7805 的弃牌入弃与「技能结束前各摸 1 张」。
+## 三组伤害 / 治疗已经在各自的「选完目标」步骤里一个效果一个效果地压栈结算完
+## （见 步_法术目标 / 步_咏目标 / 步_水目标），这里不再重复压；7802 的播报已在发动时发过。
 func _结算魔法入门() -> int:
-	var 所有目标: Array[int] = []
-	for pid: int in _7802法术目标:
-		if not 所有目标.has(pid):
-			所有目标.append(pid)
-	for pid: int in _7802咏目标:
-		if not 所有目标.has(pid):
-			所有目标.append(pid)
-	for pid: int in _7802水目标:
-		if not 所有目标.has(pid):
-			所有目标.append(pid)
-	notice_skill(魔法入门, 所有目标)
 	# 7805 的 2 张弃牌在选定时已离手（见 步_友情弃牌），这里统一入弃牌堆并写日志。
 	# 放在结算做：这时不再向玩家提问，不会把「弃牌前拦截」的等待链夹在后续询问中间。
 	if _7802启用友情羁绊:
@@ -471,8 +515,7 @@ func _结算魔法入门() -> int:
 		notice_skill(MAGIC_BANG, [player.id])
 		engine.set_team_gem(player.color, engine.team_gem[player.color] + 2)
 	# 7805：技能效果结束前，2 名角色各摸 1 张【强制】（不再并入展示集合）。
-	# 先压「摸牌回调」（栈底 → 最后执行）：压在治疗 / 伤害之下，等它们全部结算完才摸，
-	# 否则当场摸牌会跑到伤害前面（那时伤害状态还没压栈）。
+	# 三组效果已经结算完，这里压成钩子最后摸；摸牌超限交给状态边界统一结算。
 	if _7802启用友情羁绊:
 		var 摸牌者: Array[int] = []
 		for 项2: Dictionary in _7802友情弃牌:
@@ -482,33 +525,6 @@ func _结算魔法入门() -> int:
 		if not 摸牌者.is_empty():
 			engine.push(BattleEngine.SHook.new("p_jinguizhinv_友情摸牌",
 				{"player": player.id, "targets": 摸牌者}, []))
-	# 治疗：水系效果是「依序」里的最后一项。把它作为自定义钩子压在所有伤害状态之下，
-	# 等伤害全部结算完再 +1 治疗 —— 否则先治疗再受伤时，治疗会白挡掉本该结算的伤害。
-	if not _7802水目标.is_empty():
-		engine.push(BattleEngine.SHook.new("p_jinguizhinv_水系治疗", {
-			"player": player.id, "targets": _7802水目标.duplicate(),
-		}, []))
-	# 伤害：先压咏类伤害、再压法术伤害 —— 状态栈 LIFO，法术伤害先结算，符合技能「依序」
-	for pid4: int in _倒序结算(_7802咏目标):
-		engine.push_harm({
-			"src": player.id, "dst": pid4, "point": 法术伤害值,
-			"cause": 魔法入门, "type": GConst.HarmType.Magic, "is_active": false,
-		})
-	for pid5: int in _倒序结算(_7802法术目标):
-		engine.push_harm({
-			"src": player.id, "dst": pid5, "point": 法术伤害值,
-			"cause": 魔法入门, "type": GConst.HarmType.Magic, "is_active": false,
-		})
-	# 7805 的「各摸 1 张」已在上方先压栈（栈底），这里不再当场摸牌。
-	# 展示牌钩子最后压：其他角色的「展示牌」响应先于伤害 / 行动结束结算
-	if _7802启用友情羁绊:
-		for 项3: Dictionary in _7802友情弃牌:
-			var pid6: int = int(项3.get("pid", -1))
-			var cid3: int = int(项3.get("card", -1))
-			if pid6 >= 0 and cid3 >= 0:
-				engine.push_show_hand(pid6, [cid3])
-	elif not _7802展示牌.is_empty():
-		engine.push_show_hand(player.id, _7802展示牌)
 	engine._broadcast_game()
 	return URGENT
 
