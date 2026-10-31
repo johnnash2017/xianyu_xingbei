@@ -613,6 +613,36 @@ func 跑() -> void:
 		检(int(窗.get("_mode")) == 0,
 			"选满 2 张手牌后按确定应提交（实际 _mode=%d）" % int(窗.get("_mode")))
 
+	# 【魔法入门】(7802)：友情羁绊作为它的第 2 个选项下发（同魔眼 arg_choices）——
+	# 点技能直接进二级栏，选项 2 绑 7805 技能号（响应紫），选中后同一步选 2 名我方角色，确定一次提交。
+	var 入门参数: Array = [
+		{"text": "你摸 1 张牌【强制】", "args": [1]},
+		{"text": "-1【宝石】我方 2 名角色各弃 1 张牌【强制】，技能效果结束前各摸 1 张牌【强制】",
+			"args": [2], "skill_id": GConst.技能_友情羁绊, "enabled": true,
+			"need_target": 2, "targets": [1, 3]},
+	]
+	窗.call("_选择技能", GConst.技能_魔法入门, GConst.ActionType.MagicSkill, 0, 0,
+		[], [], 0, 0, 0, GConst.CardSource.Hand, "", 0, 0, 入门参数, null, 0)
+	await 等帧(1)
+	检(int(窗.get("_mode")) == 4,
+		"7802 点技能后应直接进入二级技能栏（实际 _mode=%d）" % int(窗.get("_mode")))
+	var 入门选项: Array = 窗.get("_二级选项")
+	检(入门选项.size() == 2, "7802 应摆出 2 个选项（实际 %d）" % 入门选项.size())
+	if 入门选项.size() == 2:
+		检(int((入门选项[1] as Dictionary).get("技能号", 0)) == GConst.技能_友情羁绊,
+			"7802 第 2 档应绑 7805 的技能号（按钮按响应紫显示）")
+		窗.call("_选中二级选项", GConst.技能_魔法入门, 1)
+		await 等帧(1)
+		检(int(窗.get("_skill_need_target")) == 2,
+			"7802 选友情羁绊档后应要求选 2 名角色（实际 %d）" % int(窗.get("_skill_need_target")))
+		窗.call("_on_player_clicked", 1)
+		窗.call("_on_player_clicked", 3)
+		await 等帧(1)
+		(窗.get("BtnOK") as Button).pressed.emit()
+		await 等帧(1)
+		检(int(窗.get("_mode")) == 0,
+			"选好 2 名角色后按确定应提交（实际 _mode=%d）" % int(窗.get("_mode")))
+
 	# 【强予愿行】(7804)：选项走 available_skills 的 arg_choices（同魔弓【魔眼】）——
 	# 点技能直接进二级技能栏；选中选项后同一步选牌 / 选角色，最后按一次「确定」提交。
 	var 强予参数: Array = [

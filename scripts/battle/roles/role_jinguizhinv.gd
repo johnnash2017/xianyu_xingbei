@@ -127,6 +127,10 @@ func available_skills() -> Array:
 			"id": 魔法入门,
 			"need_card": 0,
 			"need_target": 0,
+			# 两个固定选项（同魔弓【魔眼】走 arg_choices，点技能直接进二级技能栏）：
+			#   1 你摸 1 张牌【强制】（不发动友情羁绊）
+			#   2 -1【宝石】…（响应 7805 友情羁绊；按钮按「响应」紫色显示）
+			"arg_choices": _魔法入门参数选项(),
 			"enabled": true,
 		},
 		{
@@ -195,11 +199,44 @@ func p_jinguizhinv_友情摸牌(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 7802 的两个固定选项（点技能直接进二级技能栏，同魔弓【魔眼】）：
+##   1 你摸 1 张牌【强制】（不发动友情羁绊）
+##   2 -1【宝石】我方 2 名角色各弃 1 张牌【强制】，技能效果结束前各摸 1 张牌【强制】
+## 选项 2 绑 7805 的技能号：二级栏按钮按「响应」紫色显示；2 名角色随选项同一步选。
+func _魔法入门参数选项() -> Array:
+	var 候选: Array[int] = _友情羁绊候选角色()
+	return [
+		{"text": "你摸 1 张牌【强制】", "args": [1]},
+		{"text": "-1【宝石】我方 2 名角色各弃 1 张牌【强制】，技能效果结束前各摸 1 张牌【强制】",
+			"args": [2], "skill_id": 友情羁绊,
+			"enabled": _可发动友情羁绊() and 候选.size() >= 2,
+			"need_target": 2, "targets": 候选},
+	]
+
+
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
 	if int(action.get("action_id", 0)) != 魔法入门:
 		return GConst.GE_INVALID_ACTION
+	var 参数: Array = action.get("args", [])
+	var 选择: int = int(参数[0]) if not 参数.is_empty() else 1
+	if 选择 < 1 or 选择 > 2:
+		return GConst.GE_INVALID_ARGUMENT
+	if 选择 == 2:
+		# 发动友情羁绊：-1【宝石】、我方至少 2 名有手牌的角色，并且要选够 2 名
+		if not _可发动友情羁绊():
+			return GConst.GE_INVALID_ACTION
+		var 候选: Array[int] = _友情羁绊候选角色()
+		var 目标: Array[int] = []
+		for 值: Variant in action.get("dst_ids", []):
+			var pid2: int = int(值)
+			if not 候选.has(pid2):
+				return GConst.GE_INVALID_ARGUMENT
+			if not 目标.has(pid2):
+				目标.append(pid2)
+		if 目标.size() != 2:
+			return GConst.GE_INVALID_ARGUMENT
 	return GConst.GE_SUCCESS
 
 
@@ -216,6 +253,25 @@ func p_magic_skill(action: Dictionary) -> int:
 		_本回合魔法入门次数 += 1
 		# 技能宣告在发动时播报一次即可：后面三组效果各自结算，不再重复播报
 		notice_skill(魔法入门, [])
+		# 友情羁绊的发动与否在魔法入门的二级技能栏里选（1 普通 / 2 响应友情羁绊），
+		# 2 名角色随同一次行动一起提交，不再由服务端另发一条询问。
+		var 参数0: Array = action.get("args", [])
+		var 选择0: int = int(参数0[0]) if not 参数0.is_empty() else 1
+		if 选择0 == 2 and _可发动友情羁绊():
+			var 候选0: Array[int] = _友情羁绊候选角色()
+			var 目标0: Array[int] = []
+			for 值0: Variant in action.get("dst_ids", []):
+				var pid0: int = int(值0)
+				if 候选0.has(pid0) and not 目标0.has(pid0):
+					目标0.append(pid0)
+			if 目标0.size() >= 2:
+				_7802启用友情羁绊 = true
+				_7802友情角色 = [目标0[0], 目标0[1]]
+				# 选好 2 名角色才付 1 宝石（v_magic_skill 已校验，这里只结算）
+				player.set_gem(player.gem - 1)
+				_本回合已用友情羁绊 = true
+				notice_skill(友情羁绊, _7802友情角色)
+				engine._broadcast_game()
 		step = 步_友情选角色
 	# 已经结算过（URGENT 挂起后引擎重入本体）：不要再结算一次，直接收尾。
 	# 见 技能URGENT后重入()：7802 摸牌后要挂起走超限，挂起结束会重入这里。
@@ -224,34 +280,11 @@ func p_magic_skill(action: Dictionary) -> int:
 	while true:
 		match step:
 			步_友情选角色:
-				# 一步到位：直接选 2 名角色＝发动【友情羁绊】；取消＝不发动，按普通【魔法入门】继续
-				if not _可发动友情羁绊():
+				# 选项已在上面的 step 0 处理好：没发动 / 角色不足就按普通【魔法入门】继续
+				if not _7802启用友情羁绊 or _7802友情角色.size() < 2:
 					_7802启用友情羁绊 = false
 					step = 步_准备展示
 					continue
-				var 候选: Array[int] = _友情羁绊候选角色()
-				if 候选.size() < 2:
-					# 候选在询问前已保证 ≥2；这里兜底回退成普通【魔法入门】
-					_7802启用友情羁绊 = false
-					step = 步_准备展示
-					continue
-				if not engine.has_reply():
-					询问(player.id, 友情羁绊, 0, 2, GConst.CardSource.Hand, [], 0, "",
-						[], true, 0, -1, 候选)
-					return WAIT
-				var r角色: Dictionary = take_skill_reply_full()
-				_7802友情角色 = _取目标(r角色.get("dst_ids", []), 候选, 2)
-				if _7802友情角色.size() < 2:
-					# 取消 / 没选够：不发动友情羁绊，按普通【魔法入门】继续
-					_7802启用友情羁绊 = false
-					step = 步_准备展示
-					continue
-				_7802启用友情羁绊 = true
-				# 选好 2 名角色后才付 1 宝石（取消/非法选择不付费）
-				player.set_gem(player.gem - 1)
-				_本回合已用友情羁绊 = true
-				notice_skill(友情羁绊, _7802友情角色)
-				engine._broadcast_game()
 				step = 步_友情弃牌
 			步_友情弃牌:
 				if _7802友情弃牌.size() >= _7802友情角色.size():
