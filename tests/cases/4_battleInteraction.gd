@@ -617,9 +617,9 @@ func 跑() -> void:
 	# 点技能直接进二级技能栏；选中选项后同一步选牌 / 选角色，最后按一次「确定」提交。
 	var 强予参数: Array = [
 		{"text": "仅调整自己手牌为 4", "args": [1], "enabled": true, "need_card": 0},
-		{"text": "-1【水晶】调整其他角色手牌为 4", "args": [2], "enabled": true,
+		{"text": "【战绩区】-1【水晶】调整其他角色手牌为 4", "args": [2], "enabled": true,
 			"need_card": 0, "need_target": 1, "targets": [2, 3]},
-		{"text": "-1【宝石】调整其他角色手牌为 4", "args": [3], "enabled": true,
+		{"text": "【战绩区】-1【宝石】调整其他角色手牌为 4", "args": [3], "enabled": true,
 			"need_card": 0, "need_target": 1, "targets": [2, 3]},
 	]
 	窗.call("_选择技能", GConst.技能_强予愿行, GConst.ActionType.SpecialSkill, 0, 0,

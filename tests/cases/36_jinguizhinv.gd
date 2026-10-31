@@ -716,11 +716,11 @@ func 跑() -> void:
 		检((强予选项表[0] as Dictionary).get("args", []) == [1]
 			and str((强予选项表[0] as Dictionary).get("text", "")) == "仅调整自己手牌为 4",
 			"7804：第一档文案 / 参数不对：%s" % str(强予选项表[0]))
-		检(str((强予选项表[1] as Dictionary).get("text", "")) == "-1【水晶】调整其他角色手牌为 4"
+		检(str((强予选项表[1] as Dictionary).get("text", "")) == "【战绩区】-1【水晶】调整其他角色手牌为 4"
 			and int((强予选项表[1] as Dictionary).get("need_card", 0)) == 1
 			and int((强予选项表[1] as Dictionary).get("need_target", 0)) == 1,
 			"7804：第二档应带弃 1 张 + 选 1 名角色：%s" % str(强予选项表[1]))
-		检(str((强予选项表[2] as Dictionary).get("text", "")) == "-1【宝石】调整其他角色手牌为 4"
+		检(str((强予选项表[2] as Dictionary).get("text", "")) == "【战绩区】-1【宝石】调整其他角色手牌为 4"
 			and ((强予选项表[2] as Dictionary).get("targets", []) as Array).has(3),
 			"7804：第三档应带其他角色白名单：%s" % str(强予选项表[2]))
 	# 选「-1 水晶」+ 弃 1 张 + 选队友 3，一次行动提交

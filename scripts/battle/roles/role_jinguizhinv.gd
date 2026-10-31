@@ -688,18 +688,18 @@ func _结算强予愿行() -> int:
 
 ## 7804 的三个选项（同魔弓【魔眼】走 available_skills 的 arg_choices，点技能直接进二级栏）：
 ##   1 仅调整自己手牌为 4
-##   2 -1【水晶】调整其他角色手牌为 4
-##   3 -1【宝石】调整其他角色手牌为 4
+##   2 【战绩区】-1【水晶】调整其他角色手牌为 4
+##   3 【战绩区】-1【宝石】调整其他角色手牌为 4
 ## 每项都自带「弃到 4 张」：need_card＝当前手牌超出的张数；2/3 再自带选 1 名其他角色。
 func _强予参数选项() -> Array:
 	var 需弃: int = maxi(player.hand_cards.size() - 强予手牌数, 0)
 	var 候选: Array[int] = _其他角色id()
 	return [
 		{"text": "仅调整自己手牌为 4", "args": [1], "enabled": true, "need_card": 需弃},
-		{"text": "-1【水晶】调整其他角色手牌为 4", "args": [2],
+		{"text": "【战绩区】-1【水晶】调整其他角色手牌为 4", "args": [2],
 			"enabled": engine.team_crystal[player.color] > 0,
 			"need_card": 需弃, "need_target": 1, "targets": 候选},
-		{"text": "-1【宝石】调整其他角色手牌为 4", "args": [3],
+		{"text": "【战绩区】-1【宝石】调整其他角色手牌为 4", "args": [3],
 			"enabled": engine.team_gem[player.color] > 0,
 			"need_card": 需弃, "need_target": 1, "targets": 候选},
 	]
