@@ -1205,6 +1205,27 @@ func 跑() -> void:
 		检(not 称号文.contains(假角色.nickname) and 称号文.begins_with("["),
 			"日志里的称号只应有 [职业名]，不带昵称：%s" % 称号文)
 
+	# 日志里的卡名要写「名字·系别·命格」（头像飘字仍是短的「名字·命格」）
+	var 法术样例: GCard = null
+	for c2: GCard in Data.card_db:
+		if c2 != null and not c2.is_virtual and c2.is_magic() \
+				and not c2.fate_pattern.is_empty():
+			法术样例 = c2
+			break
+	检(法术样例 != null, "卡库找不到带命格的法术牌")
+	if 法术样例 != null:
+		var 系别字: String = GConst.element_to_chinese(法术样例.element_enum())
+		var 日志名: String = str(窗.call("_牌日志名", 法术样例))
+		var 飘字名: String = str(窗.call("_牌显示名", 法术样例))
+		检(日志名 == "%s·%s·%s" % [法术样例.card_name, 系别字, 法术样例.fate_pattern],
+			"日志卡名应是 名字·系别·命格：%s" % 日志名)
+		检(飘字名 == "%s·%s" % [法术样例.card_name, 法术样例.fate_pattern],
+			"头像飘字仍是 名字·命格：%s" % 飘字名)
+		# 卡名（A）要按「法术」的颜色上色：法术卡名用洋红 #FF5AD2
+		var 上色行: String = str(窗.call("_日志着色", "打出：" + 日志名))
+		检(上色行.contains("[color=#FF5AD2]%s[/color]" % 法术样例.card_name),
+			"日志里的法术牌名应按法术色上色：%s" % 上色行)
+
 	# 法术伤害的「日志行」收到就写（只有视觉表现排队）：日志顺序＝服务端结算顺序，
 	# 「士气转移」那句一定排在伤害之后，不会被排队拖到伤害前面
 	窗.set("_法术待播", [])

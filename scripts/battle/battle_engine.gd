@@ -950,6 +950,20 @@ func _播治疗日志(pp: BattlePlayer, amount: int, src_id: int, 前: int) -> v
 	})
 
 
+## 战斗日志里的卡名：名字·系别·命格（如「虚弱·暗·血」），与客户端 _牌日志名 同口径。
+## 系别写在中间：法术牌光看名字分不出地 / 水 / 风 / 火 / 雷 / 暗
+func _牌日志名(牌: GCard) -> String:
+	if 牌 == null:
+		return "?"
+	var 部件: Array[String] = [牌.card_name]
+	var 系别: String = GConst.element_to_chinese(牌.element_enum())
+	if not 系别.is_empty() and 系别 != "?":
+		部件.append(系别)
+	if not 牌.fate_pattern.is_empty():
+		部件.append(牌.fate_pattern)
+	return "·".join(部件)
+
+
 ## 获得牌日志：某张已公开的牌加入某人手牌时写一条「谁 获得【什么】」。
 ## 只用于牌面已经公开的场合（如【剑守誓言】从牌库顶展示后选牌），不要拿它公开暗牌。
 func 播获得牌日志(pid: int, cards: Array) -> void:
@@ -959,7 +973,7 @@ func 播获得牌日志(pid: int, cards: Array) -> void:
 	var 名表: Array[String] = []
 	for c: Variant in cards:
 		var 牌: GCard = Data.get_card(int(c))
-		名表.append("【%s】" % (牌.card_name if 牌 != null else str(int(c))))
+		名表.append("【%s】" % (_牌日志名(牌) if 牌 != null else str(int(c))))
 	_播手牌日志(pp, "%s 获得 %s" % [_称号(pp), "、".join(名表)])
 
 
@@ -971,7 +985,7 @@ func _log_give_cards(src_id: int, dst_id: int, cards: Array) -> void:
 	var 名表: Array[String] = []
 	for c: Variant in cards:
 		var 牌: GCard = Data.get_card(int(c))
-		名表.append("【%s】" % (牌.card_name if 牌 != null else str(int(c))))
+		名表.append("【%s】" % (_牌日志名(牌) if 牌 != null else str(int(c))))
 	var 来源: String = _称号(players.get(src_id))
 	var 去处: String = _称号(players.get(dst_id))
 	var 详版: String = "%s 交给 %s %s" % [来源, 去处, "、".join(名表)]

@@ -289,6 +289,21 @@ func 跑() -> void:
 	# 战斗日志里的称呼只写 [职业名]，不带玩家名（和客户端 _称号 同口径）
 	检(引擎._称号(玩家) == "[贪婪少女]",
 		"服务端日志称号应只写 [职业名]：%s" % 引擎._称号(玩家))
+	# 日志里的卡名要写「名字·系别·命格」
+	var 日志卡名: String = str(引擎._牌日志名(魔弹牌))
+	检(日志卡名 == "%s·%s·%s" % [魔弹牌.card_name,
+		GConst.element_to_chinese(魔弹牌.element_enum()), 魔弹牌.fate_pattern],
+		"服务端日志卡名应是 名字·系别·命格：%s" % 日志卡名)
+	发送记录.clear()
+	引擎.播获得牌日志(玩家.id, [魔弹牌.id])
+	var 获牌文: String = ""
+	for r2: Dictionary in 发送记录:
+		if int(r2.get("msg", 0)) != GConst.Msg.Gossip:
+			continue
+		var t2: String = str((r2.get("data", {}) as Dictionary).get("txt", ""))
+		if t2.contains("获得"):
+			获牌文 = t2
+	检(获牌文.contains(日志卡名), "获得牌日志里的卡名应带系别：%s" % 获牌文)
 
 	# ============================================================
 	# 技能栏：8701 / 8703 / 8704 都照常下发，条件不满足只置灰

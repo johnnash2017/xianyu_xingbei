@@ -283,6 +283,9 @@ const 系别色: Dictionary = {
 }
 ## 技能名的着色：与卡名（浅蓝）区分开，日志里「发动◯◯◯」一眼能认出来
 const 日志技能色: String = "#C7A6FF"
+## 法术牌卡名的着色：用技能栏里「法术」类型的洋红（与 GConst.技能类型颜色["法术"] 同色），
+## 攻击牌的卡名仍按系别上色
+const 日志法术色: String = "#FF5AD2"
 ## 星石的着色：宝石红、水晶蓝（正文里凡提到星石都按这个上色）
 const 日志宝石色: String = "#FF6B6B"
 const 日志水晶色: String = "#6BB8FF"
@@ -1443,7 +1446,8 @@ func _on_card(msg: Dictionary) -> void:
 	for cid: Variant in msg.get("card_ids", []):
 		var c: GCard = Data.get_card(int(cid))
 		if c != null:
-			names.append(_牌显示名(c, not 无命格虚拟))
+			# 日志里写全「名字·系别·命格」（头像飘字仍是短的「名字·命格」）
+			names.append(_牌日志名(c, not 无命格虚拟))
 			if 首张 == null:
 				首张 = c
 	# 出牌音效（对照参考项目 AudioManager 的 CARDMSG 分支）：攻击牌 atk-<系别>，法术牌 spell-<卡名>。
@@ -1681,6 +1685,20 @@ func _牌显示名(牌: GCard, 带命格: bool = true) -> String:
 	return "%s·%s" % [牌.card_name, 牌.fate_pattern]
 
 
+## 战斗日志里的卡名：A·B·C —— 名字 · 系别 · 命格（如「虚弱·暗·血」）。
+## 系别写在中间：法术牌光看名字分不出地 / 水 / 风 / 火 / 雷 / 暗
+func _牌日志名(牌: GCard, 带命格: bool = true) -> String:
+	if 牌 == null or 牌.card_name.is_empty():
+		return ""
+	var 部件: Array[String] = [牌.card_name]
+	var 系别: String = GConst.element_to_chinese(牌.element_enum())
+	if not 系别.is_empty() and 系别 != "?":
+		部件.append(系别)
+	if 带命格 and not 牌.fate_pattern.is_empty():
+		部件.append(牌.fate_pattern)
+	return "·".join(部件)
+
+
 ## 卡牌播报文本：只认「使用」消息（Show＝亮牌 / 超限换牌，Give＝暗中交牌，都不算打出）。
 ## 卡名带命格后缀，多张用顿号连起来；服务端标了 virtual_no_fate 的虚牌不带命格。
 func _卡牌播报文本(msg: Dictionary) -> String:
@@ -1873,7 +1891,8 @@ func _日志专名索引() -> Dictionary:
 			# 斩名按系别上色（地/水/风/火/雷/暗），与应战提示同一套配色
 			名色[卡.card_name] = _系别颜色(GConst.element_to_chinese(卡.element_enum()))
 		else:
-			名色[卡.card_name] = 日志卡牌色
+			# 法术牌用「法术」类型色（和技能栏里法术技能同色）
+			名色[卡.card_name] = 日志法术色
 	for 名: String in GConst.全部技能名():
 		if not 名色.has(名):
 			名色[名] = 日志技能色
