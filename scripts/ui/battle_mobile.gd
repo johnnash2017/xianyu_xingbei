@@ -47,7 +47,6 @@ var _调试模式: bool = false
 @export var InputField: LineEdit
 @export var BtnSubmit: Button
 @export var BtnLogExpand: Button
-@export var BtnLogMode: CheckButton     # 日志「简洁」开关（LogRoot 左上角，勾上 = 简洁模式）
 @export var BtnChatExpand: Button
 @export var WinPanel: Control
 @export var WinImg: TextureRect
@@ -260,10 +259,7 @@ const 日志标签色: Dictionary = {
 }
 ## 日志正文的颜色（白）
 const 日志正文色: String = "#FFFFFF"
-## 简洁模式保留的日志类别：行动（出牌 / 发动技能）、回合（轮到谁）、士气（队伍士气升降）、
-## 手牌（手牌数量与上限变化）、指示物（鬼火 / 兽魂等增减），其余类别一律不进简洁缓冲
-const 简洁日志类别: Array[String] = ["行动", "回合", "士气", "手牌", "指示物"]
-## 日志正文里玩家名（角色名[玩家名]）与卡名的着色：正文仍以白字为底，只把专名挑出来上色
+## 日志正文里职业名（[职业名]）与卡名的着色：正文仍以白字为底，只把专名挑出来上色
 const 日志玩家色: String = "#FFD98A"
 const 日志卡牌色: String = "#8FD3FF"
 ## 命格配色：血浅红、咏浅橙、技浅绿、圣浅蓝、幻浅紫。
@@ -336,10 +332,6 @@ const 精灵射手角色: int = 32
 var _面板列表: Array[战斗玩家面板] = []
 ## 日志缓冲：Content_2 上的 AutoClearLog 按行裁剪，需要整段文本
 var _日志: String = ""
-## 简洁模式的日志缓冲：只攒 简洁日志类别 那几类行（切换模式时整段换给 Content_2）
-var _日志简洁: String = ""
-## 是否处于简洁模式（右侧日志面板左上角那个「简洁」开关）。默认简洁，只看行动 / 回合 / 士气
-var _日志简洁模式: bool = true
 ## 当前回合玩家 id（用于面板高亮）
 var _当前回合: int = -1
 ## 上一次 TurnBegin 的玩家 / 回合号：额外回合（F7 / 10803）不会推进 round，
@@ -643,7 +635,6 @@ func _ready() -> void:
 	BtnSubmit.pressed.connect(_on_submit)
 	InputField.text_submitted.connect(func(_t: String) -> void: _on_submit())
 	BtnLogExpand.pressed.connect(_展开日志)
-	BtnLogMode.toggled.connect(_切换日志模式)
 	BtnChatExpand.pressed.connect(_展开聊天)
 	BtnBack.pressed.connect(_on_back)
 	BtnSetting.pressed.connect(UI.切换设置)
@@ -1802,12 +1793,12 @@ func _称号(player_id: int) -> String:
 	var p: GPlayer = Data.get_player_by_id(player_id)
 	if p == null:
 		return str(player_id)
-	return "%s[%s]" % [p.nickname, p.role_name]
+	# 日志里只写职业名（方括号括起来）：不再把玩家的昵称放在前面
+	return "[%s]" % p.role_name
 
 
-## 给日志正文里的玩家名、卡名与技能名单独上色（其余仍是白字）。
+## 给日志正文里的职业名、卡名与技能名单独上色（其余仍是白字）。
 ## 放在 _日志追加 里统一处理：客户端自己拼的行与服务端下发的公告都能着色。
-## 简洁模式 下正文里不显示玩家名：「玩家名[角色名]」只留角色名（昵称一律不出现）
 ## 给命格字上色（血/咏/技/圣/幻）。只染这一个字，标点/前后文保持原样。
 func _命格着色(命格: String) -> String:
 	var 色: String = str(命格色.get(命格, ""))
@@ -1829,26 +1820,26 @@ func _系别着色(系别: String) -> String:
 	return "[color=%s]%s[/color]" % [色, 系别]
 
 
-func _日志着色(t: String, 简洁模式: bool = false) -> String:
+func _日志着色(t: String) -> String:
 	var 结果: String = t
-	# 先把「玩家名[角色名]」整段换成占位符，最后再染回玩家色。
-	# 不能先染色再跑 _专名着色：角色名里可能正好含着技能名（如「祈祷师」含技能「祈祷」），
-	# 那样会把半个角色名又染成技能色。占位符同时保护玩家名不被后面的「宝石 / 水晶 / 自身」再替换。
+	# 先把「[职业名]」整段换成占位符，最后再染回玩家色。
+	# 不能先染色再跑 _专名着色：职业名里可能正好含着技能名（如「祈祷师」含技能「祈祷」），
+	# 那样会把半个职业名又染成技能色。占位符同时保护职业名不被后面的「宝石 / 水晶 / 自身」再替换。
 	var 玩家们: Array[GPlayer] = []
 	玩家们.append_array(Data.player_list)
 	# 长称号优先，避免一个称号是另一个称号的前缀时先被短串吃掉
 	玩家们.sort_custom(func(a: GPlayer, b: GPlayer) -> bool:
-		var 甲: String = "%s[%s]" % [a.nickname, a.role_name]
-		var 乙: String = "%s[%s]" % [b.nickname, b.role_name]
-		return 甲.length() > 乙.length()
+		return a.role_name.length() > b.role_name.length()
 	)
 	var 玩家占位: Dictionary = {}
 	for p: GPlayer in 玩家们:
-		var 称号: String = "%s[%s]" % [p.nickname, p.role_name]
+		if p.role_name.is_empty():
+			continue
+		var 称号: String = "[%s]" % p.role_name
 		if 结果.find(称号) < 0:
 			continue
 		var 占位: String = "\u0001P%d\u0002" % 玩家占位.size()
-		玩家占位[占位] = p.role_name if 简洁模式 else 称号
+		玩家占位[占位] = 称号
 		结果 = 结果.replace(称号, 占位)
 	# 卡名 / 技能名：各自染自己的颜色（长名优先，见 _专名着色）
 	结果 = _专名着色(结果)
@@ -1929,34 +1920,22 @@ func _专名着色(文: String) -> String:
 func _日志追加(t: String, 标签: String = "系统") -> void:
 	var 色: String = str(日志标签色.get(标签, 日志标签色["系统"]))
 	_日志 += _日志行(色, 标签, _日志着色(t))
-	if 简洁日志类别.has(标签):
-		_日志简洁 += _日志行(色, 标签, _日志着色(t, true))
 	_刷新日志()
 
 
-## 拼日志的一行：开头的「[类别]」用标签色，正文用白字，末尾带换行
+## 拼日志的一行：开头的「[类别]」用标签色，正文用白字，末尾带换行。
+## 一个回合内的行都缩进一格（连前面的 [类别] 一起缩）；只有 [回合] 开头的行顶格写
 func _日志行(色: String, 标签: String, 正文: String) -> String:
-	return "[color=%s][%s][/color][color=%s] %s[/color]\n" % [色, 标签, 日志正文色, 正文]
+	var 缩进: String = "" if 标签 == "回合" else "　"
+	return "%s[color=%s][%s][/color][color=%s] %s[/color]\n" % [缩进, 色, 标签, 日志正文色, 正文]
 
 
-## 把当前模式该看到的日志铺到右侧面板上（详情 = 全量，简洁 = 只有行动行）。
-## 两个缓冲的行格式完全一样，所以切换模式只是换一段文本给 Content_2
+## 把日志铺到右侧面板上
 func _刷新日志() -> void:
-	var 文本: String = _日志简洁 if _日志简洁模式 else _日志
 	if Content_2.has_method("AutoClearText"):
-		Content_2.call("AutoClearText", 文本, 日志最大行)
+		Content_2.call("AutoClearText", _日志, 日志最大行)
 	else:
-		Content_2.text = 文本
-
-
-## 日志「简洁」开关：勾上只看行动 / 回合 / 士气，取消看全量
-func _切换日志模式(简洁: bool) -> void:
-	_日志简洁模式 = 简洁
-	_刷新日志()
-	if LogRoot.visible:
-		# 换过文本后高度要重量一次，再滚到最新一条（同 _展开日志）
-		await get_tree().process_frame
-		MsgRoot.scroll_vertical = 1 << 30
+		Content_2.text = _日志
 
 
 # ============================================================

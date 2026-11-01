@@ -1191,6 +1191,20 @@ func 跑() -> void:
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(1)
 
+	# 日志排版：回合内的行缩进一格（连前面的 [类别] 一起缩），只有 [回合] 行顶格；
+	# 正文里的玩家只写 [职业名]，不再带昵称
+	var 行回合: String = str(窗.call("_日志行", "#FFFFFF", "回合", "第 3 回合，轮到 [魔弓]"))
+	var 行手牌: String = str(窗.call("_日志行", "#FFFFFF", "手牌", "[魔弓] 的手牌 4→5"))
+	检(not 行回合.begins_with("　"), "回合行不应缩进：%s" % 行回合)
+	检(行手牌.begins_with("　"), "回合内的行应缩进一格：%s" % 行手牌)
+	检(行手牌.contains("[color=#FFFFFF][手牌][/color]"),
+		"缩进要连 [类别] 一起缩，不能只缩正文：%s" % 行手牌)
+	var 假角色: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 假角色 != null:
+		var 称号文: String = str(窗.call("_称号", 假角色.id))
+		检(not 称号文.contains(假角色.nickname) and 称号文.begins_with("["),
+			"日志里的称号只应有 [职业名]，不带昵称：%s" % 称号文)
+
 	# 法术伤害的「日志行」收到就写（只有视觉表现排队）：日志顺序＝服务端结算顺序，
 	# 「士气转移」那句一定排在伤害之后，不会被排队拖到伤害前面
 	窗.set("_法术待播", [])
