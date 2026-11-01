@@ -841,6 +841,28 @@ func 跑() -> void:
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(1)
 
+	# 4603 伴响魂灵：响应询问里「其余对手」是服务端固定的伤害目标 —— 客户端要自动选中并锁死，
+	# 头像上直接写 1 法术伤害（技能指示器「自动选目标：询问目标」+ 文案）
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.技能_伴响魂灵, "src_id": Logic.my_player_id, "is_skill": true,
+			"dst_ids": [2, 3], "card_ids": [],
+			"args": [0, 0, GConst.CardSource.Hand, 0],
+			"card_max": 0, "card_rule": "", "can_cancel": true,
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "4603 询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
+	var 伴响选中: Array = 窗.get("_sel_players")
+	检(伴响选中.has(2) and 伴响选中.has(3), "4603 应自动选中其余对手：%s" % str(伴响选中))
+	检(bool(窗.get("_目标锁死")), "4603 的伤害目标应锁定，不能靠点头像改选")
+	var 伴响配置: Dictionary = 窗.call("_头像提示配置")
+	检(str(伴响配置.get("文案", "")) == "%d 法术伤害" and int(伴响配置.get("每目标", 0)) == 1,
+		"4603 的头像提示应是每目标 1 点法术伤害：%s" % str(伴响配置))
+	(窗.get("BtnCancel") as Button).pressed.emit()
+	await 等帧(1)
+
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
 

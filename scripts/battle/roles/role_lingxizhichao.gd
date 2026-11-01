@@ -4,7 +4,8 @@ extends BattleRole
 ##   灵枝旨意（4601，被动）：你无法成为基础效果的目标。
 ##   邪灵退散（4602，响应）：你放置基础效果后，对 1 名目标对手造成 1 点法术伤害③。
 ##   伴响魂灵（4603，响应 / 回合限定）：你回合内目标对手因你造成的伤害掉士气时，
-##     对除他外所有目标对手各造成 1 点法术伤害③（每回合最多一次）。
+##     弹响应询问问是否发动；确定后对除他外所有目标对手各造成 1 点法术伤害③（每回合最多一次）。
+##     询问时把「其余对手」固定成伤害目标（客户端按指示器「自动选目标：询问目标」锁定并写 1 法术伤害）。
 ##   波涌之力（4604，被动）：目标角色触发基础效果并结算完成后，你 +1【灵涌】（上限 4）。
 ##   怒潮荒涛（4605，被动）：你的回合结束时若【灵涌】已满，移除所有【灵涌】，
 ##     对场上每名角色各造成 1 点法术伤害③；目标每有 1 个基础效果，本次对他额外 +1。
@@ -21,7 +22,8 @@ extends BattleRole
 ##   【灵涌】是角色表「指示物」槽 0 的计数指示物（名称 / 上限从表里读，上限 4），
 ##   计数一律走 player.add_token / clear_token，不在这里写死上限。
 ##   4601 走 F4 的 v_basic_effect_target；4602 / 4604 走 F4 的 p_basic_effect_change /
-##   p_basic_effect_triggered；4603 用「本回合自己造成的伤害」与掉士气链的 harm_cause 比对。
+##   p_basic_effect_triggered；4603 用「本回合自己造成的伤害」与掉士气链的 harm_cause 比对，
+##   成立后先弹响应询问（取消＝不发动、不消耗本回合机会），确定才结算。
 ##
 ## 跨范围说明：F5 的封印 / 赐福 helper（以及 role_fengyin / role_qidao 的原路径）在放置前
 ## 没有先问目标角色的 v_basic_effect_target；敌方封印 / 队友赐福若直接指向 46，
@@ -70,6 +72,10 @@ var _4606阶段: int = 阶段4606_空闲
 
 ## 4603 的「本回合最多一次」；每次自己的回合开始清零
 var _本回合已触发4603: bool = false
+## 4603 的响应询问已经发出、正在等发动者回复（true＝下次进来取回复）
+var _4603等回复: bool = false
+## 4603 这次询问的伤害目标（除掉士气那名外的其余对手）；回复后照它结算
+var _4603目标: Array[int] = []
 ## 本回合自己造成的伤害记录（掉士气时用它确认「因你造成的伤害」）：
 ## [{dst, cause, type}]
 var _本回合自己伤害: Array[Dictionary] = []
@@ -517,18 +523,38 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 	if dst == null or dst.color == player.color:
 		return SUCCESS
 	var harm_cause: int = int(ctx.get("harm_cause", 0))
-	if not _取出匹配伤害(dst_id, harm_cause, 类型):
+	# 第一次进来：判定「因你造成的伤害」是否成立；成立就弹响应询问问是否发动
+	if not _4603等回复:
+		if not _取出匹配伤害(dst_id, harm_cause, 类型):
+			return SUCCESS
+		var 目标: Array[int] = []
+		for pid: int in enemy_ids():
+			if pid != dst_id:
+				目标.append(pid)
+		if 目标.is_empty():
+			return SUCCESS
+		_4603目标 = 目标
+		_4603等回复 = true
+		# 响应技能：can_cancel=true（取消＝不发动）。targets 固定为「其余对手」，
+		# 客户端按指示器的「自动选目标：询问目标」把它们选中并锁死，头像上写「1 法术伤害」
+		# （见 GConst.技能指示器·技能_伴响魂灵）；预览目标也传它们，提示直接画在会挨伤害的人身上
+		询问(player.id, 伴响魂灵, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true, 0, -1,
+			目标, -1, {}, 0, 0, false, 目标)
+		return WAIT
+	# 重入：取发动者回复；只有点「确定」才发动（取消＝不发动，本回合的触发机会不消耗）
+	var r: Dictionary = take_skill_reply_full()
+	_4603等回复 = false
+	var 目标2: Array[int] = _4603目标.duplicate()
+	_4603目标.clear()
+	var args: Array = r.get("args", [])
+	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
 	_本回合已触发4603 = true
 	notice_skill(伴响魂灵, [dst_id])
-	var 目标: Array[int] = []
-	for pid: int in enemy_ids():
-		if pid != dst_id:
-			目标.append(pid)
-	if 目标.is_empty():
+	if 目标2.is_empty():
 		engine._broadcast_game()
 		return SUCCESS
-	var 顺序: Array[int] = 结算顺序(目标)
+	var 顺序: Array[int] = 结算顺序(目标2)
 	for i: int in range(顺序.size() - 1, -1, -1):
 		engine.push_harm({
 			"src": player.id, "dst": 顺序[i], "point": 伴响伤害,
