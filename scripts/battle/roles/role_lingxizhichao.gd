@@ -193,6 +193,12 @@ func _4606选项() -> Array:
 			if card != null and card.has_skill_id(技能号):
 				本技能牌.append(cid)
 		var 目标: Array[int] = _技能合法目标(技能号, int(本技能牌[0]) if not 本技能牌.is_empty() else -1)
+		# 这一项能点的发动牌（牌面）：只放带该来源技能的牌 —— 切换选项后其它封印 / 赐福牌由客户端置灰
+		var 本技能牌面: Array[int] = []
+		for cid: int in 本技能牌:
+			var 面: int = GConst.牌号(cid)
+			if not 本技能牌面.has(面):
+				本技能牌面.append(面)
 		out.append({
 			# 选项文案＝来源技能名；args[0] 回传来源技能号（v_magic_skill 按它认）
 			"text": GConst.skill_name(技能号),
@@ -202,6 +208,7 @@ func _4606选项() -> Array:
 			# 选中该项后在二级技能栏里再选 1 张发动牌 + 1 名合法目标，最后按一次「确定」
 			"need_card": 1,
 			"need_target": 1,
+			"cards": 本技能牌面,
 			"enabled": not 本技能牌.is_empty() and not 目标.is_empty(),
 			"targets": 目标,
 		})

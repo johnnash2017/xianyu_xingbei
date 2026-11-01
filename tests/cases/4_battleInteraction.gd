@@ -849,22 +849,35 @@ func 跑() -> void:
 			封印牌卡 = c
 			break
 	检(封印牌卡 != null, "卡库找不到封印牌")
-	if 封印牌卡 != null:
+	var 迅捷牌卡: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(1601):
+			迅捷牌卡 = c
+			break
+	检(迅捷牌卡 != null, "卡库找不到迅捷赐福牌")
+	if 封印牌卡 != null and 迅捷牌卡 != null:
 		var 海神手牌: Array[GCard] = []
 		for c: GCard in Data.hand_cards:
 			海神手牌.append(c)
 		海神手牌.append(封印牌卡)
+		海神手牌.append(迅捷牌卡)
 		Data.hand_cards = 海神手牌
 		var 海神技能号: int = 401 if 封印牌卡.has_skill_id(401) else 404
 		var 海神选项: Array = []
 		for 技能号: int in [401, 402, 403, 404, 405, 1601, 1602]:
+			var 项牌白: Array = []
+			if 技能号 == 海神技能号:
+				项牌白 = [封印牌卡.id]
+			elif 技能号 == GConst.技能_迅捷赐福:
+				项牌白 = [迅捷牌卡.id]
 			海神选项.append({
 				"text": GConst.skill_name(技能号), "args": [技能号], "skill_id": 技能号,
 				"need_card": 1, "need_target": 1, "targets": [2],
-				"enabled": 技能号 == 海神技能号,
+				"cards": 项牌白,
+				"enabled": 技能号 == 海神技能号 or 技能号 == GConst.技能_迅捷赐福,
 			})
 		窗.call("_选择技能", GConst.技能_海神御巫, GConst.ActionType.MagicSkill, 0, 0,
-			[2, 3], [封印牌卡.id], 0, 0, 0, GConst.CardSource.Hand, "", 0, 0, 海神选项, null, 0)
+			[2, 3], [封印牌卡.id, 迅捷牌卡.id], 0, 0, 0, GConst.CardSource.Hand, "", 0, 0, 海神选项, null, 0)
 		await 等帧(1)
 		检(int(窗.get("_mode")) == 4,
 			"4606 点技能后应直接进入二级技能栏（实际 %d）" % int(窗.get("_mode")))
@@ -894,9 +907,13 @@ func 跑() -> void:
 			检(str(窗.get("_提示原文")) == 海神提示前,
 				"4606 选中赐福选项时提示条应保持海神御巫的说明（实际：%s）" % str(窗.get("_提示原文")))
 		var 可用下标: int = -1
+		var 迅捷下标: int = -1
 		for i: int in range(海神栏.size()):
-			if int((海神栏[i] as Dictionary).get("技能号", 0)) == 海神技能号:
+			var 项技能: int = int((海神栏[i] as Dictionary).get("技能号", 0))
+			if 项技能 == 海神技能号:
 				可用下标 = i
+			if 项技能 == GConst.技能_迅捷赐福:
+				迅捷下标 = i
 		检(可用下标 >= 0, "4606 的选项按钮应绑来源技能号（skill_id）")
 		if 可用下标 >= 0:
 			窗.call("_选中二级选项", GConst.技能_海神御巫, 可用下标)
@@ -906,6 +923,17 @@ func 跑() -> void:
 			检(int(窗.get("_skill_need_card")) == 1 and int(窗.get("_skill_need_target")) == 1,
 				"4606 选中选项后应要求选 1 张发动牌 + 1 名目标（实际 %d / %d）"
 				% [int(窗.get("_skill_need_card")), int(窗.get("_skill_need_target"))])
+			# 选项自带牌白名单：选中封印后，带赐福技能的牌要置灰
+			检(bool(窗.call("_卡牌能点", 封印牌卡.id)), "4606 选中封印选项后带该技能的牌应可点")
+			检(not bool(窗.call("_卡牌能点", 迅捷牌卡.id)), "4606 选中封印选项后带赐福技能的牌应置灰")
+			if 迅捷下标 >= 0:
+				窗.call("_选中二级选项", GConst.技能_海神御巫, 迅捷下标)
+				await 等帧(1)
+				检(not bool(窗.call("_卡牌能点", 封印牌卡.id)), "4606 切到赐福选项后带封印技能的牌应置灰")
+				检(bool(窗.call("_卡牌能点", 迅捷牌卡.id)), "4606 切到赐福选项后带赐福技能的牌应可点")
+				# 切回封印选项再提交
+				窗.call("_选中二级选项", GConst.技能_海神御巫, 可用下标)
+				await 等帧(1)
 			窗.call("_on_card_clicked", 封印牌卡.id)
 			await 等帧(1)
 			窗.call("_on_player_clicked", 2)
