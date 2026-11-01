@@ -863,6 +863,38 @@ func 跑() -> void:
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(1)
 
+	# 4605 怒潮荒涛：被动询问（不能取消），自己挑目标；选中者头像写「1 + 自己基础效果数」点法术伤害
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": GConst.技能_怒潮荒涛, "src_id": Logic.my_player_id, "is_skill": true,
+			"dst_ids": [1, 2, 3], "card_ids": [],
+			"args": [0, 3, GConst.CardSource.Hand, 0],
+			"card_max": 0, "card_rule": "", "can_cancel": false,
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "4605 询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
+	检(not bool(窗.call("_取消可用")), "4605 是被动，不能取消")
+	var 圣盾卡: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.card_name_enum() == GConst.CardName.Shield:
+			圣盾卡 = c
+			break
+	检(圣盾卡 != null, "卡库找不到【圣盾】牌")
+	var 敌甲玩家: GPlayer = Data.get_player_by_id(2)
+	if 圣盾卡 != null and 敌甲玩家 != null:
+		敌甲玩家.add_basic_status(0, 圣盾卡)
+	窗.set("_sel_players", [2, 3] as Array[int])
+	await 等帧(1)
+	var 怒潮提示: Dictionary = 窗.call("_怒潮荒涛头像提示")
+	检(str(怒潮提示.get(2, "")) == "2 法术伤害",
+		"4605：有 1 个基础效果的 2 号应写 2 法术伤害：%s" % str(怒潮提示.get(2, "")))
+	检(str(怒潮提示.get(3, "")) == "1 法术伤害",
+		"4605：没有基础效果的 3 号应写 1 法术伤害：%s" % str(怒潮提示.get(3, "")))
+	if 敌甲玩家 != null:
+		敌甲玩家.clean_basic_status()
+
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
 

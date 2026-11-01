@@ -8,7 +8,8 @@ extends BattleRole
 ##     询问时把「其余对手」固定成伤害目标（客户端按指示器「自动选目标：询问目标」锁定并写 1 法术伤害）。
 ##   波涌之力（4604，被动）：目标角色触发基础效果并结算完成后，你 +1【灵涌】（上限 4）。
 ##   怒潮荒涛（4605，被动）：你的回合结束时若【灵涌】已满，移除所有【灵涌】，
-##     对场上每名角色各造成 1 点法术伤害③；目标每有 1 个基础效果，本次对他额外 +1。
+##     弹询问让你选 4 名目标角色（被动不能取消；4 人局正好全体，6 人局自己挑 4 人），
+##     对这 4 人各造成 1 点法术伤害③；目标每有 1 个基础效果，本次对他额外 +1。
 ##   海神御巫（4606，法术 / 必杀技 / 水晶）：支付 1【水晶】，使用 1 张封印师 / 祈祷师独有技；你弃 1 张牌。
 ##
 ## 借用关系（见《禁用3星与3.5星角色开发计划》F5 / data-audit A18、A16、A17）：
@@ -47,6 +48,8 @@ const 灵涌槽: int = 0
 const 邪灵伤害: int = 1
 const 伴响伤害: int = 1
 const 怒潮基础伤害: int = 1
+## 4605 要选几名目标角色（技能原文「对 4 名目标角色」）：4 人局正好全体，6 人局（3v3）由玩家挑 4 人
+const 怒潮目标数: int = 4
 
 ## 4602 的进度：等自己选 1 名目标对手；4606 的进度见下方 _4606阶段
 const 变动阶段_空闲: int = 0
@@ -76,6 +79,8 @@ var _本回合已触发4603: bool = false
 var _4603等回复: bool = false
 ## 4603 这次询问的伤害目标（除掉士气那名外的其余对手）；回复后照它结算
 var _4603目标: Array[int] = []
+## 4605 的询问已经发出、正在等发动者选 4 名目标角色（true＝下次进来取回复）
+var _4605等回复: bool = false
 ## 本回合自己造成的伤害记录（掉士气时用它确认「因你造成的伤害」）：
 ## [{dst, cause, type}]
 var _本回合自己伤害: Array[Dictionary] = []
@@ -87,13 +92,14 @@ func _init() -> void:
 
 
 # ============================================================
-# 回合开始：清 4603 的回合限定与伤害记录
+# 回合开始：清 4603 的回合限定与伤害记录（4605 的询问进度属于上一回合，一并清掉）
 # ============================================================
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	if engine == null or player == null or engine.current_id != player.id:
 		return SUCCESS
 	_本回合已触发4603 = false
 	_本回合自己伤害.clear()
+	_4605等回复 = false
 	return SUCCESS
 
 
@@ -590,8 +596,9 @@ func p_basic_effect_triggered(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 4605 怒潮荒涛：自己的回合结束时【灵涌】已满 → 清空灵涌，对场上所有角色各 1 点法术伤害
-# （4 人局＝场上所有角色，含队友，A17；目标的额外伤害在 p_timeline_3 现算）
+# 4605 怒潮荒涛：自己的回合结束时【灵涌】已满 → 弹询问选 4 名目标角色（被动，不能取消），
+# 清空灵涌后对这 4 人各 1 点法术伤害（目标的额外伤害在 p_timeline_3 现算）
+# 技能原文「对 4 名目标角色」：4 人局正好全体，6 人局（3v3）由玩家挑 4 人，所以必须问。
 # ============================================================
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
@@ -601,16 +608,34 @@ func p_turn_end(ctx: Dictionary) -> int:
 	var 上限: int = player.token_max(灵涌槽)
 	if 上限 <= 0 or player.token_num(灵涌槽) < 上限:
 		return SUCCESS
-	step = STEP_DONE
-	player.clear_token(灵涌槽)
-	notice_skill(怒潮荒涛, [player.id])
-	var 目标: Array[int] = []
+	var 候选: Array[int] = []
 	for pid: int in engine.order:
-		目标.append(pid)
-	if 目标.is_empty():
-		engine._broadcast_game()
+		候选.append(pid)
+	if 候选.is_empty():
 		return SUCCESS
-	var 顺序: Array[int] = 结算顺序(目标)
+	# 第一次进来：弹询问让发动者选 4 名目标角色。被动，不能取消（can_cancel=false）
+	if not _4605等回复:
+		_4605等回复 = true
+		询问(player.id, 怒潮荒涛, 0, mini(怒潮目标数, 候选.size()), GConst.CardSource.Hand, [], 0, "", [], false,
+			0, -1, 候选, -1, {}, 0, 0, false, 候选)
+		return WAIT
+	# 重入：取选中的目标；超时 / 回得不够 4 人时按座位顺序补齐（被动必须结算，空回复也照打）
+	var r: Dictionary = take_skill_reply_full()
+	_4605等回复 = false
+	step = STEP_DONE
+	var 选中: Array[int] = []
+	for id: Variant in r.get("dst_ids", []):
+		var pid2: int = int(id)
+		if 候选.has(pid2) and not 选中.has(pid2):
+			选中.append(pid2)
+	for pid3: int in 候选:
+		if 选中.size() >= 怒潮目标数:
+			break
+		if not 选中.has(pid3):
+			选中.append(pid3)
+	player.clear_token(灵涌槽)
+	notice_skill(怒潮荒涛, 选中)
+	var 顺序: Array[int] = 结算顺序(选中)
 	for i: int in range(顺序.size() - 1, -1, -1):
 		engine.push_harm({
 			"src": player.id, "dst": 顺序[i], "point": 怒潮基础伤害,

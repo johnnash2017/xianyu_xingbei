@@ -7642,6 +7642,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _攻击加成头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _怒潮荒涛头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _天火断空头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _末日审判头像提示()
@@ -8558,6 +8560,23 @@ func _灭茶苦茶选项加成() -> int:
 		2:
 			return 1
 	return 0
+
+
+## 怒潮荒涛（4605）：询问时选中的每名角色各挨「1 + 自己面前基础效果数」点法术伤害。
+## 基础效果数因人而异，静态指示器的「每目标」固定值写不出来，这里按目标现算；
+## 目标由玩家自己挑（技能原文是「对 4 名目标角色」，6 人局要选 4 人）。
+func _怒潮荒涛头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _当前技能号() != GConst.技能_怒潮荒涛:
+		return out
+	if _mode != 3:
+		return out
+	for pid: int in _sel_players:
+		var 目标: GPlayer = Data.get_player_by_id(pid)
+		if 目标 == null:
+			continue
+		out[pid] = "%d 法术伤害" % (1 + 目标.basic_status_list.size())
+	return out
 
 
 ## 格斗的加成询问里，当前要发动的（二级技能栏选中的 / 技能栏点的 / 单项直接问的）是不是【蓄力一击】
