@@ -12,6 +12,10 @@ extends Control
 ## 角色说明的默认排版（战斗 / 选角共用；宽度 / 字号改这里，整体大小走设置窗的「技能说明尺寸」）
 const 角色说明宽度: float = 684.0
 const 角色说明字号: int = 16
+## 「原版说明（被角色改写后列出来对照）」的删除线：字体自带的 [s] 太细，
+## 用和战斗界面头像伤害提示同一套做法，自己压一条粗线（见 _铺粗删除线）
+const 删除线预制: PackedScene = preload("res://scenes/prefabs/battlemobile/StrikeLine.tscn")
+const 删除线粗细: float = 3.0
 ## 文字整块再压到 90%（角色名 36→32、标题 27→24、正文 18→16）
 const 角色说明字号缩放: float = 0.9
 ## 整块缩放的范围（连底板、内边距、边框一起变档，靠节点整体缩放实现）：
@@ -70,6 +74,9 @@ func _ready() -> void:
 		_折半行距(文本.get_theme_constant("line_separation")))
 	文本.add_theme_constant_override("paragraph_separation",
 		_折半行距(文本.get_theme_constant("paragraph_separation")))
+	# 删除线默认只有 50% 不透明度（主题常量 strikethrough_alpha），叠在灰字上看着又细又淡；
+	# 改成不透明后那条线才看得清（置灰 + 划掉的原版说明要用它）。
+	文本.add_theme_constant_override("strikethrough_alpha", 255)
 
 
 ## 显示一段说明：图标矩形取「视图坐标」，框摆在它正上方并夹在宿主内。
@@ -91,6 +98,8 @@ func 显示(说明: String, 图标矩形: Rect2, 宽度: float, 字号: int, 整
 	# （宽度 ≤ 0 时也不折行，整框贴住内容 —— 指示物那种一行短提示不该为填满固定宽度把底板撑大）
 	文本.autowrap_mode = TextServer.AUTOWRAP_OFF if 宽度 <= 0.0 else TextServer.AUTOWRAP_WORD_SMART
 	文本.custom_minimum_size.x = _算角色说明宽度() if 可拓宽 else maxf(宽度, 0.0)
+	# 被改写的「原版说明」：按标记压一条粗删除线（字体自带的 [s] 太细，见 _铺粗删除线）
+	_铺粗删除线(说明)
 	_轮次 += 1
 	_待摆矩形 = 图标矩形
 	if 可拓宽:
@@ -304,3 +313,115 @@ func _摆(图标矩形: Rect2) -> void:
 			位置.x = 图.end.x + 10.0
 		位置.x = clampf(位置.x, 左, 右)
 	框.position = 位置
+
+
+# ============================================================
+# 原版说明的粗删除线
+# ============================================================
+## 说明文字里带「删除线标记」的段落（被角色改写的原版说明，见 role_skill_tip.上色），
+## 各自按「自己算出的折行」压一条粗线 —— 字体自带的 [s] 只有 1px 且默认半透明，太细。
+## 线的坐标用标签自己的排版量出来（临时把文本换成「到本段为止」再读内容高度），不靠猜行数。
+func _铺粗删除线(说明: String) -> void:
+	for 子: Node in 文本.get_children():
+		文本.remove_child(子)
+		子.queue_free()
+	if not 说明.contains(角色技能提示.删除线标记):
+		return
+	var 段们: PackedStringArray = 说明.split("\n")
+	var 字体: Font = 文本.get_theme_font("normal_font")
+	var 默认字号: int = 文本.get_theme_font_size("normal_font_size")
+	var 前缀段: Array[String] = []
+	var 行高缓存: Dictionary = {}
+	for 段: String in 段们:
+		if not 段.contains(角色技能提示.删除线标记):
+			前缀段.append(段)
+			continue
+		var 字号: int = _段字号(段, 默认字号)
+		var 行高: float = _段行高(字体, 字号, 行高缓存)
+		# 段前面有多高：用同样的文本让标签自己排一次（含折行 / 标题字号 / 段落间距）
+		文本.text = "\n".join(前缀段)
+		var 上高: float = float(文本.get_content_height())
+		文本.text = "\n".join(前缀段 + [段])
+		var 段高: float = float(文本.get_content_height()) - 上高
+		var 纯文: String = _去标签(段).replace(角色技能提示.删除线标记, "")
+		var 缩进宽: float = float(字号) * float(_缩进层数(段))
+		var 可用宽: float = maxf(文本.custom_minimum_size.x - 缩进宽, 32.0)
+		var 行们: Array[String] = _折行(纯文, 字体, 字号, 可用宽)
+		if 行们.is_empty():
+			行们 = [纯文]
+		# 段高里除行高外多出来的那截（段落间距）补在首行上沿之后，线才穿过字的中腰
+		var 余: float = maxf(段高 - 行高 * float(行们.size()), 0.0)
+		for i: int in range(行们.size()):
+			var 行宽: float = 字体.get_string_size(行们[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x
+			if 行宽 <= 0.0:
+				continue
+			var 条: ColorRect = 删除线预制.instantiate()
+			条.size = Vector2(行宽 + 删除线粗细, 删除线粗细)
+			条.position = Vector2(缩进宽, 上高 + 余 + 行高 * float(i) + (行高 - 删除线粗细) * 0.5)
+			文本.add_child(条)
+		前缀段.append(段)
+	# 量完恢复成完整说明
+	文本.text = 说明
+
+
+## 本段用的正文字号：BBCode 里最外层那个 [font_size=N]（标题行更大）
+func _段字号(段: String, 默认字号: int) -> int:
+	var 起点: int = 段.find("[font_size=")
+	if 起点 < 0:
+		return 默认字号
+	var 尾: int = 段.find("]", 起点)
+	if 尾 < 0:
+		return 默认字号
+	return maxi(int(段.substr(起点 + 11, 尾 - 起点 - 11)), 1)
+
+
+## 一行的高度＝字体行高 + 行距（行距在 _ready 里折半过，读的就是当前生效值）
+func _段行高(字体: Font, 字号: int, 缓存: Dictionary) -> float:
+	if not 缓存.has(字号):
+		缓存[字号] = 字体.get_height(字号) + float(文本.get_theme_constant("line_separation"))
+	return float(缓存[字号])
+
+
+## 本段的 [indent] 层数（一层的缩进宽＝一个字号；见探针：[indent] 在 16 号字下多 16px）
+func _缩进层数(段: String) -> int:
+	var n: int = 0
+	var 位置: int = 段.find("[indent]")
+	while 位置 >= 0:
+		n += 1
+		位置 = 段.find("[indent]", 位置 + 8)
+	return n
+
+
+## 去掉 BBCode 标签（保留文字）：量宽度 / 折行都按纯文本算
+func _去标签(文: String) -> String:
+	var 结果: String = ""
+	var i: int = 0
+	while i < 文.length():
+		var 字: String = 文[i]
+		if 字 == "[":
+			var 尾: int = 文.find("]", i)
+			if 尾 < 0:
+				结果 += 文.substr(i)
+				break
+			i = 尾 + 1
+			continue
+		结果 += 字
+		i += 1
+	return 结果
+
+
+## 按宽度折行：逐字量（技能说明几乎全是中文，RichTextLabel 的 WORD_SMART 也是按字断的）
+func _折行(纯文: String, 字体: Font, 字号: int, 可用宽: float) -> Array[String]:
+	var 行们: Array[String] = []
+	var 当前: String = ""
+	for i: int in range(纯文.length()):
+		var 试: String = 当前 + 纯文[i]
+		if not 当前.is_empty() \
+				and 字体.get_string_size(试, HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x > 可用宽:
+			行们.append(当前)
+			当前 = 纯文[i]
+		else:
+			当前 = 试
+	if not 当前.is_empty():
+		行们.append(当前)
+	return 行们
