@@ -349,7 +349,11 @@ func wants_before_discard(ctx: Dictionary) -> bool:
 
 
 func p_before_discard(ctx: Dictionary) -> int:
-	var 阶段: int = int(ctx.get("_4704阶段", 0))
+	# 进度按「哪个暴食少女」分开记（同一队万一有两个，不能共用一份阶段 / 魔弹清单，
+	# 否则后来那位会把前一位的「等回复」当成自己也在等，一直挂到超时）
+	var 进度键: String = "_4704进度_%d" % player.id
+	var 进度: Dictionary = ctx.get(进度键, {})
+	var 阶段: int = int(进度.get("阶段", 0))
 	if 阶段 >= STEP_DONE:
 		return SUCCESS
 	# 阶段 0＝第一次来：预判 + 问玩家。阶段 1＝问过了、正等回复 —— 不能再复检「能不能拦」
@@ -357,17 +361,17 @@ func p_before_discard(ctx: Dictionary) -> int:
 	var 魔弹表: Array = []
 	if 阶段 == 0:
 		if not _可拦截三秒原则(ctx):
+			ctx[进度键] = {"阶段": STEP_DONE}
 			return SUCCESS
 		# 一次能把本次弃牌里所有符合条件的【魔弹】都收走：每张都要弃 1 张自己的牌当代价。
 		# 给的选项是「获得 1 张 / 2 张 / …」，选项自带需牌数（选几张就要弃几张），
 		# 鼠标指向选项能看到将要收走的那几张牌面（preview_cards）。
 		for cid: int in _待弃魔弹(ctx.get("cards", [])):
 			魔弹表.append(cid)
-		ctx["_4704魔弹"] = 魔弹表
 		if 魔弹表.is_empty():
-			ctx["_4704阶段"] = STEP_DONE
+			ctx[进度键] = {"阶段": STEP_DONE}
 			return SUCCESS
-		ctx["_4704阶段"] = 1
+		ctx[进度键] = {"阶段": 1, "魔弹": 魔弹表}
 		var 牌主: int = int(ctx.get("owner", -1))
 		var 选项: Array = []
 		for i: int in range(1, 魔弹表.size() + 1):
@@ -388,8 +392,8 @@ func p_before_discard(ctx: Dictionary) -> int:
 		return WAIT
 	if not engine.has_reply():
 		return WAIT
-	ctx["_4704阶段"] = STEP_DONE
-	魔弹表 = ctx.get("_4704魔弹", [])
+	魔弹表 = 进度.get("魔弹", [])
+	ctx[进度键] = {"阶段": STEP_DONE, "魔弹": 魔弹表}
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var given: Array = r.get("card_ids", [])
