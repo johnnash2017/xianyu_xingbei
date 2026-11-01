@@ -1129,6 +1129,10 @@ func 跑() -> void:
 					"选中「获得 2 张」后应要求弃 2 张代价（实际 %d）" % int(窗.get("_skill_ask_need_card")))
 				检(bool(窗.call("_确定不可用")),
 					"没选代价牌时「确定」应灰着，不能直接提交")
+				# 提示条写成「弃 X 张牌，获得 X 张【魔弹】」
+				var 三秒提示: String = str(窗.get("_提示原文"))
+				检(三秒提示.contains("弃 2 张牌") and 三秒提示.contains("获得 2 张【魔弹】"),
+					"选中「获得 2 张」后提示条应是「弃 2 张牌，获得 2 张【魔弹】」：%s" % 三秒提示)
 			(窗.get("BtnCancel") as Button).pressed.emit()
 			await 等帧(1)
 
