@@ -1031,24 +1031,13 @@ func 跑() -> void:
 			检(str(悬停记录[0]).begins_with("基础效果："),
 				"基础效果的状态悬停文本应带「基础效果：」前缀（实际：%s）" % str(悬停记录[0]))
 
-	# 原版说明的粗删除线：说明提示框按零宽标记自己画一条粗线（字体自带的 [s] 只有 1px，太细）
+	# 原版说明的删除线用字体自带的 [s]，但要不透明才看得清（说明提示框在 _ready 里覆盖 strikethrough_alpha）
 	var 提示框: 说明提示框 = 窗.get("_说明提示")
 	检(提示框 != null, "战斗界面应挂着说明提示框")
 	if 提示框 != null:
-		var 粗线文本: String = "第一行\n[font_size=16][indent][color=#FFFFFF8C]原版" \
-			+ 角色技能提示.删除线标记 + "说明[/color][/indent][/font_size]"
-		提示框.显示(粗线文本, Rect2(300, 300, 60, 60), 300.0, 16)
-		await 等帧(1)
-		var 线们: Array = []
-		for 子: Node in 提示框.文本.get_children():
-			if 子 is ColorRect:
-				线们.append(子)
-		检(not 线们.is_empty(), "原版说明那一行应画一条粗删除线")
-		if not 线们.is_empty():
-			var 线: ColorRect = 线们[0]
-			检(线.size.y >= 1.5, "删除线应比字体自带的那条粗（实际 %s）" % str(线.size.y))
-			检(线.color.a < 1.0, "删除线应像原版一样半透明，不能是实心白条（实际 %s）" % str(线.color))
-		提示框.收起()
+		检(提示框.文本.get_theme_constant("strikethrough_alpha") == 255,
+			"说明提示框的删除线应是不透明（strikethrough_alpha=255，实际 %d）"
+			% 提示框.文本.get_theme_constant("strikethrough_alpha"))
 
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
