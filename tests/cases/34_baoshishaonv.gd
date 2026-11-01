@@ -211,10 +211,9 @@ func _重置战斗() -> void:
 		var p0: BattlePlayer = 引擎.p(pid)
 		if p0 != null:
 			_清空玩家(p0)
-	角色._4701阶段 = 0
 	角色._4701目标.clear()
 	角色._4701下标 = 0
-	角色._4701不弃.clear()
+	角色._4701结算中 = false
 
 
 ## 直接跑一次伤害（走完整流水线）
@@ -409,7 +408,7 @@ func _测试4701() -> void:
 	检(角色.v_magic_skill(_甜点动作(火法术.id, [3, 99])) == GConst.GE_INVALID_PLAYERID,
 		"4701 不能指定不存在的玩家")
 
-	# ---- 完整结算 1：目标甲弃、目标乙没有法术牌 → 乙吃 2 点，你弃 1 张 ----
+	# ---- 结算顺序照抄 801【魔爆冲击】：问甲 → 甲不弃就「先伤害甲、再你弃 1 张」→ 问乙 ----
 	_重置战斗()
 	_给牌(玩家1, 火法术.id)
 	_给牌(玩家1, 普通牌.id)
@@ -428,8 +427,7 @@ func _测试4701() -> void:
 	检(not 问甲.is_empty(), "没有向目标甲下发 4701 弃牌询问")
 	检(str(问甲.get("card_rule", "")) == "magic", "4701 的目标只能弃法术牌")
 	检(bool(问甲.get("can_cancel", false)), "目标可以选不弃（吃 2 点伤害），询问应可取消")
-	检((问甲.get("card_ids", []) as Array).has(水法术.id), "4701 的可点牌表应包含目标甲的法术牌")
-	检(int(问甲.get("preview_base", 0)) == 2 and int(问甲.get("preview_kind", 0)) == GConst.HarmType.Magic
+	检(int(问甲.get("preview_base", 0)) == 2 and int(问甲.get("preview_kind", 0)) == GConst.HarmType.Magic \
 		and (问甲.get("preview_ids", []) as Array).has(3),
 		"4701 应把 2 点法术伤害的提示下发给目标甲：%s" % str(问甲))
 	引擎.on_message(3, GConst.Msg.Respond, {
@@ -437,33 +435,40 @@ func _测试4701() -> void:
 	})
 	检(not 玩家3.hand_cards.has(水法术.id), "目标甲弃出的法术牌应离手")
 	检(引擎.deck.discard.has(水法术.id), "目标甲弃出的法术牌应进弃牌堆")
-	# 目标乙没有法术牌：不问，直接进入「你弃 1 张」
-	检(_询问次数(4, 4701) == 0, "目标乙没有法术牌时不应白问")
-	检(引擎._await_id == 1, "有一名目标不弃时应让发动者弃 1 张牌，实际等待 %s" % str(引擎._await_id))
-	var 问自己: Dictionary = _取询问(1, 4701)
-	检(not 问自己.is_empty(), "没有向发动者下发 4701 弃牌询问")
-	检(not bool(问自己.get("can_cancel", true)), "4701 的「你弃 1 张牌」是强制弃，取消应置灰")
-	检(int((问自己.get("args", []) as Array)[0]) == 1, "目标乙不弃 → 你弃 1 张（不是 2 张）")
-	检((问自己.get("card_ids", []) as Array).has(普通牌.id), "4701 的弃牌白名单应包含自己的手牌")
-	检(_找伤害(4701, 4).is_empty(), "自己的弃牌还没结算前不应先压伤害")
+	# 甲弃了不结算，直接问乙（乙没有法术牌也照问，和 801 一样逐名问下去）
+	检(引擎._await_id == 4, "目标甲弃完后应接着问目标乙，实际等待 %s" % str(引擎._await_id))
+	var 问乙: Dictionary = _取询问(4, 4701)
+	检(not 问乙.is_empty(), "4701 应照 801 的做法逐名问下去（乙没有法术牌也要问）")
+	检(str(问乙.get("card_rule", "")) == "magic", "目标乙的询问同样只能弃法术牌")
+	# 乙不弃 → 先结算「对乙 2 点法术伤害」，再让发动者弃 1 张
+	引擎.on_message(4, GConst.Msg.Respond, {
+		"respond_id": 4701, "src_id": 4, "args": [0], "card_ids": [], "dst_ids": [],
+	})
+	检(玩家4.hand_cards.size() == 3, "不弃的目标应先吃 2 点法术伤害并摸 2 张，实际 %d"
+		% 玩家4.hand_cards.size())
+	检(玩家3.hand_cards.size() == 0, "已弃牌的目标不应受伤，实际手牌 %d" % 玩家3.hand_cards.size())
+	检(引擎._await_id == 1, "伤害结算完才轮到你弃 1 张，实际等待 %s" % str(引擎._await_id))
+	var 问自己: Dictionary = _取询问(1, GConst.RespondType.Discard)
+	检(not 问自己.is_empty(), "没有向发动者下发「弃 1 张」的弃牌询问")
+	var 问自己args: Array = 问自己.get("args", [])
+	检(问自己args.size() >= 2 and int(问自己args[1]) == 4701,
+		"弃牌询问的来源应是 4701：%s" % str(问自己args))
+	检(问自己args.size() >= 3 and int(问自己args[2]) == 1, "每有一名目标不弃，你只弃 1 张")
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4701, "src_id": 1, "args": [1], "card_ids": [普通牌.id], "dst_ids": [],
+		"respond_id": GConst.RespondType.Discard, "src_id": 1, "args": [1, 4701, 1],
+		"card_ids": [普通牌.id], "dst_ids": [],
 	})
 	检(not 玩家1.has_hand_card(普通牌.id), "4701 让自己弃的牌应离手")
 	检(引擎.deck.discard.has(普通牌.id), "4701 让自己弃的牌应进弃牌堆")
-	# 回复后引擎会一路跑完伤害：目标乙原有 1 张牌 + 2 点伤害摸 2 张 = 3；目标甲已弃牌不受伤
-	检(玩家4.hand_cards.size() == 3, "目标乙原有 1 张牌 + 2 点伤害摸 2 张 = 3，实际 %d"
-		% 玩家4.hand_cards.size())
-	检(玩家3.hand_cards.size() == 0, "目标甲已弃掉唯一的法术牌，不应再因伤害摸牌，实际 %d"
-		% 玩家3.hand_cards.size())
 	检(not _有错误输入(1), "4701 的完整流程不应给发动者发操作无效")
 
-	# ---- 完整结算 2：两名目标都弃 → 不惩罚、不问自己弃牌 ----
+	# ---- 两名目标都弃 → 不惩罚、不问自己弃牌 ----
 	_重置战斗()
 	_给牌(玩家1, 火法术.id)
 	_给牌(玩家1, 普通牌.id)
 	_给牌(玩家3, 水法术.id)
 	_给牌(玩家4, 地法术.id)
+	发送记录.clear()
 	引擎.resolve_action(GConst.ActionType.MagicSkill, _甜点动作(火法术.id, [3, 4]))
 	引擎.run()
 	检(引擎._await_id == 3, "两人都弃的场景应先问目标甲，实际等待 %s" % str(引擎._await_id))
@@ -479,40 +484,51 @@ func _测试4701() -> void:
 	检(引擎.team_gem[GConst.BLUE] == 1, "两人都弃时我方仍应 +1 宝石")
 	检(_找伤害(4701, 3).is_empty() and _找伤害(4701, 4).is_empty(),
 		"两名目标都弃法术牌时不应造成伤害")
-	检(_询问次数(1, 4701) == 0, "两名目标都弃时不应再问发动者弃牌")
+	检(_询问次数(1, GConst.RespondType.Discard) == 0, "两名目标都弃时不应再问发动者弃牌")
 	检(_播报次数(4701) == 1, "4701 应只播报一次")
 
-	# ---- 完整结算 3：两人都没法术牌 → 直接问自己弃 2 张，然后各 2 点伤害 ----
+	# ---- 两人都没法术牌 → 逐个问、逐个结算：各自先吃 2 点，你每次弃 1 张 ----
 	_重置战斗()
 	_给牌(玩家1, 火法术.id)
 	_给牌(玩家1, 普通牌.id)
 	_给牌(玩家1, 普通牌2.id)
 	_给牌(玩家3, 攻击牌.id)
 	_给牌(玩家4, 攻击牌2.id)
+	发送记录.clear()
 	引擎.resolve_action(GConst.ActionType.MagicSkill, _甜点动作(火法术.id, [3, 4]))
 	引擎.run()
-	检(_询问次数(3, 4701) == 0 and _询问次数(4, 4701) == 0,
-		"两名目标都没有法术牌时不应下发弃牌询问")
-	检(引擎._await_id == 1, "两人都弃不出时应让发动者弃 2 张，实际等待 %s" % str(引擎._await_id))
-	var 问自己2: Dictionary = _取询问(1, 4701)
-	检(not 问自己2.is_empty(), "两人都不弃时应向发动者下发弃牌询问")
-	检(int((问自己2.get("args", []) as Array)[0]) == 2, "两名目标不弃 → 你应弃 2 张")
+	检(引擎._await_id == 3, "没有法术牌的目标也要照 801 逐名问，实际等待 %s" % str(引擎._await_id))
+	引擎.on_message(3, GConst.Msg.Respond, {
+		"respond_id": 4701, "src_id": 3, "args": [0], "card_ids": [], "dst_ids": [],
+	})
+	检(玩家3.hand_cards.size() == 3, "甲不弃应先吃 2 点法术伤害并摸 2 张，实际 %d"
+		% 玩家3.hand_cards.size())
+	检(引擎._await_id == 1, "甲结算完应先让你弃 1 张，实际等待 %s" % str(引擎._await_id))
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4701, "src_id": 1, "args": [1],
-		"card_ids": [普通牌.id, 普通牌2.id], "dst_ids": [],
+		"respond_id": GConst.RespondType.Discard, "src_id": 1, "args": [1, 4701, 1],
+		"card_ids": [普通牌.id], "dst_ids": [],
+	})
+	检(引擎._await_id == 4, "你弃完牌后应接着问目标乙，实际等待 %s" % str(引擎._await_id))
+	引擎.on_message(4, GConst.Msg.Respond, {
+		"respond_id": 4701, "src_id": 4, "args": [0], "card_ids": [], "dst_ids": [],
+	})
+	检(玩家4.hand_cards.size() == 3, "乙不弃也应先吃 2 点法术伤害并摸 2 张，实际 %d"
+		% 玩家4.hand_cards.size())
+	检(引擎._await_id == 1, "乙结算完再让你弃第 2 张，实际等待 %s" % str(引擎._await_id))
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": GConst.RespondType.Discard, "src_id": 1, "args": [1, 4701, 1],
+		"card_ids": [普通牌2.id], "dst_ids": [],
 	})
 	检(not 玩家1.has_hand_card(普通牌.id) and not 玩家1.has_hand_card(普通牌2.id),
-		"两人都不弃时发动者应弃掉 2 张牌")
-	# 回复后引擎会一路跑完两段伤害：两人各摸 2 张
-	检(玩家3.hand_cards.size() == 3 and 玩家4.hand_cards.size() == 3,
-		"两人各摸 2 张，手牌应为 1+2=3，实际 %d / %d" % [玩家3.hand_cards.size(), 玩家4.hand_cards.size()])
+		"两人都不弃时发动者应各弃 1 张、共弃 2 张")
 
-	# ---- 边界：目标取消（不弃）→ 直接结算惩罚 ----
+	# ---- 边界：目标取消（不弃）→ 当场结算惩罚 ----
 	_重置战斗()
 	_给牌(玩家1, 火法术.id)
 	_给牌(玩家1, 普通牌.id)
 	_给牌(玩家3, 水法术.id)
 	_给牌(玩家4, 攻击牌.id)
+	发送记录.clear()
 	引擎.resolve_action(GConst.ActionType.MagicSkill, _甜点动作(火法术.id, [3, 4]))
 	引擎.run()
 	检(引擎._await_id == 3, "取消场景应先问目标甲")
@@ -520,15 +536,21 @@ func _测试4701() -> void:
 		"respond_id": 4701, "src_id": 3, "args": [0], "card_ids": [], "dst_ids": [],
 	})
 	检(玩家3.hand_cards.has(水法术.id), "目标取消时不应弃掉法术牌")
-	检(引擎._await_id == 1, "目标取消（不弃）后应问发动者弃 1 张，实际等待 %s" % str(引擎._await_id))
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4701, "src_id": 1, "args": [1], "card_ids": [普通牌.id], "dst_ids": [],
-	})
-	# 目标甲取消（不弃）、目标乙没有法术牌：两人各吃 2 点法术伤害（各摸 2 张）
-	检(玩家3.hand_cards.size() == 3, "取消弃牌的目标应吃 2 点法术伤害并摸 2 张，实际 %d"
+	检(玩家3.hand_cards.size() == 3, "取消弃牌的目标应先吃 2 点法术伤害并摸 2 张，实际 %d"
 		% 玩家3.hand_cards.size())
+	检(引擎._await_id == 1, "目标取消（不弃）后应让你弃 1 张，实际等待 %s" % str(引擎._await_id))
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": GConst.RespondType.Discard, "src_id": 1, "args": [1, 4701, 1],
+		"card_ids": [普通牌.id], "dst_ids": [],
+	})
+	检(引擎._await_id == 4, "你弃完牌后应接着问目标乙，实际等待 %s" % str(引擎._await_id))
+	引擎.on_message(4, GConst.Msg.Respond, {
+		"respond_id": 4701, "src_id": 4, "args": [0], "card_ids": [], "dst_ids": [],
+	})
 	检(玩家4.hand_cards.size() == 3, "没有法术牌的目标应吃 2 点法术伤害并摸 2 张，实际 %d"
 		% 玩家4.hand_cards.size())
+	# 发动者手里已经没有牌了：第二次「你弃 1 张」不再发询问
+	检(_询问次数(1, GConst.RespondType.Discard) == 1, "手里没牌时第二次弃牌不应再问")
 
 	# ---- 边界：目标硬提交非法牌（不是法术牌）→ 按不弃处理 ----
 	_重置战斗()
@@ -537,6 +559,7 @@ func _测试4701() -> void:
 	_给牌(玩家3, 水法术.id)
 	_给牌(玩家3, 攻击牌.id)
 	_给牌(玩家4, 攻击牌2.id)
+	发送记录.clear()
 	引擎.resolve_action(GConst.ActionType.MagicSkill, _甜点动作(火法术.id, [3, 4]))
 	引擎.run()
 	检(引擎._await_id == 3, "非法牌场景应先问目标甲")
@@ -545,13 +568,17 @@ func _测试4701() -> void:
 	})
 	检(玩家3.hand_cards.has(攻击牌.id) and 玩家3.hand_cards.has(水法术.id),
 		"硬提交非法牌时目标的手牌不应离手")
-	检(引擎._await_id == 1, "硬提交非法牌应按不弃处理并让发动者弃 1 张")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4701, "src_id": 1, "args": [1], "card_ids": [普通牌.id], "dst_ids": [],
-	})
-	# 目标甲按不弃处理：原有 2 张 + 摸 2 = 4；目标乙原有 1 张 + 摸 2 = 3
 	检(玩家3.hand_cards.size() == 4, "硬提交非法牌的目标应吃 2 点法术伤害并摸 2 张，实际 %d"
 		% 玩家3.hand_cards.size())
+	检(引擎._await_id == 1, "硬提交非法牌应按不弃处理并让你弃 1 张")
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": GConst.RespondType.Discard, "src_id": 1, "args": [1, 4701, 1],
+		"card_ids": [普通牌.id], "dst_ids": [],
+	})
+	检(引擎._await_id == 4, "你弃完牌后应接着问目标乙，实际等待 %s" % str(引擎._await_id))
+	引擎.on_message(4, GConst.Msg.Respond, {
+		"respond_id": 4701, "src_id": 4, "args": [0], "card_ids": [], "dst_ids": [],
+	})
 	检(玩家4.hand_cards.size() == 3, "没有法术牌的目标应吃 2 点法术伤害并摸 2 张，实际 %d"
 		% 玩家4.hand_cards.size())
 
@@ -560,14 +587,22 @@ func _测试4701() -> void:
 	_给牌(玩家1, 火法术.id)
 	_给牌(玩家3, 攻击牌.id)
 	_给牌(玩家4, 攻击牌2.id)
+	发送记录.clear()
 	引擎.resolve_action(GConst.ActionType.MagicSkill, _甜点动作(火法术.id, [3, 4]))
 	引擎.run()
-	检(_询问次数(1, 4701) == 0, "发动者没有别的牌可弃时不应再下发弃牌询问")
-	检(引擎._await_id != 1, "发动者没有别的牌可弃时不应等待 1 号")
-	检(玩家3.hand_cards.size() == 3 and 玩家4.hand_cards.size() == 3,
-		"发动者没有别的牌可弃时仍应结算两名目标的伤害（各摸 2 张），实际 %d / %d"
-		% [玩家3.hand_cards.size(), 玩家4.hand_cards.size()])
-
+	检(引擎._await_id == 3, "发动者没牌可弃时也要先问目标甲")
+	引擎.on_message(3, GConst.Msg.Respond, {
+		"respond_id": 4701, "src_id": 3, "args": [0], "card_ids": [], "dst_ids": [],
+	})
+	检(玩家3.hand_cards.size() == 3, "发动者没牌可弃时目标仍应吃 2 点伤害，实际 %d"
+		% 玩家3.hand_cards.size())
+	检(引擎._await_id == 4, "发动者没牌可弃时应直接问目标乙，实际等待 %s" % str(引擎._await_id))
+	引擎.on_message(4, GConst.Msg.Respond, {
+		"respond_id": 4701, "src_id": 4, "args": [0], "card_ids": [], "dst_ids": [],
+	})
+	检(玩家4.hand_cards.size() == 3, "目标乙也应吃 2 点伤害并摸 2 张，实际 %d"
+		% 玩家4.hand_cards.size())
+	检(_询问次数(1, GConst.RespondType.Discard) == 0, "发动者没有别的牌可弃时不应下发弃牌询问")
 
 # ============================================================
 # 4702 食欲的黑洞

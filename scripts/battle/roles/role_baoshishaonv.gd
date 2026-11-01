@@ -11,9 +11,10 @@ extends BattleRole
 ##   美食风暴（4705，法术 / 必杀技 / 宝石）：【宝石】对 2 名目标对手各造成 2 点法术伤害③。
 ##
 ## 口径（见 data-audit A19~A22、F1 的魔弹配置、F6 的 转移伤害 / 弃牌前拦截）：
-##   - 4701：两名目标先各自决定是否弃法术牌，再结算「你的弃牌」与伤害；每有一名目标不弃，
-##     你弃 1 张（最多 2 张，手牌不足时弃现有的）。目标弃牌是可选响应：取消 / 超时 /
-##     硬提交非法牌都按「不如此做」结算惩罚。惩罚伤害按先点选的目标先结算。
+##   - 4701：结算顺序与魔法少女【魔爆冲击】(801) 完全一致 —— 弃发动牌 +1 宝石后，按点选顺序
+##     逐个问目标「弃 1 张法术牌」；谁不弃就**当场**结算（先对他造成 2 点法术伤害，再让你弃
+##     1 张牌），结算完才问下一名。目标弃牌是可选响应：取消 / 超时 / 硬提交非法牌都按
+##     「不如此做」结算惩罚。你自己的弃牌走引擎的 SRequestDiscard（每次 1 张，手牌不足就跳过）。
 ##   - 4702：只在「同色队友（不含自己）是本次伤害的承受者」时问；自己已经是承受者 / 敌方受伤 /
 ##     手里没有【魔弹】都不问。转移走 F6 的 转移伤害()：改 harm["dst"]、记录 redirect_from，
 ##     并声明本次伤害不因手牌超限掉士气。⑥ 在治疗回应之后，新目标不再有治疗回应。
@@ -40,21 +41,17 @@ const 甜点伤害: int = 2
 const 美食伤害: int = 2
 const 双目标数: int = 2
 
-## 4701 询问时读技能表提示列的下标
+## 4701 问目标弃牌时读技能表提示列的下标
 const 提示序号_目标弃牌: int = 2
-const 提示序号_自己弃牌: int = 3
 
-## 4701 的逐目标流程（放在自有变量里：跨若干次询问，不能依赖被别的钩子轮次改写的 step）
-const 阶段4701_空闲: int = 0
-const 阶段4701_问目标: int = 1
-const 阶段4701_等目标回复: int = 2
-const 阶段4701_等自己弃牌: int = 3
-
-var _4701阶段: int = 阶段4701_空闲
+## 4701 的逐目标流程（放在自有变量里：跨若干次询问，不能依赖被别的钩子轮次改写的 step）。
+## 与魔法少女【魔爆冲击】(801) 严格同构 —— 见 role_modao.gd 的 _mo_bao_targets / _mo_bao_index / _mo_bao_settling
 var _4701目标: Array[int] = []
+## 下一个要问的目标下标（问完 = 等于 _4701目标.size()）
 var _4701下标: int = 0
-## 没有弃出法术牌的目标（结算时每个目标各 2 点法术伤害、你各弃 1 张牌）
-var _4701不弃: Array[int] = []
+## 本步的「伤害 → 自己弃牌」是否已压栈、正在等它们跑完：
+## 钩子回头时据此跳过已经消费掉的那次回复，从下一名继续
+var _4701结算中: bool = false
 
 
 # ============================================================
@@ -156,12 +153,12 @@ func _p_甜点冲击(action: Dictionary) -> int:
 		return 校验
 	var cid: int = int((action.get("card_ids", []) as Array)[0])
 	var dsts: Array = action.get("dst_ids", [])
-	_4701阶段 = 阶段4701_问目标
+	# 逐个问目标要牌的次序＝玩家点选顺序
 	_4701目标.clear()
 	for d: Variant in dsts:
 		_4701目标.append(int(d))
 	_4701下标 = 0
-	_4701不弃.clear()
+	_4701结算中 = false
 	notice_skill(甜点冲击, dsts)
 	# 发动牌【展示】后进弃牌堆
 	engine.broadcast(GConst.Msg.Card, {
@@ -198,74 +195,48 @@ func _p_美食风暴(action: Dictionary) -> int:
 
 
 # ============================================================
-# 4701 的逐目标流程（自定义钩子：对全体角色各调一次，只认 ctx 里点名的自己）
+# 4701 的逐目标流程（与 801【魔爆冲击】严格同构：对全体角色各调一次，只认 ctx 里点名的自己）
 # ============================================================
+## 甜点冲击的逐目标推进：问第 _4701下标 名目标「弃 1 张法术牌」；
+## 没弃就当场结算（先对他造成 2 点法术伤害、再让自己弃 1 张牌），结算完才问下一名。
+## 钩子轮次会对每个玩家的角色各调一次，故必须按 ctx 点名的那名玩家过滤。
 func p_tian_dian_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if _4701阶段 == 阶段4701_问目标:
-		return _问下一个甜点目标()
-	if _4701阶段 == 阶段4701_等目标回复:
-		if not engine.has_reply():
-			return WAIT
+	# 上一轮把「伤害 → 自己弃牌」压了栈并返回 URGENT：这次回到这里＝那两步跑完了，
+	# 接着问下一名（那次回复已经消费掉，不能重复处理）
+	if _4701结算中:
+		_4701结算中 = false
+	while _4701下标 < _4701目标.size():
 		var 目标id: int = _4701目标[_4701下标]
+		if not engine.has_reply():
+			# 只能弃法术牌（card_rule = "magic"）：否则界面会把攻击牌等也点亮，
+			# 玩家点错提交后服务端按「不弃」处理，白白吃 2 点伤害。
+			# 头像提示：本次伤害落在目标身上（预览基准 / 类型 / 目标）
+			询问(目标id, 甜点冲击, 1, 0, GConst.CardSource.Hand, [], 0, "magic", [], true,
+				提示序号_目标弃牌, 目标id, [目标id], -1, {}, 甜点伤害, GConst.HarmType.Magic, false, [目标id])
+			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		_4701下标 += 1
-		if not _目标弃法术牌(目标id, r):
-			_4701不弃.append(目标id)
-		_4701阶段 = 阶段4701_问目标
-		# 弃牌展示 / 弃牌前拦截可能压入了新状态：先让它们跑完，再回来问下一名
+		if _目标弃法术牌(目标id, r):
+			# 弃了法术牌：本次不结算，接着问下一名
+			continue
+		# 没弃：压入本次结算 —— 后压先算，先压「自己弃 1 张牌」、再压伤害
+		# → 执行顺序＝伤害 → 自己弃牌 → （本钩子被回头再调）问下一名
+		engine.push(BattleEngine.SRequestDiscard.new(player.id, 1, 0, 甜点冲击))
+		engine.push_harm({
+			"src": player.id, "dst": 目标id, "point": 甜点伤害,
+			"cause": 甜点冲击, "type": GConst.HarmType.Magic,
+		})
+		_4701结算中 = true
+		engine._broadcast_game()
 		return URGENT
-	if _4701阶段 == 阶段4701_等自己弃牌:
-		if not engine.has_reply():
-			return WAIT
-		_收取自己弃牌(take_skill_reply_full())
-		_4701阶段 = STEP_DONE
-		return _结算甜点伤害()
+	_4701下标 = 0
 	return SUCCESS
 
 
-## 依次问 2 名目标；没有法术牌的目标直接记成「不弃」，不问
-func _问下一个甜点目标() -> int:
-	while _4701下标 < _4701目标.size():
-		var dst_id: int = _4701目标[_4701下标]
-		var dst: BattlePlayer = engine.p(dst_id)
-		if dst == null:
-			_4701不弃.append(dst_id)
-			_4701下标 += 1
-			continue
-		var 可弃: Array[int] = _手牌法术牌(dst)
-		if 可弃.is_empty():
-			# 没有法术牌＝弃不出，直接算「不如此做」，不白问一次
-			_4701不弃.append(dst_id)
-			_4701下标 += 1
-			continue
-		_4701阶段 = 阶段4701_等目标回复
-		# 目标可以弃（付代价）也可以不弃（吃 2 点伤害）；只能弃法术牌。
-		# 头像提示：本次伤害落在目标身上（预览基准 / 类型 / 目标）
-		询问(dst_id, 甜点冲击, 1, 0, GConst.CardSource.Hand, [], 0, "magic", 可弃, true,
-			提示序号_目标弃牌, dst_id, [dst_id], -1, {}, 甜点伤害, GConst.HarmType.Magic, false, [dst_id])
-		return WAIT
-	return _进入自己弃牌()
-
-
-## 目标全问完：每有一名不弃，你弃 1 张（最多 2 张；手牌不足时弃现有的）
-func _进入自己弃牌() -> int:
-	if _4701不弃.is_empty():
-		_4701阶段 = STEP_DONE
-		return SUCCESS
-	var 需弃: int = mini(_4701不弃.size(), player.hand_cards.size())
-	if 需弃 <= 0:
-		_4701阶段 = STEP_DONE
-		return _结算甜点伤害()
-	_4701阶段 = 阶段4701_等自己弃牌
-	# 强制弃：客户端把「取消」置灰；超时 / 空回复由 _收取自己弃牌 按手牌顺序兜底补足
-	询问(player.id, 甜点冲击, 需弃, 0, GConst.CardSource.Hand, [], 需弃, "",
-		player.hand_cards.duplicate(), false, 提示序号_自己弃牌)
-	return WAIT
-
-
 ## 目标是否真的弃出了 1 张手牌里的法术牌【展示】；成功返回 true
+## （与 801 的 _target_discard_magic 同一套判定：必须是本人手牌里的法术牌）
 func _目标弃法术牌(dst_id: int, r: Dictionary) -> bool:
 	var dst: BattlePlayer = engine.p(dst_id)
 	if dst == null:
@@ -276,7 +247,7 @@ func _目标弃法术牌(dst_id: int, r: Dictionary) -> bool:
 		return false
 	var cid: int = int(given[0])
 	var card: GCard = Data.get_card(cid)
-	if card == null or not card.is_magic() or not dst.has_discard_card(cid):
+	if card == null or not card.is_magic() or not dst.has_hand_card(cid):
 		return false
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": dst.id, "dst_id": dst.id,
@@ -288,46 +259,6 @@ func _目标弃法术牌(dst_id: int, r: Dictionary) -> bool:
 	engine._broadcast_game()
 	return true
 
-
-## 收取「你弃 N 张牌」：只认真实手牌；不足的按手牌顺序补足（强制弃，不能被空回复绕过）
-func _收取自己弃牌(r: Dictionary) -> void:
-	var 需弃: int = mini(_4701不弃.size(), player.hand_cards.size())
-	if 需弃 <= 0:
-		return
-	var 选: Array[int] = []
-	for c: Variant in r.get("card_ids", []):
-		if 选.size() >= 需弃:
-			break
-		var cid: int = int(c)
-		if player.has_discard_card(cid) and not 选.has(cid):
-			选.append(cid)
-	if 选.size() < 需弃:
-		for cid2: int in player.hand_cards:
-			if 选.size() >= 需弃:
-				break
-			if not 选.has(cid2):
-				选.append(cid2)
-	if 选.is_empty():
-		return
-	engine.take_from_hand(player.id, 选)
-	engine.to_discard(选, {"owner": player.id, "source": "hand", "cause": 甜点冲击})
-	engine._log_discard(player.id, 选)
-	engine._broadcast_game()
-
-
-## 结算惩罚：每名不弃的目标各 2 点法术伤害（按点选顺序结算）
-func _结算甜点伤害() -> int:
-	var 有伤害: bool = false
-	for i: int in range(_4701不弃.size() - 1, -1, -1):
-		engine.push_harm({
-			"src": player.id, "dst": _4701不弃[i], "point": 甜点伤害,
-			"cause": 甜点冲击, "type": GConst.HarmType.Magic,
-		})
-		有伤害 = true
-	if 有伤害:
-		engine._broadcast_game()
-		return URGENT
-	return SUCCESS
 
 
 # ============================================================
@@ -495,18 +426,6 @@ func _待弃魔弹(cards: Array) -> Array[int]:
 # ============================================================
 # 工具
 # ============================================================
-## 某玩家手牌里的法术牌（4701 让目标弃牌时下发白名单，与 card_rule="magic" 同一口径）
-func _手牌法术牌(持有者: BattlePlayer) -> Array[int]:
-	var out: Array[int] = []
-	if 持有者 == null:
-		return out
-	for cid: int in 持有者.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.is_magic():
-			out.append(cid)
-	return out
-
-
 ## 自己手里的【魔弹】本体（4702 的发动代价）
 func _手牌魔弹() -> Array[int]:
 	return hand_ids_where(func(_cid: int, c: GCard) -> bool:
