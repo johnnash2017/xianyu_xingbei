@@ -783,7 +783,6 @@ func _on_game_info(info: Dictionary) -> void:
 		_已开局 = true
 		# 房间等待阶段仍是大厅音乐，真开打才换战斗曲
 		Audio.播放音乐(Audio.场景战斗)
-		_日志追加("房间 %d 对局开始" % int(info.get("room_id", 0)), "系统")
 		# 新一局：角色替换检测与额外回合判定不沿用上一局的记录
 		_上次角色号.clear()
 		_上一回合玩家 = -1
