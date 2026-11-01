@@ -1,0 +1,8 @@
+Godot Engine v4.7.2.stable.steam.ed1daf0bf - https://godotengine.org
+
+[Cfg] 槽位=4（端口认领）昵称=4091035483 服务端口=11111 本地模式=false 局域网模式=false
+Setting breakpad minidump AppID = 480
+SteamInternal_SetMinidumpSteamID:  Caching Steam ID:  76561198336637703 [API loaded no]
+[SteamNet] Steam 已连接，队友舞台很大（SteamID = 76561198336637703，版本 = 1.0.53）
+[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通
+[单跑] 失败 0 条
