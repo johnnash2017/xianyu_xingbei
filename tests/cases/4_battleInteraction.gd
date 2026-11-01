@@ -1028,11 +1028,18 @@ func 跑() -> void:
 					and c.element_enum() == GConst.CardElement.Earth:
 				地系牌 = c
 				break
-	检(陨石牌 != null and 地系牌 != null, "卡库找不到陨石 / 地系牌")
-	if 陨石牌 != null and 地系牌 != null:
-		Data.hand_cards = [陨石牌, 地系牌] as Array[GCard]
+	var 第三张: GCard = null
+	if 地系牌 != null:
+		for c: GCard in Data.card_db:
+			if c != null and not c.is_virtual and c != 地系牌 and not c.has_skill_id(1104) \
+					and c.element_enum() == GConst.CardElement.Earth:
+				第三张 = c
+				break
+	检(陨石牌 != null and 地系牌 != null and 第三张 != null, "卡库找不到陨石 / 地系牌")
+	if 陨石牌 != null and 地系牌 != null and 第三张 != null:
+		Data.hand_cards = [陨石牌, 地系牌, 第三张] as Array[GCard]
 		窗.call("_选择技能", 1104, GConst.ActionType.MagicSkill, 1, 1,
-			[2], [陨石牌.id, 地系牌.id], 2, 0, 0, GConst.CardSource.Hand, "",
+			[2], [陨石牌.id, 地系牌.id, 第三张.id], 2, 0, 0, GConst.CardSource.Hand, "",
 			1104, GConst.CardElement.Earth, [], null, 0)
 		await 等帧(1)
 		窗.call("_on_card_clicked", 陨石牌.id)
@@ -1041,7 +1048,17 @@ func 跑() -> void:
 		await 等帧(1)
 		检((窗.get("_sel_cards") as Array).size() == 2,
 			"陨石选「发动牌 + 地系牌」应选上两张：%s" % str(窗.get("_sel_cards")))
-		# 取消发动牌：剩下的地系牌失去「第 1 张」资格，要被收回
+		# 选满上限（2 张）后，别的牌一律置灰：必须先点掉一张才能换
+		检(not bool(窗.call("_卡牌能点", 第三张.id)),
+			"选满两张后，其它牌应置灰（现在还能点第三张）")
+		# 点掉一张后，其它的牌重新可点（第三张当第 2 张是地系，合法）
+		窗.call("_on_card_clicked", 地系牌.id)
+		await 等帧(1)
+		检(bool(窗.call("_卡牌能点", 第三张.id)),
+			"点掉一张后，其它牌应重新可点：%s" % str(窗.get("_sel_cards")))
+		# 再选回来，然后取消发动牌：剩下的地系牌失去「第 1 张」资格，要被收回
+		窗.call("_on_card_clicked", 地系牌.id)
+		await 等帧(1)
 		窗.call("_on_card_clicked", 陨石牌.id)
 		await 等帧(1)
 		var 剩牌: Array = 窗.get("_sel_cards")

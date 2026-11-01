@@ -4354,6 +4354,14 @@ func _卡牌能点(card_id: int) -> bool:
 					return false
 		if not _skill_cards.is_empty() and not _skill_cards.has(面):
 			return false
+		# 「要凑多张」的技能（最多牌 ≥ 2，如元素师法术「发动牌 + 加成牌」）选满上限后，
+		# 没选上的牌一律置灰：必须先点掉已选的牌才能换，否则会出现「点第三张牌 → 整批清空重选 →
+		# 组合里混进不合法的牌」这种界面能提交、服务端必驳回的状态。
+		# 只要 1 张的询问（最多牌 = 1，如元素射击选子弹）保持「点别的牌直接替换」的老手感。
+		# 额外攻击响应同理：那边点新牌就是替换第一张。
+		if _额外攻击响应选择 <= 0 and _skill_card_max >= 2 \
+				and _sel_cards.size() >= _skill_card_max and not _sel_cards.has(card_id):
+			return false
 		# 「选项自带牌白名单」型（如灵熙之潮【海神御巫】切到哪颗独有技，就只让点带该技能的牌）：
 		# 选中项下发了自己的牌白名单时，名单外的牌一律置灰（切换选项后立刻重判）
 		if _二级栏:
