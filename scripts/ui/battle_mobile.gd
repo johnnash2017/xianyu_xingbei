@@ -866,35 +866,15 @@ func _推进法术伤害队列(delta: float) -> void:
 	_播放法术伤害(_法术待播.pop_front())
 
 
-## 播放一条法术伤害的表现：受击音 + 面板泛红抖动 + 日志 + 伤害飘字（顺序与攻击一致：先数字后表现）
+## 播放一条法术伤害的表现：受击音 + 面板泛红抖动 + 伤害飘字（日志行在 _on_hurt 里收到时就写了，
+## 这样日志顺序跟服务端结算顺序一致；这里只管「看得见」的那部分，可以排队错开）
 func _播放法术伤害(项: Dictionary) -> void:
-	# 队列里也可能排着要跟着伤害一起播的聊天 / 日志行（如【亡女的金库】那句「将 N 点士气转移给…」）：
-	# 伤害还没播完时先排队，轮到它再写，日志顺序才是「先伤害、后士气转移」
-	if str(项.get("kind", "")) == "gossip":
-		var 排队文案: String = str(项.get("txt", ""))
-		_日志追加(排队文案, "聊天")
-		_加聊天(排队文案)
-		_判胜负(排队文案)
-		return
-	# 排队时记下的士气变化：到这一拍才响音效 + 写「士气 x → y」那两行
-	if str(项.get("kind", "")) == "morale":
-		var 旧值: Array = 项.get("old", [])
-		var 新值: Array = 项.get("new", [])
-		Audio.播音效("sys-morale")
-		if 新值.size() >= 2 and 旧值.size() >= 2:
-			if int(新值[0]) != int(旧值[0]):
-				_日志追加("红队士气%d → %d" % [int(旧值[0]), int(新值[0])], "士气")
-			if int(新值[1]) != int(旧值[1]):
-				_日志追加("蓝队士气%d → %d" % [int(旧值[1]), int(新值[1])], "士气")
-		return
 	var dst: int = int(项.get("dst", -1))
-	var src: int = int(项.get("src", -1))
 	var point: int = int(项.get("point", 0))
 	Audio.播音效("sys-hurt")
 	var 受击面板: 战斗玩家面板 = _玩家面板(dst)
 	if 受击面板 != null:
 		受击面板.Hurted(false)
-	_日志追加("%s 对 %s 造成 %d 点法术伤害" % [_称号(src), _称号(dst), point], "伤害")
 	_伤害飘字(dst, point, 飘字色_法术伤害)
 
 
@@ -924,13 +904,8 @@ func _处理数值变化(info: Dictionary, 生效: bool) -> void:
 		个人宝石 += p.gem
 	if 生效:
 		if 士气 != _上次士气:
-			# 法术伤害是排队播的：伤害还没放完时，士气变化也排到后面，
-			# 日志才按「先伤害、后士气」的顺序写（如【亡女的金库】的伤害 + 士气转移）
-			if not _法术待播.is_empty():
-				_法术待播.append({"kind": "morale", "old": _上次士气.duplicate(), "new": 士气.duplicate()})
-			else:
-				Audio.播音效("sys-morale")
-				_写士气日志(士气)
+			Audio.播音效("sys-morale")
+			_写士气日志(士气)
 		# 士气与星石各响各的（对照参考项目：MoraleChange / GemChange 是两条独立通知），
 		# 不用 elif —— 否则同一次快照里士气与星石一起变时（如魔爆冲击：掉士气又 +1 宝石）只有士气那声
 		if _宝石水晶有动静(宝石, 水晶, 个人宝石):
@@ -1652,13 +1627,19 @@ func _on_hit(src_id: int, dst_id: int, hit: int) -> void:
 
 func _on_hurt(msg: Dictionary) -> void:
 	var cause: int = int(msg.get("cause", 0))
-	# 法术伤害：交给队列逐个播（群伤时才有视觉先后）；攻击 / 魔弹 / 其它照旧即时播
+	# 法术伤害：伤害「日志行」收到就写（日志顺序＝服务端结算顺序），只有视觉表现（受击音 /
+	# 面板泛红 / 飘字）交给队列逐个播 —— 群伤时才有视觉先后。以前日志也一起排队，
+	# 结果后面的士气变化 / 士气转移那几行先写，日志看着像「先结算士气、后结算伤害」
 	if int(msg.get("type", GConst.HarmType.None)) == GConst.HarmType.Magic \
 			and cause != GConst.CAUSE_ATTACK and cause != GConst.CAUSE_MISSILE:
+		var 法术源: int = int(msg.get("src_id", -1))
+		var 法术目标: int = int(msg.get("dst_id", -1))
+		var 法术点: int = int(msg.get("hurt", 0))
+		_日志追加("%s 对 %s 造成 %d 点法术伤害" % [_称号(法术源), _称号(法术目标), 法术点], "伤害")
 		_法术待播.append({
-			"dst": int(msg.get("dst_id", -1)),
-			"src": int(msg.get("src_id", -1)),
-			"point": int(msg.get("hurt", 0)),
+			"dst": 法术目标,
+			"src": 法术源,
+			"point": 法术点,
 		})
 		return
 	# 魔弹是法术伤害（type=Magic）却走上面那条「即时」路，而 _on_hurt_float 对法术飘字一律跳过
@@ -1789,11 +1770,6 @@ func _on_special_action(pid: int, action_id: int) -> void:
 
 ## 玩家发言：既进日志，也在聊天区加一条
 func _on_gossip(txt: String) -> void:
-	# 法术伤害是排队逐个播的（见 法术结算间隔）：伤害还没放完时，「…将 N 点士气转移给…」这句
-	# 要排到伤害后面 —— 否则日志里先写士气转移、后写伤害，看起来像先结算转移再结算伤害
-	if txt.contains("点士气转移给") and not _法术待播.is_empty():
-		_法术待播.append({"kind": "gossip", "txt": txt})
-		return
 	_日志追加(txt, "聊天")
 	_加聊天(txt)
 	_判胜负(txt)
