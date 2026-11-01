@@ -601,7 +601,7 @@ func _结算魔法入门() -> int:
 			var cid2: int = int(项.get("card", -1))
 			if pid2 < 0 or cid2 < 0:
 				continue
-			engine.to_discard([cid2], {"owner": pid2, "source": "hand", "cause": 友情羁绊})
+			engine.to_discard([cid2], {"owner": pid2, "source": "hand", "cause": 友情羁绊, "face_up": false})
 			engine._log_discard(pid2, [cid2], false)
 	# 7803 分支 1：弃 2 张牌（无后续效果，按技能字面）。只处理还真实在手里的牌：
 	# 逐张判断而不是整组 take_from_hand —— 组里有一张已离手时整组会失败，整组照样入弃会造成牌数重复。
@@ -816,7 +816,7 @@ func _离手入弃(pid: int, cards: Array, cause: int, 播特效: bool = true) -
 			实际.append(cid)
 	if 实际.is_empty():
 		return 实际
-	engine.to_discard(实际, {"owner": pid, "source": "hand", "cause": cause})
+	engine.to_discard(实际, {"owner": pid, "source": "hand", "cause": cause, "face_up": false})
 	engine._log_discard(pid, 实际, 播特效)
 	return 实际
 

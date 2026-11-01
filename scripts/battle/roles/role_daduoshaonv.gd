@@ -524,7 +524,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 	player.set_gem(player.gem - 1)
 	notice_skill(ZAI_SHUI_YI_XIA, [])
 	engine.take_from_hand(player.id, 选)
-	engine.to_discard(选, {"owner": player.id, "source": "hand", "cause": ZAI_SHUI_YI_XIA})
+	engine.to_discard(选, {"owner": player.id, "source": "hand", "cause": ZAI_SHUI_YI_XIA, "face_up": false})
 	engine._log_discard(player.id, 选)
 	_zai_shui_yi_xia结算()
 	engine._broadcast_game()

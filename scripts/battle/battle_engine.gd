@@ -2381,7 +2381,7 @@ func 随机弃手牌(pid: int, n: int = 1, cause: int = 0, 展示: bool = false)
 		return 选
 	if not take_from_hand(pid, 选, 展示):
 		return []
-	to_discard(选, {"owner": pid, "source": "hand", "cause": cause})
+	to_discard(选, {"owner": pid, "source": "hand", "cause": cause, "face_up": 展示})
 	_log_discard(pid, 选)
 	_broadcast_game()
 	return 选
@@ -4413,7 +4413,7 @@ class SCoverOverflow:
 					if not chosen.has(cid):
 						chosen.append(cid)
 			target.remove_cover_cards(chosen)
-			e.to_discard(chosen, {"owner": target.id, "source": "cover", "cause": GConst.CAUSE_OVERLOAD})
+			e.to_discard(chosen, {"owner": target.id, "source": "cover", "cause": GConst.CAUSE_OVERLOAD, "face_up": false})
 			e._log_discard(target.id, chosen)
 			e.push(SCoverOverflow.new())
 			e._broadcast_game()
@@ -4460,7 +4460,7 @@ class SRequestDiscard:
 					if not chosen.has(cid):
 						chosen.append(cid)
 			e.take_from_hand(pid, chosen)
-			e.to_discard(chosen, {"owner": pid, "source": "hand", "cause": cause})
+			e.to_discard(chosen, {"owner": pid, "source": "hand", "cause": cause, "face_up": false})
 			e._log_discard(pid, chosen)
 			e._broadcast_game()
 			return BattleEngine.CONTINUE
@@ -4689,7 +4689,7 @@ class SHandOverflow:
 			e.last_harm_type = 0
 		else:
 			e.push(SOverloadMorale.new(target.id, _pending_over, GConst.CAUSE_OVERLOAD, harm_cause, harm_type))
-		e.to_discard(_pending_cards, {"owner": target.id, "source": "hand", "cause": GConst.CAUSE_OVERLOAD})
+		e.to_discard(_pending_cards, {"owner": target.id, "source": "hand", "cause": GConst.CAUSE_OVERLOAD, "face_up": false})
 		e._log_discard(target.id, _pending_cards)
 		e._broadcast_game()
 		return BattleEngine.CONTINUE
@@ -4972,7 +4972,7 @@ func _do_unactional(cur: BattlePlayer) -> int:
 	var old: Array = cur.hand_cards.duplicate()
 	if not old.is_empty():
 		take_from_hand(cur.id, old)
-		to_discard(old, {"owner": cur.id, "source": "hand"})
+		to_discard(old, {"owner": cur.id, "source": "hand", "face_up": true})
 		_log_discard(cur.id, old)
 		# 把弃掉的牌亮出来给所有人看
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Show, "src_id": cur.id, "dst_id": cur.id, "card_ids": old, "is_real": true})

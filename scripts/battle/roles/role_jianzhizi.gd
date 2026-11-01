@@ -410,7 +410,7 @@ func _目标弃一张(目标id: int, r: Dictionary) -> void:
 	if 弃.is_empty():
 		return
 	engine.take_from_hand(目标id, 弃)
-	engine.to_discard(弃, {"owner": 目标id, "source": "hand", "cause": 剑残影})
+	engine.to_discard(弃, {"owner": 目标id, "source": "hand", "cause": 剑残影, "face_up": false})
 	engine._log_discard(目标id, 弃)
 	engine._broadcast_game()
 
@@ -448,7 +448,7 @@ func _diao_ying_duan_nian(ctx: Dictionary) -> int:
 		return _驳回攻击结束选项(ctx, KEY_4504_DONE, KEY_4504_STEP)
 	engine.take_from_hand(player.id, 弃)
 	_启动剑影断念()
-	engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": 剑影断念})
+	engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": 剑影断念, "face_up": false})
 	engine._log_discard(player.id, 弃)
 	engine._broadcast_game()
 	ctx[KEY_4504_STEP] = STEP_DONE

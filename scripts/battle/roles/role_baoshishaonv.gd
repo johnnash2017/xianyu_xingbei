@@ -357,11 +357,17 @@ func p_before_discard(ctx: Dictionary) -> int:
 	if 魔弹表.is_empty():
 		ctx["_4704阶段"] = STEP_DONE
 		return SUCCESS
+	# 一次能把本次弃牌里所有符合条件的【魔弹】都收走：每张都要弃 1 张自己的牌当代价，
+	# 手牌不够就按手牌数收前几张
+	var 需: int = mini(魔弹表.size(), player.hand_cards.size())
+	if 需 <= 0:
+		ctx["_4704阶段"] = STEP_DONE
+		return SUCCESS
 	if 阶段 == 0:
 		ctx["_4704阶段"] = 1
 		var 牌主: int = int(ctx.get("owner", -1))
 		# 头像提示：获得的是牌主（队友）的那张【魔弹】
-		询问(player.id, 三秒原则, 1, 0, GConst.CardSource.Hand, [], 0, "",
+		询问(player.id, 三秒原则, 需, 0, GConst.CardSource.Hand, [], 需, "",
 			player.hand_cards.duplicate(), true, 0, -1, [牌主], -1, {}, 0, 0, false, [牌主])
 		return WAIT
 	if not engine.has_reply():
@@ -372,22 +378,27 @@ func p_before_discard(ctx: Dictionary) -> int:
 	var given: Array = r.get("card_ids", [])
 	if args.is_empty() or int(args[0]) != 1 or given.is_empty():
 		return SUCCESS
-	var 代价: int = -1
+	# 认可点选的代价牌里真实在手牌中的前 需 张：每张代价换 1 张【魔弹】
+	var 代价们: Array[int] = []
 	for c: Variant in given:
-		var cid: int = int(c)
-		if player.has_discard_card(cid):
-			代价 = cid
+		if 代价们.size() >= 需:
 			break
-	if 代价 < 0:
+		var cid: int = int(c)
+		if player.has_discard_card(cid) and not 代价们.has(cid):
+			代价们.append(cid)
+	if 代价们.is_empty():
 		# 交不出代价：不认领，这次的牌照常进弃牌堆
 		return SUCCESS
 	notice_skill(三秒原则, [int(ctx.get("owner", -1))])
-	engine.take_from_hand(player.id, [代价])
-	engine.to_discard([代价], {"owner": player.id, "source": "hand", "cause": 三秒原则})
-	engine._log_discard(player.id, [代价])
-	# 认领第一张【魔弹】：引擎结算时把它从待弃牌里剔除、加进自己手牌（【强制】获得）
+	engine.take_from_hand(player.id, 代价们)
+	engine.to_discard(代价们, {"owner": player.id, "source": "hand", "cause": 三秒原则, "face_up": false})
+	engine._log_discard(player.id, 代价们)
+	# 认领对应数量的【魔弹】：引擎结算时把它们从待弃牌里剔除、加进自己手牌（【强制】获得）
+	var 认领: Array[int] = []
+	for i: int in range(mini(代价们.size(), 魔弹表.size())):
+		认领.append(魔弹表[i])
 	ctx["taker"] = player.id
-	ctx["taken"] = [魔弹表[0]]
+	ctx["taken"] = 认领
 	engine._broadcast_game()
 	return SUCCESS
 
