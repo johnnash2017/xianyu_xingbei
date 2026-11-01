@@ -217,8 +217,11 @@ func _应答(args: Array, cards: Array = []) -> void:
 	引擎._has_reply = true
 
 
-func _魔法动作(aid: int, cards: Array, dsts: Array) -> Dictionary:
-	return {"src_id": 1, "action_id": aid, "card_ids": cards, "dst_ids": dsts}
+func _魔法动作(aid: int, cards: Array, dsts: Array, args: Array = []) -> Dictionary:
+	var 动作: Dictionary = {"src_id": 1, "action_id": aid, "card_ids": cards, "dst_ids": dsts}
+	if not args.is_empty():
+		动作["args"] = args
+	return 动作
 
 
 # ============================================================
@@ -305,8 +308,8 @@ func 跑() -> void:
 		"8703 应要求 1 张发动牌 + 1 名目标")
 	检(not bool(炼金项.get("enabled", true)), "手里没有雷/火系牌时 8703 应置灰")
 	检(int(金库项.get("type", 0)) == GConst.ActionType.MagicSkill, "8704 应作为法术技能按钮下发")
-	检(int(金库项.get("need_card", 0)) == 0 and int(金库项.get("need_target", 0)) == 2,
-		"8704 应要求 0 张发动牌 + 2 名目标")
+	检(int(金库项.get("need_card", 0)) == 0 and int(金库项.get("need_target", 0)) == 0,
+		"8704 应要求 0 张发动牌，目标由二级技能栏的选项给（本体 need_target = 0）")
 	检(not bool(金库项.get("enabled", true)), "没有能量时 8704 应置灰")
 
 	_给牌(玩家, 火法术.id)
@@ -586,32 +589,59 @@ func 跑() -> void:
 		% [引擎.current_id, str(引擎.行动额外), str(引擎.行动额外来源)])
 
 	# ============================================================
-	# 8704 亡女的金库：校验
+	# 8704 亡女的金库：校验（选项值随 action 一起提交，args[0] = 0 不移除 / 1 额外移除）
 	# ============================================================
 	_重置战斗()
-	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 4])) != GConst.GE_SUCCESS,
+	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 4], [0])) != GConst.GE_SUCCESS,
 		"没有能量时 8704 应被驳回")
 	玩家.set_crystal(1)
-	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 4])) == GConst.GE_SUCCESS,
-		"有能量 + 2 名对手时 8704 应通过校验")
-	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 2])) != GConst.GE_SUCCESS,
+	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 4], [0])) == GConst.GE_SUCCESS,
+		"有能量 + 2 名对手 + 合法选项值时 8704 应通过校验")
+	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 4], [1])) == GConst.GE_SUCCESS,
+		"额外移除那一档也应通过校验")
+	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 4])) != GConst.GE_SUCCESS,
+		"没带选项值（没在二级技能栏选档）应驳回")
+	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 4], [2])) != GConst.GE_SUCCESS,
+		"选项值越界应驳回")
+	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 2], [0])) != GConst.GE_SUCCESS,
 		"8704 不能把同一名对手点两次")
-	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2])) != GConst.GE_SUCCESS,
+	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2], [0])) != GConst.GE_SUCCESS,
 		"8704 必须指定 2 名目标对手")
-	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 3])) != GConst.GE_SUCCESS,
+	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 3], [0])) != GConst.GE_SUCCESS,
 		"8704 不能指定队友")
-	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 4, 3])) != GConst.GE_SUCCESS,
+	检(角色.v_magic_skill(_魔法动作(技能亡女的金库, [], [2, 4, 3], [0])) != GConst.GE_SUCCESS,
 		"8704 不能指定 3 名目标")
 
+	# 技能栏：同【魔眼】一样带选项进二级技能栏，本体不给目标数（选完档才放开点头像）
+	var 栏金库: Dictionary = _找技能(角色.available_skills(), 技能亡女的金库)
+	检(int(栏金库.get("need_target", -1)) == 0, "8704 本体不应要求先选目标（选完档才放开）")
+	var 栏选项: Array = 栏金库.get("arg_choices", [])
+	检(栏选项.size() == 2, "8704 应下发两个星石档选项：%s" % str(栏选项))
+	if 栏选项.size() == 2:
+		检(str((栏选项[0] as Dictionary).get("text", "")).contains("【战绩区】"),
+			"8704 选项文案应写【战绩区】：%s" % str(栏选项[0]))
+		检(int((栏选项[0] as Dictionary).get("need_target", 0)) == 2
+			and int((栏选项[1] as Dictionary).get("need_target", 0)) == 2,
+			"两档都应带「选 2 名对手」")
+		检(not (栏选项[0] as Dictionary).get("text", "").contains("士气转移"),
+			"宝石不够时不应追加士气转移说明")
+
+	# 宝石 ≥ 2 时，额外移除那一档后面要追加士气转移的说明
+	引擎.set_team_gem(GConst.BLUE, 2)
+	var 宝石项: Array = _找技能(角色.available_skills(), 技能亡女的金库).get("arg_choices", [])
+	检(宝石项.size() == 2
+		and str((宝石项[1] as Dictionary).get("text", "")).contains("将对方 1 点士气转移给我方"),
+		"宝石 ≥ 2 时额外移除档应追加士气转移说明：%s" % str(宝石项))
+
 	# ============================================================
-	# 8704：战绩区为空 → 不弹额外移除询问；每目标 1 点法术伤害；扣 1 能量
+	# 8704：战绩区为空、选「不额外移除」→ 每目标 1 点法术伤害、扣 1 能量、不弹询问
 	# ============================================================
 	_重置战斗()
 	玩家.set_crystal(1)
 	发送记录.clear()
-	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4]))
+	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4], [0]))
 	引擎.run()
-	检(_询问次数(1, 技能亡女的金库) == 0, "战绩区为空时不应弹「是否额外移除」询问")
+	检(_询问次数(1, 技能亡女的金库) == 0, "选完档直接结算，不应再补问一次")
 	检(玩家.get_energy() == 0, "8704 应支付 1 点能量，实际剩 %d" % 玩家.get_energy())
 	检(靶.hand_cards.size() == 1 and 靶2.hand_cards.size() == 1,
 		"8704 应对两名目标各造成 1 点法术伤害（各摸 1 张），实际 %d / %d 张"
@@ -633,7 +663,7 @@ func 跑() -> void:
 	检(not 支付快照.is_empty(), "8704 支付 1 能量后应立刻补发对局快照（快照能量应为 0）")
 
 	# ============================================================
-	# 8704：额外移除全部星石（3 星石含 2 宝石）→ 伤害 2；结算完转移对方 1 点士气
+	# 8704：选「额外移除」（3 星石含 2 宝石）→ 伤害 2；结算完转移对方 1 点士气
 	# ============================================================
 	_重置战斗()
 	玩家.set_crystal(1)
@@ -641,18 +671,8 @@ func 跑() -> void:
 	引擎.set_team_crystal(GConst.BLUE, 1)
 	引擎.team_morale = [引擎.士气上限() - 2, 引擎.士气上限()]
 	发送记录.clear()
-	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4]))
+	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4], [1]))
 	引擎.run()
-	检(引擎._await_id == 1, "战绩区有星石时应先问玩家是否额外移除（等待 %s）" % str(引擎._await_id))
-	var 移除问: Dictionary = _取询问(1, 技能亡女的金库)
-	检(not 移除问.is_empty(), "没有下发 8704 的额外移除询问")
-	检((移除问.get("args", []) as Array).size() == 6,
-		"8704 的额外移除应有 2 个固定选项：%s" % str(移除问.get("args", [])))
-	检(int((移除问.get("args", []) as Array)[4]) == 0 and int((移除问.get("args", []) as Array)[5]) == 1,
-		"8704 的选项值应是 0（不移除）/ 1（额外移除）：%s" % str(移除问.get("args", [])))
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 8704, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
-	})
 	检(引擎.team_gem[GConst.BLUE] == 0 and 引擎.team_crystal[GConst.BLUE] == 0,
 		"8704 额外移除应清空我方战绩区，实际 宝石 %d / 水晶 %d"
 		% [引擎.team_gem[GConst.BLUE], 引擎.team_crystal[GConst.BLUE]])
@@ -672,12 +692,8 @@ func 跑() -> void:
 	引擎.set_team_gem(GConst.BLUE, 1)
 	引擎.set_team_crystal(GConst.BLUE, 1)
 	引擎.team_morale = [引擎.士气上限() - 2, 引擎.士气上限()]
-	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4]))
+	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4], [1]))
 	引擎.run()
-	检(引擎._await_id == 1, "战绩区有星石时应先问是否额外移除")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 8704, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
-	})
 	检(靶.hand_cards.size() == 2 and 靶2.hand_cards.size() == 2,
 		"2 星石应让每名目标受到 2 点法术伤害（各摸 2 张），实际 %d / %d 张"
 		% [靶.hand_cards.size(), 靶2.hand_cards.size()])
@@ -692,34 +708,9 @@ func 跑() -> void:
 	_重置战斗()
 	玩家.set_crystal(1)
 	引擎.set_team_gem(GConst.BLUE, 2)
-	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4]))
+	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4], [0]))
 	引擎.run()
-	检(引擎._await_id == 1, "战绩区有星石时应先问是否额外移除")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 8704, "src_id": 1, "args": [0], "card_ids": [], "dst_ids": [],
-	})
 	检(引擎.team_gem[GConst.BLUE] == 2, "选择不额外移除时战绩区不应变动")
 	检(靶.hand_cards.size() == 1 and 靶2.hand_cards.size() == 1,
 		"选择不额外移除时每名目标只受 1 点法术伤害，实际 %d / %d 张"
 		% [靶.hand_cards.size(), 靶2.hand_cards.size()])
-
-	# ============================================================
-	# 8704：额外移除询问取消 → 这次不发动（不扣费 / 不结算 / 不消耗行动计数）
-	# ============================================================
-	_重置战斗()
-	玩家.set_crystal(1)
-	引擎.set_team_gem(GConst.BLUE, 2)
-	发送记录.clear()
-	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4]))
-	引擎.run()
-	检(引擎._await_id == 1, "战绩区有星石时应先问是否额外移除")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 8704, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [],
-	})
-	检(玩家.get_energy() == 1, "取消 8704 不应支付能量，实际剩 %d" % 玩家.get_energy())
-	检(引擎.team_gem[GConst.BLUE] == 2, "取消 8704 不应移除战绩区星石")
-	检(_伤害条数(技能亡女的金库) == 0, "取消 8704 不应造成伤害")
-	检(玩家.action_count() == 0, "取消 8704 应撤销本次行动计数，实际 %d" % 玩家.action_count())
-	检(引擎.current_id == 1, "取消 8704 应退回自己的行动阶段，实际当前 %d" % 引擎.current_id)
-	检(not _取行动阶段().is_empty(), "取消 8704 后应重新进入行动阶段")
-	检(_播报次数(技能亡女的金库) == 0, "取消 8704 不应播报技能")

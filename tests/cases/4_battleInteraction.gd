@@ -1142,6 +1142,55 @@ func 跑() -> void:
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(1)
 
+	# 亡女的金库(8704)：点技能先开二级技能栏（带「返回」），选完星石档才放开点 2 名对手；
+	# 选「额外移除」时目标头像上按 战绩区星石数 现算伤害
+	窗.call("_选择技能", 8704, GConst.ActionType.MagicSkill, 0, 0, [2, 4], [],
+		0, 0, 0, GConst.CardSource.Hand, "", 0, 0, [
+			{"text": "不额外移除【战绩区】星石", "args": [0], "need_target": 2, "targets": [2, 4]},
+			{"text": "额外移除【战绩区】所有星石，当前 4 颗；将对方 1 点士气转移给我方",
+				"args": [1], "need_target": 2, "targets": [2, 4]},
+		], null, 0)
+	await 等帧(1)
+	检(bool(窗.get("_二级栏")), "8704 应打开二级技能栏")
+	检(bool(窗.get("_先弹选项")), "8704 应是「先弹选项」型（选档前不能点目标）")
+	检(int(窗.get("_need_players")) == 0, "选星石档之前不应该能点目标")
+	var 金库栏二: Array = 窗.get("_二级选项")
+	检(金库栏二.size() == 2, "8704 应摆出两个星石档（实际 %d）" % 金库栏二.size())
+	# 「返回」按钮：紧跟在技能本体后面
+	var 有返回: bool = false
+	var 技能区: Control = 窗.get("ChildrenSkillArea")
+	if 技能区 != null:
+		for 子: Node in 技能区.get_children():
+			if 子 is 技能按钮 and (子 as 技能按钮).skillName != null \
+					and (子 as 技能按钮).skillName.text == "返回":
+				有返回 = true
+	检(有返回, "8704 的二级技能栏应带「返回」按钮")
+	窗.call("_选中二级选项", 8704, 1)
+	await 等帧(1)
+	检((窗.get("_已选参数") as Array) == [1], "选中的应是「额外移除」那一档：%s"
+		% str(窗.get("_已选参数")))
+	检(int(窗.get("_skill_need_target")) == 2, "选完档后应要求选 2 名对手（实际 %d）"
+		% int(窗.get("_skill_need_target")))
+	# 目标头像上的伤害：基础 1 + 我方战绩区星石数 ÷ 2（这里摆 4 颗星石 → 1 + 2 = 3）
+	var 我队: GTeam = Data.team_of(GConst.BLUE)
+	if 我队 != null:
+		我队.set_crystal(2)
+		我队.set_gem(2)
+	var 金库目标: Array[int] = [2, 4]
+	窗.set("_sel_players", 金库目标)
+	var 金库提示表: Dictionary = 窗.call("_亡女金库头像提示")
+	检(str(金库提示表.get(2, "")) == "3 法术伤害",
+		"选了额外移除 + 4 颗星石时，目标头像应写「3 法术伤害」：%s" % str(金库提示表))
+	# 换成「不额外移除」那一档：伤害回到基础 1 点
+	窗.call("_选中二级选项", 8704, 0)
+	await 等帧(1)
+	窗.set("_sel_players", 金库目标)
+	金库提示表 = 窗.call("_亡女金库头像提示")
+	检(str(金库提示表.get(2, "")) == "1 法术伤害",
+		"不额外移除时目标头像应写「1 法术伤害」：%s" % str(金库提示表))
+	(窗.get("BtnCancel") as Button).pressed.emit()
+	await 等帧(1)
+
 	# 基础效果的状态图标悬停：文本前面要写「基础效果：」，和指示物 / 独有效果区分开
 	var 面板: 战斗玩家面板 = null
 	var 界面板: Array = 窗.get("_面板列表")

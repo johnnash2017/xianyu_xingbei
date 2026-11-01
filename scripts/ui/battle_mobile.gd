@@ -7705,6 +7705,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _魔眼头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _亡女金库头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _灵魂镜像头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _灵魂震爆头像提示()
@@ -7896,6 +7898,28 @@ func _雷光散射头像提示() -> Dictionary:
 		if not (_skill_targets.is_empty() or _skill_targets.has(面板.ID)):
 			continue
 		out[面板.ID] = "%d 法术伤害" % (张数 if (面板.ID == 指定 and 张数 > 1) else 1)
+	return out
+
+
+## 贪婪少女【亡女的金库】(8704) 的指示器（现算，只在发动它那次 mode 4 的界面画）：
+## 伤害 = 基础 1 点 +（选了「额外移除」那一档时）我方战绩区星石数 ÷ 2。
+## 两档都画：二级技能栏选完星石档、点了目标，就能在目标头像上看到这一手的确切伤害
+func _亡女金库头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_亡女的金库:
+		return out
+	if _已选参数.is_empty() or _sel_players.is_empty():
+		return out
+	var 星石: int = 0
+	if int(_已选参数[0]) == 1:
+		var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+		var 战绩: GTeam = Data.team_of(我.color) if 我 != null else null
+		if 战绩 != null:
+			星石 = 战绩.crystal + 战绩.gem
+	@warning_ignore("integer_division")
+	var 伤害: int = GConst.亡女金库基础伤害 + 星石 / GConst.亡女金库每星石
+	for pid: int in _sel_players:
+		out[pid] = "%d 法术伤害" % 伤害
 	return out
 
 

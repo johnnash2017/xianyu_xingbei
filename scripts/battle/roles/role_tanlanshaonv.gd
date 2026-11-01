@@ -25,11 +25,11 @@ const LIAN_JIN_SHU: int = 8703        # 炼金术（响应 / 魔弹融合入口�
 const WANG_NV_DE_JIN_KU: int = 8704   # 亡女的金库（法术 / 必杀技 / 水晶）
 
 const TAN_YU_HARM_POINT: int = 2      # 8701：目标不弃法术牌时受到的法术伤害
-const WANG_NV_BASE_POINT: int = 1     # 8704：每名目标的基础法术伤害
+const WANG_NV_BASE_POINT: int = GConst.亡女金库基础伤害  # 8704：每名目标的基础法术伤害
 ## 8704「每移除 2 星石，伤害 +1」：每几颗星石加 1 点
-const WANG_NV每星石: int = 2
+const WANG_NV每星石: int = GConst.亡女金库每星石
 ## 8704「本次移除的星石中【宝石】>1」：至少几颗宝石才触发士气转移
-const WANG_NV宝石门槛: int = 2
+const WANG_NV宝石门槛: int = GConst.亡女金库宝石门槛
 
 ## 8701 本回合是否已发动（技能名带【回合限定】）
 var _used_tan_yu: bool = false
@@ -89,8 +89,11 @@ func available_skills() -> Array:
 			"type": GConst.ActionType.MagicSkill,
 			"id": WANG_NV_DE_JIN_KU,
 			"need_card": 0,
-			"need_target": 2,
+			# 目标在二级技能栏选完星石档之后才选（同魔弓【魔眼】）：本体不给目标数，
+			# 两档各自带 need_target = 2 + 对手白名单
+			"need_target": 0,
 			"targets": 对手,
+			"arg_choices": _亡女额外移除选项(engine.战绩区构成(player.color)),
 			"enabled": _可发动亡女的金库() and 对手.size() >= 2,
 		},
 	]
@@ -146,12 +149,16 @@ func _校验贪欲黑洞(action: Dictionary) -> int:
 	return _校验敌人目标(action, 1)
 
 
-## 8704：至少 1 点能量（水晶可被宝石顶）、恰好 2 名互不相同的对手、本回合未被 8701 锁住
+## 8704：至少 1 点能量（水晶可被宝石顶）、选项值 0/1、恰好 2 名互不相同的对手、本回合未被 8701 锁住。
+## 星石档由二级技能栏选（args[0]）后随这一手一起提交，不再由服务端补问一次
 func _校验亡女的金库(action: Dictionary) -> int:
 	if _locked_wan_nv:
 		return GConst.GE_INVALID_ACTION
 	if player.get_energy() <= 0:
 		return GConst.GE_INVALID_ACTION
+	var 参数: Array = action.get("args", [])
+	if 参数.is_empty() or int(参数[0]) < 0 or int(参数[0]) > 1:
+		return GConst.GE_INVALID_ARGUMENT
 	return _校验敌人目标(action, 2)
 
 
@@ -259,38 +266,16 @@ func _贪欲黑洞惩罚(dst_id: int) -> int:
 	return URGENT
 
 
-## 8704：先问要不要额外移除战绩区全部星石，再扣 1 点能量并按星石数结算；
-## 伤害都结算完之后（自定义钩子）才做士气转移，避免转移插在两名目标的伤害中间。
+## 8704：星石档由二级技能栏选好、随这一手 action 一起提交（args[0] = 0 不额外移除 / 1 额外移除）；
+## 扣 1 点能量后按星石数结算。伤害都结算完之后（自定义钩子）才做士气转移，
+## 避免转移插在两名目标的伤害中间。
 func _亡女的金库结算(action: Dictionary) -> int:
-	# STEP_DONE 只可能来自上一次已结算完的发动：这次又是新的一次发动，从头问
-	if _wan_nv_step >= STEP_DONE:
-		_wan_nv_step = 0
-	var dsts: Array = action.get("dst_ids", [])
-	if _wan_nv_step == 0:
-		_wan_nv_额外移除 = false
-		var 构成: Dictionary = engine.战绩区构成(player.color)
-		if int(构成.get("total", 0)) > 0:
-			_wan_nv_step = 1
-			询问(player.id, WANG_NV_DE_JIN_KU, 0, 0, GConst.CardSource.Hand,
-				_亡女额外移除选项(构成), 0, "", [], true, 0)
-			return WAIT
-		_wan_nv_step = STEP_DONE
-	else:
-		if not engine.has_reply():
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		if args.is_empty():
-			# 取消＝这次不发动【亡女的金库】：退回行动阶段，不扣费、不结算
-			_wan_nv_step = 0
-			_wan_nv_额外移除 = false
-			engine.取消技能行动()
-			return SUCCESS
-		_wan_nv_额外移除 = int(args[0]) == 1
-		_wan_nv_step = STEP_DONE
-	# 目标表在校验时已保证是 2 名对手；这里再兜一次（等回复期间不会变，防御改包）
+	_wan_nv_step = STEP_DONE
+	var 参数: Array = action.get("args", [])
+	_wan_nv_额外移除 = not 参数.is_empty() and int(参数[0]) == 1
+	# 目标表在校验时已保证是 2 名对手；这里再兜一次（防御改包）
 	var 目标: Array[int] = []
-	for 值: Variant in dsts:
+	for 值: Variant in action.get("dst_ids", []):
 		var pid: int = int(值)
 		var p0: BattlePlayer = engine.p(pid)
 		if p0 != null and p0.color != player.color and not 目标.has(pid):
@@ -329,12 +314,21 @@ func _亡女的金库结算(action: Dictionary) -> int:
 	return URGENT
 
 
-## 8704 的额外移除选项：固定两项都下发，不利项也保留（按《技能维护约定》§二级技能栏选项）
+## 8704 的额外移除选项：固定两项都下发，不利项也保留（按《技能维护约定》§二级技能栏选项）。
+## 两档各自带「选 2 名对手」+ 对手白名单：二级技能栏打开、选完这一档才放开点头像（同【魔眼】）。
+## 星石够 1 颗【宝石】门槛时在额外移除那一档后面追加士气转移的说明。
 func _亡女额外移除选项(构成: Dictionary) -> Array:
 	var 总数: int = int(构成.get("total", 0))
+	var 宝石: int = int(构成.get("gem", 0))
+	var 额外文案: String = "额外移除【战绩区】所有星石，当前 %d 颗" % 总数
+	if 宝石 >= WANG_NV宝石门槛:
+		额外文案 += "；将对方 1 点士气转移给我方"
+	var 对手: Array[int] = enemy_ids()
 	return [
-		{"value": 0, "label": "不额外移除战绩区星石"},
-		{"value": 1, "label": "额外移除战绩区所有星石，当前 %d 颗" % 总数, "enabled": 总数 > 0},
+		{"value": 0, "text": "不额外移除【战绩区】星石", "args": [0],
+			"need_target": 2, "targets": 对手},
+		{"value": 1, "text": 额外文案, "args": [1],
+			"need_target": 2, "targets": 对手, "enabled": 总数 > 0},
 	]
 
 
