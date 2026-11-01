@@ -800,10 +800,50 @@ func 跑() -> void:
 	引擎._states.clear()
 	引擎._清空等待()
 
+	# 4606 借用封印 / 赐福：统一登记进「借用独有技」表（卡面标绿 / 测试指令 2 / 角色说明）
+	_测借用独有技()
+
 	# 收尾：清掉状态栈与等待，避免退出时残留询问
 	引擎._states.clear()
 	引擎._清空等待()
 	引擎.send_cb = Callable()
+
+
+## 4606 海神御巫借用的封印 401~405 / 赐福 1601~1602：走统一的「借用独有技」表
+## （卡面标绿 / 测试指令 2 / 角色说明三处共用，见 GConst.角色借用独有技；继承来的，置灰）
+func _测借用独有技() -> void:
+	var 期望: Array[int] = [401, 402, 403, 404, 405, 1601, 1602]
+	检(GConst.借用独有技(46) == 期望,
+		"46 的借用独有技应为封印 401~405 + 赐福 1601/1602：%s" % str(GConst.借用独有技(46)))
+	# 卡面技能名标绿：拿到带这些技能的牌时按「自己会」显示（4606 要用它们发动）
+	var 卡面脚本: GDScript = load("res://scripts/CardUI.gd")
+	var 卡面技能: Array = 卡面脚本.显示技能(46, Data.role_skills(46))
+	检(卡面技能.has(401) and 卡面技能.has(1601),
+		"灵熙之潮的卡面应把封印 401 / 赐福 1601 等显示成自己会：%s" % str(卡面技能))
+	检(not 卡面脚本.显示技能(38, Data.role_skills(38)).has(401),
+		"别的角色不应白拿 401")
+	# 测试指令 2：按 2 应能拿到封印 / 赐福的发动牌
+	_重置战斗()
+	引擎.debug_key(1, GConst.DebugKey.SkillCards)
+	var 有封印: bool = false
+	var 有赐福: bool = false
+	for cid: int in 玩家.hand_cards:
+		var c: GCard = Data.get_card(cid)
+		if c == null:
+			continue
+		if c.has_skill_id(401) or c.has_skill_id(402) or c.has_skill_id(403) \
+				or c.has_skill_id(404) or c.has_skill_id(405):
+			有封印 = true
+		if c.has_skill_id(1601) or c.has_skill_id(1602):
+			有赐福 = true
+	检(有封印 and 有赐福, "测试指令 2 应给灵熙之潮发封印 / 赐福技能牌：%s" % str(玩家.hand_cards))
+	# 角色说明：追加到「独有技」分段，继承来的整段置灰
+	var 说明文本: String = 角色技能提示.悬浮提示(46)
+	检(说明文本.contains("独有技") and 说明文本.contains("风之封印") and 说明文本.contains("迅捷赐福"),
+		"灵熙之潮的角色说明应显示封印 / 赐福的独有技：%s" % 说明文本)
+	检(说明文本.contains(角色技能提示.失效行标记 + "风之封印")
+		and 说明文本.contains(角色技能提示.失效行标记 + "迅捷赐福"),
+		"灵熙之潮借用的封印 / 赐福是继承来的，应整段置灰")
 
 
 ## 4601 的联动：封印（401~405）/ 赐福（1601~1602）/ 天使之墙（701）这些「放置基础效果」的技能，
