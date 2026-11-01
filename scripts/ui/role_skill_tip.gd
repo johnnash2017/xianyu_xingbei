@@ -173,9 +173,9 @@ static func _构造借用技能行(技能号: int, 正常显示: bool, 角色号
 		说明 = GConst.skill_desc(技能号)
 	if 说明 == "":
 		return 行列表
-	# 技能名按角色改名（如【雷击*改】），「*改」后缀标红
+	# 技能名按角色改名（如【雷击*见习制片】），没改名就是技能表默认名
 	var 条目: String = GConst.词缀文本("【%s】%s：%s" % [
-		GConst.skill_type(技能号), GConst.技能名富文本(角色号, 技能号), 说明])
+		GConst.skill_type(技能号), GConst.技能名显示(角色号, 技能号), 说明])
 	for 子行: String in 条目.replace("\\n", "\n").split("\n"):
 		var 文本: String = 子行.strip_edges()
 		if 文本 == "":
@@ -201,7 +201,7 @@ static func 追加借用独有技(原文: String, 角色号: int) -> String:
 	var 独有行: Array[String] = []
 	for 技能号: int in 技能表:
 		# 被该角色改写的技能（如 97 的 9703 改血腥咆哮、93 的 9304 改雷击）：
-		# 说明取改写版，技能名取改名后的【血腥咆哮*改】/【雷击*改】，不再另列原版。
+		# 说明取改写版，技能名取改名后的【血腥咆哮*萝莉番长】/【雷击*见习制片】，不再另列原版。
 		独有行.append_array(_构造借用技能行(技能号, 正常显示, 角色号))
 	_插入独有技分段(行列表, 独有行)
 	return "\n".join(行列表)
@@ -309,7 +309,7 @@ static func 单个技能(技能号: int, 正文字号: int = 0, 角色号: int =
 	if 说明 == "":
 		return ""
 	var 行: String = "【%s】%s：%s" % [
-		GConst.skill_type(技能号), GConst.技能名富文本(角色号, 技能号), 说明]
+		GConst.skill_type(技能号), GConst.技能名显示(角色号, 技能号), 说明]
 	if 正文字号 > 0:
 		行 = "[font_size=%d]%s[/font_size]" % [正文字号, 行]
 	return _染类型(行)
