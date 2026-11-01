@@ -11,10 +11,6 @@ const 正文前缀: String = "　　"
 ## 失效技能的零宽标记：\u2060 标在「每一条失效技能的正文行」类型之后，仅用于把该行置灰。
 ## 不画删除线；用零宽字符而不是 BBCode 的 [s]，避免字体自带的细线又冒出来。
 const 失效行标记: String = "\u2060"
-## 删除线的零宽标记：\u200c 标在「被改写的原版说明」正文行类型之后。
-## 和 失效行标记 分开：置灰的那套只用半透明白（不加删除线，避免字体自带的细线）；
-## 只有「同一颗技能被角色改写、要把原版列出来对照」时才额外套 BBCode 的 [s]（按需求方要求画删除线）。
-const 删除线标记: String = "\u200c"
 ## 梦想剑 4503 启用时技能说明的绿：与卡面「独有技」技能名同色（CardUI.技能字色_有）
 const 梦想剑启用色: String = "A9FF00"
 ## 悬停提示里技能正文的字号
@@ -169,17 +165,17 @@ static func _在分段底部插入(行列表: Array[String], 分段标题: Strin
 
 
 ## 生成一颗借用技能的正文行；正常显示＝false 时逐行打上失效（置灰）标记。
-## 角色号用于取「被该角色改写后的说明」（GConst.技能说明覆盖；省略＝按技能表原说明）。
-## 删除线＝true 时再打上删除线标记（用于把被改写的原版说明列出来对照）。
-static func _构造借用技能行(技能号: int, 正常显示: bool, 角色号: int = -1, 删除线: bool = false) -> Array[String]:
+## 角色号用于取「被该角色改写后的说明 / 改名」（GConst.技能说明覆盖 / 技能名覆盖；省略＝按技能表原样）。
+static func _构造借用技能行(技能号: int, 正常显示: bool, 角色号: int = -1) -> Array[String]:
 	var 行列表: Array[String] = []
 	var 说明: String = GConst.技能说明覆盖(角色号, 技能号)
 	if 说明 == "":
 		说明 = GConst.skill_desc(技能号)
 	if 说明 == "":
 		return 行列表
+	# 技能名按角色改名（如【雷击*改】），「*改」后缀标红
 	var 条目: String = GConst.词缀文本("【%s】%s：%s" % [
-		GConst.skill_type(技能号), GConst.skill_desc_name(技能号), 说明])
+		GConst.skill_type(技能号), GConst.技能名富文本(角色号, 技能号), 说明])
 	for 子行: String in 条目.replace("\\n", "\n").split("\n"):
 		var 文本: String = 子行.strip_edges()
 		if 文本 == "":
@@ -187,8 +183,6 @@ static func _构造借用技能行(技能号: int, 正常显示: bool, 角色号
 		var 行: String = "　　" + 文本
 		if not 正常显示:
 			行 = _标记失效行(行)
-		if 删除线:
-			行 = _标记删除线行(行)
 		行列表.append(行)
 	return 行列表
 
@@ -206,10 +200,8 @@ static func 追加借用独有技(原文: String, 角色号: int) -> String:
 	var 正常显示: bool = not GConst.借用独有技置灰(角色号)
 	var 独有行: Array[String] = []
 	for 技能号: int in 技能表:
-		# 这颗技能被该角色改写过说明（如 97 的 9703 把血腥咆哮整段换掉）：先把**原版**列出来
-		# （置灰 + 删除线）对照，改写版列在它下面 —— 只显示改写版看不出「改过什么」。
-		if GConst.技能说明覆盖(角色号, 技能号) != "":
-			独有行.append_array(_构造借用技能行(技能号, false, -1, true))
+		# 被该角色改写的技能（如 97 的 9703 改血腥咆哮、93 的 9304 改雷击）：
+		# 说明取改写版，技能名取改名后的【血腥咆哮*改】/【雷击*改】，不再另列原版。
 		独有行.append_array(_构造借用技能行(技能号, 正常显示, 角色号))
 	_插入独有技分段(行列表, 独有行)
 	return "\n".join(行列表)
@@ -222,7 +214,7 @@ static func _是技能正文起(行: String) -> bool:
 
 
 ## 标记一行角色技能正文失效：行首的【类型】保留原色，正文行首插零宽标记；
-## 续行没有类型前缀，标记插在缩进后。只用于置灰，不再画删除线。
+## 续行没有类型前缀，标记插在缩进后。只用于置灰，不画删除线。
 static func _标记失效行(行: String) -> String:
 	var 缩进长: int = 行.length() - 行.lstrip("　 ").length()
 	var 缩进: String = 行.substr(0, 缩进长)
@@ -231,18 +223,6 @@ static func _标记失效行(行: String) -> String:
 	if 正文.begins_with("【") and 右括号 >= 0:
 		return 缩进 + 正文.substr(0, 右括号 + 1) + 失效行标记 + 正文.substr(右括号 + 1)
 	return 缩进 + 失效行标记 + 正文
-
-
-## 标记一行「原版说明」（被角色改写后列出来对照）：行首【类型】之后插删除线零宽标记，
-## 上色时据此给整行套 [s]（画删除线）—— 与置灰标记分开记，两者可同时存在。
-static func _标记删除线行(行: String) -> String:
-	var 缩进长: int = 行.length() - 行.lstrip("　 ").length()
-	var 缩进: String = 行.substr(0, 缩进长)
-	var 正文: String = 行.substr(缩进长)
-	var 右括号: int = 正文.find("】")
-	if 正文.begins_with("【") and 右括号 >= 0:
-		return 缩进 + 正文.substr(0, 右括号 + 1) + 删除线标记 + 正文.substr(右括号 + 1)
-	return 缩进 + 删除线标记 + 正文
 
 
 ## 梦想剑 4503 技能说明标绿：只标「技能名 + 说明」，行首【被动】保留原类型色。
@@ -328,7 +308,8 @@ static func 单个技能(技能号: int, 正文字号: int = 0, 角色号: int =
 	var 说明: String = 还原换行(覆盖 if 覆盖 != "" else GConst.skill_desc(技能号))
 	if 说明 == "":
 		return ""
-	var 行: String = "【%s】%s：%s" % [GConst.skill_type(技能号), GConst.skill_name(技能号), 说明]
+	var 行: String = "【%s】%s：%s" % [
+		GConst.skill_type(技能号), GConst.技能名富文本(角色号, 技能号), 说明]
 	if 正文字号 > 0:
 		行 = "[font_size=%d]%s[/font_size]" % [正文字号, 行]
 	return _染类型(行)
@@ -362,18 +343,12 @@ static func 上色(技能文本: String, 正文字号: int = 0, 标题字号: in
 			# （先还原说明里写成「\n」的换行，再上色 —— 换行必须在「按前缀分类」之后做，
 			#   否则说明内部的续行会掉进「一级标题」那一档被放大）
 			var 正文: String = 还原换行(行文本.substr(正文前缀.length()))
-			# 原版说明（被角色改写后列出来对照）：整行套 [s] 画删除线 ——
-			# 字体自带的那条位置 / 长度天然准（自己按排版量容易飘），只是要
-			# 说明提示框把 strikethrough_alpha 调到不透明，否则压在灰字上看不清。
-			var 删除线: bool = 正文.contains(删除线标记)
 			var 失效: bool = 正文.contains(失效行标记)
 			var 染色: String = _染类型(正文, 失效)
 			if 失效:
 				# 保留【类型】原色但降透明度；技能名 / 说明用同样的半透明白压灰，
 				# 不是换成纯灰 —— 类型色还认得出来，只是整体变淡。
 				染色 = "[color=#FFFFFF8C]%s[/color]" % 染色
-			if 删除线:
-				染色 = "[s]%s[/s]" % 染色
 			var 正文行: String = "[indent]%s[/indent]" % 染色
 			if 正文字号 > 0:
 				正文行 = "[font_size=%d]%s[/font_size]" % [正文字号, 正文行]

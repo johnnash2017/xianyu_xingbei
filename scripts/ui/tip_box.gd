@@ -72,9 +72,6 @@ func _ready() -> void:
 		_折半行距(文本.get_theme_constant("line_separation")))
 	文本.add_theme_constant_override("paragraph_separation",
 		_折半行距(文本.get_theme_constant("paragraph_separation")))
-	# 删除线默认只有 50% 不透明度（主题常量 strikethrough_alpha），叠在灰字上看着又细又淡；
-	# 但 255（全实）又太抢眼 —— 折中到 190（约 75%），线清楚又不压过文字本身。
-	文本.add_theme_constant_override("strikethrough_alpha", 190)
 
 
 ## 显示一段说明：图标矩形取「视图坐标」，框摆在它正上方并夹在宿主内。
