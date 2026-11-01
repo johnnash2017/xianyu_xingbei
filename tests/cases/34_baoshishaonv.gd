@@ -990,7 +990,7 @@ func _测试4704() -> void:
 	})
 	# 第二张还要再问一次：这次取消，它就正常进弃牌堆（收下的牌要等整次弃牌结算完才交到手）
 	检(引擎._await_id == 1, "第一张收完后应接着问第二张，实际等待 %s" % str(引擎._await_id))
-	检(not 玩家1.has_hand_card(魔弹.id), "整次弃牌还没结算完时，收下的牌先不进手里")
+	检(玩家1.hand_cards.has(魔弹.id), "第一次收到手后应马上进手里，再问下一张")
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4704, "src_id": 1, "args": [0], "card_ids": [], "dst_ids": [],
 	})

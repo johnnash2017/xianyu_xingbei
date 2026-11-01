@@ -406,14 +406,24 @@ func p_before_discard(ctx: Dictionary) -> int:
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 				"card_ids": [这张], "is_real": true,
 			})
+			# 当场收进手里：先从待弃牌里剔掉（引擎结算时就不会再把它丢进弃牌堆），
+			# 再从原主手里 / 盖牌区兜底清一份，最后加进自己手牌 —— 这一张真正到手之后才问下一张
+			var 待弃: Array = ctx.get("cards", [])
+			待弃.erase(这张)
+			ctx["cards"] = 待弃
+			var 原主: BattlePlayer = engine.p(int(ctx.get("owner", -1)))
+			if 原主 != null:
+				if 原主.取出实例(原主.hand_cards, 这张) < 0:
+					原主.取出实例(原主.cover_cards, 这张)
+			player.add_hand_cards([这张])
 			(进度["认领"] as Array).append(这张)
 			engine._broadcast_game()
 		ctx[进度键] = 进度
-	# 全部问完：把收下的几张从待弃牌里剔除、加进手里（【强制】获得）
+	# 全部问完：收下的牌在每次回答时就已当场进手里（见上面），这里只收尾清状态
 	var 认领: Array = 进度.get("认领", [])
 	ctx[进度键] = {"阶段": STEP_DONE, "认领": 认领}
-	ctx["taker"] = player.id if not 认领.is_empty() else -1
-	ctx["taken"] = 认领
+	ctx["taker"] = -1
+	ctx["taken"] = []
 	engine._broadcast_game()
 	return SUCCESS
 
