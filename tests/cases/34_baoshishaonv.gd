@@ -853,6 +853,10 @@ func _测试4704() -> void:
 	var 单张预览: Array = 拦截问.get("option_preview_cards", [])
 	检(单张预览.size() == 1 and ((单张预览[0] as Dictionary).get("ids", []) as Array) == [魔弹.id],
 		"选项的预览牌应是那张魔弹：%s" % str(单张预览))
+	# 选项值要随 args 下发（客户端选中后原样回传 args[0]）：漏了 value 会回传 0 → 一张都收不到
+	var 单张args: Array = 拦截问.get("args", [])
+	检(单张args.size() >= 5 and int(单张args[4]) == 1,
+		"选项值应随 args 下发（1 张档＝1）：%s" % str(单张args))
 	检(引擎.deck.discard.is_empty(), "拦截询问期间【魔弹】不应已经进弃牌堆")
 	检(_播报次数(4704) == 0, "还没确认发动时不应播报 4704")
 	引擎.on_message(1, GConst.Msg.Respond, {
@@ -890,6 +894,9 @@ func _测试4704() -> void:
 	检(多张预览.size() == 2 \
 		and ((多张预览[1] as Dictionary).get("ids", []) as Array).size() == 2,
 		"「获得 2 张」的预览牌应是那两张魔弹：%s" % str(多张预览))
+	var 多张args: Array = 多张问.get("args", [])
+	检(多张args.size() >= 6 and int(多张args[4]) == 1 and int(多张args[5]) == 2,
+		"两个选项的值应随 args 下发（1 / 2）：%s" % str(多张args))
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4704, "src_id": 1, "args": [2],
 		"card_ids": [普通牌.id, 普通牌2.id], "dst_ids": [],

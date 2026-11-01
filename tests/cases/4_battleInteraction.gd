@@ -1100,9 +1100,12 @@ func 跑() -> void:
 		var 三秒栏: Array = 窗.get("_二级选项")
 		检(三秒栏.size() == 2, "4704 应摆出 1 / 2 张两个选项（实际 %d）" % 三秒栏.size())
 		var 两张项: Dictionary = {}
-		for 项: Dictionary in 三秒栏:
+		var 两张下标: int = -1
+		for i: int in range(三秒栏.size()):
+			var 项: Dictionary = 三秒栏[i]
 			if (项.get("预览牌", []) as Array).size() == 2:
 				两张项 = 项
+				两张下标 = i
 		检(not 两张项.is_empty(), "「获得 2 张」选项应带 2 张预览牌")
 		if not 两张项.is_empty():
 			var 项按钮: 技能按钮 = 两张项.get("按钮")
@@ -1115,6 +1118,12 @@ func 跑() -> void:
 			var 卡面组: Control = 三秒说明框.内容 if 三秒说明框 != null else null
 			检(卡面组 is HBoxContainer and 卡面组.get_child_count() == 2,
 				"悬停「获得 2 张」应并排摊出两张卡面")
+			# 选中这一项后，提交给服务端的选项值必须是 2（值漏下发 → 回传 0 → 一张都收不到）
+			if 两张下标 >= 0:
+				窗.call("_选中二级选项", 4704, 两张下标)
+				await 等帧(1)
+				检((窗.get("_已选参数") as Array) == [2],
+					"选中「获得 2 张」后回传的选项值应是 2：%s" % str(窗.get("_已选参数")))
 			(窗.get("BtnCancel") as Button).pressed.emit()
 			await 等帧(1)
 

@@ -368,9 +368,11 @@ func p_before_discard(ctx: Dictionary) -> int:
 		for i: int in range(1, 魔弹表.size() + 1):
 			var 选项名: String = "获得 %d 张【魔弹】" % i
 			选项.append({
-				# ask_skill 走 label 做按钮文案（arg_choices 那条通道读 text），两个都写
+				# ask_skill 走 label 做按钮文案（arg_choices 那条通道读 text），两个都写；
+				# 选项值走 value（ask 通道按它组装 args，客户端选中后原样回传），args 给 action 通道用
 				"text": 选项名,
 				"label": 选项名,
+				"value": i,
 				"args": [i],
 				"need_card": i,
 				"preview_cards": 魔弹表.slice(0, i),
