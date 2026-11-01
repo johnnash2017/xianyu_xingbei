@@ -1118,6 +1118,30 @@ func 跑() -> void:
 		(窗.get("BtnCancel") as Button).pressed.emit()
 		await 等帧(1)
 
+	# 亡女的金库(8704) 选档：不需要再选牌 / 选目标，提示条要写技能说明，不写「选项已选好」
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": 8704, "src_id": Logic.my_player_id, "is_skill": true,
+			"dst_ids": [2, 4], "card_ids": [],
+			"args": [0, 0, GConst.CardSource.Hand, 2, 0, 1],
+			"card_max": 0, "card_rule": "", "can_cancel": true,
+			"notes": ["不额外移除战绩区星石", "额外移除战绩区所有星石，当前 4 颗"],
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "8704 询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
+	var 金库栏: Array = 窗.get("_二级选项")
+	检(金库栏.size() == 2, "8704 应摆出两个星石档（实际 %d）" % 金库栏.size())
+	窗.call("_选中二级选项", 8704, 1)
+	await 等帧(1)
+	var 金库提示: String = str(窗.get("_提示原文"))
+	检(not 金库提示.contains("已选好"), "8704 选档后不应写「选项已选好」：%s" % 金库提示)
+	检(金库提示.contains("星石") and 金库提示.contains("亡女的金库"),
+		"8704 选档后提示条应写技能说明：%s" % 金库提示)
+	(窗.get("BtnCancel") as Button).pressed.emit()
+	await 等帧(1)
+
 	# 基础效果的状态图标悬停：文本前面要写「基础效果：」，和指示物 / 独有效果区分开
 	var 面板: 战斗玩家面板 = null
 	var 界面板: Array = 窗.get("_面板列表")
