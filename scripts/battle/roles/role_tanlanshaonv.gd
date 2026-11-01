@@ -41,6 +41,9 @@ var _tan_yu_step: int = 0
 var _wan_nv_step: int = 0
 ## 8704 本次是否选择额外移除战绩区所有星石（选项值 1；未问 / 选 0 / 取消都是 false）
 var _wan_nv_额外移除: bool = false
+## 8704 待转移的士气（非空＝这次发动要转移 1 点）：不在伤害中间转，
+## 记下来等整次法术结算完（p_after_magic，两名目标的伤害 / 摸牌 / 超限掉士气都跑完）再转
+var _wan_nv_待转移: Dictionary = {}
 
 
 # ============================================================
@@ -54,6 +57,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	_tan_yu_step = 0
 	_wan_nv_step = 0
 	_wan_nv_额外移除 = false
+	_wan_nv_待转移 = {}
 	return SUCCESS
 
 
@@ -297,13 +301,13 @@ func _亡女的金库结算(action: Dictionary) -> int:
 	@warning_ignore("integer_division")
 	var 加伤: int = 移除星石 / WANG_NV每星石
 	var 伤害: int = WANG_NV_BASE_POINT + 加伤
-	# 士气转移排在两名目标的伤害之后：先压钩子，再压伤害（伤害状态是栈，后压先算）
+	# 士气转移排在整次结算的最后：这里只记下来，等 p_after_magic（伤害 / 摸牌 / 超限掉士气
+	# 全部跑完）再真转 —— 压钩子的做法只能保证排在两名目标的伤害之后，
+	# 会插在「伤害」和「因伤害超限掉的士气」之间
 	if 移除宝石 >= WANG_NV宝石门槛:
 		var p0: BattlePlayer = engine.p(目标[0])
 		var 敌色: int = p0.color if p0 != null else -1
-		engine.push(BattleEngine.SHook.new("p_wang_nv_after_harm", {
-			"player": player.id, "from_color": 敌色, "to_color": player.color,
-		}, []))
+		_wan_nv_待转移 = {"from_color": 敌色, "to_color": player.color}
 	# 两名目标按玩家点选顺序结算；伤害栈 LIFO → 逆序压栈
 	for i: int in range(目标.size() - 1, -1, -1):
 		engine.push_harm({
@@ -332,13 +336,16 @@ func _亡女额外移除选项(构成: Dictionary) -> Array:
 	]
 
 
-## 8704 的伤害结算完成钩子（自定义名，不是引擎标准钩子）：把对方 1 点士气转移给我方
-func p_wang_nv_after_harm(ctx: Dictionary) -> int:
+## 8704 的士气转移：整次法术结算完（两名目标的伤害 / 摸牌 / 超限掉士气都跑完）才做，
+## 由 p_after_magic 承接 —— 否则会插在「伤害」和「因伤害超限掉的士气」中间
+func p_after_magic(ctx: Dictionary) -> int:
+	if _wan_nv_待转移.is_empty():
+		return SUCCESS
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if engine == null or player == null:
-		return SUCCESS
-	engine.转移士气(int(ctx.get("from_color", -1)), int(ctx.get("to_color", player.color)), 1)
+	var 待转: Dictionary = _wan_nv_待转移
+	_wan_nv_待转移 = {}
+	engine.转移士气(int(待转.get("from_color", -1)), int(待转.get("to_color", player.color)), 1)
 	return SUCCESS
 
 

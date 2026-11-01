@@ -702,6 +702,33 @@ func 跑() -> void:
 		% 引擎.team_morale[GConst.RED])
 
 	# ============================================================
+	# 8704：转移排在整次结算最后 —— 目标的超限弃牌还没选完时不能先转士气
+	# ============================================================
+	_重置战斗()
+	玩家.set_crystal(1)
+	引擎.set_team_gem(GConst.BLUE, 2)
+	引擎.set_team_crystal(GConst.BLUE, 1)
+	引擎.team_morale = [引擎.士气上限() - 2, 引擎.士气上限()]
+	# 靶手牌留 1 个空位：吃 2 点伤害摸 2 张就超限 1 张，触发超限弃牌 + 掉士气
+	while 靶.hand_cards.size() < 靶.hand_cards_max - 1:
+		靶.add_hand_cards([水攻击.id])
+	引擎.resolve_action(GConst.ActionType.MagicSkill, _魔法动作(技能亡女的金库, [], [2, 4], [1]))
+	引擎.run()
+	检(引擎._await_id == 2, "目标超限时应先问弃哪几张（等待 %s）" % str(引擎._await_id))
+	检(引擎.team_morale[GConst.RED] == 引擎.士气上限()
+		and 引擎.team_morale[GConst.BLUE] == 引擎.士气上限() - 2,
+		"伤害的超限 / 掉士气还没结算完时不应先转士气，实际 蓝 %d / 红 %d"
+		% [引擎.team_morale[GConst.BLUE], 引擎.team_morale[GConst.RED]])
+	引擎.on_message(2, GConst.Msg.Respond, {
+		"respond_id": GConst.RespondType.Discard, "src_id": 2, "args": [],
+		"card_ids": [靶.hand_cards[0]], "dst_ids": [],
+	})
+	检(引擎.team_morale[GConst.BLUE] == 引擎.士气上限() - 1,
+		"整次结算完才该转移（蓝队 +1 → 上限-1），实际 %d" % 引擎.team_morale[GConst.BLUE])
+	检(引擎.team_morale[GConst.RED] == 引擎.士气上限() - 2,
+		"红队应是 超限掉 1 + 转移扣 1 = 上限-2，实际 %d" % 引擎.team_morale[GConst.RED])
+
+	# ============================================================
 	# 8704：只移除出 1 颗宝石（共 2 星石）→ 伤害 2，但不转移士气
 	# ============================================================
 	_重置战斗()
