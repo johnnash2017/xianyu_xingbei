@@ -13,9 +13,11 @@ extends Control
 const 角色说明宽度: float = 684.0
 const 角色说明字号: int = 16
 ## 「原版说明（被角色改写后列出来对照）」的删除线：字体自带的 [s] 太细，
-## 用和战斗界面头像伤害提示同一套做法，自己压一条粗线（见 _铺粗删除线）
+## 用和战斗界面头像伤害提示同一套做法，自己压一条线 —— 粗细＝字体那条的两倍，
+## 颜色 / 透明度照原版（半透明浅灰，不要实心白条）。
 const 删除线预制: PackedScene = preload("res://scenes/prefabs/battlemobile/StrikeLine.tscn")
-const 删除线粗细: float = 3.0
+const 删除线粗细: float = 2.0
+const 删除线颜色: Color = Color(1.0, 1.0, 1.0, 0.35)
 ## 文字整块再压到 90%（角色名 36→32、标题 27→24、正文 18→16）
 const 角色说明字号缩放: float = 0.9
 ## 整块缩放的范围（连底板、内边距、边框一起变档，靠节点整体缩放实现）：
@@ -356,7 +358,8 @@ func _铺粗删除线(说明: String) -> void:
 			if 行宽 <= 0.0:
 				continue
 			var 条: ColorRect = 删除线预制.instantiate()
-			条.size = Vector2(行宽 + 删除线粗细, 删除线粗细)
+			条.color = 删除线颜色
+			条.size = Vector2(行宽, 删除线粗细)
 			条.position = Vector2(缩进宽, 上高 + 余 + 行高 * float(i) + (行高 - 删除线粗细) * 0.5)
 			文本.add_child(条)
 		前缀段.append(段)
@@ -410,18 +413,22 @@ func _去标签(文: String) -> String:
 	return 结果
 
 
-## 按宽度折行：逐字量（技能说明几乎全是中文，RichTextLabel 的 WORD_SMART 也是按字断的）
+## 按宽度折行：用 TextServer 自己的断行（和 RichTextLabel 的 WORD_SMART 同一套），
+## 断出来的行与界面实际渲染的一致，删除线才不会比文字长。
 func _折行(纯文: String, 字体: Font, 字号: int, 可用宽: float) -> Array[String]:
 	var 行们: Array[String] = []
-	var 当前: String = ""
-	for i: int in range(纯文.length()):
-		var 试: String = 当前 + 纯文[i]
-		if not 当前.is_empty() \
-				and 字体.get_string_size(试, HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x > 可用宽:
-			行们.append(当前)
-			当前 = 纯文[i]
-		else:
-			当前 = 试
-	if not 当前.is_empty():
-		行们.append(当前)
+	var ts: TextServer = TextServerManager.get_primary_interface()
+	var 形: RID = ts.create_shaped_text()
+	ts.shaped_text_add_string(形, 纯文, 字体.get_rids(), 字号)
+	var 断点: PackedInt32Array = ts.shaped_text_get_line_breaks(形, 可用宽, 0,
+		TextServer.BREAK_GRAPHEME_BOUND | TextServer.BREAK_WORD_BOUND)
+	ts.free_rid(形)
+	# 断点数组是「每行的 [起, 止]」成对出现
+	var i: int = 0
+	while i + 1 < 断点.size():
+		var 起: int = 断点[i]
+		var 止: int = 断点[i + 1]
+		if 止 > 起:
+			行们.append(纯文.substr(起, 止 - 起))
+		i += 2
 	return 行们
