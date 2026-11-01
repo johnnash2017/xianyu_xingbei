@@ -1013,6 +1013,24 @@ func 跑() -> void:
 	if 敌甲玩家 != null:
 		敌甲玩家.clean_basic_status()
 
+	# 基础效果的状态图标悬停：文本前面要写「基础效果：」，和指示物 / 独有效果区分开
+	var 面板: 战斗玩家面板 = null
+	var 界面板: Array = 窗.get("_面板列表")
+	for 项: Variant in 界面板:
+		if 项 is 战斗玩家面板:
+			面板 = 项 as 战斗玩家面板
+			break
+	检(面板 != null, "找不到玩家面板")
+	if 面板 != null and 圣盾卡 != null:
+		var 悬停记录: Array = []
+		面板.状态图标悬停.connect(func(_图标: Control, 文: String, _牌: int, _大: bool) -> void:
+			悬停记录.append(文))
+		面板._报告基础效果悬停(圣盾卡.id, 面板)
+		检(not 悬停记录.is_empty(), "基础效果悬停应报出文本")
+		if not 悬停记录.is_empty():
+			检(str(悬停记录[0]).begins_with("基础效果："),
+				"基础效果的状态悬停文本应带「基础效果：」前缀（实际：%s）" % str(悬停记录[0]))
+
 	await _收尾(窗, 旧id, 旧玩家, 旧手牌, 旧盖牌)
 	print("[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通")
 

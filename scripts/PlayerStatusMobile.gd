@@ -519,13 +519,15 @@ func _报告指示物悬停(槽: int, 图标: Control) -> void:
 
 
 ## 鼠标指到某枚基础效果牌图标：报出这张牌的 id（容器据此摊出完整卡面）+ 一行
-## 「状态名（命格·元素）」（卡面贴图缺失时兜底用；同一状态有好几版牌，如【圣盾】有幻 / 圣 / 咏）
+## 「基础效果：状态名（命格·元素）」（卡面贴图缺失时兜底用；同一状态有好几版牌，如【圣盾】有幻 / 圣 / 咏）。
+## 前面的「基础效果：」是给玩家看的类型提示：头像上那些图标里只有这一类是基础效果牌
+## （指示物 / 独有效果 / 星杯子数都不是），不写出来玩家分不清。
 func _报告基础效果悬停(牌id: int, 图标: Control) -> void:
 	var 牌: GCard = Data.get_card(牌id)
 	if 牌 == null:
 		return
 	状态图标悬停.emit(图标,
-		"%s（%s·%s）" % [状态名(牌), 牌.fate_pattern, GConst.element_to_chinese(牌.element_enum())], 牌id, true)
+		"基础效果：%s（%s·%s）" % [状态名(牌), 牌.fate_pattern, GConst.element_to_chinese(牌.element_enum())], 牌id, true)
 
 
 ## 这张牌摆在头像上当状态用时，那个状态叫什么。
