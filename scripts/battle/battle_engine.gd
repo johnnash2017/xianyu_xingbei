@@ -808,8 +808,7 @@ func _check_hand_max_change() -> void:
 		_hand_maxes[pid] = 现在
 
 
-## 手牌数量 / 上限变化日志（单列一类：GossipType.Hand → 日志里的 [手牌]。
-## 不挂在 Discard 上，免得「简洁」日志为了手牌数把弃牌 / 交牌那些也一起带上）
+## 手牌数量 / 上限变化日志（GossipType.Hand，客户端把这一类也归到 [卡牌] 标签下）
 func _播手牌日志(pp: BattlePlayer, 文案: String) -> void:
 	broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Hand,

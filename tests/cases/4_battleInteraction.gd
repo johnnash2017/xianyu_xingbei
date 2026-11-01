@@ -1194,11 +1194,14 @@ func 跑() -> void:
 	# 日志排版：回合内的行缩进一格（连前面的 [类别] 一起缩），只有 [回合] 行顶格；
 	# 正文里的玩家只写 [职业名]，不再带昵称
 	var 行回合: String = str(窗.call("_日志行", "#FFFFFF", "回合", "第 3 回合，轮到 [魔弓]"))
-	var 行手牌: String = str(窗.call("_日志行", "#FFFFFF", "手牌", "[魔弓] 的手牌 4→5"))
+	var 行手牌: String = str(窗.call("_日志行", "#FFFFFF", "卡牌", "[魔弓] 的手牌 4→5"))
 	检(not 行回合.begins_with("　"), "回合行不应缩进：%s" % 行回合)
 	检(行手牌.begins_with("　"), "回合内的行应缩进一格：%s" % 行手牌)
-	检(行手牌.contains("[color=#FFFFFF][手牌][/color]"),
+	检(行手牌.contains("[color=#FFFFFF][卡牌][/color]"),
 		"缩进要连 [类别] 一起缩，不能只缩正文：%s" % 行手牌)
+	# 手牌数量 / 上限变化并入「卡牌」类（不再有 [手牌] 这个标签）
+	检(str(窗.call("_日志标签", GConst.GossipType.Hand)) == "卡牌",
+		"手牌类日志的标签应是「卡牌」：%s" % str(窗.call("_日志标签", GConst.GossipType.Hand)))
 	var 假角色: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	if 假角色 != null:
 		var 称号文: String = str(窗.call("_称号", 假角色.id))

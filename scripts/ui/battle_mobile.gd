@@ -250,8 +250,7 @@ const 日志标签色: Dictionary = {
 	"行动": "#93E6A8",     # 出牌 / 发动技能
 	"伤害": "#FF9A9A",     # 攻击 / 命中 / 伤害 / 抵挡
 	"治疗": "#8FC7FF",     # 治疗 / 恢复
-	"卡牌": "#B9B4C7",     # 弃牌 / 交牌 / 资源消耗
-	"手牌": "#B9B4C7",     # 手牌数量与上限变化（与 [卡牌] 同色，只是单列一类）
+	"卡牌": "#B9B4C7",     # 弃牌 / 交牌 / 手牌数量与上限变化 / 资源消耗
 	"指示物": "#C6A6FF",   # 指示物变化
 	"士气": "#E8A0D8",     # 队伍士气升降
 	"提示": "#FFB27A",     # 超时 / 掉线 / 无效操作 / 错误
@@ -308,8 +307,9 @@ func _日志标签(kind: int) -> String:
 			return "回合"
 		GConst.GossipType.Token:
 			return "指示物"
+		# 手牌数量 / 上限变化一律并入「卡牌」类（服务端仍用 GossipType.Hand 区分数据，只是日志标签统一）
 		GConst.GossipType.Hand:
-			return "手牌"
+			return "卡牌"
 		GConst.GossipType.Warn:
 			return "提示"
 		_:
