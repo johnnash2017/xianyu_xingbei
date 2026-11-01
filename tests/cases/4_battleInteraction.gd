@@ -1124,6 +1124,11 @@ func 跑() -> void:
 				await 等帧(1)
 				检((窗.get("_已选参数") as Array) == [2],
 					"选中「获得 2 张」后回传的选项值应是 2：%s" % str(窗.get("_已选参数")))
+				# 选项自带的需牌要生效：一张代价都没选时「确定」必须灰着
+				检(int(窗.get("_skill_ask_need_card")) == 2,
+					"选中「获得 2 张」后应要求弃 2 张代价（实际 %d）" % int(窗.get("_skill_ask_need_card")))
+				检(bool(窗.call("_确定不可用")),
+					"没选代价牌时「确定」应灰着，不能直接提交")
 			(窗.get("BtnCancel") as Button).pressed.emit()
 			await 等帧(1)
 
