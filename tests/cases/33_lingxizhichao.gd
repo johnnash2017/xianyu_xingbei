@@ -100,6 +100,24 @@ func _找技能(表: Array, 技能号: int) -> Dictionary:
 	return {}
 
 
+## 在 arg_choices 里按「args[0]＝来源技能号」取那一项
+func _取选项目(选项: Array, 技能号: int) -> Dictionary:
+	for 项: Dictionary in 选项:
+		var 参数: Array = 项.get("args", [])
+		if not 参数.is_empty() and int(参数[0]) == 技能号:
+			return 项
+	return {}
+
+
+## 有几个选项本次可用
+func _可用选项数(选项: Array) -> int:
+	var n: int = 0
+	for 项: Dictionary in 选项:
+		if bool(项.get("enabled", true)):
+			n += 1
+	return n
+
+
 ## 最近一次下发给某玩家的询问里，是否有指定 respond_id 的那条
 func _取询问(pid: int, respond_id: int) -> Dictionary:
 	for r: Dictionary in 引擎._最后询问.get(pid, {}).get("commands", []):
@@ -530,32 +548,55 @@ func 跑() -> void:
 	检(not 海神项.is_empty(), "4606：技能栏应下发【海神御巫】")
 	检(int(海神项.get("type", 0)) == GConst.ActionType.MagicSkill, "4606：应作为法术技能按钮下发")
 	检(int(海神项.get("need_card", 0)) == 0 and int(海神项.get("need_target", 0)) == 0,
-		"4606：牌与目标由服务端询问，技能按钮本身不预选")
+		"4606：牌与目标由选项自带，技能按钮本身不预选")
 	检(not bool(海神项.get("enabled", true)), "4606：没有能量 / 可用独有技牌时应置灰，不是消失")
+	var 选项目: Array = 海神项.get("arg_choices", [])
+	检(选项目.size() == 7, "4606：应固定下发 7 个来源技能选项（同魔眼），实际 %d 个" % 选项目.size())
+	var 首项: Dictionary = 选项目[0] if not 选项目.is_empty() else {}
+	检(str(首项.get("text", "")) != "" and (首项.get("args", []) as Array).size() == 1,
+		"4606：选项文案应是来源技能名、args 回传技能号：%s" % str(首项))
+	检(int(首项.get("skill_id", 0)) == int((首项.get("args", []) as Array)[0]),
+		"4606：选项应带 skill_id（客户端按技能类型上色、悬停弹该独有技说明）")
+	检(int(首项.get("need_card", 0)) == 1 and int(首项.get("need_target", 0)) == 1,
+		"4606：选中选项后还要选 1 张发动牌 + 1 名合法目标")
 	玩家.hand_cards.append(封印牌.id)
 	玩家.set_crystal(1)
 	海神项 = _找技能(角色.available_skills(), 海神御巫)
 	检(bool(海神项.get("enabled", false)), "4606：有 1 点水晶 + 独有技牌时应可点")
-	检(角色.v_magic_skill({"src_id": 1, "action_id": 海神御巫, "card_ids": [], "dst_ids": []})
-		== GConst.GE_SUCCESS, "4606：合法的技能行动应通过校验")
-	检(角色.v_magic_skill({"src_id": 2, "action_id": 海神御巫, "card_ids": [], "dst_ids": []})
-		!= GConst.GE_SUCCESS, "4606：别人的海神御巫行动不应通过校验")
-	检(角色.v_magic_skill({"src_id": 1, "action_id": 9999, "card_ids": [], "dst_ids": []})
-		!= GConst.GE_SUCCESS, "4606：不是海神御巫的法术技能行动不应通过校验")
-	检(角色.v_magic_skill({
-		"src_id": 1, "action_id": 海神御巫,
-		"card_ids": [封印牌.id], "dst_ids": [3],
-	}) != GConst.GE_SUCCESS, "4606：封印牌不能放到同色队友面前")
+	检((海神项.get("cards", []) as Array) == [封印牌.id],
+		"4606：可点发动牌应只有带来源技能的那张：%s" % str(海神项.get("cards", [])))
+	var 地封印项: Dictionary = _取选项目(海神项.get("arg_choices", []), 地之封印技能号)
+	检(bool(地封印项.get("enabled", false)), "4606：手里有 404 地之封印牌时该项应可用：%s" % str(地封印项))
+	var 地封印目标: Array = 地封印项.get("targets", [])
+	检(地封印目标.has(2) and not 地封印目标.has(3),
+		"4606：404 的目标白名单应是异色对手（含 2、不含同色队友 3）：%s" % str(地封印目标))
+	检(_可用选项数(海神项.get("arg_choices", [])) == 1, "4606：手里只有 404 时只有一个选项可用")
+	# 校验：args[0] 必须是发动牌上的来源技能，目标按源技能规则
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 海神御巫,
+		"card_ids": [封印牌.id], "dst_ids": [2], "args": [地之封印技能号]}) == GConst.GE_SUCCESS,
+		"4606：合法的技能行动应通过校验")
+	检(角色.v_magic_skill({"src_id": 2, "action_id": 海神御巫,
+		"card_ids": [封印牌.id], "dst_ids": [2], "args": [地之封印技能号]}) != GConst.GE_SUCCESS,
+		"4606：别人的海神御巫行动不应通过校验")
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 9999,
+		"card_ids": [封印牌.id], "dst_ids": [2], "args": [地之封印技能号]}) != GConst.GE_SUCCESS,
+		"4606：不是海神御巫的法术技能行动不应通过校验")
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 海神御巫,
+		"card_ids": [封印牌.id], "dst_ids": [3], "args": [地之封印技能号]}) != GConst.GE_SUCCESS,
+		"4606：封印牌不能放到同色队友面前")
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 海神御巫,
+		"card_ids": [封印牌.id], "dst_ids": [2], "args": [迅捷赐福技能号]}) != GConst.GE_SUCCESS,
+		"4606：args 与发动牌上的来源技能不一致应拒绝")
 	玩家.hand_cards.append(迅捷牌.id)
-	检(角色.v_magic_skill({
-		"src_id": 1, "action_id": 海神御巫,
-		"card_ids": [迅捷牌.id], "dst_ids": [2],
-	}) != GConst.GE_SUCCESS, "4606：赐福牌不能放到对手面前")
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 海神御巫,
+		"card_ids": [迅捷牌.id], "dst_ids": [2], "args": [迅捷赐福技能号]}) != GConst.GE_SUCCESS,
+		"4606：赐福牌不能放到对手面前")
 	玩家.set_crystal(0)
-	检(角色.v_magic_skill({"src_id": 1, "action_id": 海神御巫, "card_ids": [], "dst_ids": []})
-		!= GConst.GE_SUCCESS, "4606：没有能量时不能发动（宝石可顶水晶，见下一个场景）")
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 海神御巫,
+		"card_ids": [封印牌.id], "dst_ids": [2], "args": [地之封印技能号]}) != GConst.GE_SUCCESS,
+		"4606：没有能量时不能发动（宝石可顶水晶，见下一个场景）")
 
-	# ---- 4606：选独有技时取消 → 不扣能量 / 不扣牌，退回行动阶段 ----
+	# ---- 4606：没选全就提交 → 不通过、不扣能量 / 不扣牌，留在行动阶段 ----
 	_重置战斗()
 	玩家.hand_cards.append(迅捷牌.id)
 	玩家.set_crystal(1)
@@ -564,14 +605,9 @@ func 跑() -> void:
 		"card_ids": [], "dst_ids": [], "args": [],
 	})
 	引擎.run()
-	检(引擎._await_id == 1, "4606：取消场景应先下发独有技询问")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 海神御巫, "src_id": 1,
-		"args": [], "card_ids": [], "dst_ids": [],
-	})
 	检(玩家.get_energy() == 1 and 玩家.hand_cards.has(迅捷牌.id),
-		"4606：取消选择后不应扣能量 / 扣牌")
-	检(引擎._await_kind == GConst.Msg.Action, "4606：取消技能行动后应退回行动阶段重新选择行动")
+		"4606：没选全就提交不应扣能量 / 扣牌")
+	检(引擎._await_kind == GConst.Msg.Action, "4606：被驳回后应留在行动阶段重新选行动")
 
 	# ---- 4606：水晶费用 + 佩戴 404 地之封印（客户端一次带齐牌 / 目标）----
 	_重置战斗()
@@ -581,7 +617,7 @@ func 跑() -> void:
 	发送记录.clear()
 	引擎.resolve_action(GConst.ActionType.MagicSkill, {
 		"src_id": 1, "action_id": 海神御巫,
-		"card_ids": [封印牌.id], "dst_ids": [2], "args": [],
+		"card_ids": [封印牌.id], "dst_ids": [2], "args": [地之封印技能号],
 	})
 	引擎.run()
 	检(玩家.get_energy() == 0 and 玩家.gem == 0, "4606：【水晶】费用应允许用宝石支付")
@@ -609,34 +645,26 @@ func 跑() -> void:
 	检(_播报次数(地之封印技能号) == 1, "4606：借用封印应按源技能号 404 播报，实际 %d 次"
 		% _播报次数(地之封印技能号))
 
-	# ---- 4606：服务端先问「用哪一张独有技」，缺牌选项只置灰；借用 1601 赐福 ----
+	# ---- 4606：二级技能栏里只有「迅捷赐福」那项可用（缺牌的另一项置灰），一次带齐牌 + 目标 ----
 	_重置战斗()
 	玩家.hand_cards.append(迅捷牌.id)
 	玩家.hand_cards.append(普通牌.id)
 	玩家.set_crystal(1)
 	发送记录.clear()
+	var 赐福栏: Dictionary = _找技能(角色.available_skills(), 海神御巫)
+	检((赐福栏.get("cards", []) as Array) == [迅捷牌.id],
+		"4606：可点发动牌应只有带 1601 的迅捷赐福牌：%s" % str(赐福栏.get("cards", [])))
+	var 迅捷项: Dictionary = _取选项目(赐福栏.get("arg_choices", []), 迅捷赐福技能号)
+	检(bool(迅捷项.get("enabled", false)), "4606：手里有 1601 牌时该项应可用：%s" % str(迅捷项))
+	检((迅捷项.get("targets", []) as Array) == [3],
+		"4606：1601 的目标白名单应是同色队友 3：%s" % str(迅捷项.get("targets", [])))
+	检(_可用选项数(赐福栏.get("arg_choices", [])) == 1,
+		"4606：手里只有 1601 时只有一个选项可用")
 	引擎.resolve_action(GConst.ActionType.MagicSkill, {
 		"src_id": 1, "action_id": 海神御巫,
-		"card_ids": [], "dst_ids": [], "args": [],
+		"card_ids": [迅捷牌.id], "dst_ids": [3], "args": [迅捷赐福技能号],
 	})
 	引擎.run()
-	检(引擎._await_id == 1, "4606：点击技能后应下发独有技询问（等待 %s）" % str(引擎._await_id))
-	var 选技问: Dictionary = _取询问(1, 海神御巫)
-	检(not 选技问.is_empty(), "4606：没有下发选择独有技的询问")
-	var 备注: Array = 选技问.get("notes", [])
-	检(备注.size() == 7, "4606：固定选项应完整下发 7 个来源技能，实际 %d 个" % 备注.size())
-	检(备注.has("迅捷赐福"), "4606：选项里应有「迅捷赐福」：%s" % str(备注))
-	var 选项可用: Array = 选技问.get("option_enabled", [])
-	检(选项可用.size() == 7, "4606：应下发 7 个选项的可用状态：%s" % str(选项可用))
-	检(选项可用.count(true) == 1, "4606：手里只有 1601 时只有一个选项可用：%s" % str(选项可用))
-	检((选技问.get("card_ids", []) as Array) == [迅捷牌.id],
-		"4606：可点牌应只有带来源技能的那张：%s" % str(选技问.get("card_ids", [])))
-	检((选技问.get("dst_ids", []) as Array) == [3],
-		"4606：1601 的可点目标应只有同色队友 3：%s" % str(选技问.get("dst_ids", [])))
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 海神御巫, "src_id": 1,
-		"args": [迅捷赐福技能号], "card_ids": [迅捷牌.id], "dst_ids": [3],
-	})
 	检(引擎._await_id == 1, "4606：借用赐福放置后应先询问 4602（等待 %s）" % str(引擎._await_id))
 	检(not _取询问(1, 邪灵退散).is_empty(), "4606：借用赐福放置也应触发 4602")
 	引擎.on_message(1, GConst.Msg.Respond, {
@@ -662,7 +690,7 @@ func 跑() -> void:
 	玩家.set_crystal(1)
 	引擎.resolve_action(GConst.ActionType.MagicSkill, {
 		"src_id": 1, "action_id": 海神御巫,
-		"card_ids": [封印牌.id], "dst_ids": [2], "args": [],
+		"card_ids": [封印牌.id], "dst_ids": [2], "args": [地之封印技能号],
 	})
 	引擎.run()
 	检(引擎._await_id == 1, "4606：单牌场景应先询问 4602")
@@ -690,7 +718,7 @@ func 跑() -> void:
 	玩家.set_crystal(1)
 	引擎.resolve_action(GConst.ActionType.MagicSkill, {
 		"src_id": 1, "action_id": 海神御巫,
-		"card_ids": [封印牌.id], "dst_ids": [2], "args": [],
+		"card_ids": [封印牌.id], "dst_ids": [2], "args": [地之封印技能号],
 	})
 	引擎.run()
 	检(引擎._await_id == 1, "借用封印：放置后应先询问 4602")
@@ -725,7 +753,7 @@ func 跑() -> void:
 	玩家.set_crystal(1)
 	引擎.resolve_action(GConst.ActionType.MagicSkill, {
 		"src_id": 1, "action_id": 海神御巫,
-		"card_ids": [威力牌.id], "dst_ids": [3], "args": [],
+		"card_ids": [威力牌.id], "dst_ids": [3], "args": [威力赐福技能号],
 	})
 	引擎.run()
 	检(引擎._await_id == 1, "借用 1602：放置后应先询问 4602")
@@ -770,7 +798,7 @@ func 跑() -> void:
 	玩家.set_crystal(1)
 	引擎.resolve_action(GConst.ActionType.MagicSkill, {
 		"src_id": 1, "action_id": 海神御巫,
-		"card_ids": [迅捷牌.id], "dst_ids": [3], "args": [],
+		"card_ids": [迅捷牌.id], "dst_ids": [3], "args": [迅捷赐福技能号],
 	})
 	引擎.run()
 	检(引擎._await_id == 1, "借用 1601：放置后应先询问 4602")

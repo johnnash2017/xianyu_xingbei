@@ -841,6 +841,58 @@ func 跑() -> void:
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(1)
 
+	# 4606 海神御巫（灵熙之潮）：和魔眼一样点技能就在二级技能栏里列出封印 / 赐福的独有技选项，
+	# 选项本身是技能（带 skill_id，按法术色上色），选中后选 1 张发动牌 + 1 名合法目标，按一次确定提交
+	var 封印牌卡: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and (c.has_skill_id(401) or c.has_skill_id(404)):
+			封印牌卡 = c
+			break
+	检(封印牌卡 != null, "卡库找不到封印牌")
+	if 封印牌卡 != null:
+		var 海神手牌: Array[GCard] = []
+		for c: GCard in Data.hand_cards:
+			海神手牌.append(c)
+		海神手牌.append(封印牌卡)
+		Data.hand_cards = 海神手牌
+		var 海神技能号: int = 401 if 封印牌卡.has_skill_id(401) else 404
+		var 海神选项: Array = []
+		for 技能号: int in [401, 402, 403, 404, 405, 1601, 1602]:
+			海神选项.append({
+				"text": GConst.skill_name(技能号), "args": [技能号], "skill_id": 技能号,
+				"need_card": 1, "need_target": 1, "targets": [2],
+				"enabled": 技能号 == 海神技能号,
+			})
+		窗.call("_选择技能", GConst.技能_海神御巫, GConst.ActionType.MagicSkill, 0, 0,
+			[2, 3], [封印牌卡.id], 0, 0, 0, GConst.CardSource.Hand, "", 0, 0, 海神选项, null, 0)
+		await 等帧(1)
+		检(int(窗.get("_mode")) == 4,
+			"4606 点技能后应直接进入二级技能栏（实际 %d）" % int(窗.get("_mode")))
+		var 海神栏: Array = 窗.get("_二级选项")
+		检(海神栏.size() == 7, "4606 应摆出 7 个来源技能选项（实际 %d 个）" % 海神栏.size())
+		var 可用下标: int = -1
+		for i: int in range(海神栏.size()):
+			if int((海神栏[i] as Dictionary).get("技能号", 0)) == 海神技能号:
+				可用下标 = i
+		检(可用下标 >= 0, "4606 的选项按钮应绑来源技能号（skill_id）")
+		if 可用下标 >= 0:
+			窗.call("_选中二级选项", GConst.技能_海神御巫, 可用下标)
+			await 等帧(1)
+			检(int(窗.get("_mode")) == 4,
+				"4606 点选选项只切换选中，不应直接提交（实际 %d）" % int(窗.get("_mode")))
+			检(int(窗.get("_skill_need_card")) == 1 and int(窗.get("_skill_need_target")) == 1,
+				"4606 选中选项后应要求选 1 张发动牌 + 1 名目标（实际 %d / %d）"
+				% [int(窗.get("_skill_need_card")), int(窗.get("_skill_need_target"))])
+			窗.call("_on_card_clicked", 封印牌卡.id)
+			await 等帧(1)
+			窗.call("_on_player_clicked", 2)
+			await 等帧(1)
+			(窗.get("BtnOK") as Button).pressed.emit()
+			await 等帧(1)
+			检(int(窗.get("_mode")) == 0,
+				"4606 选好选项 / 牌 / 目标后按确定应提交（实际 %d）" % int(窗.get("_mode")))
+		Data.hand_cards = 攻击牌
+
 	# 4603 伴响魂灵：响应询问里「其余对手」是服务端固定的伤害目标 —— 客户端要自动选中并锁死，
 	# 头像上直接写 1 法术伤害（技能指示器「自动选目标：询问目标」+ 文案）
 	Logic.command_received.emit({

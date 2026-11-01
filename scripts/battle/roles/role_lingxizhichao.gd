@@ -13,8 +13,11 @@ extends BattleRole
 ##   海神御巫（4606，法术 / 必杀技 / 水晶）：支付 1【水晶】，使用 1 张封印师 / 祈祷师独有技；你弃 1 张牌。
 ##
 ## 借用关系（见《禁用3星与3.5星角色开发计划》F5 / data-audit A18、A16、A17）：
-##   4606 按「牌载技能」实现：手里必须有带 401~405 / 1601 / 1602 的牌；
-##   选牌 → 源技能目标 → 结算 → 弃 1 张。校验 / 放置全部转给 F5 的
+##   4606 和魔弓【魔眼】一样走 available_skills 的 arg_choices：点技能直接进二级技能栏，
+##   列出 7 个来源技能选项（选项本身就是技能，带 skill_id，客户端按法术色上色、悬停弹说明）；
+##   选中一项后在同一条栏里选 1 张带该技能的发动牌 + 1 名该独有技的合法目标，按一次「确定」提交。
+##   玩家不点确定就什么都不发生（不再先发一次技能按钮行动、再等服务端补问）。
+##   校验 / 放置全部转给 F5 的
 ##   scripts/battle/skills/skill_seal.gd 与 skill_bless.gd，不改 role_fengyin / role_qidao。
 ##   放置只是第一步：helper 头注释（借用角色接法）要求借用角色继续转发触发钩子，
 ##   所以本角色还有 p_show_hand（封印展示触发）与 p_timeline_2_hit / p_after_attack /
@@ -51,16 +54,12 @@ const 怒潮基础伤害: int = 1
 ## 4605 要选几名目标角色（技能原文「对 4 名目标角色」）：4 人局正好全体，6 人局（3v3）由玩家挑 4 人
 const 怒潮目标数: int = 4
 
-## 4602 的进度：等自己选 1 名目标对手；4606 的进度见下方 _4606阶段
+## 4602 的进度：等自己选 1 名目标对手
 const 变动阶段_空闲: int = 0
 const 变动阶段_待4602: int = 1
 const 变动阶段_等4602回复: int = 2
 const 变动阶段_待4606弃牌: int = 3
 const 变动阶段_等4606弃牌回复: int = 4
-
-const 阶段4606_空闲: int = 0
-## 已经问过「使用哪一张独有技」，等玩家选牌 / 选目标并回复
-const 阶段4606_待选技回复: int = 1
 
 ## 借用的封印 / 赐福 helper（构造传自己；本角色只做路由）
 var _封印: Variant = null
@@ -71,7 +70,6 @@ var _变动ctx: Dictionary = {}
 var _变动阶段: int = 变动阶段_空闲
 ## 4606 放置完源技能后，还要等基础效果变更钩子跑完 4602 再弃自己 1 张牌
 var _4606待弃牌: bool = false
-var _4606阶段: int = 阶段4606_空闲
 
 ## 4603 的「本回合最多一次」；每次自己的回合开始清零
 var _本回合已触发4603: bool = false
@@ -119,11 +117,17 @@ func available_skills() -> Array:
 		if bool(项.get("enabled", false)):
 			有可用 = true
 			break
+	# 和魔眼一样：点技能直接在二级技能栏里摆出 7 个来源技能（各带「选 1 张发动牌 + 1 名合法目标」），
+	# 选好来源技能 / 牌 / 目标后按一次「确定」提交。选项本身是技能（带 skill_id），
+	# 客户端按技能类型上色（这里都是法术色）、悬停弹对应独有技的说明。
 	return [{
 		"type": GConst.ActionType.MagicSkill,
 		"id": 海神御巫,
 		"need_card": 0,
 		"need_target": 0,
+		"arg_choices": _4606选项(),
+		# 可点的发动牌：手里所有带封印 / 赐福技能的牌（其余手牌置灰）
+		"cards": _4606牌表(),
 		# 能量 / 可用的独有技牌都没有时照常下发、只置灰（界面看得见技能存在）
 		"enabled": 可用() and player.get_energy() > 0 and 有可用,
 	}]
@@ -149,65 +153,30 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
-	if cards.is_empty() and dsts.is_empty():
-		# 客户端没带牌与目标：技能本体校验放到服务端询问里（见 p_magic_skill），
-		# 这里只要求当前手里确实有一张能借用的独有技牌。
-		if not _有可用借用():
-			return GConst.GE_INVALID_ACTION
-		return GConst.GE_SUCCESS
-	if cards.size() != 1 or dsts.size() != 1:
+	var args: Array = action.get("args", [])
+	# 二级技能栏一次带齐：args[0]＝选中的来源技能、card_ids＝那条技能的发动牌、dst_ids＝合法目标
+	if cards.size() != 1 or dsts.size() != 1 or args.is_empty():
 		return GConst.GE_INVALID_ACTION
-	return _校验借用(int(cards[0]), int(dsts[0]))
+	var cid: int = int(cards[0])
+	var card: GCard = Data.get_card(cid)
+	if card == null or _来源技能号(card) != int(args[0]):
+		return GConst.GE_INVALID_ACTION
+	return _校验借用(cid, int(dsts[0]))
 
 
 func p_magic_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != 海神御巫:
 		return EMPTY_HANDLE
-	if _4606阶段 == 阶段4606_空闲:
-		var cards: Array = action.get("card_ids", [])
-		var dsts: Array = action.get("dst_ids", [])
-		if cards.size() == 1 and dsts.size() == 1:
-			# 客户端一次带齐牌 + 目标：直接结算
-			return _结算4606(int(cards[0]), int(dsts[0]))
-		# 只点了技能按钮：服务端下发「选哪一张独有技 + 选牌 + 选目标」的询问
-		_4606阶段 = 阶段4606_待选技回复
-		_询问4606()
-		return WAIT
-	# 已问过：读取「选技能 + 牌 + 目标」的回复
-	var r: Dictionary = take_skill_reply_full()
-	_4606阶段 = 阶段4606_空闲
-	var args: Array = r.get("args", [])
-	var cards2: Array = r.get("card_ids", [])
-	var dsts2: Array = r.get("dst_ids", [])
-	if args.is_empty() or cards2.is_empty() or dsts2.is_empty():
-		# 取消 / 超时 / 没选全：这次技能行动没发生，退回行动阶段
-		engine.取消技能行动()
-		return SUCCESS
-	var 选技能: int = int(args[0])
-	var cid: int = int(cards2[0])
-	var dst_id: int = int(dsts2[0])
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	var args: Array = action.get("args", [])
+	if cards.size() != 1 or dsts.size() != 1 or args.is_empty():
+		return EMPTY_HANDLE
+	var cid: int = int(cards[0])
 	var card: GCard = Data.get_card(cid)
-	if card == null or _来源技能号(card) != 选技能 or _校验借用(cid, dst_id) != GConst.GE_SUCCESS:
-		engine.取消技能行动()
-		return SUCCESS
-	return _结算4606(cid, dst_id)
-
-
-## 4606 的询问：固定把 401~405 / 1601 / 1602 全部列出，不能用的只置灰；
-## 每项带自己的目标白名单，客户端选中该项后据此收紧可点头像（未选＝按并集）。
-func _询问4606() -> void:
-	var 选项: Array = _4606选项()
-	var 牌表: Array[int] = _4606牌表()
-	var 目标并集: Array[int] = []
-	for 项: Dictionary in 选项:
-		# 只把「手里有对应发动牌」的选项目标并进来：没有牌的来源技能点不动，
-		# 它的目标也不该在未选选项时就亮（选中某项后客户端再按该项 targets 收紧）
-		if not bool(项.get("enabled", false)):
-			continue
-		for pid: Variant in 项.get("targets", []):
-			if not 目标并集.has(int(pid)):
-				目标并集.append(int(pid))
-	询问(player.id, 海神御巫, 1, 1, GConst.CardSource.Hand, 选项, 0, "", 牌表, true, 0, -1, 目标并集)
+	if card == null or _来源技能号(card) != int(args[0]):
+		return GConst.GE_INVALID_ACTION
+	return _结算4606(cid, int(dsts[0]))
 
 
 ## 4606 的固定选项：封印师 401~405 + 祈祷师 1601 / 1602。
@@ -225,9 +194,14 @@ func _4606选项() -> Array:
 				本技能牌.append(cid)
 		var 目标: Array[int] = _技能合法目标(技能号, int(本技能牌[0]) if not 本技能牌.is_empty() else -1)
 		out.append({
+			# 选项文案＝来源技能名；args[0] 回传来源技能号（v_magic_skill 按它认）
+			"text": GConst.skill_name(技能号),
+			"args": [技能号],
 			"value": 技能号,
-			"label": GConst.skill_name(技能号),
 			"skill_id": 技能号,
+			# 选中该项后在二级技能栏里再选 1 张发动牌 + 1 名合法目标，最后按一次「确定」
+			"need_card": 1,
+			"need_target": 1,
 			"enabled": not 本技能牌.is_empty() and not 目标.is_empty(),
 			"targets": 目标,
 		})
