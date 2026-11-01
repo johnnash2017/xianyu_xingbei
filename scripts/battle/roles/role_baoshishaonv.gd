@@ -349,21 +349,26 @@ func wants_before_discard(ctx: Dictionary) -> bool:
 
 
 func p_before_discard(ctx: Dictionary) -> int:
-	if not _可拦截三秒原则(ctx):
-		return SUCCESS
 	var 阶段: int = int(ctx.get("_4704阶段", 0))
 	if 阶段 >= STEP_DONE:
 		return SUCCESS
-	var 魔弹表: Array[int] = _待弃魔弹(ctx.get("cards", []))
-	if 魔弹表.is_empty():
-		ctx["_4704阶段"] = STEP_DONE
-		return SUCCESS
-	# 一次能把本次弃牌里所有符合条件的【魔弹】都收走：每张都要弃 1 张自己的牌当代价。
-	# 给的选项是「获得 1 张 / 2 张 / …」，选项自带需牌数（选几张就要弃几张），
-	# 鼠标指向选项能看到将要收走的那几张牌面（preview_cards）。
-	var 牌主: int = int(ctx.get("owner", -1))
+	# 阶段 0＝第一次来：预判 + 问玩家。阶段 1＝问过了、正等回复 —— 不能再复检「能不能拦」
+	# （代价牌付掉之后手牌可能就空了，复检会把已经答过的询问丢掉）
+	var 魔弹表: Array = []
 	if 阶段 == 0:
+		if not _可拦截三秒原则(ctx):
+			return SUCCESS
+		# 一次能把本次弃牌里所有符合条件的【魔弹】都收走：每张都要弃 1 张自己的牌当代价。
+		# 给的选项是「获得 1 张 / 2 张 / …」，选项自带需牌数（选几张就要弃几张），
+		# 鼠标指向选项能看到将要收走的那几张牌面（preview_cards）。
+		for cid: int in _待弃魔弹(ctx.get("cards", [])):
+			魔弹表.append(cid)
+		ctx["_4704魔弹"] = 魔弹表
+		if 魔弹表.is_empty():
+			ctx["_4704阶段"] = STEP_DONE
+			return SUCCESS
 		ctx["_4704阶段"] = 1
+		var 牌主: int = int(ctx.get("owner", -1))
 		var 选项: Array = []
 		for i: int in range(1, 魔弹表.size() + 1):
 			var 选项名: String = "获得 %d 张【魔弹】" % i
@@ -384,14 +389,17 @@ func p_before_discard(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		return WAIT
 	ctx["_4704阶段"] = STEP_DONE
+	魔弹表 = ctx.get("_4704魔弹", [])
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var given: Array = r.get("card_ids", [])
-	# 选项参数就是「要收几张」：0＝取消；超出魔弹数的按魔弹数截断
-	if args.is_empty():
+	if args.is_empty() or int(args[0]) <= 0:
+		# 取消（args[0] = 0）：不认领，这次的牌照常进弃牌堆
 		return SUCCESS
-	var 取数: int = clampi(int(args[0]), 0, 魔弹表.size())
-	if 取数 <= 0 or given.is_empty():
+	# 以「实际交出的代价张数」为准：弃几张牌就收几张【魔弹】（选项值只决定界面上的需牌数，
+	# 不拿它当权限依据 —— 客户端没回选项值时也不会白付代价却收不到牌）
+	var 取数: int = mini(魔弹表.size(), given.size())
+	if 取数 <= 0:
 		return SUCCESS
 	# 认可点选的代价牌里真实在手牌中的前 取数 张：每张代价换 1 张【魔弹】
 	var 代价们: Array[int] = []
