@@ -880,6 +880,19 @@ func 跑() -> void:
 			var 项色: Color = (项按钮.plateButton.material as ShaderMaterial).get_shader_parameter("button_color")
 			检(项色.is_equal_approx(法术色),
 				"4606 的独有技选项 %d 应是法术色（实际 %s）" % [项号, str(项色)])
+		# 选中迅捷赐福 / 威力赐福选项时，提示条也要保持海神御巫的说明（不能被赐福的响应文案顶掉）
+		var 赐福下标: int = -1
+		for i: int in range(海神栏.size()):
+			var 项技能: int = int((海神栏[i] as Dictionary).get("技能号", 0))
+			if 项技能 == GConst.技能_迅捷赐福 or 项技能 == GConst.技能_威力赐福:
+				赐福下标 = i
+				break
+		if 赐福下标 >= 0:
+			var 海神提示前: String = str(窗.get("_提示原文"))
+			窗.call("_选中二级选项", GConst.技能_海神御巫, 赐福下标)
+			await 等帧(1)
+			检(str(窗.get("_提示原文")) == 海神提示前,
+				"4606 选中赐福选项时提示条应保持海神御巫的说明（实际：%s）" % str(窗.get("_提示原文")))
 		var 可用下标: int = -1
 		for i: int in range(海神栏.size()):
 			if int((海神栏[i] as Dictionary).get("技能号", 0)) == 海神技能号:
