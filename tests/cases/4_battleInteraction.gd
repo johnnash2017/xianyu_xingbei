@@ -1191,6 +1191,30 @@ func 跑() -> void:
 	(窗.get("BtnCancel") as Button).pressed.emit()
 	await 等帧(1)
 
+	# 法术伤害排队播放时，士气变化与「将 N 点士气转移给…」都要排在伤害后面：
+	# 日志顺序必须是「先写伤害、最后写士气转移」
+	窗.set("_法术待播", [])
+	Logic.hurt_received.emit({"dst_id": 2, "src_id": 1, "hurt": 1,
+		"cause": 8704, "type": GConst.HarmType.Magic})
+	Logic.hurt_received.emit({"dst_id": 4, "src_id": 1, "hurt": 1,
+		"cause": 8704, "type": GConst.HarmType.Magic})
+	await 等帧(1)
+	Logic.gossip_received.emit("红队 将 1 点士气转移给 蓝队")
+	await 等帧(1)
+	检(not str(窗.get("_日志")).contains("士气转移"),
+		"伤害还没播完时，士气转移不应先写进日志")
+	检((窗.get("_法术待播") as Array).size() >= 1, "士气转移应排进法术伤害队列")
+	# 把队列一次推完（每次 0.3 秒 > 法术结算间隔）
+	for i: int in range(4):
+		窗.call("_推进法术伤害队列", 0.3)
+	await 等帧(1)
+	var 排序日志: String = str(窗.get("_日志"))
+	检(排序日志.contains("士气转移"), "队列播完后士气转移才写进日志")
+	var 伤位: int = 排序日志.find("造成 1 点法术伤害")
+	var 转位: int = 排序日志.find("士气转移")
+	检(伤位 >= 0 and 转位 > 伤位,
+		"日志顺序应是先伤害、后士气转移（伤害 @%d / 转移 @%d）" % [伤位, 转位])
+
 	# 基础效果的状态图标悬停：文本前面要写「基础效果：」，和指示物 / 独有效果区分开
 	var 面板: 战斗玩家面板 = null
 	var 界面板: Array = 窗.get("_面板列表")
