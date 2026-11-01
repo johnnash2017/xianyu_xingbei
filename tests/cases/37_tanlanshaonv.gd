@@ -342,6 +342,11 @@ func 跑() -> void:
 	检(角色.missile_fusion_elements() == [GConst.CardElement.Thunder, GConst.CardElement.Fire],
 		"8703 的可当魔弹系别应为雷 / 火：%s" % str(角色.missile_fusion_elements()))
 	检(int(角色.missile_fusion_skill()) == 8703, "8703 的魔弹融合播报号应为 8703，不借用 803/7602")
+	# 头像提示：落点要写「2 法术伤害」（同魔弹融合 803 / 节日魔导 7602）
+	var 融合提示: Dictionary = GConst.技能指示器.get(8703, {})
+	检(int(融合提示.get("每目标", 0)) == GConst.魔弹基础伤害
+		and str(融合提示.get("文案", "")) == "%d 法术伤害",
+		"8703 的头像提示应按魔弹基础伤害写「%%d 法术伤害」：%s" % str(融合提示))
 	检(角色.v_missile(雷攻击.id, 2) == GConst.GE_SUCCESS, "雷系牌应能当【魔弹】使用")
 	检(角色.v_missile(火攻击.id, 2) == GConst.GE_SUCCESS, "火系牌应能当【魔弹】使用")
 	检(角色.v_missile(魔弹牌.id, 2) == GConst.GE_SUCCESS, "【魔弹】本体应能使用")
