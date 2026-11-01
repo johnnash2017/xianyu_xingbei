@@ -2063,6 +2063,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var 选项目标: Array = []
 	var 选项牌号: Array = []
 	var 选项需目标: Array = []
+	var 选项预览牌: Array = []
 	var 有选项目标: bool = false
 	for o: Dictionary in options:
 		args.append(int(o.get("value", 0)))
@@ -2072,6 +2073,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		选项需牌.append(int(o.get("need_card", 0)))
 		选项牌号.append(int(o.get("card_id", 0)))
 		选项需目标.append(int(o.get("need_target", 0)))
+		选项预览牌.append({"ids": _牌面表(o.get("preview_cards", []))})
 		var 目标: Array = o.get("targets", [])
 		选项目标.append({"ids": 目标})
 		if not 目标.is_empty():
@@ -2116,6 +2118,15 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 「转移」含自己）：客户端选中某项后按它收紧可点头像（未选＝按并集）
 	if 有选项目标:
 		cmd["option_targets"] = 选项目标
+	# 选项带「悬停预览牌」时（如【三秒原则】的「获得 2 张【魔弹】」）：
+	# 客户端悬停那个选项按钮时把这几张牌的卡面并排摊出来
+	if not 选项预览牌.is_empty():
+		var 有预览: bool = false
+		for 项预览: Dictionary in 选项预览牌:
+			if not (项预览.get("ids", []) as Array).is_empty():
+				有预览 = true
+		if 有预览:
+			cmd["option_preview_cards"] = 选项预览牌
 	# 默认替玩家选中哪一项（0 基下标；行动结束响应用）：不传＝不预选。
 	# 客户端据此在选项摆出来的同时先点亮第一项，玩家不用先点一次选项才能按「确定」。
 	if default_option >= 0:

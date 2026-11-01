@@ -216,6 +216,9 @@ const SUB: Dictionary = {
 		# 本次攻击不能用来应战的牌的卡名（GConst.CardName；如 9703 禁【暗灭】应战）：
 		# 应战询问里下发，客户端据此把这些牌置灰；服务端仍会复核。
 		48: {"n": "ban_reattack_card_names", "t": "u32", "r": true},
+		# 带选项的询问里，每个选项各自「悬停要摊出来的预览牌」（与 args 里的选项值一一对应）：
+		# 如暴食少女【三秒原则】的「获得 2 张【魔弹】」悬停时把那两张魔弹的卡面并排显示。
+		50: {"n": "option_preview_cards", "t": "msg", "r": true, "s": "OptionTargets"},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {
@@ -244,6 +247,9 @@ const SUB: Dictionary = {
 		# 该项自己可点哪些牌（牌面；空＝沿用技能本体的牌白名单）：
 		# 如灵熙之潮【海神御巫】切到「地之封印」后，手里其它系别的封印 / 赐福牌都要置灰。
 		13: {"n": "cards", "t": "u32", "r": true},
+		# 鼠标指向这个选项时要摊出来的「预览牌」（牌面）：如暴食少女【三秒原则】的
+		# 「获得 2 张【魔弹】」悬停时并排显示那两张魔弹的卡面（多张一起显示）。
+		14: {"n": "preview_cards", "t": "u32", "r": true},
 	},
 	# 某个选项各自的可点目标（option_targets 的一项）
 	"OptionTargets": {

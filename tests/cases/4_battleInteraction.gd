@@ -1069,6 +1069,55 @@ func 跑() -> void:
 		窗.set("_mode", 0)
 		Data.hand_cards = 攻击牌
 
+	# 4704 三秒原则的选项悬停：选项写「获得 2 张【魔弹】」，悬停时并排摊出两张魔弹卡面
+	var 魔弹甲: GCard = null
+	var 魔弹乙: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.card_name_enum() == GConst.CardName.Missile:
+			if 魔弹甲 == null:
+				魔弹甲 = c
+			elif 魔弹乙 == null:
+				魔弹乙 = c
+	检(魔弹甲 != null and 魔弹乙 != null, "卡库找不到两张【魔弹】")
+	if 魔弹甲 != null and 魔弹乙 != null:
+		Logic.command_received.emit({
+			"cmd_type": GConst.CmdType.Respond,
+			"commands": [{
+				"respond_id": 4704, "src_id": Logic.my_player_id, "is_skill": true,
+				"dst_ids": [2], "card_ids": [],
+				"args": [0, 0, GConst.CardSource.Hand, 2, 1, 2],
+				"card_max": 0, "card_rule": "", "can_cancel": true,
+				"notes": ["获得 1 张【魔弹】", "获得 2 张【魔弹】"],
+				"option_need_cards": [1, 2],
+				"option_preview_cards": [
+					{"ids": [魔弹甲.id]},
+					{"ids": [魔弹甲.id, 魔弹乙.id]},
+				],
+			}],
+		})
+		await 等帧(2)
+		检(int(窗.get("_mode")) == 3, "4704 询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
+		var 三秒栏: Array = 窗.get("_二级选项")
+		检(三秒栏.size() == 2, "4704 应摆出 1 / 2 张两个选项（实际 %d）" % 三秒栏.size())
+		var 两张项: Dictionary = {}
+		for 项: Dictionary in 三秒栏:
+			if (项.get("预览牌", []) as Array).size() == 2:
+				两张项 = 项
+		检(not 两张项.is_empty(), "「获得 2 张」选项应带 2 张预览牌")
+		if not 两张项.is_empty():
+			var 项按钮: 技能按钮 = 两张项.get("按钮")
+			检(项按钮 != null and 项按钮.skillName != null \
+				and 项按钮.skillName.text == "获得 2 张【魔弹】",
+				"选项按钮文案应是「获得 2 张【魔弹】」")
+			窗.call("_显示技能说明", 项按钮)
+			await 等帧(1)
+			var 三秒说明框: 说明提示框 = 窗.get("_说明提示")
+			var 卡面组: Control = 三秒说明框.内容 if 三秒说明框 != null else null
+			检(卡面组 is HBoxContainer and 卡面组.get_child_count() == 2,
+				"悬停「获得 2 张」应并排摊出两张卡面")
+			(窗.get("BtnCancel") as Button).pressed.emit()
+			await 等帧(1)
+
 	# 基础效果的状态图标悬停：文本前面要写「基础效果：」，和指示物 / 独有效果区分开
 	var 面板: 战斗玩家面板 = null
 	var 界面板: Array = 窗.get("_面板列表")

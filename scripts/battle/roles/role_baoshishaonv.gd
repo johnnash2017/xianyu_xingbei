@@ -358,17 +358,25 @@ func p_before_discard(ctx: Dictionary) -> int:
 	if 魔弹表.is_empty():
 		ctx["_4704阶段"] = STEP_DONE
 		return SUCCESS
-	# 一次能把本次弃牌里所有符合条件的【魔弹】都收走：每张都要弃 1 张自己的牌当代价，
-	# 手牌不够就按手牌数收前几张
-	var 需: int = mini(魔弹表.size(), player.hand_cards.size())
-	if 需 <= 0:
-		ctx["_4704阶段"] = STEP_DONE
-		return SUCCESS
+	# 一次能把本次弃牌里所有符合条件的【魔弹】都收走：每张都要弃 1 张自己的牌当代价。
+	# 给的选项是「获得 1 张 / 2 张 / …」，选项自带需牌数（选几张就要弃几张），
+	# 鼠标指向选项能看到将要收走的那几张牌面（preview_cards）。
+	var 牌主: int = int(ctx.get("owner", -1))
 	if 阶段 == 0:
 		ctx["_4704阶段"] = 1
-		var 牌主: int = int(ctx.get("owner", -1))
-		# 头像提示：获得的是牌主（队友）的那张【魔弹】
-		询问(player.id, 三秒原则, 需, 0, GConst.CardSource.Hand, [], 需, "",
+		var 选项: Array = []
+		for i: int in range(1, 魔弹表.size() + 1):
+			var 选项名: String = "获得 %d 张【魔弹】" % i
+			选项.append({
+				# ask_skill 走 label 做按钮文案（arg_choices 那条通道读 text），两个都写
+				"text": 选项名,
+				"label": 选项名,
+				"args": [i],
+				"need_card": i,
+				"preview_cards": 魔弹表.slice(0, i),
+				"enabled": i <= player.hand_cards.size(),
+			})
+		询问(player.id, 三秒原则, 0, 0, GConst.CardSource.Hand, 选项, 0, "",
 			player.hand_cards.duplicate(), true, 0, -1, [牌主], -1, {}, 0, 0, false, [牌主])
 		return WAIT
 	if not engine.has_reply():
@@ -377,12 +385,16 @@ func p_before_discard(ctx: Dictionary) -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var given: Array = r.get("card_ids", [])
-	if args.is_empty() or int(args[0]) != 1 or given.is_empty():
+	# 选项参数就是「要收几张」：0＝取消；超出魔弹数的按魔弹数截断
+	if args.is_empty():
 		return SUCCESS
-	# 认可点选的代价牌里真实在手牌中的前 需 张：每张代价换 1 张【魔弹】
+	var 取数: int = clampi(int(args[0]), 0, 魔弹表.size())
+	if 取数 <= 0 or given.is_empty():
+		return SUCCESS
+	# 认可点选的代价牌里真实在手牌中的前 取数 张：每张代价换 1 张【魔弹】
 	var 代价们: Array[int] = []
 	for c: Variant in given:
-		if 代价们.size() >= 需:
+		if 代价们.size() >= 取数:
 			break
 		var cid: int = int(c)
 		if player.has_discard_card(cid) and not 代价们.has(cid):
