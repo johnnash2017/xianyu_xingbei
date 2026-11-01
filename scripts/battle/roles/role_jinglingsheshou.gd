@@ -210,7 +210,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		engine.remove_cover(player.id, [cid], player.id, YUAN_SU_SHE_JI)
 	else:
 		engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "cover" if 用盖牌 else "hand", "cause": YUAN_SU_SHE_JI})
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -364,7 +364,7 @@ func p_dong_wu_huo_ban_discard(ctx: Dictionary) -> int:
 		# 取消/超时：必须交出，故自动取首张
 		cid = int(t.hand_cards[0])
 	engine.take_from_hand(t.id, [cid])
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": t.id, "source": "hand"})
 	engine._broadcast_game()
 	return SUCCESS
 

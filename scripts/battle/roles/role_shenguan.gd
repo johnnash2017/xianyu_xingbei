@@ -301,7 +301,7 @@ func _shen_sheng_qi_fu(action: Dictionary) -> int:
 		"card_ids": cards, "is_real": true,
 	})
 	engine.take_from_hand(player.id, cards, true)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	施加治疗(player.id, 2)
 	engine._broadcast_game()
 	return SUCCESS
@@ -324,7 +324,7 @@ func _shui_zhi_shen_li(action: Dictionary) -> int:
 			"card_ids": [cid], "is_real": true,
 		})
 		engine.take_from_hand(player.id, [cid], true)
-		engine.to_discard([cid])
+		engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 		if player.hand_cards.is_empty():
 			_shui_shen_dst = -1
 			施加治疗(player.id, 1)
@@ -384,7 +384,7 @@ func _shen_sheng_ling_yu(action: Dictionary) -> int:
 		})
 	if not use_cards.is_empty():
 		engine.take_from_hand(player.id, use_cards)
-		engine.to_discard(use_cards)
+		engine.to_discard(use_cards, {"owner": player.id, "source": "hand"})
 		engine._log_discard(player.id, use_cards)
 	if mode == 1:
 		engine._broadcast_game()

@@ -300,7 +300,7 @@ func _guang_hui_xin_yang(action: Dictionary) -> int:
 		施加治疗(dst.id, 1)
 	if not cards.is_empty():
 		engine.take_from_hand(player.id, cards)
-		engine.to_discard(cards)
+		engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 		engine._log_discard(player.id, cards)
 		engine._broadcast_game()
 		return URGENT

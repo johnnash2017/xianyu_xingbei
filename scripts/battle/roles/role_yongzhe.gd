@@ -373,7 +373,7 @@ func _jin_duan_zhi_li(ctx: Dictionary, hit: bool) -> int:
 			"card_ids": cards, "is_real": true,
 		})
 		engine.take_from_hand(player.id, cards, true)
-		engine.to_discard(cards)
+		engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 

@@ -577,7 +577,7 @@ func _chong_neng(action: Dictionary) -> int:
 	# 顺序对照原版：先弃到 4 张 → 再摸 X 张 → 超限结算 → 盖牌
 	if not 弃牌.is_empty():
 		engine.take_from_hand(player.id, 弃牌)
-		engine.to_discard(弃牌)
+		engine.to_discard(弃牌, {"owner": player.id, "source": "hand"})
 		engine._log_discard(player.id, 弃牌)
 	# 先压盖牌钩子、后压摸牌（状态栈后进先出 → 摸牌与随后的爆牌先跑，再问盖牌）
 	engine.push(BattleEngine.SHook.new("p_cover_after_skill", {"player": player.id}, []))
@@ -685,5 +685,5 @@ func _add_cover(cards: Array, cause: int = 0) -> void:
 func _remove_cover(cards: Array, cause: int = 0) -> void:
 	if cards.is_empty():
 		return
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "cover", "cause": cause})
 	engine.remove_cover(player.id, cards, player.id, cause)

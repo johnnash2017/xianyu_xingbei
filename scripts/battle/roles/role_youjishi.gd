@@ -114,7 +114,7 @@ func p_attack_skill(action: Dictionary) -> int:
 		"virtual_no_fate": true,
 	}))
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	# 出牌播报用真牌（card_ids＝真牌、is_real＝true），卡名 / 命格按真牌显示；
 	# 「视为风系」只体现在 as_card_id（客户端按它出声 / 出特效）与上面 harm 的 card_id 上。
 	engine.broadcast(GConst.Msg.Card, {
@@ -241,7 +241,7 @@ func _结算子弹(ctx: Dictionary) -> int:
 		"card_ids": [cid], "is_real": true,
 	})
 	engine.remove_cover(player.id, [cid], player.id, YUAN_SU_SHE_JI)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "cover"})
 	var harm: Dictionary = ctx.get("harm", {})
 	match _子弹系别:
 		GConst.CardElement.Fire:

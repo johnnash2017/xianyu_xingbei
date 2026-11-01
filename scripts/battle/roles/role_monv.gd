@@ -238,7 +238,7 @@ func _ti_shen_wan_ou(ctx: Dictionary) -> int:
 		"card_ids": [cid], "is_real": true,
 	})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -301,7 +301,7 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 		"card_ids": use, "is_real": true,
 	})
 	engine.take_from_hand(player.id, use, true)
-	engine.to_discard(use)
+	engine.to_discard(use, {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 
@@ -398,7 +398,7 @@ func _cang_yan_fa_dian(action: Dictionary) -> int:
 		"cause": CANG_YAN_FA_DIAN, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	# 牌已在上面展示过：只写日志、不播弃牌特效
 	engine._log_discard(player.id, [cid], false)
 	engine._broadcast_game()
@@ -431,7 +431,7 @@ func _tian_huo_duan_kong(action: Dictionary) -> int:
 		"cause": TIAN_HUO_DUAN_KONG, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, cid_list, true)
-	engine.to_discard(cid_list)
+	engine.to_discard(cid_list, {"owner": player.id, "source": "hand"})
 	# 牌已在上面展示过：只写日志、不播弃牌特效
 	engine._log_discard(player.id, cid_list, false)
 	engine._broadcast_game()

@@ -163,7 +163,7 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
 	engine.take_from_hand(pid, chosen)
-	engine.to_discard(chosen)
+	engine.to_discard(chosen, {"owner": pid, "source": "hand"})
 	engine._log_discard(pid, chosen)
 	engine._broadcast_game()
 	return SUCCESS
@@ -307,7 +307,7 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 			var 弃: Array = _pick_cards(engine.p(engine.current_id), r.get("card_ids", []), 2)
 			if not 弃.is_empty():
 				engine.take_from_hand(engine.current_id, 弃)
-				engine.to_discard(弃)
+				engine.to_discard(弃, {"owner": engine.current_id, "source": "hand"})
 				engine._log_discard(engine.current_id, 弃)
 			use_yue_zhang = true
 			_ji_ang_step = GE_YONG_TIAN_FU
@@ -550,7 +550,7 @@ func p_harm_end(ctx: Dictionary) -> int:
 				})
 				打出伤害 = true
 		engine.take_from_hand(player.id, use_cards, true)
-		engine.to_discard(use_cards)
+		engine.to_discard(use_cards, {"owner": player.id, "source": "hand"})
 		# 技能描述：弃完 2 张同系牌【展示】之后「你+1【灵感】」（以描述为准，先加再结算伤害）
 		_set_ling_gan(_ling_gan() + 1)
 		engine._broadcast_game()
@@ -700,7 +700,7 @@ func _xi_wang_effects() -> int:
 		var 弃: Array = _pick_cards(player, 候选, 1)
 		if not 弃.is_empty():
 			engine.take_from_hand(player.id, 弃)
-			engine.to_discard(弃)
+			engine.to_discard(弃, {"owner": player.id, "source": "hand"})
 			engine._log_discard(player.id, 弃)
 		if 收益 == XI_WANG_HEAL:
 			施加治疗(player.id, 1)

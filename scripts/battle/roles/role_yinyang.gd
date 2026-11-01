@@ -124,7 +124,7 @@ func _展示并弃(cards: Array) -> void:
 ## 弃掉某人的手牌（展示 可选：走 p_show_hand 钩子）；不负责广播快照。
 func _弃手牌(pid: int, cards: Array, 展示: bool = false) -> void:
 	engine.take_from_hand(pid, cards, 展示)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": pid, "source": "hand"})
 	engine._log_discard(pid, cards)
 
 

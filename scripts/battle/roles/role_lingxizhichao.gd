@@ -459,7 +459,7 @@ func p_basic_effect_change(ctx: Dictionary) -> int:
 			cid = int(player.hand_cards[0])
 		if cid >= 0:
 			engine.take_from_hand(player.id, [cid])
-			engine.to_discard([cid])
+			engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 			engine._log_discard(player.id, [cid])
 			engine._broadcast_game()
 		return SUCCESS

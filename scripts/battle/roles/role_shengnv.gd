@@ -188,7 +188,7 @@ func _zhi_liao_shu(action: Dictionary) -> int:
 		"card_ids": [cid], "is_real": true,
 	})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	施加治疗(dst.id, 2)
 	engine._broadcast_game()
 	return SUCCESS
@@ -205,7 +205,7 @@ func _zhi_yu_zhi_guang(action: Dictionary) -> int:
 		"card_ids": [cid], "is_real": true,
 	})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	for d: Variant in dsts:
 		var dp: BattlePlayer = engine.p(int(d))
 		if dp != null:

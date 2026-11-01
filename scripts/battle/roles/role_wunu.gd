@@ -353,7 +353,7 @@ func _ni_liu(action: Dictionary) -> int:
 		use.append(int(c))
 	notice_skill(NI_LIU, [player.id])
 	engine.take_from_hand(player.id, use)
-	engine.to_discard(use)
+	engine.to_discard(use, {"owner": player.id, "source": "hand"})
 	engine._log_discard(player.id, use)
 	施加治疗(player.id, 1)
 	engine._broadcast_game()
@@ -384,7 +384,7 @@ func _xue_zhi_bei_ming(action: Dictionary) -> int:
 		"card_ids": [cid], "is_real": true,
 	})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 

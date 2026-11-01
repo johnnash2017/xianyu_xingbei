@@ -118,7 +118,7 @@ func _fa_shu_fan_tan() -> int:
 		"cause": FA_SHU_FAN_TAN, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, cards, true)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 
@@ -181,7 +181,7 @@ func _mo_dao_fa_dian(action: Dictionary) -> int:
 		"cause": MO_DAO_FA_DIAN, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, cards, true)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 
@@ -201,7 +201,7 @@ func _sheng_jie_fa_dian(action: Dictionary) -> int:
 		"cause": SHENG_JIE_FA_DIAN, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, cards, true)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	for d: Variant in dsts:
 		var dp: BattlePlayer = engine.p(int(d))
 		if dp != null:

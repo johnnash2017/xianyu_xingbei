@@ -284,5 +284,5 @@ func _展示并弃(pid: int, cards: Array) -> void:
 		"card_ids": cards, "is_real": true,
 	})
 	engine.take_from_hand(pid, cards, true)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": pid, "source": "hand"})
 	engine._broadcast_game()

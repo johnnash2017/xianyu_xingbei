@@ -119,7 +119,7 @@ func _show_and_discard(cards: Array, 展示: bool = true) -> void:
 			"card_ids": cards, "is_real": true,
 		})
 	engine.take_from_hand(player.id, cards, 展示)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	# 已亮过牌的不再播弃牌特效（只补一条文字日志），面朝下弃的才播
 	engine._log_discard(player.id, cards, not 展示)
 
@@ -425,7 +425,7 @@ func _zhen_bao(action: Dictionary) -> int:
 		"cause": LING_HUN_ZHEN_BAO, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	# 牌已在上面展示过：只写日志、不播弃牌特效
 	engine._log_discard(player.id, [cid], false)
 	engine._broadcast_game()

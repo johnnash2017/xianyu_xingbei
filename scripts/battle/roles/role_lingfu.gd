@@ -268,7 +268,7 @@ func _bai_gui_cast() -> bool:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": [cid], "is_real": true,
 		})
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "cover", "cause": BAI_GUI_YE_XING})
 	engine.remove_cover(player.id, [cid], player.id, BAI_GUI_YE_XING)
 	engine._broadcast_game()
 	return true
@@ -327,5 +327,5 @@ func _discard_played(cid: int) -> void:
 		"card_ids": [cid], "is_real": true,
 	})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()

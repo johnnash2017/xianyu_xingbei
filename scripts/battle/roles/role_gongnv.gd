@@ -135,7 +135,7 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		"cause": GUAN_CHUAN_SHE_JI, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 
@@ -187,7 +187,7 @@ func _shan_guang_xian_jing(action: Dictionary) -> int:
 		"cause": SHAN_GUANG_XIAN_JING, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 

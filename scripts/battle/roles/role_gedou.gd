@@ -120,7 +120,7 @@ func _apply_dou_shen(action: Dictionary) -> void:
 	if 弃牌数 > 0:
 		var chosen: Array = _pick_cards(action.get("card_ids", []), 弃牌数)
 		engine.take_from_hand(player.id, chosen)
-		engine.to_discard(chosen)
+		engine.to_discard(chosen, {"owner": player.id, "source": "hand"})
 		engine._log_discard(player.id, chosen)
 	engine._broadcast_game()
 

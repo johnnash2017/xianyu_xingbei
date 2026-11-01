@@ -198,7 +198,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		if _md_hand >= 0:
 			# 和选目标同一步交上来的那张手牌，现在直接弃掉
 			engine.take_from_hand(player.id, [_md_hand])
-			engine.to_discard([_md_hand])
+			engine.to_discard([_md_hand], {"owner": player.id, "source": "hand"})
 			engine._log_discard(player.id, [_md_hand])
 			_md_hand = -1
 		_mei_du_sha_step = STEP_MEI_DU_END
@@ -505,5 +505,5 @@ func _discard_hand_cards(cards: Array, n: int) -> void:
 	if chosen.size() < n:
 		return
 	engine.take_from_hand(player.id, chosen)
-	engine.to_discard(chosen)
+	engine.to_discard(chosen, {"owner": player.id, "source": "hand"})
 	engine._log_discard(player.id, chosen)

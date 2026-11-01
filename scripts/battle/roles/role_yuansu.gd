@@ -182,7 +182,7 @@ func _yuan_su_damage(action: Dictionary) -> int:
 		"cause": aid, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, use_cards, true)
-	engine.to_discard(use_cards)
+	engine.to_discard(use_cards, {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 

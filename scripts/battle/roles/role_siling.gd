@@ -222,7 +222,7 @@ func _wen_yi(action: Dictionary) -> int:
 			"cause": WEN_YI, "type": GConst.HarmType.Magic,
 		})
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 
@@ -246,7 +246,7 @@ func _si_wang_zhi_chu(action: Dictionary) -> int:
 		"cause": SI_WANG_ZHI_CHU, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, cards, true)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 

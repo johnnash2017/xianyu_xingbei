@@ -138,7 +138,7 @@ func p_attack_skill(action: Dictionary) -> int:
 	}
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	return URGENT
 
 
@@ -378,7 +378,7 @@ func _touxi_process_cards(r: Dictionary) -> int:
 		"card_ids": bottles, "is_real": true,
 	})
 	engine.remove_cover(player.id, bottles, player.id, TOU_XI)
-	engine.to_discard(bottles)
+	engine.to_discard(bottles, {"owner": player.id, "source": "cover", "cause": TOU_XI})
 	_used_touxi = true
 	_touxi_step = 2
 	var 法术数: int = 0

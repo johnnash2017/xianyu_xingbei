@@ -453,7 +453,7 @@ func _add_cover(cards: Array, cause: int = 0) -> void:
 func _remove_cover(cards: Array, cause: int = 0) -> void:
 	if cards.is_empty():
 		return
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "cover", "cause": cause})
 	engine.remove_cover(player.id, cards, player.id, cause)
 
 
@@ -492,7 +492,7 @@ func _discard_hand_cards(cards: Array, n: int) -> void:
 	if chosen.is_empty():
 		return
 	engine.take_from_hand(player.id, chosen)
-	engine.to_discard(chosen)
+	engine.to_discard(chosen, {"owner": player.id, "source": "hand"})
 	engine._log_discard(player.id, chosen)
 
 

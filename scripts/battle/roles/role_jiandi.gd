@@ -122,7 +122,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if cid < 0:
 		return SUCCESS
 	notice_skill(skill_id, [int(ctx.get("dst", -1))])
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "cover", "cause": skill_id})
 	engine.remove_cover(player.id, [cid], player.id, skill_id)
 	if skill_id == TIAN_SHI_ZHI_HUN:
 		used_tian_shi_zhi_hun = true

@@ -228,7 +228,7 @@ func _贪欲黑洞结算(action: Dictionary) -> int:
 		})
 		if not engine.take_from_hand(player.id, [cid], true):
 			return SUCCESS
-		engine.to_discard([cid])
+		engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 		engine._log_discard(player.id, [cid], false)
 		# 我方【战绩区】+1【水晶】：无条件、先结算
 		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
@@ -405,7 +405,7 @@ func _目标弃法术(dst: BattlePlayer, r: Dictionary) -> bool:
 		"card_ids": [cid], "is_real": true,
 	})
 	engine.take_from_hand(dst.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": dst.id, "source": "hand"})
 	engine._log_discard(dst.id, [cid], false)
 	engine._broadcast_game()
 	return true

@@ -392,7 +392,7 @@ func _target_discard_magic(dst: BattlePlayer, r: Dictionary) -> bool:
 		"card_ids": [cid], "is_real": true,
 	})
 	engine.take_from_hand(dst.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": dst.id, "source": "hand"})
 	engine._log_discard(dst.id, [cid], false)
 	engine._broadcast_game()
 	return true

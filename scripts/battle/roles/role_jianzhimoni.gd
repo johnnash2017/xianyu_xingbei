@@ -200,7 +200,7 @@ func _jian_ying_duan_nian(ctx: Dictionary) -> int:
 		return SUCCESS
 	engine.take_from_hand(player.id, 弃牌)
 	_启动剑影断念()
-	engine.to_discard(弃牌)
+	engine.to_discard(弃牌, {"owner": player.id, "source": "hand"})
 	engine._log_discard(player.id, 弃牌)
 	engine._broadcast_game()
 	ctx[KEY_DUAN_NIAN_STEP] = STEP_DONE
@@ -269,7 +269,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			"card_ids": [cid], "is_real": true,
 		})
 		engine.take_from_hand(dst.id, [cid], true)
-		engine.to_discard([cid])
+		engine.to_discard([cid], {"owner": dst.id, "source": "hand"})
 		engine._log_discard(dst.id, [cid], false)
 		ctx[KEY_YI_XIANG_CARD] = cid
 		# 弃牌带【展示】：take_from_hand(..., true) 已经压入了 p_show_hand 钩子。必须先让展示响应

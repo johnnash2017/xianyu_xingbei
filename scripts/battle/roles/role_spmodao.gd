@@ -126,7 +126,7 @@ func _mo_bao_chong_ji(action: Dictionary) -> int:
 		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 		# 代价牌当场弃掉，别拖到目标应答之后（否则这段询问期间它还在手上）
 		engine.take_from_hand(player.id, [cid], true)
-		engine.to_discard([cid])
+		engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 		engine._broadcast_game()
 		step = 1
 	if step != 1:
@@ -205,7 +205,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		"card_ids": cards, "is_real": true,
 	})
 	engine.take_from_hand(player.id, cards, true)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	harm["point"] = maxi(点数 - cards.size(), 0)
 	engine._broadcast_game()
 	return SUCCESS
@@ -263,7 +263,7 @@ func _target_discard_magic(tid: int, r: Dictionary) -> bool:
 		"card_ids": [gid], "is_real": true,
 	})
 	engine.take_from_hand(tid, [gid], true)
-	engine.to_discard([gid])
+	engine.to_discard([gid], {"owner": tid, "source": "hand"})
 	engine._broadcast_game()
 	return true
 

@@ -340,7 +340,7 @@ func p_special_skill(action: Dictionary) -> int:
 		_gain_blood(2, 4)
 		if not 弃牌.is_empty():
 			engine.take_from_hand(player.id, 弃牌)
-			engine.to_discard(弃牌)
+			engine.to_discard(弃牌, {"owner": player.id, "source": "hand"})
 			engine._log_discard(player.id, 弃牌)
 	player.xue_qiang_wei = true
 	engine._broadcast_game()

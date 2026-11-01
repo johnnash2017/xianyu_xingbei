@@ -296,7 +296,7 @@ func _discard_own(ids: Array, n: int) -> void:
 		return
 	var chosen: Array = _pick_cards(player, ids, want)
 	engine.take_from_hand(player.id, chosen)
-	engine.to_discard(chosen)
+	engine.to_discard(chosen, {"owner": player.id, "source": "hand"})
 
 
 ## 请某名角色弃 n 张牌（服务端 StateRequestHand）
@@ -312,7 +312,7 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
 	engine.take_from_hand(pid, chosen)
-	engine.to_discard(chosen)
+	engine.to_discard(chosen, {"owner": pid, "source": "hand"})
 	# 弃牌不是亮牌：只写「谁弃掉几张」并让客户端播弃牌特效，不能悄悄改手牌
 	engine._log_discard(pid, chosen)
 	engine._broadcast_game()
@@ -763,7 +763,7 @@ func _sheng_xie_ju_bao(action: Dictionary) -> int:
 	}
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, virtual_card, harm))
 	engine.take_from_hand(player.id, use_cards, true)
-	engine.to_discard(use_cards)
+	engine.to_discard(use_cards, {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return URGENT
 
@@ -822,7 +822,7 @@ func _sheng_guang_bao_lie(action: Dictionary) -> int:
 			point += 1
 	player.sub_cross_num(x)
 	engine.take_from_hand(player.id, cards)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	engine._log_discard(player.id, cards)
 	notice_skill(SHENG_GUANG_BAO_LIE, [player.id])
 	engine._broadcast_game()

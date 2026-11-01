@@ -151,7 +151,7 @@ func _元子重塑结算(action: Dictionary) -> int:
 	if not engine.take_from_hand(player.id, 牌表):
 		return EMPTY_HANDLE
 	notice_skill(元子重塑, [player.id])
-	engine.to_discard(牌表)
+	engine.to_discard(牌表, {"owner": player.id, "source": "hand"})
 	engine._log_discard(player.id, 牌表)
 	# direct=true：直接进入额外法术行动，不再二次询问；skip_notice=true：上面已播报过 9302
 	player.add_action(GConst.ActionType.Magic, 元子重塑, true, true)

@@ -255,7 +255,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 				"card_ids": [cid], "is_real": true,
 			})
 			engine.take_from_hand(player.id, [cid], true)
-			engine.to_discard([cid])
+			engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 			弃了法术牌 = true
 	if 弃了法术牌:
 		var dsts: Array = r.get("dst_ids", [])

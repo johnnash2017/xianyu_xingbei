@@ -182,7 +182,7 @@ func _qi_zha(action: Dictionary, virtual_card: int) -> int:
 	}
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, virtual_card, harm))
 	engine.take_from_hand(player.id, cards, true)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	return URGENT
 
 

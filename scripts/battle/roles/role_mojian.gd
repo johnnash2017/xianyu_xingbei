@@ -390,7 +390,7 @@ func p_magic_skill(action: Dictionary) -> int:
 		"cause": AN_YING_LIU_XING, "type": GConst.HarmType.Magic,
 	})
 	engine.take_from_hand(player.id, cards, true)
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	# 牌已在上面展示过：只写日志、不播弃牌特效
 	engine._log_discard(player.id, cards, false)
 	engine._broadcast_game()
@@ -466,5 +466,5 @@ func _discard_exact(num: int, cards: Array) -> void:
 			if not chosen.has(cid):
 				chosen.append(cid)
 	engine.take_from_hand(player.id, chosen)
-	engine.to_discard(chosen)
+	engine.to_discard(chosen, {"owner": player.id, "source": "hand"})
 	engine._log_discard(player.id, chosen)

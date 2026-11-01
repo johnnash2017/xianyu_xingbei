@@ -158,7 +158,7 @@ func _request_discard(pid: int, n: int, cause: int, 必须弃: bool = false) -> 
 			"card_ids": chosen, "is_real": true,
 		})
 	engine.take_from_hand(pid, chosen, 公开)
-	engine.to_discard(chosen)
+	engine.to_discard(chosen, {"owner": pid, "source": "hand"})
 	if (cause == SHOU_HUN_JING_JIE or cause == SHOU_FAN) and not chosen.is_empty():
 		var c: GCard = Data.get_card(int(chosen[0]))
 		if c != null and c.is_magic():
@@ -414,7 +414,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		if want > 0:
 			var chosen: Array = _pick_cards(player, shou_fan_cards, want)
 			engine.take_from_hand(player.id, chosen)
-			engine.to_discard(chosen)
+			engine.to_discard(chosen, {"owner": player.id, "source": "hand"})
 		_shou_fan_step = SHOU_FAN_TARGET_DISCARD
 	if _shou_fan_step == SHOU_FAN_TARGET_DISCARD:
 		# 施害者弃 1 张牌（原文「他弃1张牌【展示】」是强制的：超时按手牌顺序补一张）
@@ -628,7 +628,7 @@ func p_special_skill(action: Dictionary) -> int:
 	# 分支 1＝弃 1 张手牌；2＝摸 1 张牌；3＝不调整
 	if choose == 1:
 		engine.take_from_hand(player.id, 弃牌)
-		engine.to_discard(弃牌)
+		engine.to_discard(弃牌, {"owner": player.id, "source": "hand"})
 		engine._log_discard(player.id, 弃牌)
 	elif choose == 2:
 		engine.push_draw(player.id, 1)

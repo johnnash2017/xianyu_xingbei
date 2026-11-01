@@ -211,7 +211,7 @@ func _pan_jue_tian_ping(action: Dictionary) -> int:
 	if choice == 0:
 		var all_cards: Array = player.hand_cards.duplicate()
 		engine.take_from_hand(player.id, all_cards)
-		engine.to_discard(all_cards)
+		engine.to_discard(all_cards, {"owner": player.id, "source": "hand"})
 		engine._log_discard(player.id, all_cards)
 	else:
 		var need: int = player.hand_cards_max - player.hand_cards.size()

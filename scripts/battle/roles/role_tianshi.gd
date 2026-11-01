@@ -238,7 +238,7 @@ func _feng_zhi_jie_jing(action: Dictionary) -> int:
 	engine.remove_basic_effect(dst.id, effect_cid, FENG_ZHI_JIE_JING, player.id)
 	engine.to_discard([effect_cid])
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -261,7 +261,7 @@ func _tian_shi_zhu_fu(action: Dictionary) -> int:
 			"card_ids": [use_cid], "is_real": true,
 		})
 		engine.take_from_hand(player.id, [use_cid], true)
-		engine.to_discard([use_cid])
+		engine.to_discard([use_cid], {"owner": player.id, "source": "hand"})
 		engine._broadcast_game()
 	var idx: int = step - TIAN_SHI_ZHU_FU
 	# 逐个索取的次序＝玩家点选顺序

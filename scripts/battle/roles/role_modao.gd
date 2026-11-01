@@ -117,7 +117,7 @@ func _mo_bao_chong_ji(action: Dictionary) -> int:
 	})
 	# 代价牌当场弃掉：这一步之后还要逐个问目标要牌，手牌一直留着会和「已打出」的表现对不上
 	engine.take_from_hand(player.id, [cid], true)
-	engine.to_discard([cid])
+	engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 	# 我方【战绩区】+1【宝石】：无条件、在任何目标询问之前先结算
 	engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 	engine._broadcast_game()
@@ -239,7 +239,7 @@ func _target_discard_magic(tid: int, r: Dictionary) -> bool:
 		"card_ids": [gid], "is_real": true,
 	})
 	engine.take_from_hand(tid, [gid], true)
-	engine.to_discard([gid])
+	engine.to_discard([gid], {"owner": tid, "source": "hand"})
 	engine._broadcast_game()
 	return true
 

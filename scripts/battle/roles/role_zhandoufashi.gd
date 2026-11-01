@@ -157,7 +157,7 @@ func p_magic_skill(action: Dictionary) -> int:
 	})
 	if not engine.take_from_hand(player.id, cards, true):
 		return SUCCESS
-	engine.to_discard(cards)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	engine._log_discard(player.id, cards)
 	# 弃牌含咏类命格或法术牌 → 额外 +1 攻击行动（direct：直接进入额外攻击阶段，可放弃）
 	if 第一张.fate_pattern_enum() == GConst.FatePattern.Cast or 第一张.is_magic() \

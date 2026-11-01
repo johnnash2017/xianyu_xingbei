@@ -406,7 +406,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		"card_ids": chosen, "is_real": true,
 	})
 	engine.take_from_hand(player.id, chosen, true)
-	engine.to_discard(chosen)
+	engine.to_discard(chosen, {"owner": player.id, "source": "hand"})
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -453,7 +453,7 @@ func _chong_ying(action: Dictionary) -> int:
 			"card_ids": [cid], "is_real": true,
 		})
 		engine.take_from_hand(player.id, [cid], true)
-		engine.to_discard([cid])
+		engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 		card_count = 0
 		used_chong_ying = true
 		_chong_targets = _all_ids_from_self()
@@ -499,7 +499,7 @@ func _chong_ying(action: Dictionary) -> int:
 				"card_ids": [ccid], "is_real": true,
 			})
 			engine.take_from_hand(tid, [ccid], true)
-			engine.to_discard([ccid])
+			engine.to_discard([ccid], {"owner": tid, "source": "hand"})
 			if counted and tid != player.id:
 				card_count += 1
 			engine._broadcast_game()

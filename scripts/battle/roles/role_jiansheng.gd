@@ -277,7 +277,7 @@ func _sheng_jian_cycle() -> int:
 	if 弃牌.is_empty():
 		return SUCCESS
 	engine.take_from_hand(player.id, 弃牌)
-	engine.to_discard(弃牌)
+	engine.to_discard(弃牌, {"owner": player.id, "source": "hand", "cause": SHENG_JIAN})
 	engine._log_discard(player.id, 弃牌)
 	engine._broadcast_game()
 	return SUCCESS
