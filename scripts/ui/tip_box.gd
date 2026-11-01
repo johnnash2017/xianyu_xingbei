@@ -320,9 +320,9 @@ func _摆(图标矩形: Rect2) -> void:
 # ============================================================
 # 原版说明的粗删除线
 # ============================================================
-## 说明文字里带「删除线标记」的段落（被角色改写的原版说明，见 role_skill_tip.上色），
+## 说明文字里带「删除线标记」的段落（被角色改写后的原版说明，见 role_skill_tip.上色），
 ## 各自按「自己算出的折行」压一条粗线 —— 字体自带的 [s] 只有 1px 且默认半透明，太细。
-## 线的坐标用标签自己的排版量出来（临时把文本换成「到本段为止」再读内容高度），不靠猜行数。
+## 竖坐标用单独的临时标签逐行量出来（带 [img] 图标的那行会被图标撑高，不能按平均行高猜）。
 func _铺粗删除线(说明: String) -> void:
 	for 子: Node in 文本.get_children():
 		文本.remove_child(子)
@@ -332,38 +332,58 @@ func _铺粗删除线(说明: String) -> void:
 	var 段们: PackedStringArray = 说明.split("\n")
 	var 字体: Font = 文本.get_theme_font("normal_font")
 	var 默认字号: int = 文本.get_theme_font_size("normal_font_size")
+	var 段前距: float = float(文本.get_theme_constant("paragraph_separation"))
 	var 前缀段: Array[String] = []
 	for 段: String in 段们:
 		if not 段.contains(角色技能提示.删除线标记):
 			前缀段.append(段)
 			continue
 		var 字号: int = _段字号(段, 默认字号)
-		# 段前面有多高：用同样的文本让标签自己排一次（含折行 / 标题字号 / 段落间距）
+		# 这一段在整段说明里的上沿：用同样的文本让标签自己排一次（含折行 / 标题字号 / 段落间距）
 		文本.text = "\n".join(前缀段)
 		var 上高: float = float(文本.get_content_height())
 		文本.text = "\n".join(前缀段 + [段])
-		var 段高: float = float(文本.get_content_height()) - 上高
-		var 纯文: String = _去标签(段).replace(角色技能提示.删除线标记, "")
 		var 缩进宽: float = float(字号) * float(_缩进层数(段))
 		var 可用宽: float = maxf(文本.custom_minimum_size.x - 缩进宽, 32.0)
 		# 折行时要把 [img=WxH] 词缀图标也算成一段固定宽度：不算它的话，算出来的行会比界面实际的长
-		var 行宽们: Array[float] = _折行(段, 字体, 字号, 可用宽)
-		if 行宽们.is_empty():
-			行宽们 = [字体.get_string_size(纯文, HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x]
-		# 行高按「这一段的总高 ÷ 行数」平均分：段里可能有 [img] 词缀图标，带图标的行会比普通行高，
-		# 只按字体行高排会让下面的行越排越偏上。取平均后每行的线都对着自己那行的中腰。
-		var 平均行高: float = 段高 / float(行宽们.size())
-		for i: int in range(行宽们.size()):
-			if 行宽们[i] <= 0.0:
-				continue
-			var 条: ColorRect = 删除线预制.instantiate()
-			条.color = 删除线颜色
-			条.size = Vector2(行宽们[i], 删除线粗细)
-			条.position = Vector2(缩进宽, 上高 + 平均行高 * (float(i) + 0.5) - 删除线粗细 * 0.5)
-			文本.add_child(条)
+		var 行们: Array[Dictionary] = _折行(段, 字体, 字号, 可用宽)
+		if 行们.is_empty():
+			var 纯文: String = _去标签(段)
+			行们 = [{"宽": 字体.get_string_size(纯文, HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x, "文": 纯文}]
+		var 行高们: Array[float] = _量行高们(前缀段, 行们, 上高, 段前距)
+		# 首行上沿＝前面各段的高度 + 段与段之间的空档；之后逐行累加（行高按各行实际内容量好）
+		var 累计: float = 上高 + (段前距 if not 前缀段.is_empty() else 0.0)
+		for i: int in range(行们.size()):
+			var 宽: float = float(行们[i]["宽"])
+			var 高: float = 行高们[i] if i < 行高们.size() else 0.0
+			if 宽 > 0.0 and 高 > 0.0:
+				var 条: ColorRect = 删除线预制.instantiate()
+				条.color = 删除线颜色
+				条.size = Vector2(宽, 删除线粗细)
+				条.position = Vector2(缩进宽, 累计 + (高 - 删除线粗细) * 0.5)
+				文本.add_child(条)
+			累计 += 高
 		前缀段.append(段)
 	# 量完恢复成完整说明
 	文本.text = 说明
+
+
+## 量每一行的实际高度：在正式标签里把「到这里为止的文本」排一次，逐行读内容高度的差。
+## 这样用的是界面同一套字体 / 行距 / 图标高度（[img] 词缀图标那一行会被撑高），
+## 不能自己按字体行高猜 —— 猜出来的位置会让线飘在文字上面。
+func _量行高们(前缀段: Array[String], 行们: Array[Dictionary], 上高: float, 段前距: float) -> Array[float]:
+	var 结果: Array[float] = []
+	var 前缀文: String = "\n".join(前缀段)
+	var 行文们: Array[String] = []
+	var 上一高: float = 上高
+	for i: int in range(行们.size()):
+		行文们.append(str(行们[i]["文"]))
+		var 段文: String = "\n".join(行文们)
+		文本.text = (前缀文 + "\n" + 段文) if not 前缀文.is_empty() else 段文
+		var 现在高: float = float(文本.get_content_height())
+		结果.append(maxf(现在高 - 上一高 - 段前距, 1.0))
+		上一高 = 现在高
+	return 结果
 
 
 ## 本段用的正文字号：BBCode 里最外层那个 [font_size=N]（标题行更大）
@@ -405,13 +425,14 @@ func _去标签(文: String) -> String:
 	return 结果
 
 
-## 按宽度折行：返回每一行的宽度（像素）。
+## 按宽度折行：返回每一行的 {宽: 像素, 文: 行文本（保留 [img] 标签，供临时标签量行高）}。
 ## BBCode 标签跳过，但 [img=WxH] 词缀图标要按标签里的宽度算进去 —— 技能说明里的【治疗】等
 ## 词缀被换成了图标，不算它的宽度，算出来的行就会比界面实际的长，删除线也就超出文字。
 ## 断行用「放不下就换行」的贪心，对中文与 RichTextLabel 的 WORD_SMART 一致。
-func _折行(段: String, 字体: Font, 字号: int, 可用宽: float) -> Array[float]:
-	var 行宽们: Array[float] = []
+func _折行(段: String, 字体: Font, 字号: int, 可用宽: float) -> Array[Dictionary]:
+	var 行们: Array[Dictionary] = []
 	var 当前宽: float = 0.0
+	var 当前文: String = ""
 	var i: int = 0
 	var 文长: int = 段.length()
 	while i < 文长:
@@ -424,25 +445,30 @@ func _折行(段: String, 字体: Font, 字号: int, 可用宽: float) -> Array[
 			if 标签.begins_with("[img="):
 				var 宽: float = _图片像素宽(标签)
 				var 结束: int = 段.find("[/img]", 尾)
+				var 图标: String = 段.substr(i, (结束 + 6 - i) if 结束 >= 0 else (尾 + 1 - i))
 				if 当前宽 > 0.0 and 当前宽 + 宽 > 可用宽:
-					行宽们.append(当前宽)
+					行们.append({"宽": 当前宽, "文": 当前文})
 					当前宽 = 宽
+					当前文 = 图标
 				else:
 					当前宽 += 宽
+					当前文 += 图标
 				i = (结束 + 6) if 结束 >= 0 else (尾 + 1)
 				continue
 			i = 尾 + 1
 			continue
 		var 宽字: float = 字体.get_string_size(字, HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x
 		if 当前宽 > 0.0 and 当前宽 + 宽字 > 可用宽:
-			行宽们.append(当前宽)
+			行们.append({"宽": 当前宽, "文": 当前文})
 			当前宽 = 宽字
+			当前文 = 字
 		else:
 			当前宽 += 宽字
+			当前文 += 字
 		i += 1
 	if 当前宽 > 0.0:
-		行宽们.append(当前宽)
-	return 行宽们
+		行们.append({"宽": 当前宽, "文": 当前文})
+	return 行们
 
 
 ## [img=WxH] 标签里的宽度（像素）；解析不出返回 0
