@@ -333,13 +333,11 @@ func _铺粗删除线(说明: String) -> void:
 	var 字体: Font = 文本.get_theme_font("normal_font")
 	var 默认字号: int = 文本.get_theme_font_size("normal_font_size")
 	var 前缀段: Array[String] = []
-	var 行高缓存: Dictionary = {}
 	for 段: String in 段们:
 		if not 段.contains(角色技能提示.删除线标记):
 			前缀段.append(段)
 			continue
 		var 字号: int = _段字号(段, 默认字号)
-		var 行高: float = _段行高(字体, 字号, 行高缓存)
 		# 段前面有多高：用同样的文本让标签自己排一次（含折行 / 标题字号 / 段落间距）
 		文本.text = "\n".join(前缀段)
 		var 上高: float = float(文本.get_content_height())
@@ -348,19 +346,20 @@ func _铺粗删除线(说明: String) -> void:
 		var 纯文: String = _去标签(段).replace(角色技能提示.删除线标记, "")
 		var 缩进宽: float = float(字号) * float(_缩进层数(段))
 		var 可用宽: float = maxf(文本.custom_minimum_size.x - 缩进宽, 32.0)
-		var 行们: Array[String] = _折行(纯文, 字体, 字号, 可用宽)
-		if 行们.is_empty():
-			行们 = [纯文]
-		# 段高里除行高外多出来的那截（段落间距）补在首行上沿之后，线才穿过字的中腰
-		var 余: float = maxf(段高 - 行高 * float(行们.size()), 0.0)
-		for i: int in range(行们.size()):
-			var 行宽: float = 字体.get_string_size(行们[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x
-			if 行宽 <= 0.0:
+		# 折行时要把 [img=WxH] 词缀图标也算成一段固定宽度：不算它的话，算出来的行会比界面实际的长
+		var 行宽们: Array[float] = _折行(段, 字体, 字号, 可用宽)
+		if 行宽们.is_empty():
+			行宽们 = [字体.get_string_size(纯文, HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x]
+		# 行高按「这一段的总高 ÷ 行数」平均分：段里可能有 [img] 词缀图标，带图标的行会比普通行高，
+		# 只按字体行高排会让下面的行越排越偏上。取平均后每行的线都对着自己那行的中腰。
+		var 平均行高: float = 段高 / float(行宽们.size())
+		for i: int in range(行宽们.size()):
+			if 行宽们[i] <= 0.0:
 				continue
 			var 条: ColorRect = 删除线预制.instantiate()
 			条.color = 删除线颜色
-			条.size = Vector2(行宽, 删除线粗细)
-			条.position = Vector2(缩进宽, 上高 + 余 + 行高 * float(i) + (行高 - 删除线粗细) * 0.5)
+			条.size = Vector2(行宽们[i], 删除线粗细)
+			条.position = Vector2(缩进宽, 上高 + 平均行高 * (float(i) + 0.5) - 删除线粗细 * 0.5)
 			文本.add_child(条)
 		前缀段.append(段)
 	# 量完恢复成完整说明
@@ -376,13 +375,6 @@ func _段字号(段: String, 默认字号: int) -> int:
 	if 尾 < 0:
 		return 默认字号
 	return maxi(int(段.substr(起点 + 11, 尾 - 起点 - 11)), 1)
-
-
-## 一行的高度＝字体行高 + 行距（行距在 _ready 里折半过，读的就是当前生效值）
-func _段行高(字体: Font, 字号: int, 缓存: Dictionary) -> float:
-	if not 缓存.has(字号):
-		缓存[字号] = 字体.get_height(字号) + float(文本.get_theme_constant("line_separation"))
-	return float(缓存[字号])
 
 
 ## 本段的 [indent] 层数（一层的缩进宽＝一个字号；见探针：[indent] 在 16 号字下多 16px）
@@ -413,22 +405,50 @@ func _去标签(文: String) -> String:
 	return 结果
 
 
-## 按宽度折行：用 TextServer 自己的断行（和 RichTextLabel 的 WORD_SMART 同一套），
-## 断出来的行与界面实际渲染的一致，删除线才不会比文字长。
-func _折行(纯文: String, 字体: Font, 字号: int, 可用宽: float) -> Array[String]:
-	var 行们: Array[String] = []
-	var ts: TextServer = TextServerManager.get_primary_interface()
-	var 形: RID = ts.create_shaped_text()
-	ts.shaped_text_add_string(形, 纯文, 字体.get_rids(), 字号)
-	var 断点: PackedInt32Array = ts.shaped_text_get_line_breaks(形, 可用宽, 0,
-		TextServer.BREAK_GRAPHEME_BOUND | TextServer.BREAK_WORD_BOUND)
-	ts.free_rid(形)
-	# 断点数组是「每行的 [起, 止]」成对出现
+## 按宽度折行：返回每一行的宽度（像素）。
+## BBCode 标签跳过，但 [img=WxH] 词缀图标要按标签里的宽度算进去 —— 技能说明里的【治疗】等
+## 词缀被换成了图标，不算它的宽度，算出来的行就会比界面实际的长，删除线也就超出文字。
+## 断行用「放不下就换行」的贪心，对中文与 RichTextLabel 的 WORD_SMART 一致。
+func _折行(段: String, 字体: Font, 字号: int, 可用宽: float) -> Array[float]:
+	var 行宽们: Array[float] = []
+	var 当前宽: float = 0.0
 	var i: int = 0
-	while i + 1 < 断点.size():
-		var 起: int = 断点[i]
-		var 止: int = 断点[i + 1]
-		if 止 > 起:
-			行们.append(纯文.substr(起, 止 - 起))
-		i += 2
-	return 行们
+	var 文长: int = 段.length()
+	while i < 文长:
+		var 字: String = 段[i]
+		if 字 == "[":
+			var 尾: int = 段.find("]", i)
+			if 尾 < 0:
+				break
+			var 标签: String = 段.substr(i, 尾 - i + 1)
+			if 标签.begins_with("[img="):
+				var 宽: float = _图片像素宽(标签)
+				var 结束: int = 段.find("[/img]", 尾)
+				if 当前宽 > 0.0 and 当前宽 + 宽 > 可用宽:
+					行宽们.append(当前宽)
+					当前宽 = 宽
+				else:
+					当前宽 += 宽
+				i = (结束 + 6) if 结束 >= 0 else (尾 + 1)
+				continue
+			i = 尾 + 1
+			continue
+		var 宽字: float = 字体.get_string_size(字, HORIZONTAL_ALIGNMENT_LEFT, -1, 字号).x
+		if 当前宽 > 0.0 and 当前宽 + 宽字 > 可用宽:
+			行宽们.append(当前宽)
+			当前宽 = 宽字
+		else:
+			当前宽 += 宽字
+		i += 1
+	if 当前宽 > 0.0:
+		行宽们.append(当前宽)
+	return 行宽们
+
+
+## [img=WxH] 标签里的宽度（像素）；解析不出返回 0
+func _图片像素宽(标签: String) -> float:
+	var 等: int = 标签.find("=")
+	var 乘: int = 标签.find("x")
+	if 等 < 0 or 乘 < 0 or 乘 <= 等 + 1:
+		return 0.0
+	return maxf(float(标签.substr(等 + 1, 乘 - 等 - 1)), 0.0)
