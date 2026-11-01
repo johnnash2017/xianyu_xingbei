@@ -1085,56 +1085,38 @@ func 跑() -> void:
 			"commands": [{
 				"respond_id": 4704, "src_id": Logic.my_player_id, "is_skill": true,
 				"dst_ids": [2], "card_ids": [],
-				"args": [0, 0, GConst.CardSource.Hand, 2, 1, 2],
+				"args": [0, 0, GConst.CardSource.Hand, 1, 1],
 				"card_max": 0, "card_rule": "", "can_cancel": true,
-				"notes": ["获得 1 张【魔弹】", "获得 2 张【魔弹】"],
-				"option_need_cards": [1, 2],
-				"option_preview_cards": [
-					{"ids": [魔弹甲.id]},
-					{"ids": [魔弹甲.id, 魔弹乙.id]},
-				],
+				"default_option": 0,
+				"notes": ["获得 1 张【魔弹】"],
+				"option_need_cards": [1],
+				"option_preview_cards": [{"ids": [魔弹甲.id]}],
 			}],
 		})
 		await 等帧(2)
 		检(int(窗.get("_mode")) == 3, "4704 询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
 		var 三秒栏: Array = 窗.get("_二级选项")
-		检(三秒栏.size() == 2, "4704 应摆出 1 / 2 张两个选项（实际 %d）" % 三秒栏.size())
-		var 两张项: Dictionary = {}
-		var 两张下标: int = -1
-		for i: int in range(三秒栏.size()):
-			var 项: Dictionary = 三秒栏[i]
-			if (项.get("预览牌", []) as Array).size() == 2:
-				两张项 = 项
-				两张下标 = i
-		检(not 两张项.is_empty(), "「获得 2 张」选项应带 2 张预览牌")
-		if not 两张项.is_empty():
-			var 项按钮: 技能按钮 = 两张项.get("按钮")
+		检(三秒栏.size() == 1, "4704 每张魔弹只给一个选项（实际 %d）" % 三秒栏.size())
+		检((窗.get("_已选参数") as Array) == [1], "唯一的选项应默认选中：%s" % str(窗.get("_已选参数")))
+		检(int(窗.get("_skill_ask_need_card")) == 1,
+			"选中后应要求弃 1 张代价（实际 %d）" % int(窗.get("_skill_ask_need_card")))
+		检(bool(窗.call("_确定不可用")), "没选代价牌时「确定」应灰着，不能直接提交")
+		var 三秒提示: String = str(窗.get("_提示原文"))
+		检(三秒提示.contains("弃 1 张牌") and 三秒提示.contains("获得 1 张【魔弹】"),
+			"提示条应是「弃 1 张牌，获得 1 张【魔弹】」：%s" % 三秒提示)
+		if not 三秒栏.is_empty():
+			var 项按钮: 技能按钮 = (三秒栏[0] as Dictionary).get("按钮")
 			检(项按钮 != null and 项按钮.skillName != null \
-				and 项按钮.skillName.text == "获得 2 张【魔弹】",
-				"选项按钮文案应是「获得 2 张【魔弹】」")
+				and 项按钮.skillName.text == "获得 1 张【魔弹】",
+				"选项按钮文案应是「获得 1 张【魔弹】」")
 			窗.call("_显示技能说明", 项按钮)
 			await 等帧(1)
 			var 三秒说明框: 说明提示框 = 窗.get("_说明提示")
 			var 卡面组: Control = 三秒说明框.内容 if 三秒说明框 != null else null
-			检(卡面组 is HBoxContainer and 卡面组.get_child_count() == 2,
-				"悬停「获得 2 张」应并排摊出两张卡面")
-			# 选中这一项后，提交给服务端的选项值必须是 2（值漏下发 → 回传 0 → 一张都收不到）
-			if 两张下标 >= 0:
-				窗.call("_选中二级选项", 4704, 两张下标)
-				await 等帧(1)
-				检((窗.get("_已选参数") as Array) == [2],
-					"选中「获得 2 张」后回传的选项值应是 2：%s" % str(窗.get("_已选参数")))
-				# 选项自带的需牌要生效：一张代价都没选时「确定」必须灰着
-				检(int(窗.get("_skill_ask_need_card")) == 2,
-					"选中「获得 2 张」后应要求弃 2 张代价（实际 %d）" % int(窗.get("_skill_ask_need_card")))
-				检(bool(窗.call("_确定不可用")),
-					"没选代价牌时「确定」应灰着，不能直接提交")
-				# 提示条写成「弃 X 张牌，获得 X 张【魔弹】」
-				var 三秒提示: String = str(窗.get("_提示原文"))
-				检(三秒提示.contains("弃 2 张牌") and 三秒提示.contains("获得 2 张【魔弹】"),
-					"选中「获得 2 张」后提示条应是「弃 2 张牌，获得 2 张【魔弹】」：%s" % 三秒提示)
-			(窗.get("BtnCancel") as Button).pressed.emit()
-			await 等帧(1)
+			检(卡面组 is HBoxContainer and 卡面组.get_child_count() == 1,
+				"悬停选项应摊出这张魔弹的卡面")
+		(窗.get("BtnCancel") as Button).pressed.emit()
+		await 等帧(1)
 
 	# 基础效果的状态图标悬停：文本前面要写「基础效果：」，和指示物 / 独有效果区分开
 	var 面板: 战斗玩家面板 = null

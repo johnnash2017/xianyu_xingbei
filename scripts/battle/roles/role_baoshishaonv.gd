@@ -349,89 +349,67 @@ func wants_before_discard(ctx: Dictionary) -> bool:
 
 
 func p_before_discard(ctx: Dictionary) -> int:
-	# 进度按「哪个暴食少女」分开记（同一队万一有两个，不能共用一份阶段 / 魔弹清单，
+	# 进度按「哪个暴食少女」分开记（同一队万一有两个，不能共用一份阶段 / 待收清单，
 	# 否则后来那位会把前一位的「等回复」当成自己也在等，一直挂到超时）
 	var 进度键: String = "_4704进度_%d" % player.id
 	var 进度: Dictionary = ctx.get(进度键, {})
-	var 阶段: int = int(进度.get("阶段", 0))
-	if 阶段 >= STEP_DONE:
+	if int(进度.get("阶段", 0)) >= STEP_DONE:
 		return SUCCESS
-	# 阶段 0＝第一次来：预判 + 问玩家。阶段 1＝问过了、正等回复 —— 不能再复检「能不能拦」
-	# （代价牌付掉之后手牌可能就空了，复检会把已经答过的询问丢掉）
-	var 魔弹表: Array = []
-	if 阶段 == 0:
+	if 进度.is_empty():
 		if not _可拦截三秒原则(ctx):
 			ctx[进度键] = {"阶段": STEP_DONE}
 			return SUCCESS
-		# 一次能把本次弃牌里所有符合条件的【魔弹】都收走：每张都要弃 1 张自己的牌当代价。
-		# 给的选项是「获得 1 张 / 2 张 / …」，选项自带需牌数（选几张就要弃几张），
-		# 鼠标指向选项能看到将要收走的那几张牌面（preview_cards）。
-		for cid: int in _待弃魔弹(ctx.get("cards", [])):
-			魔弹表.append(cid)
+		var 魔弹表: Array[int] = _待弃魔弹(ctx.get("cards", []))
 		if 魔弹表.is_empty():
 			ctx[进度键] = {"阶段": STEP_DONE}
 			return SUCCESS
-		ctx[进度键] = {"阶段": 1, "魔弹": 魔弹表}
-		var 牌主: int = int(ctx.get("owner", -1))
-		var 选项: Array = []
-		for i: int in range(1, 魔弹表.size() + 1):
-			var 选项名: String = "获得 %d 张【魔弹】" % i
-			选项.append({
-				# ask_skill 走 label 做按钮文案（arg_choices 那条通道读 text），两个都写；
-				# 选项值走 value（ask 通道按它组装 args，客户端选中后原样回传），args 给 action 通道用
-				"text": 选项名,
-				"label": 选项名,
-				"value": i,
-				"args": [i],
-				"need_card": i,
-				"preview_cards": 魔弹表.slice(0, i),
-				"enabled": i <= player.hand_cards.size(),
-			})
-		询问(player.id, 三秒原则, 0, 0, GConst.CardSource.Hand, 选项, 0, "",
-			player.hand_cards.duplicate(), true, 0, -1, [牌主], -1, {}, 0, 0, false, [牌主])
-		return WAIT
-	if not engine.has_reply():
-		return WAIT
-	魔弹表 = 进度.get("魔弹", [])
-	ctx[进度键] = {"阶段": STEP_DONE, "魔弹": 魔弹表}
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var given: Array = r.get("card_ids", [])
-	if args.is_empty() or int(args[0]) <= 0:
-		# 取消（args[0] = 0）：不认领，这次的牌照常进弃牌堆
-		return SUCCESS
-	# 以「实际交出的代价张数」为准：弃几张牌就收几张【魔弹】（选项值只决定界面上的需牌数，
-	# 不拿它当权限依据 —— 客户端没回选项值时也不会白付代价却收不到牌）
-	var 取数: int = mini(魔弹表.size(), given.size())
-	if 取数 <= 0:
-		return SUCCESS
-	# 认可点选的代价牌里真实在手牌中的前 取数 张：每张代价换 1 张【魔弹】
-	var 代价们: Array[int] = []
-	for c: Variant in given:
-		if 代价们.size() >= 取数:
-			break
-		var cid: int = int(c)
-		if player.has_discard_card(cid) and not 代价们.has(cid):
-			代价们.append(cid)
-	if 代价们.is_empty():
-		# 交不出代价：不认领，这次的牌照常进弃牌堆
-		return SUCCESS
-	notice_skill(三秒原则, [int(ctx.get("owner", -1))])
-	engine.take_from_hand(player.id, 代价们)
-	engine.to_discard(代价们, {"owner": player.id, "source": "hand", "cause": 三秒原则, "face_up": false})
-	engine._log_discard(player.id, 代价们)
-	# 认领对应数量的【魔弹】：引擎结算时把它们从待弃牌里剔除、加进自己手牌（【强制】获得）。
-	# 回收时把这几张【魔弹】亮出来【展示】—— 原弃牌哪怕是暗弃（爆牌 / 技能弃置），
-	# 收走这一刻也要公开牌面
-	var 认领: Array[int] = []
-	for i: int in range(mini(代价们.size(), 魔弹表.size())):
-		认领.append(魔弹表[i])
-	if not 认领.is_empty():
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": 认领.duplicate(), "is_real": true,
-		})
-	ctx["taker"] = player.id
+		# 每张【魔弹】单独响应一次：问一张、答一张；收下的先记在进度里，
+		# 全部问完再交给引擎（从待弃牌里剔除、加进自己手牌）
+		进度 = {"阶段": 1, "待收": 魔弹表, "下标": 0, "认领": []}
+		ctx[进度键] = 进度
+	var 待收: Array = 进度.get("待收", [])
+	while int(进度.get("下标", 0)) < 待收.size():
+		var 下标: int = int(进度["下标"])
+		var 这张: int = int(待收[下标])
+		if not engine.has_reply():
+			var 牌主: int = int(ctx.get("owner", -1))
+			# 只有一个选项、且默认替玩家选中：玩家只要挑 1 张代价牌按「确定」
+			var 选项名: String = "获得 1 张【魔弹】"
+			询问(player.id, 三秒原则, 0, 0, GConst.CardSource.Hand, [{
+				"text": 选项名, "label": 选项名, "value": 1, "args": [1],
+				"need_card": 1, "preview_cards": [这张],
+				"enabled": not player.hand_cards.is_empty(),
+			}], 0, "", player.hand_cards.duplicate(), true, 0, -1, [牌主], -1, {}, 0, 0, false, [牌主], true, -1, 0, "", 0)
+			return WAIT
+		# 这一张答完了：取消 / 交不出代价＝这张不收，下标照样往后走
+		进度["下标"] = 下标 + 1
+		var r: Dictionary = take_skill_reply_full()
+		var args: Array = r.get("args", [])
+		var given: Array = r.get("card_ids", [])
+		if not args.is_empty() and int(args[0]) > 0 and not given.is_empty():
+			var 代价: int = -1
+			for c: Variant in given:
+				var cid: int = int(c)
+				if player.has_discard_card(cid):
+					代价 = cid
+					break
+			if 代价 >= 0:
+				notice_skill(三秒原则, [int(ctx.get("owner", -1))])
+				engine.take_from_hand(player.id, [代价])
+				engine.to_discard([代价], {"owner": player.id, "source": "hand", "cause": 三秒原则, "face_up": false})
+				engine._log_discard(player.id, [代价])
+				# 收走时把这张【魔弹】亮出来【展示】—— 原弃牌哪怕是暗弃也要公开牌面
+				engine.broadcast(GConst.Msg.Card, {
+					"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+					"card_ids": [这张], "is_real": true,
+				})
+				(进度["认领"] as Array).append(这张)
+				engine._broadcast_game()
+		ctx[进度键] = 进度
+	# 全部问完：把收下的几张从待弃牌里剔除、加进手里（【强制】获得）
+	var 认领: Array = 进度.get("认领", [])
+	ctx[进度键] = {"阶段": STEP_DONE, "认领": 认领}
+	ctx["taker"] = player.id if not 认领.is_empty() else -1
 	ctx["taken"] = 认领
 	engine._broadcast_game()
 	return SUCCESS

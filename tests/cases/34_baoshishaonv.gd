@@ -871,7 +871,7 @@ func _测试4704() -> void:
 	检(_播报次数(4704) == 1, "4704 发动应播报一次，实际 %d 次" % _播报次数(4704))
 	检(not _有错误输入(1), "4704 拦截流程不应给玩家发操作无效")
 
-	# ---- 一次收多张：同一批弃牌里有 2 张【魔弹】时，弃 2 张牌把它们都收走 ----
+	# ---- 逐张单独响应：同一批弃牌里有 2 张【魔弹】时问两次，一次一张 ----
 	_重置战斗()
 	_给牌(玩家1, 普通牌.id)
 	_给牌(玩家1, 普通牌2.id)
@@ -882,27 +882,33 @@ func _测试4704() -> void:
 	引擎.push(触发弃牌.new([魔弹.id, 魔弹2.id], _拦截上下文(2, [魔弹.id, 魔弹2.id])))
 	引擎.run()
 	检(引擎._await_id == 1, "一批里有 2 张魔弹时也应先问 47")
-	var 多张问: Dictionary = _取询问(1, 4704)
-	检(not 多张问.is_empty(), "没有下发 4704 询问")
-	# 选项按数量给：「获得 1 张【魔弹】」「获得 2 张【魔弹】」，各自带需牌数与预览牌
-	var 多张notes: Array = 多张问.get("notes", [])
-	检(多张notes.size() == 2 and str(多张notes[1]) == "获得 2 张【魔弹】",
-		"2 张魔弹时应给「获得 1 张 / 2 张」两个选项：%s" % str(多张notes))
-	检((多张问.get("option_need_cards", []) as Array) == [1, 2],
-		"两个选项的需牌数应是 1 / 2：%s" % str(多张问.get("option_need_cards", [])))
-	var 多张预览: Array = 多张问.get("option_preview_cards", [])
-	检(多张预览.size() == 2 \
-		and ((多张预览[1] as Dictionary).get("ids", []) as Array).size() == 2,
-		"「获得 2 张」的预览牌应是那两张魔弹：%s" % str(多张预览))
-	var 多张args: Array = 多张问.get("args", [])
-	检(多张args.size() >= 6 and int(多张args[4]) == 1 and int(多张args[5]) == 2,
-		"两个选项的值应随 args 下发（1 / 2）：%s" % str(多张args))
+	var 第一问: Dictionary = _取询问(1, 4704)
+	检(not 第一问.is_empty(), "没有下发 4704 询问")
+	# 每次只问一张、只有一个选项，且默认选中（default_option = 0）
+	var 第一notes: Array = 第一问.get("notes", [])
+	检(第一notes.size() == 1 and str(第一notes[0]) == "获得 1 张【魔弹】",
+		"每张魔弹单独问一次、只给一个选项：%s" % str(第一notes))
+	检((第一问.get("option_need_cards", []) as Array) == [1],
+		"单个选项的需牌数应是 1：%s" % str(第一问.get("option_need_cards", [])))
+	检(int(第一问.get("default_option", -1)) == 0, "选项应默认选中第一个")
+	var 第一预览: Array = 第一问.get("option_preview_cards", [])
+	检(第一预览.size() == 1 and ((第一预览[0] as Dictionary).get("ids", []) as Array) == [魔弹.id],
+		"第一次问的预览牌应是第一张魔弹：%s" % str(第一预览))
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 4704, "src_id": 1, "args": [2],
-		"card_ids": [普通牌.id, 普通牌2.id], "dst_ids": [],
+		"respond_id": 4704, "src_id": 1, "args": [1], "card_ids": [普通牌.id], "dst_ids": [],
+	})
+	# 第一张收完，接着问第二张
+	检(引擎._await_id == 1, "收完第一张后应接着问第二张，实际等待 %s" % str(引擎._await_id))
+	var 第二问: Dictionary = _取询问(1, 4704)
+	检(not 第二问.is_empty(), "第二张魔弹应再问一次")
+	var 第二预览: Array = 第二问.get("option_preview_cards", [])
+	检(第二预览.size() == 1 and ((第二预览[0] as Dictionary).get("ids", []) as Array) == [魔弹2.id],
+		"第二次问的预览牌应是第二张魔弹：%s" % str(第二预览))
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 4704, "src_id": 1, "args": [1], "card_ids": [普通牌2.id], "dst_ids": [],
 	})
 	检(玩家1.hand_cards.has(魔弹.id) and 玩家1.hand_cards.has(魔弹2.id),
-		"4704 应一次把两张【魔弹】都收进手里：%s" % str(玩家1.hand_cards))
+		"两张【魔弹】应各答一次、都收进手里：%s" % str(玩家1.hand_cards))
 	检(not 玩家1.has_hand_card(普通牌.id) and not 玩家1.has_hand_card(普通牌2.id),
 		"两张代价牌都应离手")
 	检(引擎.deck.discard_size() == 2, "两张代价牌进弃牌堆，魔弹不进，实际 %d" % 引擎.deck.discard_size())
@@ -962,7 +968,7 @@ func _测试4704() -> void:
 	检(引擎._await_id == -1, "自己手里没有代价牌时不应弹 4704 询问")
 	检(引擎.deck.discard.has(魔弹.id), "不拦截时【魔弹】应正常进弃牌堆")
 
-	# ---- 一次多张魔弹：取待弃顺序里的第一张，其余正常进弃牌堆 ----
+	# ---- 逐张响应时「只收第一张、第二张不要」：第二张照常进弃牌堆 ----
 	_重置战斗()
 	_给牌(玩家1, 普通牌.id)
 	_给牌(玩家2, 魔弹.id)
@@ -974,9 +980,15 @@ func _测试4704() -> void:
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 4704, "src_id": 1, "args": [1], "card_ids": [普通牌.id], "dst_ids": [],
 	})
-	检(玩家1.hand_cards.has(魔弹.id), "多张魔弹时应获得待弃顺序里的第一张")
-	检(not 玩家1.has_hand_card(魔弹2.id), "多张魔弹时只应获得一张")
-	检(引擎.deck.discard.has(魔弹2.id), "未被认领的其余魔弹应正常进弃牌堆")
+	# 第二张还要再问一次：这次取消，它就正常进弃牌堆（收下的牌要等整次弃牌结算完才交到手）
+	检(引擎._await_id == 1, "第一张收完后应接着问第二张，实际等待 %s" % str(引擎._await_id))
+	检(not 玩家1.has_hand_card(魔弹.id), "整次弃牌还没结算完时，收下的牌先不进手里")
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 4704, "src_id": 1, "args": [0], "card_ids": [], "dst_ids": [],
+	})
+	检(玩家1.hand_cards.has(魔弹.id), "第一张应答后应获得待弃顺序里的第一张")
+	检(not 玩家1.has_hand_card(魔弹2.id), "第二张取消时不应获得")
+	检(引擎.deck.discard.has(魔弹2.id), "未认领的第二张魔弹应正常进弃牌堆")
 
 	# ---- 盖牌来源：也能拦截 ----
 	_重置战斗()
