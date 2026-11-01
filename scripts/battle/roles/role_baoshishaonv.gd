@@ -20,9 +20,10 @@ extends BattleRole
 ##     并声明本次伤害不因手牌超限掉士气。⑥ 在治疗回应之后，新目标不再有治疗回应。
 ##   - 4703：按 A21 只扩展「响应传递」（v_remissile），不提供主动使用入口；传递播报用 4703。
 ##   - 4704：走 F6 的 p_before_discard 拦截钩子（wants_before_discard 同步预判 + p_before_discard 认领），
-##     只拦「手牌 / 盖牌来源、face_up 不为 false、牌主是同色队友（不含自己）」且自己手里至少还有
-##     1 张牌可弃的【魔弹】。同一次弃牌里有多张【魔弹】时取待弃顺序里的第一张（逐张选择的交互属
-##     CLIENT 范围；技能原文也标注「因机制问题，无法完全符合 faq」，这里按 F6 的 best-effort 实现）。
+##     拦「手牌 / 盖牌来源、牌主是同色队友（不含自己）」且自己手里还有牌可弃的【魔弹】。
+##     口径（需求方）：暗弃（爆牌 / 技能弃置）也算 —— 收走时把那几张【魔弹】亮出来【展示】；
+##     牌库顶移除（source=deck）与没有 owner/source 的弃置（灵魂镜像 / 百鬼夜行）不拦。
+##     同一次弃牌里有多张【魔弹】时一次全收：每张弃 1 张自己的牌当代价。
 ##   - 4705：【宝石】费用必须真宝石（不能用宝石顶水晶那套规则），用 player.gem 判断、set_gem 支付。
 ##     2 名目标各 2 点法术伤害，按玩家点选顺序结算（伤害状态是栈，逆序压栈）。
 ##
@@ -393,24 +394,30 @@ func p_before_discard(ctx: Dictionary) -> int:
 	engine.take_from_hand(player.id, 代价们)
 	engine.to_discard(代价们, {"owner": player.id, "source": "hand", "cause": 三秒原则, "face_up": false})
 	engine._log_discard(player.id, 代价们)
-	# 认领对应数量的【魔弹】：引擎结算时把它们从待弃牌里剔除、加进自己手牌（【强制】获得）
+	# 认领对应数量的【魔弹】：引擎结算时把它们从待弃牌里剔除、加进自己手牌（【强制】获得）。
+	# 回收时把这几张【魔弹】亮出来【展示】—— 原弃牌哪怕是暗弃（爆牌 / 技能弃置），
+	# 收走这一刻也要公开牌面
 	var 认领: Array[int] = []
 	for i: int in range(mini(代价们.size(), 魔弹表.size())):
 		认领.append(魔弹表[i])
+	if not 认领.is_empty():
+		engine.broadcast(GConst.Msg.Card, {
+			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+			"card_ids": 认领.duplicate(), "is_real": true,
+		})
 	ctx["taker"] = player.id
 	ctx["taken"] = 认领
 	engine._broadcast_game()
 	return SUCCESS
 
 
-## 这次弃牌能不能被【三秒原则】拦截（预判与结算共用同一口径）
+## 这次弃牌能不能被【三秒原则】拦截（预判与结算共用同一口径）。
+## 按需求方口径：暗弃（爆牌 / 技能弃置）也照样算 —— 收走时会把那张【魔弹】亮出来【展示】，
+## 不要求弃牌时就已是正面朝上。
 func _可拦截三秒原则(ctx: Dictionary) -> bool:
 	if engine == null or player == null:
 		return false
 	if int(ctx.get("taker", -1)) >= 0:
-		return false
-	# 只拦「正面朝上」的进入弃牌：调用方显式标 face_up=false 的不拦
-	if not bool(ctx.get("face_up", true)):
 		return false
 	var 来源: String = str(ctx.get("source", ""))
 	if 来源 != "hand" and 来源 != "cover":

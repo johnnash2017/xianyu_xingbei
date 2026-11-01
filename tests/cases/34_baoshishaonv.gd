@@ -820,8 +820,8 @@ func _测试4704() -> void:
 	检(not 角色.wants_before_discard(_拦截上下文(3, [魔弹.id])), "敌方牌不应拦截")
 	检(not 角色.wants_before_discard(_拦截上下文(1, [魔弹.id])), "自己的牌不应拦截")
 	检(not 角色.wants_before_discard(_拦截上下文(-1, [魔弹.id])), "未知牌主不应拦截")
-	检(not 角色.wants_before_discard(_拦截上下文(2, [魔弹.id], "hand", false)),
-		"未正面朝上的牌不应拦截")
+	检(角色.wants_before_discard(_拦截上下文(2, [魔弹.id], "hand", false)),
+		"暗弃（face_up=false）的【魔弹】也要拦 —— 收走时展示")
 	检(not 角色.wants_before_discard(_拦截上下文(2, [魔弹.id], "deck")),
 		"不是手牌 / 盖牌来源的牌不应拦截")
 	检(not 角色.wants_before_discard(_拦截上下文(2, [普通牌.id])), "非【魔弹】不应拦截")
@@ -884,7 +884,7 @@ func _测试4704() -> void:
 		"两张代价牌都应离手")
 	检(引擎.deck.discard_size() == 2, "两张代价牌进弃牌堆，魔弹不进，实际 %d" % 引擎.deck.discard_size())
 
-	# ---- 暗弃（face_up=false，如爆牌 / 技能弃置）不拦 ----
+	# ---- 暗弃（face_up=false，如爆牌 / 技能弃置）也算：收走时把【魔弹】【展示】 ----
 	_重置战斗()
 	_给牌(玩家1, 普通牌.id)
 	_给牌(玩家2, 魔弹.id)
@@ -892,9 +892,13 @@ func _测试4704() -> void:
 	发送记录.clear()
 	引擎.push(触发弃牌.new([魔弹.id], _拦截上下文(2, [魔弹.id], "hand", false)))
 	引擎.run()
-	检(_询问次数(1, 4704) == 0, "暗弃的【魔弹】不应弹 4704 询问")
-	检(引擎.deck.discard.has(魔弹.id), "暗弃的【魔弹】直接进弃牌堆")
-	检(引擎._await_id < 0, "暗弃不应把流程停在等待玩家")
+	检(_询问次数(1, 4704) == 1, "暗弃的【魔弹】也要弹 4704 询问")
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 4704, "src_id": 1, "args": [1], "card_ids": [普通牌.id], "dst_ids": [],
+	})
+	检(玩家1.hand_cards.has(魔弹.id), "暗弃的【魔弹】也能被 4704 收走")
+	检(_有展示(魔弹.id), "收走时要把这张【魔弹】亮出来【展示】")
+	检(not 引擎.deck.discard.has(魔弹.id), "被收走的【魔弹】不应进弃牌堆")
 
 	# ---- 拒绝：魔弹正常进弃牌堆 ----
 	_重置战斗()
@@ -965,15 +969,18 @@ func _测试4704() -> void:
 	检(玩家1.hand_cards.has(魔弹.id), "盖牌来源的魔弹也应能被 4704 获得")
 	检(not 引擎.deck.discard.has(魔弹.id), "被认领的盖牌魔弹不应进弃牌堆")
 
-	# ---- 非正面朝上：不参与拦截，直接同步弃牌 ----
+	# ---- 非正面朝上（暗弃）：也参与拦截（收走时展示） ----
 	_重置战斗()
 	_给牌(玩家1, 普通牌.id)
 	_给牌(玩家2, 魔弹.id)
 	玩家2.remove_hand_cards([魔弹.id])
 	引擎.push(触发弃牌.new([魔弹.id], _拦截上下文(2, [魔弹.id], "hand", false)))
 	引擎.run()
-	检(引擎._await_id == -1, "未正面朝上的魔弹不应弹 4704 询问")
-	检(引擎.deck.discard.has(魔弹.id), "不拦截时【魔弹】应正常进弃牌堆")
+	检(引擎._await_id == 1, "暗弃的魔弹也要弹 4704 询问")
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 4704, "src_id": 1, "args": [0], "card_ids": [], "dst_ids": [],
+	})
+	检(引擎.deck.discard.has(魔弹.id), "取消拦截时【魔弹】应正常进弃牌堆")
 
 
 # ============================================================
