@@ -618,7 +618,7 @@ func 替换角色(pid: int, 新角色id: int, 重置上限: bool = true) -> int:
 		p0.按表初始化指示物()
 	broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Notice,
-		"txt": "%s[%s] 的角色卡替换为【%s】" % [旧角色名, p0.player_name, Data.role_name(新角色id)],
+		"txt": "[%s] 的角色卡替换为【%s】" % [旧角色名, Data.role_name(新角色id)],
 		"id": pid,
 	})
 	_broadcast_game()
@@ -2575,11 +2575,11 @@ func 弃置牌库顶(张数: int, 展示者id: int = -1, 展示: bool = true) ->
 	return cards
 
 
-## 战斗日志里称呼玩家的统一写法：角色名[玩家名]
+## 战斗日志里称呼玩家的统一写法：[职业名]（不带玩家名，和客户端 _称号 一个口径）
 func _称号(pp: BattlePlayer) -> String:
 	if pp == null:
 		return "?"
-	return "%s[%s]" % [pp.player_name, Data.role_name(pp.role_id)]
+	return "[%s]" % Data.role_name(pp.role_id)
 
 
 ## 广播「弃牌」日志：某玩家把手牌 / 盖牌里的若干张送进弃牌堆时，写一条日志（只报张数）。
