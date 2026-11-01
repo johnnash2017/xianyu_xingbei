@@ -171,21 +171,22 @@ func _测试士气转移() -> void:
 	检(引擎.team_morale[GConst.RED] == 8 and 引擎.team_morale[GConst.BLUE] == 12,
 		"转移后红/蓝应 8/12，实际 %d/%d" % [引擎.team_morale[GConst.RED], 引擎.team_morale[GConst.BLUE]])
 
-	# 目标已到士气上限：不能再加，也不能凭空扣来源
+	# 目标已到士气上限：来源照常扣，只是目标不加（不是整笔不转）
 	引擎.team_morale[GConst.RED] = 10
 	引擎.team_morale[GConst.BLUE] = 引擎.士气上限()
 	var 满: int = 引擎.转移士气(GConst.RED, GConst.BLUE, 3)
-	检(满 == 0, "目标已满时不应转移，实际 %d" % 满)
-	检(引擎.team_morale[GConst.RED] == 10 and 引擎.team_morale[GConst.BLUE] == 引擎.士气上限(),
-		"目标已满时双方士气都不应变")
+	检(满 == 3, "目标已满时来源仍应扣 3 点，实际 %d" % 满)
+	检(引擎.team_morale[GConst.RED] == 7 and 引擎.team_morale[GConst.BLUE] == 引擎.士气上限(),
+		"目标已满时红队应扣到 7、蓝队保持上限，实际 %d/%d"
+		% [引擎.team_morale[GConst.RED], 引擎.team_morale[GConst.BLUE]])
 
-	# 目标只剩 1 点空间：只转 1 点
+	# 目标只剩 1 点空间：来源照常扣 3 点，目标只加到上限
 	引擎.team_morale[GConst.RED] = 10
 	引擎.team_morale[GConst.BLUE] = 引擎.士气上限() - 1
 	var 部分: int = 引擎.转移士气(GConst.RED, GConst.BLUE, 3)
-	检(部分 == 1, "目标只剩 1 点空间时应只转 1 点，实际 %d" % 部分)
-	检(引擎.team_morale[GConst.RED] == 9 and 引擎.team_morale[GConst.BLUE] == 引擎.士气上限(),
-		"部分转移后红/蓝应 9/上限，实际 %d/%d" % [引擎.team_morale[GConst.RED], 引擎.team_morale[GConst.BLUE]])
+	检(部分 == 3, "来源转出 3 点，实际 %d" % 部分)
+	检(引擎.team_morale[GConst.RED] == 7 and 引擎.team_morale[GConst.BLUE] == 引擎.士气上限(),
+		"部分转移后红/蓝应 7/上限，实际 %d/%d" % [引擎.team_morale[GConst.RED], 引擎.team_morale[GConst.BLUE]])
 
 	# 0 点 / 同队 / 越界：都不转移
 	引擎.team_morale[GConst.RED] = 10

@@ -1714,32 +1714,34 @@ func 清空战绩区(color: int) -> Dictionary:
 	return 构成
 
 
-## 士气转移（F8 / 8704）：从「从颜色」队扣 n 点士气加到「到颜色」队，返回实际转移点数。
-## 上限：目标队不超过 士气上限()；来源队有多少扣多少，最多扣到 0；
-## 目标已满 / 来源为空 / 两队相同一律返回 0。转移后若来源队士气归零，按正常败北判定结束。
+## 士气转移（F8 / 8704）：从「从颜色」队扣 n 点士气加到「到颜色」队，返回实际转出点数。
+## 【转移】是先扣来源、再加目标：来源队照常扣（有多少扣多少，最多扣到 0）；
+## 目标队已经满了时**只是不加**，来源队那一点照样扣掉（不是「加不进去就整笔不转」）。
+## 两队相同 / 来源为空一律返回 0。转移后若来源队士气归零，按正常败北判定结束。
 func 转移士气(从颜色: int, 到颜色: int, 点: int = 1) -> int:
 	if 点 <= 0 or 从颜色 == 到颜色:
 		return 0
 	if 从颜色 < 0 or 从颜色 >= team_morale.size() or 到颜色 < 0 or 到颜色 >= team_morale.size():
 		return 0
-	var 可扣: int = mini(点, team_morale[从颜色])
-	var 空间: int = maxi(士气上限() - team_morale[到颜色], 0)
-	var 实际: int = mini(可扣, 空间)
-	if 实际 <= 0:
+	var 扣: int = mini(点, team_morale[从颜色])
+	if 扣 <= 0:
 		return 0
-	set_morale(从颜色, team_morale[从颜色] - 实际)
-	set_morale(到颜色, team_morale[到颜色] + 实际)
+	var 空间: int = maxi(士气上限() - team_morale[到颜色], 0)
+	var 加: int = mini(扣, 空间)
+	set_morale(从颜色, team_morale[从颜色] - 扣)
+	if 加 > 0:
+		set_morale(到颜色, team_morale[到颜色] + 加)
 	var 从名: String = _阵营名(从颜色)
 	var 到名: String = _阵营名(到颜色)
 	broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Notice,
-		"txt": "%s 将 %d 点士气转移给 %s" % [从名, 实际, 到名],
+		"txt": "%s 将 %d 点士气转移给 %s" % [从名, 扣, 到名],
 		"id": -1,
 	})
 	_broadcast_game()
 	if team_morale[从颜色] <= 0:
 		_check_game_over()
-	return 实际
+	return 扣
 
 
 # ============================================================
