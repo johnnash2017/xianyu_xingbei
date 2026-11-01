@@ -373,38 +373,41 @@ func p_before_discard(ctx: Dictionary) -> int:
 		var 这张: int = int(待收[下标])
 		if not engine.has_reply():
 			var 牌主: int = int(ctx.get("owner", -1))
-			# 只有一个选项、且默认替玩家选中：玩家只要挑 1 张代价牌按「确定」
+			# 只有一个选项、且默认替玩家选中。「弃 1 张牌」是效果不是条件：
+			# 手里没牌时也能发动，这一档的需牌数就写 0（照样收走这张【魔弹】，只是弃 0 张）
 			var 选项名: String = "获得 1 张【魔弹】"
+			var 需弃: int = 1 if not player.hand_cards.is_empty() else 0
 			询问(player.id, 三秒原则, 0, 0, GConst.CardSource.Hand, [{
 				"text": 选项名, "label": 选项名, "value": 1, "args": [1],
-				"need_card": 1, "preview_cards": [这张],
-				"enabled": not player.hand_cards.is_empty(),
+				"need_card": 需弃, "preview_cards": [这张],
+				"enabled": true,
 			}], 0, "", player.hand_cards.duplicate(), true, 0, -1, [牌主], -1, {}, 0, 0, false, [牌主], true, -1, 0, "", 0)
 			return WAIT
-		# 这一张答完了：取消 / 交不出代价＝这张不收，下标照样往后走
+		# 这一张答完了：取消＝这张不收，下标照样往后走
 		进度["下标"] = 下标 + 1
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
 		var given: Array = r.get("card_ids", [])
-		if not args.is_empty() and int(args[0]) > 0 and not given.is_empty():
+		if not args.is_empty() and int(args[0]) > 0:
+			# 「弃 1 张牌」是效果：有牌就弃 1 张，没牌就弃 0 张；牌照样收走
 			var 代价: int = -1
 			for c: Variant in given:
 				var cid: int = int(c)
 				if player.has_discard_card(cid):
 					代价 = cid
 					break
+			notice_skill(三秒原则, [int(ctx.get("owner", -1))])
 			if 代价 >= 0:
-				notice_skill(三秒原则, [int(ctx.get("owner", -1))])
 				engine.take_from_hand(player.id, [代价])
 				engine.to_discard([代价], {"owner": player.id, "source": "hand", "cause": 三秒原则, "face_up": false})
 				engine._log_discard(player.id, [代价])
-				# 收走时把这张【魔弹】亮出来【展示】—— 原弃牌哪怕是暗弃也要公开牌面
-				engine.broadcast(GConst.Msg.Card, {
-					"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-					"card_ids": [这张], "is_real": true,
-				})
-				(进度["认领"] as Array).append(这张)
-				engine._broadcast_game()
+			# 收走时把这张【魔弹】亮出来【展示】—— 原弃牌哪怕是暗弃也要公开牌面
+			engine.broadcast(GConst.Msg.Card, {
+				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+				"card_ids": [这张], "is_real": true,
+			})
+			(进度["认领"] as Array).append(这张)
+			engine._broadcast_game()
 		ctx[进度键] = 进度
 	# 全部问完：把收下的几张从待弃牌里剔除、加进手里（【强制】获得）
 	var 认领: Array = 进度.get("认领", [])
@@ -417,7 +420,7 @@ func p_before_discard(ctx: Dictionary) -> int:
 
 ## 这次弃牌能不能被【三秒原则】拦截（预判与结算共用同一口径）。
 ## 按需求方口径：暗弃（爆牌 / 技能弃置）也照样算 —— 收走时会把那张【魔弹】亮出来【展示】，
-## 不要求弃牌时就已是正面朝上。
+## 不要求弃牌时就已是正面朝上；「弃 1 张牌」是效果不是条件 —— 手里没牌也照样可以发动。
 func _可拦截三秒原则(ctx: Dictionary) -> bool:
 	if engine == null or player == null:
 		return false
@@ -428,9 +431,6 @@ func _可拦截三秒原则(ctx: Dictionary) -> bool:
 		return false
 	var 牌主: BattlePlayer = engine.p(int(ctx.get("owner", -1)))
 	if 牌主 == null or 牌主.id == player.id or 牌主.color != player.color:
-		return false
-	# 手里一张牌都没有：付不起「弃 1 张牌」的代价，不弹询问
-	if player.hand_cards.is_empty():
 		return false
 	return not _待弃魔弹(ctx.get("cards", [])).is_empty()
 
