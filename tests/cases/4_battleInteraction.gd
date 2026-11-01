@@ -1013,6 +1013,45 @@ func 跑() -> void:
 	if 敌甲玩家 != null:
 		敌甲玩家.clean_basic_status()
 
+	# 元素师法术（陨石 1104）：第 1 张必须是带该技能的发动牌、第 2 张必须是地系加成牌。
+	# 选中「发动牌 + 地系牌」后再把发动牌取消掉 —— 剩下的地系牌自己当第 1 张已经不合法，
+	# 客户端要把它收回去（否则还能按确定，服务端必驳回）
+	var 陨石牌: GCard = null
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.has_skill_id(1104):
+			陨石牌 = c
+			break
+	var 地系牌: GCard = null
+	if 陨石牌 != null:
+		for c: GCard in Data.card_db:
+			if c != null and not c.is_virtual and not c.has_skill_id(1104) \
+					and c.element_enum() == GConst.CardElement.Earth:
+				地系牌 = c
+				break
+	检(陨石牌 != null and 地系牌 != null, "卡库找不到陨石 / 地系牌")
+	if 陨石牌 != null and 地系牌 != null:
+		Data.hand_cards = [陨石牌, 地系牌] as Array[GCard]
+		窗.call("_选择技能", 1104, GConst.ActionType.MagicSkill, 1, 1,
+			[2], [陨石牌.id, 地系牌.id], 2, 0, 0, GConst.CardSource.Hand, "",
+			1104, GConst.CardElement.Earth, [], null, 0)
+		await 等帧(1)
+		窗.call("_on_card_clicked", 陨石牌.id)
+		await 等帧(1)
+		窗.call("_on_card_clicked", 地系牌.id)
+		await 等帧(1)
+		检((窗.get("_sel_cards") as Array).size() == 2,
+			"陨石选「发动牌 + 地系牌」应选上两张：%s" % str(窗.get("_sel_cards")))
+		# 取消发动牌：剩下的地系牌失去「第 1 张」资格，要被收回
+		窗.call("_on_card_clicked", 陨石牌.id)
+		await 等帧(1)
+		var 剩牌: Array = 窗.get("_sel_cards")
+		检(not 剩牌.has(地系牌.id),
+			"取消发动牌后，剩下的地系牌应变回不合法并收回（实际 %s）" % str(剩牌))
+		检(not bool(窗.call("_卡牌能点", 地系牌.id)),
+			"取消发动牌后，地系牌应置灰（第 1 张必须带陨石）")
+		窗.set("_mode", 0)
+		Data.hand_cards = 攻击牌
+
 	# 基础效果的状态图标悬停：文本前面要写「基础效果：」，和指示物 / 独有效果区分开
 	var 面板: 战斗玩家面板 = null
 	var 界面板: Array = 窗.get("_面板列表")

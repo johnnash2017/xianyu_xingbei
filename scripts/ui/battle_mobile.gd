@@ -4134,6 +4134,12 @@ func _on_card_clicked(card_id: int) -> void:
 			_sel_cards = [card_id]
 	elif _sel_cards.has(card_id):
 		_sel_cards.erase(card_id)
+		# 取消掉一张牌后，剩下的牌可能已经不合规：比如元素师法术的「第 1 张必须是带该技能的发动牌、
+		# 第 2 张必须是该系加成牌」，把发动牌取消后，那张加成牌自己当第 1 张就不合法了，
+		# 但它「已经选中」会被 _符合选牌规则 直接放行，还能按确定提交（服务端必驳回）。
+		# 所以取消后按当前顺序把剩下的牌复检一遍，不合法的直接收回。
+		if (_mode == 4 or _mode == 3) and not _sel_cards.is_empty():
+			_sel_cards = _筛出当前技能可留的牌(_sel_cards)
 	else:
 		if _need_cards > 0 and _sel_cards.size() >= _need_cards:
 			_sel_cards.clear()
