@@ -479,8 +479,9 @@ func 跑() -> void:
 	检(not 弃牌问.is_empty(), "没有向目标下发 8701 弃牌询问")
 	检(str(弃牌问.get("card_rule", "")) == "magic", "8701 让目标弃的必须是法术牌")
 	检(bool(弃牌问.get("can_cancel", false)), "8701 的目标可以选择不弃（技能原文「若他不如此做」）")
-	检((弃牌问.get("card_ids", []) as Array).has(水法术.id),
-		"8701 的可点牌表应包含目标手里的法术牌")
+	# 和 801 一样不额外下发白名单：靠 card_rule = magic 让界面把非法术牌置灰
+	检((弃牌问.get("card_ids", []) as Array).is_empty(),
+		"8701 的询问不再下发牌白名单（靠 card_rule 置灰）：%s" % str(弃牌问.get("card_ids", [])))
 	引擎.on_message(2, GConst.Msg.Respond, {
 		"respond_id": 8701, "src_id": 2, "args": [1], "card_ids": [水法术.id], "dst_ids": [],
 	})
@@ -540,15 +541,21 @@ func 跑() -> void:
 	})
 	检(引擎.current_id == 2, "放弃 8701 的额外行动后应轮到下家，实际 %d" % 引擎.current_id)
 
-	# 目标没有法术牌：不白问，直接结算惩罚
+	# 目标没有法术牌：也照问一次（参考 801），界面上无牌可点，只能取消 → 结算惩罚
 	_重置战斗()
 	_给牌(玩家, 火法术.id)
 	_给牌(靶, 雷攻击.id)
 	发送记录.clear()
 	引擎.resolve_action(GConst.ActionType.MagicSkill, 黑洞动作)
 	引擎.run()
-	检(_询问次数(2, 技能贪欲黑洞) == 0, "目标没有法术牌时不应再下发弃牌询问")
-	检(_伤害条数(技能贪欲黑洞) == 1, "目标没有法术牌时应直接结算 2 点法术伤害")
+	检(_询问次数(2, 技能贪欲黑洞) == 1, "目标没有法术牌时也要下发弃牌询问")
+	var 空问: Dictionary = _取询问(2, 技能贪欲黑洞)
+	检(not 空问.is_empty(), "目标没有法术牌时也应下发询问")
+	检(bool(空问.get("can_cancel", false)), "没有法术牌时可取消（＝不弃）")
+	引擎.on_message(2, GConst.Msg.Respond, {
+		"respond_id": 技能贪欲黑洞, "src_id": 2, "args": [0], "card_ids": [], "dst_ids": [],
+	})
+	检(_伤害条数(技能贪欲黑洞) == 1, "目标没有法术牌（取消）时应结算 2 点法术伤害")
 	检(引擎.current_id == 1 and 引擎.行动额外 and 引擎.行动额外来源 == 技能贪欲黑洞,
 		"目标没有法术牌时也应给自己 +1 法术行动（当前 %d / 额外 %s / 来源 %s）"
 		% [引擎.current_id, str(引擎.行动额外), str(引擎.行动额外来源)])

@@ -234,13 +234,11 @@ func _贪欲黑洞结算(action: Dictionary) -> int:
 		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
 		engine._broadcast_game()
 		_tan_yu_step = 1
-		# 目标手里一张法术牌都没有：不用白问一次，直接结算惩罚
-		if _手牌法术(dst).is_empty():
-			return _贪欲黑洞惩罚(dst.id)
-	# 目标可选是否弃牌：不弃 / 取消 / 超时回空都按「不如此做」结算
+	# 目标可选是否弃牌：不弃 / 取消 / 超时回空都按「不如此做」结算。
+	# 和魔法少女【魔爆冲击】一样：目标手里有没有法术牌都照问一次，让他自己决定
+	# （没牌时界面把牌整片置灰，他只能取消 → 吃 2 点法术伤害）
 	if not engine.has_reply():
-		询问(dst.id, TAN_YU_HEI_DONG, 1, 0, GConst.CardSource.Hand, [], 0, "magic",
-			_手牌法术(dst), true, 1)
+		询问(dst.id, TAN_YU_HEI_DONG, 1, 0, GConst.CardSource.Hand, [], 0, "magic", [], true, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_tan_yu_step = STEP_DONE
