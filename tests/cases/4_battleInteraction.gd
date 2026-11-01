@@ -870,6 +870,16 @@ func 跑() -> void:
 			"4606 点技能后应直接进入二级技能栏（实际 %d）" % int(窗.get("_mode")))
 		var 海神栏: Array = 窗.get("_二级选项")
 		检(海神栏.size() == 7, "4606 应摆出 7 个来源技能选项（实际 %d 个）" % 海神栏.size())
+		# 独有技选项统一按「借用它的技能」的类型色（4606＝法术）——迅捷 / 威力赐福也不能是响应紫
+		var 法术色: Color = GConst.技能类型颜色.get("法术", Color.WHITE)
+		for 项: Dictionary in 海神栏:
+			var 项号: int = int(项.get("技能号", 0))
+			var 项按钮: 技能按钮 = 项.get("按钮")
+			if 项号 <= 0 or 项按钮 == null or 项按钮.plateButton == null:
+				continue
+			var 项色: Color = (项按钮.plateButton.material as ShaderMaterial).get_shader_parameter("button_color")
+			检(项色.is_equal_approx(法术色),
+				"4606 的独有技选项 %d 应是法术色（实际 %s）" % [项号, str(项色)])
 		var 可用下标: int = -1
 		for i: int in range(海神栏.size()):
 			if int((海神栏[i] as Dictionary).get("技能号", 0)) == 海神技能号:
@@ -892,6 +902,21 @@ func 跑() -> void:
 			检(int(窗.get("_mode")) == 0,
 				"4606 选好选项 / 牌 / 目标后按确定应提交（实际 %d）" % int(窗.get("_mode")))
 		Data.hand_cards = 攻击牌
+		# 赐福作为「持有者行动结束的响应」出现时仍是响应紫（聚合器下发的 no_parent 询问）
+		窗.set("_pending", {"no_parent": true})
+		窗.call("_进入二级技能栏", 0, null, [{
+			"文本": "迅捷赐福", "参数": [], "技能号": GConst.技能_迅捷赐福, "可用": true,
+		}])
+		await 等帧(1)
+		var 响应栏: Array = 窗.get("_二级选项")
+		var 响应色: Color = GConst.技能类型颜色.get("响应", Color.WHITE)
+		if not 响应栏.is_empty():
+			var 响应按钮: 技能按钮 = (响应栏[0] as Dictionary).get("按钮")
+			if 响应按钮 != null and 响应按钮.plateButton != null:
+				var 响应实际: Color = (响应按钮.plateButton.material as ShaderMaterial).get_shader_parameter("button_color")
+				检(响应实际.is_equal_approx(响应色),
+					"赐福作为响应出现时应是响应紫（实际 %s）" % str(响应实际))
+		窗.set("_mode", 0)
 
 	# 4603 伴响魂灵：响应询问里「其余对手」是服务端固定的伤害目标 —— 客户端要自动选中并锁死，
 	# 头像上直接写 1 法术伤害（技能指示器「自动选目标：询问目标」+ 文案）
