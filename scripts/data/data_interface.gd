@@ -63,7 +63,8 @@ func _ready() -> void:
 # ============================================================
 # 数据加载（全部取自 Table/TableScripts/DataTables.gd，由 设计表.xlsx 生成）
 # ============================================================
-## 卡牌：数据来自 DataTables.gd 的「卡表」（含 5 张无卡面的虚拟牌；资源名交给 AssetIndex 解析到 assets/textures/card/）
+## 卡牌：数据来自 DataTables.gd 的「卡表」（含 5 张无卡面的虚拟牌 + 1005/1006 两张真实特殊攻击牌；
+## 资源名交给 AssetIndex 解析到 assets/textures/card/）
 func _load_card_db() -> void:
 	card_db.clear()
 	_card_by_id.clear()

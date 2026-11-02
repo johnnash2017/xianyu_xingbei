@@ -60,7 +60,8 @@ func _检数据() -> void:
 		检(卡 != null, "卡表缺 %d（魔刃/异刃）" % 卡号)
 		if 卡 != null:
 			检(卡.is_attack(), "%d 应是攻击牌" % 卡号)
-			检(卡.is_virtual, "%d 应标成虚拟牌（不进牌库）" % 卡号)
+			检(not 卡.is_virtual, "%d 不应是虚拟牌（它是真实攻击牌）" % 卡号)
+			检(卡.element_enum() > 0, "%d 应有真实的当前系别" % 卡号)
 			检(卡.fate_pattern_enum() == GConst.FatePattern.Blood, "%d 应是血命格" % 卡号)
 
 
@@ -248,6 +249,8 @@ func _检噬神者() -> void:
 		== BattleRole.SUCCESS, "【御刃·魔刃】确认后应直接结算")
 	检(御刃玩家.有手牌(1005) and 御刃玩家.boot_skill_used,
 		"【御刃】确认后应把魔刃加入手牌并置启动已用")
+	检(御刃玩家.hand_cards.has(1005),
+		"【御刃】加入的魔刃应作为真实手牌实例 1005 存在，实际手牌=%s" % str(御刃玩家.hand_cards))
 	# 攻击入口已删除：魔刃/异刃现在就是普通攻击牌，按当前系别直接打
 	检(GConst.技能行(7912).is_empty() and GConst.技能行(7913).is_empty(),
 		"技能表里不应再有 7912 / 7913（攻击）入口")

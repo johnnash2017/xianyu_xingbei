@@ -3251,8 +3251,8 @@ func _规则攻击牌(系: int, 命格: int) -> Array:
 	for c: GCard in Data.card_db:
 		if c == null or not c.is_attack():
 			continue
-		# 虚拟牌里也有真正参与攻击结算的牌（魔刃/异刃）：只要当前有有效系别，
-		# 就应当进入「该系攻击牌」白名单。没有系别的虚拟牌（借用/欺诈临时牌）仍然跳过。
+		# 没有系别的虚拟牌（借用/欺诈临时牌）不进「该系攻击牌」白名单；
+		# 魔刃/异刃是真实攻击牌（不再标虚拟），按下面正常的系别/命格规则参与。
 		if c.is_virtual and c.element_enum() <= 0:
 			continue
 		if 系 > 0 and c.element_enum() != 系:
@@ -3266,12 +3266,14 @@ func _规则攻击牌(系: int, 命格: int) -> Array:
 	return 表
 
 
-## 攻击牌的「表现牌」：魔刃/异刃这类虚拟攻击牌没有自己的斩击特效，
+## 攻击牌的「表现牌」：魔刃/异刃是真实攻击牌，但没有自己的斩击特效预制体，
 ## 按当前系别借一张普通斩击牌作为 Card.as_card_id，客户端据此播对应系别的音效/特效；
 ## 规则结算、摊牌、日志仍用原牌。
 func 攻击表现牌(card_id: int) -> int:
 	var 卡: GCard = Data.get_card(card_id)
-	if 卡 == null or not 卡.is_virtual or not 卡.is_attack():
+	if 卡 == null or not 卡.is_attack():
+		return card_id
+	if 卡.id != GConst.噬神者_魔刃卡 and 卡.id != GConst.噬神者_异刃卡:
 		return card_id
 	var 表现: int = int(GConst.元素斩击表现牌.get(卡.element_enum(), 0))
 	return 表现 if 表现 > 0 else card_id
