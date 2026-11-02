@@ -652,6 +652,17 @@ func 跑() -> void:
 		"普通法术行动的白名单不应包含风系法术牌（否则会按【圣盾】/【虚弱】等普通法术结算）")
 	检(not 白名单.has(火攻击.id), "普通法术行动的白名单不应包含火系攻击牌")
 	检(not 白名单.has(火法术.id), "普通法术行动的白名单不应包含不能当魔弹的法术牌")
+	# 克隆牌（实例号 != 牌面，测试指令发的牌就是这种）：规格里的牌表要折成牌面，否则对不上白名单
+	var 克隆魔弹: int = GConst.实例号(魔弹牌.id, 1)
+	玩家.add_hand_cards([克隆魔弹])
+	玩家.撤回额外行动(10702)
+	玩家.add_action(GConst.ActionType.Magic, 10702, true, true, 角色.虚荣掌握规格())
+	var 克隆规格: Dictionary = 玩家.额外行动数据(10702)
+	检((克隆规格.get("cards", []) as Array).has(魔弹牌.id),
+		"行动规格里的牌表应折成牌面（克隆牌实例号 != 牌面）：%s" % str(克隆规格.get("cards", [])))
+	检(引擎.校验额外行动限制(玩家, 克隆规格, GConst.ActionType.Magic, [克隆魔弹], [2])
+		== GConst.GE_SUCCESS, "克隆的【魔弹】也应通过 10702 的白名单校验（否则点了就被驳回）")
+	玩家.remove_hand_cards([克隆魔弹])
 	# 客户端行动命令：普通法术行动只亮【魔弹】；地/风系牌只在 10703 技能按钮里亮
 	var 额外命令表: Array = 引擎.action_commands(1, GConst.ActionType.Magic, false, true, false, 10702)
 	var 普通命令: Dictionary = 额外命令表[0] if not 额外命令表.is_empty() else {}

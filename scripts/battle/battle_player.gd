@@ -480,6 +480,7 @@ func 额外行动新序号() -> int:
 ##
 ## spec＝这份行动自己的规格（授予时由技能算好，引擎只照单执行，不再按 cause 回问角色）：
 ##   cards           出牌白名单；空＝不限；[GConst.手牌白名单_全禁]（-1）＝一张都不给
+##                   （存进来时统一折成牌面，脚本给实例号也认）
 ##   targets         目标白名单；空＝不限；[GConst.目标白名单_无]（-1）＝一个都没有
 ##   element         行动限定的牌系：**也是限制**——cards 为空时，只看该系攻击牌
 ##                   （引擎按卡库现算，不看授予那一刻的手牌快照，见 BattleEngine.额外行动出牌白名单）；
@@ -504,13 +505,27 @@ func add_action(allow_action: int, cause: int, direct: bool = false,
 	}
 	# spec 里的键一律照抄（数组复制一份）：技能写了什么规格就存什么，
 	# 引擎不认识的键也不会被悄悄丢掉（以前这里是白名单赋值，新增 spec 键忘了同步就会静默失效）。
+	# **牌表（cards / skill_cards）统一折成牌面再存**：引擎校验按牌面比（见 校验额外行动限制），
+	# 角色脚本常常直接塞「走手牌拿到的实例号」；正常牌实例号 == 牌面所以看不出来，
+	# 克隆牌（测试指令发的牌）实例号 != 牌面，白名单就会对不上、出牌被驳回（10702 踩过）。
 	for 键: Variant in spec:
-		if spec[键] is Array:
+		if 键 == "cards" or 键 == "skill_cards":
+			数据[键] = _牌表折面(spec[键])
+		elif spec[键] is Array:
 			数据[键] = (spec[键] as Array).duplicate()
 		else:
 			数据[键] = spec[键]
 	additional_actions.append(数据)
 	额外行动排序()
+
+
+## 行动规格里的牌表折成牌面（负数哨兵原样保留，如 手牌白名单_全禁 = -1）
+func _牌表折面(表: Variant) -> Array:
+	var out: Array = []
+	if 表 is Array:
+		for c: Variant in 表 as Array:
+			out.append(GConst.牌号(int(c)))
+	return out
 
 
 ## 额外行动的唯一 ID（只增不减，不随队列增删/换队变化）
@@ -594,7 +609,9 @@ func 改写额外行动(cause: int, spec: Dictionary) -> void:
 	if 数据.is_empty():
 		return
 	for 键: Variant in spec:
-		if spec[键] is Array:
+		if 键 == "cards" or 键 == "skill_cards":
+			数据[键] = _牌表折面(spec[键])
+		elif spec[键] is Array:
 			数据[键] = (spec[键] as Array).duplicate()
 		else:
 			数据[键] = spec[键]
