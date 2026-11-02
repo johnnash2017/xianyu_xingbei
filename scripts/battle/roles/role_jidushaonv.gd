@@ -208,8 +208,11 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 			# 「不如此做」结算（2 点法术伤害 + 发动者一方战绩区 +1 水晶）。
 			# 提示整段从**目标视角**写（「你受到…」「我方 / 对方战绩区」）：
 			# 发动者与目标同队时水晶进的是目标自己这边（我方），否则是对面（对方）。
+			# 用 ask_prompt 下发（整段专属提示）：can_cancel=true 时客户端会拿技能说明盖掉 ask_text，
+			# 只有 ask_prompt 能保证这句「我方 / 对方」按目标视角原样显示。
 			engine.ask_skill(目标号, CU_YI_XIU_XIN, 1, 0, GConst.CardSource.Hand, [], 0, "magic",
-				[], true, _cu_yi_弃牌文案(目标号))
+				[], true, "", [], 0, 0, false, [], true, -1, 0, false, -1, false,
+				_cu_yi_弃牌文案(目标号))
 			return WAIT
 	if _cu_yi_step != 3:
 		return SUCCESS
