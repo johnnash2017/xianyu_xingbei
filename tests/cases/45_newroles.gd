@@ -394,15 +394,16 @@ func _检切换后复检() -> void:
 			"悬停第二段应是完整卡面（隐藏重复的状态名行）")
 		检(技能 != null and 技能.text.contains("渗蚀"),
 			"悬停第三段应包含【渗蚀】说明")
-	# 魔刃/异刃共用状态图标预制体：文字节点和位置由预制体控制，供手动调整
-	var 刃预制路径: String = "res://scenes/prefabs/battlemobile/BladeStatusIcon.tscn"
-	var 刃预制: PackedScene = load(刃预制路径) as PackedScene
-	检(刃预制 != null, "缺少状态图标预制体：%s" % 刃预制路径)
-	var 刃实例: Node = 刃预制.instantiate() if 刃预制 != null else null
-	检(刃实例 is TextureRect and 刃实例.get_node_or_null("Text") is Label,
-		"状态图标预制体应包含 Text 文字节点：%s" % 刃预制路径)
-	if 刃实例 != null:
-		刃实例.queue_free()
+	# 所有状态图标共用 StatusIcon：Text 是计数、Name 是底部名字，位置由预制体控制
+	var 状态预制路径: String = "res://scenes/prefabs/battlemobile/StatusIcon.tscn"
+	var 状态预制: PackedScene = load(状态预制路径) as PackedScene
+	检(状态预制 != null, "缺少状态图标预制体：%s" % 状态预制路径)
+	var 状态实例: Node = 状态预制.instantiate() if 状态预制 != null else null
+	检(状态实例 is TextureRect and 状态实例.get_node_or_null("Text") is Label
+		and 状态实例.get_node_or_null("Name") is Label,
+		"状态图标预制体应包含 Text / Name 两个文字节点：%s" % 状态预制路径)
+	if 状态实例 != null:
+		状态实例.queue_free()
 	Data.hand_cards = 原手牌
 	Data.hand_iids = 原Iids
 	窗.queue_free()

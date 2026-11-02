@@ -94,15 +94,12 @@ var token2: Label = null
 var hurted: Node = null
 ## 状态图标（基础效果 / 独有效果）的边长：素材都是 20×20，放大到 28 显示（格子里居中）
 const 状态图标尺寸: float = 28.0
-## 状态图标（基础效果 / 独有效果 / 额外状态）的预制体：一枚 28×28 的 TextureRect，贴图由代码按状态填。
-## 描边（外白内黑两层）和马赛克都在它引用的材质里，想手调就开这两个文件：
-##   scenes/prefabs/battlemobile/StatusIcon.tscn          ← 图标预制体（看效果）
+## 所有状态图标 / 指示物共用这一份预制体：一枚 28×28 的 TextureRect，贴图由代码按状态填。
+## Text 是数字（指示物计数，状态图标隐藏）；Name 是底部名字（所有状态和指示物都显示）。
+## 描边、马赛克和名字位置都在下面两个文件里调：
+##   scenes/prefabs/battlemobile/StatusIcon.tscn          ← 图标 + Text + Name
 ##   scenes/prefabs/battlemobile/StatusIconMaterial.tres  ← 材质：外/内描边宽度与颜色、马赛克块数
-## 同一份预制体（StatusIcon.tscn）也当指示物用：数字标签默认藏着，指示物才亮出来
 const 状态图标预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/StatusIcon.tscn")
-## 魔刃/异刃公开状态共用的图标预制体：文字位置、字号在场景里调一次即可；
-## 图标贴图由代码按 card_id 填，代码只改 Text 的名字，不覆盖 Label 布局。
-const 刃状态图标预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/BladeStatusIcon.tscn")
 ## 名牌上「等待响应XX」那行字的字号（场景里是 20）与缩放下限：文案带技能名时会一行放不下，
 ## 由 _自适应等待字号 逐级缩小，见那里
 const 等待文案基础字号: int = 20
@@ -134,7 +131,9 @@ const 能量格尺寸: Vector2 = Vector2(30.0, 30.0)
 ## 能量区的格子边长（原版 Unity 的 GridLayoutGroup cellSize 就是 30×30）
 const 能量区图标格: Vector2 = Vector2(30.0, 30.0)
 ## 状态图标区的格子边长：就取图标本身的大小，图标之间不留缝（原来格子 40、图标 36，四周会空 4 像素）
-const 状态图标格: Vector2 = Vector2(状态图标尺寸, 状态图标尺寸)
+## 状态区格子：图标本身 28，但底部名字（如「迅捷赐福」「地之封印」）要占宽度，
+## 格子放大到 40×40；2 列 × 4 行正好铺满 80×160 的状态区，图标在格子里居中。
+const 状态图标格: Vector2 = Vector2(40.0, 40.0)
 ## 状态图标区排几列：它宽 80、格子 28 → 2 列
 const 状态区列数: int = 2
 ## 状态图标区每列最多几格（原版 GridLayoutGroup 是「固定 4 行」＝一列 4 个，满了再往右一列）
@@ -496,6 +495,10 @@ func _create_token(node_name: String, 槽: int) -> Label:
 		# 数字标签在预制体里默认隐藏（状态图标用它时就是藏着的），指示物这里才亮出来
 		lbl.visible = true
 		lbl.text = "0"
+	var 名标签: Label = go.find_child("Name", true, false) as Label
+	if 名标签 != null:
+		名标签.visible = true
+		名标签.text = _指示物名字(槽)
 	if go is CanvasItem:
 		(go as CanvasItem).visible = false
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
@@ -507,16 +510,25 @@ static func 指示物上限文本(上限: int) -> String:
 	return "∞" if 上限 == 99 else str(上限)
 
 
+## 指示物名字：槽 2 是盖牌区（角色表里那列写的只是「盖着什么牌」：充能 / 茧 / 剑魂 / 祝福 / 暗月…），
+## 末尾补「盖牌」，例如「充能盖牌」；黄/蓝 token 用角色表里的名字。
+func _指示物名字(槽: int) -> String:
+	var 定义: Dictionary = Data.role_token_def(角色号, 槽)
+	if 定义.is_empty():
+		return ""
+	var 名: String = str(定义["name"])
+	if 槽 == 2 and not 名.ends_with("盖牌"):
+		名 += "盖牌"
+	return 名
+
+
 ## 鼠标指到某枚指示物图标：把「名字 当前/上限」报给容器（上限只在悬浮提示里露面）。
-## 槽 2 是盖牌区（角色表里那列写的只是「盖着什么牌」：充能 / 茧 / 剑魂 / 祝福 / 暗月…），
-## 提示里补一句「盖牌」，例如魔弓的「充能盖牌 3/8」，否则只看名字看不出这是盖着的牌
+## 槽 2 是盖牌区，提示里补一句「盖牌」，例如魔弓的「充能盖牌 3/8」，否则只看名字看不出这是盖着的牌
 func _报告指示物悬停(槽: int, 图标: Control) -> void:
 	var 定义: Dictionary = Data.role_token_def(角色号, 槽)
 	if 定义.is_empty():
 		return
-	var 名: String = str(定义["name"])
-	if 槽 == 2 and not 名.ends_with("盖牌"):
-		名 += "盖牌"
+	var 名: String = _指示物名字(槽)
 	var 上限文本: String = 指示物上限文本(int(定义["max"]))
 	状态图标悬停.emit(图标, "%s %d/%s" % [名, _指示物数值[槽], 上限文本], -1, true)
 
@@ -661,7 +673,8 @@ func _刷新状态图标() -> void:
 			# 全部标记（圣盾/封印…）一起丢掉（battle_audit C-2）。
 			push_error("Basic card is error! CardID = %s" % str(item))
 			continue
-		_加状态图标(ps, _load_sprite(sprite_name), "b:%d" % int(item), 新起点, int(item))
+		_加状态图标(ps, _load_sprite(sprite_name), "b:%d" % int(item), 新起点, int(item),
+			"", -1, 状态名(card))
 	for idx: Variant in _状态独有效果:
 		# 独有效果没有卡牌对象，报不出「哪一张牌」，提示里只写这个状态做什么；
 		# 【五系束缚】把两个选项和「触发时会摸几张牌」一起写出来，供玩家判断要不要选摸牌继续行动
@@ -671,7 +684,7 @@ func _刷新状态图标() -> void:
 		if i == GConst.Exclusive.WuXiShuFu:
 			# 状态名和效果说明分两行（提示框是 RichTextLabel，真换行即可）
 			提示 = "%s\n摸 %d 张牌 或 跳过回合" % [名, 五系束缚应摸张数()]
-		_加状态图标(ps, Art.exclusive_icon(i), "e:%d" % i, 新起点, -1, 提示)
+		_加状态图标(ps, Art.exclusive_icon(i), "e:%d" % i, 新起点, -1, 提示, -1, 名)
 	# 额外状态：服务端只下发状态标记，图标与说明由 GConst 提供；
 	# 用图标路径作标识，同一状态重复渲染时仍能续播弹出动画
 	for 状态: Variant in _状态额外:
@@ -685,18 +698,14 @@ func _刷新状态图标() -> void:
 		if 图标贴图 == null:
 			continue
 		var 状态名: String = str(d.get("name", ""))
-		# 魔刃/异刃：专用预制体，图标和文字位置都在场景里调；代码只填名字
+		# 魔刃/异刃也走同一份 StatusIcon：card_id 仍用于悬停摊卡面
 		var 额外牌id: int = int(d.get("card_id", -1))
-		if 额外牌id == GConst.噬神者_魔刃卡 or 额外牌id == GConst.噬神者_异刃卡:
-			_加刃状态图标(刃状态图标预制体, 图标贴图, 状态名, 额外牌id,
-				"blade:%d" % 额外牌id, 新起点)
-			continue
 		var 状态说明: String = str(d.get("desc", ""))
 		var 状态提示: String = 状态名
 		if not 状态说明.is_empty():
 			状态提示 = "%s\n%s" % [状态名, 状态说明]
-		var 叠字: String = 状态名 if bool(d.get("show_name", false)) else ""
-		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示, 额外牌id, 叠字)
+		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示,
+			额外牌id, 状态名)
 	_状态已初始化 = true
 	_状态弹出起点 = 新起点
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
@@ -722,7 +731,7 @@ func 五系束缚应摸张数() -> int:
 ## 基础效果牌（基础牌id >= 0）在「基础牌可点」时变成可点的，点一下就上报给战斗界面；
 ## 提示 是给独有效果用的纯文字提示（它们没有卡牌对象，弹不出卡面）
 func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary,
-		基础牌id: int = -1, 提示: String = "", 额外牌id: int = -1, 叠字: String = "") -> void:
+		基础牌id: int = -1, 提示: String = "", 额外牌id: int = -1, 名称: String = "") -> void:
 	if tex == null:
 		return
 	var go := ps.instantiate()
@@ -732,16 +741,14 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 		if 基础牌id >= 0 and _基础牌可点:
 			(go as TextureRect).mouse_filter = Control.MOUSE_FILTER_STOP
 			(go as TextureRect).gui_input.connect(_on_基础牌图标输入.bind(基础牌id))
-	if 叠字 != "":
-		var 文本节点: Node = go.get_node_or_null("Text")
-		if 文本节点 is Label:
-			var 标签: Label = 文本节点 as Label
-			标签.visible = true
-			标签.text = 叠字
-			标签.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			标签.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			标签.add_theme_font_size_override("font_size", 10)
-			标签.add_theme_constant_override("outline_size", 4)
+	# 状态图标不显示数字（Text），只显示底部名字（Name）；名字位置/字号在 StatusIcon.tscn 里调
+	var 数标签: Node = go.get_node_or_null("Text")
+	if 数标签 is Label:
+		(数标签 as Label).visible = false
+	var 名标签: Node = go.get_node_or_null("Name")
+	if 名标签 is Label:
+		(名标签 as Label).text = 名称
+		(名标签 as Label).visible = not 名称.is_empty()
 	var 起点: int = -1
 	if go is Control:
 		# 鼠标压上去各报各的：基础效果牌报「卡名（命格·元素）」+ 卡面，独有效果只有名字；
@@ -768,39 +775,6 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 		var 图标: Control = go as Control
 		var 已过: float = float(Time.get_ticks_msec() - 起点) / 1000.0
 		_播状态弹出(图标, 已过)
-
-
-## 魔刃/异刃专用状态图标：预制体自带图标和文字布局，代码只填名字，
-## 不覆盖 Label 的位置 / 对齐 / 字号 —— 想调文字位置直接改对应 .tscn。
-func _加刃状态图标(ps: PackedScene, tex: Texture2D, 名称: String, 牌id: int,
-		标识: String, 起点表: Dictionary) -> void:
-	if ps == null:
-		return
-	var go: TextureRect = ps.instantiate() as TextureRect
-	if go == null:
-		return
-	if tex != null:
-		go.texture = tex
-	var 文本节点: Node = go.get_node_or_null("Text")
-	if 文本节点 is Label:
-		var 标签: Label = 文本节点 as Label
-		标签.visible = true
-		标签.text = 名称
-	go.mouse_filter = Control.MOUSE_FILTER_STOP
-	go.mouse_entered.connect(func() -> void: 状态图标悬停.emit(go, 名称, 牌id, true))
-	go.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
-	var 起点: int = -1
-	var 旧列表: Array = _状态弹出起点.get(标识, [])
-	var 本组: Array = 起点表.get(标识, [])
-	var 序号: int = 本组.size()
-	起点 = int(旧列表[序号]) if 序号 < 旧列表.size() \
-		else (-1 if not _状态已初始化 else Time.get_ticks_msec())
-	本组.append(起点)
-	起点表[标识] = 本组
-	_add_child_go(basicAndExCardArea, go)
-	if 起点 >= 0:
-		var 已过: float = float(Time.get_ticks_msec() - 起点) / 1000.0
-		_播状态弹出(go, 已过)
 
 
 ## 状态图标「弹出」：先摆成放大态，再缩回原大小。
