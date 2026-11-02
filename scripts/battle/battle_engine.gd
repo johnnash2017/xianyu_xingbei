@@ -3249,7 +3249,11 @@ func _规则攻击牌(系: int, 命格: int) -> Array:
 		return _规则攻击牌缓存[键]
 	var 表: Array = []
 	for c: GCard in Data.card_db:
-		if c == null or c.is_virtual or not c.is_attack():
+		if c == null or not c.is_attack():
+			continue
+		# 虚拟牌里也有真正参与攻击结算的牌（魔刃/异刃）：只要当前有有效系别，
+		# 就应当进入「该系攻击牌」白名单。没有系别的虚拟牌（借用/欺诈临时牌）仍然跳过。
+		if c.is_virtual and c.element_enum() <= 0:
 			continue
 		if 系 > 0 and c.element_enum() != 系:
 			continue

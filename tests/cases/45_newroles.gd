@@ -270,11 +270,20 @@ func _检噬神者() -> void:
 	检(int(角色.p_attack_card({"player": 1, "card_id": 1005, "改用": 1005})) == BattleRole.SUCCESS,
 		"【魔刃】普通攻击时应记录本次用的牌")
 	检(角色._本次刃 == 1005, "【魔刃】普通攻击应记录实例号，实际 %d" % 角色._本次刃)
+	# 额外行动按系别算攻击牌白名单时，虚拟牌魔刃/异刃也要按当前系别进入
+	检((引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0) as Array).has(1005),
+		"火系额外行动白名单应包含当前火系【魔刃】")
+	检(not (引擎.call("_规则攻击牌", GConst.CardElement.Water, 0) as Array).has(1005),
+		"【魔刃】当前是火系时不应进水系白名单")
 	# 切成水系：卡面系别、普通攻击校验都要跟着变；服务端回一条 CardElement
 	检(引擎.设置卡牌元素(1, 1005, GConst.CardElement.Water), "【魔刃】切水系应成功")
 	检(魔卡.element_enum() == GConst.CardElement.Water, "切换后【魔刃】当前系别应是水")
 	检(int(玩家.v_attack(1005, 2, 引擎.players)) == GConst.GE_SUCCESS,
 		"【魔刃】当前水系仍应能直接作为普通攻击牌打出")
+	检((引擎.call("_规则攻击牌", GConst.CardElement.Water, 0) as Array).has(1005),
+		"水系额外行动白名单应包含当前水系【魔刃】")
+	检(not (引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0) as Array).has(1005),
+		"【魔刃】切水后不应再进火系白名单")
 	var 有元素消息: bool = false
 	for r: Dictionary in 发送记录:
 		if int(r["msg"]) == GConst.Msg.CardElement:
