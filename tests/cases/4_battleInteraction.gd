@@ -1289,13 +1289,27 @@ func 跑() -> void:
 	# 这个用例里原本没有队友（1 蓝 / 2、3 红）：临时加一个蓝队队友来验证提示
 	var 队友测试: GPlayer = GPlayer.new(4, GConst.BLUE, "队友")
 	Data.player_list.append(队友测试)
-	窗.set("_mode", 4)
-	窗.set("_pending_skill_id", 10601)
 	var 队友号: int = int(窗.call("_右手边队友", Logic.my_player_id))
 	检(队友号 > 0, "10601 应能找到右手边队友（实际 %d）" % 队友号)
+	# 真实点击链路：替她发动的队友由服务端随命令下发（highlight_ids），点开技能就把他点亮；
+	# 点亮只是给人看，不能进 _sel_players 当目标提交（10601 本人这一手没有目标）
+	窗.set("_sel_players", [] as Array[int])
+	窗.set("_高亮目标", [] as Array[int])
+	窗.call("_选择技能", 10601, GConst.ActionType.MagicSkill, 0, 0, [], [], 0, 0, 0,
+		GConst.CardSource.Hand, "", 0, 0, [], null, 0, [队友号])
+	await 等帧(1)
+	检(int(窗.get("_mode")) == 4 and int(窗.get("_pending_skill_id")) == 10601,
+		"点完 10601 应停在「准备释放」：mode=%d skill=%d"
+		% [int(窗.get("_mode")), int(窗.get("_pending_skill_id"))])
+	检((窗.get("_高亮目标") as Array).has(队友号),
+		"发动 10601 时应把替她发动的右手边队友点亮：%s" % str(窗.get("_高亮目标")))
+	检((窗.get("_sel_players") as Array).is_empty(),
+		"点亮的队友只是给人看，不能当成目标提交：%s" % str(窗.get("_sel_players")))
 	var 别烦提示: Dictionary = 窗.call("_别烦我头像提示")
 	检(str(别烦提示.get(队友号, "")) == "代替你发动",
 		"发动时替她发动的队友头像应写「代替你发动」：%s" % str(别烦提示))
+	窗.call("_on_cancel")
+	await 等帧(1)
 	# 目标被问「弃 1 张法术牌」：自己写不弃的后果，替她发动的队友写会拿到的治疗
 	窗.set("_mode", 3)
 	窗.set("_skill_ask_id", 10601)
@@ -1310,7 +1324,8 @@ func 跑() -> void:
 		"目标自己头像应写「摸 1 张牌」：%s" % str(弃牌提示表))
 	检(str(弃牌提示表.get(队友号, "")) == "+1 治疗",
 		"替她发动的队友头像应写「+1 治疗」：%s" % str(弃牌提示表))
-	# 别烦我……的目标弃牌询问：目标自己要被选中高亮（+1 治疗的队友靠提示看）
+	# 别烦我……的目标弃牌询问：弃牌者自己 + 会加治疗的队友都要点亮
+	# （队友由服务端随询问下发 highlight_ids，不再靠客户端按座位猜）
 	窗.set("_mode", 0)
 	窗.set("_高亮目标", [] as Array[int])
 	Logic.command_received.emit({
@@ -1318,13 +1333,18 @@ func 跑() -> void:
 		"commands": [{
 			"respond_id": 10601, "src_id": Logic.my_player_id, "is_skill": true,
 			"args": [1, 0, GConst.CardSource.Hand, 0], "card_rule": "magic",
-			"card_ids": [], "can_cancel": true,
+			"card_ids": [], "can_cancel": true, "highlight_ids": [队友号],
 		}],
 	})
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 3, "10601 的弃牌询问应进入技能询问（实际 %d）" % int(窗.get("_mode")))
 	检((窗.get("_高亮目标") as Array).has(Logic.my_player_id),
 		"10601 目标弃牌时目标自己应被高亮：%s" % str(窗.get("_高亮目标")))
+	检((窗.get("_高亮目标") as Array).has(队友号),
+		"10601 目标弃牌时，会 +1 治疗的队友也要被高亮：%s" % str(窗.get("_高亮目标")))
+	var 弃牌时提示: Dictionary = 窗.call("_别烦我头像提示")
+	检(str(弃牌时提示.get(队友号, "")) == "+1 治疗",
+		"弃牌询问里队友头像仍应写「+1 治疗」：%s" % str(弃牌时提示))
 	窗.call("_on_cancel")
 	await 等帧(1)
 
@@ -1343,15 +1363,6 @@ func 跑() -> void:
 	窗.set("_mode", 0)
 	窗.set("_skill_ask_id", 0)
 	窗.set("_skill_ask_need_card", 0)
-	# 真实点击链路：点技能后应自动选中（锁定）右手边队友
-	窗.set("_sel_players", [] as Array[int])
-	窗.call("_选择技能", 10601, GConst.ActionType.MagicSkill, 0, 0, [队友号], [], 0, 0, 0,
-		GConst.CardSource.Hand, "", 0, 0, [], null, 0)
-	await 等帧(1)
-	检((窗.get("_sel_players") as Array).has(队友号),
-		"发动 10601 时应把替她发动的右手边队友选中：%s" % str(窗.get("_sel_players")))
-	窗.call("_on_cancel")
-	await 等帧(1)
 	窗.set("_上次别烦我发动者", -1)
 	Data.player_list.erase(队友测试)
 

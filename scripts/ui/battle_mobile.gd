@@ -2111,6 +2111,8 @@ func _on_command(data: Dictionary) -> void:
 	_skill_cover_need = 0
 	_skill_cards.clear()
 	_skill_targets.clear()
+	# 「顺带点亮」只对当前这一条询问有效（10601 / 10605 等每条询问自己重新给）
+	_高亮目标.clear()
 	_selecting_cover = false
 	_need_cards = 0
 	_need_players = 0
@@ -2422,13 +2424,17 @@ func _进入技能询问() -> void:
 	# 「自动选目标」型（如【毒粉】：服务端在询问里点名挨这次伤害的角色）：进场即把目标选中并锁死，
 	# 头像上直接画技能指示器的效果（点头像也改不了）
 	_目标锁死 = _套用自动选目标(指示配置)
-	# 服务端只下发了一个合法目标、而这一手本身不需要目标（如【别烦我……】：目标由右手边队友代选，
-	# 下发队友只是为了让界面把他选中）：直接替他选中，点开技能就能看到是谁替她发动
+	# 服务端随询问下发的「顺带点亮」角色（highlight_ids）：只高亮给人看，不是可点目标、也不提交。
+	# 如【别烦我……】目标弃牌那一步，把「不弃就 +1 治疗」的那名队友一起点亮
+	for pid: Variant in (_pending.get("highlight_ids", []) as Array):
+		if not _高亮目标.has(int(pid)):
+			_高亮目标.append(int(pid))
+	# 服务端只下发了一个合法目标、而这一手本身不需要目标：直接替他选中（纯展示型，如只有一名固定目标）
 	if not _目标锁死 and _skill_need_target <= 0 and _skill_target_max <= 0 \
 			and _skill_targets.size() == 1 and not _sel_players.has(_skill_targets[0]):
 		_sel_players = [_skill_targets[0]]
 	# 【别烦我……】目标被问「弃 1 张法术牌」那一步：把目标自己点亮（谁被点名弃牌一目了然），
-	# 替她发动的队友靠「+1 治疗」的动态提示 + 高亮一起看出来
+	# 替她发动的队友由服务端随询问下发（上面的 highlight_ids）并写「+1 治疗」
 	if _skill_ask_id == GConst.技能_别烦我 and _skill_ask_need_card > 0 \
 			and not _高亮目标.has(Logic.my_player_id):
 		_高亮目标.append(Logic.my_player_id)
@@ -3386,6 +3392,9 @@ func _构建技能按钮(cmds: Array) -> void:
 		var 次张系别: int = int(c.get("card_slot_element", 0))
 		var 参数选项: Array = c.get("arg_choices", [])
 		var 盖牌需数: int = int(c.get("cover_need", 0))
+		# 这一手要「顺带点亮给人看」的角色（highlight_ids，纯展示：不参与选择、不提交）：
+		# 如【别烦我……】10601 发动时把替她发动的右手边队友亮出来
+		var 高亮: Array = c.get("highlight_ids", [])
 		var go: 技能按钮 = _新技能按钮(技能号)
 		# 服务端标了「本次不可用」（条件不满足）或本阶段不放行的：半透明、点不动，悬停说明照常可看
 		if not 阶段放行 or not bool(c.get("enabled", true)):
@@ -3403,7 +3412,7 @@ func _构建技能按钮(cmds: Array) -> void:
 		if 固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别:
 			go.设置选项可用(false)
 		go.connect("点击", _选择技能.bind(技能类型, 需牌, 需目标, 合法目标, 合法牌, 最多牌,
-			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go, 盖牌需数))
+			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go, 盖牌需数, 高亮))
 		# 点下去就把挂着的技能说明收掉，别挡着选牌选目标（悬停 / 离开悬停由 _新技能按钮 统一接）
 		go.connect("点击", func(_技能号: int) -> void: _隐藏技能说明())
 	# 行动阶段顺手把「特殊行动」入口摆到技能栏最左（见 _摆特殊行动入口）。
@@ -6045,7 +6054,9 @@ func _回到行动阶段() -> void:
 ##   询问目标           —— 服务端在本次询问里点名的那个角色（如【毒粉】：挨这次伤害的人）
 ## 返回 true＝本次属于这一型（调用方据此把 _目标锁死 置位）
 ## 按座位顺序找「右手边最近的队友」（不含自己、跨过敌人）：找不到返回 -1。
-## 与服务端 nearest_teammate_id(id, true) 同一口径，用于【别烦我……】指出谁替她发动。
+## 与服务端 nearest_teammate_id(id, true) 同一口径。
+## 【注意】界面高亮不再靠它：替谁发动由服务端随命令下发（highlight_ids），
+## 这里只作提示文案的兜底（服务端没给 highlight_ids 的旧包 / 手搓询问）。
 func _右手边队友(player_id: int) -> int:
 	var 我: GPlayer = Data.get_player_by_id(player_id)
 	if 我 == null:
@@ -6081,14 +6092,6 @@ func _套用自动选目标(指示配置: Dictionary) -> bool:
 				_sel_players.append(玩家.id)
 		"询问目标":
 			_sel_players.append_array(_skill_targets)
-		"右手边队友":
-			# 【别烦我……】发动时把替她发动的那个队友选中（和其它「自动选目标」的技能同一套表现）。
-			# 这次行动本来就由队友代选目标，本人这一手不带目标；服务端会忽略这里多出来的 dst
-			if _mode != 4:
-				return false
-			var 队友号: int = _右手边队友(Logic.my_player_id)
-			if 队友号 > 0:
-				_sel_players.append(队友号)
 		"队友":
 			# 把「会受影响的所有队友」点亮给人看（如【再睡一下】：队友各 +1 治疗）。
 			# 同样只高亮：这条询问要选的是弃哪张牌，不选目标
@@ -6137,7 +6140,8 @@ func _筛出当前技能可留的牌(原选: Array[int]) -> Array[int]:
 func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: int, 合法目标: Array = [], 合法牌: Array = [],
 		最多牌: int = 0, 最多目标: int = 0, 目标上限减牌数: int = 0,
 		选牌来源: int = GConst.CardSource.Hand, 选牌规则: String = "",
-		首张技能: int = 0, 次张系别: int = 0, 参数选项: Array = [], 按钮: Node = null, 盖牌需数: int = 0) -> void:
+		首张技能: int = 0, 次张系别: int = 0, 参数选项: Array = [], 按钮: Node = null, 盖牌需数: int = 0,
+		高亮: Array = []) -> void:
 	# 二级栏正开着、点的又是它最左那颗父技能按钮：本体只作悬停说明，不接点击；
 	# 回退走它右边那颗「返回」（由 _进入二级技能栏 按回调摆出来）。
 	if _二级栏 and 按钮 != null and 按钮 == _二级栏父按钮:
@@ -6181,6 +6185,11 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		_skill_cards.append(int(牌号))
 	_sel_players.clear()
 	_高亮目标.clear()
+	# 服务端随命令下发的「顺带点亮」角色（highlight_ids）：只高亮给人看，不是选中的目标、也不提交。
+	# 如【别烦我……】10601 发动时，把替她发动的右手边队友亮出来（目标由那名队友代选）
+	for pid: Variant in 高亮:
+		if not _高亮目标.has(int(pid)):
+			_高亮目标.append(int(pid))
 	_重置治疗分配()
 	# 盖牌来源才让盖牌区亮起来；手牌+盖牌混选（盖牌需数>0）也要亮；
 	# 基础效果牌由玩家面板上的图标直接点
@@ -8035,20 +8044,34 @@ func _亡女金库头像提示() -> Dictionary:
 
 
 ## 怠惰少女【别烦我……】10601 的头像提示（现算）：
-## · 发动时（mode 4）：把「右手边替她发动的队友」亮出来，写「代替你发动」；
-## · 目标被问「弃 1 张法术牌」时（mode 3）：自己头像写不弃的后果，替她发动的队友头像写会拿到的治疗
+## · 发动时（mode 4）：在「替她发动的右手边队友」头像上写「代替你发动」——
+##   这名队友由服务端随命令下发（highlight_ids，见 available_skills 的 "highlight"），
+##   客户端不再按座位自己算（服务端叫谁发动、界面就亮谁）；
+## · 目标被问「弃 1 张法术牌」时（mode 3）：自己头像写不弃的后果，
+##   会拿到治疗的那名队友（同样由服务端下发）头像写「+1 治疗」
 func _别烦我头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode == 4 and int(_pending_skill_id) == GConst.技能_别烦我:
-		var 队友: int = _右手边队友(Logic.my_player_id)
-		if 队友 > 0:
-			out[队友] = "代替你发动"
+		for pid: int in _高亮目标:
+			out[pid] = "代替你发动"
+		if out.is_empty():
+			# 兜底：服务端没下发（旧包 / 手搓询问）时按座位现算，界面不至于一片空白
+			var 队友: int = _右手边队友(Logic.my_player_id)
+			if 队友 > 0:
+				out[队友] = "代替你发动"
 		return out
 	if _mode == 3 and _skill_ask_id == GConst.技能_别烦我 and _skill_ask_need_card > 0:
 		out[Logic.my_player_id] = "摸 1 张牌"
-		if _上次别烦我发动者 >= 0:
+		var 有队友提示: bool = false
+		for pid2: int in _高亮目标:
+			if pid2 == Logic.my_player_id:
+				continue
+			out[pid2] = "+1 治疗"
+			有队友提示 = true
+		if not 有队友提示 and _上次别烦我发动者 >= 0:
+			# 兜底：同上面的座位现算（服务端没下发 highlight_ids 时）
 			var 队友2: int = _右手边队友(_上次别烦我发动者)
-			if 队友2 > 0:
+			if 队友2 > 0 and 队友2 != Logic.my_player_id:
 				out[队友2] = "+1 治疗"
 	return out
 

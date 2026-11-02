@@ -1906,6 +1906,10 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 				"skill_element": 技能视为,
 				# targets 非空时，客户端只把这几名玩家点亮（如【魔弹融合】的落点固定是右手边最近的对手）
 				"dst_ids": sk.get("targets", []),
+				# 这一手顺带点亮给人看的角色（纯展示，不参与选择、不提交）：
+				# 如怠惰少女【别烦我……】10601 —— 目标由右手边队友代选，本人这一手没有目标，
+				# 只把那名队友高亮出来（服务端结算时本来就不看这个 dst）
+				"highlight_ids": sk.get("highlight", []),
 				# cards 非空时，客户端只让这几张牌可点（如【暗影流星】只能弃法术牌）。
 				# 角色给出的白名单可能取自手牌（带实例号），下发前统一折成牌面
 				"card_ids": _牌面表(sk.get("cards", [])),
@@ -2048,7 +2052,10 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 保留倒计时=true 时沿用这条链当前那次等待的截止时刻（见 wait_for），用于同一条链上的后续询问
 ## can_light=false 时随询问下发 can_light=false（如【阴阳转换】：这次攻击不能用【圣光】抵挡，
 ## 客户端据此把【圣光】置灰；默认 true 时不下发，客户端按可用处理）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "") -> void:
+## 高亮目标 非空时随询问下发（highlight_ids）：只把这几名角色点亮给人看，**不参与选择、不参与提交**。
+## 用于「效果落在不受玩家选择的角色身上」的技能 —— 如【别烦我……】让目标弃牌那一步，
+## 同时点亮「不弃就 +1 治疗」的那名队友（目标自己由客户端点亮）
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = []) -> void:
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
@@ -2159,6 +2166,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 头像提示画在这些角色身上（非空时用它，否则沿用 dst_ids）：见 ask_skill 顶部「预览目标」
 	if not 预览目标.is_empty():
 		cmd["preview_ids"] = 预览目标
+	# 顺带点亮给人看的角色（纯展示，不参与选择 / 提交）：见 ask_skill 顶部「高亮目标」
+	if not 高亮目标.is_empty():
+		cmd["highlight_ids"] = 高亮目标
 	# 本次攻击不能用【圣光】抵挡时才下发（客户端据此把【圣光】置灰）
 	if not can_light:
 		cmd["can_light"] = false

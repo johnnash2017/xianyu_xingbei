@@ -330,13 +330,25 @@ func _测试_10601() -> void:
 	# 指定目标之前就应该先随机丢掉 1 张手牌（技能原文的顺序）
 	检(玩家1.hand_cards.size() == 2,
 		"队友指定目标之前就应先随机丢掉 1 张手牌，实际 %d" % 玩家1.hand_cards.size())
-	# 技能下发时把「右手边队友」作为唯一合法目标（客户端据此只点亮他并自动选中）
-	var 别烦目标表: Array = []
+	# 技能下发时把「右手边队友」作为「顺带点亮」下发（纯展示：不参与选择、不提交）
+	var 别烦高亮表: Array = []
 	for 技能项: Dictionary in 角色.available_skills():
 		if int(技能项.get("id", 0)) == 10601:
-			别烦目标表 = 技能项.get("targets", [])
-	检(别烦目标表 == [角色.nearest_teammate_id(1, true)],
-		"10601 的合法目标应只有右手边队友（%s）" % str(别烦目标表))
+			别烦高亮表 = 技能项.get("highlight", [])
+	检(别烦高亮表 == [角色.nearest_teammate_id(1, true)],
+		"10601 的 highlight 应只有右手边队友（%s）" % str(别烦高亮表))
+	# 行动询问把它写进命令的 highlight_ids（客户端据此高亮，不占 dst_ids）
+	var 别烦命令: Dictionary = {}
+	for 命令项: Dictionary in 引擎.action_commands(1, GConst.ActionType.Attack, false):
+		var 命令参数: Array = 命令项.get("args", [])
+		if 命令参数.size() >= 1 and int(命令参数[0]) == 10601:
+			别烦命令 = 命令项
+	检(int((别烦命令.get("highlight_ids", []) as Array).size()) == 1
+		and int((别烦命令.get("highlight_ids", []) as Array)[0]) == 角色.nearest_teammate_id(1, true),
+		"10601 的行动命令应下发 highlight_ids = 右手边队友：%s" % str(别烦命令))
+	检((别烦命令.get("dst_ids", []) as Array).is_empty(),
+		"10601 本人这一手没有可点目标，dst_ids 应为空（高亮走 highlight_ids）：%s"
+		% str(别烦命令.get("dst_ids", [])))
 	# 队友的询问文案直接用整段技能说明
 	检(str(询问队友.get("ask_text", "")).contains("指定目标对手摸1张牌【强制】")
 		and str(询问队友.get("ask_text", "")).contains("你+1【治疗】"),
@@ -434,6 +446,10 @@ func _测试_10601() -> void:
 	var 询问目标: Dictionary = _取询问(3, 10601)
 	检(not 询问目标.is_empty(), "目标 3 号应收到弃牌询问")
 	检(str(询问目标.get("card_rule", "")) == "magic", "目标弃牌询问应限定法术牌")
+	# 这一步要同时点亮「弃牌者自己」（客户端画）与「不弃就 +1 治疗」的队友（服务端下发 highlight_ids）
+	检((询问目标.get("highlight_ids", []) as Array) == [2],
+		"目标弃牌询问应把会 +1 治疗的队友 2 号随 highlight_ids 下发：%s"
+		% str(询问目标.get("highlight_ids", [])))
 	# 和【魔爆冲击】/【贪欲黑洞】一样不下发牌白名单，靠 card_rule = magic 让界面把非法术牌置灰
 	检((询问目标.get("card_ids", []) as Array).is_empty(), "目标弃牌询问不再下发牌白名单")
 	_回复(3, 10601, [1], [法术牌.id])

@@ -25,3 +25,13 @@ func 跑() -> void:
 	检(int(解码.get("preview_damage", -1)) == 2, "preview_damage 没有过 Command 协议")
 	检(int(解码.get("default_option", -1)) == 0, "default_option 没有过 Command 协议")
 	检(bool(解码.get("no_parent", false)), "no_parent 没有过 Command 协议")
+	# 「顺带点亮给人看」的角色（怠惰少女 10601）：没进 schema 客户端就永远收不到，高亮不会亮
+	var 带高亮: Dictionary = {
+		"respond_id": GConst.技能_别烦我, "src_id": 1,
+		"args": [1, 0, GConst.CardSource.Hand, 0],
+		"highlight_ids": [2, 3],
+	}
+	var 高亮解码: Dictionary = ProtoCodec.decode_named("Command",
+		ProtoCodec.encode_named("Command", 带高亮))
+	检((高亮解码.get("highlight_ids", []) as Array) == [2, 3],
+		"highlight_ids 没有过 Command 协议：%s" % str(高亮解码.get("highlight_ids", [])))

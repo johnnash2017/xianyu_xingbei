@@ -4,6 +4,8 @@ extends BattleRole
 ##   别烦我……（10601，法术）：（你右手边最近的队友随机丢弃你 1 张手牌，并指定目标对手摸 1 张牌【强制】）
 ##       我方【战绩区】+1【水晶】，该对手弃 1 张法术牌【展示】；
 ##       （若该对手不如此做）他摸 1 张牌【强制】，你右手边最近的队友 +1【治疗】。
+##       「替她发动的右手边队友」由服务端随命令下发（available_skills 的 highlight → highlight_ids），
+##       客户端只负责把他点亮并写「代替你发动」；目标弃牌那一步再下发「会 +1 治疗」的那名队友。
 ##   让我躺平（10602，响应）：你的回合开始时，若你手牌 > 3，目标队友 +1【治疗】，然后跳过你的行动阶段。
 ##   想用魔弹（10603，响应）：你需要使用【魔弹】时，弃 2 张同系牌【展示】，视为使用【魔弹】。
 ##   不想提炼（10604，被动）：你无法执行【提炼】；（目标队友指定【提炼】时）你 +1【宝石】，
@@ -134,9 +136,10 @@ func available_skills() -> Array:
 		"id": BIE_FAN_WO,
 		"need_card": 0,
 		"need_target": 0,
-		# 「目标」这一手由右手边队友代选，本人不带。这里把那名队友作为唯一合法目标下发，
-		# 客户端据此只把他点亮并自动选中（告诉玩家是谁替她发动）；服务端结算时忽略这个 dst
-		"targets": [nearest_teammate_id(player.id, true)] if 有队友 else [],
+		# 「目标」这一手由右手边队友代选，本人不带。这里把那名队友作为「顺带点亮」下发
+		# （引擎写进命令的 highlight_ids，客户端只把他高亮给人看，不参与选择、不提交）：
+		# 玩家点开技能就能看见是谁替她发动
+		"highlight": [nearest_teammate_id(player.id, true)] if 有队友 else [],
 		# 没有右手边队友 / 没有对手时照常下发、只置灰（界面看得见技能存在）
 		"enabled": 有队友 and not enemy_ids().is_empty(),
 	}, {
@@ -263,7 +266,11 @@ func _p_bie_fan_wo() -> int:
 	# 第二步：超限结算完之后问目标「弃 1 张法术牌」（超时 / 取消＝不走，按惩罚结算）。
 	# 手里有没有法术牌都照问一次：没有法术牌时界面整片置灰，只能取消 → 同样按「不如此做」结算
 	if not engine.has_reply():
-		询问(_bie_fan_目标, BIE_FAN_WO, 1, 0, GConst.CardSource.Hand, [], 0, "magic", [], true, 1)
+		# 「这一手问的是弃哪张牌」，所以目标自己由客户端点亮（谁被点名弃牌）；
+		# 「不弃就会 +1 治疗」的那名队友随询问下发（highlight_ids → 客户端把它一起高亮），
+		# 不再让客户端按座位自己猜是谁
+		询问(_bie_fan_目标, BIE_FAN_WO, 1, 0, GConst.CardSource.Hand, [], 0, "magic", [], true, 1,
+			-1, [], -1, {}, 0, 0, false, [], true, -1, 0, "", -1, "", [_bie_fan_队友])
 		return WAIT
 	var r2: Dictionary = take_skill_reply_full()
 	_bie_fan_step = STEP_DONE
