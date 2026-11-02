@@ -235,6 +235,10 @@ func _检噬神者() -> void:
 		"【御刃·魔刃】选项应带【魔刃】+【渗蚀】的说明：%s" % str(刃选项[0]))
 	检((刃选项[1] as Dictionary).get("技能组", []) == [7910, 7911],
 		"【御刃·异刃】选项应带【异刃】+【渗蚀】的说明：%s" % str(刃选项[1]))
+	检(str((刃选项[0] as Dictionary).get("text", "")) == "【魔刃】火系/水系加入手牌",
+		"【御刃·魔刃】选项文本不对：%s" % str(刃选项[0]))
+	检(str((刃选项[1] as Dictionary).get("text", "")) == "【异刃】雷系/风系加入手牌",
+		"【御刃·异刃】选项文本不对：%s" % str(刃选项[1]))
 	检(int(御刃角色.v_special_skill({"src_id": 1, "action_id": 7901, "args": [1]}))
 		== GConst.GE_SUCCESS, "两张刃都不在场时【御刃·魔刃】应通过校验")
 	检(int(御刃角色.v_special_skill({"src_id": 1, "action_id": 7901, "args": [3]}))

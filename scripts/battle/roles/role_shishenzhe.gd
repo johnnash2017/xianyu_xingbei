@@ -51,8 +51,15 @@ func available_skills() -> Array:
 	var 御刃选项: Array = []
 	for 选: int in _御刃可得():
 		var 是魔: bool = 选 == 1
+		var 刃卡: GCard = Data.get_card(MO_REN_CARD if 是魔 else YI_REN_CARD)
+		var 系名: String = ""
+		if 刃卡 != null:
+			for 系: int in 刃卡.可选元素:
+				if not 系名.is_empty():
+					系名 += "/"
+				系名 += "%s系" % GConst.element_to_chinese(系)
 		御刃选项.append({
-			"text": "魔刃" if 是魔 else "异刃",
+			"text": "【%s】%s加入手牌" % ["魔刃" if 是魔 else "异刃", 系名],
 			"args": [选],
 			# 客户端鼠标指向这个选项时显示对应的两条被动：魔刃/异刃 + 共用的渗蚀
 			"技能组": [7909, 7911] if 是魔 else [7910, 7911],
