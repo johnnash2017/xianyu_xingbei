@@ -100,10 +100,9 @@ const 状态图标尺寸: float = 28.0
 ##   scenes/prefabs/battlemobile/StatusIconMaterial.tres  ← 材质：外/内描边宽度与颜色、马赛克块数
 ## 同一份预制体（StatusIcon.tscn）也当指示物用：数字标签默认藏着，指示物才亮出来
 const 状态图标预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/StatusIcon.tscn")
-## 魔刃/异刃公开状态专用的图标预制体：图标、文字位置、字号都在这两个场景里调，
-## 代码只负责把卡名填进 Text，不再覆盖 Label 的位置 / 对齐 / 字号。
-const 魔刃状态图标预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/MoRenStatusIcon.tscn")
-const 异刃状态图标预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/YiRenStatusIcon.tscn")
+## 魔刃/异刃公开状态共用的图标预制体：文字位置、字号在场景里调一次即可；
+## 图标贴图由代码按 card_id 填，代码只改 Text 的名字，不覆盖 Label 布局。
+const 刃状态图标预制体: PackedScene = preload("res://scenes/prefabs/battlemobile/BladeStatusIcon.tscn")
 ## 名牌上「等待响应XX」那行字的字号（场景里是 20）与缩放下限：文案带技能名时会一行放不下，
 ## 由 _自适应等待字号 逐级缩小，见那里
 const 等待文案基础字号: int = 20
@@ -689,9 +688,7 @@ func _刷新状态图标() -> void:
 		# 魔刃/异刃：专用预制体，图标和文字位置都在场景里调；代码只填名字
 		var 额外牌id: int = int(d.get("card_id", -1))
 		if 额外牌id == GConst.噬神者_魔刃卡 or 额外牌id == GConst.噬神者_异刃卡:
-			var 刃预制体: PackedScene = 魔刃状态图标预制体 \
-				if 额外牌id == GConst.噬神者_魔刃卡 else 异刃状态图标预制体
-			_加刃状态图标(刃预制体, 状态名, 额外牌id,
+			_加刃状态图标(刃状态图标预制体, 图标贴图, 状态名, 额外牌id,
 				"blade:%d" % 额外牌id, 新起点)
 			continue
 		var 状态说明: String = str(d.get("desc", ""))
@@ -775,13 +772,15 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 
 ## 魔刃/异刃专用状态图标：预制体自带图标和文字布局，代码只填名字，
 ## 不覆盖 Label 的位置 / 对齐 / 字号 —— 想调文字位置直接改对应 .tscn。
-func _加刃状态图标(ps: PackedScene, 名称: String, 牌id: int, 标识: String,
-		起点表: Dictionary) -> void:
+func _加刃状态图标(ps: PackedScene, tex: Texture2D, 名称: String, 牌id: int,
+		标识: String, 起点表: Dictionary) -> void:
 	if ps == null:
 		return
-	var go: Control = ps.instantiate() as Control
+	var go: TextureRect = ps.instantiate() as TextureRect
 	if go == null:
 		return
+	if tex != null:
+		go.texture = tex
 	var 文本节点: Node = go.get_node_or_null("Text")
 	if 文本节点 is Label:
 		var 标签: Label = 文本节点 as Label
