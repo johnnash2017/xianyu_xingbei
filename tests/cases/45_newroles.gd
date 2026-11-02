@@ -241,6 +241,13 @@ func _检噬神者() -> void:
 		"【御刃·魔刃】选项文本不对：%s" % str(刃选项[0]))
 	检(str((刃选项[1] as Dictionary).get("text", "")) == "【异刃】雷系/风系加入手牌",
 		"【御刃·异刃】选项文本不对：%s" % str(刃选项[1]))
+	检((刃选项[0] as Dictionary).get("elements", []) == [GConst.CardElement.Fire, GConst.CardElement.Water]
+		and (刃选项[1] as Dictionary).get("elements", []) == [GConst.CardElement.Thunder, GConst.CardElement.Wind],
+		"【御刃】选项应带可标色的系别列表：%s / %s" % [str(刃选项[0]), str(刃选项[1])])
+	var 选项协议解: Dictionary = ProtoCodec.decode_named("ArgChoice",
+		ProtoCodec.encode_named("ArgChoice", {"elements": [GConst.CardElement.Fire, GConst.CardElement.Water]}))
+	检(选项协议解.get("elements", []) == [GConst.CardElement.Fire, GConst.CardElement.Water],
+		"御刃选项的可选系别应能通过 ArgChoice 协议：%s" % str(选项协议解))
 	检(int(御刃角色.v_special_skill({"src_id": 1, "action_id": 7901, "args": [1]}))
 		== GConst.GE_SUCCESS, "两张刃都不在场时【御刃·魔刃】应通过校验")
 	检(int(御刃角色.v_special_skill({"src_id": 1, "action_id": 7901, "args": [3]}))

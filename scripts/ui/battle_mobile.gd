@@ -1119,10 +1119,13 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 		var 刃卡: GCard = Data.get_card(cid)
 		if 刃卡 == null:
 			continue
+		# 状态图标用 assets/textures/battle 下的专用图标，不用卡面图
+		var 图标路径: String = "res://assets/textures/battle/%s.png" % (
+			"moRen" if 刃卡.id == GConst.噬神者_魔刃卡 else "yiRen")
 		额外状态.append({
 			"name": 刃卡.card_name,
-			"icon": 刃卡.sprite_path(),
-			"desc": "手牌中有【%s】（公开信息）" % 刃卡.card_name,
+			"icon": 图标路径,
+			"desc": "",
 			"card_id": 刃卡.id,
 			"show_name": true,
 		})
@@ -3275,12 +3278,37 @@ func _面板说明到时() -> void:
 	_弹出角色说明(面板)
 
 
+## 魔刃/异刃的悬停说明：标题是「【魔刃】火系/水系」（系别按配色上色），
+## 后面接【魔刃】/【异刃】和【渗蚀】两条被动说明，与御刃选项的悬停内容一致。
+func _噬神者刃状态说明(卡: GCard) -> String:
+	var 元素名: String = ""
+	for 系: int in 卡.可选元素:
+		if not 元素名.is_empty():
+			元素名 += "/"
+		元素名 += "%s系" % _系别着色(GConst.element_to_chinese(系))
+	var 说明: String = "【%s】%s" % [卡.card_name, 元素名]
+	# 7909 魔刃 / 7910 异刃
+	var 武器技能: int = 7909 if 卡.id == GConst.噬神者_魔刃卡 else 7910
+	for 号: int in [武器技能, 7911]:
+		var 单条: String = 角色技能提示.单个技能(号, 0, GConst.角色_噬神者)
+		if not 单条.is_empty():
+			说明 += "\n\n" + 单条
+	return 说明
+
+
 ## 鼠标指向状态图标（基础效果牌 / 指示物）：在图标正上方弹提示 ——
 ## 基础效果牌摊出这张牌的完整卡面 + 状态名，指示物只有一行「名字 当前/上限」
 func _显示状态图标说明(图标: Control, 文本: String, 牌id: int, 显示大图: bool) -> void:
 	_悬停技能按钮 = null
 	_悬停角色面板 = null
 	_悬停状态图标 = true
+	# 魔刃/异刃的公开手牌状态：和御刃选项一样，标题带可选系别配色 + 两条被动说明
+	if 牌id == GConst.噬神者_魔刃卡 or 牌id == GConst.噬神者_异刃卡:
+		var 刃卡: GCard = Data.get_card(牌id)
+		if 刃卡 != null:
+			_说明提示.显示(_噬神者刃状态说明(刃卡), 图标.get_global_rect(),
+				技能说明宽度, 技能说明字号)
+			return
 	var 卡面: Control = _造悬停卡牌(牌id, 文本)
 	if 卡面 != null:
 		_说明提示.显示内容(卡面, 图标.get_global_rect())
@@ -3651,6 +3679,15 @@ func _选项项(参数选项: Array) -> Array:
 		# 不依赖选项文案的括号格式。
 		var 参数: Array = d.get("args", [])
 		var 系别: int = int(d.get("element", -1))
+		# 选项涉及多个可选系别时（御刃：火/水、雷/风），把文字里对应的「X系」按系别标色
+		for 系: Variant in d.get("elements", []):
+			var 系字: String = GConst.element_to_chinese(int(系))
+			var 系词: String = "%s系" % 系字
+			var 色值: String = _系别颜色(系字)
+			if 色值.is_empty() or not 文本.contains(系词):
+				continue
+			文本 = 文本.replace(系词,
+				"[color=#%s]%s[/color]" % [色值.trim_prefix("#"), 系词])
 		if 字色.a > 0.0 and 系别 >= 0 and not 参数.is_empty():
 			var 卡: GCard = Data.get_card(int(参数[0]))
 			if 卡 != null and not 卡.card_name.is_empty() and 文本.contains(卡.card_name):
