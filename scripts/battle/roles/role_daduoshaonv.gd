@@ -469,11 +469,11 @@ func _可移除的星石() -> Array[int]:
 func _星石选项(可移除: Array[int]) -> Array:
 	var 无星石: bool = 可移除.is_empty()
 	return [
-		{"value": 1, "text": "移除我方战绩区 1【宝石】", "label": "移除我方战绩区 1【宝石】",
+		{"value": 1, "text": "移除我方【战绩区】1【宝石】", "label": "移除我方【战绩区】1【宝石】",
 			"args": [1], "enabled": 可移除.has(1)},
-		{"value": 2, "text": "移除我方战绩区 1【水晶】", "label": "移除我方战绩区 1【水晶】",
+		{"value": 2, "text": "移除我方【战绩区】1【水晶】", "label": "移除我方【战绩区】1【水晶】",
 			"args": [2], "enabled": 可移除.has(2)},
-		{"value": 0, "text": "不移除星石", "label": "不移除星石",
+		{"value": 0, "text": "【战绩区】星石不足，不移除星石", "label": "【战绩区】星石不足，不移除星石",
 			"args": [0], "enabled": 无星石},
 	]
 
