@@ -39,7 +39,7 @@ var 实例号: int = -1
 ## 容器是否允许这张牌在手牌里切换系别（魔刃/异刃这类配置了多个可选系别的牌）。
 ## 盖牌区 / 选牌区 / 展示区不打开，避免在这些地方误切。
 var _允许切换元素: bool = false
-## 卡牌右上角悬浮的系别切换条（运行时创建，编辑器不建；无底色，只有按钮文字）
+## 卡牌上方（卡面外）的系别切换条：手牌中始终显示，其他区域不创建/不显示
 var _元素栏: HBoxContainer = null
 ## 当前是否可用：可用 = 亮起并显示边框；不可用 = 置灰、不显示边框
 var _可用: bool = false
@@ -173,9 +173,6 @@ func _ready() -> void:
 	_fit_decor()
 	_建元素栏()
 	_刷新元素栏()
-	if btn != null:
-		btn.mouse_entered.connect(_元素栏显示)
-		btn.mouse_exited.connect(_延迟收起元素栏)
 
 
 func _notification(what: int) -> void:
@@ -242,17 +239,14 @@ func _建元素栏() -> void:
 	_元素栏.offset_right = -2
 	_元素栏.offset_top = -35
 	_元素栏.offset_bottom = -7
-	# 指针从按钮移出卡牌时收起（移到卡面里时 _收起元素栏若在外 会保留）
-	_元素栏.mouse_exited.connect(_延迟收起元素栏)
 	add_child(_元素栏)
 
 
-## 按卡牌的「可选元素 / 当前元素」重建右上角的火/水（雷/风）切换按钮。
-## 当前系别那颗置灰（不可点），另一颗可点；点了直接切换并广播给容器。
+## 按卡牌的「可选元素 / 当前元素」重建卡面上方的火/水（雷/风）切换按钮。
+## 手牌中始终显示；当前系别那颗置灰（不可点），另一颗可点；点了直接切换并广播给容器。
 func _刷新元素栏() -> void:
 	if _元素栏 == null:
 		return
-	var 原可见: bool = _元素栏.visible
 	for 子: Node in _元素栏.get_children():
 		_元素栏.remove_child(子)
 		子.queue_free()
@@ -270,9 +264,8 @@ func _刷新元素栏() -> void:
 		# 当前系别那颗不可点；另一颗点一下就把这张牌切成那个系别
 		钮.disabled = 元素 == card.element_enum()
 		钮.pressed.connect(_on_元素按钮.bind(元素))
-		钮.mouse_exited.connect(_延迟收起元素栏)
 		_元素栏.add_child(钮)
-	_元素栏.visible = 原可见
+	_元素栏.visible = true
 
 
 ## 默认主题按钮的内边距（12/8）会把按钮最小尺寸撑到 35×32；复制一份样式、
@@ -296,30 +289,6 @@ func _on_元素按钮(元素: int) -> void:
 	_画命格元素(card)
 	_刷新元素栏()
 	切换元素.emit(实例号 if 实例号 >= 0 else card.id, 元素)
-
-
-func _元素栏显示() -> void:
-	if _元素栏 != null and _允许切换元素 and card != null and card.可切换元素():
-		_元素栏.visible = true
-
-
-func _延迟收起元素栏() -> void:
-	if _元素栏 == null:
-		return
-	call_deferred("_收起元素栏若在外")
-
-
-## 指针离开卡牌后才收起：从卡面移到顶部按钮、或从按钮移到卡面时都不要闪掉
-func _收起元素栏若在外() -> void:
-	if _元素栏 == null or not _元素栏.visible:
-		return
-	var 鼠标: Vector2 = get_global_mouse_position()
-	# 按钮条在卡面外：指针在卡面里或在按钮条本身上都算「还在卡牌区域」
-	if get_global_rect().has_point(鼠标):
-		return
-	if _元素栏.get_global_rect().has_point(鼠标):
-		return
-	_元素栏.visible = false
 
 
 ## 当前这次选牌是不是「被迫弃牌」：是的话「可选」框用「弃牌框」那个颜色（红），和「打出」区分开
