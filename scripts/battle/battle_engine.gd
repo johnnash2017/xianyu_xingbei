@@ -5171,8 +5171,13 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		if target >= 0 and cur.v_missile(cid, target) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
 		take_from_hand(cur.id, [提交号])
-		to_discard([提交号], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_MISSILE})
 		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": cid})
+		# 打出的【魔弹】进弃牌堆必须压在「行动结束」之后调（to_discard 在有角色能响应时只压一个
+		# 弃牌前拦截状态，如 4704【三秒原则】）。压在 take_from_hand 后面直接调的话，这个拦截状态
+		# 会被随后压入的传递询问 / 展示手牌 / 行动结束钩子 / STurnEnd 埋在最底下，那一轮询问
+		# 永远轮不到 —— 表现就是「队友直接使用【魔弹】，暴食少女的三秒原则不响应」。
+		# 现在的执行顺序：展示手牌 → 魔弹传递结算 → 弃牌前拦截（要不要把这【魔弹】收走）→ 行动结束。
+		to_discard([提交号], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_MISSILE})
 		if target >= 0:
 			broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": target, "card_ids": [cid], "is_real": true})
 			# 交给目标自己决定：打出【魔弹】继续传递 / 出【圣光】抵挡 / 放弃并承受伤害。

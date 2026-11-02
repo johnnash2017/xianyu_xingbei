@@ -19,6 +19,8 @@ extends 自检用例
 ##   - 4704：wants_before_discard 的同步预判（队友 / 手牌 / 盖牌 / 正面朝上 / 非魔弹 /
 ##            没有代价牌 / 敌方 / 自己 / 已被认领）；真实拦截：弃 1 张牌获得魔弹、
 ##            拒绝 / 交不出代价 / 多张魔弹取第一张 / 盖牌来源；
+##            真实动作路径：队友在行动阶段「直接使用【魔弹】」（_do_magic 打出）时，
+##            魔弹传递结算完必须轮到 4704 询问（回归：弃牌前拦截状态被压到栈底、永远问不到）；
 ##   - 4705：技能栏与校验（真宝石、恰好 2 名不同对手、不能用水晶顶）、完整结算（扣宝石、
 ##            两目标各 2 点法术伤害）。
 ##
@@ -1012,7 +1014,7 @@ func _测试4704() -> void:
 	检(玩家1.hand_cards.has(魔弹.id), "盖牌来源的魔弹也应能被 4704 获得")
 	检(not 引擎.deck.discard.has(魔弹.id), "被认领的盖牌魔弹不应进弃牌堆")
 
-	# ---- 非正面朝上（暗弃）：也参与拦截（收走时展示） ----
+	# ---- 暗弃（非正面朝上）：也参与拦截（收走时展示） ----
 	_重置战斗()
 	_给牌(玩家1, 普通牌.id)
 	_给牌(玩家2, 魔弹.id)
@@ -1024,6 +1026,44 @@ func _测试4704() -> void:
 		"respond_id": 4704, "src_id": 1, "args": [0], "card_ids": [], "dst_ids": [],
 	})
 	检(引擎.deck.discard.has(魔弹.id), "取消拦截时【魔弹】应正常进弃牌堆")
+
+	# ---- 真实路径：队友「直接使用」【魔弹】（_do_magic 打出）也要问 4704 ----
+	# 回归：to_discard 会在有人能响应时只压一个弃牌前拦截状态；这个状态要是压得比魔弹传递 /
+	# 行动结束还早，就会被埋到栈底，那一轮询问永远轮不到 —— 表现为「队友用【魔弹】时三秒原则不响应」
+	_重置战斗()
+	_给牌(玩家1, 普通牌.id)
+	_给牌(玩家2, 魔弹.id)
+	引擎.current_id = 2
+	引擎.first_id = 2
+	引擎.push(BattleEngine.SCheckTurnStart.new())
+	引擎.run()
+	检(引擎._await_id == 2, "应轮到队友 2 号行动，实际等待 %s" % str(引擎._await_id))
+	引擎.on_message(2, GConst.Msg.Action, {
+		"action_type": GConst.ActionType.Magic, "card_ids": [魔弹.id], "dst_ids": [3],
+	})
+	引擎.run()
+	检(引擎._await_id == 3, "打出【魔弹】后应先问传递目标 3 号，实际等待 %s" % str(引擎._await_id))
+	检(_取询问(1, 4704).is_empty(), "魔弹传递还没结算完时不该先问 4704")
+	检(not 引擎.deck.discard.has(魔弹.id), "被 4704 拦下的【魔弹】在询问前不应已经进弃牌堆")
+	引擎.on_message(3, GConst.Msg.Respond, {
+		"respond_id": GConst.RespondType.Bullet, "src_id": 3,
+		"args": [GConst.Reattack.GiveUp], "card_ids": [], "dst_ids": [],
+	})
+	引擎.run()
+	检(引擎._await_id == 1, "魔弹结算完后应轮到 47 的三秒原则，实际等待 %s" % str(引擎._await_id))
+	var 使用拦截问: Dictionary = _取询问(1, 4704)
+	检(not 使用拦截问.is_empty(), "队友直接使用【魔弹】时也应下发 4704 询问")
+	var 使用预览: Array = 使用拦截问.get("option_preview_cards", [])
+	var 预览牌表: Array = (使用预览[0] as Dictionary).get("ids", []) if not 使用预览.is_empty() else []
+	检(预览牌表 == [魔弹.id],
+		"4704 的选项应预览这张刚用掉的【魔弹】：%s" % str(使用预览))
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 4704, "src_id": 1, "args": [1], "card_ids": [普通牌.id], "dst_ids": [],
+	})
+	检(玩家1.hand_cards.has(魔弹.id), "队友使用的【魔弹】应被 4704 收进手里")
+	检(not 玩家1.has_hand_card(普通牌.id), "4704 的代价牌应离手")
+	检(not 引擎.deck.discard.has(魔弹.id), "被 4704 收走的【魔弹】不应再进弃牌堆")
+	检(引擎.deck.discard.has(普通牌.id), "4704 的代价牌应进弃牌堆")
 
 
 # ============================================================
