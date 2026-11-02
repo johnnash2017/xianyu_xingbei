@@ -1065,6 +1065,47 @@ func _测试4704() -> void:
 	检(not 引擎.deck.discard.has(魔弹.id), "被 4704 收走的【魔弹】不应再进弃牌堆")
 	检(引擎.deck.discard.has(普通牌.id), "4704 的代价牌应进弃牌堆")
 
+	# ---- 同类路径：队友用 10603【想用魔弹】把真【魔弹】当材料丢掉时，也要问 4704 ----
+	# 10603 也是「弃 2 张同系牌视为打出魔弹」，但它的 to_discard 发生在技能结算内部（位置在
+	# 「回合结束」之上），不会被埋到栈底 —— 这里把「能问到」这个结论锁住，避免以后改坏
+	_重置战斗()
+	var 怠惰脚本: GDScript = load("res://scripts/battle/roles/role_daduoshaonv.gd")
+	var 怠惰角色: BattleRole = 怠惰脚本.new()
+	怠惰角色.setup(玩家2, 引擎)
+	玩家2.role = 怠惰角色
+	玩家2.role_id = 106
+	var 风牌: GCard = null
+	for c2: GCard in Data.card_db:
+		if c2 != null and not c2.is_virtual and c2.element_enum() == GConst.CardElement.Wind \
+				and c2.card_name_enum() != GConst.CardName.Missile:
+			风牌 = c2
+			break
+	检(风牌 != null, "卡库里找不到第二张风系牌（10603 的材料）")
+	if 风牌 != null:
+		_给牌(玩家2, 魔弹.id)
+		_给牌(玩家2, 风牌.id)
+		引擎.current_id = 2
+		引擎.first_id = 2
+		引擎.push(BattleEngine.SCheckTurnStart.new())
+		引擎.run()
+		检(引擎._await_id == 2, "应轮到 106 行动，实际等待 %s" % str(引擎._await_id))
+		引擎.on_message(2, GConst.Msg.Action, {
+			"action_type": GConst.ActionType.MagicSkill, "src_id": 2,
+			"action_id": 10603, "card_ids": [魔弹.id, 风牌.id], "dst_ids": [3],
+		})
+		引擎.run()
+		检(引擎._await_id == 3, "10603 打出后应先问传递目标 3 号，实际等待 %s" % str(引擎._await_id))
+		引擎.on_message(3, GConst.Msg.Respond, {
+			"respond_id": GConst.RespondType.Bullet, "src_id": 3,
+			"args": [GConst.Reattack.GiveUp], "card_ids": [], "dst_ids": [],
+		})
+		引擎.run()
+		检(引擎._await_id == 1, "10603 拿真【魔弹】当材料时，传递结算完也要问 47 的三秒原则，实际等待 %s"
+			% str(引擎._await_id))
+		检(not _取询问(1, 4704).is_empty(), "10603 这条路径也应下发 4704 询问")
+	玩家2.role = null
+	玩家2.role_id = 0
+
 
 # ============================================================
 # 4705 美食风暴
