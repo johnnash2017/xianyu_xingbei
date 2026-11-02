@@ -1073,6 +1073,23 @@ static func 角色特性值(role_id: int, 键: String) -> Variant:
 	return (表 as Dictionary).get(键, null)
 
 
+## 询问里「被问的技能」按钮的文案覆盖：{技能号: {"需目标": 文案}} —— 只在这次询问要选目标时用。
+## 如【别烦我……】(10601) 的「指定目标」这一步是问右手边队友，按钮写明这是在替她选目标
+const 询问按钮文案表: Dictionary = {
+	技能_别烦我: {"需目标": "别烦我……【替她选择目标】"},
+}
+
+
+## 取一次询问里「被问的技能」按钮该用的文案（空＝按平常的技能名显示）
+static func 询问按钮文案(技能号: int, 需目标: int) -> String:
+	var 表: Variant = 询问按钮文案表.get(技能号, null)
+	if not (表 is Dictionary):
+		return ""
+	if 需目标 <= 0:
+		return ""
+	return str((表 as Dictionary).get("需目标", ""))
+
+
 ## 该角色能把哪些系别的牌当【魔弹】传递（空＝只能用【魔弹】本体）
 static func 魔弹系别(role_id: int) -> Array:
 	var 值: Variant = 角色特性值(role_id, "魔弹系别")

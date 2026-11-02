@@ -2382,7 +2382,8 @@ func _进入技能询问() -> void:
 	# 没有选项的响应询问（如血气屏障）：在技能栏里摆出正在响应的那颗技能，只作展示；
 	# 有选项的走 _进入二级技能栏，那里本来就会摆父技能按钮。
 	if _skill_options.is_empty() and _skill_ask_card_source != GConst.CardSource.HandAndBasicEffect:
-		var 展示按钮: 技能按钮 = _新技能按钮(_skill_ask_id)
+		var 展示按钮: 技能按钮 = _新技能按钮(_skill_ask_id,
+			GConst.询问按钮文案(_skill_ask_id, _skill_ask_need_target))
 		if _是响应赐福(_skill_ask_id):
 			展示按钮.设置底色(GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87)))
 		展示按钮.设置选中(true)
@@ -3493,12 +3494,12 @@ func _取消失效的当前技能() -> void:
 
 
 ## 造一颗技能按钮挂进技能区（只 Instantiate + 设置技能 + 接悬停说明，点击回调由调用方做）
-func _新技能按钮(技能号: int) -> 技能按钮:
+func _新技能按钮(技能号: int, 名字覆盖: String = "") -> 技能按钮:
 	var go: Node = 技能预制.instantiate()
 	if go is Control:
 		(go as Control).custom_minimum_size = 技能尺寸
 	ChildrenSkillArea.add_child(go)
-	go.call("设置技能", 技能号)
+	go.call("设置技能", 技能号, 名字覆盖)
 	# 鼠标指向技能按钮：把它的技能说明摆到按钮正上方（点下去收起另接）。
 	# 接在这里而不是各调用点：二级技能栏里现造的「父技能」与「本身就是技能」的选项按钮都要有这一份；
 	# 技能号为 0 的纯参数选项查不到技能表，只有自带说明文本的才弹（见 技能按钮.说明文本）

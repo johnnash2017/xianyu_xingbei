@@ -68,7 +68,7 @@ func _刷新材质尺寸() -> void:
 
 
 ## 设置这个按钮显示哪个技能
-func 设置技能(id: int) -> void:
+func 设置技能(id: int, 名字覆盖: String = "") -> void:
 	技能号 = id
 	# 底色由「凸起」着色器上色：把技能类型色传给它（与技能说明里【类型】的标色一致），
 	# 不再靠节点 modulate，免得把子节点「选中发光」也一起染色
@@ -77,7 +77,8 @@ func 设置技能(id: int) -> void:
 	# 被当前角色改名的技能（如萝莉番长的【血腥咆哮*改】、见习制片的【雷击*改】）显示改名后的技能名；
 	# 日志 / 提示条 / 单个技能悬停说明等其它地方仍用 GConst.skill_name。
 	var 新名: String = GConst.技能名覆盖(角色技能提示.当前角色号(), id)
-	var 文本: String = 新名 if 新名 != "" else GConst.skill_desc_name(id)
+	# 询问里现造的「被问的技能」按钮允许直接给一段文案覆盖（如 10601 的「替她选择目标」）
+	var 文本: String = 名字覆盖 if 名字覆盖 != "" else (新名 if 新名 != "" else GConst.skill_desc_name(id))
 	if skillName != null:
 		skillName.text = 文本
 		# 名字不换行：按钮宽度按名字长度自适应撑开，左右各留一个字宽（否则【百式幻龙拳】这类长名会折行）

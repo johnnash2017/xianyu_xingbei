@@ -219,10 +219,12 @@ func _p_bie_fan_wo() -> int:
 		engine._broadcast_game()
 		if not engine.has_reply():
 			# 由右手边队友（不是当前行动者）指定目标对手：回复仍回到本次 SkillRun。
-			# can_cancel=false（A41：必须给出目标；AI / 掉线由引擎超时从合法目标里代选）。
-			# 询问文案直接给整段技能说明（技能效果太长，提示列那一句说不清）
+			# can_cancel=false（A41：必须给出目标；超时由引擎从合法目标里随机代选）。
+			# 询问文案直接给整段技能效果（技能太复杂，提示列那一句说不清）
 			询问(_bie_fan_队友, BIE_FAN_WO, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0, "", -1, GConst.skill_desc(BIE_FAN_WO))
+				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0, "",
+				-1, "【别烦我……】：（指定目标对手摸1张牌【强制】）我方【战绩区】+1【水晶】，"
+				+ "该对手弃1张法术牌【展示】；（若该对手不如此做）他摸1张牌【强制】，你+1【治疗】。")
 			return WAIT
 	if _bie_fan_step == 1:
 		if not engine.has_reply():
@@ -231,14 +233,14 @@ func _p_bie_fan_wo() -> int:
 		var dsts: Array = r.get("dst_ids", [])
 		var dst_id: int = int(dsts[0]) if dsts.size() == 1 else -1
 		if not enemy_ids().has(dst_id):
-			# 询问不可取消：引擎超时会从合法目标里代选；客户端硬发的取消 / 空回复 / 非法目标
-			# 也按 A41「AI / 掉线按默认规则代选」兜底成第一名合法对手，不让队友的回复吞掉整次技能行动
+			# 询问不可取消：引擎超时会从合法目标里随机代选；客户端硬发的取消 / 空回复 / 非法目标
+			# 也按 A41「AI / 掉线按默认规则代选」兜底成随机一名合法对手，不让队友的回复吞掉整次技能行动
 			var 候选: Array[int] = enemy_ids()
 			if 候选.is_empty():
 				_bie_fan_step = STEP_DONE
 				engine.取消技能行动()
 				return SUCCESS
-			dst_id = 候选[0]
+			dst_id = int(候选[engine._rng.randi_range(0, 候选.size() - 1)])
 		_bie_fan_目标 = dst_id
 		_bie_fan_step = 2
 		notice_skill(BIE_FAN_WO, [dst_id])
@@ -253,13 +255,10 @@ func _p_bie_fan_wo() -> int:
 		return URGENT
 	if _bie_fan_step != 2:
 		return SUCCESS
-	# 第二步：超限结算完之后问目标「弃 1 张法术牌」（超时 / 取消＝不走，按惩罚结算）
+	# 第二步：超限结算完之后问目标「弃 1 张法术牌」（超时 / 取消＝不走，按惩罚结算）。
+	# 手里有没有法术牌都照问一次：没有法术牌时界面整片置灰，只能取消 → 同样按「不如此做」结算
 	if not engine.has_reply():
-		var 可弃: Array[int] = _手牌法术牌(engine.p(_bie_fan_目标))
-		if 可弃.is_empty():
-			# 手里没有法术牌：弃不了，直接结算惩罚（不再白问一次）
-			return _bie_fan_惩罚()
-		询问(_bie_fan_目标, BIE_FAN_WO, 1, 0, GConst.CardSource.Hand, [], 0, "magic", 可弃, true, 1)
+		询问(_bie_fan_目标, BIE_FAN_WO, 1, 0, GConst.CardSource.Hand, [], 0, "magic", [], true, 1)
 		return WAIT
 	var r2: Dictionary = take_skill_reply_full()
 	_bie_fan_step = STEP_DONE
