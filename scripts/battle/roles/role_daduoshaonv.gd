@@ -559,9 +559,10 @@ func _zai_shui_yi_xia结算() -> void:
 	if engine.team_morale[player.color] >= engine.士气上限():
 		return
 	engine.set_morale(player.color, engine.team_morale[player.color] + 1)
-	# 先把新的士气补进快照（客户端据此写「蓝队士气 x → y」那一行），再发这条士气播报：
-	# 顺序反了的话快照会跟着下一回合的快照一起到，日志里士气变化就跑到回合行后面去了
-	engine._broadcast_game()
+	# 立刻把新士气发进快照（客户端据此写「蓝队士气 x → y」那一行），再发这条士气播报。
+	# 注意不能走 _broadcast_game：它在状态推进期间只会记「待发」，要等整轮 run 结束才真的发，
+	# 那时已经轮到下一回合了，日志里士气变化就跑到 [回合] 行后面去
+	engine._发送对局快照()
 	engine.broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Morale,
 		"txt": "%s 方士气 +1" % ("红" if player.color == GConst.RED else "蓝"),
