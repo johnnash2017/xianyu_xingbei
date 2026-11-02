@@ -4306,10 +4306,12 @@ class SReattackGo:
 			被攻击者.reattacker = -1
 		e.take_from_hand(defender.id, [原牌])
 		e.to_discard([原牌], {"owner": defender.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
+		# 应战打出的魔刃/异刃同样按当前系别借普通斩击牌出特效/音效
+		var 表现用牌: int = e.攻击表现牌(用牌)
 		e.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Use, "src_id": defender.id, "dst_id": 目标,
 			"card_ids": [原牌], "is_real": true,
-			"as_card_id": 用牌 if 用牌 != 原牌 else 0,
+			"as_card_id": 表现用牌 if 表现用牌 != 原牌 else 0,
 		})
 		# 角色可把这次应战「视为格挡」（如阴阳师式神形态下用光系牌应战）：本次攻击落空、不反击
 		if bool(应战.get("block", false)):
