@@ -4,9 +4,10 @@
 [ext_resource type="Material" uid="uid://dtv2axaofxu5a" path="res://scenes/prefabs/battlemobile/StatusIconMaterial.tres" id="2_mat"]
 
 [node name="StatusIcon" type="TextureRect" unique_id=21697530]
+custom_minimum_size = Vector2(40, 40)
 material = ExtResource("2_mat")
-offset_right = 28.0
-offset_bottom = 28.0
+offset_right = 40.0
+offset_bottom = 40.0
 texture = ExtResource("2_cmoar")
 expand_mode = 1
 
@@ -30,9 +31,7 @@ visible = false
 layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -6.0
-offset_top = 14.0
-offset_right = 6.0
+offset_top = 26.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
