@@ -33,12 +33,14 @@ func 跑() -> void:
 	_检数据()
 	_检技能行()
 	_检噬神者被动()
+	# 噬神者的用例放在前面：后面的角色用例如果有既有问题失败了，
+	# 也不会把「御刃 / 魔刃攻击入口」这几条本轮新修的断言一起跳过。
+	await _检噬神者()
 	await _检咒符师()
 	await _检结界师()
 	await _检圣殿骑士()
 	await _检圣庭检察士()
 	await _检异教徒()
-	await _检噬神者()
 	await _检星坠女巫()
 
 
@@ -70,17 +72,19 @@ func _检技能行() -> void:
 			检(not GConst.skill_desc(号).is_empty(), "技能 %d 没有说明文案" % 号)
 
 
-## 79 噬神者：三个专属被动各自成行（魔刃 / 异刃 / 渗蚀）；【刃】只是攻击入口
+## 79 噬神者：三个专属被动各自成行（魔刃 / 异刃 / 渗蚀）；技能表里没有「刃」，
+## 7912 / 7913 只是两张牌的攻击入口，不写进角色技能说明
 func _检噬神者被动() -> void:
 	var 技能: Array[int] = Data.role_skills(79)
-	检(not 技能.has(7906), "7906【刃】只是攻击入口，不应写进角色技能引用")
+	检(GConst.技能行(7906).is_empty(), "技能表里不应再有 7906「刃」")
+	检(not 技能.has(7912) and not 技能.has(7913), "7912 / 7913 是攻击入口，不应写进角色技能引用")
 	for 号: int in [7909, 7910, 7911]:
 		检(技能.has(号), "噬神者技能列表缺 %d" % 号)
 	var 说明: String = Data.role_skill_info(79)
 	检(说明.contains("【被动】魔刃："), "【魔刃】没有单独成行（找不到「【被动】魔刃：」）")
 	检(说明.contains("【被动】异刃："), "【异刃】没有单独成行（找不到「【被动】异刃：」）")
 	检(说明.contains("【被动】渗蚀："), "【渗蚀】没有单独成行（找不到「【被动】渗蚀：」）")
-	检(not 说明.contains("【被动】刃："), "【刃】是攻击入口，不应作为被动出现在角色说明里")
+	检(not 说明.contains("【被动】刃："), "技能表里不应再有「刃」这个被动")
 	检(not GConst.skill_desc(7909).contains("渗蚀") and not GConst.skill_desc(7909).contains("异刃；"),
 		"【魔刃】的说明里混进了其它被动")
 	检(not GConst.skill_desc(7910).contains("渗蚀") and not GConst.skill_desc(7910).contains("魔刃；"),
@@ -210,20 +214,45 @@ func _检异教徒() -> void:
 	检(int(引擎.取场卡("末日预言").get("counter", 0)) == 1, "取走 1 张后预言堆应剩 1 张")
 
 
-## 79 噬神者：手里有【魔刃】时【刃】可点，且能作为攻击技能发起攻击
+## 79 噬神者：御刃给出两条选项；拿牌后点【魔刃】/【异刃】先选系别再攻击
 func _检噬神者() -> void:
+	# 先单独验证【御刃】：启动技能 + 询问选项是带 value/label 的字典（旧实现传的是裸数字）
+	var 御刃角色: BattleRole = _建引擎(79)
+	var 御刃: Dictionary = _找技能(御刃角色.available_skills(), 7901)
+	检(not 御刃.is_empty() and int(御刃.get("type", 0)) == GConst.ActionType.SpecialSkill,
+		"【御刃】应是启动技能（SpecialSkill）")
+	检(int(御刃角色.v_special_skill({"src_id": 1, "action_id": 7901})) == GConst.GE_SUCCESS,
+		"两张刃都不在场时【御刃】应通过校验")
+	检(int(御刃角色.p_special_skill({"action_id": 7901})) == BattleRole.URGENT,
+		"【御刃】应进入「选魔刃/异刃」询问")
+	var 刃选项: Array = 御刃角色._御刃选项
+	检(刃选项.size() == 2 and 刃选项[0] is Dictionary and 刃选项[0].has("value")
+			and 刃选项[0].has("label") and 刃选项[1] is Dictionary and 刃选项[1].has("value"),
+		"【御刃】的询问选项应是两条带 value/label 的选项：%s" % str(刃选项))
+	# 再验证拿牌后的攻击入口：点【魔刃】/【异刃】先选系别
 	var 角色: BattleRole = _建引擎(79)
 	var 玩家: BattlePlayer = 引擎.p(1)
-	玩家.add_hand_cards([1005])
+	玩家.add_hand_cards([1005, 1006])
 	var 技能: Array = 角色.available_skills()
-	var 刃: Dictionary = _找技能(技能, 7906)
-	检(not 刃.is_empty() and bool(刃.get("enabled", false)), "手里有【魔刃】时【刃】应可点")
-	var 选项: Array = 刃.get("arg_choices", [])
+	var 魔刃: Dictionary = _找技能(技能, 7912)
+	var 异刃: Dictionary = _找技能(技能, 7913)
+	检(not 魔刃.is_empty() and bool(魔刃.get("enabled", false)), "手里有【魔刃】时【魔刃】攻击入口应可点")
+	检(not 异刃.is_empty() and bool(异刃.get("enabled", false)), "手里有【异刃】时【异刃】攻击入口应可点")
+	var 选项: Array = 魔刃.get("arg_choices", [])
 	检(选项.size() == 2, "【魔刃】应给「火 / 水」两个系别选项：%d" % 选项.size())
-	检(int(角色.v_attack_skill({"src_id": 1, "action_id": 7906, "args": [1],
-		"dst_ids": [2]})) == GConst.GE_SUCCESS, "【刃·火】打对手应通过校验")
-	检(int(角色.v_attack_skill({"src_id": 1, "action_id": 7906, "args": [3],
-		"dst_ids": [2]})) != GConst.GE_SUCCESS, "手里没有【异刃】时选异刃系别应被拒")
+	# available_skills 的选项给客户端用 text / args（不是 ask_skill 的 value / label）
+	检(not 选项.is_empty() and (选项[0] as Dictionary).has("text")
+			and (选项[0] as Dictionary).has("args") and not (选项[0] as Dictionary)["args"].is_empty(),
+		"【魔刃】的选项应是客户端格式（text / args）：%s" % str(选项))
+	检(int(角色.v_attack_skill({"src_id": 1, "action_id": 7912,
+		"args": [GConst.CardElement.Fire], "dst_ids": [2]})) == GConst.GE_SUCCESS,
+		"【魔刃·火】打对手应通过校验")
+	检(int(角色.v_attack_skill({"src_id": 1, "action_id": 7912,
+		"args": [GConst.CardElement.Thunder], "dst_ids": [2]})) != GConst.GE_SUCCESS,
+		"【魔刃】没有雷系选项，应被拒")
+	# 不能绕过入口把牌直接当普通攻击牌打
+	检(int(玩家.v_attack(1005, 2, 引擎.players)) != GConst.GE_SUCCESS,
+		"【魔刃】不能绕过攻击入口直接当普通攻击牌打出")
 
 
 ## 40 星坠女巫：开局有【律法：繁星】、手牌上限按律法数算；星刻放【卢恩】
