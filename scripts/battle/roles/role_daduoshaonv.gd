@@ -443,10 +443,18 @@ func p_after_extract(ctx: Dictionary) -> int:
 	ctx[KEY_10604] = STEP_DONE
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
-	var 方式: int = int(args[0]) if not args.is_empty() else 0
-	# 0＝不移除星石（战绩区没有星石时只有这一项可选）；其余非法值按「第一种可移除的星石」兜底，
-	# +1【宝石】照给（A44）；等回复期间战绩区可能被别处改动，所以这里按最新战绩区复核
-	if 方式 != 0 and not _可移除的星石().has(方式):
+	# 超时（is_timeout / 空回复）：自动选 —— 优先移除【水晶】，没有水晶再移除【宝石】，
+	# 一颗都没有就不移（0＝不移除星石）
+	var 超时: bool = bool(r.get("is_timeout", false)) or args.is_empty()
+	var 方式: int = 0 if 超时 else int(args[0])
+	if 超时:
+		for 候选: int in [2, 1]:
+			if _可移除的星石().has(候选):
+				方式 = 候选
+				break
+	elif 方式 != 0 and not _可移除的星石().has(方式):
+		# 非法值按「第一种可移除的星石」兜底，+1【宝石】照给（A44）；
+		# 等回复期间战绩区可能被别处改动，所以这里按最新战绩区复核
 		var 可移除: Array[int] = _可移除的星石()
 		方式 = int(可移除[0]) if not 可移除.is_empty() else 0
 	_bu_xiang_ti_lian结算(方式)
@@ -509,8 +517,10 @@ func p_turn_end(ctx: Dictionary) -> int:
 			return SUCCESS
 		ctx[KEY_10605] = HOOK_STEP_ASK
 		if not engine.has_reply():
+			# 不可取消：有宝石就发动，玩家只能选「弃哪张」；超时由引擎兜底空回复，
+			# 下面按「自动弃一张照样发动」处理
 			询问(player.id, ZAI_SHUI_YI_XIA, 1, 0, GConst.CardSource.Hand, [], 0, "",
-				player.hand_cards.duplicate(), true, 0)
+				player.hand_cards.duplicate(), false, 0)
 			return WAIT
 	if 阶段 != HOOK_STEP_ASK:
 		return SUCCESS
@@ -519,7 +529,9 @@ func p_turn_end(ctx: Dictionary) -> int:
 	ctx[KEY_10605] = STEP_DONE
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
+	# 不可取消：超时（空回复 / is_timeout）也照发动，只是牌由下面自动挑
+	var 超时: bool = bool(r.get("is_timeout", false))
+	if not 超时 and (args.is_empty() or int(args[0]) != 1):
 		return SUCCESS
 	# 等回复期间资源可能变了，付款 / 弃牌前再复核一次
 	if player.gem <= 0:
@@ -532,6 +544,15 @@ func p_turn_end(ctx: Dictionary) -> int:
 		if player.has_discard_card(cid) and not 选.has(cid):
 			选.append(cid)
 	if 选.is_empty():
+		if 超时:
+			# 超时没选牌：自动随机弃 1 张，然后照常发动
+			if player.hand_cards.is_empty():
+				return SUCCESS
+			player.set_gem(player.gem - 1)
+			notice_skill(ZAI_SHUI_YI_XIA, [])
+			engine.随机弃手牌(player.id, 再睡弃牌数, ZAI_SHUI_YI_XIA)
+			_zai_shui_yi_xia结算()
+			engine._broadcast_game()
 		return SUCCESS
 	player.set_gem(player.gem - 1)
 	notice_skill(ZAI_SHUI_YI_XIA, [])
