@@ -468,13 +468,12 @@ func _可移除的星石() -> Array[int]:
 ## 纯参数选项 —— 按钮文案直接给文本，标签也用同一句（ask_skill 走 label、arg_choices 走 text）
 func _星石选项(可移除: Array[int]) -> Array:
 	var 无星石: bool = 可移除.is_empty()
-	var 不移除文案: String = "不移除星石" if 无星石 else "不移除星石（战绩区还有星石，不能跳过）"
 	return [
 		{"value": 1, "text": "移除我方战绩区 1【宝石】", "label": "移除我方战绩区 1【宝石】",
 			"args": [1], "enabled": 可移除.has(1)},
 		{"value": 2, "text": "移除我方战绩区 1【水晶】", "label": "移除我方战绩区 1【水晶】",
 			"args": [2], "enabled": 可移除.has(2)},
-		{"value": 0, "text": 不移除文案, "label": 不移除文案,
+		{"value": 0, "text": "不移除星石", "label": "不移除星石",
 			"args": [0], "enabled": 无星石},
 	]
 
