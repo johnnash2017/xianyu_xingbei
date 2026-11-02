@@ -3529,6 +3529,14 @@ func _切换额外行动(cur: BattlePlayer, 选中: int, 作为: int) -> bool:
 	当前额外行动数据 = 新
 	行动额外来源 = int(新.get("cause", 0))
 	行动允许 = int(新.get("allow_action", GConst.ActionType.Attack))
+	# 切过来的这份行动按「此刻」重算规格：手牌 / 双方手牌数可能在授予之后变过，
+	# 授予时的快照会过期（如 10702「只能使用【魔弹】」的白名单、10704「只能打手牌更多的对手」）。
+	# 不重算的话：切过来就能打的一定是授予那一刻手里的牌，新拿到的牌会被白名单挡住。
+	var 重算: Dictionary = {}
+	if cur.role != null:
+		重算 = cur.role.额外行动规格(行动额外来源)
+	if not 重算.is_empty():
+		cur.改写额外行动(行动额外来源, 重算)
 	return true
 
 

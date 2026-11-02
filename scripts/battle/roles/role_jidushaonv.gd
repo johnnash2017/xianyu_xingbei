@@ -350,12 +350,32 @@ func _missile_body_hand_ids() -> Array[int]:
 func p_additional_action(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	match int(ctx.get("cause", 0)):
-		XU_RONG_ZHANG_WO:
-			player.改写额外行动(XU_RONG_ZHANG_WO, 虚荣掌握规格())
-		JI_DU_ZHUI_FANG:
-			player.改写额外行动(JI_DU_ZHUI_FANG, 嫉妒追放规格())
+	var 规格: Dictionary = 额外行动规格(int(ctx.get("cause", 0)))
+	if not 规格.is_empty():
+		player.改写额外行动(int(ctx.get("cause", 0)), 规格)
 	return SUCCESS
+
+
+## 手牌变了：10702 的白名单是手牌快照，当前那份额外行动要立刻重算 ——
+## 否则摸到的【魔弹】不在白名单里（客户端点不动、硬提交也会被驳回）。
+func p_hand_change(_ctx: Dictionary) -> int:
+	if engine == null or player == null:
+		return SUCCESS
+	if int(engine.当前额外行动数据.get("cause", 0)) == XU_RONG_ZHANG_WO:
+		player.改写额外行动(XU_RONG_ZHANG_WO, 虚荣掌握规格())
+	return SUCCESS
+
+
+## 额外行动规格按「此刻」重算：引擎在「进入这份额外行动」和「本地切换到它」时都会回调。
+## 10702 的白名单是手牌快照、10704 的目标限制是双方手牌数快照，都必须现算 ——
+## 否则授予之后新拿到的【魔弹】/ 手牌数变多的对手会被旧快照挡住（切过去时打不出魔弹就是这里）。
+func 额外行动规格(cause: int) -> Dictionary:
+	match cause:
+		XU_RONG_ZHANG_WO:
+			return 虚荣掌握规格()
+		JI_DU_ZHUI_FANG:
+			return 嫉妒追放规格()
+	return {}
 
 
 # ============================================================
