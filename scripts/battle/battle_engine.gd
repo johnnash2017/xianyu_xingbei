@@ -172,6 +172,10 @@ var _await_state: Variant = null
 ## 盖牌变动序号：每次 add / remove 唯一。钩子返回 URGENT 时引擎会回栈重跑同一个钩子，
 ## 角色据此判断「这次 add 已经处理过」，避免盖牌渗蚀这类一次性效果被反复触发。
 var _cover_change_seq: int = 0
+## 尚未执行的盖牌变动钩子数：add/remove 时 +1，p_cover_change 跑完一个 -1。
+## SHook 里某个角色中途放了盖牌并返回 SUCCESS 时，SHook 主动让出一次执行权，
+## 让 p_cover_change 立刻结算，而不是等当前 SHook 把所有角色跑完。
+var _盖牌变动待处理: int = 0
 ## 当前正在 handle 的状态实例（run 内逐状态设置）：wait_for 据此登记等待归属，
 ## has_reply / take_reply 据此判断「这份回复是不是发给我的」
 var _当前状态: Variant = null
@@ -2897,6 +2901,7 @@ func _apply_cover_change(dst_id: int, direction: int, cards: Array, src_id: int,
 		dst.remove_cover_cards(cards)
 	_broadcast_game()
 	_cover_change_seq += 1
+	_盖牌变动待处理 += 1
 	push(SHook.new("p_cover_change", {
 		"dst": dst_id, "direction": direction,
 		"howMany": cards.size(), "cards": cards.duplicate(),
@@ -3509,7 +3514,14 @@ class SHook:
 					return BattleEngine.WAIT
 				if res == BattleRole.URGENT:
 					return BattleEngine.SUSPEND
+				# 角色在钩子里放了/移了盖牌：立即让出执行权，先跑 p_cover_change，
+				# 回来再从下一个角色继续；否则要等整轮 SHook 跑完才结算
+				if e._盖牌变动待处理 > 0 and hook != "p_cover_change":
+					_iter += 1
+					return BattleEngine.SUSPEND
 			_iter += 1
+		if hook == "p_cover_change" and e._盖牌变动待处理 > 0:
+			e._盖牌变动待处理 -= 1
 		# after[0] 应先执行，故逆序压栈
 		for i: int in range(after.size() - 1, -1, -1):
 			e.push(after[i])
