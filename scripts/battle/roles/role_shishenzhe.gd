@@ -5,16 +5,15 @@ extends BattleRole
 ## "在场"＝在任意玩家手牌里；不在场时【御刃】可以从场外把它们加入手牌。
 ##
 ## 口径：
-## 1. 【魔刃】/【异刃】是具体的牌，用【攻击技能】入口打出（与剑之魔女 3805「视为风系」
-##    同一条路）：点技能栏里的【魔刃】/【异刃】按钮（或直接点手牌，见 battle_mobile），
-##    二级技能栏选「魔刃·火 / 魔刃·水 / 异刃·雷 / 异刃·风」，用对应系别的虚拟攻击牌
-##    （87 火焰斩 / 129 水涟斩 / 108 雷光斩 / 66 风神斩）发起攻击。技能表里没有「刃」这个被动，
-##    只有【魔刃】7909 /【异刃】7910 /【渗蚀】7911 三条被动说明。
-## 2. 【渗蚀】：使用/打出【魔刃】/【异刃】时，由噬神者对该牌的使用者造成 3 点法术伤害
-##    （【同调】后 1 点），然后移除该牌（不进弃牌堆）；牌因技能放到角色旁时改为对该角色 1 点。
-## 3. 【侵刻】：命中时把这次用的【魔刃】/【异刃】加入攻击目标手牌（所以它不会再被【渗蚀】移除）。
-## 4. 【噬灭】/【殇灭】的「使用【魔刃】/【异刃】攻击时①」靠 _本次刃 判定（攻击技能里记录），
-##    不按牌面判 —— 因为攻击实际上是用虚拟牌结算的。
+## 1. 【魔刃】/【异刃】是具体的牌，当前系别在手牌右上角切换（fire/water、thunder/wind）；
+##    它们**本身就是当前系别的普通攻击牌**，直接点牌选目标打出，不再有攻击技能入口。
+##    技能表里没有「刃」这个被动，只有【魔刃】7909 /【异刃】7910 /【渗蚀】7911 三条被动说明。
+## 2. 【渗蚀】：使用/打出/弃置【魔刃】/【异刃】时，由噬神者对该牌的使用者造成 3 点法术伤害
+##    （【同调】后 1 点），然后通过 `ctx.removed` 把牌移出本次弃牌流程（不进弃牌堆）；
+##    牌因技能放到角色旁时改为对该角色 1 点。
+## 3. 【侵刻】：命中时把这次用的【魔刃】/【异刃】同一实例加入攻击目标手牌。
+## 4. 【噬灭】/【殇灭】的「使用【魔刃】/【异刃】攻击时①」靠 _本次刃 判定，
+##    由 p_attack_card 在普通攻击出牌前记录实例。
 ## 5. 【共振】消耗 1 点能量（技能表【水晶】口径）；【诸神终焉】消耗 1 颗真宝石（【宝石】口径）。
 
 const YU_REN: int = 7901
@@ -22,8 +21,6 @@ const QIN_KE: int = 7902
 const SHI_MIE: int = 7903
 const SHANG_MIE: int = 7904
 const TONG_DIAO: int = 7905
-const MO_REN_ATTACK: int = 7912   # 【魔刃】攻击入口（技能表里不进角色技能说明）
-const YI_REN_ATTACK: int = 7913   # 【异刃】攻击入口
 const SHEN_SHI: int = 7911        # 【渗蚀】被动（弃牌触发 / 播报用）
 const GONG_ZHEN: int = 7907
 const ZHU_SHEN_ZHONG_YAN: int = 7908
@@ -32,14 +29,6 @@ const MO_REN_CARD: int = 1005
 const YI_REN_CARD: int = 1006
 const 渗蚀伤害: int = 3
 const 同调伤害: int = 1
-
-## 视为攻击牌用的虚拟牌：系别 → 卡表 id
-const 虚拟攻击牌: Dictionary = {
-	GConst.CardElement.Fire: 87,
-	GConst.CardElement.Water: 129,
-	GConst.CardElement.Thunder: 108,
-	GConst.CardElement.Wind: 66,
-}
 
 ## 本次攻击用的【魔刃】/【异刃】是哪一张（0＝普通攻击）
 var _本次刃: int = 0          # 本次用的牌实例号（交给侵刻/渗蚀用）
@@ -56,19 +45,7 @@ var _共振牌: Array[int] = []
 # 技能栏
 # ============================================================
 func available_skills() -> Array:
-	var 敌: Array = enemy_ids()
 	var 技能: Array = []
-	for 卡: int in _手牌刃():
-		var 卡数据: GCard = Data.get_card(卡)
-		# 系别已经在手牌里选好（卡牌顶部的火/水、雷/风切换），
-		# 攻击入口不再弹「选系别」，直接按卡牌当前系别出手。
-		技能.append({
-			"type": GConst.ActionType.AttackSkill,
-			"id": MO_REN_ATTACK if 卡 == MO_REN_CARD else YI_REN_ATTACK,
-			"need_target": 1,
-			"targets": 敌,
-			"enabled": not 敌.is_empty() and 卡数据 != null and 卡数据.element_enum() > 0,
-		})
 	# 御刃：和魔弓【魔眼】一样，点技能直接进二级栏选「魔刃 / 异刃」，
 	# 可以点「返回」退出，点「确定」才把选中的牌加进手牌（不再走服务端二次询问）。
 	var 御刃选项: Array = []
@@ -96,92 +73,6 @@ func available_skills() -> Array:
 
 func is_free_skill(skill_id: int) -> bool:
 	return skill_id == YU_REN
-
-
-## 攻击入口把本次出牌视为卡牌当前的那个系别：额外行动阶段（如修罗连斩给的火系攻击）
-## 客户端据此按当前系别置灰/亮起，服务端也用它过额外行动的元素限制。
-func 技能视为系别(action: Dictionary) -> int:
-	var aid: int = int(action.get("action_id", 0))
-	if aid == MO_REN_ATTACK:
-		var 卡: GCard = Data.get_card(MO_REN_CARD)
-		return 卡.element_enum() if 卡 != null else 0
-	if aid == YI_REN_ATTACK:
-		var 卡: GCard = Data.get_card(YI_REN_CARD)
-		return 卡.element_enum() if 卡 != null else 0
-	return 0
-
-
-## 【魔刃】/【异刃】的系别在手里切换，不能用普通「出攻击牌」直接打：
-## 必须走攻击技能入口 7912/7913（按当前系别）。
-## 客户端点手牌会转到对应的技能按钮（见 battle_mobile）；这里兜底挡住直接出牌。
-func v_attack(card_id: int, _dst_id: int, _players: Dictionary) -> int:
-	var 面: int = GConst.牌号(card_id)
-	if 面 == MO_REN_CARD or 面 == YI_REN_CARD:
-		return GConst.GE_INVALID_CARDID
-	return V_NOT_OVERRIDE
-
-
-func v_attack_skill(action: Dictionary) -> int:
-	if int(action.get("src_id", -1)) != player.id:
-		return GConst.GE_INVALID_PLAYERID
-	var aid: int = int(action.get("action_id", 0))
-	var 卡面: int = MO_REN_CARD if aid == MO_REN_ATTACK \
-		else (YI_REN_CARD if aid == YI_REN_ATTACK else 0)
-	if 卡面 == 0:
-		return GConst.GE_INVALID_ACTION
-	if not player.has_hand_card(卡面):
-		return GConst.GE_HANDCARD_NOT_FOUND
-	var 卡数据: GCard = Data.get_card(卡面)
-	if 卡数据 == null or not 卡数据.可选元素.has(卡数据.element_enum()):
-		return GConst.GE_INVALID_CARDID
-	var ds: Array = action.get("dst_ids", [])
-	if ds.size() != 1:
-		return GConst.GE_INVALID_ACTION
-	# 通用攻击限制（挑衅 / 攻击锁定 / 目标同队 / 手里有这张牌）复用基础校验
-	var 基础: int = player.base_v_attack(卡面, int(ds[0]), engine.players)
-	if 基础 != GConst.GE_SUCCESS:
-		return 基础
-	var dst: BattlePlayer = engine.p(int(ds[0]))
-	if dst == null or dst.color == player.color:
-		return GConst.GE_INVALID_PLAYERID
-	if dst.v_attacked() != GConst.GE_SUCCESS:
-		return GConst.GE_INVALID_PLAYERID
-	return GConst.GE_SUCCESS
-
-
-func p_attack_skill(action: Dictionary) -> int:
-	var 校验: int = v_attack_skill(action)
-	if 校验 != GConst.GE_SUCCESS:
-		return 校验
-	var aid: int = int(action.get("action_id", 0))
-	var 卡面: int = MO_REN_CARD if aid == MO_REN_ATTACK else YI_REN_CARD
-	var 卡数据: GCard = Data.get_card(卡面)
-	var 系: int = 卡数据.element_enum() if 卡数据 != null else 0
-	var dst: int = int((action.get("dst_ids", []) as Array)[0])
-	var 实例: int = player.取出实例(player.hand_cards, 卡面)
-	if 实例 <= 0:
-		return GConst.GE_INVALID_CARDID
-	_本次刃 = 实例
-	_本次刃面 = 卡面
-	notice_skill(aid, [dst], "%s·%s" % [GConst.skill_name(aid), GConst.element_to_chinese(系)])
-	# 展示这张牌；**不进弃牌堆**：命中时【侵刻】把它交给目标，否则【渗蚀】把它移出游戏。
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [实例], "is_real": true,
-	})
-	# 【渗蚀】：噬神者对该牌的使用者（这里是发动者自己）造成 3 点（【同调】后 1 点）法术伤害
-	var 伤: int = 同调伤害 if _有同调() else 渗蚀伤害
-	engine.push_harm({
-		"src": player.id, "dst": player.id, "point": 伤,
-		"cause": SHEN_SHI, "type": GConst.HarmType.Magic, "virtual_no_fate": true,
-	})
-	# 用真实系别的虚拟攻击牌发起攻击
-	var 虚牌: int = int(虚拟攻击牌.get(系, 87))
-	engine.push(BattleEngine.SAttackCard.new(player.id, dst, 虚牌, {
-		"src": player.id, "dst": dst, "point": 1, "cause": GConst.CAUSE_ATTACK,
-		"type": GConst.HarmType.Attack, "card_id": 虚牌, "is_active": true,
-	}))
-	return URGENT
 
 
 func v_special_skill(action: Dictionary) -> int:
@@ -250,6 +141,27 @@ func _御刃可得() -> Array[int]:
 
 
 # ============================================================
+# 普通攻击打出【魔刃】/【异刃】时：记下实例，供侵刻 / 噬灭 / 殇灭按「本次用的牌」判断
+# ============================================================
+func p_attack_card(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	var 面: int = int(ctx.get("card_id", 0))
+	if 面 != MO_REN_CARD and 面 != YI_REN_CARD:
+		return SUCCESS
+	var 实例: int = 0
+	for h: int in player.hand_cards:
+		if GConst.牌号(h) == 面:
+			实例 = h
+			break
+	if 实例 <= 0:
+		return SUCCESS
+	_本次刃 = 实例
+	_本次刃面 = 面
+	return SUCCESS
+
+
+# ============================================================
 # 7902 侵刻：使用【魔刃】/【异刃】攻击命中时，把该卡加入攻击目标手牌
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
@@ -295,11 +207,19 @@ func wants_before_discard(ctx: Dictionary) -> bool:
 	return false
 
 
-## 弃置【魔刃】/【异刃】时：噬神者对该牌的使用者（弃牌者）造成 3 点（【同调】后 1 点）法术伤害。
-## 然后让这张牌照常进入弃牌堆（牌面说明里的「移除此牌」＝离开手牌）。
+## 弃置/使用【魔刃】/【异刃】时：噬神者对该牌的使用者（弃牌/出牌者）造成 3 点
+## （【同调】后 1 点）法术伤害。然后这张牌**移出游戏**（不从弃牌堆再流转）：
+## 牌面说明里的「移除此牌」；命中时由【侵刻】把同一实例交给目标。
 func p_before_discard(ctx: Dictionary) -> int:
 	if not wants_before_discard(ctx):
 		return SUCCESS
+	# 标记这些牌不进入弃牌堆（引擎 _结算待弃牌 支持 ctx.removed）
+	var 移除: Array = ctx.get("removed", [])
+	for c: Variant in ctx.get("cards", []):
+		var 面: int = GConst.牌号(int(c))
+		if (面 == MO_REN_CARD or 面 == YI_REN_CARD) and not 移除.has(int(c)):
+			移除.append(int(c))
+	ctx["removed"] = 移除
 	var 键: String = "_渗蚀弃牌_%d" % player.id
 	if bool(ctx.get(键, false)):
 		return SUCCESS

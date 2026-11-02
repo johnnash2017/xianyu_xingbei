@@ -4418,20 +4418,6 @@ func _on_card_clicked(card_id: int) -> void:
 	# 置灰（不可用）的牌不做任何响应，也不弹提示
 	if not _卡牌能点(card_id):
 		return
-	# 噬神者的【魔刃】/【异刃】没有固定系别：点牌＝转到对应攻击入口，先选系别再选目标
-	# （技能表 7912 / 7913；它们只作攻击入口，不进角色被动说明）
-	var 面: int = GConst.牌号(card_id)
-	var 刃入口: int = GConst.噬神者_魔刃攻击 if 面 == GConst.噬神者_魔刃卡 \
-		else (GConst.噬神者_异刃攻击 if 面 == GConst.噬神者_异刃卡 else 0)
-	if 刃入口 > 0:
-		if _mode == 4 and _pending_skill_id == 刃入口:
-			return
-		if _mode == 1:
-			for 钮: Node in _技能按钮:
-				if 钮 is 技能按钮 and (钮 as 技能按钮).技能号 == 刃入口:
-					if not (钮 as 技能按钮).plateButton.disabled:
-						(钮 as 技能按钮).点击.emit(刃入口)
-					return
 	if _额外攻击响应选择 > 0:
 		# 响应里的额外攻击是「一张攻击牌 + 一个敌方目标」：再点第二张牌直接替换第一张，
 		# 不能因为当前技能询问的 _need_cards 是 0 就累积成两张。

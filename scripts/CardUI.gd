@@ -39,8 +39,8 @@ var 实例号: int = -1
 ## 容器是否允许这张牌在手牌里切换系别（魔刃/异刃这类配置了多个可选系别的牌）。
 ## 盖牌区 / 选牌区 / 展示区不打开，避免在这些地方误切。
 var _允许切换元素: bool = false
-## 卡牌顶部悬浮的系别切换条（运行时创建，编辑器不建）
-var _元素栏: PanelContainer = null
+## 卡牌右上角悬浮的系别切换条（运行时创建，编辑器不建；无底色，只有按钮文字）
+var _元素栏: HBoxContainer = null
 ## 当前是否可用：可用 = 亮起并显示边框；不可用 = 置灰、不显示边框
 var _可用: bool = false
 ## 是否处于「已选中」：选中时边框换成选中框那个颜色（与「可选」互斥 —— 同一个节点，只换颜色）
@@ -225,36 +225,28 @@ func 刷新元素() -> void:
 	_刷新元素栏()
 
 
-## 卡牌顶部悬浮的系别按钮条（运行时创建；编辑器里不建）
+## 卡牌右上角悬浮的系别按钮条（运行时创建；编辑器里不建；无底色）
 func _建元素栏() -> void:
 	if _元素栏 != null:
 		return
-	_元素栏 = PanelContainer.new()
+	_元素栏 = HBoxContainer.new()
 	_元素栏.name = "ElementSwitch"
 	_元素栏.visible = false
-	_元素栏.mouse_filter = Control.MOUSE_FILTER_STOP
+	# 只让按钮吃鼠标；整条空出来的地方放行，别挡住卡面点击
+	_元素栏.mouse_filter = Control.MOUSE_FILTER_PASS
 	_元素栏.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	_元素栏.offset_left = 4
-	_元素栏.offset_right = -4
-	_元素栏.offset_top = 2
-	_元素栏.offset_bottom = 28
-	var 底: StyleBoxFlat = StyleBoxFlat.new()
-	底.bg_color = Color(0.04, 0.04, 0.07, 0.82)
-	底.corner_radius_top_left = 4
-	底.corner_radius_top_right = 4
-	底.corner_radius_bottom_left = 4
-	底.corner_radius_bottom_right = 4
-	底.content_margin_left = 2
-	底.content_margin_right = 2
-	底.content_margin_top = 2
-	底.content_margin_bottom = 2
-	_元素栏.add_theme_stylebox_override("panel", 底)
-	# 指针从底板/按钮移出卡牌时收起（移到卡面里时 _收起元素栏若在外 会保留）
+	_元素栏.alignment = BoxContainer.ALIGNMENT_END
+	_元素栏.add_theme_constant_override("separation", 2)
+	_元素栏.offset_left = 2
+	_元素栏.offset_right = -2
+	_元素栏.offset_top = 1
+	_元素栏.offset_bottom = 17
+	# 指针从按钮移出卡牌时收起（移到卡面里时 _收起元素栏若在外 会保留）
 	_元素栏.mouse_exited.connect(_延迟收起元素栏)
 	add_child(_元素栏)
 
 
-## 按卡牌的「可选元素 / 当前元素」重建顶部的火/水（雷/风）切换按钮。
+## 按卡牌的「可选元素 / 当前元素」重建右上角的火/水（雷/风）切换按钮。
 ## 当前系别那颗置灰（不可点），另一颗可点；点了直接切换并广播给容器。
 func _刷新元素栏() -> void:
 	if _元素栏 == null:
@@ -266,23 +258,19 @@ func _刷新元素栏() -> void:
 	if not _允许切换元素 or card == null or not card.可切换元素():
 		_元素栏.visible = false
 		return
-	var 行: HBoxContainer = HBoxContainer.new()
-	行.alignment = BoxContainer.ALIGNMENT_CENTER
-	行.add_theme_constant_override("separation", 2)
-	行.mouse_filter = Control.MOUSE_FILTER_PASS
-	_元素栏.add_child(行)
 	for 元素: int in card.可选元素:
 		var 钮: Button = Button.new()
 		钮.text = GConst.element_to_chinese(元素)
+		钮.flat = true
 		钮.focus_mode = Control.FOCUS_NONE
 		钮.mouse_filter = Control.MOUSE_FILTER_STOP
-		钮.custom_minimum_size = Vector2(30, 20)
-		钮.add_theme_font_size_override("font_size", 14)
+		钮.custom_minimum_size = Vector2(24, 16)
+		钮.add_theme_font_size_override("font_size", 11)
 		# 当前系别那颗不可点；另一颗点一下就把这张牌切成那个系别
 		钮.disabled = 元素 == card.element_enum()
 		钮.pressed.connect(_on_元素按钮.bind(元素))
 		钮.mouse_exited.connect(_延迟收起元素栏)
-		行.add_child(钮)
+		_元素栏.add_child(钮)
 	_元素栏.visible = 原可见
 
 

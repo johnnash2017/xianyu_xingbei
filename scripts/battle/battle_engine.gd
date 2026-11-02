@@ -2689,9 +2689,11 @@ func _有弃牌拦截者(ctx: Dictionary) -> bool:
 ## 弃牌前拦截钩子跑完之后真正结算（F6）：未被认领的牌进弃牌堆；被认领的牌交给认领者。
 func _结算待弃牌(ctx: Dictionary) -> void:
 	var 被认领: Array = ctx.get("taken", [])
+	# 角色可以把某些牌从这次弃牌里直接移出游戏（如噬神者【渗蚀】把魔刃/异刃移除）
+	var 已移除: Array = ctx.get("removed", [])
 	var 待弃: Array = []
 	for c0: Variant in ctx.get("cards", []):
-		if 被认领.has(int(c0)):
+		if 被认领.has(int(c0)) or 已移除.has(int(c0)):
 			continue
 		待弃.append(int(c0))
 	deck.push_discard(待弃)
