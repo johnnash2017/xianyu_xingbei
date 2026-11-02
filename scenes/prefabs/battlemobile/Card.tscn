@@ -41,6 +41,70 @@ shader_parameter/fade_curve = SubResource("CurveTexture_rc5lo")
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_t30m7"]
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_elem_normal"]
+content_margin_left = 7.8
+content_margin_top = 5.2
+content_margin_right = 7.8
+content_margin_bottom = 5.2
+bg_color = Color(0.26, 0.32, 0.44, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.42, 0.52, 0.7, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_elem_hover"]
+content_margin_left = 7.8
+content_margin_top = 5.2
+content_margin_right = 7.8
+content_margin_bottom = 5.2
+bg_color = Color(0.36, 0.45, 0.62, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.66, 0.8, 1, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_elem_pressed"]
+content_margin_left = 7.8
+content_margin_top = 5.2
+content_margin_right = 7.8
+content_margin_bottom = 5.2
+bg_color = Color(0.3, 0.55, 0.95, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.85, 0.93, 1, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_elem_disabled"]
+content_margin_left = 7.8
+content_margin_top = 5.2
+content_margin_right = 7.8
+content_margin_bottom = 5.2
+bg_color = Color(0.16, 0.18, 0.24, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.3, 0.34, 0.42, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
 [node name="Card" type="Control" unique_id=1595026165 node_paths=PackedStringArray("btn", "txtSkill1", "txtSkill2", "fate_pattern_root", "elementRoot", "边框", "txtName")]
 layout_mode = 3
 anchors_preset = 0
@@ -295,5 +359,45 @@ text = "名字名字名字名字"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
+
+[node name="ElementSwitch" type="HBoxContainer" parent="." unique_id=1735941032]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+offset_left = 2.0
+offset_top = -35.0
+offset_right = -2.0
+offset_bottom = -7.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+alignment = 2
+theme_override_constants/separation = 2
+
+[node name="Element1" type="Button" parent="ElementSwitch" unique_id=2109963011]
+custom_minimum_size = Vector2(24, 16)
+layout_mode = 2
+focus_mode = 0
+mouse_filter = 0
+theme_override_font_sizes/font_size = 11
+theme_override_styles/disabled = SubResource("StyleBoxFlat_elem_disabled")
+theme_override_styles/hover = SubResource("StyleBoxFlat_elem_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_elem_pressed")
+theme_override_styles/normal = SubResource("StyleBoxFlat_elem_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_elem_pressed")
+text = "火"
+
+[node name="Element2" type="Button" parent="ElementSwitch" unique_id=3320030142]
+custom_minimum_size = Vector2(24, 16)
+layout_mode = 2
+focus_mode = 0
+mouse_filter = 0
+theme_override_font_sizes/font_size = 11
+theme_override_styles/disabled = SubResource("StyleBoxFlat_elem_disabled")
+theme_override_styles/hover = SubResource("StyleBoxFlat_elem_hover")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_elem_pressed")
+theme_override_styles/normal = SubResource("StyleBoxFlat_elem_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_elem_pressed")
+text = "水"
 
 [connection signal="pressed" from="Root" to="." method="OnCardClick"]

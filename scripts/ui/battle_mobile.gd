@@ -4333,6 +4333,9 @@ func _on_card_element_switch(卡牌号: int, 元素: int) -> void:
 	# 先记本地待确认：旧快照/旧确认回来时不要把它打回旧系别
 	Data.本地待确认元素[卡牌号] = 元素
 	_刷新卡牌元素显示(卡牌号)
+	# 额外行动的白名单要等服务端按新系别重算，先只亮/灰，不急着取消选中；
+	# 普通行动/技能选牌的规则是客户端本地的，可以立刻复检并取消不合法选中。
+	_切换后复检手牌(_当前额外攻击选择 <= 0)
 	Logic.send_card_element(卡牌号, 元素)
 
 
@@ -4354,6 +4357,8 @@ func _on_card_element_changed(data: Dictionary) -> void:
 	var cmds: Array = data.get("commands", [])
 	if not cmds.is_empty():
 		_静默刷新技能可用(cmds)
+	# 服务端可能带回了新的行动白名单/技能条件，按最新命令再复检一次手牌
+	_切换后复检手牌()
 
 
 ## 把某张牌的当前系别/顶部切换按钮刷新到所有正在显示它的卡牌节点（手牌 / 选牌区）
@@ -4369,13 +4374,70 @@ func _刷新卡牌元素显示(卡牌号: int) -> void:
 				子.call("刷新元素")
 
 
+## 系别切换后复检手牌：
+## - 已选中的牌不能因为「已选中」就豁免；按当前技能规则重放一遍，不合法就取消选中
+## - 原来不合法、切换后合法的牌重新亮起
+## 不走刷新手牌重建，避免卡面闪；只原地改可用/选中/上浮位置。
+func _切换后复检手牌(可取消选中: bool = true) -> void:
+	if 可取消选中 and not _sel_cards.is_empty():
+		var 原选: Array[int] = _sel_cards.duplicate()
+		var 新选: Array[int] = []
+		if (_mode == 4 or _mode == 3) and _skill_card_max > 0:
+			# 技能选牌：按真实点选顺序逐步模拟，考虑同系/异系/同命格/上限
+			新选 = _筛出当前技能可留的牌(原选)
+			# 额外行动里的技能还要叠它自己的牌白名单/放行种类（_卡牌能点 的 mode 4 不管这一层）
+			if _mode == 4 and _当前额外攻击选择 > 0:
+				var 行动牌白: Array = _额外手牌白名单_选择
+				var 过滤: Array[int] = []
+				for cid: int in 新选:
+					if not 行动牌白.is_empty() and not 行动牌白.has(GConst.牌号(cid)):
+						continue
+					if not _可主动使用牌(cid):
+						continue
+					过滤.append(cid)
+				新选 = 过滤
+
+		else:
+			# 行动/应战/额外攻击：先清空选择，再逐张按当前规则复检
+			_sel_cards = []
+			for cid: int in 原选:
+				if _卡牌能点(cid):
+					新选.append(cid)
+		_sel_cards = 新选
+	for 子: Node in HandArea.get_children():
+		if not (子 is Control) or not 子.has_method("设置可用"):
+			continue
+		var 实例值: Variant = 子.get("实例号")
+		if 实例值 == null:
+			continue
+		var 实例: int = int(实例值)
+		if 实例 <= 0:
+			continue
+		var 可用: bool = _卡牌能点(实例)
+		子.call("设置可用", 可用)
+		var 选中: bool = _sel_cards.has(实例)
+		子.call("设置选中", 选中)
+		var 上浮: float = 选中上浮像素 if 选中 else 0.0
+		(子 as Control).position.y = (HandArea.size.y - 手牌尺寸.y) * 0.5 - 上浮 + 手牌下移像素
+	# 选牌变化可能让已点目标失效：与 _on_card_clicked 同一套清理；分配型/锁死目标不动
+	if _分配配置().is_empty() and not _目标锁死:
+		for pid: int in _sel_players.duplicate():
+			if not _玩家可选(pid):
+				_sel_players.erase(pid)
+	刷新选中面板()
+	_更新按键()
+
+
 ## 静默更新行动技能栏：只改按钮的可用/系别元数据，不重建按钮、不清当前选择、不发 ErrorInput。
 ## 牌面系别切换后服务端会回一份刷新后的 action commands；玩家看到的是按钮原地亮起/变灰。
 func _静默刷新技能可用(cmds: Array) -> void:
 	_行动命令 = cmds.duplicate(true)
-	var 阶段系别: int = 0
-	if not cmds.is_empty():
-		阶段系别 = int((cmds[0] as Dictionary).get("extra_element", 0))
+	var 首命令: Dictionary = cmds[0] if not cmds.is_empty() else {}
+	var 阶段系别: int = int(首命令.get("extra_element", 0))
+	# 额外行动的白名单是服务端按当前系别算出来的；系别切换后要同步到本地选中的那一份，
+	# 否则手里牌的可用性还按旧白名单判。
+	if bool(首命令.get("is_extra", false)) and _当前额外攻击选择 > 0:
+		_同步额外行动白名单(首命令)
 	for 钮: Node in _技能按钮:
 		if not (钮 is 技能按钮):
 			continue
@@ -4412,6 +4474,55 @@ func _静默刷新技能可用(cmds: Array) -> void:
 		钮.set_meta(元数据_行动服务端可用, 服务端可用)
 		钮.set_meta(元数据_行动技能系别, 固定系)
 	_更新按键()
+
+
+## 服务端随 CardElement 带回的额外行动列表同步到本地选中的那份：
+## 更新牌/目标白名单、放行种类和系别；不动按钮的绑定回调，只更新数据与当前选择。
+func _同步额外行动白名单(首: Dictionary) -> void:
+	var 当前ID: int = _当前额外攻击选择
+	var 序列ID: Array = 首.get("extra_attack_uids", [])
+	var 序列牌: Array = 首.get("extra_attack_cards", [])
+	var 序列目标: Array = 首.get("extra_attack_targets", [])
+	var 序列允许: Array = 首.get("allow_actions", [])
+	var 序列系别: Array = 首.get("extra_attack_elements", [])
+	var 新牌: Array = []
+	var 新目标: Array = []
+	var 新放行: int = _额外行动放行_选择
+	var 新系别: int = 0
+	var 找到: bool = false
+	for i: int in range(序列ID.size()):
+		if int(序列ID[i]) != 当前ID:
+			continue
+		if i < 序列牌.size() and 序列牌[i] is Dictionary:
+			新牌 = (序列牌[i] as Dictionary).get("ids", [])
+		if i < 序列目标.size() and 序列目标[i] is Dictionary:
+			新目标 = (序列目标[i] as Dictionary).get("ids", [])
+		if i < 序列允许.size():
+			新放行 = int(序列允许[i])
+		if i < 序列系别.size():
+			新系别 = int(序列系别[i])
+		找到 = true
+		break
+	# 服务端没下发完整列表时，至少把「当前这一份」更新掉
+	if not 找到 and int(首.get("extra_uid", 0)) == 当前ID:
+		新牌 = 首.get("card_ids", [])
+		新目标 = 首.get("dst_ids", [])
+		新放行 = int(首.get("respond_id", 新放行))
+		新系别 = int(首.get("extra_element", 新系别))
+		找到 = true
+	if not 找到:
+		return
+	_额外手牌白名单_选择 = 新牌.duplicate()
+	_额外目标白名单_选择 = 新目标.duplicate()
+	_额外行动放行_选择 = 新放行
+	for 项: Dictionary in _额外攻击切换项:
+		if int(项.get("uid", 0)) != 当前ID:
+			continue
+		项["card_ids"] = 新牌.duplicate()
+		项["dst_ids"] = 新目标.duplicate()
+		项["allow"] = 新放行
+		项["element"] = 新系别
+		break
 
 
 func _on_card_clicked(card_id: int) -> void:

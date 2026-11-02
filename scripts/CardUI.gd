@@ -171,7 +171,13 @@ func _ready() -> void:
 	ConversionFix.ignore_decorations(self)
 	_刷新边框()
 	_fit_decor()
-	_建元素栏()
+	# 元素切换条直接来自 Card.tscn 预制体（ElementSwitch），这里只接线，不运行时创建
+	_元素栏 = get_node_or_null("ElementSwitch") as HBoxContainer
+	if _元素栏 != null:
+		for i: int in range(_元素栏.get_child_count()):
+			var 钮: Node = _元素栏.get_child(i)
+			if 钮 is Button:
+				(钮 as Button).pressed.connect(_on_元素按钮按下.bind(i))
 	_刷新元素栏()
 
 
@@ -222,65 +228,34 @@ func 刷新元素() -> void:
 	_刷新元素栏()
 
 
-## 卡牌右上角悬浮的系别按钮条（运行时创建；编辑器里不建；无底色）
-func _建元素栏() -> void:
-	if _元素栏 != null:
-		return
-	_元素栏 = HBoxContainer.new()
-	_元素栏.name = "ElementSwitch"
-	_元素栏.visible = false
-	# 只让按钮吃鼠标；整条空出来的地方放行，别挡住卡面点击
-	_元素栏.mouse_filter = Control.MOUSE_FILTER_PASS
-	_元素栏.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	_元素栏.alignment = BoxContainer.ALIGNMENT_END
-	_元素栏.add_theme_constant_override("separation", 2)
-	# 按钮条放在卡牌卡面上方（卡面外），右对齐；不占卡面内容
-	_元素栏.offset_left = 2
-	_元素栏.offset_right = -2
-	_元素栏.offset_top = -35
-	_元素栏.offset_bottom = -7
-	add_child(_元素栏)
-
-
-## 按卡牌的「可选元素 / 当前元素」重建卡面上方的火/水（雷/风）切换按钮。
+## 按卡牌的「可选元素 / 当前元素」更新预制体里的系别按钮。
 ## 手牌中始终显示；当前系别那颗置灰（不可点），另一颗可点；点了直接切换并广播给容器。
 func _刷新元素栏() -> void:
 	if _元素栏 == null:
 		return
-	for 子: Node in _元素栏.get_children():
-		_元素栏.remove_child(子)
-		子.queue_free()
 	if not _允许切换元素 or card == null or not card.可切换元素():
 		_元素栏.visible = false
 		return
-	for 元素: int in card.可选元素:
-		var 钮: Button = Button.new()
-		钮.text = GConst.element_to_chinese(元素)
-		钮.focus_mode = Control.FOCUS_NONE
-		钮.mouse_filter = Control.MOUSE_FILTER_STOP
-		钮.custom_minimum_size = Vector2(24, 16)
-		钮.add_theme_font_size_override("font_size", 11)
-		_压缩按钮内边距(钮)
-		# 当前系别那颗不可点；另一颗点一下就把这张牌切成那个系别
-		钮.disabled = 元素 == card.element_enum()
-		钮.pressed.connect(_on_元素按钮.bind(元素))
-		_元素栏.add_child(钮)
+	var 按钮: Array[Button] = []
+	for 子: Node in _元素栏.get_children():
+		if 子 is Button:
+			按钮.append(子 as Button)
+	for i: int in range(按钮.size()):
+		if i < card.可选元素.size():
+			var 元素: int = card.可选元素[i]
+			按钮[i].text = GConst.element_to_chinese(元素)
+			按钮[i].visible = true
+			按钮[i].disabled = 元素 == card.element_enum()
+		else:
+			按钮[i].visible = false
 	_元素栏.visible = true
 
 
-## 默认主题按钮的内边距（12/8）会把按钮最小尺寸撑到 35×32；复制一份样式、
-## 把内边距收到 65%，让按钮实际尺寸也缩小约 20%，同时保留默认按钮底色。
-func _压缩按钮内边距(钮: Button) -> void:
-	for 状态: String in ["normal", "hover", "pressed", "disabled"]:
-		var 底: StyleBox = 钮.get_theme_stylebox(状态)
-		if 底 == null:
-			continue
-		var 小: StyleBox = 底.duplicate()
-		小.content_margin_left *= 0.65
-		小.content_margin_right *= 0.65
-		小.content_margin_top *= 0.65
-		小.content_margin_bottom *= 0.65
-		钮.add_theme_stylebox_override(状态, 小)
+## 预制体里的两个按钮按编号接同一个回调：槽位 i 对应当前卡牌的第 i 个可选元素
+func _on_元素按钮按下(序号: int) -> void:
+	if card == null or 序号 < 0 or 序号 >= card.可选元素.size():
+		return
+	_on_元素按钮(card.可选元素[序号])
 
 
 func _on_元素按钮(元素: int) -> void:
@@ -294,6 +269,13 @@ func _on_元素按钮(元素: int) -> void:
 ## 当前这次选牌是不是「被迫弃牌」：是的话「可选」框用「弃牌框」那个颜色（红），和「打出」区分开
 func 设置弃牌询问(值: bool) -> void:
 	_弃牌询问 = 值
+	_刷新边框()
+
+
+## 只更新可点/置灰状态（不重画卡面）：系别切换后重新复检手牌合法性用
+func 设置可用(值: bool) -> void:
+	_可用 = 值
+	_刷新整体颜色()
 	_刷新边框()
 
 

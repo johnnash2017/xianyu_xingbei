@@ -707,7 +707,7 @@ func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -
 | 士气下限 | `BattleRole.morale_floor()` | 本队士气不会被扣到它以下（圣炎形态 = 1） |
 | 基础效果禁止 | `BattleRole.基础效果被禁止(pid)` | 决界：拥有者的基础效果无法触发 |
 | 伤害摸牌改源 | `BattleRole.伤害摸牌替换(pid)` | 同步钩子：因伤害摸牌的第 1 张改从别处拿（末日预言的【预言】堆） |
-| 特殊卡 | 卡表#1005【魔刃】/#1006【异刃】 | 血命格、虚拟牌不进牌库；元素写 `fire or water` / `thunder or wind`，当前系别在手牌右上角切换，本身作为普通攻击牌直接打出；渗蚀用 `ctx.removed` 移出弃牌流程 |
+| 特殊卡 | 卡表#1005【魔刃】/#1006【异刃】 | 血命格、虚拟牌不进牌库；元素写 `fire or water` / `thunder or wind`，当前系别在 `Card.tscn` 的 `ElementSwitch`（卡面外、手牌中始终显示）切换，本身作为普通攻击牌直接打出；渗蚀用 `ctx.removed` 移出弃牌流程 |
 
 开发计划、逐技能口径与遗留全部记在 [新角色开发计划-异教徒等7名](项目文档/新角色开发计划-异教徒等7名.md)。
 

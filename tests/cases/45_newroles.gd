@@ -36,6 +36,7 @@ func 跑() -> void:
 	# 噬神者的用例放在前面：后面的角色用例如果有既有问题失败了，
 	# 也不会把「御刃 / 魔刃攻击入口」这几条本轮新修的断言一起跳过。
 	await _检噬神者()
+	await _检切换后复检()
 	await _检咒符师()
 	await _检结界师()
 	await _检圣殿骑士()
@@ -282,6 +283,59 @@ func _检噬神者() -> void:
 	检(有元素消息, "切换系别后服务端应回 CardElement")
 	# 复原默认火系，避免影响后续用例
 	引擎.设置卡牌元素(1, 1005, GConst.CardElement.Fire)
+
+
+## 手牌系别切换后：已选中的牌不合法要取消选中并置灰；原本不合法、切回后合法要重新亮起
+func _检切换后复检() -> void:
+	var 原手牌: Array[GCard] = Data.hand_cards.duplicate()
+	var 原Iids: Array[int] = Data.hand_iids.duplicate()
+	var 窗: Control = (load("res://scenes/BattleUIMobile.tscn") as PackedScene).instantiate()
+	add_child(窗)
+	await 等帧()
+	Data.hand_cards = [Data.get_card(1005), Data.get_card(87), Data.get_card(88)]
+	Data.hand_iids = [1005, 87, 88]
+	Data.get_card(1005).设置当前元素(GConst.CardElement.Fire)
+	窗.set("_mode", 4)
+	窗.set("_skill_card_max", 2)
+	窗.set("_skill_need_card", 2)
+	窗.set("_skill_card_source", GConst.CardSource.Hand)
+	窗.set("_skill_card_rule", "same")
+	窗.set("_skill_cards", [])
+	窗.call("刷新手牌")
+	await 等帧()
+	var 选: Array[int] = [1005, 87]
+	窗.set("_sel_cards", 选)
+	# 1005 火 + 87 火：same 规则下合法；切成水后 1005 没有水系搭档，应取消自己
+	Data.get_card(1005).设置当前元素(GConst.CardElement.Water)
+	窗.call("_切换后复检手牌")
+	var 选后: Array = 窗.get("_sel_cards")
+	检(选后 == [87], "切换后不合法的 1005 应从选中里取消，实际 %s" % str(选后))
+	var 百节点: Node = _手牌节点(窗, 1005)
+	var 八七节点: Node = _手牌节点(窗, 87)
+	检(百节点 != null and not bool(百节点.get("_可用")) and not bool(百节点.get("_选中")),
+		"1005 切水系后没有同系搭档，应置灰且取消选中")
+	检(八七节点 != null and bool(八七节点.get("_可用")) and bool(八七节点.get("_选中")),
+		"87 仍与 88 同火系，应保持可点与选中")
+	# 切回火：1005 重新和 87/88 同系，应亮起（不自动重新选中）
+	Data.get_card(1005).设置当前元素(GConst.CardElement.Fire)
+	窗.call("_切换后复检手牌")
+	检(bool(百节点.get("_可用")), "1005 切回火系后应重新亮起")
+	检(not bool(百节点.get("_选中")), "1005 切回火系后不应自动重新选中")
+	检(not (窗.get("_sel_cards") as Array).has(1005), "1005 切回火系后仍不应在选中里")
+	Data.hand_cards = 原手牌
+	Data.hand_iids = 原Iids
+	窗.queue_free()
+	await 等帧()
+
+
+func _手牌节点(窗: Control, 实例: int) -> Node:
+	var 容器: Control = 窗.get("HandArea") as Control
+	if 容器 == null:
+		return null
+	for 子: Node in 容器.get_children():
+		if 子.get("实例号") != null and int(子.get("实例号")) == 实例:
+			return 子
+	return null
 
 
 ## 40 星坠女巫：开局有【律法：繁星】、手牌上限按律法数算；星刻放【卢恩】
