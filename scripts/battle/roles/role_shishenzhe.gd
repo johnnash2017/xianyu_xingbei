@@ -406,7 +406,7 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 				var 同系: Array[int] = _同系手牌(_共振系)
 				询问(player.id, GONG_ZHEN, 2, 0, GConst.CardSource.Hand, [], 3, "same", 同系, true,
 					0, player.id, [], 3, {}, 0, 0, false, [], true, -1, 0,
-					"【共振】：弃 2~3 张同系牌【展示】")
+					_共振完整说明() + "\n\n请弃 2~3 张同系牌【展示】")
 				return WAIT
 			var r4: Dictionary = take_skill_reply_full()
 			var cards4: Array = r4.get("card_ids", [])
@@ -424,35 +424,44 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			engine.take_from_hand(player.id, 弃, false)
 			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": GONG_ZHEN})
 			engine._log_discard(player.id, 弃, false)
-			# 把未在场的【魔刃】和/或【异刃】加入手牌
-			var 加了: bool = false
-			for 卡4: int in [MO_REN_CARD, YI_REN_CARD]:
-				if not _在场刃().has(卡4):
-					player.add_hand_cards([卡4])
-					加了 = true
 			notice_skill(GONG_ZHEN, [player.id])
 			engine._broadcast_game()
-			if not 加了:
-				return SUCCESS
-			_步 = 5
+			_步 = 6
 			engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 			return URGENT
-		5:  # 共振：加入手牌后对目标角色 1 点法术伤害
+		6:  # 共振：四选一（不加 / 魔刃 / 异刃 / 两者），后三项再选 1 名目标造成 1 点法术伤害
 			if not engine.has_reply():
-				询问(player.id, GONG_ZHEN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-					0, -1, _全体角色(), -1, {}, 0, 0, false, [], true, -1, 0,
-					"【共振】：对目标角色造成 1 点法术伤害")
+				询问(player.id, GONG_ZHEN, 0, 0, GConst.CardSource.Hand, _共振选项(),
+					0, "", [], false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+					_共振完整说明() + "\n\n选择要加入手牌的【魔刃】/【异刃】；选择 2~4 后再指定 1 名目标造成 1 点法术伤害")
 				return WAIT
-			var r5: Dictionary = take_skill_reply_full()
-			var ds5: Array = r5.get("dst_ids", [])
+			var r6: Dictionary = take_skill_reply_full()
+			var args6: Array = r6.get("args", [])
+			var 选6: int = int(args6[0]) if not args6.is_empty() else 0
+			var ds6: Array = r6.get("dst_ids", [])
 			_步 = 0
-			if ds5.size() == 1:
-				engine.push_harm({
-					"src": player.id, "dst": int(ds5[0]), "point": 1,
-					"cause": GONG_ZHEN, "type": GConst.HarmType.Magic,
-				})
-				return URGENT
-			return SUCCESS
+			if 选6 == 1:
+				return SUCCESS
+			var 场上: Array[int] = _在场刃()
+			var 加: Array[int] = []
+			if 选6 == 2 and not 场上.has(MO_REN_CARD):
+				加 = [MO_REN_CARD]
+			elif 选6 == 3 and not 场上.has(YI_REN_CARD):
+				加 = [YI_REN_CARD]
+			elif 选6 == 4 and not 场上.has(MO_REN_CARD) and not 场上.has(YI_REN_CARD):
+				加 = [MO_REN_CARD, YI_REN_CARD]
+			if 加.is_empty():
+				return SUCCESS
+			for 卡6: int in 加:
+				player.add_hand_cards([卡6])
+			engine._broadcast_game()
+			if ds6.size() != 1:
+				return SUCCESS
+			engine.push_harm({
+				"src": player.id, "dst": int(ds6[0]), "point": 1,
+				"cause": GONG_ZHEN, "type": GConst.HarmType.Magic,
+			})
+			return URGENT
 	return SUCCESS
 
 var _殇灭池: Array[int] = []
@@ -514,6 +523,75 @@ func _同系两张的系别() -> int:
 
 func _同系手牌(系: int) -> Array[int]:
 	return hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == 系)
+
+
+## 共振的完整技能说明（响应提示 / 四选项提示都用它，不再只写一行弃牌说明）
+func _共振完整说明() -> String:
+	var 说明: String = GConst.skill_desc(GONG_ZHEN)
+	if 说明.is_empty():
+		说明 = "【共振】：弃 2~3 张同系牌，将未在场的【魔刃】/【异刃】加入手牌，对目标造成 1 点法术伤害"
+	return 说明
+
+
+## 共振四选项：不加 / 加魔刃 / 加异刃 / 两者都加。
+## 后三项自带 1 名目标；选项文案与御刃一致，并带 elements / 技能组 供客户端标色和悬停。
+func _共振选项() -> Array:
+	var 魔卡: GCard = Data.get_card(MO_REN_CARD)
+	var 异卡: GCard = Data.get_card(YI_REN_CARD)
+	var 魔系: String = _刃系名(MO_REN_CARD)
+	var 异系: String = _刃系名(YI_REN_CARD)
+	var 魔元: Array = 魔卡.可选元素.duplicate() if 魔卡 != null else []
+	var 异元: Array = 异卡.可选元素.duplicate() if 异卡 != null else []
+	var 场上: Array[int] = _在场刃()
+	var 可魔: bool = not 场上.has(MO_REN_CARD)
+	var 可异: bool = not 场上.has(YI_REN_CARD)
+	var 全体: Array[int] = _全体角色()
+	return [
+		{
+			"value": 1,
+			"label": "不加入手牌",
+		},
+		{
+			"value": 2,
+			"label": "【魔刃】%s加入手牌" % 魔系,
+			"enabled": 可魔,
+			"need_target": 1,
+			"targets": 全体,
+			"elements": 魔元,
+			"技能组": [7909, 7911],
+		},
+		{
+			"value": 3,
+			"label": "【异刃】%s加入手牌" % 异系,
+			"enabled": 可异,
+			"need_target": 1,
+			"targets": 全体,
+			"elements": 异元,
+			"技能组": [7910, 7911],
+		},
+		{
+			"value": 4,
+			"label": "【魔刃】%s和【异刃】%s加入手牌" % [魔系, 异系],
+			"enabled": 可魔 and 可异,
+			"need_target": 1,
+			"targets": 全体,
+			"elements": 魔元 + 异元,
+			"技能组": [7909, 7910, 7911],
+		},
+	]
+
+
+## 卡表的可选系别串（火系/水系、雷系/风系），和御刃选项同一口径
+func _刃系名(卡号: int) -> String:
+	var 卡: GCard = Data.get_card(卡号)
+	var 名: String = ""
+	if 卡 == null:
+		return 名
+	for 系: int in 卡.可选元素:
+		if not 名.is_empty():
+			名 += "/"
+		名 += "%s系" % GConst.element_to_chinese(系)
+	return 名
 
 
 # ============================================================

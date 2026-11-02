@@ -280,6 +280,45 @@ func _检噬神者() -> void:
 		"魔刃作为盖牌首次放进盖牌区时应触发渗蚀")
 	检(int(角色.call("p_cover_change", 盖牌上下文)) == BattleRole.SUCCESS,
 		"同一个盖牌变动回栈重跑时不应再次触发渗蚀")
+	# 共振四选一：不加 / 魔刃 / 异刃 / 两者；后三项都带 1 名目标，文案带系别与技能组
+	var 共振选项: Array = 角色.call("_共振选项")
+	检(共振选项.size() == 4, "共振应直接给出 4 个选项，实际 %d" % 共振选项.size())
+	if 共振选项.size() == 4:
+		var 零项: Dictionary = 共振选项[0]
+		var 魔项: Dictionary = 共振选项[1]
+		var 异项: Dictionary = 共振选项[2]
+		var 双项: Dictionary = 共振选项[3]
+		检(str(零项.get("label", "")) == "不加入手牌"
+			and int(零项.get("need_target", 0)) == 0,
+			"共振第 1 项应是不加入手牌、不选目标")
+		检(str(魔项.get("label", "")) == "【魔刃】火系/水系加入手牌"
+			and 魔项.get("elements", []) == [GConst.CardElement.Fire, GConst.CardElement.Water]
+			and 魔项.get("技能组", []) == [7909, 7911]
+			and int(魔项.get("need_target", 0)) == 1,
+			"共振第 2 项应与御刃魔刃选项一致并带目标")
+		检(str(异项.get("label", "")) == "【异刃】雷系/风系加入手牌"
+			and 异项.get("elements", []) == [GConst.CardElement.Thunder, GConst.CardElement.Wind]
+			and 异项.get("技能组", []) == [7910, 7911]
+			and int(异项.get("need_target", 0)) == 1,
+			"共振第 3 项应与御刃异刃选项一致并带目标")
+		检(str(双项.get("label", "")) == "【魔刃】火系/水系和【异刃】雷系/风系加入手牌"
+			and 双项.get("elements", []) == [
+				GConst.CardElement.Fire, GConst.CardElement.Water,
+				GConst.CardElement.Thunder, GConst.CardElement.Wind]
+			and 双项.get("技能组", []) == [7909, 7910, 7911]
+			and int(双项.get("need_target", 0)) == 1,
+			"共振第 4 项应是魔刃+异刃总和并带目标")
+	var 共振选项协议: Dictionary = ProtoCodec.decode_named("Command",
+		ProtoCodec.encode_named("Command", {
+			"option_elements": [{"ids": [GConst.CardElement.Fire, GConst.CardElement.Water]}],
+			"option_skill_groups": [{"ids": [7909, 7911]}],
+		}))
+	var 协议元素: Array = 共振选项协议.get("option_elements", [])
+	var 协议技能组: Array = 共振选项协议.get("option_skill_groups", [])
+	检(协议元素.size() == 1 and (协议元素[0] as Dictionary).get("ids", [])
+		== [GConst.CardElement.Fire, GConst.CardElement.Water]
+		and 协议技能组.size() == 1 and (协议技能组[0] as Dictionary).get("ids", []) == [7909, 7911],
+		"共振选项的系别/技能组应通过 Command 协议")
 	var 噬灭可弃: Array = 角色.call("_噬灭可弃", [GConst.CardElement.Water, GConst.CardElement.Fire])
 	检(噬灭可弃.has(1005) and not 噬灭可弃.has(1006),
 		"【噬灭】只能弃水/火，异刃（雷）不应进入合法弃牌名单：%s" % str(噬灭可弃))

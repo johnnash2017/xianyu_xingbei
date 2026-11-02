@@ -2526,10 +2526,17 @@ func _进入技能询问() -> void:
 		var 选项目标: Array = _pending.get("option_targets", [])
 		# 选项自带「悬停预览牌」时（如【三秒原则】的「获得 2 张【魔弹】」）：悬停时并排摊卡面
 		var 选项预览牌: Array = _pending.get("option_preview_cards", [])
+		# 选项涉及的可选系别 / 悬停技能组（共振的四项；与选项下标一一对应）
+		var 选项元素: Array = _pending.get("option_elements", [])
+		var 选项技能组: Array = _pending.get("option_skill_groups", [])
 		var 项们: Array = []
 		for i: int in range(_skill_options.size()):
 			var 名: String = str(notes[i]) if i < notes.size() and str(notes[i]) != "" else str(_skill_options[i])
+			if i < 选项元素.size():
+				名 = _选项系别着色(名, (选项元素[i] as Dictionary).get("ids", []))
 			var 项: Dictionary = {"文本": 名, "参数": [int(_skill_options[i])]}
+			if i < 选项技能组.size():
+				项["技能组"] = (选项技能组[i] as Dictionary).get("ids", [])
 			if i < 选项技能号.size():
 				项["技能号"] = int(选项技能号[i])
 			if i < 选项牌号.size():
@@ -3721,14 +3728,7 @@ func _选项项(参数选项: Array) -> Array:
 		var 参数: Array = d.get("args", [])
 		var 系别: int = int(d.get("element", -1))
 		# 选项涉及多个可选系别时（御刃：火/水、雷/风），把文字里对应的「X系」按系别标色
-		for 系: Variant in d.get("elements", []):
-			var 系字: String = GConst.element_to_chinese(int(系))
-			var 系词: String = "%s系" % 系字
-			var 色值: String = _系别颜色(系字)
-			if 色值.is_empty() or not 文本.contains(系词):
-				continue
-			文本 = 文本.replace(系词,
-				"[color=#%s]%s[/color]" % [色值.trim_prefix("#"), 系词])
+		文本 = _选项系别着色(文本, d.get("elements", []))
 		if 字色.a > 0.0 and 系别 >= 0 and not 参数.is_empty():
 			var 卡: GCard = Data.get_card(int(参数[0]))
 			if 卡 != null and not 卡.card_name.is_empty() and 文本.contains(卡.card_name):
@@ -3770,6 +3770,20 @@ func _选项项(参数选项: Array) -> Array:
 			"需盖牌": int(d.get("cover_need", 0)),
 		})
 	return out
+
+
+## 把选项文字里出现的「X系」按系别上色（供御刃、共振等多项系别选项共用）
+func _选项系别着色(文本: String, 元素表: Array) -> String:
+	var 结果: String = 文本
+	for 系: Variant in 元素表:
+		var 系字: String = GConst.element_to_chinese(int(系))
+		var 系词: String = "%s系" % 系字
+		var 色值: String = _系别颜色(系字)
+		if 色值.is_empty() or not 结果.contains(系词):
+			continue
+		结果 = 结果.replace(系词,
+			"[color=#%s]%s[/color]" % [色值.trim_prefix("#"), 系词])
+	return 结果
 
 
 ## 选项文字颜色：带 element 的选项按该系别算兜底色；实际渲染时只给卡名套 BBCode 颜色，
