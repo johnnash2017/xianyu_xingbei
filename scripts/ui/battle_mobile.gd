@@ -2438,6 +2438,11 @@ func _进入技能询问() -> void:
 	if _skill_ask_id == GConst.技能_别烦我 and _skill_ask_need_card > 0 \
 			and not _高亮目标.has(Logic.my_player_id):
 		_高亮目标.append(Logic.my_player_id)
+	# 【醋意羞心】目标被问「弃 1 张法术牌」那一步：同样是「点名他弃牌」，把目标自己点亮；
+	# 要挨的 2 点法术伤害由服务端随询问下发（preview_base / preview_kind / preview_ids）画在他头像上
+	if _skill_ask_id == GConst.技能_醋意羞心 and _skill_ask_need_card > 0 \
+			and not _高亮目标.has(Logic.my_player_id):
+		_高亮目标.append(Logic.my_player_id)
 	_已选参数.clear()
 	if _先弹选项:
 		# 服务端原本给的目标数 / 需牌先记下，选完效果由 _应用选项目标数 还原 / 收紧

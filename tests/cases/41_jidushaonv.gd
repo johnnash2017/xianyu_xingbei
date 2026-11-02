@@ -7,7 +7,8 @@ extends 自检用例
 ##   - 10703：技能栏入口、地/风系牌可当【魔弹】（主动使用 + 响应传递），火系牌不行；
 ##            发动牌与落点校验；真实结算（弃发动牌 → 魔弹传递询问 → 目标放弃吃 2 点法术伤害）；
 ##            10702 的额外法术行动内用 10703 把地/风系法术牌当【魔弹】打出（技能行动白名单）；
-##   - 10701：主动攻击未命中才问；先问发动者；发动者指定 1 名「目标角色」（提示用完整技能说明），
+##   - 10701：主动攻击未命中才问；「发动 + 指定 1 名目标角色」合成一次询问（取消＝不发动），
+##            选人提示走完整技能说明；目标弃牌可以取消（同【魔爆冲击】），
 ##            目标弃 1 张法术牌可以取消（同【魔爆冲击】：取消＝不弃 → 结算惩罚），
 ##            弃出则不结算，弃不出（没有 / 硬提交非法牌 / 硬提交取消 / 超时回空）则 2 点法术伤害
 ##            + 我方战绩区 +1 水晶；非主动 / 别人的攻击不触发；
@@ -395,42 +396,36 @@ func 跑() -> void:
 	# ============================================================
 	# 10701 醋意羞心
 	# ============================================================
-	# 取消发动：不结算、不播报
+	# 「发动」与「选目标角色」合成一次询问：点技能直接选人，按确定就发动；取消＝不发动
 	_重置战斗()
 	_给牌(靶, 火法术.id)
 	_新一次攻击宣告()
 	发送记录.clear()
 	var 未命中上下文: Dictionary = _攻击上下文(火攻击, 1, 2, true, BattleEngine.ATTACK_BASE_POINT)
 	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT,
-		"主动攻击未命中时应问是否发动【醋意羞心】")
-	检(not _取询问(1, 10701).is_empty(), "没有下发【醋意羞心】发动询问")
-	_应答([0])
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.SUCCESS, "不发动【醋意羞心】应直接收尾")
+		"主动攻击未命中时应问【醋意羞心】")
+	var 选人问: Dictionary = _取询问(1, 10701)
+	var 选人args: Array = 选人问.get("args", [])
+	检(not 选人问.is_empty() and 选人args.size() > 1 and int(选人args[0]) == 0
+		and int(选人args[1]) == 1,
+		"发动与选目标应合成一次询问（不选牌、选 1 名目标，不再先单问一次「是否发动」）：%s" % str(选人args))
+	检((选人问.get("dst_ids", []) as Array) == [1, 2, 3, 4],
+		"「目标角色」的可选范围应是场上全部角色：%s" % str(选人问.get("dst_ids", [])))
+	检(bool(选人问.get("can_cancel", false)), "这一步应可取消（取消＝不发动）")
+	# 取消（不选目标）＝不发动
+	_应答([])
+	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.SUCCESS, "取消（没选目标）应视为不发动")
 	检(_找伤害(10701, 2).is_empty(), "不发动【醋意羞心】不应压入伤害")
 	检(引擎.team_crystal[GConst.BLUE] == 0, "不发动【醋意羞心】不应给我方战绩区加水晶")
 	检(_播报次数(10701) == 0, "不发动【醋意羞心】不应播报")
 
-	# 发动 → 发动者指定 1 名「目标角色」（场上角色都能选，不限本次攻击目标）→ 该角色弃 1 张法术牌
+	# 选一个不是本次攻击目标（2 号）的角色：4 号，效果落在 4 号身上
 	_重置战斗()
 	_给牌(靶, 火法术.id)
 	_给牌(靶2, 地法术.id)
 	_新一次攻击宣告()
 	发送记录.clear()
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应先问【醋意羞心】")
-	_应答([1])
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT,
-		"发动后应先让发动者指定 1 名「目标角色」")
-	var 选人问: Dictionary = _取询问(1, 10701)
-	var 选人args: Array = 选人问.get("args", [])
-	检(not 选人问.is_empty() and 选人args.size() > 1 and int(选人args[1]) == 1,
-		"「目标角色」这一步应要求选 1 名角色：%s" % str(选人args))
-	检((选人问.get("dst_ids", []) as Array) == [1, 2, 3, 4],
-		"「目标角色」的可选范围应是场上全部角色：%s" % str(选人问.get("dst_ids", [])))
-	检(not bool(选人问.get("can_cancel", true)),
-		"选了「发动」之后不能再靠取消退回去（超时由引擎代选）")
-	检(str(选人问.get("ask_text", "")) == GConst.skill_desc(10701),
-		"选人那一步的提示应是完整的技能说明：%s" % str(选人问.get("ask_text", "")))
-	# 选一个不是本次攻击目标（2 号）的角色：4 号，效果落在 4 号身上
+	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应问【醋意羞心】")
 	_应答([1], [], [4])
 	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "选完目标后应问那名角色弃 1 张法术牌")
 	var 弃牌问: Dictionary = _取询问(4, 10701)
@@ -446,10 +441,17 @@ func 跑() -> void:
 	检(str(弃牌问.get("ask_prompt", "")) == 期望弃牌文案,
 		"目标弃牌提示不对（要走 ask_prompt，否则被技能说明盖掉）：期望「%s」，实际「%s」"
 		% [期望弃牌文案, str(弃牌问.get("ask_prompt", ""))])
-	# 指示器：与【魔爆冲击】801 同一条静态配置，选中目标就写「2 法术伤害」
+	# 指示器：与【魔爆冲击】801 同一条静态配置（选中目标写「2 法术伤害」）；
+	# 弃牌那一步还要把「要挨的 2 点」随询问下发给目标自己（preview_ids / preview_base）
 	var 羞心指示: Dictionary = GConst.技能指示器.get(10701, {})
 	检(int(羞心指示.get("每目标", 0)) == 2 and str(羞心指示.get("文案", "")) == "%d 法术伤害",
 		"10701 的头像提示应是「2 法术伤害」（同 801 魔爆冲击）：%s" % str(羞心指示))
+	检(int(弃牌问.get("preview_base", 0)) == 2
+		and int(弃牌问.get("preview_kind", 0)) == GConst.HarmType.Magic
+		and (弃牌问.get("preview_ids", []) as Array) == [4],
+		"弃牌询问应把「2 点法术伤害」下发到目标自己头上：%s / %s / %s"
+		% [str(弃牌问.get("preview_base", 0)), str(弃牌问.get("preview_kind", 0)),
+			str(弃牌问.get("preview_ids", []))])
 	检(_播报次数(10701) == 1, "发动【醋意羞心】应播报一次，实际 %d 次" % _播报次数(10701))
 	_应答([1], [地法术.id])
 	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.SUCCESS, "目标弃牌后应正常收尾")
@@ -466,9 +468,7 @@ func 跑() -> void:
 	_给牌(队友, 火法术.id)
 	_新一次攻击宣告()
 	发送记录.clear()
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应先问【醋意羞心】")
-	_应答([1])
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "发动后应先指定目标角色")
+	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应问【醋意羞心】")
 	_应答([1], [], [3])
 	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "选完队友后应问那名队友弃牌")
 	var 队友弃牌问: Dictionary = _取询问(3, 10701)
@@ -480,14 +480,12 @@ func 跑() -> void:
 	_给牌(靶, 火法术.id)
 	_新一次攻击宣告()
 	发送记录.clear()
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应先问【醋意羞心】")
-	_应答([1])
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "发动后应先指定目标角色")
+	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应问【醋意羞心】")
 	_应答([1], [], [2])
 	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "选完目标后应问那名角色弃牌")
 	_应答([0])
 	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.URGENT,
-		"硬提交取消（没弃出）时应压入 2 点法术伤害")
+		"取消弃牌时应压入 2 点法术伤害")
 	var 羞心伤害: Dictionary = _找伤害(10701, 2)
 	检(not 羞心伤害.is_empty(), "【醋意羞心】没有压入目标伤害")
 	检(int(羞心伤害.get("point", 0)) == 2, "【醋意羞心】的伤害应为 2 点")
@@ -509,9 +507,7 @@ func 跑() -> void:
 	_给牌(靶, 火攻击.id)
 	_新一次攻击宣告()
 	发送记录.clear()
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应先问【醋意羞心】")
-	_应答([1])
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "发动后应先指定目标角色")
+	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应问【醋意羞心】")
 	_应答([1], [], [2])
 	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT,
 		"目标手里没有法术牌时也要问一次（界面整片置灰、只能取消）")
@@ -528,9 +524,7 @@ func 跑() -> void:
 	_给牌(靶, 火攻击.id)
 	_新一次攻击宣告()
 	发送记录.clear()
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应先问【醋意羞心】")
-	_应答([1])
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "发动后应先指定目标角色")
+	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "未命中时应问【醋意羞心】")
 	_应答([1], [], [2])
 	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT, "选完目标后应问那名角色弃牌")
 	_应答([1], [火攻击.id])
@@ -553,8 +547,7 @@ func 跑() -> void:
 		== BattleRole.SUCCESS, "别人的未命中不应触发【醋意羞心】")
 	检(_询问次数(1, 10701) == 0, "别人的未命中不应下发 10701 询问")
 
-	# 完整攻击流水线：目标用【圣光】格挡 → 未命中 → 发动 10701 → 指定 2 号 → 目标硬提交取消 →
-	# 伤害 + 水晶
+	# 完整攻击流水线：目标用【圣光】格挡 → 未命中 → 点技能直接选 2 号 → 目标取消弃牌 → 伤害 + 水晶
 	_重置战斗()
 	_给牌(玩家, 火攻击.id)
 	_给牌(靶, 圣光牌.id)
@@ -568,17 +561,13 @@ func 跑() -> void:
 		"respond_id": GConst.RespondType.ReplyAttack, "src_id": 2,
 		"args": [GConst.Reattack.Block], "card_ids": [圣光牌.id], "dst_ids": [],
 	})
-	检(引擎._await_id == 1, "圣光格挡造成未命中后应问发动者是否发动【醋意羞心】（等待 %s）"
-		% str(引擎._await_id))
-	检(not _取询问(1, 10701).is_empty(), "完整流水线没有下发【醋意羞心】发动询问")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 10701, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
-	})
-	检(引擎._await_id == 1, "发动后应先等发动者指定目标角色（等待 %s）" % str(引擎._await_id))
+	检(引擎._await_id == 1, "圣光格挡造成未命中后应问【醋意羞心】（等待 %s）" % str(引擎._await_id))
+	检(not _取询问(1, 10701).is_empty(), "完整流水线没有下发【醋意羞心】询问")
+	# 一次询问里直接选目标 2 号（不再先按确定确认发动）
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 10701, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [2],
 	})
-	检(引擎._await_id == 2, "指定目标后应让那名角色弃法术牌（等待 %s）" % str(引擎._await_id))
+	检(引擎._await_id == 2, "选完目标后应让那名角色弃法术牌（等待 %s）" % str(引擎._await_id))
 	检(bool(_取询问(2, 10701).get("can_cancel", false)),
 		"完整流水线里【醋意羞心】的弃牌询问也应可取消（同【魔爆冲击】）")
 	引擎.on_message(2, GConst.Msg.Respond, {

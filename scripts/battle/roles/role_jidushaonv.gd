@@ -164,65 +164,58 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _cu_yi_step >= STEP_DONE:
 		return SUCCESS
+	# 第 1 步：「是否发动」与「选目标角色」合并成一次询问 ——
+	# 点技能 → 直接选 1 名「目标角色」→ 按确定就发动；取消＝不发动（不再先单问一次「要不要发动」）。
 	if _cu_yi_step == 0:
 		_cu_yi_step = 1
-		if not engine.has_reply():
-			# 响应技能先问发动者：确认＝发动，取消＝不发动（见《技能维护约定》猎巫人复盘第 1 条）。
-			# 第一步用默认文案：技能表「提示」第 1 条留给下面「目标弃 1 张法术牌【展示】」那一步，
-			# 这里读提示会把目标步骤的说明错挂到「是否发动」上（与 4502 臆想剑同一处理）。
-			engine.ask_skill(player.id, CU_YI_XIU_XIN)
-			return WAIT
-	if _cu_yi_step == 1:
-		if not engine.has_reply():
-			return WAIT
-		if not take_skill_reply():
-			_cu_yi_step = STEP_DONE
-			return SUCCESS
-		_cu_yi_step = 2
 		_cu_yi_目标 = -1
 		if not engine.has_reply():
-			# 技能原文写「目标角色」＝玩家可以指定一名角色（不是固定成本次攻击的目标）：
-			# 先由发动者选人，再由那名角色决定弃不弃法术牌。选人这一步的提示条直接用**完整的技能说明**
-			# （原文写了效果落在谁身上，比一句「请指定 1 名目标角色」更清楚）；不可取消，超时引擎代选。
+			# 文案不在这里写死：客户端对响应技能默认就显示**完整的技能说明**
+			# （原文写了效果落在谁身上，比一句「请指定 1 名目标角色」更清楚）。
+			# 目标范围＝场上全部角色（技能原文写「目标角色」＝玩家可以指定一名角色）。
 			engine.ask_skill(player.id, CU_YI_XIU_XIN, 0, 1, GConst.CardSource.Hand, [], 0, "",
-				[], false, GConst.skill_desc(CU_YI_XIU_XIN), _全部角色())
+				[], true, "", _全部角色())
 			return WAIT
-	if _cu_yi_step == 2:
+	# 第 2 步：读「选了谁」；接着问那名角色弃不弃法术牌（第 3 步等它的回复）
+	if _cu_yi_step == 1:
 		if not engine.has_reply():
 			return WAIT
 		var 选人: Dictionary = take_skill_reply_full()
 		var 目标表: Array = 选人.get("dst_ids", [])
+		if 目标表.is_empty():
+			# 取消 / 超时回空：视为不发动
+			_cu_yi_step = STEP_DONE
+			return SUCCESS
 		var 目标号: int = int(目标表[0]) if 目标表.size() == 1 else -1
 		if 目标号 < 0 or engine.p(目标号) == null:
-			# 硬提交取消 / 非法目标：按「AI / 掉线按默认规则代选」兜底成随机一名角色
+			# 硬提交的非法目标：按「AI / 掉线按默认规则代选」兜底成随机一名角色
 			目标号 = _cu_yi_兜底目标()
 		if 目标号 < 0:
 			_cu_yi_step = STEP_DONE
 			return SUCCESS
 		_cu_yi_目标 = 目标号
-		_cu_yi_step = 3
+		_cu_yi_step = 2
 		notice_skill(CU_YI_XIU_XIN, [目标号])
-		if not engine.has_reply():
-			# 只能弃法术牌（card_rule = "magic"），不下发牌号白名单：手里没有法术牌时界面整片置灰，
-			# 与【魔爆冲击】/【贪欲黑洞】同口径 —— **可以取消**：取消 / 超时 / 硬提交非法牌都按
-			# 「不如此做」结算（2 点法术伤害 + 发动者一方战绩区 +1 水晶）。
-			# 提示整段从**目标视角**写（「你受到…」「我方 / 对方战绩区」）：
-			# 发动者与目标同队时水晶进的是目标自己这边（我方），否则是对面（对方）。
-			# 用 ask_prompt 下发（整段专属提示）：can_cancel=true 时客户端会拿技能说明盖掉 ask_text，
-			# 只有 ask_prompt 能保证这句「我方 / 对方」按目标视角原样显示。
-			engine.ask_skill(目标号, CU_YI_XIU_XIN, 1, 0, GConst.CardSource.Hand, [], 0, "magic",
-				[], true, "", [], 0, 0, false, [], true, -1, 0, false, -1, false,
-				_cu_yi_弃牌文案(目标号))
-			return WAIT
-	if _cu_yi_step != 3:
-		return SUCCESS
+		# 只能弃法术牌（card_rule = "magic"），不下发牌号白名单：手里没有法术牌时界面整片置灰，
+		# 与【魔爆冲击】/【贪欲黑洞】同口径 —— **可以取消**：取消 / 超时 / 硬提交非法牌都按
+		# 「不如此做」结算（2 点法术伤害 + 发动者一方战绩区 +1 水晶）。
+		# 提示整段从**目标视角**写（「你受到…」「我方 / 对方战绩区」）：
+		# 发动者与目标同队时水晶进的是目标自己这边（我方），否则是对面（对方）。
+		# 用 ask_prompt 下发（整段专属提示）：can_cancel=true 时客户端会拿技能说明盖掉 ask_text，
+		# 只有 ask_prompt 能保证这句「我方 / 对方」按目标视角原样显示。
+		# 同时把「要挨的 2 点法术伤害」随询问下发（预览基准 / 类型 / 目标）：客户端在**目标自己**的
+		# 头像上写「2 法术伤害」（他就是要挨这一下的人）。
+		engine.ask_skill(目标号, CU_YI_XIU_XIN, 1, 0, GConst.CardSource.Hand, [], 0, "magic",
+			[], true, "", [], CU_YI_HARM_POINT, GConst.HarmType.Magic, false, [目标号],
+			true, -1, 0, false, -1, false, _cu_yi_弃牌文案(目标号))
+		return WAIT
+	# 第 3 步：目标「弃 / 不弃」的回复；弃不出（回空、非法牌、手里已没有）一律走惩罚
 	if not engine.has_reply():
 		return WAIT
 	_cu_yi_step = STEP_DONE
 	var dst: BattlePlayer = engine.p(_cu_yi_目标)
 	if dst == null:
 		return SUCCESS
-	# 读目标「弃 / 不弃」的回复；弃不出（回空、非法牌、手里已没有）一律走惩罚
 	var r: Dictionary = take_skill_reply_full()
 	if _target_discard_magic(dst, r):
 		return SUCCESS
