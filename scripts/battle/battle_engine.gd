@@ -1968,6 +1968,31 @@ func 重发当前询问(pid: int) -> void:
 	_询问(pid, int(询问["cmd_type"]), 询问["commands"])
 
 
+## 切换手牌里一张多系别牌（魔刃/异刃）的当前系别。
+## 只改卡牌当前系别、重算这名玩家能放的技能，**不消耗行动、不重发正式询问**：
+## 回一条 CardElement 带上刷新后的行动命令，客户端原地更新技能栏（避免 ErrorInput 回滚闪一下）。
+## 卡牌的当前系别在服务端保存在 GCard 上，之后所有通用系别逻辑（同系/异系、攻击牌白名单、
+## 弃牌费用等）都按它判断。
+func 设置卡牌元素(pid: int, card_id: int, element: int) -> bool:
+	var p0: BattlePlayer = players.get(pid)
+	if p0 == null or not p0.has_hand_card(card_id):
+		return false
+	var 牌: GCard = Data.get_card(card_id)
+	if 牌 == null or not 牌.设置当前元素(element):
+		return false
+	# 「按系别规则算可用攻击牌」的缓存里可能还留着切换前的那一系
+	_规则攻击牌缓存.clear()
+	var cmds: Array = []
+	if _await_id == pid and _await_kind == GConst.Msg.Action:
+		cmds = action_commands(pid, 行动允许, 行动可放弃, 行动额外, 行动禁特殊, 行动额外来源)
+		_最后行动命令[pid] = cmds
+		_最后询问[pid] = {"cmd_type": GConst.CmdType.Action, "commands": cmds}
+	send(pid, GConst.Msg.CardElement, {
+		"card_id": card_id, "element": element, "commands": cmds,
+	})
+	return true
+
+
 ## 重算「这名玩家此刻能放的技能」，有变化才重发一次行动询问。
 ## 手牌、能量、治疗、阵营这些都会影响能放的技能，所以不盯某一个字段，而是跟着对局快照（_broadcast_game）走：
 ## 每发一次快照就重算一遍 —— 快照本身很密，算完跟上次一样就不发，界面不会被打断。

@@ -241,30 +241,46 @@ func _检噬神者() -> void:
 		== BattleRole.SUCCESS, "【御刃·魔刃】确认后应直接结算")
 	检(御刃玩家.有手牌(1005) and 御刃玩家.boot_skill_used,
 		"【御刃】确认后应把魔刃加入手牌并置启动已用")
-	# 再验证拿牌后的攻击入口：点【魔刃】/【异刃】先选系别
+	# 再验证拿牌后的攻击入口：系别在手里切换，攻击按当前系别结算（不再弹选系别）
 	var 角色: BattleRole = _建引擎(79)
 	var 玩家: BattlePlayer = 引擎.p(1)
 	玩家.add_hand_cards([1005, 1006])
+	var 魔卡: GCard = Data.get_card(1005)
+	var 异卡: GCard = Data.get_card(1006)
+	检(魔卡.可选元素 == [GConst.CardElement.Fire, GConst.CardElement.Water]
+		and 魔卡.element_enum() == GConst.CardElement.Fire,
+		"【魔刃】应配置 fire or water、默认火系：%s / %d" % [str(魔卡.可选元素), 魔卡.element_enum()])
+	检(异卡.可选元素 == [GConst.CardElement.Thunder, GConst.CardElement.Wind]
+		and 异卡.element_enum() == GConst.CardElement.Thunder,
+		"【异刃】应配置 thunder or wind、默认雷系：%s / %d" % [str(异卡.可选元素), 异卡.element_enum()])
 	var 技能: Array = 角色.available_skills()
 	var 魔刃: Dictionary = _找技能(技能, 7912)
 	var 异刃: Dictionary = _找技能(技能, 7913)
 	检(not 魔刃.is_empty() and bool(魔刃.get("enabled", false)), "手里有【魔刃】时【魔刃】攻击入口应可点")
 	检(not 异刃.is_empty() and bool(异刃.get("enabled", false)), "手里有【异刃】时【异刃】攻击入口应可点")
-	var 选项: Array = 魔刃.get("arg_choices", [])
-	检(选项.size() == 2, "【魔刃】应给「火 / 水」两个系别选项：%d" % 选项.size())
-	# available_skills 的选项给客户端用 text / args（不是 ask_skill 的 value / label）
-	检(not 选项.is_empty() and (选项[0] as Dictionary).has("text")
-			and (选项[0] as Dictionary).has("args") and not (选项[0] as Dictionary)["args"].is_empty(),
-		"【魔刃】的选项应是客户端格式（text / args）：%s" % str(选项))
-	检(int(角色.v_attack_skill({"src_id": 1, "action_id": 7912,
-		"args": [GConst.CardElement.Fire], "dst_ids": [2]})) == GConst.GE_SUCCESS,
-		"【魔刃·火】打对手应通过校验")
-	检(int(角色.v_attack_skill({"src_id": 1, "action_id": 7912,
-		"args": [GConst.CardElement.Thunder], "dst_ids": [2]})) != GConst.GE_SUCCESS,
-		"【魔刃】没有雷系选项，应被拒")
+	检((魔刃.get("arg_choices", []) as Array).is_empty(), "【魔刃】攻击入口不应再弹选系别")
+	检(int(角色.v_attack_skill({"src_id": 1, "action_id": 7912, "dst_ids": [2]})) == GConst.GE_SUCCESS,
+		"【魔刃】当前火系打对手应通过校验")
+	检(int(角色.技能视为系别({"action_id": 7912})) == GConst.CardElement.Fire,
+		"【魔刃】当前系别应被「视为」逻辑读到火")
+	# 切成水系：卡面系别、视为系别、校验都要跟着变；服务端回一条 CardElement
+	检(引擎.设置卡牌元素(1, 1005, GConst.CardElement.Water), "【魔刃】切水系应成功")
+	检(魔卡.element_enum() == GConst.CardElement.Water, "切换后【魔刃】当前系别应是水")
+	检(int(角色.技能视为系别({"action_id": 7912})) == GConst.CardElement.Water,
+		"切换后【魔刃】应被视为水系")
+	检(int(角色.v_attack_skill({"src_id": 1, "action_id": 7912, "dst_ids": [2]})) == GConst.GE_SUCCESS,
+		"【魔刃】当前水系打对手仍应通过校验")
+	var 有元素消息: bool = false
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) == GConst.Msg.CardElement:
+			有元素消息 = true
+			break
+	检(有元素消息, "切换系别后服务端应回 CardElement")
 	# 不能绕过入口把牌直接当普通攻击牌打
 	检(int(玩家.v_attack(1005, 2, 引擎.players)) != GConst.GE_SUCCESS,
 		"【魔刃】不能绕过攻击入口直接当普通攻击牌打出")
+	# 复原默认火系，避免影响后续用例
+	引擎.设置卡牌元素(1, 1005, GConst.CardElement.Fire)
 
 
 ## 40 星坠女巫：开局有【律法：繁星】、手牌上限按律法数算；星刻放【卢恩】

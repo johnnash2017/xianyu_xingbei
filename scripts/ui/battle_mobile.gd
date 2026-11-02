@@ -659,6 +659,7 @@ func _ready() -> void:
 	_提示原高 = maxf(_提示原底 - _提示原顶, 24.0)
 	# ---- 交互层（第三步）：接收询问 + 确定/取消/盖牌/特殊行动/放弃行动 ----
 	Logic.command_received.connect(_on_command)
+	Logic.card_element_changed.connect(_on_card_element_changed)
 	# 让「操作无效」（ErrorInput）能回调到本界面（订阅信号，不用反向持有界面引用）
 	Logic.invalid_input_received.connect(on_invalid_input)
 	BtnOK.pressed.connect(_on_ok)
@@ -4323,6 +4324,96 @@ func _刷新二级栏提示() -> void:
 
 
 # ---------------- 点选 ----------------
+## 手牌顶部系别按钮被点：先在本地把这张牌切成新系别（卡面/元素图标立刻变），
+## 再把切换发给服务端；服务端回 CardElement 时只原地更新技能栏，不重置当前操作。
+func _on_card_element_switch(卡牌号: int, 元素: int) -> void:
+	var 卡: GCard = Data.get_card(卡牌号)
+	if 卡 == null or not 卡.设置当前元素(元素):
+		return
+	# 先记本地待确认：旧快照/旧确认回来时不要把它打回旧系别
+	Data.本地待确认元素[卡牌号] = 元素
+	_刷新卡牌元素显示(卡牌号)
+	Logic.send_card_element(卡牌号, 元素)
+
+
+## 服务端确认某张牌的当前系别（也可能带着刷新后的行动命令，用来更新技能栏的亮/灰）。
+func _on_card_element_changed(data: Dictionary) -> void:
+	var 卡牌号: int = int(data.get("card_id", -1))
+	var 元素: int = int(data.get("element", 0))
+	var 卡: GCard = Data.get_card(卡牌号)
+	if 卡 == null:
+		return
+	# 连续快速切换时，服务端会对每次请求各回一条；如果这条确认对应的是更早的请求
+	# （本地已经又切走了），直接忽略，等最后一条确认，避免卡面来回跳。
+	var 待确认: Variant = Data.本地待确认元素.get(卡牌号)
+	if 待确认 != null and int(待确认) != 元素:
+		return
+	Data.本地待确认元素.erase(卡牌号)
+	卡.设置当前元素(元素)
+	_刷新卡牌元素显示(卡牌号)
+	var cmds: Array = data.get("commands", [])
+	if not cmds.is_empty():
+		_静默刷新技能可用(cmds)
+
+
+## 把某张牌的当前系别/顶部切换按钮刷新到所有正在显示它的卡牌节点（手牌 / 选牌区）
+func _刷新卡牌元素显示(卡牌号: int) -> void:
+	for 容器: Node in [HandArea, ChooseArea]:
+		if 容器 == null:
+			continue
+		for 子: Node in 容器.get_children():
+			if not (子 is Control) or not 子.has_method("刷新元素"):
+				continue
+			var 实例: Variant = 子.get("实例号")
+			if 实例 != null and int(实例) == 卡牌号:
+				子.call("刷新元素")
+
+
+## 静默更新行动技能栏：只改按钮的可用/系别元数据，不重建按钮、不清当前选择、不发 ErrorInput。
+## 牌面系别切换后服务端会回一份刷新后的 action commands；玩家看到的是按钮原地亮起/变灰。
+func _静默刷新技能可用(cmds: Array) -> void:
+	_行动命令 = cmds.duplicate(true)
+	var 阶段系别: int = 0
+	if not cmds.is_empty():
+		阶段系别 = int((cmds[0] as Dictionary).get("extra_element", 0))
+	for 钮: Node in _技能按钮:
+		if not (钮 is 技能按钮):
+			continue
+		var 按钮: 技能按钮 = 钮 as 技能按钮
+		var 技能号: int = 按钮.技能号
+		if 技能号 <= 0:
+			continue
+		# 二级栏里的「选项」按钮不按行动技能命令刷：它们的 skill_id 是选项自己的技能号，
+		# 不一定出现在行动命令里，误刷会把本来可点的选项置灰
+		var 是二级选项: bool = false
+		for 项: Dictionary in _二级选项:
+			if 项.get("按钮", null) == 按钮:
+				是二级选项 = true
+				break
+		if 是二级选项:
+			continue
+		var 命令: Dictionary = {}
+		for c: Dictionary in cmds:
+			var 参数: Array = c.get("args", [])
+			if not 参数.is_empty() and int(参数[0]) == 技能号:
+				命令 = c
+				break
+		if 命令.is_empty():
+			按钮.设置选项可用(false)
+			continue
+		var 技能类型: int = int(命令.get("respond_id", 0))
+		var 服务端可用: bool = bool(命令.get("enabled", true))
+		var 固定系: int = int(命令.get("skill_element", 0))
+		var 可用: bool = 服务端可用 and GConst.放行动作(技能类型, _行动允许)
+		if 可用 and 固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别:
+			可用 = false
+		按钮.设置选项可用(可用)
+		钮.set_meta(元数据_行动技能类型, 技能类型)
+		钮.set_meta(元数据_行动服务端可用, 服务端可用)
+		钮.set_meta(元数据_行动技能系别, 固定系)
+	_更新按键()
+
+
 func _on_card_clicked(card_id: int) -> void:
 	# 置灰（不可用）的牌不做任何响应，也不弹提示
 	if not _卡牌能点(card_id):
@@ -7466,7 +7557,7 @@ func 刷新手牌() -> void:
 			# 这一轮才补进来的牌：记下起算时刻，接下来按「已经过多久」往下落
 			if not _上次手牌.has(实例) and not _补牌起点.has(实例):
 				_补牌起点[实例] = 现在
-			go = _加卡牌(HandArea, card, 手牌尺寸, 可用, true, 实例)
+			go = _加卡牌(HandArea, card, 手牌尺寸, 可用, true, 实例, true)
 		else:
 			旧.erase(实例)
 			# 复用节点也要按最新的可用性重画（省去重新实例化）
@@ -7641,7 +7732,8 @@ func _刷新盖牌空槽(个数: int) -> void:
 
 ## 造一张卡牌节点挂到指定容器下（Card.tscn + scripts/CardUI.gd），点击回调统一接进来。
 ## 可置灰 = false 时「不可用」也保持原色（如只读查看自己的盖牌）
-func _加卡牌(父: Node, card: GCard, 尺寸: Vector2, 可用: bool, 可置灰: bool = true, 实例号: int = -1) -> Node:
+func _加卡牌(父: Node, card: GCard, 尺寸: Vector2, 可用: bool, 可置灰: bool = true, 实例号: int = -1,
+		可切换元素: bool = false) -> Node:
 	var go: Node = 卡牌预制.instantiate()
 	var ctl: Control = go as Control
 	ctl.set_anchors_preset(Control.PRESET_TOP_LEFT)
@@ -7650,11 +7742,13 @@ func _加卡牌(父: Node, card: GCard, 尺寸: Vector2, 可用: bool, 可置灰
 	ctl.scale = Vector2.ONE
 	父.add_child(go)
 	go.call("设置卡牌", card, 可用, 可置灰)
+	go.call("设置可切换元素", 可切换元素)
 	go.call("设置弃牌询问", _正在弃牌())
 	# 手牌 / 盖牌节点带上实例号：同一牌面可能有多份副本，点击要报「点的是哪一份」
 	if 实例号 >= 0:
 		go.set("实例号", 实例号)
 	go.connect("点击", _on_card_clicked)
+	go.connect("切换元素", _on_card_element_switch)
 	return go
 
 

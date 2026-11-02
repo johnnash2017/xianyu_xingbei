@@ -16,6 +16,8 @@ signal discard_received(pid: int, num: int)
 signal special_action_received(pid: int, action_id: int)
 signal game_info_updated(info: Dictionary)
 signal command_received(data: Dictionary)
+## 服务端确认/更新某张手牌的当前系别（魔刃/异刃这类可切换系别的牌）
+signal card_element_changed(data: Dictionary)
 signal turn_changed(player_id: int, round_id: int)
 signal hit_received(src_id: int, dst_id: int, hit: int)
 signal card_shown(msg: Dictionary)
@@ -114,6 +116,8 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 			_on_game(data)
 		GConst.Msg.CmdReq:
 			command_received.emit(data)
+		GConst.Msg.CardElement:
+			card_element_changed.emit(data)
 		GConst.Msg.Error:
 			var err_id: int = int(data.get("id", 0))
 			error_received.emit(err_id, _error_text(err_id))
@@ -532,6 +536,14 @@ func send_action(action_type: int, action_id: int, dst_ids: Array, card_ids: Arr
 	if extra_uid > 0:
 		消息["extra_uid"] = extra_uid
 	Net.send(GConst.Msg.Action, 消息)
+
+
+## 切换手牌里一张「多系别」牌的当前系别（魔刃/异刃）。服务端确认后会回一条 CardElement，
+## 带刷新后的行动命令；客户端只做原地技能栏更新，不走 ErrorInput 回滚。
+func send_card_element(card_id: int, element: int) -> void:
+	if not Net.is_connected_to_host():
+		return
+	Net.send(GConst.Msg.CardElement, {"card_id": card_id, "element": element})
 
 
 func send_respond(respond_id: int, dst_ids: Array, card_ids: Array, args: Array, partial: bool = false) -> void:

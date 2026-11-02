@@ -48,6 +48,11 @@ enum Msg {
 	# 受伤飘字：本次伤害点数（含各类加成，尚未经治疗抵挡/抵御扣减）（dst_id / point / 伤害类型），
 	# 客户端据此在该角色头像中间冒出伤害数字，所有人都看得到
 	HurtFloat = 114,
+	# 卡牌当前系别切换（魔刃/异刃这类「fire or water」的牌）：
+	#   客户端上行：card_id（实例号）+ element（CardElement）
+	#   服务端下行：card_id + element + commands（同一名玩家下一次行动询问的技能命令，
+	#   客户端静默更新技能栏的可用状态，不走 ErrorInput 回滚）
+	CardElement = 115,
 }
 
 # ============================================================
@@ -2155,6 +2160,19 @@ static func element_from_string(s: String) -> int:
 		"light": return CardElement.Light
 		"darkness": return CardElement.Darkness
 	return 0
+
+
+## 元素枚举值 → 卡表里用的英文字符串（写回 GCard.element / 配置时用）
+static func element_to_string(e: int) -> String:
+	match e:
+		CardElement.Wind: return "wind"
+		CardElement.Water: return "water"
+		CardElement.Fire: return "fire"
+		CardElement.Earth: return "earth"
+		CardElement.Thunder: return "thunder"
+		CardElement.Light: return "light"
+		CardElement.Darkness: return "darkness"
+	return ""
 
 
 ## 元素枚举值 → 中文字符串

@@ -59,25 +59,15 @@ func available_skills() -> Array:
 	var 敌: Array = enemy_ids()
 	var 技能: Array = []
 	for 卡: int in _手牌刃():
-		var 是魔: bool = 卡 == MO_REN_CARD
-		var 选项: Array = []
-		var 系表: Array = [GConst.CardElement.Fire, GConst.CardElement.Water] if 是魔 \
-			else [GConst.CardElement.Thunder, GConst.CardElement.Wind]
-		for 系: int in 系表:
-			# available_skills 的 arg_choices 是给客户端的：客户端按 text / args 渲染选项，
-			# 和 ask_skill 的询问选项（value / label）不是同一套键名。
-			选项.append({
-				"text": "%s·%s" % ["魔刃" if 是魔 else "异刃", GConst.element_to_chinese(系)],
-				"args": [系],
-				"element": 系,
-			})
+		var 卡数据: GCard = Data.get_card(卡)
+		# 系别已经在手牌里选好（卡牌顶部的火/水、雷/风切换），
+		# 攻击入口不再弹「选系别」，直接按卡牌当前系别出手。
 		技能.append({
 			"type": GConst.ActionType.AttackSkill,
-			"id": MO_REN_ATTACK if 是魔 else YI_REN_ATTACK,
+			"id": MO_REN_ATTACK if 卡 == MO_REN_CARD else YI_REN_ATTACK,
 			"need_target": 1,
 			"targets": 敌,
-			"arg_choices": 选项,
-			"enabled": not 敌.is_empty(),
+			"enabled": not 敌.is_empty() and 卡数据 != null and 卡数据.element_enum() > 0,
 		})
 	# 御刃：和魔弓【魔眼】一样，点技能直接进二级栏选「魔刃 / 异刃」，
 	# 可以点「返回」退出，点「确定」才把选中的牌加进手牌（不再走服务端二次询问）。
@@ -108,7 +98,21 @@ func is_free_skill(skill_id: int) -> bool:
 	return skill_id == YU_REN
 
 
-## 【魔刃】/【异刃】没有固定系别，不能用普通「出攻击牌」直接打：必须走攻击技能入口选系别。
+## 攻击入口把本次出牌视为卡牌当前的那个系别：额外行动阶段（如修罗连斩给的火系攻击）
+## 客户端据此按当前系别置灰/亮起，服务端也用它过额外行动的元素限制。
+func 技能视为系别(action: Dictionary) -> int:
+	var aid: int = int(action.get("action_id", 0))
+	if aid == MO_REN_ATTACK:
+		var 卡: GCard = Data.get_card(MO_REN_CARD)
+		return 卡.element_enum() if 卡 != null else 0
+	if aid == YI_REN_ATTACK:
+		var 卡: GCard = Data.get_card(YI_REN_CARD)
+		return 卡.element_enum() if 卡 != null else 0
+	return 0
+
+
+## 【魔刃】/【异刃】的系别在手里切换，不能用普通「出攻击牌」直接打：
+## 必须走攻击技能入口 7912/7913（按当前系别）。
 ## 客户端点手牌会转到对应的技能按钮（见 battle_mobile）；这里兜底挡住直接出牌。
 func v_attack(card_id: int, _dst_id: int, _players: Dictionary) -> int:
 	var 面: int = GConst.牌号(card_id)
@@ -125,12 +129,11 @@ func v_attack_skill(action: Dictionary) -> int:
 		else (YI_REN_CARD if aid == YI_REN_ATTACK else 0)
 	if 卡面 == 0:
 		return GConst.GE_INVALID_ACTION
-	var 系表: Array = [GConst.CardElement.Fire, GConst.CardElement.Water] if 卡面 == MO_REN_CARD \
-		else [GConst.CardElement.Thunder, GConst.CardElement.Wind]
 	if not player.has_hand_card(卡面):
 		return GConst.GE_HANDCARD_NOT_FOUND
-	if not 系表.has(_取选(action)):
-		return GConst.GE_INVALID_ACTION
+	var 卡数据: GCard = Data.get_card(卡面)
+	if 卡数据 == null or not 卡数据.可选元素.has(卡数据.element_enum()):
+		return GConst.GE_INVALID_CARDID
 	var ds: Array = action.get("dst_ids", [])
 	if ds.size() != 1:
 		return GConst.GE_INVALID_ACTION
@@ -152,7 +155,8 @@ func p_attack_skill(action: Dictionary) -> int:
 		return 校验
 	var aid: int = int(action.get("action_id", 0))
 	var 卡面: int = MO_REN_CARD if aid == MO_REN_ATTACK else YI_REN_CARD
-	var 系: int = _取选(action)
+	var 卡数据: GCard = Data.get_card(卡面)
+	var 系: int = 卡数据.element_enum() if 卡数据 != null else 0
 	var dst: int = int((action.get("dst_ids", []) as Array)[0])
 	var 实例: int = player.取出实例(player.hand_cards, 卡面)
 	if 实例 <= 0:
@@ -199,6 +203,12 @@ func p_special_skill(action: Dictionary) -> int:
 	if not _御刃可得().has(选):
 		return GConst.GE_INVALID_ACTION
 	var 卡: int = MO_REN_CARD if 选 == 1 else YI_REN_CARD
+	# 从场外取回来的新一份按配置第一个系别起手（之后在手牌里再切）
+	var 卡数据: GCard = Data.get_card(卡)
+	if 卡数据 != null and not 卡数据.可选元素.is_empty():
+		卡数据.设置当前元素(卡数据.可选元素[0])
+		# 当前系别变了：按系别缓存的攻击牌白名单要重算
+		engine._规则攻击牌缓存.clear()
 	player.add_hand_cards([卡])
 	player.boot_skill_used = true
 	notice_skill(YU_REN, [player.id])

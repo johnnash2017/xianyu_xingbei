@@ -339,6 +339,13 @@ func _on_client_message(conn_id: int, msg_type: int, data: Dictionary) -> void:
 			if not room.is_empty():
 				var battle: BattleEngine = room["battle"]
 				battle.on_message(int(s["player_id"]), msg_type, data)
+		GConst.Msg.CardElement:
+			# 切换手牌里多系别牌的当前系别（魔刃/异刃）：只改卡牌状态，不消耗行动。
+			# 服务端确认后会回一条 CardElement（带刷新后的行动命令），客户端原地更新技能栏。
+			var 元素房: Dictionary = _room_of(conn_id)
+			if not 元素房.is_empty():
+				(元素房["battle"] as BattleEngine).设置卡牌元素(
+					int(s["player_id"]), int(data.get("card_id", -1)), int(data.get("element", 0)))
 		GConst.Msg.DebugReq:
 			# 测试用：按连接认人，谁按的键就以谁的名义做。
 			# 只在房主开了「调试模式」的房间里生效（客户端会隐藏入口，这里再拦一道防改包）

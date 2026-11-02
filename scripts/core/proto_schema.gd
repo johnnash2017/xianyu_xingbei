@@ -58,6 +58,9 @@ const PLAYER_INFO_FIELDS: Dictionary = {
 	32: {"n": "cover_opens", "t": "u32", "r": true},
 	# 【律法】（星坠女巫）：放在角色面前的律法标记（0/1/2/3 由角色定义），客户端在状态区显示名字。
 	33: {"n": "laws", "t": "u32", "r": true},
+	# 本人手牌每张牌的当前系别（与 hands 一一对应）：
+	# 魔刃/异刃这类可切换系别的牌，重连/换手后要按服务端当前状态恢复卡面与元素图标
+	34: {"n": "hand_elements", "t": "u32", "r": true},
 }
 
 ## 子消息字段表（作为 msg 类型的 schema）
@@ -485,6 +488,12 @@ const TABLE: Dictionary = {
 	GConst.Msg.ErrorInput: {
 		1: {"n": "error_type", "t": "enum"},
 		2: {"n": "commands", "t": "msg", "r": true, "s": "Command"},
+	},
+	GConst.Msg.CardElement: {
+		1: {"n": "card_id", "t": "u32"},
+		2: {"n": "element", "t": "u32"},
+		# 服务端下行时带的「刷新后的行动命令」：客户端只在原地更新技能按钮，不重置当前操作
+		3: {"n": "commands", "t": "msg", "r": true, "s": "Command"},
 	},
 	GConst.Msg.Hit: {
 		1: {"n": "cmd_id", "t": "u32"},

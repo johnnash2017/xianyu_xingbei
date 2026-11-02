@@ -17,6 +17,8 @@ extends Control
 
 ## 卡牌被点击（左键）—— 容器据此切换选中
 signal 点击(卡牌号: int)
+## 手牌顶部的系别切换按钮：容器据此把新系别同步给服务端
+signal 切换元素(卡牌号: int, 元素: int)
 
 ## 以下节点对应 Card.tscn 里的同名节点（card_face 画在 Root 这个 Button 的 icon 上）
 @export var btn: Button
@@ -34,6 +36,11 @@ var card: GCard = null
 ## 这张牌在场上的**实例号**（-1 = 没填，退回按牌号）。手牌/盖牌节点由容器塞入：
 ## 同一牌面可能同时有多份副本，点击要报「我点的是哪一份」，不能只报牌面。
 var 实例号: int = -1
+## 容器是否允许这张牌在手牌里切换系别（魔刃/异刃这类配置了多个可选系别的牌）。
+## 盖牌区 / 选牌区 / 展示区不打开，避免在这些地方误切。
+var _允许切换元素: bool = false
+## 卡牌顶部悬浮的系别切换条（运行时创建，编辑器不建）
+var _元素栏: PanelContainer = null
 ## 当前是否可用：可用 = 亮起并显示边框；不可用 = 置灰、不显示边框
 var _可用: bool = false
 ## 是否处于「已选中」：选中时边框换成选中框那个颜色（与「可选」互斥 —— 同一个节点，只换颜色）
@@ -164,6 +171,11 @@ func _ready() -> void:
 	ConversionFix.ignore_decorations(self)
 	_刷新边框()
 	_fit_decor()
+	_建元素栏()
+	_刷新元素栏()
+	if btn != null:
+		btn.mouse_entered.connect(_元素栏显示)
+		btn.mouse_exited.connect(_延迟收起元素栏)
 
 
 func _notification(what: int) -> void:
@@ -191,10 +203,115 @@ func 设置卡牌(new_card: GCard, 可用: bool, 可置灰: bool = true) -> void
 	_刷新整体颜色()
 	_刷新边框()
 	if new_card == null:
+		_刷新元素栏()
 		return
 	_画卡面(new_card)
 	_画命格元素(new_card)
 	_fit_decor()
+	_刷新元素栏()
+
+
+## 容器设置：这张牌能不能在手牌里切换系别（魔刃/异刃这类「fire or water」的牌）
+func 设置可切换元素(值: bool) -> void:
+	_允许切换元素 = 值
+	_刷新元素栏()
+
+
+## 外部（切换按钮 / 服务端同步）调用：重画元素图标和顶部切换条
+func 刷新元素() -> void:
+	if card == null:
+		return
+	_画命格元素(card)
+	_刷新元素栏()
+
+
+## 卡牌顶部悬浮的系别按钮条（运行时创建；编辑器里不建）
+func _建元素栏() -> void:
+	if _元素栏 != null:
+		return
+	_元素栏 = PanelContainer.new()
+	_元素栏.name = "ElementSwitch"
+	_元素栏.visible = false
+	_元素栏.mouse_filter = Control.MOUSE_FILTER_STOP
+	_元素栏.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_元素栏.offset_left = 4
+	_元素栏.offset_right = -4
+	_元素栏.offset_top = 2
+	_元素栏.offset_bottom = 28
+	var 底: StyleBoxFlat = StyleBoxFlat.new()
+	底.bg_color = Color(0.04, 0.04, 0.07, 0.82)
+	底.corner_radius_top_left = 4
+	底.corner_radius_top_right = 4
+	底.corner_radius_bottom_left = 4
+	底.corner_radius_bottom_right = 4
+	底.content_margin_left = 2
+	底.content_margin_right = 2
+	底.content_margin_top = 2
+	底.content_margin_bottom = 2
+	_元素栏.add_theme_stylebox_override("panel", 底)
+	# 指针从底板/按钮移出卡牌时收起（移到卡面里时 _收起元素栏若在外 会保留）
+	_元素栏.mouse_exited.connect(_延迟收起元素栏)
+	add_child(_元素栏)
+
+
+## 按卡牌的「可选元素 / 当前元素」重建顶部的火/水（雷/风）切换按钮。
+## 当前系别那颗置灰（不可点），另一颗可点；点了直接切换并广播给容器。
+func _刷新元素栏() -> void:
+	if _元素栏 == null:
+		return
+	var 原可见: bool = _元素栏.visible
+	for 子: Node in _元素栏.get_children():
+		_元素栏.remove_child(子)
+		子.queue_free()
+	if not _允许切换元素 or card == null or not card.可切换元素():
+		_元素栏.visible = false
+		return
+	var 行: HBoxContainer = HBoxContainer.new()
+	行.alignment = BoxContainer.ALIGNMENT_CENTER
+	行.add_theme_constant_override("separation", 2)
+	行.mouse_filter = Control.MOUSE_FILTER_PASS
+	_元素栏.add_child(行)
+	for 元素: int in card.可选元素:
+		var 钮: Button = Button.new()
+		钮.text = GConst.element_to_chinese(元素)
+		钮.focus_mode = Control.FOCUS_NONE
+		钮.mouse_filter = Control.MOUSE_FILTER_STOP
+		钮.custom_minimum_size = Vector2(30, 20)
+		钮.add_theme_font_size_override("font_size", 14)
+		# 当前系别那颗不可点；另一颗点一下就把这张牌切成那个系别
+		钮.disabled = 元素 == card.element_enum()
+		钮.pressed.connect(_on_元素按钮.bind(元素))
+		钮.mouse_exited.connect(_延迟收起元素栏)
+		行.add_child(钮)
+	_元素栏.visible = 原可见
+
+
+func _on_元素按钮(元素: int) -> void:
+	if card == null or not card.设置当前元素(元素):
+		return
+	_画命格元素(card)
+	_刷新元素栏()
+	切换元素.emit(实例号 if 实例号 >= 0 else card.id, 元素)
+
+
+func _元素栏显示() -> void:
+	if _元素栏 != null and _允许切换元素 and card != null and card.可切换元素():
+		_元素栏.visible = true
+
+
+func _延迟收起元素栏() -> void:
+	if _元素栏 == null:
+		return
+	call_deferred("_收起元素栏若在外")
+
+
+## 指针离开卡牌后才收起：从卡面移到顶部按钮、或从按钮移到卡面时都不要闪掉
+func _收起元素栏若在外() -> void:
+	if _元素栏 == null or not _元素栏.visible:
+		return
+	if get_global_rect().has_point(get_global_mouse_position()):
+		return
+	_元素栏.visible = false
 
 
 ## 当前这次选牌是不是「被迫弃牌」：是的话「可选」框用「弃牌框」那个颜色（红），和「打出」区分开

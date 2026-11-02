@@ -28,6 +28,10 @@ var cover_cards: Array[GCard] = []
 ## 服务端下发的 hands / covereds 就是实例号（同一牌面可能有多份副本，身份靠它区分）；
 ## 界面渲染、选中、节点复用都用这里的值，规则比较一律先折回牌面（GConst.牌号）。
 var hand_iids: Array[int] = []
+## 本地已经切好、但服务端还没回 CardElement 确认的卡牌系别（实例号 -> CardElement）。
+## 作用：切系别后快照可能还在路上（生成于切换前），_sync_my_cards 用这份覆盖，
+## 避免客户端先切成水系、又被旧快照打回火系闪一下。服务端确认后由 battle_mobile 清掉。
+var 本地待确认元素: Dictionary = {}
 var cover_iids: Array[int] = []
 var red: GTeam
 var blue: GTeam
@@ -466,16 +470,30 @@ func _sync_my_cards(infos: Array, my_pos: int) -> void:
 	if my_pos < 0 or my_pos >= infos.size():
 		return
 	var me: Dictionary = infos[my_pos]
+	var 元素表: Array = me.get("hand_elements", [])
+	var i: int = 0
 	for cid: Variant in me.get("hands", []):
 		var c: GCard = get_card(int(cid))
 		if c != null:
+			# 可切换系别的牌（魔刃/异刃）：按服务端快照恢复当前系别
+			if i < 元素表.size() and int(元素表[i]) > 0:
+				c.设置当前元素(int(元素表[i]))
 			hand_cards.append(c)
 			hand_iids.append(int(cid))
+		i += 1
 	for cid: Variant in me.get("covereds", []):
 		var c2: GCard = get_card(int(cid))
 		if c2 != null:
 			cover_cards.append(c2)
 			cover_iids.append(int(cid))
+	# 本地已切、服务端还没确认的系别优先于快照：避免切换后收到「切换前生成」的快照又弹回旧系别
+	for j: int in range(hand_iids.size()):
+		if 本地待确认元素.has(hand_iids[j]):
+			hand_cards[j].设置当前元素(int(本地待确认元素[hand_iids[j]]))
+	# 牌已经不在手里（用掉/交给别人）：这条待确认作废，别让新一局同实例号误用
+	for 键: Variant in 本地待确认元素.keys():
+		if not hand_iids.has(int(键)):
+			本地待确认元素.erase(键)
 
 
 ## 把单条 SinglePlayerInfo 应用到玩家视图

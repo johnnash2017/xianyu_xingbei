@@ -1123,6 +1123,12 @@ func to_proto(viewer_id: int) -> Dictionary:
 	# 只有本人能看到自己的手牌/盖牌
 	if viewer_id == id:
 		d["hands"] = hand_cards.duplicate()
+		# 与 hands 一一对应：可切换系别的牌（魔刃/异刃）当前选中的系别
+		var 手牌元素: Array = []
+		for cid: int in hand_cards:
+			var c: GCard = Data.get_card(cid)
+			手牌元素.append(c.element_enum() if c != null else 0)
+		d["hand_elements"] = 手牌元素
 		d["covereds"] = cover_cards.duplicate()
 	var yellow: int = 0
 	var blue: int = 0
