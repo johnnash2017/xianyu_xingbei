@@ -1310,7 +1310,26 @@ func 跑() -> void:
 		"目标自己头像应写「摸 1 张牌」：%s" % str(弃牌提示表))
 	检(str(弃牌提示表.get(队友号, "")) == "+1 治疗",
 		"替她发动的队友头像应写「+1 治疗」：%s" % str(弃牌提示表))
+	# 别烦我……的目标弃牌询问：目标自己要被选中高亮（+1 治疗的队友靠提示看）
+	窗.set("_mode", 0)
+	窗.set("_高亮目标", [] as Array[int])
+	Logic.command_received.emit({
+		"cmd_type": GConst.CmdType.Respond,
+		"commands": [{
+			"respond_id": 10601, "src_id": Logic.my_player_id, "is_skill": true,
+			"args": [1, 0, GConst.CardSource.Hand, 0], "card_rule": "magic",
+			"card_ids": [], "can_cancel": true,
+		}],
+	})
+	await 等帧(2)
+	检(int(窗.get("_mode")) == 3, "10601 的弃牌询问应进入技能询问（实际 %d）" % int(窗.get("_mode")))
+	检((窗.get("_高亮目标") as Array).has(Logic.my_player_id),
+		"10601 目标弃牌时目标自己应被高亮：%s" % str(窗.get("_高亮目标")))
+	窗.call("_on_cancel")
+	await 等帧(1)
+
 	# 再睡一下：发动时每个队友 +1 治疗，并且被指示器点亮
+	窗.set("_mode", 3)
 	窗.set("_skill_ask_id", 10605)
 	var 睡眠提示: Dictionary = 窗.call("_再睡一下头像提示")
 	检(str(睡眠提示.get(队友号, "")) == "+1 治疗",
