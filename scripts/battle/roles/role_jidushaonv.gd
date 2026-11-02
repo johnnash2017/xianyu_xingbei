@@ -272,12 +272,10 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if _xu_rong_step >= STEP_DONE:
 		return SUCCESS
 	if _xu_rong_step == 0:
-		# 手里一张能当【魔弹】的牌都没有：这份额外法术行动一张牌也出不了，不弹无用询问
-		if _missile_hand_ids().is_empty():
-			_xu_rong_step = STEP_DONE
-			return SUCCESS
 		_xu_rong_step = 1
 		if not engine.has_reply():
+			# 不管手里有没有能当【魔弹】的牌都问一次（需求方口径）：拿到这份行动后还可能摸牌 /
+			# 被别人给牌，白名单也会在「进入 / 切到这份行动时」按当时手牌重算，不在这里预先挡掉。
 			询问(player.id, XU_RONG_ZHANG_WO, 0, 0)
 			return WAIT
 	if _xu_rong_step != 1:
@@ -430,11 +428,6 @@ func _can_use_missile(card_id: int) -> bool:
 	if not player.has_hand_card(card_id):
 		return false
 	return can_use_as_missile(Data.get_card(card_id))
-
-
-## 手里能当【魔弹】的牌 id（10702 的额外行动白名单与询问条件用它）
-func _missile_hand_ids() -> Array[int]:
-	return hand_ids_where(func(_cid: int, c: GCard) -> bool: return can_use_as_missile(c))
 
 
 ## 目标是否真的弃出了 1 张手牌里的法术牌【展示】；成功返回 true
