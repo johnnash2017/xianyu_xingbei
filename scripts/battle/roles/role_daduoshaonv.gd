@@ -402,11 +402,14 @@ func _p_xiang_yong_mo_dan(action: Dictionary) -> int:
 	})
 	if not engine.take_from_hand(player.id, cards):
 		return SUCCESS
-	engine.to_discard(cards, {"owner": player.id, "source": "hand", "cause": XIANG_YONG_MO_DAN})
-	engine._log_discard(player.id, cards, false)
 	var 顺向: bool = dst_id == nearest_enemy_id(player.id, true)
 	engine.push(BattleEngine.SMissileAsk.new(dst_id, player.id, BattleEngine.MISSILE_BASE_POINT, 顺向,
 		[player.id, dst_id]))
+	# 两张材料牌进弃牌堆要压在传递询问之后调：to_discard 在有角色能响应时只压一个弃牌前拦截状态
+	# （4704【三秒原则】：队友「使用完 / 丢弃」【魔弹】时可收走），压早了会被埋到栈底问不到；
+	# 压在传递询问之后 = 先问拦截（牌刚打出去、要进弃牌堆的那一刻），再结算魔弹传递。
+	engine.to_discard(cards, {"owner": player.id, "source": "hand", "cause": XIANG_YONG_MO_DAN})
+	engine._log_discard(player.id, cards, false)
 	# 展示手牌钩子最后压：压在魔弹传递询问之上先执行（与引擎普通【魔弹】路径同一顺序）
 	engine.push_show_hand(player.id, cards)
 	engine._broadcast_game()
