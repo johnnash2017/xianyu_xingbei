@@ -275,6 +275,8 @@ func _检噬神者() -> void:
 		"火系额外行动白名单应包含当前火系【魔刃】")
 	检(not (引擎.call("_规则攻击牌", GConst.CardElement.Water, 0) as Array).has(1005),
 		"【魔刃】当前是火系时不应进水系白名单")
+	检(引擎.攻击表现牌(1005) == 87, "火系【魔刃】应用火焰斩特效表现牌 87")
+	检(引擎.攻击表现牌(1006) == 108, "雷系【异刃】应用雷光斩特效表现牌 108")
 	# 切成水系：卡面系别、普通攻击校验都要跟着变；服务端回一条 CardElement
 	检(引擎.设置卡牌元素(1, 1005, GConst.CardElement.Water), "【魔刃】切水系应成功")
 	检(魔卡.element_enum() == GConst.CardElement.Water, "切换后【魔刃】当前系别应是水")
@@ -284,6 +286,10 @@ func _检噬神者() -> void:
 		"水系额外行动白名单应包含当前水系【魔刃】")
 	检(not (引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0) as Array).has(1005),
 		"【魔刃】切水后不应再进火系白名单")
+	检(引擎.攻击表现牌(1005) == 129, "水系【魔刃】应用水涟斩特效表现牌 129")
+	检(引擎.设置卡牌元素(1, 1006, GConst.CardElement.Wind), "【异刃】切风系应成功")
+	检(引擎.攻击表现牌(1006) == 66, "风系【异刃】应用风神斩特效表现牌 66")
+	引擎.设置卡牌元素(1, 1006, GConst.CardElement.Thunder)
 	var 有元素消息: bool = false
 	for r: Dictionary in 发送记录:
 		if int(r["msg"]) == GConst.Msg.CardElement:

@@ -379,6 +379,15 @@ enum CardElement {
 	Darkness = 7,
 }
 
+## 虚拟攻击牌（魔刃 / 异刃）没有自己的斩击特效：Card 消息的 as_card_id 用同系普通斩击牌表现，
+## 只影响客户端音效 / 特效，不影响摊牌、日志和规则结算。
+const 元素斩击表现牌: Dictionary = {
+	CardElement.Wind: 66,
+	CardElement.Water: 129,
+	CardElement.Fire: 87,
+	CardElement.Thunder: 108,
+}
+
 enum FatePattern {
 	Blood = 1,
 	Martial = 2,

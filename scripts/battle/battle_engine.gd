@@ -3266,6 +3266,17 @@ func _规则攻击牌(系: int, 命格: int) -> Array:
 	return 表
 
 
+## 攻击牌的「表现牌」：魔刃/异刃这类虚拟攻击牌没有自己的斩击特效，
+## 按当前系别借一张普通斩击牌作为 Card.as_card_id，客户端据此播对应系别的音效/特效；
+## 规则结算、摊牌、日志仍用原牌。
+func 攻击表现牌(card_id: int) -> int:
+	var 卡: GCard = Data.get_card(card_id)
+	if 卡 == null or not 卡.is_virtual or not 卡.is_attack():
+		return card_id
+	var 表现: int = int(GConst.元素斩击表现牌.get(卡.element_enum(), 0))
+	return 表现 if 表现 > 0 else card_id
+
+
 ## 本回合的行动计数（只读查询，F2）：供角色 / 头像提示 / 测试读取
 func 行动计数(pid: int) -> Dictionary:
 	var p0: BattlePlayer = players.get(pid)
@@ -5299,6 +5310,8 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	if cur.role != null:
 		cur.role.call_hook("p_attack_card", 出牌)
 	var 用牌: int = int(出牌.get("改用", cid))
+	# 规则 / 伤害仍用「用牌」；虚拟攻击牌另给客户端一张同系普通斩击牌做音效/特效表现
+	var 表现用牌: int = 攻击表现牌(用牌)
 	var harm: Dictionary = {
 		"src": cur.id, "dst": dst_id, "point": 攻击基础伤害(cur.id), "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": 用牌, "is_active": true,
@@ -5312,7 +5325,7 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# （如苍炎魔女【烈焰形态】下普通攻击视为火系【火焰斩】→ 播火斩特效与火系攻击音）；
 	# 摊牌与日志仍用真正打出的牌
 	broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id,
-		"card_ids": [cid], "is_real": true, "as_card_id": 用牌 if 用牌 != cid else 0})
+		"card_ids": [cid], "is_real": true, "as_card_id": 表现用牌 if 表现用牌 != cid else 0})
 	return CONTINUE
 
 
