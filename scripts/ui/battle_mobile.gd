@@ -6080,6 +6080,16 @@ func _套用自动选目标(指示配置: Dictionary) -> bool:
 			if 队友 > 0:
 				_高亮目标.append(队友)
 			return false
+		"队友":
+			# 把「会受影响的所有队友」点亮给人看（如【再睡一下】：队友各 +1 治疗）。
+			# 同样只高亮：这条询问要选的是弃哪张牌，不选目标
+			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+			if 我 == null:
+				return false
+			for 玩家: GPlayer in Data.player_list:
+				if 玩家 != null and 玩家.id != 我.id and 玩家.color == 我.color:
+					_高亮目标.append(玩家.id)
+			return false
 	return true
 
 
