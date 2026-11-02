@@ -1245,6 +1245,46 @@ func 跑() -> void:
 	检(转位 > 伤位,
 		"日志顺序应是先伤害、后士气转移（伤害 @%d / 转移 @%d）" % [伤位, 转位])
 
+	# 10603 想用魔弹：响应魔弹时选第一张同系牌就要点亮落点、显示传下去的伤害；
+	# 凑第二张时提示不能消失
+	var 同系甲: GCard = null
+	var 同系乙: GCard = null
+	for c4: GCard in Data.card_db:
+		if c4 == null or c4.is_virtual or c4.element_enum() <= 0:
+			continue
+		if c4.card_name_enum() == GConst.CardName.HolyLight or c4.card_name_enum() == GConst.CardName.Missile:
+			continue
+		if 同系甲 == null:
+			同系甲 = c4
+		elif c4.element_enum() == 同系甲.element_enum():
+			同系乙 = c4
+			break
+	检(同系甲 != null and 同系乙 != null, "卡库找不到两张同系普通牌")
+	if 同系甲 != null and 同系乙 != null:
+		Data.hand_cards = [同系甲, 同系乙] as Array[GCard]
+		窗.set("_mode", 2)
+		窗.set("_pending", {
+			"respond_id": GConst.RespondType.Bullet, "args": [2, GConst.魔弹基础伤害, 1],
+			"card_max": 2, "dst_ids": [2], "can_cancel": true,
+		})
+		var 两张: Array[int] = [同系甲.id]
+		窗.set("_sel_cards", 两张)
+		检(bool(窗.call("_玩家可选", 2)), "10603 只选第一张同系牌时落点也应点亮")
+		var 提示一: Dictionary = 窗.call("_魔弹头像提示")
+		检(str(提示一.get(2, "")) == "%d 法术伤害" % (GConst.魔弹基础伤害 + 1),
+			"选第一张时落点要显示传下去的伤害：%s" % str(提示一))
+		两张.append(同系乙.id)
+		窗.set("_sel_cards", 两张)
+		检(bool(窗.call("_玩家可选", 2)), "凑满两张同系牌时落点应可点")
+		var 提示二: Dictionary = 窗.call("_魔弹头像提示")
+		检(str(提示二.get(2, "")) == "%d 法术伤害" % (GConst.魔弹基础伤害 + 1),
+			"选第二张时伤害提示不应消失：%s" % str(提示二))
+		# 落点只有唯一一个时不用点目标：选好两张就能直接按「确定」
+		检(not bool(窗.call("_确定不可用")), "10603 凑满两张、落点唯一时「确定」应可用")
+		窗.set("_mode", 0)
+		窗.set("_pending", {})
+		Data.hand_cards = 攻击牌
+
 	# 基础效果的状态图标悬停：文本前面要写「基础效果：」，和指示物 / 独有效果区分开
 	var 面板: 战斗玩家面板 = null
 	var 界面板: Array = 窗.get("_面板列表")

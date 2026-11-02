@@ -1733,7 +1733,27 @@ func _是魔弹融合出牌(msg: Dictionary) -> bool:
 	for raw: Variant in msg.get("card_ids", []):
 		var 真牌: GCard = Data.get_card(int(raw))
 		if 真牌 != null:
-			return GConst.可当魔弹(出牌人.role_id, 真牌.element_enum())
+			if GConst.可当魔弹(出牌人.role_id, 真牌.element_enum()):
+				return true
+			# 怠惰少女【想用魔弹】10603：任意两张同系牌视为【魔弹】（角色特性表里是「双张魔弹」）
+			if GConst.双张魔弹(出牌人.role_id):
+				var 出牌: Array = msg.get("card_ids", [])
+				if 出牌.size() == 2:
+					var 系: int = -1
+					var 同系: bool = true
+					for raw2: Variant in 出牌:
+						var 牌2: GCard = Data.get_card(int(raw2))
+						if 牌2 == null or 牌2.is_virtual or 牌2.element_enum() <= 0:
+							同系 = false
+							break
+						if 系 < 0:
+							系 = 牌2.element_enum()
+						elif 牌2.element_enum() != 系:
+							同系 = false
+							break
+					if 同系:
+						return true
+			return false
 	return not GConst.魔弹系别(出牌人.role_id).is_empty()
 
 
@@ -4298,7 +4318,11 @@ func _on_player_clicked(player_id: int) -> void:
 		return
 	# 魔弹传递：选好合法的传递牌后点亮起的敌人头像就把伤害传下去
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet:
-		# 「能不能点」已由 _玩家可选 按 _魔弹响应提交方式 卡住（单张同系牌 / 两张不同系都点不亮）
+		# 「能不能点」已由 _玩家可选 按 _魔弹响应提交方式 卡住（单张同系牌 / 两张不同系都点不亮）。
+		# 10603 只选了第一张同系牌时落点也会亮（看得见会传到哪），这里再挡一次，只提示不提交
+		if _魔弹响应提交方式() != GConst.Reattack.Attack:
+			_指令提示("回应【魔弹】：单张同系牌不行 —— 再选一张同系牌，或出【圣光】抵挡")
+			return
 		_发送应答(GConst.RespondType.Bullet, [player_id], _sel_cards, [GConst.Reattack.Attack])
 		return
 	if _sel_players.has(player_id):
@@ -5181,8 +5205,13 @@ func _on_ok() -> void:
 					_指令提示("请先选牌：出【魔弹】继续传递，或出【圣光】抵挡")
 				return
 			if _sel_players.is_empty():
-				_指令提示("魔弹传递请点亮起的敌人头像（选好牌后直接点他），或点「取消」承受伤害")
-				return
+				# 落点由服务端给定：只有一个落点时直接用它（不用再点一次头像）
+				var 落点们: Array[int] = _魔弹传递目标列表()
+				if 落点们.size() == 1:
+					_sel_players = [落点们[0]]
+				else:
+					_指令提示("魔弹传递请点亮起的敌人头像（选好牌后直接点他），或点「取消」承受伤害")
+					return
 			_发送应答(respond_id, _sel_players, _sel_cards, [GConst.Reattack.Attack])
 		GConst.RespondType.Discard, GConst.RespondType.DiscardCover:
 			_发送应答(respond_id, [], _sel_cards, [])
@@ -7848,7 +7877,14 @@ func _刷新头像提示() -> void:
 func _魔弹头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet:
-		if _sel_cards.size() != 1 or not _可继续传递魔弹(Data.get_card(_sel_cards[0])):
+		# 选 1 张（真【魔弹】/ 可当魔弹的牌 / 10603 还差一张的同系牌）或 10603 凑满 2 张同系时，
+		# 都要在落点头像上写「传下去之后的伤害」——凑第二张时不能把提示抹掉
+		var 可传: bool = false
+		if _sel_cards.size() == 1:
+			可传 = _可继续传递魔弹(Data.get_card(int(_sel_cards[0])))
+		elif _sel_cards.size() == 2 and maxi(1, int(_pending.get("card_max", 1))) >= 2:
+			可传 = _魔弹响应提交方式() == GConst.Reattack.Attack
+		if not 可传:
 			return out
 		var args: Array = _pending.get("args", [])
 		var 当前: int = int(args[1]) if args.size() > 1 else GConst.魔弹基础伤害
@@ -8923,9 +8959,14 @@ func _玩家可选(player_id: int) -> bool:
 			return not _sel_cards.is_empty() and not _选中是圣光() and _可作反击目标(player_id)
 		if rid == GConst.RespondType.Bullet:
 			# 魔弹传递：只有真要传下去时才点亮落点（【圣光】抵挡不用目标；
-			# 10603 只选 1 张同系牌时服务端会按「放弃」处理，不能让他点目标就提交）
-			return _魔弹响应提交方式() == GConst.Reattack.Attack \
-				and _魔弹传递目标列表().has(player_id)
+			# 10603 只选 1 张同系牌时服务端会按「放弃」处理，不能让他点目标就提交）。
+			# 但 10603 选了第一张、还差一张同系时也把落点点亮（让人看得到会传到哪），
+			# 这时点它只提示「再选一张」、不提交（见 _on_player_pressed）
+			if not _魔弹传递目标列表().has(player_id):
+				return false
+			if _魔弹响应提交方式() == GConst.Reattack.Attack:
+				return true
+			return _sel_cards.size() == 1 and _可回魔弹牌(int(_sel_cards[0]))
 		return false
 	if _mode == 3:
 		# 分配型指示器配了「仅队友」时（如神官【神圣契约】），只有队友头像能点（不含自己）
@@ -9156,13 +9197,16 @@ func _确定不可用() -> bool:
 			GConst.RespondType.Bullet:
 				# 组合不成立（没选牌 / 10603 只选了 1 张同系牌 / 两张不同系）都灰着：
 				# 服务端只认 1 张【圣光】抵挡或 1 张真【魔弹】/ 2 张同系牌继续传递；
-				# 【圣光】抵挡不需要目标，继续传递要先点亮落点
+				# 【圣光】抵挡不需要目标；继续传递的落点由服务端给定 —— 只有一个落点时
+				# 选好牌直接按「确定」就传下去，不用再点一次头像
 				var 魔弹方式: int = _魔弹响应提交方式()
 				if 魔弹方式 == GConst.Reattack.Block:
 					return false
 				if 魔弹方式 != GConst.Reattack.Attack:
 					return true
-				return _sel_players.is_empty()
+				if not _sel_players.is_empty():
+					return false
+				return _魔弹传递目标列表().size() != 1
 			GConst.RespondType.Discard, GConst.RespondType.DiscardCover:
 				return _sel_cards.size() != _need_cards
 			GConst.RespondType.Weaken, GConst.RespondType.Heal:
