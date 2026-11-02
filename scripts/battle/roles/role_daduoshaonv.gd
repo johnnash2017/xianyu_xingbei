@@ -517,9 +517,11 @@ func p_turn_end(ctx: Dictionary) -> int:
 		ctx[KEY_10605] = HOOK_STEP_ASK
 		if not engine.has_reply():
 			# 不可取消：有宝石就发动，玩家只能选「弃哪张」；超时由引擎兜底空回复，
-			# 下面按「自动弃一张照样发动」处理
+			# 下面按「自动弃一张照样发动」处理。
+			# 提示条用技能原本的说明（整段效果），不用提示列那一句
 			询问(player.id, ZAI_SHUI_YI_XIA, 1, 0, GConst.CardSource.Hand, [], 0, "",
-				player.hand_cards.duplicate(), false, 0)
+				player.hand_cards.duplicate(), false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "",
+				-1, GConst.skill_desc(ZAI_SHUI_YI_XIA))
 			return WAIT
 	if 阶段 != HOOK_STEP_ASK:
 		return SUCCESS
