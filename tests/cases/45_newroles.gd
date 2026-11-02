@@ -394,6 +394,18 @@ func _检切换后复检() -> void:
 			"悬停第二段应是完整卡面（隐藏重复的状态名行）")
 		检(技能 != null and 技能.text.contains("渗蚀"),
 			"悬停第三段应包含【渗蚀】说明")
+	# 魔刃/异刃状态图标独立预制体：文字节点和位置由预制体控制，供手动调整
+	for 预制路径: String in [
+		"res://scenes/prefabs/battlemobile/MoRenStatusIcon.tscn",
+		"res://scenes/prefabs/battlemobile/YiRenStatusIcon.tscn",
+	]:
+		var 预制: PackedScene = load(预制路径) as PackedScene
+		检(预制 != null, "缺少状态图标预制体：%s" % 预制路径)
+		var 实例: Node = 预制.instantiate() if 预制 != null else null
+		检(实例 is TextureRect and 实例.get_node_or_null("Text") is Label,
+			"状态图标预制体应包含 Text 文字节点：%s" % 预制路径)
+		if 实例 != null:
+			实例.queue_free()
 	Data.hand_cards = 原手牌
 	Data.hand_iids = 原Iids
 	窗.queue_free()
