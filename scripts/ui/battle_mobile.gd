@@ -337,6 +337,8 @@ const 精灵射手角色: int = 32
 var _面板列表: Array[战斗玩家面板] = []
 ## 日志缓冲：Content_2 上的 AutoClearLog 按行裁剪，需要整段文本
 var _日志: String = ""
+## 最近一次【别烦我……】(10601) 的发动者（目标被问弃牌时用来找替她发动的队友）
+var _上次别烦我发动者: int = -1
 ## 当前回合玩家 id（用于面板高亮）
 var _当前回合: int = -1
 ## 上一次 TurnBegin 的玩家 / 回合号：额外回合（F7 / 10803）不会推进 round，
@@ -1665,6 +1667,9 @@ func _on_hurt(msg: Dictionary) -> void:
 func _on_skill(msg: Dictionary) -> void:
 	var src: int = int(msg.get("src_id", -1))
 	var skill_id: int = int(msg.get("skill_id", 0))
+	# 【别烦我……】目标被问弃牌时要指出「替她发动的是哪名队友」，这里记下最近一次是谁发动的
+	if skill_id == GConst.技能_别烦我:
+		_上次别烦我发动者 = src
 	var 技能文本: String = _技能播报文本(msg)
 	# 每次 Skill 通知都写日志、排一条头像飘字：不再按「同玩家 + 同技能名」去重，
 	# 保证战斗日志里出现的每一条技能播报都有对应的飘字。
@@ -6026,6 +6031,27 @@ func _回到行动阶段() -> void:
 ##   自己 / 他人 / 全体 —— 按角色表语义（如【瘟疫】对除自己外所有人、【逆流】只有自己）
 ##   询问目标           —— 服务端在本次询问里点名的那个角色（如【毒粉】：挨这次伤害的人）
 ## 返回 true＝本次属于这一型（调用方据此把 _目标锁死 置位）
+## 按座位顺序找「右手边最近的队友」（不含自己、跨过敌人）：找不到返回 -1。
+## 与服务端 nearest_teammate_id(id, true) 同一口径，用于【别烦我……】指出谁替她发动。
+func _右手边队友(player_id: int) -> int:
+	var 我: GPlayer = Data.get_player_by_id(player_id)
+	if 我 == null:
+		return -1
+	var 序: Array = Data.player_list
+	var 起: int = -1
+	for i: int in range(序.size()):
+		if (序[i] as GPlayer).id == player_id:
+			起 = i
+			break
+	if 起 < 0:
+		return -1
+	for 步: int in range(1, 序.size()):
+		var 他: GPlayer = 序[(起 + 步) % 序.size()]
+		if 他 != null and 他.id != player_id and 他.color == 我.color:
+			return 他.id
+	return -1
+
+
 func _套用自动选目标(指示配置: Dictionary) -> bool:
 	var 型: String = str(指示配置.get("自动选目标", ""))
 	if 型.is_empty():
@@ -6042,6 +6068,13 @@ func _套用自动选目标(指示配置: Dictionary) -> bool:
 				_sel_players.append(玩家.id)
 		"询问目标":
 			_sel_players.append_array(_skill_targets)
+		"右手边队友":
+			# 只在「发动技能」那一次把替她发动的队友亮出来；询问通道（6 号 / 7 号是被问的人）不算
+			if _mode != 4:
+				return false
+			var 队友: int = _右手边队友(Logic.my_player_id)
+			if 队友 > 0:
+				_sel_players.append(队友)
 	return true
 
 
@@ -7737,6 +7770,10 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _雷光散射头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _别烦我头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _再睡一下头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _魔眼头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _亡女金库头像提示()
@@ -7961,6 +7998,39 @@ func _亡女金库头像提示() -> Dictionary:
 	var 伤害: int = GConst.亡女金库基础伤害 + 星石 / GConst.亡女金库每星石
 	for pid: int in _sel_players:
 		out[pid] = "%d 法术伤害" % 伤害
+	return out
+
+
+## 怠惰少女【别烦我……】10601 的头像提示（现算）：
+## · 发动时（mode 4）：把「右手边替她发动的队友」亮出来，写「代替你发动」；
+## · 目标被问「弃 1 张法术牌」时（mode 3）：自己头像写不弃的后果，替她发动的队友头像写会拿到的治疗
+func _别烦我头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode == 4 and int(_pending_skill_id) == GConst.技能_别烦我:
+		var 队友: int = _右手边队友(Logic.my_player_id)
+		if 队友 > 0:
+			out[队友] = "代替你发动"
+		return out
+	if _mode == 3 and _skill_ask_id == GConst.技能_别烦我 and _skill_ask_need_card > 0:
+		out[Logic.my_player_id] = "不弃：摸 1 张牌"
+		if _上次别烦我发动者 >= 0:
+			var 队友2: int = _右手边队友(_上次别烦我发动者)
+			if 队友2 > 0:
+				out[队友2] = "+1 治疗"
+	return out
+
+
+## 怠惰少女【再睡一下】10605 的头像提示（现算）：发动时给每个队友头像写「+1 治疗」
+func _再睡一下头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_再睡一下:
+		return out
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 我 == null:
+		return out
+	for p: GPlayer in Data.player_list:
+		if p != null and p.id != 我.id and p.color == 我.color:
+			out[p.id] = "+1 治疗"
 	return out
 
 

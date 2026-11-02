@@ -1285,6 +1285,38 @@ func 跑() -> void:
 		窗.set("_pending", {})
 		Data.hand_cards = 攻击牌
 
+	# 怠惰少女的技能头像提示（现算）：别烦我 / 再睡一下
+	# 这个用例里原本没有队友（1 蓝 / 2、3 红）：临时加一个蓝队队友来验证提示
+	var 队友测试: GPlayer = GPlayer.new(4, GConst.BLUE, "队友")
+	Data.player_list.append(队友测试)
+	窗.set("_mode", 4)
+	窗.set("_pending_skill_id", 10601)
+	var 队友号: int = int(窗.call("_右手边队友", Logic.my_player_id))
+	检(队友号 > 0, "10601 应能找到右手边队友（实际 %d）" % 队友号)
+	var 别烦提示: Dictionary = 窗.call("_别烦我头像提示")
+	检(str(别烦提示.get(队友号, "")) == "代替你发动",
+		"发动时替她发动的队友头像应写「代替你发动」：%s" % str(别烦提示))
+	# 目标被问「弃 1 张法术牌」：自己写不弃的后果，替她发动的队友写会拿到的治疗
+	窗.set("_mode", 3)
+	窗.set("_skill_ask_id", 10601)
+	窗.set("_skill_ask_need_card", 1)
+	窗.set("_上次别烦我发动者", Logic.my_player_id)
+	var 弃牌提示表: Dictionary = 窗.call("_别烦我头像提示")
+	检(str(弃牌提示表.get(Logic.my_player_id, "")) == "不弃：摸 1 张牌",
+		"目标自己头像应写「不弃：摸 1 张牌」：%s" % str(弃牌提示表))
+	检(str(弃牌提示表.get(队友号, "")) == "+1 治疗",
+		"替她发动的队友头像应写「+1 治疗」：%s" % str(弃牌提示表))
+	# 再睡一下：发动时每个队友 +1 治疗
+	窗.set("_skill_ask_id", 10605)
+	var 睡眠提示: Dictionary = 窗.call("_再睡一下头像提示")
+	检(str(睡眠提示.get(队友号, "")) == "+1 治疗",
+		"再睡一下发动时队友头像应写「+1 治疗」：%s" % str(睡眠提示))
+	窗.set("_mode", 0)
+	窗.set("_skill_ask_id", 0)
+	窗.set("_skill_ask_need_card", 0)
+	窗.set("_上次别烦我发动者", -1)
+	Data.player_list.erase(队友测试)
+
 	# 基础效果的状态图标悬停：文本前面要写「基础效果：」，和指示物 / 独有效果区分开
 	var 面板: 战斗玩家面板 = null
 	var 界面板: Array = 窗.get("_面板列表")
