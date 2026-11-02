@@ -379,6 +379,21 @@ func _检切换后复检() -> void:
 	检(bool(百节点.get("_可用")), "1005 切回火系后应重新亮起")
 	检(not bool(百节点.get("_选中")), "1005 切回火系后不应自动重新选中")
 	检(not (窗.get("_sel_cards") as Array).has(1005), "1005 切回火系后仍不应在选中里")
+	# 魔刃状态悬停内容：标题（名字+系别）→ 卡面 → 两条被动说明
+	var 悬停内容: Control = 窗.call("_造噬神者刃状态内容", Data.get_card(1005))
+	检(悬停内容 != null and 悬停内容.get_child_count() == 3,
+		"魔刃悬停应依次有标题、卡面、技能说明三段，实际 %d 段" %
+		(悬停内容.get_child_count() if 悬停内容 != null else -1))
+	if 悬停内容 != null and 悬停内容.get_child_count() == 3:
+		var 标题: RichTextLabel = 悬停内容.get_child(0) as RichTextLabel
+		var 卡面: Control = 悬停内容.get_child(1) as Control
+		var 技能: RichTextLabel = 悬停内容.get_child(2) as RichTextLabel
+		检(标题 != null and 标题.text.contains("【魔刃】") and 标题.text.contains("[color="),
+			"悬停第一段应是带系别配色的【魔刃】标题")
+		检(卡面 is 悬停卡预览 and not (卡面 as 悬停卡预览).状态名.visible,
+			"悬停第二段应是完整卡面（隐藏重复的状态名行）")
+		检(技能 != null and 技能.text.contains("渗蚀"),
+			"悬停第三段应包含【渗蚀】说明")
 	Data.hand_cards = 原手牌
 	Data.hand_iids = 原Iids
 	窗.queue_free()

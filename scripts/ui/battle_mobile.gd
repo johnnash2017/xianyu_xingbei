@@ -3278,22 +3278,64 @@ func _面板说明到时() -> void:
 	_弹出角色说明(面板)
 
 
-## 魔刃/异刃的悬停说明：标题是「【魔刃】火系/水系」（系别按配色上色），
-## 后面接【魔刃】/【异刃】和【渗蚀】两条被动说明，与御刃选项的悬停内容一致。
-func _噬神者刃状态说明(卡: GCard) -> String:
+## 魔刃/异刃悬停内容的标题：「【魔刃】火系/水系」，系别按配色上色。
+func _噬神者刃标题(卡: GCard) -> String:
 	var 元素名: String = ""
 	for 系: int in 卡.可选元素:
 		if not 元素名.is_empty():
 			元素名 += "/"
 		元素名 += "%s系" % _系别着色(GConst.element_to_chinese(系))
-	var 说明: String = "【%s】%s" % [卡.card_name, 元素名]
+	return "【%s】%s" % [卡.card_name, 元素名]
+
+
+## 魔刃/异刃的两条被动说明：【魔刃】/【异刃】+【渗蚀】。
+func _噬神者刃技能说明(卡: GCard) -> String:
 	# 7909 魔刃 / 7910 异刃
 	var 武器技能: int = 7909 if 卡.id == GConst.噬神者_魔刃卡 else 7910
+	var 说明: String = ""
 	for 号: int in [武器技能, 7911]:
 		var 单条: String = 角色技能提示.单个技能(号, 0, GConst.角色_噬神者)
-		if not 单条.is_empty():
-			说明 += "\n\n" + 单条
+		if 单条.is_empty():
+			continue
+		if not 说明.is_empty():
+			说明 += "\n\n"
+		说明 += 单条
 	return 说明
+
+
+## 魔刃/异刃的悬停内容：标题（名字 + 系别）→ 完整卡面 → 两条被动说明。
+## 说明提示框走自定义内容模式；卡面夹在名字和技能说明之间。
+func _造噬神者刃状态内容(卡: GCard) -> Control:
+	var 内容: VBoxContainer = VBoxContainer.new()
+	内容.add_theme_constant_override("separation", 8)
+	var 标题: RichTextLabel = RichTextLabel.new()
+	标题.bbcode_enabled = true
+	标题.fit_content = true
+	标题.scroll_active = false
+	标题.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	标题.custom_minimum_size = Vector2(技能说明宽度, 0)
+	标题.add_theme_font_size_override("normal_font_size", 技能说明字号)
+	标题.add_theme_color_override("default_color", Color(0.93, 0.93, 0.93))
+	标题.text = _噬神者刃标题(卡)
+	内容.add_child(标题)
+	var 卡面视图: Control = _造悬停卡牌(卡.id, "")
+	if 卡面视图 != null:
+		var 预览: 悬停卡预览 = 卡面视图 as 悬停卡预览
+		if 预览 != null and 预览.状态名 != null:
+			预览.状态名.visible = false
+		卡面视图.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		内容.add_child(卡面视图)
+	var 技能: RichTextLabel = RichTextLabel.new()
+	技能.bbcode_enabled = true
+	技能.fit_content = true
+	技能.scroll_active = false
+	技能.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	技能.custom_minimum_size = Vector2(技能说明宽度, 0)
+	技能.add_theme_font_size_override("normal_font_size", 技能说明字号)
+	技能.add_theme_color_override("default_color", Color(0.93, 0.93, 0.93))
+	技能.text = _噬神者刃技能说明(卡)
+	内容.add_child(技能)
+	return 内容
 
 
 ## 鼠标指向状态图标（基础效果牌 / 指示物）：在图标正上方弹提示 ——
@@ -3302,12 +3344,11 @@ func _显示状态图标说明(图标: Control, 文本: String, 牌id: int, 显�
 	_悬停技能按钮 = null
 	_悬停角色面板 = null
 	_悬停状态图标 = true
-	# 魔刃/异刃的公开手牌状态：和御刃选项一样，标题带可选系别配色 + 两条被动说明
+	# 魔刃/异刃的公开手牌状态：标题（带系别配色）→ 完整卡面 → 两条被动说明
 	if 牌id == GConst.噬神者_魔刃卡 or 牌id == GConst.噬神者_异刃卡:
 		var 刃卡: GCard = Data.get_card(牌id)
 		if 刃卡 != null:
-			_说明提示.显示(_噬神者刃状态说明(刃卡), 图标.get_global_rect(),
-				技能说明宽度, 技能说明字号)
+			_说明提示.显示内容(_造噬神者刃状态内容(刃卡), 图标.get_global_rect())
 			return
 	var 卡面: Control = _造悬停卡牌(牌id, 文本)
 	if 卡面 != null:
