@@ -237,10 +237,11 @@ func _建元素栏() -> void:
 	_元素栏.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_元素栏.alignment = BoxContainer.ALIGNMENT_END
 	_元素栏.add_theme_constant_override("separation", 2)
+	# 按钮条放在卡牌卡面上方（卡面外），右对齐；不占卡面内容
 	_元素栏.offset_left = 2
 	_元素栏.offset_right = -2
-	_元素栏.offset_top = 1
-	_元素栏.offset_bottom = 17
+	_元素栏.offset_top = -35
+	_元素栏.offset_bottom = -7
 	# 指针从按钮移出卡牌时收起（移到卡面里时 _收起元素栏若在外 会保留）
 	_元素栏.mouse_exited.connect(_延迟收起元素栏)
 	add_child(_元素栏)
@@ -261,17 +262,32 @@ func _刷新元素栏() -> void:
 	for 元素: int in card.可选元素:
 		var 钮: Button = Button.new()
 		钮.text = GConst.element_to_chinese(元素)
-		钮.flat = true
 		钮.focus_mode = Control.FOCUS_NONE
 		钮.mouse_filter = Control.MOUSE_FILTER_STOP
 		钮.custom_minimum_size = Vector2(24, 16)
 		钮.add_theme_font_size_override("font_size", 11)
+		_压缩按钮内边距(钮)
 		# 当前系别那颗不可点；另一颗点一下就把这张牌切成那个系别
 		钮.disabled = 元素 == card.element_enum()
 		钮.pressed.connect(_on_元素按钮.bind(元素))
 		钮.mouse_exited.connect(_延迟收起元素栏)
 		_元素栏.add_child(钮)
 	_元素栏.visible = 原可见
+
+
+## 默认主题按钮的内边距（12/8）会把按钮最小尺寸撑到 35×32；复制一份样式、
+## 把内边距收到 65%，让按钮实际尺寸也缩小约 20%，同时保留默认按钮底色。
+func _压缩按钮内边距(钮: Button) -> void:
+	for 状态: String in ["normal", "hover", "pressed", "disabled"]:
+		var 底: StyleBox = 钮.get_theme_stylebox(状态)
+		if 底 == null:
+			continue
+		var 小: StyleBox = 底.duplicate()
+		小.content_margin_left *= 0.65
+		小.content_margin_right *= 0.65
+		小.content_margin_top *= 0.65
+		小.content_margin_bottom *= 0.65
+		钮.add_theme_stylebox_override(状态, 小)
 
 
 func _on_元素按钮(元素: int) -> void:
@@ -297,7 +313,11 @@ func _延迟收起元素栏() -> void:
 func _收起元素栏若在外() -> void:
 	if _元素栏 == null or not _元素栏.visible:
 		return
-	if get_global_rect().has_point(get_global_mouse_position()):
+	var 鼠标: Vector2 = get_global_mouse_position()
+	# 按钮条在卡面外：指针在卡面里或在按钮条本身上都算「还在卡牌区域」
+	if get_global_rect().has_point(鼠标):
+		return
+	if _元素栏.get_global_rect().has_point(鼠标):
 		return
 	_元素栏.visible = false
 
