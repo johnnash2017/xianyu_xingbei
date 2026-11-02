@@ -214,11 +214,15 @@ func _p_bie_fan_wo() -> int:
 			engine.取消技能行动()
 			return SUCCESS
 		_bie_fan_step = 1
+		# 技能原文：队友先随机丢弃你 1 张手牌，再来指定目标对手
+		engine.随机弃手牌(player.id, 1, BIE_FAN_WO)
+		engine._broadcast_game()
 		if not engine.has_reply():
 			# 由右手边队友（不是当前行动者）指定目标对手：回复仍回到本次 SkillRun。
-			# can_cancel=false（A41：必须给出目标；AI / 掉线由引擎超时从合法目标里代选）
+			# can_cancel=false（A41：必须给出目标；AI / 掉线由引擎超时从合法目标里代选）。
+			# 询问文案直接给整段技能说明（技能效果太长，提示列那一句说不清）
 			询问(_bie_fan_队友, BIE_FAN_WO, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-				0, -1, enemy_ids())
+				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0, "", -1, GConst.skill_desc(BIE_FAN_WO))
 			return WAIT
 	if _bie_fan_step == 1:
 		if not engine.has_reply():
@@ -238,8 +242,7 @@ func _p_bie_fan_wo() -> int:
 		_bie_fan_目标 = dst_id
 		_bie_fan_step = 2
 		notice_skill(BIE_FAN_WO, [dst_id])
-		# 队友随机丢弃你 1 张手牌（不需要任何人选牌）→ 目标【强制】摸 1 张 → 我方战绩区 +1 水晶
-		engine.随机弃手牌(player.id, 1, BIE_FAN_WO)
+		# 目标【强制】摸 1 张 → 我方战绩区 +1 水晶（随机弃牌已在指定目标之前做掉了）
 		engine.强制摸牌(dst_id, 目标摸牌数, BIE_FAN_WO)
 		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
 		engine._broadcast_game()
