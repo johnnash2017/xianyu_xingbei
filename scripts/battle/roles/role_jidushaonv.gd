@@ -205,11 +205,11 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			# 只能弃法术牌（card_rule = "magic"），不下发牌号白名单：手里没有法术牌时界面整片置灰，
 			# 与【魔爆冲击】/【贪欲黑洞】同口径 —— **可以取消**：取消 / 超时 / 硬提交非法牌都按
-			# 「不如此做」结算（2 点法术伤害 + 我方战绩区 +1 水晶）。
-			# 提示末尾补一句「我方战绩区 +1 水晶」——只有目标不弃牌才会加，写在弃牌那一步让人看见。
-			var 弃牌文案: String = 提示(CU_YI_XIU_XIN, 0, 1) + "，我方【战绩区】+1【水晶】"
+			# 「不如此做」结算（2 点法术伤害 + 发动者一方战绩区 +1 水晶）。
+			# 提示整段从**目标视角**写（「你受到…」「我方 / 对方战绩区」）：
+			# 发动者与目标同队时水晶进的是目标自己这边（我方），否则是对面（对方）。
 			engine.ask_skill(目标号, CU_YI_XIU_XIN, 1, 0, GConst.CardSource.Hand, [], 0, "magic",
-				[], true, 弃牌文案)
+				[], true, _cu_yi_弃牌文案(目标号))
 			return WAIT
 	if _cu_yi_step != 3:
 		return SUCCESS
@@ -240,6 +240,16 @@ func _全部角色() -> Array[int]:
 	for pid: int in engine.order:
 		out.append(pid)
 	return out
+
+
+## 10701 目标弃牌那一步的提示：整段从**目标视角**写 ——
+## 「你受到 2 点法术伤害」＋水晶归属用「我方 / 对方」：
+## 发动者与目标同队时水晶进的是目标自己这边（我方），否则是对面（对方）。
+func _cu_yi_弃牌文案(dst_id: int) -> String:
+	var 目标: BattlePlayer = engine.p(dst_id)
+	var 阵营: String = "我方" if 目标 != null and 目标.color == player.color else "对方"
+	return "【%s】：弃 1 张法术牌【展示】，（若不这么做）你受到 %d 点法术伤害，%s【战绩区】+1【水晶】" \
+		% [GConst.skill_name(CU_YI_XIU_XIN), CU_YI_HARM_POINT, 阵营]
 
 
 ## 目标不弃法术牌的惩罚：我方【战绩区】+1【水晶】，并对他造成 2 点法术伤害③。
