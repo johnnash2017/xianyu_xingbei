@@ -15,7 +15,8 @@ extends 自检用例
 ##            引擎「本回合跳过行动阶段 / 来源」可由 p_turn_end 读到；手牌 = 3 / 取消 / 非自己回合 / 无队友时不询问；
 ##   - 10603：技能栏牌表（需两张彼此同系）/ 落点；校验（不同系 / 重复 / 不在手牌 / 非法落点 / 错误来源）；
 ##            真实结算：两张牌【展示】离手进弃牌堆、播报 10603、视为【魔弹】造成 2 点伤害；
-##   - 10604：自己提炼被驳回；队友提炼后询问移除哪种星石（固定两项，不可用置灰），选宝石 / 水晶各自生效；
+##   - 10604：自己提炼被驳回；队友提炼后询问移除哪种星石（固定三项：宝石 / 水晶 / 不移除，不可用置灰），
+##            战绩区没星石时只有「不移除」可点且默认选中；个人宝石满了也照常触发（满了且没星石才不触发）；
 ##            询问不可取消：空回复 / 硬发取消 / 超时都按第一种可移除的星石兜底（+1 宝石照给）；
 ##            战绩区为空时不再询问但仍 +1 宝石；
 ##   - 10605：跳过行动阶段后询问支付 1 真宝石并弃 1 张牌，队友 +1 治疗；治疗溢出 → 我方 +1 士气；
@@ -685,11 +686,11 @@ func _测试_10604() -> void:
 	var 询问: Dictionary = _取询问(1, 10604)
 	检(not 询问.is_empty(), "10604 应下发询问")
 	var 询问args: Array = 询问.get("args", [])
-	检(询问args.size() >= 6 and int(询问args[3]) == 2, "10604 应下发宝石 / 水晶两项固定选项：%s"
+	检(询问args.size() >= 7 and int(询问args[3]) == 3, "10604 应下发 宝石 / 水晶 / 不移除 三项固定选项：%s"
 		% str(询问args))
 	# 两项都可点时引擎不下发 option_enabled（缺省＝全可用）
-	检(not 询问.has("option_enabled") or (询问.get("option_enabled", []) as Array) == [true, true],
-		"战绩区两种星石都有时两项都应可点：%s" % str(询问.get("option_enabled", [])))
+	检((询问.get("option_enabled", []) as Array) == [true, true, false],
+		"战绩区两种星石都有时前两项可点、「不移除」置灰：%s" % str(询问.get("option_enabled", [])))
 	检(询问.get("can_cancel", true) == false, "10604 的选星石询问应不可取消（A44：被动强制，只能选移除哪种）")
 	_回复(1, 10604, [1])
 	检(引擎.team_gem[GConst.BLUE] == 0, "选宝石后应移除我方 1 宝石，实际 %d" % 引擎.team_gem[GConst.BLUE])
@@ -709,23 +710,28 @@ func _测试_10604() -> void:
 	检(引擎._await_id == 1, "队友提炼后应询问 106 选移除哪种星石")
 	var 询问2: Dictionary = _取询问(1, 10604)
 	检(not 询问2.is_empty(), "10604 应下发询问")
-	检((询问2.get("option_enabled", []) as Array) == [false, true],
-		"只有水晶时宝石项应置灰、水晶项可点：%s" % str(询问2.get("option_enabled", [])))
+	检((询问2.get("option_enabled", []) as Array) == [false, true, false],
+		"只有水晶时宝石项置灰、水晶项可点、「不移除」置灰：%s" % str(询问2.get("option_enabled", [])))
 	_回复(1, 10604, [2])
 	检(引擎.team_crystal[GConst.BLUE] == 0, "选水晶后应移除我方 1 水晶")
 	检(玩家1.gem == 1, "10604 应 +1 个人宝石")
 
-	# ---- 战绩区为空：不询问但仍 +1 宝石 ----
+	# ---- 战绩区为空：也要弹询问（三项里只有「不移除星石」可点），选它只 +1 宝石 ----
 	_重置战斗()
 	引擎.current_id = 2
 	引擎.resolve_action(GConst.ActionType.Special, {
 		"action_id": GConst.SpecialAction.Extract, "args": [0, 0], "dst_ids": [],
 	})
 	引擎.run()
-	检(_询问次数(1, 10604) == 0, "战绩区为空时不应询问移除星石")
+	检(_询问次数(1, 10604) == 1, "战绩区为空时也要弹询问（只有「不移除星石」可点）")
+	var 询问3: Dictionary = _取询问(1, 10604)
+	检((询问3.get("option_enabled", []) as Array) == [false, false, true],
+		"战绩区为空时只有「不移除星石」可点：%s" % str(询问3.get("option_enabled", [])))
+	检(int(询问3.get("default_option", -1)) == 2, "战绩区为空时应默认选中「不移除星石」")
+	_回复(1, 10604, [0])
 	检(玩家1.gem == 1, "战绩区为空时 10604 仍应 +1 宝石")
 
-	# ---- 询问不可取消：硬发取消 / 空回复按「第一种可移除的星石」兜底（+1 宝石照给） ----
+	# ---- 空回复（args 空）＝不移除星石：+1 宝石照给，战绩区不动 ----
 	_重置战斗()
 	引擎.team_gem[GConst.BLUE] = 1
 	引擎.current_id = 2
@@ -734,12 +740,12 @@ func _测试_10604() -> void:
 	})
 	引擎.run()
 	检(引擎._await_id == 1, "队友提炼后应询问 106 选移除哪种星石")
-	_回复(1, 10604, [0])
-	检(玩家1.gem == 1, "取消 / 空回复也应按 A44 +1 宝石，实际 %d" % 玩家1.gem)
-	检(引擎.team_gem[GConst.BLUE] == 0, "取消 / 空回复应按第一种可移除星石（宝石）兜底，实际 %d"
+	_回复(1, 10604, [])
+	检(玩家1.gem == 1, "空回复也应 +1 宝石，实际 %d" % 玩家1.gem)
+	检(引擎.team_gem[GConst.BLUE] == 1, "空回复＝不移除星石，战绩区不该动，实际 %d"
 		% 引擎.team_gem[GConst.BLUE])
 
-	# ---- 超时：同样按第一种可移除的星石兜底 ----
+	# ---- 超时：同样按「不移除星石」处理 ----
 	_重置战斗()
 	引擎.team_crystal[GConst.BLUE] = 1
 	引擎.current_id = 2
@@ -750,9 +756,34 @@ func _测试_10604() -> void:
 	检(引擎._await_id == 1, "队友提炼后应询问 106 选移除哪种星石")
 	引擎.wait_deadline_ms = 1
 	引擎.tick()
-	检(玩家1.gem == 1, "超时兜底仍应 +1 宝石，实际 %d" % 玩家1.gem)
-	检(引擎.team_crystal[GConst.BLUE] == 0, "超时兜底应按第一种可移除星石（水晶）移除，实际 %d"
+	检(玩家1.gem == 1, "超时也应 +1 宝石，实际 %d" % 玩家1.gem)
+	检(引擎.team_crystal[GConst.BLUE] == 1, "超时＝不移除星石，水晶不该动，实际 %d"
 		% 引擎.team_crystal[GConst.BLUE])
+
+	# ---- 个人宝石已满：照常触发（照常移除星石）；已满且战绩区没星石才不触发 ----
+	_重置战斗()
+	玩家1.set_gem(玩家1.energy_max)
+	引擎.team_gem[GConst.BLUE] = 2
+	引擎.current_id = 2
+	引擎.resolve_action(GConst.ActionType.Special, {
+		"action_id": GConst.SpecialAction.Extract, "args": [1, 0], "dst_ids": [],
+	})
+	引擎.run()
+	检(引擎._await_id == 1, "个人宝石已满但有星石时也应触发询问")
+	_回复(1, 10604, [1])
+	检(引擎.team_gem[GConst.BLUE] == 0, "个人宝石已满时仍应移除 1 颗星石，实际 %d"
+		% 引擎.team_gem[GConst.BLUE])
+	检(玩家1.gem == 玩家1.energy_max, "个人宝石已满时不再增加，实际 %d" % 玩家1.gem)
+
+	# ---- 个人宝石已满且战绩区没有星石：不触发 ----
+	_重置战斗()
+	玩家1.set_gem(玩家1.energy_max)
+	引擎.current_id = 2
+	引擎.resolve_action(GConst.ActionType.Special, {
+		"action_id": GConst.SpecialAction.Extract, "args": [0, 0], "dst_ids": [],
+	})
+	引擎.run()
+	检(_询问次数(1, 10604) == 0, "宝石已满且战绩区没星石时不应触发询问")
 
 
 # ============================================================

@@ -422,17 +422,19 @@ func p_after_extract(ctx: Dictionary) -> int:
 		return SUCCESS
 	if 阶段 == 0:
 		var 可移除: Array[int] = _可移除的星石()
-		if 可移除.is_empty():
-			# 战绩区已空：不移除，但 +1 宝石照给（A44）
+		# 个人【宝石】已满、我方战绩区也没有可移除的星石：这一下什么都不会发生，不弹询问
+		var 个人已满: bool = player.gem >= maxi(player.energy_max - player.crystal, 0)
+		if 个人已满 and 可移除.is_empty():
 			ctx[KEY_10604] = STEP_DONE
-			_bu_xiang_ti_lian结算(0)
 			return SUCCESS
 		ctx[KEY_10604] = HOOK_STEP_ASK
 		if not engine.has_reply():
-			# 宝石 / 水晶两项固定下发，当前战绩区没有的那项置灰（不删项）。
-			# can_cancel=false（A44：被动强制，玩家只能选移除哪种星石，不能整个跳过）
+			# 三项固定下发（移除宝石 / 移除水晶 / 不移除星石）：战绩区没有的那种置灰；
+			# 战绩区一颗星石都没有时「不移除」可点并默认选中（星石不足就用这个选项）。
+			# can_cancel=false（A44：被动强制，只能选移除哪种星石，不能整个跳过）
 			询问(player.id, BU_XIANG_TI_LIAN, 0, 0, GConst.CardSource.Hand, _星石选项(可移除),
-				0, "", [], false, 0)
+				0, "", [], false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "",
+				2 if 可移除.is_empty() else -1)
 			return WAIT
 	if 阶段 != HOOK_STEP_ASK:
 		return SUCCESS
@@ -442,9 +444,9 @@ func p_after_extract(ctx: Dictionary) -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var 方式: int = int(args[0]) if not args.is_empty() else 0
-	# 询问不可取消：超时兜底（空 args）/ 硬发的取消 / 非法值都按「第一种可移除的星石」结算，
+	# 0＝不移除星石（战绩区没有星石时只有这一项可选）；其余非法值按「第一种可移除的星石」兜底，
 	# +1【宝石】照给（A44）；等回复期间战绩区可能被别处改动，所以这里按最新战绩区复核
-	if not _可移除的星石().has(方式):
+	if 方式 != 0 and not _可移除的星石().has(方式):
 		var 可移除: Array[int] = _可移除的星石()
 		方式 = int(可移除[0]) if not 可移除.is_empty() else 0
 	_bu_xiang_ti_lian结算(方式)
@@ -461,11 +463,19 @@ func _可移除的星石() -> Array[int]:
 	return out
 
 
-## 固定两项（宝石 / 水晶）都下发，当前没有的标 enabled=false 置灰
+## 固定三项都下发：移除宝石 / 移除水晶 / 不移除星石；当前战绩区没有的那种标 enabled=false 置灰。
+## 「不移除星石」只在战绩区一颗星石都没有时可选（星石不足就用它）。
+## 纯参数选项 —— 按钮文案直接给文本，标签也用同一句（ask_skill 走 label、arg_choices 走 text）
 func _星石选项(可移除: Array[int]) -> Array:
+	var 无星石: bool = 可移除.is_empty()
+	var 不移除文案: String = "不移除星石" if 无星石 else "不移除星石（战绩区还有星石，不能跳过）"
 	return [
-		{"value": 1, "label": "移除我方战绩区 1【宝石】", "enabled": 可移除.has(1)},
-		{"value": 2, "label": "移除我方战绩区 1【水晶】", "enabled": 可移除.has(2)},
+		{"value": 1, "text": "移除我方战绩区 1【宝石】", "label": "移除我方战绩区 1【宝石】",
+			"args": [1], "enabled": 可移除.has(1)},
+		{"value": 2, "text": "移除我方战绩区 1【水晶】", "label": "移除我方战绩区 1【水晶】",
+			"args": [2], "enabled": 可移除.has(2)},
+		{"value": 0, "text": 不移除文案, "label": 不移除文案,
+			"args": [0], "enabled": 无星石},
 	]
 
 
