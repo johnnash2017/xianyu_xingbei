@@ -259,6 +259,25 @@ func _检噬神者() -> void:
 	玩家.add_hand_cards([1005, 1006])
 	var 魔卡: GCard = Data.get_card(1005)
 	var 异卡: GCard = Data.get_card(1006)
+	var 噬灭可弃: Array = 角色.call("_噬灭可弃", [GConst.CardElement.Water, GConst.CardElement.Fire])
+	检(噬灭可弃.has(1005) and not 噬灭可弃.has(1006),
+		"【噬灭】只能弃水/火，异刃（雷）不应进入合法弃牌名单：%s" % str(噬灭可弃))
+	# 噬灭询问应直接进入选牌（旧的「先确定发动」已删）；白名单只含合法牌，且可取消
+	角色.set("_噬灭技能", 7903)
+	角色.set("_噬灭目标", 2)
+	角色.set("_步", 2)
+	角色.call("p_shi_shen_ask", {"player": 1})
+	var 问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
+	var 问命令表: Array = 问.get("commands", [])
+	var 问命令: Dictionary = 问命令表[0] if not 问命令表.is_empty() else {}
+	var 问参数: Array = 问命令.get("args", [])
+	var 问合法牌: Array = 问命令.get("card_ids", [])
+	检(not 问参数.is_empty() and int(问参数[0]) == 1,
+		"噬灭应直接进入选牌询问（need_card=1），不能先弹是否发动")
+	检(问合法牌.has(1005) and not 问合法牌.has(1006),
+		"噬灭询问白名单应只含水/火牌，实际 %s" % str(问合法牌))
+	检(bool(问命令.get("can_cancel", false)), "噬灭选牌应允许取消（取消=不发动）")
+	角色.set("_步", 0)
 	检(魔卡.可选元素 == [GConst.CardElement.Fire, GConst.CardElement.Water]
 		and 魔卡.element_enum() == GConst.CardElement.Fire,
 		"【魔刃】应配置 fire or water、默认火系：%s / %d" % [str(魔卡.可选元素), 魔卡.element_enum()])

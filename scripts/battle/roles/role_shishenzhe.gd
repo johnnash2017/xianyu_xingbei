@@ -34,8 +34,8 @@ const 同调伤害: int = 1
 ## 本次攻击用的【魔刃】/【异刃】是哪一张（0＝普通攻击）
 var _本次刃: int = 0          # 本次用的牌实例号（交给侵刻/渗蚀用）
 var _本次刃面: int = 0        # 本次用的牌面（MO_REN_CARD / YI_REN_CARD）
-## 攻击前的子流程
-var _t1_step: int = 0
+## 本次攻击的噬灭/殇灭是否已经问过（timeline1 若被重复调用也不能反复弹选牌/反复弃牌）
+var _噬灭已处理: bool = false
 ## 御刃 / 共振 / 诸神终焉 的子流程
 var _步: int = 0
 var _目标: int = -1
@@ -166,6 +166,7 @@ func p_attack_card(ctx: Dictionary) -> int:
 		return SUCCESS
 	_本次刃 = 实例
 	_本次刃面 = 面
+	_噬灭已处理 = false
 	return SUCCESS
 
 
@@ -195,6 +196,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 func p_after_attack(_ctx: Dictionary) -> int:
 	_本次刃 = 0
 	_本次刃面 = 0
+	_噬灭已处理 = false
 	return SUCCESS
 
 
@@ -247,33 +249,26 @@ func p_before_discard(ctx: Dictionary) -> int:
 # ============================================================
 # 7903 噬灭 / 7904 殇灭：攻击时①额外弃 1 张指定系别的牌
 # ============================================================
+## 本次合法可弃的手牌（噬灭：水/火；殇灭：风/雷）；询问白名单和服务端校验共用这一份
+func _噬灭可弃(系表: Array) -> Array[int]:
+	return hand_ids_where(func(_cid: int, c: GCard) -> bool: return 系表.has(c.element_enum()))
+
+
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if _本次刃 <= 0:
+	if _噬灭已处理 or _本次刃 <= 0:
 		return SUCCESS
 	var 是魔: bool = _本次刃面 == MO_REN_CARD
 	var 技能: int = SHI_MIE if 是魔 else SHANG_MIE
 	var 系表: Array = [GConst.CardElement.Water, GConst.CardElement.Fire] if 是魔 \
 		else [GConst.CardElement.Wind, GConst.CardElement.Thunder]
-	var 可弃: Array[int] = hand_ids_where(
-		func(_cid: int, c: GCard) -> bool: return 系表.has(c.element_enum()))
+	var 可弃: Array[int] = _噬灭可弃(系表)
 	if 可弃.is_empty():
 		return SUCCESS
-	if _t1_step == 0:
-		_t1_step = 1
-		if not engine.has_reply():
-			询问(player.id, 技能, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"是否发动【%s】：额外弃 1 张%s系牌【展示】？" % [
-					GConst.skill_name(技能),
-					"水/火" if 是魔 else "风/雷"])
-			return WAIT
-	if _t1_step != 1:
-		return SUCCESS
-	_t1_step = 0
-	if not take_skill_reply():
-		return SUCCESS
+	# 不再先问「是否发动」再问选牌：直接进选牌询问，选牌+确定即发动；取消即不发动。
+	# 一次攻击只问一次：timeline1 若被重复调用，不能反复弹选牌/反复弃牌。
+	_噬灭已处理 = true
 	_噬灭技能 = 技能
 	_噬灭目标 = int(ctx.get("dst", -1))
 	_步 = 2
@@ -292,13 +287,18 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 		2:  # 噬灭 / 殇灭：选弃哪张
 			var 系表: Array = [GConst.CardElement.Water, GConst.CardElement.Fire] \
 				if _噬灭技能 == SHI_MIE else [GConst.CardElement.Wind, GConst.CardElement.Thunder]
-			var 可弃: Array[int] = hand_ids_where(
-				func(_cid: int, c: GCard) -> bool: return 系表.has(c.element_enum()))
+			var 可弃: Array[int] = _噬灭可弃(系表)
 			if 可弃.is_empty():
 				_步 = 0
 				return SUCCESS
+			var 可弃牌面: Array[int] = []
+			for cid0: int in 可弃:
+				var 面0: int = GConst.牌号(cid0)
+				if not 可弃牌面.has(面0):
+					可弃牌面.append(面0)
 			if not engine.has_reply():
-				询问(player.id, _噬灭技能, 1, 0, GConst.CardSource.Hand, [], 1, "", [], false,
+				# 合法牌随询问下发：客户端只让点水/火（或风/雷）牌；可取消＝不发动
+				询问(player.id, _噬灭技能, 1, 0, GConst.CardSource.Hand, [], 1, "", 可弃牌面, true,
 					0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
 					"【%s】：弃 1 张%s系牌【展示】" % [
 						GConst.skill_name(_噬灭技能), "水/火" if _噬灭技能 == SHI_MIE else "风/雷"])
@@ -306,9 +306,13 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			var r2: Dictionary = take_skill_reply_full()
 			var cards: Array = r2.get("card_ids", [])
 			_步 = 0
-			if cards.is_empty() or not player.有手牌(int(cards[0])):
+			if cards.size() != 1:
 				return SUCCESS
 			var cid: int = int(cards[0])
+			var 选中牌: GCard = Data.get_card(cid)
+			# 服务端兜底：必须正好 1 张、还在手里、且是水/火（或风/雷），否则这次询问作废
+			if 选中牌 == null or not 系表.has(选中牌.element_enum()) or not player.有手牌(cid):
+				return SUCCESS
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 				"card_ids": [cid], "is_real": true,
