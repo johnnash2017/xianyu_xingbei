@@ -2864,21 +2864,28 @@ func _额外行动按钮文本(cause: int, allow_action: int = 0, element: int =
 			行动 = "行动"
 	# 系别优先用服务端随行动下发的 extra_element；没下发时按技能号查兜底表
 	var 系: int = element if element > 0 else int(GConst.额外行动系别.get(cause, 0))
-	var 系前缀: String = ("%s系" % GConst.element_to_chinese(系)) if 系 > 0 else ""
+	var 系词: String = ("%s系" % GConst.element_to_chinese(系)) if 系 > 0 else ""
 	var 冒号: int = 提示.find("：")
 	var 特性: String = 提示.substr(冒号 + 1).strip_edges() if 冒号 >= 0 else ""
+	# 统一格式「额外【X行动】：说明」——系别也写进「说明」里，不再做「额外风系【攻击行动】」这种前缀；
+	# 系别 + 限制同时有时按「，」接在一起（额外【攻击行动】：风系，只能使用风系攻击牌）。
+	# 声明了「按钮不接特性」的（如 3803 二重剑影）只留行动名。
+	if GConst.额外行动按钮不接特性.has(cause):
+		特性 = ""
+	var 说明: Array[String] = []
+	if not 系词.is_empty():
+		说明.append(系词)
+	if not 特性.is_empty():
+		说明.append(特性)
 	var 底: String = ""
 	if 攻 and 法:
 		# 既能攻击又能施法：两类都要写出来，不能只写「额外【行动】」
-		底 = "额外%s【攻击行动】或【法术行动】" % 系前缀
-	elif 系前缀.is_empty():
-		底 = "额外【%s】" % 行动
+		底 = "额外【攻击行动】或【法术行动】"
 	else:
-		底 = "额外%s【%s】" % [系前缀, 行动]
-	# 系别前缀已经把限制说清楚了的不再接特性（如 3803 二重剑影，与修罗连斩同一口径）
-	if 特性.is_empty() or GConst.额外行动按钮不接特性.has(cause):
+		底 = "额外【%s】" % 行动
+	if 说明.is_empty():
 		return 底
-	return 底 + "：" + 特性
+	return 底 + "：" + "，".join(说明)
 
 
 ## 攻击额外行动里本地选中的 cause：只在本次确实要出手时随行动一起提交（服务端据此换队消耗）

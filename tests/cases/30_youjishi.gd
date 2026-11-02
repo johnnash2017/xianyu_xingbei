@@ -896,8 +896,8 @@ func 跑() -> void:
 	get_tree().root.add_child(窗)
 	await 等帧(1)
 	检(str(窗.call("_额外行动按钮文本", GConst.技能_二重剑影, GConst.ActionType.Attack,
-		GConst.CardElement.Wind)) == "额外风系【攻击行动】",
-		"二重剑影按钮应只写「额外风系【攻击行动】」：%s" % str(窗.call("_额外行动按钮文本",
+		GConst.CardElement.Wind)) == "额外【攻击行动】：风系",
+		"二重剑影按钮应写「额外【攻击行动】：风系」：%s" % str(窗.call("_额外行动按钮文本",
 			GConst.技能_二重剑影, GConst.ActionType.Attack, GConst.CardElement.Wind)))
 	# 技能播报 / 战斗日志认服务端下发的 name：元素射击按系别显示不同名字
 	var 播报样例: Dictionary = {"skill_id": GConst.技能_元素射击SORA, "name": "元素射击*SORA*风系"}

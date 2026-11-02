@@ -454,7 +454,7 @@ func 跑() -> void:
 			"风怒追击那份行动的系别应标成风：%d" % int(数据.get("element", 0)))
 		检(bool(数据.get("direct", false)),
 			"自动生效的风怒追击应标 direct，引擎才能直接进入它的额外攻击阶段")
-		# 系别要一路下发到行动询问：客户端按钮才会写成「额外风系【攻击行动】」
+		# 系别要一路下发到行动询问：客户端按钮才会写成「额外【攻击行动】：风系」
 		引擎.push(BattleEngine.SAdditionalAction.new())
 		引擎.run()
 		var 风命令: Array = 引擎.action_commands(1, GConst.ActionType.Attack, true, true, false, 103)
@@ -842,7 +842,7 @@ func 跑() -> void:
 		检(火白.has(火攻.id) and not 火白.has(非火攻.id),
 			"修罗连斩那份行动应只允许火系攻击牌：%s" % str(火白))
 		检(int(火数据.get("element", 0)) == GConst.CardElement.Fire,
-			"修罗连斩的额外行动应下发火系，界面才能显示额外火系【攻击行动】")
+			"修罗连斩的额外行动应下发火系，界面才能显示「额外【攻击行动】：火系」")
 		检(bool(火数据.get("direct", false)),
 			"自动生效的修罗连斩应标 direct，引擎才能直接进入它的额外攻击阶段")
 		检(引擎.校验额外行动限制(玩家1, 火数据, GConst.ActionType.Attack,
