@@ -403,6 +403,10 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			return SUCCESS
 		4:  # 共振：选 2~3 张同系牌弃之
 			if not engine.has_reply():
+				# 弃牌代价之前先记下「谁已经在手」，四选项的置灰按这一刻算
+				if not _共振在场已记:
+					_共振在场 = _在场刃()
+					_共振在场已记 = true
 				var 同系: Array[int] = _同系手牌(_共振系)
 				询问(player.id, GONG_ZHEN, 2, 0, GConst.CardSource.Hand, [], 3, "same", 同系, true,
 					0, player.id, [], 3, {}, 0, 0, false, [], true, -1, 0,
@@ -416,6 +420,8 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 					弃.append(int(c4))
 			_步 = 0
 			if 弃.size() < 2:
+				_共振在场.clear()
+				_共振在场已记 = false
 				return SUCCESS
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -440,9 +446,7 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			var 选6: int = int(args6[0]) if not args6.is_empty() else 0
 			var ds6: Array = r6.get("dst_ids", [])
 			_步 = 0
-			if 选6 == 1:
-				return SUCCESS
-			var 场上: Array[int] = _在场刃()
+			var 场上: Array[int] = _共振在场 if _共振在场已记 else _在场刃()
 			var 加: Array[int] = []
 			if 选6 == 2 and not 场上.has(MO_REN_CARD):
 				加 = [MO_REN_CARD]
@@ -450,7 +454,9 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 				加 = [YI_REN_CARD]
 			elif 选6 == 4 and not 场上.has(MO_REN_CARD) and not 场上.has(YI_REN_CARD):
 				加 = [MO_REN_CARD, YI_REN_CARD]
-			if 加.is_empty():
+			_共振在场.clear()
+			_共振在场已记 = false
+			if 选6 == 1 or 加.is_empty():
 				return SUCCESS
 			for 卡6: int in 加:
 				player.add_hand_cards([卡6])
@@ -466,6 +472,10 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 
 var _殇灭池: Array[int] = []
 var _共振系: int = 0
+## 共振触发时（弃牌代价之前）的在场刃：四选项按这一刻判断是否已在手，
+## 避免玩家把刃当弃牌代价弃掉后，选项又被放开、把同一张牌加回手牌。
+var _共振在场: Array[int] = []
+var _共振在场已记: bool = false
 
 
 # ============================================================
@@ -490,6 +500,8 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		return SUCCESS
 	harm["共振已处理"] = true
 	_步 = 4
+	_共振在场.clear()
+	_共振在场已记 = false
 	_共振系 = _同系两张的系别()
 	engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 	# 顺带付代价提示：在选完牌后再扣能量（避免选了又不够）
@@ -542,7 +554,7 @@ func _共振选项() -> Array:
 	var 异系: String = _刃系名(YI_REN_CARD)
 	var 魔元: Array = 魔卡.可选元素.duplicate() if 魔卡 != null else []
 	var 异元: Array = 异卡.可选元素.duplicate() if 异卡 != null else []
-	var 场上: Array[int] = _在场刃()
+	var 场上: Array[int] = _共振在场 if _共振在场已记 else _在场刃()
 	var 可魔: bool = not 场上.has(MO_REN_CARD)
 	var 可异: bool = not 场上.has(YI_REN_CARD)
 	var 全体: Array[int] = _全体角色()

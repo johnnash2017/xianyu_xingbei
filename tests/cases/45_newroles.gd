@@ -291,6 +291,9 @@ func _检噬神者() -> void:
 		"共振询问应下发每项需目标数 [0,1,1,1]，实际 %s" % str(共振命令.get("option_need_targets", [])))
 	检((共振命令.get("option_targets", []) as Array).size() == 4,
 		"共振询问应下发 4 项目标白名单，实际 %s" % str(共振命令.get("option_targets", [])))
+	检(共振命令.get("option_enabled", []) == [true, false, false, false],
+		"魔刃/异刃已在手牌时，共振询问应下发 [true,false,false,false] 的可用状态，实际 %s" %
+		str(共振命令.get("option_enabled", [])))
 	var 共振选项: Array = 角色.call("_共振选项")
 	检(共振选项.size() == 4, "共振应直接给出 4 个选项，实际 %d" % 共振选项.size())
 	if 共振选项.size() == 4:
@@ -306,6 +309,9 @@ func _检噬神者() -> void:
 			and 魔项.get("技能组", []) == [7909, 7911]
 			and int(魔项.get("need_target", 0)) == 1,
 			"共振第 2 项应与御刃魔刃选项一致并带目标")
+		检(not bool(魔项.get("enabled", true)) and not bool(异项.get("enabled", true))
+			and not bool(双项.get("enabled", true)),
+			"魔刃/异刃已在手牌时，包含它们的选项应置灰")
 		检(str(异项.get("label", "")) == "【异刃】雷系/风系加入手牌"
 			and 异项.get("elements", []) == [GConst.CardElement.Thunder, GConst.CardElement.Wind]
 			and 异项.get("技能组", []) == [7910, 7911]
@@ -461,6 +467,24 @@ func _检切换后复检() -> void:
 		"状态图标预制体应包含 Text / Name 两个文字节点：%s" % 状态预制路径)
 	if 状态实例 != null:
 		状态实例.queue_free()
+	# 客户端收到选项 enabled=false 后必须把对应二级选项置灰
+	var 测试命令: Dictionary = {
+		"respond_id": 7907, "src_id": 1, "is_skill": true,
+		"args": [0, 0, 0, 4, 1, 2, 3, 4],
+		"notes": ["不加入手牌", "【魔刃】火系/水系加入手牌",
+			"【异刃】雷系/风系加入手牌", "【魔刃】火系/水系和【异刃】雷系/风系加入手牌"],
+		"option_enabled": [true, false, false, false],
+		"option_need_targets": [0, 1, 1, 1],
+		"option_targets": [{"ids": []}, {"ids": [1, 2]}, {"ids": [1, 2]}, {"ids": [1, 2]}],
+	}
+	窗.set("_pending", 测试命令)
+	窗.set("_pending_type", GConst.Msg.Respond)
+	窗.call("_进入技能询问")
+	var 测试二级: Array = 窗.get("_二级选项")
+	检(测试二级.size() == 4 and not bool((测试二级[1] as Dictionary).get("可用", true))
+		and not bool((测试二级[2] as Dictionary).get("可用", true))
+		and not bool((测试二级[3] as Dictionary).get("可用", true)),
+		"共振选项 enabled=false 应传成二级按钮的不可用状态")
 	Data.hand_cards = 原手牌
 	Data.hand_iids = 原Iids
 	窗.queue_free()
