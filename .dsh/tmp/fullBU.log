@@ -1,0 +1,109 @@
+Godot Engine v4.7.2.stable.steam.ed1daf0bf - https://godotengine.org
+
+[Cfg] 槽位=4（端口认领）昵称=4091035483 服务端口=11111 本地模式=false 局域网模式=false
+Setting breakpad minidump AppID = 480
+SteamInternal_SetMinidumpSteamID:  Caching Steam ID:  76561198336637703 [API loaded no]
+[SteamNet] Steam 已连接，队友舞台很大（SteamID = 76561198336637703，版本 = 1.0.53）
+[通过] 武者残心满上限不询问
+[通过] 应战询问字段过协议
+[通过] 盖牌99不显示空槽
+[通过] 原初之弓Trick技能对齐
+[通过] 指示物99显示无限
+[通过] 月女苍白无应战
+[通过] 月女苍白两步选项
+[通过] 月女头像指示器
+[通过] 月女美杜莎引擎
+[通过] 月女新月庇护引擎
+[通过] 日志职业名整体染色
+[通过] 角色标识物一览
+[通过] 场景资源引用
+[通过] 魔弹传递分轮且不回头
+[通过] 行动播报文本与显示
+[通过] 偷天换日选项置灰
+[通过] 固定选项完整下发
+[自检] 卡表 155 张、卡面文件 29 个、角色 71 个
+[失败] 数据与素材：89 号冒险家Trick 缺回合语音
+[通过] 冒险家新版技能
+[通过] 圣弓新版技能
+[通过] 房间角色版本
+[通过] 猎巫人
+[通过] 节日魔导
+[通过] 魔弹融合系别可配
+[额外行动排查] 攻击被拒(额外行动限制)：来源=9001 牌=46 目标=3 规格={ "allow_action": 1, "cause": 9001, "direct": false, "skip_notice": false, "order": 2, "uid": 2, "cards": [45], "targets": [3], "element": 0, "card_fate": 0, "switchable": true, "in_end_response": false }
+[额外行动排查] 攻击被拒(额外行动限制)：来源=9001 牌=45 目标=4 规格={ "allow_action": 1, "cause": 9001, "direct": false, "skip_notice": false, "order": 3, "uid": 3, "cards": [45], "targets": [3], "element": 0, "card_fate": 0, "switchable": true, "in_end_response": false }
+SCRIPT ERROR: Invalid access to property or key 'num' on a base object of type 'Nil'.
+   at: 行动结束确认代价 (res://scripts/battle/roles/role_jiandi.gd:316)
+   GDScript backtrace (most recent call first):
+       [0] 行动结束确认代价 (res://scripts/battle/roles/role_jiandi.gd:316)
+       [1] resolve_queued_extra_action (res://scripts/battle/battle_role.gd:263)
+       [2] _分派行动结束选项 (res://scripts/battle/battle_engine.gd:292)
+       [3] _分派 (res://scripts/battle/battle_engine.gd:3642)
+       [4] _跑 (res://scripts/battle/battle_engine.gd:3742)
+       [5] handle (res://scripts/battle/battle_engine.gd:3663)
+       [6] run (res://scripts/battle/battle_engine.gd:685)
+       [7] on_message (res://scripts/battle/battle_engine.gd:1177)
+       [8] 跑 (res://tests/cases/26_actionCount.gd:915)
+       [9] 等帧 (res://tests/selfCheckCase.gd:18)
+SCRIPT ERROR: Invalid assignment of property or key 'num' with value of type 'int' on a base object of type 'Nil'.
+   at: 跑 (res://tests/cases/26_actionCount.gd:1012)
+   GDScript backtrace (most recent call first):
+       [0] 跑 (res://tests/cases/26_actionCount.gd:1012)
+       [1] 等帧 (res://tests/selfCheckCase.gd:18)
+[通过] 额外行动与行动计数
+[通过] 指示物与盖牌
+[通过] 基础效果目标与触发钩子
+[通过] 跨玩家操作
+[通过] 牌库顶星杯战绩区与士气
+[通过] 额外回合与角色替换
+[通过] 伤害转移与弃牌拦截
+[通过] 界面与版面
+[失败] 游击士：【元素射击】的技能播报应按子弹系别显示名字，实际「元素射击*索拉*火系」
+[失败] 游击士：水系【子弹】的播报名应为「元素射击*SORA*水系」，实际「元素射击*索拉*水系」
+[失败] 游击士：光系子弹视为水系后，播报名应按视为的系别显示，实际「元素射击*索拉*水系」
+[通过] 战斗法师
+[额外行动排查] 攻击被拒(额外行动限制)：来源=4501 牌=39 目标=2 规格={ "allow_action": 1, "cause": 4501, "direct": true, "skip_notice": true, "order": 1, "uid": 1, "cards": [], "targets": [], "element": 0, "card_fate": 2, "switchable": true, "in_end_response": false, "已付费": true }
+[通过] 剑之魔女
+[通过] 灵熙之潮
+[通过] 暴食少女
+[通过] EX魔弓
+[通过] 矜贵之女
+[通过] 贪婪少女
+[通过] 见习制片
+[通过] 萝莉番长
+[自检] 会用到的音频 26 个
+[失败] 音频：缺角色语音：["32", "33", "34", "35", "36"]
+[通过] 怠惰少女
+[通过] 忌妒少女
+[通过] 剑之子
+[失败] 客户端角色特性收口（13 角色）：技能指示器缺少 10601
+[失败] 客户端角色特性收口（13 角色）：只选 1 张同系牌时不应点亮魔弹落点（服务端会按放弃处理）
+[失败] 客户端角色特性收口（13 角色）：取消到只剩 1 张同系牌后落点应重新置灰
+[通过] 精灵密仪取牌库顶
+[通过] 卡牌实例号
+[自检] 战斗交互：行动询问 / 选牌 / 点目标即出手 / 取消 / 放弃 / 应战（出手与放弃）全部走通
+[通过] 战斗交互
+[通过] 指示器切用法复检
+[通过] 治疗抵挡默认选项
+[通过] 选角分配
+[通过] 逆反居合斩强制弃牌
+[自检] 阴阳转换引擎：3306 一次应答直接应战，不再问第二次
+[通过] 阴阳转换引擎集成
+[自检] 式神咒束引擎：3301 一次应答直接应战，不再问第二次
+[通过] 式神咒束引擎集成
+[自检] 式神咒束：与阴阳转换共用攒应战，选效果 → 选牌选目标 → 一次提交
+[通过] 式神咒束单步应战
+[自检] 阴阳转换：选效果 → 同一步选牌选目标 → 确定一次性提交
+[通过] 阴阳转换单步应战
+[通过] 神箭手独有技helper
+[通过] F5狂战士独有技
+[通过] F5-祈祷师赐福
+[通过] 元素独有技helper
+[通过] F5-D 封印师独有技 helper
+[通过] 剑圣独有技借用
+[自检] 用例 64 个：通过 60，失败 4
+WARNING: 1 RID of type "CanvasItem" was leaked.
+   at: _free_rids (servers/rendering/renderer_canvas_cull.cpp:2733)
+WARNING: 133 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 11 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)
