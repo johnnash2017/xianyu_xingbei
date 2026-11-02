@@ -310,6 +310,8 @@ func _日志标签(kind: int) -> String:
 		# 手牌数量 / 上限变化一律并入「卡牌」类（服务端仍用 GossipType.Hand 区分数据，只是日志标签统一）
 		GConst.GossipType.Hand:
 			return "卡牌"
+		GConst.GossipType.Morale:
+			return "士气"
 		GConst.GossipType.Warn:
 			return "提示"
 		_:
@@ -1805,9 +1807,7 @@ func _on_gossip(txt: String) -> void:
 
 ## 系统公告（超时 / 掉线 / 重连 / 终局等）：只进日志，不进聊天区；按 kind 取 [类别] 标签
 func _on_notice(txt: String, kind: int = 0) -> void:
-	# 士气转移那句归到「士气」类（和客户端现算的「士气 x → y」同一类），不写成[系统]
-	var 标签: String = "士气" if txt.contains("点士气转移给") else _日志标签(kind)
-	_日志追加(txt, 标签)
+	_日志追加(txt, _日志标签(kind))
 	_判胜负(txt)
 
 

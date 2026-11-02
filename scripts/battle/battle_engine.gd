@@ -1747,7 +1747,7 @@ func 转移士气(从颜色: int, 到颜色: int, 点: int = 1) -> int:
 	var 从名: String = _阵营名(从颜色)
 	var 到名: String = _阵营名(到颜色)
 	broadcast(GConst.Msg.Gossip, {
-		"type": GConst.GossipType.Notice,
+		"type": GConst.GossipType.Morale,
 		"txt": "%s 将 %d 点士气转移给 %s" % [从名, 扣, 到名],
 		"id": -1,
 	})
