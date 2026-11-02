@@ -197,6 +197,11 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _shou_step < 0:
 		return SUCCESS
+	# 放瓶后返回 URGENT，盖牌变动钩子（渗蚀等）先结算；回栈时这里收尾
+	if _shou_step == 3:
+		_shou_step = 0
+		_shou_target = -1
+		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null or dst.hand_cards.size() >= 4 or dst.hand_cards.is_empty() or not _can_bottle():
 		_shou_step = 0
@@ -229,12 +234,17 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
-		_shou_step = 0
 		var 目标: BattlePlayer = engine.p(_shou_target)
 		var cid: int = _回复里的一张牌(目标, r2)
+		var 放了: bool = false
 		if cid >= 0:
-			_take_target_card_to_bottle(_shou_target, cid, SHOU_MO_CI)
+			放了 = _take_target_card_to_bottle(_shou_target, cid, SHOU_MO_CI)
 		_shou_target = -1
+		if 放了:
+			# 瓶子刚进盖牌区：先让 p_cover_change（渗蚀/相关响应）结算，再回栈收尾
+			_shou_step = 3
+			return URGENT
+		_shou_step = 0
 	return SUCCESS
 
 
@@ -243,6 +253,11 @@ func p_timeline_1(ctx: Dictionary) -> int:
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", true)):
+		return SUCCESS
+	# 放瓶后返回 URGENT，盖牌变动钩子（渗蚀等）先结算；回栈时这里收尾
+	if _boshi_step == 3:
+		_boshi_step = 0
+		_boshi_target = -1
 		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null or dst.hand_cards.is_empty() or not _can_bottle():
@@ -273,10 +288,15 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		var r2: Dictionary = take_skill_reply_full()
 		var 目标: BattlePlayer = engine.p(_boshi_target)
 		var cid: int = _回复里的一张牌(目标, r2)
+		var 放了: bool = false
 		if cid >= 0:
-			_take_target_card_to_bottle(_boshi_target, cid, FA_SHU_BO_LI)
-		_boshi_step = 0
+			放了 = _take_target_card_to_bottle(_boshi_target, cid, FA_SHU_BO_LI)
 		_boshi_target = -1
+		if 放了:
+			# 瓶子刚进盖牌区：先让 p_cover_change（渗蚀/相关响应）结算，再回栈收尾
+			_boshi_step = 3
+			return URGENT
+		_boshi_step = 0
 	return SUCCESS
 
 
