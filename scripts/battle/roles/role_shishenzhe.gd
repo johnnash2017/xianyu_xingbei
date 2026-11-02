@@ -79,10 +79,22 @@ func available_skills() -> Array:
 			"arg_choices": 选项,
 			"enabled": not 敌.is_empty(),
 		})
+	# 御刃：和魔弓【魔眼】一样，点技能直接进二级栏选「魔刃 / 异刃」，
+	# 可以点「返回」退出，点「确定」才把选中的牌加进手牌（不再走服务端二次询问）。
+	var 御刃选项: Array = []
+	for 选: int in _御刃可得():
+		var 是魔: bool = 选 == 1
+		御刃选项.append({
+			"text": "魔刃" if 是魔 else "异刃",
+			"args": [选],
+			# 客户端鼠标指向这个选项时显示对应的两条被动：魔刃/异刃 + 共用的渗蚀
+			"技能组": [7909, 7911] if 是魔 else [7910, 7911],
+		})
 	技能.append({
 		"type": GConst.ActionType.SpecialSkill,
 		"id": YU_REN,
-		"enabled": _御刃可选(),
+		"arg_choices": 御刃选项,
+		"enabled": not 御刃选项.is_empty(),
 	})
 	技能.append({
 		"type": GConst.ActionType.MagicSkill,
@@ -173,15 +185,25 @@ func v_special_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	if int(action.get("action_id", 0)) != YU_REN:
 		return GConst.GE_INVALID_ACTION
-	if not _御刃可选():
+	if not _御刃可得().has(_取选(action)):
 		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 
 
+## 御刃和魔眼一样是「点技能即进二级栏、确认才提交」：选项随 available_skills 下发，
+## args[0] = 1 魔刃 / 2 异刃；这里只按提交的选择加牌，不再另开一次询问。
 func p_special_skill(action: Dictionary) -> int:
-	if int(action.get("action_id", 0)) == YU_REN:
-		return _p_御刃()
-	return EMPTY_HANDLE
+	if int(action.get("action_id", 0)) != YU_REN:
+		return EMPTY_HANDLE
+	var 选: int = _取选(action)
+	if not _御刃可得().has(选):
+		return GConst.GE_INVALID_ACTION
+	var 卡: int = MO_REN_CARD if 选 == 1 else YI_REN_CARD
+	player.add_hand_cards([卡])
+	player.boot_skill_used = true
+	notice_skill(YU_REN, [player.id])
+	engine._broadcast_game()
+	return SUCCESS
 
 
 func v_magic_skill(action: Dictionary) -> int:
@@ -204,32 +226,17 @@ func p_magic_skill(action: Dictionary) -> int:
 # 7901 御刃：当【魔刃】或【异刃】未在场时，把它们加入你手牌【强制】
 # ============================================================
 func _御刃可选() -> bool:
-	return not _在场刃().has(MO_REN_CARD) or not _在场刃().has(YI_REN_CARD)
+	return not _御刃可得().is_empty()
 
 
-func _p_御刃() -> int:
-	var 可得: Array = []
+## 御刃本次能拿的牌：1 =【魔刃】、2 =【异刃】，只列「不在任何玩家手里」的。
+func _御刃可得() -> Array[int]:
+	var 可得: Array[int] = []
 	if not _在场刃().has(MO_REN_CARD):
 		可得.append(1)
 	if not _在场刃().has(YI_REN_CARD):
 		可得.append(2)
-	if 可得.is_empty():
-		return GConst.GE_INVALID_ACTION
-	var 选项: Array = []
-	for 选: int in 可得:
-		选项.append({
-			"value": 选,
-			"label": "魔刃" if 选 == 1 else "异刃",
-			"card_id": MO_REN_CARD if 选 == 1 else YI_REN_CARD,
-		})
-	_步 = 1
-	_可得刃 = 可得
-	_御刃选项 = 选项
-	engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
-	return URGENT
-
-var _可得刃: Array = []
-var _御刃选项: Array = []
+	return 可得
 
 
 # ============================================================
@@ -344,25 +351,6 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	match _步:
-		1:  # 御刃：选要加入手牌的那一张
-			if not engine.has_reply():
-				询问(player.id, YU_REN, 0, 0, GConst.CardSource.Hand, _御刃选项, 0, "", [], true,
-					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"【御刃】：选择把【魔刃】或【异刃】加入手牌")
-				return WAIT
-			var r: Dictionary = take_skill_reply_full()
-			var args: Array = r.get("args", [])
-			var 选: int = int(args[0]) if not args.is_empty() else 0
-			_步 = 0
-			if not _可得刃.has(选):
-				return SUCCESS
-			var 卡: int = MO_REN_CARD if 选 == 1 else YI_REN_CARD
-			player.add_hand_cards([卡])
-			# 启动技能每回合只能发动一个；成功加了牌才算发动过
-			player.boot_skill_used = true
-			notice_skill(YU_REN, [player.id])
-			engine._broadcast_game()
-			return SUCCESS
 		2:  # 噬灭 / 殇灭：选弃哪张
 			var 系表: Array = [GConst.CardElement.Water, GConst.CardElement.Fire] \
 				if _噬灭技能 == SHI_MIE else [GConst.CardElement.Wind, GConst.CardElement.Thunder]

@@ -216,19 +216,31 @@ func _检异教徒() -> void:
 
 ## 79 噬神者：御刃给出两条选项；拿牌后点【魔刃】/【异刃】先选系别再攻击
 func _检噬神者() -> void:
-	# 先单独验证【御刃】：启动技能 + 询问选项是带 value/label 的字典（旧实现传的是裸数字）
+	# 先单独验证【御刃】：启动技能 + 选项走 available_skills 的 arg_choices
+	# （和魔眼一样：点开即进二级栏、可返回、按确定才提交；不再走服务端二次询问）
 	var 御刃角色: BattleRole = _建引擎(79)
+	var 御刃玩家: BattlePlayer = 引擎.p(1)
 	var 御刃: Dictionary = _找技能(御刃角色.available_skills(), 7901)
 	检(not 御刃.is_empty() and int(御刃.get("type", 0)) == GConst.ActionType.SpecialSkill,
 		"【御刃】应是启动技能（SpecialSkill）")
-	检(int(御刃角色.v_special_skill({"src_id": 1, "action_id": 7901})) == GConst.GE_SUCCESS,
-		"两张刃都不在场时【御刃】应通过校验")
-	检(int(御刃角色.p_special_skill({"action_id": 7901})) == BattleRole.URGENT,
-		"【御刃】应进入「选魔刃/异刃」询问")
-	var 刃选项: Array = 御刃角色._御刃选项
-	检(刃选项.size() == 2 and 刃选项[0] is Dictionary and 刃选项[0].has("value")
-			and 刃选项[0].has("label") and 刃选项[1] is Dictionary and 刃选项[1].has("value"),
-		"【御刃】的询问选项应是两条带 value/label 的选项：%s" % str(刃选项))
+	var 刃选项: Array = 御刃.get("arg_choices", [])
+	检(刃选项.size() == 2, "两张刃都不在场时【御刃】应给两条选项：%d" % 刃选项.size())
+	检(not 刃选项.is_empty() and (刃选项[0] as Dictionary).has("text")
+			and (刃选项[0] as Dictionary).get("args", []) == [1],
+		"【御刃】的选项应是客户端格式（text / args）：%s" % str(刃选项))
+	# 选项悬停要带对应被动：魔刃 → 魔刃 + 渗蚀；异刃 → 异刃 + 渗蚀
+	检((刃选项[0] as Dictionary).get("技能组", []) == [7909, 7911],
+		"【御刃·魔刃】选项应带【魔刃】+【渗蚀】的说明：%s" % str(刃选项[0]))
+	检((刃选项[1] as Dictionary).get("技能组", []) == [7910, 7911],
+		"【御刃·异刃】选项应带【异刃】+【渗蚀】的说明：%s" % str(刃选项[1]))
+	检(int(御刃角色.v_special_skill({"src_id": 1, "action_id": 7901, "args": [1]}))
+		== GConst.GE_SUCCESS, "两张刃都不在场时【御刃·魔刃】应通过校验")
+	检(int(御刃角色.v_special_skill({"src_id": 1, "action_id": 7901, "args": [3]}))
+		!= GConst.GE_SUCCESS, "【御刃】没有第 3 个选项，应被拒")
+	检(int(御刃角色.p_special_skill({"src_id": 1, "action_id": 7901, "args": [1]}))
+		== BattleRole.SUCCESS, "【御刃·魔刃】确认后应直接结算")
+	检(御刃玩家.有手牌(1005) and 御刃玩家.boot_skill_used,
+		"【御刃】确认后应把魔刃加入手牌并置启动已用")
 	# 再验证拿牌后的攻击入口：点【魔刃】/【异刃】先选系别
 	var 角色: BattleRole = _建引擎(79)
 	var 玩家: BattlePlayer = 引擎.p(1)
