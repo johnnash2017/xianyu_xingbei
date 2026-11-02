@@ -294,6 +294,13 @@ func _检噬神者() -> void:
 	检(魔卡.可选元素 == [GConst.CardElement.Fire, GConst.CardElement.Water]
 		and 魔卡.element_enum() == GConst.CardElement.Fire,
 		"【魔刃】应配置 fire or water、默认火系：%s / %d" % [str(魔卡.可选元素), 魔卡.element_enum()])
+	# battle/ 下有同名状态图标，卡面必须仍然只从 card/ 取
+	检(魔卡.sprite_path().begins_with("res://assets/textures/card/"),
+		"【魔刃】卡面应取 card/：%s" % 魔卡.sprite_path())
+	检(异卡.sprite_path().begins_with("res://assets/textures/card/"),
+		"【异刃】卡面应取 card/：%s" % 异卡.sprite_path())
+	检(魔卡.sprite_path() != AssetIndex.image_in("res://assets/textures/battle", "moRen"),
+		"【魔刃】卡面不应取到 battle/ 下的同名状态图标")
 	检(异卡.可选元素 == [GConst.CardElement.Thunder, GConst.CardElement.Wind]
 		and 异卡.element_enum() == GConst.CardElement.Thunder,
 		"【异刃】应配置 thunder or wind、默认雷系：%s / %d" % [str(异卡.可选元素), 异卡.element_enum()])

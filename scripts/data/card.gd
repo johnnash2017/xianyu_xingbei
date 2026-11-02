@@ -124,10 +124,15 @@ static func 可阴阳应战(card: GCard, atk: GCard) -> bool:
 	return card.fate_pattern_enum() == atk.fate_pattern_enum()
 
 
-## 卡面贴图资源路径：按资源名交给 AssetIndex 解析（资源名如 shengDun，对应 assets/textures/card/*.png）
+## 卡面贴图资源路径：卡面只认 assets/textures/card/，不能走全局按文件名索引 ——
+## battle/ 下也有同名的魔刃/异刃状态图标，全局索引会先到先得取错图。
 ## 对应 C# 的 AssetBundleManager.LoadAsset<Sprite>("card", card.AssetPath)
 func sprite_path() -> String:
-	return AssetIndex.image(source)
+	var 路径: String = AssetIndex.image_in("res://assets/textures/card", source)
+	if 路径.is_empty():
+		# 兼容极少数不在 card 根目录、但确实按资源名索引到的旧卡面
+		路径 = AssetIndex.image(source)
+	return 路径
 
 
 ## 是否带有某个技能（按技能号判断；号来自卡表「技能1/技能2」的引用）

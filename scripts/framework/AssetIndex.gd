@@ -4,6 +4,9 @@
 extends Node
 
 var _images: Dictionary = {}     # 小写基名 -> res:// 路径
+## 小写基名 -> res:// 路径，但按目录分开存：卡面必须从 textures/card/ 取，
+## 不能被 textures/battle/ 下的同名状态图标抢走。
+var _images_dir: Dictionary = {}
 var _audio: Dictionary = {}
 var _ready_done := false
 
@@ -12,6 +15,7 @@ func _ready() -> void:
 
 func index_all() -> void:
 	_images.clear()
+	_images_dir.clear()
 	_audio.clear()
 	_scan("res://assets")
 	_ready_done = true
@@ -60,6 +64,13 @@ func _收文件(dir_path: String, entry: String) -> void:
 	if ext in ["png", "jpg", "jpeg", "webp"]:
 		if not _images.has(base):
 			_images[base] = dir_path.path_join(文件名)
+		# 同名文件可能分散在不同目录（card/moRen 与 battle/moRen）：
+		# 再按目录存一份，卡面等需要限定目录的调用走 image_in，不会被别的目录抢走
+		if not _images_dir.has(dir_path):
+			_images_dir[dir_path] = {}
+		var 目录表: Dictionary = _images_dir[dir_path]
+		if not 目录表.has(base):
+			目录表[base] = dir_path.path_join(文件名)
 	elif ext in ["ogg", "wav", "mp3"]:
 		if not _audio.has(base):
 			_audio[base] = dir_path.path_join(文件名)
@@ -70,6 +81,16 @@ func image(asset_name: String) -> String:
 		return ""
 	var key := asset_name.get_file().get_basename().to_lower()
 	return _images.get(key, "")
+
+## 限定目录取图：同名图在别的目录也有一份时，必须用它（如卡面只认 textures/card/）。
+## dir_path 用 res:// 路径；asset_name 只需要文件名（带扩展名或不带都可以）。
+func image_in(dir_path: String, asset_name: String) -> String:
+	if asset_name == "":
+		return ""
+	var 目录: String = dir_path.trim_suffix("/")
+	var key: String = asset_name.get_file().get_basename().to_lower()
+	var 表: Dictionary = _images_dir.get(目录, {})
+	return str(表.get(key, ""))
 
 ## 对应 LoadAsset<AudioClip>(bundle, name)
 func audio(clip_name: String) -> String:

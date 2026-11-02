@@ -827,6 +827,8 @@ Table/Design/设计表.xlsx
 
 索引顺序有讲究：**先收本层文件、再进子目录，且两层都按名字排序**。否则编辑器里和导出包里可能取到同名但不同路径的两张图（比如正式卡面和备用图）。
 
+**卡面只认 `assets/textures/card/`**：`GCard.sprite_path()` 走 `AssetIndex.image_in("res://assets/textures/card", 资源名)`，不要用全局 `AssetIndex.image()`。`assets/textures/battle/` 下也有同名的魔刃/异刃状态图标，全局索引会先到先得取错图。
+
 ### 10.3 音频
 
 [audio.gd](scripts/client/audio.gd) 负责：

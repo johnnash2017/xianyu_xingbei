@@ -186,7 +186,8 @@ func 跑() -> void:
 			if not 文件.ends_with(".png"):
 				continue
 			var 应取: String = "res://assets/textures/card/" + 文件
-			var 实际: String = AssetIndex.image(文件.get_basename())
+			# 卡面按目录取：battle/ 下同名状态图标不能抢走 card/ 的正式卡面
+			var 实际: String = AssetIndex.image_in("res://assets/textures/card", 文件.get_basename())
 			if 实际 != 应取:
 				卡面取错.append("%s → %s" % [文件, 实际])
 	检(卡面取错.is_empty(), "卡面取到了子目录里的备用图：%s" % str(卡面取错))
