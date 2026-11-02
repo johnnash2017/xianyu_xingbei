@@ -330,6 +330,13 @@ func _测试_10601() -> void:
 	# 指定目标之前就应该先随机丢掉 1 张手牌（技能原文的顺序）
 	检(玩家1.hand_cards.size() == 2,
 		"队友指定目标之前就应先随机丢掉 1 张手牌，实际 %d" % 玩家1.hand_cards.size())
+	# 技能下发时把「右手边队友」作为唯一合法目标（客户端据此只点亮他并自动选中）
+	var 别烦目标表: Array = []
+	for 技能项: Dictionary in 角色.available_skills():
+		if int(技能项.get("id", 0)) == 10601:
+			别烦目标表 = 技能项.get("targets", [])
+	检(别烦目标表 == [角色.nearest_teammate_id(1, true)],
+		"10601 的合法目标应只有右手边队友（%s）" % str(别烦目标表))
 	# 队友的询问文案直接用整段技能说明
 	检(str(询问队友.get("ask_text", "")).contains("指定目标对手摸1张牌【强制】")
 		and str(询问队友.get("ask_text", "")).contains("你+1【治疗】"),

@@ -134,6 +134,9 @@ func available_skills() -> Array:
 		"id": BIE_FAN_WO,
 		"need_card": 0,
 		"need_target": 0,
+		# 「目标」这一手由右手边队友代选，本人不带。这里把那名队友作为唯一合法目标下发，
+		# 客户端据此只把他点亮并自动选中（告诉玩家是谁替她发动）；服务端结算时忽略这个 dst
+		"targets": [nearest_teammate_id(player.id, true)] if 有队友 else [],
 		# 没有右手边队友 / 没有对手时照常下发、只置灰（界面看得见技能存在）
 		"enabled": 有队友 and not enemy_ids().is_empty(),
 	}, {

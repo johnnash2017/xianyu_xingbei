@@ -1345,7 +1345,7 @@ func 跑() -> void:
 	窗.set("_skill_ask_need_card", 0)
 	# 真实点击链路：点技能后应自动选中（锁定）右手边队友
 	窗.set("_sel_players", [] as Array[int])
-	窗.call("_选择技能", 10601, GConst.ActionType.MagicSkill, 0, 0, [], [], 0, 0, 0,
+	窗.call("_选择技能", 10601, GConst.ActionType.MagicSkill, 0, 0, [队友号], [], 0, 0, 0,
 		GConst.CardSource.Hand, "", 0, 0, [], null, 0)
 	await 等帧(1)
 	检((窗.get("_sel_players") as Array).has(队友号),
