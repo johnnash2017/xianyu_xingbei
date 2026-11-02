@@ -284,9 +284,11 @@ func p_cover_change(ctx: Dictionary) -> int:
 	# 先压「移除」钩子，再压伤害：LIFO 会让伤害先结算，回来后再移除盖牌
 	engine.push(BattleEngine.SHook.new("p_shi_shen_盖牌移除", {
 		"player": player.id, "dst": dst, "cards": 刃}, []))
+	# 盖牌渗蚀是固定的 1 点：不走治疗回应，避免目标/超时把「伤害并移除」拖到以后
 	engine.push_harm({
 		"src": player.id, "dst": dst, "point": 1,
 		"cause": SHEN_SHI, "type": GConst.HarmType.Magic, "virtual_no_fate": true,
+		"cross_available": 0,
 	})
 	return URGENT
 
