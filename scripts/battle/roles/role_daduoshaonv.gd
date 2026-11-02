@@ -197,7 +197,9 @@ func _v_bie_fan_wo(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if enemy_ids().is_empty():
 		return GConst.GE_INVALID_PLAYERID
-	if not (action.get("card_ids", []) as Array).is_empty() or not (action.get("dst_ids", []) as Array).is_empty():
+	# 只校验「不带牌」。目标由右手边队友代选，本人这一手本来就没有目标；
+	# 客户端为了把「替她发动的队友」画成选中，会带上这名队友的 id —— 这里直接忽略
+	if not (action.get("card_ids", []) as Array).is_empty():
 		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 

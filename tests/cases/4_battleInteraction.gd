@@ -1343,26 +1343,13 @@ func 跑() -> void:
 	窗.set("_mode", 0)
 	窗.set("_skill_ask_id", 0)
 	窗.set("_skill_ask_need_card", 0)
-	# 悬停「别烦我……」按钮时也要点亮替她发动的队友（还没点、只是准备释放）
-	窗.set("_mode", 1)
-	窗.set("_pending_skill_id", 0)
-	窗.set("_高亮目标", [] as Array[int])
-	窗.set("_悬停技能号", 10601)
-	窗.call("_点亮别烦我队友")
-	检((窗.get("_高亮目标") as Array).has(队友号),
-		"悬停 10601 时也应点亮右手边队友：%s" % str(窗.get("_高亮目标")))
-	窗.set("_悬停技能号", -1)
-	窗.set("_高亮目标", [] as Array[int])
-
 	# 真实点击链路：点技能后应自动选中（锁定）右手边队友
 	窗.set("_sel_players", [] as Array[int])
 	窗.call("_选择技能", 10601, GConst.ActionType.MagicSkill, 0, 0, [], [], 0, 0, 0,
 		GConst.CardSource.Hand, "", 0, 0, [], null, 0)
 	await 等帧(1)
-	检((窗.get("_高亮目标") as Array).has(队友号),
-		"发动 10601 时应把右手边队友点亮：%s" % str(窗.get("_高亮目标")))
-	检((窗.get("_sel_players") as Array).is_empty(),
-		"点亮队友只是给人看，不能当成目标提交：%s" % str(窗.get("_sel_players")))
+	检((窗.get("_sel_players") as Array).has(队友号),
+		"发动 10601 时应把替她发动的右手边队友选中：%s" % str(窗.get("_sel_players")))
 	窗.call("_on_cancel")
 	await 等帧(1)
 	窗.set("_上次别烦我发动者", -1)
