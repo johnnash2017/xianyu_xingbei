@@ -524,6 +524,12 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.cover_opens.clear()
 	for cid: Variant in pi.get("cover_opens", []):
 		p.cover_opens.append(int(cid))
+	# 公开的「手牌里有魔刃/异刃」：头像状态
+	p.hand_blades.clear()
+	for cid: Variant in pi.get("hand_blades", []):
+		var 面: int = int(cid)
+		if not p.hand_blades.has(面):
+			p.hand_blades.append(面)
 	# 【律法】标记（星坠女巫）
 	p.laws.clear()
 	for 号: Variant in pi.get("laws", []):

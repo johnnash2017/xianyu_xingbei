@@ -686,7 +686,10 @@ func _刷新状态图标() -> void:
 		var 状态提示: String = 状态名
 		if not 状态说明.is_empty():
 			状态提示 = "%s\n%s" % [状态名, 状态说明]
-		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示)
+		# 魔刃/异刃这类公开手牌状态：图标上再叠名字，悬停时用 card_id 摊出完整卡面
+		var 额外牌id: int = int(d.get("card_id", -1))
+		var 叠字: String = 状态名 if bool(d.get("show_name", false)) else ""
+		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示, 额外牌id, 叠字)
 	_状态已初始化 = true
 	_状态弹出起点 = 新起点
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
@@ -712,7 +715,7 @@ func 五系束缚应摸张数() -> int:
 ## 基础效果牌（基础牌id >= 0）在「基础牌可点」时变成可点的，点一下就上报给战斗界面；
 ## 提示 是给独有效果用的纯文字提示（它们没有卡牌对象，弹不出卡面）
 func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary,
-		基础牌id: int = -1, 提示: String = "") -> void:
+		基础牌id: int = -1, 提示: String = "", 额外牌id: int = -1, 叠字: String = "") -> void:
 	if tex == null:
 		return
 	var go := ps.instantiate()
@@ -722,14 +725,25 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 		if 基础牌id >= 0 and _基础牌可点:
 			(go as TextureRect).mouse_filter = Control.MOUSE_FILTER_STOP
 			(go as TextureRect).gui_input.connect(_on_基础牌图标输入.bind(基础牌id))
+	if 叠字 != "":
+		var 文本节点: Node = go.get_node_or_null("Text")
+		if 文本节点 is Label:
+			var 标签: Label = 文本节点 as Label
+			标签.visible = true
+			标签.text = 叠字
+			标签.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			标签.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			标签.add_theme_font_size_override("font_size", 10)
+			标签.add_theme_constant_override("outline_size", 4)
 	var 起点: int = -1
 	if go is Control:
-		# 鼠标压上去各报各的：基础效果牌报「卡名（命格·元素）」+ 卡面，独有效果只有名字
+		# 鼠标压上去各报各的：基础效果牌报「卡名（命格·元素）」+ 卡面，独有效果只有名字；
+		# 额外状态带 card_id 时也摊卡面（如手牌里的魔刃/异刃）
 		var 图标: Control = go as Control
 		if 基础牌id >= 0:
 			图标.mouse_entered.connect(func() -> void: _报告基础效果悬停(基础牌id, 图标))
 		elif 提示 != "":
-			图标.mouse_entered.connect(func() -> void: 状态图标悬停.emit(图标, 提示, -1, true))
+			图标.mouse_entered.connect(func() -> void: 状态图标悬停.emit(图标, 提示, 额外牌id, true))
 		if 基础牌id >= 0 or 提示 != "":
 			图标.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
 		var 旧列表: Array = _状态弹出起点.get(标识, [])

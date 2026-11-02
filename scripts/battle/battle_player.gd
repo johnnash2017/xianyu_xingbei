@@ -1120,6 +1120,13 @@ func to_proto(viewer_id: int) -> Dictionary:
 			ex_from.append(exclusive_owners[i])
 	d["ex_cards"] = exs
 	d["ex_from"] = ex_from
+	# 公开信息：这名玩家手牌里的魔刃/异刃（所有人可见，头像旁状态）
+	var 手中刃: Array = []
+	for cid: int in hand_cards:
+		var 面: int = GConst.牌号(cid)
+		if (面 == GConst.噬神者_魔刃卡 or 面 == GConst.噬神者_异刃卡) and not 手中刃.has(面):
+			手中刃.append(面)
+	d["hand_blades"] = 手中刃
 	# 只有本人能看到自己的手牌/盖牌
 	if viewer_id == id:
 		d["hands"] = hand_cards.duplicate()

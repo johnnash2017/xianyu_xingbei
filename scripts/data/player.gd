@@ -58,6 +58,8 @@ var specials_from: Array[int] = [-1, -1, -1, -1, -1]
 var basic_status_list: Array[BasicStatus] = []
 ## 面朝上的盖牌（所有人可见，如结界师【结界】）：牌面 id 列表
 var cover_opens: Array[int] = []
+## 公开信息：这名玩家手牌里的魔刃/异刃（1005/1006）；头像旁显示状态，所有人可见
+var hand_blades: Array[int] = []
 ## 【律法】标记（星坠女巫）：1=繁星 / 2=影月 / 3=蚀日
 var laws: Array[int] = []
 

@@ -1114,6 +1114,18 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			"icon": 盖卡.sprite_path(),
 			"desc": "面朝上的盖牌（%s·%s 系）" % [盖卡.card_name, GConst.element_to_chinese(盖卡.element_enum())],
 		})
+	# 手牌里的魔刃/异刃是公开信息：头像旁显示图标 + 名字，悬停摊出完整卡面
+	for cid: int in p.hand_blades:
+		var 刃卡: GCard = Data.get_card(cid)
+		if 刃卡 == null:
+			continue
+		额外状态.append({
+			"name": 刃卡.card_name,
+			"icon": 刃卡.sprite_path(),
+			"desc": "手牌中有【%s】（公开信息）" % 刃卡.card_name,
+			"card_id": 刃卡.id,
+			"show_name": true,
+		})
 	面板.set("ExtraStatuses", 额外状态)
 	# 掉线标记：只画在别人的面板上（自己的面板没有 Ssignal 节点，set_Online 里允许为空）
 	面板.set("Online", p.online)

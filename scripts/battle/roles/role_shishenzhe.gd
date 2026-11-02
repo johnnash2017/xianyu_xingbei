@@ -36,6 +36,8 @@ var _本次刃: int = 0          # 本次用的牌实例号（交给侵刻/渗�
 var _本次刃面: int = 0        # 本次用的牌面（MO_REN_CARD / YI_REN_CARD）
 ## 本次攻击的噬灭/殇灭是否已经问过（timeline1 若被重复调用也不能反复弹选牌/反复弃牌）
 var _噬灭已处理: bool = false
+## 盖牌渗蚀的「伤害后再移除」流程中，避免 remove_cover 再次触发自己
+var _渗蚀盖牌处理中: bool = false
 ## 御刃 / 共振 / 诸神终焉 的子流程
 var _步: int = 0
 var _目标: int = -1
@@ -217,9 +219,15 @@ func wants_before_discard(ctx: Dictionary) -> bool:
 	return false
 
 
+## 【渗蚀】的伤害：只有噬神者**自己**使用/弃置时，【同调】才把 3 点降为 1 点；
+## 其他人拿这张牌打出/弃置时仍是 3 点。
+func _渗蚀伤害(触发者: int) -> int:
+	return 同调伤害 if 触发者 == player.id and _有同调() else 渗蚀伤害
+
+
 ## 弃置/使用【魔刃】/【异刃】时：噬神者对该牌的使用者（弃牌/出牌者）造成 3 点
-## （【同调】后 1 点）法术伤害。然后这张牌**移出游戏**（不从弃牌堆再流转）：
-## 牌面说明里的「移除此牌」；命中时由【侵刻】把同一实例交给目标。
+## （若使用者是噬神者自己且持有【同调】，则 1 点）法术伤害。然后这张牌**移出游戏**
+## （不从弃牌堆再流转）：牌面说明里的「移除此牌」；命中时由【侵刻】把同一实例交给目标。
 func p_before_discard(ctx: Dictionary) -> int:
 	if not wants_before_discard(ctx):
 		return SUCCESS
@@ -237,13 +245,52 @@ func p_before_discard(ctx: Dictionary) -> int:
 	var dst: int = int(ctx.get("owner", -1))
 	if dst < 0:
 		return SUCCESS
-	var 伤: int = 同调伤害 if _有同调() else 渗蚀伤害
+	var 伤: int = _渗蚀伤害(dst)
 	notice_skill(SHEN_SHI, [dst])
 	engine.push_harm({
 		"src": player.id, "dst": dst, "point": 伤,
 		"cause": SHEN_SHI, "type": GConst.HarmType.Magic, "virtual_no_fate": true,
 	})
 	return URGENT
+
+
+# ============================================================
+# 渗蚀·盖牌：魔刃/异刃因技能被放进盖牌区（朝上/朝下都算）
+# ============================================================
+## 作为盖牌时：噬神者直接对该盖牌的角色造成 1 点法术伤害，然后移除该牌。
+## 伤害是固定的 1 点，不受【同调】影响（同调只改自己使用/弃置时的 3→1）。
+func p_cover_change(ctx: Dictionary) -> int:
+	if _渗蚀盖牌处理中 or int(ctx.get("direction", 0)) != GConst.CHANGE_ADD:
+		return SUCCESS
+	var 刃: Array[int] = []
+	for c: Variant in ctx.get("cards", []):
+		var 面: int = GConst.牌号(int(c))
+		if (面 == MO_REN_CARD or 面 == YI_REN_CARD) and not 刃.has(int(c)):
+			刃.append(int(c))
+	if 刃.is_empty():
+		return SUCCESS
+	var dst: int = int(ctx.get("dst", -1))
+	if dst < 0:
+		return SUCCESS
+	_渗蚀盖牌处理中 = true
+	notice_skill(SHEN_SHI, [dst])
+	# 先压「移除」钩子，再压伤害：LIFO 会让伤害先结算，回来后再移除盖牌
+	engine.push(BattleEngine.SHook.new("p_shi_shen_盖牌移除", {
+		"player": player.id, "dst": dst, "cards": 刃}, []))
+	engine.push_harm({
+		"src": player.id, "dst": dst, "point": 1,
+		"cause": SHEN_SHI, "type": GConst.HarmType.Magic, "virtual_no_fate": true,
+	})
+	return URGENT
+
+
+func p_shi_shen_盖牌移除(ctx: Dictionary) -> int:
+	var dst: int = int(ctx.get("dst", -1))
+	var cards: Array = ctx.get("cards", [])
+	_渗蚀盖牌处理中 = false
+	if dst >= 0 and not cards.is_empty():
+		engine.remove_cover(dst, cards, player.id, SHEN_SHI)
+	return SUCCESS
 
 
 # ============================================================
