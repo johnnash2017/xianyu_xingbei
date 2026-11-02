@@ -281,6 +281,16 @@ func _检噬神者() -> void:
 	检(int(角色.call("p_cover_change", 盖牌上下文)) == BattleRole.SUCCESS,
 		"同一个盖牌变动回栈重跑时不应再次触发渗蚀")
 	# 共振四选一：不加 / 魔刃 / 异刃 / 两者；后三项都带 1 名目标，文案带系别与技能组
+	角色.set("_步", 6)
+	角色.set("_共振系", GConst.CardElement.Fire)
+	角色.call("p_shi_shen_ask", {"player": 1})
+	var 共振问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
+	var 共振命令表: Array = 共振问.get("commands", [])
+	var 共振命令: Dictionary = 共振命令表[0] if not 共振命令表.is_empty() else {}
+	检(共振命令.get("option_need_targets", []) == [0, 1, 1, 1],
+		"共振询问应下发每项需目标数 [0,1,1,1]，实际 %s" % str(共振命令.get("option_need_targets", [])))
+	检((共振命令.get("option_targets", []) as Array).size() == 4,
+		"共振询问应下发 4 项目标白名单，实际 %s" % str(共振命令.get("option_targets", [])))
 	var 共振选项: Array = 角色.call("_共振选项")
 	检(共振选项.size() == 4, "共振应直接给出 4 个选项，实际 %d" % 共振选项.size())
 	if 共振选项.size() == 4:

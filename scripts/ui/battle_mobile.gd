@@ -2413,6 +2413,13 @@ func _进入技能询问() -> void:
 	_skill_card_source = _skill_ask_card_source
 	# 手牌+盖牌混选的询问（如美杜莎之眼：1 张暗月盖牌 + 1 张手牌）
 	_skill_cover_need = int(_pending.get("cover_need", 0))
+	# 选项切换时要还原的原始需求：技能询问这条通道也必须先记下来，
+	# 否则共振这类「选项自己带 need_target」的询问会拿到上一次/默认的 0，选了选项也不亮目标
+	_选项原始目标数 = _skill_ask_need_target
+	_选项原始需牌 = _skill_ask_need_card
+	_选项原始最多牌 = _skill_card_max
+	_选项原始来源 = _skill_ask_card_source
+	_选项原始盖牌需数 = _skill_cover_need
 	# 「目标上限随选牌数变化」与「逐张选牌条件」只用于发动技能（mode 4）；询问这条通道不认它们，清零免得串味
 	_skill_target_max_from_cards = 0
 	_skill_slot_skill = 0
@@ -2767,6 +2774,11 @@ func _应用选项目标数() -> void:
 	var 目标数: int = _选项原始目标数
 	if not _已选参数.is_empty() and 表.has(int(_已选参数[0])):
 		目标数 = int(表[int(_已选参数[0])])
+	var 选中项: Dictionary = _二级选中项()
+	# 选项自己带的需目标：技能询问（mode 3）和发动技能（mode 4）都要认；
+	# 共振四选项的 2/3/4 就是靠这里把目标数从 0 放开到 1
+	if not 选中项.is_empty():
+		目标数 = maxi(目标数, int(选中项.get("需目标", 0)))
 	if _mode == 4:
 		# 选中的那一项若自带「需目标」（如魔弓【魔眼】的「指定一名角色弃 1 张牌」），目标数按它给；
 		# 选的是不要目标的那项时它本来就没有目标数、技能级也是 0，这里保持 0（谁都不亮，也就点不动）
@@ -2797,8 +2809,9 @@ func _应用选项目标数() -> void:
 	_need_cards = _skill_card_max
 	_skill_ask_need_target = 目标数
 	_need_players = _skill_ask_need_target
+	_skill_target_max = maxi(目标数, int(选中项.get("最多目标", 0))) \
+		if not 选中项.is_empty() else 目标数
 	# 选中的那一项若自带「需牌」（如英灵人形【魔纹融合】要弃 ≥2 张异系牌），牌数按它给
-	var 选中项: Dictionary = _二级选中项()
 	if not 选中项.is_empty():
 		_skill_ask_need_card = maxi(_skill_ask_need_card, int(选中项["需牌"]))
 	# 有些选项（如魔纹融合询问里的「怒火压制」）本身一张牌都不用：
