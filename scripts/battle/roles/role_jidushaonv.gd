@@ -10,8 +10,10 @@ extends BattleRole
 ##       支付 1【水晶】额外 +1【攻击行动】；本次攻击行动只能攻击手牌数大于你的目标对手
 ##
 ## 口径（见 data-audit A46~A48 与 A21）：
-##   - 10701 先问发动者是否发动（响应技能），目标强制弃 1 张法术牌（A46，不可取消），弃不出
-##     （没有 / 硬提交非法牌 / 超时回空）就直接吃 2 点法术伤害，同时我方【战绩区】+1【水晶】；
+##   - 10701 先问发动者是否发动（响应技能）→ 发动者**指定 1 名「目标角色」**（场上的角色都能选，
+##     不限于本次攻击的目标）→ 那名角色强制弃 1 张法术牌【展示】（A46，不可取消；手里没有法术牌也照问，
+##     与【魔爆冲击】同口径，取消 / 超时按「没弃出」算）；弃不出就直接吃 2 点法术伤害，
+##     同时我方【战绩区】+1【水晶】；
 ##   - 10702 的逆向只在它授予的那份额外法术行动内有效：has_missile_mastery() 只在
 ##     「当前额外行动阶段的来源＝10702」时返回 true；「只能使用【魔弹】」由
 ##     行动规格里的两套白名单（cards / skill_cards）：普通法术行动只放行【魔弹】本体，
@@ -32,10 +34,14 @@ const JI_DU_ZHUI_FANG: int = 10704    # 嫉妒追放（响应 / 必杀技 / 回�
 
 const CU_YI_HARM_POINT: int = 2       # 10701：目标不弃法术牌时受到的法术伤害
 
-## 10701 / 10702 在「本次攻击」里的分步进度：0＝还没处理 / 1＝已问发动者 / 2＝已问目标弃牌。
+## 10701 / 10702 在「本次攻击」里的分步进度：0＝还没处理 / 1＝已问发动者 / 2＝已让发动者指定目标
+## / 3＝已问目标弃牌（10701）；10702 只用到 0 / 1。
 ## 每次新的主动攻击宣告在 p_timeline_1 清回 0（与 role_exmogong 的疾风追射同一写法）。
 var _cu_yi_step: int = 0
 var _xu_rong_step: int = 0
+
+## 10701 由发动者指定的「目标角色」（step 2 选出来的；等回复期间不能现算）
+var _cu_yi_目标: int = -1
 
 ## 10704 本回合是否已发动（技能名带【回合限定】），回合开始清零
 var _used_ji_du_zhui_fang: bool = false
@@ -62,6 +68,7 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	_used_ji_du_zhui_fang = false
 	_xu_rong_extra_granted = false
 	_cu_yi_step = 0
+	_cu_yi_目标 = -1
 	_xu_rong_step = 0
 	return SUCCESS
 
@@ -142,6 +149,7 @@ func v_remissile(card_id: int) -> int:
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) == player.id:
 		_cu_yi_step = 0
+		_cu_yi_目标 = -1
 		_xu_rong_step = 0
 	return SUCCESS
 
@@ -155,10 +163,6 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	if _cu_yi_step >= STEP_DONE:
-		return SUCCESS
-	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
-	if dst == null:
-		_cu_yi_step = STEP_DONE
 		return SUCCESS
 	if _cu_yi_step == 0:
 		_cu_yi_step = 1
@@ -174,26 +178,68 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		if not take_skill_reply():
 			_cu_yi_step = STEP_DONE
 			return SUCCESS
-		notice_skill(CU_YI_XIU_XIN, [dst.id])
 		_cu_yi_step = 2
-		# 目标手里没有法术牌：弃不了，直接结算惩罚（不再白问一次）
-		var 可弃: Array[int] = _hand_magic_ids(dst)
-		if 可弃.is_empty():
-			return _cu_yi_惩罚(dst.id)
+		_cu_yi_目标 = -1
 		if not engine.has_reply():
-			# 只能弃法术牌（card_rule = "magic" + cards 白名单同一口径）。
+			# 技能原文写「目标角色」＝玩家可以指定一名角色（不是固定成本次攻击的目标）：
+			# 先由发动者选人，再由那名角色决定弃不弃法术牌。不可取消（超时由引擎从合法目标里代选）。
+			engine.ask_skill(player.id, CU_YI_XIU_XIN, 0, 1, GConst.CardSource.Hand, [], 0, "",
+				[], false, "【醋意羞心】：请指定 1 名目标角色", _全部角色())
+			return WAIT
+	if _cu_yi_step == 2:
+		if not engine.has_reply():
+			return WAIT
+		var 选人: Dictionary = take_skill_reply_full()
+		var 目标表: Array = 选人.get("dst_ids", [])
+		var 目标号: int = int(目标表[0]) if 目标表.size() == 1 else -1
+		if 目标号 < 0 or engine.p(目标号) == null:
+			# 硬提交取消 / 非法目标：按「AI / 掉线按默认规则代选」兜底成随机一名角色
+			目标号 = _cu_yi_兜底目标()
+		if 目标号 < 0:
+			_cu_yi_step = STEP_DONE
+			return SUCCESS
+		_cu_yi_目标 = 目标号
+		_cu_yi_step = 3
+		notice_skill(CU_YI_XIU_XIN, [目标号])
+		if not engine.has_reply():
+			# 只能弃法术牌（card_rule = "magic"），不下发牌号白名单：手里没有法术牌时界面整片置灰、
+			# 只能取消（与【魔爆冲击】/【贪欲黑洞】同口径），照样问一次。
 			# A46：弃牌是强制的，can_cancel=false 让客户端把「取消」置灰；服务端对
 			# 超时回空 / 硬提交取消 / 非法牌仍按「没弃出」结算惩罚，兜住改包。
-			询问(dst.id, CU_YI_XIU_XIN, 1, 0, GConst.CardSource.Hand, [], 0, "magic", 可弃, false)
+			# 提示末尾补一句「我方战绩区 +1 水晶」——只有目标不弃牌才会加，写在弃牌那一步让人看见。
+			var 弃牌文案: String = 提示(CU_YI_XIU_XIN, 0, 1) + "，我方【战绩区】+1【水晶】"
+			engine.ask_skill(目标号, CU_YI_XIU_XIN, 1, 0, GConst.CardSource.Hand, [], 0, "magic",
+				[], false, 弃牌文案)
 			return WAIT
-	# 阶段 2：读目标「弃 / 不弃」的回复；弃不出（回空、非法牌、手里已没有）一律走惩罚
+	if _cu_yi_step != 3:
+		return SUCCESS
 	if not engine.has_reply():
 		return WAIT
-	var r: Dictionary = take_skill_reply_full()
 	_cu_yi_step = STEP_DONE
+	var dst: BattlePlayer = engine.p(_cu_yi_目标)
+	if dst == null:
+		return SUCCESS
+	# 读目标「弃 / 不弃」的回复；弃不出（回空、非法牌、手里已没有）一律走惩罚
+	var r: Dictionary = take_skill_reply_full()
 	if _target_discard_magic(dst, r):
 		return SUCCESS
 	return _cu_yi_惩罚(dst.id)
+
+
+## 发动者没给出合法目标（超时 / 改包）时的兜底：从场上所有角色里随机一名
+func _cu_yi_兜底目标() -> int:
+	var 候选: Array[int] = _全部角色()
+	if 候选.is_empty():
+		return -1
+	return int(候选[engine._rng.randi_range(0, 候选.size() - 1)])
+
+
+## 场上所有角色（含自己与队友）：「目标角色」型的技能用它下发可选目标（玩家可以指定一名角色）
+func _全部角色() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		out.append(pid)
+	return out
 
 
 ## 目标不弃法术牌的惩罚：我方【战绩区】+1【水晶】，并对他造成 2 点法术伤害③。
@@ -363,18 +409,6 @@ func _can_use_missile(card_id: int) -> bool:
 ## 手里能当【魔弹】的牌 id（10702 的额外行动白名单与询问条件用它）
 func _missile_hand_ids() -> Array[int]:
 	return hand_ids_where(func(_cid: int, c: GCard) -> bool: return can_use_as_missile(c))
-
-
-## 某玩家手牌里的法术牌（10701 让目标弃牌时用它下发白名单）
-func _hand_magic_ids(持有者: BattlePlayer) -> Array[int]:
-	var out: Array[int] = []
-	if 持有者 == null:
-		return out
-	for cid: int in 持有者.hand_cards:
-		var c: GCard = Data.get_card(cid)
-		if c != null and c.is_magic():
-			out.append(cid)
-	return out
 
 
 ## 目标是否真的弃出了 1 张手牌里的法术牌【展示】；成功返回 true
