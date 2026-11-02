@@ -36,8 +36,9 @@ var _本次刃: int = 0          # 本次用的牌实例号（交给侵刻/渗�
 var _本次刃面: int = 0        # 本次用的牌面（MO_REN_CARD / YI_REN_CARD）
 ## 本次攻击的噬灭/殇灭是否已经问过（timeline1 若被重复调用也不能反复弹选牌/反复弃牌）
 var _噬灭已处理: bool = false
-## 盖牌渗蚀的「伤害后再移除」流程中，避免 remove_cover 再次触发自己
-var _渗蚀盖牌处理中: bool = false
+## 已处理过的盖牌变动序号：钩子返回 URGENT 后引擎会回栈重跑同一个 p_cover_change，
+## 同一个 seq 只处理一次，避免渗蚀伤害/移除无限循环。
+var _渗蚀盖牌Seq: int = -1
 ## 御刃 / 共振 / 诸神终焉 的子流程
 var _步: int = 0
 var _目标: int = -1
@@ -262,7 +263,11 @@ func p_before_discard(ctx: Dictionary) -> int:
 ## 作为盖牌时：噬神者直接对该盖牌的角色造成 1 点法术伤害，然后移除该牌。
 ## 伤害是固定的 1 点，不受【同调】影响（同调只改自己使用/弃置时的 3→1）。
 func p_cover_change(ctx: Dictionary) -> int:
-	if _渗蚀盖牌处理中 or int(ctx.get("direction", 0)) != GConst.CHANGE_ADD:
+	if int(ctx.get("direction", 0)) != GConst.CHANGE_ADD:
+		return SUCCESS
+	# 同一个盖牌变动只处理一次：URGENT 后引擎会回栈重跑本钩子，靠 seq 去重
+	var seq: int = int(ctx.get("seq", -1))
+	if seq >= 0 and seq == _渗蚀盖牌Seq:
 		return SUCCESS
 	var 刃: Array[int] = []
 	for c: Variant in ctx.get("cards", []):
@@ -274,7 +279,7 @@ func p_cover_change(ctx: Dictionary) -> int:
 	var dst: int = int(ctx.get("dst", -1))
 	if dst < 0:
 		return SUCCESS
-	_渗蚀盖牌处理中 = true
+	_渗蚀盖牌Seq = seq
 	notice_skill(SHEN_SHI, [dst])
 	# 先压「移除」钩子，再压伤害：LIFO 会让伤害先结算，回来后再移除盖牌
 	engine.push(BattleEngine.SHook.new("p_shi_shen_盖牌移除", {
@@ -289,7 +294,6 @@ func p_cover_change(ctx: Dictionary) -> int:
 func p_shi_shen_盖牌移除(ctx: Dictionary) -> int:
 	var dst: int = int(ctx.get("dst", -1))
 	var cards: Array = ctx.get("cards", [])
-	_渗蚀盖牌处理中 = false
 	if dst >= 0 and not cards.is_empty():
 		engine.remove_cover(dst, cards, player.id, SHEN_SHI)
 	return SUCCESS

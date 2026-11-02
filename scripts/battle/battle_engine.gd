@@ -169,6 +169,9 @@ var _await_kind: int = -1
 ## 本次等待「归属」的状态实例（RefCounted）：只有它自己被 handle 时才认这份回复。
 ## 防止等待期间被补压在栈顶的新状态（边界检查补压的超限结算等）错取 / 覆盖玩家回复。
 var _await_state: Variant = null
+## 盖牌变动序号：每次 add / remove 唯一。钩子返回 URGENT 时引擎会回栈重跑同一个钩子，
+## 角色据此判断「这次 add 已经处理过」，避免盖牌渗蚀这类一次性效果被反复触发。
+var _cover_change_seq: int = 0
 ## 当前正在 handle 的状态实例（run 内逐状态设置）：wait_for 据此登记等待归属，
 ## has_reply / take_reply 据此判断「这份回复是不是发给我的」
 var _当前状态: Variant = null
@@ -2893,10 +2896,13 @@ func _apply_cover_change(dst_id: int, direction: int, cards: Array, src_id: int,
 	else:
 		dst.remove_cover_cards(cards)
 	_broadcast_game()
+	_cover_change_seq += 1
 	push(SHook.new("p_cover_change", {
 		"dst": dst_id, "direction": direction,
 		"howMany": cards.size(), "cards": cards.duplicate(),
 		"doer": src_id, "cause": cause,
+		# 本次变动的唯一序号：URGENT 回栈重跑同一钩子时，角色据此只处理一次
+		"seq": _cover_change_seq,
 	}, []))
 
 

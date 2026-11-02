@@ -272,6 +272,14 @@ func _检噬神者() -> void:
 	玩家.add_hand_cards([1005, 1006])
 	var 魔卡: GCard = Data.get_card(1005)
 	var 异卡: GCard = Data.get_card(1006)
+	# 盖牌渗蚀：同一个盖牌变动（同一个 seq）被 URGENT 回栈重跑时只能触发一次
+	var 盖牌上下文: Dictionary = {
+		"direction": GConst.CHANGE_ADD, "dst": 2, "cards": [1005], "seq": 999,
+	}
+	检(int(角色.call("p_cover_change", 盖牌上下文)) == BattleRole.URGENT,
+		"魔刃作为盖牌首次放进盖牌区时应触发渗蚀")
+	检(int(角色.call("p_cover_change", 盖牌上下文)) == BattleRole.SUCCESS,
+		"同一个盖牌变动回栈重跑时不应再次触发渗蚀")
 	var 噬灭可弃: Array = 角色.call("_噬灭可弃", [GConst.CardElement.Water, GConst.CardElement.Fire])
 	检(噬灭可弃.has(1005) and not 噬灭可弃.has(1006),
 		"【噬灭】只能弃水/火，异刃（雷）不应进入合法弃牌名单：%s" % str(噬灭可弃))
