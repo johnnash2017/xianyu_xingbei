@@ -4318,10 +4318,10 @@ func _on_player_clicked(player_id: int) -> void:
 		return
 	# 魔弹传递：选好合法的传递牌后点亮起的敌人头像就把伤害传下去
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet:
-		# 「能不能点」已由 _玩家可选 按 _魔弹响应提交方式 卡住（单张同系牌 / 两张不同系都点不亮）。
-		# 10603 只选了第一张同系牌时落点也会亮（看得见会传到哪），这里再挡一次，只提示不提交
+		# 「能不能点」已由 _玩家可选 按 _魔弹响应提交方式 卡住。
+		# 10603 只选了第一张同系牌时落点也会亮（让人看得到会传到哪），这时点它「没反应」：
+		# 不提交、也不弹新提示，提示条保持原样（凑齐第二张才有动作）
 		if _魔弹响应提交方式() != GConst.Reattack.Attack:
-			_指令提示("回应【魔弹】：单张同系牌不行 —— 再选一张同系牌，或出【圣光】抵挡")
 			return
 		_发送应答(GConst.RespondType.Bullet, [player_id], _sel_cards, [GConst.Reattack.Attack])
 		return
