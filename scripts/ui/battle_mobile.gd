@@ -1078,6 +1078,41 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 				"icon": GConst.圣煌余辉图标,
 				"desc": GConst.圣煌余辉说明,
 			})
+	# 场卡（F1）：【异端裁决所】/【末日预言】/【绝界】这类摆在场上或挂在这名角色面前的卡。
+	# 只画在「拥有者 / 挂靠者」的面板上；有计数的把计数写进名字（如「末日预言 3/6」）。
+	for 表: Dictionary in Data.玩家场卡(p.id):
+		var 卡号: String = str(表.get("id", ""))
+		var 显示: Dictionary = GConst.场卡显示.get(卡号, {})
+		if 显示.is_empty():
+			continue
+		var 状态名: String = 卡号
+		var 上限: int = int(表.get("counter_max", 0))
+		if 上限 > 0:
+			状态名 = "%s %d/%d" % [卡号, int(表.get("counter", 0)), 上限]
+		elif int(表.get("counter", 0)) > 0:
+			状态名 = "%s %d" % [卡号, int(表.get("counter", 0))]
+		额外状态.append({
+			"name": 状态名,
+			"icon": str(显示.get("图标", "")),
+			"desc": str(显示.get("说明", "")),
+		})
+	# 【律法】（星坠女巫）：放在角色面前的标记，状态区显示名字
+	for 号: int in p.laws:
+		额外状态.append({
+			"name": str(GConst.律法名.get(号, "律法")),
+			"icon": str(GConst.律法图标.get(号, "")),
+			"desc": "律法：%s（由【群星启示】放置 / 移除）" % str(GConst.律法名.get(号, "律法")),
+		})
+	# 面朝上的盖牌（结界师【结界】等）：牌面公开，按卡面图标显示在状态区
+	for cid: int in p.cover_opens:
+		var 盖卡: GCard = Data.get_card(cid)
+		if 盖卡 == null:
+			continue
+		额外状态.append({
+			"name": 盖卡.card_name,
+			"icon": 盖卡.sprite_path(),
+			"desc": "面朝上的盖牌（%s·%s 系）" % [盖卡.card_name, GConst.element_to_chinese(盖卡.element_enum())],
+		})
 	面板.set("ExtraStatuses", 额外状态)
 	# 掉线标记：只画在别人的面板上（自己的面板没有 Ssignal 节点，set_Online 里允许为空）
 	面板.set("Online", p.online)

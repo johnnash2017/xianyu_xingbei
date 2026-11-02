@@ -1154,6 +1154,39 @@ const 额外行动系别: Dictionary = {
 }
 
 
+## 场卡（F1）显示信息：键＝场卡的 id（与引擎 加场卡 的 "id" 一致）。
+## 客户端在拥有者 / 挂靠者的面板状态区画图标，悬停看「说明」。
+const 场卡显示: Dictionary = {
+	"异端裁决所": {
+		"图标": "res://assets/textures/battle/yiDuanCaiJueSuo.png",
+		"说明": "异端裁决所：圣庭检察士的场卡，上面的数字是它拥有的【治疗】点数。",
+	},
+	"末日预言": {
+		"图标": "res://assets/textures/battle/moRiYuYan.png",
+		"说明": "末日预言：异教徒的场卡，上面的数字是【预言】堆张数（上限 6）。",
+	},
+	"天雷劫火": {
+		"图标": "res://assets/textures/battle/tianLeiJieHuo.png",
+		"说明": "天雷劫火：【末日预言】翻面而来，展示时选雷系或火系各发动一项。",
+	},
+	"地裂波涛": {
+		"图标": "res://assets/textures/battle/diLieBoTao.png",
+		"说明": "地裂波涛：【末日预言】翻面而来，展示时选地系或水系各发动一项。",
+	},
+	"绝界": {
+		"图标": "res://assets/textures/battle/jueJie.png",
+		"说明": "绝界：挂在角色面前；其拥有的基础效果无法触发；结界师的【结界】为 0 时移除。",
+	},
+}
+
+## 【律法】（星坠女巫）：编号 → 显示名 / 图标。放在角色面前，不是牌。
+const 律法名: Dictionary = {1: "繁星", 2: "影月", 3: "蚀日"}
+const 律法图标: Dictionary = {
+	1: "res://assets/textures/battle/fanXing.png",
+	2: "res://assets/textures/battle/yingYue.png",
+	3: "res://assets/textures/battle/shiRi.png",
+}
+
 ## 额外行动的指令条提示：键 = 该额外行动的 cause（发起它的技能号）。
 ## 服务端在行动询问里下发 is_extra / extra_cause，客户端据此写成「获得额外……行动：限制」。
 ## 没配的技能沿用通用的「获得额外攻击 / 法术行动」。

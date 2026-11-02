@@ -34,6 +34,10 @@ var blue: GTeam
 var my_team: GTeam
 var other_team: GTeam
 var game_info: Dictionary = {}
+## 场卡（F1）：【异端裁决所】/【末日预言】/【绝界】这类摆在场上或某人面前的公共卡。
+## 每项 {id, owner, attached, counter, counter_max, state, pile_count}（见 proto_schema 的 FieldCard）
+var 场卡表: Array[Dictionary] = []
+
 var myself: GPlayer = null
 var id: int = 0
 var player_max: int = 6
@@ -408,6 +412,15 @@ func get_blue_team() -> GTeam:
 	return blue
 
 
+## 某名玩家名下的场卡（拥有者或挂在他面前）：客户端画状态图标用
+func 玩家场卡(pid: int) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for 表: Dictionary in 场卡表:
+		if int(表.get("owner", -1)) == pid or int(表.get("attached", -1)) == pid:
+			out.append(表)
+	return out
+
+
 func team_of(color: int) -> GTeam:
 	return red if color == GConst.RED else blue
 
@@ -418,6 +431,10 @@ func team_of(color: int) -> GTeam:
 ## 用服务端下发的 GameInfo 重建玩家列表（以自己为视角，座次从我方开始）
 func build_player_list(info: Dictionary) -> void:
 	game_info = info
+	场卡表.clear()
+	for 项: Variant in info.get("field_cards", []):
+		if 项 is Dictionary:
+			场卡表.append(项 as Dictionary)
 	var infos: Array = info.get("player_infos", [])
 	player_max = infos.size()
 	var my_viewpoint: int = 0 if id == GConst.GUEST else id
@@ -484,6 +501,14 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.leader = int(pi.get("leader", 0)) == 1
 	p.online = bool(pi.get("online", true))
 	p.ping = int(pi.get("ping", GConst.PING_未测))
+	# 面朝上的盖牌（结界师【结界】等）：牌面公开，按服务端下发的牌面重建
+	p.cover_opens.clear()
+	for cid: Variant in pi.get("cover_opens", []):
+		p.cover_opens.append(int(cid))
+	# 【律法】标记（星坠女巫）
+	p.laws.clear()
+	for 号: Variant in pi.get("laws", []):
+		p.laws.append(int(号))
 	if pi.has("max_hand"):
 		p.hand_cards_max = int(pi["max_hand"])
 	# 治疗上限：角色被动改过（如神官【圣使守护】+4），按服务端下发的值显示

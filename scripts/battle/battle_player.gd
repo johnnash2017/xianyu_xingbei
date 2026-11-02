@@ -12,6 +12,18 @@ var hand_cards: Array[int] = []
 var hand_cards_max: int = GConst.HAND_CARDS_MAX
 var cover_cards: Array[int] = []
 var cover_cards_max: int = 0
+## 盖牌区里哪些是**面朝上**的（键＝实例号）：结界师【结界】这种“放在角色旁、牌面公开”的旁置牌。
+## 面朝下的照旧只给张数；面朝上的牌面随快照下发给所有人（见 to_proto 的 cover_opens）。
+var cover_open: Dictionary = {}
+## 盖牌区每张牌的用途标记（键＝实例号，值＝"卢恩" / "结界" / "妖力" / ""）：
+## 同一个角色可能同时挂着几种“放在角色旁”的牌（星坠女巫的【卢恩】、别人给的东西），
+## 用标记区分，不要靠牌面猜。没有标记＝普通盖牌。
+var cover_tags: Dictionary = {}
+## 【律法】（星坠女巫放在角色面前的标记）：1=繁星 / 2=影月 / 3=蚀日，按放置顺序存
+var laws: Array[int] = []
+## 「本回合无法获得治疗」标记：记下设置时的回合号，回合号变了自动失效
+## （圣殿骑士【神威】：本回合你与攻击目标无法获得治疗）
+var no_heal_round: int = -1
 var basic_effects: Array[Dictionary] = []   # [{card:int, src:int}]
 var exclusive_effects: Array[bool] = [false, false, false, false, false]
 ## 与 exclusive_effects 一一对应：每张专属牌是谁放的（-1＝没记）。
@@ -217,7 +229,93 @@ func add_cover_cards(cards: Array) -> void:
 
 func remove_cover_cards(cards: Array) -> void:
 	for c: Variant in cards:
-		_删一张(cover_cards, int(c))
+		var cid: int = int(c)
+		if _删一张(cover_cards, cid):
+			忘盖牌标记(cid)
+
+
+# ============================================================
+# 盖牌的「面朝上」与用途标记
+# ============================================================
+## 放一张盖牌并记标记：面朝上＝牌面公开（结界师【结界】）/ 面朝下＝只给张数（【卢恩】【妖力】）
+func 记盖牌标记(cid: int, open: bool = false, tag: String = "") -> void:
+	cover_open[cid] = open
+	if tag.is_empty():
+		cover_tags.erase(cid)
+	else:
+		cover_tags[cid] = tag
+
+
+## 这张盖牌是不是面朝上的（所有人可见）
+func 盖牌公开(cid: int) -> bool:
+	return bool(cover_open.get(cid, false))
+
+
+## 这张盖牌是谁放的 / 用途（""＝普通盖牌）
+func 盖牌标记(cid: int) -> String:
+	return str(cover_tags.get(cid, ""))
+
+
+## 盖牌离开盖牌区时清掉标记，避免同号牌再进来时串味
+func 忘盖牌标记(cid: int) -> void:
+	cover_open.erase(cid)
+	cover_tags.erase(cid)
+
+
+## 某个用途标记的盖牌（如 "卢恩" / "结界" / "妖力"）
+func 盖牌按标记(tag: String) -> Array[int]:
+	var out: Array[int] = []
+	for cid: int in cover_cards:
+		if str(cover_tags.get(cid, "")) == tag:
+			out.append(cid)
+	return out
+
+
+## 面朝上的盖牌牌面（下发给所有人看的那几张）
+func 公开盖牌牌面() -> Array[int]:
+	var out: Array[int] = []
+	for cid: int in cover_cards:
+		if bool(cover_open.get(cid, false)):
+			out.append(GConst.牌号(cid))
+	return out
+
+
+## 清空盖牌区（同时清标记）
+func 清空盖牌() -> void:
+	cover_cards.clear()
+	cover_open.clear()
+	cover_tags.clear()
+
+
+# ============================================================
+# 律法（星坠女巫）：放在角色面前的标记，不是牌
+# ============================================================
+func 律法数() -> int:
+	return laws.size()
+
+
+func 有律法(号: int) -> bool:
+	return laws.has(号)
+
+
+func 加律法(号: int) -> void:
+	if 号 > 0 and not laws.has(号):
+		laws.append(号)
+
+
+func 移除律法(号: int = -1) -> void:
+	if 号 < 0:
+		if not laws.is_empty():
+			laws.pop_back()
+		return
+	var 位置: int = laws.find(号)
+	if 位置 >= 0:
+		laws.remove_at(位置)
+
+
+## 本回合是否「无法获得治疗」（见 no_heal_round 的注释）
+func 无法获得治疗() -> bool:
+	return engine != null and no_heal_round == engine.round_id
 
 
 func cover_count() -> int:
@@ -989,6 +1087,10 @@ func to_proto(viewer_id: int) -> Dictionary:
 		# 盖牌上限（角色表「指示物」列槽 2 的上限）：客户端「查看盖牌」时按它摆出空槽，
 		# 让玩家看见自己最多能放几张；0 表示这个角色根本没有盖牌区
 		"max_covered": cover_cards_max,
+		# 面朝上的盖牌（所有人可见，如【结界】）：只给公开的那几张的牌面
+		"cover_opens": 公开盖牌牌面(),
+		# 【律法】标记（星坠女巫）：客户端在状态区显示名字
+		"laws": laws.duplicate(),
 		"is_knelt": tap,
 		# 血色剑灵【血蔷薇庭院】：独立状态，客户端画状态图标（不是形态名）
 		"xue_qiang_wei": xue_qiang_wei,

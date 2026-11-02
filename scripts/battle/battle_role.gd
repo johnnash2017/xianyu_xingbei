@@ -124,6 +124,15 @@ func p_hand_change(_ctx: Dictionary) -> int: return SUCCESS
 ## 摸牌前（引擎把牌发到某玩家手里之前对全体角色调用一次）：角色可在此询问该玩家是否发动响应
 ## （如暗杀者【水影】：除【特殊行动】外，当你摸牌前发动）。ctx: {player 摸牌者, count 张数, cause 来源}
 func p_before_draw(_ctx: Dictionary) -> int: return SUCCESS
+## 治疗溢出（F3）：某玩家获得治疗、加到上限之后还有剩余时对全体角色各触发一次，可以等待玩家输入。
+## ctx: {player 溢出者, overflow 溢出点数, before 加之前, amount 本次加的量, src 来源}
+## （圣庭检察士【裁决论定】= 我方目标角色溢出时给【异端裁决所】+1 治疗；圣殿骑士【神选者】= 自己溢出时 +1【圣印】）
+func p_heal_overflow(_ctx: Dictionary) -> int: return SUCCESS
+## 士气下限（F5）：返回 >0 时，本队士气不会被扣到它以下（圣殿骑士【圣炎形态】：我方士气最少为 1）
+func morale_floor() -> int: return 0
+## 因承受伤害摸牌时「本次摸牌的第 1 张改从别处拿」（F8）：返回牌号（实现里要自己从来源取出），
+## -1＝不替换。**同步钩子**，不能等待玩家输入。（异教徒【末日预言】：从【预言】堆顶拿）
+func 伤害摸牌替换(_pid: int) -> int: return -1
 ## 弃牌前拦截（F6 / 4704）：某玩家手牌 / 盖牌里的牌即将进入弃牌堆前，对全体角色各触发一次。
 ## 角色可在此询问自己的玩家是否响应（可 WAIT），并「认领」其中的牌：
 ##   在 ctx 里写 taker = 自己 player.id、taken = [要拿走的牌号]；

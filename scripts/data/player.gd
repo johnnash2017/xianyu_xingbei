@@ -56,6 +56,11 @@ var specials: Array[bool] = [false, false, false, false, false]  # 独有效果 
 ## 与 specials 一一对应：每张专属牌是谁放的（-1＝没记）；【挑衅】靠它只放行放牌者那个头像
 var specials_from: Array[int] = [-1, -1, -1, -1, -1]
 var basic_status_list: Array[BasicStatus] = []
+## 面朝上的盖牌（所有人可见，如结界师【结界】）：牌面 id 列表
+var cover_opens: Array[int] = []
+## 【律法】标记（星坠女巫）：1=繁星 / 2=影月 / 3=蚀日
+var laws: Array[int] = []
+
 var tokens: Array = [null, null, null]
 var ready: bool = false
 var leader: bool = false

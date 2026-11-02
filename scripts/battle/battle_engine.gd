@@ -70,6 +70,10 @@ var team_morale: Array[int] = [0, 0]
 var team_gem: Array[int] = [0, 0]
 var team_crystal: Array[int] = [0, 0]
 var team_grail: Array[int] = [0, 0]
+## 场卡（F1）：摆在场上或某人面前的公共卡，不属于任何人的手牌 / 盖牌。
+## 每项 shape 见 加场卡() 的注释；按 id 唯一（重复放置前先 移除场卡）。
+## 目前用在：【异端裁决所】39 /【末日预言】95 /【绝界】82。
+var field_cards: Array[Dictionary] = []
 
 ## 发送回调：(目标id:int, 协议号:int, 字段:Dictionary) -> void
 var send_cb: Callable = Callable()
@@ -916,9 +920,35 @@ func add_cross(pid: int, amount: int, src_id: int) -> void:
 	var pp: BattlePlayer = players.get(pid)
 	if pp == null:
 		return
+	# 「本回合无法获得治疗」（圣殿骑士【神威】）：整笔作废，写一条日志让玩家知道为什么没加
+	if pp.无法获得治疗():
+		broadcast(GConst.Msg.Gossip, {
+			"type": GConst.GossipType.Heal,
+			"txt": "%s 本回合无法获得治疗" % _称号(pp),
+			"id": pp.id,
+			"num": 0,
+		})
+		return
 	var 前: int = pp.cross_num
 	pp.add_cross_num(amount)
 	_播治疗日志(pp, amount, src_id, 前)
+	_治疗溢出后(pp, 前, amount, src_id)
+
+
+## 治疗溢出（F3）：本次加到上限之后仍有剩余 → 压一次 p_heal_overflow 钩子，让角色自己响应
+## （圣庭检察士【裁决论定】/ 圣殿骑士【神选者】）。钩子可以等待玩家输入，所以走状态栈，
+## 只在真正对局推进中压（setup / 终局收尾时不压，避免非对局态多出一段流程）。
+func _治疗溢出后(pp: BattlePlayer, 前: int, amount: int, src_id: int) -> void:
+	if pp == null:
+		return
+	var 溢出: int = 前 + amount - pp.cross_max
+	if 溢出 <= 0:
+		return
+	if not _running or phase != Phase.Playing:
+		return
+	push(SHook.new("p_heal_overflow", {
+		"player": pp.id, "overflow": 溢出, "before": 前, "amount": amount, "src": src_id,
+	}, []))
 
 
 ## 施加治疗（无视目标治疗上限）：封顶 > 0 时治疗后不超过它（<= 0 表示不额外封顶），
@@ -928,6 +958,14 @@ func add_cross_pierce(pid: int, amount: int, src_id: int, 封顶: int) -> void:
 		return
 	var pp: BattlePlayer = players.get(pid)
 	if pp == null:
+		return
+	if pp.无法获得治疗():
+		broadcast(GConst.Msg.Gossip, {
+			"type": GConst.GossipType.Heal,
+			"txt": "%s 本回合无法获得治疗" % _称号(pp),
+			"id": pp.id,
+			"num": 0,
+		})
 		return
 	var 前: int = pp.cross_num
 	var 新: int = 前 + amount
@@ -1665,7 +1703,117 @@ func team_energy(c: int) -> int:
 
 
 func set_morale(c: int, v: int) -> void:
-	team_morale[c] = maxi(v, 0)
+	# 士气下限（F5）：圣殿骑士【圣炎形态】期间「我方士气最少为 1」
+	team_morale[c] = maxi(maxi(v, 0), 士气下限(c))
+
+
+## 某队当前的士气下限：取该队所有角色 morale_floor() 的最大值（默认 0＝没有下限）
+func 士气下限(c: int) -> int:
+	var 下限: int = 0
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp == null or pp.color != c or pp.role == null:
+			continue
+		下限 = maxi(下限, pp.role.morale_floor())
+	return 下限
+
+
+# ============================================================
+# 场卡（F1）：摆在场上 / 某人面前的公共卡
+# ============================================================
+## 增加（或覆盖）一张场卡。数据形状：
+##   id          唯一键（"异端裁决所" / "末日预言" / "绝界"）
+##   owner       拥有者玩家号（-1＝无主）
+##   attached    挂在谁面前（-1＝不挂人；【绝界】用它）
+##   counter     主计数（裁决所=治疗点；末日预言=预言张数）
+##   counter_max 计数上限（0＝不限制）
+##   state       0/1/2…，语义由角色定义（末日预言：0=正面 / 1=天雷劫火 / 2=地裂波涛）
+##   pile        隐藏牌堆（实例号；只把张数下发）
+func 加场卡(数据: Dictionary) -> Dictionary:
+	var id: String = str(数据.get("id", ""))
+	if id.is_empty():
+		return {}
+	var 表: Dictionary = {
+		"id": id,
+		"owner": int(数据.get("owner", -1)),
+		"attached": int(数据.get("attached", -1)),
+		"counter": int(数据.get("counter", 0)),
+		"counter_max": int(数据.get("counter_max", 0)),
+		"state": int(数据.get("state", 0)),
+		"pile": (数据.get("pile", []) as Array).duplicate(),
+	}
+	移除场卡(id)
+	field_cards.append(表)
+	_broadcast_game()
+	return 表
+
+
+## 按 id 找场卡（找不到返回空字典）
+func 取场卡(id: String) -> Dictionary:
+	for 表: Dictionary in field_cards:
+		if str(表.get("id", "")) == id:
+			return 表
+	return {}
+
+
+## 场上有没有这张场卡
+func 有场卡(id: String) -> bool:
+	return not 取场卡(id).is_empty()
+
+
+## 移除场卡（不存在时什么都不做）
+func 移除场卡(id: String) -> void:
+	for i: int in range(field_cards.size() - 1, -1, -1):
+		if str(field_cards[i].get("id", "")) == id:
+			field_cards.remove_at(i)
+			_broadcast_game()
+			return
+
+
+## 场卡计数增减（返回新值；counter_max > 0 时夹在 [0, counter_max] 内）
+func 场卡加计数(id: String, n: int) -> int:
+	var 表: Dictionary = 取场卡(id)
+	if 表.is_empty():
+		return 0
+	var 值: int = int(表.get("counter", 0)) + n
+	if int(表.get("counter_max", 0)) > 0:
+		值 = mini(值, int(表.get("counter_max", 0)))
+	表["counter"] = maxi(值, 0)
+	_broadcast_game()
+	return int(表["counter"])
+
+
+## 场卡快照（给 game_info）：隐藏牌堆只给张数
+func 场卡快照() -> Array:
+	var out: Array = []
+	for 表: Dictionary in field_cards:
+		out.append({
+			"id": str(表.get("id", "")),
+			"owner": int(表.get("owner", -1)),
+			"attached": int(表.get("attached", -1)),
+			"counter": int(表.get("counter", 0)),
+			"counter_max": int(表.get("counter_max", 0)),
+			"state": int(表.get("state", 0)),
+			"pile_count": (表.get("pile", []) as Array).size(),
+		})
+	return out
+
+
+## 某名玩家面前的场卡（attached == pid）：【绝界】这类“挂在角色面前”的卡用它
+func 玩家面前的场卡(pid: int) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for 表: Dictionary in field_cards:
+		if int(表.get("attached", -1)) == pid:
+			out.append(表)
+	return out
+
+
+## 某名玩家面前有没有这张场卡
+func 玩家有场卡(pid: int, id: String) -> bool:
+	for 表: Dictionary in field_cards:
+		if int(表.get("attached", -1)) == pid and str(表.get("id", "")) == id:
+			return true
+	return false
 
 
 func set_team_gem(c: int, v: int) -> void:
@@ -2294,6 +2442,8 @@ func game_info(viewer_id: int) -> Dictionary:
 		"over": phase == Phase.Over,
 		# 房主座位号（-1 = 没记录）：客户端「玩家列表」据此给房主标星号
 		"host_seat": host_seat,
+		# 场卡（F1）：【异端裁决所】/【末日预言】/【绝界】这类摆在场上或某人面前的卡
+		"field_cards": 场卡快照(),
 	}
 
 
@@ -2370,6 +2520,20 @@ func draw(pid: int, n: int) -> Array:
 	var cards: Array[int] = deck.draw(n)
 	p0.add_hand_cards(cards)
 	return cards
+
+
+## 因承受伤害摸牌时的「第 1 张改从别处拿」（F8）：依次问所有角色，第一个返回 >= 0 的生效。
+## 返回的牌由角色自己从它的来源（如异教徒【末日预言】的【预言】堆）取出，引擎只负责
+## 加进摸牌者手里、并且这次少摸 1 张。**同步钩子**：角色实现里不能等待玩家输入。
+func 伤害摸牌替换(pid: int) -> int:
+	for 座位: int in order:
+		var pp: BattlePlayer = players.get(座位)
+		if pp == null or pp.role == null:
+			continue
+		var 牌: int = pp.role.伤害摸牌替换(pid)
+		if 牌 >= 0:
+			return 牌
+	return -1
 
 
 ## 发牌（可被角色响应）：先跑 p_before_draw 钩子（角色可询问该玩家是否发动响应，如暗杀者【水影】），
@@ -2645,7 +2809,13 @@ func _log_basic_effect_remove(doer_id: int, dst_id: int, card_id: int) -> void:
 ## 盖牌变动入口（对照服务端 StateCoverChange）：立刻加/减盖牌并广播，随后对全体跑
 ## p_cover_change（doer 为本次变动发起者，direction 见 GConst.CHANGE_*）。
 ## 盖牌超限由状态边界的 _check_cover_overflow 结算。
-func add_cover(dst_id: int, cards: Array, src_id: int, cause: int) -> void:
+## 放进盖牌区。open/tag 见 BattlePlayer.记盖牌标记：
+## open=true 是「面朝上、牌面公开」的旁置牌（结界师【结界】），tag 用来区分用途（"卢恩"/"结界"/"妖力"）。
+func add_cover(dst_id: int, cards: Array, src_id: int, cause: int, open: bool = false, tag: String = "") -> void:
+	var dst: BattlePlayer = players.get(dst_id)
+	if dst != null and (open or not tag.is_empty()):
+		for c: Variant in cards:
+			dst.记盖牌标记(int(c), open, tag)
 	_apply_cover_change(dst_id, GConst.CHANGE_ADD, cards, src_id, cause)
 
 
@@ -4418,7 +4588,17 @@ class SHarmDrawOverload:
 	func _init(h: Dictionary) -> void:
 		harm = h
 	func handle(e: BattleEngine) -> int:
-		e.draw(harm["dst"], int(harm["point"]))
+		# 因承受伤害摸牌（F8）：先问角色有没有「第 1 张改从别处拿」的效果
+		# （异教徒【末日预言】：本次摸牌的第 1 张改为自【预言】处获得），剩下的照常摸
+		var 需要: int = int(harm["point"])
+		var 替换: int = e.伤害摸牌替换(int(harm["dst"]))
+		if 替换 >= 0:
+			var 主人: BattlePlayer = e.p(int(harm["dst"]))
+			if 主人 != null:
+				主人.add_hand_cards([替换])
+			需要 -= 1
+		if 需要 > 0:
+			e.draw(harm["dst"], 需要)
 		e._broadcast_game()
 		# 摸牌顶过手牌上限：立刻带着本次伤害的上下文结算超限掉士气（对照服务端 StateTimeline6 →
 		# setStateHandOverLoad(con->harm)）；等通用的 _check_hand_overflow 补就会丢掉这份上下文
