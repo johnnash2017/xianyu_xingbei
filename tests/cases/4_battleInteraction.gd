@@ -1300,10 +1300,14 @@ func 跑() -> void:
 	窗.set("_mode", 3)
 	窗.set("_skill_ask_id", 10601)
 	窗.set("_skill_ask_need_card", 1)
-	窗.set("_上次别烦我发动者", Logic.my_player_id)
+	# 发动者由 Skill 通知记下（真实链路）：先发一条 10601 的技能通知
+	Logic.skill_received.emit({"skill_id": 10601, "src_id": Logic.my_player_id, "dst_ids": []})
+	await 等帧(1)
+	检(int(窗.get("_上次别烦我发动者")) == Logic.my_player_id,
+		"Skill 通知应记下 10601 的发动者，实际 %d" % int(窗.get("_上次别烦我发动者")))
 	var 弃牌提示表: Dictionary = 窗.call("_别烦我头像提示")
-	检(str(弃牌提示表.get(Logic.my_player_id, "")) == "不弃：摸 1 张牌",
-		"目标自己头像应写「不弃：摸 1 张牌」：%s" % str(弃牌提示表))
+	检(str(弃牌提示表.get(Logic.my_player_id, "")) == "摸 1 张牌",
+		"目标自己头像应写「摸 1 张牌」：%s" % str(弃牌提示表))
 	检(str(弃牌提示表.get(队友号, "")) == "+1 治疗",
 		"替她发动的队友头像应写「+1 治疗」：%s" % str(弃牌提示表))
 	# 再睡一下：发动时每个队友 +1 治疗
@@ -1314,6 +1318,17 @@ func 跑() -> void:
 	窗.set("_mode", 0)
 	窗.set("_skill_ask_id", 0)
 	窗.set("_skill_ask_need_card", 0)
+	# 真实点击链路：点技能后应自动选中（锁定）右手边队友
+	窗.set("_sel_players", [] as Array[int])
+	窗.call("_选择技能", 10601, GConst.ActionType.MagicSkill, 0, 0, [], [], 0, 0, 0,
+		GConst.CardSource.Hand, "", 0, 0, [], null, 0)
+	await 等帧(1)
+	检((窗.get("_高亮目标") as Array).has(队友号),
+		"发动 10601 时应把右手边队友点亮：%s" % str(窗.get("_高亮目标")))
+	检((窗.get("_sel_players") as Array).is_empty(),
+		"点亮队友只是给人看，不能当成目标提交：%s" % str(窗.get("_sel_players")))
+	窗.call("_on_cancel")
+	await 等帧(1)
 	窗.set("_上次别烦我发动者", -1)
 	Data.player_list.erase(队友测试)
 

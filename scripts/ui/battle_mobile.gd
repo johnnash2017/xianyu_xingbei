@@ -339,6 +339,9 @@ var _面板列表: Array[战斗玩家面板] = []
 var _日志: String = ""
 ## 最近一次【别烦我……】(10601) 的发动者（目标被问弃牌时用来找替她发动的队友）
 var _上次别烦我发动者: int = -1
+## 纯「点亮给人看」的目标（不参与提交）：如【别烦我……】发动时把替她发动的队友亮出来。
+## 不能塞进 _sel_players —— 那会当成本次行动的目标一起提交，服务端会按「不该带目标」驳回
+var _高亮目标: Array[int] = []
 ## 当前回合玩家 id（用于面板高亮）
 var _当前回合: int = -1
 ## 上一次 TurnBegin 的玩家 / 回合号：额外回合（F7 / 10803）不会推进 round，
@@ -6069,12 +6072,14 @@ func _套用自动选目标(指示配置: Dictionary) -> bool:
 		"询问目标":
 			_sel_players.append_array(_skill_targets)
 		"右手边队友":
-			# 只在「发动技能」那一次把替她发动的队友亮出来；询问通道（6 号 / 7 号是被问的人）不算
+			# 只在「发动技能」那一次把替她发动的队友亮出来；询问通道（6 号 / 7 号是被问的人）不算。
+			# 只高亮、不当目标：技能本身不需要目标，提交时不能带 dst_ids
 			if _mode != 4:
 				return false
 			var 队友: int = _右手边队友(Logic.my_player_id)
 			if 队友 > 0:
-				_sel_players.append(队友)
+				_高亮目标.append(队友)
+			return false
 	return true
 
 
@@ -6156,6 +6161,7 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	for 牌号: Variant in 合法牌:
 		_skill_cards.append(int(牌号))
 	_sel_players.clear()
+	_高亮目标.clear()
 	_重置治疗分配()
 	# 盖牌来源才让盖牌区亮起来；手牌+盖牌混选（盖牌需数>0）也要亮；
 	# 基础效果牌由玩家面板上的图标直接点
@@ -6937,6 +6943,7 @@ func _清空待选() -> void:
 	_pending = {}
 	_pending_type = -1
 	_mode = 0
+	_高亮目标.clear()
 	_行动命令.clear()
 	_skill_ask_id = -1
 	_是技能询问 = false
@@ -7549,7 +7556,9 @@ func 刷新选中面板() -> void:
 	for 面板: 战斗玩家面板 in _面板列表:
 		var pid: int = 面板.ID
 		var 可选: bool = _玩家可选(pid)
-		if _sel_players.has(pid):
+		# 「高亮目标」只是点亮给人看（如【别烦我……】发动时指出替她发动的队友），不算选中
+		var 点亮: bool = _sel_players.has(pid) or _高亮目标.has(pid)
+		if 点亮:
 			面板.modulate = 面板选中色
 		elif _mode != 0 and not 可选 and pid != Logic.my_player_id:
 			面板.modulate = 面板置灰色
@@ -7557,7 +7566,7 @@ func 刷新选中面板() -> void:
 			面板.modulate = 面板常态色
 		面板.set("IsEnable", 可选)
 		# 绿框＝还能选，黄框＝已经选中
-		面板.设置已选中(_sel_players.has(pid))
+		面板.设置已选中(点亮)
 	# 选中目标后顺带把提示画到他们头像上（配了「展示型」指示器的技能才有，如「给 X 张牌」「2 法术伤害」）
 	_刷新头像提示()
 
@@ -8012,7 +8021,7 @@ func _别烦我头像提示() -> Dictionary:
 			out[队友] = "代替你发动"
 		return out
 	if _mode == 3 and _skill_ask_id == GConst.技能_别烦我 and _skill_ask_need_card > 0:
-		out[Logic.my_player_id] = "不弃：摸 1 张牌"
+		out[Logic.my_player_id] = "摸 1 张牌"
 		if _上次别烦我发动者 >= 0:
 			var 队友2: int = _右手边队友(_上次别烦我发动者)
 			if 队友2 > 0:
