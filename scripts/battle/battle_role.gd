@@ -128,6 +128,9 @@ func p_before_draw(_ctx: Dictionary) -> int: return SUCCESS
 ## ctx: {player 溢出者, overflow 溢出点数, before 加之前, amount 本次加的量, src 来源}
 ## （圣庭检察士【裁决论定】= 我方目标角色溢出时给【异端裁决所】+1 治疗；圣殿骑士【神选者】= 自己溢出时 +1【圣印】）
 func p_heal_overflow(_ctx: Dictionary) -> int: return SUCCESS
+## 某名玩家身上的基础效果能不能触发（结界师【绝界】：「你拥有的基础效果无法触发」）。
+## 引擎在基础效果即将自身触发时问所有角色，任一返回 true 就当作「不触发」。
+func 基础效果被禁止(_pid: int) -> bool: return false
 ## 士气下限（F5）：返回 >0 时，本队士气不会被扣到它以下（圣殿骑士【圣炎形态】：我方士气最少为 1）
 func morale_floor() -> int: return 0
 ## 因承受伤害摸牌时「本次摸牌的第 1 张改从别处拿」（F8）：返回牌号（实现里要自己从来源取出），

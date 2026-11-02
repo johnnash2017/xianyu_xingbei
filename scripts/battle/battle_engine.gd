@@ -2522,6 +2522,17 @@ func draw(pid: int, n: int) -> Array:
 	return cards
 
 
+## 基础效果能不能触发：依次问所有角色（结界师【绝界】把这一路挡掉）
+func 基础效果被禁止(pid: int) -> bool:
+	for 座位: int in order:
+		var pp: BattlePlayer = players.get(座位)
+		if pp == null or pp.role == null:
+			continue
+		if pp.role.基础效果被禁止(pid):
+			return true
+	return false
+
+
 ## 因承受伤害摸牌时的「第 1 张改从别处拿」（F8）：依次问所有角色，第一个返回 >= 0 的生效。
 ## 返回的牌由角色自己从它的来源（如异教徒【末日预言】的【预言】堆）取出，引擎只负责
 ## 加进摸牌者手里、并且这次少摸 1 张。**同步钩子**：角色实现里不能等待玩家输入。
@@ -3357,7 +3368,7 @@ func remove_basic_effect(dst_id: int, card_id: int, cause: int = 0, src_id: int 
 			break
 	dst.remove_basic_effect(card_id)
 	_log_basic_effect_remove(src_id, dst_id, card_id)
-	var 触发: bool = 在场上 and (triggered or _是基础效果自身触发(card_id, cause))
+	var 触发: bool = 在场上 and (triggered or _是基础效果自身触发(card_id, cause)) 			and not 基础效果被禁止(dst_id)
 	if 触发:
 		# 先压 triggered、再压 change：LIFO 下 change 先跑、triggered 后跑，
 		# 让「变动」先通知完，再由 triggered 表示「这次触发已经结算完成」
