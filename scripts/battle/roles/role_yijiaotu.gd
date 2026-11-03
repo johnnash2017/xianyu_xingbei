@@ -44,6 +44,8 @@ const 预言上限: int = 6
 var _本回合造成伤害: bool = false
 ## 本回合【审判】已经发动过：回合结束钩子会被引擎多次重入，没有它每次回来都会再问一遍
 var _审判已发动: bool = false
+## 【放逐】回合限定：每回合只能发动一次（同圣女【圣疗】的 used_ 标记做法）
+var _本回合已用放逐: bool = false
 ## 审判进度
 var _审判步: int = 0
 var _审判下标: int = 0
@@ -83,7 +85,7 @@ func available_skills() -> Array:
 		{
 			"type": GConst.ActionType.MagicSkill,
 			"id": FANG_ZHU,
-			"enabled": player.get_energy() >= 1,
+			"enabled": player.get_energy() >= 1 and not _本回合已用放逐,
 			# 和魔弓【魔眼】一样：点技能直接进二级技能栏，三个抽牌档在那里选；
 			# 不选就按「返回」退出来，不扣能量也不发动
 			"arg_choices": [
@@ -110,7 +112,7 @@ func v_magic_skill(action: Dictionary) -> int:
 				return GConst.GE_INVALID_ACTION
 			return GConst.GE_SUCCESS
 		FANG_ZHU:
-			if player.get_energy() < 1:
+			if player.get_energy() < 1 or _本回合已用放逐:
 				return GConst.GE_INVALID_ACTION
 			var 参数: Array = action.get("args", [])
 			if 参数.is_empty() or int(参数[0]) < 6 or int(参数[0]) > 8:
@@ -137,6 +139,7 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 		return SUCCESS
 	_本回合造成伤害 = false
 	_审判已发动 = false
+	_本回合已用放逐 = false
 	_重算手牌上限()
 	# 【灾殃止息】：回合开始时若存在【天雷劫火】/【地裂波涛】→ 移除
 	if engine.有场卡(天雷劫火名) or engine.有场卡(地裂波涛名):
@@ -231,9 +234,11 @@ var _献祭牌: int = -1
 # 9505 放逐：摸 6~8 → 移除旧预言 → 入场 → 6 张手牌作预言 → 额外行动
 # ============================================================
 func _p_放逐(张: int) -> int:
-	if player.get_energy() < 1:
+	if player.get_energy() < 1 or _本回合已用放逐:
 		return GConst.GE_INVALID_ACTION
 	张 = clampi(张, 6, 8)
+	# 【放逐】是回合限定：本回合只能发动一次（下回合开始重置）
+	_本回合已用放逐 = true
 	player.remove_energy(1)
 	notice_skill(FANG_ZHU, [player.id])
 	# 「无视你的手牌上限摸 6-8 张」：进入「不爆牌」状态（本次结算完成前超限一律不结算），

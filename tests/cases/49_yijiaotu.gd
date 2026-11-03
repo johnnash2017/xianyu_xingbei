@@ -371,6 +371,24 @@ func _检放逐() -> void:
 	检(别人正面.is_empty(), "别人的快照里不应带正面：%s" % 别人正面)
 	检(玩家1.hand_cards.size() == 5, "选走 6 张后应剩 5 张：%d" % 玩家1.hand_cards.size())
 	检(玩家1.get_energy() == 0, "【放逐】应消耗 1 点能量")
+	# 回合限定：同一回合只能发动一次
+	var 放逐项2: Dictionary = {}
+	for 项2: Dictionary in 角色.available_skills():
+		if int(项2.get("id", 0)) == 9505:
+			放逐项2 = 项2
+	检(not bool(放逐项2.get("enabled", true)), "同一回合内【放逐】应置灰")
+	检(角色.v_magic_skill({"action_id": 9505, "src_id": 1, "args": [6]}) == GConst.GE_INVALID_ACTION,
+		"同一回合第二次【放逐】不应通过校验")
+	检(角色.p_magic_skill({"action_id": 9505, "src_id": 1, "args": [6]}) == GConst.GE_INVALID_ACTION,
+		"直接调执行体也不能绕过回合限定")
+	# 下回合开始重置
+	玩家1.set_crystal(1)
+	角色.p_before_turn_begin({"player": 1})
+	var 放逐项3: Dictionary = {}
+	for 项3: Dictionary in 角色.available_skills():
+		if int(项3.get("id", 0)) == 9505:
+			放逐项3 = 项3
+	检(bool(放逐项3.get("enabled", false)), "新回合开始【放逐】应重新可发动")
 	# 「额外 +1【攻击行动】或【法术行动】」= 一份攻击/法术都能用的额外行动
 	var 额外: Dictionary = {}
 	for a: Dictionary in 玩家1.additional_actions:
