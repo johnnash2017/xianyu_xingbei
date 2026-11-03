@@ -4472,10 +4472,12 @@ class SReattackGo:
 		e.take_from_hand(defender.id, [原牌])
 		# 应战打出的魔刃/异刃同样按当前系别借普通斩击牌出特效/音效
 		var 表现用牌: int = e.攻击表现牌(用牌)
+		var 应战卡数据: GCard = Data.get_card(原牌)
 		e.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Use, "src_id": defender.id, "dst_id": 目标,
 			"card_ids": [原牌], "is_real": true,
 			"as_card_id": 表现用牌 if 表现用牌 != 原牌 else 0,
+			"card_elements": [应战卡数据.element_enum() if 应战卡数据 != null else 0],
 		})
 		# 角色可把这次应战「视为格挡」（如阴阳师式神形态下用光系牌应战）：本次攻击落空、不反击
 		if bool(应战.get("block", false)):
@@ -5506,7 +5508,8 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# （如苍炎魔女【烈焰形态】下普通攻击视为火系【火焰斩】→ 播火斩特效与火系攻击音）；
 	# 摊牌与日志仍用真正打出的牌
 	broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id,
-		"card_ids": [cid], "is_real": true, "as_card_id": 表现用牌 if 表现用牌 != cid else 0})
+		"card_ids": [cid], "is_real": true, "as_card_id": 表现用牌 if 表现用牌 != cid else 0,
+		"card_elements": [提交实例卡.element_enum() if 提交实例卡 != null else 0]})
 	return CONTINUE
 
 

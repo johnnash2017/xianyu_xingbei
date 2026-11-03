@@ -1335,10 +1335,15 @@ var _行动播报中: Dictionary = {}
 
 ## 造一张展示用的卡牌视图（ShowCardArea 的子节点）；取不到卡返回 null。
 ## 「元数据_展示牌号」meta 供 Pick（选走一张）时按牌号找回对应视图。
-func _造展示卡牌视图(牌号: int) -> Control:
+func _造展示卡牌视图(牌号: int, 显示元素: int = 0) -> Control:
 	var 卡: GCard = Data.get_card(牌号)
 	if 卡 == null:
 		return null
+	# 魔刃/异刃的当前系别按实例走：展示时用一份临时副本，不能改共用牌面
+	if 显示元素 > 0 and 卡.可选元素.has(显示元素):
+		var 显示卡: GCard = 卡.复制()
+		显示卡.设置当前元素(显示元素)
+		卡 = 显示卡
 	var 视图: Control = 卡牌视图预制.instantiate()
 	# Card.tscn 的根节点本身是 0 尺寸的（手牌区是代码给尺寸的），得显式给尺寸才画得出来
 	视图.set_anchors_preset(Control.PRESET_TOP_LEFT)
@@ -1355,13 +1360,15 @@ func _造展示卡牌视图(牌号: int) -> Control:
 ## 持久=true 时一直留着，直到收到 Pick / 下一条 Show（10803 选牌期间不自动收起）。
 ## 飞行起点 >= 0 时这几张牌先在那名玩家（出牌人 / 展示者）头像处现身，再一张接一张飞到自己的展示位；
 ## 自己的牌不飞，由调用方传 -1 进来（见 _on_card）
-func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false) -> void:
+func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, 元素表: Array = []) -> void:
 	_收起展示卡牌()
 	_展示代号 += 1
 	var 本代号: int = _展示代号
 	var 视图表: Array[Control] = []
-	for cid: Variant in 卡号表:
-		var 视图: Control = _造展示卡牌视图(int(cid))
+	for i: int in range(卡号表.size()):
+		var cid: Variant = 卡号表[i]
+		var 显示元素: int = int(元素表[i]) if i < 元素表.size() else 0
+		var 视图: Control = _造展示卡牌视图(int(cid), 显示元素)
 		if 视图 == null:
 			continue
 		ShowCardArea.add_child(视图)
@@ -1505,9 +1512,14 @@ func _on_card(msg: Dictionary) -> void:
 	var 无命格虚拟: bool = bool(msg.get("virtual_no_fate", false))
 	var names: Array[String] = []
 	var 首张: GCard = null
-	for cid: Variant in msg.get("card_ids", []):
-		var c: GCard = Data.get_card(int(cid))
+	var 元素表: Array = msg.get("card_elements", [])
+	for i: int in range((msg.get("card_ids", []) as Array).size()):
+		var c: GCard = Data.get_card(int(msg["card_ids"][i]))
 		if c != null:
+			var 显示元素: int = int(元素表[i]) if i < 元素表.size() else 0
+			if 显示元素 > 0 and c.可选元素.has(显示元素):
+				c = c.复制()
+				c.设置当前元素(显示元素)
 			# 日志里写全「名字·系别·命格」（头像飘字仍是短的「名字·命格」）
 			names.append(_牌日志名(c, not 无命格虚拟))
 			if 首张 == null:
@@ -1531,7 +1543,7 @@ func _on_card(msg: Dictionary) -> void:
 		# 摊出来的牌从出牌人 / 展示者的头像飞过来（出手特效另算，那条是指向目标的粒子）；
 		# 自己的牌不飞：自己清楚自己打了什么，飞过来只会多挡一阵视线
 		_展示卡牌(msg.get("card_ids", []), -1 if src == Logic.my_player_id else src,
-			bool(msg.get("persist", false)))
+			bool(msg.get("persist", false)), msg.get("card_elements", []))
 	if 是展示:
 		_日志追加("%s 展示：%s" % [谁, ", ".join(names)], "行动")
 		return

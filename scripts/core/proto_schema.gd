@@ -533,6 +533,9 @@ const TABLE: Dictionary = {
 		# 展示（CardMsgType.Show）是否一直留在展示区，直到下一条 Pick / Show 消息：
 		# 10803 剑守誓言把牌库顶 X+1 张摊开后要一直摆着，等玩家慢慢选，不能 6.4 秒自动收起。
 		9: {"n": "persist", "t": "bool"},
+		# 与 card_ids 一一对应的「显示用当前系别」：魔刃/异刃打出时牌面 1005 共用，
+		# 只靠 card_ids 其他玩家会看到牌面默认系别；有值就按实例当前系别画卡面。
+		10: {"n": "card_elements", "t": "u32", "r": true},
 	},
 	GConst.Msg.Hurt: {
 		1: {"n": "src_id", "t": "u32"},
