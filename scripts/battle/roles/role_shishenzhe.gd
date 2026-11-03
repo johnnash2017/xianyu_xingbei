@@ -416,8 +416,10 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			return SUCCESS
 		4:  # 共振：选 2~3 张同系牌弃之
 			if not engine.has_reply():
-				var 同系: Array[int] = _同系手牌(_共振系)
-				询问(player.id, GONG_ZHEN, 2, 0, GConst.CardSource.Hand, [], 3, "same", 同系, true,
+				# 不预先固定某一系：多系别牌（魔刃/异刃）切换后也能马上参与同系组合。
+				# 候选给全部手牌，客户端按 "same" 规则逐张判同系；服务端下面再复核。
+				var 候选: Array[int] = player.hand_cards.duplicate()
+				询问(player.id, GONG_ZHEN, 2, 0, GConst.CardSource.Hand, [], 3, "same", 候选, true,
 					0, player.id, [], 3, {}, 0, 0, false, [], true, -1, 0,
 					_共振完整说明())
 				return WAIT
@@ -430,6 +432,17 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			_步 = 0
 			if 弃.size() < 2:
 				return SUCCESS
+			# 服务端复核 2~3 张是否同系（按每张实例当前系别，而不是固定 _共振系）
+			var 系值: int = -1
+			for c4: Variant in 弃:
+				var 卡4: GCard = Data.get_card(int(c4))
+				var e4: int = 卡4.element_enum() if 卡4 != null else 0
+				if e4 <= 0:
+					return SUCCESS
+				if 系值 < 0:
+					系值 = e4
+				elif e4 != 系值:
+					return SUCCESS
 			# 代价在真正确认 2~3 张同系牌后才付；没有同系牌时仍然会询问，但不扣能量
 			if player.get_energy() < 1:
 				return SUCCESS
