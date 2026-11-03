@@ -19,6 +19,11 @@ signal command_received(data: Dictionary)
 ## 服务端确认/更新某张手牌的当前系别（魔刃/异刃这类可切换系别的牌）
 signal card_element_changed(data: Dictionary)
 signal turn_changed(player_id: int, round_id: int)
+## 最近一次 TurnBegin 的额外回合信息（turn_changed 的信号参数保持不变，战斗界面在自己的
+## _on_turn 里读这三项）：服务端没下发（普通回合 / 旧服务端）时分别是 false / 0 / 0。
+var 回合开始额外: bool = false
+var 回合开始来源: int = 0
+var 回合开始加伤: int = 0
 signal hit_received(src_id: int, dst_id: int, hit: int)
 signal card_shown(msg: Dictionary)
 signal hurt_received(msg: Dictionary)
@@ -155,6 +160,9 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 			# 服务端心跳：原样回一声，服务端按「发包时刻 → 收到回声」算这一路的往返延迟
 			Net.send(GConst.Msg.HeartBeat, {})
 		GConst.Msg.TurnBegin:
+			回合开始额外 = bool(data.get("extra_turn", false))
+			回合开始来源 = int(data.get("extra_cause", 0))
+			回合开始加伤 = int(data.get("attack_bonus", 0))
 			turn_changed.emit(int(data.get("id", -1)), int(data.get("round", 0)))
 		GConst.Msg.Hit:
 			hit_received.emit(int(data.get("src_id", 0)), int(data.get("dst_id", 0)), int(data.get("hit", 0)))

@@ -1176,8 +1176,11 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 
 func _on_turn(player_id: int, round_id: int) -> void:
 	# 额外回合（F7 / 10803 / 苍白之月）：不推进 current_id、不增加 round，同一名玩家连着开回合。
-	# TurnBegin 协议只带 id / round，所以用「同一名玩家 + 同一回合号」认；第一回合不会误判。
-	var 额外回合: bool = _上一回合玩家 >= 0 and player_id == _上一回合玩家 and round_id == _上一回合号
+	# 服务端 TurnBegin 直接带 extra_turn / extra_cause / attack_bonus；旧数据没带时退回
+	# 「同一名玩家 + 同一回合号」的旧判定（第一回合不会误判）。
+	var 服务端额外: bool = Logic.回合开始额外
+	var 额外回合: bool = 服务端额外 or (_上一回合玩家 >= 0 and player_id == _上一回合玩家 and round_id == _上一回合号)
+	var 额外加伤: int = Logic.回合开始加伤 if 服务端额外 else 0
 	_上一回合玩家 = player_id
 	_上一回合号 = round_id
 	_额外回合中 = 额外回合
@@ -1199,7 +1202,14 @@ func _on_turn(player_id: int, round_id: int) -> void:
 	if p != null:
 		if _额外回合中:
 			_日志追加("第 %d 回合，%s 的额外回合" % [round_id, _称号(player_id)], "回合")
-			_提示("额外回合：%s 连续行动" % _称号(player_id))
+			# 括号里补来源技能与攻击加伤（服务端 TurnBegin 下发的 extra_cause / attack_bonus）
+			var 细节: Array[String] = []
+			if Logic.回合开始来源 > 0:
+				细节.append(GConst.skill_name(Logic.回合开始来源))
+			if 额外加伤 > 0:
+				细节.append("攻击伤害 +%d" % 额外加伤)
+			var 括号: String = "（%s）" % "，".join(细节) if not 细节.is_empty() else ""
+			_提示("额外回合：%s 连续行动%s" % [_称号(player_id), 括号])
 		else:
 			_日志追加("第 %d 回合，轮到 %s" % [round_id, _称号(player_id)], "回合")
 
