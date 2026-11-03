@@ -500,6 +500,18 @@ func _检切换后复检() -> void:
 	var 噬灭说明: String = GConst.skill_desc(7903).replace("\\n", "").replace("\n", "").strip_edges()
 	检(通用提示 == "【%s】：%s" % [GConst.skill_name(7903), 噬灭说明],
 		"噬灭提示应走客户端通用「【技能名】：说明」：%s" % 通用提示)
+	# 侵刻目标提示：按最近打出的刃写「把【魔刃/异刃】给他」
+	窗.set("_mode", 3)
+	窗.set("_skill_ask_id", GConst.技能_侵刻)
+	窗.set("_最近攻击牌", GConst.噬神者_魔刃卡)
+	var 选中: Array[int] = 窗.get("_sel_players")
+	选中.clear()
+	选中.append(2)
+	var 侵刻提示: Dictionary = 窗.call("_侵刻头像提示")
+	检(str(侵刻提示.get(2, "")) == "把【魔刃】给他",
+		"侵刻目标提示应写「把【魔刃】给他」：%s" % str(侵刻提示))
+	选中.clear()
+	窗.set("_最近攻击牌", 0)
 	窗.set("_mode", 4)
 	窗.set("_skill_card_max", 2)
 	窗.set("_skill_need_card", 2)

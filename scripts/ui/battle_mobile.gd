@@ -493,6 +493,8 @@ var _攒应战选应战: bool = false
 var _攒应战选择: int = 0
 ## 本次攻击牌 / 攻击者（从询问的 preview_base / preview_ids 带上来）
 var _攒应战攻击牌: int = -1
+## 最近一张公开打出的攻击牌（牌面）：侵刻询问时据此写「把【魔刃/异刃】给他」
+var _最近攻击牌: int = 0
 var _攒应战攻击者: int = -1
 ## 本次攻击的伤害预览（只有「自己挨打」的 3306 才有；3301 替队友挡时 -1）
 var _攒应战伤害: int = -1
@@ -1508,6 +1510,8 @@ func _on_card(msg: Dictionary) -> void:
 			names.append(_牌日志名(c, not 无命格虚拟))
 			if 首张 == null:
 				首张 = c
+	if not 是展示 and 首张 != null and 首张.is_attack():
+		_最近攻击牌 = 首张.id
 	# 出牌音效（对照参考项目 AudioManager 的 CARDMSG 分支）：攻击牌 atk-<系别>，法术牌 spell-<卡名>。
 	# 这次出牌「视为」另一张牌时（msg.as_card_id，如地/火牌当【魔弹】打）按那张牌出声；
 	# 摊牌与日志仍用真正打出的牌（card_ids）。
@@ -8311,6 +8315,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _法力护盾头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _侵刻头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _诸神终焉头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _预览伤害头像提示()
@@ -8459,6 +8465,25 @@ func _亡女金库头像提示() -> Dictionary:
 	var 伤害: int = GConst.亡女金库基础伤害 + 星石 / GConst.亡女金库每星石
 	for pid: int in _sel_players:
 		out[pid] = "%d 法术伤害" % 伤害
+	return out
+
+
+## 噬神者【侵刻】询问时：在攻击目标头像上写「把【魔刃/异刃】给他」。
+## 牌面取最近一张公开打出的攻击牌（Card.Use 消息）；目标由询问自动选中/高亮。
+func _侵刻头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or int(_skill_ask_id) != GConst.技能_侵刻:
+		return out
+	var 面: int = _最近攻击牌
+	if 面 != GConst.噬神者_魔刃卡 and 面 != GConst.噬神者_异刃卡:
+		return out
+	var 刃名: String = "魔刃" if 面 == GConst.噬神者_魔刃卡 else "异刃"
+	var 文: String = "把【%s】给他" % 刃名
+	var 目标: Array[int] = _sel_players.duplicate()
+	if 目标.is_empty():
+		目标 = _高亮目标.duplicate()
+	for pid: int in 目标:
+		out[pid] = 文
 	return out
 
 
