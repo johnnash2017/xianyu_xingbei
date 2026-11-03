@@ -312,6 +312,14 @@ func _检噬神者() -> void:
 		检(not bool(魔项.get("enabled", true)) and not bool(异项.get("enabled", true))
 			and not bool(双项.get("enabled", true)),
 			"魔刃/异刃已在手牌时，包含它们的选项应置灰")
+		# 第一步弃牌代价把魔刃弃掉后，第二步应允许重新加回（不再看弃牌前的快照）
+		var 取走的魔刃: int = 玩家.取出一张手牌(1005)
+		检(取走的魔刃 >= 0, "测试前应能从手牌取出魔刃")
+		var 重选选项: Array = 角色.call("_共振选项")
+		检(重选选项.size() == 4 and bool((重选选项[1] as Dictionary).get("enabled", false)),
+			"弃掉魔刃后，共振的魔刃选项应重新可用")
+		if 取走的魔刃 >= 0:
+			玩家.add_hand_cards([取走的魔刃])
 		检(str(异项.get("label", "")) == "【异刃】雷系/风系加入手牌"
 			and 异项.get("elements", []) == [GConst.CardElement.Thunder, GConst.CardElement.Wind]
 			and 异项.get("技能组", []) == [7910, 7911]
