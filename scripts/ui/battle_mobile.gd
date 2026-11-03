@@ -8475,7 +8475,7 @@ func _亡女金库头像提示() -> Dictionary:
 	return out
 
 
-## 噬神者【侵刻】询问时：在攻击目标头像上写「把【魔刃/异刃】给他」。
+## 噬神者【侵刻】询问时：在攻击目标头像上写「给予【魔刃/异刃】」。
 ## 牌面取最近一张公开打出的攻击牌（Card.Use 消息）；目标由询问自动选中/高亮。
 func _侵刻头像提示() -> Dictionary:
 	var out: Dictionary = {}
@@ -8485,7 +8485,7 @@ func _侵刻头像提示() -> Dictionary:
 	if 面 != GConst.噬神者_魔刃卡 and 面 != GConst.噬神者_异刃卡:
 		return out
 	var 刃名: String = "魔刃" if 面 == GConst.噬神者_魔刃卡 else "异刃"
-	var 文: String = "把【%s】给他" % 刃名
+	var 文: String = "给予【%s】" % 刃名
 	var 目标: Array[int] = _sel_players.duplicate()
 	if 目标.is_empty():
 		目标 = _高亮目标.duplicate()
