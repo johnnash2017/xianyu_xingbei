@@ -5498,11 +5498,11 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		if 提交牌面 != null:
 			提交牌面.设置当前元素(提交实例卡.element_enum())
 	var dst_id: int = int(dsts[0])
-	if cur.v_attack(cid, dst_id, players) != GConst.GE_SUCCESS:
+	if cur.v_attack(提交号, dst_id, players) != GConst.GE_SUCCESS:
 		if OS.is_debug_build() and 行动额外:
 			print("[额外行动排查] 攻击被拒(v_attack)：来源=%d 牌=%d 目标=%d 结果=%d 在手=%s" % [
-				行动额外来源, cid, dst_id, cur.v_attack(cid, dst_id, players),
-				str(cur.has_hand_card(cid))])
+				行动额外来源, 提交号, dst_id, cur.v_attack(提交号, dst_id, players),
+				str(cur.has_hand_card(提交号))])
 		return _reject_action(cur)
 	# 防守方角色可拒绝被选为目标（如暗杀者潜行中「不能成为主动攻击的目标」）
 	var dst_p: BattlePlayer = players.get(dst_id)
@@ -5513,7 +5513,7 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		return _reject_action(cur)
 	# 额外行动的目标 / 出牌限制（F2，如 10704 只能打手牌更多的对手、4501 只能用技类攻击牌）
 	if 校验额外行动限制(cur, 当前额外行动数据 if 行动额外 else {},
-			GConst.ActionType.Attack, [cid], [dst_id]) != GConst.GE_SUCCESS:
+			GConst.ActionType.Attack, [提交号], [dst_id]) != GConst.GE_SUCCESS:
 		if OS.is_debug_build() and 行动额外:
 			print("[额外行动排查] 攻击被拒(额外行动限制)：来源=%d 牌=%d 目标=%d 规格=%s" % [
 				行动额外来源, cid, dst_id, str(当前额外行动数据)])
@@ -5521,11 +5521,11 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# 这次主动攻击已经成立：「本回合的下次主动攻击只能打谁」的回合级标记到此消费
 	# （剑之子【剑残影】10804；它是玩家身上的标记，与这份行动 / 这张牌的规格无关）
 	cur.set_attack_lock(0)
-	_记录行动并收尾(cur, "attack", "p_after_attack", {"player": cur.id, "card_id": cid, "dst": dst_id})
+	_记录行动并收尾(cur, "attack", "p_after_attack", {"player": cur.id, "card_id": 提交号, "dst": dst_id})
 	# 攻击方向也跑一次「视为」判定（与应战的 p_reattack 同一套）：角色可把这张攻击牌换成另一张，
 	# 如苍炎魔女【烈焰形态】下除水系 / 暗系外的攻击牌一律视为火系虚拟【火焰斩】。
 	# 真牌照样展示 + 进弃牌堆，本次攻击按「视为」的那张结算（系别就是那张牌的系别）
-	var 出牌: Dictionary = {"player": cur.id, "card_id": cid, "card_id_instance": 提交号, "改用": cid}
+	var 出牌: Dictionary = {"player": cur.id, "card_id": 提交号, "card_id_instance": 提交号, "改用": cid}
 	if cur.role != null:
 		cur.role.call_hook("p_attack_card", 出牌)
 	# 刃的归属者可能不是当前攻击者（侵刻给出去的牌）；归属者仍要记本次刃，
@@ -5536,8 +5536,12 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		if 归属玩家 != null and 归属玩家.role != null:
 			归属玩家.role.call_hook("p_attack_card", 出牌)
 	var 用牌: int = int(出牌.get("改用", cid))
+	# 没有「视为」时，规则/伤害直接用提交的实例；有「视为」时保留虚拟牌面
+	if 用牌 == cid:
+		用牌 = 提交号
 	# 规则 / 伤害仍用「用牌」；虚拟攻击牌另给客户端一张同系普通斩击牌做音效/特效表现
 	var 表现用牌: int = 攻击表现牌(用牌)
+	var 表现面: int = GConst.牌号(表现用牌)
 	var harm: Dictionary = {
 		"src": cur.id, "dst": dst_id, "point": 攻击基础伤害(cur.id), "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": 用牌, "is_active": true,
@@ -5557,7 +5561,7 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# （如苍炎魔女【烈焰形态】下普通攻击视为火系【火焰斩】→ 播火斩特效与火系攻击音）；
 	# 摊牌与日志仍用真正打出的牌
 	broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id,
-		"card_ids": [cid], "is_real": true, "as_card_id": 表现用牌 if 表现用牌 != cid else 0,
+		"card_ids": [cid], "is_real": true, "as_card_id": 表现面 if 表现面 != cid else 0,
 		"card_elements": [提交实例卡.element_enum() if 提交实例卡 != null else 0]})
 	return CONTINUE
 
