@@ -206,6 +206,13 @@ func p_attack_card(ctx: Dictionary) -> int:
 	_本次刃 = 实例
 	_本次刃面 = 面
 	_本次刃是应战 = bool(ctx.get("reattack", false))
+	# 规则/特效侧仍按牌面读系别：把牌面临时同步成这枚实例的当前系别
+	var 实例卡: GCard = Data.get_card(实例)
+	if 实例卡 != null and 实例卡.是实例():
+		var 面卡: GCard = Data.get_card(实例卡.id)
+		if 面卡 != null:
+			面卡.设置当前元素(实例卡.element_enum())
+			engine._规则攻击牌缓存.clear()
 	_噬灭已处理 = false
 	_侵刻已处理 = false
 	_侵刻目标 = -1

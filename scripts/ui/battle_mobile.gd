@@ -1785,10 +1785,15 @@ func _卡牌播报文本(msg: Dictionary) -> String:
 		return ""
 	var 无命格虚拟: bool = bool(msg.get("virtual_no_fate", false))
 	var 名表: Array[String] = []
-	for raw: Variant in msg.get("card_ids", []):
-		var 牌: GCard = Data.get_card(int(raw))
+	var 元素表: Array = msg.get("card_elements", [])
+	for i: int in range((msg.get("card_ids", []) as Array).size()):
+		var 牌: GCard = Data.get_card(int(msg["card_ids"][i]))
 		if 牌 == null or 牌.card_name.is_empty():
 			continue
+		var 显示元素: int = int(元素表[i]) if i < 元素表.size() else 0
+		if 显示元素 > 0 and 牌.可选元素.has(显示元素):
+			牌 = 牌.复制()
+			牌.设置当前元素(显示元素)
 		名表.append(_牌显示名(牌, not 无命格虚拟))
 	return "、".join(名表)
 

@@ -4491,7 +4491,13 @@ class SReattackGo:
 			"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack,
 			"reattack": true, "card_id": 用牌, "is_active": false,
 		}
-		e.push(SAttackCard.new(defender.id, 目标, 用牌, new_harm, 原牌))
+		var 是噬神刃: bool = GConst.牌号(原牌) == GConst.噬神者_魔刃卡 \
+			or GConst.牌号(原牌) == GConst.噬神者_异刃卡
+		if 是噬神刃:
+			e.push(SAttackCard.new(defender.id, 目标, 用牌, new_harm, 原牌))
+		else:
+			e.to_discard([原牌], {"owner": defender.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
+			e.push(SAttackCard.new(defender.id, 目标, 用牌, new_harm, 0))
 		e.push(STimeline2Miss.new(harm))
 		# 「展示手牌」钩子最后压（＝最先跑）：上面那条出牌广播已经先发出去（客户端摊牌 + 出手特效），
 		# 之后才轮到技能询问（如圣女冰霜祷言）—— 与非应战场合（主动打出）的次序一致
@@ -5500,10 +5506,17 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		"src": cur.id, "dst": dst_id, "point": 攻击基础伤害(cur.id), "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": 用牌, "is_active": true,
 	}
-	# 攻击牌先离手；真正的进弃牌堆/渗蚀由 SAttackDiscard 放在 p_timeline_1 之后执行。
-	# 顺序：噬灭/殇灭（timeline 1）→ 攻击牌弃置/渗蚀 → 应战/命中（timeline 2 侵刻）
-	take_from_hand(cur.id, [提交号], true)
-	push(SAttackCard.new(cur.id, dst_id, 用牌, harm, 提交号))
+	# 先压攻击状态，再离手：take_from_hand 的「展示手牌」钩子会压在这次攻击之上，
+	# 保持封印等钩子先于本次攻击结算（与旧顺序一致）。
+	# 魔刃/异刃把进弃牌堆/渗蚀推迟到 timeline1 之后；普通牌保持原来的「攻击前弃置」。
+	var 是噬神刃: bool = cid == GConst.噬神者_魔刃卡 or cid == GConst.噬神者_异刃卡
+	if 是噬神刃:
+		push(SAttackCard.new(cur.id, dst_id, 用牌, harm, 提交号))
+		take_from_hand(cur.id, [提交号], true)
+	else:
+		push(SAttackCard.new(cur.id, dst_id, 用牌, harm, 0))
+		take_from_hand(cur.id, [提交号], true)
+		to_discard([提交号], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
 	# 广播里面把「视为」的那张放 as_card_id（同应战那条）：客户端按它出声、出特效
 	# （如苍炎魔女【烈焰形态】下普通攻击视为火系【火焰斩】→ 播火斩特效与火系攻击音）；
 	# 摊牌与日志仍用真正打出的牌
