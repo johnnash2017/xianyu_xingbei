@@ -615,8 +615,14 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 新堆: Array = []
 		for cid2: Variant in 已选:
 			var 取: int = player.取出实例(player.hand_cards, int(cid2))
-			if 取 > 0:
+			if 取 > 0 and 新堆.size() < 6:
 				新堆.append(取)
+		# 兜底：选中里混进了已经不在手 / 0 号这类取不出来的牌时，再从当前手牌补满 6 张
+		while 新堆.size() < 6 and not player.hand_cards.is_empty():
+			var 补: int = player.取出实例(player.hand_cards, player.hand_cards[0])
+			if 补 <= 0:
+				break
+			新堆.append(补)
 		新堆.shuffle()
 		var 表: Dictionary = engine.取场卡(末日预言名)
 		表["pile"] = 新堆
