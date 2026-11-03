@@ -2208,8 +2208,8 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		"extra_uid": int(当前额外行动数据.get("uid", 0)) if extra else 0,
 		# 禁止特殊行动（发动过「启动」技能后）：客户端据此把「特殊行动」按钮收掉
 		"no_special": no_special,
-		# 当前是不是「额外回合」（10803 / 苍白之月）：客户端在技能栏摆一颗红色「额外回合」，
-		# 只展示、不可点；来源与加伤供悬停说明用。
+		# 当前是不是「额外回合」（10803 / 苍白之月）：客户端据此把额外回合摆成技能栏里的
+		# 「额外行动」按钮（见下面的额外行动列表）；来源与加伤供悬停说明用。
 		"extra_turn": 当前额外回合玩家 == pid,
 		"extra_turn_cause": 当前额外回合来源 if 当前额外回合玩家 == pid else 0,
 		"extra_turn_bonus": 当前额外回合攻击加伤 if 当前额外回合玩家 == pid else 0,
@@ -2356,6 +2356,17 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			cmds[0]["extra_attack_elements"] = 序列系别
 			# 与 extra_attack_causes 一一对应的命格限制（0＝那一份不限）：客户端切换后按它比对牌面
 			cmds[0]["extra_attack_fates"] = 序列命格
+	# 额外回合：作为「额外行动」的一种随行动询问下发（客户端用同一套红色按钮渲染），
+	# 只展示、不可点；真正的回合流转由 额外回合玩家 / 额外回合续位 负责，与这条列表无关。
+	if 当前额外回合玩家 == pid:
+		var 回合原因: int = 当前额外回合来源 if 当前额外回合来源 > 0 else GConst.ActionType.ExtraTurn
+		cmds[0]["extra_attack_causes"] = (cmds[0].get("extra_attack_causes", []) as Array) + [回合原因]
+		cmds[0]["extra_attack_uids"] = (cmds[0].get("extra_attack_uids", []) as Array) + [0]
+		cmds[0]["allow_actions"] = (cmds[0].get("allow_actions", []) as Array) + [GConst.ActionType.ExtraTurn]
+		cmds[0]["extra_attack_cards"] = (cmds[0].get("extra_attack_cards", []) as Array) + [{"ids": []}]
+		cmds[0]["extra_attack_targets"] = (cmds[0].get("extra_attack_targets", []) as Array) + [{"ids": []}]
+		cmds[0]["extra_attack_elements"] = (cmds[0].get("extra_attack_elements", []) as Array) + [0]
+		cmds[0]["extra_attack_fates"] = (cmds[0].get("extra_attack_fates", []) as Array) + [0]
 	return cmds
 
 
