@@ -3529,21 +3529,17 @@ func _构建技能按钮(cmds: Array) -> void:
 	# 先获得的在前，当前行动在它原来的位置只高亮）。这里不排序、不重排 —— 与行动结束响应
 	# 里的红色快捷按钮读的是同一份有序列表，保证两个界面看到的顺序永远一致。
 	var 首位: Dictionary = cmds[0] if not cmds.is_empty() else {}
-	# 这一排红色按钮来自两处：额外行动阶段的下发（is_extra）与「额外回合」标记。
-	# 额外回合也是按额外行动的口径下发的（allow_actions 里带 ExtraTurn），扫描与渲染同一条路径。
-	var 是额外阶段: bool = bool(首位.get("is_extra", false)) and int(首位.get("extra_cause", 0)) > 0
-	if 是额外阶段 or bool(首位.get("extra_turn", false)):
+	if bool(首位.get("is_extra", false)) and int(首位.get("extra_cause", 0)) > 0:
 		var 当前来源: int = int(首位.get("extra_cause", 0))
 		var 当前ID: int = int(首位.get("extra_uid", 0))
 		var 当前类型: int = int(首位.get("respond_id", 0))
 		var 当前牌: Array = 首位.get("card_ids", [])
 		var 当前目标: Array = 首位.get("dst_ids", [])
-		if 是额外阶段:
-			_当前额外攻击选择 = 当前ID
-			_额外手牌白名单_选择 = 当前牌.duplicate()
-			_额外目标白名单_选择 = 当前目标.duplicate()
-			# 当前这份自己的放行种类（=本阶段服务端下发的行动种类）
-			_额外行动放行_选择 = 当前类型
+		_当前额外攻击选择 = 当前ID
+		_额外手牌白名单_选择 = 当前牌.duplicate()
+		_额外目标白名单_选择 = 当前目标.duplicate()
+		# 当前这份自己的放行种类（=本阶段服务端下发的行动种类）
+		_额外行动放行_选择 = 当前类型
 		var 序列原因: Array = 首位.get("extra_attack_causes", [])
 		var 序列ID: Array = 首位.get("extra_attack_uids", [])
 		var 序列允许: Array = 首位.get("allow_actions", [])
@@ -3552,7 +3548,7 @@ func _构建技能按钮(cmds: Array) -> void:
 		var 序列系别: Array = 首位.get("extra_attack_elements", [])
 		var 序列命格: Array = 首位.get("extra_attack_fates", [])
 		# 服务端没给这份列表（额外的法术行动等）：只摆当前这一份，等同于旧行为
-		if 序列原因.is_empty() and 是额外阶段:
+		if 序列原因.is_empty():
 			序列原因 = [当前来源]
 			序列ID = [int(首位.get("extra_uid", 0))]
 			序列允许 = [当前类型]
@@ -3577,18 +3573,6 @@ func _构建技能按钮(cmds: Array) -> void:
 			if 显示类型 <= 0:
 				显示类型 = GConst.ActionType.Attack
 			var 项按钮: 技能按钮 = _新技能按钮(0)
-			if 显示类型 == GConst.ActionType.ExtraTurn:
-				# 额外回合：红的，和额外攻击 / 额外法术行动同一排；只展示，不接点击（不参与切换/提交）
-				项按钮.设置选项("额外回合", _额外行动按钮底色(), 0)
-				var 回合说明: String = "额外回合"
-				var 回合来源: int = int(首位.get("extra_turn_cause", 0))
-				var 回合加伤: int = int(首位.get("extra_turn_bonus", 0))
-				if 回合来源 > 0:
-					回合说明 = "额外回合：由【%s】安排" % GConst.skill_name(回合来源)
-				if 回合加伤 > 0:
-					回合说明 += "，本回合攻击伤害 +%d" % 回合加伤
-				项按钮.设置说明(回合说明)
-				continue
 			项按钮.设置选项(_额外行动按钮文本(cause, 显示类型,
 				int(项系别)),
 				_额外行动按钮底色(), 0)

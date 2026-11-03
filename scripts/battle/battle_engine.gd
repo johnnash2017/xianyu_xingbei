@@ -149,8 +149,6 @@ var 额外回合来源: int = 0
 var 当前额外回合玩家: int = -1
 ## 当前这个额外回合里「该玩家攻击伤害 +1」的数值（只作用于额外回合的主人）
 var 当前额外回合攻击加伤: int = 0
-## 当前正在执行的额外回合的来源技能（技能栏红色「额外回合」标记的悬停说明用）
-var 当前额外回合来源: int = 0
 ## 额外回合结束后的「续位」：安排那一刻本该轮到的人（当作没有这次额外回合）。
 ## 10803 会在**别人**的回合结束时触发，结束后必须回到那个人之后继续，
 ## 不能从额外回合主人的下家继续（否则整轮顺序被改写）。只在一条链的第一次安排时取号。
@@ -546,7 +544,6 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 	额外回合来源 = 0
 	当前额外回合玩家 = -1
 	当前额外回合攻击加伤 = 0
-	当前额外回合来源 = 0
 	额外回合续位 = -1
 	var base_morale: int = 士气上限()
 	team_morale = [base_morale, base_morale]
@@ -2208,11 +2205,6 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		"extra_uid": int(当前额外行动数据.get("uid", 0)) if extra else 0,
 		# 禁止特殊行动（发动过「启动」技能后）：客户端据此把「特殊行动」按钮收掉
 		"no_special": no_special,
-		# 当前是不是「额外回合」（10803 / 苍白之月）：客户端据此把额外回合摆成技能栏里的
-		# 「额外行动」按钮（见下面的额外行动列表）；来源与加伤供悬停说明用。
-		"extra_turn": 当前额外回合玩家 == pid,
-		"extra_turn_cause": 当前额外回合来源 if 当前额外回合玩家 == pid else 0,
-		"extra_turn_bonus": 当前额外回合攻击加伤 if 当前额外回合玩家 == pid else 0,
 	}]
 	if can_give_up:
 		cmds.append({
@@ -2356,17 +2348,6 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			cmds[0]["extra_attack_elements"] = 序列系别
 			# 与 extra_attack_causes 一一对应的命格限制（0＝那一份不限）：客户端切换后按它比对牌面
 			cmds[0]["extra_attack_fates"] = 序列命格
-	# 额外回合：作为「额外行动」的一种随行动询问下发（客户端用同一套红色按钮渲染），
-	# 只展示、不可点；真正的回合流转由 额外回合玩家 / 额外回合续位 负责，与这条列表无关。
-	if 当前额外回合玩家 == pid:
-		var 回合原因: int = 当前额外回合来源 if 当前额外回合来源 > 0 else GConst.ActionType.ExtraTurn
-		cmds[0]["extra_attack_causes"] = (cmds[0].get("extra_attack_causes", []) as Array) + [回合原因]
-		cmds[0]["extra_attack_uids"] = (cmds[0].get("extra_attack_uids", []) as Array) + [0]
-		cmds[0]["allow_actions"] = (cmds[0].get("allow_actions", []) as Array) + [GConst.ActionType.ExtraTurn]
-		cmds[0]["extra_attack_cards"] = (cmds[0].get("extra_attack_cards", []) as Array) + [{"ids": []}]
-		cmds[0]["extra_attack_targets"] = (cmds[0].get("extra_attack_targets", []) as Array) + [{"ids": []}]
-		cmds[0]["extra_attack_elements"] = (cmds[0].get("extra_attack_elements", []) as Array) + [0]
-		cmds[0]["extra_attack_fates"] = (cmds[0].get("extra_attack_fates", []) as Array) + [0]
 	return cmds
 
 
@@ -4090,7 +4071,6 @@ class SNextPlayer:
 		if e.当前额外回合玩家 >= 0:
 			e.当前额外回合玩家 = -1
 			e.当前额外回合攻击加伤 = 0
-			e.当前额外回合来源 = 0
 			续位 = e.额外回合续位
 			e.额外回合续位 = -1
 		if e.额外回合玩家 >= 0:
@@ -4105,7 +4085,6 @@ class SNextPlayer:
 			e.额外回合攻击加伤 = 0
 			var 来源: int = e.额外回合来源
 			e.额外回合来源 = 0
-			e.当前额外回合来源 = 来源
 			# 链式额外回合（额外回合结束时又安排了一份）：续位沿用外层这条链的
 			if 续位 >= 0:
 				e.额外回合续位 = 续位

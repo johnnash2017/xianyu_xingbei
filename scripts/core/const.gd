@@ -151,9 +151,6 @@ enum ActionType {
 	AttackMagic = 8,
 	Unactional = 9,
 	ChooseExtraAction = 10,
-	## 「额外回合」：只作为额外行动的一种下发给技能栏做红色标记，不是可执行的动作种类。
-	## 真正的回合流转由引擎的 额外回合玩家 / 额外回合续位 负责（见 安排额外回合）。
-	ExtraTurn = 11,
 	None = 100000,
 }
 
