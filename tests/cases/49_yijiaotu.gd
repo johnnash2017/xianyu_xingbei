@@ -80,6 +80,21 @@ func _等到目标询问() -> bool:
 	return false
 
 
+## 最近一条「放逐」技能询问里的 option_skill_ids（选项各自挂的技能号）
+func _询问选项技能号() -> Array:
+	for i: int in range(发送记录.size() - 1, -1, -1):
+		var r: Dictionary = 发送记录[i]
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 命令: Array = (r["data"] as Dictionary).get("commands", [])
+		if 命令.is_empty():
+			continue
+		var c: Dictionary = 命令[0]
+		if int(c.get("respond_id", 0)) == 9505:
+			return (c.get("option_skill_ids", []) as Array).duplicate()
+	return []
+
+
 ## 一项的收尾：目标对手「自选弃任意张该系牌」答不弃、治疗抵挡答不用；
 ## 直到出现下一项的目标询问（交给调用方）或整个展示流程结束
 func _本项收尾() -> void:
@@ -294,6 +309,8 @@ func _检放逐() -> void:
 	检(引擎._pending_respond_id == 9505,
 		"不爆牌状态下不应弹超限弃牌（当前询问号 %s）" % str(引擎._pending_respond_id))
 	检(引擎._await_id == 1, "摸完牌应问放哪张【末日预言】（等待 %s）" % str(引擎._await_id))
+	检(_询问选项技能号() == [9507, 9508],
+		"正面二选一的选项应挂技能号（悬停看被动说明）：%s" % str(_询问选项技能号()))
 	_应答([1])          # 天雷劫火
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505,

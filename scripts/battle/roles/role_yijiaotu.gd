@@ -242,7 +242,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if 预定.is_empty():
 			if not engine.has_reply():
 				询问(player.id, MO_RI_YU_YAN, 0, 0, GConst.CardSource.Hand,
-					[{"value": 1, "label": "天雷劫火"}, {"value": 2, "label": "地裂波涛"}], 0, "", [], false,
+					[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO},
+					 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO}], 0, "", [], false,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 					"【末日预言】的【预言】已空：翻面为【天雷劫火】或【地裂波涛】（1=天雷劫火 / 2=地裂波涛）")
 				return WAIT
@@ -570,10 +571,11 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		engine.移除场卡(地裂波涛名)
 		if not engine.has_reply():
 			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand,
-				[{"value": 1, "label": "天雷劫火"}, {"value": 2, "label": "地裂波涛"}],
+				[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO},
+				 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO}],
 				0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【放逐】：选择放 1 张【末日预言】入场（背面是【末日预言】，正面为）")
+				"【放逐】：选择放 1 张【末日预言】入场（背面为【末日预言】，正面由你选择）")
 			return WAIT
 		return p_yi_jiao_tu_ask({"player": player.id})
 	# 放逐：选正面的牌 → 放【末日预言】入场（记下正面，翻面时直接用）
