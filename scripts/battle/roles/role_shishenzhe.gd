@@ -191,7 +191,8 @@ func p_attack_card(ctx: Dictionary) -> int:
 	# 只有刃的归属者处理这次攻击；攻击者可能是侵刻后拿到牌的人
 	if engine.刃归属者(提交) != player.id:
 		return SUCCESS
-	var 实例: int = 提交 if 提交 > 0 and player.有手牌(提交) else 0
+	# 归属者可能不持有这张牌（被侵刻交给别人）；只要实例归属自己就记本次刃
+	var 实例: int = 提交 if 提交 > 0 and (player.有手牌(提交) or engine.刃归属者(提交) == player.id) else 0
 	if 实例 <= 0:
 		for h: int in player.hand_cards:
 			if GConst.牌号(h) == 面:
@@ -211,8 +212,7 @@ func p_attack_card(ctx: Dictionary) -> int:
 # 7902 侵刻：使用【魔刃】/【异刃】攻击命中时，把该卡加入攻击目标手牌
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
-	if not bool(ctx.get("is_active", false)):
-		return SUCCESS
+	# 侵刻的触发条件是「攻击命中」，主动攻击和应战反击都算
 	if _本次刃 <= 0 or engine.刃归属者(_本次刃) != player.id:
 		return SUCCESS
 	if _侵刻已处理 and not engine.has_reply():
@@ -229,6 +229,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return WAIT
 	_侵刻目标 = -1
 	if not take_skill_reply():
+		_本次刃 = 0
+		_本次刃面 = 0
 		return SUCCESS
 	notice_skill(QIN_KE, [dst.id])
 	# 攻击牌已先进入弃牌堆（渗蚀之后才轮到命中/侵刻）：取回同一唯一实例交给目标
@@ -239,6 +241,15 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	_本次刃 = 0
 	_本次刃面 = 0
 	engine._broadcast_game()
+	return SUCCESS
+
+
+func p_timeline_2_miss(_ctx: Dictionary) -> int:
+	# 应战反击没有 p_after_attack，未命中时也要清掉本次刃，避免污染下一次攻击
+	if _本次刃 > 0 and engine.刃归属者(_本次刃) == player.id:
+		_本次刃 = 0
+		_本次刃面 = 0
+		_侵刻已处理 = false
 	return SUCCESS
 
 

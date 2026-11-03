@@ -4447,8 +4447,20 @@ class SReattackGo:
 		var 被攻击者: BattlePlayer = e.p(int(harm["dst"]))
 		if 被攻击者 != null:
 			被攻击者.reattacker = -1
+		# 应战打出的魔刃/异刃也记「本次刃」，供侵刻在命中时判断。
+		# 必须在 take_from_hand 之前记：p_attack_card 要从手牌找实例。
+		var 出牌: Dictionary = {
+			"player": defender.id, "card_id": GConst.牌号(原牌),
+			"card_id_instance": 原牌, "改用": 用牌,
+		}
+		if defender.role != null:
+			defender.role.call_hook("p_attack_card", 出牌)
+		var 归属者: int = e.刃归属者(原牌)
+		if 归属者 > 0 and 归属者 != defender.id:
+			var 归属玩家: BattlePlayer = e.p(归属者)
+			if 归属玩家 != null and 归属玩家.role != null:
+				归属玩家.role.call_hook("p_attack_card", 出牌)
 		e.take_from_hand(defender.id, [原牌])
-		e.to_discard([原牌], {"owner": defender.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
 		# 应战打出的魔刃/异刃同样按当前系别借普通斩击牌出特效/音效
 		var 表现用牌: int = e.攻击表现牌(用牌)
 		e.broadcast(GConst.Msg.Card, {
@@ -4468,7 +4480,7 @@ class SReattackGo:
 			"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack,
 			"reattack": true, "card_id": 用牌, "is_active": false,
 		}
-		e.push(SAttackCard.new(defender.id, 目标, 用牌, new_harm))
+		e.push(SAttackCard.new(defender.id, 目标, 用牌, new_harm, 原牌))
 		e.push(STimeline2Miss.new(harm))
 		# 「展示手牌」钩子最后压（＝最先跑）：上面那条出牌广播已经先发出去（客户端摊牌 + 出手特效），
 		# 之后才轮到技能询问（如圣女冰霜祷言）—— 与非应战场合（主动打出）的次序一致

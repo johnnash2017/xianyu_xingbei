@@ -478,7 +478,8 @@ func _检噬神者() -> void:
 	无同系角色.set("_侵刻已处理", false)
 	无同系角色.set("_本次刃", 无同系玩家.魔刃实例)
 	无同系角色.set("_本次刃面", 1005)
-	var 侵刻返回: int = int(无同系角色.call("p_timeline_2_hit", {"is_active": true, "dst": 2}))
+	# 应战反击也属于「攻击命中」，is_active=false 时同样应询问侵刻
+	var 侵刻返回: int = int(无同系角色.call("p_timeline_2_hit", {"is_active": false, "dst": 2}))
 	var 侵刻问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
 	var 侵刻命令: Array = 侵刻问.get("commands", [])
 	检(侵刻返回 == BattleRole.WAIT and not 侵刻命令.is_empty()
