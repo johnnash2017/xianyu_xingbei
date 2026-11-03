@@ -1741,13 +1741,6 @@ func 安排额外回合(pid: int, 攻击加伤: int = 0, 来源: int = 0) -> int
 	额外回合玩家 = pid
 	额外回合攻击加伤 = maxi(攻击加伤, 0)
 	额外回合来源 = 来源
-	# 战斗日志：获得额外回合（只写一句；来源与加伤只在状态图标 / 快照里体现）。
-	# 用 Turn 类（日志标签 [回合]）：Combat 在客户端会被标成 [伤害]，和这条内容对不上。
-	broadcast(GConst.Msg.Gossip, {
-		"type": GConst.GossipType.Turn,
-		"txt": "%s 获得一个额外回合" % _称号(players[pid]),
-		"id": pid,
-	})
 	return GConst.GE_SUCCESS
 
 
@@ -4095,6 +4088,14 @@ class SNextPlayer:
 			e.当前额外回合来源 = 来源
 			# 状态图标（剑守誓言等）从回合开始就显示：立刻补一份快照
 			e._broadcast_game()
+			# 战斗日志：真的开始执行这个额外回合时才记（同一次回合结束里安排了两次时，
+			# 只有最后真正执行的那一次会记，不会出现「两个人各获得一个额外回合」的假日志）。
+			# 用 Turn 类（日志标签 [回合]）：Combat 在客户端会被标成 [伤害]。
+			e.broadcast(GConst.Msg.Gossip, {
+				"type": GConst.GossipType.Turn,
+				"txt": "%s 获得一个额外回合" % e._称号(e.players[自己]),
+				"id": 自己,
+			})
 			# 链式额外回合（额外回合结束时又安排了一份）：续位沿用外层这条链的
 			if 续位 >= 0:
 				e.额外回合续位 = 续位

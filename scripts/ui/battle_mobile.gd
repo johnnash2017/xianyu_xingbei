@@ -1071,13 +1071,16 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			"icon": GConst.血蔷薇庭院图标,
 			"desc": GConst.血蔷薇庭院说明,
 		})
-	# 剑守誓言（10803）：额外回合的攻击加伤挂在角色状态区；额外回合结束服务端清零，图标随之移除
-	if p.extra_turn_cause == GConst.技能_剑守誓言 and p.extra_turn_bonus > 0:
-		额外状态.append({
-			"name": "剑守誓言",
-			"icon": GConst.剑守誓言图标,
-			"desc": GConst.剑守誓言说明,
-		})
+	# 额外回合的加伤（如剑守誓言 10803）：挂在角色状态区；额外回合结束服务端清零，图标随之移除。
+	# 名称 / 说明取技能表，图标按技能号配在 GConst.额外回合状态图标。
+	if p.extra_turn_cause > 0 and p.extra_turn_bonus > 0:
+		var 回合图标: String = str(GConst.额外回合状态图标.get(p.extra_turn_cause, ""))
+		if not 回合图标.is_empty():
+			额外状态.append({
+				"name": GConst.skill_name(p.extra_turn_cause),
+				"icon": 回合图标,
+				"desc": GConst.skill_desc(p.extra_turn_cause),
+			})
 	if GConst.圣弓角色号.has(p.role_id):
 		if p.sheng_huang_side == 0:
 			额外状态.append({

@@ -196,6 +196,8 @@ func _重置战斗() -> void:
 	引擎.额外回合来源 = 0
 	引擎.当前额外回合玩家 = -1
 	引擎.当前额外回合攻击加伤 = 0
+	引擎.当前额外回合来源 = 0
+	引擎.额外回合续位 = -1
 	引擎.deck.pile.clear()
 	引擎.deck.discard.clear()
 	引擎.team_gem[GConst.BLUE] = 0

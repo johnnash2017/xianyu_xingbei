@@ -903,10 +903,12 @@ const 技能_散华轮舞: int = 3406
 const 血蔷薇庭院图标: String = "res://assets/textures/battle/XueQiangWeiTingYuan.png"
 const 血蔷薇庭院说明: String = "所有角色的【治疗】无法用于抵御伤害"
 
-## 剑之子【剑守誓言】（10803，技能号见上）：额外回合的攻击加伤作为挂在角色身上的状态图标，
+## 额外回合的加伤状态图标（技能号 → 图标）：状态名称与说明都取技能表（skill_name / skill_desc），
+## 这里只配图标。目前只有剑之子【剑守誓言】10803 会给额外回合加攻。
 ## 额外回合结束服务端清零，图标随之移除（见 BattlePlayer.to_proto 的 extra_turn_*）。
-const 剑守誓言图标: String = "res://assets/textures/battle/JianShouShiYan.png"
-const 剑守誓言说明: String = "本回合攻击伤害额外+1"
+const 额外回合状态图标: Dictionary = {
+	10803: "res://assets/textures/battle/JianShouShiYan.png",
+}
 
 ## 圣弓（37）：【圣煌辉光炮】/【圣煌余辉】是同一张专属技的正反面，
 ## 作为独立状态图标显示；使用后正面图标换成背面，背面用完图标消失。
