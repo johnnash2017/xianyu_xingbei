@@ -310,9 +310,12 @@ static func 单个技能(技能号: int, 正文字号: int = 0, 角色号: int =
 		return ""
 	var 行: String = "【%s】%s：%s" % [
 		GConst.skill_type(技能号), GConst.技能名显示(角色号, 技能号), 说明]
+	# 先上色（_染类型 靠行首的「【类型】」识别），再套字号；
+	# 反过来的话行首变成 [font_size=…]，类型就永远匹配不到、不会标色
+	行 = _染类型(行)
 	if 正文字号 > 0:
 		行 = "[font_size=%d]%s[/font_size]" % [正文字号, 行]
-	return _染类型(行)
+	return 行
 
 
 ## 当前玩家自己的角色号（不在对局 / 没选角时 0＝没有覆盖）

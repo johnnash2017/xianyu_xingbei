@@ -3451,8 +3451,9 @@ func _造提示文本行(文本: String, 用BBCode: bool) -> RichTextLabel:
 ## 场卡的被动说明（对照魔刃的刃状态内容）：标题 →「【被动】技能名：说明」。
 ## 说明走 角色技能提示.单个技能，带【类型】上色；限宽 + 自动换行，长文本不会横向撑爆提示框。
 func _造被动状态内容(图标: Control, 标题文本: String, 技能号: int) -> Control:
-	# 9504 是异教徒（角色 95）的【末日预言】；角色号只影响技能名按角色改写，这里固定给 95
-	var 说明: String = 角色技能提示.单个技能(技能号, 技能说明字号, 95)
+	# 9504 是异教徒（角色 95）的【末日预言】；角色号只影响技能名按角色改写，这里固定给 95。
+	# 正文字号传 0（同魔刃）：字号由提示框的 RichTextLabel 统一给，文本里不再套 [font_size]
+	var 说明: String = 角色技能提示.单个技能(技能号, 0, 95)
 	if 说明.is_empty():
 		return null
 	var 内容: VBoxContainer = VBoxContainer.new()
