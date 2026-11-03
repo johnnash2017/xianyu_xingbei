@@ -9,10 +9,16 @@ extends BattleRole
 ## 2. 【末日预言】的「因承受伤害摸牌时第 1 张改从【预言】处获得」用 F8 同步钩子
 ##    伤害摸牌替换(pid)：任意角色因伤害摸牌都生效；从预言堆顶取 1 张、张数 -1。
 ## 3. 翻面：预言堆**取空的那一次结算完**，问玩家选【天雷劫火】/【地裂波涛】，
-##    移除【末日预言】、换一张同名场卡入场，然后立刻结算它的「展示时」效果（见 _翻面）。
-## 4. 【审判】逐名队友问「弃 1 张牌【展示】」，然后各自摸 1 张【强制】，再由你选 1 张弃牌
+##    移除【末日预言】、换一张同名场卡入场，然后立刻结算它的「展示时」效果。
+##    展示结算完把 _翻面步 归零（【放逐】放进新的【末日预言】后还能再翻一次）。
+## 4. 【天雷劫火】/【地裂波涛】「展示时」：选 1 种系别 → 弃 X 张该系牌（≤4，可为 0）→
+##    摸 X 张【强制】→ 选 1 名目标对手 → 他自选弃任意张该系牌【展示】（可不弃）→
+##    造成 X+1 点法术伤害③。两项（雷/火 或 地/水）二选一发动。
+##    【贪婪】9506：展示时花 1 点能量，把「选一项」改成「两项都发动、顺序由你决定」。
+##    结算后场卡**不立刻移除**，留到异教徒自己回合开始的【灾殃止息】9509 再移除。
+## 5. 【审判】逐名队友问「弃 1 张牌【展示】」，然后各自摸 1 张【强制】，再由你选 1 张弃牌
 ##    交给目标对手；【末日预言】在场时其余弃牌洗混放到预言堆顶。
-## 5. 【放逐】摸 6~8 张后，把手牌 6 张面朝下洗混作为新预言堆，所以手牌最终不多，
+## 6. 【放逐】摸 6~8 张后，把手牌 6 张面朝下洗混作为新预言堆，所以手牌最终不多，
 ##    不需要额外处理手牌上限。额外行动二选一（攻击 / 法术）。
 
 const YI_DUAN_XIE_SHUO: int = 9501
@@ -21,6 +27,10 @@ const XIAN_JI: int = 9503
 const MO_RI_YU_YAN: int = 9504
 const FANG_ZHU: int = 9505
 const TAN_LAN: int = 9506
+## 专属技关键词：翻面后的两张（展示时发动）、以及回合开始移除它们的被动
+const TIAN_LEI_JIE_HUO: int = 9507
+const DI_LIE_BO_TAO: int = 9508
+const ZAI_YANG_ZHI_XI: int = 9509
 
 const 末日预言名: String = "末日预言"
 const 天雷劫火名: String = "天雷劫火"
@@ -39,6 +49,10 @@ var _翻面步: int = 0
 var _展示系: int = 0
 var _展示X: int = 0
 var _展示对手: int = -1
+## 展示时这一轮要依次结算的系别（贪婪＝两项都发动，顺序由玩家选）
+var _展示模式: Array[int] = []
+var _展示序号: int = 0
+var _展示贪婪: bool = false
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -106,10 +120,13 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 	_本回合造成伤害 = false
 	_重算手牌上限()
 	# 【灾殃止息】：回合开始时若存在【天雷劫火】/【地裂波涛】→ 移除
-	if engine.有场卡(天雷劫火名):
-		engine.移除场卡(天雷劫火名)
-	if engine.有场卡(地裂波涛名):
-		engine.移除场卡(地裂波涛名)
+	if engine.有场卡(天雷劫火名) or engine.有场卡(地裂波涛名):
+		notice_skill(ZAI_YANG_ZHI_XI, [player.id])
+		if engine.有场卡(天雷劫火名):
+			engine.移除场卡(天雷劫火名)
+		if engine.有场卡(地裂波涛名):
+			engine.移除场卡(地裂波涛名)
+		engine._broadcast_game()
 	return SUCCESS
 
 
@@ -205,7 +222,7 @@ var _放逐步: int = 0
 
 
 # ============================================================
-# 9504 / 9506：翻面成【天雷劫火】/【地裂波涛】并结算「展示时」效果
+# 9504 翻面 → 9507 / 9508「展示时」效果（9506 贪婪改「两项都发动」、9509 灾殃止息移除）
 # ============================================================
 func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
@@ -229,80 +246,172 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			"counter": 0, "counter_max": 0, "state": 1})
 		notice_skill(MO_RI_YU_YAN, [player.id])
 		_在展示 = 名
-		_展示步 = 1
+		_展示模式 = []
+		_展示序号 = 0
+		_展示贪婪 = false
+		_展示对手 = -1
+		# 先把「是否发动贪婪」问掉，再决定发动一项还是两项（贪婪＝两项都发动、顺序自定）
+		_展示步 = 10
 		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
 		return URGENT
-	# 展示时：先选系别（天雷劫火=雷/火；地裂波涛=地/水）
+	# 展示时：是否发动【贪婪】（消耗 1 水晶 → 两项都发动）
+	if _展示步 == 10:
+		if player.get_energy() <= 0:
+			_展示步 = 1
+			return p_yi_jiao_tu_ask(ctx)
+		if not engine.has_reply():
+			询问(player.id, TAN_LAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+				"是否发动【贪婪】（消耗 1 点能量）：本次【%s】改为两项都发动，顺序由你决定？" % _在展示)
+			return WAIT
+		_展示贪婪 = take_skill_reply()
+		if _展示贪婪:
+			player.remove_energy(1)
+			notice_skill(TAN_LAN, [player.id])
+			_展示步 = 11
+		else:
+			_展示步 = 1
+		return p_yi_jiao_tu_ask(ctx)
+	# 展示时（贪婪）：选两项的发动顺序
+	if _展示步 == 11:
+		var 序表: Array[int] = _展示系别()
+		if not engine.has_reply():
+			询问(player.id, TAN_LAN, 0, 0, GConst.CardSource.Hand, [1, 2], 0, "", [], false,
+				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+				"【贪婪】：选择发动顺序（1＝先%s后%s / 2＝先%s后%s）"
+				% [GConst.element_to_chinese(序表[0]), GConst.element_to_chinese(序表[1]),
+					GConst.element_to_chinese(序表[1]), GConst.element_to_chinese(序表[0])])
+			return WAIT
+		var rq: Dictionary = take_skill_reply_full()
+		var aq: Array = rq.get("args", [])
+		var 先: int = int(aq[0]) if not aq.is_empty() else 1
+		_展示模式 = [序表[1], 序表[0]] if 先 == 2 else [序表[0], 序表[1]]
+		_展示序号 = 0
+		_展示步 = 3
+		return p_yi_jiao_tu_ask(ctx)
+	# 展示时（不发动贪婪）：选 1 种系别发动
 	if _展示步 == 1:
 		var 系表: Array[int] = _展示系别()
 		if not engine.has_reply():
-			询问(player.id, MO_RI_YU_YAN, 0, 0, GConst.CardSource.Hand, 系表, 0, "", [], false,
+			询问(player.id, _展示技能号(), 0, 0, GConst.CardSource.Hand, 系表, 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【%s】：选择 1 种系别发动（弃 X 张该系牌摸 X 张，然后对目标对手造成 X+1 点法术伤害）"
+				"【%s】：选择 1 种系别发动（弃 X 张该系牌摸 X 张；目标对手弃任意张该系牌后，你对他造成 X+1 点法术伤害）"
 				% _在展示)
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		var args2: Array = r2.get("args", [])
-		_展示系 = int(args2[0]) if not args2.is_empty() else int(系表[0])
+		var 选系: int = int(args2[0]) if not args2.is_empty() else int(系表[0])
+		if not 系表.has(选系):
+			选系 = int(系表[0])
+		_展示模式 = [选系]
+		_展示序号 = 0
 		_展示步 = 3
-		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
-		return URGENT
-	# 展示时：选 X（弃几张该系牌，最多 4，且不能超过手里该系牌数）
+		return p_yi_jiao_tu_ask(ctx)
+	# 展示时（每一项）：选 X（弃几张该系牌，最多 4，且不能超过手里该系牌数）
 	if _展示步 == 3:
+		if _展示序号 >= _展示模式.size():
+			# 本次展示全部结算完：清状态、清翻面标记（放逐放进新的【末日预言】后还能再翻）
+			_展示步 = 0
+			_展示模式 = []
+			_展示对手 = -1
+			_翻面步 = 0
+			return SUCCESS
+		_展示系 = int(_展示模式[_展示序号])
 		var 同系: Array[int] = hand_ids_where(
 			func(_cid: int, c: GCard) -> bool: return c.element_enum() == _展示系)
 		_展示X = mini(4, 同系.size())
 		if _展示X <= 0:
 			_展示步 = 5
-			engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
-			return URGENT
+			return p_yi_jiao_tu_ask(ctx)
+		var 展示系名: String = GConst.element_to_chinese(_展示系)
 		if not engine.has_reply():
-			询问(player.id, MO_RI_YU_YAN, _展示X, 0, GConst.CardSource.Hand, [], _展示X, "", [], false,
+			询问(player.id, _展示技能号(), _展示X, 0, GConst.CardSource.Hand, [], _展示X, "", [], false,
 				0, player.id, [], _展示X, {}, 0, 0, false, [], true, -1, 0,
-				"【%s】：弃最多 %d 张该系牌【展示】" % [_在展示, _展示X])
+				"【%s】：弃最多 %d 张%s系牌【展示】" % [_在展示, _展示X, 展示系名])
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
-		_展示步 = 4
 		var cards: Array = r3.get("card_ids", [])
 		var 弃: Array = []
 		for c: Variant in cards:
 			if 弃.size() < _展示X and player.有手牌(int(c)):
-				弃.append(int(c))
+				var 卡: GCard = Data.get_card(int(c))
+				if 卡 != null and 卡.element_enum() == _展示系 and not 弃.has(int(c)):
+					弃.append(int(c))
 		if not 弃.is_empty():
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 				"card_ids": 弃, "is_real": true,
 			})
 			engine.take_from_hand(player.id, 弃, false)
-			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": MO_RI_YU_YAN})
+			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": _展示技能号()})
 			engine._log_discard(player.id, 弃, false)
 		_展示X = 弃.size()
 		_展示步 = 5
-		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
-		return URGENT
-	# 展示时：选目标对手 → 摸 X 张 + 造成 X+1 点法术伤害
+		return p_yi_jiao_tu_ask(ctx)
+	# 展示时（每一项）：摸 X 张【强制】→ 选目标对手
 	if _展示步 == 5:
-		engine.push_draw(player.id, _展示X, MO_RI_YU_YAN)
+		if _展示X > 0:
+			engine.push_draw(player.id, _展示X, _展示技能号())
 		# 摸牌先压进栈；阶段推进到「等目标回复」，回来由 6 号分支取回复（避免重复摸牌）
 		_展示步 = 6
 		if not engine.has_reply():
-			询问(player.id, MO_RI_YU_YAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+			询问(player.id, _展示技能号(), 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
-				"【%s】：指定 1 名目标对手（弃牌与摸牌后结算伤害）" % _在展示)
+				"【%s】：指定 1 名目标对手（他弃牌后你造成 %d 点法术伤害）" % [_在展示, _展示X + 1])
 			return WAIT
 	if _展示步 == 6:
 		if not engine.has_reply():
 			return WAIT
 		var r5: Dictionary = take_skill_reply_full()
 		var ds: Array = r5.get("dst_ids", [])
-		_展示步 = 0
-		if ds.size() == 1:
-			engine.push_harm({
-				"src": player.id, "dst": int(ds[0]), "point": _展示X + 1,
-				"cause": MO_RI_YU_YAN, "type": GConst.HarmType.Magic,
-			})
-			return URGENT
-		return SUCCESS
+		_展示对手 = int(ds[0]) if ds.size() == 1 else -1
+		if _展示对手 < 0 or engine.p(_展示对手) == null:
+			return _展示本项结束()
+		_展示步 = 7
+		return p_yi_jiao_tu_ask(ctx)
+	# 展示时（每一项）：目标对手自选弃任意张该系牌【展示】（可不弃）
+	if _展示步 == 7:
+		var 对手: BattlePlayer = engine.p(_展示对手)
+		var 牌面: Array = []
+		var 上限: int = 0
+		if 对手 != null:
+			for cid: int in 对手.hand_cards:
+				var 卡2: GCard = Data.get_card(cid)
+				if 卡2 == null or 卡2.element_enum() != _展示系:
+					continue
+				上限 += 1
+				var 面2: int = GConst.牌号(int(cid))
+				if not 牌面.has(面2):
+					牌面.append(面2)
+		if 上限 <= 0:
+			return _展示本项伤害()
+		if not engine.has_reply():
+			询问(_展示对手, _展示技能号(), 0, 0, GConst.CardSource.Hand, [], 上限, "", 牌面, true,
+				0, _展示对手, [], 上限, {}, 0, 0, false, [], true, -1, 0,
+				"【%s】：请弃任意张%s系牌【展示】（可不弃）"
+				% [_在展示, GConst.element_to_chinese(_展示系)])
+			return WAIT
+		var r7: Dictionary = take_skill_reply_full()
+		var 已弃: Array = []
+		var 对手2: BattlePlayer = engine.p(_展示对手)
+		if 对手2 != null:
+			for c: Variant in r7.get("card_ids", []):
+				var cid2: int = int(c)
+				var 卡3: GCard = Data.get_card(cid2)
+				if 已弃.size() < 上限 and 对手2.有手牌(cid2) and 卡3 != null 						and 卡3.element_enum() == _展示系 and not 已弃.has(cid2):
+					已弃.append(cid2)
+			if not 已弃.is_empty():
+				engine.broadcast(GConst.Msg.Card, {
+					"type": GConst.CardMsgType.Show, "src_id": _展示对手, "dst_id": _展示对手,
+					"card_ids": 已弃, "is_real": true,
+				})
+				engine.take_from_hand(_展示对手, 已弃, false)
+				engine.to_discard(已弃, {"owner": _展示对手, "source": "hand", "cause": _展示技能号()})
+				engine._log_discard(_展示对手, 已弃, false)
+		return _展示本项伤害()
+	# 展示时（每一项）：伤害结算完 → 进入下一项（贪婪）或收尾
+	if _展示步 == 9:
+		return _展示本项结束()
 	# 审判：逐名队友弃 1 张牌【展示】
 	if _审判步 == 2:
 		var 队友: Array[int] = _我方角色()
@@ -458,6 +567,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			"counter": 新堆.size(), "counter_max": 预言上限, "state": 0, "pile": 新堆,
 		})
 		_重算手牌上限()
+		_翻面步 = 0
 		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
 		return URGENT
 	if _放逐步 == 4:
@@ -493,6 +603,31 @@ func _检查预言取空() -> void:
 		return
 	_翻面步 = 1
 	engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
+
+
+## 当前展示的这张牌该用哪个技能号（天雷劫火 9507 / 地裂波涛 9508）：询问与伤害来源都用它
+func _展示技能号() -> int:
+	return DI_LIE_BO_TAO if _在展示 == 地裂波涛名 else TIAN_LEI_JIE_HUO
+
+
+## 展示流程里「每一项」的伤害：目标对手弃完牌后造成 X+1 点法术伤害③
+func _展示本项伤害() -> int:
+	_展示步 = 9
+	if _展示对手 > 0:
+		engine.push_harm({
+			"src": player.id, "dst": _展示对手, "point": _展示X + 1,
+			"cause": _展示技能号(), "type": GConst.HarmType.Magic,
+		})
+		return URGENT
+	return _展示本项结束()
+
+
+## 一项结算完：下一项（贪婪）或收尾（清翻面标记，放逐放进新【末日预言】后还能再翻）
+func _展示本项结束() -> int:
+	_展示对手 = -1
+	_展示序号 += 1
+	_展示步 = 3
+	return p_yi_jiao_tu_ask({"player": player.id})
 
 
 ## 【天雷劫火】/【地裂波涛】的两种系别
