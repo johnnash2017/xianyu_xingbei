@@ -2275,6 +2275,10 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			if pl.boot_skill_used and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
 					and pl.role.is_free_skill(int(sk.get("id", 0))):
 				技能可用 = false
+			# 本阶段放行的行动种类也管技能按钮：额外行动只允许攻击 / 法术时，特殊技能（启动）
+			# 一律置灰 —— 口径同 base_v_allow_action，避免玩家点了才被驳回
+			if not GConst.放行动作(int(sk.get("type", 0)), action_type):
+				技能可用 = false
 			# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时置灰。
 			# 空列表在协议/客户端那里等于「不限制」（_玩家可选），会让本该被挡住的人
 			# （如已有【圣盾】/【天使之墙】的目标）反而变成能点 —— 所以只能靠置灰挡住点击

@@ -191,8 +191,16 @@ func _检献祭同系() -> void:
 	玩家1.set_crystal(0)
 	var 两张: Array = _发牌(玩家1, GConst.CardElement.Wind, 2)
 	_放末日(两张)
-	var rc: int = 角色.p_magic_skill({"action_id": 9503, "src_id": 1})
+	# 【献祭】是「启动」：技能类型必须是 SpecialSkill（不是法术技能），否则会去消耗放逐给的额外行动
+	var 献祭项: Dictionary = {}
+	for 项: Dictionary in 角色.available_skills():
+		if int(项.get("id", 0)) == 9503:
+			献祭项 = 项
+	检(int(献祭项.get("type", 0)) == GConst.ActionType.SpecialSkill,
+		"【献祭】应作为启动技（SpecialSkill）下发：%s" % str(献祭项.get("type", 0)))
+	var rc: int = 角色.p_special_skill({"action_id": 9503, "src_id": 1})
 	检(rc == BattleRole.URGENT, "【献祭】应压入展示流程并返回 URGENT")
+	检(玩家1.boot_skill_used, "发动启动技后应记 boot_skill_used（每回合只能一个）")
 	引擎.run()
 	检(引擎._await_id == 1, "【献祭】应先问系别（等待 %s）" % str(引擎._await_id))
 	_应答([GConst.CardElement.Wind])
@@ -200,6 +208,8 @@ func _检献祭同系() -> void:
 	var 表: Dictionary = _场卡("末日预言")
 	检(int(表.get("pile", []).size()) == 1, "同系应移除 1 张【预言】：%d" % int(表.get("pile", []).size()))
 	检(引擎.team_gem[GConst.BLUE] == 1, "同系应让战绩区 +1【宝石】")
+	检(角色.v_magic_skill({"action_id": 9503, "src_id": 1}) == GConst.GE_INVALID_ACTION,
+		"【献祭】不应再有法术技能入口（否则能被当成放逐给的额外法术行动用掉）")
 	检(引擎.deck.discard.has(int(两张[1])), "被移除的【预言】应进弃牌堆")
 
 
@@ -212,7 +222,7 @@ func _检献祭异系() -> void:
 	var 风: Array = _发牌(玩家1, GConst.CardElement.Wind, 1)
 	var 牌库顶前: int = int(引擎.deck.pile.back())
 	_放末日([int(风[0])])
-	角色.p_magic_skill({"action_id": 9503, "src_id": 1})
+	角色.p_special_skill({"action_id": 9503, "src_id": 1})
 	引擎.run()
 	_应答([GConst.CardElement.Fire])
 	引擎.run()

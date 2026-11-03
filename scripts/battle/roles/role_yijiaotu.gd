@@ -78,7 +78,10 @@ func available_skills() -> Array:
 	var 手牌: Array[int] = player.hand_cards.duplicate()
 	return [
 		{
-			"type": GConst.ActionType.MagicSkill,
+			# 献祭是「启动」：技能类型必须是 SpecialSkill（引擎按这个 + is_free_skill 判启动，
+			# 才能走「每回合只能发动一个启动技」「启动技与特殊行动互斥」那套约束），
+			# 不能写成 MagicSkill —— 否则它会当成法术行动去消耗放逐给的额外行动
+			"type": GConst.ActionType.SpecialSkill,
 			"id": XIAN_JI,
 			"enabled": 有末日 and engine.取场卡(末日预言名).get("pile", []).size() > 0,
 		},
@@ -101,16 +104,28 @@ func is_free_skill(skill_id: int) -> bool:
 	return skill_id == XIAN_JI
 
 
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != XIAN_JI:
+		return GConst.GE_INVALID_ACTION
+	if not engine.有场卡(末日预言名):
+		return GConst.GE_INVALID_ACTION
+	if (engine.取场卡(末日预言名).get("pile", []) as Array).is_empty():
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+func p_special_skill(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) != XIAN_JI:
+		return EMPTY_HANDLE
+	return _p_献祭()
+
+
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
 	match int(action.get("action_id", 0)):
-		XIAN_JI:
-			if not engine.有场卡(末日预言名):
-				return GConst.GE_INVALID_ACTION
-			if (engine.取场卡(末日预言名).get("pile", []) as Array).is_empty():
-				return GConst.GE_INVALID_ACTION
-			return GConst.GE_SUCCESS
 		FANG_ZHU:
 			if player.get_energy() < 1 or _本回合已用放逐:
 				return GConst.GE_INVALID_ACTION
@@ -123,8 +138,6 @@ func v_magic_skill(action: Dictionary) -> int:
 
 func p_magic_skill(action: Dictionary) -> int:
 	match int(action.get("action_id", 0)):
-		XIAN_JI:
-			return _p_献祭()
 		FANG_ZHU:
 			var 张: Array = action.get("args", [])
 			return _p_放逐(int(张[0]) if not 张.is_empty() else 6)
@@ -217,10 +230,15 @@ func p_turn_end(ctx: Dictionary) -> int:
 # 9503 献祭：展示预言堆顶 1 张
 # ============================================================
 func _p_献祭() -> int:
+	# 启动技每回合只能发动一个（引擎在行动入口也会拦；这里防直接调用绕过）
+	if player.boot_skill_used:
+		return GConst.GE_INVALID_ACTION
 	var 表: Dictionary = engine.取场卡(末日预言名)
 	var 堆: Array = 表.get("pile", [])
 	if 堆.is_empty():
 		return GConst.GE_INVALID_ACTION
+	# 「启动」技能每回合只能发动一个：发动成功记到玩家身上（引擎统一下发/校验）
+	player.boot_skill_used = true
 	_献祭牌 = int(堆.back())
 	_献祭步 = 1
 	engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
