@@ -1740,9 +1740,10 @@ func 安排额外回合(pid: int, 攻击加伤: int = 0, 来源: int = 0) -> int
 	# 一条链只取第一次（额外回合里再安排时沿用外层续位，避免把续位改成额外回合主人的下家）。
 	if 额外回合续位 < 0:
 		额外回合续位 = next_id(current_id)
-	# 战斗日志：获得额外回合（只写一句，来源与加伤只在技能栏标记的悬停说明里体现）
+	# 战斗日志：获得额外回合（只写一句，来源与加伤只在技能栏标记的悬停说明里体现）。
+	# 用 Turn 类（日志标签 [回合]）：Combat 在客户端会被标成 [伤害]，和这条内容对不上。
 	broadcast(GConst.Msg.Gossip, {
-		"type": GConst.GossipType.Combat,
+		"type": GConst.GossipType.Turn,
 		"txt": "%s 获得一个额外回合" % _称号(players[pid]),
 		"id": pid,
 	})
