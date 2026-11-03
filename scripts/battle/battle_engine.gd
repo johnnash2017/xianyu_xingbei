@@ -1990,10 +1990,10 @@ func 场卡加计数(id: String, n: int) -> int:
 
 
 ## 场卡快照（给 game_info）：隐藏牌堆只给张数
-func 场卡快照() -> Array:
+func 场卡快照(viewer_id: int) -> Array:
 	var out: Array = []
 	for 表: Dictionary in field_cards:
-		out.append({
+		var 项: Dictionary = {
 			"id": str(表.get("id", "")),
 			"owner": int(表.get("owner", -1)),
 			"attached": int(表.get("attached", -1)),
@@ -2001,7 +2001,11 @@ func 场卡快照() -> Array:
 			"counter_max": int(表.get("counter_max", 0)),
 			"state": int(表.get("state", 0)),
 			"pile_count": (表.get("pile", []) as Array).size(),
-		})
+		}
+		# 隐藏信息（【末日预言】的正面）：只给拥有者自己看，别人拿不到
+		if int(表.get("owner", -1)) == viewer_id and 表.has("front"):
+			项["front"] = str(表.get("front", ""))
+		out.append(项)
 	return out
 
 
@@ -2683,7 +2687,7 @@ func game_info(viewer_id: int) -> Dictionary:
 		# 房主座位号（-1 = 没记录）：客户端「玩家列表」据此给房主标星号
 		"host_seat": host_seat,
 		# 场卡（F1）：【异端裁决所】/【末日预言】/【绝界】这类摆在场上或某人面前的卡
-		"field_cards": 场卡快照(),
+		"field_cards": 场卡快照(viewer_id),
 	}
 
 

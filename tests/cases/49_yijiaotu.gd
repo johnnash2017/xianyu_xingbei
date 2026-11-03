@@ -341,6 +341,17 @@ func _检放逐() -> void:
 		"6 张手牌应成为【预言】：%d" % int(表.get("counter", 0)))
 	检(str(表.get("front", "")) == "天雷劫火", "放置时应记下正面为【天雷劫火】：%s"
 		% str(表.get("front", "")))
+	# 正面是隐藏信息：只有拥有者自己的快照能拿到，别人拿不到
+	var 自己正面: String = ""
+	var 别人正面: String = ""
+	for 项: Dictionary in 引擎.game_info(1).get("field_cards", []):
+		if str(项.get("id", "")) == "末日预言":
+			自己正面 = str(项.get("front", ""))
+	for 项: Dictionary in 引擎.game_info(2).get("field_cards", []):
+		if str(项.get("id", "")) == "末日预言":
+			别人正面 = str(项.get("front", ""))
+	检(自己正面 == "天雷劫火", "拥有者自己的快照里应带正面：%s" % 自己正面)
+	检(别人正面.is_empty(), "别人的快照里不应带正面：%s" % 别人正面)
 	检(玩家1.hand_cards.size() == 5, "选走 6 张后应剩 5 张：%d" % 玩家1.hand_cards.size())
 	检(玩家1.get_energy() == 0, "【放逐】应消耗 1 点能量")
 	# 「额外 +1【攻击行动】或【法术行动】」= 一份攻击/法术都能用的额外行动

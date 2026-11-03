@@ -1094,15 +1094,23 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 		if 显示.is_empty():
 			continue
 		var 状态名: String = 卡号
+		# 隐藏信息：【末日预言】的正面只有拥有者拿得到（服务端按收件人过滤），
+		# 就在自己的图标上写出来；别人拿不到 front，看到的仍是「末日预言」
+		var 正面: String = str(表.get("front", ""))
+		if not 正面.is_empty():
+			状态名 = "%s（%s）" % [卡号, 正面]
 		var 上限: int = int(表.get("counter_max", 0))
 		if 上限 > 0:
-			状态名 = "%s %d/%d" % [卡号, int(表.get("counter", 0)), 上限]
+			状态名 = "%s %d/%d" % [状态名, int(表.get("counter", 0)), 上限]
 		elif int(表.get("counter", 0)) > 0:
-			状态名 = "%s %d" % [卡号, int(表.get("counter", 0))]
+			状态名 = "%s %d" % [状态名, int(表.get("counter", 0))]
+		var 说明: String = str(显示.get("说明", ""))
+		if not 正面.is_empty():
+			说明 = "%s（当前正面：【%s】，只有你能看到）" % [说明, 正面]
 		额外状态.append({
 			"name": 状态名,
 			"icon": str(显示.get("图标", "")),
-			"desc": str(显示.get("说明", "")),
+			"desc": 说明,
 		})
 	# 【律法】（星坠女巫）：放在角色面前的标记，状态区显示名字
 	for 号: int in p.laws:
