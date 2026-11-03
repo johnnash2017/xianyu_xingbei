@@ -26,6 +26,7 @@ func 跑() -> void:
 	_检贪婪两项()
 	_检灾殃止息()
 	_检放逐()
+	_检翻面用记下的正面()
 	引擎 = null
 
 
@@ -77,6 +78,22 @@ func _等到目标询问() -> bool:
 			continue
 		return 引擎._await_id == 1 and 引擎._pending_respond_id == 9507
 	return false
+
+
+## 一项的收尾：目标对手「自选弃任意张该系牌」答不弃、治疗抵挡答不用；
+## 直到出现下一项的目标询问（交给调用方）或整个展示流程结束
+func _本项收尾() -> void:
+	for i: int in range(8):
+		引擎.run()
+		if 引擎._await_id < 0:
+			return
+		if 引擎._pending_respond_id == GConst.RespondType.Heal:
+			_应答([0])
+			continue
+		if 引擎._await_id == 玩家2.id and 引擎._pending_respond_id == 9507:
+			_应答([], [], [])
+			continue
+		return
 
 
 ## 跑一段伤害结算：只在「治疗抵挡」询问时回答不用治疗，其它询问一律留着给用例自己答
@@ -230,7 +247,7 @@ func _检贪婪两项() -> void:
 		检(_等到目标询问(), "第 %d 项应问目标对手（等待 %s / 号 %s）"
 			% [i + 1, str(引擎._await_id), str(引擎._pending_respond_id)])
 		_应答([], [2])
-	_收伤害()
+		_本项收尾()
 	检(玩家2.hand_cards.size() == 敌手牌前 + 2,
 		"两项各 1 点伤害，目标应摸 2 张：%d → %d" % [敌手牌前, 玩家2.hand_cards.size()])
 	检(引擎.有场卡("天雷劫火"), "两项结算完后场卡仍在")
@@ -260,27 +277,61 @@ func _检灾殃止息() -> void:
 # ============================================================
 func _检放逐() -> void:
 	_建引擎()
-	# 手里没有牌、场上没有【末日预言】（手牌上限 6）：摸 6 张不会触发超限，
-	# 单看放逐本身的流程；「无视手牌上限」另外用引擎入口单独验。
-	检(玩家1.hand_cards.is_empty(), "放逐前手牌应为空")
+	# 手里 5 张、场上已有【末日预言】（手牌上限 5）：摸 6 张会超过上限，
+	# 但放逐期间是「不爆牌」状态，不该弹超限弃牌。
+	_发牌(玩家1, GConst.CardElement.Wind, 5)
+	_放末日([101, 102])
+	角色.p_before_turn_begin({"player": 1})
+	检(玩家1.hand_cards_max == 5, "放逐前手牌上限应为 5：%d" % 玩家1.hand_cards_max)
 	var rc: int = 角色.p_magic_skill({"action_id": 9505, "src_id": 1})
 	检(rc == BattleRole.URGENT, "【放逐】应进入摸牌流程")
 	引擎.run()
-	检(引擎._await_id == 1, "【放逐】应先问摸几张（等待 %s）" % str(引擎._await_id))
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505,
+		"【放逐】应先问摸几张（等待 %s / 号 %s）" % [str(引擎._await_id), str(引擎._pending_respond_id)])
 	_应答([6])
 	引擎.run()
-	检(引擎._await_id == 1, "摸完牌后应问额外行动（等待 %s）" % str(引擎._await_id))
-	var 表: Dictionary = _场卡("末日预言")
-	检(int(表.get("pile", []).size()) == 6, "应把 6 张手牌面朝下作为【预言】：%d"
-		% int(表.get("pile", []).size()))
-	检(玩家1.hand_cards.is_empty(), "6 张手牌变成【预言】后手牌应为空：%d" % 玩家1.hand_cards.size())
-	_应答([GConst.ActionType.Attack])
+	检(玩家1.hand_cards.size() == 11, "摸 6 张后应 11 张手牌：%d" % 玩家1.hand_cards.size())
+	检(引擎._pending_respond_id == 9505,
+		"不爆牌状态下不应弹超限弃牌（当前询问号 %s）" % str(引擎._pending_respond_id))
+	检(引擎._await_id == 1, "摸完牌应问放哪张【末日预言】（等待 %s）" % str(引擎._await_id))
+	_应答([1])          # 天雷劫火
 	引擎.run()
-	var 有额外: bool = false
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505,
+		"选完正面后应问选 6 张手牌作为【预言】（等待 %s）" % str(引擎._await_id))
+	var 手: Array = 玩家1.hand_cards.duplicate()
+	var 选六: Array = []
+	for i: int in range(6):
+		选六.append(int(手[i]))
+	_应答([], [], 选六)
+	引擎.run()
+	var 表: Dictionary = _场卡("末日预言")
+	检(int(表.get("counter", 0)) == 6 and int(表.get("pile", []).size()) == 6,
+		"6 张手牌应成为【预言】：%d" % int(表.get("counter", 0)))
+	检(str(表.get("front", "")) == "天雷劫火", "放置时应记下正面为【天雷劫火】：%s"
+		% str(表.get("front", "")))
+	检(玩家1.hand_cards.size() == 5, "选走 6 张后应剩 5 张：%d" % 玩家1.hand_cards.size())
+	检(玩家1.get_energy() == 0, "【放逐】应消耗 1 点能量")
+	# 「额外 +1【攻击行动】或【法术行动】」= 一份攻击/法术都能用的额外行动
+	var 额外: Dictionary = {}
 	for a: Dictionary in 玩家1.additional_actions:
 		if int(a.get("cause", 0)) == 9505:
-			有额外 = true
-	检(有额外, "【放逐】应给 1 份额外行动")
-	检(玩家1.get_energy() == 0, "【放逐】应消耗 1 点能量")
+			额外 = a
+	检(not 额外.is_empty(), "【放逐】应给 1 份额外行动")
+	检(int(额外.get("allow_action", 0)) == GConst.ActionType.AttackMagic,
+		"这份额外行动应同时允许攻击与法术：%s" % str(额外.get("allow_action", 0)))
+	检(引擎._不爆牌.is_empty(), "放逐结算完应解除不爆牌状态")
 
 
+# ============================================================
+# 8. 放逐放下的【末日预言】翻面时用记下的正面（不再问二选一）
+# ============================================================
+func _检翻面用记下的正面() -> void:
+	_建引擎()
+	引擎.加场卡({"id": "末日预言", "owner": 1, "attached": -1,
+		"counter": 0, "counter_max": 6, "state": 0, "pile": [], "front": "地裂波涛"})
+	角色._检查预言取空()
+	引擎.run()
+	检(引擎.有场卡("地裂波涛") and not 引擎.有场卡("末日预言"),
+		"应按记下的正面翻成【地裂波涛】")
+	检(引擎._pending_respond_id != 9504 or 引擎._await_id < 0,
+		"已记正面时不应再问翻面二选一（询问号 %s）" % str(引擎._pending_respond_id))

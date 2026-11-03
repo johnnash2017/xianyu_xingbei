@@ -18,8 +18,11 @@ extends BattleRole
 ##    结算后场卡**不立刻移除**，留到异教徒自己回合开始的【灾殃止息】9509 再移除。
 ## 5. 【审判】逐名队友问「弃 1 张牌【展示】」，然后各自摸 1 张【强制】，再由你选 1 张弃牌
 ##    交给目标对手；【末日预言】在场时其余弃牌洗混放到预言堆顶。
-## 6. 【放逐】「无视手牌上限摸 6-8 张」：摸牌期间把 hand_cards_max 临时抬到「现有手牌 + 8」，
-##    摸完在 step3 把 6 张手牌挪成【预言】，再 _重算手牌上限() 恢复。额外行动二选一（攻击 / 法术）。
+## 6. 【放逐】「无视手牌上限摸 6-8 张」＝本次结算期间进入「不爆牌」状态（引擎 进入不爆牌() /
+##    解除不爆牌()），不是临时改手牌上限：状态期间手牌超上限也不结算超限，结算完才解除。
+##    放置时从【天雷劫火】/【地裂波涛】里二选一作为这张【末日预言】的正面（记在场卡 "front"，
+##    翻面时直接用，不再问）；随后由玩家自己选 6 张手牌洗混作为【预言】。
+##    「额外 +1【攻击行动】或【法术行动】」＝一份攻击 / 法术都能用的额外行动（AttackMagic）。
 
 const YI_DUAN_XIE_SHUO: int = 9501
 const SHEN_PAN: int = 9502
@@ -216,9 +219,9 @@ func _p_放逐() -> int:
 		return GConst.GE_INVALID_ACTION
 	player.remove_energy(1)
 	notice_skill(FANG_ZHU, [player.id])
-	# 「无视你的手牌上限摸 6-8 张」：摸牌期间把上限临时抬到「现有手牌 + 8」，
-	# 摸完再把 6 张挪成【预言】、上限按【末日预言】在场与否重算（见 step3）
-	player.hand_cards_max = player.hand_cards.size() + 8
+	# 「无视你的手牌上限摸 6-8 张」：进入「不爆牌」状态（本次结算完成前超限一律不结算），
+	# 结算完（6 张手牌放成【预言】后）再解除
+	engine.进入不爆牌(player.id)
 	_放逐步 = 1
 	engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
 	return URGENT
@@ -232,34 +235,23 @@ var _放逐步: int = 0
 func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 翻面：选变成哪一张
+	# 翻面：正面在【放逐】放置【末日预言】时已经选好（front）；没有才问（旧数据 / 直接造场卡）
 	if _翻面步 == 1:
-		if not engine.has_reply():
-			询问(player.id, MO_RI_YU_YAN, 0, 0, GConst.CardSource.Hand,
-				[{"value": 1, "label": "天雷劫火"}, {"value": 2, "label": "地裂波涛"}], 0, "", [], false,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【末日预言】的【预言】已空：翻面为【天雷劫火】或【地裂波涛】（1=天雷劫火 / 2=地裂波涛）")
-			return WAIT
-		# 阶段在取完回复之后再推进：重入时 _翻面步 仍是 1
-		var r: Dictionary = take_skill_reply_full()
+		var 场: Dictionary = engine.取场卡(末日预言名)
+		var 预定: String = str(场.get("front", ""))
+		if 预定.is_empty():
+			if not engine.has_reply():
+				询问(player.id, MO_RI_YU_YAN, 0, 0, GConst.CardSource.Hand,
+					[{"value": 1, "label": "天雷劫火"}, {"value": 2, "label": "地裂波涛"}], 0, "", [], false,
+					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+					"【末日预言】的【预言】已空：翻面为【天雷劫火】或【地裂波涛】（1=天雷劫火 / 2=地裂波涛）")
+				return WAIT
+			var r: Dictionary = take_skill_reply_full()
+			var args: Array = r.get("args", [])
+			var 选: int = int(args[0]) if not args.is_empty() else 0
+			预定 = 地裂波涛名 if 选 == 2 else 天雷劫火名
 		_翻面步 = 2
-		var args: Array = r.get("args", [])
-		var 选: int = int(args[0]) if not args.is_empty() else 0
-		var 名: String = 地裂波涛名 if 选 == 2 else 天雷劫火名
-		engine.移除场卡(末日预言名)
-		engine.加场卡({"id": 名, "owner": player.id, "attached": -1,
-			"counter": 0, "counter_max": 0, "state": 1})
-		notice_skill(MO_RI_YU_YAN, [player.id])
-		_在展示 = 名
-		_展示模式.clear()
-		_展示序号 = 0
-		_展示贪婪 = false
-		_展示对手 = -1
-		# 先把「是否发动贪婪」问掉，再决定发动一项还是两项（贪婪＝两项都发动、顺序自定）。
-		# 这里必须用递归继续，不要再压一个新钩子：当前钩子还在栈上，等新钩子跑完它会被重新
-		# 执行一次，用同一份 _展示步 再问一遍。
-		_展示步 = 10
-		return p_yi_jiao_tu_ask(ctx)
+		return _翻面为(预定)
 	# 展示时：是否发动【贪婪】（消耗 1 水晶 → 两项都发动）
 	if _展示步 == 10:
 		if player.get_energy() <= 0:
@@ -562,48 +554,67 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【放逐】：选择摸几张牌（6~8）")
 			return WAIT
-		# 阶段在取完回复之后再推进：重入时 _放逐步 仍是 1
 		var r9: Dictionary = take_skill_reply_full()
-		_放逐步 = 2
 		var args9: Array = r9.get("args", [])
 		var 张: int = int(args9[0]) if not args9.is_empty() else 6
 		张 = clampi(张, 6, 8)
-		# 只压摸牌状态、返回 URGENT：摸完当前钩子会被重新执行，接着走 _放逐步 == 3
-		_放逐步 = 3
+		# 只压摸牌状态、返回 URGENT：摸完当前钩子会被重新执行，接着走 _放逐步 == 2
+		_放逐步 = 2
 		engine.push_draw(player.id, 张, FANG_ZHU)
 		return URGENT
-	# 放逐：移除旧场卡 → 放新的 → 6 张手牌作预言 → 额外行动二选一
-	if _放逐步 == 3:
-		_放逐步 = 4
+	# 放逐：移除旧场卡 → 选天雷 / 地裂放 1 张【末日预言】入场
+	if _放逐步 == 2:
+		_放逐步 = 3
 		engine.移除场卡(末日预言名)
 		engine.移除场卡(天雷劫火名)
 		engine.移除场卡(地裂波涛名)
-		var 新堆: Array = []
-		var 手: Array = player.hand_cards.duplicate()
-		for i: int in range(mini(6, 手.size())):
-			var c5: int = player.取出实例(player.hand_cards, int(手[i]))
-			if c5 > 0:
-				新堆.append(c5)
-		engine.加场卡({
-			"id": 末日预言名, "owner": player.id, "attached": -1,
-			"counter": 新堆.size(), "counter_max": 预言上限, "state": 0, "pile": 新堆,
-		})
-		_重算手牌上限()
-		_翻面步 = 0
-		return p_yi_jiao_tu_ask({"player": player.id})
-	if _放逐步 == 4:
 		if not engine.has_reply():
 			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand,
-				[{"value": GConst.ActionType.Attack, "label": "额外攻击行动"},
-				 {"value": GConst.ActionType.Magic, "label": "额外法术行动"}], 0, "", [], false,
+				[{"value": 1, "label": "天雷劫火"}, {"value": 2, "label": "地裂波涛"}],
+				0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【放逐】：额外 +1【攻击行动】或【法术行动】")
+				"【放逐】：选择放 1 张【末日预言】入场（背面是【末日预言】，正面为）")
 			return WAIT
-		var r10: Dictionary = take_skill_reply_full()
+		return p_yi_jiao_tu_ask({"player": player.id})
+	# 放逐：选正面的牌 → 放【末日预言】入场（记下正面，翻面时直接用）
+	if _放逐步 == 3:
+		if not engine.has_reply():
+			return WAIT
+		var r3: Dictionary = take_skill_reply_full()
+		var a3: Array = r3.get("args", [])
+		var 选: int = int(a3[0]) if not a3.is_empty() else 1
+		var 正面: String = 地裂波涛名 if 选 == 2 else 天雷劫火名
+		engine.加场卡({"id": 末日预言名, "owner": player.id, "attached": -1,
+			"counter": 0, "counter_max": 预言上限, "state": 0, "pile": [], "front": 正面})
+		_放逐步 = 4
+		# 玩家自己选 6 张手牌作为【预言】（朝下洗混）
+		询问(player.id, FANG_ZHU, 6, 0, GConst.CardSource.Hand, [], 6, "", [], false,
+			0, player.id, [], 6, {}, 0, 0, false, [], true, -1, 0,
+			"【放逐】：选择 6 张手牌面朝下作为【预言】")
+		return WAIT
+	# 放逐：6 张手牌洗混成【预言】→ 解除不爆牌 → +1 额外行动（攻击/法术二合一）
+	if _放逐步 == 4:
+		var r4: Dictionary = take_skill_reply_full()
 		_放逐步 = 0
-		var args10: Array = r10.get("args", [])
-		var 种类: int = int(args10[0]) if not args10.is_empty() else GConst.ActionType.Attack
-		player.add_action(种类, FANG_ZHU, true, true)
+		var 已选: Array = []
+		for c: Variant in r4.get("card_ids", []):
+			var cid: int = int(c)
+			if 已选.size() < 6 and player.有手牌(cid) and not 已选.has(cid):
+				已选.append(cid)
+		var 新堆: Array = []
+		for cid2: Variant in 已选:
+			var 取: int = player.取出实例(player.hand_cards, int(cid2))
+			if 取 > 0:
+				新堆.append(取)
+		新堆.shuffle()
+		var 表: Dictionary = engine.取场卡(末日预言名)
+		表["pile"] = 新堆
+		表["counter"] = 新堆.size()
+		_重算手牌上限()
+		_翻面步 = 0
+		engine.解除不爆牌(player.id)
+		# 「额外 +1【攻击行动】或【法术行动】」＝一份既能攻击也能施法的额外行动（不是二选一各一份）
+		player.add_action(GConst.ActionType.AttackMagic, FANG_ZHU, true, true)
 		engine._broadcast_game()
 		return SUCCESS
 	return SUCCESS
@@ -615,6 +626,22 @@ var _展示步: int = 0
 # ============================================================
 # 小工具
 # ============================================================
+## 翻面成指定那张（天雷劫火 / 地裂波涛），并接着走「展示时」流程
+func _翻面为(名: String) -> int:
+	engine.移除场卡(末日预言名)
+	engine.加场卡({"id": 名, "owner": player.id, "attached": -1,
+		"counter": 0, "counter_max": 0, "state": 1})
+	notice_skill(MO_RI_YU_YAN, [player.id])
+	_在展示 = 名
+	_展示模式.clear()
+	_展示序号 = 0
+	_展示贪婪 = false
+	_展示对手 = -1
+	# 先把「是否发动贪婪」问掉，再决定发动一项还是两项（贪婪＝两项都发动、顺序自定）
+	_展示步 = 10
+	return p_yi_jiao_tu_ask({"player": player.id})
+
+
 ## 翻面 / 预言取空的检查：堆空且还挂着【末日预言】就进入翻面询问
 func _检查预言取空() -> void:
 	if not engine.有场卡(末日预言名):

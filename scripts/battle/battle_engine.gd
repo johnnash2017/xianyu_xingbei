@@ -541,6 +541,7 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 	round_id = 1
 	phase = Phase.Playing
 	winner = -1
+	_不爆牌.clear()
 	额外回合玩家 = -1
 	额外回合攻击加伤 = 0
 	额外回合来源 = 0
@@ -852,13 +853,31 @@ func push(st: Variant) -> void:
 ## 对照原版：任何「加牌 / 改手牌上限」都会立刻触发超限结算（StateHandChange / setStateChangeMaxHand
 ## → setStateHandOverLoad）；这里放在状态边界上兜住角色脚本直接改上限、直接加牌的情况
 ## （引擎自己 push 的那几处照旧，重复的会因「栈里已排着一次结算」而跳过）
+## 「本次结算结束前不会爆牌」的玩家（异教徒【放逐】9505「无视你的手牌上限摸 6-8 张」）。
+## 不是临时改手牌上限，而是一个状态：处于其中时超限检查一律跳过；
+## 由技能在结算完成时显式解除（见 解除不爆牌）。
+var _不爆牌: Dictionary = {}
+
+
+## 让 pid 进入「不爆牌」状态（手牌可以超过上限，不结算超限）
+func 进入不爆牌(pid: int) -> void:
+	_不爆牌[pid] = true
+
+
+## 解除「不爆牌」状态（之后超过上限会照常结算超限）
+func 解除不爆牌(pid: int) -> void:
+	_不爆牌.erase(pid)
+
+
 func _check_hand_overflow() -> void:
 	for st: Variant in _states:
 		if st is SHandOverflow:
 			return
 	for pid: int in order:
 		var pp: BattlePlayer = players.get(pid)
-		if pp == null:
+		if pp == null or pp.hand_cards.size() <= pp.hand_cards_max:
+			continue
+		if bool(_不爆牌.get(pid, false)):
 			continue
 		push(SHandOverflow.new())
 		return
@@ -1925,6 +1944,10 @@ func 加场卡(数据: Dictionary) -> Dictionary:
 		"state": int(数据.get("state", 0)),
 		"pile": (数据.get("pile", []) as Array).duplicate(),
 	}
+	# 角色自定义的附加字段原样保留（如异教徒【末日预言】记下翻面后的正面 "front"）
+	for k: Variant in 数据.keys():
+		if not 表.has(k):
+			表[k] = 数据[k]
 	移除场卡(id)
 	field_cards.append(表)
 	_broadcast_game()
