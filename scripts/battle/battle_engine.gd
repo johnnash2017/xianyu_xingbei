@@ -186,6 +186,12 @@ var _当前状态: Variant = null
 ## 「等待行动 / 等待攻击行动 / 等待法术行动」这类头像文案
 var _pending_action_type: int = 0
 var _reply: Dictionary = {}
+## 「已经收到、但还没被取走」的回复暂存：等待归属的状态实例 -> {reply, kind}。
+## 等待期间被压到栈上的状态会先问别人（如 p_tap 钩子里兽灵【兽魂警戒】的询问），
+## 它的 wait_for 会顶掉等待槽；覆盖前先把上一位等待者的回复按它的归属状态存到这里，
+## 等那个状态重新回到栈顶时再恢复 —— 否则「回复已经回来了、却被别人的询问冲掉」，
+## 表现为玩家选了牌 / 点了目标却什么都没发生（女武神【英灵召唤】踩过）。
+var _挂起回复: Dictionary = {}
 ## 客户端攒操作时预置的应答：由角色在询问别人之前写入，轮到该询问时直接取用、不再等客户端
 var _prepared_replies: Dictionary = {}
 var _has_reply: bool = false
@@ -808,6 +814,10 @@ func run() -> void:
 		if idx >= _states.size():
 			break
 		if _states[idx] == st:
+			# 结束的状态不该还挂着没取走的回复：这几乎都是「钩子顶部的入口守卫在重入时
+			# 提前 return」造成的静默失败（付完代价后资源刚好用光之类）。清掉并告警，
+			# 让它在调试期就暴露，而不是变成「界面收了这一问、服务端什么都没做」。
+			_清理状态遗留回复(st)
 			_states.remove_at(idx)
 		else:
 			break
@@ -1153,6 +1163,12 @@ func _log_give_cards(src_id: int, dst_id: int, cards: Array) -> void:
 ## 中途「点进去 / 退回来」都不该把倒计时刷新一遍）。截止时刻另存在 链截止_ms：
 ## 中途收到回复会把 wait_deadline_ms 清零，只认它才能跨过那一步
 func wait_for(pid: int, kind: int, 保留倒计时: bool = false) -> void:
+	# 这次等待会顶掉等待槽。如果槽里躺着一份「已经收到、还没被取走」的回复
+	# （等待期间被压到栈上的状态要先问别人），先按它的归属状态暂存起来，
+	# 等那个状态回到栈顶时由 has_reply / take_reply 恢复 —— 否则这份回复就被冲掉了。
+	# 同一个状态自己重问（_await_state == _当前状态）时是作废重问，不暂存。
+	if _has_reply and _await_state != null and _await_state != _当前状态:
+		_挂起回复[_await_state] = {"reply": _reply, "kind": _await_kind}
 	_await_id = pid
 	_await_kind = kind
 	# 新的一次等待：序号 +1（客户端据此只在真的换等待时弹提示）
@@ -1176,12 +1192,35 @@ func wait_for(pid: int, kind: int, 保留倒计时: bool = false) -> void:
 	_broadcast_game()
 
 
+## 当前状态回到栈顶时，把它那份被暂存的回复放回等待槽（只放一次）。
+## 只认「等待归属的那个状态」：别的状态（等待期间被补压到栈上的）取不到这份回复。
+func _恢复挂起回复() -> void:
+	if _当前状态 == null or not _挂起回复.has(_当前状态):
+		return
+	if _await_state != _当前状态 and (_await_id >= 0 or _has_reply):
+		# 等待槽被别的状态占着（还没答复 / 已答复但还没取走）：不能顶掉，等它自己取走之后再来
+		return
+	var 箱: Dictionary = _挂起回复[_当前状态]
+	_挂起回复.erase(_当前状态)
+	_reply = 箱.get("reply", {})
+	_has_reply = true
+	_await_id = -1
+	_await_kind = int(箱.get("kind", -1))
+	_await_state = _当前状态
+	wait_deadline_ms = 0
+	wait_total_ms = 0
+
+
+## 当前状态是否已经收到回复。会先把它「插队期间按归属暂存」的那份恢复回等待槽再判断，
+## 所以等待期间被压到栈上的状态先问了别人，也不会把这一份冲掉。
 func has_reply() -> bool:
-	# 只认「等待归属的那个状态」：别的状态（等待期间被补压到栈上的）取不到这份回复
+	_恢复挂起回复()
 	return _has_reply and _当前状态 == _await_state
 
 
+## 取走当前状态的回复（同样会先恢复插队期间暂存的回复）。不是等待归属者取不到。
 func take_reply() -> Dictionary:
+	_恢复挂起回复()
 	# 非等待归属者不得读取，更不能顺带清掉这份回复
 	if _当前状态 != _await_state:
 		return {}
@@ -1194,6 +1233,8 @@ func take_reply() -> Dictionary:
 	wait_total_ms = 0
 	_reply = {}
 	_pending_partial = {}
+	# 同一状态若还挂着更早的一份（作废的回复），一并清掉
+	_挂起回复.erase(_当前状态)
 	return r
 
 
@@ -1217,6 +1258,7 @@ func _清空等待() -> void:
 	_当前状态 = null
 	_has_reply = false
 	_reply = {}
+	_挂起回复.clear()
 	_prepared_replies.clear()
 	_pending_partial = {}
 	wait_deadline_ms = 0
@@ -1226,6 +1268,30 @@ func _清空等待() -> void:
 	# 中止流程时一并清掉「弃牌前拦截」标记，免得残留成 true 让之后的弃牌永远走同步分支
 	_弃牌拦截中 = false
 	# 中止时也不要残留行动聚合器的流程标记，否则角色自己的 p_after_attack 会被跳过
+
+
+## 一个状态结束（出栈）时，把它还没被取走的回复清掉并告警。
+## 正常流程里状态要么 WAIT 等下一次，要么先 take_reply 再结束；带着回复结束说明
+## 角色在重入时被入口守卫挡住了（如「发动后能量为 0」这种付款后状态），回复就没人要了。
+func _清理状态遗留回复(st: Variant) -> void:
+	if st == null:
+		return
+	var 有挂起: bool = _挂起回复.has(st)
+	if 有挂起:
+		_挂起回复.erase(st)
+	var 有活回复: bool = _has_reply and _await_state == st
+	if 有活回复:
+		_has_reply = false
+		_reply = {}
+		_await_id = -1
+		_await_state = null
+		wait_deadline_ms = 0
+		wait_total_ms = 0
+	if (有挂起 or 有活回复) and OS.is_debug_build():
+		var 名: String = str(st)
+		if st.get("hook") != null:
+			名 = "SHook(%s)" % str(st.get("hook"))
+		print("[引擎] %s 结束时还挂着一份没取走的回复：入口守卫多半在重入时提前 return 了" % 名)
 
 
 func on_message(pid: int, kind: int, data: Dictionary) -> void:
@@ -4030,11 +4096,14 @@ class S行动聚合器:
 		上下文 = ctx
 
 	func _取回复(e: BattleEngine) -> Dictionary:
+		# 与 take_reply 同一套归属判定：插队时被暂存的回复要先恢复出来（见 BattleEngine._挂起回复）
+		e._恢复挂起回复()
 		var r: Dictionary = e._reply
 		e._has_reply = false
 		e._await_id = -1
 		e._await_state = null
 		e._reply = {}
+		e._挂起回复.erase(e._当前状态)
 		e._pending_partial = {}
 		return r
 
