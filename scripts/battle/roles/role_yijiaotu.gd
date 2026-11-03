@@ -289,7 +289,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 					[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO},
 					 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO}], 0, "", [], false,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"【末日预言】的【预言】已空：翻面为【天雷劫火】或【地裂波涛】（1=天雷劫火 / 2=地裂波涛）")
+					"【末日预言】的【预言】已空：翻面为【天雷劫火】或【地裂波涛】")
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
 			var args: Array = r.get("args", [])
@@ -325,9 +325,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				 {"value": 2, "label": "先%s后%s" % [GConst.element_to_chinese(序表[1]), GConst.element_to_chinese(序表[0])]}],
 				0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【贪婪】：选择发动顺序（1＝先%s后%s / 2＝先%s后%s）"
-				% [GConst.element_to_chinese(序表[0]), GConst.element_to_chinese(序表[1]),
-					GConst.element_to_chinese(序表[1]), GConst.element_to_chinese(序表[0])])
+				"【贪婪】：选择发动顺序")
 			return WAIT
 		var rq: Dictionary = take_skill_reply_full()
 		var aq: Array = rq.get("args", [])
@@ -349,8 +347,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, _展示技能号(), 0, 0, GConst.CardSource.Hand, _系别选项(系表), 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【%s】：选择 1 种系别发动（弃 X 张该系牌摸 X 张；目标对手弃任意张该系牌后，你对他造成 X+1 点法术伤害）"
-				% _在展示)
+				"【%s】：选择 1 种系别发动" % _在展示)
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		var args2: Array = r2.get("args", [])
