@@ -60,9 +60,14 @@ func 跑() -> void:
 	引擎 = BattleEngine.new()
 	引擎.add_player(1, GConst.BLUE, "甲")
 	引擎.add_player(2, GConst.RED, "乙")
+	引擎.add_player(3, GConst.BLUE, "丙")
+	引擎.add_player(4, GConst.RED, "丁")
 	引擎.start_with_roles({})
 	for pid: int in 引擎.order:
 		引擎.p(pid).role = null
+	# 清掉开局留下的回合流程：本用例只跑自己压上去的两层状态
+	引擎._states.clear()
+	引擎._清空等待()
 	引擎.phase = BattleEngine.Phase.Playing
 	外层 = S外层.new()
 	内层 = null
