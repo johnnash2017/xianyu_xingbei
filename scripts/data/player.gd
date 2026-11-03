@@ -52,6 +52,10 @@ var attack_lock: int = 0
 var xue_qiang_wei: bool = false
 ## 圣弓专属技正反面：0=【圣煌辉光炮】、1=【圣煌余辉】、2=已移除
 var sheng_huang_side: int = 0
+## 额外回合的加伤来源技能 / 数值（如剑守誓言 10803）：非 0 时状态区显示对应状态图标。
+## 只在「当前这个额外回合属于这名玩家」时有值，额外回合结束服务端清掉。
+var extra_turn_cause: int = 0
+var extra_turn_bonus: int = 0
 var specials: Array[bool] = [false, false, false, false, false]  # 独有效果 ex_cards
 ## 与 specials 一一对应：每张专属牌是谁放的（-1＝没记）；【挑衅】靠它只放行放牌者那个头像
 var specials_from: Array[int] = [-1, -1, -1, -1, -1]

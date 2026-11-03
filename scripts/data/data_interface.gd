@@ -550,6 +550,9 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.xue_qiang_wei = bool(pi.get("xue_qiang_wei", false))
 	# 圣弓专属技正反面：客户端画【圣煌辉光炮】/【圣煌余辉】状态图标
 	p.sheng_huang_side = int(pi.get("sheng_huang_side", 0))
+	# 额外回合的加伤（剑守誓言 10803）：客户端在状态区画「剑守誓言」图标
+	p.extra_turn_cause = int(pi.get("extra_turn_cause", 0))
+	p.extra_turn_bonus = int(pi.get("extra_turn_bonus", 0))
 	p.ready = bool(pi.get("ready", false))
 	p.leader = int(pi.get("leader", 0)) == 1
 	p.online = bool(pi.get("online", true))

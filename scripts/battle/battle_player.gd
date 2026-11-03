@@ -1119,6 +1119,10 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"dream_tier": role.dream_tier() if role != null else 0,
 		# 本回合「下一次主动攻击只能攻击这名玩家」（0＝无限制）：客户端据此把其余敌方头像置灰
 		"attack_lock": attack_lock_id,
+		# 额外回合的加伤（剑守誓言 10803）：客户端据此在状态区画「剑守誓言」图标。
+		# 只在「当前这个额外回合属于我」时有值；额外回合结束引擎清零，图标随之移除。
+		"extra_turn_cause": engine.当前额外回合来源 if engine != null and engine.当前额外回合玩家 == id else 0,
+		"extra_turn_bonus": engine.当前额外回合攻击加伤 if engine != null and engine.当前额外回合玩家 == id else 0,
 	}
 	var bas: Array = []
 	for e: Dictionary in basic_effects:

@@ -25,6 +25,11 @@ func 跑() -> void:
 	检(引擎.current_id == 主人, "应先进入额外回合主人的回合：%s" % str(引擎.current_id))
 	检(引擎.是否额外回合(), "应处于额外回合中")
 	检(引擎.额外回合加伤(主人) == 1, "额外回合里攻击加伤应为 1")
+	# 快照里要带上「额外回合的加伤来源 / 数值」：客户端据此画「剑守誓言」状态图标
+	var 快照: Dictionary = 引擎.p(主人).to_proto(1)
+	检(int(快照.get("extra_turn_cause", 0)) == 10803,
+		"快照应带额外回合来源 10803，实际 %s" % str(快照.get("extra_turn_cause", 0)))
+	检(int(快照.get("extra_turn_bonus", 0)) == 1, "快照应带额外回合加伤 1")
 	# 额外回合结束 → 应回到「原来该轮到的人」，而不是主人的下家
 	引擎._states.clear()
 	引擎.push(BattleEngine.SNextPlayer.new())
@@ -32,6 +37,8 @@ func 跑() -> void:
 	检(引擎.current_id == 预期续位,
 		"额外回合结束后应回到 %d（原顺序的下家），实际 %d" % [预期续位, 引擎.current_id])
 	检(not 引擎.是否额外回合(), "额外回合结束后不应还挂着额外回合状态")
+	var 快照2: Dictionary = 引擎.p(主人).to_proto(1)
+	检(int(快照2.get("extra_turn_bonus", 0)) == 0, "额外回合结束后快照里的加伤应清零（状态图标随之移除）")
 
 
 ## 4 人局：清掉开局的回合流程，只留干净的状态栈
