@@ -247,8 +247,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		_英灵_阶段 = 1
 		# 第 2 问：额外弃 1 张法术牌【展示】→ 选 1 名角色 +1 治疗；可取消，超时自动取消
 		询问(player.id, GConst.技能_英灵召唤治疗, 0, 1, GConst.CardSource.Hand, [], 1, "magic", [], true,
-			0, -1, engine.order, -1, {}, int(harm.get("point", 0)), int(harm.get("type", GConst.HarmType.Attack)),
-			false, [int(harm.get("dst", -1))], true, -1, 0,
+			0, -1, engine.order, -1, {}, 0, 0,
+			false, [], true, -1, 0,
 			"【英灵召唤】：指定 1 名角色+1【治疗】")
 		return WAIT
 	# _英灵_阶段 == 1：处理「额外弃牌 + 治疗」这一问
