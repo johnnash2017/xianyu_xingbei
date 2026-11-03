@@ -3450,13 +3450,22 @@ func _造提示文本行(文本: String, 用BBCode: bool) -> RichTextLabel:
 
 ## 场卡的被动说明（对照魔刃的刃状态内容）：标题 →「【被动】技能名：说明」。
 ## 说明走 角色技能提示.单个技能，带【类型】上色；限宽 + 自动换行，长文本不会横向撑爆提示框。
-func _造被动状态内容(标题文本: String, 技能号: int) -> Control:
+func _造被动状态内容(图标: Control, 标题文本: String, 技能号: int) -> Control:
 	# 9504 是异教徒（角色 95）的【末日预言】；角色号只影响技能名按角色改写，这里固定给 95
 	var 说明: String = 角色技能提示.单个技能(技能号, 技能说明字号, 95)
 	if 说明.is_empty():
 		return null
 	var 内容: VBoxContainer = VBoxContainer.new()
 	内容.add_theme_constant_override("separation", 8)
+	# 图标大图摆最前面（和基础效果 / token 的状态提示一致：图 → 名字 → 说明）；
+	# 预览自带的那行状态名去掉，名字由下面这一行统一写
+	var 图标预览: Control = _造状态图标预览(图标, "")
+	if 图标预览 != null:
+		var 预览: 状态图标预览 = 图标预览 as 状态图标预览
+		if 预览 != null and 预览.文本 != null:
+			预览.文本.visible = false
+		图标预览.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		内容.add_child(图标预览)
 	内容.add_child(_造提示文本行(标题文本, false))
 	内容.add_child(_造提示文本行(说明, true))
 	return 内容
@@ -3472,7 +3481,7 @@ func _显示状态图标说明(图标: Control, 文本: String, 牌id: int, 显�
 	# 场卡带被动技能号（【末日预言】）：和魔刃一样走自定义内容提示框 ——
 	# 标题一行（名字 + 隐藏的正面 + 计数），下面接「【被动】技能名：说明」，限宽自动换行
 	if 被动技能号 > 0:
-		var 内容: Control = _造被动状态内容(文本, 被动技能号)
+		var 内容: Control = _造被动状态内容(图标, 文本, 被动技能号)
 		if 内容 != null:
 			_说明提示.显示内容(内容, 图标.get_global_rect())
 			return
