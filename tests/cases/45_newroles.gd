@@ -513,6 +513,20 @@ func _检切换后复检() -> void:
 	选中.clear()
 	窗.set("_最近攻击牌", 0)
 	窗.set("_mode", 4)
+	# 诸神终焉：同一目标持有两张自己的刃，应画两行 3 点
+	窗.set("_pending_skill_id", GConst.技能_诸神终焉)
+	var 高亮: Array[int] = 窗.get("_高亮目标")
+	高亮.clear()
+	高亮.append(2)
+	var 高亮计数: Dictionary = 窗.get("_高亮计数")
+	高亮计数.clear()
+	高亮计数[2] = 2
+	var 诸神提示: Dictionary = 窗.call("_诸神终焉头像提示")
+	检(str(诸神提示.get(2, "")) == "3 法术伤害\n3 法术伤害",
+		"同一目标持有两张刃时应显示两行 3 点：%s" % str(诸神提示))
+	高亮.clear()
+	高亮计数.clear()
+	窗.set("_pending_skill_id", 0)
 	窗.set("_skill_card_max", 2)
 	窗.set("_skill_need_card", 2)
 	窗.set("_skill_card_source", GConst.CardSource.Hand)

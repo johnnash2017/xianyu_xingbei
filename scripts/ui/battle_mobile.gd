@@ -342,6 +342,8 @@ var _上次别烦我发动者: int = -1
 ## 纯「点亮给人看」的目标（不参与提交）：如【别烦我……】发动时把替她发动的队友亮出来。
 ## 不能塞进 _sel_players —— 那会当成本次行动的目标一起提交，服务端会按「不该带目标」驳回
 var _高亮目标: Array[int] = []
+## highlight_ids 里同名角色出现几次（诸神终焉同一人持有两张刃时要画两行 3 点）
+var _高亮计数: Dictionary = {}
 ## 当前回合玩家 id（用于面板高亮）
 var _当前回合: int = -1
 ## 上一次 TurnBegin 的玩家 / 回合号：额外回合（F7 / 10803）不会推进 round，
@@ -2488,6 +2490,7 @@ func _进入技能询问() -> void:
 	_目标锁死 = _套用自动选目标(指示配置)
 	# 服务端随询问下发的「顺带点亮」角色（highlight_ids）：只高亮给人看，不是可点目标、也不提交。
 	# 如【别烦我……】目标弃牌那一步，把「不弃就 +1 治疗」的那名队友一起点亮
+	_高亮计数.clear()
 	for pid: Variant in (_pending.get("highlight_ids", []) as Array):
 		if not _高亮目标.has(int(pid)):
 			_高亮目标.append(int(pid))
@@ -6603,11 +6606,15 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		_skill_cards.append(int(牌号))
 	_sel_players.clear()
 	_高亮目标.clear()
+	_高亮计数.clear()
 	# 服务端随命令下发的「顺带点亮」角色（highlight_ids）：只高亮给人看，不是选中的目标、也不提交。
-	# 如【别烦我……】10601 发动时，把替她发动的右手边队友亮出来（目标由那名队友代选）
+	# 如【别烦我……】10601 发动时，把替她发动的右手边队友亮出来（目标由那名队友代选）。
+	# 诸神终焉会用重复 id 表示同一人持有两张刃：按出现次数计数，头像上画两行 3 点。
 	for pid: Variant in 高亮:
-		if not _高亮目标.has(int(pid)):
-			_高亮目标.append(int(pid))
+		var hid: int = int(pid)
+		_高亮计数[hid] = int(_高亮计数.get(hid, 0)) + 1
+		if not _高亮目标.has(hid):
+			_高亮目标.append(hid)
 	_重置治疗分配()
 	# 盖牌来源才让盖牌区亮起来；手牌+盖牌混选（盖牌需数>0）也要亮；
 	# 基础效果牌由玩家面板上的图标直接点
@@ -8496,12 +8503,16 @@ func _诸神终焉头像提示() -> Dictionary:
 		return out
 	var 我: int = Logic.my_player_id
 	var 自伤: String = "2 法术伤害"
-	if _高亮目标.has(我):
-		自伤 += " + 3 法术伤害"
+	for _i: int in range(int(_高亮计数.get(我, 0))):
+		自伤 += "\n3 法术伤害"
 	out[我] = 自伤
 	for pid: int in _高亮目标:
-		if pid != 我:
-			out[pid] = "3 法术伤害"
+		if pid == 我:
+			continue
+		var 行: Array[String] = []
+		for _j: int in range(maxi(int(_高亮计数.get(pid, 1)), 1)):
+			行.append("3 法术伤害")
+		out[pid] = "\n".join(行)
 	return out
 
 

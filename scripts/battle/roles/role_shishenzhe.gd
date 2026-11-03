@@ -89,7 +89,8 @@ func available_skills() -> Array:
 		if inst <= 0:
 			continue
 		var holder: int = engine.刃持有者(inst)
-		if holder > 0 and not 诸神高亮.has(holder):
+		if holder > 0:
+			# 不去重：同一人同时持有两张刃时，客户端按出现次数画两行 3 点
 			诸神高亮.append(holder)
 	技能.append({
 		"type": GConst.ActionType.MagicSkill,
