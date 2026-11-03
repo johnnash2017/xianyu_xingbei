@@ -28,6 +28,8 @@ func 跑() -> void:
 	_检放逐()
 	_检翻面用记下的正面()
 	_检放逐超时()
+	_检审判()
+	_检审判超时()
 	引擎 = null
 
 
@@ -79,6 +81,21 @@ func _等到目标询问() -> bool:
 			continue
 		return 引擎._await_id == 1 and 引擎._pending_respond_id == 9507
 	return false
+
+
+## 最近一条指定技能号的技能询问文案（ask_text）
+func _最近询问文案(技能号: int) -> String:
+	for i: int in range(发送记录.size() - 1, -1, -1):
+		var r: Dictionary = 发送记录[i]
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 命令: Array = (r["data"] as Dictionary).get("commands", [])
+		if 命令.is_empty():
+			continue
+		var c: Dictionary = 命令[0]
+		if int(c.get("respond_id", 0)) == 技能号:
+			return str(c.get("ask_prompt", c.get("ask_text", "")))
+	return ""
 
 
 ## 模拟超时兜底：引擎超时下发的就是空 args / 空 card_ids + is_timeout
@@ -411,3 +428,61 @@ func _检放逐超时() -> void:
 			有额外 = true
 	检(有额外, "超时结算完也应给那份攻击/法术合一的额外行动")
 	检(引擎._不爆牌.is_empty(), "超时结算完应解除不爆牌状态")
+
+
+# ============================================================
+# 10. 审判：只发动一次、队友弃牌文案、超时自动弃一张
+# ============================================================
+func _检审判() -> void:
+	_建引擎()
+	_发牌(玩家1, GConst.CardElement.Wind, 1)
+	_发牌(引擎.p(3), GConst.CardElement.Fire, 1)
+	_放末日([101])
+	角色._本回合造成伤害 = true
+	检(角色.p_turn_end({"player": 1}) == BattleRole.WAIT, "【审判】应先问是否发动")
+	检(_最近询问文案(9502).find("摸 1 张牌") >= 0,
+		"队友弃牌询问应写「弃 1 张牌【展示】，摸 1 张牌」：%s" % _最近询问文案(9502))
+	_应答([1])
+	角色.p_turn_end({"player": 1})
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502,
+		"应先问 1 号队友弃牌（等待 %s / 号 %s）" % [str(引擎._await_id), str(引擎._pending_respond_id)])
+	_应答([], [], [玩家1.hand_cards[0]])
+	引擎.run()
+	检(引擎._await_id == 3 and 引擎._pending_respond_id == 9502,
+		"再问 3 号队友弃牌（等待 %s / 号 %s）" % [str(引擎._await_id), str(引擎._pending_respond_id)])
+	_应答([], [], [引擎.p(3).hand_cards[0]])
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502,
+		"两名队友弃完应问交给哪名对手（等待 %s）" % str(引擎._await_id))
+	_应答([1], [2])
+	引擎.run()
+	检(玩家2.hand_cards.size() == 1, "对手应收到 1 张弃牌：%d" % 玩家2.hand_cards.size())
+	检(int(_场卡("末日预言").get("counter", 0)) == 2,
+		"其余 1 张弃牌应进【预言】堆：%d" % int(_场卡("末日预言").get("counter", 0)))
+	# 结算完再重入回合结束钩子：不应再问一遍（不能循环发动）
+	检(角色.p_turn_end({"player": 1}) == BattleRole.SUCCESS, "本回合已发动过，不应再问")
+	检(引擎._await_id < 0, "不应重新弹【审判】询问")
+
+
+func _检审判超时() -> void:
+	_建引擎()
+	_发牌(玩家1, GConst.CardElement.Wind, 1)
+	_发牌(引擎.p(3), GConst.CardElement.Fire, 1)
+	_放末日([101])
+	角色._本回合造成伤害 = true
+	角色.p_turn_end({"player": 1})
+	_应答([1])
+	角色.p_turn_end({"player": 1})
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502, "应先问 1 号队友弃牌")
+	# 超时 / 跳过：自动弃掉一张
+	_应答超时()
+	引擎.run()
+	检(玩家1.hand_cards.is_empty(), "超时应自动弃掉 1 号队友 1 张牌：%d" % 玩家1.hand_cards.size())
+	检(引擎._await_id == 3 and 引擎._pending_respond_id == 9502, "应继续问 3 号队友")
+	_应答([], [], [引擎.p(3).hand_cards[0]])
+	引擎.run()
+	_应答([1], [2])
+	引擎.run()
+	检(玩家2.hand_cards.size() == 1, "超时后流程应照常走完，对手收到 1 张弃牌")

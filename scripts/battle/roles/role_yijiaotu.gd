@@ -42,6 +42,8 @@ const 预言上限: int = 6
 
 ## 本回合是否对对手造成过伤害（【审判】的发动条件）
 var _本回合造成伤害: bool = false
+## 本回合【审判】已经发动过：回合结束钩子会被引擎多次重入，没有它每次回来都会再问一遍
+var _审判已发动: bool = false
 ## 审判进度
 var _审判步: int = 0
 var _审判下标: int = 0
@@ -134,6 +136,7 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	_本回合造成伤害 = false
+	_审判已发动 = false
 	_重算手牌上限()
 	# 【灾殃止息】：回合开始时若存在【天雷劫火】/【地裂波涛】→ 移除
 	if engine.有场卡(天雷劫火名) or engine.有场卡(地裂波涛名):
@@ -183,7 +186,7 @@ func 伤害摸牌替换(_pid: int) -> int:
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if not _本回合造成伤害:
+	if not _本回合造成伤害 or _审判已发动:
 		return SUCCESS
 	if _审判步 != 0 and not engine.has_reply():
 		# 等回复期间（_审判步 == 1 且有回复）放行到下面 take
@@ -197,6 +200,8 @@ func p_turn_end(ctx: Dictionary) -> int:
 	if not take_skill_reply():
 		_审判步 = 0
 		return SUCCESS
+	# 定死「本回合只发动一次」：结算完钩子被重入时直接跳过（否则会循环再问）
+	_审判已发动 = true
 	notice_skill(SHEN_PAN, [])
 	_审判弃牌 = []
 	_审判下标 = 0
@@ -390,7 +395,14 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			return WAIT
 		var r5: Dictionary = take_skill_reply_full()
 		var ds: Array = r5.get("dst_ids", [])
-		_展示对手 = int(ds[0]) if ds.size() == 1 else -1
+		var 敌表5: Array = enemy_ids()
+		if ds.size() == 1:
+			_展示对手 = int(ds[0])
+		elif not 敌表5.is_empty():
+			# 超时 / 跳过：随机指定一名对手，别把这次展示白丢
+			_展示对手 = int(敌表5[engine._rng.randi_range(0, 敌表5.size() - 1)])
+		else:
+			_展示对手 = -1
 		if _展示对手 < 0 or engine.p(_展示对手) == null:
 			return _展示本项结束()
 		_展示步 = 7
@@ -453,14 +465,21 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			_审判下标 += 1
 			return p_yi_jiao_tu_ask({"player": player.id})
 		if not engine.has_reply():
-			询问(pid2, SHEN_PAN, 1, 0, GConst.CardSource.Hand, [], 1, "", [], false,
+			询问(pid2, SHEN_PAN, 1, 0, GConst.CardSource.Hand, [], 1, "", [], true,
 				0, pid2, [], 1, {}, 0, 0, false, [], true, -1, 0,
-				"【审判】：弃 1 张牌【展示】")
+				"【审判】：弃 1 张牌【展示】，摸 1 张牌")
 			return WAIT
 		var r6: Dictionary = take_skill_reply_full()
 		var cards6: Array = r6.get("card_ids", [])
+		var cid: int = -1
 		if not cards6.is_empty() and pp.有手牌(int(cards6[0])):
-			var cid: int = int(cards6[0])
+			cid = int(cards6[0])
+		if cid < 0:
+			# 超时 / 跳过：自动弃掉一张（随机），不卡住流程
+			var 手6: Array = pp.hand_cards.duplicate()
+			if not 手6.is_empty():
+				cid = int(手6[engine._rng.randi_range(0, 手6.size() - 1)])
+		if cid >= 0 and pp.有手牌(cid):
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": pid2, "dst_id": pid2,
 				"card_ids": [cid], "is_real": true,
@@ -488,8 +507,17 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var ds7: Array = r7.get("dst_ids", [])
 		var args7: Array = r7.get("args", [])
 		_审判步 = 4
-		_审判对手 = int(ds7[0]) if ds7.size() == 1 else -1
-		_审判给 = int(args7[0]) - 1 if not args7.is_empty() else 0
+		var 敌表7: Array = enemy_ids()
+		if ds7.size() == 1:
+			_审判对手 = int(ds7[0])
+		elif not 敌表7.is_empty():
+			_审判对手 = int(敌表7[engine._rng.randi_range(0, 敌表7.size() - 1)])
+		else:
+			_审判对手 = -1
+		if not args7.is_empty():
+			_审判给 = int(args7[0]) - 1
+		else:
+			_审判给 = engine._rng.randi_range(0, maxi(_审判弃牌.size() - 1, 0))
 		return p_yi_jiao_tu_ask({"player": player.id})
 	if _审判步 == 4:
 		_审判步 = 0
@@ -531,7 +559,10 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var r8: Dictionary = take_skill_reply_full()
 		_献祭步 = 2
 		var args8: Array = r8.get("args", [])
-		var 系: int = int(args8[0]) if not args8.is_empty() else 0
+		var 系表8: Array[int] = [GConst.CardElement.Wind, GConst.CardElement.Water,
+			GConst.CardElement.Fire, GConst.CardElement.Earth, GConst.CardElement.Thunder]
+		# 超时 / 跳过：随机选一种系别（不能落到 0，否则会被当成永远「异系」）
+		var 系: int = int(args8[0]) if not args8.is_empty() else int(系表8[engine._rng.randi_range(0, 系表8.size() - 1)])
 		var 表3: Dictionary = engine.取场卡(末日预言名)
 		var 堆3: Array = 表3.get("pile", [])
 		_献祭步 = 0
