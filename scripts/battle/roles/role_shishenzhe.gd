@@ -677,11 +677,21 @@ func _p_诸神终焉() -> int:
 	player.set_gem(player.gem - 1)
 	player.set_crystal(player.crystal + 1)
 	notice_skill(ZHU_SHEN_ZHONG_YAN, [player.id])
+	# 顺序：获得水晶（已结算）→ 自身 2 点法术伤害 → 移除自己的刃 → 对原持有者各 3 点
+	# → 若两张都移除，才问 1 名对手 2 点。先压移除钩子、再压自伤，LIFO 保证自伤先完整结算。
+	_步 = 8
+	engine.push(BattleEngine.SHook.new("p_shi_shen_诸神移除", {"player": player.id}, []))
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": 2,
 		"cause": ZHU_SHEN_ZHONG_YAN, "type": GConst.HarmType.Magic,
 	})
-	# 只移除自己拥有的两张唯一实例；记下当前持有者，牌统一进弃牌堆
+	return URGENT
+
+
+## 诸神终焉的第二步：自身 2 点伤害结算完后，移除自己的两张刃并结算原持有者 3 点伤害。
+func p_shi_shen_诸神移除(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
 	var 持有: Array = []
 	for 面: int in [MO_REN_CARD, YI_REN_CARD]:
 		var inst: int = player.刃实例(面)
@@ -699,19 +709,20 @@ func _p_诸神终焉() -> int:
 				engine.刃进弃牌堆(取到)
 				break
 	var 两张: bool = 持有.size() >= 2
+	if 两张:
+		_步 = 7
+		# 先压目标询问，再把 3 点伤害压在上面：LIFO 先结算所有 3 点，最后才问 2 点目标
+		engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
+	else:
+		_步 = 0
 	for i: int in range(持有.size() - 1, -1, -1):
 		var 项: Dictionary = 持有[i]
 		engine.push_harm({
 			"src": player.id, "dst": int(项["pid"]), "point": 3,
 			"cause": ZHU_SHEN_ZHONG_YAN, "type": GConst.HarmType.Magic,
 		})
-	if 两张:
-		_步 = 7
-		engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
-	else:
-		_步 = 0
 	engine._broadcast_game()
-	return URGENT
+	return URGENT if 两张 or not 持有.is_empty() else SUCCESS
 
 
 # ============================================================
