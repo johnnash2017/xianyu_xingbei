@@ -255,7 +255,8 @@ func p_lose_morale(ctx: Dictionary) -> int:
 	var 掉方: BattlePlayer = engine.p(dst)
 	if 掉方 == null or 掉方.color != player.color:
 		return SUCCESS
-	if _琉璃_step != 0:
+	if _琉璃_step != 0 and not engine.has_reply():
+		# 等回复期间（_琉璃_step == 1 且有回复）放行到下面 take，否则回复被挡住、技能静默不结算
 		return SUCCESS
 	_琉璃_step = 1
 	if not engine.has_reply():

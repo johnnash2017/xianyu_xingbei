@@ -152,7 +152,8 @@ func p_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not _本回合造成伤害:
 		return SUCCESS
-	if _审判步 != 0:
+	if _审判步 != 0 and not engine.has_reply():
+		# 等回复期间（_审判步 == 1 且有回复）放行到下面 take
 		return SUCCESS
 	_审判步 = 1
 	if not engine.has_reply():
@@ -211,14 +212,15 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 翻面：选变成哪一张
 	if _翻面步 == 1:
-		_翻面步 = 2
 		if not engine.has_reply():
 			询问(player.id, MO_RI_YU_YAN, 0, 0, GConst.CardSource.Hand,
 				[1, 2], 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【末日预言】的【预言】已空：翻面为【天雷劫火】或【地裂波涛】（1=天雷劫火 / 2=地裂波涛）")
 			return WAIT
+		# 阶段在取完回复之后再推进：重入时 _翻面步 仍是 1
 		var r: Dictionary = take_skill_reply_full()
+		_翻面步 = 2
 		var args: Array = r.get("args", [])
 		var 选: int = int(args[0]) if not args.is_empty() else 0
 		var 名: String = 地裂波涛名 if 选 == 2 else 天雷劫火名
@@ -232,7 +234,6 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		return URGENT
 	# 展示时：先选系别（天雷劫火=雷/火；地裂波涛=地/水）
 	if _展示步 == 1:
-		_展示步 = 2
 		var 系表: Array[int] = _展示系别()
 		if not engine.has_reply():
 			询问(player.id, MO_RI_YU_YAN, 0, 0, GConst.CardSource.Hand, 系表, 0, "", [], false,
@@ -251,7 +252,6 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 同系: Array[int] = hand_ids_where(
 			func(_cid: int, c: GCard) -> bool: return c.element_enum() == _展示系)
 		_展示X = mini(4, 同系.size())
-		_展示步 = 4
 		if _展示X <= 0:
 			_展示步 = 5
 			engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
@@ -262,6 +262,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				"【%s】：弃最多 %d 张该系牌【展示】" % [_在展示, _展示X])
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
+		_展示步 = 4
 		var cards: Array = r3.get("card_ids", [])
 		var 弃: Array = []
 		for c: Variant in cards:
@@ -281,12 +282,16 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		return URGENT
 	# 展示时：选目标对手 → 摸 X 张 + 造成 X+1 点法术伤害
 	if _展示步 == 5:
-		_展示步 = 6
 		engine.push_draw(player.id, _展示X, MO_RI_YU_YAN)
+		# 摸牌先压进栈；阶段推进到「等目标回复」，回来由 6 号分支取回复（避免重复摸牌）
+		_展示步 = 6
 		if not engine.has_reply():
 			询问(player.id, MO_RI_YU_YAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
 				"【%s】：指定 1 名目标对手（弃牌与摸牌后结算伤害）" % _在展示)
+			return WAIT
+	if _展示步 == 6:
+		if not engine.has_reply():
 			return WAIT
 		var r5: Dictionary = take_skill_reply_full()
 		var ds: Array = r5.get("dst_ids", [])
@@ -377,7 +382,6 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 献祭：先选系别，再结算
 	if _献祭步 == 1:
-		_献祭步 = 2
 		if not engine.has_reply():
 			var 系表2: Array = [GConst.CardElement.Wind, GConst.CardElement.Water,
 				GConst.CardElement.Fire, GConst.CardElement.Earth, GConst.CardElement.Thunder]
@@ -385,7 +389,9 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【献祭】：指定 1 种系别，展示【预言】堆顶 1 张")
 			return WAIT
+		# 阶段在取完回复之后再推进：重入时 _献祭步 仍是 1
 		var r8: Dictionary = take_skill_reply_full()
+		_献祭步 = 2
 		var args8: Array = r8.get("args", [])
 		var 系: int = int(args8[0]) if not args8.is_empty() else 0
 		var 表3: Dictionary = engine.取场卡(末日预言名)
@@ -420,13 +426,14 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 放逐：选摸几张（6~8）
 	if _放逐步 == 1:
-		_放逐步 = 2
 		if not engine.has_reply():
 			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand, [6, 7, 8], 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【放逐】：选择摸几张牌（6~8）")
 			return WAIT
+		# 阶段在取完回复之后再推进：重入时 _放逐步 仍是 1
 		var r9: Dictionary = take_skill_reply_full()
+		_放逐步 = 2
 		var args9: Array = r9.get("args", [])
 		var 张: int = int(args9[0]) if not args9.is_empty() else 6
 		张 = clampi(张, 6, 8)
@@ -454,7 +461,6 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
 		return URGENT
 	if _放逐步 == 4:
-		_放逐步 = 0
 		if not engine.has_reply():
 			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand,
 				[GConst.ActionType.Attack, GConst.ActionType.Magic], 0, "", [], false,
@@ -462,6 +468,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				"【放逐】：额外 +1【攻击行动】或【法术行动】")
 			return WAIT
 		var r10: Dictionary = take_skill_reply_full()
+		_放逐步 = 0
 		var args10: Array = r10.get("args", [])
 		var 种类: int = int(args10[0]) if not args10.is_empty() else GConst.ActionType.Attack
 		player.add_action(种类, FANG_ZHU, true, true)

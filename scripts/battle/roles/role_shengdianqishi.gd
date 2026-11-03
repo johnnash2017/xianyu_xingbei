@@ -127,18 +127,33 @@ func p_heal_overflow(ctx: Dictionary) -> int:
 func p_timeline_1(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
+	# 圣裁收尾会 push_harm 并返回 URGENT：引擎跑完那段伤害会重新进入本钩子，
+	# 用本次攻击自己的 ctx 记「已结算」，避免神威 / 圣裁在同一次攻击里被再问一遍
+	if bool(ctx.get("圣殿骑士_攻击前已结算", false)):
+		return SUCCESS
 	match _t1_step:
 		0:
 			# 第一步：问【神威】（付 2 圣印）
-			_t1_step = 1
 			_t1_神威 = false
 			if _神威禁 or player.token_num(YIN_SLOT) < 2:
+				# 问不了神威也要接着问圣裁（两步互相独立）
+				_t1_step = 2
 				return p_timeline_1(ctx)
 			if not engine.has_reply():
+				# 阶段落到「等神威回复」；回复回来由 1 号分支取走
+				_t1_step = 1
 				询问(player.id, SHEN_WEI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 					"是否发动【神威】（移除 2 点【圣印】）：本次攻击对手无法应战；攻击牌为圣类命格时伤害 +1？")
 				return WAIT
+			# 极少见：进 0 号分支时已有回复（等待期被插队后又回到这里），交给 1 号分支
+			_t1_step = 1
+			return p_timeline_1(ctx)
+		1:
+			# 等【神威】的回复；没有回复说明这次进来是残留状态（上一手被打断），清掉等下一次攻击
+			if not engine.has_reply():
+				_t1_step = 0
+				return SUCCESS
 			if take_skill_reply() and player.remove_token(YIN_SLOT, 2):
 				_t1_神威 = true
 				notice_skill(SHEN_WEI, [int(ctx.get("dst", -1))])
@@ -158,12 +173,12 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			return p_timeline_1(ctx)
 		2:
 			# 第二步：问【圣裁】（移除 X 圣印，1 点法术伤害 + 攻击伤害 +(X-1)）
-			_t1_step = 3
 			_t1_圣裁 = 0
 			if player.token_num(YIN_SLOT) < 1:
 				_t1_step = 0
 				return SUCCESS
 			if not engine.has_reply():
+				_t1_step = 3
 				var 选项: Array = []
 				for i: int in range(1, player.token_num(YIN_SLOT) + 1):
 					选项.append(i)
@@ -171,6 +186,13 @@ func p_timeline_1(ctx: Dictionary) -> int:
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 					"是否发动【圣裁】（移除 X 点【圣印】）：对攻击目标造成 1 点法术伤害，本次攻击伤害 +(X-1)？")
 				return WAIT
+			_t1_step = 3
+			return p_timeline_1(ctx)
+		3:
+			# 等【圣裁】的回复
+			if not engine.has_reply():
+				_t1_step = 0
+				return SUCCESS
 			var r: Dictionary = take_skill_reply_full()
 			var args: Array = r.get("args", [])
 			var x: int = int(args[0]) if not args.is_empty() else 0
@@ -185,6 +207,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 					"src": player.id, "dst": int(ctx.get("dst", -1)),
 					"point": 1, "cause": SHENG_CAI, "type": GConst.HarmType.Magic,
 				})
+				ctx["圣殿骑士_攻击前已结算"] = true
 				_t1_step = 0
 				return URGENT
 			_t1_step = 0
@@ -298,7 +321,6 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 圣愈：先选 X
 	if _圣愈步 == 1:
-		_圣愈步 = 2
 		if not engine.has_reply():
 			var 选项: Array = []
 			for i: int in range(1, player.token_num(YIN_SLOT) + 1):
@@ -307,7 +329,9 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【圣愈】：移除 X 点【圣印】（选择 X）")
 			return WAIT
+		# 阶段在取完回复之后再推进：重入时 _圣愈步 仍是 1，才能走到这里
 		var r: Dictionary = take_skill_reply_full()
+		_圣愈步 = 2
 		var args: Array = r.get("args", [])
 		var x: int = int(args[0]) if not args.is_empty() else 0
 		if x <= 0 or not player.remove_token(YIN_SLOT, x):
@@ -351,7 +375,6 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 圣炎收尾：对目标对手 1 点法术伤害
 	if _圣炎收尾 == 1:
-		_圣炎收尾 = 2
 		if not engine.has_reply():
 			询问(player.id, SHEN_ZHI_ZI, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
@@ -370,15 +393,17 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 圣炎祈愿：退出形态时目标角色 +2 治疗（消耗 1 点能量）
 	if _圣炎收尾 == 3:
-		_圣炎收尾 = 0
-		if player.get_energy() < 1:
-			return SUCCESS
 		if not engine.has_reply():
+			# 能量不够就不问；有回复时直接取走（能量检查只放在「还没问」这一步）
+			if player.get_energy() < 1:
+				_圣炎收尾 = 0
+				return SUCCESS
 			询问(player.id, SHENG_YAN_QI_YUAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"是否发动【圣炎祈愿】（消耗 1 点能量）：目标角色 +2【治疗】？")
 			return WAIT
 		if not take_skill_reply():
+			_圣炎收尾 = 0
 			return SUCCESS
 		_收尾目标 = -1
 		_圣炎收尾 = 4

@@ -198,7 +198,9 @@ func p_after_extract(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not _恩典可付():
 		return SUCCESS
-	if _恩典步 != 0:
+	if _恩典步 != 0 and not engine.has_reply():
+		# 正在等这一问的回复时（_恩典步 == 1 且有回复）要放行到下面 take，
+		# 否则回复回来就被这句挡住、技能静默不结算
 		return SUCCESS
 	_恩典步 = 1
 	_恩典宝石 = 宝石
@@ -262,7 +264,8 @@ func _付恩典代价() -> void:
 func p_harm_end(ctx: Dictionary) -> int:
 	if int(ctx.get("dst", -1)) != player.id:
 		return SUCCESS
-	if _净华步 != 0:
+	if _净华步 != 0 and not engine.has_reply():
+		# 等回复期间（_净华步 == 1 且有回复）放行到下面 take
 		return SUCCESS
 	var 法术牌: Array[int] = magic_hand_ids()
 	if 法术牌.is_empty():
@@ -299,7 +302,8 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		return SUCCESS
 	if bool(harm.get("庇护领域已减", false)):
 		return SUCCESS
-	if _庇护步 != 0:
+	if _庇护步 != 0 and not engine.has_reply():
+		# 等回复期间（_庇护步 == 1 且有回复）放行到下面 take
 		return SUCCESS
 	_庇护步 = 1
 	_庇护伤害 = harm
@@ -332,7 +336,6 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 神圣鞭策：选 X
 	if _鞭策步 == 1:
-		_鞭策步 = 2
 		if not engine.has_reply():
 			var 选项: Array = []
 			for i: int in range(1, player.token_num(CAI_SLOT) + 1):
@@ -341,7 +344,9 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【神圣鞭策】：移除 X 点【裁决】（选择 X）")
 			return WAIT
+		# 阶段在取完回复之后再推进：重入时 _鞭策步 仍是 1，才能走到这里
 		var r: Dictionary = take_skill_reply_full()
+		_鞭策步 = 2
 		var args: Array = r.get("args", [])
 		var x: int = int(args[0]) if not args.is_empty() else 0
 		if x <= 0 or not player.remove_token(CAI_SLOT, x):
@@ -484,13 +489,14 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 净化之术：弃 1 张法术牌【展示】→ +1 治疗、摸 1、裁决所 -1 治疗
 	if _净华步 == 2:
-		_净华步 = 3
 		if not engine.has_reply():
 			询问(player.id, JING_HUA_ZHI_SHU, 1, 0, GConst.CardSource.Hand, [], 1, "magic", [], true,
 				0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
 				"【净化之术】：弃 1 张法术牌【展示】")
 			return WAIT
+		# 阶段在取完回复之后再推进：重入时 _净华步 仍是 2
 		var r7: Dictionary = take_skill_reply_full()
+		_净华步 = 3
 		var cards7: Array = r7.get("card_ids", [])
 		_净华步 = 0
 		if cards7.is_empty() or not player.有手牌(int(cards7[0])):
