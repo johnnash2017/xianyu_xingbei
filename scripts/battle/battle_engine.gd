@@ -2144,7 +2144,7 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			if 只按命格:
 				cmds[0]["extra_fate"] = 命格
 			else:
-				var 行动牌: Array = 额外行动出牌白名单(额外数据)
+				var 行动牌: Array = 额外行动出牌白名单(额外数据, pl.id)
 				if not 行动牌.is_empty():
 					cmds[0]["card_ids"] = _牌面表(行动牌)
 			var 目标限制: Array = 额外数据.get("targets", [])
@@ -2244,7 +2244,7 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			序列原因.append(c)
 			序列ID.append(uid)
 			序列允许.append(允许)
-			序列牌.append({"ids": [] if 只按命格 else _牌面表(额外行动出牌白名单(项))})
+			序列牌.append({"ids": [] if 只按命格 else _牌面表(额外行动出牌白名单(项, pid))})
 			序列目标.append({"ids": 项.get("targets", [])})
 			序列系别.append(int(项.get("element", 0)))
 			序列命格.append(项命格 if 只按命格 else 0)
@@ -2485,7 +2485,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 			额外攻击.append(int(项.get("cause", 0)))
 			额外攻击ID.append(int(项.get("uid", 0)))
 			额外允许.append(int(项.get("allow_action", 0)))
-			额外牌表.append({"ids": _牌面表(额外行动出牌白名单(项))})
+			额外牌表.append({"ids": _牌面表(额外行动出牌白名单(项, pid))})
 			额外目标表.append({"ids": 项.get("targets", [])})
 			额外系别表.append(int(项.get("element", 0)))
 		if not 额外攻击.is_empty():
@@ -3343,7 +3343,7 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 ## 系别 / 命格规则时，按规则现算（对照卡库，不看当前手牌快照）。
 ## 为什么不能拿手牌快照：手牌会变。技能授予时算一次 id 表，等玩家再摸到同类牌就出不了了
 ## （修罗连斩 / 风怒追击 / 二重剑影 的「该系攻击牌」、技之剑意的「技类攻击牌」都踩过）。
-func 额外行动出牌白名单(行动: Dictionary) -> Array:
+func 额外行动出牌白名单(行动: Dictionary, pid: int = 0) -> Array:
 	if 行动.is_empty():
 		return []
 	var 表: Array = 行动.get("cards", [])
@@ -3353,32 +3353,63 @@ func 额外行动出牌白名单(行动: Dictionary) -> Array:
 	var 命格: int = int(行动.get("card_fate", 0))
 	if 系 <= 0 and 命格 <= 0:
 		return []
-	return _规则攻击牌(系, 命格)
+	return _规则攻击牌(系, 命格, pid)
 
 
 ## 卡库里符合「该系 / 该命格」的全部攻击牌 id（按规则缓存一次）：
 ## 界面据此点亮可出的牌，服务端据此校验。一张都没有时给「全禁」哨兵，
 ## 避免空表被当成「不限制」。系别与命格都为 0 时按「不限」处理（调用方已挡掉）。
-func _规则攻击牌(系: int, 命格: int) -> Array:
+func _规则攻击牌(系: int, 命格: int, pid: int = 0) -> Array:
+	# 普通牌按牌面缓存；魔刃/异刃要按「该玩家手里的实例当前系别」临时补进来，
+	# 不能把 1005/1006 写进全局缓存（多个噬神者各切各的系）。
 	var 键: String = "%d_%d" % [系, 命格]
+	var 基础: Array
 	if _规则攻击牌缓存.has(键):
-		return _规则攻击牌缓存[键]
-	var 表: Array = []
-	for c: GCard in Data.card_db:
-		if c == null or not c.is_attack():
-			continue
-		# 没有系别的虚拟牌（借用/欺诈临时牌）不进「该系攻击牌」白名单；
-		# 魔刃/异刃是真实攻击牌（不再标虚拟），按下面正常的系别/命格规则参与。
-		if c.is_virtual and c.element_enum() <= 0:
-			continue
-		if 系 > 0 and c.element_enum() != 系:
-			continue
-		if 命格 > 0 and c.fate_pattern_enum() != 命格:
-			continue
-		表.append(c.id)
+		基础 = _规则攻击牌缓存[键]
+	else:
+		基础 = []
+		for c: GCard in Data.card_db:
+			if c == null or not c.is_attack():
+				continue
+			if c.id == GConst.噬神者_魔刃卡 or c.id == GConst.噬神者_异刃卡:
+				continue
+			# 没有系别的虚拟牌（借用/欺诈临时牌）不进「该系攻击牌」白名单
+			if c.is_virtual and c.element_enum() <= 0:
+				continue
+			if 系 > 0 and c.element_enum() != 系:
+				continue
+			if 命格 > 0 and c.fate_pattern_enum() != 命格:
+				continue
+			基础.append(c.id)
+		_规则攻击牌缓存[键] = 基础
+	var 表: Array = 基础.duplicate()
+	if pid > 0:
+		var p0: BattlePlayer = players.get(pid)
+		if p0 != null:
+			for 面: int in [GConst.噬神者_魔刃卡, GConst.噬神者_异刃卡]:
+				if 表.has(面):
+					continue
+				var 面卡: GCard = Data.get_card(面)
+				if 面卡 == null or (命格 > 0 and 面卡.fate_pattern_enum() != 命格):
+					continue
+				for cid: int in p0.hand_cards:
+					if GConst.牌号(cid) != 面:
+						continue
+					var 实例卡: GCard = Data.get_card(cid)
+					if 实例卡 != null and (系 <= 0 or 实例卡.element_enum() == 系):
+						表.append(面)
+						break
+	else:
+		# 旧调用（无玩家上下文，测试/兜底）：按共用牌面当前系别补
+		for 面2: int in [GConst.噬神者_魔刃卡, GConst.噬神者_异刃卡]:
+			if 表.has(面2):
+				continue
+			var 面卡2: GCard = Data.get_card(面2)
+			if 面卡2 != null and (系 <= 0 or 面卡2.element_enum() == 系) \
+					and (命格 <= 0 or 面卡2.fate_pattern_enum() == 命格):
+				表.append(面2)
 	if 表.is_empty():
 		表 = [GConst.手牌白名单_全禁]
-	_规则攻击牌缓存[键] = 表
 	return 表
 
 
@@ -3431,7 +3462,7 @@ func 校验额外行动限制(cur: BattlePlayer, 行动: Dictionary, action_type
 	if is_skill and 行动.has("skill_cards"):
 		白名单 = 行动.get("skill_cards", [])
 	else:
-		白名单 = 额外行动出牌白名单(行动)
+		白名单 = 额外行动出牌白名单(行动, cur.id)
 	for c: Variant in card_ids:
 		# 提交上来的是实例号，规格里的白名单是牌面：比较前先折回牌面（克隆牌也按同一张牌面算）
 		var 面: int = GConst.牌号(int(c))
@@ -3444,6 +3475,11 @@ func 校验额外行动限制(cur: BattlePlayer, 行动: Dictionary, action_type
 			if 行动命格 > 0 and 卡.fate_pattern_enum() != 行动命格:
 				return GConst.GE_INVALID_CARDID
 			continue
+		if not 按视为 and 行动系 > 0 \
+				and (面 == GConst.噬神者_魔刃卡 or 面 == GConst.噬神者_异刃卡):
+			var 实例卡: GCard = Data.get_card(int(c))
+			if 实例卡 == null or 实例卡.element_enum() != 行动系:
+				return GConst.GE_INVALID_CARDID
 		if not 白名单.is_empty() and not 白名单.has(面):
 			return GConst.GE_INVALID_CARDID
 	var 目标表: Array = 行动.get("targets", [])
