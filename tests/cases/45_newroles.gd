@@ -390,9 +390,8 @@ func _检噬神者() -> void:
 	检(问合法牌.has(1005) and not 问合法牌.has(1006),
 		"噬灭询问白名单应只含水/火牌，实际 %s" % str(问合法牌))
 	检(bool(问命令.get("can_cancel", false)), "噬灭选牌应允许取消（取消=不发动）")
-	检(str(问命令.get("ask_prompt", ""))
-		== "【%s】：%s" % [GConst.skill_name(7903), GConst.skill_desc(7903)],
-		"噬灭提示应为【技能名】：完整说明，实际：%s" % str(问命令.get("ask_prompt", "")))
+	检(str(问命令.get("ask_prompt", "")) == "",
+		"噬灭不应在服务端硬编码提示，应交给客户端通用「【技能名】：说明」逻辑：%s" % str(问命令.get("ask_prompt", "")))
 	检((问命令.get("dst_ids", []) as Array).has(2),
 		"噬灭询问应带上本次攻击目标（2）用于头像高亮，实际：%s" % str(问命令.get("dst_ids", [])))
 	# 殇灭：同一个询问同时选弃牌与目标，不再分两步
@@ -497,6 +496,10 @@ func _检切换后复检() -> void:
 	Data.hand_cards = [Data.get_card(1005), Data.get_card(87), Data.get_card(88)]
 	Data.hand_iids = [1005, 87, 88]
 	Data.get_card(1005).设置当前元素(GConst.CardElement.Fire)
+	var 通用提示: String = str(窗.call("_技能效果提示", 7903))
+	var 噬灭说明: String = GConst.skill_desc(7903).replace("\\n", "").replace("\n", "").strip_edges()
+	检(通用提示 == "【%s】：%s" % [GConst.skill_name(7903), 噬灭说明],
+		"噬灭提示应走客户端通用「【技能名】：说明」：%s" % 通用提示)
 	窗.set("_mode", 4)
 	窗.set("_skill_card_max", 2)
 	窗.set("_skill_need_card", 2)

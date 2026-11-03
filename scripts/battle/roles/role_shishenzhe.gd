@@ -221,8 +221,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		_侵刻目标 = dst.id
 		# 无选项，只有「确定 / 取消」：确定发动，取消不发动
 		询问(player.id, QIN_KE, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [dst.id], -1, {}, 0, 0, false, [], true, -1, 0,
-			"【%s】：%s" % [GConst.skill_name(QIN_KE), GConst.skill_desc(QIN_KE)])
+			0, -1, [dst.id], -1, {}, 0, 0, false, [], true, -1, 0, "")
 		return WAIT
 	_侵刻目标 = -1
 	if not take_skill_reply():
@@ -411,7 +410,7 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 					GConst.CardSource.Hand, [], 1, "", 可弃牌面, true,
 					0, player.id, 殇灭池 if _噬灭技能 == SHANG_MIE else [_噬灭目标],
 					1, {}, 0, 0, false, [], true, -1, 0,
-					"【%s】：%s" % [GConst.skill_name(_噬灭技能), GConst.skill_desc(_噬灭技能)])
+					"")
 				return WAIT
 			var r2: Dictionary = take_skill_reply_full()
 			var cards: Array = r2.get("card_ids", [])
