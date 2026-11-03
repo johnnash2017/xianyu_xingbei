@@ -430,28 +430,28 @@ func _检噬神者() -> void:
 		"【魔刃】普通攻击时应记录本次用的牌")
 	检(角色._本次刃 == 魔实例, "【魔刃】普通攻击应记录本人实例号，实际 %d / 期望 %d" % [角色._本次刃, 魔实例])
 	# 额外行动按系别算攻击牌白名单时，虚拟牌魔刃/异刃也要按当前系别进入
-	检((引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0) as Array).has(1005),
+	检((引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0, 1) as Array).has(1005),
 		"火系额外行动白名单应包含当前火系【魔刃】")
-	检(not (引擎.call("_规则攻击牌", GConst.CardElement.Water, 0) as Array).has(1005),
+	检(not (引擎.call("_规则攻击牌", GConst.CardElement.Water, 0, 1) as Array).has(1005),
 		"【魔刃】当前是火系时不应进水系白名单")
-	检(引擎.攻击表现牌(1005) == 87, "火系【魔刃】应用火焰斩特效表现牌 87")
-	检(引擎.攻击表现牌(1006) == 108, "雷系【异刃】应用雷光斩特效表现牌 108")
+	检(引擎.攻击表现牌(魔实例) == 87, "火系【魔刃】应用火焰斩特效表现牌 87")
+	检(引擎.攻击表现牌(异实例) == 108, "雷系【异刃】应用雷光斩特效表现牌 108")
 	# 切成水系：卡面系别、普通攻击校验都要跟着变；服务端回一条 CardElement
 	检(引擎.设置卡牌元素(1, 魔实例, GConst.CardElement.Water), "【魔刃】切水系应成功")
 	检(魔卡.element_enum() == GConst.CardElement.Water, "切换后【魔刃】当前系别应是水")
 	检(int(玩家.v_attack(魔实例, 2, 引擎.players)) == GConst.GE_SUCCESS,
 		"【魔刃】当前水系仍应能直接作为普通攻击牌打出")
-	检((引擎.call("_规则攻击牌", GConst.CardElement.Water, 0) as Array).has(1005),
+	检((引擎.call("_规则攻击牌", GConst.CardElement.Water, 0, 1) as Array).has(1005),
 		"水系额外行动白名单应包含当前水系【魔刃】")
-	检(not (引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0) as Array).has(1005),
+	检(not (引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0, 1) as Array).has(1005),
 		"【魔刃】切水后不应再进火系白名单")
 	# 带玩家上下文：按该玩家手里刃实例的当前系别算
 	检((引擎.call("_规则攻击牌", GConst.CardElement.Water, 0, 1) as Array).has(1005)
 		and not (引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0, 1) as Array).has(1005),
 		"额外行动白名单应按玩家手里实例的当前系别筛选魔刃")
-	检(引擎.攻击表现牌(1005) == 129, "水系【魔刃】应用水涟斩特效表现牌 129")
+	检(引擎.攻击表现牌(魔实例) == 129, "水系【魔刃】应用水涟斩特效表现牌 129")
 	检(引擎.设置卡牌元素(1, 异实例, GConst.CardElement.Wind), "【异刃】切风系应成功")
-	检(引擎.攻击表现牌(1006) == 66, "风系【异刃】应用风神斩特效表现牌 66")
+	检(引擎.攻击表现牌(异实例) == 66, "风系【异刃】应用风神斩特效表现牌 66")
 	引擎.设置卡牌元素(1, 异实例, GConst.CardElement.Thunder)
 	var 有元素消息: bool = false
 	for r: Dictionary in 发送记录:

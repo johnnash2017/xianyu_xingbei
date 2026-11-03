@@ -2079,12 +2079,7 @@ func 设置卡牌元素(pid: int, card_id: int, element: int) -> bool:
 	var 牌: GCard = Data.get_card(card_id)
 	if 牌 == null or not 牌.设置当前元素(element):
 		return false
-	# 兼容仍按牌面读系别的规则池（额外行动白名单等）：把牌面同步成当前实例系别。
-	# 客户端显示走实例副本；服务端攻击前也会按实例再同步一次。
-	var 面牌: GCard = Data.get_card(牌.id)
-	if 面牌 != null:
-		面牌.设置当前元素(element)
-	# 「按系别规则算可用攻击牌」的缓存里可能还留着切换前的那一系
+	# 「按系别规则算可用攻击牌」的缓存里可能还留着切换前的那几项
 	_规则攻击牌缓存.clear()
 	var cmds: Array = []
 	if _await_id == pid and _await_kind == GConst.Msg.Action:
@@ -5490,13 +5485,7 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# 规则判定、钩子上下文、广播一律按牌面（同牌面的副本对规则完全等价）
 	var 提交号: int = int(cards[0])
 	var cid: int = GConst.牌号(提交号)
-	# 规则/角色钩子仍大量按牌面 GCard 读元素；攻击这一手开始前把牌面临时同步成
-	# 该实例的当前系别，保证多个噬神者的刃不会互相串（客户端显示走实例副本，不受影响）
 	var 提交实例卡: GCard = Data.get_card(提交号)
-	if 提交实例卡 != null and 提交实例卡.是实例():
-		var 提交牌面: GCard = Data.get_card(提交实例卡.id)
-		if 提交牌面 != null:
-			提交牌面.设置当前元素(提交实例卡.element_enum())
 	var dst_id: int = int(dsts[0])
 	if cur.v_attack(提交号, dst_id, players) != GConst.GE_SUCCESS:
 		if OS.is_debug_build() and 行动额外:
