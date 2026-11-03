@@ -442,7 +442,6 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": GONG_ZHEN})
 			engine._log_discard(player.id, 弃, false)
 			notice_skill(GONG_ZHEN, [player.id])
-			engine._broadcast_game()
 			# 弃牌代价里若有刃，渗蚀/进弃牌结算会晚于本钩子；
 			# 先回到步骤 5，等牌真正进了弃牌堆再开第二步，否则「同一实例」取不回来。
 			# 没有刃时 to_discard 是同步的，直接开第二步即可。
@@ -455,10 +454,12 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			if 有刃代价:
 				_步 = 5
 				return URGENT
+			engine._broadcast_game()
 			_步 = 6
 			engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 			return URGENT
-		5:  # 共振：等弃牌代价结算完（刃已经在弃牌堆里）再开四选一
+		5:  # 共振：等弃牌代价和渗蚀结算完（刃已经在弃牌堆里）再开四选一
+			engine._broadcast_game()
 			_步 = 6
 			engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 			return URGENT
