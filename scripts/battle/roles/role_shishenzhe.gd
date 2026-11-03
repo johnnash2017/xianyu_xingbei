@@ -44,6 +44,9 @@ var _侵刻目标: int = -1
 var _渗蚀盖牌Seq: int = -1
 ## 御刃 / 共振 / 诸神终焉 的子流程
 var _步: int = 0
+## 诸神终焉的目标询问钩子是一次性的：URGENT 后引擎会回栈重跑本钩子，
+## 不挡住会再推一次询问/再打一次 2 点，形成无限循环。
+var _诸神问已处理: bool = false
 var _目标: int = -1
 var _共振牌: Array[int] = []
 
@@ -697,6 +700,7 @@ func _刃系名(卡号: int) -> String:
 func _p_诸神终焉() -> int:
 	if player.gem < 1:
 		return GConst.GE_INVALID_ACTION
+	_诸神问已处理 = false
 	player.set_gem(player.gem - 1)
 	player.set_crystal(player.crystal + 1)
 	notice_skill(ZHU_SHEN_ZHONG_YAN, [player.id])
@@ -751,6 +755,9 @@ func p_shi_shen_诸神移除(ctx: Dictionary) -> int:
 func p_shi_shen_诸神问(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
+	if _诸神问已处理:
+		return SUCCESS
+	_诸神问已处理 = true
 	_步 = 7
 	engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 	return URGENT

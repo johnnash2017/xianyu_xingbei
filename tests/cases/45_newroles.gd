@@ -497,6 +497,12 @@ func _检噬神者() -> void:
 	检(not 无牌命令.is_empty() and int((无牌命令[0] as Dictionary).get("respond_id", 0)) == 7903
 		and (无牌命令[0] as Dictionary).get("card_ids", []).is_empty(),
 		"手牌不足时噬灭也应发出 7903 询问：%s" % str(无牌问))
+	# 诸神终焉的目标询问钩子只能处理一次：引擎 URGENT 回栈重跑时不能再推一次
+	无同系角色.set("_诸神问已处理", false)
+	var 诸神问一次: int = int(无同系角色.call("p_shi_shen_诸神问", {"player": 1}))
+	var 诸神问二次: int = int(无同系角色.call("p_shi_shen_诸神问", {"player": 1}))
+	检(诸神问一次 == BattleRole.URGENT and 诸神问二次 == BattleRole.SUCCESS,
+		"诸神终焉目标询问钩子应只触发一次，实际 %d / %d" % [诸神问一次, 诸神问二次])
 
 
 ## 手牌系别切换后：已选中的牌不合法要取消选中并置灰；原本不合法、切回后合法要重新亮起
