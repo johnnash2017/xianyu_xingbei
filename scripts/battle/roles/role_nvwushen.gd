@@ -221,7 +221,12 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id:
 		return SUCCESS
-	if player.get_energy() == 0 or _英灵_阶段 >= 2:
+	if _英灵_阶段 >= 2:
+		return SUCCESS
+	# 能量够不够只在「还没发动」这一步判：第二问是发动时已经付过 1 能量的后续步骤，
+	# 付完正好 0 能量很常见（第一次用就是这样）。这里再判一次会把第二问的回复整个挡在门外
+	# ——钩子直接 SUCCESS，`take_reply` 没被调用，弃牌与治疗都拿不到。
+	if _英灵_阶段 == 0 and player.get_energy() == 0:
 		return SUCCESS
 	if _英灵_阶段 == 0:
 		# 第 1 问只问「是否发动」；额外弃牌 + 治疗目标拆到第 2 问

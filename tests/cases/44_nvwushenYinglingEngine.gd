@@ -33,6 +33,7 @@ func 跑() -> void:
 	_场景一()
 	_场景二()
 	_场景三()
+	_场景四()
 
 
 func _建局() -> void:
@@ -120,3 +121,21 @@ func _场景三() -> void:
 	检(玩家.hand_cards.has(法术牌), "场景三：取消第二问不应弃牌")
 	检(引擎.p(3).cross_num == 0, "场景三：取消第二问不应加治疗")
 	检(玩家.tap, "场景三：取消第二问也应横置（英灵召唤已发动）")
+
+
+## 场景四：发动时只有 1 能量（付完正好 0）—— 第二问不能因为「能量为 0」被顶掉
+func _场景四() -> void:
+	_建局()
+	玩家.set_crystal(1)
+	var 法术牌: int = 4
+	玩家.add_hand_cards([法术牌])
+	_起命中()
+	检(引擎._await_id == 1, "场景四：第一问应等玩家 1：%s" % str(引擎._await_id))
+	引擎.on_message(1, GConst.Msg.Respond, {"respond_id": 2505, "args": [1],
+		"card_ids": [], "dst_ids": []})
+	检(玩家.get_energy() == 0, "场景四：发动后能量应正好为 0")
+	检(引擎._await_id == 1, "场景四：付完能量后第二问仍应等玩家 1：%s" % str(引擎._await_id))
+	引擎.on_message(1, GConst.Msg.Respond, {"respond_id": GConst.技能_英灵召唤治疗,
+		"args": [1], "card_ids": [法术牌], "dst_ids": [3]})
+	检(not 玩家.hand_cards.has(法术牌), "场景四：能量归零后第二问仍应弃法术牌")
+	检(引擎.p(3).cross_num == 1, "场景四：能量归零后第二问仍应给目标 +1 治疗")
