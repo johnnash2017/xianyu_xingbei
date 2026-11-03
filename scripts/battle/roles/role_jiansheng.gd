@@ -178,8 +178,11 @@ func _自动风怒追击() -> void:
 
 ## 交给行动聚合器的技能选项：用过、已在队列里、能量不够的不出现。
 ## （风怒追击已改为结束后自动生效，不再出现在这里）
-func action_end_options(_ctx: Dictionary) -> Array:
+func action_end_options(ctx: Dictionary) -> Array:
 	var out: Array = []
+	# 剑影写的是「攻击行动结束时」：法术行动结束不能摆出来
+	if not 是攻击行动结束(ctx):
+		return out
 	if not used_jian_ying and not active_jian_ying and not _contains_action(JIAN_YING):
 		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING,
 			"enabled": player.get_energy() > 0})

@@ -333,7 +333,10 @@ func p_after_attack(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-func action_end_options(_ctx: Dictionary) -> Array:
+func action_end_options(ctx: Dictionary) -> Array:
+	# 多重射击写的是「攻击行动结束时」：法术行动结束不能摆出来
+	if not 是攻击行动结束(ctx):
+		return []
 	if _using_duo_chong or not _available_duo_chong:
 		return []
 	var 可攻目标: Array[int] = player_ids_where(_duo_chong_dst_ok)

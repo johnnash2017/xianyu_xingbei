@@ -271,6 +271,14 @@ func resolve_action_end_option(cause: int, _reply: Dictionary, _ctx: Dictionary)
 ## 引擎的「当前额外行动数据」—— 上一个同来源的行动用完后那份数据还留着，
 ## 会把新入队的这一份顶掉，结果新行动一直没标 direct、响应结束又把它当选项问一次
 ## （血色剑灵【赤色一闪】连续两次踩过：确认第二次时会再弹一次相同的询问）。
+## 这次「行动结束」是不是攻击行动（攻击牌结束）。行动聚合器在**攻击牌结束时和法术牌结束时**
+## 都会调 action_end_options()，技能原文写「攻击行动结束时」的选项必须先用它过滤，
+## 否则法术结束也会把选项摆出来（风之剑圣【剑影】踩过）。
+## 空 ctx / 没有 kind（旧测试直接调 action_end_options({})）按攻击结束处理，保持既有行为。
+func 是攻击行动结束(ctx: Dictionary) -> bool:
+	return str(ctx.get("kind", "attack")) != "magic"
+
+
 func resolve_queued_extra_action(cause: int) -> int:
 	var rc: int = 行动结束确认代价(cause)
 	if rc == SUCCESS or rc == URGENT:

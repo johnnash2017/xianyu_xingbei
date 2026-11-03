@@ -290,6 +290,9 @@ func p_after_attack(ctx: Dictionary) -> int:
 
 
 func action_end_options(ctx: Dictionary) -> Array:
+	# 剑残影 / 剑影*断念写的是「攻击行动结束时」：法术行动结束不能摆出来
+	if not 是攻击行动结束(ctx):
+		return []
 	return _攻击结束选项(ctx, true)
 
 

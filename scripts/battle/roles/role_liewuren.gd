@@ -339,7 +339,10 @@ func p_after_attack(_ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-func action_end_options(_ctx: Dictionary) -> Array:
+func action_end_options(ctx: Dictionary) -> Array:
+	# 偷袭写的是「攻击行动结束时」：法术行动结束不能摆出来
+	if not 是攻击行动结束(ctx):
+		return []
 	if _touxi_step != 0 or _used_touxi:
 		return []
 	var 可用: bool = player.get_energy() > 0 and player.cover_cards.size() >= 2
