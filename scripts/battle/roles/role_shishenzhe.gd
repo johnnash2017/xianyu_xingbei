@@ -198,27 +198,21 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _本次刃 <= 0 or engine.刃归属者(_本次刃) != player.id:
 		return SUCCESS
-	if _侵刻已处理 and _步 != 9:
+	if _侵刻已处理 and not engine.has_reply():
 		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null:
 		return SUCCESS
-	if _步 != 9:
+	if not engine.has_reply():
 		_侵刻已处理 = true
 		_侵刻目标 = dst.id
-		_步 = 9
-		询问(player.id, QIN_KE, 0, 0, GConst.CardSource.Hand, [
-			{"value": 1, "label": "发动【侵刻】"},
-			{"value": 2, "label": "不发动"},
-		], 0, "", [], false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+		# 无选项，只有「确定 / 取消」：确定发动，取消不发动
+		询问(player.id, QIN_KE, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 			GConst.skill_desc(QIN_KE))
 		return WAIT
-	var r9: Dictionary = take_skill_reply_full()
-	var args9: Array = r9.get("args", [])
-	var 选9: int = int(args9[0]) if not args9.is_empty() else 2
-	_步 = 0
 	_侵刻目标 = -1
-	if 选9 != 1:
+	if not take_skill_reply():
 		return SUCCESS
 	notice_skill(QIN_KE, [dst.id])
 	# 牌还在攻击牌的待弃牌上下文里（尚未进弃牌堆）；先标记它已被取走，
