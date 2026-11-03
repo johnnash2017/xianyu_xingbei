@@ -701,11 +701,14 @@ func _刷新状态图标() -> void:
 		# 魔刃/异刃也走同一份 StatusIcon：card_id 仍用于悬停摊卡面
 		var 额外牌id: int = int(d.get("card_id", -1))
 		var 状态说明: String = str(d.get("desc", ""))
-		var 状态提示: String = 状态名
+		# 悬停标题（可选）：隐藏信息 / 计数这类「只给本人看」的内容写这一行，
+		# 图标底下仍只写 name（如【末日预言】），不把（天雷劫火）5/6 摆在场上
+		var 状态提示: String = str(d.get("tip", 状态名))
 		if not 状态说明.is_empty():
-			状态提示 = "%s\n%s" % [状态名, 状态说明]
+			状态提示 = "%s
+%s" % [状态提示, 状态说明]
 		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示,
-			额外牌id, 状态名)
+			额外牌id, 状态名, int(d.get("count", -1)))
 	_状态已初始化 = true
 	_状态弹出起点 = 新起点
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
@@ -731,7 +734,8 @@ func 五系束缚应摸张数() -> int:
 ## 基础效果牌（基础牌id >= 0）在「基础牌可点」时变成可点的，点一下就上报给战斗界面；
 ## 提示 是给独有效果用的纯文字提示（它们没有卡牌对象，弹不出卡面）
 func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary,
-		基础牌id: int = -1, 提示: String = "", 额外牌id: int = -1, 名称: String = "") -> void:
+		基础牌id: int = -1, 提示: String = "", 额外牌id: int = -1, 名称: String = "",
+		数量: int = -1) -> void:
 	if tex == null:
 		return
 	var go := ps.instantiate()
@@ -741,10 +745,15 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 		if 基础牌id >= 0 and _基础牌可点:
 			(go as TextureRect).mouse_filter = Control.MOUSE_FILTER_STOP
 			(go as TextureRect).gui_input.connect(_on_基础牌图标输入.bind(基础牌id))
-	# 状态图标不显示数字（Text），只显示底部名字（Name）；名字位置/字号在 StatusIcon.tscn 里调
+	# 状态图标默认不显示数字（Text），只显示底部名字（Name）；
+	# 数量 >= 0 时按 token 的样式在图标上写数字（如【末日预言】的剩余【预言】张数）
 	var 数标签: Node = go.get_node_or_null("Text")
 	if 数标签 is Label:
-		(数标签 as Label).visible = false
+		if 数量 >= 0:
+			(数标签 as Label).visible = true
+			(数标签 as Label).text = str(数量)
+		else:
+			(数标签 as Label).visible = false
 	var 名标签: Node = go.get_node_or_null("Name")
 	if 名标签 is Label:
 		(名标签 as Label).text = 名称

@@ -1087,30 +1087,38 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 				"desc": GConst.圣煌余辉说明,
 			})
 	# 场卡（F1）：【异端裁决所】/【末日预言】/【绝界】这类摆在场上或挂在这名角色面前的卡。
-	# 只画在「拥有者 / 挂靠者」的面板上；有计数的把计数写进名字（如「末日预言 3/6」）。
+	# 只画在「拥有者 / 挂靠者」的面板上；图标底下只写名字，计数像 token 一样写在图标上，
+	# 隐藏信息（正面）与计数（n/m）都放进悬停提示。
 	for 表: Dictionary in Data.玩家场卡(p.id):
 		var 卡号: String = str(表.get("id", ""))
 		var 显示: Dictionary = GConst.场卡显示.get(卡号, {})
 		if 显示.is_empty():
 			continue
-		var 状态名: String = 卡号
-		# 隐藏信息：【末日预言】的正面只有拥有者拿得到（服务端按收件人过滤），
-		# 就在自己的图标上写出来；别人拿不到 front，看到的仍是「末日预言」
+		var 上限: int = int(表.get("counter_max", 0))
+		var 计数: int = -1
+		var 提示名: String = 卡号
+		# 隐藏信息：【末日预言】的正面只有拥有者拿得到（服务端按收件人过滤）
 		var 正面: String = str(表.get("front", ""))
 		if not 正面.is_empty():
-			状态名 = "%s（%s）" % [卡号, 正面]
-		var 上限: int = int(表.get("counter_max", 0))
+			提示名 = "%s（%s）" % [提示名, 正面]
 		if 上限 > 0:
-			状态名 = "%s %d/%d" % [状态名, int(表.get("counter", 0)), 上限]
+			计数 = int(表.get("counter", 0))
+			提示名 = "%s %d/%d" % [提示名, 计数, 上限]
 		elif int(表.get("counter", 0)) > 0:
-			状态名 = "%s %d" % [状态名, int(表.get("counter", 0))]
+			# 没有上限的计数（如【异端裁决所】的治疗点数）：保持原来的「名字 + 数字」写法
+			提示名 = "%s %d" % [提示名, int(表.get("counter", 0))]
 		var 说明: String = str(显示.get("说明", ""))
-		if not 正面.is_empty():
-			说明 = "%s（当前正面：【%s】，只有你能看到）" % [说明, 正面]
+		if 卡号 == "末日预言":
+			# 名字下面显示这张场卡对应的被动技能说明（不是卡面那句解释）
+			var 被动: String = GConst.skill_desc(9504)
+			if not 被动.is_empty():
+				说明 = 被动
 		额外状态.append({
-			"name": 状态名,
+			"name": 卡号,
 			"icon": str(显示.get("图标", "")),
 			"desc": 说明,
+			"tip": 提示名,
+			"count": 计数,
 		})
 	# 【律法】（星坠女巫）：放在角色面前的标记，状态区显示名字
 	for 号: int in p.laws:
