@@ -496,8 +496,8 @@ func _检噬神者() -> void:
 	var 无牌问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
 	var 无牌命令: Array = 无牌问.get("commands", [])
 	检(not 无牌命令.is_empty() and int((无牌命令[0] as Dictionary).get("respond_id", 0)) == 7903
-		and (无牌命令[0] as Dictionary).get("card_ids", []).is_empty(),
-		"手牌不足时噬灭也应发出 7903 询问：%s" % str(无牌问))
+		and (无牌命令[0] as Dictionary).get("card_ids", []).has(GConst.手牌白名单_全禁),
+		"手牌不足时噬灭也应发出询问，并用全禁哨兵防止客户端放开所有牌：%s" % str(无牌问))
 	# 应战时牌在别人手里、归属者自己不持有，也要能记录本次刃并进入侵刻
 	var 防: BattlePlayer = 引擎.p(2)
 	防.hand_cards.clear()

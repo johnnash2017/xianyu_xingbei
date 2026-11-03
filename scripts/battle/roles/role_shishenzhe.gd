@@ -420,6 +420,10 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 				var 面0: int = GConst.牌号(cid0)
 				if not 可弃牌面.has(面0):
 					可弃牌面.append(面0)
+			# 空白名单在协议/客户端里表示「不限制」，会变成什么牌都能点；
+			# 用全禁哨兵表示「这次一张合法牌都没有」，仍然保留询问和取消。
+			if 可弃牌面.is_empty():
+				可弃牌面 = [GConst.手牌白名单_全禁]
 			var 殇灭池: Array[int] = []
 			if _噬灭技能 == SHANG_MIE:
 				for pid: int in enemy_ids():
