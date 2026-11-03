@@ -264,7 +264,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
 			var args: Array = r.get("args", [])
-			var 选: int = int(args[0]) if not args.is_empty() else 0
+			# 超时 / 跳过：随机翻一面
+			var 选: int = int(args[0]) if not args.is_empty() else engine._rng.randi_range(1, 2)
 			预定 = 地裂波涛名 if 选 == 2 else 天雷劫火名
 		_翻面步 = 2
 		return _翻面为(预定)
@@ -571,7 +572,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand,
 				[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO},
 				 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO}],
-				0, "", [], false,
+				0, "", [], true,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【放逐】：选择放 1 张【末日预言】入场（背面为【末日预言】，正面由你选择）")
 			return WAIT
@@ -582,7 +583,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
 		var a3: Array = r3.get("args", [])
-		var 选: int = int(a3[0]) if not a3.is_empty() else 1
+		# 超时 / 跳过：随机从【天雷劫火】/【地裂波涛】里选一个，不卡住流程
+		var 选: int = int(a3[0]) if not a3.is_empty() else engine._rng.randi_range(1, 2)
 		var 正面: String = 地裂波涛名 if 选 == 2 else 天雷劫火名
 		engine.加场卡({"id": 末日预言名, "owner": player.id, "attached": -1,
 			"counter": 0, "counter_max": 预言上限, "state": 0, "pile": [], "front": 正面})
@@ -601,6 +603,15 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			var cid: int = int(c)
 			if 已选.size() < 6 and player.有手牌(cid) and not 已选.has(cid):
 				已选.append(cid)
+		# 超时 / 没选够 6 张：从手牌里随机补足，保证放逐一定结算完
+		if 已选.size() < 6:
+			var 候选: Array = player.hand_cards.duplicate()
+			候选.shuffle()
+			for cid3: Variant in 候选:
+				if 已选.size() >= 6:
+					break
+				if not 已选.has(int(cid3)):
+					已选.append(int(cid3))
 		var 新堆: Array = []
 		for cid2: Variant in 已选:
 			var 取: int = player.取出实例(player.hand_cards, int(cid2))

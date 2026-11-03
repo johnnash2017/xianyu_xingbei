@@ -27,6 +27,7 @@ func 跑() -> void:
 	_检灾殃止息()
 	_检放逐()
 	_检翻面用记下的正面()
+	_检放逐超时()
 	引擎 = null
 
 
@@ -78,6 +79,12 @@ func _等到目标询问() -> bool:
 			continue
 		return 引擎._await_id == 1 and 引擎._pending_respond_id == 9507
 	return false
+
+
+## 模拟超时兜底：引擎超时下发的就是空 args / 空 card_ids + is_timeout
+func _应答超时() -> void:
+	引擎._reply = {"args": [], "card_ids": [], "dst_ids": [], "is_timeout": true, "respond_id": 0}
+	引擎._has_reply = true
 
 
 ## 最近一条「放逐」技能询问里的 option_skill_ids（选项各自挂的技能号）
@@ -360,3 +367,36 @@ func _检翻面用记下的正面() -> void:
 		"应按记下的正面翻成【地裂波涛】")
 	检(引擎._pending_respond_id != 9504 or 引擎._await_id < 0,
 		"已记正面时不应再问翻面二选一（询问号 %s）" % str(引擎._pending_respond_id))
+
+
+# ============================================================
+# 9. 放逐超时兜底：正面随机、6 张手牌自动放
+# ============================================================
+func _检放逐超时() -> void:
+	_建引擎()
+	var rc: int = 角色.p_magic_skill({"action_id": 9505, "src_id": 1, "args": [6]})
+	检(rc == BattleRole.URGENT, "【放逐】应进入摸牌流程")
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505,
+		"摸完牌应问正面（等待 %s / 号 %s）" % [str(引擎._await_id), str(引擎._pending_respond_id)])
+	# 正面超时 / 跳过：随机选一个，继续流程
+	_应答超时()
+	引擎.run()
+	var 表: Dictionary = _场卡("末日预言")
+	var 正面: String = str(表.get("front", ""))
+	检(正面 == "天雷劫火" or 正面 == "地裂波涛", "超时应随机选一个正面：%s" % 正面)
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505,
+		"超时选正面后应继续问 6 张手牌（等待 %s）" % str(引擎._await_id))
+	# 6 张手牌超时：自动放 6 张
+	_应答超时()
+	引擎.run()
+	表 = _场卡("末日预言")
+	检(int(表.get("counter", 0)) == 6 and int(表.get("pile", []).size()) == 6,
+		"超时应自动放 6 张作为【预言】：%d" % int(表.get("counter", 0)))
+	检(玩家1.hand_cards.is_empty(), "6 张都被放成【预言】后手牌应为空：%d" % 玩家1.hand_cards.size())
+	var 有额外: bool = false
+	for a: Dictionary in 玩家1.additional_actions:
+		if int(a.get("cause", 0)) == 9505 and int(a.get("allow_action", 0)) == GConst.ActionType.AttackMagic:
+			有额外 = true
+	检(有额外, "超时结算完也应给那份攻击/法术合一的额外行动")
+	检(引擎._不爆牌.is_empty(), "超时结算完应解除不爆牌状态")
