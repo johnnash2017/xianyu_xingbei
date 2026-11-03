@@ -22,7 +22,7 @@
 | 联机 | **去中心化**：谁建房，谁的电脑就兼任服务器 |
 | 数据 | Excel 设计表 → CSV → 自动生成的 GDScript 数据表 |
 | 主场景 | `scenes/Main.tscn` |
-| 测试 | 62 个 headless 自检用例 + 端到端联机脚本 + F9/F10/F11 一键多开 |
+| 测试 | 70 个 headless 自检用例 + 端到端联机脚本 + F9/F10/F11 一键多开 |
 
 ### 0.1 开发协作约定（重要）
 
@@ -654,7 +654,7 @@ func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -
 5. 导表（Ctrl+Shift+T）；
 6. 补一个自检用例，跑 `tests/runSelfCheck.ps1`；
 7. 需要头像提示 / 技能指示器 / 魔弹系别等客户端特性时，按 [技能维护约定](项目文档/技能维护约定.md) 的「公共能力与借用技约定」接进 `const.gd`；
-8. 最后跑一遍全量自检（当前 62 例）。
+8. 最后跑一遍全量自检（当前 70 例）。
 
 > 角色技能有一份更细的规范：[技能维护约定](项目文档/技能维护约定.md)。改技能前建议先读一遍。
 
@@ -860,7 +860,7 @@ powershell -ExecutionPolicy Bypass -File tests\runSelfCheck.ps1
 ```
 
 - 运行器是 [selfCheck.tscn](tests/selfCheck.tscn) / [selfCheck.gd](tests/selfCheck.gd)；
-- 会遍历 `tests/cases/` 下全部用例（当前 62 个），逐条打印 `[通过] / [失败]`，最后一行是汇总；
+- 会遍历 `tests/cases/` 下全部用例（当前 70 个），逐条打印 `[通过] / [失败]`，最后一行是汇总；
 - 有失败时退出码为 1；
 - 增删了素材/场景后，加 `-导入` 先重导一次；
 - 引擎路径默认写死在本机 Steam 目录，换机器时用 `-EnginePath` 指定。

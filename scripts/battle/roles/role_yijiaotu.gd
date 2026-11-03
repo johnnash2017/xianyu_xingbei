@@ -18,8 +18,8 @@ extends BattleRole
 ##    结算后场卡**不立刻移除**，留到异教徒自己回合开始的【灾殃止息】9509 再移除。
 ## 5. 【审判】逐名队友问「弃 1 张牌【展示】」，然后各自摸 1 张【强制】，再由你选 1 张弃牌
 ##    交给目标对手；【末日预言】在场时其余弃牌洗混放到预言堆顶。
-## 6. 【放逐】摸 6~8 张后，把手牌 6 张面朝下洗混作为新预言堆，所以手牌最终不多，
-##    不需要额外处理手牌上限。额外行动二选一（攻击 / 法术）。
+## 6. 【放逐】「无视手牌上限摸 6-8 张」：摸牌期间把 hand_cards_max 临时抬到「现有手牌 + 8」，
+##    摸完在 step3 把 6 张手牌挪成【预言】，再 _重算手牌上限() 恢复。额外行动二选一（攻击 / 法术）。
 
 const YI_DUAN_XIE_SHUO: int = 9501
 const SHEN_PAN: int = 9502
@@ -44,6 +44,8 @@ var _审判步: int = 0
 var _审判下标: int = 0
 var _审判弃牌: Array[int] = []
 var _审判对手: int = -1
+## 审判：把哪一张弃牌交给对手（_审判弃牌 的下标）
+var _审判给: int = 0
 ## 翻面 / 展示时的进度
 var _翻面步: int = 0
 var _展示系: int = 0
@@ -214,6 +216,9 @@ func _p_放逐() -> int:
 		return GConst.GE_INVALID_ACTION
 	player.remove_energy(1)
 	notice_skill(FANG_ZHU, [player.id])
+	# 「无视你的手牌上限摸 6-8 张」：摸牌期间把上限临时抬到「现有手牌 + 8」，
+	# 摸完再把 6 张挪成【预言】、上限按【末日预言】在场与否重算（见 step3）
+	player.hand_cards_max = player.hand_cards.size() + 8
 	_放逐步 = 1
 	engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
 	return URGENT
@@ -231,7 +236,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	if _翻面步 == 1:
 		if not engine.has_reply():
 			询问(player.id, MO_RI_YU_YAN, 0, 0, GConst.CardSource.Hand,
-				[1, 2], 0, "", [], false,
+				[{"value": 1, "label": "天雷劫火"}, {"value": 2, "label": "地裂波涛"}], 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【末日预言】的【预言】已空：翻面为【天雷劫火】或【地裂波涛】（1=天雷劫火 / 2=地裂波涛）")
 			return WAIT
@@ -246,14 +251,15 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			"counter": 0, "counter_max": 0, "state": 1})
 		notice_skill(MO_RI_YU_YAN, [player.id])
 		_在展示 = 名
-		_展示模式 = []
+		_展示模式.clear()
 		_展示序号 = 0
 		_展示贪婪 = false
 		_展示对手 = -1
-		# 先把「是否发动贪婪」问掉，再决定发动一项还是两项（贪婪＝两项都发动、顺序自定）
+		# 先把「是否发动贪婪」问掉，再决定发动一项还是两项（贪婪＝两项都发动、顺序自定）。
+		# 这里必须用递归继续，不要再压一个新钩子：当前钩子还在栈上，等新钩子跑完它会被重新
+		# 执行一次，用同一份 _展示步 再问一遍。
 		_展示步 = 10
-		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
-		return URGENT
+		return p_yi_jiao_tu_ask(ctx)
 	# 展示时：是否发动【贪婪】（消耗 1 水晶 → 两项都发动）
 	if _展示步 == 10:
 		if player.get_energy() <= 0:
@@ -276,7 +282,10 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	if _展示步 == 11:
 		var 序表: Array[int] = _展示系别()
 		if not engine.has_reply():
-			询问(player.id, TAN_LAN, 0, 0, GConst.CardSource.Hand, [1, 2], 0, "", [], false,
+			询问(player.id, TAN_LAN, 0, 0, GConst.CardSource.Hand,
+				[{"value": 1, "label": "先%s后%s" % [GConst.element_to_chinese(序表[0]), GConst.element_to_chinese(序表[1])]},
+				 {"value": 2, "label": "先%s后%s" % [GConst.element_to_chinese(序表[1]), GConst.element_to_chinese(序表[0])]}],
+				0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【贪婪】：选择发动顺序（1＝先%s后%s / 2＝先%s后%s）"
 				% [GConst.element_to_chinese(序表[0]), GConst.element_to_chinese(序表[1]),
@@ -285,7 +294,14 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var rq: Dictionary = take_skill_reply_full()
 		var aq: Array = rq.get("args", [])
 		var 先: int = int(aq[0]) if not aq.is_empty() else 1
-		_展示模式 = [序表[1], 序表[0]] if 先 == 2 else [序表[0], 序表[1]]
+		# 类型化数组不能直接赋一个无类型字面量（运行时会报 Array → Array[int]），逐项 append
+		_展示模式.clear()
+		if 先 == 2:
+			_展示模式.append(序表[1])
+			_展示模式.append(序表[0])
+		else:
+			_展示模式.append(序表[0])
+			_展示模式.append(序表[1])
 		_展示序号 = 0
 		_展示步 = 3
 		return p_yi_jiao_tu_ask(ctx)
@@ -293,7 +309,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	if _展示步 == 1:
 		var 系表: Array[int] = _展示系别()
 		if not engine.has_reply():
-			询问(player.id, _展示技能号(), 0, 0, GConst.CardSource.Hand, 系表, 0, "", [], false,
+			询问(player.id, _展示技能号(), 0, 0, GConst.CardSource.Hand, _系别选项(系表), 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【%s】：选择 1 种系别发动（弃 X 张该系牌摸 X 张；目标对手弃任意张该系牌后，你对他造成 X+1 点法术伤害）"
 				% _在展示)
@@ -303,7 +319,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 选系: int = int(args2[0]) if not args2.is_empty() else int(系表[0])
 		if not 系表.has(选系):
 			选系 = int(系表[0])
-		_展示模式 = [选系]
+		_展示模式.clear()
+		_展示模式.append(选系)
 		_展示序号 = 0
 		_展示步 = 3
 		return p_yi_jiao_tu_ask(ctx)
@@ -312,7 +329,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if _展示序号 >= _展示模式.size():
 			# 本次展示全部结算完：清状态、清翻面标记（放逐放进新的【末日预言】后还能再翻）
 			_展示步 = 0
-			_展示模式 = []
+			_展示模式.clear()
 			_展示对手 = -1
 			_翻面步 = 0
 			return SUCCESS
@@ -420,14 +437,12 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			for pid: int in 队友:
 				engine.强制摸牌(pid, 1, SHEN_PAN)
 			_审判步 = 3
-			engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
-			return URGENT
+			return p_yi_jiao_tu_ask({"player": player.id})
 		var pid2: int = int(队友[_审判下标])
 		var pp: BattlePlayer = engine.p(pid2)
 		if pp == null or pp.hand_cards.is_empty():
 			_审判下标 += 1
-			engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
-			return URGENT
+			return p_yi_jiao_tu_ask({"player": player.id})
 		if not engine.has_reply():
 			询问(pid2, SHEN_PAN, 1, 0, GConst.CardSource.Hand, [], 1, "", [], false,
 				0, pid2, [], 1, {}, 0, 0, false, [], true, -1, 0,
@@ -444,34 +459,37 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			engine.take_from_hand(pid2, [cid], false)
 			_审判弃牌.append(cid)
 		_审判下标 += 1
-		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
-		return URGENT
+		return p_yi_jiao_tu_ask({"player": player.id})
 	# 审判：选 1 张弃牌给目标对手；其余进预言堆
 	if _审判步 == 3:
 		if _审判弃牌.is_empty():
 			_审判步 = 0
 			return SUCCESS
 		if not engine.has_reply():
-			询问(player.id, SHEN_PAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, _审判弃牌, -1, {}, 0, 0, false, [], true, -1, 0,
+			var 弃牌选项: Array = []
+			for i: int in range(_审判弃牌.size()):
+				var 弃卡: GCard = Data.get_card(int(_审判弃牌[i]))
+				弃牌选项.append({"value": i + 1,
+					"label": 弃卡.card_name if 弃卡 != null else "弃牌", "card_id": int(_审判弃牌[i])})
+			询问(player.id, SHEN_PAN, 0, 1, GConst.CardSource.Hand, 弃牌选项, 0, "", [], false,
+				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
 				"【审判】：选 1 张弃牌交给目标对手")
 			return WAIT
 		var r7: Dictionary = take_skill_reply_full()
 		var ds7: Array = r7.get("dst_ids", [])
+		var args7: Array = r7.get("args", [])
 		_审判步 = 4
 		_审判对手 = int(ds7[0]) if ds7.size() == 1 else -1
-		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
-		return URGENT
+		_审判给 = int(args7[0]) - 1 if not args7.is_empty() else 0
+		return p_yi_jiao_tu_ask({"player": player.id})
 	if _审判步 == 4:
 		_审判步 = 0
 		var 给: Array = []
-		if _审判对手 > 0:
+		if _审判对手 > 0 and not _审判弃牌.is_empty():
 			var 敌: BattlePlayer = engine.p(_审判对手)
+			var 下标: int = clampi(_审判给, 0, _审判弃牌.size() - 1)
 			if 敌 != null:
-				var 选张: int = int(_审判弃牌[0])
-				for c2: Variant in _审判弃牌:
-					if int(c2) == 选张:
-						给.append(int(c2))
+				给.append(int(_审判弃牌[下标]))
 				敌.add_hand_cards(给)
 		var 其余: Array = []
 		for c3: Variant in _审判弃牌:
@@ -480,6 +498,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if engine.有场卡(末日预言名):
 			var 表2: Dictionary = engine.取场卡(末日预言名)
 			var 堆2: Array = 表2.get("pile", [])
+			# 「将其余弃牌面朝下洗混放置到【预言】堆顶部」：只打乱这批弃牌，再压到顶部
+			其余.shuffle()
 			for c4: Variant in 其余:
 				堆2.append(int(c4))
 			表2["pile"] = 堆2
@@ -492,9 +512,9 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	# 献祭：先选系别，再结算
 	if _献祭步 == 1:
 		if not engine.has_reply():
-			var 系表2: Array = [GConst.CardElement.Wind, GConst.CardElement.Water,
+			var 系表2: Array[int] = [GConst.CardElement.Wind, GConst.CardElement.Water,
 				GConst.CardElement.Fire, GConst.CardElement.Earth, GConst.CardElement.Thunder]
-			询问(player.id, XIAN_JI, 0, 0, GConst.CardSource.Hand, 系表2, 0, "", [], false,
+			询问(player.id, XIAN_JI, 0, 0, GConst.CardSource.Hand, _系别选项(系表2), 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【献祭】：指定 1 种系别，展示【预言】堆顶 1 张")
 			return WAIT
@@ -536,7 +556,9 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	# 放逐：选摸几张（6~8）
 	if _放逐步 == 1:
 		if not engine.has_reply():
-			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand, [6, 7, 8], 0, "", [], false,
+			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand,
+				[{"value": 6, "label": "摸 6 张"}, {"value": 7, "label": "摸 7 张"}, {"value": 8, "label": "摸 8 张"}],
+				0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【放逐】：选择摸几张牌（6~8）")
 			return WAIT
@@ -546,9 +568,9 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var args9: Array = r9.get("args", [])
 		var 张: int = int(args9[0]) if not args9.is_empty() else 6
 		张 = clampi(张, 6, 8)
-		engine.push_draw(player.id, 张, FANG_ZHU)
+		# 只压摸牌状态、返回 URGENT：摸完当前钩子会被重新执行，接着走 _放逐步 == 3
 		_放逐步 = 3
-		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
+		engine.push_draw(player.id, 张, FANG_ZHU)
 		return URGENT
 	# 放逐：移除旧场卡 → 放新的 → 6 张手牌作预言 → 额外行动二选一
 	if _放逐步 == 3:
@@ -568,12 +590,12 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		})
 		_重算手牌上限()
 		_翻面步 = 0
-		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
-		return URGENT
+		return p_yi_jiao_tu_ask({"player": player.id})
 	if _放逐步 == 4:
 		if not engine.has_reply():
 			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand,
-				[GConst.ActionType.Attack, GConst.ActionType.Magic], 0, "", [], false,
+				[{"value": GConst.ActionType.Attack, "label": "额外攻击行动"},
+				 {"value": GConst.ActionType.Magic, "label": "额外法术行动"}], 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				"【放逐】：额外 +1【攻击行动】或【法术行动】")
 			return WAIT
@@ -603,6 +625,14 @@ func _检查预言取空() -> void:
 		return
 	_翻面步 = 1
 	engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
+
+
+## 系别枚举 → 询问选项（ask_skill 只收 {value,label} 字典，纯数字数组会在运行时出错）
+func _系别选项(系表: Array) -> Array:
+	var out: Array = []
+	for 系: Variant in 系表:
+		out.append({"value": int(系), "label": "%s系" % GConst.element_to_chinese(int(系))})
+	return out
 
 
 ## 当前展示的这张牌该用哪个技能号（天雷劫火 9507 / 地裂波涛 9508）：询问与伤害来源都用它

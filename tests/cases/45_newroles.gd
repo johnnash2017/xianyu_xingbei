@@ -687,11 +687,27 @@ func _检星坠女巫() -> void:
 # ============================================================
 # 小工具
 # ============================================================
+## 「火」/「fire」都认：卡表里 element 存的是英文，调用方有的写中文 ——
+## 以前直接比 c.element != 系，传中文的调用永远找不到牌（异教徒那一段因此数组越界）。
+func _元素号(系: String) -> int:
+	var e: int = GConst.element_from_string(系)
+	if e != 0:
+		return e
+	match 系:
+		"风": return GConst.CardElement.Wind
+		"水": return GConst.CardElement.Water
+		"火": return GConst.CardElement.Fire
+		"地": return GConst.CardElement.Earth
+		"雷": return GConst.CardElement.Thunder
+		"光": return GConst.CardElement.Light
+		"暗": return GConst.CardElement.Darkness
+	return 0
+
+
 func _找牌(系: String, 类型: String) -> int:
+	var 元素: int = _元素号(系)
 	for c: GCard in Data.card_db:
-		if c == null or c.is_virtual:
-			continue
-		if c.element != 系:
+		if c == null or c.is_virtual or c.element_enum() != 元素:
 			continue
 		if 类型 == "attack" and c.is_attack():
 			return c.id
@@ -702,8 +718,9 @@ func _找牌(系: String, 类型: String) -> int:
 
 func _找两张牌(系: String) -> Array:
 	var out: Array = []
+	var 元素: int = _元素号(系)
 	for c: GCard in Data.card_db:
-		if c == null or c.is_virtual or c.element != 系:
+		if c == null or c.is_virtual or c.element_enum() != 元素:
 			continue
 		out.append(c.id)
 		if out.size() >= 2:

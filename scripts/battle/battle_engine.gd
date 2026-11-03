@@ -858,9 +858,10 @@ func _check_hand_overflow() -> void:
 			return
 	for pid: int in order:
 		var pp: BattlePlayer = players.get(pid)
-		if pp != null and pp.hand_cards.size() > pp.hand_cards_max:
-			push(SHandOverflow.new())
-			return
+		if pp == null:
+			continue
+		push(SHandOverflow.new())
+		return
 
 
 ## 摸牌把手牌顶过上限时，带着「本次伤害」的上下文入队结算超限掉士气。
