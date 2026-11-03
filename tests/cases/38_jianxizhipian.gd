@@ -365,7 +365,7 @@ func 跑() -> void:
 		检(int(借用项.get("type", 0)) == GConst.ActionType.MagicSkill, "%d 应作为法术技能按钮下发" % 技能号)
 		检(int(借用项.get("need_card", 0)) == 1, "借用的 %d 应要求 1 张发动牌" % 技能号)
 		检(bool(借用项.get("enabled", false)), "手里有载体牌时借用的 %d 应可点" % 技能号)
-		var 目标: Array = [3, 4] if 技能号 == 1102 else [3]
+		var 目标: Array = [3]
 		检(角色.v_magic_skill({
 			"src_id": 1, "action_id": 技能号,
 			"card_ids": [int(源技能卡[技能号].id)], "dst_ids": 目标,

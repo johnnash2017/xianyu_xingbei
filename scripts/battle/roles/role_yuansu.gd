@@ -44,8 +44,8 @@ func available_skills() -> Array:
 		for cid: int in hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == 元素):
 			if not 合法牌.has(cid):
 				合法牌.append(cid)
-		# 冰冻必须指定 2 名角色（v_magic_skill：dsts.size() < 2 拒绝），其余法术只需 1 名
-		var 目标下限: int = 2 if sid == BING_DONG else 1
+		# 冰冻的治疗目标拆到行动结束后的独立询问，这里所有独有法术都只选伤害目标
+		var 目标下限: int = 1
 		out.append({"type": GConst.ActionType.MagicSkill, "id": sid, "need_card": 1, "need_target": 目标下限,
 			"card_max": 2, "cards": 合法牌, "card_slot_skill": sid, "card_slot_element": 元素,
 			"enabled": not 技能牌.is_empty()})
@@ -119,7 +119,7 @@ func v_magic_skill(action: Dictionary) -> int:
 				# 第 2 张必须是该法术对应系的牌（技能原文「额外弃 1 张 X 系牌【展示】」）
 				if not player.has_hand_card(cid2) or card2 == null or card2.element_enum() != int(法术系别[aid]):
 					return GConst.GE_INVALID_ACTION
-			if aid == BING_DONG and dsts.size() < 2:
+			if aid == BING_DONG and dsts.is_empty():
 				return GConst.GE_INVALID_ACTION
 		YUAN_SU_DIAN_RAN:
 			if dsts.is_empty():
@@ -147,8 +147,6 @@ func p_magic_skill(action: Dictionary) -> int:
 		HUO_QIU:
 			return _yuan_su_damage(action)
 		BING_DONG:
-			var dsts: Array = action.get("dst_ids", [])
-			_bing_dong_heal_dst = int(dsts[1]) if dsts.size() > 1 else player.id
 			return _yuan_su_damage(action)
 		LEI_JI:
 			_lei_ji_pending = true
@@ -235,12 +233,41 @@ func _yue_guang(action: Dictionary) -> int:
 # ============================================================
 # 法术行动结束后：结算冰冻 / 雷击 的追加效果
 # ============================================================
+## 冰冻超时兜底：只从友方里选
+func _友方() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		var p0: BattlePlayer = engine.p(pid)
+		if p0 != null and p0.color == player.color:
+			out.append(pid)
+	return out
+
+
 func p_after_magic(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	var aid: int = int(ctx.get("action_id", 0))
-	if aid == BING_DONG and _bing_dong_heal_dst >= 0:
-		_bing_dong_cross()
+	if aid == BING_DONG:
+		# 冰冻的治疗目标单独问：不可取消；超时由引擎从「超时目标」里自动选友方。
+		if _bing_dong_heal_dst == -1:
+			_bing_dong_heal_dst = -2
+			var 全体: Array[int] = []
+			for pid: int in engine.order:
+				if engine.p(pid) != null:
+					全体.append(pid)
+			询问(player.id, BING_DONG, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+				0, -1, 全体, -1, {}, 0, 0, false, [], true, -1, 0,
+				GConst.skill_desc(BING_DONG), -1, "", [], _友方())
+			return WAIT
+		if not engine.has_reply():
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		var ds: Array = r.get("dst_ids", [])
+		_bing_dong_heal_dst = -1
+		if ds.size() == 1:
+			施加治疗(int(ds[0]), 1)
+		engine._broadcast_game()
+		return SUCCESS
 	elif aid == LEI_JI and _lei_ji_pending:
 		_lei_ji_gem()
 	return SUCCESS

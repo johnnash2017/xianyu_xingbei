@@ -316,6 +316,8 @@ func _分派行动结束选项(pid: int, cause: int, reply: Dictionary, kind: St
 var _pending_skill_can_cancel: bool = true
 var _pending_skill_need_target: int = 0
 var _pending_skill_targets: Array = []
+## 不可取消的技能询问超时时优先从这里挑目标（如冰冻 +1 治疗只能自动选友方）
+var _pending_skill_timeout_targets: Array = []
 ## 本次询问已收到的「分步应答」（客户端带 partial 标记的消息，如【剑气斩】在弹窗里选好「移除几点剑气」）：
 ## 只记下这一步的选择、不算最终回复；超时时若已收到它就据此继续（选好数量后超时＝自动释放），
 ## 没收到就按空回复处理（弹窗还没选就超时＝取消）
@@ -1712,7 +1714,9 @@ func _build_timeout_reply(pid: int, kind: int) -> Dictionary:
 			# 那会让这条技能白拿代价（【念弹】在问之前就已经 +1【斗气】了）。
 			# 自动发动：目标优先从这次下发的合法目标里随机取一名，没给白名单就随机取一名对手；
 			# 一个目标都找不到（如只剩自己）才退回「取消」
-			var 候选: Array = _pending_skill_targets.duplicate()
+			var 候选: Array = _pending_skill_timeout_targets.duplicate()
+			if 候选.is_empty():
+				候选 = _pending_skill_targets.duplicate()
 			var 问者: BattlePlayer = players.get(pid)
 			if 候选.is_empty() and 问者 != null:
 				for p1: BattlePlayer in players.values():
@@ -2327,7 +2331,7 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 高亮目标 非空时随询问下发（highlight_ids）：只把这几名角色点亮给人看，**不参与选择、不参与提交**。
 ## 用于「效果落在不受玩家选择的角色身上」的技能 —— 如【别烦我……】让目标弃牌那一步，
 ## 同时点亮「不弃就 +1 治疗」的那名队友（目标自己由客户端点亮）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = []) -> void:
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = [], timeout_targets: Array = []) -> void:
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
@@ -2497,6 +2501,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	_pending_skill_can_cancel = can_cancel
 	_pending_skill_need_target = need_target
 	_pending_skill_targets = targets.duplicate()
+	_pending_skill_timeout_targets = timeout_targets.duplicate()
 	_pending_partial = {}
 	_询问(pid, GConst.CmdType.Respond, [cmd])
 	wait_for(pid, GConst.Msg.Respond, 保留倒计时)

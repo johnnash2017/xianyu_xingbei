@@ -49,10 +49,8 @@ const 法术系别: Dictionary = {
 	雷击: GConst.CardElement.Thunder,
 }
 
-## 需要几名目标：冰冻 = 伤害目标 + 治疗目标，其余 = 1 名目标
-const 目标数: Dictionary = {
-	冰冻: 2,
-}
+## 发动时都只选伤害目标；冰冻的治疗目标拆到行动结束后的独立询问
+const 目标数: Dictionary = {}
 
 ## 借用它的角色（构造时传入；helper 不持有自己的 player / engine）。
 ## 用弱引用，避免「角色持有 helper、helper 又持有角色」的 RefCounted 循环泄漏。
@@ -202,7 +200,7 @@ func v_magic_skill(action: Dictionary) -> int:
 		if not _角色.player.has_hand_card(牌号) or 牌 == null \
 				or 牌.element_enum() != int(法术系别[技能号]):
 			return GConst.GE_INVALID_ACTION
-	# 每颗法术都要至少 1 名目标；冰冻另要 1 名治疗目标（可与伤害目标同一人）
+	# 每颗法术发动时都只选 1 名伤害目标；冰冻的治疗目标在行动结束后单独问
 	var 目标下限: int = int(目标数.get(技能号, 1))
 	if 目标表.size() < 目标下限:
 		return GConst.GE_INVALID_ACTION
@@ -229,9 +227,7 @@ func p_magic_skill(action: Dictionary) -> int:
 		# 陨石：额外 +1 法术行动
 		_角色.player.add_action(GConst.ActionType.Magic, 陨石, true, true)
 	elif 技能号 == 冰冻:
-		# 冰冻的第 2 名目标是「+1 治疗」的目标，等行动结束钩子再补
-		var dsts: Array = action.get("dst_ids", [])
-		_冰冻治疗目标 = int(dsts[1]) if dsts.size() > 1 else _角色.player.id
+		# 治疗目标不在这问里；行动结束后单独询问
 		_待结算技能 = 冰冻
 	elif 技能号 == 雷击:
 		# 雷击的「战绩区 +1 宝石」等行动结束钩子再补（借用方可用「后续」覆盖）
@@ -303,6 +299,15 @@ func _播报号(技能号: int) -> int:
 # ============================================================
 # 法术行动结束：结算冰冻 / 雷击的追加效果
 # ============================================================
+func _友方() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in _角色.engine.order:
+		var p0: BattlePlayer = _角色.engine.p(pid)
+		if p0 != null and p0.color == _角色.player.color:
+			out.append(pid)
+	return out
+
+
 func p_after_magic(ctx: Dictionary) -> int:
 	if not 可用():
 		return BattleRole.SUCCESS
@@ -315,13 +320,28 @@ func p_after_magic(ctx: Dictionary) -> int:
 	if 技能号 == 0 or 技能号 != _待结算技能:
 		return BattleRole.SUCCESS
 	if 技能号 == 冰冻:
-		_待结算技能 = 0
-		var 目标号: int = _冰冻治疗目标
+		# 治疗目标单独问：不可取消；超时由引擎从「超时目标」里自动选友方
+		if _冰冻治疗目标 == -1:
+			_冰冻治疗目标 = -2
+			var 全体: Array[int] = []
+			for pid: int in _角色.engine.order:
+				if _角色.engine.p(pid) != null:
+					全体.append(pid)
+			_角色.询问(_角色.player.id, 冰冻, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+				0, -1, 全体, -1, {}, 0, 0, false, [], true, -1, 0,
+				GConst.skill_desc(冰冻), -1, "", [], _友方())
+			return BattleRole.WAIT
+		if not _角色.engine.has_reply():
+			return BattleRole.WAIT
+		var r: Dictionary = _角色.take_skill_reply_full()
+		var ds: Array = r.get("dst_ids", [])
 		_冰冻治疗目标 = -1
-		var 目标: BattlePlayer = _角色.engine.p(目标号)
-		if 目标 != null:
-			_角色.施加治疗(目标.id, 1)
-			_角色.engine._broadcast_game()
+		_待结算技能 = 0
+		if ds.size() == 1:
+			var 目标: BattlePlayer = _角色.engine.p(int(ds[0]))
+			if 目标 != null:
+				_角色.施加治疗(目标.id, 1)
+		_角色.engine._broadcast_game()
 	elif 技能号 == 雷击:
 		_待结算技能 = 0
 		var 配置: Dictionary = _配置(雷击)

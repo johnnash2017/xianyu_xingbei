@@ -213,7 +213,7 @@ func 跑() -> void:
 	var 冰冻条目: Dictionary = _找技能(技能表, 冰冻)
 	检(not 冰冻条目.is_empty(), "没有【冰冻】发动牌时按钮仍应下发（置灰）")
 	检(not bool(冰冻条目.get("enabled", true)), "没有【冰冻】发动牌时应置灰")
-	检(int(冰冻条目.get("need_target", 0)) == 2, "【冰冻】需要伤害目标 + 治疗目标共 2 名")
+	检(int(冰冻条目.get("need_target", 0)) == 1, "【冰冻】发动时只需伤害目标；治疗目标单独询问")
 	检(bool(_找技能(技能表, 火球).get("enabled", false)), "手里有【火球】发动牌时应可点")
 	检(int(_找技能(技能表, 火球).get("card_slot_element", 0)) == GConst.CardElement.Fire,
 		"【火球】的额外弃牌系别应为火系")
@@ -284,11 +284,11 @@ func 跑() -> void:
 
 	_准备([冰冻卡.id, 水系副.id])
 	检(int(法术.v_magic_skill({"src_id": 1, "action_id": 冰冻,
-		"card_ids": [冰冻卡.id, 水系副.id], "dst_ids": [2]})) == GConst.GE_INVALID_ACTION,
-		"【冰冻】只给 1 名目标应拒绝")
+		"card_ids": [冰冻卡.id, 水系副.id], "dst_ids": [2]})) == GConst.GE_SUCCESS,
+		"【冰冻】发动时只给 1 名伤害目标应校验通过")
 	检(int(法术.v_magic_skill({"src_id": 1, "action_id": 冰冻,
-		"card_ids": [冰冻卡.id, 水系副.id], "dst_ids": [2, 3]})) == GConst.GE_SUCCESS,
-		"【冰冻】给伤害 + 治疗 2 名目标应校验通过")
+		"card_ids": [冰冻卡.id, 水系副.id], "dst_ids": []})) == GConst.GE_INVALID_ACTION,
+		"【冰冻】没有伤害目标应拒绝")
 
 	# ---- 额外加伤上限覆盖（9303 这类「不许额外弃牌」可用） ----
 	法术.设置覆盖(风刃, {"额外加伤上限": 0})
@@ -328,13 +328,18 @@ func 跑() -> void:
 	# ---- 冰冻：1+1 伤害 + 治疗目标 +1 治疗 ----
 	_准备([冰冻卡.id, 水系副.id])
 	var 冰冻动作: Dictionary = {"src_id": 1, "action_id": 冰冻,
-		"card_ids": [冰冻卡.id, 水系副.id], "dst_ids": [2, 3]}
+		"card_ids": [冰冻卡.id, 水系副.id], "dst_ids": [2]}
 	检(int(法术.p_magic_skill(冰冻动作)) == BattleRole.URGENT, "【冰冻】应压入法术伤害")
 	检(int(_找伤害(冰冻, 2).get("point", 0)) == 2, "【冰冻】额外弃 1 张水系牌应打成 2 点伤害")
 	检(引擎.p(3).cross_num == 0, "【冰冻】的治疗应在行动结束钩子才结算")
+	检(int(法术.p_after_magic({"player": 1, "action_id": 冰冻})) == BattleRole.WAIT,
+		"【冰冻】行动结束应先单独询问治疗目标")
+	# 模拟玩家选择角色 3 加治疗
+	引擎._reply = {"args": [1], "card_ids": [], "dst_ids": [3]}
+	引擎._has_reply = true
 	检(int(法术.p_after_magic({"player": 1, "action_id": 冰冻})) == BattleRole.SUCCESS,
-		"【冰冻】行动结束钩子应正常返回")
-	检(引擎.p(3).cross_num == 1, "【冰冻】应给第 2 名目标 +1 治疗")
+		"【冰冻】治疗目标选定后应结算完成")
+	检(引擎.p(3).cross_num == 1, "【冰冻】应给选中的目标 +1 治疗")
 	检(int(法术.p_after_magic({"player": 1, "action_id": 冰冻})) == BattleRole.SUCCESS,
 		"【冰冻】后续不应重复结算")
 	检(引擎.p(3).cross_num == 1, "【冰冻】重复进入行动结束钩子不应再加治疗")

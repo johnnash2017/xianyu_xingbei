@@ -16,6 +16,9 @@ const HE_PING_XING_ZHE: int = 2503
 const JUN_SHEN_WEI_GUANG: int = 2504
 const YING_LING_ZHAO_HUAN: int = 2505
 
+## 英灵召唤拆段：0＝问是否发动，1＝问额外弃牌+治疗目标
+var _英灵_阶段: int = 0
+
 
 ## 军神威光的推进阶段：两段询问 ——
 ##   0                              ＝ 还没开始（进第 1 段问「选项① 还是 选项②」）
@@ -215,35 +218,41 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id:
 		return SUCCESS
-	if player.get_energy() == 0 or step >= STEP_DONE:
+	if player.get_energy() == 0 or _英灵_阶段 >= 2:
 		return SUCCESS
-	if not engine.has_reply():
-		# 一次问齐「是否发动 + 弃不弃那张法术牌 + 治疗给谁」：
-		# 弃牌可选（need_card=0、最多 1 张、只让法术牌可点），目标固定选 1 名（可含自己）。
-		# 同时下发本次攻击的「原伤害」（预览基准）与「攻击目标」（预览目标）：客户端在那名敌人头像上
-		# 写两行「原伤害划掉 / +1 后的伤害」（学【灵力崩解】）；治疗那行由静态指示器照常画
-		询问(player.id, YING_LING_ZHAO_HUAN, 0, 1, GConst.CardSource.Hand, [], 1, "magic", [], true, 0, -1, engine.order,
-			-1, {}, int(harm.get("point", 0)), int(harm.get("type", GConst.HarmType.Attack)), false,
-			[int(harm.get("dst", -1))])
+	if _英灵_阶段 == 0:
+		# 第 1 问只问「是否发动」；额外弃牌 + 治疗目标拆到第 2 问
+		if not engine.has_reply():
+			询问(player.id, YING_LING_ZHAO_HUAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+				0, -1, [], -1, {}, int(harm.get("point", 0)), int(harm.get("type", GConst.HarmType.Attack)),
+				false, [int(harm.get("dst", -1))], true, -1, 0,
+				GConst.skill_desc(YING_LING_ZHAO_HUAN))
+			return WAIT
+		var r0: Dictionary = take_skill_reply_full()
+		var args0: Array = r0.get("args", [])
+		if args0.is_empty() or int(args0[0]) != 1:
+			# 取消 / 超时：不发动；本次命中不再重问
+			_英灵_阶段 = 2
+			return SUCCESS
+		notice_skill(YING_LING_ZHAO_HUAN, [int(harm.get("dst", -1))])
+		if player.crystal > 0:
+			player.set_crystal(player.crystal - 1)
+		else:
+			player.set_gem(player.gem - 1)
+		# 和平行者：仅自身回合内发动【英灵召唤】才【横置】转入【英灵形态】
+		if engine.current_id == player.id:
+			player.tap = true
+			notice_skill(HE_PING_XING_ZHE, [player.id])
+		harm["point"] = int(harm.get("point", 0)) + 1
+		_英灵_阶段 = 1
+		# 第 2 问：额外弃 1 张法术牌【展示】→ 选 1 名角色 +1 治疗；可取消，超时自动取消
+		询问(player.id, YING_LING_ZHAO_HUAN, 0, 1, GConst.CardSource.Hand, [], 1, "magic", [], true,
+			0, -1, engine.order, -1, {}, int(harm.get("point", 0)), int(harm.get("type", GConst.HarmType.Attack)),
+			false, [int(harm.get("dst", -1))], true, -1, 0,
+			GConst.skill_desc(YING_LING_ZHAO_HUAN))
 		return WAIT
+	# _英灵_阶段 == 1：处理「额外弃牌 + 治疗」这一问
 	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
-		# 取消 / 超时：不发动
-		step = STEP_DONE
-		return SUCCESS
-	notice_skill(YING_LING_ZHAO_HUAN, [int(harm.get("dst", -1))])
-	if player.crystal > 0:
-		player.set_crystal(player.crystal - 1)
-	else:
-		player.set_gem(player.gem - 1)
-	# 和平行者：仅自身回合内发动【英灵召唤】才【横置】转入【英灵形态】
-	if engine.current_id == player.id:
-		player.tap = true
-		notice_skill(HE_PING_XING_ZHE, [player.id])
-	harm["point"] = int(harm.get("point", 0)) + 1
-	# 额外弃 1 张法术牌【展示】（可选）：客户端把「玩家选中的牌」放在 card_ids；
-	# 弃了才给治疗，治疗对象就是同一次询问里点中的那名角色（没点／超时＝自己）
 	var cards: Array = r.get("card_ids", [])
 	var 弃了法术牌: bool = false
 	if not cards.is_empty():
@@ -260,7 +269,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if 弃了法术牌:
 		var dsts: Array = r.get("dst_ids", [])
 		施加治疗(int(dsts[0]) if not dsts.is_empty() else player.id, 1)
-	step = STEP_DONE
+	_英灵_阶段 = 2
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -269,10 +278,14 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 # 攻击/法术行动结束后：神圣追击（治疗≥1 时追加一次攻击行动）
 # ============================================================
 func p_after_attack(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) == player.id:
+		_英灵_阶段 = 0
 	return _shen_sheng_zhui_ji(int(ctx.get("player", -1)))
 
 
 func p_after_magic(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) == player.id:
+		_英灵_阶段 = 0
 	return _shen_sheng_zhui_ji(int(ctx.get("player", -1)))
 
 
