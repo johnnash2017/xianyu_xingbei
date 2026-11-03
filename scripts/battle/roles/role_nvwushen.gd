@@ -18,6 +18,9 @@ const YING_LING_ZHAO_HUAN: int = 2505
 
 ## 英灵召唤拆段：0＝问是否发动，1＝问额外弃牌+治疗目标
 var _英灵_阶段: int = 0
+## 已确认发动【英灵召唤】、正等第二问回复期间：这一手要不要在身上落【英灵形态】
+## （只有自己回合内发动才横置）。形态等第二问的回复取走之后再改，见 p_timeline_2_hit 里的说明
+var _英灵_待横置: bool = false
 
 
 ## 军神威光的推进阶段：两段询问 ——
@@ -239,10 +242,11 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			player.set_crystal(player.crystal - 1)
 		else:
 			player.set_gem(player.gem - 1)
-		# 和平行者：仅自身回合内发动【英灵召唤】才【横置】转入【英灵形态】
-		if engine.current_id == player.id:
-			player.tap = true
-			notice_skill(HE_PING_XING_ZHE, [player.id])
+		# 和平行者：仅自身回合内发动【英灵召唤】才【横置】转入【英灵形态】。
+		# 这里只记下「要横置」，真正改形态留到第二问处理完（见下面 stage 1）：
+		# player.tap 的 setter 会压入一轮 p_tap 钩子，那一轮里别的角色可能开询问
+		# （如兽灵【兽魂警戒】），会把还没处理的第二问回复顶掉 —— 表现就是弃了法术牌也拿不到治疗。
+		_英灵_待横置 = engine.current_id == player.id
 		harm["point"] = int(harm.get("point", 0)) + 1
 		_英灵_阶段 = 1
 		# 第 2 问：额外弃 1 张法术牌【展示】→ 选 1 名角色 +1 治疗；可取消，超时自动取消
@@ -253,6 +257,13 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return WAIT
 	# _英灵_阶段 == 1：处理「额外弃牌 + 治疗」这一问
 	var r: Dictionary = take_skill_reply_full()
+	# 和平行者：仅自身回合内发动【英灵召唤】才【横置】转入【英灵形态】。
+	# 必须等这一问的回复取走之后再改形态：player.tap 的 setter 会压入一轮 p_tap 钩子，
+	# 那轮里别的角色可能开询问（兽灵【兽魂警戒】等），会把本问还没处理的回复顶掉。
+	if _英灵_待横置:
+		_英灵_待横置 = false
+		player.tap = true
+		notice_skill(HE_PING_XING_ZHE, [player.id])
 	var cards: Array = r.get("card_ids", [])
 	var 弃了法术牌: bool = false
 	if not cards.is_empty():
@@ -280,12 +291,14 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		_英灵_阶段 = 0
+		_英灵_待横置 = false
 	return _shen_sheng_zhui_ji(int(ctx.get("player", -1)))
 
 
 func p_after_magic(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		_英灵_阶段 = 0
+		_英灵_待横置 = false
 	return _shen_sheng_zhui_ji(int(ctx.get("player", -1)))
 
 
