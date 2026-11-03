@@ -1376,7 +1376,7 @@ func 跑() -> void:
 	检(面板 != null, "找不到玩家面板")
 	if 面板 != null and 圣盾卡 != null:
 		var 悬停记录: Array = []
-		面板.状态图标悬停.connect(func(_图标: Control, 文: String, _牌: int, _大: bool) -> void:
+		面板.状态图标悬停.connect(func(_图标: Control, 文: String, _牌: int, _大: bool, _被动: int) -> void:
 			悬停记录.append(文))
 		面板._报告基础效果悬停(圣盾卡.id, 面板)
 		检(not 悬停记录.is_empty(), "基础效果悬停应报出文本")

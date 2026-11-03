@@ -1119,6 +1119,9 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			"desc": 说明,
 			"tip": 提示名,
 			"count": 计数,
+			# 【末日预言】的悬停要像魔刃那样显示「【被动】技能名：说明」并限宽换行；
+			# 其余场卡继续走普通文字提示（-1）
+			"被动技能": 9504 if 卡号 == "末日预言" else -1,
 		})
 	# 【律法】（星坠女巫）：放在角色面前的标记，状态区显示名字
 	for 号: int in p.laws:
@@ -3431,12 +3434,48 @@ func _造噬神者刃状态内容(卡: GCard) -> Control:
 	return 内容
 
 
+## 状态悬停用的一行富文本（限宽 技能说明宽度、自动换行、不滚动）
+func _造提示文本行(文本: String, 用BBCode: bool) -> RichTextLabel:
+	var 标签: RichTextLabel = RichTextLabel.new()
+	标签.bbcode_enabled = 用BBCode
+	标签.fit_content = true
+	标签.scroll_active = false
+	标签.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	标签.custom_minimum_size = Vector2(技能说明宽度, 0)
+	标签.add_theme_font_size_override("normal_font_size", 技能说明字号)
+	标签.add_theme_color_override("default_color", Color(0.93, 0.93, 0.93))
+	标签.text = 文本
+	return 标签
+
+
+## 场卡的被动说明（对照魔刃的刃状态内容）：标题 →「【被动】技能名：说明」。
+## 说明走 角色技能提示.单个技能，带【类型】上色；限宽 + 自动换行，长文本不会横向撑爆提示框。
+func _造被动状态内容(标题文本: String, 技能号: int) -> Control:
+	# 9504 是异教徒（角色 95）的【末日预言】；角色号只影响技能名按角色改写，这里固定给 95
+	var 说明: String = 角色技能提示.单个技能(技能号, 技能说明字号, 95)
+	if 说明.is_empty():
+		return null
+	var 内容: VBoxContainer = VBoxContainer.new()
+	内容.add_theme_constant_override("separation", 8)
+	内容.add_child(_造提示文本行(标题文本, false))
+	内容.add_child(_造提示文本行(说明, true))
+	return 内容
+
+
 ## 鼠标指向状态图标（基础效果牌 / 指示物）：在图标正上方弹提示 ——
 ## 基础效果牌摊出这张牌的完整卡面 + 状态名，指示物只有一行「名字 当前/上限」
-func _显示状态图标说明(图标: Control, 文本: String, 牌id: int, 显示大图: bool) -> void:
+func _显示状态图标说明(图标: Control, 文本: String, 牌id: int, 显示大图: bool,
+		被动技能号: int = -1) -> void:
 	_悬停技能按钮 = null
 	_悬停角色面板 = null
 	_悬停状态图标 = true
+	# 场卡带被动技能号（【末日预言】）：和魔刃一样走自定义内容提示框 ——
+	# 标题一行（名字 + 隐藏的正面 + 计数），下面接「【被动】技能名：说明」，限宽自动换行
+	if 被动技能号 > 0:
+		var 内容: Control = _造被动状态内容(文本, 被动技能号)
+		if 内容 != null:
+			_说明提示.显示内容(内容, 图标.get_global_rect())
+			return
 	# 魔刃/异刃的公开手牌状态：标题（带系别配色）→ 完整卡面 → 两条被动说明
 	if 牌id == GConst.噬神者_魔刃卡 or 牌id == GConst.噬神者_异刃卡:
 		var 刃卡: GCard = Data.get_card(牌id)
@@ -3463,7 +3502,7 @@ func _显示状态图标说明(图标: Control, 文本: String, 牌id: int, 显�
 ## 显示大图：提示里是否再摊一张放大的高清原图（星杯这类有图标的要；士气这种纯数字不要）
 func _接悬停提示(控件: Control, 文本: String, 显示大图: bool = false) -> void:
 	控件.mouse_filter = Control.MOUSE_FILTER_STOP
-	控件.mouse_entered.connect(func() -> void: _显示状态图标说明(控件, 文本, -1, 显示大图))
+	控件.mouse_entered.connect(func() -> void: _显示状态图标说明(控件, 文本, -1, 显示大图, -1))
 	控件.mouse_exited.connect(_隐藏状态图标说明)
 
 
