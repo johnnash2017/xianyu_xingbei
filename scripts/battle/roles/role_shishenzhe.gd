@@ -363,9 +363,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	var 技能: int = SHI_MIE if 是魔 else SHANG_MIE
 	var 系表: Array = [GConst.CardElement.Water, GConst.CardElement.Fire] if 是魔 \
 		else [GConst.CardElement.Wind, GConst.CardElement.Thunder]
-	var 可弃: Array[int] = _噬灭可弃(系表)
-	if 可弃.is_empty():
-		return SUCCESS
+	# 手牌不足也照样发起询问：提示条/取消按钮照常出现，玩家可以取消；不静默跳过。
 	# 不再先问「是否发动」再问选牌：直接进选牌询问，选牌+确定即发动；取消即不发动。
 	# 一次攻击只问一次：timeline1 若被重复调用，不能反复弹选牌/反复弃牌。
 	_噬灭已处理 = true
@@ -388,9 +386,6 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			var 系表: Array = [GConst.CardElement.Water, GConst.CardElement.Fire] \
 				if _噬灭技能 == SHI_MIE else [GConst.CardElement.Wind, GConst.CardElement.Thunder]
 			var 可弃: Array[int] = _噬灭可弃(系表)
-			if 可弃.is_empty():
-				_步 = 0
-				return SUCCESS
 			var 可弃牌面: Array[int] = []
 			for cid0: int in 可弃:
 				var 面0: int = GConst.牌号(cid0)
@@ -737,12 +732,11 @@ func p_shi_shen_诸神移除(ctx: Dictionary) -> int:
 				engine.刃进弃牌堆(取到)
 				break
 	var 两张: bool = 持有.size() >= 2
+	# 3 点伤害（包括打回自己）必须能在 _步=0 下触发共振；目标询问单独放到
+	# p_shi_shen_诸神问 里，等 3 点全部结算完再把它自己的 _步 置 7。
+	_步 = 0
 	if 两张:
-		_步 = 7
-		# 先压目标询问，再把 3 点伤害压在上面：LIFO 先结算所有 3 点，最后才问 2 点目标
-		engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
-	else:
-		_步 = 0
+		engine.push(BattleEngine.SHook.new("p_shi_shen_诸神问", {"player": player.id}, []))
 	for i: int in range(持有.size() - 1, -1, -1):
 		var 项: Dictionary = 持有[i]
 		engine.push_harm({
@@ -751,6 +745,15 @@ func p_shi_shen_诸神移除(ctx: Dictionary) -> int:
 		})
 	engine._broadcast_game()
 	return URGENT if 两张 or not 持有.is_empty() else SUCCESS
+
+
+## 诸神终焉：3 点伤害全部结算完，才进入「选 1 名对手 2 点」的目标询问。
+func p_shi_shen_诸神问(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	_步 = 7
+	engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
+	return URGENT
 
 
 # ============================================================

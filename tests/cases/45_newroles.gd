@@ -484,6 +484,19 @@ func _检噬神者() -> void:
 	检(侵刻返回 == BattleRole.WAIT and not 侵刻命令.is_empty()
 		and int((侵刻命令[0] as Dictionary).get("respond_id", 0)) == 7902,
 		"【侵刻】命中后应弹出发动询问，实际返回=%d 询问=%s" % [侵刻返回, str(侵刻问)])
+	# 手牌不足时噬灭仍然要发起询问
+	无同系玩家.hand_cards.clear()
+	无同系角色.set("_步", 0)
+	无同系角色.set("_噬灭已处理", false)
+	无同系角色.set("_本次刃", 无同系玩家.魔刃实例)
+	无同系角色.set("_本次刃面", 1005)
+	无同系角色.call("p_timeline_1", {"is_active": true, "dst": 2})
+	无同系角色.call("p_shi_shen_ask", {"player": 1})
+	var 无牌问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
+	var 无牌命令: Array = 无牌问.get("commands", [])
+	检(not 无牌命令.is_empty() and int((无牌命令[0] as Dictionary).get("respond_id", 0)) == 7903
+		and (无牌命令[0] as Dictionary).get("card_ids", []).is_empty(),
+		"手牌不足时噬灭也应发出 7903 询问：%s" % str(无牌问))
 
 
 ## 手牌系别切换后：已选中的牌不合法要取消选中并置灰；原本不合法、切回后合法要重新亮起
