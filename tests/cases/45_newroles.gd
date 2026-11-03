@@ -390,10 +390,24 @@ func _检噬神者() -> void:
 	检(问合法牌.has(1005) and not 问合法牌.has(1006),
 		"噬灭询问白名单应只含水/火牌，实际 %s" % str(问合法牌))
 	检(bool(问命令.get("can_cancel", false)), "噬灭选牌应允许取消（取消=不发动）")
-	检(str(问命令.get("ask_prompt", "")) == GConst.skill_desc(7903),
-		"噬灭提示应使用完整技能说明，实际：%s" % str(问命令.get("ask_prompt", "")))
+	检(str(问命令.get("ask_prompt", ""))
+		== "【%s】：%s" % [GConst.skill_name(7903), GConst.skill_desc(7903)],
+		"噬灭提示应为【技能名】：完整说明，实际：%s" % str(问命令.get("ask_prompt", "")))
 	检((问命令.get("dst_ids", []) as Array).has(2),
 		"噬灭询问应带上本次攻击目标（2）用于头像高亮，实际：%s" % str(问命令.get("dst_ids", [])))
+	# 殇灭：同一个询问同时选弃牌与目标，不再分两步
+	角色.set("_噬灭技能", 7904)
+	角色.set("_噬灭目标", 2)
+	角色.set("_步", 2)
+	角色.call("p_shi_shen_ask", {"player": 1})
+	var 殇灭问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
+	var 殇灭命令表: Array = 殇灭问.get("commands", [])
+	var 殇灭命令: Dictionary = 殇灭命令表[0] if not 殇灭命令表.is_empty() else {}
+	检((殇灭命令.get("args", []) as Array).size() > 1
+		and int((殇灭命令.get("args", []) as Array)[1]) == 1
+		and (殇灭命令.get("dst_ids", []) as Array).has(4)
+		and not (殇灭命令.get("dst_ids", []) as Array).has(2),
+		"殇灭应在同一个询问里选弃牌和目标（目标=除攻击目标外的敌方），实际：%s" % str(殇灭问))
 	角色.set("_步", 0)
 	检(魔卡.可选元素 == [GConst.CardElement.Fire, GConst.CardElement.Water]
 		and 魔卡.element_enum() == GConst.CardElement.Fire,

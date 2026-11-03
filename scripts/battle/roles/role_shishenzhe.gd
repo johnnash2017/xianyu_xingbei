@@ -81,10 +81,21 @@ func available_skills() -> Array:
 		"arg_choices": 御刃选项,
 		"enabled": not 御刃选项.is_empty(),
 	})
+	# 诸神终焉发动时，客户端要在「当前持有你两张刃的人」头像上写各 3 点法术伤害，
+	# 这两个持有者由服务端按唯一实例算好，随 available_skills 的 highlight 下发。
+	var 诸神高亮: Array[int] = []
+	for 面: int in [MO_REN_CARD, YI_REN_CARD]:
+		var inst: int = player.刃实例(面)
+		if inst <= 0:
+			continue
+		var holder: int = engine.刃持有者(inst)
+		if holder > 0 and not 诸神高亮.has(holder):
+			诸神高亮.append(holder)
 	技能.append({
 		"type": GConst.ActionType.MagicSkill,
 		"id": ZHU_SHEN_ZHONG_YAN,
 		"enabled": player.gem >= 1,
+		"highlight": 诸神高亮,
 	})
 	return 技能
 
@@ -211,7 +222,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		# 无选项，只有「确定 / 取消」：确定发动，取消不发动
 		询问(player.id, QIN_KE, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 			0, -1, [dst.id], -1, {}, 0, 0, false, [], true, -1, 0,
-			GConst.skill_desc(QIN_KE))
+			"【%s】：%s" % [GConst.skill_name(QIN_KE), GConst.skill_desc(QIN_KE)])
 		return WAIT
 	_侵刻目标 = -1
 	if not take_skill_reply():
@@ -373,7 +384,7 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	match _步:
-		2:  # 噬灭 / 殇灭：选弃哪张
+		2:  # 噬灭 / 殇灭：噬灭选弃牌；殇灭在同一个询问里选弃牌 + 目标，不再分两步
 			var 系表: Array = [GConst.CardElement.Water, GConst.CardElement.Fire] \
 				if _噬灭技能 == SHI_MIE else [GConst.CardElement.Wind, GConst.CardElement.Thunder]
 			var 可弃: Array[int] = _噬灭可弃(系表)
@@ -385,14 +396,26 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 				var 面0: int = GConst.牌号(cid0)
 				if not 可弃牌面.has(面0):
 					可弃牌面.append(面0)
+			var 殇灭池: Array[int] = []
+			if _噬灭技能 == SHANG_MIE:
+				for pid: int in enemy_ids():
+					if pid != _噬灭目标:
+						殇灭池.append(pid)
+				if 殇灭池.is_empty():
+					_步 = 0
+					return SUCCESS
 			if not engine.has_reply():
-				# 合法牌随询问下发：客户端只让点水/火（或风/雷）牌；可取消＝不发动
-				询问(player.id, _噬灭技能, 1, 0, GConst.CardSource.Hand, [], 1, "", 可弃牌面, true,
-					0, player.id, [_噬灭目标] if _噬灭技能 == SHI_MIE else [], 1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.skill_desc(_噬灭技能))
+				# 合法牌随询问下发：客户端只让点水/火（或风/雷）牌；可取消＝不发动。
+				# 殇灭把「选目标」并进同一询问：一次确认同时提交弃牌和目标。
+				询问(player.id, _噬灭技能, 1, 1 if _噬灭技能 == SHANG_MIE else 0,
+					GConst.CardSource.Hand, [], 1, "", 可弃牌面, true,
+					0, player.id, 殇灭池 if _噬灭技能 == SHANG_MIE else [_噬灭目标],
+					1, {}, 0, 0, false, [], true, -1, 0,
+					"【%s】：%s" % [GConst.skill_name(_噬灭技能), GConst.skill_desc(_噬灭技能)])
 				return WAIT
 			var r2: Dictionary = take_skill_reply_full()
 			var cards: Array = r2.get("card_ids", [])
+			var ds2: Array = r2.get("dst_ids", [])
 			_步 = 0
 			if cards.size() != 1:
 				return SUCCESS
@@ -401,6 +424,11 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			# 服务端兜底：必须正好 1 张、还在手里、且是水/火（或风/雷），否则这次询问作废
 			if 选中牌 == null or not 系表.has(选中牌.element_enum()) or not player.有手牌(cid):
 				return SUCCESS
+			var 移除目标: int = _噬灭目标
+			if _噬灭技能 == SHANG_MIE:
+				if ds2.size() != 1 or not 殇灭池.has(int(ds2[0])):
+					return SUCCESS
+				移除目标 = int(ds2[0])
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 				"card_ids": [cid], "is_real": true,
@@ -408,32 +436,8 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			engine.take_from_hand(player.id, [cid], false)
 			engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": _噬灭技能})
 			engine._log_discard(player.id, [cid], false)
-			notice_skill(_噬灭技能, [_噬灭目标])
-			if _噬灭技能 == SHI_MIE:
-				_移除治疗(_噬灭目标, 1)
-				return SUCCESS
-			# 殇灭：目标之外 1 名敌方角色
-			var 池: Array[int] = []
-			for pid: int in enemy_ids():
-				if pid != _噬灭目标:
-					池.append(pid)
-			if 池.is_empty():
-				return SUCCESS
-			_步 = 3
-			_殇灭池 = 池
-			engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
-			return URGENT
-		3:  # 殇灭：选目标外的 1 名敌方
-			if not engine.has_reply():
-				询问(player.id, SHANG_MIE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-					0, -1, _殇灭池, -1, {}, 0, 0, false, [], true, -1, 0,
-					"【殇灭】：指定目标外 1 名敌方角色，移除其 1【治疗】")
-				return WAIT
-			var r3: Dictionary = take_skill_reply_full()
-			var ds: Array = r3.get("dst_ids", [])
-			_步 = 0
-			if ds.size() == 1:
-				_移除治疗(int(ds[0]), 1)
+			notice_skill(_噬灭技能, [移除目标])
+			_移除治疗(移除目标, 1)
 			return SUCCESS
 		4:  # 共振：选 2~3 张同系牌弃之
 			if not engine.has_reply():

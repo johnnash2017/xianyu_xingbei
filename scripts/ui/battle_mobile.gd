@@ -8311,6 +8311,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _法力护盾头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _诸神终焉头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _预览伤害头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
 	for 旧: int in _动态提示过的头像:
@@ -8457,6 +8459,24 @@ func _亡女金库头像提示() -> Dictionary:
 	var 伤害: int = GConst.亡女金库基础伤害 + 星石 / GConst.亡女金库每星石
 	for pid: int in _sel_players:
 		out[pid] = "%d 法术伤害" % 伤害
+	return out
+
+
+## 噬神者【诸神终焉】发动时（mode 4）：
+## 自己头像写 2 点自伤；拥有自己魔刃/异刃的角色头像各写 3 点（由服务端 highlight 下发）。
+## 最后选对手那一步（mode 3）不再走这里，交给静态指示器的「2 法术伤害」。
+func _诸神终焉头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or int(_pending_skill_id) != GConst.技能_诸神终焉:
+		return out
+	var 我: int = Logic.my_player_id
+	var 自伤: String = "2 法术伤害"
+	if _高亮目标.has(我):
+		自伤 += " + 3 法术伤害"
+	out[我] = 自伤
+	for pid: int in _高亮目标:
+		if pid != 我:
+			out[pid] = "3 法术伤害"
 	return out
 
 
