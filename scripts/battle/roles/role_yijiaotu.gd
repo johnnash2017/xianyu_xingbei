@@ -82,6 +82,13 @@ func available_skills() -> Array:
 			"type": GConst.ActionType.MagicSkill,
 			"id": FANG_ZHU,
 			"enabled": player.get_energy() >= 1,
+			# 和魔弓【魔眼】一样：点技能直接进二级技能栏，三个抽牌档在那里选；
+			# 不选就按「返回」退出来，不扣能量也不发动
+			"arg_choices": [
+				{"text": "摸 6 张牌", "args": [6]},
+				{"text": "摸 7 张牌", "args": [7]},
+				{"text": "摸 8 张牌", "args": [8]},
+			],
 		},
 	]
 
@@ -103,6 +110,9 @@ func v_magic_skill(action: Dictionary) -> int:
 		FANG_ZHU:
 			if player.get_energy() < 1:
 				return GConst.GE_INVALID_ACTION
+			var 参数: Array = action.get("args", [])
+			if 参数.is_empty() or int(参数[0]) < 6 or int(参数[0]) > 8:
+				return GConst.GE_INVALID_ARGUMENT
 			return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 
@@ -112,7 +122,8 @@ func p_magic_skill(action: Dictionary) -> int:
 		XIAN_JI:
 			return _p_献祭()
 		FANG_ZHU:
-			return _p_放逐()
+			var 张: Array = action.get("args", [])
+			return _p_放逐(int(张[0]) if not 张.is_empty() else 6)
 	return EMPTY_HANDLE
 
 
@@ -214,16 +225,20 @@ var _献祭牌: int = -1
 # ============================================================
 # 9505 放逐：摸 6~8 → 移除旧预言 → 入场 → 6 张手牌作预言 → 额外行动
 # ============================================================
-func _p_放逐() -> int:
+func _p_放逐(张: int) -> int:
 	if player.get_energy() < 1:
 		return GConst.GE_INVALID_ACTION
+	张 = clampi(张, 6, 8)
 	player.remove_energy(1)
 	notice_skill(FANG_ZHU, [player.id])
 	# 「无视你的手牌上限摸 6-8 张」：进入「不爆牌」状态（本次结算完成前超限一律不结算），
 	# 结算完（6 张手牌放成【预言】后）再解除
 	engine.进入不爆牌(player.id)
-	_放逐步 = 1
+	# 摸几张已在二级技能栏里选好（args[0]）：先压「继续走」的钩子、再压摸牌（栈顶是摸牌），
+	# 摸完再回来走 _放逐步 == 2
+	_放逐步 = 2
 	engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
+	engine.push_draw(player.id, 张, FANG_ZHU)
 	return URGENT
 
 var _放逐步: int = 0
@@ -546,23 +561,6 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		engine._broadcast_game()
 		_检查预言取空()
 		return SUCCESS
-	# 放逐：选摸几张（6~8）
-	if _放逐步 == 1:
-		if not engine.has_reply():
-			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand,
-				[{"value": 6, "label": "摸 6 张"}, {"value": 7, "label": "摸 7 张"}, {"value": 8, "label": "摸 8 张"}],
-				0, "", [], false,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【放逐】：选择摸几张牌（6~8）")
-			return WAIT
-		var r9: Dictionary = take_skill_reply_full()
-		var args9: Array = r9.get("args", [])
-		var 张: int = int(args9[0]) if not args9.is_empty() else 6
-		张 = clampi(张, 6, 8)
-		# 只压摸牌状态、返回 URGENT：摸完当前钩子会被重新执行，接着走 _放逐步 == 2
-		_放逐步 = 2
-		engine.push_draw(player.id, 张, FANG_ZHU)
-		return URGENT
 	# 放逐：移除旧场卡 → 选天雷 / 地裂放 1 张【末日预言】入场
 	if _放逐步 == 2:
 		_放逐步 = 3

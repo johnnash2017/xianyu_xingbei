@@ -298,12 +298,20 @@ func _检放逐() -> void:
 	_放末日([101, 102])
 	角色.p_before_turn_begin({"player": 1})
 	检(玩家1.hand_cards_max == 5, "放逐前手牌上限应为 5：%d" % 玩家1.hand_cards_max)
-	var rc: int = 角色.p_magic_skill({"action_id": 9505, "src_id": 1})
+	# 摸几张由二级技能栏选（同魔眼）：技能栏带三个 arg_choices，不选返回就不该通过校验
+	var 放逐项: Dictionary = {}
+	for 项: Dictionary in 角色.available_skills():
+		if int(项.get("id", 0)) == 9505:
+			放逐项 = 项
+	检(not 放逐项.is_empty() and (放逐项.get("arg_choices", []) as Array).size() == 3,
+		"【放逐】应给出摸 6/7/8 三个档（二级技能栏）")
+	var 档: Array = 放逐项.get("arg_choices", [])
+	检(int(档[0].get("args", [0])[0]) == 6 and int(档[2].get("args", [0])[0]) == 8,
+		"三档应分别是 6 / 7 / 8 张")
+	检(角色.v_magic_skill({"action_id": 9505, "src_id": 1, "args": []}) == GConst.GE_INVALID_ARGUMENT,
+		"没选摸牌档（按「返回」）时不应通过校验")
+	var rc: int = 角色.p_magic_skill({"action_id": 9505, "src_id": 1, "args": [6]})
 	检(rc == BattleRole.URGENT, "【放逐】应进入摸牌流程")
-	引擎.run()
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505,
-		"【放逐】应先问摸几张（等待 %s / 号 %s）" % [str(引擎._await_id), str(引擎._pending_respond_id)])
-	_应答([6])
 	引擎.run()
 	检(玩家1.hand_cards.size() == 11, "摸 6 张后应 11 张手牌：%d" % 玩家1.hand_cards.size())
 	检(引擎._pending_respond_id == 9505,
