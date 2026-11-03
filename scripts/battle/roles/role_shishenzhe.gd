@@ -34,6 +34,9 @@ const 同调伤害: int = 1
 ## 本次攻击用的【魔刃】/【异刃】是哪一张（0＝普通攻击）
 var _本次刃: int = 0          # 本次用的牌实例号（交给侵刻/渗蚀用）
 var _本次刃面: int = 0        # 本次用的牌面（MO_REN_CARD / YI_REN_CARD）
+## 本次刃是应战反击打出的（true）还是主动攻击（false）：
+## 应战会先让原攻击走一次 timeline2_miss，不能用那次 miss 清掉本次刃。
+var _本次刃是应战: bool = false
 ## 本次攻击的噬灭/殇灭是否已经问过（timeline1 若被重复调用也不能反复弹选牌/反复弃牌）
 var _噬灭已处理: bool = false
 ## 本次攻击的侵刻是否已经问过（响应技能，命中后只问一次）
@@ -202,6 +205,7 @@ func p_attack_card(ctx: Dictionary) -> int:
 		return SUCCESS
 	_本次刃 = 实例
 	_本次刃面 = 面
+	_本次刃是应战 = bool(ctx.get("reattack", false))
 	_噬灭已处理 = false
 	_侵刻已处理 = false
 	_侵刻目标 = -1
@@ -213,6 +217,9 @@ func p_attack_card(ctx: Dictionary) -> int:
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	# 侵刻的触发条件是「攻击命中」，主动攻击和应战反击都算
+	var 应战命中: bool = bool((ctx.get("harm", {}) as Dictionary).get("reattack", false))
+	if 应战命中 != _本次刃是应战:
+		return SUCCESS
 	if _本次刃 <= 0 or engine.刃归属者(_本次刃) != player.id:
 		return SUCCESS
 	if _侵刻已处理 and not engine.has_reply():
@@ -231,6 +238,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if not take_skill_reply():
 		_本次刃 = 0
 		_本次刃面 = 0
+		_本次刃是应战 = false
 		return SUCCESS
 	notice_skill(QIN_KE, [dst.id])
 	# 攻击牌已先进入弃牌堆（渗蚀之后才轮到命中/侵刻）：取回同一唯一实例交给目标
@@ -240,15 +248,21 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	dst.add_hand_cards([交付])
 	_本次刃 = 0
 	_本次刃面 = 0
+	_本次刃是应战 = false
 	engine._broadcast_game()
 	return SUCCESS
 
 
-func p_timeline_2_miss(_ctx: Dictionary) -> int:
-	# 应战反击没有 p_after_attack，未命中时也要清掉本次刃，避免污染下一次攻击
+func p_timeline_2_miss(ctx: Dictionary) -> int:
+	# 应战反击没有 p_after_attack，未命中时也要清掉本次刃，避免污染下一次攻击。
+	# 但应战会让「被反击的原攻击」先走一次 miss：那次不能清掉刚记下的应战刃。
+	var 应战未命中: bool = bool((ctx.get("harm", {}) as Dictionary).get("reattack", false))
+	if 应战未命中 != _本次刃是应战:
+		return SUCCESS
 	if _本次刃 > 0 and engine.刃归属者(_本次刃) == player.id:
 		_本次刃 = 0
 		_本次刃面 = 0
+		_本次刃是应战 = false
 		_侵刻已处理 = false
 	return SUCCESS
 
@@ -258,6 +272,7 @@ func p_timeline_2_miss(_ctx: Dictionary) -> int:
 func p_after_attack(_ctx: Dictionary) -> int:
 	_本次刃 = 0
 	_本次刃面 = 0
+	_本次刃是应战 = false
 	_噬灭已处理 = false
 	_侵刻已处理 = false
 	_侵刻目标 = -1

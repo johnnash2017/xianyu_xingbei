@@ -4451,7 +4451,7 @@ class SReattackGo:
 		# 必须在 take_from_hand 之前记：p_attack_card 要从手牌找实例。
 		var 出牌: Dictionary = {
 			"player": defender.id, "card_id": GConst.牌号(原牌),
-			"card_id_instance": 原牌, "改用": 用牌,
+			"card_id_instance": 原牌, "改用": 用牌, "reattack": true,
 		}
 		if defender.role != null:
 			defender.role.call_hook("p_attack_card", 出牌)
