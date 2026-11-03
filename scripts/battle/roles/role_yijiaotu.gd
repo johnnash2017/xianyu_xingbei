@@ -210,8 +210,9 @@ func p_turn_end(ctx: Dictionary) -> int:
 	_审判步 = 1
 	if not engine.has_reply():
 		询问(player.id, SHEN_PAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-			"是否发动【审判】：我方所有角色各弃 1 张牌【展示】、各摸 1 张牌，然后把其中 1 张弃牌交给目标对手？")
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
+			# 说明交给默认的技能说明（提示条会显示技能表里【审判】的说明），
+			# 不再自己写「是否发动【审判】：…」——技能名已经由询问标题显示
 		return WAIT
 	if not take_skill_reply():
 		_审判步 = 0
@@ -304,8 +305,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			return p_yi_jiao_tu_ask(ctx)
 		if not engine.has_reply():
 			询问(player.id, TAN_LAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"是否发动【贪婪】（消耗 1 点能量）：本次【%s】改为两项都发动，顺序由你决定？" % _在展示)
+				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
+				# 说明交给默认的技能说明（提示条显示技能表里【贪婪】的说明）
 			return WAIT
 		_展示贪婪 = take_skill_reply()
 		if _展示贪婪:
