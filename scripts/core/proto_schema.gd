@@ -434,6 +434,11 @@ const TABLE: Dictionary = {
 		# 特殊行动（购买 / 合成 / 提炼）：值见 GConst.SpecialAction（购买 = 0，所以客户端用
 		# has("special_action") 判断有没有这个字段，而不是拿 0 当「没有」）。普通 Gossip 不带
 		6: {"n": "special_action", "t": "u32"},
+		# 被移除的基础效果牌面（0/省略＝这条日志不是基础效果移除）：客户端据此在
+		# 【圣盾】/【天使之墙】抵挡攻击、魔弹时补一声圣盾音效
+		7: {"n": "card", "t": "u32"},
+		# 这次基础效果移除是不是「被自身效果触发」（抵挡 / 中毒结算这类）；普通拿走是 false
+		8: {"n": "triggered", "t": "bool"},
 	},
 	GConst.Msg.Error: {
 		1: {"n": "id", "t": "i32"},

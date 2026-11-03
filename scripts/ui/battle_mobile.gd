@@ -647,6 +647,7 @@ func _ready() -> void:
 	Logic.heal_received.connect(_on_heal_received)
 	Logic.discard_received.connect(_on_discard_received)
 	Logic.special_action_received.connect(_on_special_action)
+	Logic.basic_effect_removed.connect(_on_basic_effect_removed)
 	Logic.error_received.connect(_on_error)
 	BtnSubmit.pressed.connect(_on_submit)
 	InputField.text_submitted.connect(func(_t: String) -> void: _on_submit())
@@ -3497,6 +3498,18 @@ func _造悬停卡牌组(牌号们: Array) -> Control:
 		行.queue_free()
 		return null
 	return 行
+
+
+## 基础效果被移除（日志带 card / triggered）：【圣盾】或视作圣盾的【天使之墙】抵挡攻击 / 魔弹时
+## 被移除，补一声盾牌音效。打出这张牌时已经播过出手音效，被动抵挡没有出牌消息，所以单独补。
+func _on_basic_effect_removed(_dst_id: int, card_id: int, triggered: bool) -> void:
+	if not triggered:
+		return
+	var 牌: GCard = Data.get_card(card_id)
+	if 牌 == null:
+		return
+	if 牌.card_name_enum() == GConst.CardName.Shield or 牌.has_skill_id(GConst.技能_天使之墙):
+		Audio.播音效("spell-holyShield")
 
 
 ## 造一份「状态图标放大预览」：图标原图（不带描边/马赛克材质）+ 说明文字。

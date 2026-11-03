@@ -159,6 +159,17 @@ func _有错误输入(pid: int) -> bool:
 	return false
 
 
+## 发送记录里有没有一条「基础效果被移除」日志：带指定牌面、且 triggered 与期望一致
+func _有基础效果移除日志(牌面: int, 触发: bool) -> bool:
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.Gossip:
+			continue
+		var d: Dictionary = r["data"]
+		if int(d.get("card", 0)) == 牌面 and bool(d.get("triggered", false)) == 触发:
+			return true
+	return false
+
+
 ## 观察记录里某事件第一次出现的下标（没有返回 -1）
 func _事件位置(名称: String) -> int:
 	for i: int in range(观察.事件.size()):
@@ -342,6 +353,8 @@ func 跑() -> void:
 		"args": [GConst.Reattack.GiveUp], "card_ids": [], "dst_ids": [],
 	})
 	检(玩家2.basic_effects.is_empty(), "圣盾挡下攻击后应被移除")
+	检(_有基础效果移除日志(圣盾牌.id, true),
+		"圣盾抵挡时应广播带牌面 + triggered 的移除日志（客户端据此播盾牌音效）")
 	检(引擎.deck.discard.has(圣盾牌.id), "挡下攻击的圣盾应进弃牌堆")
 	检(观察.触发记录.size() == 1, "圣盾挡下攻击应触发一次 p_basic_effect_triggered")
 	var 盾触发: Dictionary = 观察.触发记录[0] if not 观察.触发记录.is_empty() else {}

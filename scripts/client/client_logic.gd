@@ -10,6 +10,9 @@ signal gossip_received(txt: String)
 signal notice_received(txt: String, kind: int)
 ## 治疗事件（目标 id + 本次治疗点数）：战斗界面据此在目标头像上喷「+」特效
 signal heal_received(pid: int, num: int)
+## 基础效果被移除（Gossip 带 card 字段）：被移除的牌面 + 这次是不是被自身效果触发。
+## 战斗界面据此在【圣盾】/【天使之墙】抵挡攻击 / 魔弹时补音效。
+signal basic_effect_removed(dst_id: int, card_id: int, triggered: bool)
 ## 弃牌事件（弃牌者 id + 弃牌张数）：战斗界面据此在他身上播「牌向下飞出并淡出」的弃牌特效
 signal discard_received(pid: int, num: int)
 ## 特殊行动事件（执行者 id + GConst.SpecialAction）：战斗界面据此在头像上飘「购买 / 合成 / 提炼」
@@ -155,6 +158,10 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 				# 购买 = 0，所以按字段是否存在判断，不能按值判断
 				if data.has("special_action"):
 					special_action_received.emit(int(data.get("id", -1)), int(data.get("special_action", 0)))
+				# 基础效果被移除：带牌面 / 触发标记，供战斗界面补盾牌音效
+				if data.has("card"):
+					basic_effect_removed.emit(int(data.get("id", -1)), int(data.get("card", 0)),
+						bool(data.get("triggered", false)))
 				notice_received.emit(str(data.get("txt", "")), kind)
 		GConst.Msg.HeartBeat:
 			# 服务端心跳：原样回一声，服务端按「发包时刻 → 收到回声」算这一路的往返延迟

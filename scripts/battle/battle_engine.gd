@@ -3018,7 +3018,7 @@ func _log_discard(pid: int, cards: Array, 播特效: bool = true) -> void:
 
 ## 广播「基础效果被移除」日志，说清「谁移除了谁面前的什么状态」。
 ## doer_id 是发动者（-1 表示引擎内部结算，如【圣盾】挡下攻击、【中毒】结算：没有发动者，只写被移除方）
-func _log_basic_effect_remove(doer_id: int, dst_id: int, card_id: int) -> void:
+func _log_basic_effect_remove(doer_id: int, dst_id: int, card_id: int, triggered: bool = false) -> void:
 	var dst: BattlePlayer = players.get(dst_id)
 	if dst == null:
 		return
@@ -3032,6 +3032,10 @@ func _log_basic_effect_remove(doer_id: int, dst_id: int, card_id: int) -> void:
 		"type": GConst.GossipType.Discard,
 		"txt": 文案,
 		"id": dst_id,
+		# 被移除的牌面 + 是不是「被自身效果触发」：客户端在【圣盾】/【天使之墙】抵挡攻击、魔弹时
+		# 补一声圣盾音效（被动抵挡没有出牌消息，只能靠这条日志）。
+		"card": GConst.牌号(card_id),
+		"triggered": triggered,
 	})
 
 
@@ -3642,8 +3646,8 @@ func remove_basic_effect(dst_id: int, card_id: int, cause: int = 0, src_id: int 
 			在场上 = true
 			break
 	dst.remove_basic_effect(card_id)
-	_log_basic_effect_remove(src_id, dst_id, card_id)
 	var 触发: bool = 在场上 and (triggered or _是基础效果自身触发(card_id, cause)) 			and not 基础效果被禁止(dst_id)
+	_log_basic_effect_remove(src_id, dst_id, card_id, 触发)
 	if 触发:
 		# 先压 triggered、再压 change：LIFO 下 change 先跑、triggered 后跑，
 		# 让「变动」先通知完，再由 triggered 表示「这次触发已经结算完成」
