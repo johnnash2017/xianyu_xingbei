@@ -377,6 +377,8 @@ func _检噬神者() -> void:
 	检(问合法牌.has(1005) and not 问合法牌.has(1006),
 		"噬灭询问白名单应只含水/火牌，实际 %s" % str(问合法牌))
 	检(bool(问命令.get("can_cancel", false)), "噬灭选牌应允许取消（取消=不发动）")
+	检(str(问命令.get("ask_prompt", "")) == GConst.skill_desc(7903),
+		"噬灭提示应使用完整技能说明，实际：%s" % str(问命令.get("ask_prompt", "")))
 	角色.set("_步", 0)
 	检(魔卡.可选元素 == [GConst.CardElement.Fire, GConst.CardElement.Water]
 		and 魔卡.element_enum() == GConst.CardElement.Fire,

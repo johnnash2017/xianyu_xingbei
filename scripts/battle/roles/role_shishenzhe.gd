@@ -392,8 +392,7 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 				# 合法牌随询问下发：客户端只让点水/火（或风/雷）牌；可取消＝不发动
 				询问(player.id, _噬灭技能, 1, 0, GConst.CardSource.Hand, [], 1, "", 可弃牌面, true,
 					0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-					"【%s】：弃 1 张%s系牌【展示】" % [
-						GConst.skill_name(_噬灭技能), "水/火" if _噬灭技能 == SHI_MIE else "风/雷"])
+					GConst.skill_desc(_噬灭技能))
 				return WAIT
 			var r2: Dictionary = take_skill_reply_full()
 			var cards: Array = r2.get("card_ids", [])
