@@ -430,6 +430,10 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			_步 = 0
 			if 弃.size() < 2:
 				return SUCCESS
+			# 代价在真正确认 2~3 张同系牌后才付；没有同系牌时仍然会询问，但不扣能量
+			if player.get_energy() < 1:
+				return SUCCESS
+			player.remove_energy(1)
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 				"card_ids": 弃, "is_real": true,
@@ -543,14 +547,12 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		return SUCCESS
 	if bool(harm.get("共振已处理", false)) or _步 != 0:
 		return SUCCESS
-	if player.get_energy() < 1 or not _有同系两张():
+	if player.get_energy() < 1:
 		return SUCCESS
 	harm["共振已处理"] = true
 	_步 = 4
 	_共振系 = _同系两张的系别()
 	engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
-	# 顺带付代价提示：在选完牌后再扣能量（避免选了又不够）
-	engine.push(BattleEngine.SHook.new("p_shi_shen_共振代价", {"player": player.id}, []))
 	return URGENT
 
 

@@ -427,6 +427,22 @@ func _检噬神者() -> void:
 	检(有元素消息, "切换系别后服务端应回 CardElement")
 	# 复原默认火系，避免影响后续用例
 	引擎.设置卡牌元素(1, 魔实例, GConst.CardElement.Fire)
+	# 手里没有两张同系牌时，共振仍应发出询问（不能静默跳过）
+	var 无同系角色: BattleRole = _建引擎(79)
+	var 无同系玩家: BattlePlayer = 引擎.p(1)
+	无同系玩家.hand_cards.clear()
+	var 火法: int = _找牌("fire", "magic")
+	var 水法: int = _找牌("water", "magic")
+	if 火法 > 0 and 水法 > 0:
+		无同系玩家.add_hand_cards([火法, 水法])
+	无同系玩家.set_gem(1)
+	无同系玩家.set_crystal(0)
+	无同系角色.call("p_timeline_3", {"harm": {"dst": 1, "type": GConst.HarmType.Magic}})
+	无同系角色.call("p_shi_shen_ask", {"player": 1})
+	var 无同系问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
+	var 无同系命令: Array = 无同系问.get("commands", [])
+	检(not 无同系命令.is_empty() and int((无同系命令[0] as Dictionary).get("respond_id", 0)) == 7907,
+		"没有同系牌时共振也应发出 7907 询问：%s" % str(无同系问))
 
 
 ## 手牌系别切换后：已选中的牌不合法要取消选中并置灰；原本不合法、切回后合法要重新亮起
