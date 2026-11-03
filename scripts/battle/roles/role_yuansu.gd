@@ -255,9 +255,9 @@ func p_after_magic(ctx: Dictionary) -> int:
 			for pid: int in engine.order:
 				if engine.p(pid) != null:
 					全体.append(pid)
-			询问(player.id, BING_DONG, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+			询问(player.id, GConst.技能_冰冻治疗, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, 全体, -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.skill_desc(BING_DONG), -1, "", [], _友方())
+				"【冰冻】：指定 1 名角色+1【治疗】", -1, "", [], _友方())
 			return WAIT
 		if not engine.has_reply():
 			return WAIT
