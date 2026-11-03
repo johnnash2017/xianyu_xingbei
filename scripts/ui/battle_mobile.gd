@@ -348,8 +348,6 @@ var _高亮计数: Dictionary = {}
 var _当前回合: int = -1
 ## 上一次 TurnBegin 的玩家 / 回合号：额外回合（F7 / 10803）不会推进 round，
 ## 连上就靠「同一名玩家 + 同一回合号」认出来（协议 TurnBegin 只带 id / round）。
-var _上一回合玩家: int = -1
-var _上一回合号: int = 0
 ## 本次 TurnBegin 是不是额外回合（面板提示 / 日志用）
 var _额外回合中: bool = false
 ## 当前「背后的 Turn 亮着」的玩家 id：轮到谁行动 / 在等谁回复都算，变了才重播动画
@@ -799,8 +797,6 @@ func _on_game_info(info: Dictionary) -> void:
 		# 房间等待阶段仍是大厅音乐，真开打才换战斗曲
 		Audio.播放音乐(Audio.场景战斗)
 		# 新一局：额外回合判定不沿用上一局的记录
-		_上一回合玩家 = -1
-		_上一回合号 = 0
 		_额外回合中 = false
 	_处理数值变化(info, 之前已开局 and started)
 	_刷新队伍(info)
@@ -1171,14 +1167,12 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 
 func _on_turn(player_id: int, round_id: int) -> void:
 	# 额外回合（F7 / 10803 / 苍白之月）：不推进 current_id、不增加 round，同一名玩家连着开回合。
-	# 服务端 TurnBegin 直接带 extra_turn / extra_cause / attack_bonus；旧数据没带时退回
-	# 「同一名玩家 + 同一回合号」的旧判定（第一回合不会误判）。
-	var 服务端额外: bool = Logic.回合开始额外
-	var 额外回合: bool = 服务端额外 or (_上一回合玩家 >= 0 and player_id == _上一回合玩家 and round_id == _上一回合号)
-	var 额外加伤: int = Logic.回合开始加伤 if 服务端额外 else 0
-	_上一回合玩家 = player_id
-	_上一回合号 = round_id
-	_额外回合中 = 额外回合
+	# 只认服务端 TurnBegin 的 extra_turn（普通回合也会显式带 false）。
+	# 不要再用「同一名玩家 + 同一回合号」去猜：剑之子在别人的回合结束时拿到额外回合、
+	# 而下一个本来就是他自己的回合时，两个回合的玩家与回合号完全一样，
+	# 会把他的正常回合也判成额外回合（日志就会连着两条「XX 的额外回合」）。
+	_额外回合中 = Logic.回合开始额外
+	var 额外加伤: int = Logic.回合开始加伤 if _额外回合中 else 0
 	_当前回合 = player_id
 	# 新回合开始：上一回合可能残留的「同命格」许可 / 回退记录作废
 	_应战同命格 = false

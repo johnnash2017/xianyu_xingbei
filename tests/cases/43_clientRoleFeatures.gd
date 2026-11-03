@@ -692,15 +692,29 @@ func 跑() -> void:
 	窗.set("_sel_players", [] as Array[int])
 
 	# ---------------- 8. 额外回合 / 角色替换展示 ----------------
-	窗.call("_on_turn", 1, 5)
+	# 额外回合走真实的 TurnBegin 消息：服务端显式下发 extra_turn，客户端以它为准。
+	var 轮到条数0: int = str(窗.get("_日志")).count("轮到")
+	Logic._on_message(GConst.Msg.TurnBegin, {"id": 1, "round": 5, "extra_turn": false})
 	await 等帧()
 	检(not bool(窗.get("_额外回合中")), "第一回合不应被判成额外回合")
-	窗.call("_on_turn", 1, 5)
+	检(str(窗.get("_日志")).count("轮到") == 轮到条数0 + 1, "普通回合日志应写「轮到」")
+	Logic._on_message(GConst.Msg.TurnBegin, {"id": 1, "round": 5, "extra_turn": true,
+		"extra_cause": GConst.技能_剑守誓言, "attack_bonus": 1})
 	await 等帧()
-	检(bool(窗.get("_额外回合中")), "同一玩家同一回合号的第二次 TurnBegin 应判成额外回合")
+	检(bool(窗.get("_额外回合中")), "带 extra_turn 的 TurnBegin 应判成额外回合")
 	检(str(窗.get("_提示原文")).contains("额外回合"), "额外回合没有提示")
+	检(str(窗.get("_提示原文")).contains("剑守誓言"), "额外回合提示应带来源技能")
 	检(str(窗.get("_日志")).contains("额外回合"), "额外回合没有写进日志")
-	窗.call("_on_turn", 2, 6)
+	# 回归：剑之子在别人回合结束时拿额外回合、下一位又正好是他自己 ——
+	# 两个回合的「玩家 + 回合号」完全一样，但第二个是他的正常回合，
+	# 不能因为「同玩家 + 同回合号」被再判成额外回合（旧的猜法踩过）。
+	var 轮到条数1: int = str(窗.get("_日志")).count("轮到")
+	Logic._on_message(GConst.Msg.TurnBegin, {"id": 1, "round": 5, "extra_turn": false})
+	await 等帧()
+	检(not bool(窗.get("_额外回合中")),
+		"同一玩家、同一回合号的正常回合（extra_turn=false）不应判成额外回合")
+	检(str(窗.get("_日志")).count("轮到") == 轮到条数1 + 1, "这个正常回合的日志应写「轮到」")
+	Logic._on_message(GConst.Msg.TurnBegin, {"id": 2, "round": 6, "extra_turn": false})
 	await 等帧()
 	检(not bool(窗.get("_额外回合中")), "下家正常回合不应判成额外回合")
 

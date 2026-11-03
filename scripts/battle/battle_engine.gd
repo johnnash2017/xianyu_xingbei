@@ -584,7 +584,7 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 	_进度表.clear()
 	_清空等待()
 	_broadcast_game()
-	broadcast(GConst.Msg.TurnBegin, {"id": current_id, "round": round_id})
+	broadcast(GConst.Msg.TurnBegin, {"id": current_id, "round": round_id, "extra_turn": false})
 	push(SCheckTurnStart.new())
 	run()
 
@@ -4116,7 +4116,7 @@ class SNextPlayer:
 		if nid == e.first_id:
 			e.round_id += 1
 		e.current_id = nid
-		e.broadcast(GConst.Msg.TurnBegin, {"id": e.current_id, "round": e.round_id})
+		e.broadcast(GConst.Msg.TurnBegin, {"id": e.current_id, "round": e.round_id, "extra_turn": false})
 		e.push(SCheckTurnStart.new())
 		return BattleEngine.CONTINUE
 
