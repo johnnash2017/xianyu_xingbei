@@ -237,6 +237,9 @@ func _检噬神者() -> void:
 	# 选项悬停要带对应被动：魔刃 → 魔刃 + 渗蚀；异刃 → 异刃 + 渗蚀
 	检((刃选项[0] as Dictionary).get("技能组", []) == [7909, 7911],
 		"【御刃·魔刃】选项应带【魔刃】+【渗蚀】的说明：%s" % str(刃选项[0]))
+	检((刃选项[0] as Dictionary).get("preview_cards", []) == [1005]
+		and (刃选项[1] as Dictionary).get("preview_cards", []) == [1006],
+		"【御刃】选项悬停应带对应刃的卡面：%s" % str(刃选项))
 	检((刃选项[1] as Dictionary).get("技能组", []) == [7910, 7911],
 		"【御刃·异刃】选项应带【异刃】+【渗蚀】的说明：%s" % str(刃选项[1]))
 	检(str((刃选项[0] as Dictionary).get("text", "")) == "【魔刃】火系/水系加入手牌",
@@ -348,6 +351,9 @@ func _检噬神者() -> void:
 			and 双项.get("技能组", []) == [7909, 7910, 7911]
 			and int(双项.get("need_target", 0)) == 1,
 			"共振第 4 项应是魔刃+异刃总和并带目标")
+		检(魔项.get("preview_cards", []) == [1005] and 异项.get("preview_cards", []) == [1006]
+			and 双项.get("preview_cards", []) == [1005, 1006],
+			"共振选项悬停应带对应刃的卡面：%s" % str([魔项.get("preview_cards", []), 异项.get("preview_cards", []), 双项.get("preview_cards", [])]))
 	var 共振选项协议: Dictionary = ProtoCodec.decode_named("Command",
 		ProtoCodec.encode_named("Command", {
 			"option_elements": [{"ids": [GConst.CardElement.Fire, GConst.CardElement.Water]}],

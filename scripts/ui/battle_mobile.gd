@@ -3146,7 +3146,27 @@ func _显示技能说明(按钮: 技能按钮) -> void:
 				continue
 			var 预览牌们: Array = 项.get("预览牌", [])
 			if not 预览牌们.is_empty() and _说明提示 != null:
-				var 卡面组: Control = _造悬停卡牌组(预览牌们)
+				var 刃组: bool = true
+				for 牌号: Variant in 预览牌们:
+					if int(牌号) != GConst.噬神者_魔刃卡 and int(牌号) != GConst.噬神者_异刃卡:
+						刃组 = false
+						break
+				var 卡面组: Control = null
+				if 刃组:
+					# 御刃/共振的刃选项：与状态图标悬停一致，名称 + 卡面 + 对应技能说明
+					if 预览牌们.size() == 1:
+						卡面组 = _造噬神者刃状态内容(Data.get_card(int(预览牌们[0])))
+					else:
+						var 并排: HBoxContainer = HBoxContainer.new()
+						并排.add_theme_constant_override("separation", 8)
+						for 牌号2: Variant in 预览牌们:
+							var 单卡: Control = _造噬神者刃状态内容(Data.get_card(int(牌号2)))
+							if 单卡 != null:
+								并排.add_child(单卡)
+						if 并排.get_child_count() > 0:
+							卡面组 = 并排
+				if 卡面组 == null:
+					卡面组 = _造悬停卡牌组(预览牌们)
 				if 卡面组 != null:
 					_悬停角色面板 = null
 					_悬停状态图标 = false

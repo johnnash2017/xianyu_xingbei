@@ -72,6 +72,8 @@ func available_skills() -> Array:
 			"elements": 刃卡.可选元素.duplicate() if 刃卡 != null else [],
 			# 客户端鼠标指向这个选项时显示对应的两条被动：魔刃/异刃 + 共用的渗蚀
 			"技能组": [7909, 7911] if 是魔 else [7910, 7911],
+			# 悬停时同时摊出这张刃的卡面（名称/图标/系别），与状态图标悬停一致
+			"preview_cards": [MO_REN_CARD if 是魔 else YI_REN_CARD],
 		})
 	技能.append({
 		"type": GConst.ActionType.SpecialSkill,
@@ -652,6 +654,7 @@ func _共振选项() -> Array:
 			"targets": 全体,
 			"elements": 魔元,
 			"技能组": [7909, 7911],
+			"preview_cards": [MO_REN_CARD],
 		},
 		{
 			"value": 3,
@@ -661,6 +664,7 @@ func _共振选项() -> Array:
 			"targets": 全体,
 			"elements": 异元,
 			"技能组": [7910, 7911],
+			"preview_cards": [YI_REN_CARD],
 		},
 		{
 			"value": 4,
@@ -670,6 +674,7 @@ func _共振选项() -> Array:
 			"targets": 全体,
 			"elements": 魔元 + 异元,
 			"技能组": [7909, 7910, 7911],
+			"preview_cards": [MO_REN_CARD, YI_REN_CARD],
 		},
 	]
 
