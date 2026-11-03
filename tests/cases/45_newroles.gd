@@ -362,6 +362,13 @@ func _检噬神者() -> void:
 	var 噬灭可弃: Array = 角色.call("_噬灭可弃", [GConst.CardElement.Water, GConst.CardElement.Fire])
 	检(噬灭可弃.has(魔实例) and not 噬灭可弃.has(异实例),
 		"【噬灭】只能弃水/火，异刃（雷）不应进入合法弃牌名单：%s" % str(噬灭可弃))
+	var 噬灭指示: Dictionary = GConst.技能指示器.get(GConst.技能_噬灭, {})
+	var 殇灭指示: Dictionary = GConst.技能指示器.get(GConst.技能_殇灭, {})
+	检(str(噬灭指示.get("文案", "")).contains("移除") and str(噬灭指示.get("文案", "")).contains("治疗")
+		and str(噬灭指示.get("自动选目标", "")) == "询问目标",
+		"噬灭指示器应写移除治疗并自动高亮攻击目标：%s" % str(噬灭指示))
+	检(str(殇灭指示.get("文案", "")).contains("移除") and str(殇灭指示.get("文案", "")).contains("治疗"),
+		"殇灭指示器应写移除治疗：%s" % str(殇灭指示))
 	# 噬灭询问应直接进入选牌（旧的「先确定发动」已删）；白名单只含合法牌，且可取消
 	角色.set("_噬灭技能", 7903)
 	角色.set("_噬灭目标", 2)
@@ -379,6 +386,8 @@ func _检噬神者() -> void:
 	检(bool(问命令.get("can_cancel", false)), "噬灭选牌应允许取消（取消=不发动）")
 	检(str(问命令.get("ask_prompt", "")) == GConst.skill_desc(7903),
 		"噬灭提示应使用完整技能说明，实际：%s" % str(问命令.get("ask_prompt", "")))
+	检((问命令.get("dst_ids", []) as Array).has(2),
+		"噬灭询问应带上本次攻击目标（2）用于头像高亮，实际：%s" % str(问命令.get("dst_ids", [])))
 	角色.set("_步", 0)
 	检(魔卡.可选元素 == [GConst.CardElement.Fire, GConst.CardElement.Water]
 		and 魔卡.element_enum() == GConst.CardElement.Fire,

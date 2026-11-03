@@ -179,8 +179,6 @@ var _盖牌变动待处理: int = 0
 ## 噬神者专属刃的唯一实例归属：实例号 -> 初始拥有者 pid（之后不变）
 var 刃归属: Dictionary = {}
 var _刃序号: int = 0
-## 侵刻已经把这实例交给目标：它还在攻击牌的待弃牌上下文里，结算时跳过，避免又进弃牌堆
-var 刃被取走: Dictionary = {}
 ## 当前正在 handle 的状态实例（run 内逐状态设置）：wait_for 据此登记等待归属，
 ## has_reply / take_reply 据此判断「这份回复是不是发给我的」
 var _当前状态: Variant = null
@@ -2809,9 +2807,6 @@ func _结算待弃牌(ctx: Dictionary) -> void:
 	for c0: Variant in ctx.get("cards", []):
 		if 被认领.has(int(c0)) or 已移除.has(int(c0)):
 			continue
-		if 刃被取走.has(int(c0)):
-			刃被取走.erase(int(c0))
-			continue
 		待弃.append(int(c0))
 	deck.push_discard(待弃)
 	var taker: int = int(ctx.get("taker", -1))
@@ -4266,14 +4261,16 @@ class SAttackCard:
 	var src: int
 	var dst: int
 	var card: int
+	var instance: int
 	var harm: Dictionary
 	var ctx_built: bool = false
 	var ctx: Dictionary = {}
 
-	func _init(s: int, d: int, c: int, h: Dictionary) -> void:
+	func _init(s: int, d: int, c: int, h: Dictionary, inst: int = 0) -> void:
 		src = s
 		dst = d
 		card = c
+		instance = inst
 		harm = h
 
 	func handle(e: BattleEngine) -> int:
@@ -4290,10 +4287,28 @@ class SAttackCard:
 			}
 			ctx_built = true
 			e.push(SHook.new("p_before_attack", ctx, [
-				SHook.new("p_timeline_1", ctx, [SAttacked.new(self)]),
+				SHook.new("p_timeline_1", ctx, [SAttackDiscard.new(self)]),
 			]))
 			return BattleEngine.CONTINUE
 		# 钩子完成后继续（由 SHook 压入 SAttacked）
+		return BattleEngine.CONTINUE
+
+
+## 攻击时间线 1 跑完、进入应战/命中之前：把攻击牌正式送进弃牌堆。
+## 这样噬灭/殇灭（timeline 1）先结算，之后才触发攻击牌的【渗蚀】；侵刻（timeline 2 命中）再往后。
+## to_discard 可能压入「弃牌前拦截」状态，先把 SAttacked 压在它下面，保证弃牌/渗蚀跑完再进入应战。
+class SAttackDiscard:
+	var owner: SAttackCard
+
+	func _init(o: SAttackCard) -> void:
+		owner = o
+
+	func handle(e: BattleEngine) -> int:
+		e.push(SAttacked.new(owner))
+		if owner.instance > 0:
+			e.to_discard([owner.instance], {
+				"owner": owner.src, "source": "hand", "cause": GConst.CAUSE_ATTACK,
+			})
 		return BattleEngine.CONTINUE
 
 
@@ -5462,12 +5477,10 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		"src": cur.id, "dst": dst_id, "point": 攻击基础伤害(cur.id), "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": 用牌, "is_active": true,
 	}
-	# 先离手并把「进弃牌堆」的钩子压在下面，再把攻击状态压在上面：
-	# 攻击时间线（噬灭/殇灭/侵刻等）先跑，攻击牌进弃牌堆和【渗蚀】后跑。
-	# 这样「使用魔刃/异刃攻击时发动」的噬灭/殇灭在渗蚀之前结算。
+	# 攻击牌先离手；真正的进弃牌堆/渗蚀由 SAttackDiscard 放在 p_timeline_1 之后执行。
+	# 顺序：噬灭/殇灭（timeline 1）→ 攻击牌弃置/渗蚀 → 应战/命中（timeline 2 侵刻）
 	take_from_hand(cur.id, [提交号], true)
-	to_discard([提交号], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
-	push(SAttackCard.new(cur.id, dst_id, 用牌, harm))
+	push(SAttackCard.new(cur.id, dst_id, 用牌, harm, 提交号))
 	# 广播里面把「视为」的那张放 as_card_id（同应战那条）：客户端按它出声、出特效
 	# （如苍炎魔女【烈焰形态】下普通攻击视为火系【火焰斩】→ 播火斩特效与火系攻击音）；
 	# 摊牌与日志仍用真正打出的牌

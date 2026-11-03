@@ -208,17 +208,18 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		_侵刻目标 = dst.id
 		# 无选项，只有「确定 / 取消」：确定发动，取消不发动
 		询问(player.id, QIN_KE, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+			0, -1, [dst.id], -1, {}, 0, 0, false, [], true, -1, 0,
 			GConst.skill_desc(QIN_KE))
 		return WAIT
 	_侵刻目标 = -1
 	if not take_skill_reply():
 		return SUCCESS
 	notice_skill(QIN_KE, [dst.id])
-	# 牌还在攻击牌的待弃牌上下文里（尚未进弃牌堆）；先标记它已被取走，
-	# 待弃牌结算时保留目标手牌里的同一实例，不再进弃牌堆。
-	engine.刃被取走[_本次刃] = true
-	dst.add_hand_cards([_本次刃])
+	# 攻击牌已先进入弃牌堆（渗蚀之后才轮到命中/侵刻）：取回同一唯一实例交给目标
+	var 交付: int = engine.刃从弃牌堆取出(_本次刃)
+	if 交付 <= 0:
+		交付 = _本次刃
+	dst.add_hand_cards([交付])
 	_本次刃 = 0
 	_本次刃面 = 0
 	engine._broadcast_game()
@@ -385,7 +386,7 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				# 合法牌随询问下发：客户端只让点水/火（或风/雷）牌；可取消＝不发动
 				询问(player.id, _噬灭技能, 1, 0, GConst.CardSource.Hand, [], 1, "", 可弃牌面, true,
-					0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
+					0, player.id, [_噬灭目标] if _噬灭技能 == SHI_MIE else [], 1, {}, 0, 0, false, [], true, -1, 0,
 					GConst.skill_desc(_噬灭技能))
 				return WAIT
 			var r2: Dictionary = take_skill_reply_full()
