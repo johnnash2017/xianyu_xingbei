@@ -12,6 +12,10 @@ var hand_cards: Array[int] = []
 var hand_cards_max: int = GConst.HAND_CARDS_MAX
 var cover_cards: Array[int] = []
 var cover_cards_max: int = 0
+## 噬神者专属：本人拥有的【魔刃】/【异刃】唯一实例号（-1＝不是噬神者/未初始化）。
+## 归属者只决定技能逻辑和收回哪一张；当前持有者看牌在谁的 hand/cover 里。
+var 魔刃实例: int = -1
+var 异刃实例: int = -1
 ## 盖牌区里哪些是**面朝上**的（键＝实例号）：结界师【结界】这种“放在角色旁、牌面公开”的旁置牌。
 ## 面朝下的照旧只给张数；面朝上的牌面随快照下发给所有人（见 to_proto 的 cover_opens）。
 var cover_open: Dictionary = {}
@@ -222,6 +226,15 @@ func hand_count() -> int:
 # ============================================================
 # 盖牌
 # ============================================================
+## 本人拥有的刃实例（牌面 1005/1006）；不是噬神者返回 -1
+func 刃实例(面: int) -> int:
+	if 面 == GConst.噬神者_魔刃卡:
+		return 魔刃实例
+	if 面 == GConst.噬神者_异刃卡:
+		return 异刃实例
+	return -1
+
+
 func add_cover_cards(cards: Array) -> void:
 	for c: Variant in cards:
 		cover_cards.append(int(c))

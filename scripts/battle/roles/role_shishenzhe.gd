@@ -106,14 +106,20 @@ func p_special_skill(action: Dictionary) -> int:
 	var 选: int = _取选(action)
 	if not _御刃可得().has(选):
 		return GConst.GE_INVALID_ACTION
-	var 卡: int = MO_REN_CARD if 选 == 1 else YI_REN_CARD
-	# 从场外取回来的新一份按配置第一个系别起手（之后在手牌里再切）
-	var 卡数据: GCard = Data.get_card(卡)
-	if 卡数据 != null and not 卡数据.可选元素.is_empty():
+	var 面: int = MO_REN_CARD if 选 == 1 else YI_REN_CARD
+	var inst: int = player.刃实例(面)
+	if inst <= 0:
+		return GConst.GE_INVALID_ACTION
+	# 取回同一唯一实例（从弃牌堆取出），不新造牌
+	var 取回: int = engine.刃从弃牌堆取出(inst)
+	if 取回 <= 0:
+		return GConst.GE_INVALID_ACTION
+	# 取回后按该实例当前系别（通常保持弃牌前/默认第一个）
+	var 卡数据: GCard = Data.get_card(取回)
+	if 卡数据 != null and not 卡数据.可选元素.is_empty() and 卡数据.可选元素.find(卡数据.element_enum()) < 0:
 		卡数据.设置当前元素(卡数据.可选元素[0])
-		# 当前系别变了：按系别缓存的攻击牌白名单要重算
-		engine._规则攻击牌缓存.clear()
-	player.add_hand_cards([卡])
+	engine._规则攻击牌缓存.clear()
+	player.add_hand_cards([取回])
 	player.boot_skill_used = true
 	notice_skill(YU_REN, [player.id])
 	engine._broadcast_game()
@@ -146,10 +152,11 @@ func _御刃可选() -> bool:
 ## 御刃本次能拿的牌：1 =【魔刃】、2 =【异刃】，只列「不在任何玩家手里」的。
 func _御刃可得() -> Array[int]:
 	var 可得: Array[int] = []
-	if not _在场刃().has(MO_REN_CARD):
-		可得.append(1)
-	if not _在场刃().has(YI_REN_CARD):
-		可得.append(2)
+	for 选: int in [1, 2]:
+		var 面: int = MO_REN_CARD if 选 == 1 else YI_REN_CARD
+		var inst: int = player.刃实例(面)
+		if inst > 0 and not engine.刃在场(player.id, 面) and engine.刃在弃牌堆(inst):
+			可得.append(选)
 	return 可得
 
 
@@ -157,16 +164,19 @@ func _御刃可得() -> Array[int]:
 # 普通攻击打出【魔刃】/【异刃】时：记下实例，供侵刻 / 噬灭 / 殇灭按「本次用的牌」判断
 # ============================================================
 func p_attack_card(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	var 面: int = int(ctx.get("card_id", 0))
+	var 提交: int = int(ctx.get("card_id_instance", 0))
+	var 面: int = GConst.牌号(提交) if 提交 > 0 else int(ctx.get("card_id", 0))
 	if 面 != MO_REN_CARD and 面 != YI_REN_CARD:
 		return SUCCESS
-	var 实例: int = 0
-	for h: int in player.hand_cards:
-		if GConst.牌号(h) == 面:
-			实例 = h
-			break
+	# 只有刃的归属者处理这次攻击；攻击者可能是侵刻后拿到牌的人
+	if engine.刃归属者(提交) != player.id:
+		return SUCCESS
+	var 实例: int = 提交 if 提交 > 0 and player.有手牌(提交) else 0
+	if 实例 <= 0:
+		for h: int in player.hand_cards:
+			if GConst.牌号(h) == 面:
+				实例 = h
+				break
 	if 实例 <= 0:
 		return SUCCESS
 	_本次刃 = 实例
@@ -179,17 +189,19 @@ func p_attack_card(ctx: Dictionary) -> int:
 # 7902 侵刻：使用【魔刃】/【异刃】攻击命中时，把该卡加入攻击目标手牌
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) != player.id:
-		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if _本次刃 <= 0:
+	if _本次刃 <= 0 or engine.刃归属者(_本次刃) != player.id:
 		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null:
 		return SUCCESS
 	notice_skill(QIN_KE, [dst.id])
-	dst.add_hand_cards([_本次刃])
+	# 攻击牌已进弃牌堆：把同一唯一实例取出来交给目标，不新造一张
+	var 交付: int = engine.刃从弃牌堆取出(_本次刃)
+	if 交付 <= 0:
+		交付 = _本次刃
+	dst.add_hand_cards([交付])
 	_本次刃 = 0
 	_本次刃面 = 0
 	engine._broadcast_game()
@@ -216,10 +228,17 @@ func wants_before_discard(ctx: Dictionary) -> bool:
 	if int(ctx.get("owner", -1)) < 0:
 		return false
 	for c: Variant in ctx.get("cards", []):
-		var 面: int = GConst.牌号(int(c))
-		if 面 == MO_REN_CARD or 面 == YI_REN_CARD:
+		if _是我的刃(int(c)):
 			return true
 	return false
+
+
+## 这张实例是不是本噬神者拥有的刃（不是任意一张 1005/1006）
+func _是我的刃(inst: int) -> bool:
+	var 面: int = GConst.牌号(inst)
+	if 面 != MO_REN_CARD and 面 != YI_REN_CARD:
+		return false
+	return int(inst) == player.刃实例(面) or engine.刃归属者(int(inst)) == player.id
 
 
 ## 【渗蚀】的伤害：只有噬神者**自己**使用/弃置时，【同调】才把 3 点降为 1 点；
@@ -229,18 +248,11 @@ func _渗蚀伤害(触发者: int) -> int:
 
 
 ## 弃置/使用【魔刃】/【异刃】时：噬神者对该牌的使用者（弃牌/出牌者）造成 3 点
-## （若使用者是噬神者自己且持有【同调】，则 1 点）法术伤害。然后这张牌**移出游戏**
-## （不从弃牌堆再流转）：牌面说明里的「移除此牌」；命中时由【侵刻】把同一实例交给目标。
+## （若使用者是噬神者自己且持有【同调】，则 1 点）法术伤害。牌随后正常进入弃牌堆，
+## 保留唯一实例；之后可由御刃/共振从弃牌堆取回。
 func p_before_discard(ctx: Dictionary) -> int:
 	if not wants_before_discard(ctx):
 		return SUCCESS
-	# 标记这些牌不进入弃牌堆（引擎 _结算待弃牌 支持 ctx.removed）
-	var 移除: Array = ctx.get("removed", [])
-	for c: Variant in ctx.get("cards", []):
-		var 面: int = GConst.牌号(int(c))
-		if (面 == MO_REN_CARD or 面 == YI_REN_CARD) and not 移除.has(int(c)):
-			移除.append(int(c))
-	ctx["removed"] = 移除
 	var 键: String = "_渗蚀弃牌_%d" % player.id
 	if bool(ctx.get(键, false)):
 		return SUCCESS
@@ -271,8 +283,7 @@ func p_cover_change(ctx: Dictionary) -> int:
 		return SUCCESS
 	var 刃: Array[int] = []
 	for c: Variant in ctx.get("cards", []):
-		var 面: int = GConst.牌号(int(c))
-		if (面 == MO_REN_CARD or 面 == YI_REN_CARD) and not 刃.has(int(c)):
+		if _是我的刃(int(c)) and not 刃.has(int(c)):
 			刃.append(int(c))
 	if 刃.is_empty():
 		return SUCCESS
@@ -297,6 +308,8 @@ func p_shi_shen_盖牌移除(ctx: Dictionary) -> int:
 	var cards: Array = ctx.get("cards", [])
 	if dst >= 0 and not cards.is_empty():
 		engine.remove_cover(dst, cards, player.id, SHEN_SHI)
+		# 盖牌移除后的唯一实例统一进弃牌堆，等待御刃/共振取回
+		engine.to_discard(cards, {"owner": dst, "source": "cover", "cause": SHEN_SHI})
 	return SUCCESS
 
 
@@ -309,9 +322,9 @@ func _噬灭可弃(系表: Array) -> Array[int]:
 
 
 func p_timeline_1(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if _噬灭已处理 or _本次刃 <= 0:
+	if _噬灭已处理 or _本次刃 <= 0 or engine.刃归属者(_本次刃) != player.id:
 		return SUCCESS
 	var 是魔: bool = _本次刃面 == MO_REN_CARD
 	var 技能: int = SHI_MIE if 是魔 else SHANG_MIE
@@ -426,6 +439,22 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			engine._log_discard(player.id, 弃, false)
 			notice_skill(GONG_ZHEN, [player.id])
 			engine._broadcast_game()
+			# 弃牌代价里若有刃，渗蚀/进弃牌结算会晚于本钩子；
+			# 先回到步骤 5，等牌真正进了弃牌堆再开第二步，否则「同一实例」取不回来。
+			# 没有刃时 to_discard 是同步的，直接开第二步即可。
+			var 有刃代价: bool = false
+			for c5: Variant in 弃:
+				var 面5: int = GConst.牌号(int(c5))
+				if 面5 == MO_REN_CARD or 面5 == YI_REN_CARD:
+					有刃代价 = true
+					break
+			if 有刃代价:
+				_步 = 5
+				return URGENT
+			_步 = 6
+			engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
+			return URGENT
+		5:  # 共振：等弃牌代价结算完（刃已经在弃牌堆里）再开四选一
 			_步 = 6
 			engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 			return URGENT
@@ -442,16 +471,26 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			_步 = 0
 			var 场上: Array[int] = _在场刃()
 			var 加: Array[int] = []
-			if 选6 == 2 and not 场上.has(MO_REN_CARD):
-				加 = [MO_REN_CARD]
-			elif 选6 == 3 and not 场上.has(YI_REN_CARD):
-				加 = [YI_REN_CARD]
-			elif 选6 == 4 and not 场上.has(MO_REN_CARD) and not 场上.has(YI_REN_CARD):
-				加 = [MO_REN_CARD, YI_REN_CARD]
-			if 选6 == 1 or 加.is_empty():
+			for 面6: int in [MO_REN_CARD, YI_REN_CARD]:
+				if 场上.has(面6):
+					continue
+				var inst6: int = player.刃实例(面6)
+				if inst6 > 0 and engine.刃在弃牌堆(inst6):
+					加.append(inst6)
+			var 要魔: bool = 选6 == 2 or 选6 == 4
+			var 要异: bool = 选6 == 3 or 选6 == 4
+			if 选6 == 1 or 加.is_empty() \
+					or (要魔 and not 加.has(player.刃实例(MO_REN_CARD))) \
+					or (要异 and not 加.has(player.刃实例(YI_REN_CARD))):
 				return SUCCESS
-			for 卡6: int in 加:
-				player.add_hand_cards([卡6])
+			if 选6 == 2:
+				加 = [player.刃实例(MO_REN_CARD)]
+			elif 选6 == 3:
+				加 = [player.刃实例(YI_REN_CARD)]
+			for inst6: int in 加:
+				var 取回6: int = engine.刃从弃牌堆取出(inst6)
+				if 取回6 > 0:
+					player.add_hand_cards([取回6])
 			engine._broadcast_game()
 			if ds6.size() != 1:
 				return SUCCESS
@@ -460,6 +499,26 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 				"cause": GONG_ZHEN, "type": GConst.HarmType.Magic,
 			})
 			return URGENT
+		7:  # 诸神终焉：同时移除了自己的两张刃，选 1 名目标对手造成 2 点法术伤害
+			if not engine.has_reply():
+				var 敌7: Array[int] = enemy_ids()
+				if 敌7.is_empty():
+					_步 = 0
+					return SUCCESS
+				询问(player.id, ZHU_SHEN_ZHONG_YAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+					0, -1, 敌7, -1, {}, 0, 0, false, [], true, -1, 0,
+					GConst.skill_desc(ZHU_SHEN_ZHONG_YAN))
+				return WAIT
+			var r7: Dictionary = take_skill_reply_full()
+			var ds7: Array = r7.get("dst_ids", [])
+			_步 = 0
+			if ds7.size() == 1:
+				engine.push_harm({
+					"src": player.id, "dst": int(ds7[0]), "point": 2,
+					"cause": ZHU_SHEN_ZHONG_YAN, "type": GConst.HarmType.Magic,
+				})
+				return URGENT
+			return SUCCESS
 	return SUCCESS
 
 var _殇灭池: Array[int] = []
@@ -606,17 +665,22 @@ func _p_诸神终焉() -> int:
 		"src": player.id, "dst": player.id, "point": 2,
 		"cause": ZHU_SHEN_ZHONG_YAN, "type": GConst.HarmType.Magic,
 	})
-	# 移除场上的【魔刃】/【异刃】，记下原持有者
+	# 只移除自己拥有的两张唯一实例；记下当前持有者，牌统一进弃牌堆
 	var 持有: Array = []
-	for 卡: int in [MO_REN_CARD, YI_REN_CARD]:
+	for 面: int in [MO_REN_CARD, YI_REN_CARD]:
+		var inst: int = player.刃实例(面)
+		if inst <= 0:
+			continue
 		for pid: int in engine.order:
 			var pp: BattlePlayer = engine.p(pid)
 			if pp == null:
 				continue
-			if pp.有手牌(卡):
-				var 实例: int = pp.取出实例(pp.hand_cards, 卡)
-				if 实例 > 0:
-					持有.append({"pid": pid, "card": 实例})
+			var 取到: int = pp.取出实例(pp.hand_cards, inst)
+			if 取到 <= 0:
+				取到 = pp.取出实例(pp.cover_cards, inst)
+			if 取到 > 0:
+				持有.append({"pid": pid, "card": 取到})
+				engine.刃进弃牌堆(取到)
 				break
 	var 两张: bool = 持有.size() >= 2
 	for i: int in range(持有.size() - 1, -1, -1):
@@ -626,7 +690,7 @@ func _p_诸神终焉() -> int:
 			"cause": ZHU_SHEN_ZHONG_YAN, "type": GConst.HarmType.Magic,
 		})
 	if 两张:
-		_步 = 6
+		_步 = 7
 		engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 	else:
 		_步 = 0
@@ -647,16 +711,12 @@ func _手牌刃() -> Array[int]:
 	return out
 
 
-## 场上（任意玩家手牌里）有哪些【魔刃】/【异刃】
+## 本噬神者拥有的刃里，哪些当前在场（弃牌堆＝不在场；手中/盖牌/正在攻击＝在场）
 func _在场刃() -> Array[int]:
 	var out: Array[int] = []
-	for pid: int in engine.order:
-		var pp: BattlePlayer = engine.p(pid)
-		if pp == null:
-			continue
-		for 卡: int in [MO_REN_CARD, YI_REN_CARD]:
-			if pp.有手牌(卡) and not out.has(卡):
-				out.append(卡)
+	for 卡: int in [MO_REN_CARD, YI_REN_CARD]:
+		if engine.刃在场(player.id, 卡):
+			out.append(卡)
 	return out
 
 

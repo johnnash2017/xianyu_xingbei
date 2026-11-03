@@ -176,6 +176,9 @@ var _cover_change_seq: int = 0
 ## SHook 里某个角色中途放了盖牌并返回 SUCCESS 时，SHook 主动让出一次执行权，
 ## 让 p_cover_change 立刻结算，而不是等当前 SHook 把所有角色跑完。
 var _盖牌变动待处理: int = 0
+## 噬神者专属刃的唯一实例归属：实例号 -> 初始拥有者 pid（之后不变）
+var 刃归属: Dictionary = {}
+var _刃序号: int = 0
 ## 当前正在 handle 的状态实例（run 内逐状态设置）：wait_for 据此登记等待归属，
 ## has_reply / take_reply 据此判断「这份回复是不是发给我的」
 var _当前状态: Variant = null
@@ -513,6 +516,9 @@ func start(role_pool: Array) -> void:
 ## 这里只按已排好的 order 建座位邻接（先手 = order[0]）
 func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 	_rng.randomize()
+	Data.清空实例卡()
+	刃归属.clear()
+	_刃序号 = 0
 	deck = BattleDeck.new()
 	deck.init_full()
 	balance_colors()
@@ -536,11 +542,14 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 		玩家.hand_cards.clear()
 		玩家.cover_cards.clear()
 		玩家.basic_effects.clear()
+		玩家.魔刃实例 = -1
+		玩家.异刃实例 = -1
 		玩家.ready = true
 	if role_map.is_empty():
 		_assign_roles(role_pool)
 	else:
 		_assign_roles_by_map(role_map)
+	_初始化噬神者刃()
 	# 没有角色脚本的「白板角色」也按角色表初始化指示物 / 盖牌上限（F3）：
 	# 有脚本的角色在 BattleRole.setup() 里做同一件事；这里只兜底 role 为 null 的玩家，
 	# 不覆盖脚本自己设置的开局指示物数量（如灵魂术士 setup 里 +3 战纹）。
@@ -586,6 +595,89 @@ func _assign_roles_by_map(role_map: Dictionary) -> void:
 		var 玩家: BattlePlayer = players[pid]
 		玩家.role_id = rid
 		玩家.role = BattleRole.create(rid, 玩家, self)
+
+
+# ============================================================
+# 噬神者专属刃：每名噬神者一份唯一实例，归属初始化后不变
+# ============================================================
+func _初始化噬神者刃() -> void:
+	for pid: int in order:
+		确保噬神者刃(pid)
+
+
+## 给一名已经确定为噬神者的玩家创建两张唯一刃实例（幂等）。
+## 正常开局由 _初始化噬神者刃 统一调；测试/中途设角色也能显式调。
+func 确保噬神者刃(pid: int) -> void:
+	var p0: BattlePlayer = players.get(pid)
+	if p0 == null or p0.role_id != GConst.角色_噬神者 or p0.魔刃实例 > 0:
+		return
+	_刃序号 += 1
+	var seq: int = 100 + _刃序号
+	for 面: int in [GConst.噬神者_魔刃卡, GConst.噬神者_异刃卡]:
+		var inst: int = GConst.实例号(面, seq)
+		var 牌面: GCard = Data.get_card(面)
+		var 元素: int = 牌面.可选元素[0] if 牌面 != null and not 牌面.可选元素.is_empty() else 0
+		Data.取实例卡(inst, 元素, pid)
+		刃归属[inst] = pid
+		if deck != null and not deck.discard.has(inst):
+			deck.discard.append(inst)
+		if 面 == GConst.噬神者_魔刃卡:
+			p0.魔刃实例 = inst
+		else:
+			p0.异刃实例 = inst
+
+
+func 刃归属者(inst: int) -> int:
+	return int(刃归属.get(inst, -1))
+
+
+func 刃在弃牌堆(inst: int) -> bool:
+	return deck != null and deck.discard.has(inst)
+
+
+## 当前持有者（手牌/盖牌）；不在这些区域返回 -1
+func 刃持有者(inst: int) -> int:
+	for pid: int in order:
+		var p0: BattlePlayer = players.get(pid)
+		if p0 == null:
+			continue
+		if p0.hand_cards.has(inst) or p0.cover_cards.has(inst):
+			return pid
+	return -1
+
+
+## 按「归属者的唯一实例」判断是否在场：
+## - 弃牌堆 = 不在场；
+## - 当前正在结算的攻击牌 = 在场（即使它已经先进入弃牌堆）；
+## - 手牌/盖牌 = 在场；
+## - 查不到区域 = 不在场。
+func 刃在场(pid: int, 面: int) -> bool:
+	var p0: BattlePlayer = players.get(pid)
+	if p0 == null:
+		return false
+	var inst: int = p0.刃实例(面)
+	if inst <= 0:
+		return false
+	if p0.role != null and int(p0.role.get("_本次刃")) == inst:
+		return true
+	if 刃在弃牌堆(inst):
+		return false
+	for other: int in order:
+		var pp: BattlePlayer = players.get(other)
+		if pp != null and (pp.hand_cards.has(inst) or pp.cover_cards.has(inst)):
+			return true
+	return deck != null and deck.pile.has(inst)
+
+
+func 刃从弃牌堆取出(inst: int) -> int:
+	if deck == null:
+		return -1
+	return deck.取出实例(inst)
+
+
+func 刃进弃牌堆(inst: int) -> void:
+	if deck != null and inst > 0 and not deck.discard.has(inst):
+		deck.discard.append(inst)
 
 
 ## 角色卡替换（F7 / 10803：剑之子 → 风之剑圣）。
@@ -1987,6 +2079,11 @@ func 设置卡牌元素(pid: int, card_id: int, element: int) -> bool:
 	var 牌: GCard = Data.get_card(card_id)
 	if 牌 == null or not 牌.设置当前元素(element):
 		return false
+	# 兼容仍按牌面读系别的规则池（额外行动白名单等）：把牌面同步成当前实例系别。
+	# 客户端显示走实例副本；服务端攻击前也会按实例再同步一次。
+	var 面牌: GCard = Data.get_card(牌.id)
+	if 面牌 != null:
+		面牌.设置当前元素(element)
 	# 「按系别规则算可用攻击牌」的缓存里可能还留着切换前的那一系
 	_规则攻击牌缓存.clear()
 	var cmds: Array = []
@@ -5308,6 +5405,13 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# 规则判定、钩子上下文、广播一律按牌面（同牌面的副本对规则完全等价）
 	var 提交号: int = int(cards[0])
 	var cid: int = GConst.牌号(提交号)
+	# 规则/角色钩子仍大量按牌面 GCard 读元素；攻击这一手开始前把牌面临时同步成
+	# 该实例的当前系别，保证多个噬神者的刃不会互相串（客户端显示走实例副本，不受影响）
+	var 提交实例卡: GCard = Data.get_card(提交号)
+	if 提交实例卡 != null and 提交实例卡.是实例():
+		var 提交牌面: GCard = Data.get_card(提交实例卡.id)
+		if 提交牌面 != null:
+			提交牌面.设置当前元素(提交实例卡.element_enum())
 	var dst_id: int = int(dsts[0])
 	if cur.v_attack(cid, dst_id, players) != GConst.GE_SUCCESS:
 		if OS.is_debug_build() and 行动额外:
@@ -5336,9 +5440,16 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# 攻击方向也跑一次「视为」判定（与应战的 p_reattack 同一套）：角色可把这张攻击牌换成另一张，
 	# 如苍炎魔女【烈焰形态】下除水系 / 暗系外的攻击牌一律视为火系虚拟【火焰斩】。
 	# 真牌照样展示 + 进弃牌堆，本次攻击按「视为」的那张结算（系别就是那张牌的系别）
-	var 出牌: Dictionary = {"player": cur.id, "card_id": cid, "改用": cid}
+	var 出牌: Dictionary = {"player": cur.id, "card_id": cid, "card_id_instance": 提交号, "改用": cid}
 	if cur.role != null:
 		cur.role.call_hook("p_attack_card", 出牌)
+	# 刃的归属者可能不是当前攻击者（侵刻给出去的牌）；归属者仍要记本次刃，
+	# 这样渗蚀/侵刻/噬灭/殇灭按「你的刃」判断，而不是按谁在用
+	var 归属者: int = 刃归属者(提交号)
+	if 归属者 > 0 and 归属者 != cur.id:
+		var 归属玩家: BattlePlayer = players.get(归属者)
+		if 归属玩家 != null and 归属玩家.role != null:
+			归属玩家.role.call_hook("p_attack_card", 出牌)
 	var 用牌: int = int(出牌.get("改用", cid))
 	# 规则 / 伤害仍用「用牌」；虚拟攻击牌另给客户端一张同系普通斩击牌做音效/特效表现
 	var 表现用牌: int = 攻击表现牌(用牌)

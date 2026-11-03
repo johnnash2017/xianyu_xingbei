@@ -112,6 +112,8 @@ func _建引擎(角色号: int) -> BattleRole:
 	角色.setup(玩家, 引擎)
 	玩家.role = 角色
 	玩家.role_id = 角色号
+	if 角色号 == 79:
+		引擎.确保噬神者刃(1)
 	引擎.phase = BattleEngine.Phase.Playing
 	引擎.round_id = 1
 	return 角色
@@ -254,10 +256,11 @@ func _检噬神者() -> void:
 		!= GConst.GE_SUCCESS, "【御刃】没有第 3 个选项，应被拒")
 	检(int(御刃角色.p_special_skill({"src_id": 1, "action_id": 7901, "args": [1]}))
 		== BattleRole.SUCCESS, "【御刃·魔刃】确认后应直接结算")
-	检(御刃玩家.有手牌(1005) and 御刃玩家.boot_skill_used,
+	检(御刃玩家.有手牌(御刃玩家.魔刃实例) and 御刃玩家.boot_skill_used,
 		"【御刃】确认后应把魔刃加入手牌并置启动已用")
-	检(御刃玩家.hand_cards.has(1005),
-		"【御刃】加入的魔刃应作为真实手牌实例 1005 存在，实际手牌=%s" % str(御刃玩家.hand_cards))
+	检(御刃玩家.hand_cards.has(御刃玩家.魔刃实例),
+		"【御刃】加入的魔刃应是本人唯一实例，实际手牌=%s / 实例=%d" % [
+			str(御刃玩家.hand_cards), 御刃玩家.魔刃实例])
 	var 公开快照: Dictionary = 御刃玩家.to_proto(2)
 	检((公开快照.get("hand_blades", []) as Array).has(1005),
 		"其他玩家快照应公开手牌里的魔刃，实际 %s" % str(公开快照.get("hand_blades", [])))
@@ -269,12 +272,20 @@ func _检噬神者() -> void:
 		"技能表里不应再有 7912 / 7913（攻击）入口")
 	var 角色: BattleRole = _建引擎(79)
 	var 玩家: BattlePlayer = 引擎.p(1)
-	玩家.add_hand_cards([1005, 1006])
-	var 魔卡: GCard = Data.get_card(1005)
-	var 异卡: GCard = Data.get_card(1006)
+	var 魔实例: int = 玩家.魔刃实例
+	var 异实例: int = 玩家.异刃实例
+	检(魔实例 > 0 and 异实例 > 0 and 魔实例 != 异实例,
+		"噬神者应持有自己的两张唯一刃实例：%d / %d" % [魔实例, 异实例])
+	检(引擎.刃归属者(魔实例) == 1 and 引擎.刃归属者(异实例) == 1,
+		"两张刃的归属者应是噬神者本人")
+	检(引擎.刃在弃牌堆(魔实例) and 引擎.刃在弃牌堆(异实例),
+		"开局两张刃应在弃牌堆（不在场）")
+	玩家.add_hand_cards([引擎.刃从弃牌堆取出(魔实例), 引擎.刃从弃牌堆取出(异实例)])
+	var 魔卡: GCard = Data.get_card(魔实例)
+	var 异卡: GCard = Data.get_card(异实例)
 	# 盖牌渗蚀：同一个盖牌变动（同一个 seq）被 URGENT 回栈重跑时只能触发一次
 	var 盖牌上下文: Dictionary = {
-		"direction": GConst.CHANGE_ADD, "dst": 2, "cards": [1005], "seq": 999,
+		"direction": GConst.CHANGE_ADD, "dst": 2, "cards": [魔实例], "seq": 999,
 	}
 	检(int(角色.call("p_cover_change", 盖牌上下文)) == BattleRole.URGENT,
 		"魔刃作为盖牌首次放进盖牌区时应触发渗蚀")
@@ -313,13 +324,18 @@ func _检噬神者() -> void:
 			and not bool(双项.get("enabled", true)),
 			"魔刃/异刃已在手牌时，包含它们的选项应置灰")
 		# 第一步弃牌代价把魔刃弃掉后，第二步应允许重新加回（不再看弃牌前的快照）
-		var 取走的魔刃: int = 玩家.取出一张手牌(1005)
+		var 取走的魔刃: int = 玩家.取出一张手牌(魔实例)
 		检(取走的魔刃 >= 0, "测试前应能从手牌取出魔刃")
 		var 重选选项: Array = 角色.call("_共振选项")
 		检(重选选项.size() == 4 and bool((重选选项[1] as Dictionary).get("enabled", false)),
 			"弃掉魔刃后，共振的魔刃选项应重新可用")
 		if 取走的魔刃 >= 0:
-			玩家.add_hand_cards([取走的魔刃])
+			引擎.刃进弃牌堆(取走的魔刃)
+			检(引擎.刃在弃牌堆(取走的魔刃), "弃掉的刃应进弃牌堆")
+			var 取回刃: int = 引擎.刃从弃牌堆取出(取走的魔刃)
+			检(取回刃 == 取走的魔刃, "共振/御刃应取回同一个实例，实际 %d / 期望 %d" % [取回刃, 取走的魔刃])
+			if 取回刃 > 0:
+				玩家.add_hand_cards([取回刃])
 		检(str(异项.get("label", "")) == "【异刃】雷系/风系加入手牌"
 			and 异项.get("elements", []) == [GConst.CardElement.Thunder, GConst.CardElement.Wind]
 			and 异项.get("技能组", []) == [7910, 7911]
@@ -344,7 +360,7 @@ func _检噬神者() -> void:
 		and 协议技能组.size() == 1 and (协议技能组[0] as Dictionary).get("ids", []) == [7909, 7911],
 		"共振选项的系别/技能组应通过 Command 协议")
 	var 噬灭可弃: Array = 角色.call("_噬灭可弃", [GConst.CardElement.Water, GConst.CardElement.Fire])
-	检(噬灭可弃.has(1005) and not 噬灭可弃.has(1006),
+	检(噬灭可弃.has(魔实例) and not 噬灭可弃.has(异实例),
 		"【噬灭】只能弃水/火，异刃（雷）不应进入合法弃牌名单：%s" % str(噬灭可弃))
 	# 噬灭询问应直接进入选牌（旧的「先确定发动」已删）；白名单只含合法牌，且可取消
 	角色.set("_噬灭技能", 7903)
@@ -378,11 +394,11 @@ func _检噬神者() -> void:
 	检(_找技能(角色.available_skills(), 7912).is_empty()
 		and _找技能(角色.available_skills(), 7913).is_empty(),
 		"魔刃/异刃不应再有攻击技能按钮")
-	检(int(玩家.v_attack(1005, 2, 引擎.players)) == GConst.GE_SUCCESS,
+	检(int(玩家.v_attack(魔实例, 2, 引擎.players)) == GConst.GE_SUCCESS,
 		"【魔刃】当前火系应能直接作为普通攻击牌打出")
-	检(int(角色.p_attack_card({"player": 1, "card_id": 1005, "改用": 1005})) == BattleRole.SUCCESS,
+	检(int(角色.p_attack_card({"player": 1, "card_id": 1005, "card_id_instance": 魔实例, "改用": 1005})) == BattleRole.SUCCESS,
 		"【魔刃】普通攻击时应记录本次用的牌")
-	检(角色._本次刃 == 1005, "【魔刃】普通攻击应记录实例号，实际 %d" % 角色._本次刃)
+	检(角色._本次刃 == 魔实例, "【魔刃】普通攻击应记录本人实例号，实际 %d / 期望 %d" % [角色._本次刃, 魔实例])
 	# 额外行动按系别算攻击牌白名单时，虚拟牌魔刃/异刃也要按当前系别进入
 	检((引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0) as Array).has(1005),
 		"火系额外行动白名单应包含当前火系【魔刃】")
@@ -391,18 +407,18 @@ func _检噬神者() -> void:
 	检(引擎.攻击表现牌(1005) == 87, "火系【魔刃】应用火焰斩特效表现牌 87")
 	检(引擎.攻击表现牌(1006) == 108, "雷系【异刃】应用雷光斩特效表现牌 108")
 	# 切成水系：卡面系别、普通攻击校验都要跟着变；服务端回一条 CardElement
-	检(引擎.设置卡牌元素(1, 1005, GConst.CardElement.Water), "【魔刃】切水系应成功")
+	检(引擎.设置卡牌元素(1, 魔实例, GConst.CardElement.Water), "【魔刃】切水系应成功")
 	检(魔卡.element_enum() == GConst.CardElement.Water, "切换后【魔刃】当前系别应是水")
-	检(int(玩家.v_attack(1005, 2, 引擎.players)) == GConst.GE_SUCCESS,
+	检(int(玩家.v_attack(魔实例, 2, 引擎.players)) == GConst.GE_SUCCESS,
 		"【魔刃】当前水系仍应能直接作为普通攻击牌打出")
 	检((引擎.call("_规则攻击牌", GConst.CardElement.Water, 0) as Array).has(1005),
 		"水系额外行动白名单应包含当前水系【魔刃】")
 	检(not (引擎.call("_规则攻击牌", GConst.CardElement.Fire, 0) as Array).has(1005),
 		"【魔刃】切水后不应再进火系白名单")
 	检(引擎.攻击表现牌(1005) == 129, "水系【魔刃】应用水涟斩特效表现牌 129")
-	检(引擎.设置卡牌元素(1, 1006, GConst.CardElement.Wind), "【异刃】切风系应成功")
+	检(引擎.设置卡牌元素(1, 异实例, GConst.CardElement.Wind), "【异刃】切风系应成功")
 	检(引擎.攻击表现牌(1006) == 66, "风系【异刃】应用风神斩特效表现牌 66")
-	引擎.设置卡牌元素(1, 1006, GConst.CardElement.Thunder)
+	引擎.设置卡牌元素(1, 异实例, GConst.CardElement.Thunder)
 	var 有元素消息: bool = false
 	for r: Dictionary in 发送记录:
 		if int(r["msg"]) == GConst.Msg.CardElement:
@@ -410,7 +426,7 @@ func _检噬神者() -> void:
 			break
 	检(有元素消息, "切换系别后服务端应回 CardElement")
 	# 复原默认火系，避免影响后续用例
-	引擎.设置卡牌元素(1, 1005, GConst.CardElement.Fire)
+	引擎.设置卡牌元素(1, 魔实例, GConst.CardElement.Fire)
 
 
 ## 手牌系别切换后：已选中的牌不合法要取消选中并置灰；原本不合法、切回后合法要重新亮起

@@ -21,6 +21,32 @@ var skill_num: int = 0
 var skill_ids: Array[int] = []   # 「技能1/技能2」列引用的技能号（技能表「脚本号」列的值，代码按号判断）
 var skill_names: PackedStringArray = PackedStringArray()   # 由引用解析出的技能名（印在卡面底部两格）
 var is_virtual: bool = false   # 「虚拟牌」列：1 = 无卡面的虚拟牌（五系束缚/挑衅/灵魂链接/同生共死/永恒乐章）；魔刃/异刃是真实特殊攻击牌，填 0
+## 运行时实例信息：牌面对象这两个字段是 -1；由 Data 按实例号复制出来的对象
+## 才会写实例号 / 归属者。当前系别 element 在实例副本上可以各自不同。
+var 实例号: int = -1
+var 归属者: int = -1
+
+func 是实例() -> bool:
+	return 实例号 >= 0
+
+
+## 复制一张牌面成运行时实例（静态字段深拷贝；element 由调用方按实例重设）
+func 复制() -> GCard:
+	var c: GCard = GCard.new()
+	c.id = id
+	c.type = type
+	c.element = element
+	c.元素配置 = 元素配置
+	c.可选元素 = 可选元素.duplicate()
+	c.fate_pattern = fate_pattern
+	c.card_name = card_name
+	c.source = source
+	c.description = description
+	c.skill_num = skill_num
+	c.skill_ids = skill_ids.duplicate()
+	c.skill_names = skill_names.duplicate()
+	c.is_virtual = is_virtual
+	return c
 
 
 ## 从「卡表」的一行构造（row 是该行除 id 外的各列，与 表元数据["卡表"]["列索引"] 对齐）

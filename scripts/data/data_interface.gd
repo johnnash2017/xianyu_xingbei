@@ -4,6 +4,9 @@ extends Node
 
 # ---------------- 卡牌与角色数据 ----------------
 var card_db: Array[GCard] = []
+## 运行时卡牌实例：实例号 -> 独立 GCard 副本（当前系别 / 归属者写在副本上）。
+## 牌面表里的 GCard 只提供静态定义；普通单系别牌不强制建副本，多系别/特殊牌按需建。
+var 实例卡: Dictionary = {}
 var _card_by_id: Dictionary = {}         # 卡号 -> GCard（get_card 查这张；虚拟牌 1000+ 不能按数组下标取）
 var role_list: Dictionary = {}          # roleID -> 显示名（「[剑圣]」这种，取自角色表的显示名列）
 ## 可出场的角色号（角色表「启用」列 = 1 的）：随机分配、三选一/五选一/任选的候选池都取自这里
@@ -384,7 +387,37 @@ func 技能分段(技能号: int) -> String:
 ## 按卡号取牌（虚拟牌号是 1000+，与数组下标不一致，所以走 id 索引）。
 ## 也接受「实例号」：实例号 = 序号 × GConst.实例步长 + 牌号，取牌面时先折回牌号（见 GConst.牌号），
 ## 这样服务端区域里存的实例号可以直接拿去查牌面，规则侧不用关心是哪一份副本。
+## 清空运行时实例（新开一局时调用；牌面数据不动）
+func 清空实例卡() -> void:
+	实例卡.clear()
+
+
+## 取/创建一张运行时实例卡：
+## iid 必须是唯一实例号（不能是裸牌面 1005，否则所有噬神者会共用）；
+## 首次创建时从牌面复制，之后返回同一副本；元素 >0 时同步设置当前系别。
+func 取实例卡(iid: int, 元素: int = 0, 归属: int = -1) -> GCard:
+	var 已有: GCard = 实例卡.get(iid, null)
+	if 已有 != null:
+		if 元素 > 0:
+			已有.设置当前元素(元素)
+		if 归属 >= 0:
+			已有.归属者 = 归属
+		return 已有
+	var 面: GCard = get_card(GConst.牌号(iid))
+	if 面 == null:
+		return null
+	var c: GCard = 面.复制()
+	c.实例号 = iid
+	c.归属者 = 归属
+	if 元素 > 0:
+		c.设置当前元素(元素)
+	实例卡[iid] = c
+	return c
+
+
 func get_card(cid: int) -> GCard:
+	if 实例卡.has(cid):
+		return 实例卡[cid]
 	if _card_by_id.has(cid):
 		return _card_by_id[cid]
 	var 面: int = GConst.牌号(cid)
@@ -474,19 +507,20 @@ func _sync_my_cards(infos: Array, my_pos: int) -> void:
 	var 元素表: Array = me.get("hand_elements", [])
 	var i: int = 0
 	for cid: Variant in me.get("hands", []):
-		var c: GCard = get_card(int(cid))
+		var iid: int = int(cid)
+		var 元素: int = int(元素表[i]) if i < 元素表.size() else 0
+		# 手牌一律用运行时实例副本：同一牌面的不同实例可以有各自的当前系别
+		var c: GCard = 取实例卡(iid, 元素)
 		if c != null:
-			# 可切换系别的牌（魔刃/异刃）：按服务端快照恢复当前系别
-			if i < 元素表.size() and int(元素表[i]) > 0:
-				c.设置当前元素(int(元素表[i]))
 			hand_cards.append(c)
-			hand_iids.append(int(cid))
+			hand_iids.append(iid)
 		i += 1
 	for cid: Variant in me.get("covereds", []):
-		var c2: GCard = get_card(int(cid))
+		var iid2: int = int(cid)
+		var c2: GCard = 取实例卡(iid2)
 		if c2 != null:
 			cover_cards.append(c2)
-			cover_iids.append(int(cid))
+			cover_iids.append(iid2)
 	# 本地已切、服务端还没确认的系别优先于快照：避免切换后收到「切换前生成」的快照又弹回旧系别
 	for j: int in range(hand_iids.size()):
 		if 本地待确认元素.has(hand_iids[j]):

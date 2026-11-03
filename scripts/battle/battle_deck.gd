@@ -36,8 +36,17 @@ func draw(n: int) -> Array[int]:
 
 
 func _reshuffle_discard() -> void:
-	pile = discard.duplicate()
-	discard.clear()
+	# 噬神者专属刃（1005/1006 及其实例）在弃牌堆里但不是普通牌：
+	# 它们不能洗回牌库，否则会被摸到 / 进牌库顶。只把普通牌洗回。
+	var 普通: Array[int] = []
+	var 特殊: Array[int] = []
+	for c: int in discard:
+		if GConst.牌号(c) >= 1000:
+			特殊.append(c)
+		else:
+			普通.append(c)
+	pile = 普通
+	discard = 特殊
 	shuffle()
 
 
