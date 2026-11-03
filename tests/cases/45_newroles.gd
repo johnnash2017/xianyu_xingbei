@@ -516,6 +516,15 @@ func _检噬神者() -> void:
 	检(应战侵刻返回 == BattleRole.WAIT and not 应战侵刻命令.is_empty()
 		and int((应战侵刻命令[0] as Dictionary).get("respond_id", 0)) == 7902,
 		"应战回击命中后也应弹侵刻 7902 询问：%s" % str(应战侵刻问))
+	# 火系魔刃攻击：敌方普通火系攻击牌应能通过 v_reattack
+	var 火应战: int = _找牌("fire", "attack")
+	防.hand_cards.clear()
+	防.add_hand_cards([火应战])
+	Data.get_card(魔实例).设置当前元素(GConst.CardElement.Fire)
+	# 故意把共用牌面设成水：应战判定应按攻击牌实例的当前系（火），不能看牌面
+	Data.get_card(1005).设置当前元素(GConst.CardElement.Water)
+	检(int(防.v_reattack(火应战, 魔实例)) == GConst.GE_SUCCESS,
+		"火系魔刃攻击时，敌方普通火系攻击牌应能应战（按实例系别判定）")
 	# 诸神终焉的目标询问钩子只能处理一次：引擎 URGENT 回栈重跑时不能再推一次
 	无同系角色.set("_诸神问已处理", false)
 	var 诸神问一次: int = int(无同系角色.call("p_shi_shen_诸神问", {"player": 1}))

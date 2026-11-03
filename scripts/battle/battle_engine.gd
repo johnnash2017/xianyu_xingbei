@@ -4347,8 +4347,17 @@ class SAttackedAsk:
 		# 应战询问的参数；末位＝本次攻击伤害：harm["point"]（怒吼 / 精准射击 / 蓄力一击等「宣告阶段」
 		# 已加进去的）＋ 攻击者预告的「命中才结算」加伤（暗影之力 / 暗之解放…，见 p_attack_preview）。
 		# 客户端把它写进提示（「受到 N 伤害攻击，…」），让被攻击者一眼看到这一下要挨多少
-		var 应战询问: Array = [hit_rate, owner.card, defender.id, owner.src,
-			owner.ctx.get("can_light", 1), e._应战提示伤害(owner.src, owner.ctx, harm)]
+		# 应战比对用「攻击牌实例」的当前系别，不用共用牌面：
+		# 多个噬神者各有一张魔刃/异刃时，牌面的 element 会被另一边切换改写。
+		# 普通牌/虚拟「视为」牌按牌面；只有魔刃/异刃这种多系别实例才按实例当前系别
+		var 攻击牌判定: int = owner.card
+		if (owner.card == GConst.噬神者_魔刃卡 or owner.card == GConst.噬神者_异刃卡) \
+				and owner.instance > 0:
+			攻击牌判定 = owner.instance
+		var 攻击牌卡: GCard = Data.get_card(攻击牌判定)
+		var 应战询问: Array = [hit_rate, 攻击牌判定, defender.id, owner.src,
+			owner.ctx.get("can_light", 1), e._应战提示伤害(owner.src, owner.ctx, harm),
+			攻击牌卡.element_enum() if 攻击牌卡 != null else 0]
 		if hit_rate == GConst.HitRate.NoMiss:
 			e.push(STimeline2Hit.new(harm))
 			return BattleEngine.CONTINUE
@@ -4366,7 +4375,7 @@ class SAttackedAsk:
 				var 选定: Array = r.get("dst_ids", [])
 				var 反击目标: int = int(选定[0]) if not 选定.is_empty() else -1
 				if hit_rate != GConst.HitRate.Normal or not e._reattack_target_ok(defender, 反击目标, owner.src) \
-						or defender.v_reattack(cid, owner.card) != GConst.GE_SUCCESS \
+						or defender.v_reattack(cid, 攻击牌判定) != GConst.GE_SUCCESS \
 						or e._禁应战(owner.ctx, cid):
 					# args[2] 必须是「应该由谁来应战」（defender），客户端据此判断这条询问是不是给我的：
 					# 代应战（式神咒束）时 defender 是代替者，不等于被攻击的目标 dst，写成 dst.id 会让代替者的客户端把询问丢掉

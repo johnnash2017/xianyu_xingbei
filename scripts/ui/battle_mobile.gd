@@ -5341,12 +5341,17 @@ func _可应战牌(card_id: int) -> bool:
 		return false
 	var args: Array = _pending.get("args", [])
 	var 攻击牌: GCard = Data.get_card(int(args[1])) if args.size() > 1 else null
-	if 攻击牌 == null or 攻击牌.element_enum() == GConst.CardElement.Darkness:
+	# 攻击牌当前系别随询问下发（args[6]）：远端客户端没有攻击者的实例副本，
+	# 只看牌面会被别的噬神者切换系别误导。
+	var 攻击系: int = int(args[6]) if args.size() > 6 else 0
+	if 攻击系 <= 0 and 攻击牌 != null:
+		攻击系 = 攻击牌.element_enum()
+	if 攻击牌 == null or 攻击系 == GConst.CardElement.Darkness:
 		return false
 	if _应战同命格:
 		# 阴阳转换：打同命格的攻击牌应战
 		return not 牌.fate_pattern.is_empty() and 牌.fate_pattern == 攻击牌.fate_pattern
-	return _实际系别(牌) == 攻击牌.element_enum() or 牌.element_enum() == GConst.CardElement.Darkness
+	return _实际系别(牌) == 攻击系 or 牌.element_enum() == GConst.CardElement.Darkness
 
 
 ## 我这边的这张牌「实际算」哪一系：苍炎魔女【烈焰形态】下，除水系、暗系外的攻击牌视为火系
