@@ -443,6 +443,17 @@ func _检噬神者() -> void:
 	var 无同系命令: Array = 无同系问.get("commands", [])
 	检(not 无同系命令.is_empty() and int((无同系命令[0] as Dictionary).get("respond_id", 0)) == 7907,
 		"没有同系牌时共振也应发出 7907 询问：%s" % str(无同系问))
+	# 侵刻是响应技能：命中后应先弹 7902 询问，不能直接加牌
+	无同系角色.set("_步", 0)
+	无同系角色.set("_侵刻已处理", false)
+	无同系角色.set("_本次刃", 无同系玩家.魔刃实例)
+	无同系角色.set("_本次刃面", 1005)
+	var 侵刻返回: int = int(无同系角色.call("p_timeline_2_hit", {"is_active": true, "dst": 2}))
+	var 侵刻问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
+	var 侵刻命令: Array = 侵刻问.get("commands", [])
+	检(侵刻返回 == BattleRole.WAIT and not 侵刻命令.is_empty()
+		and int((侵刻命令[0] as Dictionary).get("respond_id", 0)) == 7902,
+		"【侵刻】命中后应弹出发动询问，实际返回=%d 询问=%s" % [侵刻返回, str(侵刻问)])
 
 
 ## 手牌系别切换后：已选中的牌不合法要取消选中并置灰；原本不合法、切回后合法要重新亮起

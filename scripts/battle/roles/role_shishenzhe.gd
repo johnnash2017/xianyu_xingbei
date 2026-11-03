@@ -36,6 +36,9 @@ var _本次刃: int = 0          # 本次用的牌实例号（交给侵刻/渗�
 var _本次刃面: int = 0        # 本次用的牌面（MO_REN_CARD / YI_REN_CARD）
 ## 本次攻击的噬灭/殇灭是否已经问过（timeline1 若被重复调用也不能反复弹选牌/反复弃牌）
 var _噬灭已处理: bool = false
+## 本次攻击的侵刻是否已经问过（响应技能，命中后只问一次）
+var _侵刻已处理: bool = false
+var _侵刻目标: int = -1
 ## 已处理过的盖牌变动序号：钩子返回 URGENT 后引擎会回栈重跑同一个 p_cover_change，
 ## 同一个 seq 只处理一次，避免渗蚀伤害/移除无限循环。
 var _渗蚀盖牌Seq: int = -1
@@ -182,6 +185,8 @@ func p_attack_card(ctx: Dictionary) -> int:
 	_本次刃 = 实例
 	_本次刃面 = 面
 	_噬灭已处理 = false
+	_侵刻已处理 = false
+	_侵刻目标 = -1
 	return SUCCESS
 
 
@@ -193,15 +198,33 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _本次刃 <= 0 or engine.刃归属者(_本次刃) != player.id:
 		return SUCCESS
+	if _侵刻已处理 and _步 != 9:
+		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null:
 		return SUCCESS
+	if _步 != 9:
+		_侵刻已处理 = true
+		_侵刻目标 = dst.id
+		_步 = 9
+		询问(player.id, QIN_KE, 0, 0, GConst.CardSource.Hand, [
+			{"value": 1, "label": "发动【侵刻】"},
+			{"value": 2, "label": "不发动"},
+		], 0, "", [], false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+			GConst.skill_desc(QIN_KE))
+		return WAIT
+	var r9: Dictionary = take_skill_reply_full()
+	var args9: Array = r9.get("args", [])
+	var 选9: int = int(args9[0]) if not args9.is_empty() else 2
+	_步 = 0
+	_侵刻目标 = -1
+	if 选9 != 1:
+		return SUCCESS
 	notice_skill(QIN_KE, [dst.id])
-	# 攻击牌已进弃牌堆：把同一唯一实例取出来交给目标，不新造一张
-	var 交付: int = engine.刃从弃牌堆取出(_本次刃)
-	if 交付 <= 0:
-		交付 = _本次刃
-	dst.add_hand_cards([交付])
+	# 牌还在攻击牌的待弃牌上下文里（尚未进弃牌堆）；先标记它已被取走，
+	# 待弃牌结算时保留目标手牌里的同一实例，不再进弃牌堆。
+	engine.刃被取走[_本次刃] = true
+	dst.add_hand_cards([_本次刃])
 	_本次刃 = 0
 	_本次刃面 = 0
 	engine._broadcast_game()
@@ -214,6 +237,8 @@ func p_after_attack(_ctx: Dictionary) -> int:
 	_本次刃 = 0
 	_本次刃面 = 0
 	_噬灭已处理 = false
+	_侵刻已处理 = false
+	_侵刻目标 = -1
 	return SUCCESS
 
 
@@ -679,7 +704,7 @@ func _p_诸神终焉() -> int:
 	notice_skill(ZHU_SHEN_ZHONG_YAN, [player.id])
 	# 顺序：获得水晶（已结算）→ 自身 2 点法术伤害 → 移除自己的刃 → 对原持有者各 3 点
 	# → 若两张都移除，才问 1 名对手 2 点。先压移除钩子、再压自伤，LIFO 保证自伤先完整结算。
-	_步 = 8
+	# 自伤是正常法术伤害，会正常触发自己的【共振】（不再用步骤 8 挡）。
 	engine.push(BattleEngine.SHook.new("p_shi_shen_诸神移除", {"player": player.id}, []))
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": 2,
