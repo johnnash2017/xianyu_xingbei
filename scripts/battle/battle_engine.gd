@@ -5572,14 +5572,14 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 	if card == null or not cur.has_hand_card(提交号):
 		return _reject_action(cur)
 	# 角色可用 p_before_magic 禁止本次法术（如「暗影形态不能使用法术牌」；该钩子不得等待玩家输入）
-	var gate: Dictionary = {"player": cur.id, "card_id": cid, "forbidden": false}
+	var gate: Dictionary = {"player": cur.id, "card_id": 提交号, "forbidden": false}
 	if cur.role != null:
 		cur.role.call_hook("p_before_magic", gate)
 	if bool(gate.get("forbidden", false)):
 		return _reject_action(cur)
 	# 额外行动的出牌 / 目标限制（F2，如 10702 的额外法术行动只能用【魔弹】）
 	if 校验额外行动限制(cur, 当前额外行动数据 if 行动额外 else {},
-			GConst.ActionType.Magic, [cid], dsts) != GConst.GE_SUCCESS:
+			GConst.ActionType.Magic, [提交号], dsts) != GConst.GE_SUCCESS:
 		return _reject_action(cur)
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else cur.id
 	var name_enum: int = card.card_name_enum()
@@ -5587,7 +5587,7 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 	# 必须在扣牌 / 挂效果之前拦下，否则被拒的目标会白吃一张牌
 	if name_enum == GConst.CardName.Shield or name_enum == GConst.CardName.Weaken \
 			or name_enum == GConst.CardName.Poison:
-		if v_basic_effect_target(dst_id, cid) != GConst.GE_SUCCESS:
+		if v_basic_effect_target(dst_id, 提交号) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
 	if name_enum == GConst.CardName.Shield:
 		if cur.v_shield(dst_id, players) != GConst.GE_SUCCESS:
@@ -5597,13 +5597,13 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		# 先压「行动结束」再压基础效果变更钩子：LIFO 下钩子先跑（对照服务端 basicMagic：
 		# StateAfterMagic 先入栈、随后 setStateUseCard 把 StateBasicEffectChange 压在其上）。
 		# 顺序颠倒会把钩子压在回合结束乃至下家整回合之下，天使羁绊这类钩子实际不会触发
-		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": cid})
+		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": 提交号})
 		add_basic_effect(dst_id, 提交号, cur.id, GConst.CAUSE_USE)
 		# 「展示手牌」钩子必须最后压（同 _do_attack 与应战抵挡那条）：压在动作状态之上才先执行。
 		# 跟着 take_from_hand(已展示=true) 在开头就压的话，它会被埋在「回合结束」之下，而栈上又不断
 		# 压入下一回合的状态 —— 这个钩子永远轮不到执行，冰霜祷言这种「公开打出水系牌时发动」的响应
 		# 就从不触发（水系法术牌不触发的根因）
-		push_show_hand(cur.id, [cid])
+		push_show_hand(cur.id, [提交号])
 		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Weaken:
@@ -5612,18 +5612,18 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		take_from_hand(cur.id, [提交号])
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
-		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": cid})
+		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": 提交号})
 		add_basic_effect(dst_id, 提交号, cur.id, GConst.CAUSE_USE)
-		push_show_hand(cur.id, [cid])
+		push_show_hand(cur.id, [提交号])
 		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Poison:
 		take_from_hand(cur.id, [提交号])
 		broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id, "card_ids": [cid], "is_real": true})
 		# 同上：行动结束先入栈，基础效果变更钩子后压（LIFO 下钩子先跑）
-		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": cid})
+		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": 提交号})
 		add_basic_effect(dst_id, 提交号, cur.id, GConst.CAUSE_USE)
-		push_show_hand(cur.id, [cid])
+		push_show_hand(cur.id, [提交号])
 		_broadcast_game()
 		return CONTINUE
 	if name_enum == GConst.CardName.Missile:
@@ -5642,10 +5642,10 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 			target = int(dsts[0])
 			顺向 = target == _nearest_enemy(cur)
 		# 角色可用 v_missile 禁止使用魔弹（如魔剑/魔枪的牌类禁止）
-		if target >= 0 and cur.v_missile(cid, target) != GConst.GE_SUCCESS:
+		if target >= 0 and cur.v_missile(提交号, target) != GConst.GE_SUCCESS:
 			return _reject_action(cur)
 		take_from_hand(cur.id, [提交号])
-		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": cid})
+		_记录行动并收尾(cur, "magic", "p_after_magic", {"player": cur.id, "card_id": 提交号})
 		if target >= 0:
 			broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": target, "card_ids": [cid], "is_real": true})
 			# 交给目标自己决定：打出【魔弹】继续传递 / 出【圣光】抵挡 / 放弃并承受伤害。
@@ -5661,7 +5661,7 @@ func _do_magic(cur: BattlePlayer, data: Dictionary) -> int:
 		to_discard([提交号], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_MISSILE})
 		# 展示手牌钩子最后压：压在动作状态与应战询问之上，先于它们执行（对照服务端 basicMagic 的
 		# StateBeforeMagic → setStateUseCard(展示手牌) → StateMissiled 顺序）；压在开头则永远轮不到
-		push_show_hand(cur.id, [cid])
+		push_show_hand(cur.id, [提交号])
 		return CONTINUE
 	# 其余法术牌（如【圣光】只作响应）不能主动施放
 	return _reject_action(cur)
