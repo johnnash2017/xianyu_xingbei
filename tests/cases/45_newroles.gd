@@ -203,6 +203,15 @@ func _检圣庭检察士() -> void:
 	检(int(引擎.取场卡("异端裁决所").get("counter", 0)) == 1,
 		"【裁决论定】应给裁决所 +1 治疗")
 	检(玩家.crystal == 水晶前 + 1, "【裁决论定】应让发动者 +1 水晶")
+	# 【裁决者】是启动技：必须作为 SpecialSkill 下发，且不能有法术技能入口
+	var 裁决项: Dictionary = {}
+	for 项: Dictionary in 角色.available_skills():
+		if int(项.get("id", 0)) == 3906:
+			裁决项 = 项
+	检(int(裁决项.get("type", 0)) == GConst.ActionType.SpecialSkill,
+		"【裁决者】应作为启动技（SpecialSkill）下发")
+	检(角色.v_magic_skill({"action_id": 3906, "src_id": 1}) == GConst.GE_INVALID_ACTION,
+		"【裁决者】不应有法术技能入口")
 
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用
@@ -675,6 +684,15 @@ func _检星坠女巫() -> void:
 	玩家.加律法(3)
 	检(玩家.hand_cards_max == GConst.HAND_CARDS_MAX + 1 - 玩家.律法数(),
 		"手牌上限应随律法数变化")
+	# 【群星启示】是启动技：必须作为 SpecialSkill 下发，且不能有法术技能入口
+	var 启示项: Dictionary = {}
+	for 项: Dictionary in 角色.available_skills():
+		if int(项.get("id", 0)) == 4004:
+			启示项 = 项
+	检(int(启示项.get("type", 0)) == GConst.ActionType.SpecialSkill,
+		"【群星启示】应作为启动技（SpecialSkill）下发")
+	检(角色.v_magic_skill({"action_id": 4004, "src_id": 1}) == GConst.GE_INVALID_ACTION,
+		"【群星启示】不应有法术技能入口")
 	# 星刻：攻击行动结束时牌库顶 1 张面朝下作为【卢恩】
 	检(玩家.can_add_cover_cards(1), "星坠女巫应有盖牌槽（卢恩）")
 	var 牌数前: int = 引擎.deck.pile.size()

@@ -77,7 +77,8 @@ func available_skills() -> Array:
 			"enabled": not 地系.is_empty(),
 		},
 		{
-			"type": GConst.ActionType.MagicSkill,
+			# 群星启示是「启动」：必须是 SpecialSkill（见 v_special_skill / p_special_skill）
+			"type": GConst.ActionType.SpecialSkill,
 			"id": QUN_XING_QI_SHI,
 			"arg_choices": [
 				{"value": 1, "label": "① 放手牌作卢恩 + 选律法 + 摸 0~1"},
@@ -97,6 +98,27 @@ func is_free_skill(skill_id: int) -> bool:
 	return skill_id == QUN_XING_QI_SHI
 
 
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != QUN_XING_QI_SHI:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+func p_special_skill(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) != QUN_XING_QI_SHI:
+		return EMPTY_HANDLE
+	# 启动技每回合只能发动一个（引擎也会在行动入口拦；这里防直接调用绕过）
+	if player.boot_skill_used:
+		return GConst.GE_INVALID_ACTION
+	var rc: int = _p_群星启示(action)
+	if rc == GConst.GE_INVALID_ACTION or rc == GConst.GE_INVALID_ARGUMENT:
+		return rc
+	player.boot_skill_used = true
+	return rc
+
+
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
@@ -111,8 +133,6 @@ func v_magic_skill(action: Dictionary) -> int:
 			if 卡.element_enum() != GConst.CardElement.Earth:
 				return GConst.GE_INVALID_CARDID
 			return GConst.GE_SUCCESS
-		QUN_XING_QI_SHI:
-			return GConst.GE_SUCCESS
 		CHUANG_KE_LV_DONG:
 			if player.gem < 1:
 				return GConst.GE_INVALID_ACTION
@@ -124,8 +144,6 @@ func p_magic_skill(action: Dictionary) -> int:
 	match int(action.get("action_id", 0)):
 		XING_HUAN:
 			return _p_星环(action)
-		QUN_XING_QI_SHI:
-			return _p_群星启示(action)
 		CHUANG_KE_LV_DONG:
 			return _p_创刻律动()
 	return EMPTY_HANDLE

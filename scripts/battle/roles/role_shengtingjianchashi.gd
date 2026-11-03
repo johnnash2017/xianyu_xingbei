@@ -55,7 +55,9 @@ func available_skills() -> Array:
 	var 全体: Array[int] = _全体角色()
 	return [
 		{
-			"type": GConst.ActionType.MagicSkill,
+			# 裁决者是「启动」：技能类型必须是 SpecialSkill（引擎按这个 + is_free_skill 判启动），
+			# 写成 MagicSkill 会绕开「每回合一个启动技」，还会去消耗别人给的额外法术行动
+			"type": GConst.ActionType.SpecialSkill,
 			"id": CAI_JUE_ZHE,
 			"enabled": player.get_energy() >= 1,
 		},
@@ -74,13 +76,34 @@ func is_free_skill(skill_id: int) -> bool:
 	return skill_id == CAI_JUE_ZHE
 
 
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != CAI_JUE_ZHE:
+		return GConst.GE_INVALID_ACTION
+	if player.get_energy() < 1:
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+func p_special_skill(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) != CAI_JUE_ZHE:
+		return EMPTY_HANDLE
+	# 启动技每回合只能发动一个（引擎也会在行动入口拦；这里防直接调用绕过）
+	if player.boot_skill_used or player.get_energy() < 1:
+		return GConst.GE_INVALID_ACTION
+	player.boot_skill_used = true
+	player.remove_energy(1)
+	notice_skill(CAI_JUE_ZHE, [player.id])
+	player.add_token(CAI_SLOT, 1)
+	engine.场卡加计数(裁决所名, 2)
+	engine._broadcast_game()
+	return SUCCESS
+
+
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) == CAI_JUE_ZHE:
-		if player.get_energy() < 1:
-			return GConst.GE_INVALID_ACTION
-		return GConst.GE_SUCCESS
 	if int(action.get("action_id", 0)) != SHEN_SHENG_BIAN_CE:
 		return GConst.GE_INVALID_ACTION
 	if player.token_num(CAI_SLOT) < 1 or player.get_energy() < 1:
@@ -91,15 +114,6 @@ func v_magic_skill(action: Dictionary) -> int:
 
 
 func p_magic_skill(action: Dictionary) -> int:
-	if int(action.get("action_id", 0)) == CAI_JUE_ZHE:
-		if player.get_energy() < 1:
-			return GConst.GE_INVALID_ACTION
-		player.remove_energy(1)
-		notice_skill(CAI_JUE_ZHE, [player.id])
-		player.add_token(CAI_SLOT, 1)
-		engine.场卡加计数(裁决所名, 2)
-		engine._broadcast_game()
-		return SUCCESS
 	if int(action.get("action_id", 0)) != SHEN_SHENG_BIAN_CE:
 		return EMPTY_HANDLE
 	var 校验: int = v_magic_skill(action)
