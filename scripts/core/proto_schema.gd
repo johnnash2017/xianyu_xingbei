@@ -257,6 +257,11 @@ const SUB: Dictionary = {
 		# 带选项的询问里，每个选项各自「悬停要摊出来的预览牌」（与 args 里的选项值一一对应）：
 		# 如暴食少女【三秒原则】的「获得 2 张【魔弹】」悬停时把那两张魔弹的卡面并排显示。
 		50: {"n": "option_preview_cards", "t": "msg", "r": true, "s": "OptionTargets"},
+		# 当前正在执行的是「额外回合」（10803 / 苍白之月）：客户端在技能栏摆一颗红色
+		# 「额外回合」，只展示、不可点；来源与加伤只用于悬停说明。
+		53: {"n": "extra_turn", "t": "bool"},
+		54: {"n": "extra_turn_cause", "t": "u32"},
+		55: {"n": "extra_turn_bonus", "t": "u32"},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {

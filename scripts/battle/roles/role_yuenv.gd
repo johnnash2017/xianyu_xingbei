@@ -457,10 +457,10 @@ func p_after_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	_cang_bai_add_turn = false
 	# 对应原版：角色在这一步把 StateAfterTurnEnd 弹掉，让后面的 setStateCurrentPlayer(下家) 不再执行。
-	# 本引擎等价做法：告诉 SNextPlayer「下个回合还是我」；TurnBegin 由 SNextPlayer 统一广播一次，
+	# 本引擎等价做法：走引擎统一的「安排额外回合」；TurnBegin 由 SNextPlayer 统一广播一次，
 	# 这里不能再发，否则同一次额外回合会下发两条「轮到你了」。
 	player.clear_additional_action()
-	engine.额外回合玩家 = player.id
+	engine.安排额外回合(player.id, 0, CANG_BAI_ZHI_YUE)
 	engine._broadcast_game()
 	return SUCCESS
 

@@ -149,6 +149,12 @@ var 额外回合来源: int = 0
 var 当前额外回合玩家: int = -1
 ## 当前这个额外回合里「该玩家攻击伤害 +1」的数值（只作用于额外回合的主人）
 var 当前额外回合攻击加伤: int = 0
+## 当前正在执行的额外回合的来源技能（技能栏红色「额外回合」标记的悬停说明用）
+var 当前额外回合来源: int = 0
+## 额外回合结束后的「续位」：安排那一刻本该轮到的人（当作没有这次额外回合）。
+## 10803 会在**别人**的回合结束时触发，结束后必须回到那个人之后继续，
+## 不能从额外回合主人的下家继续（否则整轮顺序被改写）。只在一条链的第一次安排时取号。
+var 额外回合续位: int = -1
 ## 各玩家上次记录的手牌数量（player_id -> 张数），用于在「手牌变化」时触发 p_hand_change
 var _hand_counts: Dictionary = {}
 ## 各玩家上次记录的手牌上限（player_id -> 张数），用于在「手牌上限变化」时写日志
@@ -540,6 +546,8 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 	额外回合来源 = 0
 	当前额外回合玩家 = -1
 	当前额外回合攻击加伤 = 0
+	当前额外回合来源 = 0
+	额外回合续位 = -1
 	var base_morale: int = 士气上限()
 	team_morale = [base_morale, base_morale]
 	team_gem = [0, 0]
@@ -1728,6 +1736,16 @@ func 安排额外回合(pid: int, 攻击加伤: int = 0, 来源: int = 0) -> int
 	额外回合玩家 = pid
 	额外回合攻击加伤 = maxi(攻击加伤, 0)
 	额外回合来源 = 来源
+	# 续位＝「当作没有这次额外回合时本来会轮到的人」：安排时 current_id 还是刚结束/正在行动的人。
+	# 一条链只取第一次（额外回合里再安排时沿用外层续位，避免把续位改成额外回合主人的下家）。
+	if 额外回合续位 < 0:
+		额外回合续位 = next_id(current_id)
+	# 战斗日志：获得额外回合（只写一句，来源与加伤只在技能栏标记的悬停说明里体现）
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Combat,
+		"txt": "%s 获得一个额外回合" % _称号(players[pid]),
+		"id": pid,
+	})
 	return GConst.GE_SUCCESS
 
 
@@ -2189,6 +2207,11 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		"extra_uid": int(当前额外行动数据.get("uid", 0)) if extra else 0,
 		# 禁止特殊行动（发动过「启动」技能后）：客户端据此把「特殊行动」按钮收掉
 		"no_special": no_special,
+		# 当前是不是「额外回合」（10803 / 苍白之月）：客户端在技能栏摆一颗红色「额外回合」，
+		# 只展示、不可点；来源与加伤供悬停说明用。
+		"extra_turn": 当前额外回合玩家 == pid,
+		"extra_turn_cause": 当前额外回合来源 if 当前额外回合玩家 == pid else 0,
+		"extra_turn_bonus": 当前额外回合攻击加伤 if 当前额外回合玩家 == pid else 0,
 	}]
 	if can_give_up:
 		cmds.append({
@@ -4049,11 +4072,15 @@ class STurnEnd:
 ## 轮转到下家 / 开始额外回合
 class SNextPlayer:
 	func handle(e: BattleEngine) -> int:
-		# 上一回合如果是额外回合，到这里已经彻底结束：清掉「当前额外回合」状态。
+		# 上一回合如果是额外回合，到这里已经彻底结束：清掉「当前额外回合」状态，取出这条链的续位。
 		# （p_after_turn_end 可能又安排了下一份额外回合，所以先清活动状态、再消费待执行队列。）
+		var 续位: int = -1
 		if e.当前额外回合玩家 >= 0:
 			e.当前额外回合玩家 = -1
 			e.当前额外回合攻击加伤 = 0
+			e.当前额外回合来源 = 0
+			续位 = e.额外回合续位
+			e.额外回合续位 = -1
 		if e.额外回合玩家 >= 0:
 			# 额外回合（F7 / 10803；也兼容月女【苍白之月】）：
 			# 不推进 current_id 到下家、不增加 round_id，只把行动者切到「额外回合玩家」，
@@ -4066,6 +4093,10 @@ class SNextPlayer:
 			e.额外回合攻击加伤 = 0
 			var 来源: int = e.额外回合来源
 			e.额外回合来源 = 0
+			e.当前额外回合来源 = 来源
+			# 链式额外回合（额外回合结束时又安排了一份）：续位沿用外层这条链的
+			if 续位 >= 0:
+				e.额外回合续位 = 续位
 			e.broadcast(GConst.Msg.TurnBegin, {
 				"id": e.current_id, "round": e.round_id,
 				"extra_turn": true, "extra_cause": 来源,
@@ -4073,7 +4104,9 @@ class SNextPlayer:
 			})
 			e.push(SCheckTurnStart.new())
 			return BattleEngine.CONTINUE
-		var nid: int = e.next_id(e.current_id)
+		# 额外回合结束后从「续位」继续（＝当作没有这次额外回合时本该轮到的人）；
+		# 普通回合没有续位，照常从 current_id 推到下家。
+		var nid: int = 续位 if 续位 >= 0 else e.next_id(e.current_id)
 		if nid == e.first_id:
 			e.round_id += 1
 		e.current_id = nid
