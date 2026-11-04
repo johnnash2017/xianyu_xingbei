@@ -288,8 +288,9 @@ func _nu_huo_xuan(ctx: Dictionary) -> int:
 				"skill_id": MO_WEN_RONG_HE, "need_card": 0, "enabled": 魔纹可用},
 		]
 		var 伤害目标: Array = [dst_id] if dst_id >= 0 else []
+		# 询问文案一直是空（2701 没有默认步骤文案）：直接给空串，不要再去表里取空条目
 		engine.ask_skill(player.id, MO_WEN_RONG_HE, 0, 0, GConst.CardSource.Hand, 选项,
-			0, "diff", [], true, 提示原文(MO_WEN_RONG_HE, 0), 伤害目标)
+			0, "diff", [], true, "", 伤害目标)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -327,8 +328,9 @@ func _nu_huo_mo_wen_xuan(ctx: Dictionary) -> int:
 				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹额外2可用},
 		]
 		var 伤害目标: Array = [dst_id] if dst_id >= 0 else []
+		# 同上面那条：2701 没有默认步骤文案，别再取空条目
 		engine.ask_skill(player.id, MO_WEN_RONG_HE, 0, 0, GConst.CardSource.Hand, 选项,
-			player.hand_count(), "diff", [], true, 提示原文(MO_WEN_RONG_HE, 0), 伤害目标)
+			player.hand_count(), "diff", [], true, "", 伤害目标)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
