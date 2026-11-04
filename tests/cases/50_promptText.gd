@@ -13,6 +13,7 @@ func _新窗() -> Control:
 func 跑() -> void:
 	_检基础分支()
 	_检选项覆盖()
+	_检询问文案()
 
 
 ## 基础分支：没选中 / 本地流程 / 普通技能询问 / 启动技能
@@ -32,7 +33,7 @@ func _检基础分支() -> void:
 	窗._二级栏父技能号 = 9505
 	窗._mode = 3
 	窗._skill_ask_need_card = 6
-	窗._skill_card_source = GConst.CardSource.Hand
+	窗._skill_ask_card_source = GConst.CardSource.Hand
 	窗._二级选项 = [{"参数": [1], "技能号": 0}]
 	窗._二级选中 = 0
 	var 普通: String = str(窗.call("_二级栏提示文案"))
@@ -80,4 +81,53 @@ func _检选项覆盖() -> void:
 	窗._二级选项 = [{"参数": [1], "说明": "本档说明"}]
 	检(str(窗.call("_二级栏提示文案")) == "【放逐】：本档说明",
 		"选项自带说明时应写成【技能名】：说明：%s" % str(窗.call("_二级栏提示文案")))
+	窗.queue_free()
+
+
+## 询问时（技能询问刚弹出）的提示文案：与切换选项共用同一套来源
+func _检询问文案() -> void:
+	var 窗: Control = _新窗()
+	窗._skill_ask_id = 9505
+	窗._mode = 3
+	窗._skill_ask_can_cancel = true
+	窗._skill_ask_card_source = GConst.CardSource.Hand
+	窗._selecting_cover = false
+	窗._skill_options.clear()
+	窗._二级选项.clear()
+	# 1) 服务端下发的步骤文案优先
+	窗._pending = {"ask_text": "步骤文案"}
+	检(str(窗.call("_询问提示文案")) == "步骤文案",
+		"技能询问应优先用 ask_text：%s" % str(窗.call("_询问提示文案")))
+	# 2) 整段提示（ask_prompt）盖过 ask_text
+	窗._pending = {"ask_text": "短句", "ask_prompt": "整段提示"}
+	检(str(窗.call("_询问提示文案")) == "整段提示",
+		"ask_prompt 应盖过 ask_text：%s" % str(窗.call("_询问提示文案")))
+	# 3) 没有文案时退回技能说明
+	窗._pending = {}
+	var 说明期望: String = "【%s】：%s" % [GConst.skill_name(9505),
+		GConst.skill_desc(9505).replace("\n", "").replace("
+", "").strip_edges()]
+	检(str(窗.call("_询问提示文案")) == 说明期望,
+		"没有文案时应退回技能说明：%s" % str(窗.call("_询问提示文案")))
+	# 4) 强制询问：写「本次必须执行，不能取消」
+	窗._skill_ask_can_cancel = false
+	窗._skill_ask_need_card = 6
+	var 强制: String = str(窗.call("_询问提示文案"))
+	检(强制.contains("不能取消") and 强制.contains("需选牌"),
+		"强制询问应写明不能取消 + 需选牌：%s" % 强制)
+	窗._skill_ask_can_cancel = true
+	窗._skill_ask_need_card = 0
+	# 5) 从场上基础效果牌里选：写操作指引
+	窗._skill_ask_card_source = GConst.CardSource.HandAndBasicEffect
+	var 基础: String = str(窗.call("_询问提示文案"))
+	检(基础.contains("基础效果"), "从基础效果牌里选时应写操作指引：%s" % 基础)
+	窗._skill_ask_card_source = GConst.CardSource.Hand
+	# 6) 带选项但没有文案时，退回二级栏计算函数的结果
+	窗._pending = {}
+	窗._skill_options = [1]
+	窗._二级栏父技能号 = 9505
+	窗._二级选中 = -1
+	var 二级: String = str(窗.call("_二级栏提示文案"))
+	检(str(窗.call("_询问提示文案")) == 二级,
+		"带选项且无文案时应退回二级栏提示：%s / %s" % [str(窗.call("_询问提示文案")), 二级])
 	窗.queue_free()
