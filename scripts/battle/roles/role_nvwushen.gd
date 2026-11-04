@@ -157,8 +157,8 @@ func _jun_shen_wen_xing_shi() -> int:
 ## 两项始终下发；没有星石时第二项 enabled=false，由界面置灰。
 func _jun_shen_wei_guang_choices() -> Array:
 	return [
-		{"value": 1, "label": 提示(JUN_SHEN_WEI_GUANG, 1)},
-		{"value": 2, "label": 提示(JUN_SHEN_WEI_GUANG, 2),
+		{"value": 1, "label": GConst.按钮文本(JUN_SHEN_WEI_GUANG, 0)},
+		{"value": 2, "label": GConst.按钮文本(JUN_SHEN_WEI_GUANG, 1),
 			"enabled": engine.team_gem[player.color] + engine.team_crystal[player.color] > 0},
 	]
 

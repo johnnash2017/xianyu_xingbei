@@ -325,7 +325,7 @@ func p_lose_morale(ctx: Dictionary) -> int:
 		# 第一步：不抵挡 / 抵挡 1..上限 点（上限 = min(本次损失, 手上星石总数)）
 		# 提示里带上本次要损失多少士气（技能表提示写 {损失}，这里用 额外 填进去）
 		var 上限: int = mini(amount, player.get_energy())
-		var options: Array = [{"value": 0, "label": 提示原文(SHEN_ZHI_BI_HU, 1)}]
+		var options: Array = [{"value": 0, "label": GConst.按钮原文(SHEN_ZHI_BI_HU, 0)}]
 		for x: int in range(1, 上限 + 1):
 			options.append({"value": x, "label": 提示原文(SHEN_ZHI_BI_HU, 2,
 				{"n": x, "花费": _bi_hu_花费文案(x)})})

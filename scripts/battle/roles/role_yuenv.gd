@@ -145,9 +145,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			# 手牌+盖牌同一步选：普通分支只要 1 张同系【暗月】；法术牌分支要
 			# 1 张同系法术【暗月】+ 1 张手牌一起交上来，不再另开一次弃牌询问。
 			询问(player.id, MEI_DU_SHA, 1, 0, GConst.CardSource.HandOrCover, [
-				{"value": 1, "label": GConst.提示原文(MEI_DU_SHA, 1),
+				{"value": 1, "label": GConst.按钮原文(MEI_DU_SHA, 0),
 					"enabled": true, "need_card": 1},
-				{"value": 2, "label": GConst.提示原文(MEI_DU_SHA, 2),
+				{"value": 2, "label": GConst.按钮原文(MEI_DU_SHA, 1),
 					"enabled": not 合法法术暗月.is_empty() and not 敌人.is_empty() and not player.hand_cards.is_empty(),
 					"need_card": 2, "need_target": 1, "targets": 敌人},
 			], 1, "", 可选牌, true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1)
@@ -251,9 +251,9 @@ func p_turn_end(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 两个选项永远都摆出来：没有对应资源的置灰；两个都点不动时上面已经提前返回
 		询问(player.id, YUE_ZHI_LUN_HUI, 0, 0, GConst.CardSource.Cover, [
-			{"value": 1, "label": GConst.提示原文(YUE_ZHI_LUN_HUI, 1),
+			{"value": 1, "label": GConst.按钮原文(YUE_ZHI_LUN_HUI, 0),
 				"need_card": 1, "need_target": 1, "enabled": 有暗月},
-			{"value": 2, "label": GConst.提示原文(YUE_ZHI_LUN_HUI, 2),
+			{"value": 2, "label": GConst.按钮原文(YUE_ZHI_LUN_HUI, 1),
 				"enabled": 有治疗},
 		])
 		return WAIT

@@ -54,9 +54,9 @@ func available_skills() -> Array:
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_MING_JIE_JIE, "need_card": 0, "need_target": 1,
 		"targets": 队友, "card_rule": "same_fate_pattern",
 		"arg_choices": [
-			{"text": 提示原文(SHENG_MING_JIE_JIE, 0), "args": [1],
+			{"text": GConst.按钮原文(SHENG_MING_JIE_JIE, 0), "args": [1],
 				"enabled": player.get_energy() >= 1 and not 队友.is_empty()},
-			{"text": 提示原文(SHENG_MING_JIE_JIE, 1), "args": [2], "need_card": 2,
+			{"text": GConst.按钮原文(SHENG_MING_JIE_JIE, 1), "args": [2], "need_card": 2,
 				"enabled": player.tap and player.get_energy() >= 1 and _has_same_fate_pattern_pair()},
 		],
 		"enabled": player.get_energy() >= 1 and not 队友.is_empty()})

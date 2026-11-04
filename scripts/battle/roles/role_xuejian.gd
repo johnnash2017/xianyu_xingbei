@@ -44,10 +44,10 @@ func available_skills() -> Array:
 	out.append({"type": GConst.ActionType.SpecialSkill, "id": SAN_HUA_LUN_WU,
 		"need_card": 0, "need_target": 0,
 		"arg_choices": [
-			{"text": 提示原文(SAN_HUA_LUN_WU, 0),
+			{"text": GConst.按钮原文(SAN_HUA_LUN_WU, 0),
 				"说明": 提示原文(SAN_HUA_LUN_WU, 1),
 				"args": [1], "enabled": player.crystal > 0 or player.gem > 0},
-			{"text": 提示原文(SAN_HUA_LUN_WU, 2),
+			{"text": GConst.按钮原文(SAN_HUA_LUN_WU, 1),
 				"说明": 提示原文(SAN_HUA_LUN_WU, 3),
 				"args": [2], "need_card": 需弃, "enabled": player.gem > 0},
 		],

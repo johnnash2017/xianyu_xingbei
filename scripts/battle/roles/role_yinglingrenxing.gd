@@ -284,7 +284,7 @@ func _nu_huo_xuan(ctx: Dictionary) -> int:
 		var 选项: Array = [
 			{"value": CHOICE_NU_HUO_YA_ZHI, "label": GConst.skill_desc_name(NU_HUO_YA_ZHI),
 				"skill_id": NU_HUO_YA_ZHI, "need_card": 0, "enabled": _zhan_wen() >= 1},
-			{"value": CHOICE_MO_WEN_RONG_HE, "label": 提示原文(MO_WEN_RONG_HE, 1),
+			{"value": CHOICE_MO_WEN_RONG_HE, "label": GConst.按钮原文(MO_WEN_RONG_HE, 0),
 				"skill_id": MO_WEN_RONG_HE, "need_card": 0, "enabled": 魔纹可用},
 		]
 		var 伤害目标: Array = [dst_id] if dst_id >= 0 else []
@@ -319,11 +319,11 @@ func _nu_huo_mo_wen_xuan(ctx: Dictionary) -> int:
 			and (_wen_max() - _zhan_wen() - 1) >= 2
 	if not engine.has_reply():
 		var 选项: Array = [
-			{"value": CHOICE_MO_WEN_RONG_HE, "label": 提示原文(MO_WEN_RONG_HE, 2),
+			{"value": CHOICE_MO_WEN_RONG_HE, "label": GConst.按钮原文(MO_WEN_RONG_HE, 1),
 				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹基础可用},
-			{"value": CHOICE_MO_WEN_RONG_HE + 1, "label": 提示原文(MO_WEN_RONG_HE, 3),
+			{"value": CHOICE_MO_WEN_RONG_HE + 1, "label": GConst.按钮原文(MO_WEN_RONG_HE, 2),
 				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹额外1可用},
-			{"value": CHOICE_MO_WEN_RONG_HE + 2, "label": 提示原文(MO_WEN_RONG_HE, 4),
+			{"value": CHOICE_MO_WEN_RONG_HE + 2, "label": GConst.按钮原文(MO_WEN_RONG_HE, 3),
 				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹额外2可用},
 		]
 		var 伤害目标: Array = [dst_id] if dst_id >= 0 else []

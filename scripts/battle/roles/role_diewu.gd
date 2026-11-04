@@ -38,8 +38,8 @@ func available_skills() -> Array:
 	# 舞动：args[0]=1 摸 1 张；否则弃 1 张（弃牌才需选 1 张手牌）。
 	# 手牌为空时「弃 1 张」也照摆出来，置灰点不动。
 	var 舞动选项: Array = [
-		{"text": 提示(WU_DONG, 0), "args": [1]},
-		{"text": 提示(WU_DONG, 1), "args": [0], "need_card": 1,
+		{"text": GConst.按钮文本(WU_DONG, 0), "args": [1]},
+		{"text": GConst.按钮文本(WU_DONG, 1), "args": [0], "need_card": 1,
 			"enabled": not player.hand_cards.is_empty()},
 	]
 	out.append({"type": GConst.ActionType.MagicSkill, "id": WU_DONG, "need_card": 0, "need_target": 0,
@@ -62,12 +62,12 @@ func available_skills() -> Array:
 func _dao_ni_choices() -> Array:
 	var 有蛹: bool = int(player.tokens[0]["num"]) >= 1
 	var out: Array = [
-		{"text": 提示(DAO_NI_ZHI_DIE, 0), "args": [1], "need_card": 2, "need_target": 1},
-		{"text": 提示(DAO_NI_ZHI_DIE, 1), "args": [2],
+		{"text": GConst.按钮文本(DAO_NI_ZHI_DIE, 0), "args": [1], "need_card": 2, "need_target": 1},
+		{"text": GConst.按钮文本(DAO_NI_ZHI_DIE, 1), "args": [2],
 			# 一步选 4 张：2 张手牌 + 盖牌区里的 2 张【茧】，所以来源是「手牌+盖牌」、其中 2 张必须是盖牌
 			"need_card": 4, "card_source": GConst.CardSource.HandOrCover, "cover_need": 2,
 			"enabled": 有蛹 and player.cover_cards.size() >= 2},
-		{"text": 提示(DAO_NI_ZHI_DIE, 2), "args": [0], "need_card": 2, "enabled": 有蛹},
+		{"text": GConst.按钮文本(DAO_NI_ZHI_DIE, 2), "args": [0], "need_card": 2, "enabled": 有蛹},
 	]
 	return out
 

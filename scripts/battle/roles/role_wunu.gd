@@ -40,9 +40,9 @@ func available_skills() -> Array:
 	# 故用 arg_choices 让玩家在选好牌与目标后选定伤害点数
 	out.append({"type": GConst.ActionType.MagicSkill, "id": XUE_ZHI_BEI_MING, "need_card": 1, "need_target": 1,
 		"cards": 悲鸣牌, "arg_choices": [
-			{"text": 提示(XUE_ZHI_BEI_MING, 0), "args": [1], "need_card": 1, "need_target": 1},
-			{"text": 提示(XUE_ZHI_BEI_MING, 1), "args": [2], "need_card": 1, "need_target": 1},
-			{"text": 提示(XUE_ZHI_BEI_MING, 2), "args": [3], "need_card": 1, "need_target": 1},
+			{"text": GConst.按钮文本(XUE_ZHI_BEI_MING, 0), "args": [1], "need_card": 1, "need_target": 1},
+			{"text": GConst.按钮文本(XUE_ZHI_BEI_MING, 1), "args": [2], "need_card": 1, "need_target": 1},
+			{"text": GConst.按钮文本(XUE_ZHI_BEI_MING, 2), "args": [3], "need_card": 1, "need_target": 1},
 		],
 		"enabled": player.tap and not 悲鸣牌.is_empty()})
 	# 血之诅咒：耗 1 宝石，对目标 2 点法术伤害，并弃 3 张牌（手牌不足就全弃；手牌为空时不用弃）
@@ -54,8 +54,8 @@ func available_skills() -> Array:
 	# 【血之哀伤】为「启动」：自己场上有【同生共死】时可发动（二选一：转移 / 移除）
 	out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG, "need_card": 0, "need_target": 1,
 		"arg_choices": [
-			{"text": 提示(XUE_ZHI_AI_SHANG, 0), "args": [1], "need_card": 0, "need_target": 1},
-			{"text": 提示(XUE_ZHI_AI_SHANG, 1), "args": [2], "need_card": 0, "need_target": 0},
+			{"text": GConst.按钮文本(XUE_ZHI_AI_SHANG, 0), "args": [1], "need_card": 0, "need_target": 1},
+			{"text": GConst.按钮文本(XUE_ZHI_AI_SHANG, 1), "args": [2], "need_card": 0, "need_target": 0},
 		],
 		"enabled": tong_sheng_id != -1})
 	return out

@@ -247,8 +247,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		# 两个方向各做成一个选项（value 0=黄→蓝、1=蓝→黄），只列当前真有对应灵魂的项；
 		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消，0 才能正常当选项值）
 		var 选项: Array = [
-			{"value": 0, "label": 提示(LING_HUN_ZHUAN_HUAN, 1), "enabled": _huang() > 0},
-			{"value": 1, "label": 提示(LING_HUN_ZHUAN_HUAN, 2), "enabled": _lan() > 0},
+			{"value": 0, "label": GConst.按钮文本(LING_HUN_ZHUAN_HUAN, 0), "enabled": _huang() > 0},
+			{"value": 1, "label": GConst.按钮文本(LING_HUN_ZHUAN_HUAN, 1), "enabled": _lan() > 0},
 		]
 		询问(player.id, LING_HUN_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand, 选项)
 		return WAIT

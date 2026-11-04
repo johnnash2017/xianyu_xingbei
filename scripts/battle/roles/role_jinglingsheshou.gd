@@ -304,7 +304,7 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 			var 选项: Array = [{"value": 1, "label": "你摸 1 张、弃 1 张【强制】"}]
 			# 【宠物强化】没有能量时也摆出来，但置灰点不动；不要整项藏掉
 			选项.append({"value": 2, "skill_id": CHONG_WU_QIANG_HUA,
-				"label": 提示原文(CHONG_WU_QIANG_HUA, 0),
+				"label": GConst.按钮原文(CHONG_WU_QIANG_HUA, 0),
 				"enabled": player.get_energy() >= 1})
 			询问(player.id, DONG_WU_HUO_BAN, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true, 1)
 			return WAIT

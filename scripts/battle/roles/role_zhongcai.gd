@@ -38,8 +38,8 @@ func available_skills() -> Array:
 		"enabled": t > 0})
 	out.append({"type": GConst.ActionType.MagicSkill, "id": PAN_JUE_TIAN_PING, "need_card": 0, "need_target": 0,
 		"arg_choices": [
-			{"text": 提示(PAN_JUE_TIAN_PING, 0), "args": [0]},
-			{"text": 提示(PAN_JUE_TIAN_PING, 1), "args": [1]},
+			{"text": GConst.按钮文本(PAN_JUE_TIAN_PING, 0), "args": [0]},
+			{"text": GConst.按钮文本(PAN_JUE_TIAN_PING, 1), "args": [1]},
 		],
 		"enabled": t < _shen_pan_max() and player.get_energy() > 0})
 	# 启动技能：按形态互斥（每回合只能发动一个，由引擎统一下发/校验）

@@ -353,8 +353,8 @@ func p_magic_skill(action: Dictionary) -> int:
 	if _liu_xing_step == 0:
 		if _liu_xing_any_combo():
 			询问(player.id, AN_YING_LIU_XING, 0, 0, GConst.CardSource.Hand, [
-				{"value": 0, "label": 提示原文(AN_YING_LIU_XING, 2)},
-				{"value": 1, "label": 提示原文(AN_YING_LIU_XING, 3)},
+				{"value": 0, "label": GConst.按钮原文(AN_YING_LIU_XING, 0)},
+				{"value": 1, "label": GConst.按钮原文(AN_YING_LIU_XING, 1)},
 			], 0, "", [], true, 0)
 			_liu_xing_step = 1
 			return WAIT
@@ -404,9 +404,9 @@ func _liu_xing_组合选项() -> Array:
 	var 宝石: int = engine.team_gem[player.color]
 	var 水晶: int = engine.team_crystal[player.color]
 	return [
-		{"value": 1, "label": 提示原文(AN_YING_LIU_XING, 4), "enabled": 水晶 >= 2},
-		{"value": 2, "label": 提示原文(AN_YING_LIU_XING, 5), "enabled": 宝石 >= 1 and 水晶 >= 1},
-		{"value": 3, "label": 提示原文(AN_YING_LIU_XING, 6), "enabled": 宝石 >= 2},
+		{"value": 1, "label": GConst.按钮原文(AN_YING_LIU_XING, 2), "enabled": 水晶 >= 2},
+		{"value": 2, "label": GConst.按钮原文(AN_YING_LIU_XING, 3), "enabled": 宝石 >= 1 and 水晶 >= 1},
+		{"value": 3, "label": GConst.按钮原文(AN_YING_LIU_XING, 4), "enabled": 宝石 >= 2},
 	]
 
 

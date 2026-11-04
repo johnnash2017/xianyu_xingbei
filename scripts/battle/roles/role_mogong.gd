@@ -600,8 +600,8 @@ func _chong_neng(action: Dictionary) -> int:
 ## 文案取「提示」列第 2、3 条（第 1 条是「发动【魔眼】：…」的指令文案，不是选项文案）
 func _mo_yan_choices() -> Array:
 	return [
-		{"text": 提示(MO_YAN, 1), "args": [0]},
-		{"text": 提示(MO_YAN, 2), "args": [1], "need_target": 1, "targets": _all_player_ids()},
+		{"text": GConst.按钮文本(MO_YAN, 0), "args": [0]},
+		{"text": GConst.按钮文本(MO_YAN, 1), "args": [1], "need_target": 1, "targets": _all_player_ids()},
 	]
 
 

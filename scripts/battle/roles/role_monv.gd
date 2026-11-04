@@ -42,9 +42,9 @@ func available_skills() -> Array:
 	# 启动：进入【烈焰形态】并摸 0~2 张牌（摸牌数由 arg_choices 选择）；条件不满足时按钮仍摆出、置灰
 	out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_NV_ZHI_NU, "need_card": 0, "need_target": 0,
 		"arg_choices": [
-			{"text": 提示(MO_NV_ZHI_NU, 0), "args": [0]},
-			{"text": 提示(MO_NV_ZHI_NU, 1), "args": [1]},
-			{"text": 提示(MO_NV_ZHI_NU, 2), "args": [2]},
+			{"text": GConst.按钮文本(MO_NV_ZHI_NU, 0), "args": [0]},
+			{"text": GConst.按钮文本(MO_NV_ZHI_NU, 1), "args": [1]},
+			{"text": GConst.按钮文本(MO_NV_ZHI_NU, 2), "args": [2]},
 		], "enabled": player.hand_cards.size() <= 3})
 	return out
 

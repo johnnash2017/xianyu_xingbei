@@ -171,9 +171,9 @@ func _qi_zha(action: Dictionary, virtual_card: int) -> int:
 ## 两种用法始终都摆出来；当前做不了的项标 enabled=false，由界面置灰，而不是直接消失。
 func _tou_tian_options() -> Array:
 	return [
-		{"text": 提示原文(TOU_TIAN_HUAN_RI, 1), "args": [TOU_TIAN_TRANSFER],
+		{"text": GConst.按钮原文(TOU_TIAN_HUAN_RI, 0), "args": [TOU_TIAN_TRANSFER],
 			"enabled": engine.team_gem[1 - player.color] >= 1},
-		{"text": 提示原文(TOU_TIAN_HUAN_RI, 2), "args": [TOU_TIAN_CONVERT],
+		{"text": GConst.按钮原文(TOU_TIAN_HUAN_RI, 1), "args": [TOU_TIAN_CONVERT],
 			"enabled": engine.team_crystal[player.color] >= 1},
 	]
 
