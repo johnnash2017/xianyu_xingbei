@@ -316,7 +316,7 @@ func p_after_magic(ctx: Dictionary) -> int:
 	var 技能号: int = int(ctx.get("action_id", 0))
 	if 技能号 == 0:
 		# 普通卡牌施法路径只带 card_id：按牌上的独有技还原
-		技能号 = 牌上法术(int(ctx.get("card_id", 0)))
+		技能号 = 牌上法术(int(ctx.get("card_id", -1)))
 	if 技能号 == 0 or 技能号 != _待结算技能:
 		return BattleRole.SUCCESS
 	if 技能号 == 冰冻:

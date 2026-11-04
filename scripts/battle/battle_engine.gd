@@ -116,7 +116,7 @@ var 首选额外行动: int:
 var 首选额外行动卡: int:
 	get:
 		var cur: BattlePlayer = p(current_id)
-		return cur.快捷额外行动卡 if cur != null else 0
+		return cur.快捷额外行动卡 if cur != null else -1
 	set(value):
 		var cur: BattlePlayer = p(current_id)
 		if cur != null:
@@ -124,7 +124,7 @@ var 首选额外行动卡: int:
 var 首选额外行动目标: int:
 	get:
 		var cur: BattlePlayer = p(current_id)
-		return cur.快捷额外行动目标 if cur != null else 0
+		return cur.快捷额外行动目标 if cur != null else -1
 	set(value):
 		var cur: BattlePlayer = p(current_id)
 		if cur != null:
@@ -673,7 +673,7 @@ func _初始化噬神者刃() -> void:
 ## 由【御刃】【共振】先用 刃从移除牌堆取出() 取出，再加回手牌（被【渗蚀】移除后也是同一条路）。
 func 确保噬神者刃(pid: int) -> void:
 	var p0: BattlePlayer = players.get(pid)
-	if p0 == null or p0.role_id != GConst.角色_噬神者 or p0.魔刃实例 > 0:
+	if p0 == null or p0.role_id != GConst.角色_噬神者 or p0.魔刃实例 >= 0:
 		return
 	_刃序号 += 1
 	var seq: int = 100 + _刃序号
@@ -712,7 +712,7 @@ func 刃在场(pid: int, 面: int) -> bool:
 	if p0 == null:
 		return false
 	var inst: int = p0.刃实例(面)
-	if inst <= 0:
+	if inst < 0:
 		return false
 	return 牌在场(inst)
 
@@ -721,7 +721,7 @@ func 刃在场(pid: int, 面: int) -> bool:
 ## 只负责加牌与清攻击牌缓存；广播 / 播报由调用方按技能需要决定。
 func 刃加入手牌(pid: int, inst: int) -> bool:
 	var p0: BattlePlayer = players.get(pid)
-	if p0 == null or inst <= 0:
+	if p0 == null or inst < 0:
 		return false
 	_规则攻击牌缓存.clear()
 	p0.add_hand_cards([inst])
@@ -1569,7 +1569,7 @@ func _确认基础效果额外行动(pid: int, cause: int) -> void:
 		cur.额外行动排序()
 	# 移除对应的基础效果牌并弃置
 	for be: Dictionary in cur.basic_effects:
-		var 牌id: int = int(be.get("card", 0))
+		var 牌id: int = int(be.get("card", -1))
 		var 牌: GCard = Data.get_card(牌id)
 		if 牌 != null and 牌.has_skill_id(cause):
 			remove_basic_effect(pid, 牌id, cause, int(be.get("src", pid)))
@@ -1586,7 +1586,7 @@ func _支付基础效果额外行动(pid: int, cause: int) -> void:
 	if cur == null or 基础效果额外行动已确认(cause):
 		return
 	for be: Dictionary in cur.basic_effects:
-		var 牌id: int = int(be.get("card", 0))
+		var 牌id: int = int(be.get("card", -1))
 		var 牌: GCard = Data.get_card(牌id)
 		if 牌 != null and 牌.has_skill_id(cause):
 			remove_basic_effect(pid, 牌id, cause, int(be.get("src", pid)))
@@ -2175,7 +2175,7 @@ func _卡牌消息折面(data: Dictionary) -> Dictionary:
 	if not ids.is_empty():
 		出["card_ids"] = _牌面表(ids)
 	if 出.has("as_card_id"):
-		出["as_card_id"] = GConst.牌号(int(出.get("as_card_id", 0)))
+		出["as_card_id"] = GConst.牌号(int(出.get("as_card_id", -1)))
 	return 出
 
 
@@ -2482,15 +2482,16 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 只丢这一项、其余 value 原样保留，调用方按 args[0] 仍能对上自己的列表。
 	var 在场选项: Array = []
 	for o0: Dictionary in 用选项:
-		var 选项牌: int = int(o0.get("card_id", 0))
-		if 选项牌 > 0 and not 牌在场(选项牌):
+		# -1＝这一项不对应牌；0 是合法牌号（卡表#0 圣盾），只有负数才代表「没有牌」
+		var 选项牌: int = int(o0.get("card_id", -1))
+		if 选项牌 >= 0 and not 牌在场(选项牌):
 			continue
 		在场选项.append(o0)
 	用选项 = 在场选项
 	# 牌白名单同理：被移除的实例不能留在可点列表里（牌面值不受影响）
 	var 在场牌表: Array = []
 	for c0: Variant in cards:
-		if int(c0) > 0 and not 牌在场(int(c0)):
+		if int(c0) >= 0 and not 牌在场(int(c0)):
 			continue
 		在场牌表.append(c0)
 	cards = 在场牌表
@@ -3057,12 +3058,13 @@ func 展示牌库顶(展示者id: int, cards: Array, 持久: bool = false) -> vo
 
 ## 从展示区选走一张牌（10803 剑守誓言）：给全场播一条 Pick，客户端把这张牌从展示位
 ## 飞向选牌者头像，并收起其余仍摊着的展示牌。牌面已经在展示区公开过，is_real 固定为 true。
-func 选走展示牌(玩家id: int, 牌号: int) -> void:
-	if 玩家id < 0 or 牌号 <= 0:
+## 实例号 0 是合法牌（卡表#0 圣盾），只有负数才代表「没有这张牌」。
+func 选走展示牌(玩家id: int, 实例号: int) -> void:
+	if 玩家id < 0 or 实例号 < 0:
 		return
 	broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Pick, "src_id": 玩家id, "dst_id": 玩家id,
-		"card_ids": [牌号], "is_real": true,
+		"card_ids": [实例号], "is_real": true,
 	})
 
 
@@ -3529,7 +3531,7 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 ## 系别 / 命格规则时，按规则现算（对照卡库，不看当前手牌快照）。
 ## 为什么不能拿手牌快照：手牌会变。技能授予时算一次 id 表，等玩家再摸到同类牌就出不了了
 ## （修罗连斩 / 风怒追击 / 二重剑影 的「该系攻击牌」、技之剑意的「技类攻击牌」都踩过）。
-func 额外行动出牌白名单(行动: Dictionary, pid: int = 0) -> Array:
+func 额外行动出牌白名单(行动: Dictionary, pid: int = -1) -> Array:
 	if 行动.is_empty():
 		return []
 	var 表: Array = 行动.get("cards", [])
@@ -3545,7 +3547,7 @@ func 额外行动出牌白名单(行动: Dictionary, pid: int = 0) -> Array:
 ## 卡库里符合「该系 / 该命格」的全部攻击牌 id（按规则缓存一次）：
 ## 界面据此点亮可出的牌，服务端据此校验。一张都没有时给「全禁」哨兵，
 ## 避免空表被当成「不限制」。系别与命格都为 0 时按「不限」处理（调用方已挡掉）。
-func _规则攻击牌(系: int, 命格: int, pid: int = 0) -> Array:
+func _规则攻击牌(系: int, 命格: int, pid: int = -1) -> Array:
 	# 普通牌按牌面缓存；魔刃/异刃要按「该玩家手里的实例当前系别」临时补进来，
 	# 不能把 1005/1006 写进全局缓存（多个噬神者各切各的系）。
 	var 键: String = "%d_%d" % [系, 命格]
@@ -3569,7 +3571,8 @@ func _规则攻击牌(系: int, 命格: int, pid: int = 0) -> Array:
 			基础.append(c.id)
 		_规则攻击牌缓存[键] = 基础
 	var 表: Array = 基础.duplicate()
-	if pid > 0:
+	# 玩家号 0 是合法座位（不是「没有玩家」），默认值用 -1
+	if pid >= 0:
 		var p0: BattlePlayer = players.get(pid)
 		if p0 != null:
 			for 面: int in [GConst.噬神者_魔刃卡, GConst.噬神者_异刃卡]:
@@ -4398,8 +4401,8 @@ class SAdditionalAction:
 			if 期望下标 >= 0:
 				return _进入(e, cur, 期望下标, int(cur.additional_actions[期望下标]["cause"]))
 			# 选中的额外行动已经不在队列：清掉预选牌和目标，避免错误地打第一份 direct 行动
-			e.首选额外行动卡 = 0
-			e.首选额外行动目标 = 0
+			e.首选额外行动卡 = -1
+			e.首选额外行动目标 = -1
 		# 声明了 direct 的额外行动（如圣女【圣疗】）不用先问：直接进入它的额外行动阶段。
 		# 该阶段允许「放弃行动」，想跳过在那里放弃即可，省掉「再点一次技能按钮」这一步。
 		if not e.has_reply():
@@ -4490,11 +4493,13 @@ class SAdditionalAction:
 		阶段.额外数据 = 数据
 		e.当前额外行动数据 = 数据
 		# 响应里已经点好手牌 + 敌方：进入该额外行动后不再问，直接发起这次攻击
-		if e.首选额外行动卡 > 0 and e.首选额外行动目标 > 0:
+		# 响应里点好手牌 + 敌方：进入该额外行动后不再问，直接发起这次攻击。
+		# 牌 / 目标都可能就是 0（卡表#0 圣盾、0 号座位），只有负数才代表「没选」
+		if e.首选额外行动卡 >= 0 and e.首选额外行动目标 >= 0:
 			var 卡: int = e.首选额外行动卡
 			var 目标: int = e.首选额外行动目标
-			e.首选额外行动卡 = 0
-			e.首选额外行动目标 = 0
+			e.首选额外行动卡 = -1
+			e.首选额外行动目标 = -1
 			e.push(S自动攻击.new(cause, 卡, 目标, 数据))
 			e.push(SHook.new("p_additional_action", {"player": cur.id, "cause": cause}, []))
 			return BattleEngine.CONTINUE
@@ -4508,12 +4513,12 @@ class SAttackCard:
 	var src: int
 	var dst: int
 	var card: int
-	var instance: int
+	var instance: int = -1
 	var harm: Dictionary
 	var ctx_built: bool = false
 	var ctx: Dictionary = {}
 
-	func _init(s: int, d: int, c: int, h: Dictionary, inst: int = 0) -> void:
+	func _init(s: int, d: int, c: int, h: Dictionary, inst: int = -1) -> void:
 		src = s
 		dst = d
 		card = c
@@ -4552,7 +4557,7 @@ class SAttackDiscard:
 
 	func handle(e: BattleEngine) -> int:
 		e.push(SAttacked.new(owner))
-		if owner.instance > 0:
+		if owner.instance >= 0:
 			e.to_discard([owner.instance], {
 				"owner": owner.src, "source": "hand", "cause": GConst.CAUSE_ATTACK,
 			})
@@ -4599,7 +4604,7 @@ class SAttackedAsk:
 		# 普通牌/虚拟「视为」牌按牌面；只有魔刃/异刃这种多系别实例才按实例当前系别
 		var 攻击牌判定: int = owner.card
 		if (owner.card == GConst.噬神者_魔刃卡 or owner.card == GConst.噬神者_异刃卡) \
-				and owner.instance > 0:
+				and owner.instance >= 0:
 			攻击牌判定 = owner.instance
 		var 攻击牌卡: GCard = Data.get_card(攻击牌判定)
 		var 应战询问: Array = [hit_rate, 攻击牌判定, defender.id, owner.src,
@@ -4712,7 +4717,7 @@ class SReattackGo:
 		if defender.role != null:
 			defender.role.call_hook("p_attack_card", 出牌)
 		var 归属者: int = e.刃归属者(原牌)
-		if 归属者 > 0 and 归属者 != defender.id:
+		if 归属者 >= 0 and 归属者 != defender.id:
 			var 归属玩家: BattlePlayer = e.p(归属者)
 			if 归属玩家 != null and 归属玩家.role != null:
 				归属玩家.role.call_hook("p_attack_card", 出牌)
@@ -4723,7 +4728,7 @@ class SReattackGo:
 		e.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Use, "src_id": defender.id, "dst_id": 目标,
 			"card_ids": [原牌], "is_real": true,
-			"as_card_id": 表现用牌 if 表现用牌 != 原牌 else 0,
+			"as_card_id": 表现用牌 if 表现用牌 != 原牌 else -1,
 			"card_elements": [应战卡数据.element_enum() if 应战卡数据 != null else 0],
 		})
 		# 角色可把这次应战「视为格挡」（如阴阳师式神形态下用光系牌应战）：本次攻击落空、不反击
@@ -4744,7 +4749,7 @@ class SReattackGo:
 			e.push(SAttackCard.new(defender.id, 目标, 用牌, new_harm, 原牌))
 		else:
 			e.to_discard([原牌], {"owner": defender.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
-			e.push(SAttackCard.new(defender.id, 目标, 用牌, new_harm, 0))
+			e.push(SAttackCard.new(defender.id, 目标, 用牌, new_harm, -1))
 		e.push(STimeline2Miss.new(harm))
 		# 「展示手牌」钩子最后压（＝最先跑）：上面那条出牌广播已经先发出去（客户端摊牌 + 出手特效），
 		# 之后才轮到技能询问（如圣女冰霜祷言）—— 与非应战场合（主动打出）的次序一致
@@ -4860,9 +4865,9 @@ class SMissileAsk:
 				# 魔导/特殊魔导也可以拿地系、火系牌传递：这次出牌同样视为【魔弹】
 				var 视为魔弹号: int = e.missile_as_card(cid)
 				# 地/火牌继续传递也是发动【魔弹融合】：补发技能通知，客户端才知道该飘技能名
-				# （真正的【魔弹】牌视为魔弹号 = 0，不补；它本来就不靠魔弹融合）
+				# （真正的【魔弹】牌视为魔弹号 = -1，不补；它本来就不靠魔弹融合）
 				# 技能号按传递者自己的角色取：魔导师 803、节日魔导 7602
-				if 视为魔弹号 != 0:
+				if 视为魔弹号 >= 0:
 					var 融合技能号: int = GConst.技能_魔弹融合
 					if me != null and me.role != null:
 						融合技能号 = me.role.missile_fusion_skill()
@@ -5757,7 +5762,7 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# 刃的归属者可能不是当前攻击者（侵刻给出去的牌）；归属者仍要记本次刃，
 	# 这样渗蚀/侵刻/噬灭/殇灭按「你的刃」判断，而不是按谁在用
 	var 归属者: int = 刃归属者(提交号)
-	if 归属者 > 0 and 归属者 != cur.id:
+	if 归属者 >= 0 and 归属者 != cur.id:
 		var 归属玩家: BattlePlayer = players.get(归属者)
 		if 归属玩家 != null and 归属玩家.role != null:
 			归属玩家.role.call_hook("p_attack_card", 出牌)
@@ -5780,14 +5785,14 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		push(SAttackCard.new(cur.id, dst_id, 用牌, harm, 提交号))
 		take_from_hand(cur.id, [提交号], true)
 	else:
-		push(SAttackCard.new(cur.id, dst_id, 用牌, harm, 0))
+		push(SAttackCard.new(cur.id, dst_id, 用牌, harm, -1))
 		take_from_hand(cur.id, [提交号], true)
 		to_discard([提交号], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
 	# 广播里面把「视为」的那张放 as_card_id（同应战那条）：客户端按它出声、出特效
 	# （如苍炎魔女【烈焰形态】下普通攻击视为火系【火焰斩】→ 播火斩特效与火系攻击音）；
 	# 摊牌与日志仍用真正打出的牌
 	broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id,
-		"card_ids": [cid], "is_real": true, "as_card_id": 表现面 if 表现面 != cid else 0,
+		"card_ids": [cid], "is_real": true, "as_card_id": 表现面 if 表现面 != cid else -1,
 		"card_elements": [提交实例卡.element_enum() if 提交实例卡 != null else 0]})
 	return CONTINUE
 
@@ -5975,14 +5980,15 @@ func _missile_block_by_basic(target_id: int) -> bool:
 	return true
 
 
-## 这次打出的牌在系统里该「视为」哪张牌用，返回视为的牌号；牌本身就是它时返回 0。
+## 这次打出的牌在系统里该「视为」哪张牌用，返回视为的牌号；-1＝它本身就是那张牌（不视为别的）。
 ## 目前只有【魔弹】有这种用法：地/火牌当【魔弹】打出去（【魔弹融合】发起、响应魔弹时拿地/火牌
 ## 继续传递）→ 返回【魔弹】牌号。出牌音效/特效、以及后续任何「这次是不是魔弹」的判断都按它走；
 ## 真正打出的那张地/火牌仍写在 card_ids 里（要展示、也确实进了弃牌堆）。
+## 注意：0 是合法牌号（卡表#0 圣盾），「不视为别的牌」只能返回 -1。
 func missile_as_card(card_id: int) -> int:
 	var 牌: GCard = Data.get_card(card_id)
 	if 牌 != null and 牌.card_name_enum() == GConst.CardName.Missile:
-		return 0
+		return -1
 	return Data.card_id_by_name_enum(GConst.CardName.Missile)
 
 

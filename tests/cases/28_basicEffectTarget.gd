@@ -165,7 +165,7 @@ func _有基础效果移除日志(牌面: int, 触发: bool) -> bool:
 		if int(r["msg"]) != GConst.Msg.Gossip:
 			continue
 		var d: Dictionary = r["data"]
-		if int(d.get("card", 0)) == 牌面 and bool(d.get("triggered", false)) == 触发:
+		if int(d.get("card", -1)) == 牌面 and bool(d.get("triggered", false)) == 触发:
 			return true
 	return false
 

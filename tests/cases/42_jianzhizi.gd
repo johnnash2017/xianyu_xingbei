@@ -331,6 +331,8 @@ func 跑() -> void:
 	_测攻击结束二选一()
 	_测剑守誓言条件()
 	_测剑守誓言结算()
+	_测选走展示牌零号()
+	_测协议哨兵()
 	_测剑守誓言替换角色()
 	_测剑之子说明书()
 
@@ -939,6 +941,58 @@ func _测剑守誓言结算() -> void:
 	_应答([1])
 	检(角色.p_after_turn_end(上下文) == BattleRole.SUCCESS, "牌库不足时也应正常结算")
 	检(玩家.hand_cards.has(非魔牌表[0].id), "选中的牌应加入手牌")
+
+
+# ============================================================
+# 10803 用到的 选走展示牌()：实例号 0（卡表#0 圣盾）也必须发 Pick
+# 「0 是合法牌」—— 原来把 0 当「没有牌」，整批持久展示就不收起了
+# ============================================================
+func _测选走展示牌零号() -> void:
+	发送记录.clear()
+	引擎.选走展示牌(1, 0)
+	var 有Pick: bool = false
+	for r: Dictionary in 发送记录:
+		if int(r.get("msg", 0)) != GConst.Msg.Card:
+			continue
+		var 数据: Dictionary = r.get("data", {})
+		if int(数据.get("type", -1)) == GConst.CardMsgType.Pick \
+				and (数据.get("card_ids", []) as Array) == [0]:
+			有Pick = true
+	检(有Pick, "选中 0 号牌也必须广播 Pick（否则持久展示区一直不收）：%s" % str(发送记录))
+	# 负数才是「没有这张牌」：-1 不应发任何消息
+	发送记录.clear()
+	引擎.选走展示牌(1, -1)
+	检(发送记录.is_empty(), "实例号 -1 不应广播 Pick：%s" % str(发送记录))
+
+
+# ============================================================
+# 协议哨兵：-1（没有牌 / 不视为别的牌）必须原样过线，0 是合法牌号
+# ============================================================
+func _测协议哨兵() -> void:
+	var 命令编码: PackedByteArray = ProtoCodec.encode_named("Command", {
+		"card_ids": [0, 6], "option_card_ids": [0, -1],
+	})
+	var 命令解码: Dictionary = ProtoCodec.decode_named("Command", 命令编码)
+	检((命令解码.get("card_ids", []) as Array) == [0, 6],
+		"card_ids 里的 0 号牌必须原样过线：%s" % str(命令解码.get("card_ids", [])))
+	检((命令解码.get("option_card_ids", []) as Array) == [0, -1],
+		"option_card_ids 的 0 与 -1 都必须原样过线（字段应为 i32）：%s"
+		% str(命令解码.get("option_card_ids", [])))
+	# 目标列表同理：0 号座位合法，「一个目标都没有」的哨兵是 -1
+	var 目标解码: Dictionary = ProtoCodec.decode_named("Command",
+		ProtoCodec.encode_named("Command", {"dst_ids": [0, -1]}))
+	检((目标解码.get("dst_ids", []) as Array) == [0, -1],
+		"dst_ids 的 0 号座位与 -1 哨兵都必须原样过线：%s" % str(目标解码.get("dst_ids", [])))
+
+	var 卡牌编码: PackedByteArray = ProtoCodec.encode(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Use, "card_ids": [0], "as_card_id": -1,
+	})
+	var 卡牌解码: Dictionary = ProtoCodec.decode(GConst.Msg.Card, 卡牌编码)
+	检((卡牌解码.get("card_ids", []) as Array) == [0],
+		"Card.card_ids 里的 0 号牌必须原样过线")
+	检(int(卡牌解码.get("as_card_id", 0)) == -1,
+		"as_card_id 的 -1（不视为别的牌）必须原样过线（字段应为 i32）：%s"
+		% str(卡牌解码.get("as_card_id", 0)))
 
 
 # ============================================================

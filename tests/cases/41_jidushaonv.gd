@@ -136,7 +136,7 @@ func _有视为魔弹(cid: int, 魔弹id: int) -> bool:
 		if int(r.get("msg", 0)) != GConst.Msg.Card:
 			continue
 		var 数据: Dictionary = r.get("data", {})
-		if int(数据.get("as_card_id", 0)) == 魔弹id \
+		if int(数据.get("as_card_id", -1)) == 魔弹id \
 				and (数据.get("card_ids", []) as Array).has(cid):
 			return true
 	return false
@@ -379,7 +379,7 @@ func 跑() -> void:
 	检(not _取询问(2, GConst.RespondType.Bullet).is_empty(), "没有下发魔弹传递询问")
 	检(_播报次数(10703) == 1, "10703 发动应播报一次，实际 %d 次" % _播报次数(10703))
 	var 视为魔弹: Dictionary = _找消息(GConst.Msg.Card,
-		func(数据: Dictionary) -> bool: return int(数据.get("as_card_id", 0)) == 魔弹牌.id and (数据.get("card_ids", []) as Array).has(地攻击.id))
+		func(数据: Dictionary) -> bool: return int(数据.get("as_card_id", -1)) == 魔弹牌.id and (数据.get("card_ids", []) as Array).has(地攻击.id))
 	检(not 视为魔弹.is_empty(), "地系牌当魔弹打出时应把 as_card_id 标成【魔弹】")
 	引擎.on_message(2, GConst.Msg.Respond, {
 		"respond_id": GConst.RespondType.Bullet, "src_id": 2,

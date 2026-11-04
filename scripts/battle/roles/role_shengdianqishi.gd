@@ -159,7 +159,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				notice_skill(SHEN_WEI, [int(ctx.get("dst", -1))])
 				ctx["hit_rate"] = GConst.HitRate.NoReattack
 				ctx["can_light"] = false
-				var 卡: GCard = Data.get_card(int(ctx.get("card_id", 0)))
+				var 卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 				var harm: Dictionary = ctx.get("harm", {})
 				if 卡 != null and 卡.fate_pattern_enum() == GConst.FatePattern.Holy and not harm.is_empty():
 					harm["point"] = int(harm.get("point", 0)) + 1

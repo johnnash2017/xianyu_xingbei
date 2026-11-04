@@ -708,7 +708,7 @@ func 跑() -> void:
 	if 剑舞状态 is BattleEngine.SAttackCard:
 		var 剑舞牌状态: BattleEngine.SAttackCard = 剑舞状态
 		检(int(剑舞牌状态.card) == 66, "3805 本次攻击应按风系虚牌 66 结算，实际 %d" % int(剑舞牌状态.card))
-		检(int(剑舞牌状态.harm.get("card_id", 0)) == 66, "3805 的 harm 应按 66 结算")
+		检(int(剑舞牌状态.harm.get("card_id", -1)) == 66, "3805 的 harm 应按 66 结算")
 		检(bool(剑舞牌状态.harm.get("virtual_no_fate", false)),
 			"3805 的虚牌攻击必须标 virtual_no_fate（不吃真实牌 / 66 卡面的命格）：%s"
 			% str(剑舞牌状态.harm))

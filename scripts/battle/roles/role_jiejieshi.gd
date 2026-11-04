@@ -184,7 +184,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var 系别: Array[int] = _结界系别()
 	if 系别.is_empty():
 		return SUCCESS
-	var 卡: GCard = Data.get_card(int(ctx.get("card_id", 0)))
+	var 卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if 卡 == null or not 卡.is_attack():
 		return SUCCESS
 	if not 系别.has(卡.element_enum()):
@@ -207,7 +207,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	var 系别: Array[int] = _结界系别()
 	if 系别.is_empty():
 		return SUCCESS
-	var 卡: GCard = Data.get_card(int(ctx.get("card_id", 0)))
+	var 卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if 卡 == null or not 卡.is_attack() or not 系别.has(卡.element_enum()):
 		return SUCCESS
 	if bool(ctx.get("荒神祭仪已结算", false)):

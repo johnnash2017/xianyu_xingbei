@@ -190,7 +190,7 @@ func p_zhou_fu_ask(ctx: Dictionary) -> int:
 				var dsts: Array = r.get("dst_ids", [])
 				if dsts.size() == 1:
 					var dst: int = int(dsts[0])
-					if dst > 0 and not _目标.has(dst):
+					if dst >= 0 and not _目标.has(dst):
 						_目标.append(dst)
 				_步 = 步.火璃结算 if _技能 == ZHOU_FU_HUO_LI else 步.冻天弃牌
 				continue

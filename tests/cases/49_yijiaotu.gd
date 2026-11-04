@@ -639,7 +639,8 @@ func _检审判残留状态() -> void:
 	_建引擎()
 	_发牌(玩家1, GConst.CardElement.Wind, 1)
 	角色._审判步 = 3
-	角色._审判弃牌 = [int(玩家1.hand_cards[0])]
+	var 残留弃牌: Array[int] = [int(玩家1.hand_cards[0])]
+	角色._审判弃牌 = 残留弃牌
 	角色.p_before_turn_begin({"player": 1})
 	检(int(角色.get("_审判步")) == 0 and (角色.get("_审判弃牌") as Array).is_empty(),
 		"新回合开始应清掉残留的审判流程状态")
@@ -659,7 +660,8 @@ func _检审判选项值对应() -> void:
 	玩家1.取出实例(玩家1.hand_cards, 乙)
 	引擎.deck.push_discard([甲, 乙])
 	角色._审判步 = 3
-	角色._审判弃牌 = [甲, 乙]
+	var 候选弃牌: Array[int] = [甲, 乙]
+	角色._审判弃牌 = 候选弃牌
 	引擎.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": 1}, []))
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502, "应先问选 1 张弃牌交给对手")

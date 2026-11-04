@@ -160,7 +160,7 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 					special_action_received.emit(int(data.get("id", -1)), int(data.get("special_action", 0)))
 				# 基础效果被移除：带牌面 / 触发标记，供战斗界面补盾牌音效
 				if data.has("card"):
-					basic_effect_removed.emit(int(data.get("id", -1)), int(data.get("card", 0)),
+					basic_effect_removed.emit(int(data.get("id", -1)), int(data.get("card", -1)),
 						bool(data.get("triggered", false)))
 				notice_received.emit(str(data.get("txt", "")), kind)
 		GConst.Msg.HeartBeat:

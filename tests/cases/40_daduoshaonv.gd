@@ -681,7 +681,7 @@ func _测试_10603() -> void:
 	检(_播报次数(10603) == 1, "10603 应播报一次")
 	if 魔弹牌 != null:
 		var 用牌广播: Dictionary = _找消息(GConst.Msg.Card, func(d: Dictionary) -> bool:
-			return int(d.get("as_card_id", 0)) == 魔弹牌.id and (d.get("card_ids", []) as Array).has(风1.id))
+			return int(d.get("as_card_id", -1)) == 魔弹牌.id and (d.get("card_ids", []) as Array).has(风1.id))
 		检(not 用牌广播.is_empty(), "10603 应以 as_card_id=【魔弹】广播用牌")
 	_回复(3, GConst.RespondType.Bullet, [GConst.Reattack.GiveUp])
 	检(玩家3.hand_cards.size() == BattleEngine.MISSILE_BASE_POINT,

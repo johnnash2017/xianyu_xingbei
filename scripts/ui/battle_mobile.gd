@@ -492,8 +492,9 @@ var _攒应战选应战: bool = false
 var _攒应战选择: int = 0
 ## 本次攻击牌 / 攻击者（从询问的 preview_base / preview_ids 带上来）
 var _攒应战攻击牌: int = -1
-## 最近一张公开打出的攻击牌（牌面）：侵刻询问时据此写「把【魔刃/异刃】给他」
-var _最近攻击牌: int = 0
+## 最近一张公开打出的攻击牌（牌面）：侵刻询问时据此写「把【魔刃/异刃】给他」。
+## -1＝还没打过；0 是合法牌号（卡表#0 圣盾），不能拿 0 当「没有」。
+var _最近攻击牌: int = -1
 var _攒应战攻击者: int = -1
 ## 本次攻击的伤害预览（只有「自己挨打」的 3306 才有；3301 替队友挡时 -1）
 var _攒应战伤害: int = -1
@@ -1635,11 +1636,11 @@ func _飞牌特效(牌号: int, 起: Vector2, 止: Vector2, 延迟: float, 音�
 	go.call("播放", 起, 止, true)
 
 
-## 这次出牌「视为」的那张牌（Card 消息的 as_card_id）：值为 0 或查不到时返回 null。
+## 这次出牌「视为」的那张牌（Card 消息的 as_card_id）：-1 或查不到时返回 null。
 ## 地/火牌当【魔弹】打出去时这里是【魔弹】——音效、特效按它走；摊牌与日志仍用 card_ids。
 func _视为牌(msg: Dictionary) -> GCard:
-	var 视为号: int = int(msg.get("as_card_id", 0))
-	if 视为号 <= 0:
+	var 视为号: int = int(msg.get("as_card_id", -1))
+	if 视为号 < 0:
 		return null
 	return Data.get_card(视为号)
 
@@ -1834,8 +1835,8 @@ func _卡牌播报文本(msg: Dictionary) -> String:
 func _是魔弹融合出牌(msg: Dictionary) -> bool:
 	if int(msg.get("type", 0)) != GConst.CardMsgType.Use:
 		return false
-	var 视为号: int = int(msg.get("as_card_id", 0))
-	if 视为号 <= 0:
+	var 视为号: int = int(msg.get("as_card_id", -1))
+	if 视为号 < 0:
 		return false
 	var 视为牌: GCard = Data.get_card(视为号)
 	if 视为牌 == null or 视为牌.card_name_enum() != GConst.CardName.Missile:

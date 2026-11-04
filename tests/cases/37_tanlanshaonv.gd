@@ -135,7 +135,7 @@ func _有视为魔弹(cid: int, 魔弹id: int) -> bool:
 		if int(r.get("msg", 0)) != GConst.Msg.Card:
 			continue
 		var 数据: Dictionary = r.get("data", {})
-		if int(数据.get("as_card_id", 0)) == 魔弹id \
+		if int(数据.get("as_card_id", -1)) == 魔弹id \
 				and (数据.get("card_ids", []) as Array).has(cid):
 			return true
 	return false
