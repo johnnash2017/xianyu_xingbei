@@ -7,6 +7,7 @@ extends 自检用例
 
 var 失败引用: Array[String] = []
 var 提示引用数: int = 0
+var 按钮引用数: int = 0
 var 文本引用数: int = 0
 
 func _init() -> void:
@@ -21,6 +22,7 @@ func 跑() -> void:
 			continue
 		var 局部常量: Dictionary = _解析常量表(全文)
 		_校验提示原文(全文, 局部常量, 全局常量)
+		_校验按钮原文(全文, 局部常量, 全局常量)
 		_校验文本(全文)
 	检(失败引用.is_empty(),
 		"文案引用不存在：\n%s" % "\n".join(失败引用))
@@ -45,14 +47,42 @@ func _校验提示原文(全文: String, 局部常量: Dictionary, 全局常量:
 			技能号 = int(全局常量.get(技能表达式.trim_prefix("GConst."), -1))
 		else:
 			技能号 = int(局部常量.get(技能表达式, -1))
+		提示引用数 += 1
 		if 技能号 < 0:
 			continue  # 动态 / 外部常量，交给运行时用例覆盖
-		提示引用数 += 1
 		var 列表: Array[String] = GConst.技能提示列表(技能号)
 		if 序号 < 0 or 序号 >= 列表.size():
 			失败引用.append("提示原文(%d, %d)：技能 %d 只有 %d 条提示［%s］" % [
 				技能号, 序号, 技能号, 列表.size(), 技能表达式])
 		# 空条目不报错：「提示」第 0 条留空是允许的（客户端会回退到技能说明）
+
+
+## 校验 按钮原文(...) 的技能表行与序号（表里那条不能是空串，否则按钮会变成空白）
+func _校验按钮原文(全文: String, 局部常量: Dictionary, 全局常量: Dictionary) -> void:
+	var re: RegEx = RegEx.new()
+	var 结果: int = re.compile("按钮原文\\s*\\(\\s*([^,()\\s]+)\\s*,\\s*([0-9]+)")
+	if 结果 != OK:
+		return
+	for m: RegExMatch in re.search_all(全文):
+		var 技能表达式: String = m.get_string(1)
+		var 序号: int = int(m.get_string(2))
+		var 技能号: int = -1
+		if 技能表达式.is_valid_int():
+			技能号 = int(技能表达式)
+		elif 技能表达式.begins_with("GConst."):
+			技能号 = int(全局常量.get(技能表达式.trim_prefix("GConst."), -1))
+		else:
+			技能号 = int(局部常量.get(技能表达式, -1))
+		按钮引用数 += 1
+		if 技能号 < 0:
+			continue  # 动态 / 外部常量，交给运行时用例覆盖
+		var 列表: Array[String] = GConst.技能按钮列表(技能号)
+		if 序号 < 0 or 序号 >= 列表.size():
+			失败引用.append("按钮原文(%d, %d)：技能 %d 只有 %d 条按钮文案［%s］" % [
+				技能号, 序号, 技能号, 列表.size(), 技能表达式])
+		elif 列表[序号].is_empty():
+			失败引用.append("按钮原文(%d, %d)：技能 %d 的按钮文案是空串" % [
+				技能号, 序号, 技能号])
 
 
 ## 校验 文本("id") 的文本表条目

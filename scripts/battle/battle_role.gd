@@ -410,6 +410,13 @@ func 提示原文(skill_id: int, 序号: int = 0, 额外: Dictionary = {}) -> St
 	return GConst.提示原文(skill_id, 序号, 额外)
 
 
+## 读技能表「按钮」原文（选项按钮 / 二级技能栏按钮上的字），与 GConst.按钮原文 同口径。
+## 选项字典一般两处都填：`"label": 按钮(S, n)`（ask_skill → 客户端 notes）
+## 与 `"text": 按钮(S, n)`（available_skills 的 arg_choices）。
+func 按钮(skill_id: int, 序号: int, 额外: Dictionary = {}) -> String:
+	return GConst.按钮原文(skill_id, 序号, 额外)
+
+
 ## 收牌人称号（{dst} 用；没收牌人就返回空串）
 func _收牌人称号(收牌人id: int) -> String:
 	return engine._称号(engine.p(收牌人id)) if 收牌人id >= 0 else ""

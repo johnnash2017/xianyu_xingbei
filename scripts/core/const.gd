@@ -2086,6 +2086,37 @@ static func 提示原文(skill_id: int, 序号: int, 额外: Dictionary = {}) ->
 	return 填文本(列表[序号], 额外).strip_edges()
 
 
+## 技能表「按钮」列（list(String)）：技能选项按钮上的文字，结构与「提示」列完全一致
+## （设计表里 按钮 / 按钮2 … 按钮8 导入时合并成一个数组，中间空格保留成空串占位）。
+## 选项字典的两个键都从这里取：ask_skill 的 label（→ 客户端 notes 显示成按钮）、
+## available_skills 的 arg_choices 里的 text（→ 客户端二级技能栏）。
+static func 技能按钮列表(skill_id: int) -> Array[String]:
+	var 列索引: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
+	var 列: int = int(列索引.get("按钮", -1))
+	if 列 < 0:
+		return []
+	var row: Array = 技能行(skill_id)
+	if row.size() <= 列:
+		return []
+	var 格子: Variant = row[列]
+	if not (格子 is Array):
+		return []
+	var out: Array[String] = []
+	for 元素: Variant in (格子 as Array):
+		# 与「提示」列同口径：导表为中间空格生成 [""] 占位，不能丢，否则后面的按钮整体左移
+		out.append(_提示元素文本(元素))
+	return out
+
+
+## 读技能表「按钮」原文：不做数字前后空格处理（按钮文字要精确控制空格，如「-2【水晶】」），
+## {占位符} 仍按 额外 填；没配或序号越界返回空串（51 号用例会校验引用是否存在）。
+static func 按钮原文(skill_id: int, 序号: int, 额外: Dictionary = {}) -> String:
+	var 列表: Array[String] = 技能按钮列表(skill_id)
+	if 序号 < 0 or 序号 >= 列表.size():
+		return ""
+	return 填文本(列表[序号], 额外).strip_edges()
+
+
 ## 取「提示」列的第 序号 条（从 0 起）并填好占位符；没配或序号越界就返回空串。
 ## 占位符：{src}=发起者称号、{dst}=收牌人称号、{n}（＝{n1}）=张数；
 ## 一条文案要填多个值时，其余数字写 {n2}/{n3}/…、其余文本写 {s1}/{s2}/…，
