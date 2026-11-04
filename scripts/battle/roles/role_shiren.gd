@@ -87,8 +87,8 @@ func available_skills() -> Array:
 ## args[0] 随行动一起回来，服务端在 p_special_skill 里结算
 func _xi_wang_draw_choices() -> Array:
 	return [
-		{"text": "摸 1 张牌", "args": [XI_WANG_DRAW_YES]},
-		{"text": "不摸牌", "args": [XI_WANG_DRAW_NO]},
+		{"text": GConst.按钮原文(XI_WANG_FU_GE_QU, 2), "args": [XI_WANG_DRAW_YES]},
+		{"text": GConst.按钮原文(XI_WANG_FU_GE_QU, 3), "args": [XI_WANG_DRAW_NO]},
 	]
 
 
@@ -681,8 +681,8 @@ func _xi_wang_effects() -> int:
 		# 弃牌是这一步的代价，和收益在同一个询问里选，不能取消
 		if not engine.has_reply():
 			询问(player.id, XI_WANG_FU_GE_QU, 1, 0, GConst.CardSource.Hand, [
-				{"value": XI_WANG_HEAL, "label": "+1【治疗】"},
-				{"value": XI_WANG_LING_GAN, "label": "+1 灵感"},
+				{"value": XI_WANG_HEAL, "label": GConst.按钮原文(XI_WANG_FU_GE_QU, 4)},
+				{"value": XI_WANG_LING_GAN, "label": GConst.按钮原文(XI_WANG_FU_GE_QU, 5)},
 			], 1, "", [], false, 0)
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()

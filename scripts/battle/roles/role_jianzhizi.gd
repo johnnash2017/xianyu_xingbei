@@ -233,8 +233,8 @@ func _目标有圣盾(dst: BattlePlayer) -> bool:
 ## 10802 的星石类型选项（固定两项，按战绩区置灰）
 func _星石选项() -> Array:
 	return [
-		{"value": 星石_宝石, "label": "移除战绩区 1【宝石】", "enabled": engine.team_gem[player.color] > 0},
-		{"value": 星石_水晶, "label": "移除战绩区 1【水晶】", "enabled": engine.team_crystal[player.color] > 0},
+		{"value": 星石_宝石, "label": GConst.按钮原文(风之剑, 0), "enabled": engine.team_gem[player.color] > 0},
+		{"value": 星石_水晶, "label": GConst.按钮原文(风之剑, 1), "enabled": engine.team_crystal[player.color] > 0},
 	]
 
 
@@ -320,12 +320,12 @@ func _攻击结束选项(ctx: Dictionary, 显示全部: bool = false) -> Array:
 		var 目标们: Array = enemy_ids()
 		var 可用: bool = player.get_energy() >= 剑残影费用 and not 目标们.is_empty()
 		if 显示全部 or 可用:
-			out.append({"value": 剑残影, "label": "剑残影", "skill_id": 剑残影,
+			out.append({"value": 剑残影, "label": GConst.按钮原文(剑残影, 0), "skill_id": 剑残影,
 				"need_target": 1, "targets": 目标们, "enabled": 可用})
 	if not bool(ctx.get(KEY_4504_DONE, false)) and not _used_剑影断念:
 		var 可用二: bool = _剑之魔女在场() and player.gem > 0 and player.hand_cards.size() >= 2
 		if 显示全部 or 可用二:
-			out.append({"value": 剑影断念, "label": "剑影*断念", "skill_id": 剑影断念,
+			out.append({"value": 剑影断念, "label": GConst.按钮原文(剑影断念, 0), "skill_id": 剑影断念,
 				"need_card": 2, "enabled": 可用二})
 	return out
 

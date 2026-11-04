@@ -75,7 +75,7 @@ func available_skills() -> Array:
 					系名 += "/"
 				系名 += "%s系" % GConst.element_to_chinese(系)
 		御刃选项.append({
-			"text": "【%s】%s加入手牌" % ["魔刃" if 是魔 else "异刃", 系名],
+			"text": GConst.按钮原文(YU_REN, 0) % ["魔刃" if 是魔 else "异刃", 系名],
 			"args": [选],
 			# 客户端按这两个系别给选项文字里的「火系/水系（雷/风）」标色
 			"elements": 刃卡.可选元素.duplicate() if 刃卡 != null else [],
@@ -685,11 +685,11 @@ func _共振选项() -> Array:
 	return [
 		{
 			"value": 1,
-			"label": "不加入手牌",
+			"label": GConst.按钮原文(TONG_DIAO, 0),
 		},
 		{
 			"value": 2,
-			"label": "【魔刃】%s加入手牌" % 魔系,
+			"label": GConst.按钮原文(TONG_DIAO, 1) % 魔系,
 			"enabled": 可魔,
 			"need_target": 1,
 			"targets": 全体,
@@ -699,7 +699,7 @@ func _共振选项() -> Array:
 		},
 		{
 			"value": 3,
-			"label": "【异刃】%s加入手牌" % 异系,
+			"label": GConst.按钮原文(TONG_DIAO, 2) % 异系,
 			"enabled": 可异,
 			"need_target": 1,
 			"targets": 全体,
@@ -709,7 +709,7 @@ func _共振选项() -> Array:
 		},
 		{
 			"value": 4,
-			"label": "【魔刃】%s和【异刃】%s加入手牌" % [魔系, 异系],
+			"label": GConst.按钮原文(TONG_DIAO, 3) % [魔系, 异系],
 			"enabled": 可魔 and 可异,
 			"need_target": 1,
 			"targets": 全体,

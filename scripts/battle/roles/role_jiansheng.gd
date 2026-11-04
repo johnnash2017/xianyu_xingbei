@@ -184,7 +184,7 @@ func action_end_options(ctx: Dictionary) -> Array:
 	if not 是攻击行动结束(ctx):
 		return out
 	if not used_jian_ying and not active_jian_ying and not _contains_action(JIAN_YING):
-		out.append({"value": JIAN_YING, "label": "剑影", "skill_id": JIAN_YING,
+		out.append({"value": JIAN_YING, "label": GConst.按钮原文(JIAN_YING, 0), "skill_id": JIAN_YING,
 			"enabled": player.get_energy() > 0})
 	return out
 
@@ -229,9 +229,9 @@ func _sheng_jian_cycle() -> int:
 	if _sheng_jian_step == 0:
 		if not engine.has_reply():
 			询问(player.id, SHENG_JIAN, 0, 0, GConst.CardSource.Hand, [
-				{"value": 1, "label": "摸 1 张牌"},
-				{"value": 2, "label": "摸 2 张牌"},
-				{"value": 3, "label": "摸 3 张牌"},
+				{"value": 1, "label": GConst.按钮原文(SHENG_JIAN, 0)},
+				{"value": 2, "label": GConst.按钮原文(SHENG_JIAN, 1)},
+				{"value": 3, "label": GConst.按钮原文(SHENG_JIAN, 2)},
 			], 0, "", [], true, 0)
 			return WAIT
 		var r0: Dictionary = take_skill_reply_full()
