@@ -616,22 +616,31 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		# 其余弃牌：有【末日预言】才从弃牌堆取出来放进【预言】堆；
 		# 没有【末日预言】就留在弃牌堆（本来就已经在里面了，不用再动）
 		if engine.有场卡(末日预言名):
-			var 其余: Array = []
+			var 表2: Dictionary = engine.取场卡(末日预言名)
+			var 堆2: Array = 表2.get("pile", [])
+			var 上限: int = int(表2.get("counter_max", 6))
+			var 空位: int = maxi(上限 - 堆2.size(), 0)
+			# 这批「其余弃牌」里仍然在弃牌堆的（被【渗蚀】等移除的不算）
+			var 候选: Array = []
 			for i: int in range(已弃.size()):
 				if i == 下标给 and 已给 >= 0:
 					continue
-				var 取2: int = engine.deck.取出实例(int(已弃[i]))
-				if 取2 >= 0:
-					其余.append(取2)
-			var 表2: Dictionary = engine.取场卡(末日预言名)
-			var 堆2: Array = 表2.get("pile", [])
-			# 「将其余弃牌面朝下洗混放置到【预言】堆顶部」：只打乱这批弃牌，再压到顶部
-			其余.shuffle()
-			for c4: Variant in 其余:
-				堆2.append(int(c4))
-			表2["pile"] = 堆2
-			表2["counter"] = 堆2.size()
-			engine._broadcast_game()
+				var cid2: int = int(已弃[i])
+				if engine.deck.discard.has(cid2):
+					候选.append(cid2)
+			# 超过【预言】上限：只从这批里随机抽「刚好填满」的几张，剩下的留在弃牌堆不动
+			候选.shuffle()
+			if 候选.size() > 空位:
+				候选.resize(空位)
+			if 空位 > 0:
+				# 「将其余弃牌面朝下洗混放置到【预言】堆顶部」：只打乱这批弃牌，再压到顶部
+				for c4: Variant in 候选:
+					var 取2: int = engine.deck.取出实例(int(c4))
+					if 取2 >= 0:
+						堆2.append(取2)
+				表2["pile"] = 堆2
+				表2["counter"] = 堆2.size()
+				engine._broadcast_game()
 		return SUCCESS
 	# 献祭：先选系别，再结算
 	if _献祭步 == 1:
