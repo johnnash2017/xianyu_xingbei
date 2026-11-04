@@ -298,11 +298,12 @@ func p_timeline_6(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 可转移点数上限＝min(蓝魂数, 本次伤害)：做成选项按钮（服务端会把 con->harm.point 下发给客户端限制）
 		var 上限: int = mini(_lan(), int(harm.get("point", 0)))
-		# 选项文案分两种视角：自己受伤＝让队友替我扛（提示表第 4 条）；队友受伤＝我替他扛（第 3 条）
-		var 文案序号: int = 3 if dst_id == player.id else 2
+		# 选项文案分两种视角：自己受伤＝让队友替我扛；队友受伤＝我替他扛。
+		# 按钮列顺序：0=替他承受、1=替我承受（{n} 由代码填）。
+		var 按钮序号: int = 1 if dst_id == player.id else 0
 		var options: Array = []
 		for x: int in range(1, 上限 + 1):
-			options.append({"value": x, "label": 提示(LING_HUN_LIAN_JIE, 文案序号, x)})
+			options.append({"value": x, "label": GConst.按钮文本(LING_HUN_LIAN_JIE, 按钮序号, {"n": x})})
 		询问(player.id, LING_HUN_LIAN_JIE, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
