@@ -519,12 +519,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	# 审判：选 1 张弃牌给目标对手；其余进预言堆
 	if _审判步 == 3:
 		# 「要用一张牌的实例，先确认它还在场」：被【渗蚀】等移除的牌不能作为选项、
-		# 也不参与后续分配（引擎公用判断 牌在场，不看具体是哪个技能）
-		var 在场弃牌: Array[int] = []
-		for c0: Variant in _审判弃牌:
-			if engine.牌在场(int(c0)):
-				在场弃牌.append(int(c0))
-		_审判弃牌 = 在场弃牌
+		# 也不参与后续分配。用引擎的公用过滤，不在审判里写特判。
+		_审判弃牌 = engine.在场牌(_审判弃牌)
 		if _审判弃牌.is_empty():
 			_审判步 = 0
 			return SUCCESS

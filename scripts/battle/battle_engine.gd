@@ -629,6 +629,16 @@ func 牌在场(inst: int) -> bool:
 	return inst > 0 and not 移除牌堆.has(inst)
 
 
+## 过滤出一组仍在场的牌实例（保持原顺序）。技能把收集来的牌列成选项 / 继续结算之前
+## 统一用它，避免把已被移除的牌当成还能用的牌。
+func 在场牌(ids: Array) -> Array[int]:
+	var out: Array[int] = []
+	for c: Variant in ids:
+		if 牌在场(int(c)):
+			out.append(int(c))
+	return out
+
+
 ## 把一张牌的实体移入移除牌堆（幂等）
 func 放入移除牌堆(inst: int) -> void:
 	if inst > 0 and not 移除牌堆.has(inst):
@@ -2464,6 +2474,23 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
+	# 公用规则：「要用一张牌的实例，先确认它还在场」——
+	# 选项指向的具体牌实例（card_id）若已被移除，就不再作为选项下发；
+	# 只丢这一项、其余 value 原样保留，调用方按 args[0] 仍能对上自己的列表。
+	var 在场选项: Array = []
+	for o0: Dictionary in 用选项:
+		var 选项牌: int = int(o0.get("card_id", 0))
+		if 选项牌 > 0 and not 牌在场(选项牌):
+			continue
+		在场选项.append(o0)
+	用选项 = 在场选项
+	# 牌白名单同理：被移除的实例不能留在可点列表里（牌面值不受影响）
+	var 在场牌表: Array = []
+	for c0: Variant in cards:
+		if int(c0) > 0 and not 牌在场(int(c0)):
+			continue
+		在场牌表.append(c0)
+	cards = 在场牌表
 
 	if not _基础效果额外行动已确认.is_empty():
 		var 过滤后: Array = []
