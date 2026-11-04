@@ -35,6 +35,8 @@ func 跑() -> void:
 	_检审判弃刃触发渗蚀()
 	_检审判选项值对应()
 	_检审判摸牌先结算超限()
+	_检审判零号座位摸牌()
+	_检展示零号座位伤害()
 	_检审判头像提示()
 	_检审判同名牌两张()
 	_检审判残留状态()
@@ -816,3 +818,58 @@ func _检放逐提示不切换() -> void:
 	检(归保持.contains("选择 6 张手牌作为【预言】"),
 		"归一化后的选项也应走保持逻辑：%s" % 归保持)
 	窗.queue_free()
+
+
+# ============================================================
+# 15b. 审判：0 号座位弃牌后也要摸 1 张（座位从 0 开始，不能用 > 0 判空）
+# ============================================================
+func _检审判零号座位摸牌() -> void:
+	引擎 = BattleEngine.new()
+	发送记录.clear()
+	引擎.send_cb = func(pid: int, msg: int, data: Dictionary) -> void:
+		发送记录.append({"pid": pid, "msg": msg, "data": data})
+	引擎.add_player(0, GConst.BLUE, "零")
+	引擎.add_player(1, GConst.RED, "一")
+	引擎.add_player(2, GConst.BLUE, "二")
+	引擎.add_player(3, GConst.RED, "三")
+	引擎.start_with_roles({})
+	for pid: int in 引擎.order:
+		var p0: BattlePlayer = 引擎.p(pid)
+		p0.role = null
+		p0.hand_cards.clear()
+		p0.cross_num = 0
+	角色 = (load(角色路径) as GDScript).new()
+	角色.setup(引擎.p(0), 引擎)
+	引擎.p(0).role = 角色
+	引擎.p(0).role_id = 95
+	引擎._states.clear()
+	引擎._清空等待()
+	引擎.phase = BattleEngine.Phase.Playing
+	引擎.current_id = 0
+	引擎.round_id = 1
+	_发牌(引擎.p(0), GConst.CardElement.Wind, 1)
+	_发牌(引擎.p(2), GConst.CardElement.Fire, 1)
+	角色._本回合伤害目标 = [1]
+	检(角色.p_turn_end({"player": 0}) == BattleRole.WAIT, "【审判】应先问是否发动")
+	_应答([1])
+	角色.p_turn_end({"player": 0})
+	引擎.run()
+	检(引擎._await_id == 0 and 引擎._pending_respond_id == 9502,
+		"应先问 0 号队友弃牌（等待 %s）" % str(引擎._await_id))
+	_应答([], [], [引擎.p(0).hand_cards[0]])
+	引擎.run()
+	检(引擎.p(0).hand_cards.size() == 1,
+		"0 号座位弃牌后应摸 1 张（不能被 > 0 哨兵吞掉），实际手牌=%d" % 引擎.p(0).hand_cards.size())
+
+
+# ============================================================
+# 15c. 展示流程：对手是 0 号座位时也要结算本项伤害
+# ============================================================
+func _检展示零号座位伤害() -> void:
+	_建引擎()
+	角色._展示步 = 9
+	角色._展示对手 = 0
+	角色._展示X = 1
+	检(角色._展示本项伤害() == BattleRole.URGENT,
+		"展示对手为 0 号座位时也应压入伤害（不能被 > 0 哨兵吞掉）")
+	角色._展示对手 = -1
