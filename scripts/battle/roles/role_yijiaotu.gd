@@ -58,6 +58,8 @@ var _审判对手: int = -1
 var _审判给: int = 0
 ## 翻面 / 展示时的进度
 var _翻面步: int = 0
+## 伤害摸牌把最后一张【预言】抽空：等这次伤害结算完（p_harm_end）再翻面
+var _待翻面检查: bool = false
 var _展示系: int = 0
 var _展示X: int = 0
 var _展示对手: int = -1
@@ -169,6 +171,7 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 	# 献祭 / 审判流程残留都清掉，避免下一回合被旧步骤挡住
 	_献祭步 = 0
 	_献祭系 = 0
+	_待翻面检查 = false
 	# 审判流程残留在任何一步都清掉：否则下一步的 p_turn_end 会被「_审判步 != 0」挡住，
 	# 表现为「偶尔触发不了」
 	_审判步 = 0
@@ -191,13 +194,16 @@ func _重算手牌上限() -> void:
 	player.hand_cards_max = GConst.HAND_CARDS_MAX - (1 if engine.有场卡(末日预言名) else 0)
 
 
-## 记录本回合被你造成过伤害的对手（【审判】条件 + 给牌目标白名单）
+## 记录本回合被你造成过伤害的对手（【审判】条件 + 给牌目标白名单）；
+## 顺带处理「预言抽空」的翻面 —— 等这次伤害全部结算完（p_harm_end）再问。
 func p_harm_end(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) != player.id:
-		return SUCCESS
-	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
-	if dst != null and dst.color != player.color and not _本回合伤害目标.has(dst.id):
-		_本回合伤害目标.append(dst.id)
+	if int(ctx.get("src", -1)) == player.id:
+		var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+		if dst != null and dst.color != player.color and not _本回合伤害目标.has(dst.id):
+			_本回合伤害目标.append(dst.id)
+	if _待翻面检查:
+		_待翻面检查 = false
+		_检查预言取空()
 	return SUCCESS
 
 
@@ -223,9 +229,11 @@ func 伤害摸牌替换(_pid: int) -> int:
 		return -1
 	var 牌: int = int(堆.pop_back())
 	表["counter"] = 堆.size()
-	# 最后 1 张被拿走的这一次结算完就要翻面：压一个钩子，等这次伤害摸牌流程跑完再问
+	# 最后 1 张被拿走的这一次伤害结算完才翻面：先记标记，等 p_harm_end（伤害流水线最后一步）
+	# 再压翻面钩子。原来在这里直接 push 钩子，但没把 _翻面步 置 1，钩子跑进去什么都不做，
+	# 表现就是「预言抽到 0 张却不翻面」。
 	if 堆.is_empty():
-		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id, "翻面": true}, []))
+		_待翻面检查 = true
 	return 牌
 
 
