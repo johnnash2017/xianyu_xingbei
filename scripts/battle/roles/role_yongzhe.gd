@@ -167,8 +167,8 @@ func _发动怒吼(ctx: Dictionary, 摸牌数: int) -> void:
 ## 怒吼的两个选项：摸 0 张 / 摸 1 张（选项值即摸牌数；取消＝不发动）
 func _怒吼摸牌选项() -> Array:
 	return [
-		{"value": 0, "label": "发动怒吼：摸 0 张牌"},
-		{"value": 1, "label": "发动怒吼：摸 1 张牌"},
+		{"value": 0, "label": GConst.按钮原文(NU_HOU, 0)},
+		{"value": 1, "label": GConst.按钮原文(NU_HOU, 1)},
 	]
 
 

@@ -301,7 +301,7 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 			# 有能量才多出【宠物强化】那个选项（说明：消耗 1【水晶】；
 			# 【水晶】可用【宝石】替代支付，与【圣疗】/【剑影】等水晶消耗技能同一口径）
 			# 序号 1：第 0 条提示是「叫别人交牌」用的，这步「怎么发动」读第 1 条
-			var 选项: Array = [{"value": 1, "label": "你摸 1 张、弃 1 张【强制】"}]
+			var 选项: Array = [{"value": 1, "label": GConst.按钮原文(DONG_WU_HUO_BAN, 0)}]
 			# 【宠物强化】没有能量时也摆出来，但置灰点不动；不要整项藏掉
 			选项.append({"value": 2, "skill_id": CHONG_WU_QIANG_HUA,
 				"label": GConst.按钮原文(CHONG_WU_QIANG_HUA, 0),

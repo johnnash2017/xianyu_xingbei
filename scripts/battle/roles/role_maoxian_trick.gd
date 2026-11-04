@@ -329,7 +329,7 @@ func _qi_zha_options() -> Array:
 	var out: Array = []
 	for cid: int in QI_ZHA_CARDS:
 		var c: GCard = Data.get_card(cid)
-		out.append({"text": "视为%s" % c.card_name, "args": [cid],
+		out.append({"text": GConst.按钮原文(QI_ZHA, 0) % c.card_name, "args": [cid],
 			"element": c.element_enum()})
 	return out
 

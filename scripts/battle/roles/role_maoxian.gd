@@ -340,10 +340,10 @@ func _qi_zha_options() -> Array:
 	var out: Array = []
 	for cid: int in QI_ZHA_CARDS:
 		var c: GCard = Data.get_card(cid)
-		out.append({"text": "视为%s" % c.card_name, "args": [cid],
+		out.append({"text": GConst.按钮原文(QI_ZHA, 0) % c.card_name, "args": [cid],
 			"element": c.element_enum(), "need_card": 2, "card_max": 2, "enabled": 有对})
 	var 暗: GCard = Data.get_card(QI_ZHA_DARK_CARD)
-	out.append({"text": "视为%s，弃 3 张" % 暗.card_name, "args": [QI_ZHA_DARK_CARD],
+	out.append({"text": GConst.按钮原文(QI_ZHA, 1) % 暗.card_name, "args": [QI_ZHA_DARK_CARD],
 		"element": 暗.element_enum(), "need_card": 3, "card_max": 3, "enabled": 有暗})
 	return out
 

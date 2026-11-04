@@ -500,11 +500,11 @@ func _可移除的星石() -> Array[int]:
 func _星石选项(可移除: Array[int]) -> Array:
 	var 无星石: bool = 可移除.is_empty()
 	return [
-		{"value": 1, "text": "我方【战绩区】-1【宝石】", "label": "我方【战绩区】-1【宝石】",
+		{"value": 1, "text": GConst.按钮原文(BU_XIANG_TI_LIAN, 0), "label": GConst.按钮原文(BU_XIANG_TI_LIAN, 0),
 			"args": [1], "enabled": 可移除.has(1)},
-		{"value": 2, "text": "我方【战绩区】-1【水晶】", "label": "我方【战绩区】-1【水晶】",
+		{"value": 2, "text": GConst.按钮原文(BU_XIANG_TI_LIAN, 1), "label": GConst.按钮原文(BU_XIANG_TI_LIAN, 1),
 			"args": [2], "enabled": 可移除.has(2)},
-		{"value": 0, "text": "【战绩区】星石不足，不移除星石", "label": "【战绩区】星石不足，不移除星石",
+		{"value": 0, "text": GConst.按钮原文(BU_XIANG_TI_LIAN, 2), "label": GConst.按钮原文(BU_XIANG_TI_LIAN, 2),
 			"args": [0], "enabled": 无星石},
 	]
 

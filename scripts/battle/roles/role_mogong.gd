@@ -77,7 +77,7 @@ func available_skills() -> Array:
 	var 雷光散射选项: Array = []
 	for 张数: int in range(1, 雷系盖牌.size() + 1):
 		雷光散射选项.append({
-			"text": "移除 %d 张" % 张数, "args": [张数],
+			"text": GConst.按钮原文(LEI_GUANG_SAN_SHE, 0) % 张数, "args": [张数],
 			"need_target": 1 if 张数 > 1 else 0, "targets": enemy_ids(),
 		})
 	out.append({"type": GConst.ActionType.MagicSkill, "id": LEI_GUANG_SAN_SHE,

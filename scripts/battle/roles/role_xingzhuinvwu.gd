@@ -81,8 +81,8 @@ func available_skills() -> Array:
 			"type": GConst.ActionType.SpecialSkill,
 			"id": QUN_XING_QI_SHI,
 			"arg_choices": [
-				{"value": 1, "label": "① 放手牌作卢恩 + 选律法 + 摸 0~1"},
-				{"value": 2, "label": "② 移除卢恩，发动律法"},
+				{"value": 1, "label": GConst.按钮原文(QUN_XING_QI_SHI, 0)},
+				{"value": 2, "label": GConst.按钮原文(QUN_XING_QI_SHI, 1)},
 			],
 			"enabled": player.hand_cards.size() >= 1 or player.盖牌按标记(LU_EN标记).size() >= 1,
 		},

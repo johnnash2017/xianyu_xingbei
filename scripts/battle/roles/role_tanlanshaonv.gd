@@ -329,7 +329,7 @@ func _亡女额外移除选项(构成: Dictionary) -> Array:
 		额外文案 += "；将对方 1 点士气转移给我方"
 	var 对手: Array[int] = enemy_ids()
 	return [
-		{"value": 0, "text": "不额外移除【战绩区】星石", "args": [0],
+		{"value": 0, "text": GConst.按钮原文(WANG_NV_DE_JIN_KU, 0), "args": [0],
 			"need_target": 2, "targets": 对手},
 		{"value": 1, "text": 额外文案, "args": [1],
 			"need_target": 2, "targets": 对手, "enabled": 总数 > 0},

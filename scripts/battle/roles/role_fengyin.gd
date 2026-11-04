@@ -80,7 +80,7 @@ func p_before_action(_ctx: Dictionary) -> int:
 	var 摸数: int = _wu_xi_draw_count()
 	if not engine.has_reply():
 		var options: Array = [
-			{"value": 1, "label": "跳过行动阶段"},
+			{"value": 1, "label": GConst.按钮原文(WU_XI_SHU_FU, 1)},
 			{"value": 2, "label": GConst.按钮原文(WU_XI_SHU_FU, 0) % 摸数},
 		]
 		# 询问文案取技能表 407 的「提示」列（序号 0），{n} 填应摸张数；两个选项按钮标签保持不变

@@ -339,8 +339,8 @@ func _shang_bian队友们() -> Array[int]:
 func _shang_bian支付选项() -> Array:
 	var 队友们: Array[int] = _shang_bian队友们()
 	return [
-		{"value": 1, "label": "我方战绩区 1【宝石】", "enabled": _shang_bian可支付(1)},
-		{"value": 2, "label": "队友 1【能量】", "enabled": not 队友们.is_empty(),
+		{"value": 1, "label": GConst.按钮原文(SHANG_BIAN, 0), "enabled": _shang_bian可支付(1)},
+		{"value": 2, "label": GConst.按钮原文(SHANG_BIAN, 1), "enabled": not 队友们.is_empty(),
 			"need_target": 1, "targets": 队友们},
 	]
 

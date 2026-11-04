@@ -139,7 +139,7 @@ func _攻击结束选项(ctx: Dictionary, 显示全部: bool = false) -> Array:
 	if not bool(ctx.get(KEY_4504_DONE, false)) and not used_jian_ying_duan_nian:
 		var 可用二: bool = player.gem > 0 and player.hand_cards.size() >= 2
 		if 显示全部 or 可用二:
-			out.append({"value": JIAN_YING_DUAN_NIAN, "label": "剑影*断念",
+			out.append({"value": JIAN_YING_DUAN_NIAN, "label": GConst.按钮原文(JIAN_YING_DUAN_NIAN, 0),
 				"skill_id": JIAN_YING_DUAN_NIAN, "need_card": 2, "enabled": 可用二})
 	return out
 
@@ -309,8 +309,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			var 弃牌: GCard = Data.get_card(cid3) if cid3 >= 0 else null
 			var 牌名: String = 弃牌.card_name if 弃牌 != null else "这张牌"
 			询问(player.id, YI_XIANG_JIAN, 0, 0, GConst.CardSource.Hand, [
-				{"value": 1, "label": "获得 %s" % 牌名, "card_id": cid3},
-				{"value": 2, "label": "不获得"},
+				{"value": 1, "label": GConst.按钮原文(YI_XIANG_JIAN, 0) % 牌名, "card_id": cid3},
+				{"value": 2, "label": GConst.按钮原文(YI_XIANG_JIAN, 1)},
 			], 0, "", [], true, 1)
 			return WAIT
 		ctx[KEY_YI_XIANG_STEP] = STEP_DONE

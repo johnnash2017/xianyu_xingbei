@@ -60,9 +60,9 @@ func _cang_bai_choices() -> Array:
 	var 新月数: int = int(player.tokens[0]["num"])
 	# 两项始终摆出来：条件不满足的置灰（半透明、点不动），不要整项消失
 	return [
-		{"text": "移除3点【石化】+1无法应战【攻击行动】。+1回合。",
+		{"text": GConst.按钮原文(CANG_BAI_ZHI_YUE, 0),
 			"args": [1], "enabled": 石化数 >= 3},
-		{"text": "移除X点【新月】+1【石化】，弃 1 张牌。对目标对手造成 X+1点法术伤害。",
+		{"text": GConst.按钮原文(CANG_BAI_ZHI_YUE, 1),
 			"args": [2], "need_card": 1, "need_target": 1, "targets": 敌人,
 			"enabled": 新月数 >= 1 and not player.hand_cards.is_empty() and not 敌人.is_empty()},
 	]
