@@ -305,7 +305,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 					[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO},
 					 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO}], 0, "", [], false,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"【末日预言】的【预言】已空：翻面为【天雷劫火】或【地裂波涛】")
+					GConst.提示原文(MO_RI_YU_YAN, 1))
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
 			var args: Array = r.get("args", [])
@@ -341,7 +341,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				 {"value": 2, "label": "先%s后%s" % [GConst.element_to_chinese(序表[1]), GConst.element_to_chinese(序表[0])]}],
 				0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【贪婪】：选择发动顺序")
+				GConst.提示原文(TAN_LAN, 1))
 			return WAIT
 		var rq: Dictionary = take_skill_reply_full()
 		var aq: Array = rq.get("args", [])
@@ -363,7 +363,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, _展示技能号(), 0, 0, GConst.CardSource.Hand, _系别选项(系表), 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【%s】：选择 1 种系别发动" % _在展示)
+				GConst.提示原文(_展示技能号(), 1) % _在展示)
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		var args2: Array = r2.get("args", [])
@@ -395,7 +395,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, _展示技能号(), _展示X, 0, GConst.CardSource.Hand, [], _展示X, "", [], false,
 				0, player.id, [], _展示X, {}, 0, 0, false, [], true, -1, 0,
-				"【%s】：弃最多 %d 张%s系牌【展示】" % [_在展示, _展示X, 展示系名])
+				GConst.提示原文(_展示技能号(), 2) % [_在展示, _展示X, 展示系名])
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
 		var cards: Array = r3.get("card_ids", [])
@@ -425,7 +425,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, _展示技能号(), 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
-				"【%s】：指定 1 名目标对手（他弃牌后你造成 %d 点法术伤害）" % [_在展示, _展示X + 1])
+				GConst.提示原文(_展示技能号(), 3) % [_在展示, _展示X + 1])
 			return WAIT
 	if _展示步 == 6:
 		if not engine.has_reply():
@@ -463,7 +463,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(_展示对手, _展示技能号(), 0, 0, GConst.CardSource.Hand, [], 上限, "", 牌面, true,
 				0, _展示对手, [], 上限, {}, 0, 0, false, [], true, -1, 0,
-				"【%s】：请弃任意张%s系牌【展示】（可不弃）"
+				GConst.提示原文(_展示技能号(), 4)
 				% [_在展示, GConst.element_to_chinese(_展示系)])
 			return WAIT
 		var r7: Dictionary = take_skill_reply_full()
@@ -510,7 +510,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			# 强制弃牌：can_cancel=false（客户端不显示可点的取消；超时由下面的空回复兜底补弃）
 			询问(pid2, SHEN_PAN, 1, 0, GConst.CardSource.Hand, [], 1, "", [], false,
 				0, pid2, [], 1, {}, 0, 0, false, [], true, -1, 0,
-				"【审判】：弃 1 张牌【展示】，摸 1 张牌")
+				GConst.提示原文(SHEN_PAN, 1))
 			return WAIT
 		var r6: Dictionary = take_skill_reply_full()
 		var cards6: Array = r6.get("card_ids", [])
@@ -560,7 +560,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 					"label": 弃卡.card_name if 弃卡 != null else "弃牌", "card_id": int(_审判弃牌[i])})
 			询问(player.id, SHEN_PAN, 0, 1, GConst.CardSource.Hand, 弃牌选项, 0, "", [], false,
 				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
-				"【审判】：选 1 张弃牌交给目标对手")
+				GConst.提示原文(SHEN_PAN, 2))
 			return WAIT
 		var r7: Dictionary = take_skill_reply_full()
 		var ds7: Array = r7.get("dst_ids", [])
@@ -627,7 +627,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				GConst.CardElement.Fire, GConst.CardElement.Earth, GConst.CardElement.Thunder]
 			询问(player.id, XIAN_JI, 0, 0, GConst.CardSource.Hand, _系别选项(系表2), 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【献祭】：指定 1 种系别，展示【预言】堆顶 1 张")
+				GConst.提示原文(XIAN_JI, 1))
 			return WAIT
 		# 阶段在取完回复之后再推进：重入时 _献祭步 仍是 1
 		var r8: Dictionary = take_skill_reply_full()
@@ -683,7 +683,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 					"no_prompt_change": true}],
 				6, "", [], false,
 				0, player.id, [], 6, {}, 0, 0, false, [], true, -1, 0,
-				"【放逐】：选择放 1 张【末日预言】入场，并选择 6 张手牌作为【预言】")
+				GConst.提示原文(FANG_ZHU, 1))
 			return WAIT
 		return p_yi_jiao_tu_ask({"player": player.id})
 	# 放逐：正面 + 6 张手牌一起取回 → 放【末日预言】、洗混【预言】→ 解除不爆牌 → +1 额外行动
