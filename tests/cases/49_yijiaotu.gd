@@ -35,6 +35,7 @@ func 跑() -> void:
 	_检审判选项值对应()
 	_检审判摸牌先结算超限()
 	_检审判头像提示()
+	_检审判同名牌两张()
 	_检审判残留状态()
 	引擎 = null
 
@@ -707,3 +708,40 @@ func _检审判头像提示() -> void:
 	窗._已选参数 = [1]
 	检(窗.call("_审判头像提示").is_empty(), "没选目标时不应写提示")
 	窗.queue_free()
+
+
+# ============================================================
+# 17. 审判：两张同名不同实例的牌（其中一张实例号是 0）都要进选项
+# ============================================================
+func _检审判同名牌两张() -> void:
+	_建引擎()
+	# 卡表#0 圣盾（地/幻）实例号正好是 0；卡表#6 圣盾（风/圣）是另一张同名牌
+	玩家1.add_hand_cards([0])
+	引擎.p(3).add_hand_cards([6])
+	角色._本回合造成伤害 = true
+	_应答([1])
+	角色.p_turn_end({"player": 1})
+	引擎.run()
+	_应答([], [], [0])
+	引擎.run()
+	_应答([], [], [6])
+	引擎.run()
+	var 选牌询问: Dictionary = {}
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 表: Array = (r["data"] as Dictionary).get("commands", [])
+		if 表.is_empty():
+			continue
+		var c: Dictionary = 表[0]
+		if int(c.get("respond_id", 0)) == 9502 and c.has("option_card_ids"):
+			选牌询问 = c
+	检(not 选牌询问.is_empty(), "应进入「选 1 张弃牌交给对手」")
+	var 卡面: Array = 选牌询问.get("option_card_ids", [])
+	检(卡面 == [0, 6], "两张同名牌（含实例号 0 的圣盾）都应作为选项，实际 %s" % str(卡面))
+	检(int((选牌询问.get("args", []) as Array)[3] if (选牌询问.get("args", []) as Array).size() > 3 else 0) == 2,
+		"选项数量应为 2，实际 %s" % str(选牌询问.get("args", [])))
+	# 选中实例号 0 的那张：也要能按实例取出来交给对手
+	_应答([1], [2])
+	引擎.run()
+	检(引擎.p(2).有手牌(0), "选中实例号 0 的圣盾应能交给对手，对手手牌=%s" % str(引擎.p(2).hand_cards))

@@ -122,7 +122,7 @@ func _p_结界仪式(action: Dictionary) -> int:
 	var 放: Array = []
 	for c: Variant in cards:
 		var cid: int = player.取出实例(player.hand_cards, int(c))
-		if cid > 0:
+		if cid >= 0:
 			放.append(cid)
 	if 放.is_empty():
 		return SUCCESS

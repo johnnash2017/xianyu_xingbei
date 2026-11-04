@@ -420,7 +420,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			for c6: Variant in cards6:
 				if 放.size() < 可选 and player.有手牌(int(c6)):
 					var 实例: int = player.取出实例(player.hand_cards, int(c6))
-					if 实例 > 0:
+					if 实例 >= 0:
 						放.append(实例)
 			_步 = 0
 			if not 放.is_empty():
@@ -486,7 +486,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			_步 = 13
 			if not cards8.is_empty():
 				var 实: int = player.取出实例(player.hand_cards, int(cards8[0]))
-				if 实 > 0:
+				if 实 >= 0:
 					engine.add_cover(player.id, [实], player.id, QUN_XING_QI_SHI, false, LU_EN标记)
 			engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
 			return URGENT

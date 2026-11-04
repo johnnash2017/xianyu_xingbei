@@ -624,9 +624,11 @@ func _assign_roles_by_map(role_map: Dictionary) -> void:
 var 移除牌堆: Array[int] = []
 
 
-## 这张牌的实例是否还在场（只要不在移除牌堆就算在场）
+## 这张牌的实例是否还在场（只要不在移除牌堆就算在场）。
+## 注意：0 是合法实例号（牌库卡的实例号==牌号，卡表#0 就是【圣盾】），不能拿 >0 当「有效实例」；
+## 只有负数（-1 等）才代表「没有这张牌」。
 func 牌在场(inst: int) -> bool:
-	return inst > 0 and not 移除牌堆.has(inst)
+	return inst >= 0 and not 移除牌堆.has(inst)
 
 
 ## 过滤出一组仍在场的牌实例（保持原顺序）。技能把收集来的牌列成选项 / 继续结算之前

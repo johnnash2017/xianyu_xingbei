@@ -596,7 +596,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if 敌 != null and not 已弃.is_empty():
 			var cid给: int = int(已弃[下标给])
 			var 取: int = engine.deck.取出实例(cid给)
-			if 取 > 0:
+			if 取 >= 0:
 				敌.add_hand_cards([取])
 				已给 = 取
 				engine._log_give_cards(player.id, 敌.id, [取])
@@ -605,10 +605,10 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if engine.有场卡(末日预言名):
 			var 其余: Array = []
 			for i: int in range(已弃.size()):
-				if i == 下标给 and 已给 > 0:
+				if i == 下标给 and 已给 >= 0:
 					continue
 				var 取2: int = engine.deck.取出实例(int(已弃[i]))
-				if 取2 > 0:
+				if 取2 >= 0:
 					其余.append(取2)
 			var 表2: Dictionary = engine.取场卡(末日预言名)
 			var 堆2: Array = 表2.get("pile", [])
@@ -720,12 +720,12 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 新堆: Array = []
 		for cid2: Variant in 已选:
 			var 取: int = player.取出实例(player.hand_cards, int(cid2))
-			if 取 > 0 and 新堆.size() < 6:
+			if 取 >= 0 and 新堆.size() < 6:
 				新堆.append(取)
 		# 兜底：选中里混进了已经不在手 / 0 号这类取不出来的牌时，再从当前手牌补满 6 张
 		while 新堆.size() < 6 and not player.hand_cards.is_empty():
 			var 补: int = player.取出实例(player.hand_cards, player.hand_cards[0])
-			if 补 <= 0:
+			if 补 < 0:
 				break
 			新堆.append(补)
 		新堆.shuffle()

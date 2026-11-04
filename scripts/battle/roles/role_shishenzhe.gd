@@ -138,7 +138,7 @@ func p_special_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	# 刃不在场时实体在移除牌堆里：先取出来，再按同一唯一实例加回手牌（不新造牌）
 	var 取出: int = engine.刃从移除牌堆取出(inst)
-	if 取出 <= 0:
+	if 取出 < 0:
 		return GConst.GE_INVALID_ACTION
 	var 卡数据: GCard = Data.get_card(取出)
 	if 卡数据 != null and not 卡数据.可选元素.is_empty() and 卡数据.可选元素.find(卡数据.element_enum()) < 0:
@@ -768,9 +768,9 @@ func p_shi_shen_诸神移除(ctx: Dictionary) -> int:
 			if pp == null:
 				continue
 			var 取到: int = pp.取出实例(pp.hand_cards, inst)
-			if 取到 <= 0:
+			if 取到 < 0:
 				取到 = pp.取出实例(pp.cover_cards, inst)
-			if 取到 > 0:
+			if 取到 >= 0:
 				持有.append({"pid": pid, "card": 取到})
 				# 诸神终焉把刃移除：实体收进移除牌堆（之后可按唯一实例取回）
 				engine.放入移除牌堆(取到)
