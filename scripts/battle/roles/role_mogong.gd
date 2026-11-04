@@ -446,7 +446,9 @@ func _duo_chong_she_ji_ask() -> int:
 		{"player": player.id, "card_id": VIRTUAL_DUO_CHONG_CARD, "dst": dst_id}, []))
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, VIRTUAL_DUO_CHONG_CARD, harm))
 	engine._broadcast_game()
-	return SUCCESS
+	# 压了这次攻击就必须返回 URGENT：聚合器会挂起，等攻击（命中 / 应战 / 伤害）结算完
+	# 再继续问剩余的行动结束响应（迅捷赐福等）。返回 SUCCESS 会先弹下一个响应，攻击还没打出去。
+	return URGENT
 
 
 ## 【多重射击】的合法目标：敌方、不是上次主动攻击的目标，且可被主动攻击（如暗杀者潜行中不行）

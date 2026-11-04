@@ -96,8 +96,7 @@ func p_before_action(_ctx: Dictionary) -> int:
 	cur.remove_exclusive_effect(GConst.Exclusive.WuXiShuFu)
 	if choose == 2:
 		# 强摸走 push_draw：先让角色响应（如暗杀者【水影】：除特殊行动外、摸牌前发动）；
-		# 摸牌可能把手牌顶过上限 → 配 SHandOverflow 走「强制弃牌 + 掉士气」（对照引擎其它摸牌点）
-		engine.push(BattleEngine.SHandOverflow.new())
+		# 摸完由状态边界统一结算手牌超限（弃到上限 + 掉士气），不在这里手动补压
 		engine.push_draw(cur.id, 摸数)
 		engine._broadcast_game()
 		# 压了摸牌 / 超限就必须 URGENT：钩子的「后续状态」是 p_boot + 行动阶段，
