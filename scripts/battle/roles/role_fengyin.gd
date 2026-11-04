@@ -92,7 +92,8 @@ func p_before_action(_ctx: Dictionary) -> int:
 	var args: Array = r.get("args", [])
 	# 取消 / 超时按「跳过行动阶段」兜底（＝束缚生效）
 	var choose: int = int(args[0]) if not args.is_empty() else 1
-	notice_skill(WU_XI_SHU_FU, [cur.id])
+	# 发动时的「五系束缚」播报已在施放那一步（_cast_wu_xi_shu_fu）打过；这里只是这枚束缚
+	# 到点生效，不再重复播报技能名（客户端会看到后续的摸牌 / 弃牌 / 掉士气日志）
 	cur.remove_exclusive_effect(GConst.Exclusive.WuXiShuFu)
 	if choose == 2:
 		# 强摸走 push_draw：先让角色响应（如暗杀者【水影】：除特殊行动外、摸牌前发动）；
