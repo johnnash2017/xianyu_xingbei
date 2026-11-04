@@ -494,7 +494,9 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 				_琉璃待放 = -1
 				return URGENT
 			if _琉璃待放 > 0:
-				engine.to_discard([_琉璃待放], {"owner": player.id, "source": "hand", "cause": LIU_LI_JING})
+				# 这张牌是目标角色弃的：owner 必须写他（否则【渗蚀】等弃牌触发的伤害会打到结界师）
+				engine.to_discard([_琉璃待放], {"owner": _琉璃弃牌人 if _琉璃弃牌人 > 0 else player.id,
+					"source": "hand", "cause": LIU_LI_JING})
 				_琉璃待放 = -1
 			return SUCCESS
 		6:  # 伏魔境：祭增加时，问是否发动（消耗 1 点能量）

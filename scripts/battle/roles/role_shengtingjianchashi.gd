@@ -473,16 +473,20 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		var 圣: bool = Data.get_card(cid) != null \
 			and Data.get_card(cid).fate_pattern_enum() == GConst.FatePattern.Holy
 		engine.take_from_hand(player.id, [cid], false)
-		engine._log_discard(player.id, [cid], false)
 		if 圣:
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 				"card_ids": [cid], "is_real": true,
 			})
+			# 先压「伤害询问」的钩子、再走统一弃牌入口：牌按标准弃置先进弃牌堆
+			# （触发 F6 弃牌前拦截，如噬神者【渗蚀】），回头再问是否造成法术伤害
 			engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
+			engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": EN_DIAN_SHEN_SHOU})
+			engine._log_discard(player.id, [cid], false)
 			_恩典步 = 5
 			return URGENT
 		engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": EN_DIAN_SHEN_SHOU})
+		engine._log_discard(player.id, [cid], false)
 		return SUCCESS
 	# 恩典神授：展示后的法术伤害
 	if _恩典步 == 5:
