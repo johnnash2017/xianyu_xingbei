@@ -568,7 +568,11 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 目标id: int = int(ds7[0]) if ds7.size() == 1 else -1
 		var 目标: BattlePlayer = engine.p(目标id)
 		var 下标: int = (int(args7[0]) - 1) if not args7.is_empty() else -1
-		if 目标 == null or 目标.color == player.color or 下标 < 0 or 下标 >= _审判弃牌.size():
+		# 下标落在可选范围内、且那张牌确实还在弃牌堆（防客户端旧列表 / 中途被取走）
+		var 可交: bool = 下标 >= 0 and 下标 < _审判弃牌.size()
+		if 可交:
+			可交 = engine.deck.discard.has(int(_审判弃牌[下标]))
+		if 目标 == null or 目标.color == player.color or not 可交:
 			engine.send(player.id, GConst.Msg.ErrorInput,
 				{"error_type": GConst.CmdType.Respond, "commands": []})
 			# _审判步 仍是 3：重入本分支会重新发「选 1 张弃牌交给目标对手」
