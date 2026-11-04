@@ -615,8 +615,40 @@ func _assign_roles_by_map(role_map: Dictionary) -> void:
 
 
 # ============================================================
-# 噬神者专属刃：每名噬神者一份唯一实例，归属初始化后不变
+# 噬神者专属刃 / 移除牌堆
 # ============================================================
+## 移除牌堆：被「移除」的牌实体收在这里（当前只有噬神者【渗蚀】会移除刃）。
+## **不在移除牌堆里＝在场**：技能要用一张牌的实例之前，先过 牌在场() 这一关，
+## 不在场的牌不能进入后续选项 / 结算。刃在移除牌堆里时才算「不在场」，御刃/共振/侵刻
+## 必须先用 刃从移除牌堆取出() 把它取出来，才能加回手牌 / 交给别人。
+var 移除牌堆: Array[int] = []
+
+
+## 这张牌的实例是否还在场（只要不在移除牌堆就算在场）
+func 牌在场(inst: int) -> bool:
+	return inst > 0 and not 移除牌堆.has(inst)
+
+
+## 把一张牌的实体移入移除牌堆（幂等）
+func 放入移除牌堆(inst: int) -> void:
+	if inst > 0 and not 移除牌堆.has(inst):
+		移除牌堆.append(inst)
+
+
+## 从移除牌堆取出这张牌（不在这里返回 -1）；取出来的牌可以重新加回手牌 / 盖牌等
+func 从移除牌堆取出(inst: int) -> int:
+	var idx: int = 移除牌堆.find(inst)
+	if idx < 0:
+		return -1
+	移除牌堆.remove_at(idx)
+	return inst
+
+
+## 刃专用别名：取出一张刃的唯一实例（不在移除牌堆返回 -1）
+func 刃从移除牌堆取出(inst: int) -> int:
+	return 从移除牌堆取出(inst)
+
+
 func _初始化噬神者刃() -> void:
 	for pid: int in order:
 		确保噬神者刃(pid)
@@ -624,8 +656,8 @@ func _初始化噬神者刃() -> void:
 
 ## 给一名已经确定为噬神者的玩家创建两张唯一刃实例（幂等）。
 ## 正常开局由 _初始化噬神者刃 统一调；测试/中途设角色也能显式调。
-## 两张刃初始就「不在场」：不放进牌库 / 弃牌堆 / 手牌 / 盖牌，只登记唯一实例与归属，
-## 由【御刃】【共振】按记录把实例加回手牌（被【渗蚀】移除后也是同一条路）。
+## 两张刃初始就「不在场」：实体收在 移除牌堆（不在牌库 / 弃牌堆 / 手牌 / 盖牌），
+## 由【御刃】【共振】先用 刃从移除牌堆取出() 取出，再加回手牌（被【渗蚀】移除后也是同一条路）。
 func 确保噬神者刃(pid: int) -> void:
 	var p0: BattlePlayer = players.get(pid)
 	if p0 == null or p0.role_id != GConst.角色_噬神者 or p0.魔刃实例 > 0:
@@ -638,6 +670,7 @@ func 确保噬神者刃(pid: int) -> void:
 		var 元素: int = 牌面.可选元素[0] if 牌面 != null and not 牌面.可选元素.is_empty() else 0
 		Data.取实例卡(inst, 元素, pid)
 		刃归属[inst] = pid
+		放入移除牌堆(inst)
 		if 面 == GConst.噬神者_魔刃卡:
 			p0.魔刃实例 = inst
 		else:
@@ -659,11 +692,8 @@ func 刃持有者(inst: int) -> int:
 	return -1
 
 
-## 按「归属者的唯一实例」判断是否在场：
-## - 在任意玩家手牌 / 盖牌里 = 在场；
-## - 当前正在结算的这张攻击牌 = 在场；
-## - 其余（含被【渗蚀】移除、实体已不在任何区域）= 不在场。
-## 刃被移除后不会进弃牌堆/牌库，所以「不在场」就等于「不在这些区域里」。
+## 按「归属者的唯一实例」判断是否在场：只要不在移除牌堆里就算在场。
+## （刃被【渗蚀】移除后收进移除牌堆 → 不在场，御刃/共振可以把它取出来用）
 func 刃在场(pid: int, 面: int) -> bool:
 	var p0: BattlePlayer = players.get(pid)
 	if p0 == null:
@@ -671,13 +701,7 @@ func 刃在场(pid: int, 面: int) -> bool:
 	var inst: int = p0.刃实例(面)
 	if inst <= 0:
 		return false
-	if p0.role != null and int(p0.role.get("_本次刃")) == inst:
-		return true
-	for other: int in order:
-		var pp: BattlePlayer = players.get(other)
-		if pp != null and (pp.hand_cards.has(inst) or pp.cover_cards.has(inst)):
-			return true
-	return false
+	return 牌在场(inst)
 
 
 ## 把某张刃按记录的唯一实例加回某人的手牌（刃被移除后实体不在任何区域，也走这条）。
@@ -2910,9 +2934,14 @@ func _结算待弃牌(ctx: Dictionary) -> void:
 	var 已移除: Array = ctx.get("removed", [])
 	var 待弃: Array = []
 	for c0: Variant in ctx.get("cards", []):
-		if 被认领.has(int(c0)) or 已移除.has(int(c0)):
+		var cid0: int = int(c0)
+		if 被认领.has(cid0):
 			continue
-		待弃.append(int(c0))
+		if 已移除.has(cid0):
+			# 「移除」的牌收进移除牌堆（那里才算不在场），不进弃牌堆
+			放入移除牌堆(cid0)
+			continue
+		待弃.append(cid0)
 	deck.push_discard(待弃)
 	var taker: int = int(ctx.get("taker", -1))
 	if taker >= 0 and not 被认领.is_empty():

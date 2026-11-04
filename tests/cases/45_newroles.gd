@@ -292,6 +292,8 @@ func _检噬神者() -> void:
 		"两张刃的归属者应是噬神者本人")
 	检(not 引擎.刃在场(1, GConst.噬神者_魔刃卡) and not 引擎.刃在场(1, GConst.噬神者_异刃卡),
 		"开局两张刃应在场外（不在场）")
+	检(引擎.移除牌堆.has(魔实例) and 引擎.移除牌堆.has(异实例),
+		"开局两张刃应收纳在移除牌堆里")
 	var 刃在任何区域: bool = false
 	for pid: int in 引擎.order:
 		var pp: BattlePlayer = 引擎.p(pid)
@@ -299,8 +301,8 @@ func _检噬神者() -> void:
 			刃在任何区域 = true
 	检(not 刃在任何区域 and not 引擎.deck.discard.has(魔实例) and not 引擎.deck.pile.has(魔实例) 		and not 引擎.deck.discard.has(异实例) and not 引擎.deck.pile.has(异实例),
 		"开局两张刃不应出现在手牌/盖牌/牌库/弃牌堆")
-	引擎.刃加入手牌(1, 魔实例)
-	引擎.刃加入手牌(1, 异实例)
+	引擎.刃加入手牌(1, 引擎.从移除牌堆取出(魔实例))
+	引擎.刃加入手牌(1, 引擎.从移除牌堆取出(异实例))
 	var 魔卡: GCard = Data.get_card(魔实例)
 	var 异卡: GCard = Data.get_card(异实例)
 	# 盖牌渗蚀：同一个盖牌变动（同一个 seq）被 URGENT 回栈重跑时只能触发一次
@@ -343,16 +345,19 @@ func _检噬神者() -> void:
 		检(not bool(魔项.get("enabled", true)) and not bool(异项.get("enabled", true))
 			and not bool(双项.get("enabled", true)),
 			"魔刃/异刃已在手牌时，包含它们的选项应置灰")
-		# 第一步弃牌代价把魔刃弃掉后，第二步应允许重新加回（不再看弃牌前的快照）
+		# 第一步弃牌代价把魔刃弃掉（渗蚀移除 → 收进移除牌堆），第二步应允许重新加回
 		var 取走的魔刃: int = 玩家.取出一张手牌(魔实例)
 		检(取走的魔刃 >= 0, "测试前应能从手牌取出魔刃")
+		if 取走的魔刃 >= 0:
+			引擎.放入移除牌堆(取走的魔刃)
 		var 重选选项: Array = 角色.call("_共振选项")
 		检(重选选项.size() == 4 and bool((重选选项[1] as Dictionary).get("enabled", false)),
 			"弃掉魔刃后，共振的魔刃选项应重新可用")
 		if 取走的魔刃 >= 0:
-			# 弃掉的刃是「移除」：实体不在任何区域，御刃/共振按记录的唯一实例加回
-			检(not 引擎.刃在场(1, GConst.噬神者_魔刃卡), "弃掉的刃应算不在场")
-			检(引擎.刃加入手牌(1, 取走的魔刃), "共振/御刃应能把移除的刃按同一实例加回")
+			检(not 引擎.刃在场(1, GConst.噬神者_魔刃卡), "移除的刃应算不在场")
+			var 取出刃: int = 引擎.刃从移除牌堆取出(取走的魔刃)
+			检(取出刃 == 取走的魔刃, "应从移除牌堆取出同一实例：%d / %d" % [取出刃, 取走的魔刃])
+			检(引擎.刃加入手牌(1, 取出刃), "共振/御刃应能把取出的刃按同一实例加回")
 			检(玩家.有手牌(取走的魔刃), "加回后魔刃应在手牌里")
 		检(str(异项.get("label", "")) == "【异刃】雷系/风系加入手牌"
 			and 异项.get("elements", []) == [GConst.CardElement.Thunder, GConst.CardElement.Wind]

@@ -571,9 +571,22 @@ func _检审判弃刃触发渗蚀() -> void:
 	_应答([], [], [引擎.p(3).hand_cards[0]])
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502, "应问选哪张弃牌交给对手")
-	_应答([2], [2])
+	# 被移除的刃不应再作为「选 1 张弃牌交给对手」的选项：只剩 3 号队友那张
+	var 选项数: int = 0
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 命令: Array = (r["data"] as Dictionary).get("commands", [])
+		if 命令.is_empty():
+			continue
+		var c: Dictionary = 命令[0]
+		if int(c.get("respond_id", 0)) == 9502 and c.has("option_card_ids"):
+			选项数 = (c.get("option_card_ids", []) as Array).size()
+	检(选项数 == 1, "被移除的【魔刃】不应作为审判的弃牌选项，实际选项数 %d" % 选项数)
+	_应答([1], [2])
 	引擎.run()
 	检(玩家2.hand_cards.size() == 1, "对手应收到 1 张弃牌")
+	检(引擎.移除牌堆.has(刃), "渗蚀后的【魔刃】应收纳在移除牌堆里")
 	检(not 引擎.deck.discard.has(刃) and not 玩家1.有手牌(刃),
-		"渗蚀后的【魔刃】应被移除（不进弃牌堆 / 手牌）")
+		"被移除的【魔刃】不应进弃牌堆 / 手牌")
 	检(引擎._await_id < 0, "审判结算完不应还停在等待")
