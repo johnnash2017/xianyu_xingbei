@@ -2056,6 +2056,26 @@ static func _提示元素文本(元素: Variant) -> String:
 	return str(元素).strip_edges()
 
 
+## 填占位符：{键} → 值。`提示原文` / `文本` / 各处拼文案共用这一处口径。
+static func 填文本(模板: String, 额外: Dictionary = {}) -> String:
+	var 文本: String = 模板
+	for 键: Variant in 额外:
+		文本 = 文本.replace("{%s}" % str(键), str(额外[键]))
+	return 文本
+
+
+## 读文本表（公用的跨技能文案）：id → 文本。缺 id 时返回 id 本身并打警告，不崩。
+## 文本表放「不属于单个技能」的公用句式；技能步骤文案仍走技能表「提示」列（提示原文）。
+static func 文本(id: String) -> String:
+	var 行: Variant = 数据表格.文本表.get(id, null)
+	if 行 == null:
+		push_warning("[文本表] 找不到文案 id：%s" % id)
+		return id
+	if 行 is Array and not (行 as Array).is_empty():
+		return str((行 as Array)[0]).strip_edges()
+	return str(行).strip_edges()
+
+
 ## 读技能表「提示」原文：不做「数字前后空格」处理。
 ## 选项按钮的文案要精确控制空格（如 -2【水晶】/战绩区 -2【水晶】）时用它；
 ## {占位符} 仍按 额外 填（如 {"n": 3, "花费": "-2【水晶】-1【宝石】"}）。
@@ -2063,10 +2083,7 @@ static func 提示原文(skill_id: int, 序号: int, 额外: Dictionary = {}) ->
 	var 列表: Array[String] = 技能提示列表(skill_id)
 	if 序号 < 0 or 序号 >= 列表.size():
 		return ""
-	var 文本: String = 列表[序号]
-	for 键: Variant in 额外:
-		文本 = 文本.replace("{%s}" % str(键), str(额外[键]))
-	return 文本.strip_edges()
+	return 填文本(列表[序号], 额外).strip_edges()
 
 
 ## 取「提示」列的第 序号 条（从 0 起）并填好占位符；没配或序号越界就返回空串。
