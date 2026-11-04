@@ -481,6 +481,19 @@ func _检审判() -> void:
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502,
 		"应先问 1 号队友弃牌（等待 %s / 号 %s）" % [str(引擎._await_id), str(引擎._pending_respond_id)])
+	# 强制弃牌：询问不能带取消（can_cancel=false），客户端不该出现可点的取消按钮
+	var 弃牌询问: Dictionary = {}
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 命令: Array = (r["data"] as Dictionary).get("commands", [])
+		if 命令.is_empty():
+			continue
+		var c: Dictionary = 命令[0]
+		if int(c.get("respond_id", 0)) == 9502 and int(c.get("card_max", 0)) == 1:
+			弃牌询问 = c
+	检(not 弃牌询问.is_empty() and not bool(弃牌询问.get("can_cancel", true)),
+		"审判的队友弃牌是强制的，询问不应可取消：%s" % str(弃牌询问))
 	检(_最近询问文案(9502).find("摸 1 张牌") >= 0,
 		"队友弃牌询问应写「弃 1 张牌【展示】，摸 1 张牌」：%s" % _最近询问文案(9502))
 	_应答([], [], [玩家1.hand_cards[0]])

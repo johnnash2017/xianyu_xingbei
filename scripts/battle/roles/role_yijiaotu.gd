@@ -507,7 +507,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			_审判下标 += 1
 			return p_yi_jiao_tu_ask({"player": player.id})
 		if not engine.has_reply():
-			询问(pid2, SHEN_PAN, 1, 0, GConst.CardSource.Hand, [], 1, "", [], true,
+			# 强制弃牌：can_cancel=false（客户端不显示可点的取消；超时由下面的空回复兜底补弃）
+			询问(pid2, SHEN_PAN, 1, 0, GConst.CardSource.Hand, [], 1, "", [], false,
 				0, pid2, [], 1, {}, 0, 0, false, [], true, -1, 0,
 				"【审判】：弃 1 张牌【展示】，摸 1 张牌")
 			return WAIT
