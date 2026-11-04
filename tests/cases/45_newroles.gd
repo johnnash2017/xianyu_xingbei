@@ -109,9 +109,11 @@ func _建引擎(角色号: int) -> BattleRole:
 	var 玩家: BattlePlayer = 引擎.p(1)
 	var 脚本: GDScript = load(str(脚本表[角色号])) as GDScript
 	var 角色: BattleRole = 脚本.new()
+	# 先定身份、再 setup：BattleRole.setup 会按 player.role_id 从角色表建指示物 / 盖牌槽，
+	# 顺序反了这些槽一个都建不出来（引擎侧 _assign_roles 也是先写 role_id 再 create/setup）。
+	玩家.role_id = 角色号
 	角色.setup(玩家, 引擎)
 	玩家.role = 角色
-	玩家.role_id = 角色号
 	if 角色号 == 79:
 		引擎.确保噬神者刃(1)
 	引擎.phase = BattleEngine.Phase.Playing
@@ -182,8 +184,14 @@ func _检圣殿骑士() -> void:
 	# 第一次询问：神威
 	角色.p_timeline_1(ctx)
 	检(引擎._await_id == 1, "【神威】应问发动者")
-	引擎.on_message(1, GConst.Msg.Respond, {"respond_id": 4302, "src_id": 1,
-		"args": [1], "card_ids": [], "dst_ids": []})
+	# 手工驱动钩子时不能走引擎的 on_message：它会把回复交给状态机（这里没有正在跑的状态），
+	# 引擎会顺手继续跑自己的回合流程，回复到不了钩子上。按「引擎重入钩子时能看到回复」的状态直接喂。
+	引擎._reply = {"respond_id": 4302, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": []}
+	引擎._has_reply = true
+	引擎._await_state = 引擎._当前状态
+	# 钩子返回 WAIT 后，真实流程是「引擎收到回复 → 重新进入同一钩子把回复取走并结算」，
+	# 这里按同样的方式重入一次。
+	角色.p_timeline_1(ctx)
 	检(int(ctx.get("hit_rate", 0)) == GConst.HitRate.NoReattack,
 		"【神威】应把本次攻击设成无法应战")
 	检(bool(ctx.get("can_light", true)) == false, "【神威】应关掉【圣光】")
@@ -693,6 +701,9 @@ func _检星坠女巫() -> void:
 	玩家.加律法(2)
 	玩家.移除律法()
 	玩家.加律法(3)
+	# 手牌上限的重算口径是「回合开始时」（角色 p_before_turn_begin 里 _重算手牌上限），
+	# 不是 player.加律法 / 移除律法 里即时重算；这里按游戏里的方式触发一次再断言。
+	角色.p_before_turn_begin({"player": 1})
 	检(玩家.hand_cards_max == GConst.HAND_CARDS_MAX + 1 - 玩家.律法数(),
 		"手牌上限应随律法数变化")
 	# 【群星启示】是启动技：必须作为 SpecialSkill 下发，且不能有法术技能入口
