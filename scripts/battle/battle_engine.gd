@@ -1497,7 +1497,7 @@ func _清除额外攻击行动(pid: int) -> void:
 ## 已获得的额外行动全部保留，响应结束后由额外行动阶段（SAdditionalAction）逐个选择使用 / 放弃。
 ## 保留这个入口是为了让上层（on_message 的取消识别）有一个统一落点，并记录语义。
 ## 注意：还没确认的「响应选项」由 S行动聚合器 在出栈时撤回（见 _撤回未确认额外行动）。
-func _处理行动结束取消(pid: int) -> void:
+func _处理行动结束取消(_pid: int) -> void:
 	# 新规则下取消响应与额外行动无关：这里刻意什么都不做。
 	pass
 
@@ -2881,7 +2881,7 @@ func push_draw(pid: int, n: int, cause: int = 0) -> void:
 ## 边界检查（run() 遇到 WAIT 不做 _check_hand_overflow），超限会拖到后面甚至永远不结算。
 ## after_hook 非空时：摸完（含边界超限结算）再压一个同名钩子，ctx 里带 cards＝本次摸到的牌，
 ## 供「摸到的牌要参与后续结算」的技能使用（如 7802【魔法入门】亮出摸到的那 1 张）。
-func push_强制摸牌(pid: int, n: int, cause: int = 0, after_hook: String = "", after_ctx: Dictionary = {}) -> void:
+func push_强制摸牌(pid: int, n: int, _cause: int = 0, after_hook: String = "", after_ctx: Dictionary = {}) -> void:
 	if n <= 0:
 		return
 	push(S强制摸牌.new(pid, n, after_hook, after_ctx))
@@ -3383,8 +3383,8 @@ func _新克隆实例(面: int) -> int:
 
 ## 这个实例号现在是不是已经在某个区域里（手牌 / 盖牌 / 牌堆 / 弃牌堆）
 func _实例在场(实例: int) -> bool:
-	for p: BattlePlayer in players.values():
-		if p.hand_cards.has(实例) or p.cover_cards.has(实例):
+	for 玩家: BattlePlayer in players.values():
+		if 玩家.hand_cards.has(实例) or 玩家.cover_cards.has(实例):
 			return true
 	return deck.pile.has(实例) or deck.discard.has(实例)
 

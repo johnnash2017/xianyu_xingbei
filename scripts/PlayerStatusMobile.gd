@@ -698,20 +698,20 @@ func _刷新状态图标() -> void:
 		var 图标贴图: Texture2D = load(图标路径) as Texture2D
 		if 图标贴图 == null:
 			continue
-		var 状态名: String = str(d.get("name", ""))
+		var 状态文字: String = str(d.get("name", ""))
 		# 魔刃/异刃也走同一份 StatusIcon：card_id 仍用于悬停摊卡面
 		var 额外牌id: int = int(d.get("card_id", -1))
 		var 状态说明: String = str(d.get("desc", ""))
 		# 悬停标题（可选）：隐藏信息 / 计数这类「只给本人看」的内容写这一行，
 		# 图标底下仍只写 name（如【末日预言】），不把（天雷劫火）5/6 摆在场上
-		var 状态提示: String = str(d.get("tip", 状态名))
+		var 状态提示: String = str(d.get("tip", 状态文字))
 		# 带「被动技能」的场卡（【末日预言】）走自定义内容：说明由那边按技能说明排版（带【被动】标色），
 		# 这里再拼一遍 desc 会让同一段说明出现两次、而且拼进来的这份没有类型标色
 		if not 状态说明.is_empty() and int(d.get("被动技能", -1)) <= 0:
 			状态提示 = "%s
 %s" % [状态提示, 状态说明]
 		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示,
-			额外牌id, 状态名, int(d.get("count", -1)), int(d.get("被动技能", -1)))
+			额外牌id, 状态文字, int(d.get("count", -1)), int(d.get("被动技能", -1)))
 	_状态已初始化 = true
 	_状态弹出起点 = 新起点
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
