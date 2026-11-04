@@ -222,7 +222,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, HUANG_SHEN_JI_YI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"是否额外移除 3 点【祭】？发动后你弃 1 张牌，移除 1 个【结界】并【横置】")
+				GConst.提示原文(HUANG_SHEN_JI_YI, 1))
 			return WAIT
 	if _t1_step != 1:
 		return SUCCESS
@@ -262,7 +262,7 @@ func p_lose_morale(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		询问(player.id, LIU_LI_JING, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-			"是否发动【琉璃境】：【重置】，我方【战绩区】+1【宝石】，指定 1 名角色弃 1 张牌【展示】（可把该弃牌作为【结界】）？")
+			GConst.提示原文(LIU_LI_JING, 1))
 		return WAIT
 	if not take_skill_reply():
 		_琉璃_step = 0
@@ -400,7 +400,7 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, JIN_MO_JING, 1, 0, GConst.CardSource.Hand, [], 1, "", [], true,
 					0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-					"【禁魔境】：弃 1 张牌")
+					GConst.提示原文(JIN_MO_JING, 1))
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
 			var cards: Array = r.get("card_ids", [])
@@ -434,7 +434,7 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, LIU_LI_JING, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 					0, -1, _全体角色(), -1, {}, 0, 0, false, [], true, -1, 0,
-					"【琉璃境】：指定 1 名角色弃 1 张牌【展示】")
+					GConst.提示原文(LIU_LI_JING, 2))
 				return WAIT
 			var r3: Dictionary = take_skill_reply_full()
 			var ds: Array = r3.get("dst_ids", [])
@@ -457,7 +457,7 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(tgt4.id, LIU_LI_JING, 1, 0, GConst.CardSource.Hand, [], 1, "", [], false,
 					0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-					"【琉璃境】：弃 1 张牌【展示】")
+					GConst.提示原文(LIU_LI_JING, 3))
 				return WAIT
 			var r4: Dictionary = take_skill_reply_full()
 			var cards4: Array = r4.get("card_ids", [])
@@ -484,7 +484,7 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, LIU_LI_JING, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"是否把这张弃牌面朝上放置在你角色旁，作为【结界】？")
+					GConst.提示原文(LIU_LI_JING, 4))
 				return WAIT
 			var 要: bool = take_skill_reply()
 			_mod_step = 0
@@ -503,7 +503,7 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, FU_MO_JING, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"是否发动【伏魔境】（消耗 1 点能量）：对目标对手造成 1 点法术伤害？")
+					GConst.提示原文(FU_MO_JING, 1))
 				return WAIT
 			if not take_skill_reply():
 				_mod_step = 0
@@ -515,7 +515,7 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, FU_MO_JING, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 					0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
-					"【伏魔境】：指定 1 名目标对手")
+					GConst.提示原文(FU_MO_JING, 2))
 				return WAIT
 			var r7: Dictionary = take_skill_reply_full()
 			var ds7: Array = r7.get("dst_ids", [])
