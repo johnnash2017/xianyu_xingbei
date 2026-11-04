@@ -124,7 +124,9 @@ func _rang_wo_tang_ping(ctx: Dictionary) -> int:
 ## 10601 摸牌后要先让超限结算，再回来问「弃 1 张法术牌」：让引擎在 URGENT 结算完重入技能本体。
 ## 只对 10601 生效 —— 10603 的 URGENT 是「魔弹结算完技能就结束」，重入会再打一发。
 func 技能URGENT后重入(action: Dictionary = {}) -> bool:
-	return int(action.get("action_id", 0)) == BIE_FAN_WO
+	# 只有「目标摸完 1 张、还要回来问弃不弃」这一处需要重入；惩罚的摸牌 URGENT
+	# 已经走完技能，若也重入会从 _bie_fan_step==STEP_DONE 重置成 0，把整个技能再发动一遍
+	return int(action.get("action_id", 0)) == BIE_FAN_WO and _bie_fan_step == 2
 
 
 func available_skills() -> Array:
@@ -253,13 +255,11 @@ func _p_bie_fan_wo() -> int:
 		_bie_fan_step = 2
 		notice_skill(BIE_FAN_WO, [dst_id])
 		# 目标【强制】摸 1 张 → 我方战绩区 +1 水晶（随机弃牌已在指定目标之前做掉了）
-		engine.强制摸牌(dst_id, 目标摸牌数, BIE_FAN_WO)
+		# 摸牌走标准摸牌状态：摸完由状态边界统一结算超限（弃到上限 + 掉士气），
+		# 结算完再回来问「弃 1 张法术牌」
+		engine.push_draw(dst_id, 目标摸牌数, BIE_FAN_WO)
 		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
 		engine._broadcast_game()
-		# 目标这一摸可能把手牌摸超上限：先压超限结算（弃到上限 + 按超限张数掉士气），
-		# 结算完再回来问「弃 1 张法术牌」。摸牌是【强制】（不走 p_before_draw），所以这里显式补一次；
-		# 否则下一步「弃 1 张法术牌」正好把牌弃回上限，超限永远判不到。
-		engine.push(BattleEngine.SHandOverflow.new())
 		return URGENT
 	if _bie_fan_step != 2:
 		return SUCCESS
@@ -281,10 +281,20 @@ func _p_bie_fan_wo() -> int:
 
 
 ## 目标「不如此做」的惩罚：他摸 1 张【强制】，右手边队友 +1【治疗】。
+## 摸牌走标准状态；治疗压成钩子排在摸牌之后（摸牌状态在上，先摸完再结算治疗）。
 func _bie_fan_惩罚() -> int:
 	_bie_fan_step = STEP_DONE
-	engine.强制摸牌(_bie_fan_目标, 惩罚摸牌数, BIE_FAN_WO)
-	var 队友: BattlePlayer = engine.p(_bie_fan_队友)
+	engine.push(BattleEngine.SHook.new("p_daduoshaonv_惩罚治疗",
+		{"player": player.id, "target": _bie_fan_队友}, []))
+	engine.push_draw(_bie_fan_目标, 惩罚摸牌数, BIE_FAN_WO)
+	return URGENT
+
+
+## 10601 惩罚的「右手边队友 +1【治疗】」：压在惩罚摸牌之下，摸牌结算完才跑
+func p_daduoshaonv_惩罚治疗(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	var 队友: BattlePlayer = engine.p(int(ctx.get("target", -1)))
 	if 队友 != null:
 		施加治疗(队友.id, 惩罚治疗数)
 	engine._broadcast_game()

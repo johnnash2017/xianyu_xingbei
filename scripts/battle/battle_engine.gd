@@ -2853,10 +2853,12 @@ func push_draw(pid: int, n: int, cause: int = 0) -> void:
 ## 强制摸牌的状态版：压一个「摸牌状态」再摸，摸完回到状态边界统一结算手牌 / 盖牌超限。
 ## 角色在钩子里摸完**还要继续问人**时必须用这条 —— 直接调 强制摸牌() 后 return WAIT 会跳过
 ## 边界检查（run() 遇到 WAIT 不做 _check_hand_overflow），超限会拖到后面甚至永远不结算。
-func push_强制摸牌(pid: int, n: int, cause: int = 0) -> void:
+## after_hook 非空时：摸完（含边界超限结算）再压一个同名钩子，ctx 里带 cards＝本次摸到的牌，
+## 供「摸到的牌要参与后续结算」的技能使用（如 7802【魔法入门】亮出摸到的那 1 张）。
+func push_强制摸牌(pid: int, n: int, cause: int = 0, after_hook: String = "", after_ctx: Dictionary = {}) -> void:
 	if n <= 0:
 		return
-	push(S强制摸牌.new(pid, n))
+	push(S强制摸牌.new(pid, n, after_hook, after_ctx))
 
 
 ## 强制摸牌（F9 / 10601「指定目标对手摸 1 张牌【强制】」、7804 补到手牌 N 张）：
@@ -2901,17 +2903,18 @@ func 随机弃手牌(pid: int, n: int = 1, cause: int = 0, 展示: bool = false)
 
 
 ## 把某玩家手牌补 / 弃到「目标张数」（F9 / 7804「将手牌调整为 4 张【强制】」）。
-## 不足：强制摸牌补齐（直接 draw，不触发 p_before_draw）；超出且 随机弃牌=true：随机弃；
-## 超出且 随机弃牌=false：压入等待状态让牌主自己选弃（调用方应返回 URGENT 等它跑完）。
-## 返回 true＝已压入等待状态（调用方需要挂起）；false＝已经当场完成 / 无需调整。
+## 不足：压标准摸牌状态（push_draw）补齐 —— 摸完由状态边界统一结算超限；
+## 超出且 随机弃牌=true：随机弃；
+## 超出且 随机弃牌=false：压入等待状态让牌主自己选弃。
+## 返回 true＝压了需要挂起的流程（补牌 / 等牌主选弃，调用方必须返回 URGENT）；false＝当场完成 / 无需调整。
 func 调整手牌到(pid: int, 目标张数: int, cause: int = 0, 随机弃牌: bool = false) -> bool:
 	var p0: BattlePlayer = players.get(pid)
 	if p0 == null or 目标张数 < 0:
 		return false
 	var 差: int = p0.hand_cards.size() - 目标张数
 	if 差 < 0:
-		强制摸牌(pid, -差, cause)
-		return false
+		push_draw(pid, -差, cause)
+		return true
 	if 差 == 0:
 		return false
 	if 随机弃牌:
@@ -5039,11 +5042,19 @@ class SHarmTimeline6:
 class S强制摸牌:
 	var pid: int
 	var n: int
-	func _init(_pid: int, _n: int) -> void:
+	var after_hook: String
+	var after_ctx: Dictionary
+	func _init(_pid: int, _n: int, hook: String = "", ctx: Dictionary = {}) -> void:
 		pid = _pid
 		n = _n
+		after_hook = hook
+		after_ctx = ctx
 	func handle(e: BattleEngine) -> int:
-		e.强制摸牌(pid, n)
+		var cards: Array = e.强制摸牌(pid, n)
+		if not after_hook.is_empty():
+			var ctx: Dictionary = after_ctx.duplicate()
+			ctx["cards"] = cards
+			e.push(SHook.new(after_hook, ctx, []))
 		return BattleEngine.CONTINUE
 
 
@@ -5171,7 +5182,7 @@ class SRequestDiscard:
 
 
 ## 手牌调整到 N 张（F9 / 7804）：超出目标时压一次「由牌主自己选弃」的询问；
-## 询问跑完再回来检查一次。补牌 / 随机弃牌在 调整手牌到() 里当场处理，不会进这里。
+## 询问跑完再回来检查一次。补牌走 push_draw、随机弃牌当场处理，都不进这里。
 class SHandAdjust:
 	var pid: int
 	var 目标: int

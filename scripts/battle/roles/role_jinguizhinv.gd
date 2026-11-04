@@ -81,6 +81,8 @@ var _7802启用友情羁绊: bool = false
 var _7802友情角色: Array[int] = []
 var _7802友情弃牌: Array = []          # [{pid:int, card:int}]
 var _7802展示牌: Array[int] = []
+## 展示摸牌是否已经压过状态（防止摸到空牌时重复压）
+var _7802展示已摸: bool = false
 var _7802有法术牌: bool = false
 var _7802咏数量: int = 0
 var _7802水数量: int = 0
@@ -191,11 +193,29 @@ func p_jinguizhinv_水系治疗(ctx: Dictionary) -> int:
 
 
 ## 7805 的「技能效果结束前各摸 1 张【强制】」：压在伤害 / 治疗状态之下，等它们全部结算完才摸。
-## 直接在 _结算魔法入门 里当场摸牌会跑到伤害之前（那时伤害状态还没压栈）。
+## 摸牌一律走标准摸牌状态（摸完由状态边界结算超限），逐个压栈后 URGENT；重入时靠 ctx 标记只摸一次。
 func p_jinguizhinv_友情摸牌(ctx: Dictionary) -> int:
-	for 值: Variant in ctx.get("targets", []):
-		engine.强制摸牌(int(值), 1, 友情羁绊)
-	engine._broadcast_game()
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	if bool(ctx.get("已摸", false)):
+		return SUCCESS
+	ctx["已摸"] = true
+	# 摸牌状态是 LIFO：按 targets 逆序压栈，实际结算顺序才是 targets 的正序
+	var 表: Array = ctx.get("targets", [])
+	var 压了: bool = false
+	for i: int in range(表.size() - 1, -1, -1):
+		if int(表[i]) >= 0:
+			engine.push_draw(int(表[i]), 1, 友情羁绊)
+			压了 = true
+	return URGENT if 压了 else SUCCESS
+
+
+## 7802 展示摸牌的回调：状态版强制摸牌摸完后把牌交给这里，记进展示集合供本体重入后计算。
+func p_jinguizhinv_7802摸到(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	for c: Variant in ctx.get("cards", []):
+		_7802展示牌.append(int(c))
 	return SUCCESS
 
 
@@ -318,12 +338,16 @@ func p_magic_skill(action: Dictionary) -> int:
 				# 候选角色在询问前已保证手里有牌；这里只做防御，空选不崩溃、后续按无效牌跳过
 				_7802友情弃牌.append({"pid": 弃牌人, "card": 弃出 if 已离手 else -1})
 			步_准备展示:
+				# 摸 1 张作为展示牌：走标准的状态版强制摸牌，摸完由状态边界统一结算超限，
+				# 再把摸到的牌交给 p_jinguizhinv_7802摸到 记进展示集合，然后重入本步骤继续。
+				if not _7802启用友情羁绊 and not _7802展示已摸:
+					_7802展示已摸 = true
+					engine.push_强制摸牌(player.id, 1, 魔法入门,
+						"p_jinguizhinv_7802摸到", {"player": player.id})
+					return URGENT
 				_准备7802展示()
 				step = 步_法术目标
-				# 摸到的展示牌可能把手牌摸超上限：先压超限结算（弃到上限 + 掉士气），
-				# 回来再从「选目标」继续（本角色覆写 技能URGENT后重入()＝true，引擎会重入技能本体）。
-				engine.push(BattleEngine.SHandOverflow.new())
-				return URGENT
+				continue
 			步_法术目标:
 				var 法术目标数: int = mini(法术目标上限, enemy_ids().size()) if _7802有法术牌 else 0
 				if 法术目标数 <= 0:
@@ -465,6 +489,7 @@ func _初始化魔法入门() -> void:
 	_7802友情角色.clear()
 	_7802友情弃牌.clear()
 	_7802展示牌.clear()
+	_7802展示已摸 = false
 	_7802有法术牌 = false
 	_7802咏数量 = 0
 	_7802水数量 = 0
@@ -486,9 +511,8 @@ func _准备7802展示() -> void:
 	if _7802启用友情羁绊:
 		for 项: Dictionary in _7802友情弃牌:
 			_7802展示牌.append(int(项.get("card", -1)))
-	else:
-		# 普通流程：摸 1 张【强制】（不走 p_before_draw，不能被「摸牌前」响应改写）
-		_7802展示牌 = engine.强制摸牌(player.id, 1, 魔法入门)
+	# 普通流程的展示牌已由 步_准备展示 的状态版摸牌 + p_jinguizhinv_7802摸到 填好，
+	# 这里只按展示牌计算触发情况（摸牌不在这里做，避免绕过状态边界的超限结算）
 	for cid: int in _7802展示牌:
 		var card: GCard = Data.get_card(cid)
 		if card == null:
