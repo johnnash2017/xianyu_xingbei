@@ -222,7 +222,7 @@ func p_after_extract(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		询问(player.id, EN_DIAN_SHEN_SHOU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-			"是否发动【恩典神授】：把本次提炼的星石全部交给目标队友（代价：移除我方角色合计 2【治疗】或【异端裁决所】3【治疗】）？")
+			GConst.提示原文(EN_DIAN_SHEN_SHOU, 1))
 		return WAIT
 	if not take_skill_reply():
 		_恩典步 = 0
@@ -289,7 +289,7 @@ func p_harm_end(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		询问(player.id, JING_HUA_ZHI_SHU, 1, 0, GConst.CardSource.Hand, [], 1, "magic", [], true,
 			0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-			"是否发动【净化之术】：弃 1 张法术牌【展示】，你 +1【治疗】并摸 1 张牌，然后移除【异端裁决所】1 点【治疗】？")
+			GConst.提示原文(JING_HUA_ZHI_SHU, 1))
 		return WAIT
 	if not take_skill_reply():
 		_净华步 = 0
@@ -324,7 +324,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		询问(player.id, BI_HU_LING_YU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-			"是否发动【庇护领域】：移除【异端裁决所】3 点【治疗】，本次伤害 -1，你 +1【裁决】？")
+			GConst.提示原文(BI_HU_LING_YU, 1))
 		return WAIT
 	var 发动: bool = take_skill_reply()
 	_庇护步 = 0
@@ -356,7 +356,7 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 				选项.append(i)
 			询问(player.id, SHEN_SHENG_BIAN_CE, 0, 0, GConst.CardSource.Hand, [0] + 选项, 0, "", [], true,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【神圣鞭策】：移除 X 点【裁决】（选择 X）")
+				GConst.提示原文(SHEN_SHENG_BIAN_CE, 1))
 			return WAIT
 		# 阶段在取完回复之后再推进：重入时 _鞭策步 仍是 1，才能走到这里
 		var r: Dictionary = take_skill_reply_full()
@@ -386,7 +386,7 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 					池.append(pid)
 			询问(player.id, SHEN_SHENG_BIAN_CE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 				0, -1, 池, -1, {}, 0, 0, false, [], true, -1, 0,
-				"【神圣鞭策】：指定 1 名目标角色摸 1 张牌（还可指定 %d 名）" % (_鞭策X - _鞭策目标.size()))
+				GConst.提示原文(SHEN_SHENG_BIAN_CE, 2) % (_鞭策X - _鞭策目标.size()))
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		var ds: Array = r2.get("dst_ids", [])
@@ -404,7 +404,7 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, SHEN_SHENG_BIAN_CE, 需, 0, GConst.CardSource.Hand, [], 需, "", [], false,
 				0, player.id, [], 需, {}, 0, 0, false, [], true, -1, 0,
-				"【神圣鞭策】：弃 %d 张牌" % 需)
+				GConst.提示原文(SHEN_SHENG_BIAN_CE, 3) % 需)
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
 		var cards: Array = r3.get("card_ids", [])
@@ -425,7 +425,7 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, EN_DIAN_SHEN_SHOU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 				0, -1, ally_ids() if not ally_ids().is_empty() else _全体角色(), -1, {}, 0, 0, false, [], true, -1, 0,
-				"【恩典神授】：把本次提炼的星石全部交给哪名目标队友？")
+				GConst.提示原文(EN_DIAN_SHEN_SHOU, 2))
 			return WAIT
 		var r4: Dictionary = take_skill_reply_full()
 		var ds4: Array = r4.get("dst_ids", [])
@@ -462,7 +462,7 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, EN_DIAN_SHEN_SHOU, 1, 0, GConst.CardSource.Hand, [], 1, "", [], true,
 				0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-				"【恩典神授】：弃 1 张牌（若为圣类命格可【展示】）")
+				GConst.提示原文(EN_DIAN_SHEN_SHOU, 3))
 			return WAIT
 		var r5: Dictionary = take_skill_reply_full()
 		var cards5: Array = r5.get("card_ids", [])
@@ -493,7 +493,7 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, EN_DIAN_SHEN_SHOU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
-				"【恩典神授】：是否对目标对手造成 1 点法术伤害？")
+				GConst.提示原文(EN_DIAN_SHEN_SHOU, 4))
 			return WAIT
 		var r6: Dictionary = take_skill_reply_full()
 		var ds6: Array = r6.get("dst_ids", [])
@@ -510,7 +510,7 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, JING_HUA_ZHI_SHU, 1, 0, GConst.CardSource.Hand, [], 1, "magic", [], true,
 				0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-				"【净化之术】：弃 1 张法术牌【展示】")
+				GConst.提示原文(JING_HUA_ZHI_SHU, 2))
 			return WAIT
 		# 阶段在取完回复之后再推进：重入时 _净华步 仍是 2
 		var r7: Dictionary = take_skill_reply_full()
