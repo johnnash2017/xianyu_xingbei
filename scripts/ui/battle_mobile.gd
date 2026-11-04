@@ -8456,6 +8456,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _侵刻头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _审判头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _诸神终焉头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _预览伤害头像提示()
@@ -8622,6 +8624,33 @@ func _侵刻头像提示() -> Dictionary:
 	if 目标.is_empty():
 		目标 = _高亮目标.duplicate()
 	for pid: int in 目标:
+		out[pid] = 文
+	return out
+
+
+## 异教徒【审判】第 3 步「选 1 张弃牌交给目标对手」：选中敌方头像时，
+## 在头像上写「给予【这张牌的卡名】」——卡名取当前选中的二级选项附带的卡面（option_card_ids）。
+func _审判头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or int(_skill_ask_id) != GConst.技能_审判:
+		return out
+	if _已选参数.is_empty():
+		return out
+	var 选中值: int = int(_已选参数[0])
+	var 牌面: int = -1
+	for 项: Dictionary in _二级选项:
+		var 参: Array = 项.get("参数", [])
+		if 参.size() == 1 and int(参[0]) == 选中值:
+			牌面 = int(项.get("卡牌", -1))
+			break
+	if 牌面 <= 0:
+		return out
+	var 卡: GCard = Data.get_card(牌面)
+	if 卡 == null:
+		return out
+	var 文: String = "给予【%s】" % 卡.card_name
+	# 只在已选中的目标头像上写（目标指示器选中敌人时才有内容）
+	for pid: int in _sel_players:
 		out[pid] = 文
 	return out
 
