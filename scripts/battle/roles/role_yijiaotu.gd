@@ -677,8 +677,10 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			# 一次询问里同时选：放哪张正面（天雷劫火 / 地裂波涛）+ 哪 6 张手牌作为【预言】。
 			# 这一步是强制的（can_cancel=false）：超时由下面的兜底随机选正面、自动放 6 张。
 			询问(player.id, FANG_ZHU, 6, 0, GConst.CardSource.Hand,
-				[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO},
-				 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO}],
+				[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO,
+					"no_prompt_change": true},
+				 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO,
+					"no_prompt_change": true}],
 				6, "", [], false,
 				0, player.id, [], 6, {}, 0, 0, false, [], true, -1, 0,
 				"【放逐】：选择放 1 张【末日预言】入场，并选择 6 张手牌作为【预言】")

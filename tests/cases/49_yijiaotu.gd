@@ -376,6 +376,8 @@ func _检放逐() -> void:
 	if not 组合问.is_empty():
 		检(int(组合问.get("card_max", 0)) == 6, "合并询问应要求选 6 张手牌：%s" % str(组合问.get("card_max")))
 		检(not bool(组合问.get("can_cancel", true)), "放逐这一步不允许取消")
+		检(组合问.get("option_no_prompt_change", []) == [true, true],
+			"放逐的正面选项应标记「选中不改提示条」：%s" % str(组合问.get("option_no_prompt_change", [])))
 	var 手: Array = 玩家1.hand_cards.duplicate()
 	var 选六: Array = []
 	for i: int in range(6):

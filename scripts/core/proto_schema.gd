@@ -264,6 +264,10 @@ const SUB: Dictionary = {
 		# 带选项的询问里，每个选项各自「悬停要摊出来的预览牌」（与 args 里的选项值一一对应）：
 		# 如暴食少女【三秒原则】的「获得 2 张【魔弹】」悬停时把那两张魔弹的卡面并排显示。
 		50: {"n": "option_preview_cards", "t": "msg", "r": true, "s": "OptionTargets"},
+		# 带选项的询问里，每项被选中后要不要保持提示条文案不变（与 args 一一对应）：
+		# true＝选中它时提示条仍写这次询问的文案，不切换成该项挂的技能说明
+		# （如放逐的「天雷劫火 / 地裂波涛」：技能说明只在悬停时看，选中不换提示条）。
+		53: {"n": "option_no_prompt_change", "t": "bool", "r": true},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {
