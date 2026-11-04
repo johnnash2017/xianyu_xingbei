@@ -506,7 +506,14 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				"card_ids": [cid], "is_real": true,
 			})
 			engine.take_from_hand(pid2, [cid], false)
+			# 走统一的弃牌入口：F6「弃牌前拦截」会在这里触发（如噬神者【渗蚀】），
+			# 牌先进弃牌堆，最后一步再按需要取回来（交给对手 / 放进【预言】堆）。
+			# 注意 owner 必须是真正弃牌的那个人（渗蚀的伤害打给弃牌者）。
+			engine.to_discard([cid], {"owner": pid2, "source": "hand", "cause": SHEN_PAN})
 			_审判弃牌.append(cid)
+			_审判下标 += 1
+			# 先让弃牌拦截结算完，回来再继续下一名队友
+			return URGENT
 		_审判下标 += 1
 		return p_yi_jiao_tu_ask({"player": player.id})
 	# 审判：选 1 张弃牌给目标对手；其余进预言堆
@@ -542,18 +549,27 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		return p_yi_jiao_tu_ask({"player": player.id})
 	if _审判步 == 4:
 		_审判步 = 0
-		var 给: Array = []
-		if _审判对手 > 0 and not _审判弃牌.is_empty():
+		var 已弃: Array = _审判弃牌.duplicate()
+		_审判弃牌 = []
+		# 这些牌已经在 step2 走统一弃牌入口进了弃牌堆；要给人的那张先取回来
+		var 下标给: int = clampi(_审判给, 0, maxi(已弃.size() - 1, 0))
+		var 给了: bool = false
+		if _审判对手 > 0 and not 已弃.is_empty():
 			var 敌: BattlePlayer = engine.p(_审判对手)
-			var 下标: int = clampi(_审判给, 0, _审判弃牌.size() - 1)
-			if 敌 != null:
-				给.append(int(_审判弃牌[下标]))
-				敌.add_hand_cards(给)
-		var 其余: Array = []
-		for c3: Variant in _审判弃牌:
-			if not 给.has(int(c3)):
-				其余.append(int(c3))
+			var 取: int = engine.deck.取出实例(int(已弃[下标给]))
+			if 敌 != null and 取 > 0:
+				敌.add_hand_cards([取])
+				给了 = true
+		# 其余弃牌：有【末日预言】才从弃牌堆取出来放进【预言】堆；
+		# 没有【末日预言】就留在弃牌堆（本来就已经在里面了，不用再动）
 		if engine.有场卡(末日预言名):
+			var 其余: Array = []
+			for i: int in range(已弃.size()):
+				if i == 下标给 and 给了:
+					continue
+				var 取2: int = engine.deck.取出实例(int(已弃[i]))
+				if 取2 > 0:
+					其余.append(取2)
 			var 表2: Dictionary = engine.取场卡(末日预言名)
 			var 堆2: Array = 表2.get("pile", [])
 			# 「将其余弃牌面朝下洗混放置到【预言】堆顶部」：只打乱这批弃牌，再压到顶部
@@ -563,9 +579,6 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			表2["pile"] = 堆2
 			表2["counter"] = 堆2.size()
 			engine._broadcast_game()
-		else:
-			engine.to_discard(其余, {"owner": player.id, "source": "hand", "cause": SHEN_PAN})
-		_审判弃牌 = []
 		return SUCCESS
 	# 献祭：先选系别，再结算
 	if _献祭步 == 1:

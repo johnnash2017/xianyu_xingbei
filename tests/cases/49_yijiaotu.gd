@@ -31,6 +31,7 @@ func 跑() -> void:
 	_检放逐超时()
 	_检审判()
 	_检审判超时()
+	_检审判弃刃触发渗蚀()
 	引擎 = null
 
 
@@ -530,3 +531,48 @@ func _检状态显示资料() -> void:
 	检(提示.find("【被动】") >= 0, "悬停说明应带【被动】类型：%s" % 提示.substr(0, 20))
 	检(提示.find("末日预言") >= 0, "悬停说明应写技能名：%s" % 提示.substr(0, 20))
 	检(提示.find("[color=") >= 0, "带字号的说明也要有【被动】标色码：%s" % 提示.substr(0, 40))
+
+
+# ============================================================
+# 12. 审判弃掉【魔刃】要触发噬神者【渗蚀】
+# ============================================================
+func _检审判弃刃触发渗蚀() -> void:
+	_建引擎()
+	# 3 号座位挂噬神者，拿到他的【魔刃】唯一实例并塞给 1 号（任何持有者弃置都要触发渗蚀）
+	var 噬: BattleRole = (load("res://scripts/battle/roles/role_shishenzhe.gd") as GDScript).new()
+	噬.setup(引擎.p(3), 引擎)
+	引擎.p(3).role = 噬
+	引擎.p(3).role_id = 79
+	引擎.确保噬神者刃(3)
+	var 刃: int = 引擎.p(3).刃实例(GConst.噬神者_魔刃卡)
+	检(刃 > 0, "噬神者应生成【魔刃】唯一实例")
+	引擎.deck.discard.erase(刃)
+	玩家1.add_hand_cards([刃])
+	_发牌(引擎.p(3), GConst.CardElement.Wind, 1)
+	角色._本回合造成伤害 = true
+	检(角色.p_turn_end({"player": 1}) == BattleRole.WAIT, "【审判】应先问是否发动")
+	_应答([1])
+	角色.p_turn_end({"player": 1})
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502, "应先问 1 号队友弃牌")
+	_应答([], [], [刃])
+	引擎.run()
+	# 渗蚀：3 号噬神者应对弃牌者（1 号）造成法术伤害
+	var 有渗蚀: bool = false
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.Skill:
+			continue
+		var 数据: Dictionary = r["data"]
+		if int(数据.get("skill_id", 0)) == 7911 and (数据.get("dst_ids", []) as Array).has(1):
+			有渗蚀 = true
+	检(有渗蚀, "弃置【魔刃】应触发【渗蚀】并对弃牌者造成伤害")
+	检(引擎._await_id == 3 and 引擎._pending_respond_id == 9502,
+		"渗蚀结算完应继续问 3 号队友（等待 %s）" % str(引擎._await_id))
+	_应答([], [], [引擎.p(3).hand_cards[0]])
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502, "应问选哪张弃牌交给对手")
+	_应答([2], [2])
+	引擎.run()
+	检(玩家2.hand_cards.size() == 1, "对手应收到 1 张弃牌")
+	检(引擎.deck.discard.has(刃), "渗蚀后的【魔刃】应留在弃牌堆（本轮没有【末日预言】改放进预言堆）")
+	检(引擎._await_id < 0, "审判结算完不应还停在等待")
