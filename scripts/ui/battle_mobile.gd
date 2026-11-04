@@ -4479,6 +4479,22 @@ func _二级选中项() -> Dictionary:
 	return _二级选项[_二级选中]
 
 
+## 选中带「不改提示」标记的选项时，提示条要保留的那段文案：
+## 优先本次询问的专属文案（ask_prompt 整段提示 / ask_text），其次父技能 / 本技能的说明。
+## 没有标记返回空串（调用方继续走原来的「切换成选项技能说明」逻辑）。
+func _选项保持提示(项: Dictionary) -> String:
+	if not bool(项.get("不改提示", false)):
+		return ""
+	var 文: String = str(_pending.get("ask_prompt", ""))
+	if 文.is_empty():
+		文 = str(_pending.get("ask_text", ""))
+	if 文.is_empty() and _二级栏父技能号 > 0:
+		文 = _技能效果提示(_二级栏父技能号)
+	if 文.is_empty() and _skill_ask_id > 0:
+		文 = _技能效果提示(_skill_ask_id)
+	return 文
+
+
 ## 二级栏的指令条：还没选效果就说「先选」，选好了就说清还差什么才能确定。
 ## 没有技能本体（多份额外行动 / 治疗抵挡）时不写「【】」那一截，「发动」也换成中性说法
 func _刷新二级栏提示() -> void:
@@ -4511,15 +4527,10 @@ func _刷新二级栏提示() -> void:
 	var 父技能号: int = _二级栏父技能号
 	# 选项标了「不改提示」的（放逐的正面二选一）：选中后提示条继续写这次询问的文案，
 	# 不切换成该选项挂的技能说明（技能说明只在鼠标悬停该项时看）
-	if bool(选中项.get("不改提示", false)):
-		var 保持提示: String = str(_pending.get("ask_text", ""))
-		if 保持提示.is_empty() and 父技能号 > 0:
-			保持提示 = _技能效果提示(父技能号)
-		if 保持提示.is_empty() and _skill_ask_id > 0:
-			保持提示 = _技能效果提示(_skill_ask_id)
-		if not 保持提示.is_empty():
-			_指令提示(保持提示)
-			return
+	var 保持提示: String = _选项保持提示(选中项)
+	if not 保持提示.is_empty():
+		_指令提示(保持提示)
+		return
 	var 锁定父说明: bool = _固定父说明(父技能号)
 	# 响应技能里选项本身就是另一个技能（怒火压制 / 魔纹融合、蓄力一击 / 气绝崩击）：
 	# 切到哪颗就说哪颗的说明；这属于换了要发动的技能，不算「同一个技能的参数选项」。
