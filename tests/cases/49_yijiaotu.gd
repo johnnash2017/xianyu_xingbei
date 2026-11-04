@@ -360,15 +360,27 @@ func _检放逐() -> void:
 	检(引擎._await_id == 1, "摸完牌应问放哪张【末日预言】（等待 %s）" % str(引擎._await_id))
 	检(_询问选项技能号() == [9507, 9508],
 		"正面二选一的选项应挂技能号（悬停看被动说明）：%s" % str(_询问选项技能号()))
-	_应答([1])          # 天雷劫火
-	引擎.run()
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505,
-		"选完正面后应问选 6 张手牌作为【预言】（等待 %s）" % str(引擎._await_id))
+	# 同一次询问里同时选正面 + 6 张手牌，且不可取消
+	var 组合问: Dictionary = {}
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 命令: Array = (r["data"] as Dictionary).get("commands", [])
+		if 命令.is_empty():
+			continue
+		var c: Dictionary = 命令[0]
+		var 参: Array = c.get("args", [])
+		if int(c.get("respond_id", 0)) == 9505 and 参.size() > 3 and int(参[3]) == 2:
+			组合问 = c
+	检(not 组合问.is_empty(), "放逐应只问一次（正面 + 6 张手牌合并）")
+	if not 组合问.is_empty():
+		检(int(组合问.get("card_max", 0)) == 6, "合并询问应要求选 6 张手牌：%s" % str(组合问.get("card_max")))
+		检(not bool(组合问.get("can_cancel", true)), "放逐这一步不允许取消")
 	var 手: Array = 玩家1.hand_cards.duplicate()
 	var 选六: Array = []
 	for i: int in range(6):
 		选六.append(int(手[i]))
-	_应答([], [], 选六)
+	_应答([1], [], 选六)   # 天雷劫火 + 6 张
 	引擎.run()
 	var 表: Dictionary = _场卡("末日预言")
 	检(int(表.get("counter", 0)) == 6 and int(表.get("pile", []).size()) == 6,
@@ -442,18 +454,12 @@ func _检放逐超时() -> void:
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505,
 		"摸完牌应问正面（等待 %s / 号 %s）" % [str(引擎._await_id), str(引擎._pending_respond_id)])
-	# 正面超时 / 跳过：随机选一个，继续流程
+	# 合并询问超时：随机选正面 + 自动放 6 张手牌，不再有第二问
 	_应答超时()
 	引擎.run()
 	var 表: Dictionary = _场卡("末日预言")
 	var 正面: String = str(表.get("front", ""))
 	检(正面 == "天雷劫火" or 正面 == "地裂波涛", "超时应随机选一个正面：%s" % 正面)
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505,
-		"超时选正面后应继续问 6 张手牌（等待 %s）" % str(引擎._await_id))
-	# 6 张手牌超时：自动放 6 张
-	_应答超时()
-	引擎.run()
-	表 = _场卡("末日预言")
 	检(int(表.get("counter", 0)) == 6 and int(表.get("pile", []).size()) == 6,
 		"超时应自动放 6 张作为【预言】：%d" % int(表.get("counter", 0)))
 	检(玩家1.hand_cards.is_empty(), "6 张都被放成【预言】后手牌应为空：%d" % 玩家1.hand_cards.size())

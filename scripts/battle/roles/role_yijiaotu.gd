@@ -674,37 +674,30 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		engine.移除场卡(天雷劫火名)
 		engine.移除场卡(地裂波涛名)
 		if not engine.has_reply():
-			询问(player.id, FANG_ZHU, 0, 0, GConst.CardSource.Hand,
+			# 一次询问里同时选：放哪张正面（天雷劫火 / 地裂波涛）+ 哪 6 张手牌作为【预言】。
+			# 这一步是强制的（can_cancel=false）：超时由下面的兜底随机选正面、自动放 6 张。
+			询问(player.id, FANG_ZHU, 6, 0, GConst.CardSource.Hand,
 				[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO},
 				 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO}],
-				0, "", [], true,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【放逐】：选择放 1 张【末日预言】入场（背面为【末日预言】，正面由你选择）")
+				6, "", [], false,
+				0, player.id, [], 6, {}, 0, 0, false, [], true, -1, 0,
+				"【放逐】：选择放 1 张【末日预言】入场，并选择 6 张手牌作为【预言】")
 			return WAIT
 		return p_yi_jiao_tu_ask({"player": player.id})
-	# 放逐：选正面的牌 → 放【末日预言】入场（记下正面，翻面时直接用）
+	# 放逐：正面 + 6 张手牌一起取回 → 放【末日预言】、洗混【预言】→ 解除不爆牌 → +1 额外行动
 	if _放逐步 == 3:
 		if not engine.has_reply():
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
+		_放逐步 = 0
 		var a3: Array = r3.get("args", [])
 		# 超时 / 跳过：随机从【天雷劫火】/【地裂波涛】里选一个，不卡住流程
 		var 选: int = int(a3[0]) if not a3.is_empty() else engine._rng.randi_range(1, 2)
 		var 正面: String = 地裂波涛名 if 选 == 2 else 天雷劫火名
 		engine.加场卡({"id": 末日预言名, "owner": player.id, "attached": -1,
 			"counter": 0, "counter_max": 预言上限, "state": 0, "pile": [], "front": 正面})
-		_放逐步 = 4
-		# 玩家自己选 6 张手牌作为【预言】（朝下洗混）
-		询问(player.id, FANG_ZHU, 6, 0, GConst.CardSource.Hand, [], 6, "", [], false,
-			0, player.id, [], 6, {}, 0, 0, false, [], true, -1, 0,
-			"【放逐】：选择 6 张手牌面朝下作为【预言】")
-		return WAIT
-	# 放逐：6 张手牌洗混成【预言】→ 解除不爆牌 → +1 额外行动（攻击/法术二合一）
-	if _放逐步 == 4:
-		var r4: Dictionary = take_skill_reply_full()
-		_放逐步 = 0
 		var 已选: Array = []
-		for c: Variant in r4.get("card_ids", []):
+		for c: Variant in r3.get("card_ids", []):
 			var cid: int = int(c)
 			if 已选.size() < 6 and player.有手牌(cid) and not 已选.has(cid):
 				已选.append(cid)
