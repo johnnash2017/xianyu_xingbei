@@ -144,7 +144,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				_t1_step = 1
 				询问(player.id, SHEN_WEI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"是否发动【神威】（移除 2 点【圣印】）：本次攻击对手无法应战；攻击牌为圣类命格时伤害 +1？")
+					GConst.提示原文(SHEN_WEI, 1))
 				return WAIT
 			# 极少见：进 0 号分支时已有回复（等待期被插队后又回到这里），交给 1 号分支
 			_t1_step = 1
@@ -184,7 +184,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 					选项.append(i)
 				询问(player.id, SHENG_CAI, 0, 0, GConst.CardSource.Hand, [0] + 选项, 0, "", [], true,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"是否发动【圣裁】（移除 X 点【圣印】）：对攻击目标造成 1 点法术伤害，本次攻击伤害 +(X-1)？")
+					GConst.提示原文(SHENG_CAI, 1))
 				return WAIT
 			_t1_step = 3
 			return p_timeline_1(ctx)
@@ -327,7 +327,7 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 				选项.append(i)
 			询问(player.id, SHENG_YU, 0, 0, GConst.CardSource.Hand, [0] + 选项, 0, "", [], true,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"【圣愈】：移除 X 点【圣印】（选择 X）")
+				GConst.提示原文(SHENG_YU, 1))
 			return WAIT
 		# 阶段在取完回复之后再推进：重入时 _圣愈步 仍是 1，才能走到这里
 		var r: Dictionary = take_skill_reply_full()
@@ -350,7 +350,7 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, SHENG_YU, 1, 0, GConst.CardSource.Hand, [], 1, "", [], true,
 				0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-				"【圣愈】：弃 1 张牌")
+				GConst.提示原文(SHENG_YU, 2))
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		var cards: Array = r2.get("card_ids", [])
@@ -378,7 +378,7 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, SHEN_ZHI_ZI, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
-				"【神之子】：对目标对手造成 1 点法术伤害")
+				GConst.提示原文(SHEN_ZHI_ZI, 1))
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
 		var ds: Array = r3.get("dst_ids", [])
@@ -400,7 +400,7 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 				return SUCCESS
 			询问(player.id, SHENG_YAN_QI_YUAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				"是否发动【圣炎祈愿】（消耗 1 点能量）：目标角色 +2【治疗】？")
+				GConst.提示原文(SHENG_YAN_QI_YUAN, 1))
 			return WAIT
 		if not take_skill_reply():
 			_圣炎收尾 = 0
@@ -413,7 +413,7 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, SHENG_YAN_QI_YUAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, _全体角色(), -1, {}, 0, 0, false, [], true, -1, 0,
-				"【圣炎祈愿】：指定 1 名目标角色")
+				GConst.提示原文(SHENG_YAN_QI_YUAN, 2))
 			return WAIT
 		var r4: Dictionary = take_skill_reply_full()
 		var ds4: Array = r4.get("dst_ids", [])
