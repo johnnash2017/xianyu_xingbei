@@ -105,8 +105,8 @@ func available_skills() -> Array:
 ## 圣煌模式的两种支付方式。两项都返回，资源不够的那项由 enabled=false 置灰。
 func _sheng_huang_mo_shi_choices() -> Array:
 	return [
-		{"text": "移除 2【治疗】", "args": [1], "enabled": player.cross_num > 1},
-		{"text": "移除 2 点【信仰】", "args": [2], "enabled": _xin_yang() > 1},
+		{"text": GConst.按钮原文(SHENG_HUANG_MO_SHI, 0), "args": [1], "enabled": player.cross_num > 1},
+		{"text": GConst.按钮原文(SHENG_HUANG_MO_SHI, 1), "args": [2], "enabled": _xin_yang() > 1},
 	]
 
 
@@ -119,7 +119,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 	var out: Array = []
 	var 友方: Array[int] = _all_allies()
 	out.append({
-		"text": "摸 1 张牌，移除 1 治疗，目标队友 +1 治疗",
+		"text": GConst.按钮原文(SHENG_GUANG_BAO_LIE, 0),
 		"args": [1],
 		"need_card": 0,
 		"need_target": 1,
@@ -130,7 +130,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 	})
 	var 群体目标: Array[int] = _sheng_guang_mode2_targets(1)
 	out.append({
-		"text": "移除 X 治疗，弃 X 牌，群体攻击",
+		"text": GConst.按钮原文(SHENG_GUANG_BAO_LIE, 1),
 		"args": [2],
 		"need_card": 0,
 		"need_target": 0,
@@ -197,9 +197,9 @@ func _hui_guang_enabled(side: int) -> bool:
 func _hui_guang_pao_choices(含额外行动: bool) -> Array:
 	var 额外说明: String = "然后你获得 1 次攻击或法术行动。" if 含额外行动 else ""
 	return [
-		{"text": "我方【士气】调整至与敌方相同", "args": [1],
+		{"text": GConst.按钮原文(HUI_GUANG_PAO, 0), "args": [1],
 			"说明": "我方士气调整为与敌方相同。" + 额外说明},
-		{"text": "敌方【士气】调整至与我方相同", "args": [0],
+		{"text": GConst.按钮原文(HUI_GUANG_PAO, 1), "args": [0],
 			"说明": "敌方士气调整为与我方相同。" + 额外说明},
 	]
 
@@ -211,8 +211,8 @@ func _hui_guang_pao_choices(含额外行动: bool) -> Array:
 func _auto_fill_choices() -> Array:
 	var 有能量: bool = player.crystal > 0 or player.gem > 0
 	return [
-		{"value": 1, "label": 提示原文(ZI_DONG_TIAN_CHONG, 1), "enabled": 有能量},
-		{"value": 2, "label": 提示原文(ZI_DONG_TIAN_CHONG, 2), "enabled": player.gem > 0},
+		{"value": 1, "label": GConst.按钮原文(ZI_DONG_TIAN_CHONG, 0), "enabled": 有能量},
+		{"value": 2, "label": GConst.按钮原文(ZI_DONG_TIAN_CHONG, 1), "enabled": player.gem > 0},
 	]
 
 
@@ -395,8 +395,8 @@ func _sheng_liu_xing_atk() -> int:
 	var 友方: Array[int] = [player.id]
 	友方.append_array(ally_ids())
 	var 选项: Array = [
-		{"value": 1, "label": "移除 1 点【治疗】，令目标 +1【治疗】", "enabled": player.cross_num > 0},
-		{"value": 2, "label": "移除 1 点【信仰】，令目标 +1【治疗】", "enabled": _xin_yang() > 0},
+		{"value": 1, "label": GConst.按钮原文(SHENG_LIU_XING_DAN, 0), "enabled": player.cross_num > 0},
+		{"value": 2, "label": GConst.按钮原文(SHENG_LIU_XING_DAN, 1), "enabled": _xin_yang() > 0},
 	]
 	var 有可用: bool = player.cross_num > 0 or _xin_yang() > 0
 	if not 有可用:
@@ -457,7 +457,7 @@ func _sheng_xie_miss_choices() -> Array:
 	var out: Array = []
 	var n: int = mini(player.cross_num, 2)
 	for x: int in range(1, n + 1):
-		out.append({"value": x, "label": "目标友方弃 %d 张牌" % x})
+		out.append({"value": x, "label": GConst.按钮原文(SHENG_XIE_JU_BAO, 0) % x})
 	return out
 
 
@@ -544,8 +544,8 @@ func p_after_special(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id or not sheng_huang_exit_pending:
 		return SUCCESS
 	var 选项: Array = [
-		{"text": "+1【治疗】", "args": [1]},
-		{"text": "+1【信仰】", "args": [2]},
+		{"text": GConst.按钮原文(SHENG_HUANG_MO_SHI, 2), "args": [1]},
+		{"text": GConst.按钮原文(SHENG_HUANG_MO_SHI, 3), "args": [2]},
 	]
 	if not engine.has_reply():
 		询问(player.id, SHENG_HUANG_MO_SHI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false)
