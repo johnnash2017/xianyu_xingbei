@@ -401,7 +401,7 @@ func _duo_chong_she_ji_ask() -> int:
 		engine.ask_skill(player.id, DUO_CHONG_SHE_JI, 0, 0, GConst.CardSource.Cover,
 			[{"value": DUO_CHONG_SHE_JI, "label": GConst.skill_name(DUO_CHONG_SHE_JI),
 				"skill_id": DUO_CHONG_SHE_JI, "need_target": 1, "targets": 可攻目标}],
-			0, "", [], true, "攻击结束时可以发动多重射击", [],
+			0, "", [], true, GConst.提示原文(DUO_CHONG_SHE_JI, 1), [],
 			0, 0, false, [], true, -1, 0, true)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

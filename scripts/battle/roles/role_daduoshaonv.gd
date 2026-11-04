@@ -233,8 +233,7 @@ func _p_bie_fan_wo() -> int:
 			# 询问文案直接给整段技能效果（技能太复杂，提示列那一句说不清）
 			询问(_bie_fan_队友, BIE_FAN_WO, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0, "",
-				-1, "【别烦我……】：（指定目标对手摸1张牌【强制】）我方【战绩区】+1【水晶】，"
-				+ "该对手弃1张法术牌【展示】；（若该对手不如此做）他摸1张牌【强制】，你+1【治疗】。")
+				-1, GConst.提示原文(BIE_FAN_WO, 2))
 			return WAIT
 	if _bie_fan_step == 1:
 		if not engine.has_reply():

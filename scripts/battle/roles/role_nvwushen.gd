@@ -258,7 +258,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		询问(player.id, GConst.技能_英灵召唤治疗, 1, 1, GConst.CardSource.Hand, [], 1, "magic", [], true,
 			0, -1, engine.order, -1, {}, 0, 0,
 			false, [], true, -1, 0,
-			"【英灵召唤】：额外弃 1 张法术牌【展示】，指定 1 名角色+1【治疗】")
+			GConst.提示原文(GConst.技能_英灵召唤, 1))
 		return WAIT
 	# _英灵_阶段 == 1：处理「额外弃牌 + 治疗」这一问
 	var r: Dictionary = take_skill_reply_full()

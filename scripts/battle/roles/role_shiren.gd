@@ -119,7 +119,7 @@ func _set_ling_gan(v: int) -> void:
 func _bu_xie_num_choices() -> Array:
 	var out: Array = []
 	for num: int in range(2, _ling_gan() + 1):
-		out.append({"text": "移除 %d 点灵感" % num, "args": [num]})
+		out.append({"text": GConst.提示原文(BU_XIE_HE_XIAN, 2) % num, "args": [num]})
 	return out
 
 
@@ -128,8 +128,8 @@ func _bu_xie_num_choices() -> Array:
 func _bu_xie_effect_options() -> Array:
 	var x: int = bu_xie_num - 1
 	return [
-		{"value": 1, "label": "你和目标角色各摸 %d 张牌" % x},
-		{"value": 2, "label": "你和目标角色各弃 %d 张牌" % x},
+		{"value": 1, "label": GConst.提示原文(BU_XIE_HE_XIAN, 3) % x},
+		{"value": 2, "label": GConst.提示原文(BU_XIE_HE_XIAN, 4) % x},
 	]
 
 
@@ -194,12 +194,12 @@ func _xi_wang_effect_options() -> Array:
 	var 转移目标: Array = _xi_wang_move_targets()
 	return [
 		{
-			"value": XI_WANG_PLACE, "label": "将【永恒乐章】放置于目标队友面前",
+			"value": XI_WANG_PLACE, "label": GConst.提示原文(XI_WANG_FU_GE_QU, 1),
 			"targets": 放置目标, "enabled": not 放置目标.is_empty(),
 		},
 		{
 			"value": XI_WANG_MOVE,
-			"label": "将【永恒乐章】转移给我方另一目标角色，你弃 1 张牌，+1【治疗】或 +1【灵感】",
+			"label": GConst.提示原文(XI_WANG_FU_GE_QU, 2),
 			"targets": 转移目标,
 			"enabled": yue_zhang_dst != -1 and not player.hand_cards.is_empty() and not 转移目标.is_empty(),
 		},

@@ -216,8 +216,8 @@ func _yin_yang_zhuan_huan(ctx: Dictionary) -> int:
 func _阴阳转换选项(有基础应战: bool, 可阴阳: bool) -> Array:
 	return [
 		{"value": 1, "label": "仅应战", "enabled": 有基础应战},
-		{"value": 2, "label": "发动阴阳转换并应战，+1 鬼火", "enabled": 可阴阳},
-		{"value": 3, "label": "发动阴阳转换，再发动式神转换并应战，摸 1 张，+2 鬼火", "enabled": 可阴阳},
+		{"value": 2, "label": GConst.文本("提示_阴阳转换_应战转换"), "enabled": 可阴阳},
+		{"value": 3, "label": GConst.文本("提示_阴阳转换_再次转换"), "enabled": 可阴阳},
 	]
 
 

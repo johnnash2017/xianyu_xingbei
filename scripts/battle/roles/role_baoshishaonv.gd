@@ -375,7 +375,7 @@ func p_before_discard(ctx: Dictionary) -> int:
 			var 牌主: int = int(ctx.get("owner", -1))
 			# 只有一个选项、且默认替玩家选中。「弃 1 张牌」是效果不是条件：
 			# 手里没牌时也能发动，这一档的需牌数就写 0（照样收走这张【魔弹】，只是弃 0 张）
-			var 选项名: String = "获得 1 张【魔弹】"
+			var 选项名: String = GConst.提示原文(三秒原则, 1)
 			var 需弃: int = 1 if not player.hand_cards.is_empty() else 0
 			询问(player.id, 三秒原则, 0, 0, GConst.CardSource.Hand, [{
 				"text": 选项名, "label": 选项名, "value": 1, "args": [1],

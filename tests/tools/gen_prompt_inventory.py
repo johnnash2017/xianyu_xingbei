@@ -94,12 +94,67 @@ def split_top(text):
     return parts
 
 
-def cjk_literals(text):
+def _去注释(text):
+    """按行去掉不在字符串里的 # 注释，避免注释里的引号打乱词法扫描。"""
     out = []
-    for m in re.finditer(r'"([^"\n]{8,})"', text):
-        lit = m.group(1)
-        if has_cjk(lit):
-            out.append(lit)
+    for line in text.split("\n"):
+        buf = []
+        in_str = False
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if in_str:
+                buf.append(ch)
+                if ch == "\\" and i + 1 < len(line):
+                    buf.append(line[i + 1])
+                    i += 2
+                    continue
+                if ch == '"':
+                    in_str = False
+            else:
+                if ch == '"':
+                    in_str = True
+                    buf.append(ch)
+                elif ch == "#":
+                    break
+                else:
+                    buf.append(ch)
+            i += 1
+        out.append("".join(buf))
+    return "\n".join(out)
+
+
+def cjk_literals(text):
+    """按 GDScript 字符串词法扫描，只统计真正的字符串字面量。
+    以前的简单正则会把两段字符串之间的代码（如 ', 牌组, true, 0, ... {"'）当成一个
+    长串来匹配，导致清单里出现不是文案的误报。"""
+    text = _去注释(text)
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] == '"':
+            i += 1
+            buf = []
+            while i < n:
+                ch = text[i]
+                if ch == "\\" and i + 1 < n:
+                    buf.append(text[i + 1])
+                    i += 2
+                    continue
+                if ch == '"':
+                    i += 1
+                    break
+                buf.append(ch)
+                i += 1
+            lit = "".join(buf)
+            if len(lit) >= 8 and has_cjk(lit):
+                # 文本表 id（如 提示_冰冻_指定角色）不是提示文案本身，不计入待迁移
+                if re.match(r"^提示_[^，。！？：；、（）【】\s]+$", lit):
+                    continue
+                out.append(lit)
+        else:
+            i += 1
     return out
 
 
