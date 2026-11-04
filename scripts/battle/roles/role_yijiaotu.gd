@@ -87,6 +87,9 @@ func available_skills() -> Array:
 			"type": GConst.ActionType.SpecialSkill,
 			"id": XIAN_JI,
 			"enabled": 有末日 and engine.取场卡(末日预言名).get("pile", []).size() > 0,
+			# 和魔弓【魔眼】一样：点技能直接进二级技能栏选系别，可以按「返回」退出来；
+			# 选项带系别标色（光/暗也在内）
+			"arg_choices": _献祭系别选项(),
 		},
 		{
 			"type": GConst.ActionType.MagicSkill,
@@ -116,13 +119,20 @@ func v_special_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if (engine.取场卡(末日预言名).get("pile", []) as Array).is_empty():
 		return GConst.GE_INVALID_ACTION
+	# 系别由二级技能栏的选项给出（args[0]），必须是 7 系之一
+	var 献祭参数: Array = action.get("args", [])
+	if 献祭参数.is_empty() or not _献祭系别().has(int(献祭参数[0])):
+		return GConst.GE_INVALID_ARGUMENT
 	return GConst.GE_SUCCESS
 
 
 func p_special_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != XIAN_JI:
 		return EMPTY_HANDLE
-	return _p_献祭()
+	var 参数: Array = action.get("args", [])
+	if 参数.is_empty():
+		return GConst.GE_INVALID_ARGUMENT
+	return _p_献祭(int(参数[0]))
 
 
 func v_magic_skill(action: Dictionary) -> int:
@@ -156,6 +166,9 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 	_本回合伤害目标.clear()
 	_审判已发动 = false
 	_本回合已用放逐 = false
+	# 献祭 / 审判流程残留都清掉，避免下一回合被旧步骤挡住
+	_献祭步 = 0
+	_献祭系 = 0
 	# 审判流程残留在任何一步都清掉：否则下一步的 p_turn_end 会被「_审判步 != 0」挡住，
 	# 表现为「偶尔触发不了」
 	_审判步 = 0
@@ -258,23 +271,45 @@ func p_turn_end(ctx: Dictionary) -> int:
 # ============================================================
 # 9503 献祭：展示预言堆顶 1 张
 # ============================================================
-func _p_献祭() -> int:
+## 【献祭】可选的 7 种系别（光 / 暗也要能选）
+func _献祭系别() -> Array[int]:
+	return [GConst.CardElement.Wind, GConst.CardElement.Water, GConst.CardElement.Fire,
+		GConst.CardElement.Earth, GConst.CardElement.Thunder, GConst.CardElement.Light,
+		GConst.CardElement.Darkness]
+
+
+## 二级技能栏里的献祭选项：文案取技能表「按钮」列，按系别标色（客户端按 elements 着色）
+func _献祭系别选项() -> Array:
+	var out: Array = []
+	var 系表: Array[int] = _献祭系别()
+	for i: int in range(系表.size()):
+		out.append({"text": GConst.按钮原文(XIAN_JI, i),
+			"args": [系表[i]], "elements": [系表[i]]})
+	return out
+
+
+## 发动【献祭】：系别由二级技能栏的选项给出（args[0]），这里直接进入结算
+func _p_献祭(系: int) -> int:
 	# 启动技每回合只能发动一个（引擎在行动入口也会拦；这里防直接调用绕过）
 	if player.boot_skill_used:
 		return GConst.GE_INVALID_ACTION
+	if not _献祭系别().has(系):
+		return GConst.GE_INVALID_ARGUMENT
 	var 表: Dictionary = engine.取场卡(末日预言名)
 	var 堆: Array = 表.get("pile", [])
 	if 堆.is_empty():
 		return GConst.GE_INVALID_ACTION
 	# 「启动」技能每回合只能发动一个：发动成功记到玩家身上（引擎统一下发/校验）
 	player.boot_skill_used = true
-	_献祭牌 = int(堆.back())
-	_献祭步 = 1
+	_献祭系 = 系
+	_献祭步 = 2
+	# 头像飘字带系别：献祭*火系
+	notice_skill(XIAN_JI, [player.id], "献祭*%s系" % GConst.element_to_chinese(系))
 	engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
 	return URGENT
 
 var _献祭步: int = 0
-var _献祭牌: int = -1
+var _献祭系: int = 0
 
 
 # ============================================================
@@ -642,23 +677,9 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				表2["counter"] = 堆2.size()
 				engine._broadcast_game()
 		return SUCCESS
-	# 献祭：先选系别，再结算
-	if _献祭步 == 1:
-		if not engine.has_reply():
-			var 系表2: Array[int] = [GConst.CardElement.Wind, GConst.CardElement.Water,
-				GConst.CardElement.Fire, GConst.CardElement.Earth, GConst.CardElement.Thunder]
-			询问(player.id, XIAN_JI, 0, 0, GConst.CardSource.Hand, _系别选项(系表2), 0, "", [], false,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(XIAN_JI, 1))
-			return WAIT
-		# 阶段在取完回复之后再推进：重入时 _献祭步 仍是 1
-		var r8: Dictionary = take_skill_reply_full()
-		_献祭步 = 2
-		var args8: Array = r8.get("args", [])
-		var 系表8: Array[int] = [GConst.CardElement.Wind, GConst.CardElement.Water,
-			GConst.CardElement.Fire, GConst.CardElement.Earth, GConst.CardElement.Thunder]
-		# 超时 / 跳过：随机选一种系别（不能落到 0，否则会被当成永远「异系」）
-		var 系: int = int(args8[0]) if not args8.is_empty() else int(系表8[engine._rng.randi_range(0, 系表8.size() - 1)])
+	# 献祭：系别已在二级技能栏里选好，直接结算
+	if _献祭步 == 2:
+		var 系: int = _献祭系
 		var 表3: Dictionary = engine.取场卡(末日预言名)
 		var 堆3: Array = 表3.get("pile", [])
 		_献祭步 = 0

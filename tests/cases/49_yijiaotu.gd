@@ -213,13 +213,36 @@ func _检献祭同系() -> void:
 			献祭项 = 项
 	检(int(献祭项.get("type", 0)) == GConst.ActionType.SpecialSkill,
 		"【献祭】应作为启动技（SpecialSkill）下发：%s" % str(献祭项.get("type", 0)))
-	var rc: int = 角色.p_special_skill({"action_id": 9503, "src_id": 1})
+	# 和【魔眼】一样：点技能进二级技能栏选系别，选项 7 系齐全（含光/暗）并带系别标色
+	var 献祭选项: Array = 献祭项.get("arg_choices", [])
+	var 七系: Array[int] = [GConst.CardElement.Wind, GConst.CardElement.Water, GConst.CardElement.Fire,
+		GConst.CardElement.Earth, GConst.CardElement.Thunder, GConst.CardElement.Light,
+		GConst.CardElement.Darkness]
+	检(献祭选项.size() == 七系.size(), "【献祭】应有 7 个系别选项：%d" % 献祭选项.size())
+	var 选项正确: bool = 献祭选项.size() == 七系.size()
+	for i: int in range(mini(献祭选项.size(), 七系.size())):
+		var d: Dictionary = 献祭选项[i]
+		var 参数: Array = d.get("args", [])
+		if 参数.is_empty() or int(参数[0]) != 七系[i] \
+				or (d.get("elements", []) as Array) != [七系[i]] \
+				or not str(d.get("text", "")).ends_with("系"):
+			选项正确 = false
+	检(选项正确, "【献祭】选项应逐项带 args/elements/「X系」文案：%s" % str(献祭选项))
+	var rc: int = 角色.p_special_skill({"action_id": 9503, "src_id": 1,
+		"args": [GConst.CardElement.Wind]})
 	检(rc == BattleRole.URGENT, "【献祭】应压入展示流程并返回 URGENT")
 	检(玩家1.boot_skill_used, "发动启动技后应记 boot_skill_used（每回合只能一个）")
 	引擎.run()
-	检(引擎._await_id == 1, "【献祭】应先问系别（等待 %s）" % str(引擎._await_id))
-	_应答([GConst.CardElement.Wind])
-	引擎.run()
+	检(引擎._await_id < 0, "系别已在二级栏选好，服务端不应再补问一次")
+	# 头像飘字带系别：献祭*风系
+	var 飘字: String = ""
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.Skill:
+			continue
+		var 数据: Dictionary = r["data"]
+		if int(数据.get("skill_id", 0)) == 9503:
+			飘字 = str(数据.get("name", ""))
+	检(飘字 == "献祭*风系", "【献祭】发动飘字应为「献祭*风系」，实际「%s」" % 飘字)
 	var 表: Dictionary = _场卡("末日预言")
 	检(int(表.get("pile", []).size()) == 1, "同系应移除 1 张【预言】：%d" % int(表.get("pile", []).size()))
 	检(引擎.team_gem[GConst.BLUE] == 1, "同系应让战绩区 +1【宝石】")
@@ -237,9 +260,7 @@ func _检献祭异系() -> void:
 	var 风: Array = _发牌(玩家1, GConst.CardElement.Wind, 1)
 	var 牌库顶前: int = int(引擎.deck.pile.back())
 	_放末日([int(风[0])])
-	角色.p_special_skill({"action_id": 9503, "src_id": 1})
-	引擎.run()
-	_应答([GConst.CardElement.Fire])
+	角色.p_special_skill({"action_id": 9503, "src_id": 1, "args": [GConst.CardElement.Fire]})
 	引擎.run()
 	var 表: Dictionary = _场卡("末日预言")
 	var 堆: Array = 表.get("pile", [])
