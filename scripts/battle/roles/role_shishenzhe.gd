@@ -245,7 +245,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	notice_skill(QIN_KE, [dst.id])
 	# 刃随使用已被移除（实体在移除牌堆里）：先取出来，再按同一唯一实例加进目标手牌
 	var 取出: int = engine.刃从移除牌堆取出(_本次刃)
-	if 取出 > 0:
+	if 取出 >= 0:
 		engine.刃加入手牌(dst.id, 取出)
 	_本次刃 = 0
 	_本次刃面 = 0
@@ -569,7 +569,7 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 			for inst6: int in 加:
 				# 先取出（刃不在场时收在移除牌堆里），再加回手牌
 				var 取出6: int = engine.刃从移除牌堆取出(inst6)
-				if 取出6 > 0:
+				if 取出6 >= 0:
 					engine.刃加入手牌(player.id, 取出6)
 			engine._broadcast_game()
 			if ds6.size() != 1:

@@ -4662,7 +4662,8 @@ func _切换后复检手牌(可取消选中: bool = true) -> void:
 		if 实例值 == null:
 			continue
 		var 实例: int = int(实例值)
-		if 实例 <= 0:
+		# CardUI.实例号 默认 -1＝没填、退回按牌号；0 是合法实例号（卡表#0 圣盾）
+		if 实例 < 0:
 			continue
 		var 可用: bool = _卡牌能点(实例)
 		子.call("设置可用", 可用)

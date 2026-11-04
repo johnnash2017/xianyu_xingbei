@@ -643,7 +643,8 @@ func 在场牌(ids: Array) -> Array[int]:
 
 ## 把一张牌的实体移入移除牌堆（幂等）
 func 放入移除牌堆(inst: int) -> void:
-	if inst > 0 and not 移除牌堆.has(inst):
+	# 0 是合法实例号（卡表#0 圣盾），只有负数才代表「没有这张牌」
+	if inst >= 0 and not 移除牌堆.has(inst):
 		移除牌堆.append(inst)
 
 
