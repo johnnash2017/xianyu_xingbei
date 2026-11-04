@@ -93,8 +93,8 @@ func _ling_yu_choices() -> Array:
 	var 队友: Array[int] = ally_ids()
 	队友.append(player.id)
 	return [
-		{"text": "自己+2、目标队友+1【治疗】", "args": [0], "need_target": 1, "targets": 队友},
-		{"text": "自己-1、目标受 2 点法术伤害", "args": [1], "need_target": 1, "targets": enemy_ids(),
+		{"text": GConst.按钮原文(SHEN_SHENG_LING_YU, 0), "args": [0], "need_target": 1, "targets": 队友},
+		{"text": GConst.按钮原文(SHEN_SHENG_LING_YU, 1), "args": [1], "need_target": 1, "targets": enemy_ids(),
 			"enabled": player.cross_num >= 1},
 	]
 

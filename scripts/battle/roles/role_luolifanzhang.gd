@@ -221,8 +221,8 @@ func _灭茶苦茶(harm: Dictionary) -> int:
 ## 9704 的固定选项：两项顺序 / 文案稳定，做不了的那项 enabled=false（客户端置灰）。
 func _灭茶苦茶选项(可宝石: bool, 可水晶: bool) -> Array:
 	return [
-		{"value": 灭茶苦茶_选项宝石, "label": "【宝石】本次攻击伤害 +%d" % 灭茶苦茶_宝石加伤, "enabled": 可宝石},
-		{"value": 灭茶苦茶_选项水晶, "label": "【水晶】本次攻击伤害 +%d" % 灭茶苦茶_水晶加伤, "enabled": 可水晶},
+		{"value": 灭茶苦茶_选项宝石, "label": GConst.按钮原文(灭茶苦茶, 0) % 灭茶苦茶_宝石加伤, "enabled": 可宝石},
+		{"value": 灭茶苦茶_选项水晶, "label": GConst.按钮原文(灭茶苦茶, 1) % 灭茶苦茶_水晶加伤, "enabled": 可水晶},
 	]
 
 

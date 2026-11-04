@@ -35,8 +35,8 @@ func available_skills() -> Array:
 	out.append({"type": GConst.ActionType.SpecialSkill, "id": QIAN_XING, "need_card": 0, "need_target": 0,
 		"enabled": player.gem > 0 and not player.tap,
 		"arg_choices": [
-			{"text": "不摸牌", "args": [QIAN_XING_NO_DRAW]},
-			{"text": "摸 1 张牌", "args": [QIAN_XING_DRAW]},
+			{"text": GConst.按钮原文(QIAN_XING, 0), "args": [QIAN_XING_NO_DRAW]},
+			{"text": GConst.按钮原文(QIAN_XING, 1), "args": [QIAN_XING_DRAW]},
 		]})
 	return out
 
