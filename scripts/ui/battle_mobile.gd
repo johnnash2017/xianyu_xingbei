@@ -1898,11 +1898,11 @@ func _技能播报标题(msg: Dictionary, skill_id: int) -> String:
 func _特殊行动播报名(action_id: int) -> String:
 	match action_id:
 		GConst.SpecialAction.Buy:
-			return "购买"
+			return GConst.文本("通用_购买")
 		GConst.SpecialAction.Synthesize:
-			return "合成"
+			return GConst.文本("通用_合成")
 		GConst.SpecialAction.Extract:
-			return "提炼"
+			return GConst.文本("通用_提炼")
 	return ""
 
 
@@ -2404,9 +2404,9 @@ func _进入待选() -> void:
 				if 抵 > 0:
 					# 二级技能栏列出「不抵挡 / 挡几点」：和其它技能选项同一套交互（选中再点「确定」）。
 					# 文案刻意短 —— 这一排可能有十来颗（抵几点就有几颗），长了会从技能区溢出去
-					var 选项: Array = [{"text": "不抵挡", "args": [0]}]
+					var 选项: Array = [{"text": GConst.文本("通用_不抵挡"), "args": [0]}]
 					for n: int in range(1, 抵 + 1):
-						选项.append({"text": "挡 %d 点" % n, "args": [n]})
+						选项.append({"text": GConst.文本("通用_挡N点") % n, "args": [n]})
 					_进入二级技能栏(0, null, _选项项(选项), 二级选项底色_治疗)
 					# 默认选中「挡最多」的那一项（最后一项，抵挡值最大）—— 玩家直接点「确定」就是挡满
 					_先弹选项 = false
@@ -6004,10 +6004,10 @@ func _进入特殊行动() -> void:
 	# 三种都摆出来：条件不满足的那几种半透明、点不动（而不是干脆不显示）；
 	# 每种带一句效果说明，鼠标指上去就弹（见 技能按钮.说明文本）
 	var 选项: Array = [
-		{"text": "购买", "args": [GConst.SpecialAction.Buy], "enabled": 可用[0],
+		{"text": GConst.文本("通用_购买"), "args": [GConst.SpecialAction.Buy], "enabled": 可用[0],
 			"说明": 购买说明_地下法则 if 冒险家角色号.has(我.role_id) else 购买说明},
-		{"text": "合成", "args": [GConst.SpecialAction.Synthesize], "enabled": 可用[1], "说明": 合成说明},
-		{"text": "提炼", "args": [GConst.SpecialAction.Extract], "enabled": 可用[2], "说明": 提炼说明},
+		{"text": GConst.文本("通用_合成"), "args": [GConst.SpecialAction.Synthesize], "enabled": 可用[1], "说明": 合成说明},
+		{"text": GConst.文本("通用_提炼"), "args": [GConst.SpecialAction.Extract], "enabled": 可用[2], "说明": 提炼说明},
 	]
 	_进入本地选项(3, 0, 选项, "选择特殊行动：购买 / 合成 / 提炼",
 		二级选项底色, true, _回到行动阶段)
@@ -6101,7 +6101,7 @@ func _基础效果选项() -> Array:
 			continue
 		for 组合: Dictionary in 能量组合:
 			选项.append({
-				"text": "%s【%s】%s" % [动作, 效果.card.card_name, str(组合["后缀"])],
+				"text": GConst.文本("通用_基础效果牌面") % [动作, 效果.card.card_name, str(组合["后缀"])],
 				# 带实例号：服务端按它从基础效果区取走「点的那一张」（克隆牌与同牌面原件要分开）
 				"args": (组合["args"] as Array) + [效果.实例号 if 效果.实例号 >= 0 else 效果.card.id],
 			})
@@ -6494,24 +6494,24 @@ func _选特殊行动(action_id: int) -> void:
 			var 地下法则: bool = 冒险家角色号.has(我.role_id)
 			if 宝石 + 水晶 < 4:
 				if 地下法则:
-					组合.append({"text": "战绩区 +2【宝石】", "gem": 2, "crystal": 0})
+					组合.append({"text": GConst.文本("通用_星石_战绩区加2宝石"), "gem": 2, "crystal": 0})
 				else:
-					组合.append({"text": "战绩区 +1【宝石】 +1【水晶】", "gem": 1, "crystal": 1})
+					组合.append({"text": GConst.文本("通用_星石_战绩区加1宝石1水晶"), "gem": 1, "crystal": 1})
 			elif 宝石 + 水晶 == 4:
-				组合.append({"text": "一个【宝石】", "gem": 1, "crystal": 0})
+				组合.append({"text": GConst.文本("通用_星石_一个宝石"), "gem": 1, "crystal": 0})
 				if not 地下法则:
-					组合.append({"text": "一个【水晶】", "gem": 0, "crystal": 1})
+					组合.append({"text": GConst.文本("通用_星石_一个水晶"), "gem": 0, "crystal": 1})
 			else:
-				组合.append({"text": "战绩区已满，不再加星石", "gem": 0, "crystal": 0})
+				组合.append({"text": GConst.文本("通用_星石_战绩区已满"), "gem": 0, "crystal": 0})
 		GConst.SpecialAction.Synthesize:
 			if 水晶 >= 3:
-				组合.append({"text": "三个【水晶】", "gem": 0, "crystal": 3})
+				组合.append({"text": GConst.文本("通用_星石_三个水晶"), "gem": 0, "crystal": 3})
 			if 水晶 >= 2 and 宝石 >= 1:
-				组合.append({"text": "两个【水晶】和一个【宝石】", "gem": 1, "crystal": 2})
+				组合.append({"text": GConst.文本("通用_星石_两水晶一宝石"), "gem": 1, "crystal": 2})
 			if 水晶 >= 1 and 宝石 >= 2:
-				组合.append({"text": "一个【水晶】和两个【宝石】", "gem": 2, "crystal": 1})
+				组合.append({"text": GConst.文本("通用_星石_一水晶两宝石"), "gem": 2, "crystal": 1})
 			if 宝石 >= 3:
-				组合.append({"text": "三个【宝石】", "gem": 3, "crystal": 0})
+				组合.append({"text": GConst.文本("通用_星石_三个宝石"), "gem": 3, "crystal": 0})
 	if 组合.is_empty():
 		_指令提示("没有可用的星石组合")
 		return
