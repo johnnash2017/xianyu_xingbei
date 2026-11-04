@@ -96,7 +96,7 @@ def split_top(text):
 
 def cjk_literals(text):
     out = []
-    for m in re.finditer(r'"([^"\n]{6,})"', text):
+    for m in re.finditer(r'"([^"\n]{8,})"', text):
         lit = m.group(1)
         if has_cjk(lit):
             out.append(lit)
@@ -150,7 +150,7 @@ def main():
     lines_out = []
     lines_out.append("# 提示文案清单（自动生成）\n")
     lines_out.append("> 由 `tests/tools/gen_prompt_inventory.py` 生成；迁移过程中可随时重跑刷新。\n")
-    lines_out.append("> 用途：盘点所有 `询问` / `ask_skill` 调用点的文案来源，跟踪「长文案 → 表」的迁移进度。\n")
+    lines_out.append("> 用途：盘点所有 `询问` / `ask_skill` 调用点的文案来源，跟踪「长文案（≥8 字中文串）→ 表」的迁移进度。\n")
     lines_out.append("")
     lines_out.append("## 汇总\n")
     lines_out.append("| 项 | 数量 |")
