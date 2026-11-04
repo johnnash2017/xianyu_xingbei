@@ -2788,7 +2788,7 @@ func _询问提示文案() -> String:
 			GConst.skill_name(_skill_ask_id), _基础效果动作(_skill_ask_id),
 		]
 	elif _selecting_cover:
-		询问文案 = "【%s】：请从盖牌区中选择一张" % GConst.skill_name(_skill_ask_id)
+		询问文案 = "【%s】：%s" % [GConst.skill_name(_skill_ask_id), GConst.文本("提示_从盖牌区选择一张")]
 	elif not _skill_ask_can_cancel:
 		询问文案 = "【%s】：请%s%s（本次必须执行，不能取消）" % [
 			GConst.skill_name(_skill_ask_id),
@@ -4587,7 +4587,7 @@ func _二级栏提示文案() -> String:
 			return 启动说明
 	var 前缀: String = "【%s】：" % GConst.skill_name(_二级栏父技能号) if _二级栏父技能号 > 0 else ""
 	if _二级选中 < 0:
-		return "%s请在技能栏里选一个选项" % 前缀
+		return 前缀 + GConst.文本("提示_选择一个选项")
 	var 需牌: int = _skill_need_card if _mode == 4 else _skill_ask_need_card
 	var 需目标: int = _skill_need_target if _mode == 4 else _skill_ask_need_target
 	# 选项自带说明时（如散华轮舞的「消耗【水晶】/消耗【宝石】」）：
@@ -4608,7 +4608,7 @@ func _二级栏提示文案() -> String:
 		# 玩家才知道这一档具体做什么（如贪婪少女【亡女的金库】的星石两档）
 		var 无牌说明: String = _技能效果提示(说话技能号) if 说话技能号 > 0 else ""
 		if 无牌说明.is_empty():
-			return "%s选项已选好" % 抬头
+			return 抬头 + GConst.文本("提示_选项已选好")
 		return 无牌说明
 	return "%s%s" % [抬头, 片段.trim_suffix("，")]
 
