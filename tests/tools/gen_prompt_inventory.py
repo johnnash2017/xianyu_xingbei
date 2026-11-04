@@ -149,7 +149,7 @@ def cjk_literals(text):
                 i += 1
             lit = "".join(buf)
             if len(lit) >= 8 and has_cjk(lit):
-                # 文本表 id（如 提示_冰冻_指定角色）不是提示文案本身，不计入待迁移
+                # 文本表 id（如 提示_阴阳转换_应战转换）不是提示文案本身，不计入待迁移
                 if re.match(r"^提示_[^，。！？：；、（）【】\s]+$", lit):
                     continue
                 out.append(lit)

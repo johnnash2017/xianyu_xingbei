@@ -255,9 +255,11 @@ func p_after_magic(ctx: Dictionary) -> int:
 			for pid: int in engine.order:
 				if engine.p(pid) != null:
 					全体.append(pid)
+			# 冰冻治疗是内部子询问（技能号 11021 没有技能表行），文案读母技能 1102 的「提示2」，
+			# 与女武神【英灵召唤】治疗那一问同口径（提示原文(GConst.技能_英灵召唤, 1)）。
 			询问(player.id, GConst.技能_冰冻治疗, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, 全体, -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.文本("提示_冰冻_指定角色"), -1, "", [], _友方())
+				GConst.提示原文(GConst.技能_冰冻, 1), -1, "", [], _友方())
 			return WAIT
 		if not engine.has_reply():
 			return WAIT
