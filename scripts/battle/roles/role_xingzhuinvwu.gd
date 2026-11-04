@@ -248,7 +248,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 					return SUCCESS
 				询问(player.id, XING_HUAN, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"【星环】：还要再弃几张地系牌【展示】（总共 X 张）？")
+					GConst.提示原文(XING_HUAN, 1))
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
 			var args: Array = r.get("args", [])
@@ -266,7 +266,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 				if not engine.has_reply():
 					询问(player.id, XING_HUAN, 需, 0, GConst.CardSource.Hand, [], 需, "", [], false,
 						0, player.id, [], 需, {}, 0, 0, false, [], true, -1, 0,
-						"【星环】：再弃 %d 张地系牌【展示】" % 需)
+						GConst.提示原文(XING_HUAN, 2) % 需)
 					return WAIT
 				var r2: Dictionary = take_skill_reply_full()
 				var cards: Array = r2.get("card_ids", [])
@@ -305,7 +305,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 					return URGENT
 				询问(player.id, XING_HUAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 					0, -1, 池, -1, {}, 0, 0, false, [], true, -1, 0,
-					"【星环】：指定 1 名角色（还可指定 %d 名）" % (需人 - 目标.size()))
+					GConst.提示原文(XING_HUAN, 3) % (需人 - 目标.size()))
 				return WAIT
 			var r3: Dictionary = take_skill_reply_full()
 			var ds: Array = r3.get("dst_ids", [])
@@ -337,7 +337,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 					选项2.append(i2)
 				询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, 选项2, 0, "", [], false,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"【群星启示】：移除几个【卢恩】【展示】？（X）")
+					GConst.提示原文(QUN_XING_QI_SHI, 1))
 				return WAIT
 			var r4: Dictionary = take_skill_reply_full()
 			var args4: Array = r4.get("args", [])
@@ -393,7 +393,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, CHUANG_KE_LV_DONG, 0, 0, GConst.CardSource.Hand, [0, 1], 0, "", [], true,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"【创刻律动】：摸 0~1 张牌？")
+					GConst.提示原文(CHUANG_KE_LV_DONG, 1))
 				return WAIT
 			var r5: Dictionary = take_skill_reply_full()
 			var args5: Array = r5.get("args", [])
@@ -412,7 +412,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, CHUANG_KE_LV_DONG, 0, 0, GConst.CardSource.Hand, [], 可选, "",
 					player.hand_cards.duplicate(), true, 0, player.id, [], 可选, {}, 0, 0, false, [], true, -1, 0,
-					"【创刻律动】：选择最多 %d 张手牌面朝下作为【卢恩】" % 可选)
+					GConst.提示原文(CHUANG_KE_LV_DONG, 2) % 可选)
 				return WAIT
 			var r6: Dictionary = take_skill_reply_full()
 			var cards6: Array = r6.get("card_ids", [])
@@ -431,7 +431,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, YING_YUE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 					0, -1, _全体角色(), -1, {}, 0, 0, false, [], true, -1, 0,
-					"【影月】：指定 1 名目标角色，造成 %d 点法术伤害" % _影月伤害)
+					GConst.提示原文(YING_YUE, 1) % _影月伤害)
 				return WAIT
 			var r10: Dictionary = take_skill_reply_full()
 			var ds10: Array = r10.get("dst_ids", [])
@@ -447,7 +447,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, YING_YUE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 					0, -1, _我方角色(), -1, {}, 0, 0, false, [], true, -1, 0,
-					"【影月】：指定 1 名我方角色 +%d【治疗】" % 影月治疗点)
+					GConst.提示原文(YING_YUE, 2) % 影月治疗点)
 				return WAIT
 			var r11: Dictionary = take_skill_reply_full()
 			var ds11: Array = r11.get("dst_ids", [])
@@ -461,7 +461,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, 可选律法, 0, "", [], false,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"【群星启示】：选择 1 个【律法】放置于你面前（1=繁星 / 2=影月 / 3=蚀日）")
+					GConst.提示原文(QUN_XING_QI_SHI, 2))
 				return WAIT
 			var r7: Dictionary = take_skill_reply_full()
 			var args7: Array = r7.get("args", [])
@@ -479,7 +479,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, QUN_XING_QI_SHI, 1, 0, GConst.CardSource.Hand, [], 1, "", [], false,
 					0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-					"【群星启示】：选择 1 张手牌面朝下作为【卢恩】")
+					GConst.提示原文(QUN_XING_QI_SHI, 3))
 				return WAIT
 			var r8: Dictionary = take_skill_reply_full()
 			var cards8: Array = r8.get("card_ids", [])
@@ -494,7 +494,7 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, [0, 1], 0, "", [], true,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					"【群星启示】：摸 0~1 张牌？")
+					GConst.提示原文(QUN_XING_QI_SHI, 4))
 				return WAIT
 			var r9: Dictionary = take_skill_reply_full()
 			var args9: Array = r9.get("args", [])
