@@ -492,13 +492,21 @@ func _测剑残影() -> void:
 	检(玩家.v_attack(非技击牌.id, 2, 引擎.players) == GConst.GE_SUCCESS,
 		"打【剑残影】指定目标应通过")
 	var 玩家信息: Dictionary = 玩家.to_proto(1)
-	检(int(玩家信息.get("attack_lock", 0)) == 2, "快照应带 attack_lock：%s" % str(玩家信息.get("attack_lock", -1)))
+	检(int(玩家信息.get("attack_lock", -1)) == 2, "快照应带 attack_lock：%s" % str(玩家信息.get("attack_lock", -1)))
 	var 信息编码: PackedByteArray = ProtoCodec.encode_named("SinglePlayerInfo", 玩家信息)
 	var 信息解码: Dictionary = ProtoCodec.decode_named("SinglePlayerInfo", 信息编码)
-	检(int(信息解码.get("attack_lock", 0)) == 2, "SinglePlayerInfo 协议应包含 attack_lock")
+	检(int(信息解码.get("attack_lock", -1)) == 2, "SinglePlayerInfo 协议应包含 attack_lock")
+	# 0 号座位是合法目标：标记为 0 时不能被当成「无限制」吞掉，快照里也要原样带 0
+	玩家.set_attack_lock(0)
+	检(玩家.attack_lock_id == 0, "0 号座位的攻击标记应保留（0 是合法座位，不是「无限制」）")
+	检(玩家.v_attack(非技击牌.id, 4, 引擎.players) == GConst.GE_INVALID_PLAYERID,
+		"标记 0 号座位时同样要拒绝其他目标（不能因 0 被当「无限制」而放行）")
+	检(int(玩家.to_proto(1).get("attack_lock", -1)) == 0,
+		"快照里的 0 号座位标记应原样下发：%s" % str(玩家.to_proto(1).get("attack_lock", -1)))
+	玩家.set_attack_lock(2)
 	# 打出下一次主动攻击：引擎在 _do_attack 里消费标记（不是靠这份行动 / 这张牌的规格）
 	引擎._do_attack(玩家, {"card_ids": [非技击牌.id], "dst_ids": [2]})
-	检(玩家.attack_lock_id == 0, "主动攻击打出后应消费「下次主动攻击只能打该目标」的标记")
+	检(玩家.attack_lock_id == -1, "主动攻击打出后应消费「下次主动攻击只能打该目标」的标记")
 	玩家.hand_cards = [非技击牌.id]
 	检(玩家.v_attack(非技击牌.id, 4, 引擎.players) == GConst.GE_SUCCESS,
 		"限制解除后打其他对手应通过")

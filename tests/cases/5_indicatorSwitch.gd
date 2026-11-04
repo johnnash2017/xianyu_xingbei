@@ -288,12 +288,15 @@ func 跑() -> void:
 		var 空目标: Array[int] = []
 		窗.set("_sel_cards", 选中牌)
 		窗.set("_sel_players", 空目标)
-		玩家[0].attack_lock = 0
+		玩家[0].attack_lock = -1
 		检(bool(窗.call("_玩家可选", 3)), "没有攻击目标标记时敌方头像应可点")
 		玩家[0].attack_lock = 2
 		检(bool(窗.call("_玩家可选", 2)), "有攻击目标标记时被标记的对手应可点")
 		检(not bool(窗.call("_玩家可选", 3)), "有攻击目标标记时其他对手不应可点")
+		# 0 号座位也是合法目标：标记为 0 时其余对手同样不可点（0 不能当「没限制」）
 		玩家[0].attack_lock = 0
+		检(not bool(窗.call("_玩家可选", 3)), "标记为 0 号座位时其他对手不应可点")
+		玩家[0].attack_lock = -1
 		窗.call("_清空待选")
 	await 等帧(2)
 

@@ -3871,7 +3871,7 @@ class SCheckTurnStart:
 		cur.boot_skill_used = false
 		# 回合级标记「本回合下次主动攻击只能打谁」：新回合重来（正常在攻击打出时就消费掉了，
 		# 没打出去（放弃行动 / 回合被跳过）也不带到下一回合）
-		cur.set_attack_lock(0)
+		cur.set_attack_lock(-1)
 		e.skip_action_phase = false
 		e.跳过行动阶段来源 = 0
 		e.本回合跳过行动阶段 = false
@@ -5751,7 +5751,7 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		return _reject_action(cur)
 	# 这次主动攻击已经成立：「本回合的下次主动攻击只能打谁」的回合级标记到此消费
 	# （剑之子【剑残影】10804；它是玩家身上的标记，与这份行动 / 这张牌的规格无关）
-	cur.set_attack_lock(0)
+	cur.set_attack_lock(-1)
 	_记录行动并收尾(cur, "attack", "p_after_attack", {"player": cur.id, "card_id": 提交号, "dst": dst_id})
 	# 攻击方向也跑一次「视为」判定（与应战的 p_reattack 同一套）：角色可把这张攻击牌换成另一张，
 	# 如苍炎魔女【烈焰形态】下除水系 / 暗系外的攻击牌一律视为火系虚拟【火焰斩】。

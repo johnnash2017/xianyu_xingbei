@@ -59,10 +59,10 @@ var xue_qiang_wei: bool = false
 ## 圣弓专属技正反面：0=【圣煌辉光炮】、1=【圣煌余辉】、2=已移除。
 ## 客户端据此在状态图标区显示正面/背面图标；其他角色保持 0 但不显示（按角色号过滤）。
 var sheng_huang_side: int = 0
-## 本回合「下一次主动攻击只能攻击这名玩家」（0＝无限制）：回合级标记，由技能设置
+## 本回合「下一次主动攻击只能攻击这名玩家」（-1＝无限制；0 是合法座位号）：回合级标记，由技能设置
 ## （如剑之子【剑残影】10804），下一次主动攻击打出时由引擎消费掉、新回合开始时清零。
 ## 服务端在 base_v_attack 里按它拒掉别的目标；客户端按快照里的 attack_lock 把其余敌人头像置灰。
-var attack_lock_id: int = 0
+var attack_lock_id: int = -1
 var tokens: Array = [null, null, null]      # [{name, max, num}]
 
 var pre_id: int = -1
@@ -508,11 +508,11 @@ func exclusive_owner(idx: int) -> int:
 # ============================================================
 # 回合级标记：下一次主动攻击只能打谁
 # ============================================================
-## 设置 / 清除「本回合下一次主动攻击只能攻击这名玩家」（0＝无限制）。
+## 设置 / 清除「本回合下一次主动攻击只能攻击这名玩家」（-1＝无限制）。
 ## 由授予限制的技能写（如剑之子【剑残影】10804），引擎在下一次主动攻击打出时消费、
 ## 回合开始时清零；服务端 base_v_attack 与客户端 _玩家可选 读同一份状态。
 func set_attack_lock(pid: int) -> void:
-	attack_lock_id = maxi(pid, 0)
+	attack_lock_id = maxi(pid, -1)
 
 
 # ============================================================
@@ -849,7 +849,7 @@ func base_v_attack(card_id: int, dst_id: int, players: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	# 回合级标记（剑之子【剑残影】10804）：本回合的下次主动攻击只能打标记的那名玩家。
 	# 它是玩家身上的标记，不是这份行动 / 这张牌的规格 —— 别的主动攻击同样受它限制。
-	if attack_lock_id > 0 and dst_id != attack_lock_id:
+	if attack_lock_id >= 0 and dst_id != attack_lock_id:
 		return GConst.GE_INVALID_PLAYERID
 	var dst: BattlePlayer = players.get(dst_id)
 	if dst == null:

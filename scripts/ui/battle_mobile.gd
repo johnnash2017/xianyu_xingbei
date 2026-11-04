@@ -9724,7 +9724,8 @@ func _玩家可选(player_id: int) -> bool:
 		if 攻击者 != null and 攻击者.get_special(GConst.Exclusive.TiaoXin):
 			return player_id == 攻击者.get_special_from(GConst.Exclusive.TiaoXin)
 		# 本回合「下次主动攻击只能打谁」的标记（剑残影 10804）：服务端 base_v_attack 同一口径
-		if 攻击者 != null and 攻击者.attack_lock > 0 and player_id != 攻击者.attack_lock:
+		# （-1＝无限制；0 是合法座位号，不能拿 0 当「没有」）
+		if 攻击者 != null and 攻击者.attack_lock >= 0 and player_id != 攻击者.attack_lock:
 			return false
 		return true
 	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：头像一律不可点，改不了目标
@@ -9750,7 +9751,7 @@ func _玩家可选(player_id: int) -> bool:
 				return player_id == 我.get_special_from(GConst.Exclusive.TiaoXin)
 			# 本回合「下次主动攻击只能打谁」的标记（剑残影 10804）：玩家身上的回合级标记，
 			# 不是这份行动 / 这张牌的规格；服务端 base_v_attack 按同一标记校验。
-			if 我 != null and 我.attack_lock > 0 and player_id != 我.attack_lock:
+			if 我 != null and 我.attack_lock >= 0 and player_id != 我.attack_lock:
 				return false
 			# 额外行动的目标限制（F2）：服务端随行动询问下发 dst_ids 白名单，
 			# 如 10704 的额外攻击只能打手牌数大于你的对手（[-1]＝一个都没有）。
