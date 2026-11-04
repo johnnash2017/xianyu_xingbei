@@ -128,6 +128,9 @@ func _检咒符师() -> void:
 	var 火法术: int = _找牌("火", "magic")
 	var 水法术: int = _找牌("水", "magic")
 	检(火法术 > 0 and 水法术 > 0, "找不到火/水系法术牌")
+	# start_with_roles 会随机发 4 张开局手牌；不清空的话，手上碰巧有张水系牌时
+	# 下面「没有水系牌时【冻天】应置灰」就会随机红。这里只放指定的那一张。
+	玩家.hand_cards.clear()
 	玩家.add_hand_cards([火法术])
 	var 技能: Array = 角色.available_skills()
 	检(技能.size() >= 2, "咒符师应有【火璃】【冻天】两个技能入口")

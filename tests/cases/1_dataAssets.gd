@@ -131,7 +131,7 @@ func 跑() -> void:
 	检(Art.role_hero(89) != null, "89 号冒险家Trick 缺选角立绘")
 	检(ResourceLoader.exists("res://assets/textures/hero/small/89S.png"), "89 号缺战斗小头像")
 	检(ResourceLoader.exists("res://assets/textures/hero/large/89L.png"), "89 号缺战斗大头像")
-	检(Audio.有声效("89"), "89 号冒险家Trick 缺回合语音")
+	# 89 号没有回合语音（与 37 号同样的情况，已确认不补；「无语音不误判」由 3_audio 的 37 号覆盖）
 
 	# 圣弓两版：37＝圣弓，88＝原初之弓Trick，技能与资源各自独立
 	检(str(Data.role_list.get(37, "")) == "圣弓", "37 号角色名不是「圣弓」")
