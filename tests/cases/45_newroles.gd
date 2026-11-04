@@ -591,6 +591,21 @@ func _检噬神者() -> void:
 
 
 ## 手牌系别切换后：已选中的牌不合法要取消选中并置灰；原本不合法、切回后合法要重新亮起
+	# 嵌套弃牌：拦截过程中弃刃（共振代价）仍要走拦截，不能直接塞进弃牌堆
+	var 嵌套角色: BattleRole = _建引擎(79)
+	var 嵌套玩家: BattlePlayer = 引擎.p(1)
+	嵌套玩家.hand_cards.clear()
+	var 嵌套魔刃: int = 嵌套玩家.魔刃实例
+	引擎.刃加入手牌(1, 引擎.从移除牌堆取出(嵌套魔刃))
+	引擎._running = true
+	引擎._弃牌拦截中 = true
+	引擎.to_discard([嵌套魔刃], {"owner": 1, "source": "hand", "cause": 7907}, true)
+	检(not 引擎._states.is_empty() and not 引擎.deck.discard.has(嵌套魔刃),
+		"拦截过程中弃刃应排队走拦截，不能直接进弃牌堆")
+	引擎._states.clear()
+	引擎._running = false
+	引擎._弃牌拦截中 = false
+
 func _检切换后复检() -> void:
 	var 原手牌: Array[GCard] = Data.hand_cards.duplicate()
 	var 原Iids: Array[int] = Data.hand_iids.duplicate()

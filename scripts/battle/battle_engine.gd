@@ -2962,10 +2962,13 @@ var _弃牌拦截中: bool = false
 ## 剔除被认领的牌，其余照常进弃牌堆。否则与原来的同步 push_discard 完全一致。
 ## 注意：调用方仍应先 take_from_hand / remove_cover_cards（既有路径本来就是这样）；
 ## 被认领的牌由引擎从原主手里兜底清掉，再加进认领者手牌。
-func to_discard(cards: Array, ctx: Dictionary = {}) -> void:
+func to_discard(cards: Array, ctx: Dictionary = {}, 允许嵌套: bool = false) -> void:
 	if cards.is_empty():
 		return
-	if phase != Phase.Playing or not _running or _弃牌拦截中:
+	# 正常路径在拦截钩子执行期间不再二次拦截，避免递归；
+	# 但技能在拦截过程中产生的「真实弃牌代价」（如噬神者【共振】弃刃）必须照常拦截，
+	# 否则渗蚀不触发、刃会直接进弃牌堆而无法从移除堆取回 —— 这类调用传 允许嵌套=true。
+	if phase != Phase.Playing or not _running or (_弃牌拦截中 and not 允许嵌套):
 		deck.push_discard(cards)
 		return
 	var 上下文: Dictionary = {

@@ -513,7 +513,9 @@ func p_shi_shen_ask(ctx: Dictionary) -> int:
 				"card_ids": 弃, "is_real": true,
 			})
 			engine.take_from_hand(player.id, 弃, false)
-			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": GONG_ZHEN})
+			# 共振可能由渗蚀伤害触发，此时正处在「弃牌前拦截」里：这次的弃牌代价仍要
+			# 走拦截（弃刃要触发渗蚀并移除），否则魔刃会直接进弃牌堆、第二步加不回来。
+			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": GONG_ZHEN}, true)
 			engine._log_discard(player.id, 弃, false)
 			notice_skill(GONG_ZHEN, [player.id])
 			# 弃牌代价里若有刃，渗蚀/移除结算会晚于本钩子；
