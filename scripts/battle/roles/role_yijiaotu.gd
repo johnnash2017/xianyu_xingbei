@@ -538,9 +538,14 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		return p_yi_jiao_tu_ask({"player": player.id})
 	# 审判：选 1 张弃牌给目标对手；其余进预言堆
 	if _审判步 == 3:
-		# 「要用一张牌的实例，先确认它还在场」：被【渗蚀】等移除的牌不能作为选项、
-		# 也不参与后续分配。用引擎的公用过滤，不在审判里写特判。
-		_审判弃牌 = engine.在场牌(_审判弃牌)
+		# 选项只能是「确实还在弃牌堆、且仍在场」的弃牌：被【渗蚀】等移除的牌
+		# 既不在弃牌堆也不在场，不能作为选项；后续给牌也才有牌可取。
+		var 可给: Array[int] = []
+		for c0: Variant in _审判弃牌:
+			var cid0: int = int(c0)
+			if engine.牌在场(cid0) and engine.deck.discard.has(cid0):
+				可给.append(cid0)
+		_审判弃牌 = 可给
 		if _审判弃牌.is_empty():
 			_审判步 = 0
 			return SUCCESS
@@ -557,59 +562,45 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var r7: Dictionary = take_skill_reply_full()
 		var ds7: Array = r7.get("dst_ids", [])
 		var args7: Array = r7.get("args", [])
+		# 目标 / 选牌都必须合法：不合法就驳回（ErrorInput）并重新问这一步。
+		# 不做换目标 / 顺延之类的兜底 —— 那会把「提交错了」掩盖成「结算错了」。
+		# 超时不用管：这条询问不可取消且要 1 名目标，引擎的兜底回复已经带了合法目标 + args=[1]。
+		var 目标id: int = int(ds7[0]) if ds7.size() == 1 else -1
+		var 目标: BattlePlayer = engine.p(目标id)
+		var 下标: int = (int(args7[0]) - 1) if not args7.is_empty() else -1
+		if 目标 == null or 目标.color == player.color or 下标 < 0 or 下标 >= _审判弃牌.size():
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			# _审判步 仍是 3：重入本分支会重新发「选 1 张弃牌交给目标对手」
+			return p_yi_jiao_tu_ask({"player": player.id})
 		_审判步 = 4
-		var 敌表7: Array = enemy_ids()
-		if ds7.size() == 1:
-			_审判对手 = int(ds7[0])
-		elif not 敌表7.is_empty():
-			_审判对手 = int(敌表7[engine._rng.randi_range(0, 敌表7.size() - 1)])
-		else:
-			_审判对手 = -1
-		if not args7.is_empty():
-			_审判给 = int(args7[0]) - 1
-		else:
-			_审判给 = engine._rng.randi_range(0, maxi(_审判弃牌.size() - 1, 0))
+		_审判对手 = 目标id
+		_审判给 = 下标
 		return p_yi_jiao_tu_ask({"player": player.id})
 	if _审判步 == 4:
 		_审判步 = 0
 		var 已弃: Array = _审判弃牌.duplicate()
 		_审判弃牌 = []
-		# 这些牌已经在 step2 走统一弃牌入口进了弃牌堆；要给人的那张先取回来。
-		# 目标无效（掉线/选错/超时）就换一名合法对手；要给的牌已经不在弃牌堆
-		# （被移除 / 被别的效果取走）就顺延取下一张仍可用的 —— 不静默失败。
+		# 这些牌已经在 step2 走统一弃牌入口进了弃牌堆；step3 的选项又按「仍在弃牌堆」筛过，
+		# 所以这里直接按选中的下标取同一实例即可，不做换目标 / 顺延之类的兜底。
 		var 下标给: int = clampi(_审判给, 0, maxi(已弃.size() - 1, 0))
-		var 给了: int = -1
+		var 已给: int = -1
 		var 敌: BattlePlayer = engine.p(_审判对手)
-		if 敌 == null:
-			var 敌表给: Array = enemy_ids()
-			if not 敌表给.is_empty():
-				_审判对手 = int(敌表给[engine._rng.randi_range(0, 敌表给.size() - 1)])
-				敌 = engine.p(_审判对手)
 		if 敌 != null and not 已弃.is_empty():
-			for k: int in range(已弃.size()):
-				var idx: int = (下标给 + k) % 已弃.size()
-				var cid给: int = int(已弃[idx])
-				if not engine.deck.discard.has(cid给):
-					continue
-				var 取: int = engine.deck.取出实例(cid给)
-				if 取 > 0:
-					敌.add_hand_cards([取])
-					下标给 = idx
-					给了 = 取
-					break
-			if 给了 > 0:
-				engine._log_give_cards(player.id, 敌.id, [给了])
+			var cid给: int = int(已弃[下标给])
+			var 取: int = engine.deck.取出实例(cid给)
+			if 取 > 0:
+				敌.add_hand_cards([取])
+				已给 = 取
+				engine._log_give_cards(player.id, 敌.id, [取])
 		# 其余弃牌：有【末日预言】才从弃牌堆取出来放进【预言】堆；
 		# 没有【末日预言】就留在弃牌堆（本来就已经在里面了，不用再动）
 		if engine.有场卡(末日预言名):
 			var 其余: Array = []
 			for i: int in range(已弃.size()):
-				if i == 下标给 and 给了 > 0:
+				if i == 下标给 and 已给 > 0:
 					continue
-				var cid2: int = int(已弃[i])
-				if not engine.deck.discard.has(cid2):
-					continue
-				var 取2: int = engine.deck.取出实例(cid2)
+				var 取2: int = engine.deck.取出实例(int(已弃[i]))
 				if 取2 > 0:
 					其余.append(取2)
 			var 表2: Dictionary = engine.取场卡(末日预言名)

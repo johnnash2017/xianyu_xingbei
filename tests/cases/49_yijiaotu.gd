@@ -489,6 +489,17 @@ func _检审判() -> void:
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502,
 		"两名队友弃完应问交给哪名对手（等待 %s）" % str(引擎._await_id))
+	# 不合法的目标（自己/队友）应被服务端驳回并重新问，不能随机换目标或静默给牌
+	var 驳回前: int = 发送记录.size()
+	_应答([1], [1])
+	引擎.run()
+	var 有驳回: bool = false
+	for i: int in range(驳回前, 发送记录.size()):
+		var r: Dictionary = 发送记录[i]
+		if int(r["msg"]) == GConst.Msg.ErrorInput:
+			有驳回 = true
+	检(有驳回, "目标选成自己应被驳回（ErrorInput）")
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502, "驳回后应重新问这一步")
 	_应答([1], [2])
 	引擎.run()
 	检(玩家2.hand_cards.size() == 1, "对手应收到 1 张弃牌：%d" % 玩家2.hand_cards.size())
@@ -570,7 +581,8 @@ func _检审判弃刃触发渗蚀() -> void:
 	检(有渗蚀, "弃置【魔刃】应触发【渗蚀】并对弃牌者造成伤害")
 	检(引擎._await_id == 3 and 引擎._pending_respond_id == 9502,
 		"渗蚀结算完应继续问 3 号队友（等待 %s）" % str(引擎._await_id))
-	_应答([], [], [引擎.p(3).hand_cards[0]])
+	var 三号弃牌: int = int(引擎.p(3).hand_cards[0])
+	_应答([], [], [三号弃牌])
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502, "应问选哪张弃牌交给对手")
 	# 被移除的刃不应再作为「选 1 张弃牌交给对手」的选项：只剩 3 号队友那张
@@ -587,7 +599,7 @@ func _检审判弃刃触发渗蚀() -> void:
 	检(选项数 == 1, "被移除的【魔刃】不应作为审判的弃牌选项，实际选项数 %d" % 选项数)
 	_应答([1], [2])
 	引擎.run()
-	检(玩家2.hand_cards.size() == 1, "对手应收到 1 张弃牌")
+	检(玩家2.有手牌(三号弃牌), "对手应收到玩家交出的那张弃牌")
 	检(引擎.移除牌堆.has(刃), "渗蚀后的【魔刃】应收纳在移除牌堆里")
 	检(not 引擎.deck.discard.has(刃) and not 玩家1.有手牌(刃),
 		"被移除的【魔刃】不应进弃牌堆 / 手牌")
