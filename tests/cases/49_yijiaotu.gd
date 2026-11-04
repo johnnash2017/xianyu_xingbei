@@ -75,6 +75,11 @@ func _建引擎() -> void:
 	引擎.round_id = 1
 
 
+## 设置「本回合伤害过的对手」（角色字段是 Array[int]，必须按类型赋，动态赋 Array 会报错）
+func _设伤害目标(目标: Array[int]) -> void:
+	角色._本回合伤害目标 = 目标
+
+
 ## 把一条回复塞进引擎（随后 run() 由状态栈取走）
 func _应答(args: Array = [], dsts: Array = [], cards: Array = []) -> void:
 	引擎._reply = {"args": args, "card_ids": cards, "dst_ids": dsts, "respond_id": 0}
@@ -485,7 +490,7 @@ func _检审判() -> void:
 	_发牌(玩家1, GConst.CardElement.Wind, 1)
 	_发牌(引擎.p(3), GConst.CardElement.Fire, 1)
 	_放末日([101])
-	角色._本回合伤害目标 = [2]
+	_设伤害目标([2])
 	检(角色.p_turn_end({"player": 1}) == BattleRole.WAIT, "【审判】应先问是否发动")
 	# 发动询问不再自带「是否发动【审判】：…」：说明交给默认的技能说明（技能名已由询问标题显示）
 	检(_最近询问文案(9502).is_empty(), "发动询问应留给默认技能说明：%s" % _最近询问文案(9502))
@@ -568,7 +573,7 @@ func _检审判超时() -> void:
 	_发牌(玩家1, GConst.CardElement.Wind, 1)
 	_发牌(引擎.p(3), GConst.CardElement.Fire, 1)
 	_放末日([101])
-	角色._本回合伤害目标 = [2]
+	_设伤害目标([2])
 	角色.p_turn_end({"player": 1})
 	_应答([1])
 	角色.p_turn_end({"player": 1})
@@ -615,7 +620,7 @@ func _检审判弃刃触发渗蚀() -> void:
 	引擎.deck.discard.erase(刃)
 	玩家1.add_hand_cards([刃])
 	_发牌(引擎.p(3), GConst.CardElement.Wind, 1)
-	角色._本回合伤害目标 = [2]
+	_设伤害目标([2])
 	检(角色.p_turn_end({"player": 1}) == BattleRole.WAIT, "【审判】应先问是否发动")
 	_应答([1])
 	角色.p_turn_end({"player": 1})
@@ -671,7 +676,7 @@ func _检审判残留状态() -> void:
 	角色.p_before_turn_begin({"player": 1})
 	检(int(角色.get("_审判步")) == 0 and (角色.get("_审判弃牌") as Array).is_empty(),
 		"新回合开始应清掉残留的审判流程状态")
-	角色._本回合伤害目标 = [2]
+	_设伤害目标([2])
 	检(角色.p_turn_end({"player": 1}) == BattleRole.WAIT, "清掉残留后【审判】应能正常发动")
 
 
@@ -687,7 +692,7 @@ func _检审判选项值对应() -> void:
 	玩家1.取出实例(玩家1.hand_cards, 乙)
 	引擎.deck.push_discard([甲, 乙])
 	# 给牌目标白名单：本回合伤害过 2 号，才能把弃牌交给 2 号
-	角色._本回合伤害目标 = [2]
+	_设伤害目标([2])
 	角色._审判步 = 3
 	var 候选弃牌: Array[int] = [甲, 乙]
 	角色._审判弃牌 = 候选弃牌
@@ -765,7 +770,7 @@ func _检审判同名牌两张() -> void:
 	# 卡表#0 圣盾（地/幻）实例号正好是 0；卡表#6 圣盾（风/圣）是另一张同名牌
 	玩家1.add_hand_cards([0])
 	引擎.p(3).add_hand_cards([6])
-	角色._本回合伤害目标 = [2]
+	_设伤害目标([2])
 	_应答([1])
 	角色.p_turn_end({"player": 1})
 	引擎.run()
@@ -850,7 +855,7 @@ func _检审判零号座位摸牌() -> void:
 	引擎.round_id = 1
 	_发牌(引擎.p(0), GConst.CardElement.Wind, 1)
 	_发牌(引擎.p(2), GConst.CardElement.Fire, 1)
-	角色._本回合伤害目标 = [1]
+	_设伤害目标([1])
 	检(角色.p_turn_end({"player": 0}) == BattleRole.WAIT, "【审判】应先问是否发动")
 	_应答([1])
 	角色.p_turn_end({"player": 0})
@@ -888,7 +893,10 @@ func _检审判预言不超上限() -> void:
 	引擎.deck.push_discard(三张)
 	# 预言堆已有 5 张，只剩 1 个空位
 	_放末日([101, 102, 103, 104, 105])
-	角色._审判弃牌 = 三张.duplicate()
+	var 审判弃牌: Array[int] = []
+	for c: Variant in 三张:
+		审判弃牌.append(int(c))
+	角色._审判弃牌 = 审判弃牌
 	角色._审判给 = 0
 	角色._审判对手 = 2
 	角色._审判步 = 4

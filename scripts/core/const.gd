@@ -2066,10 +2066,11 @@ static func 填文本(模板: String, 额外: Dictionary = {}) -> String:
 
 ## 读文本表（公用的跨技能文案）：id → 文本。缺 id 时返回 id 本身并打警告，不崩。
 ## 文本表放「不属于单个技能」的公用句式；技能步骤文案仍走技能表「提示」列（提示原文）。
-static func 文本(id: String) -> String:
+static func 文本(id: String, 告警: bool = true) -> String:
 	var 行: Variant = 数据表格.文本表.get(id, null)
 	if 行 == null:
-		push_warning("[文本表] 找不到文案 id：%s" % id)
+		if 告警:
+			push_warning("[文本表] 找不到文案 id：%s" % id)
 		return id
 	if 行 is Array and not (行 as Array).is_empty():
 		return str((行 as Array)[0]).strip_edges()
