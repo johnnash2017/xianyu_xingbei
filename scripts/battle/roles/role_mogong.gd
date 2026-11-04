@@ -544,7 +544,7 @@ func _run_chong_neng(action: Dictionary) -> int:
 func _chong_neng_choices() -> Array:
 	var out: Array = []
 	for i: int in range(1, 5):
-		out.append({"text": 提示(CHONG_NENG, 1, i), "args": [i]})
+		out.append({"text": GConst.按钮文本(CHONG_NENG, 0, {"n": i}), "args": [i]})
 	return out
 
 

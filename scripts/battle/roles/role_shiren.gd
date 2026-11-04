@@ -119,7 +119,7 @@ func _set_ling_gan(v: int) -> void:
 func _bu_xie_num_choices() -> Array:
 	var out: Array = []
 	for num: int in range(2, _ling_gan() + 1):
-		out.append({"text": GConst.提示原文(BU_XIE_HE_XIAN, 2) % num, "args": [num]})
+		out.append({"text": GConst.按钮原文(BU_XIE_HE_XIAN, 0) % num, "args": [num]})
 	return out
 
 
@@ -128,8 +128,8 @@ func _bu_xie_num_choices() -> Array:
 func _bu_xie_effect_options() -> Array:
 	var x: int = bu_xie_num - 1
 	return [
-		{"value": 1, "label": GConst.提示原文(BU_XIE_HE_XIAN, 3) % x},
-		{"value": 2, "label": GConst.提示原文(BU_XIE_HE_XIAN, 4) % x},
+		{"value": 1, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 1) % x},
+		{"value": 2, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 2) % x},
 	]
 
 

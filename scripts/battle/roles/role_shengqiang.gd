@@ -144,7 +144,7 @@ func _di_qiang(ctx: Dictionary) -> int:
 		var 上限: int = mini(4, player.cross_num)
 		var 选项: Array = []
 		for n: int in range(1, 5):
-			选项.append({"value": n, "label": 提示(DI_QIANG, 1, n), "enabled": n <= 上限})
+			选项.append({"value": n, "label": GConst.按钮文本(DI_QIANG, 0, {"n": n}), "enabled": n <= 上限})
 		询问(player.id, DI_QIANG, 0, 0, GConst.CardSource.Hand, 选项)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

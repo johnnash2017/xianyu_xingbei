@@ -81,7 +81,7 @@ func p_before_action(_ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		var options: Array = [
 			{"value": 1, "label": "跳过行动阶段"},
-			{"value": 2, "label": GConst.提示原文(WU_XI_SHU_FU, 1) % 摸数},
+			{"value": 2, "label": GConst.按钮原文(WU_XI_SHU_FU, 0) % 摸数},
 		]
 		# 询问文案取技能表 407 的「提示」列（序号 0），{n} 填应摸张数；两个选项按钮标签保持不变
 		询问(cur.id, WU_XI_SHU_FU, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true, 0, -1, [], 摸数)

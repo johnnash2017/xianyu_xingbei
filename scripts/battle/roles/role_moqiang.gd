@@ -314,7 +314,7 @@ func _qi_hei_zhi_qiang(ctx: Dictionary) -> int:
 		var 攻击目标: Array = [dst_p.id]
 		var options: Array = []
 		for n: int in range(1, player.get_energy() + 1):
-			options.append({"value": n, "label": 提示(QI_HEI_ZHI_QIANG, 0, n, -1, {"n2": n + 2})})
+			options.append({"value": n, "label": GConst.按钮文本(QI_HEI_ZHI_QIANG, 0, {"n": n, "n2": n + 2})})
 		询问(player.id, QI_HEI_ZHI_QIANG, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true,
 			1, -1, 攻击目标, -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
 		return WAIT

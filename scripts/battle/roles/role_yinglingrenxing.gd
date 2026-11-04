@@ -92,7 +92,7 @@ func p_turn_begin(_ctx: Dictionary) -> int:
 func _fu_wen_gai_zao_choices() -> Array:
 	var out: Array = []
 	for n: int in range(0, _wen_max() + 1):
-		out.append({"text": 提示(FU_WEN_GAI_ZAO, 0, n, -1, {"n2": _wen_max() - n}), "args": [n]})
+		out.append({"text": GConst.按钮文本(FU_WEN_GAI_ZAO, 0, {"n": n, "n2": _wen_max() - n}), "args": [n]})
 	return out
 
 

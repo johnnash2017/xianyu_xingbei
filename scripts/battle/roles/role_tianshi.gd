@@ -327,7 +327,7 @@ func p_lose_morale(ctx: Dictionary) -> int:
 		var 上限: int = mini(amount, player.get_energy())
 		var options: Array = [{"value": 0, "label": GConst.按钮原文(SHEN_ZHI_BI_HU, 0)}]
 		for x: int in range(1, 上限 + 1):
-			options.append({"value": x, "label": 提示原文(SHEN_ZHI_BI_HU, 2,
+			options.append({"value": x, "label": GConst.按钮原文(SHEN_ZHI_BI_HU, 1,
 				{"n": x, "花费": _bi_hu_花费文案(x)})})
 		询问(player.id, SHEN_ZHI_BI_HU, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true, 0, -1, [], -1, {"损失": amount})
 		_bi_hu_step = 1
