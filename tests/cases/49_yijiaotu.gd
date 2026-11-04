@@ -482,7 +482,7 @@ func _检审判() -> void:
 	_发牌(玩家1, GConst.CardElement.Wind, 1)
 	_发牌(引擎.p(3), GConst.CardElement.Fire, 1)
 	_放末日([101])
-	角色._本回合造成伤害 = true
+	角色._本回合伤害目标 = [2]
 	检(角色.p_turn_end({"player": 1}) == BattleRole.WAIT, "【审判】应先问是否发动")
 	# 发动询问不再自带「是否发动【审判】：…」：说明交给默认的技能说明（技能名已由询问标题显示）
 	检(_最近询问文案(9502).is_empty(), "发动询问应留给默认技能说明：%s" % _最近询问文案(9502))
@@ -515,6 +515,20 @@ func _检审判() -> void:
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502,
 		"两名队友弃完应问交给哪名对手（等待 %s）" % str(引擎._await_id))
+	# 给牌目标只能从「本回合被你伤害过的对手」里选（本例只伤害过 2 号）；
+	# 条件里的「对目标角色造成伤害」指任意一个，不是让玩家随便点一个对手。
+	var 给牌询问: Dictionary = {}
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 命令2: Array = (r["data"] as Dictionary).get("commands", [])
+		if 命令2.is_empty():
+			continue
+		var c2: Dictionary = 命令2[0]
+		if int(c2.get("respond_id", 0)) == 9502 and not (c2.get("dst_ids", []) as Array).is_empty():
+			给牌询问 = c2
+	检((给牌询问.get("dst_ids", []) as Array) == [2],
+		"审判的给牌目标应只有本回合伤害过的 2 号：%s" % str(给牌询问.get("dst_ids", [])))
 	# 不合法的目标（自己/队友）应被服务端驳回并重新问，不能随机换目标或静默给牌
 	var 驳回前: int = 发送记录.size()
 	_应答([1], [1])
@@ -525,6 +539,16 @@ func _检审判() -> void:
 		if int(r["msg"]) == GConst.Msg.ErrorInput:
 			有驳回 = true
 	检(有驳回, "目标选成自己应被驳回（ErrorInput）")
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502, "驳回后应重新问这一步")
+	# 对手 4 号本回合没被你伤害过，也不能作为给牌目标
+	var 驳回前2: int = 发送记录.size()
+	_应答([1], [4])
+	引擎.run()
+	var 有驳回2: bool = false
+	for i2: int in range(驳回前2, 发送记录.size()):
+		if int(发送记录[i2]["msg"]) == GConst.Msg.ErrorInput:
+			有驳回2 = true
+	检(有驳回2, "未被你伤害过的对手不应能作为审判给牌目标（ErrorInput）")
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9502, "驳回后应重新问这一步")
 	_应答([1], [2])
 	引擎.run()
@@ -541,7 +565,7 @@ func _检审判超时() -> void:
 	_发牌(玩家1, GConst.CardElement.Wind, 1)
 	_发牌(引擎.p(3), GConst.CardElement.Fire, 1)
 	_放末日([101])
-	角色._本回合造成伤害 = true
+	角色._本回合伤害目标 = [2]
 	角色.p_turn_end({"player": 1})
 	_应答([1])
 	角色.p_turn_end({"player": 1})
@@ -588,7 +612,7 @@ func _检审判弃刃触发渗蚀() -> void:
 	引擎.deck.discard.erase(刃)
 	玩家1.add_hand_cards([刃])
 	_发牌(引擎.p(3), GConst.CardElement.Wind, 1)
-	角色._本回合造成伤害 = true
+	角色._本回合伤害目标 = [2]
 	检(角色.p_turn_end({"player": 1}) == BattleRole.WAIT, "【审判】应先问是否发动")
 	_应答([1])
 	角色.p_turn_end({"player": 1})
@@ -644,7 +668,7 @@ func _检审判残留状态() -> void:
 	角色.p_before_turn_begin({"player": 1})
 	检(int(角色.get("_审判步")) == 0 and (角色.get("_审判弃牌") as Array).is_empty(),
 		"新回合开始应清掉残留的审判流程状态")
-	角色._本回合造成伤害 = true
+	角色._本回合伤害目标 = [2]
 	检(角色.p_turn_end({"player": 1}) == BattleRole.WAIT, "清掉残留后【审判】应能正常发动")
 
 
@@ -659,6 +683,8 @@ func _检审判选项值对应() -> void:
 	玩家1.取出实例(玩家1.hand_cards, 甲)
 	玩家1.取出实例(玩家1.hand_cards, 乙)
 	引擎.deck.push_discard([甲, 乙])
+	# 给牌目标白名单：本回合伤害过 2 号，才能把弃牌交给 2 号
+	角色._本回合伤害目标 = [2]
 	角色._审判步 = 3
 	var 候选弃牌: Array[int] = [甲, 乙]
 	角色._审判弃牌 = 候选弃牌
@@ -736,7 +762,7 @@ func _检审判同名牌两张() -> void:
 	# 卡表#0 圣盾（地/幻）实例号正好是 0；卡表#6 圣盾（风/圣）是另一张同名牌
 	玩家1.add_hand_cards([0])
 	引擎.p(3).add_hand_cards([6])
-	角色._本回合造成伤害 = true
+	角色._本回合伤害目标 = [2]
 	_应答([1])
 	角色.p_turn_end({"player": 1})
 	引擎.run()

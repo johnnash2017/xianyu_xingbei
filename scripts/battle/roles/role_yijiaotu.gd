@@ -40,8 +40,9 @@ const 天雷劫火名: String = "天雷劫火"
 const 地裂波涛名: String = "地裂波涛"
 const 预言上限: int = 6
 
-## 本回合是否对对手造成过伤害（【审判】的发动条件）
-var _本回合造成伤害: bool = false
+## 本回合被【审判】造成过伤害的对手：既是发动条件，也是给弃牌的可选目标
+## （技能条件「对目标角色造成伤害」指任意一个被你伤害过的对手，不是随便挑一个）
+var _本回合伤害目标: Array[int] = []
 ## 本回合【审判】已经发动过：回合结束钩子会被引擎多次重入，没有它每次回来都会再问一遍
 var _审判已发动: bool = false
 ## 审判：上一名队友弃牌结算完后，还欠他 1 张【强制】摸牌（弃 + 摸结算完再轮下一名）
@@ -152,7 +153,7 @@ func p_magic_skill(action: Dictionary) -> int:
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	_本回合造成伤害 = false
+	_本回合伤害目标.clear()
 	_审判已发动 = false
 	_本回合已用放逐 = false
 	# 审判流程残留在任何一步都清掉：否则下一步的 p_turn_end 会被「_审判步 != 0」挡住，
@@ -177,13 +178,24 @@ func _重算手牌上限() -> void:
 	player.hand_cards_max = GConst.HAND_CARDS_MAX - (1 if engine.有场卡(末日预言名) else 0)
 
 
-## 本回合对对手造成过伤害（【审判】条件）
+## 记录本回合被你造成过伤害的对手（【审判】条件 + 给牌目标白名单）
 func p_harm_end(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) == player.id:
-		var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
-		if dst != null and dst.color != player.color:
-			_本回合造成伤害 = true
+	if int(ctx.get("src", -1)) != player.id:
+		return SUCCESS
+	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+	if dst != null and dst.color != player.color and not _本回合伤害目标.has(dst.id):
+		_本回合伤害目标.append(dst.id)
 	return SUCCESS
+
+
+## 【审判】给弃牌的可选目标：本回合被你伤害过、且仍然在场的对手
+func _审判可选目标() -> Array[int]:
+	var 结果: Array[int] = []
+	for pid: int in _本回合伤害目标:
+		var 目标: BattlePlayer = engine.p(pid)
+		if 目标 != null and 目标.color != player.color and not 结果.has(pid):
+			结果.append(pid)
+	return 结果
 
 
 # ============================================================
@@ -210,7 +222,7 @@ func 伤害摸牌替换(_pid: int) -> int:
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if not _本回合造成伤害 or _审判已发动:
+	if _审判可选目标().is_empty() or _审判已发动:
 		return SUCCESS
 	# 流程已经走到「问队友弃牌 / 选牌给对手」等步骤：回合结束钩子不参与，
 	# 避免把别人的回复当成「是否发动」的回复吃掉（列表中途的 WAIT 由审判自己的钩子负责）
@@ -559,7 +571,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				弃牌选项.append({"value": i + 1,
 					"label": 弃卡.card_name if 弃卡 != null else "弃牌", "card_id": int(_审判弃牌[i])})
 			询问(player.id, SHEN_PAN, 0, 1, GConst.CardSource.Hand, 弃牌选项, 0, "", [], false,
-				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
+				0, -1, _审判可选目标(), -1, {}, 0, 0, false, [], true, -1, 0,
 				GConst.提示原文(SHEN_PAN, 2))
 			return WAIT
 		var r7: Dictionary = take_skill_reply_full()
@@ -575,7 +587,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 可交: bool = 下标 >= 0 and 下标 < _审判弃牌.size()
 		if 可交:
 			可交 = engine.deck.discard.has(int(_审判弃牌[下标]))
-		if 目标 == null or 目标.color == player.color or not 可交:
+		if 目标 == null or not _审判可选目标().has(目标id) or not 可交:
 			engine.send(player.id, GConst.Msg.ErrorInput,
 				{"error_type": GConst.CmdType.Respond, "commands": []})
 			# _审判步 仍是 3：重入本分支会重新发「选 1 张弃牌交给目标对手」
