@@ -271,7 +271,7 @@ func _视为系别表() -> Array[int]:
 func _视为系别选项() -> Array:
 	var out: Array = []
 	for 元素: int in _视为系别表():
-		out.append({"value": 元素, "label": "视为%s系" % GConst.element_to_chinese(元素), "element": 元素})
+		out.append({"value": 元素, "label": GConst.按钮原文(YUAN_SU_SHE_JI, 0) % GConst.element_to_chinese(元素), "element": 元素})
 	return out
 
 

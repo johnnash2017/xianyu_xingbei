@@ -797,7 +797,7 @@ func _检查预言取空() -> void:
 func _系别选项(系表: Array) -> Array:
 	var out: Array = []
 	for 系: Variant in 系表:
-		out.append({"value": int(系), "label": "%s系" % GConst.element_to_chinese(int(系))})
+		out.append({"value": int(系), "label": GConst.按钮原文(_展示技能号(), 0) % GConst.element_to_chinese(int(系))})
 	return out
 
 

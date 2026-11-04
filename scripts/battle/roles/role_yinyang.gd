@@ -181,7 +181,7 @@ func _yin_yang_zhuan_huan(ctx: Dictionary) -> int:
 		# 三档始终都摆出来：本次用不了的那档由 enabled=false 置灰（对照其他技能的 option_enabled），
 		# 不能直接省略——否则玩家会以为这套技能少了一档。
 		询问(player.id, YIN_YANG_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand,
-			_阴阳转换选项(有基础应战, 可阴阳),
+			_阴阳转换选项(YIN_YANG_ZHUAN_HUAN, 有基础应战, 可阴阳),
 			0, "", [], true, 0, -1, [], -1, {},
 			atk_id, 0, false, [int(ctx.get("src", -1))], bool(ctx.get("can_light", true)), 预览伤害)
 		return WAIT
@@ -211,13 +211,14 @@ func _yin_yang_zhuan_huan(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 3306 / 3301 共用的三档选项：仅应战 / 阴阳转换 / 阴阳转换+式神转换。
+## 3306 / 3301 共用同一套三档选项：仅应战 / 阴阳转换 / 阴阳转换+式神转换。
+## 文案按传入的 技能号 从「按钮」列取（3306、3301 两行各配一份，改措辞要两行一起改）。
 ## 本次用不了的那档也返回（enabled=false），客户端按其他技能的 option_enabled 置灰显示。
-func _阴阳转换选项(有基础应战: bool, 可阴阳: bool) -> Array:
+func _阴阳转换选项(技能号: int, 有基础应战: bool, 可阴阳: bool) -> Array:
 	return [
-		{"value": 1, "label": "仅应战", "enabled": 有基础应战},
-		{"value": 2, "label": GConst.文本("提示_阴阳转换_应战转换"), "enabled": 可阴阳},
-		{"value": 3, "label": GConst.文本("提示_阴阳转换_再次转换"), "enabled": 可阴阳},
+		{"value": 1, "label": GConst.按钮原文(技能号, 0), "enabled": 有基础应战},
+		{"value": 2, "label": GConst.按钮原文(技能号, 1), "enabled": 可阴阳},
+		{"value": 3, "label": GConst.按钮原文(技能号, 2), "enabled": 可阴阳},
 	]
 
 
@@ -402,7 +403,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		# 用不了的档同样置灰显示；同时把本次攻击牌和攻击者带给客户端。
 		# 可圣光传 false：3301 这条不能用圣光抵挡，客户端据此把【圣光】置灰。
 		询问(player.id, SHI_SHEN_ZHOU_SHU, 0, 0, GConst.CardSource.Hand,
-			_阴阳转换选项(_has_base_reattack_card(atk_id),
+			_阴阳转换选项(SHI_SHEN_ZHOU_SHU, _has_base_reattack_card(atk_id),
 				not 无命格 and _has_same_fate_pattern_attack(atk_id)),
 			0, "", [], true, 0, -1, [], -1, {},
 			atk_id, 0, false, [int(ctx.get("src", -1))], false, 预览伤害)
