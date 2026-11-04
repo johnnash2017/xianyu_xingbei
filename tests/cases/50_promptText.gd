@@ -15,6 +15,7 @@ func 跑() -> void:
 	_检选项覆盖()
 	_检询问文案()
 	_检文案表接口()
+	_检选项提示协议()
 
 
 ## 基础分支：没选中 / 本地流程 / 普通技能询问 / 启动技能
@@ -145,3 +146,21 @@ func _检文案表接口() -> void:
 	if not 列表.is_empty():
 		检(GConst.提示原文(9505, 0) == 列表[0].strip_edges(),
 			"提示原文应与提示列表原文一致（去首尾空白）")
+
+
+## 选项级提示字段（P2 预埋）：option_prompts / option_switch_desc 要能过协议
+func _检选项提示协议() -> void:
+	var 命令: Dictionary = {
+		"respond_id": 9505, "src_id": 1,
+		"args": [6, 0, 0, 2, 1, 2],
+		"option_prompts": ["", "选中后的本步文案"],
+		"option_switch_desc": [false, true],
+	}
+	var 解: Dictionary = ProtoCodec.decode_named("Command",
+		ProtoCodec.encode_named("Command", 命令))
+	var 提示组: Array = 解.get("option_prompts", [])
+	检(提示组.size() == 2 and str(提示组[0]) == "" and str(提示组[1]) == "选中后的本步文案",
+		"选项提示文案应能过协议：%s" % str(提示组))
+	var 独立组: Array = 解.get("option_switch_desc", [])
+	检(独立组.size() == 2 and not bool(独立组[0]) and bool(独立组[1]),
+		"选项独立技能标记应能过协议：%s" % str(独立组))

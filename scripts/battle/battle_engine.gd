@@ -2521,6 +2521,8 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var 选项目标: Array = []
 	var 选项牌号: Array = []
 	var 选项不改提示: Array = []
+	var 选项提示: Array = []
+	var 选项独立技能: Array = []
 	var 选项需目标: Array = []
 	var 选项预览牌: Array = []
 	var 选项元素: Array = []
@@ -2535,6 +2537,8 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		# -1＝这一项不对应牌；0 是合法牌号（卡表#0 圣盾），不能拿 0 当「没有」
 		选项牌号.append(int(o.get("card_id", -1)))
 		选项不改提示.append(bool(o.get("no_prompt_change", false)))
+		选项提示.append(str(o.get("提示", "")))
+		选项独立技能.append(bool(o.get("独立技能", false)))
 		选项需目标.append(int(o.get("need_target", 0)))
 		选项预览牌.append({"ids": _牌面表(o.get("preview_cards", []))})
 		选项元素.append({"ids": o.get("elements", [])})
@@ -2573,6 +2577,17 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 选项声明「选中不改提示条」时才下发（如放逐的正面二选一）
 	if not 选项不改提示.is_empty() and 选项不改提示.has(true):
 		cmd["option_no_prompt_change"] = 选项不改提示
+	# 选项自带「选中后本步文案」/「独立技能」时才下发（统一 4 规则后由客户端读取）
+	if not 选项提示.is_empty() and not str(选项提示).is_empty():
+		var 提示有内容: bool = false
+		for _t: Variant in 选项提示:
+			if not str(_t).is_empty():
+				提示有内容 = true
+				break
+		if 提示有内容:
+			cmd["option_prompts"] = 选项提示
+	if not 选项独立技能.is_empty() and 选项独立技能.has(true):
+		cmd["option_switch_desc"] = 选项独立技能
 	# 有不可用选项时才下发（如魔纹不够时的额外翻转档）：客户端据此置灰、点不动
 	if not 选项可用.is_empty() and 选项可用.has(false):
 		cmd["option_enabled"] = 选项可用
