@@ -226,8 +226,8 @@ func p_jinguizhinv_7802摸到(ctx: Dictionary) -> int:
 func _魔法入门参数选项() -> Array:
 	var 候选: Array[int] = _友情羁绊候选角色()
 	return [
-		{"text": "你摸 1 张牌【强制】", "args": [1]},
-		{"text": "-1【宝石】改为我方 2 名角色各弃 1 张牌【强制】，技能效果结束前各摸 1 张牌【强制】",
+		{"text": GConst.按钮原文(魔法入门, 0), "args": [1]},
+		{"text": GConst.按钮原文(魔法入门, 1),
 			"args": [2], "skill_id": 友情羁绊,
 			"enabled": _可发动友情羁绊() and 候选.size() >= 2,
 			"need_target": 2, "targets": 候选},
@@ -598,11 +598,11 @@ func _7803下一档() -> int:
 ## 本次询问的固定三选项：文案始终完整下发，只有「本次实际触发的那一档」enabled=true。
 func _7803选项(档: int) -> Array:
 	return [
-		{"value": 1, "label": "弃 2 张牌", "enabled": 档 == 1,
+		{"value": 1, "label": GConst.按钮原文(MAGIC_BANG, 0), "enabled": 档 == 1,
 			# 选项自带选牌需求：选中它就点 2 张手牌、按一次确定一起提交（不再单独发选牌询问）
 			"need_card": 2},
-		{"value": 2, "label": "额外+1【法术行动】", "enabled": 档 == 2},
-		{"value": 3, "label": "我方【战绩区】+2【宝石】", "enabled": 档 == 3},
+		{"value": 2, "label": GConst.按钮原文(MAGIC_BANG, 1), "enabled": 档 == 2},
+		{"value": 3, "label": GConst.按钮原文(MAGIC_BANG, 2), "enabled": 档 == 3},
 	]
 
 
@@ -772,11 +772,11 @@ func _强予参数选项() -> Array:
 	var 需弃: int = maxi(player.hand_cards.size() - 强予手牌数, 0)
 	var 候选: Array[int] = _其他角色id()
 	return [
-		{"text": "仅调整自己手牌为 4", "args": [1], "enabled": true, "need_card": 需弃},
-		{"text": "【战绩区】-1【水晶】调整其他角色手牌为 4", "args": [2],
+		{"text": GConst.按钮原文(强予愿行, 0), "args": [1], "enabled": true, "need_card": 需弃},
+		{"text": GConst.按钮原文(强予愿行, 1), "args": [2],
 			"enabled": engine.team_crystal[player.color] > 0,
 			"need_card": 需弃, "need_target": 1, "targets": 候选},
-		{"text": "【战绩区】-1【宝石】调整其他角色手牌为 4", "args": [3],
+		{"text": GConst.按钮原文(强予愿行, 2), "args": [3],
 			"enabled": engine.team_gem[player.color] > 0,
 			"need_card": 需弃, "need_target": 1, "targets": 候选},
 	]
