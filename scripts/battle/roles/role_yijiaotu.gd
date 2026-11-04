@@ -44,6 +44,8 @@ const 预言上限: int = 6
 var _本回合造成伤害: bool = false
 ## 本回合【审判】已经发动过：回合结束钩子会被引擎多次重入，没有它每次回来都会再问一遍
 var _审判已发动: bool = false
+## 审判：上一名队友弃牌结算完后，还欠他 1 张【强制】摸牌（弃 + 摸结算完再轮下一名）
+var _审判待摸: int = -1
 ## 【放逐】回合限定：每回合只能发动一次（同圣女【圣疗】的 used_ 标记做法）
 var _本回合已用放逐: bool = false
 ## 审判进度
@@ -153,6 +155,12 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 	_本回合造成伤害 = false
 	_审判已发动 = false
 	_本回合已用放逐 = false
+	# 审判流程残留在任何一步都清掉：否则下一步的 p_turn_end 会被「_审判步 != 0」挡住，
+	# 表现为「偶尔触发不了」
+	_审判步 = 0
+	_审判下标 = 0
+	_审判弃牌 = []
+	_审判待摸 = -1
 	_重算手牌上限()
 	# 【灾殃止息】：回合开始时若存在【天雷劫火】/【地裂波涛】→ 移除
 	if engine.有场卡(天雷劫火名) or engine.有场卡(地裂波涛名):
@@ -204,16 +212,23 @@ func p_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not _本回合造成伤害 or _审判已发动:
 		return SUCCESS
-	if _审判步 != 0 and not engine.has_reply():
-		# 等回复期间（_审判步 == 1 且有回复）放行到下面 take
+	# 流程已经走到「问队友弃牌 / 选牌给对手」等步骤：回合结束钩子不参与，
+	# 避免把别人的回复当成「是否发动」的回复吃掉（列表中途的 WAIT 由审判自己的钩子负责）
+	if _审判步 == 2 or _审判步 == 3 or _审判步 == 4:
 		return SUCCESS
-	_审判步 = 1
-	if not engine.has_reply():
-		询问(player.id, SHEN_PAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
-			# 说明交给默认的技能说明（提示条会显示技能表里【审判】的说明），
-			# 不再自己写「是否发动【审判】：…」——技能名已经由询问标题显示
-		return WAIT
+	if _审判步 == 1:
+		# 等发动询问的回复；没有回复就说明还没轮到/已被处理
+		if not engine.has_reply():
+			return SUCCESS
+	else:
+		# _审判步 == 0：第一次进入，发起动询问
+		_审判步 = 1
+		if not engine.has_reply():
+			询问(player.id, SHEN_PAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
+				# 说明交给默认的技能说明（提示条会显示技能表里【审判】的说明），
+				# 不再自己写「是否发动【审判】：…」——技能名已经由询问标题显示
+			return WAIT
 	if not take_skill_reply():
 		_审判步 = 0
 		return SUCCESS
@@ -222,6 +237,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 	notice_skill(SHEN_PAN, [])
 	_审判弃牌 = []
 	_审判下标 = 0
+	_审判待摸 = -1
 	_审判步 = 2
 	engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
 	return URGENT
@@ -474,10 +490,13 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	# 审判：逐名队友弃 1 张牌【展示】
 	if _审判步 == 2:
 		var 队友: Array[int] = _我方角色()
+		# 上一名队友的弃牌已经结算完（含弃牌前拦截/渗蚀）：先让他摸 1 张，
+		# 再轮下一名队友 —— 不要所有人先弃完再一起摸
+		if _审判待摸 > 0:
+			engine.强制摸牌(_审判待摸, 1, SHEN_PAN)
+			_审判待摸 = -1
+			engine._broadcast_game()
 		if _审判下标 >= 队友.size():
-			# 各自摸 1 张【强制】
-			for pid: int in 队友:
-				engine.强制摸牌(pid, 1, SHEN_PAN)
 			_审判步 = 3
 			return p_yi_jiao_tu_ask({"player": player.id})
 		var pid2: int = int(队友[_审判下标])
@@ -512,7 +531,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			engine.to_discard([cid], {"owner": pid2, "source": "hand", "cause": SHEN_PAN})
 			_审判弃牌.append(cid)
 			_审判下标 += 1
-			# 先让弃牌拦截结算完，回来再继续下一名队友
+			_审判待摸 = pid2
+			# 先让弃牌拦截结算完，回来先给这名队友摸 1 张，再继续下一名
 			return URGENT
 		_审判下标 += 1
 		return p_yi_jiao_tu_ask({"player": player.id})
@@ -554,23 +574,42 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		_审判步 = 0
 		var 已弃: Array = _审判弃牌.duplicate()
 		_审判弃牌 = []
-		# 这些牌已经在 step2 走统一弃牌入口进了弃牌堆；要给人的那张先取回来
+		# 这些牌已经在 step2 走统一弃牌入口进了弃牌堆；要给人的那张先取回来。
+		# 目标无效（掉线/选错/超时）就换一名合法对手；要给的牌已经不在弃牌堆
+		# （被移除 / 被别的效果取走）就顺延取下一张仍可用的 —— 不静默失败。
 		var 下标给: int = clampi(_审判给, 0, maxi(已弃.size() - 1, 0))
-		var 给了: bool = false
-		if _审判对手 > 0 and not 已弃.is_empty():
-			var 敌: BattlePlayer = engine.p(_审判对手)
-			var 取: int = engine.deck.取出实例(int(已弃[下标给]))
-			if 敌 != null and 取 > 0:
-				敌.add_hand_cards([取])
-				给了 = true
+		var 给了: int = -1
+		var 敌: BattlePlayer = engine.p(_审判对手)
+		if 敌 == null:
+			var 敌表给: Array = enemy_ids()
+			if not 敌表给.is_empty():
+				_审判对手 = int(敌表给[engine._rng.randi_range(0, 敌表给.size() - 1)])
+				敌 = engine.p(_审判对手)
+		if 敌 != null and not 已弃.is_empty():
+			for k: int in range(已弃.size()):
+				var idx: int = (下标给 + k) % 已弃.size()
+				var cid给: int = int(已弃[idx])
+				if not engine.deck.discard.has(cid给):
+					continue
+				var 取: int = engine.deck.取出实例(cid给)
+				if 取 > 0:
+					敌.add_hand_cards([取])
+					下标给 = idx
+					给了 = 取
+					break
+			if 给了 > 0:
+				engine._log_give_cards(player.id, 敌.id, [给了])
 		# 其余弃牌：有【末日预言】才从弃牌堆取出来放进【预言】堆；
 		# 没有【末日预言】就留在弃牌堆（本来就已经在里面了，不用再动）
 		if engine.有场卡(末日预言名):
 			var 其余: Array = []
 			for i: int in range(已弃.size()):
-				if i == 下标给 and 给了:
+				if i == 下标给 and 给了 > 0:
 					continue
-				var 取2: int = engine.deck.取出实例(int(已弃[i]))
+				var cid2: int = int(已弃[i])
+				if not engine.deck.discard.has(cid2):
+					continue
+				var 取2: int = engine.deck.取出实例(cid2)
 				if 取2 > 0:
 					其余.append(取2)
 			var 表2: Dictionary = engine.取场卡(末日预言名)
