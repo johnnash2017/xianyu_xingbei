@@ -624,6 +624,8 @@ func _初始化噬神者刃() -> void:
 
 ## 给一名已经确定为噬神者的玩家创建两张唯一刃实例（幂等）。
 ## 正常开局由 _初始化噬神者刃 统一调；测试/中途设角色也能显式调。
+## 两张刃初始就「不在场」：不放进牌库 / 弃牌堆 / 手牌 / 盖牌，只登记唯一实例与归属，
+## 由【御刃】【共振】按记录把实例加回手牌（被【渗蚀】移除后也是同一条路）。
 func 确保噬神者刃(pid: int) -> void:
 	var p0: BattlePlayer = players.get(pid)
 	if p0 == null or p0.role_id != GConst.角色_噬神者 or p0.魔刃实例 > 0:
@@ -636,8 +638,6 @@ func 确保噬神者刃(pid: int) -> void:
 		var 元素: int = 牌面.可选元素[0] if 牌面 != null and not 牌面.可选元素.is_empty() else 0
 		Data.取实例卡(inst, 元素, pid)
 		刃归属[inst] = pid
-		if deck != null and not deck.discard.has(inst):
-			deck.discard.append(inst)
 		if 面 == GConst.噬神者_魔刃卡:
 			p0.魔刃实例 = inst
 		else:
@@ -646,10 +646,6 @@ func 确保噬神者刃(pid: int) -> void:
 
 func 刃归属者(inst: int) -> int:
 	return int(刃归属.get(inst, -1))
-
-
-func 刃在弃牌堆(inst: int) -> bool:
-	return deck != null and deck.discard.has(inst)
 
 
 ## 当前持有者（手牌/盖牌）；不在这些区域返回 -1
@@ -664,10 +660,10 @@ func 刃持有者(inst: int) -> int:
 
 
 ## 按「归属者的唯一实例」判断是否在场：
-## - 弃牌堆 = 不在场；
-## - 当前正在结算的攻击牌 = 在场（即使它已经先进入弃牌堆）；
-## - 手牌/盖牌 = 在场；
-## - 查不到区域 = 不在场。
+## - 在任意玩家手牌 / 盖牌里 = 在场；
+## - 当前正在结算的这张攻击牌 = 在场；
+## - 其余（含被【渗蚀】移除、实体已不在任何区域）= 不在场。
+## 刃被移除后不会进弃牌堆/牌库，所以「不在场」就等于「不在这些区域里」。
 func 刃在场(pid: int, 面: int) -> bool:
 	var p0: BattlePlayer = players.get(pid)
 	if p0 == null:
@@ -677,24 +673,22 @@ func 刃在场(pid: int, 面: int) -> bool:
 		return false
 	if p0.role != null and int(p0.role.get("_本次刃")) == inst:
 		return true
-	if 刃在弃牌堆(inst):
-		return false
 	for other: int in order:
 		var pp: BattlePlayer = players.get(other)
 		if pp != null and (pp.hand_cards.has(inst) or pp.cover_cards.has(inst)):
 			return true
-	return deck != null and deck.pile.has(inst)
+	return false
 
 
-func 刃从弃牌堆取出(inst: int) -> int:
-	if deck == null:
-		return -1
-	return deck.取出实例(inst)
-
-
-func 刃进弃牌堆(inst: int) -> void:
-	if deck != null and inst > 0 and not deck.discard.has(inst):
-		deck.discard.append(inst)
+## 把某张刃按记录的唯一实例加回某人的手牌（刃被移除后实体不在任何区域，也走这条）。
+## 只负责加牌与清攻击牌缓存；广播 / 播报由调用方按技能需要决定。
+func 刃加入手牌(pid: int, inst: int) -> bool:
+	var p0: BattlePlayer = players.get(pid)
+	if p0 == null or inst <= 0:
+		return false
+	_规则攻击牌缓存.clear()
+	p0.add_hand_cards([inst])
+	return true
 
 
 ## 角色卡替换（F7 / 10803：剑之子 → 风之剑圣）。
