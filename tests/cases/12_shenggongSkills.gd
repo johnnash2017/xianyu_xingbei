@@ -426,18 +426,19 @@ func 跑() -> void:
 	检(int(弓.tokens[0]["num"]) == 1, "应战反击命中圣类命格也应 +1 信仰")
 
 	# 自动填充第一层只选资源，第二层再手选治疗/信仰；超时才按空位自动选。
-	检(GConst.提示原文(8807, 1).contains("水晶")
-		and GConst.提示原文(8807, 1).contains("治疗")
-		and GConst.提示原文(8807, 1).contains("信仰")
-		and not GConst.提示原文(8807, 1).contains("宝石")
-		and not GConst.提示原文(8807, 1).contains("（")
-		and not GConst.提示原文(8807, 1).contains("→"),
+	# 这两句是按钮文案：P4 时挂在「提示」列第 2/3 条，已按新口径搬进「按钮」列（idx0/1）。
+	检(GConst.按钮原文(8807, 0).contains("水晶")
+		and GConst.按钮原文(8807, 0).contains("治疗")
+		and GConst.按钮原文(8807, 0).contains("信仰")
+		and not GConst.按钮原文(8807, 0).contains("宝石")
+		and not GConst.按钮原文(8807, 0).contains("（")
+		and not GConst.按钮原文(8807, 0).contains("→"),
 		"自动填充第一层水晶项不应再写括号里的宝石替代和箭头")
-	检(GConst.提示原文(8807, 2).contains("宝石")
-		and GConst.提示原文(8807, 2).contains("水晶")
-		and GConst.提示原文(8807, 2).contains("治疗")
-		and GConst.提示原文(8807, 2).contains("信仰")
-		and not GConst.提示原文(8807, 2).contains("→"),
+	检(GConst.按钮原文(8807, 1).contains("宝石")
+		and GConst.按钮原文(8807, 1).contains("水晶")
+		and GConst.按钮原文(8807, 1).contains("治疗")
+		and GConst.按钮原文(8807, 1).contains("信仰")
+		and not GConst.按钮原文(8807, 1).contains("→"),
 		"自动填充第一层宝石项应写清扣除宝石、+1 水晶和两种效果，且不用箭头")
 	# 第二层选项：玩家手选，治疗/信仰都始终可选（空位不足不置灰）；args=[资源, 效果]。
 	var 填充窗: Control = load("res://scripts/ui/battle_mobile.gd").new()

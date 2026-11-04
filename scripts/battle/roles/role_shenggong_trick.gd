@@ -93,8 +93,8 @@ func available_skills() -> Array:
 		"arg_choices": 爆裂选项, "enabled": player.tap and 爆裂可用})
 	# 圣煌辉光炮 / 圣煌余辉：同一张专属技的正反面，两颗都摆出来，按 player.sheng_huang_side 置灰。
 	# 只要求圣煌形态 + 信仰足够支付（落后士气差 + 4）；设计表没有把“士气落后”写成发动条件。
-	var 炮选项: Array = _hui_guang_pao_choices(true)
-	var 余辉选项: Array = _hui_guang_pao_choices(false)
+	var 炮选项: Array = _hui_guang_pao_choices(true, HUI_GUANG_PAO)
+	var 余辉选项: Array = _hui_guang_pao_choices(false, HUI_GUANG_YU_HUI)
 	out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_GUANG_PAO, "need_card": 0, "need_target": 0,
 		"arg_choices": 炮选项, "enabled": _hui_guang_enabled(HUI_GUANG_SIDE_FRONT)})
 	out.append({"type": GConst.ActionType.MagicSkill, "id": HUI_GUANG_YU_HUI, "need_card": 0, "need_target": 0,
@@ -105,8 +105,8 @@ func available_skills() -> Array:
 ## 圣煌模式的两种支付方式。两项都返回，资源不够的那项由 enabled=false 置灰。
 func _sheng_huang_mo_shi_choices() -> Array:
 	return [
-		{"text": "移除 2【治疗】", "args": [1], "enabled": player.cross_num > 1},
-		{"text": "移除 2 点【信仰】", "args": [2], "enabled": _xin_yang() > 1},
+		{"text": GConst.按钮原文(SHENG_HUANG_MO_SHI, 0), "args": [1], "enabled": player.cross_num > 1},
+		{"text": GConst.按钮原文(SHENG_HUANG_MO_SHI, 1), "args": [2], "enabled": _xin_yang() > 1},
 	]
 
 
@@ -119,7 +119,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 	var out: Array = []
 	var 单体目标: Array[int] = _sheng_guang_mode1_targets()
 	out.append({
-		"text": "发动单体攻击，移除 1 治疗，摸 1 牌",
+		"text": GConst.按钮原文(SHENG_GUANG_BAO_LIE, 0),
 		"args": [1],
 		"need_card": 0,
 		"need_target": 1,
@@ -131,7 +131,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 	})
 	var 群体目标: Array[int] = _sheng_guang_mode2_targets(1)
 	out.append({
-		"text": "发动群体攻击，移除 X 治疗，弃 X 牌",
+		"text": GConst.按钮原文(SHENG_GUANG_BAO_LIE, 1),
 		"args": [2],
 		"need_card": 0,
 		"need_target": 0,
@@ -195,12 +195,13 @@ func _hui_guang_enabled(side: int) -> bool:
 
 ## 辉光炮/余辉的士气方向选项。辉光炮的额外行动固定是「攻击或法术行动」，
 ## 不再在选项里选攻击/法术；余辉没有额外行动。两者都只选士气方向。
-func _hui_guang_pao_choices(含额外行动: bool) -> Array:
+## 技能号 区分正反两面（8806 辉光炮 / 8808 余辉），按钮文案各读各的技能行。
+func _hui_guang_pao_choices(含额外行动: bool, 技能号: int) -> Array:
 	var 额外说明: String = "然后你获得 1 次攻击或法术行动。" if 含额外行动 else ""
 	return [
-		{"text": "我方【士气】调整至与敌方相同", "args": [1],
+		{"text": GConst.按钮原文(技能号, 0), "args": [1],
 			"说明": "我方士气调整为与敌方相同。" + 额外说明},
-		{"text": "敌方【士气】调整至与我方相同", "args": [0],
+		{"text": GConst.按钮原文(技能号, 1), "args": [0],
 			"说明": "敌方士气调整为与我方相同。" + 额外说明},
 	]
 
@@ -212,8 +213,8 @@ func _hui_guang_pao_choices(含额外行动: bool) -> Array:
 func _auto_fill_choices() -> Array:
 	var 有能量: bool = player.crystal > 0 or player.gem > 0
 	return [
-		{"value": 1, "label": 提示原文(ZI_DONG_TIAN_CHONG, 1), "enabled": 有能量},
-		{"value": 2, "label": 提示原文(ZI_DONG_TIAN_CHONG, 2), "enabled": player.gem > 0},
+		{"value": 1, "label": GConst.按钮原文(ZI_DONG_TIAN_CHONG, 0), "enabled": 有能量},
+		{"value": 2, "label": GConst.按钮原文(ZI_DONG_TIAN_CHONG, 1), "enabled": player.gem > 0},
 	]
 
 
@@ -394,8 +395,8 @@ func _sheng_liu_xing_atk() -> int:
 	var 友方: Array[int] = [player.id]
 	友方.append_array(ally_ids())
 	var 选项: Array = [
-		{"value": 1, "label": "移除 1 点【治疗】，令目标 +1【治疗】", "enabled": player.cross_num > 0},
-		{"value": 2, "label": "移除 1 点【信仰】，令目标 +1【治疗】", "enabled": _xin_yang() > 0},
+		{"value": 1, "label": GConst.按钮原文(SHENG_LIU_XING_DAN, 0), "enabled": player.cross_num > 0},
+		{"value": 2, "label": GConst.按钮原文(SHENG_LIU_XING_DAN, 1), "enabled": _xin_yang() > 0},
 	]
 	var 有可用: bool = player.cross_num > 0 or _xin_yang() > 0
 	if not 有可用:
@@ -456,7 +457,7 @@ func _sheng_xie_miss_choices() -> Array:
 	var out: Array = []
 	var n: int = mini(player.cross_num, 2)
 	for x: int in range(1, n + 1):
-		out.append({"value": x, "label": "目标友方弃 %d 张牌" % x})
+		out.append({"value": x, "label": GConst.按钮原文(SHENG_XIE_JU_BAO, 0) % x})
 	return out
 
 
