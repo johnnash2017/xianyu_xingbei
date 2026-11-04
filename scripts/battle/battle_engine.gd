@@ -2850,6 +2850,15 @@ func push_draw(pid: int, n: int, cause: int = 0) -> void:
 	push(SHook.new("p_before_draw", {"player": pid, "count": n, "cause": cause}, []))
 
 
+## 强制摸牌的状态版：压一个「摸牌状态」再摸，摸完回到状态边界统一结算手牌 / 盖牌超限。
+## 角色在钩子里摸完**还要继续问人**时必须用这条 —— 直接调 强制摸牌() 后 return WAIT 会跳过
+## 边界检查（run() 遇到 WAIT 不做 _check_hand_overflow），超限会拖到后面甚至永远不结算。
+func push_强制摸牌(pid: int, n: int, cause: int = 0) -> void:
+	if n <= 0:
+		return
+	push(S强制摸牌.new(pid, n))
+
+
 ## 强制摸牌（F9 / 10601「指定目标对手摸 1 张牌【强制】」、7804 补到手牌 N 张）：
 ## 直接发牌，不走 p_before_draw（与【特殊行动】的摸牌同口径：不能被「摸牌前发动」的响应改写）。
 ## 手牌超限由状态边界统一结算。返回实际摸到的牌。
@@ -5025,6 +5034,19 @@ class SHarmTimeline6:
 
 
 ## 摸牌：把 n 张牌从牌堆发到某玩家手里（对照服务端发牌状态）
+## 强制摸牌（不走 p_before_draw）：摸完照常回到状态边界，结算超限等。
+## 与 强制摸牌() 同步版区别：这条会先让引擎跑完边界检查再回到调用方的流程。
+class S强制摸牌:
+	var pid: int
+	var n: int
+	func _init(_pid: int, _n: int) -> void:
+		pid = _pid
+		n = _n
+	func handle(e: BattleEngine) -> int:
+		e.强制摸牌(pid, n)
+		return BattleEngine.CONTINUE
+
+
 class SDraw:
 	var pid: int
 	var count: int

@@ -491,11 +491,13 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	if _审判步 == 2:
 		var 队友: Array[int] = _我方角色()
 		# 上一名队友的弃牌已经结算完（含弃牌前拦截/渗蚀）：先让他摸 1 张，
-		# 再轮下一名队友 —— 不要所有人先弃完再一起摸
+		# 再轮下一名队友 —— 不要所有人先弃完再一起摸。
+		# 摸牌压成状态再摸：摸完先由引擎统一结算手牌/盖牌超限，结算完才回来问下一名队友
 		if _审判待摸 > 0:
-			engine.强制摸牌(_审判待摸, 1, SHEN_PAN)
+			var 待摸: int = _审判待摸
 			_审判待摸 = -1
-			engine._broadcast_game()
+			engine.push_强制摸牌(待摸, 1, SHEN_PAN)
+			return URGENT
 		if _审判下标 >= 队友.size():
 			_审判步 = 3
 			return p_yi_jiao_tu_ask({"player": player.id})
