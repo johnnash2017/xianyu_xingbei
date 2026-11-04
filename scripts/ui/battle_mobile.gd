@@ -4344,7 +4344,7 @@ func _进入苍白月第二段() -> void:
 	# 1 点和 2 点都摆出来；新月不够的那项置灰（如只剩 1 点时「移除 2 点」半透明点不动）
 	var 选项: Array = []
 	for x: int in [1, 2]:
-		选项.append({"text": "移除 %d 点【新月】" % x, "args": [2, x],
+		选项.append({"text": GConst.按钮原文(GConst.技能_苍白之月, 2) % x, "args": [2, x],
 			"need_card": 1, "need_target": 1, "targets": 敌人,
 			"enabled": 新月数 >= x})
 	_进入二级技能栏(GConst.技能_苍白之月, 父, _选项项(选项), 二级选项底色, _on_cancel)
@@ -4406,7 +4406,7 @@ func _圣光爆裂第二层选项(治疗: int) -> Array:
 	for x: int in range(1, 4):
 		var 群体目标: Array = _圣光爆裂群体目标(x)
 		选项.append({
-			"text": "移除 %d 治疗，弃 %d 张牌，最多 %d 名目标" % [x, x, x],
+			"text": GConst.按钮原文(_pending_skill_id, 2) % [x, x, x],
 			"args": [2, x],
 			"need_card": x,
 			"need_target": 1,
@@ -4449,25 +4449,27 @@ func _返回圣光爆裂第一层() -> void:
 ## args=[资源, 效果]（效果 1=治疗、2=信仰），服务端按这两项结算。
 func _自动填充第二层选项(资源: int) -> Array:
 	# 新版 37 的说明顺序是「+信仰或+治疗」；88 保留旧版的「+治疗或+信仰」。
+	# 两种顺序共用同一组按钮文案（idx2~5），只是取用顺序不同。
 	var 新版37: bool = _skill_ask_id == GConst.技能_自动填充
+	var 技能号: int = GConst.技能_自动填充 if 新版37 else GConst.技能_自动填充Trick
 	if 资源 == 2:
 		if 新版37:
 			return [
-				{"text": "+1【水晶】，+2【信仰】", "args": [2, 2], "enabled": true},
-				{"text": "+1【水晶】，+2【治疗】", "args": [2, 1], "enabled": true},
+				{"text": GConst.按钮原文(技能号, 2), "args": [2, 2], "enabled": true},
+				{"text": GConst.按钮原文(技能号, 3), "args": [2, 1], "enabled": true},
 			]
 		return [
-			{"text": "+1【水晶】，+2【治疗】", "args": [2, 1], "enabled": true},
-			{"text": "+1【水晶】，+2【信仰】", "args": [2, 2], "enabled": true},
+			{"text": GConst.按钮原文(技能号, 3), "args": [2, 1], "enabled": true},
+			{"text": GConst.按钮原文(技能号, 2), "args": [2, 2], "enabled": true},
 		]
 	if 新版37:
 		return [
-			{"text": "+1【信仰】", "args": [1, 2], "enabled": true},
-			{"text": "+1【治疗】", "args": [1, 1], "enabled": true},
+			{"text": GConst.按钮原文(技能号, 4), "args": [1, 2], "enabled": true},
+			{"text": GConst.按钮原文(技能号, 5), "args": [1, 1], "enabled": true},
 		]
 	return [
-		{"text": "+1【治疗】", "args": [1, 1], "enabled": true},
-		{"text": "+1【信仰】", "args": [1, 2], "enabled": true},
+		{"text": GConst.按钮原文(技能号, 5), "args": [1, 1], "enabled": true},
+		{"text": GConst.按钮原文(技能号, 4), "args": [1, 2], "enabled": true},
 	]
 
 
@@ -6161,10 +6163,9 @@ func _天堂选提炼方式() -> void:
 	_提炼水晶 = 0
 	var 上限: int = _天堂额外上限()
 	var 天堂技能号: int = _当前冒险者天堂技能号()
-	var 选项: Array = [{"text": GConst.提示原文(天堂技能号, 1), "args": [0], "enabled": true}]
+	var 选项: Array = [{"text": GConst.按钮原文(天堂技能号, 0), "args": [0], "enabled": true}]
 	for x: int in range(1, 4):
-		var 文本: String = GConst.提示原文(天堂技能号, 2,
-			{"n": x, "花费": _自身能量花费文案(x)})
+		var 文本: String = GConst.按钮原文(天堂技能号, 1, {"n": x, "花费": _自身能量花费文案(x)})
 		选项.append({"text": 文本, "args": [x], "enabled": 上限 >= x})
 	_进入本地选项(4, 0, 选项, GConst.提示原文(天堂技能号, 0),
 		二级选项底色, true, _进入特殊行动)
