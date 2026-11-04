@@ -95,9 +95,9 @@ func available_skills() -> Array:
 			# 和魔弓【魔眼】一样：点技能直接进二级技能栏，三个抽牌档在那里选；
 			# 不选就按「返回」退出来，不扣能量也不发动
 			"arg_choices": [
-				{"text": "摸 6 张牌", "args": [6]},
-				{"text": "摸 7 张牌", "args": [7]},
-				{"text": "摸 8 张牌", "args": [8]},
+				{"text": GConst.按钮原文(FANG_ZHU, 0), "args": [6]},
+				{"text": GConst.按钮原文(FANG_ZHU, 1), "args": [7]},
+				{"text": GConst.按钮原文(FANG_ZHU, 2), "args": [8]},
 			],
 		},
 	]
@@ -314,8 +314,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if 预定.is_empty():
 			if not engine.has_reply():
 				询问(player.id, MO_RI_YU_YAN, 0, 0, GConst.CardSource.Hand,
-					[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO},
-					 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO}], 0, "", [], false,
+					[{"value": 1, "label": GConst.按钮原文(MO_RI_YU_YAN, 0), "skill_id": TIAN_LEI_JIE_HUO},
+					 {"value": 2, "label": GConst.按钮原文(MO_RI_YU_YAN, 1), "skill_id": DI_LIE_BO_TAO}], 0, "", [], false,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 					GConst.提示原文(MO_RI_YU_YAN, 1))
 				return WAIT
@@ -349,8 +349,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 序表: Array[int] = _展示系别()
 		if not engine.has_reply():
 			询问(player.id, TAN_LAN, 0, 0, GConst.CardSource.Hand,
-				[{"value": 1, "label": "先%s后%s" % [GConst.element_to_chinese(序表[0]), GConst.element_to_chinese(序表[1])]},
-				 {"value": 2, "label": "先%s后%s" % [GConst.element_to_chinese(序表[1]), GConst.element_to_chinese(序表[0])]}],
+				[{"value": 1, "label": GConst.按钮原文(TAN_LAN, 0) % [GConst.element_to_chinese(序表[0]), GConst.element_to_chinese(序表[1])]},
+				 {"value": 2, "label": GConst.按钮原文(TAN_LAN, 0) % [GConst.element_to_chinese(序表[1]), GConst.element_to_chinese(序表[0])]}],
 				0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				GConst.提示原文(TAN_LAN, 1))
@@ -699,9 +699,9 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			# 一次询问里同时选：放哪张正面（天雷劫火 / 地裂波涛）+ 哪 6 张手牌作为【预言】。
 			# 这一步是强制的（can_cancel=false）：超时由下面的兜底随机选正面、自动放 6 张。
 			询问(player.id, FANG_ZHU, 6, 0, GConst.CardSource.Hand,
-				[{"value": 1, "label": "天雷劫火", "skill_id": TIAN_LEI_JIE_HUO,
+				[{"value": 1, "label": GConst.按钮原文(FANG_ZHU, 3), "skill_id": TIAN_LEI_JIE_HUO,
 					"no_prompt_change": true},
-				 {"value": 2, "label": "地裂波涛", "skill_id": DI_LIE_BO_TAO,
+				 {"value": 2, "label": GConst.按钮原文(FANG_ZHU, 4), "skill_id": DI_LIE_BO_TAO,
 					"no_prompt_change": true}],
 				6, "", [], false,
 				0, player.id, [], 6, {}, 0, 0, false, [], true, -1, 0,
