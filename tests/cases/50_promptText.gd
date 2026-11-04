@@ -125,13 +125,18 @@ func _检询问文案() -> void:
 	检(基础.contains("基础效果"), "从基础效果牌里选时应写操作指引：%s" % 基础)
 	窗._skill_ask_card_source = GConst.CardSource.Hand
 	# 6) 带选项但没有文案时，退回二级栏计算函数的结果
+	# 注意：_skill_options 声明为 Array[int]，而 窗 的静态类型是 Control，
+	# 直接赋 [1] 会在运行时被拒（普通 Array 不会自动转成 Array[int]），
+	# 赋值被丢掉后这条断言就退化成「空选项时两边相等」，等于没测。必须先建带类型的数组。
 	窗._pending = {}
-	窗._skill_options = [1]
+	var 选项值: Array[int] = [1]
+	窗._skill_options = 选项值
 	窗._二级栏父技能号 = 9505
 	窗._二级选中 = -1
 	var 二级: String = str(窗.call("_二级栏提示文案"))
+	检(not 二级.is_empty(), "带选项时应能算出二级栏提示：%s" % 二级)
 	检(str(窗.call("_询问提示文案")) == 二级,
-		"带选项且无文案时应退回二级栏提示：%s / %s" % [str(窗.call("_询问提示文案")), 二级])
+		"带选项且无文案时，询问提示应与二级栏提示一致：%s / %s" % [str(窗.call("_询问提示文案")), 二级])
 	窗.queue_free()
 
 
