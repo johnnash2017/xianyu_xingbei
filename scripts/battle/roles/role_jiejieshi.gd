@@ -489,13 +489,13 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			var 要: bool = take_skill_reply()
 			_mod_step = 0
 			_琉璃_step = 0
-			if 要 and _琉璃待放 > 0 and player.can_add_cover_cards(1):
+			if 要 and _琉璃待放 >= 0 and player.can_add_cover_cards(1):
 				engine.add_cover(player.id, [_琉璃待放], player.id, LIU_LI_JING, true, JIE_JIE标记)
 				_琉璃待放 = -1
 				return URGENT
-			if _琉璃待放 > 0:
+			if _琉璃待放 >= 0:
 				# 这张牌是目标角色弃的：owner 必须写他（否则【渗蚀】等弃牌触发的伤害会打到结界师）
-				engine.to_discard([_琉璃待放], {"owner": _琉璃弃牌人 if _琉璃弃牌人 > 0 else player.id,
+				engine.to_discard([_琉璃待放], {"owner": _琉璃弃牌人 if _琉璃弃牌人 >= 0 else player.id,
 					"source": "hand", "cause": LIU_LI_JING})
 				_琉璃待放 = -1
 			return SUCCESS

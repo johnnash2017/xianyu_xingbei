@@ -171,6 +171,28 @@ func _检结界师() -> void:
 	var ctx: Dictionary = {"src": 2, "dst": 1, "is_active": true, "card_id": 火攻击, "harm": harm}
 	角色.p_timeline_2_hit(ctx)
 	检(int(harm.get("point", 0)) == 2, "【荒神之力】应让同系攻击伤害 +1：%d" % int(harm.get("point", 0)))
+	# 卡表#0 是合法牌、座位 0 是合法人：琉璃境不能把 0 当「没有」
+	# 先把上面塞满的两张【结界】收走，留出盖牌位（结界师只有 2 个结界槽）
+	引擎.remove_cover(1, 两张, 1, 8201)
+	角色._mod_step = 5
+	角色._琉璃_step = 4
+	角色._琉璃待放 = 0
+	角色._琉璃弃牌人 = 0
+	引擎._reply = {"args": [1], "card_ids": [], "dst_ids": [], "respond_id": 0}
+	引擎._has_reply = true
+	引擎._await_state = 引擎._当前状态
+	检(角色.p_jie_jie_ask({"player": 1}) == BattleRole.URGENT,
+		"琉璃境：0 号牌也要能放进盖牌区作为【结界】")
+	检(玩家.盖牌按标记("结界").has(0), "0 号牌应作为【结界】进盖牌区")
+	# 不做成结界时：0 号牌必须进弃牌堆（不能被 > 0 吞掉而凭空消失）
+	角色._mod_step = 5
+	角色._琉璃待放 = 0
+	角色._琉璃弃牌人 = 0
+	引擎._reply = {"args": [0], "card_ids": [], "dst_ids": [], "respond_id": 0}
+	引擎._has_reply = true
+	引擎._await_state = 引擎._当前状态
+	角色.p_jie_jie_ask({"player": 1})
+	检(引擎.deck.discard.has(0), "琉璃境：0 号牌不当作结界时必须进弃牌堆")
 
 
 ## 43 圣殿骑士：治疗上限 -1；神威让本次攻击无法应战并禁止双方获得治疗

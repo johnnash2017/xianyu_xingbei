@@ -1677,11 +1677,12 @@ func _选择额外攻击响应(pid: int, data: Dictionary) -> void:
 	var 牌表: Array = data.get("card_ids", [])
 	var 目标表: Array = data.get("dst_ids", [])
 	var 攻击牌: int = int(牌表[0]) if not 牌表.is_empty() \
-		else (int(args[1]) if args.size() > 1 else 0)
+		else (int(args[1]) if args.size() > 1 else -1)
 	var 攻击目标: int = int(目标表[0]) if not 目标表.is_empty() \
-		else (int(args[2]) if args.size() > 2 else 0)
+		else (int(args[2]) if args.size() > 2 else -1)
 	# 校验不过时不要先清等待退出响应；保留当前响应让客户端恢复选项，玩家可以重选牌/目标。
-	if 攻击牌 <= 0 or 攻击目标 <= 0:
+	# 0 号牌 / 0 号座位都是合法值（卡表有 #0、座位从 0 开始），缺失用 -1。
+	if 攻击牌 < 0 or 攻击目标 < 0:
 		send(pid, GConst.Msg.ErrorInput, {"error_type": GConst.CmdType.Respond, "commands": []})
 		return
 	var 卡: GCard = Data.get_card(攻击牌)

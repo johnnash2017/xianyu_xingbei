@@ -8734,7 +8734,7 @@ func _别烦我头像提示() -> Dictionary:
 		if out.is_empty():
 			# 兜底：服务端没下发（旧包 / 手搓询问）时按座位现算，界面不至于一片空白
 			var 队友: int = _右手边队友(Logic.my_player_id)
-			if 队友 > 0:
+			if 队友 >= 0:
 				out[队友] = "代替你发动"
 		return out
 	if _mode == 3 and _skill_ask_id == GConst.技能_别烦我 and _skill_ask_need_card > 0:
@@ -8748,7 +8748,7 @@ func _别烦我头像提示() -> Dictionary:
 		if not 有队友提示 and _上次别烦我发动者 >= 0:
 			# 兜底：同上面的座位现算（服务端没下发 highlight_ids 时）
 			var 队友2: int = _右手边队友(_上次别烦我发动者)
-			if 队友2 > 0 and 队友2 != Logic.my_player_id:
+			if 队友2 >= 0 and 队友2 != Logic.my_player_id:
 				out[队友2] = "+1 治疗"
 	return out
 
