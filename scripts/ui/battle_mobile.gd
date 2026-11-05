@@ -6377,7 +6377,7 @@ func _恩典代价选择有效() -> bool:
 
 
 ## 【恩典神授】选代价目标时各头像上的提示（口径同【天使祝福】：总数 2 ÷ 选中人数）：
-## 选 1 人＝他出 2 点（治疗不够 2 点就提示再选一名）；选 2 人＝各出 1 点
+## 选 1 人＝扣 2 点（他只有 1 点治疗就照实写 1 点）；选 2 人＝各扣 1 点
 func _恩典代价头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if not _恩典代价选人中() or _sel_players.is_empty():
@@ -6387,10 +6387,9 @@ func _恩典代价头像提示() -> Dictionary:
 		var p: GPlayer = Data.get_player_by_id(pid)
 		if p == null:
 			continue
-		if _sel_players.size() == 1 and p.cross_num < 2:
-			out[pid] = "治疗不足 2 点，再选一名"
-		else:
-			out[pid] = "移除 %d 治疗" % 每人
+		var 点数: int = mini(每人, p.cross_num)
+		if 点数 > 0:
+			out[pid] = "移除 %d 治疗" % 点数
 	return out
 
 
