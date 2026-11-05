@@ -6722,7 +6722,7 @@ func _有治疗(player_id: int) -> bool:
 func _恩典代价候选() -> Array[int]:
 	var out: Array[int] = []
 	for p: GPlayer in Data.player_list:
-		if _是我方(p.id) and p.cross_num > 0:
+		if _是我方(p.id) and _有治疗(p.id):
 			out.append(p.id)
 	return out
 
