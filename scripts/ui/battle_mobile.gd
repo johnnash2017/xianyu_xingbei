@@ -2612,6 +2612,10 @@ func _技能询问_选项前置() -> void:
 		if not _高亮目标.has(int(pid)):
 			_高亮目标.append(int(pid))
 	# 服务端只下发了一个合法目标、而这一手本身不需要目标：直接替他选中（纯展示型，如只有一名固定目标）
+	# ⚠ 已知问题（见 项目文档/技能交互层统合计划 §4.8）：这里读的 `_skill_need_target` /
+	# `_skill_target_max` 是**发动技能（mode 4）那条通道**的字段，`_on_command` 不会复位它们，
+	# 所以「要不要替玩家预选」取决于上一手点过什么技能。它只影响预选，不影响合法性和提交。
+	# 改法（待确认）：换成 `_skill_ask_need_target <= 1`（本通道自己的目标数）。
 	if not _目标锁死 and _skill_need_target <= 0 and _skill_target_max <= 0 \
 			and _skill_targets.size() == 1 and not _sel_players.has(_skill_targets[0]):
 		_sel_players = [_skill_targets[0]]
