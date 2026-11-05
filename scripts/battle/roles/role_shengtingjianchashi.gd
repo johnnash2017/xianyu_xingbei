@@ -398,9 +398,11 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	_庇护步 = 1
 	_庇护伤害 = harm
 	if not engine.has_reply():
-		# 发动询问不写 ask 文案：提示条默认显示技能表说明（技能维护约定「询问文案约定」第 1 条）
+		# 发动询问不写 ask 文案：提示条默认显示技能表说明（技能维护约定「询问文案约定」第 1 条）。
+		# 头像提示走通用「伤害预览」通道：把本次伤害的原值画在挨打的人头上（preview_base / kind / ids）
 		询问(player.id, BI_HU_LING_YU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
+			0, -1, [], -1, {}, int(harm.get("point", 0)), int(harm.get("type", 0)), false,
+			[dst.id], true, -1, 0, "")
 		return WAIT
 	var 发动: bool = take_skill_reply()
 	_庇护步 = 0

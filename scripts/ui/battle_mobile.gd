@@ -6376,6 +6376,19 @@ func _恩典代价选择有效() -> bool:
 	return false
 
 
+## 【恩典神授】弃 1 张牌那条询问：顺手点中的对手头像上写「1 法术伤害」
+## （弃到圣类命格才展示并造成；没点目标就不写）
+func _恩典弃牌头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != 恩典神授技能号:
+		return out
+	if not _是技能询问 or _skill_ask_need_card != 1 or _提炼阶段 == 4:
+		return out
+	for pid: int in _sel_players:
+		out[pid] = "1 法术伤害"
+	return out
+
+
 ## 【恩典神授】选代价目标时各头像上的提示（口径同【天使祝福】：总数 2 ÷ 选中人数）：
 ## 选 1 人＝扣 2 点（他只有 1 点治疗就照实写 1 点）；选 2 人＝各扣 1 点
 func _恩典代价头像提示() -> Dictionary:
@@ -8752,6 +8765,8 @@ func _选项参数值(配置: Dictionary) -> int:
 func _刷新头像提示() -> void:
 	# 【恩典神授】选代价目标：点的人头上写「移除 N 治疗」（选 1 人 2 点 / 2 人各 1 点）
 	var 动态提示: Dictionary = _恩典代价头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _恩典弃牌头像提示()
 	# 魔弹 / 念弹这类「写不进静态指示器表、只能现算」的提示优先：
 	# 魔弹的数值随传递递增；念弹的自身伤害取决于目标有无治疗与自身斗气数
 	if 动态提示.is_empty():
