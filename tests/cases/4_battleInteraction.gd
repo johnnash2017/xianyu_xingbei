@@ -600,8 +600,8 @@ func 跑() -> void:
 		await 等帧(1)
 		检(int(窗.get("_mode")) == 3,
 			"点选 7803 选项只切换选中，不应直接提交（实际 _mode=%d）" % int(窗.get("_mode")))
-		检(int(窗.get("_skill_ask_need_card")) == 2,
-			"7803「弃 2 张牌」选中后应要求选 2 张手牌（实际 %d）" % int(窗.get("_skill_ask_need_card")))
+		检(int(窗.get("_skill_need_card")) == 2,
+			"7803「弃 2 张牌」选中后应要求选 2 张手牌（实际 %d）" % int(窗.get("_skill_need_card")))
 		# 选项名已经说明了要做什么：选中后提示条继续显示技能说明，不写「选 N 张牌」之类的专用提示
 		检(str(窗.get("_提示原文")) == 魔法提示前,
 			"7803 选中选项后提示条不应换成专用提示（实际：%s）" % str(窗.get("_提示原文")))
@@ -1098,8 +1098,8 @@ func 跑() -> void:
 		var 三秒栏: Array = 窗.get("_二级选项")
 		检(三秒栏.size() == 1, "4704 每张魔弹只给一个选项（实际 %d）" % 三秒栏.size())
 		检((窗.get("_已选参数") as Array) == [1], "唯一的选项应默认选中：%s" % str(窗.get("_已选参数")))
-		检(int(窗.get("_skill_ask_need_card")) == 1,
-			"选中后应要求弃 1 张代价（实际 %d）" % int(窗.get("_skill_ask_need_card")))
+		检(int(窗.get("_skill_need_card")) == 1,
+			"选中后应要求弃 1 张代价（实际 %d）" % int(窗.get("_skill_need_card")))
 		检(bool(窗.call("_确定不可用")), "没选代价牌时「确定」应灰着，不能直接提交")
 		var 三秒提示: String = str(窗.get("_提示原文"))
 		检(三秒提示.contains("弃 1 张牌") and 三秒提示.contains("获得 1 张【魔弹】"),
@@ -1313,7 +1313,7 @@ func 跑() -> void:
 	# 目标被问「弃 1 张法术牌」：自己写不弃的后果，替她发动的队友写会拿到的治疗
 	窗.set("_mode", 3)
 	窗.set("_skill_ask_id", 10601)
-	窗.set("_skill_ask_need_card", 1)
+	窗.set("_skill_need_card", 1)
 	# 发动者由 Skill 通知记下（真实链路）：先发一条 10601 的技能通知
 	Logic.skill_received.emit({"skill_id": 10601, "src_id": Logic.my_player_id, "dst_ids": []})
 	await 等帧(1)
@@ -1362,7 +1362,7 @@ func 跑() -> void:
 		"点亮队友只是给人看，不能当成目标提交：%s" % str(窗.get("_sel_players")))
 	窗.set("_mode", 0)
 	窗.set("_skill_ask_id", 0)
-	窗.set("_skill_ask_need_card", 0)
+	窗.set("_skill_need_card", 0)
 	窗.set("_上次别烦我发动者", -1)
 	Data.player_list.erase(队友测试)
 

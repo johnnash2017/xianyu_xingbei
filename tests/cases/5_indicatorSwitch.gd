@@ -213,7 +213,7 @@ func 跑() -> void:
 	await 等帧(2)
 	检(not (窗.call("_指示器配置") as Dictionary).has("文案"),
 		"选中【剑影*断念】时不应再套用【剑残影】的「弃 N 张牌」")
-	检(int(窗.get("_skill_ask_need_card")) == 2, "选中【剑影*断念】后应放开选 2 张弃牌")
+	检(int(窗.get("_skill_need_card")) == 2, "选中【剑影*断念】后应放开选 2 张弃牌")
 	检(not bool(窗.call("_玩家可选", 2)), "【剑影*断念】不选目标，头像不应可点")
 	窗.call("_on_cancel")
 	await 等帧(2)
@@ -243,8 +243,8 @@ func 跑() -> void:
 		窗.call("_进入技能询问")
 		await 等帧(2)
 		检(bool(窗.get("_攻击结束二选一")), "聚合器询问应进入「选项自带需求」流程")
-		检(int(窗.get("_skill_ask_need_card")) == 2,
-			"选中【偷袭】后应按它要求 2 张牌（实际 %d）" % int(窗.get("_skill_ask_need_card")))
+		检(int(窗.get("_skill_need_card")) == 2,
+			"选中【偷袭】后应按它要求 2 张牌（实际 %d）" % int(窗.get("_skill_need_card")))
 		检(bool(窗.call("_卡牌能点", 盖牌卡.id)), "【偷袭】应能点盖牌")
 		if 手牌卡 != null:
 			检(not bool(窗.call("_卡牌能点", 手牌卡.id)),

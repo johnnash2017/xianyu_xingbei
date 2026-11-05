@@ -467,7 +467,7 @@ func _检圣庭检察士() -> void:
 	var 对手表: Array[int] = [2]
 	var 队友表: Array[int] = [3]
 	窗.set("_是技能询问", true)
-	窗.set("_skill_ask_need_card", 1)
+	窗.set("_skill_need_card", 1)
 	窗.set("_skill_ask_need_target", 0)
 	窗.set("_sel_cards", 一手牌)
 	窗.set("_本地选项阶段", 0)
@@ -548,7 +548,7 @@ func _检圣庭检察士() -> void:
 	窗.set("_mode", 3)
 	窗.set("_是技能询问", true)
 	窗.set("_skill_ask_id", 3903)
-	窗.set("_skill_ask_need_card", 1)
+	窗.set("_skill_need_card", 1)
 	窗.set("_skill_ask_need_target", 0)
 	窗.set("_提炼阶段", 0)
 	窗.set("_目标锁死", false)

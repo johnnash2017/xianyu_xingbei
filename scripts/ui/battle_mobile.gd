@@ -480,10 +480,7 @@ var _额外行动来源: int = 0
 var _额外行动可选: bool = true
 ## 这次「多份额外行动」是用二级技能栏列的（选中哪项就把 _额外行动单选 设成它，交给「确定」发动）
 var _额外行动用二级栏: bool = false
-var _skill_ask_need_card: int = 0
 var _skill_ask_need_target: int = 0
-## 技能询问的选牌来源（GConst.CardSource）
-var _skill_ask_card_source: int = 0
 ## 本次技能询问能不能点「取消」（false＝强制，如【水之神力】的交牌）
 var _skill_ask_can_cancel: bool = true
 ## 本次询问是否要选盖牌（盖牌区可见且可点）
@@ -541,6 +538,8 @@ var _选项原始盖牌需数: int = 0
 ## 已选定要发动的技能号与它对应的 action_type
 var _pending_skill_id: int = -1
 var _pending_skill_type: int = -1
+## 本次询问 / 发动技能至少要选几张牌（技能询问与技能栏两条通道共用一个，
+## 以前分成 _skill_need_card / _skill_ask_need_card 两份，跨通道时另一半是脏值）
 var _skill_need_card: int = 0
 var _skill_need_target: int = 0
 ## 本次发动技能的合法目标（服务端在技能上给的 targets，非空时只让这几名玩家亮；
@@ -562,7 +561,8 @@ var _skill_target_max_from_cards: int = 0
 ## 第 1 张必须带该技能、第 2 张必须是该系的牌（如元素师独有法术的「发动牌 + 该系加伤牌」）
 var _skill_slot_skill: int = 0
 var _skill_slot_element: int = 0
-## 本次发动技能的选牌来源（GConst.CardSource：手牌 / 盖牌区 / 场上基础效果牌）
+## 本次询问 / 发动技能的选牌来源（GConst.CardSource：手牌 / 盖牌区 / 场上基础效果牌）。
+## 两条通道共用一个（以前另有 _skill_ask_card_source，只靠一行赋值同步，跨通道时会读到脏值）
 var _skill_card_source: int = GConst.CardSource.Hand
 ## 手牌 + 盖牌混选时要求其中几张必须是盖牌（服务端给的 cover_need；0＝不要求，
 ## 如【魔贯冲击】：1 张手牌攻击牌 + 1 张火系【充能】）
@@ -2251,7 +2251,7 @@ func _on_command(data: Dictionary) -> void:
 	_额外行动单选 = -1
 	_额外行动单选原因 = -1
 	_额外行动可选 = true
-	_skill_ask_need_card = 0
+	_skill_need_card = 0
 	_skill_ask_need_target = 0
 	_skill_card_max = 0
 	_skill_card_rule = ""
@@ -2500,22 +2500,21 @@ func _弃牌提示(cause: int, 张数: int) -> String:
 func _进入技能询问() -> void:
 	_mode = 3
 	var args: Array = _pending.get("args", [])
-	_skill_ask_need_card = int(args[0]) if args.size() > 0 else 0
+	_skill_need_card = int(args[0]) if args.size() > 0 else 0
 	_skill_ask_need_target = int(args[1]) if args.size() > 1 else 0
-	_skill_ask_card_source = int(args[2]) if args.size() > 2 else GConst.CardSource.Hand
+	_skill_card_source = int(args[2]) if args.size() > 2 else GConst.CardSource.Hand
 	_skill_ask_can_cancel = bool(_pending.get("can_cancel", true))
 	# card_max 给了就放宽点选上限（如【法术反弹】弃 1~N 张同系牌）；没给就是刚好 need_card 张
-	_skill_card_max = maxi(_skill_ask_need_card, int(_pending.get("card_max", 0)))
+	_skill_card_max = maxi(_skill_need_card, int(_pending.get("card_max", 0)))
 	_skill_card_rule = str(_pending.get("card_rule", ""))
-	_skill_card_source = _skill_ask_card_source
 	# 手牌+盖牌混选的询问（如美杜莎之眼：1 张暗月盖牌 + 1 张手牌）
 	_skill_cover_need = int(_pending.get("cover_need", 0))
 	# 选项切换时要还原的原始需求：技能询问这条通道也必须先记下来，
 	# 否则共振这类「选项自己带 need_target」的询问会拿到上一次/默认的 0，选了选项也不亮目标
 	_选项原始目标数 = _skill_ask_need_target
-	_选项原始需牌 = _skill_ask_need_card
+	_选项原始需牌 = _skill_need_card
 	_选项原始最多牌 = _skill_card_max
-	_选项原始来源 = _skill_ask_card_source
+	_选项原始来源 = _skill_card_source
 	_选项原始盖牌需数 = _skill_cover_need
 	# 「目标上限随选牌数变化」与「逐张选牌条件」只用于发动技能（mode 4）；询问这条通道不认它们，清零免得串味
 	_skill_target_max_from_cards = 0
@@ -2538,15 +2537,15 @@ func _进入技能询问() -> void:
 		if args.size() > 4 + i:
 			_skill_options.append(int(args[4 + i]))
 	# 只有「从盖牌区选牌」的技能询问才把盖牌区亮出来（HandAndBasicEffect 的手牌整片置灰，与盖牌无关）
-	_selecting_cover = _skill_ask_card_source == GConst.CardSource.Cover \
-			or _skill_ask_card_source == GConst.CardSource.HandOrCover
+	_selecting_cover = _skill_card_source == GConst.CardSource.Cover \
+			or _skill_card_source == GConst.CardSource.HandOrCover
 	_sel_cards.clear()
 	_sel_players.clear()
 	_重置治疗分配()
 	_清空技能按钮()
 	# 没有选项的响应询问（如血气屏障）：在技能栏里摆出正在响应的那颗技能，只作展示；
 	# 有选项的走 _进入二级技能栏，那里本来就会摆父技能按钮。
-	if _skill_options.is_empty() and _skill_ask_card_source != GConst.CardSource.HandAndBasicEffect:
+	if _skill_options.is_empty() and _skill_card_source != GConst.CardSource.HandAndBasicEffect:
 		var 展示按钮: 技能按钮 = _新技能按钮(_skill_ask_id,
 			GConst.询问按钮文案(_skill_ask_id, _skill_ask_need_target))
 		if _是响应赐福(_skill_ask_id):
@@ -2569,11 +2568,11 @@ func _进入技能询问() -> void:
 		bool(指示配置.get("攻击结束二选一", false)) or bool(_pending.get("no_parent", false)))
 	if _攻击结束二选一:
 		_选项原始目标数 = _skill_ask_need_target
-		_选项原始需牌 = _skill_ask_need_card
+		_选项原始需牌 = _skill_need_card
 		_选项原始最多牌 = _skill_card_max
 		_skill_ask_need_target = 0
 		_need_players = 0
-		_skill_ask_need_card = 0
+		_skill_need_card = 0
 		_skill_card_max = 0
 		_need_cards = 0
 	# 「自动选目标」型（如【毒粉】：服务端在询问里点名挨这次伤害的角色）：进场即把目标选中并锁死，
@@ -2591,25 +2590,25 @@ func _进入技能询问() -> void:
 		_sel_players = [_skill_targets[0]]
 	# 【别烦我……】目标被问「弃 1 张法术牌」那一步：把目标自己点亮（谁被点名弃牌一目了然），
 	# 替她发动的队友由服务端随询问下发（上面的 highlight_ids）并写「+1 治疗」
-	if _skill_ask_id == GConst.技能_别烦我 and _skill_ask_need_card > 0 \
+	if _skill_ask_id == GConst.技能_别烦我 and _skill_need_card > 0 \
 			and not _高亮目标.has(Logic.my_player_id):
 		_高亮目标.append(Logic.my_player_id)
 	# 【醋意羞心】目标被问「弃 1 张法术牌」那一步：同样是「点名他弃牌」，把目标自己点亮；
 	# 要挨的 2 点法术伤害由服务端随询问下发（preview_base / preview_kind / preview_ids）画在他头像上
-	if _skill_ask_id == GConst.技能_醋意羞心 and _skill_ask_need_card > 0 \
+	if _skill_ask_id == GConst.技能_醋意羞心 and _skill_need_card > 0 \
 			and not _高亮目标.has(Logic.my_player_id):
 		_高亮目标.append(Logic.my_player_id)
 	_已选参数.clear()
 	if _先弹选项:
 		# 服务端原本给的目标数 / 需牌先记下，选完效果由 _应用选项目标数 还原 / 收紧
 		_选项原始目标数 = _skill_ask_need_target
-		_选项原始需牌 = _skill_ask_need_card
+		_选项原始需牌 = _skill_need_card
 		_选项原始最多牌 = _skill_card_max
 		# 默认选效果前不让点牌 / 点目标（数量按 0 处理）；配了「允许先选牌」的技能不清零
 		if not bool(指示配置.get("允许先选牌", false)):
 			_skill_ask_need_target = 0
 			_need_players = 0
-			_skill_ask_need_card = 0
+			_skill_need_card = 0
 			_skill_card_max = 0
 			_need_cards = 0
 	if not _skill_options.is_empty():
@@ -2722,7 +2721,7 @@ func _进入技能询问() -> void:
 		# 先记下本次攻击牌 / 攻击者，玩家在二级技能栏点中效果后立即进入选牌 / 选目标。
 		if _skill_ask_id == GConst.技能_阴阳转换 or _skill_ask_id == GConst.技能_式神咒束:
 			_开始攒应战(_skill_ask_id, _pending)
-	elif _skill_ask_card_source == GConst.CardSource.HandAndBasicEffect:
+	elif _skill_card_source == GConst.CardSource.HandAndBasicEffect:
 		# 【天使之歌】：询问一到就把二级技能栏摆出来（此刻只有技能本体一颗），
 		# 选完目标再由 _刷新基础效果选项 把该目标面前的基础效果填进去 —— 不用先按一次「确定」
 		_进入二级技能栏(_skill_ask_id, null, [])
@@ -2838,7 +2837,7 @@ func _询问提示文案() -> String:
 			询问文案 = 响应效果
 		else:
 			return _二级栏提示文案()
-	elif _skill_ask_card_source == GConst.CardSource.HandAndBasicEffect:
+	elif _skill_card_source == GConst.CardSource.HandAndBasicEffect:
 		询问文案 = "【%s】：点一名面前有基础效果的角色，技能栏里就会列出可%s的效果" % [
 			GConst.skill_name(_skill_ask_id), _基础效果动作(_skill_ask_id),
 		]
@@ -2847,7 +2846,7 @@ func _询问提示文案() -> String:
 	elif not _skill_ask_can_cancel:
 		询问文案 = "【%s】：请%s%s（本次必须执行，不能取消）" % [
 			GConst.skill_name(_skill_ask_id),
-			"（需选牌）" if _skill_ask_need_card > 0 else "",
+			"（需选牌）" if _skill_need_card > 0 else "",
 			"（需选目标）" if _skill_ask_need_target > 0 else "",
 		]
 	else:
@@ -2926,7 +2925,7 @@ func _应用选项目标数() -> void:
 		])
 		_刷新交互()
 		return
-	_skill_ask_need_card = _选项原始需牌
+	_skill_need_card = _选项原始需牌
 	_skill_card_max = _选项原始最多牌
 	_need_cards = _skill_card_max
 	_skill_ask_need_target = 目标数
@@ -2935,22 +2934,22 @@ func _应用选项目标数() -> void:
 		if not 选中项.is_empty() else 目标数
 	# 选中的那一项若自带「需牌」（如英灵人形【魔纹融合】要弃 ≥2 张异系牌），牌数按它给
 	if not 选中项.is_empty():
-		_skill_ask_need_card = maxi(_skill_ask_need_card, int(选中项["需牌"]))
+		_skill_need_card = maxi(_skill_need_card, int(选中项["需牌"]))
 	# 有些选项（如魔纹融合询问里的「怒火压制」）本身一张牌都不用：
 	# 选它时把点选上限清零，手牌整片置灰，不能顺手选几张没用的牌。
 	if not 选中项.is_empty() and int(选中项["需牌"]) == 0 \
 			and bool(配置.get("无牌选项禁牌", false)):
-		_skill_ask_need_card = 0
+		_skill_need_card = 0
 		_skill_card_max = 0
 		_need_cards = 0
 	# 选中项把需牌数抬高后，点选上限也要同步抬高；否则 _换选项后重校验 会按旧的 0 张上限
 	# 把已经选好的合法手牌全部清掉（魔纹融合从怒火档切到弃 2 张档时的手牌回收）。
-	_skill_card_max = maxi(_skill_card_max, _skill_ask_need_card)
+	_skill_card_max = maxi(_skill_card_max, _skill_need_card)
 	_need_cards = _skill_card_max
 	var 片段: Array[String] = []
-	if _skill_ask_need_card > 0:
-		片段.append("选%d张盖牌" % _skill_ask_need_card if _skill_ask_card_source == GConst.CardSource.Cover
-			else "选%d张牌" % _skill_ask_need_card)
+	if _skill_need_card > 0:
+		片段.append("选%d张盖牌" % _skill_need_card if _skill_card_source == GConst.CardSource.Cover
+			else "选%d张牌" % _skill_need_card)
 	if _skill_ask_need_target > 0:
 		片段.append("选%d名目标" % _skill_ask_need_target)
 	# 选项本身就是技能时（如【怒火压制】/【魔纹融合】二选一），提示条写选中的那一颗的名字：
@@ -4399,9 +4398,9 @@ func _应用攻击结束选项需求() -> void:
 	var 项: Dictionary = _二级选中项()
 	if 项.is_empty():
 		return
-	_skill_ask_need_card = maxi(_选项原始需牌, int(项.get("需牌", 0)))
+	_skill_need_card = maxi(_选项原始需牌, int(项.get("需牌", 0)))
 	_skill_ask_need_target = maxi(_选项原始目标数, int(项.get("需目标", 0)))
-	_skill_card_max = maxi(_skill_ask_need_card, _选项原始最多牌)
+	_skill_card_max = maxi(_skill_need_card, _选项原始最多牌)
 	_need_cards = _skill_card_max
 	_need_players = _skill_ask_need_target
 	_sel_cards.clear()
@@ -4676,7 +4675,7 @@ func _二级栏提示文案() -> String:
 	var 前缀: String = "【%s】：" % GConst.skill_name(_二级栏父技能号) if _二级栏父技能号 > 0 else ""
 	if _二级选中 < 0:
 		return 前缀 + GConst.文本("提示_选择一个选项")
-	var 需牌: int = _skill_need_card if _mode == 4 else _skill_ask_need_card
+	var 需牌: int = _skill_need_card
 	var 需目标: int = _skill_need_target if _mode == 4 else _skill_ask_need_target
 	# 选项自带说明时（如散华轮舞的「消耗【水晶】/消耗【宝石】」）：
 	# 按钮只放「消耗什么 + 放庭院」，选中后这里只写该选项的额外效果（不再重复按钮文案，
@@ -5083,7 +5082,7 @@ func _卡牌能点(card_id: int) -> bool:
 				return false
 	# 技能询问里「一张牌都用不到」的才整片置灰；need_card=0 但给了 card_max 表示可弃可不弃
 	# （如【英灵召唤】可额外弃 0~1 张法术牌），这种仍要能点
-	if _mode == 3 and _skill_ask_need_card <= 0 and _skill_card_max <= 0:
+	if _mode == 3 and _skill_need_card <= 0 and _skill_card_max <= 0:
 		return false
 	# 应答（应战/抵挡、弃牌、魔弹传递等）同样要能点手牌
 	if _mode == 2 and _need_cards <= 0:
@@ -5102,9 +5101,9 @@ func _卡牌能点(card_id: int) -> bool:
 	# 选牌来源限制：盖牌询问只收盖牌，手牌询问只收手牌，两者皆可则都收。
 	# 「从手牌选牌」的技能（CardSource.Hand，多为弃牌 / 交牌代价）同样不列盖牌
 	if _mode == 3 and _是技能询问:
-		if _skill_ask_card_source == GConst.CardSource.Cover and not _is_my_cover(card_id):
+		if _skill_card_source == GConst.CardSource.Cover and not _is_my_cover(card_id):
 			return false
-		if _skill_ask_card_source == GConst.CardSource.Hand and _is_my_cover(card_id):
+		if _skill_card_source == GConst.CardSource.Hand and _is_my_cover(card_id):
 			return false
 	# 应战：只有「同系攻击牌」和【圣光】能用
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.ReplyAttack:
@@ -5271,12 +5270,10 @@ func _符合选牌规则(card_id: int) -> bool:
 	return true
 
 
-## 这次选牌至少需要几张（mode 4 读技能本体/选项还原后的需牌，mode 3 读询问里的需牌）
+## 这次选牌至少需要几张（两条通道读的是同一个字段，见 _skill_need_card）
 func _选牌需求张数() -> int:
-	if _mode == 4:
+	if _mode == 4 or _mode == 3:
 		return maxi(_skill_need_card, 0)
-	if _mode == 3:
-		return maxi(_skill_ask_need_card, 0)
 	return 0
 
 
@@ -5663,7 +5660,7 @@ func _进入攒应战选应战(选择: int) -> void:
 	_攒应战选应战 = true
 	_应战同命格 = 选择 >= 2
 	# 不切 mode、不收技能栏：就在当前这条询问里放开选牌 / 选目标
-	_skill_ask_need_card = 1
+	_skill_need_card = 1
 	_skill_card_max = 1
 	_need_cards = 1
 	_skill_ask_need_target = 1
@@ -6171,7 +6168,7 @@ func _技能是基础效果牌型() -> bool:
 	if _mode == 4:
 		return _skill_card_source == GConst.CardSource.HandAndBasicEffect
 	if _mode == 3:
-		return _skill_ask_card_source == GConst.CardSource.HandAndBasicEffect
+		return _skill_card_source == GConst.CardSource.HandAndBasicEffect
 	return false
 
 
@@ -6449,7 +6446,7 @@ func _恩典弃牌头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 3 or _skill_ask_id != 恩典神授技能号:
 		return out
-	if not _是技能询问 or _skill_ask_need_card != 1 or _提炼阶段 == 4:
+	if not _是技能询问 or _skill_need_card != 1 or _提炼阶段 == 4:
 		return out
 	# 只有选中的弃牌是圣类命格、且选的是「展示」才写
 	if not _已选牌含圣命格() or not _恩典选展示():
@@ -8012,9 +8009,9 @@ func _清空待选() -> void:
 	_额外行动单选 = -1
 	_额外行动单选原因 = -1
 	_额外行动可选 = true
-	_skill_ask_need_card = 0
+	_skill_need_card = 0
 	_skill_ask_need_target = 0
-	_skill_ask_card_source = 0
+	_skill_card_source = 0
 	_selecting_cover = false
 	_不可行动 = false
 	_行动禁特殊 = false
@@ -9186,7 +9183,7 @@ func _别烦我头像提示() -> Dictionary:
 			if 队友 >= 0:
 				out[队友] = "代替你发动"
 		return out
-	if _mode == 3 and _skill_ask_id == GConst.技能_别烦我 and _skill_ask_need_card > 0:
+	if _mode == 3 and _skill_ask_id == GConst.技能_别烦我 and _skill_need_card > 0:
 		out[Logic.my_player_id] = "摸 1 张牌"
 		var 有队友提示: bool = false
 		for pid2: int in _高亮目标:
@@ -10371,7 +10368,7 @@ func _确定不可用() -> bool:
 			return not _额外行动可选
 		# 分配型指示器（如冰霜祷言）：选够治疗点、且要选牌时选够牌才让「确定」
 		if not _分配配置().is_empty():
-			var 治疗牌够: bool = _sel_cards.size() >= _skill_ask_need_card if _skill_ask_need_card > 0 else true
+			var 治疗牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
 			if not (治疗牌够 and _分配已满()):
 				return true
 			# 分配到的目标也必须还在当前用法的白名单里（换了用法后可能已不合法）
@@ -10393,7 +10390,7 @@ func _确定不可用() -> bool:
 			return true
 		# need_card 是「最少要选几张」，点选上限另由 _skill_card_max 管（如【法术反弹】可弃 1~N 张同系牌），
 		# 所以这里用 ≥ 而不是 ==，否则多选了反而点不动「确定」
-		var 牌够: bool = _sel_cards.size() >= _skill_ask_need_card if _skill_ask_need_card > 0 else true
+		var 牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
 		# 「目标需法术牌」型（如【沉沦协奏曲】）：没挑到法术牌时本来就没那 1 点伤害，不必选目标；
 		# 挑到了就必须选目标（按服务端给的需求数判）。注意这里不能直接借 _目标数合法() ——
 		# 那个函数读的是发动技能通道的 _skill_need_target，与询问通道的 _skill_ask_need_target 不是一回事
