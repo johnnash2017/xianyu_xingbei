@@ -92,12 +92,9 @@ var _提炼全给一人: bool = false
 ## 圣庭检察士【恩典神授】选定的代价：0＝移除【异端裁决所】3【治疗】，1＝移除我方角色合计 2【治疗】
 ## （-1＝还没选；随提炼的 args 末位提交给服务端）
 var _恩典代价类型: int = -1
-## 【恩典神授】选「我方合计 2 治疗」那档代价时，通用的分配规则换成「扣除」型（见 _分配配置覆盖）
-## 已点的代价目标：[目标 id, 点数]，1 人 2 点 / 2 人各 1 点（由 _治疗分配 汇总而来）
+## 【恩典神授】选「我方合计 2 治疗」那档代价时，已点的代价目标：[目标 id, 点数]，
+## 1 人 2 点 / 2 人各 1 点（口径同【天使祝福】的「总数 ÷ 选中人数」）
 var _恩典代价目标: Array = []
-## 分配型指示器的临时配置覆盖：不给技能号加第二份指示器，只在本地这一步换一套分配规则
-## （【恩典神授】的代价：每次 1 点、上限 2 点、同一人可重复点、只扣不送、最多 2 人）
-var _分配配置覆盖: Dictionary = {}
 
 ## 预制体目录（格子/聊天条目与参考脚本一致）
 const 预制目录: String = "res://scenes/prefabs/battlemobile/"
@@ -6287,8 +6284,8 @@ func _确认恩典提炼方式() -> void:
 
 
 ## 【恩典神授】第二步：选这次提炼付哪一种代价（两种都摆出来，付不起的置灰）。
-## 选了「我方合计 2 治疗」不用进下一层：当场就能在头像上点要扣谁（走通用「点头像分配」通道），
-## 点够 2 点再按「确定」。
+## 顺序按「我方合计 2 治疗」在前、「裁决所 3 治疗」在后。
+## 选了「我方合计 2 治疗」不用进下一层：当场就能在头像上点要扣谁，点够 2 点再按「确定」。
 func _恩典神授选代价() -> void:
 	_退出恩典代价目标()
 	_提炼是冒险家流程 = false
@@ -6297,10 +6294,10 @@ func _恩典神授选代价() -> void:
 	_恩典代价类型 = -1
 	_恩典代价目标.clear()
 	var 选项: Array = [
-		{"text": GConst.按钮原文(恩典神授技能号, 2), "args": [0],
-			"enabled": _裁决所治疗() >= 3},
 		{"text": GConst.按钮原文(恩典神授技能号, 3), "args": [1],
 			"enabled": _我方治疗合计() >= 2},
+		{"text": GConst.按钮原文(恩典神授技能号, 2), "args": [0],
+			"enabled": _裁决所治疗() >= 3},
 	]
 	_进入本地选项(6, 0, 选项, _恩典提示(),
 		二级选项底色, true, _恩典神授选提炼方式)
@@ -6319,15 +6316,15 @@ func _确认恩典代价() -> void:
 		_恩典代价类型 = 0
 		_恩典代价目标.clear()
 	elif 选择 == 1:
-		if not (_分配已满() and _分配目标都合法()):
+		# 口径同【天使祝福】：选 1 人＝他出 2 点，选 2 人＝各出 1 点
+		if not _恩典代价选择有效():
 			return
-		var 每次: int = int(_分配配置().get("每次", 1))
-		var 点数表: Dictionary = {}
-		for pid: int in _治疗分配:
-			点数表[pid] = int(点数表.get(pid, 0)) + 每次
 		_恩典代价目标.clear()
-		for pid: Variant in 点数表:
-			_恩典代价目标.append([int(pid), int(点数表[pid])])
+		if _sel_players.size() == 1:
+			_恩典代价目标.append([_sel_players[0], 2])
+		else:
+			for pid: int in _sel_players:
+				_恩典代价目标.append([pid, 1])
 		_恩典代价类型 = 1
 	else:
 		return
@@ -6347,19 +6344,54 @@ func _确认恩典代价() -> void:
 ## 选「裁决所 3 治疗」则把点头像那套收掉。
 func _恩典代价选项变更() -> void:
 	var 选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else -1
-	_重置治疗分配()
-	_分配配置覆盖 = {}
+	_sel_players.clear()
 	_skill_targets.clear()
 	if 选择 == 1:
-		# 借通用分配的规则：每次 1 点、上限 2 点、同一人可重复点、最多 2 人、只扣不送
-		_分配配置覆盖 = {
-			"每次": 1, "上限": 2, "可重复": true, "可多目标": true,
-			"需分满": true, "仅队友": false, "目标数上限": 2, "扣除": true,
-		}
+		# 和【天使祝福】一样：点头像选 1~2 名目标，选 1 人＝他出 2 点，选 2 人＝各出 1 点
+		_need_players = 2
 		for pid: int in _恩典代价候选():
 			_skill_targets.append(pid)
 	刷新选中面板()
 	_更新按键()
+
+
+## 【恩典神授】现在是不是在「选代价目标」这一步（选了「我方合计 2 治疗」那一档）
+func _恩典代价选人中() -> bool:
+	if _本地选项阶段 != 6 or _二级选中 < 0 or _已选参数.is_empty():
+		return false
+	return int(_已选参数[0]) == 1
+
+
+## 代价目标选得对不对：只选 1 人＝他得能扣 2 点；选 2 人＝每人至少 1 点（合计正好 2 点）
+func _恩典代价选择有效() -> bool:
+	if _sel_players.size() == 1:
+		var p: GPlayer = Data.get_player_by_id(_sel_players[0])
+		return p != null and p.cross_num >= 2
+	if _sel_players.size() == 2:
+		for pid: int in _sel_players:
+			var pp: GPlayer = Data.get_player_by_id(pid)
+			if pp == null or pp.cross_num < 1:
+				return false
+		return true
+	return false
+
+
+## 【恩典神授】选代价目标时各头像上的提示（口径同【天使祝福】：总数 2 ÷ 选中人数）：
+## 选 1 人＝他出 2 点（治疗不够 2 点就提示再选一名）；选 2 人＝各出 1 点
+func _恩典代价头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if not _恩典代价选人中() or _sel_players.is_empty():
+		return out
+	var 每人: int = 2 if _sel_players.size() <= 1 else 1
+	for pid: int in _sel_players:
+		var p: GPlayer = Data.get_player_by_id(pid)
+		if p == null:
+			continue
+		if _sel_players.size() == 1 and p.cross_num < 2:
+			out[pid] = "治疗不足 2 点，再选一名"
+		else:
+			out[pid] = "移除 %d 治疗" % 每人
+	return out
 
 
 ## 【恩典神授】各步的提示条统一显示「【技能名】：技能说明」（和响应询问同一条口径），
@@ -6392,10 +6424,11 @@ func _恩典代价候选() -> Array[int]:
 
 ## 退出「选代价目标」这一步：把分配通道的临时规则、白名单和已点记录都收掉
 func _退出恩典代价目标() -> void:
-	_分配配置覆盖 = {}
 	_skill_targets.clear()
+	_sel_players.clear()
 	_本地询问 = false
 	_重置治疗分配()
+	刷新选中面板()
 	_更新按键()
 
 
@@ -6921,8 +6954,7 @@ func _复位行动阶段选牌状态() -> void:
 ## 退回行动阶段（取消发动技能 / 取消特殊行动时用），顺手把本回合的技能按钮摆回来
 func _回到行动阶段() -> void:
 	_mode = 1
-	# 回到行动阶段＝任何本地通道都结束了，把「恩典神授代价」那种临时分配规则一起收掉
-	_分配配置覆盖 = {}
+	# 回到行动阶段＝任何本地通道都结束了，把「恩典神授代价」那步留下的目标白名单一起收掉
 	_skill_targets.clear()
 	_复位行动阶段选牌状态()
 	_sel_cards.clear()
@@ -7295,9 +7327,6 @@ func _固定父说明(技能号: int) -> bool:
 ## 只取「点头像分配」型的那份配置（配了「每次」才算）：它接管目标选取与提交
 ## （args 是各目标点数 / 用法），纯展示型返回空
 func _分配配置() -> Dictionary:
-	# 本地某一步临时换了分配规则时（【恩典神授】的代价目标）优先用它
-	if not _分配配置覆盖.is_empty():
-		return _分配配置覆盖
 	# 【冒险者天堂】/【恩典神授】（1202 / 8902 / 3903）的指示器只服务「提炼分星石」那一步（_提炼阶段 == 4）；
 	# 同一个技能号后面还有「弃 1 张牌」「选目标造成伤害」这类普通询问，
 	# 别让它们也被当成分配型（否则确定键一直灰、敌人头像也点不了）
@@ -7393,15 +7422,6 @@ func _点治疗目标(player_id: int) -> void:
 		_治疗分配 = [player_id]
 		_刷新治疗分配()
 		return
-	# 「扣除」型（【恩典神授】的代价）：扣掉的点数不能超过这个人现有的【治疗】
-	if bool(配置.get("扣除", false)):
-		var 已有: int = 0
-		for id: int in _治疗分配:
-			if id == player_id:
-				已有 += 每次
-		var 扣对象: GPlayer = Data.get_player_by_id(player_id)
-		if 扣对象 == null or 已有 + 每次 > 扣对象.cross_num:
-			return
 	if not bool(配置.get("可重复", false)) and _治疗分配.has(player_id):
 		return
 	# 突破上限的转移有封顶（如神官【神圣契约】「无视其治疗上限、但最高到 4 点」）：
@@ -7467,9 +7487,6 @@ func _刷新治疗分配() -> void:
 				continue
 			if not 提炼文本.is_empty():
 				_贴头像提示(面板, _取治疗提示(面板.ID), str(提炼文本.get(面板.ID, "")))
-			elif bool(配置.get("扣除", false)):
-				# 「扣除」型（【恩典神授】的代价）：写「移除 N 治疗」，别写成 +N 治疗
-				_刷治疗提示(面板, -次数 * 每次, 0)
 			else:
 				_刷治疗提示(面板, 次数 * 每次, 0)
 			_sel_players.append(面板.ID)
@@ -8734,9 +8751,12 @@ func _选项参数值(配置: Dictionary) -> int:
 ## 否则按「总数 ÷ 选中人数」平均分（如【天使祝福】2 张：选 1 人＝他给你 2 张，选 2 人＝各给你 1 张）。
 ## 没选中的收起提示。与分配型共用同一批 Label（_取治疗提示），只是文案来源不同
 func _刷新头像提示() -> void:
+	# 【恩典神授】选代价目标：点的人头上写「移除 N 治疗」（选 1 人 2 点 / 2 人各 1 点）
+	var 动态提示: Dictionary = _恩典代价头像提示()
 	# 魔弹 / 念弹这类「写不进静态指示器表、只能现算」的提示优先：
 	# 魔弹的数值随传递递增；念弹的自身伤害取决于目标有无治疗与自身斗气数
-	var 动态提示: Dictionary = _魔弹头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _魔弹头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _念弹头像提示()
 	if 动态提示.is_empty():
@@ -10061,11 +10081,10 @@ func _玩家可选(player_id: int) -> bool:
 	if _攒应战选应战:
 		return _攒应战可反击目标(player_id)
 	if _mode == 6:
-		# 本地选项步骤里只有【恩典神授】选代价那一步要点头像：
-		# 按分配通道换的临时规则（_分配配置覆盖）与我方有治疗的白名单点亮
-		if _分配配置覆盖.is_empty():
+		# 本地选项步骤里只有【恩典神授】选代价那一步要点头像：白名单＝我方有治疗的角色
+		if _本地选项阶段 != 6:
 			return false
-		return _skill_targets.is_empty() or _skill_targets.has(player_id)
+		return _skill_targets.has(player_id)
 	if _mode == 1:
 		# 先选牌、再亮目标：还没选牌时谁都不亮
 		var 牌: GCard = Data.get_card(_sel_cards[0]) if not _sel_cards.is_empty() else null
@@ -10217,11 +10236,11 @@ func _确定不可用() -> bool:
 			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 			if 我 != null and 我.get_energy() >= 我.energy_max:
 				return true
-		# 【恩典神授】选代价：选「我方合计 2 治疗」时还要点头像把 2 点治疗点够
+		# 【恩典神授】选代价：选「我方合计 2 治疗」时还要点头像把 2 点治疗的目标点够
 		if _本地选项阶段 == 6 and _二级选中 >= 0:
 			var 代价选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else -1
 			if 代价选择 == 1:
-				return not (_分配已满() and _分配目标都合法())
+				return not _恩典代价选择有效()
 		return _二级选中 < 0
 	if _mode == 1:
 		# 不可行动：手牌要全弃掉换 4 张，只等玩家点「确定」
