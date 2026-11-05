@@ -2645,66 +2645,31 @@ func _技能询问_摆选项() -> void:
 	var 指示配置: Dictionary = GConst.技能指示器.get(_skill_ask_id, {})
 	if not _skill_options.is_empty():
 		var notes: Array = _pending.get("notes", [])
-		# 服务端标了「这一项本身就是技能」时（如【蓄力一击】/【气绝崩击】），选项按钮绑上技能号，
-		# 鼠标指向它就同普通技能按钮一样弹技能说明（见 技能按钮.设置选项 / _显示技能说明）
-		var 选项技能号: Array = _pending.get("option_skill_ids", [])
-		# 选项对应一张牌时（如【剑守誓言】选 1 张入手）：悬停选项按钮直接摊这张牌的卡面
-		var 选项牌号: Array = _pending.get("option_card_ids", [])
-		# 选项声明「选中不改提示条」时（如放逐的正面二选一）：选中它不切换成技能说明
-		var 选项不改提示: Array = _pending.get("option_no_prompt_change", [])
-		# 服务端标了某项本次不可用时（如魔纹不够的额外翻转档）：照样摆出来，但置灰点不动
-		var 选项可用: Array = _pending.get("option_enabled", [])
-		# 服务端标了这一项「选中后要弃几张牌」时（如【魔纹融合】弃 ≥2 张、【怒火压制】一张不用）
-		# 记下来，选中它才放出手牌可选（见 _应用选项目标数）
-		var 选项需牌: Array = _pending.get("option_need_cards", [])
-		# 这一项自己要求选几名目标（攻击结束二选一：剑残影 1 名、剑影*断念 0 名）
-		var 选项需目标: Array = _pending.get("option_need_targets", [])
-		# 服务端标了这一项「可点哪些目标」时（如吟游诗人【希望赋格曲】的「放置」不含自己、
-		# 「转移」含自己）：选中该项后按它收紧可点头像（见 _参数选项目标白名单）
-		var 选项目标: Array = _pending.get("option_targets", [])
-		# 选项自带「悬停预览牌」时（如【三秒原则】的「获得 2 张【魔弹】」）：悬停时并排摊卡面
-		var 选项预览牌: Array = _pending.get("option_preview_cards", [])
-		# 选项涉及的可选系别 / 悬停技能组（共振的四项；与选项下标一一对应）
-		var 选项元素: Array = _pending.get("option_elements", [])
-		var 选项技能组: Array = _pending.get("option_skill_groups", [])
-		# 选项自带的「选中后提示文案」（如天雷 / 地裂选系别后写该系效果）
-		var 选项提示: Array = _pending.get("option_prompts", [])
-		# 选项自带的牌白名单（与选项一一对应；选中后名单外的牌置灰）
-		var 选项牌白: Array = _pending.get("option_cards", [])
+		# 选项的附加属性都是「与选项值按下标对齐」的平行数组，服务端只下发用得到的那几个。
+		# 这里统一用 _第i项 取（数组不够长就落回默认），不再一项一个 if ——
+		# 以前漏抄一个数组，界面就静默少一种能力（注释里反复踩过这个坑）。
 		var 项们: Array = []
 		for i: int in range(_skill_options.size()):
+			var 项元素: Array = _子id(_第i项(_pending.get("option_elements", []), i, {}))
 			var 名: String = str(notes[i]) if i < notes.size() and str(notes[i]) != "" else str(_skill_options[i])
-			var 项元素: Array = []
-			if i < 选项元素.size():
-				项元素 = (选项元素[i] as Dictionary).get("ids", [])
-				名 = _选项系别着色(名, 项元素)
-			var 项: Dictionary = {"文本": 名, "参数": [int(_skill_options[i])]}
-			if i < 选项技能组.size():
-				项["技能组"] = (选项技能组[i] as Dictionary).get("ids", [])
-			if i < 选项技能号.size():
-				项["技能号"] = int(选项技能号[i])
-			if i < 选项牌号.size():
-				项["卡牌"] = int(选项牌号[i])
-			if i < 选项不改提示.size():
-				项["不改提示"] = bool(选项不改提示[i])
 			if not 项元素.is_empty():
-				项["元素"] = 项元素
-			if i < 选项提示.size() and not str(选项提示[i]).is_empty():
-				项["提示"] = str(选项提示[i])
-			if i < 选项牌白.size():
-				项["牌白"] = (选项牌白[i] as Dictionary).get("ids", [])
-			if i < 选项需牌.size():
-				项["需牌"] = int(选项需牌[i])
-			if i < 选项需目标.size():
-				项["需目标"] = int(选项需目标[i])
-			if i < 选项可用.size():
-				项["可用"] = bool(选项可用[i])
-			if i < 选项目标.size():
-				var 白名单: Dictionary = 选项目标[i]
-				项["目标白名单"] = 白名单.get("ids", [])
-			if i < 选项预览牌.size():
-				项["预览牌"] = (选项预览牌[i] as Dictionary).get("ids", [])
-			项们.append(_规整选项(项))
+				名 = _选项系别着色(名, 项元素)
+			项们.append(_规整选项({
+				"文本": 名,
+				"参数": [int(_skill_options[i])],
+				"元素": 项元素,
+				"技能组": _子id(_第i项(_pending.get("option_skill_groups", []), i, {})),
+				"技能号": int(_第i项(_pending.get("option_skill_ids", []), i, 0)),
+				"卡牌": int(_第i项(_pending.get("option_card_ids", []), i, -1)),
+				"不改提示": bool(_第i项(_pending.get("option_no_prompt_change", []), i, false)),
+				"提示": str(_第i项(_pending.get("option_prompts", []), i, "")),
+				"牌白": _子id(_第i项(_pending.get("option_cards", []), i, {})),
+				"需牌": int(_第i项(_pending.get("option_need_cards", []), i, 0)),
+				"需目标": int(_第i项(_pending.get("option_need_targets", []), i, 0)),
+				"可用": bool(_第i项(_pending.get("option_enabled", []), i, true)),
+				"目标白名单": _子id(_第i项(_pending.get("option_targets", []), i, {})),
+				"预览牌": _子id(_第i项(_pending.get("option_preview_cards", []), i, {})),
+			}))
 		# 自动填充第二层取消时要原样退回第一层；先留一份第一层的归一化选项。
 		if 圣弓_自动填充.has(_skill_ask_id):
 			_自动填充第一层选项 = 项们.duplicate(true)
@@ -4055,6 +4020,18 @@ func _选项文案(原文: String) -> String:
 	if 右括号 < 0:
 		return 原文
 	return 原文.substr(右括号 + 1).lstrip("：:　 ")
+
+
+## 平行数组取第 i 项（数组不够长就落回默认值）。
+## 服务端的选项属性都是「与选项值按下标对齐」的平行数组，只下发用得到的几个，
+## 所以读的时候必须允许「这一项没有」——以前每项写一个 `if i < 数组.size()`。
+func _第i项(数组: Array, i: int, 默认: Variant) -> Variant:
+	return 数组[i] if i < 数组.size() else 默认
+
+
+## 取「{ids: [...]}」这种包一层的数组项里的 ids（缺省＝空数组）。
+func _子id(值: Variant) -> Array:
+	return (值 as Dictionary).get("ids", [])
 
 
 ## 把「任意来源的选项字典」收成**同一种形状**：所有键都有默认值，界面与判定只认这一份。
