@@ -31,7 +31,7 @@ func 跑() -> void:
 	_检翻面用记下的正面()
 	_检缺正面报错()
 	_检末日日志()
-	_检选项换系收紧牌()
+	_检系别选项牌白()
 	_检展示非法牌驳回()
 	_检放逐非法牌驳回()
 	_检放逐超时()
@@ -376,9 +376,13 @@ func _检翻面天雷() -> void:
 	提示窗.queue_free()
 	# 系别选项、弃牌、目标在同一次询问里，按一次确定提交
 	var 合并问: Dictionary = _最近命令(9507)
+	var 选项牌白: Array = 合并问.get("option_cards", [])
 	检(int(合并问.get("card_max", 0)) == 4 and (合并问.get("dst_ids", []) as Array).has(2)
-		and (合并问.get("option_enabled", []) as Array) == [true, true, false, false],
-		"合并询问应同时带四系选项、最多 4 张牌和目标 2：%s" % str(合并问))
+		and (合并问.get("option_enabled", []) as Array) == [true, true, false, false]
+		and 选项牌白.size() == 4
+		and not ((选项牌白[0] as Dictionary).get("ids", []) as Array).is_empty()
+		and ((选项牌白[2] as Dictionary).get("ids", []) as Array) == [-1],
+		"合并询问应带四系选项、各自的牌白名单、最多 4 张牌和目标 2：%s" % str(合并问))
 	_应答([GConst.CardElement.Thunder], [2], 雷)
 	引擎.run()
 	检(引擎._await_id == 2, "应问目标对手弃任意张该系牌（等待 %s / %s）"
@@ -565,34 +569,22 @@ func _检放逐() -> void:
 
 
 # ============================================================
-# 6b. 客户端：切换系别选项后，已选的不合法牌要收回
+# 6b. 系别选项自带牌白名单（供通用选项置灰逻辑用）
 # ============================================================
-func _检选项换系收紧牌() -> void:
-	var 雷卡: int = -1
-	var 火卡: int = -1
-	for c: GCard in Data.card_db:
-		if c == null or c.is_virtual:
-			continue
-		if 雷卡 < 0 and c.element_enum() == GConst.CardElement.Thunder:
-			雷卡 = c.id
-		if 火卡 < 0 and c.element_enum() == GConst.CardElement.Fire:
-			火卡 = c.id
-		if 雷卡 >= 0 and 火卡 >= 0:
-			break
-	检(雷卡 >= 0 and 火卡 >= 0, "应能找到雷/火牌面用于测试")
-	var 窗: Control = load("res://scripts/ui/battle_mobile.gd").new()
-	窗.set("_二级选项", [{"元素": [GConst.CardElement.Thunder]}])
-	窗.set("_二级选中", 0)
-	var 白: Array[int] = [雷卡, 火卡]
-	窗.set("_skill_cards_all", 白)
-	窗.set("_skill_cards", 白)
-	窗.set("_sel_cards", 白)
-	窗.call("_按选中系别收紧可点牌")
-	var 可选: Array = 窗.get("_skill_cards")
-	var 已选: Array = 窗.get("_sel_cards")
-	检(可选 == [雷卡] and 已选 == [雷卡],
-		"切到雷系后应只留雷牌、并收回已选的火牌：可点 %s / 已选 %s" % [str(可选), str(已选)])
-	窗.queue_free()
+func _检系别选项牌白() -> void:
+	_建引擎()
+	var 雷: Array = _发牌(玩家1, GConst.CardElement.Thunder, 1)
+	var 火: Array = _发牌(玩家1, GConst.CardElement.Fire, 1)
+	var 选项: Array = 角色.call("_展示系别选项")
+	检(选项.size() == 4, "应有四个系别选项")
+	var 雷白: Array = (选项[0] as Dictionary).get("cards", [])
+	var 火白: Array = (选项[1] as Dictionary).get("cards", [])
+	检(雷白 == [GConst.牌号(int(雷[0]))],
+		"雷系选项的牌白应只有手里的雷牌：%s" % str(雷白))
+	检(火白 == [GConst.牌号(int(火[0]))],
+		"火系选项的牌白应只有手里的火牌：%s" % str(火白))
+	检((选项[2] as Dictionary).get("cards", []) == [GConst.手牌白名单_全禁],
+		"没有地系手牌时该选项应下 -1（一张都不给点）")
 
 
 # ============================================================

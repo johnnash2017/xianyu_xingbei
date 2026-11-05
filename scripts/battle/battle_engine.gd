@@ -2550,6 +2550,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var 选项预览牌: Array = []
 	var 选项元素: Array = []
 	var 选项技能组: Array = []
+	var 选项牌白: Array = []
 	var 有选项目标: bool = false
 	for o: Dictionary in options:
 		args.append(int(o.get("value", 0)))
@@ -2566,6 +2567,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		选项预览牌.append({"ids": _牌面表(o.get("preview_cards", []))})
 		选项元素.append({"ids": o.get("elements", [])})
 		选项技能组.append({"ids": o.get("技能组", [])})
+		选项牌白.append({"ids": _牌面表(o.get("cards", []))})
 		var 目标: Array = o.get("targets", [])
 		选项目标.append({"ids": 目标})
 		if not 目标.is_empty():
@@ -2628,6 +2630,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	if not options.is_empty():
 		cmd["option_elements"] = 选项元素
 		cmd["option_skill_groups"] = 选项技能组
+		# 选项自带牌白名单（空数组＝不限；有 -1 表示一张都不给点）
+		if 选项牌白.any(func(项: Dictionary) -> bool: return not (项.get("ids", []) as Array).is_empty()):
+			cmd["option_cards"] = 选项牌白
 	# 选项带「悬停预览牌」时（如【三秒原则】的「获得 2 张【魔弹】」）：
 	# 客户端悬停那个选项按钮时把这几张牌的卡面并排摊出来
 	if not 选项预览牌.is_empty():

@@ -280,6 +280,10 @@ const SUB: Dictionary = {
 		# 带选项的询问里，每项被选中后是否把提示条换成「该选项技能说明」（与 args 一一对应）：
 		# true 表示这个选项是「换一个要发动的技能」（如蓄力一击/气绝崩击），提示要跟着换成它的说明。
 		55: {"n": "option_switch_desc", "t": "bool", "r": true},
+		# 带选项的询问里，每项自带的牌白名单（与 args 一一对应；值为牌面，空＝不限制）：
+		# 选中该项后名单外的牌置灰（如天雷/地裂选雷系后只剩雷系牌可点）。
+		# 用 i32：可能带 -1（手牌白名单_全禁＝一张都不给点）。
+		56: {"n": "option_cards", "t": "msg", "r": true, "s": "OptionTargets"},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {

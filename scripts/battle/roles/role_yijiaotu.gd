@@ -875,12 +875,24 @@ func _展示系别选项() -> Array:
 		var 系名: String = GConst.element_to_chinese(系)
 		var 技能号: int = TIAN_LEI_JIE_HUO if 系 in [GConst.CardElement.Thunder, GConst.CardElement.Fire] \
 			else DI_LIE_BO_TAO
+		# 逐选项牌白名单：选中这一系后只让该系的手牌可点（空手牌用 -1＝全禁）
+		var 牌白: Array = []
+		for cid: int in player.hand_cards:
+			var 卡: GCard = Data.get_card(cid)
+			if 卡 == null or 卡.element_enum() != 系:
+				continue
+			var 面: int = GConst.牌号(cid)
+			if not 牌白.has(面):
+				牌白.append(面)
+		if 牌白.is_empty():
+			牌白.append(GConst.手牌白名单_全禁)
 		out.append({
 			"value": 系,
 			"label": GConst.按钮原文(技能号, 0) % 系名,
 			"elements": [系],
 			"enabled": _展示可发动(系),
 			"skill_id": 技能号,
+			"cards": 牌白,
 			"提示": GConst.填文本(效果模板, {"s": 系名}),
 		})
 	return out
