@@ -542,6 +542,8 @@ var _skill_targets: Array[int] = []
 ## 本次发动技能的合法手牌（服务端在技能上给的 cards，非空时只让这几张牌可点；
 ## 例：【暗影流星】只能弃法术牌）
 var _skill_cards: Array[int] = []
+## 服务端给的原始可点牌白名单（选到「带元素」的选项时按选项临时收紧，见 _按选中系别收紧可点牌）
+var _skill_cards_all: Array[int] = []
 ## 本次发动技能的点选上限（服务端在技能上给的 card_max，≥ 需牌数；如【欺诈】可弃 2~3 张）
 var _skill_card_max: int = 0
 ## 本次发动技能的选牌系别规则（服务端给的 card_rule：""＝不限 / "same"＝必须同系 / "diff"＝必须互异系）
@@ -4323,6 +4325,8 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		if not 项3.is_empty() and (int(项3.get("需牌", 0)) > 0 or int(项3.get("需目标", 0)) > 0):
 			_应用选项目标数()
 			_换选项后重校验()
+		# 选项带系别时（天雷/地裂的雷火地水），只留该系别的牌可点，避免选错系别提交被服务端驳回
+		_按选中系别收紧可点牌()
 	# 冒险家【冒险者天堂】：选「额外提取 N 颗」时把「要移除的自身能量」预览在自己头像上
 	# （选「常规提炼」＝0，顺手清掉预览）；最后一步选构成时记下取法，并刷新提示条与头像上的分配
 	if _本地选项阶段 == 4:
@@ -4520,6 +4524,32 @@ func _返回自动填充第一层() -> void:
 
 
 ## 二级栏里当前选中那一项（还没选就是空字典）
+## 选项带「可选系别」且本次要点牌时：只留该系别的牌可点；
+## 没选选项 / 选项不带系别时恢复服务端给的原始白名单。服务端仍会按选中的系别复核。
+func _按选中系别收紧可点牌() -> void:
+	if _skill_cards_all.is_empty():
+		return
+	var 元素: Array = _二级选中项().get("元素", [])
+	var 保留: Array[int] = []
+	for 面: int in _skill_cards_all:
+		if 元素.is_empty():
+			保留.append(面)
+			continue
+		var 卡: GCard = Data.get_card(面)
+		if 卡 != null and 元素.has(卡.element_enum()):
+			保留.append(面)
+	_skill_cards = 保留
+	var 留牌: Array[int] = []
+	for cid: int in _sel_cards:
+		if 元素.is_empty():
+			留牌.append(cid)
+			continue
+		var 卡2: GCard = Data.get_card(cid)
+		if 卡2 != null and 元素.has(卡2.element_enum()):
+			留牌.append(cid)
+	_sel_cards = 留牌
+
+
 func _二级选中项() -> Dictionary:
 	if _二级选中 < 0 or _二级选中 >= _二级选项.size():
 		return {}
@@ -6805,6 +6835,7 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	_skill_cards.clear()
 	for 牌号: Variant in 合法牌:
 		_skill_cards.append(int(牌号))
+	_skill_cards_all = _skill_cards.duplicate()
 	_sel_players.clear()
 	_高亮目标.clear()
 	_高亮计数.clear()

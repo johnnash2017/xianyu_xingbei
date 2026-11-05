@@ -371,24 +371,12 @@ func _检翻面天雷() -> void:
 	提示窗.set("_sel_cards", 两张已选)
 	检(int(提示窗.call("_提示数值", 指示, 0)) == 3, "选 2 张牌时头像伤害应显示 3")
 	提示窗.queue_free()
-	_应答([GConst.CardElement.Thunder])
-	引擎.run()
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9507,
-		"选完系别应一次问「弃几张该系牌 + 目标对手」（等待 %s / %s）"
-		% [str(引擎._await_id), str(引擎._pending_respond_id)])
-	var 合并问: Dictionary = {}
-	for r: Dictionary in 发送记录:
-		if int(r["msg"]) != GConst.Msg.CmdReq:
-			continue
-		var 命令: Array = (r["data"] as Dictionary).get("commands", [])
-		if 命令.is_empty():
-			continue
-		var c: Dictionary = 命令[0]
-		if int(c.get("respond_id", 0)) == 9507 and not (c.get("dst_ids", []) as Array).is_empty():
-			合并问 = c
-	检(int(合并问.get("card_max", 0)) == 4 and (合并问.get("dst_ids", []) as Array).has(2),
-		"合并询问应同时允许选最多 4 张牌和目标 2：%s" % str(合并问))
-	_应答([], [2], 雷)
+	# 系别选项、弃牌、目标在同一次询问里，按一次确定提交
+	var 合并问: Dictionary = _最近命令(9507)
+	检(int(合并问.get("card_max", 0)) == 4 and (合并问.get("dst_ids", []) as Array).has(2)
+		and (合并问.get("option_enabled", []) as Array) == [true, true, false, false],
+		"合并询问应同时带四系选项、最多 4 张牌和目标 2：%s" % str(合并问))
+	_应答([GConst.CardElement.Thunder], [2], 雷)
 	引擎.run()
 	检(引擎._await_id == 2, "应问目标对手弃任意张该系牌（等待 %s / %s）"
 		% [str(引擎._await_id), str(引擎._await_kind)])
@@ -434,21 +422,15 @@ func _检贪婪两项() -> void:
 	var 板1: Dictionary = _最近命令(9507)
 	检((板1.get("option_enabled", []) as Array) == [true, true, false, false],
 		"贪婪后应直接给四系选项板（雷/火可用、地/水置灰）：%s" % str(板1.get("option_enabled", [])))
-	# 第一项：雷系。选中后进合并询问（弃牌+目标），本次 0 张牌 → 1 点伤害
-	_应答([GConst.CardElement.Thunder])
-	引擎.run()
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9507,
-		"选中雷系后应进「弃牌+目标」合并询问")
-	_应答([], [2])
+	# 第一项：雷系。系别+弃牌+目标一次提交，本次 0 张牌 → 1 点伤害
+	_应答([GConst.CardElement.Thunder], [2])
 	引擎.run()
 	_本项收尾()   # 可能插入治疗抵挡 / 目标弃牌询问，都答掉等回到板子
 	# 回到板子：雷已用，只剩火
 	var 板2: Dictionary = _最近命令(9507)
 	检((板2.get("option_enabled", []) as Array) == [false, true, false, false],
 		"发完雷系后应只剩火系可用：%s" % str(板2.get("option_enabled", [])))
-	_应答([GConst.CardElement.Fire])
-	引擎.run()
-	_应答([], [2])
+	_应答([GConst.CardElement.Fire], [2])
 	引擎.run()
 	_本项收尾()
 	检(引擎._await_id < 0, "两项都发完后不应再问（等待 %s）" % str(引擎._await_id))
