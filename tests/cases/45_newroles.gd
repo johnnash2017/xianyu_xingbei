@@ -653,8 +653,7 @@ func _检圣庭检察士() -> void:
 	检(not (引擎._await_id == 1 and 引擎._pending_respond_id == 3904),
 		"没有法术牌时取消后不应再询问")
 
-	# 神圣鞭策：选项直接决定目标数 —— 选档位 + 选 X 名目标 + 确定 = 一次提交；
-	# 之后只剩「弃 X 张牌」这一步（不再先问 X、再一个个问目标）
+	# 神圣鞭策：选项直接决定目标数 —— 选档位 + 选 X 名目标 + 选要弃的牌 + 确定 = 一次提交
 	角色 = _建引擎(39)
 	玩家 = 引擎.p(1)
 	玩家.set_crystal(1)
@@ -666,7 +665,6 @@ func _检圣庭检察士() -> void:
 	检(鞭策手牌.size() == 3, "卡库里应有足够的牌")
 	玩家.hand_cards.clear()
 	玩家.add_hand_cards(鞭策手牌)
-	# 选项：第 i 档要求选 i 名目标
 	var 鞭策项: Array = []
 	for 项: Dictionary in 角色.available_skills():
 		if int(项.get("id", 0)) == 3907:
@@ -676,41 +674,51 @@ func _检圣庭检察士() -> void:
 	if 鞭策项.size() >= 2:
 		检(int((鞭策项[1] as Dictionary).get("need_target", 0)) == 2,
 			"【神圣鞭策】第 2 档应要求一次选 2 名目标")
+		检(int((鞭策项[1] as Dictionary).get("need_card", 0)) == 2,
+			"【神圣鞭策】第 2 档应要求同一次选 2 张弃牌")
 		检(str((鞭策项[1] as Dictionary).get("text", "")) == "移除 2 点【裁决】",
 			"【神圣鞭策】档位按钮文案应是「移除 N 点【裁决】」")
-	# 参数校验：目标数必须与 X 一致
-	检(角色.v_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2]})
-		!= GConst.GE_SUCCESS, "目标数不等于 X 时不应通过校验")
-	检(角色.v_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2, 3]})
-		== GConst.GE_SUCCESS, "X=2 且一次选 2 名目标应通过校验")
+	# 参数校验：目标数 / 弃牌数都要与 X 对得上
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2],
+		"card_ids": [鞭策手牌[0], 鞭策手牌[1]]}) != GConst.GE_SUCCESS,
+		"目标数不等于 X 时不应通过校验")
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2, 3],
+		"card_ids": [鞭策手牌[0]]}) != GConst.GE_SUCCESS, "弃牌数不对时不应通过校验")
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2, 3],
+		"card_ids": [鞭策手牌[0], 鞭策手牌[1]]}) == GConst.GE_SUCCESS,
+		"X=2 + 2 名目标 + 2 张弃牌应通过校验")
 	var 前裁决: int = 玩家.token_num(0)
-	角色.p_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2, 3]})
+	var 目标2手牌: int = 引擎.p(2).hand_cards.size()
+	角色.p_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2, 3],
+		"card_ids": [鞭策手牌[0], 鞭策手牌[1]]})
 	引擎.run()
 	检(玩家.token_num(0) == 前裁决 - 2, "【神圣鞭策】应按 X 移除裁决")
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907,
-		"【神圣鞭策】提交后应只剩弃 X 张牌这一步（等待 %s）" % str(引擎._await_id))
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3907, "src_id": 1, "card_ids": [鞭策手牌[0], 鞭策手牌[1]], "args": [], "dst_ids": [],
-	})
-	引擎.run()
-	检(not 玩家.有手牌(鞭策手牌[0]), "【神圣鞭策】应弃掉 X 张牌")
+	检(not 玩家.有手牌(鞭策手牌[0]) and not 玩家.有手牌(鞭策手牌[1]),
+		"【神圣鞭策】应在发动时把选的 X 张牌弃掉（不再单独问）")
+	检(引擎.p(2).hand_cards.size() == 目标2手牌 + 1, "【神圣鞭策】目标应摸 1 张牌")
+	检(not (引擎._await_id == 1 and 引擎._pending_respond_id == 3907),
+		"【神圣鞭策】不该再弹第二次确认")
 
-	# 手牌不足 X 张也允许：库里只留 1 张，弃牌那步只弃这 1 张、不报错
+	# 手牌为 0 也能发动：选项 need_card=0，直接选 X 名目标提交
 	角色 = _建引擎(39)
 	玩家 = 引擎.p(1)
 	玩家.set_crystal(1)
 	玩家.add_token(0, 2)
 	玩家.hand_cards.clear()
-	玩家.add_hand_cards([鞭策手牌[0]])
-	角色.p_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2, 3]})
+	var 空手选项: Array = []
+	for 项: Dictionary in 角色.available_skills():
+		if int(项.get("id", 0)) == 3907:
+			空手选项 = 项.get("arg_choices", [])
+	检(not 空手选项.is_empty(), "手牌为 0 也应能发动【神圣鞭策】")
+	if not 空手选项.is_empty():
+		检(int((空手选项[0] as Dictionary).get("need_card", -1)) == 0,
+			"手牌为 0 时选项不该要求选弃牌")
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 3907, "args": [1], "dst_ids": [2],
+		"card_ids": []}) == GConst.GE_SUCCESS, "手牌为 0 时 X=1 应能通过校验")
+	角色.p_magic_skill({"src_id": 1, "action_id": 3907, "args": [1], "dst_ids": [2],
+		"card_ids": []})
 	引擎.run()
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907,
-		"手牌不足 X 张也应允许发动")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3907, "src_id": 1, "card_ids": [鞭策手牌[0]], "args": [], "dst_ids": [],
-	})
-	引擎.run()
-	检(玩家.hand_cards.is_empty(), "手牌不足时弃牌应按实际手牌弃、不报错")
+	检(玩家.hand_cards.is_empty(), "手牌为 0 发动后应正常结束")
 
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用

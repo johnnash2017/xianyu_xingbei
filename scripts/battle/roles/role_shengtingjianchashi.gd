@@ -31,9 +31,6 @@ const 裁决所名: String = "异端裁决所"
 ## 【异端裁决所】能存多少【治疗】点数（场卡计数上限；客户端悬停按「当前/上限」显示）
 const 裁决所治疗上限: int = 4
 
-## 神圣鞭策：本次选了几个（X），弃牌那步按它算
-var _鞭策X: int = 0
-
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
@@ -51,14 +48,18 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 # ============================================================
 func available_skills() -> Array:
 	var 裁决: int = player.token_num(CAI_SLOT)
-	# 神圣鞭策：选 X 的选项直接带「需目标 = X」——选中档位后点 X 名目标、一次确定就提交，
-	# 不再先问 X、再一个个问目标（X 由选项决定要选几名目标）
+	# 神圣鞭策：选 X 的选项直接带「需目标 = X」——选中档位后点 X 名目标、一次确定就提交；
+	# 要弃的牌也在同一次里选（需牌 / 最多牌 = min(X, 手牌数)，手牌为 0 时不用选牌）
+	var 手牌数: int = player.hand_cards.size()
 	var 鞭策选项: Array = []
 	for i: int in range(1, 裁决 + 1):
+		var 需弃: int = mini(i, 手牌数)
 		鞭策选项.append({
 			"text": GConst.按钮原文(SHEN_SHENG_BIAN_CE, 0, {"n": i}),
 			"args": [i],
 			"need_target": i,
+			"need_card": 需弃,
+			"card_max": 需弃,
 		})
 	return [
 		{
@@ -69,14 +70,15 @@ func available_skills() -> Array:
 			"enabled": player.get_energy() >= 1,
 		},
 		{
-			# 神圣鞭策：X 由选项决定，选完选项同一次里选 X 名目标、按「确定」一次性提交
+			# 神圣鞭策：X 由选项决定；同一次里选 X 名目标 + 要弃的牌，按「确定」一次性提交。
+			# 手牌为 0 也能发动（只是没有牌可弃）
 			"type": GConst.ActionType.MagicSkill,
 			"id": SHEN_SHENG_BIAN_CE,
 			"need_card": 0,
 			"need_target": 0,
 			"targets": _全体角色(),
 			"arg_choices": 鞭策选项,
-			"enabled": 裁决 >= 1 and player.get_energy() >= 1 and player.hand_cards.size() >= 1,
+			"enabled": 裁决 >= 1 and player.get_energy() >= 1,
 		},
 	]
 
@@ -118,9 +120,8 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if player.token_num(CAI_SLOT) < 1 or player.get_energy() < 1:
 		return GConst.GE_INVALID_ACTION
-	if player.hand_cards.is_empty():
-		return GConst.GE_INVALID_ACTION
-	# 选项带 X（args[0]），同一次里必须选出正好 X 名目标
+	# 选项带 X（args[0]）：同一次里要选出正好 X 名目标，以及要弃的 min(X, 手牌数) 张牌。
+	# 手牌为 0 也能发动（那就一张都不用弃）
 	var args: Array = action.get("args", [])
 	var x: int = int(args[0]) if not args.is_empty() else 0
 	if x < 1 or x > player.token_num(CAI_SLOT):
@@ -131,6 +132,13 @@ func v_magic_skill(action: Dictionary) -> int:
 	for pid: Variant in 目标:
 		if engine.p(int(pid)) == null:
 			return GConst.GE_INVALID_PLAYERID
+	var 需弃: int = mini(x, player.hand_cards.size())
+	var 弃牌: Array = action.get("card_ids", [])
+	if 弃牌.size() != 需弃:
+		return GConst.GE_INVALID_ACTION
+	for cid: Variant in 弃牌:
+		if not player.有手牌(int(cid)):
+			return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 
 
@@ -151,13 +159,18 @@ func p_magic_skill(action: Dictionary) -> int:
 	# 每名目标各摸 1 张牌【强制】
 	for pid: int in 目标:
 		engine.push_draw(pid, 1, SHEN_SHENG_BIAN_CE)
-	# 剩最后一步：你弃 X 张牌（手牌不足 X 张就按实际手牌弃）
-	_鞭策X = x
-	_鞭策步 = 1
-	engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
+	# 你弃 X 张牌（手牌不足 X 张就按实际手牌弃）：弃哪些牌随发动一次提交，不再单独问
+	var 弃: Array[int] = []
+	for cid: Variant in action.get("card_ids", []):
+		if 弃.size() < x and player.有手牌(int(cid)):
+			弃.append(int(cid))
+	if not 弃.is_empty():
+		engine.take_from_hand(player.id, 弃, false)
+		engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": SHEN_SHENG_BIAN_CE})
+		# 日志带张数 → 客户端播弃牌动画
+		engine._log_discard(player.id, 弃)
+	engine._broadcast_game()
 	return URGENT
-
-var _鞭策步: int = 0
 
 
 # ============================================================
@@ -463,33 +476,6 @@ var _庇护伤害: Dictionary = {}
 # ============================================================
 func p_sheng_ting_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	# 神圣鞭策：只剩「你弃 X 张牌」这一步（选 X 与 X 名目标已经随发动一次性提交）。
-	# 手牌不足 X 张时按实际手牌弃，少弃不报错
-	if _鞭策步 == 1:
-		var 需: int = mini(_鞭策X, player.hand_cards.size())
-		if 需 <= 0:
-			_鞭策步 = 0
-			_鞭策X = 0
-			return SUCCESS
-		if not engine.has_reply():
-			询问(player.id, SHEN_SHENG_BIAN_CE, 需, 0, GConst.CardSource.Hand, [], 需, "", [], false,
-				0, player.id, [], 需, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(SHEN_SHENG_BIAN_CE, 3) % 需)
-			return WAIT
-		var r3: Dictionary = take_skill_reply_full()
-		var cards: Array = r3.get("card_ids", [])
-		var 弃: Array = []
-		for c: Variant in cards:
-			if 弃.size() < 需 and player.有手牌(int(c)):
-				弃.append(int(c))
-		if not 弃.is_empty():
-			engine.take_from_hand(player.id, 弃, false)
-			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": SHEN_SHENG_BIAN_CE})
-			# 日志带张数 → 客户端播弃牌动画
-			engine._log_discard(player.id, 弃)
-		_鞭策步 = 0
-		_鞭策X = 0
 		return SUCCESS
 	# 恩典神授：弃 1 张牌；圣命格可【展示】换 1 点法术伤害。
 	# 弃牌 + 「展示 / 不展示」+「法术伤害打谁」都在同一条询问里选：展示默认选上，
