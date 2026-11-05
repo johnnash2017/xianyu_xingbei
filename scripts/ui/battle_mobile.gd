@@ -5343,19 +5343,19 @@ func _符合选牌规则(card_id: int) -> bool:
 	if not _符合选牌槽位(card_id):
 		return false
 	# magic＝只能选法术牌（如女武神【英灵召唤】额外弃 1 张法术牌）
-	if _skill_card_rule == "magic":
+	if _skill_card_rule == GConst.选牌规则_法术牌:
 		var 法术牌: GCard = Data.get_card(card_id)
 		return 法术牌 != null and 法术牌.is_magic()
 	# magic_cover＝手牌必须法术牌、盖牌随意。这条规则不能只靠服务端的白名单：手里既没法术牌
 	# 又没【祝福】时白名单是空的（空＝不限），就成了「什么牌都能选」，所以界面这边自己也要挡
-	if _skill_card_rule == "magic_cover":
+	if _skill_card_rule == GConst.选牌规则_法术牌或盖牌:
 		if _is_my_cover(card_id):
 			return true
 		var 可弃牌: GCard = Data.get_card(card_id)
 		return 可弃牌 != null and 可弃牌.is_magic()
 	# 暗之障壁（2904）：所选牌须同属「法术 / 雷系」中的同一类。
 	# 这条必须在「还没选牌就放行」之前判断：否则第一张会绕过规则，非雷非法术也能点。
-	if _skill_card_rule == "an_zhi":
+	if _skill_card_rule == GConst.选牌规则_暗之障壁:
 		var 暗之牌: GCard = Data.get_card(card_id)
 		if 暗之牌 == null:
 			return false
@@ -5368,7 +5368,7 @@ func _符合选牌规则(card_id: int) -> bool:
 	# 同系 / 同命格：还没选牌时，也要先把「凑不出另一张同类牌」的孤张置灰，
 	# 否则玩家先点一张孤张、再发现没有第二张同类的可点，等于白点。
 	if _sel_cards.is_empty() \
-			and (_skill_card_rule == "same" or _skill_card_rule == "same_fate_pattern") \
+			and (_skill_card_rule == GConst.选牌规则_同系 or _skill_card_rule == GConst.选牌规则_同命格) \
 			and not _同组有足够搭档(牌):
 		return false
 	if _skill_card_rule == "" or _sel_cards.is_empty():
@@ -5383,14 +5383,14 @@ func _符合选牌规则(card_id: int) -> bool:
 		if 已选 == null:
 			continue
 		# 同命格：如阴阳师【式神降临】要弃 2 张同命格牌
-		if _skill_card_rule == "same_fate_pattern":
+		if _skill_card_rule == GConst.选牌规则_同命格:
 			if 已选.fate_pattern_enum() != 牌.fate_pattern_enum():
 				return false
 			continue
 		var 同系: bool = 已选.element_enum() == 牌.element_enum()
-		if _skill_card_rule == "same" and not 同系:
+		if _skill_card_rule == GConst.选牌规则_同系 and not 同系:
 			return false
-		if _skill_card_rule == "diff" and 同系:
+		if _skill_card_rule == GConst.选牌规则_互异系 and 同系:
 			return false
 	return true
 
@@ -5446,10 +5446,10 @@ func _同组有足够搭档(牌: GCard) -> bool:
 		return true
 	var 数: int = 0
 	for 候选: GCard in _当前候选牌池():
-		if _skill_card_rule == "same":
+		if _skill_card_rule == GConst.选牌规则_同系:
 			if 候选.element_enum() == 牌.element_enum():
 				数 += 1
-		elif _skill_card_rule == "same_fate_pattern":
+		elif _skill_card_rule == GConst.选牌规则_同命格:
 			if 候选.fate_pattern_enum() == 牌.fate_pattern_enum():
 				数 += 1
 		else:

@@ -48,11 +48,11 @@ func available_skills() -> Array:
 	# 式神降临要弃 2 张同命格牌：card_rule="same_fate_pattern" 让界面选第 1 张后只亮同命格的牌。
 	# 已经是式神形态（横置）时不能再开，必须等重置回普通形态。
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SHI_SHEN_JIANG_LIN, "need_card": 2, "need_target": 0,
-		"card_rule": "same_fate_pattern", "enabled": not player.tap and _has_same_fate_pattern_pair()})
+		"card_rule": GConst.选牌规则_同命格, "enabled": not player.tap and _has_same_fate_pattern_pair()})
 	# 生命结界：两档效果；目标只能是队友。费用什么能量都行（水晶优先扣）。
 	var 队友: Array[int] = ally_ids()
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_MING_JIE_JIE, "need_card": 0, "need_target": 1,
-		"targets": 队友, "card_rule": "same_fate_pattern",
+		"targets": 队友, "card_rule": GConst.选牌规则_同命格,
 		"arg_choices": [
 			{"text": GConst.按钮原文(SHENG_MING_JIE_JIE, 0), "args": [1],
 				"enabled": player.get_energy() >= 1 and not 队友.is_empty()},

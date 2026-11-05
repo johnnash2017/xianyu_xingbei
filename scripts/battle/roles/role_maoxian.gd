@@ -30,7 +30,7 @@ func available_skills() -> Array:
 	# 两档都放手牌可选，最多 3 张；每个选项用 need_card / card_max 收自己的张数。
 	# 手里至少要有一对同系牌才放行；没有同系对时按钮仍摆出、置灰。
 	out.append({"type": GConst.ActionType.AttackSkill, "id": QI_ZHA, "need_card": 2, "card_max": 3,
-		"need_target": 1, "targets": enemy_ids(), "card_rule": "same",
+		"need_target": 1, "targets": enemy_ids(), "card_rule": GConst.选牌规则_同系,
 		"arg_choices": _qi_zha_options(), "enabled": _has_same_element_pair()})
 	# 偷天换日：先在二级技能栏里二选一（转移对方 1 宝石 / 我方水晶全部转宝石）；
 	# 条件不满足（无能量 / 本回合已用 / 两种用法都不可行）时按钮仍摆出、置灰
