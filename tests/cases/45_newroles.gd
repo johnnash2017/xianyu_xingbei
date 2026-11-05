@@ -671,6 +671,20 @@ func _检圣庭检察士() -> void:
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907,
 		"【神圣鞭策】应下发选 X 的询问（等待 %s / 询问 %s）"
 		% [str(引擎._await_id), str(引擎._pending_respond_id)])
+	检(GConst.按钮原文(3907, 0, {"n": 2}) == "移除 2 点【裁决】",
+		"【神圣鞭策】选 X 的按钮文案应是「移除 N 点【裁决】」：%s"
+		% GConst.按钮原文(3907, 0, {"n": 2}))
+	var 找到选X文案: bool = false
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		for cmd: Dictionary in (r["data"] as Dictionary).get("commands", []):
+			if int(cmd.get("respond_id", 0)) != 3907:
+				continue
+			for 条: Variant in (cmd.get("notes", []) as Array):
+				if str(条) == "移除 2 点【裁决】":
+					找到选X文案 = true
+	检(找到选X文案, "【神圣鞭策】选 X 的选项按钮应写「移除 N 点【裁决】」，不能只写数字")
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 3907, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [],
 	})

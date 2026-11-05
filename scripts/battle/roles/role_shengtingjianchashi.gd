@@ -34,7 +34,6 @@ const 裁决所治疗上限: int = 4
 ## 神圣鞭策的 X 与已选目标
 var _鞭策X: int = 0
 var _鞭策目标: Array[int] = []
-var _鞭策下标: int = 0
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -124,7 +123,6 @@ func p_magic_skill(action: Dictionary) -> int:
 	notice_skill(SHEN_SHENG_BIAN_CE, [player.id])
 	_鞭策X = 0
 	_鞭策目标 = []
-	_鞭策下标 = 0
 	_鞭策步 = 1
 	engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
 	return URGENT
@@ -436,24 +434,30 @@ var _庇护伤害: Dictionary = {}
 func p_sheng_ting_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 神圣鞭策：选 X
+	# 神圣鞭策：选 X（移除 X 点【裁决】）
 	if _鞭策步 == 1:
 		if not engine.has_reply():
 			# 选项必须是 {value, label} 字典（引擎 ask_skill 按字典读 value）；传 int 会直接报错，
-			# 表现就是「点了技能什么都没发生」。X 已付 1 能量发动，这里不许取消，必须选一档
+			# 表现就是「点了技能什么都没发生」。X 已付 1 能量发动，这里不许取消，必须选一档。
+			# 选项文案走技能表「按钮」列（移除 X 点【裁决】）；弃 X 张牌，手牌不够的档位置灰但照样摆出来
+			var 手牌数: int = player.hand_cards.size()
 			var 选项: Array = []
 			for i: int in range(1, player.token_num(CAI_SLOT) + 1):
-				选项.append({"value": i, "label": str(i)})
+				选项.append({
+					"value": i,
+					"label": GConst.按钮原文(SHEN_SHENG_BIAN_CE, 0, {"n": i}),
+					"enabled": i <= 手牌数,
+				})
 			询问(player.id, SHEN_SHENG_BIAN_CE, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				GConst.提示原文(SHEN_SHENG_BIAN_CE, 1))
 			return WAIT
 		# 阶段在取完回复之后再推进：重入时 _鞭策步 仍是 1，才能走到这里
 		var r: Dictionary = take_skill_reply_full()
-		_鞭策步 = 2
 		var args: Array = r.get("args", [])
 		var x: int = int(args[0]) if not args.is_empty() else 0
-		if x <= 0 or not player.remove_token(CAI_SLOT, x):
+		# 手牌不够 X 张时不能选这一档（客户端已按 enabled 置灰，这里兜底）
+		if x <= 0 or x > player.hand_cards.size() or not player.remove_token(CAI_SLOT, x):
 			_鞭策步 = 0
 			return SUCCESS
 		_鞭策X = x
@@ -486,10 +490,12 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		return URGENT
 	# 神圣鞭策：你弃 X 张牌
 	if _鞭策步 == 4:
+		# 选 X 时已经按手牌数置灰；这里只兜底（中途手牌不会变少，摸牌只会变多）
 		var 需: int = mini(_鞭策X, player.hand_cards.size())
 		if 需 <= 0:
 			_鞭策步 = 0
 			_鞭策X = 0
+			_鞭策目标 = []
 			return SUCCESS
 		if not engine.has_reply():
 			询问(player.id, SHEN_SHENG_BIAN_CE, 需, 0, GConst.CardSource.Hand, [], 需, "", [], false,
@@ -505,7 +511,8 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		if not 弃.is_empty():
 			engine.take_from_hand(player.id, 弃, false)
 			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": SHEN_SHENG_BIAN_CE})
-			engine._log_discard(player.id, 弃, false)
+			# 日志带张数 → 客户端播弃牌动画
+			engine._log_discard(player.id, 弃)
 		_鞭策步 = 0
 		_鞭策X = 0
 		_鞭策目标 = []
