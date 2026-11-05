@@ -358,8 +358,6 @@ var _上次别烦我发动者: int = -1
 var _高亮目标: Array[int] = []
 ## highlight_ids 里同名角色出现几次（诸神终焉同一人持有两张刃时要画两行 3 点）
 var _高亮计数: Dictionary = {}
-## 当前回合玩家 id（用于面板高亮）
-var _当前回合: int = -1
 ## 上一次 TurnBegin 的玩家 / 回合号：额外回合（F7 / 10803）不会推进 round，
 ## 连上就靠「同一名玩家 + 同一回合号」认出来（协议 TurnBegin 只带 id / round）。
 ## 本次 TurnBegin 是不是额外回合（面板提示 / 日志用）
@@ -1237,7 +1235,6 @@ func _on_turn(player_id: int, round_id: int) -> void:
 	# 会把他的正常回合也判成额外回合（日志就会连着两条「XX 的额外回合」）。
 	_额外回合中 = Logic.回合开始额外
 	var 额外加伤: int = Logic.回合开始加伤 if _额外回合中 else 0
-	_当前回合 = player_id
 	# 新回合开始：上一回合可能残留的「同命格」许可 / 回退记录作废
 	_应战同命格 = false
 	_攒应战回退攻击牌 = -1

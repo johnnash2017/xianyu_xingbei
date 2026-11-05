@@ -2316,68 +2316,7 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 		# 额外行动的系别限制交给客户端判：会改系别的技能（3805 视为风系）在额外行动阶段
 		# 可能被本地切换行动，服务端这里只把「这条技能固定视为哪个系别」带下去。
 		for sk: Dictionary in pl.role.available_skills():
-			# 技能一律下发（界面默认全摆出来），当前不可用的只把 enabled 置 false —— 客户端据此置灰、
-			# 点不动，玩家能看见「这个技能存在、但现在用不了」，而不是整条消失
-			var 技能可用: bool = bool(sk.get("enabled", true))
-			# 会改系别的技能（3805 视为风系）：把系别带给客户端，由客户端按「当前/切换后的行动」
-			# 的系别要求置灰 —— 不能在这里写死 enabled：额外行动可以在本地切换，
-			# 服务端算的这次 enabled 只对应「下发那一刻」的那份行动（切换后就会过时）。
-			var 技能视为: int = int(pl.role.call("技能视为系别",
-				{"action_id": int(sk.get("id", 0)), "src_id": pid}))
-			# 「启动」技能每回合只能发动一个：本回合已发动过就置灰
-			# （「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不受这条限制）
-			if pl.boot_skill_used and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
-					and pl.role.is_free_skill(int(sk.get("id", 0))):
-				技能可用 = false
-			# 本阶段放行的行动种类也管技能按钮：额外行动只允许攻击 / 法术时，特殊技能（启动）
-			# 一律置灰 —— 口径同 base_v_allow_action，避免玩家点了才被驳回
-			if not GConst.放行动作(int(sk.get("type", 0)), action_type):
-				技能可用 = false
-			# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时置灰。
-			# 空列表在协议/客户端那里等于「不限制」（_玩家可选），会让本该被挡住的人
-			# （如已有【圣盾】/【天使之墙】的目标）反而变成能点 —— 所以只能靠置灰挡住点击
-			if sk.has("targets") and (sk.get("targets", []) as Array).is_empty():
-				技能可用 = false
-			cmds.append({
-				"respond_id": int(sk.get("type", 0)), "src_id": pid,
-				# false＝这条技能本次不可用：界面照样摆出来，但半透明、点不动
-				"enabled": 技能可用,
-				# 这条技能把本次出牌固定视为哪个系别（0＝不固定）：额外行动阶段客户端本地切换
-				# 行动时据此重算置灰（服务端的 enabled 只按「当前那份行动」算过一次）
-				"skill_element": 技能视为,
-				# targets 非空时，客户端只把这几名玩家点亮（如【魔弹融合】的落点固定是右手边最近的对手）
-				"dst_ids": sk.get("targets", []),
-				# 这一手顺带点亮给人看的角色（纯展示，不参与选择、不提交）：
-				# 如怠惰少女【别烦我……】10601 —— 目标由右手边队友代选，本人这一手没有目标，
-				# 只把那名队友高亮出来（服务端结算时本来就不看这个 dst）
-				"highlight_ids": sk.get("highlight", []),
-				# cards 非空时，客户端只让这几张牌可点（如【暗影流星】只能弃法术牌）。
-				# 角色给出的白名单可能取自手牌（带实例号），下发前统一折成牌面
-				"card_ids": _牌面表(sk.get("cards", [])),
-				# card_max 非空时，客户端点选上限放宽到它（如【欺诈】弃 2~3 张）
-				"card_max": int(sk.get("card_max", 0)),
-				# arg_choices 非空时，客户端把每项渲染成一个按钮，点哪个就用当前已选的牌/目标提交该项 args
-				# （如【冒险者天堂】选要用哪些星石）
-				"arg_choices": sk.get("arg_choices", []),
-				# card_rule 非空时客户端限制可点牌（same＝必须同系 / diff＝必须互异系 /
-				# magic＝只能法术牌 / same_fate_pattern＝必须与已选牌同命格）
-				"card_rule": str(sk.get("card_rule", "")),
-				# card_prompt 非空时客户端用它替代默认的「从手牌中选 N 张」发动提示
-				# （如【充能】的发动代价是「弃到 4 张牌」，说「选 4 张」不准确）
-				"card_prompt": str(sk.get("card_prompt", "")),
-				# 目标数上限随已选牌数变化的减数（0＝不适用）：上限 = 已选牌数 - 该值，至少 1 名
-				# （如【圣洁法典】＝弃牌数 - 2；玩家取消一张牌后上限随之变小）
-				"target_max_from_cards": int(sk.get("target_max_from_cards", 0)),
-				# 逐张选牌的条件（0＝不要求）：第 1 张须带某技能 / 第 2 张须为某系
-				# （如元素师独有法术：第 1 张是带该技能的发动牌，第 2 张是加伤的该系牌）
-				"card_slot_skill": int(sk.get("card_slot_skill", 0)),
-				"card_slot_element": int(sk.get("card_slot_element", 0)),
-				# 手牌 + 盖牌混选时，要求其中几张必须是盖牌（如【魔贯冲击】：1 张攻击牌 + 1 张火系【充能】）
-				"cover_need": int(sk.get("cover_need", 0)),
-				# args = [技能号, 最少选牌, 最少选目标, 最多选目标, 选牌来源]
-				"args": [int(sk.get("id", 0)), int(sk.get("need_card", 0)), int(sk.get("need_target", 0)),
-					int(sk.get("target_max", 0)), int(sk.get("card_source", GConst.CardSource.Hand))],
-			})
+			cmds.append(_技能按钮命令(pl, sk, action_type))
 	# 额外行动阶段：这次询问里可用的额外行动整份下发，**顺序由 额外行动序列 定死**，
 	# 客户端照着摆（不排序、不重排）；当前正在行动的那份也在这份列表里（is_extra 那条）。
 	# 这里**不按动作种类过滤**：额外行动可能是攻击、法术或两类都行（如元素师【元素点燃】+1 法术行动
@@ -2432,6 +2371,76 @@ func action_commands(pid: int, action_type: int, can_give_up: bool, extra: bool 
 			# 与 extra_attack_causes 一一对应的命格限制（0＝那一份不限）：客户端切换后按它比对牌面
 			cmds[0]["extra_attack_fates"] = 序列命格
 	return cmds
+
+
+## 把角色 available_skills() 的一项翻成「技能栏上的那颗按钮」命令（行动询问用）。
+## 字段名与 ask_skill（技能询问）保持同一批：enabled / card_ids / card_max / card_rule /
+## card_slot_* / target_max_from_cards / cover_need / dst_ids / highlight_ids。
+## 区别只有 respond_id：这里是「技能类型」（决定按钮颜色与点击后走哪条行动通道），
+## 而 ask_skill 里是「技能号」（这次在问哪个技能）。
+func _技能按钮命令(pl: BattlePlayer, sk: Dictionary, action_type: int) -> Dictionary:
+	# 技能一律下发（界面默认全摆出来），当前不可用的只把 enabled 置 false —— 客户端据此置灰、
+	# 点不动，玩家能看见「这个技能存在、但现在用不了」，而不是整条消失
+	var 技能可用: bool = bool(sk.get("enabled", true))
+	# 会改系别的技能（3805 视为风系）：把系别带给客户端，由客户端按「当前/切换后的行动」
+	# 的系别要求置灰 —— 不能在这里写死 enabled：额外行动可以在本地切换，
+	# 服务端算的这次 enabled 只对应「下发那一刻」的那份行动（切换后就会过时）。
+	var 技能视为: int = int(pl.role.call("技能视为系别",
+		{"action_id": int(sk.get("id", 0)), "src_id": pl.id}))
+	# 「启动」技能每回合只能发动一个：本回合已发动过就置灰
+	# （「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不受这条限制）
+	if pl.boot_skill_used and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
+			and pl.role.is_free_skill(int(sk.get("id", 0))):
+		技能可用 = false
+	# 本阶段放行的行动种类也管技能按钮：额外行动只允许攻击 / 法术时，特殊技能（启动）
+	# 一律置灰 —— 口径同 base_v_allow_action，避免玩家点了才被驳回
+	if not GConst.放行动作(int(sk.get("type", 0)), action_type):
+		技能可用 = false
+	# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时置灰。
+	# 空列表在协议/客户端那里等于「不限制」（_玩家可选），会让本该被挡住的人
+	# （如已有【圣盾】/【天使之墙】的目标）反而变成能点 —— 所以只能靠置灰挡住点击
+	if sk.has("targets") and (sk.get("targets", []) as Array).is_empty():
+		技能可用 = false
+	return {
+		"respond_id": int(sk.get("type", 0)), "src_id": pl.id,
+		# false＝这条技能本次不可用：界面照样摆出来，但半透明、点不动
+		"enabled": 技能可用,
+		# 这条技能把本次出牌固定视为哪个系别（0＝不固定）：额外行动阶段客户端本地切换
+		# 行动时据此重算置灰（服务端的 enabled 只按「当前那份行动」算过一次）
+		"skill_element": 技能视为,
+		# targets 非空时，客户端只把这几名玩家点亮（如【魔弹融合】的落点固定是右手边最近的对手）
+		"dst_ids": sk.get("targets", []),
+		# 这一手顺带点亮给人看的角色（纯展示，不参与选择、不提交）：
+		# 如怠惰少女【别烦我……】10601 —— 目标由右手边队友代选，本人这一手没有目标，
+		# 只把那名队友高亮出来（服务端结算时本来就不看这个 dst）
+		"highlight_ids": sk.get("highlight", []),
+		# cards 非空时，客户端只让这几张牌可点（如【暗影流星】只能弃法术牌）。
+		# 角色给出的白名单可能取自手牌（带实例号），下发前统一折成牌面
+		"card_ids": _牌面表(sk.get("cards", [])),
+		# card_max 非空时，客户端点选上限放宽到它（如【欺诈】弃 2~3 张）
+		"card_max": int(sk.get("card_max", 0)),
+		# arg_choices 非空时，客户端把每项渲染成一个按钮，点哪个就用当前已选的牌/目标提交该项 args
+		# （如【冒险者天堂】选要用哪些星石）
+		"arg_choices": sk.get("arg_choices", []),
+		# card_rule 非空时客户端限制可点牌（same＝必须同系 / diff＝必须互异系 /
+		# magic＝只能法术牌 / same_fate_pattern＝必须与已选牌同命格）
+		"card_rule": str(sk.get("card_rule", "")),
+		# card_prompt 非空时客户端用它替代默认的「从手牌中选 N 张」发动提示
+		# （如【充能】的发动代价是「弃到 4 张牌」，说「选 4 张」不准确）
+		"card_prompt": str(sk.get("card_prompt", "")),
+		# 目标数上限随已选牌数变化的减数（0＝不适用）：上限 = 已选牌数 - 该值，至少 1 名
+		# （如【圣洁法典】＝弃牌数 - 2；玩家取消一张牌后上限随之变小）
+		"target_max_from_cards": int(sk.get("target_max_from_cards", 0)),
+		# 逐张选牌的条件（0＝不要求）：第 1 张须带某技能 / 第 2 张须为某系
+		# （如元素师独有法术：第 1 张是带该技能的发动牌，第 2 张是加伤的该系牌）
+		"card_slot_skill": int(sk.get("card_slot_skill", 0)),
+		"card_slot_element": int(sk.get("card_slot_element", 0)),
+		# 手牌 + 盖牌混选时，要求其中几张必须是盖牌（如【魔贯冲击】：1 张攻击牌 + 1 张火系【充能】）
+		"cover_need": int(sk.get("cover_need", 0)),
+		# args = [技能号, 最少选牌, 最少选目标, 最多选目标, 选牌来源]
+		"args": [int(sk.get("id", 0)), int(sk.get("need_card", 0)), int(sk.get("need_target", 0)),
+			int(sk.get("target_max", 0)), int(sk.get("card_source", GConst.CardSource.Hand))],
+	}
 
 
 func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], src_id: int = -1,
