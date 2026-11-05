@@ -10253,102 +10253,133 @@ func _玩家可选(player_id: int) -> bool:
 	if _攒应战选应战:
 		return _攒应战可反击目标(player_id)
 	if _mode == 6:
-		# 本地选项步骤里只有【恩典神授】选代价那一步要点头像：白名单＝我方有治疗的角色
-		if _本地选项阶段 != 6:
-			return false
-		return _skill_targets.has(player_id)
+		return _可选_本地步骤(player_id)
 	if _mode == 1:
-		# 先选牌、再亮目标：还没选牌时谁都不亮
-		var 牌: GCard = Data.get_card(_sel_cards[0]) if not _sel_cards.is_empty() else null
-		if 牌 == null:
-			return false
-		# 攻击牌只能打敌方（服务端 v_attack 对同队直接拒）；法术按 _do_magic 的分支判。
-		if 牌.is_attack():
-			# 暗杀者潜行（横置）期间不能被主动攻击选中（否则点亮后点了会被服务端拒，客户端闪一下没反应）
-			if not (_是敌方(player_id) and not _潜行中(player_id)):
-				return false
-			# 我面前有【挑衅】时，本回合必须且只能主动攻击「放挑衅的那个玩家」（对照卡表【挑衅】；
-			# 服务端 base_v_attack 同样校验，这里把其余敌人置灰，别让玩家白点）
-			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-			if 我 != null and 我.get_special(GConst.Exclusive.TiaoXin):
-				return player_id == 我.get_special_from(GConst.Exclusive.TiaoXin)
-			# 本回合「下次主动攻击只能打谁」的标记（剑残影 10804）：玩家身上的回合级标记，
-			# 不是这份行动 / 这张牌的规格；服务端 base_v_attack 按同一标记校验。
-			if 我 != null and 我.attack_lock >= 0 and player_id != 我.attack_lock:
-				return false
-			# 额外行动的目标限制（F2）：服务端随行动询问下发 dst_ids 白名单，
-			# 如 10704 的额外攻击只能打手牌数大于你的对手（[-1]＝一个都没有）。
-			var 目标白名单: Array = _行动目标白名单()
-			return 目标白名单.is_empty() or 目标白名单.has(player_id)
-		return _可作法术目标(牌, player_id)
+		return _可选_行动(player_id)
 	if _mode == 2:
-		var rid: int = int(_pending.get("respond_id", 0))
-		if rid == GConst.RespondType.ReplyAttack:
-			# 应战同样先选牌；选【圣光】抵挡时不需要反击目标
-			return not _sel_cards.is_empty() and not _选中是圣光() and _可作反击目标(player_id)
-		if rid == GConst.RespondType.Bullet:
-			# 魔弹传递：只有真要传下去时才点亮落点（【圣光】抵挡不用目标；
-			# 10603 只选 1 张同系牌时服务端会按「放弃」处理，不能让他点目标就提交）。
-			# 但 10603 选了第一张、还差一张同系时也把落点点亮（让人看得到会传到哪），
-			# 这时点它只提示「再选一张」、不提交（见 _on_player_pressed）
-			if not _魔弹传递目标列表().has(player_id):
-				return false
-			if _魔弹响应提交方式() == GConst.Reattack.Attack:
-				return true
-			return _sel_cards.size() == 1 and _可回魔弹牌(int(_sel_cards[0]))
-		return false
+		return _可选_应答(player_id)
 	if _mode == 3:
-		# 分配型指示器配了「仅队友」时（如神官【神圣契约】），只有队友头像能点（不含自己）
-		if bool(_分配配置().get("仅队友", false)) and not _是队友(player_id):
-			return false
-		# 12 号冒险家新版【冒险者天堂】：目标必须能一次收下整份星石
-		if _提炼全给一人:
-			var 总: int = _提炼宝石 + _提炼水晶
-			return 总 > 0 and _玩家空位(player_id) >= 总
-		# 「目标随牌」的技能（如女武神【英灵召唤】：弃了法术牌才给治疗）：没选够牌时谁都不亮、点不动
-		# （取消牌后 _on_card_clicked 会再问一次 _玩家可选，把已点的目标一并清掉）
-		var 随牌阈值: int = _目标随牌阈值()
-		if 随牌阈值 > 0 and _sel_cards.size() < 随牌阈值:
-			return false
-		# 「目标需法术牌」型（如【沉沦协奏曲】）：弃的牌里还没挑到法术牌时谁都不亮、点不动
-		if _目标需法术牌() and not _已选牌含法术():
-			return false
-		# 需求目标数为 0 时默认谁都不亮；但【恩典神授】弃牌那条允许「顺手指定 1 名对手挨伤害」，
-		# 只有在选中的弃牌是圣类命格、且选了「展示」时才让点（选「不展示」就不打伤害）
-		if _skill_ask_need_target <= 0 \
-				and not (_skill_ask_id == 恩典神授技能号 and not _skill_targets.is_empty()
-					and _已选牌含圣命格() and _恩典选展示()):
-			return false
-		# 参数选项带了各自的目标白名单时，按选中那一项（还没选就按并集）点亮 ——
-		# 如吟游诗人【希望赋格曲】的「放置」不含自己、「转移」含自己
-		var 选项白名单: Array = _参数选项目标白名单()
-		if not 选项白名单.is_empty():
-			return 选项白名单.has(player_id)
-		# 服务端给了合法目标就只让这几名玩家亮（如【天使之歌】只能选面前有基础效果的人）
-		return _skill_targets.is_empty() or _skill_targets.has(player_id)
+		return _可选_技能询问(player_id)
 	if _mode == 4:
-		# 「先弹选项」型：还没选用法时不让点目标（如神官【神圣领域】：用法决定打队友还是打敌人、
-		# 目标白名单也不同）。选了某项后 _已选参数 才有值，这时才按它的白名单点亮
-		if _先弹选项 and _已选参数.is_empty():
-			return false
-		if bool(_分配配置().get("仅队友", false)) and not _是队友(player_id):
-			return false
-		# 「目标随牌」的技能（如女武神【英灵召唤】）：已选牌数够阈值时才点亮目标（牌不够时谁都不亮）
-		var 随牌阈值: int = _目标随牌阈值()
-		if 随牌阈值 > 0:
-			return _sel_cards.size() >= 随牌阈值 and (_skill_targets.is_empty() or _skill_targets.has(player_id))
-		# 「目标需法术牌」型（如【沉沦协奏曲】）：弃的牌里还没挑到法术牌时谁都不亮、点不动
-		if _目标需法术牌() and not _已选牌含法术():
-			return false
-		if _skill_need_target <= 0 and _skill_target_max <= 0:
-			return false
-		# 参数选项带了各自的目标白名单时，按它们的并集点亮（如【神圣领域】两种用法打不同的人）
-		var 选项白名单: Array = _参数选项目标白名单()
-		if not 选项白名单.is_empty():
-			return 选项白名单.has(player_id)
-		# 服务端给了合法目标就只让这几名玩家亮（如【魔弹融合】只打右手边最近的对手）
-		return _skill_targets.is_empty() or _skill_targets.has(player_id)
+		return _可选_发动技能(player_id)
 	return false
+
+
+# ---------------- _玩家可选 的分模式判定 ----------------
+# 主函数只做「公共前置（观战者 / 额外攻击响应 / 目标锁死 / 攒应战）+ 按 _mode 分派」，
+# 每种模式的可点口径写在自己的函数里。改某个阶段的目标过滤只动对应的那一个。
+
+## 本地选项步骤（mode 6）：只有【恩典神授】选代价那一步要点头像，白名单＝我方有治疗的角色
+func _可选_本地步骤(player_id: int) -> bool:
+	if _本地选项阶段 != 6:
+		return false
+	return _skill_targets.has(player_id)
+
+
+## 行动阶段（mode 1）：先选牌，再亮目标
+func _可选_行动(player_id: int) -> bool:
+	# 还没选牌时谁都不亮
+	var 牌: GCard = Data.get_card(_sel_cards[0]) if not _sel_cards.is_empty() else null
+	if 牌 == null:
+		return false
+	# 攻击牌只能打敌方（服务端 v_attack 对同队直接拒）；法术按 _do_magic 的分支判
+	if 牌.is_attack():
+		# 暗杀者潜行（横置）期间不能被主动攻击选中（否则点亮后点了会被服务端拒，客户端闪一下没反应）
+		if not (_是敌方(player_id) and not _潜行中(player_id)):
+			return false
+		# 我面前有【挑衅】时，本回合必须且只能主动攻击「放挑衅的那个玩家」（对照卡表【挑衅】；
+		# 服务端 base_v_attack 同样校验，这里把其余敌人置灰，别让玩家白点）
+		var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+		if 我 != null and 我.get_special(GConst.Exclusive.TiaoXin):
+			return player_id == 我.get_special_from(GConst.Exclusive.TiaoXin)
+		# 本回合「下次主动攻击只能打谁」的标记（剑残影 10804）：玩家身上的回合级标记，
+		# 不是这份行动 / 这张牌的规格；服务端 base_v_attack 按同一标记校验。
+		if 我 != null and 我.attack_lock >= 0 and player_id != 我.attack_lock:
+			return false
+		# 额外行动的目标限制（F2）：服务端随行动询问下发 dst_ids 白名单，
+		# 如 10704 的额外攻击只能打手牌数大于你的对手（[-1]＝一个都没有）。
+		var 目标白名单: Array = _行动目标白名单()
+		return 目标白名单.is_empty() or 目标白名单.has(player_id)
+	return _可作法术目标(牌, player_id)
+
+
+## 应答（mode 2）：应战要点反击目标、魔弹要点传递落点
+func _可选_应答(player_id: int) -> bool:
+	var rid: int = int(_pending.get("respond_id", 0))
+	if rid == GConst.RespondType.ReplyAttack:
+		# 应战同样先选牌；选【圣光】抵挡时不需要反击目标
+		return not _sel_cards.is_empty() and not _选中是圣光() and _可作反击目标(player_id)
+	if rid == GConst.RespondType.Bullet:
+		# 魔弹传递：只有真要传下去时才点亮落点（【圣光】抵挡不用目标；
+		# 10603 只选 1 张同系牌时服务端会按「放弃」处理，不能让他点目标就提交）。
+		# 但 10603 选了第一张、还差一张同系时也把落点点亮（让人看得到会传到哪），
+		# 这时点它只提示「再选一张」、不提交（见 _on_player_pressed）
+		if not _魔弹传递目标列表().has(player_id):
+			return false
+		if _魔弹响应提交方式() == GConst.Reattack.Attack:
+			return true
+		return _sel_cards.size() == 1 and _可回魔弹牌(int(_sel_cards[0]))
+	return false
+
+
+## 技能询问（mode 3）
+func _可选_技能询问(player_id: int) -> bool:
+	# 分配型指示器配了「仅队友」时（如神官【神圣契约】），只有队友头像能点（不含自己）
+	if bool(_分配配置().get("仅队友", false)) and not _是队友(player_id):
+		return false
+	# 12 号冒险家新版【冒险者天堂】：目标必须能一次收下整份星石
+	if _提炼全给一人:
+		var 总: int = _提炼宝石 + _提炼水晶
+		return 总 > 0 and _玩家空位(player_id) >= 总
+	# 「目标随牌」的技能（如女武神【英灵召唤】：弃了法术牌才给治疗）：没选够牌时谁都不亮、点不动
+	# （取消牌后 _on_card_clicked 会再问一次 _玩家可选，把已点的目标一并清掉）
+	var 随牌阈值: int = _目标随牌阈值()
+	if 随牌阈值 > 0 and _sel_cards.size() < 随牌阈值:
+		return false
+	# 「目标需法术牌」型（如【沉沦协奏曲】）：弃的牌里还没挑到法术牌时谁都不亮、点不动
+	if _目标需法术牌() and not _已选牌含法术():
+		return false
+	# 需求目标数为 0 时默认谁都不亮；但【恩典神授】弃牌那条允许「顺手指定 1 名对手挨伤害」，
+	# 只有在选中的弃牌是圣类命格、且选了「展示」时才让点（选「不展示」就不打伤害）
+	if _skill_ask_need_target <= 0 \
+			and not (_skill_ask_id == 恩典神授技能号 and not _skill_targets.is_empty()
+				and _已选牌含圣命格() and _恩典选展示()):
+		return false
+	return _可选_按选项与白名单(player_id)
+
+
+## 发动技能（mode 4）
+func _可选_发动技能(player_id: int) -> bool:
+	# 「先弹选项」型：还没选用法时不让点目标（如神官【神圣领域】：用法决定打队友还是打敌人、
+	# 目标白名单也不同）。选了某项后 _已选参数 才有值，这时才按它的白名单点亮
+	if _先弹选项 and _已选参数.is_empty():
+		return false
+	if bool(_分配配置().get("仅队友", false)) and not _是队友(player_id):
+		return false
+	# 「目标随牌」的技能（如女武神【英灵召唤】）：已选牌数够阈值时才点亮目标（牌不够时谁都不亮）
+	var 随牌阈值: int = _目标随牌阈值()
+	if 随牌阈值 > 0:
+		return _sel_cards.size() >= 随牌阈值 and (_skill_targets.is_empty() or _skill_targets.has(player_id))
+	# 「目标需法术牌」型（如【沉沦协奏曲】）：弃的牌里还没挑到法术牌时谁都不亮、点不动
+	if _目标需法术牌() and not _已选牌含法术():
+		return false
+	if _skill_need_target <= 0 and _skill_target_max <= 0:
+		return false
+	return _可选_按选项与白名单(player_id)
+
+
+## 技能询问与发动技能共用的收尾：参数选项带了目标白名单就按它，否则按服务端下发的合法目标
+## （空＝不限制，谁都能点 —— 「一个都不能点」由调用方先挡掉）
+func _可选_按选项与白名单(player_id: int) -> bool:
+	# 参数选项带了各自的目标白名单时，按选中那一项（还没选就按并集）点亮 ——
+	# 如吟游诗人【希望赋格曲】的「放置」不含自己、「转移」含自己、
+	# 神官【神圣领域】两种用法打不同的人
+	var 选项白名单: Array = _参数选项目标白名单()
+	if not 选项白名单.is_empty():
+		return 选项白名单.has(player_id)
+	# 服务端给了合法目标就只让这几名玩家亮（如【天使之歌】只能选面前有基础效果的人、
+	# 【魔弹融合】只打右手边最近的对手）
+	return _skill_targets.is_empty() or _skill_targets.has(player_id)
 
 
 ## 确定/取消/盖牌/放弃行动 的可见与可用（场景里那几个按钮默认都是 visible=false）
