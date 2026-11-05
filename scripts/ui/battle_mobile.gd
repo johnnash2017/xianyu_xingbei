@@ -1169,8 +1169,8 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 		var 刃卡: GCard = Data.get_card(cid)
 		if 刃卡 == null:
 			continue
-		# 状态图标用 assets/textures/battle 下的专用图标，不用卡面图
-		var 图标路径: String = "res://assets/textures/battle/%s.png" % (
+		# 状态图标用 textures/icon 下的专用图标，不用卡面图（card/ 下也有同名的 moRen / yiRen）
+		var 图标路径: String = AssetIndex.image_in(Art.DIR_ICON,
 			"moRen" if 刃卡.id == GConst.噬神者_魔刃卡 else "yiRen")
 		额外状态.append({
 			"name": 刃卡.card_name,

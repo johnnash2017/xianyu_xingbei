@@ -4,12 +4,15 @@ extends Node
 
 ## 选角大立绘（260x363）
 const DIR_ROLE_BIG: String = "res://assets/textures/hero/middle/"
-## 战斗小图标目录（命格图 + 状态图标，搬自参照工程 assets/textures/battle）
+## 战斗小图标目录（命格图，搬自参照工程 assets/textures/battle）
 const DIR_BATTLE: String = "res://assets/textures/battle/"
+## 状态类小图标目录（基础效果 / 独有效果 / 指示物 / 场卡图标）：这些图已从 battle/ 搬到 icon/，
+## 必须按目录取 —— card/ 下也有 moRen / yiRen 这类同名图，走全局 AssetIndex.image() 会被先收到的 card/ 抢走
+const DIR_ICON: String = "res://assets/textures/icon/"
 const DIR_TAP: String = "res://assets/textures/hero/tap/"
 const DIR_SFX: String = "res://assets/media/sfx/"
 
-## 基础效果卡名 → 状态图标名（assets/textures/battle 下的文件名）
+## 基础效果卡名 → 状态图标名（assets/textures/icon 下的文件名）
 const STATUS_ICON: Dictionary = {
 	"圣盾": "dun", "中毒": "du", "虚弱": "xu",
 	"风之封印": "fengFeng", "水之封印": "shuiFeng", "火之封印": "huoFeng",
@@ -87,23 +90,30 @@ func role_fate_pattern_icon(fate_pattern: String) -> Texture2D:
 	return tex("%s%s.png" % [DIR_BATTLE, 图标名])
 
 
-## 状态类小图标（基础效果 / 独有效果 / 指示物）：按名交给 AssetIndex（实际在 assets/textures/battle/）
+## 状态类小图标（基础效果 / 独有效果 / 指示物）：一律从 textures/icon/ 取
 func status_icon(card_name: String) -> Texture2D:
 	if not STATUS_ICON.has(card_name):
 		return null
-	return tex(AssetIndex.image(str(STATUS_ICON[card_name])))
+	return _icon(STATUS_ICON[card_name])
 
 
 func exclusive_icon(idx: int) -> Texture2D:
 	if idx < 0 or idx >= EXCLUSIVE_ICON.size():
 		return null
-	return tex(AssetIndex.image(EXCLUSIVE_ICON[idx]))
+	return _icon(EXCLUSIVE_ICON[idx])
 
 
 func token_icon(slot: int) -> Texture2D:
 	if slot < 0 or slot >= TOKEN_ICON.size():
 		return null
-	return tex(AssetIndex.image(TOKEN_ICON[slot]))
+	return _icon(TOKEN_ICON[slot])
+
+
+## 按名取 textures/icon/ 下的状态小图标（限定目录，避免与 card/ 的同名图混淆）
+func _icon(名: String) -> Texture2D:
+	if 名 == "":
+		return null
+	return tex(AssetIndex.image_in(DIR_ICON, 名))
 
 
 # ============================================================

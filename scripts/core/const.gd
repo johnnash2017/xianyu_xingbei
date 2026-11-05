@@ -902,14 +902,14 @@ const 技能_血染蔷薇水晶: int = 34031
 const 技能_血气屏障: int = 3404
 const 技能_散华轮舞: int = 3406
 ## 血色剑灵【血蔷薇庭院】是挂在角色身上的状态图标（不是横置形态名）
-const 血蔷薇庭院图标: String = "res://assets/textures/battle/XueQiangWeiTingYuan.png"
+const 血蔷薇庭院图标: String = "res://assets/textures/icon/XueQiangWeiTingYuan.png"
 const 血蔷薇庭院说明: String = "所有角色的【治疗】无法用于抵御伤害"
 
 ## 额外回合的加伤状态图标（技能号 → 图标）：状态名称与说明都取技能表（skill_name / skill_desc），
 ## 这里只配图标。目前只有剑之子【剑守誓言】10803 会给额外回合加攻。
 ## 额外回合结束服务端清零，图标随之移除（见 BattlePlayer.to_proto 的 extra_turn_*）。
 const 额外回合状态图标: Dictionary = {
-	10803: "res://assets/textures/battle/JianShouShiYan.png",
+	10803: "res://assets/textures/icon/JianShouShiYan.png",
 }
 
 ## 圣弓（37）：【圣煌辉光炮】/【圣煌余辉】是同一张专属技的正反面，
@@ -917,10 +917,10 @@ const 额外回合状态图标: Dictionary = {
 const 角色_圣弓: int = 37
 const 角色_圣弓Trick: int = 88
 const 圣弓角色号: Array[int] = [角色_圣弓, 角色_圣弓Trick]
-const 圣煌辉光炮图标: String = "res://assets/textures/battle/yuanChu_shengHuangHuiGuangPao.png"
+const 圣煌辉光炮图标: String = "res://assets/textures/icon/yuanChu_shengHuangHuiGuangPao.png"
 const 圣煌手牌目标: int = 4
 const 圣煌辉光炮说明: String = "游戏初始拥有【圣煌辉光炮】；使用后翻面为【圣煌余辉】"
-const 圣煌余辉图标: String = "res://assets/textures/battle/yuanChu_shengHuangYuHui.png"
+const 圣煌余辉图标: String = "res://assets/textures/icon/yuanChu_shengHuangYuHui.png"
 const 圣煌余辉说明: String = "可发动【圣煌余辉】；使用后移除"
 
 ## 「攻击宣告 / 命中阶段响应、会改变本次攻击伤害」的技能：技能号 → 加成规则。
@@ -1208,28 +1208,28 @@ const 额外行动系别: Dictionary = {
 ## - 「计数」：没有上限的计数（如【异端裁决所】的【治疗】点数）也把数字写在图标上，和指示物一致。
 const 场卡显示: Dictionary = {
 	"异端裁决所": {
-		"图标": "res://assets/textures/battle/yiDuanCaiJueSuo.png",
+		"图标": "res://assets/textures/icon/yiDuanCaiJueSuo.png",
 		"说明": "异端裁决所：圣庭检察士的场卡，上面的数字是它拥有的【治疗】点数。",
 		"被动技能": 3905,
 		"计数": true,
 	},
 	"末日预言": {
-		"图标": "res://assets/textures/battle/moRiYuYan.png",
+		"图标": "res://assets/textures/icon/moRiYuYan.png",
 		"说明": "末日预言：异教徒的场卡，上面的数字是【预言】堆张数（上限 6）。",
 		"被动技能": 9504,
 	},
 	"天雷劫火": {
-		"图标": "res://assets/textures/battle/tianLeiJieHuo.png",
+		"图标": "res://assets/textures/icon/tianLeiJieHuo.png",
 		"说明": "天雷劫火：【末日预言】翻面而来，展示时选雷系或火系各发动一项。",
 		"被动技能": 9507,
 	},
 	"地裂波涛": {
-		"图标": "res://assets/textures/battle/diLieBoTao.png",
+		"图标": "res://assets/textures/icon/diLieBoTao.png",
 		"说明": "地裂波涛：【末日预言】翻面而来，展示时选地系或水系各发动一项。",
 		"被动技能": 9508,
 	},
 	"绝界": {
-		"图标": "res://assets/textures/battle/jueJie.png",
+		"图标": "res://assets/textures/icon/jueJie.png",
 		"说明": "绝界：挂在角色面前；其拥有的基础效果无法触发；结界师的【结界】为 0 时移除。",
 	},
 }
@@ -1237,9 +1237,9 @@ const 场卡显示: Dictionary = {
 ## 【律法】（星坠女巫）：编号 → 显示名 / 图标。放在角色面前，不是牌。
 const 律法名: Dictionary = {1: "繁星", 2: "影月", 3: "蚀日"}
 const 律法图标: Dictionary = {
-	1: "res://assets/textures/battle/fanXing.png",
-	2: "res://assets/textures/battle/yingYue.png",
-	3: "res://assets/textures/battle/shiRi.png",
+	1: "res://assets/textures/icon/fanXing.png",
+	2: "res://assets/textures/icon/yingYue.png",
+	3: "res://assets/textures/icon/shiRi.png",
 }
 
 ## 额外行动的指令条提示：键 = 该额外行动的 cause（发起它的技能号）。

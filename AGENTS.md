@@ -814,7 +814,8 @@ Table/Design/设计表.xlsx
 | --- | --- |
 | `assets/textures/hero/` | 角色大立绘、横置形态图、选角用图 |
 | `assets/textures/card/` | 卡面 |
-| `assets/textures/battle/` | 战斗界面素材、命格图标、状态图标 |
+| `assets/textures/battle/` | 战斗界面素材、命格图标、星石 / 卡牌 UI 图标 |
+| `assets/textures/icon/` | 状态类小图标：基础效果 / 独有效果 / 指示物 / 场卡 / 律法 / 圣煌（按名取，见 10.2） |
 | `assets/textures/lobby/` | 登录/大厅/准备室背景、主题 `ui_theme.tres` |
 | `assets/textures/affix/` | 词缀图标 |
 | `assets/media/audio/` | 背景音乐（lobby、battle1~6、win/lose）、角色语音 |
@@ -827,7 +828,9 @@ Table/Design/设计表.xlsx
 
 索引顺序有讲究：**先收本层文件、再进子目录，且两层都按名字排序**。否则编辑器里和导出包里可能取到同名但不同路径的两张图（比如正式卡面和备用图）。
 
-**卡面只认 `assets/textures/card/`**：`GCard.sprite_path()` 走 `AssetIndex.image_in("res://assets/textures/card", 资源名)`，不要用全局 `AssetIndex.image()`。`assets/textures/battle/` 下也有同名的魔刃/异刃状态图标，全局索引会先到先得取错图。
+**卡面只认 `assets/textures/card/`**：`GCard.sprite_path()` 走 `AssetIndex.image_in("res://assets/textures/card", 资源名)`，不要用全局 `AssetIndex.image()`。`assets/textures/icon/` 下也有同名的魔刃/异刃状态图标，全局索引会先到先得取错图。
+
+**状态类小图标只认 `assets/textures/icon/`**：`Art.status_icon()` / `exclusive_icon()` / `token_icon()` 都走 `AssetIndex.image_in(Art.DIR_ICON, 名)`。这批图（基础效果 / 独有效果 / 指示物 / 场卡 / 律法 / 圣煌）已经从 `assets/textures/battle/` 搬到 `icon/`；`battle/` 只留战斗界面素材（b0x_* 等）、命格图标和星石/卡牌 UI。场卡图标在 `GConst.场卡显示` 的「图标」里写完整路径，同样只用 `image_in` 查同名图。
 
 ### 10.3 音频
 

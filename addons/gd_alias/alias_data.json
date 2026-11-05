@@ -41,6 +41,7 @@
 	"res://assets/textures/hero/middle/": "英雄中图",
 	"res://assets/textures/hero/small/": "英雄小图",
 	"res://assets/textures/hero/tap/": "横置形态图",
+	"res://assets/textures/icon/": "图标",
 	"res://assets/textures/lobby/": "大厅贴图",
 	"res://assets/textures/login/": "登录贴图",
 	"res://assets/textures/mark/": "标记",
