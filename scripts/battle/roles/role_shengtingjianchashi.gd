@@ -535,9 +535,10 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 				"card_ids": [cid], "is_real": true,
 			})
-		# 牌按标准弃置进弃牌堆（触发 F6 弃牌前拦截，如噬神者【渗蚀】）
+		# 牌按标准弃置进弃牌堆（触发 F6 弃牌前拦截，如噬神者【渗蚀】）；
+		# 日志带张数 → 客户端播弃牌动画（第 3 参留默认 true）
 		engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": EN_DIAN_SHEN_SHOU})
-		engine._log_discard(player.id, [cid], false)
+		engine._log_discard(player.id, [cid])
 		if 伤害目标 >= 0:
 			engine.push_harm({
 				"src": player.id, "dst": 伤害目标, "point": 1,
