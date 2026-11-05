@@ -871,17 +871,21 @@ powershell -ExecutionPolicy Bypass -File tests\runSelfCheck.ps1
 
 用例覆盖：数据与素材、界面版面、音频、战斗交互、指示器、角色分配、强制弃牌、阴阳师/月女/圣弓等技能边界、协议字段、场景资源完整性，以及 13 名 3★/3.5★ 角色、F1~F9 公共能力（额外行动/指示物/基础效果/伤害转移/额外回合/牌库顶/跨玩家）和客户端角色特性收口。
 
-### 11.1.1 死代码普查（只读，手动跑）
+### 11.1.1 两个只读巡检脚本（手动跑，不进自检）
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tests\查死代码.ps1          # 汇总
+powershell -ExecutionPolicy Bypass -File tests\查死代码.ps1          # 列出全仓没人引用的函数
 powershell -ExecutionPolicy Bypass -File tests\查死代码.ps1 -详细    # 连位置一起看
+
+powershell -ExecutionPolicy Bypass -File tests\查配置键.ps1          # 技能指示器里有没有「配了没人读」的键
+powershell -ExecutionPolicy Bypass -File tests\查配置键.ps1 -详细    # 每个键被多少条技能用到、代码在哪几行读
 ```
 
-- 扫 `scripts/` + `tests/` 的 `.gd` 和 `scenes/` 的 `.tscn`，列出「全仓没人引用」的函数；
-- 引擎回调（`_init` / `_ready` / `_process` …）自动跳过；
-- **删任何函数之前先跑这个脚本**：它会把 `.tscn` 里按名字连的信号也算成引用；
-- 脚本必须存成 **UTF-8 带 BOM**，否则 Windows PowerShell 5.1 把中文标识符读成乱码、直接语法错。
+- **查死代码**：扫 `scripts/` + `tests/` 的 `.gd` 和 `scenes/` 的 `.tscn`，列出「全仓没人引用」的函数；
+  引擎回调（`_init` / `_ready` / `_process` …）自动跳过。**删任何函数之前先跑它**（`.tscn` 里按名字连的信号也算引用）。
+- **查配置键**：抠出 `const 技能指示器` 的 170 条，检查每个键有没有代码在读。
+  这张表的键写错**不会报错**，只是静默不生效，所以值得定期跑。
+- 两个脚本都必须存成 **UTF-8 带 BOM**，否则 Windows PowerShell 5.1 把中文标识符读成乱码、直接语法错。
 
 ### 11.2 端到端联机测试
 
