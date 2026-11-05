@@ -621,6 +621,29 @@ func _检圣庭检察士() -> void:
 	检(not (引擎._await_id == 1 and 引擎._pending_respond_id == 3904),
 		"同一次伤害不应再次触发【净化之术】（否则会循环）")
 
+	# 手里一张法术牌都没有时也照样询问（不能因为没有可用牌就不弹，避免暴露手牌）
+	角色 = _建引擎(39)
+	玩家 = 引擎.p(1)
+	var 非法术牌: int = -1
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and not c.is_magic():
+			非法术牌 = c.id
+			break
+	玩家.hand_cards.clear()
+	if 非法术牌 >= 0:
+		玩家.add_hand_cards([非法术牌])
+	引擎.push(BattleEngine.SHook.new("p_harm_end", {"dst": 1}, []))
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3904,
+		"手里没有法术牌也应询问【净化之术】（等待 %s / 询问 %s）"
+		% [str(引擎._await_id), str(引擎._pending_respond_id)])
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3904, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [],
+	})
+	引擎.run()
+	检(not (引擎._await_id == 1 and 引擎._pending_respond_id == 3904),
+		"没有法术牌时取消后不应再询问")
+
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用
 func _检异教徒() -> void:

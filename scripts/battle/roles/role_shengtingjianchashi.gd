@@ -358,9 +358,8 @@ func p_harm_end(ctx: Dictionary) -> int:
 	# 没有这道闸就会被「摸 1 张牌」补回来的法术牌反复触发（表现是无限循环地弹发动询问）
 	if bool(ctx.get("_净化已处理", false)):
 		return SUCCESS
-	var 法术牌: Array[int] = magic_hand_ids()
-	if 法术牌.is_empty():
-		return SUCCESS
+	# 手里没有法术牌也照样问：让玩家看见这条响应（不可用的牌置灰，只能取消），
+	# 也避免对手从「没弹询问」推断出圣庭检察士手里有没有法术牌（同【式神咒束】的口径）。
 	# 发动＝选 1 张法术牌弃掉，**一次提交**：不再先问「是否发动」再问选牌。
 	# 想放弃点「取消」＝不发动（服务端收到空回复直接跳过）。
 	if not engine.has_reply():
