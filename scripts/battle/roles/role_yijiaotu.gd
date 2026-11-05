@@ -766,8 +766,9 @@ func _翻面为(名: String) -> int:
 	engine.移除场卡(末日预言名)
 	engine.加场卡({"id": 名, "owner": player.id, "attached": -1,
 		"counter": 0, "counter_max": 0, "state": 1})
-	# 翻面本身不播技能发动（用户口径：抽牌/移动预言时才提示）
+	# 翻面本身不播【末日预言】；换成【天雷劫火】/【地裂波涛】后立刻发动它，补一条技能发动播报
 	_在展示 = 名
+	notice_skill(_展示技能号(), [player.id])
 	_展示已用.clear()
 	_展示贪婪 = false
 	_展示对手 = -1
