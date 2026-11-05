@@ -100,6 +100,21 @@ func _等到目标询问() -> bool:
 	return false
 
 
+## 最近一条指定技能号的技能询问命令（看 option_enabled / card_max 等）
+func _最近命令(技能号: int) -> Dictionary:
+	for i: int in range(发送记录.size() - 1, -1, -1):
+		var r: Dictionary = 发送记录[i]
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 命令: Array = (r["data"] as Dictionary).get("commands", [])
+		if 命令.is_empty():
+			continue
+		var c: Dictionary = 命令[0]
+		if int(c.get("respond_id", 0)) == 技能号:
+			return c
+	return {}
+
+
 ## 最近一条指定技能号的技能询问文案（ask_text）
 func _最近询问文案(技能号: int) -> String:
 	for i: int in range(发送记录.size() - 1, -1, -1):
@@ -311,18 +326,24 @@ func _检翻面天雷() -> void:
 	检(引擎.有场卡("天雷劫火") and not 引擎.有场卡("末日预言"),
 		"翻面后场卡应变成【天雷劫火】")
 	检(引擎._await_id == 1, "能量为 0 时应跳过贪婪、直接问系别")
-	# 系别选项带系别标色 + 「选中后本系效果」提示（完整说明在没选时显示）
-	var 系别选项: Array = 角色.call("_系别选项", [GConst.CardElement.Thunder, GConst.CardElement.Fire])
-	检(系别选项.size() == 2
+	# 四系选项板：本被动（天雷）的雷/火可发，另一个被动（地裂）的地/水置灰；
+	# 选项带系别标色 + 「选中后本系效果」提示（完整说明在没选时显示）
+	var 系别选项: Array = 角色.call("_展示系别选项")
+	检(系别选项.size() == 4
 		and (系别选项[0] as Dictionary).get("elements", []) == [GConst.CardElement.Thunder]
 		and not str((系别选项[0] as Dictionary).get("提示", "")).is_empty()
-		and str((系别选项[1] as Dictionary).get("提示", "")).contains("火系"),
-		"系别选项应带 elements 标色和本系效果提示：%s" % str(系别选项))
+		and str((系别选项[1] as Dictionary).get("提示", "")).contains("火系")
+		and (系别选项[0] as Dictionary).get("enabled", false)
+		and (系别选项[1] as Dictionary).get("enabled", false)
+		and not (系别选项[2] as Dictionary).get("enabled", true)
+		and not (系别选项[3] as Dictionary).get("enabled", true),
+		"四系选项板应只开雷/火、置灰地/水，并带系别标色与效果提示：%s" % str(系别选项))
 	# 目标头像伤害提示：伤害＝弃牌数+1，选 0 张也显示 1
 	var 指示: Dictionary = GConst.技能指示器.get(9507, {})
-	检(int(指示.get("每牌", 0)) == 1 and int(指示.get("偏移", 0)) == 1
+	检(str(指示.get("文案", "")) == "%d 法术伤害"
+		and int(指示.get("每牌", 0)) == 1 and int(指示.get("偏移", 0)) == 1
 		and bool(指示.get("空选也算", false)),
-		"天雷劫火应配「每牌 1 + 偏移 1、空选也算」的头像伤害提示：%s" % str(指示))
+		"天雷劫火应配「%%d 法术伤害（不写点）、每牌 1 + 偏移 1、空选也算」：%s" % str(指示))
 	var 提示窗: Control = load("res://scripts/ui/battle_mobile.gd").new()
 	检(int(提示窗.call("_提示数值", 指示, 0)) == 1, "没选牌时头像伤害应显示 1")
 	提示窗._sel_cards = [1, 2]
@@ -375,15 +396,28 @@ func _检贪婪两项() -> void:
 	_应答([1])          # 发动贪婪
 	引擎.run()
 	检(玩家1.get_energy() == 0, "【贪婪】应消耗 1 点能量")
-	检(引擎._await_id == 1, "贪婪应再问两项顺序（等待 %s）" % str(引擎._await_id))
-	_应答([1])          # 先雷后火
-	# 两项都不弃牌（手里没有该系牌）：各造成 X+1 = 1 点法术伤害。
-	# 中间可能插入目标方的「治疗抵挡」询问，必须先答掉、等到真正问目标时才提交。
-	for i: int in range(2):
-		检(_等到目标询问(), "第 %d 项应问目标对手（等待 %s / 号 %s）"
-			% [i + 1, str(引擎._await_id), str(引擎._pending_respond_id)])
-		_应答([], [2])
-		_本项收尾()
+	# 不再先问「先后顺序」：直接进四系选项板；天雷的两个系可发，地裂的两个系置灰
+	var 板1: Dictionary = _最近命令(9507)
+	检((板1.get("option_enabled", []) as Array) == [true, true, false, false],
+		"贪婪后应直接给四系选项板（雷/火可用、地/水置灰）：%s" % str(板1.get("option_enabled", [])))
+	# 第一项：雷系。选中后进合并询问（弃牌+目标），本次 0 张牌 → 1 点伤害
+	_应答([GConst.CardElement.Thunder])
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9507,
+		"选中雷系后应进「弃牌+目标」合并询问")
+	_应答([], [2])
+	引擎.run()
+	_收伤害()
+	# 回到板子：雷已用，只剩火
+	var 板2: Dictionary = _最近命令(9507)
+	检((板2.get("option_enabled", []) as Array) == [false, true, false, false],
+		"发完雷系后应只剩火系可用：%s" % str(板2.get("option_enabled", [])))
+	_应答([GConst.CardElement.Fire])
+	引擎.run()
+	_应答([], [2])
+	引擎.run()
+	_收伤害()
+	检(引擎._await_id < 0, "两项都发完后不应再问（等待 %s）" % str(引擎._await_id))
 	检(玩家2.hand_cards.size() == 敌手牌前 + 2,
 		"两项各 1 点伤害，目标应摸 2 张：%d → %d" % [敌手牌前, 玩家2.hand_cards.size()])
 	检(引擎.有场卡("天雷劫火"), "两项结算完后场卡仍在")

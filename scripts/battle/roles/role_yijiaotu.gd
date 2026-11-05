@@ -64,8 +64,8 @@ var _展示系: int = 0
 var _展示X: int = 0
 var _展示对手: int = -1
 ## 展示时这一轮要依次结算的系别（贪婪＝两项都发动，顺序由玩家选）
-var _展示模式: Array[int] = []
-var _展示序号: int = 0
+## 贪婪时已经发动过的系别（选项板上置灰）
+var _展示已用: Array[int] = []
 var _展示贪婪: bool = false
 
 
@@ -380,67 +380,42 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				# 说明交给默认的技能说明（提示条显示技能表里【贪婪】的说明）
 			return WAIT
 		_展示贪婪 = take_skill_reply()
+		_展示已用.clear()
 		if _展示贪婪:
 			player.remove_energy(1)
 			notice_skill(TAN_LAN, [player.id])
-			_展示步 = 11
-		else:
-			_展示步 = 1
+		# 贪婪不再先问「先雷后火 / 先火后雷」：直接进四系选项板，
+		# 本被动两个系可发、另一个被动两个系置灰；用一个灰一个，直到用完。
+		_展示步 = 1
 		return p_yi_jiao_tu_ask(ctx)
-	# 展示时（贪婪）：选两项的发动顺序
-	if _展示步 == 11:
-		var 序表: Array[int] = _展示系别()
-		if not engine.has_reply():
-			询问(player.id, TAN_LAN, 0, 0, GConst.CardSource.Hand,
-				[{"value": 1, "label": GConst.按钮原文(TAN_LAN, 0) % [GConst.element_to_chinese(序表[0]), GConst.element_to_chinese(序表[1])]},
-				 {"value": 2, "label": GConst.按钮原文(TAN_LAN, 0) % [GConst.element_to_chinese(序表[1]), GConst.element_to_chinese(序表[0])]}],
-				0, "", [], false,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(TAN_LAN, 1))
-			return WAIT
-		var rq: Dictionary = take_skill_reply_full()
-		var aq: Array = rq.get("args", [])
-		var 先: int = int(aq[0]) if not aq.is_empty() else 1
-		# 类型化数组不能直接赋一个无类型字面量（运行时会报 Array → Array[int]），逐项 append
-		_展示模式.clear()
-		if 先 == 2:
-			_展示模式.append(序表[1])
-			_展示模式.append(序表[0])
-		else:
-			_展示模式.append(序表[0])
-			_展示模式.append(序表[1])
-		_展示序号 = 0
-		_展示步 = 3
-		return p_yi_jiao_tu_ask(ctx)
-	# 展示时（不发动贪婪）：选 1 种系别发动
+	# 展示时：四系选项板（本被动的两项可发；贪婪时已用掉的置灰；另一个被动的两项始终置灰）
 	if _展示步 == 1:
-		var 系表: Array[int] = _展示系别()
 		if not engine.has_reply():
 			# 不写 ask_text：没选系别前提示条显示技能完整说明；
 			# 每个系别选项自带「该系效果」文案（option_prompts），选中后替换提示条
-			询问(player.id, _展示技能号(), 0, 0, GConst.CardSource.Hand, _系别选项(系表), 0, "", [], false,
+			询问(player.id, _展示技能号(), 0, 0, GConst.CardSource.Hand, _展示系别选项(), 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		var args2: Array = r2.get("args", [])
-		var 选系: int = int(args2[0]) if not args2.is_empty() else int(系表[0])
-		if not 系表.has(选系):
-			选系 = int(系表[0])
-		_展示模式.clear()
-		_展示模式.append(选系)
-		_展示序号 = 0
+		var 选系: int = int(args2[0]) if not args2.is_empty() else -1
+		if not _展示可发动(选系):
+			# 超时 / 提交了置灰项：取第一个还能发的系
+			for 系2: int in _展示主动系():
+				if _展示可发动(系2):
+					选系 = 系2
+					break
+		if not _展示可发动(选系):
+			# 一个能发的都没有（理论上不会发生）：直接收尾
+			_展示步 = 0
+			_展示已用.clear()
+			_翻面步 = 0
+			return SUCCESS
+		_展示系 = 选系
 		_展示步 = 3
 		return p_yi_jiao_tu_ask(ctx)
 	# 展示时（每一项）：一次询问里同时选「弃 X 张该系牌」与「目标对手」，X＝实际选中的张数
 	if _展示步 == 3:
-		if _展示序号 >= _展示模式.size():
-			# 本次展示全部结算完：清状态、清翻面标记（放逐放进新的【末日预言】后还能再翻）
-			_展示步 = 0
-			_展示模式.clear()
-			_展示对手 = -1
-			_翻面步 = 0
-			return SUCCESS
-		_展示系 = int(_展示模式[_展示序号])
 		var 同系: Array[int] = hand_ids_where(
 			func(_cid: int, c: GCard) -> bool: return c.element_enum() == _展示系)
 		var 展示系名: String = GConst.element_to_chinese(_展示系)
@@ -788,8 +763,7 @@ func _翻面为(名: String) -> int:
 		"counter": 0, "counter_max": 0, "state": 1})
 	notice_skill(MO_RI_YU_YAN, [player.id])
 	_在展示 = 名
-	_展示模式.clear()
-	_展示序号 = 0
+	_展示已用.clear()
 	_展示贪婪 = false
 	_展示对手 = -1
 	# 先把「是否发动贪婪」问掉，再决定发动一项还是两项（贪婪＝两项都发动、顺序自定）
@@ -809,18 +783,22 @@ func _检查预言取空() -> void:
 	engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
 
 
-## 系别枚举 → 询问选项（ask_skill 只收 {value,label} 字典，纯数字数组会在运行时出错）
-func _系别选项(系表: Array) -> Array:
+## 四系选项板：本被动的两个系可发（贪婪时用过的置灰），另一个被动的两个系始终置灰。
+## 文案取各自技能表「按钮」列（9507 的雷/火、9508 的地/水），并带系别标色与「该系效果」提示。
+func _展示系别选项() -> Array:
 	var out: Array = []
 	var 效果模板: String = GConst.文本("提示_展示_系别效果")
-	for 系: Variant in 系表:
-		var 系名: String = GConst.element_to_chinese(int(系))
+	for 系: int in [GConst.CardElement.Thunder, GConst.CardElement.Fire,
+			GConst.CardElement.Earth, GConst.CardElement.Water]:
+		var 系名: String = GConst.element_to_chinese(系)
+		var 技能号: int = TIAN_LEI_JIE_HUO if 系 in [GConst.CardElement.Thunder, GConst.CardElement.Fire] \
+			else DI_LIE_BO_TAO
 		out.append({
-			"value": int(系),
-			"label": GConst.按钮原文(_展示技能号(), 0) % 系名,
-			# 选项文字里的「X系」按系别标色
-			"elements": [int(系)],
-			# 选中该项后提示条写这个系别的效果（完整技能说明只在没选时显示）
+			"value": 系,
+			"label": GConst.按钮原文(技能号, 0) % 系名,
+			"elements": [系],
+			"enabled": _展示可发动(系),
+			"skill_id": 技能号,
 			"提示": GConst.填文本(效果模板, {"s": 系名}),
 		})
 	return out
@@ -829,6 +807,20 @@ func _系别选项(系表: Array) -> Array:
 ## 当前展示的这张牌该用哪个技能号（天雷劫火 9507 / 地裂波涛 9508）：询问与伤害来源都用它
 func _展示技能号() -> int:
 	return DI_LIE_BO_TAO if _在展示 == 地裂波涛名 else TIAN_LEI_JIE_HUO
+
+
+## 当前被动自己的两个系
+func _展示主动系() -> Array[int]:
+	return _展示系别()
+
+
+## 这一系现在能不能发动：必须是本被动的两个系之一；贪婪时已经发过的不能再发
+func _展示可发动(系: int) -> bool:
+	if not _展示主动系().has(系):
+		return false
+	if _展示贪婪 and _展示已用.has(系):
+		return false
+	return true
 
 
 ## 展示流程里「每一项」的伤害：目标对手弃完牌后造成 X+1 点法术伤害③
@@ -847,9 +839,19 @@ func _展示本项伤害() -> int:
 ## 一项结算完：下一项（贪婪）或收尾（清翻面标记，放逐放进新【末日预言】后还能再翻）
 func _展示本项结束() -> int:
 	_展示对手 = -1
-	_展示序号 += 1
-	_展示步 = 3
-	return p_yi_jiao_tu_ask({"player": player.id})
+	if _展示贪婪:
+		if not _展示已用.has(_展示系):
+			_展示已用.append(_展示系)
+		# 还有没发的主动系 → 回四系选项板（用过的置灰）
+		for 系: int in _展示主动系():
+			if not _展示已用.has(系):
+				_展示步 = 1
+				return p_yi_jiao_tu_ask({"player": player.id})
+	# 非贪婪 / 两项都发完：收尾
+	_展示步 = 0
+	_展示已用.clear()
+	_翻面步 = 0
+	return SUCCESS
 
 
 ## 【天雷劫火】/【地裂波涛】的两种系别
