@@ -381,6 +381,44 @@ func _检圣庭检察士() -> void:
 	检(引擎.p(3).cross_num == 0, "代价应从指定的 3 号扣掉 2 点治疗：%d" % 引擎.p(3).cross_num)
 	检(引擎.p(3).gem == 2, "星石应交给 3 号队友：%d" % 引擎.p(3).gem)
 
+	# ---- 客户端上下游：3903 的指示器只服务「提炼分星石」那一步 ----
+	# （以前同一个技能号后面的「弃 1 张牌」「选目标打伤害」也被当成分配型：确定永远灰着、
+	#   对手头像被「仅队友」挡住，两处都是实战报出来的）
+	var 窗: Control = load("res://scripts/ui/battle_mobile.gd").new()
+	窗.set("_mode", 3)
+	窗.set("_skill_ask_id", 3903)
+	窗.set("_提炼阶段", 4)
+	检(not (窗.call("_分配配置") as Dictionary).is_empty(),
+		"提炼分星石那一步应认 3903 的分配规则")
+	窗.set("_提炼阶段", 0)
+	检((窗.call("_分配配置") as Dictionary).is_empty(),
+		"3903 的弃牌 / 伤害询问不能被当成分配型")
+	# 弃牌询问：选了 1 张牌就能点「确定」
+	var 一手牌: Array[int] = [1]
+	var 空目标: Array[int] = []
+	var 对手表: Array[int] = [2]
+	var 队友表: Array[int] = [3]
+	窗.set("_是技能询问", true)
+	窗.set("_skill_ask_need_card", 1)
+	窗.set("_skill_ask_need_target", 0)
+	窗.set("_sel_cards", 一手牌)
+	窗.set("_本地选项阶段", 0)
+	检(not bool(窗.call("_确定不可用")), "弃 1 张牌后「确定」应可用")
+	# 伤害目标询问：服务端给的白名单里的对手应可点（不能被「仅队友」挡住）
+	窗.set("_skill_ask_need_target", 1)
+	窗.set("_skill_targets", 对手表)
+	检(bool(窗.call("_玩家可选", 2)), "伤害目标询问里白名单内的对手应可点")
+	# 选代价那一步（mode 6）：换了分配规则 + 白名单后才让点头像
+	窗.set("_mode", 6)
+	窗.set("_分配配置覆盖", {})
+	窗.set("_skill_targets", 空目标)
+	检(not bool(窗.call("_玩家可选", 3)), "没换分配规则时本地选项步骤不该让点头像")
+	窗.set("_分配配置覆盖", {"每次": 1, "上限": 2})
+	窗.set("_skill_targets", 队友表)
+	检(bool(窗.call("_玩家可选", 3)), "选代价目标时白名单内的我方角色应可点")
+	检(not bool(窗.call("_玩家可选", 2)), "选代价目标时白名单外的角色不可点")
+	窗.free()
+
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用
 func _检异教徒() -> void:

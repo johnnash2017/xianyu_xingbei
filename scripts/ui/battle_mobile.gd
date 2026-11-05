@@ -7297,6 +7297,11 @@ func _分配配置() -> Dictionary:
 	# 本地某一步临时换了分配规则时（【恩典神授】的代价目标）优先用它
 	if not _分配配置覆盖.is_empty():
 		return _分配配置覆盖
+	# 【冒险者天堂】/【恩典神授】（1202 / 8902 / 3903）的指示器只服务「提炼分星石」那一步（_提炼阶段 == 4）；
+	# 同一个技能号后面还有「弃 1 张牌」「选目标造成伤害」这类普通询问，
+	# 别让它们也被当成分配型（否则确定键一直灰、敌人头像也点不了）
+	if _是提炼转交技能(_skill_ask_id) and _提炼阶段 != 4:
+		return {}
 	var 配置: Dictionary = _指示器配置()
 	return 配置 if int(配置.get("每次", 0)) > 0 else {}
 
@@ -10054,6 +10059,12 @@ func _玩家可选(player_id: int) -> bool:
 	# 攒应战（式神咒束 / 阴阳转换）同一步选目标：牌和目标的先后不限
 	if _攒应战选应战:
 		return _攒应战可反击目标(player_id)
+	if _mode == 6:
+		# 本地选项步骤里只有【恩典神授】选代价那一步要点头像：
+		# 按分配通道换的临时规则（_分配配置覆盖）与我方有治疗的白名单点亮
+		if _分配配置覆盖.is_empty():
+			return false
+		return _skill_targets.is_empty() or _skill_targets.has(player_id)
 	if _mode == 1:
 		# 先选牌、再亮目标：还没选牌时谁都不亮
 		var 牌: GCard = Data.get_card(_sel_cards[0]) if not _sel_cards.is_empty() else null
