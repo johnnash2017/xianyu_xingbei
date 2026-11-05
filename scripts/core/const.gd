@@ -325,12 +325,12 @@ enum CardSource {
 ## 技能询问的选牌规则（ask_skill 的 card_rule 取值；"" ＝ 不限）。
 ## 角色脚本下发、客户端 `_符合选牌规则` 消费。以前两边都写裸字符串，
 ## 拼错一个字母就是「静默不生效」——规则不报错，只是界面不挡、服务端也不拦。
-const 选牌规则_同系: String = "same"                 ## 必须与已选牌同系（法系）
-const 选牌规则_互异系: String = "diff"               ## 必须与已选牌互异系（魔道法典）
-const 选牌规则_法术牌: String = "magic"              ## 只能选法术牌
-const 选牌规则_法术牌或盖牌: String = "magic_cover"  ## 手牌须法术牌、盖牌随意（元素射击）
-const 选牌规则_暗之障壁: String = "an_zhi"           ## 所选牌须同属「法术 / 雷系」同一类（暗之障壁）
-const 选牌规则_同命格: String = "same_fate_pattern"  ## 必须与已选牌同命格（式神降临）
+const 选牌规则_同系: String = "same"                 # 必须与已选牌同系
+const 选牌规则_互异系: String = "diff"               # 必须与已选牌互异系（魔道法典）
+const 选牌规则_法术牌: String = "magic"              # 只能选法术牌
+const 选牌规则_法术牌或盖牌: String = "magic_cover"  # 手牌须法术牌、盖牌随意（元素射击）
+const 选牌规则_暗之障壁: String = "an_zhi"           # 所选牌须同属「法术 / 雷系」同一类（暗之障壁）
+const 选牌规则_同命格: String = "same_fate_pattern"  # 必须与已选牌同命格（式神降临）
 
 # ============================================================
 # 错误码（GrailError）
