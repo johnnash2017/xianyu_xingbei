@@ -126,7 +126,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 		"target_max": 1,
 		"targets": 友方,
 		"enabled": player.cross_num > 0 and not 友方.is_empty(),
-		"说明": "摸 1 张牌【强制】，移除 1【治疗】，你 +1【信仰】，目标队友 +1【治疗】。",
+		"说明": "【圣光爆裂】：摸 1 张牌【强制】，移除 1【治疗】，你 +1【信仰】，目标队友 +1【治疗】。",
 	})
 	var 群体目标: Array[int] = _sheng_guang_mode2_targets(1)
 	out.append({
@@ -137,7 +137,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 		"target_max": 0,
 		"targets": [],
 		"enabled": player.cross_num > 0 and not 群体目标.is_empty(),
-		"说明": "移除 X 治疗，弃 X 张牌，对最多 X 名手牌数不大于（你的手牌数 - X）的对手各造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数。X 在下一步选择。",
+		"说明": "【圣光爆裂】：移除 X 治疗，弃 X 张牌，对最多 X 名手牌数不大于（你的手牌数 - X）的对手各造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数。X 在下一步选择。",
 	})
 	return out
 

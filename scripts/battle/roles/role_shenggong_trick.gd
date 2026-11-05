@@ -127,7 +127,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 		"targets": 单体目标,
 		"enabled": player.cross_num > 0 and not 单体目标.is_empty(),
 		# 单体分支先摸 1 张再判定伤害；摸牌受手牌上限约束，目标手牌须严格小于摸牌后的手牌数。
-		"说明": "摸 1 牌，对 1 名手牌数小于 %d 的对手造成 2 点攻击伤害，你 +1【信仰】。" % _sheng_guang_single_hand_limit(),
+		"说明": "【圣光爆裂】：摸 1 牌，对 1 名手牌数小于 %d 的对手造成 2 点攻击伤害，你 +1【信仰】。" % _sheng_guang_single_hand_limit(),
 	})
 	var 群体目标: Array[int] = _sheng_guang_mode2_targets(1)
 	out.append({
@@ -138,7 +138,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 		"target_max": 0,
 		"targets": [],
 		"enabled": player.cross_num > 0 and not 群体目标.is_empty(),
-		"说明": "移除 X 治疗，弃 X 张牌，对最多 X 名手牌数小于（你的手牌数 - X + 1）的对手各造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数，你获得 X 点【信仰】。X 在下一步选择。",
+		"说明": "【圣光爆裂】：移除 X 治疗，弃 X 张牌，对最多 X 名手牌数小于（你的手牌数 - X + 1）的对手各造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数，你获得 X 点【信仰】。X 在下一步选择。",
 	})
 	return out
 

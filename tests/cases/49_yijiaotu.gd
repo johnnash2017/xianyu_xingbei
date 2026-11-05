@@ -355,7 +355,7 @@ func _检翻面天雷() -> void:
 	var 系别选项: Array = 角色.call("_展示系别选项")
 	检(系别选项.size() == 4
 		and (系别选项[0] as Dictionary).get("elements", []) == [GConst.CardElement.Thunder]
-		and not str((系别选项[0] as Dictionary).get("提示", "")).is_empty()
+		and str((系别选项[0] as Dictionary).get("提示", "")).begins_with("【天雷劫火】：")
 		and str((系别选项[1] as Dictionary).get("提示", "")).contains("火系")
 		and (系别选项[0] as Dictionary).get("enabled", false)
 		and (系别选项[1] as Dictionary).get("enabled", false)

@@ -893,7 +893,7 @@ func _展示系别选项() -> Array:
 			"enabled": _展示可发动(系),
 			"skill_id": 技能号,
 			"cards": 牌白,
-			"提示": GConst.填文本(效果模板, {"s": 系名}),
+			"提示": "【%s】：%s" % [_在展示, GConst.填文本(效果模板, {"s": 系名})],
 		})
 	return out
 
