@@ -2561,6 +2561,8 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var 选项技能组: Array = []
 	var 选项牌白: Array = []
 	var 有选项目标: bool = false
+	# 阶段 5.2：同一份选项再按「一个选项一条 Option 消息」攒一份（旧端会跳过这个字段号）
+	var 嵌套选项: Array = []
 	for o: Dictionary in options:
 		args.append(int(o.get("value", 0)))
 		notes.append(str(o.get("label", "")))
@@ -2581,6 +2583,28 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		选项目标.append({"ids": 目标})
 		if not 目标.is_empty():
 			有选项目标 = true
+		# 与上面那些平行数组取自同一份 `o`，保证两边永远同值（阶段 5.3 客户端会改读这一份）
+		嵌套选项.append({
+			"value": int(o.get("value", 0)),
+			"label": str(o.get("label", "")),
+			"enabled": bool(o.get("enabled", true)),
+			"skill_id": int(o.get("skill_id", 0)),
+			"need_card": int(o.get("need_card", 0)),
+			"need_target": int(o.get("need_target", 0)),
+			"target_max": int(o.get("target_max", 0)),
+			# -1＝这一项不对应牌（0 是合法牌号：卡表#0 圣盾）
+			"card_id": int(o.get("card_id", -1)),
+			# -1＝沿用技能本体的选牌来源
+			"card_source": int(o.get("card_source", -1)),
+			"cover_need": int(o.get("cover_need", 0)),
+			"targets": {"ids": 目标},
+			"cards": {"ids": _牌面表(o.get("cards", []))},
+			"elements": {"ids": o.get("elements", [])},
+			"preview_cards": {"ids": _牌面表(o.get("preview_cards", []))},
+			"skill_group": {"ids": o.get("技能组", [])},
+			"prompt": str(o.get("提示", "")),
+			"no_prompt_change": bool(o.get("no_prompt_change", false)),
+		})
 	var cmd: Dictionary = {
 		"respond_id": skill_id,
 		"src_id": pid,
@@ -2651,6 +2675,11 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 				有预览 = true
 		if 有预览:
 			cmd["option_preview_cards"] = 选项预览牌
+	# 阶段 5.2：整份选项再按「一个选项一条 Option 消息」发一遍（见 proto_schema 的 Option）。
+	# 客户端目前不读它、旧端也会按不认识的字段号跳过，所以发它不改变任何现有行为；
+	# 5.3 让客户端改读这份之后，上面那些平行数组才会退役。
+	if not 嵌套选项.is_empty():
+		cmd["options"] = 嵌套选项
 	# 默认替玩家选中哪一项（0 基下标；行动结束响应用）：不传＝不预选。
 	# 客户端据此在选项摆出来的同时先点亮第一项，玩家不用先点一次选项才能按「确定」。
 	if default_option >= 0:
