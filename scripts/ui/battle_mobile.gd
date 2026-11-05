@@ -3835,10 +3835,8 @@ func _本地选择额外攻击(_技能号: int, uid: int, _cause: int, 牌白: A
 		if not (钮 is 技能按钮) or not 钮.has_meta(元数据_行动技能类型):
 			continue
 		var 类: int = int(钮.get_meta(元数据_行动技能类型))
-		var 可用: bool = bool(钮.get_meta(元数据_行动服务端可用)) and GConst.放行动作(类, 放行)
 		var 固定系: int = int(钮.get_meta(元数据_行动技能系别)) if 钮.has_meta(元数据_行动技能系别) else 0
-		if 可用 and 固定系 > 0 and 选中系别 > 0 and 固定系 != 选中系别:
-			可用 = false
+		var 可用: bool = _按钮可用核心(bool(钮.get_meta(元数据_行动服务端可用)), 类, 固定系, 放行, 选中系别)
 		(钮 as 技能按钮).设置选项可用(可用)
 	for 项: Dictionary in _额外攻击切换项:
 		var b: Variant = 项.get("按钮")
@@ -4803,11 +4801,19 @@ func _切换后复检手牌(可取消选中: bool = true) -> void:
 ## 建按钮（_构建技能按钮）与原地刷新（_静默刷新技能可用）共用这一条 ——
 ## 以前两处各算一遍，加一条限制就会漏改一边。
 func _技能按钮可用(命令: Dictionary, 阶段系别: int) -> bool:
-	if not bool(命令.get("enabled", true)):
+	return _按钮可用核心(bool(命令.get("enabled", true)),
+		int(命令.get("respond_id", 0)), int(命令.get("skill_element", 0)),
+		_行动允许, 阶段系别)
+
+
+## 上面那条规则的唯一实现。切换额外行动时按钮上没有「命令」可读，只有之前存下的元数据，
+## 所以把三个输入（服务端可用 / 技能要求的动作种类 / 固定系别）与两个阶段值拆成参数，
+## 三处（建按钮、原地刷新、切换额外行动）都调它。
+func _按钮可用核心(服务端可用: bool, 技能类型: int, 固定系: int, 放行: int, 阶段系别: int) -> bool:
+	if not 服务端可用:
 		return false
-	if not GConst.放行动作(int(命令.get("respond_id", 0)), _行动允许):
+	if not GConst.放行动作(技能类型, 放行):
 		return false
-	var 固定系: int = int(命令.get("skill_element", 0))
 	return not (固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别)
 
 
