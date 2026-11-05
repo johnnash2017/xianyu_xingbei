@@ -4372,6 +4372,10 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		_刷新提炼能量预览()
 	elif _提炼阶段 == 4:
 		_应用提炼组合()
+	# 【恩典神授】弃牌那条：切到「不展示」后，之前点过的伤害目标作废
+	# （服务端也不会造成伤害；头像高亮跟着收掉）
+	if _是技能询问 and _skill_ask_id == 恩典神授技能号 and not _恩典选展示():
+		_sel_players.clear()
 	_刷新二级栏提示()
 	_刷新交互()
 
@@ -6398,16 +6402,21 @@ func _自锁技能头像提示() -> Dictionary:
 	return {Logic.my_player_id: 文}
 
 
+## 【恩典神授】弃牌那条：是否选了「展示」（默认展示；选「不展示」就只弃牌、不造成伤害，也不让点目标）
+func _恩典选展示() -> bool:
+	return _已选参数.is_empty() or int(_已选参数[0]) == 1
+
+
 ## 【恩典神授】弃 1 张牌那条询问：顺手点中的对手头像上写「1 法术伤害」
-## （弃到圣类命格才展示并造成；没点目标就不写）
+## （弃到圣类命格、且选了「展示」才写；没点目标就不写）
 func _恩典弃牌头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 3 or _skill_ask_id != 恩典神授技能号:
 		return out
 	if not _是技能询问 or _skill_ask_need_card != 1 or _提炼阶段 == 4:
 		return out
-	# 只有选中的弃牌是圣类命格（会展示并造成伤害）才写
-	if not _已选牌含圣命格():
+	# 只有选中的弃牌是圣类命格、且选的是「展示」才写
+	if not _已选牌含圣命格() or not _恩典选展示():
 		return out
 	for pid: int in _sel_players:
 		out[pid] = "1 法术伤害"
@@ -10193,10 +10202,10 @@ func _玩家可选(player_id: int) -> bool:
 		if _目标需法术牌() and not _已选牌含法术():
 			return false
 		# 需求目标数为 0 时默认谁都不亮；但【恩典神授】弃牌那条允许「顺手指定 1 名对手挨伤害」，
-		# 只有在选中的弃牌是圣类命格（会展示并造成伤害）时才让点
+		# 只有在选中的弃牌是圣类命格、且选了「展示」时才让点（选「不展示」就不打伤害）
 		if _skill_ask_need_target <= 0 \
 				and not (_skill_ask_id == 恩典神授技能号 and not _skill_targets.is_empty()
-					and _已选牌含圣命格()):
+					and _已选牌含圣命格() and _恩典选展示()):
 			return false
 		# 参数选项带了各自的目标白名单时，按选中那一项（还没选就按并集）点亮 ——
 		# 如吟游诗人【希望赋格曲】的「放置」不含自己、「转移」含自己

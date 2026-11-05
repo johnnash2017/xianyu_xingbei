@@ -499,25 +499,33 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		_鞭策目标 = []
 		return SUCCESS
 	# 恩典神授：弃 1 张牌；圣命格可【展示】换 1 点法术伤害。
-	# 弃牌和「法术伤害打谁」在同一条询问里选（目标可选：不选＝不展示、不造成伤害）
+	# 弃牌 + 「展示 / 不展示」+「法术伤害打谁」都在同一条询问里选：展示默认选上，
+	# 选「不展示」就只弃牌、不造成伤害（目标可选，不选也不造成伤害）
 	if _恩典步 == 4:
 		if not engine.has_reply():
-			询问(player.id, EN_DIAN_SHEN_SHOU, 1, 0, GConst.CardSource.Hand, [], 1, "", [], true,
+			var 展示选项: Array = [
+				{"value": 1, "text": GConst.按钮原文(EN_DIAN_SHEN_SHOU, 4)},
+				{"value": 0, "text": GConst.按钮原文(EN_DIAN_SHEN_SHOU, 5)},
+			]
+			询问(player.id, EN_DIAN_SHEN_SHOU, 1, 0, GConst.CardSource.Hand, 展示选项, 1, "", [], true,
 				0, player.id, enemy_ids(), 1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(EN_DIAN_SHEN_SHOU, 3))
+				GConst.提示原文(EN_DIAN_SHEN_SHOU, 3), 0)
 			return WAIT
 		var r5: Dictionary = take_skill_reply_full()
 		var cards5: Array = r5.get("card_ids", [])
 		var 目标5: Array = r5.get("dst_ids", [])
+		var 参数5: Array = r5.get("args", [])
 		_恩典步 = 0
 		if cards5.is_empty() or not player.有手牌(int(cards5[0])):
 			return SUCCESS
 		var cid: int = int(cards5[0])
 		var 圣: bool = Data.get_card(cid) != null \
 			and Data.get_card(cid).fate_pattern_enum() == GConst.FatePattern.Holy
-		# 只有弃的是圣类命格、且玩家点了 1 名对手，才展示并造成 1 点法术伤害
+		# 展示：回复里选的那一项（1＝展示 / 0＝不展示）；没带参数按默认「展示」处理
+		var 展示: bool = 参数5.is_empty() or int(参数5[0]) == 1
+		# 只有弃的是圣类命格、玩家选了【展示】、且点了 1 名对手，才造成 1 点法术伤害
 		var 伤害目标: int = -1
-		if 圣 and 目标5.size() == 1:
+		if 圣 and 展示 and 目标5.size() == 1:
 			var 目标者: BattlePlayer = engine.p(int(目标5[0]))
 			if 目标者 != null and 目标者.color != player.color:
 				伤害目标 = 目标者.id

@@ -384,6 +384,41 @@ func _检圣庭检察士() -> void:
 			非圣有伤害 = true
 	检(not 非圣有伤害, "【恩典神授】弃非圣类命格时不该造成法术伤害")
 
+	# 弃圣类命格但选「不展示」：只弃牌、不造成伤害
+	角色 = _建引擎(39)
+	玩家 = 引擎.p(1)
+	引擎.set_team_gem(GConst.BLUE, 1)
+	引擎.场卡加计数("异端裁决所", 3)
+	var 不展示圣牌: int = -1
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.fate_pattern_enum() == GConst.FatePattern.Holy:
+			不展示圣牌 = c.id
+			break
+	检(不展示圣牌 >= 0, "卡库里应有圣类命格的牌")
+	玩家.hand_cards.clear()
+	玩家.add_hand_cards([不展示圣牌])
+	引擎.current_id = 1
+	引擎.行动允许 = GConst.ActionType.Any
+	发送记录.clear()
+	引擎.resolve_action(GConst.ActionType.Special, {
+		"action_id": GConst.SpecialAction.Extract,
+		"dst_ids": [3], "card_ids": [], "args": [3903, 0, 0, 1, 0, 0, 1, 0],
+	})
+	引擎.run()
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3903, "src_id": 1, "args": [0], "card_ids": [不展示圣牌], "dst_ids": [2],
+	})
+	引擎.run()
+	检(引擎.deck.discard.has(不展示圣牌), "【恩典神授】选「不展示」时圣牌也应进弃牌堆")
+	var 不展示有伤害: bool = false
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.Hurt:
+			continue
+		var d3: Dictionary = r["data"]
+		if int(d3.get("dst_id", -1)) == 2 and int(d3.get("hurt", 0)) == 1:
+			不展示有伤害 = true
+	检(not 不展示有伤害, "【恩典神授】选「不展示」时不该造成法术伤害")
+
 	# ---- 代价类型 1：由玩家指定从哪几名我方角色身上扣（1 人 2 点 / 2 人各 1 点）----
 	角色 = _建引擎(39)
 	玩家 = 引擎.p(1)
@@ -537,6 +572,14 @@ func _检圣庭检察士() -> void:
 	窗.set("_sel_players", 对手表)
 	检(str((窗.call("_恩典弃牌头像提示") as Dictionary).get(2, "")) == "1 法术伤害",
 		"弃圣类命格并点时应在对手头像写「1 法术伤害」")
+	# 弃圣牌但选「不展示」：不能点目标、也不写伤害（切回展示才能点）
+	var 不展示参数: Array[int] = [0]
+	var 展示参数: Array[int] = [1]
+	窗.set("_已选参数", 不展示参数)
+	检(not bool(窗.call("_玩家可选", 2)), "选「不展示」时对手头像不该可点")
+	检((窗.call("_恩典弃牌头像提示") as Dictionary).is_empty(), "选「不展示」时不该写「1 法术伤害」")
+	窗.set("_已选参数", 展示参数)
+	检(bool(窗.call("_玩家可选", 2)), "选「展示」时对手头像应可点")
 	窗.free()
 
 
