@@ -416,9 +416,10 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	if _展示步 == 1:
 		var 系表: Array[int] = _展示系别()
 		if not engine.has_reply():
+			# 不写 ask_text：没选系别前提示条显示技能完整说明；
+			# 每个系别选项自带「该系效果」文案（option_prompts），选中后替换提示条
 			询问(player.id, _展示技能号(), 0, 0, GConst.CardSource.Hand, _系别选项(系表), 0, "", [], false,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(_展示技能号(), 1) % _在展示)
+				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		var args2: Array = r2.get("args", [])
@@ -430,7 +431,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		_展示序号 = 0
 		_展示步 = 3
 		return p_yi_jiao_tu_ask(ctx)
-	# 展示时（每一项）：选 X（弃几张该系牌，最多 4，且不能超过手里该系牌数）
+	# 展示时（每一项）：一次询问里同时选「弃 X 张该系牌」与「目标对手」，X＝实际选中的张数
 	if _展示步 == 3:
 		if _展示序号 >= _展示模式.size():
 			# 本次展示全部结算完：清状态、清翻面标记（放逐放进新的【末日预言】后还能再翻）
@@ -442,24 +443,24 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		_展示系 = int(_展示模式[_展示序号])
 		var 同系: Array[int] = hand_ids_where(
 			func(_cid: int, c: GCard) -> bool: return c.element_enum() == _展示系)
-		_展示X = mini(4, 同系.size())
-		if _展示X <= 0:
-			_展示步 = 5
-			return p_yi_jiao_tu_ask(ctx)
 		var 展示系名: String = GConst.element_to_chinese(_展示系)
 		if not engine.has_reply():
-			询问(player.id, _展示技能号(), _展示X, 0, GConst.CardSource.Hand, [], _展示X, "", [], false,
-				0, player.id, [], _展示X, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(_展示技能号(), 2) % [_在展示, _展示X, 展示系名])
+			# 弃牌张数不再预先定死：最多 4 张 + 同时点 1 名目标，按一次「确定」提交
+			询问(player.id, _展示技能号(), 0, 1, GConst.CardSource.Hand, [], 4, "", 同系, false,
+				0, player.id, enemy_ids(), 4, {}, 0, 0, false, [], true, -1, 0,
+				GConst.填文本(GConst.文本("提示_展示_合并询问"), {"s": 展示系名}))
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
-		var cards: Array = r3.get("card_ids", [])
 		var 弃: Array = []
-		for c: Variant in cards:
-			if 弃.size() < _展示X and player.有手牌(int(c)):
-				var 卡: GCard = Data.get_card(int(c))
-				if 卡 != null and 卡.element_enum() == _展示系 and not 弃.has(int(c)):
-					弃.append(int(c))
+		for c: Variant in r3.get("card_ids", []):
+			if 弃.size() >= 4:
+				break
+			var cid3: int = int(c)
+			if not player.有手牌(cid3) or 弃.has(cid3):
+				continue
+			var 卡3: GCard = Data.get_card(cid3)
+			if 卡3 != null and 卡3.element_enum() == _展示系:
+				弃.append(cid3)
 		if not 弃.is_empty():
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -469,36 +470,22 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": _展示技能号()})
 			engine._log_discard(player.id, 弃, false)
 		_展示X = 弃.size()
-		_展示步 = 5
-		return p_yi_jiao_tu_ask(ctx)
-	# 展示时（每一项）：摸 X 张【强制】→ 选目标对手
-	if _展示步 == 5:
-		if _展示X > 0:
-			engine.push_draw(player.id, _展示X, _展示技能号())
-		# 摸牌先压进栈；阶段推进到「等目标回复」，回来由 6 号分支取回复（避免重复摸牌）
-		_展示步 = 6
-		if not engine.has_reply():
-			询问(player.id, _展示技能号(), 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(_展示技能号(), 3) % [_在展示, _展示X + 1])
-			return WAIT
-	if _展示步 == 6:
-		if not engine.has_reply():
-			return WAIT
-		var r5: Dictionary = take_skill_reply_full()
-		var ds: Array = r5.get("dst_ids", [])
-		var 敌表5: Array = enemy_ids()
-		if ds.size() == 1:
-			_展示对手 = int(ds[0])
-		elif not 敌表5.is_empty():
+		var 敌表3: Array = enemy_ids()
+		var ds3: Array = r3.get("dst_ids", [])
+		_展示对手 = -1
+		if ds3.size() == 1 and 敌表3.has(int(ds3[0])):
+			_展示对手 = int(ds3[0])
+		elif not 敌表3.is_empty():
 			# 超时 / 跳过：随机指定一名对手，别把这次展示白丢
-			_展示对手 = int(敌表5[engine._rng.randi_range(0, 敌表5.size() - 1)])
-		else:
-			_展示对手 = -1
+			_展示对手 = int(敌表3[engine._rng.randi_range(0, 敌表3.size() - 1)])
 		if _展示对手 < 0 or engine.p(_展示对手) == null:
 			return _展示本项结束()
+		# 先压「继续走」的钩子、再压摸牌：摸完（含超限结算）回来问目标对手弃牌
 		_展示步 = 7
-		return p_yi_jiao_tu_ask(ctx)
+		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
+		if _展示X > 0:
+			engine.push_draw(player.id, _展示X, _展示技能号())
+		return URGENT
 	# 展示时（每一项）：目标对手自选弃任意张该系牌【展示】（可不弃）
 	if _展示步 == 7:
 		var 对手: BattlePlayer = engine.p(_展示对手)
@@ -825,8 +812,17 @@ func _检查预言取空() -> void:
 ## 系别枚举 → 询问选项（ask_skill 只收 {value,label} 字典，纯数字数组会在运行时出错）
 func _系别选项(系表: Array) -> Array:
 	var out: Array = []
+	var 效果模板: String = GConst.文本("提示_展示_系别效果")
 	for 系: Variant in 系表:
-		out.append({"value": int(系), "label": GConst.按钮原文(_展示技能号(), 0) % GConst.element_to_chinese(int(系))})
+		var 系名: String = GConst.element_to_chinese(int(系))
+		out.append({
+			"value": int(系),
+			"label": GConst.按钮原文(_展示技能号(), 0) % 系名,
+			# 选项文字里的「X系」按系别标色
+			"elements": [int(系)],
+			# 选中该项后提示条写这个系别的效果（完整技能说明只在没选时显示）
+			"提示": GConst.填文本(效果模板, {"s": 系名}),
+		})
 	return out
 
 

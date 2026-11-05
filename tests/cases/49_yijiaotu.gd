@@ -311,13 +311,41 @@ func _检翻面天雷() -> void:
 	检(引擎.有场卡("天雷劫火") and not 引擎.有场卡("末日预言"),
 		"翻面后场卡应变成【天雷劫火】")
 	检(引擎._await_id == 1, "能量为 0 时应跳过贪婪、直接问系别")
+	# 系别选项带系别标色 + 「选中后本系效果」提示（完整说明在没选时显示）
+	var 系别选项: Array = 角色.call("_系别选项", [GConst.CardElement.Thunder, GConst.CardElement.Fire])
+	检(系别选项.size() == 2
+		and (系别选项[0] as Dictionary).get("elements", []) == [GConst.CardElement.Thunder]
+		and not str((系别选项[0] as Dictionary).get("提示", "")).is_empty()
+		and str((系别选项[1] as Dictionary).get("提示", "")).contains("火系"),
+		"系别选项应带 elements 标色和本系效果提示：%s" % str(系别选项))
+	# 目标头像伤害提示：伤害＝弃牌数+1，选 0 张也显示 1
+	var 指示: Dictionary = GConst.技能指示器.get(9507, {})
+	检(int(指示.get("每牌", 0)) == 1 and int(指示.get("偏移", 0)) == 1
+		and bool(指示.get("空选也算", false)),
+		"天雷劫火应配「每牌 1 + 偏移 1、空选也算」的头像伤害提示：%s" % str(指示))
+	var 提示窗: Control = load("res://scripts/ui/battle_mobile.gd").new()
+	检(int(提示窗.call("_提示数值", 指示, 0)) == 1, "没选牌时头像伤害应显示 1")
+	提示窗._sel_cards = [1, 2]
+	检(int(提示窗.call("_提示数值", 指示, 0)) == 3, "选 2 张牌时头像伤害应显示 3")
+	提示窗.queue_free()
 	_应答([GConst.CardElement.Thunder])
 	引擎.run()
-	检(引擎._await_id == 1, "选完系别应问弃几张该系牌（等待 %s）" % str(引擎._await_id))
-	_应答([], [], 雷)
-	引擎.run()
-	检(引擎._await_id == 1, "弃牌后应问目标对手（等待 %s）" % str(引擎._await_id))
-	_应答([], [2])
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9507,
+		"选完系别应一次问「弃几张该系牌 + 目标对手」（等待 %s / %s）"
+		% [str(引擎._await_id), str(引擎._pending_respond_id)])
+	var 合并问: Dictionary = {}
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 命令: Array = (r["data"] as Dictionary).get("commands", [])
+		if 命令.is_empty():
+			continue
+		var c: Dictionary = 命令[0]
+		if int(c.get("respond_id", 0)) == 9507 and not (c.get("dst_ids", []) as Array).is_empty():
+			合并问 = c
+	检(int(合并问.get("card_max", 0)) == 4 and (合并问.get("dst_ids", []) as Array).has(2),
+		"合并询问应同时允许选最多 4 张牌和目标 2：%s" % str(合并问))
+	_应答([], [2], 雷)
 	引擎.run()
 	检(引擎._await_id == 2, "应问目标对手弃任意张该系牌（等待 %s / %s）"
 		% [str(引擎._await_id), str(引擎._await_kind)])

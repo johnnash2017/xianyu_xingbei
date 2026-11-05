@@ -1110,9 +1110,17 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			# 没有上限的计数（如【异端裁决所】的治疗点数）：保持原来的「名字 + 数字」写法
 			提示名 = "%s %d" % [提示名, int(表.get("counter", 0))]
 		var 说明: String = str(显示.get("说明", ""))
+		# 末日预言 / 天雷劫火 / 地裂波涛：名字下面显示对应被动技能说明（不是卡面那句解释），
+		# 悬停也走「【被动】技能名：说明」的被动提示框
+		var 被动号: int = -1
 		if 卡号 == "末日预言":
-			# 名字下面显示这张场卡对应的被动技能说明（不是卡面那句解释）
-			var 被动: String = GConst.skill_desc(9504)
+			被动号 = 9504
+		elif 卡号 == "天雷劫火":
+			被动号 = 9507
+		elif 卡号 == "地裂波涛":
+			被动号 = 9508
+		if 被动号 > 0:
+			var 被动: String = GConst.skill_desc(被动号)
 			if not 被动.is_empty():
 				说明 = 被动
 		额外状态.append({
@@ -1121,9 +1129,7 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			"desc": 说明,
 			"tip": 提示名,
 			"count": 计数,
-			# 【末日预言】的悬停要像魔刃那样显示「【被动】技能名：说明」并限宽换行；
-			# 其余场卡继续走普通文字提示（-1）
-			"被动技能": 9504 if 卡号 == "末日预言" else -1,
+			"被动技能": 被动号,
 		})
 	# 【律法】（星坠女巫）：放在角色面前的标记，状态区显示名字
 	for 号: int in p.laws:
@@ -2594,11 +2600,15 @@ func _进入技能询问() -> void:
 		# 选项涉及的可选系别 / 悬停技能组（共振的四项；与选项下标一一对应）
 		var 选项元素: Array = _pending.get("option_elements", [])
 		var 选项技能组: Array = _pending.get("option_skill_groups", [])
+		# 选项自带的「选中后提示文案」（如天雷 / 地裂选系别后写该系效果）
+		var 选项提示: Array = _pending.get("option_prompts", [])
 		var 项们: Array = []
 		for i: int in range(_skill_options.size()):
 			var 名: String = str(notes[i]) if i < notes.size() and str(notes[i]) != "" else str(_skill_options[i])
+			var 项元素: Array = []
 			if i < 选项元素.size():
-				名 = _选项系别着色(名, (选项元素[i] as Dictionary).get("ids", []))
+				项元素 = (选项元素[i] as Dictionary).get("ids", [])
+				名 = _选项系别着色(名, 项元素)
 			var 项: Dictionary = {"文本": 名, "参数": [int(_skill_options[i])]}
 			if i < 选项技能组.size():
 				项["技能组"] = (选项技能组[i] as Dictionary).get("ids", [])
@@ -2608,6 +2618,10 @@ func _进入技能询问() -> void:
 				项["卡牌"] = int(选项牌号[i])
 			if i < 选项不改提示.size():
 				项["不改提示"] = bool(选项不改提示[i])
+			if not 项元素.is_empty():
+				项["元素"] = 项元素
+			if i < 选项提示.size() and not str(选项提示[i]).is_empty():
+				项["提示"] = str(选项提示[i])
 			if i < 选项需牌.size():
 				项["需牌"] = int(选项需牌[i])
 			if i < 选项需目标.size():
@@ -4537,6 +4551,11 @@ func _二级栏提示文案() -> String:
 	if not 选项提示文案.is_empty() and not _已选参数.is_empty():
 		return 选项提示文案.replace("%d", str(int(_已选参数[0])))
 	var 选中项: Dictionary = _二级选中项()
+	# 选项自带「选中后提示文案」（如天雷 / 地裂选系别后写该系效果）：
+	# 选中后写这一项的效果；没选中时询问文案为空，客户端会显示完整技能说明。
+	var 项提示: String = str(选中项.get("提示", ""))
+	if not 项提示.is_empty():
+		return _选项系别着色(项提示, 选中项.get("元素", []))
 	# 圣光爆裂：选中单体 / 群体 X 后，提示条直接显示该选项的说明，
 	# 群体档的说明已把目标手牌上限算好，不再让玩家看「你的手牌数 - X」公式。
 	if _mode == 4 and 圣弓_圣光爆裂.has(_pending_skill_id) and not 选中项.is_empty():
@@ -8375,7 +8394,7 @@ func _显示数值(配置: Dictionary) -> int:
 ## 伤害是「1 + X」，所以配「每目标 1、加参数、下标 1」。
 func _提示数值(配置: Dictionary, 固定值: int) -> int:
 	if 配置.has("每牌"):
-		if _sel_cards.is_empty():
+		if _sel_cards.is_empty() and not bool(配置.get("空选也算", false)):
 			return 0
 		var 值: int = int(配置.get("每牌", 0)) * _sel_cards.size() + int(配置.get("偏移", 0))
 		if bool(配置.get("加参数", false)):
