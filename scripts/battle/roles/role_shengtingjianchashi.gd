@@ -354,6 +354,10 @@ func _付恩典代价(类型: int, 参: Array) -> void:
 func p_harm_end(ctx: Dictionary) -> int:
 	if int(ctx.get("dst", -1)) != player.id:
 		return SUCCESS
+	# 同一次伤害只处理一次：这个钩子在等完回复后会带着**同一份 ctx** 重入，
+	# 没有这道闸就会被「摸 1 张牌」补回来的法术牌反复触发（表现是无限循环地弹发动询问）
+	if bool(ctx.get("_净化已处理", false)):
+		return SUCCESS
 	if _净华步 != 0 and not engine.has_reply():
 		# 等回复期间（_净华步 == 1 且有回复）放行到下面 take
 		return SUCCESS
@@ -363,14 +367,17 @@ func p_harm_end(ctx: Dictionary) -> int:
 	_净华步 = 1
 	_净华牌 = 法术牌
 	if not engine.has_reply():
-		询问(player.id, JING_HUA_ZHI_SHU, 1, 0, GConst.CardSource.Hand, [], 1, "magic", [], true,
-			0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-			GConst.提示原文(JING_HUA_ZHI_SHU, 1))
+		# 发动询问不写 ask 文案（提示条默认显示技能说明）；
+		# 具体弃哪张法术牌放在下一步问，这里只问发不发动
+		询问(player.id, JING_HUA_ZHI_SHU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
 		return WAIT
 	if not take_skill_reply():
 		_净华步 = 0
+		ctx["_净化已处理"] = true
 		return SUCCESS
 	_净华步 = 2
+	ctx["_净化已处理"] = true
 	engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
 	return URGENT
 

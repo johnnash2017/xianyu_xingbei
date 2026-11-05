@@ -586,6 +586,46 @@ func _检圣庭检察士() -> void:
 	检(bool(窗.call("_玩家可选", 2)), "选「展示」时对手头像应可点")
 	窗.free()
 
+	# 净化之术：同一次伤害只处理一次（曾经会被「摸 1 张牌」补回的法术牌反复触发、无限循环）
+	角色 = _建引擎(39)
+	玩家 = 引擎.p(1)
+	var 净化法术牌: int = -1
+	var 净化法术牌2: int = -1
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual or not c.is_magic():
+			continue
+		if 净化法术牌 < 0:
+			净化法术牌 = c.id
+		elif c.id != 净化法术牌:
+			净化法术牌2 = c.id
+			break
+	检(净化法术牌 >= 0, "卡库里应有法术牌")
+	玩家.hand_cards.clear()
+	玩家.add_hand_cards([净化法术牌])
+	# 手里多留一张法术牌：没有「这次伤害只处理一次」的闸，弃完第一张后钩子重入
+	# 会拿剩下的这张再问一次（就是玩家看到的无限循环）
+	if 净化法术牌2 >= 0:
+		玩家.add_hand_cards([净化法术牌2])
+	引擎.push(BattleEngine.SHook.new("p_harm_end", {"dst": 1}, []))
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3904,
+		"【净化之术】应先问是否发动：等待 %s / 询问 %s"
+		% [str(引擎._await_id), str(引擎._pending_respond_id)])
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3904, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
+	})
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3904,
+		"【净化之术】发动后应问弃哪张法术牌（等待 %s）" % str(引擎._await_id))
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3904, "src_id": 1, "args": [], "card_ids": [净化法术牌], "dst_ids": [],
+	})
+	引擎.run()
+	检(not 玩家.有手牌(净化法术牌), "【净化之术】应弃掉选的那张法术牌")
+	# 关键回归：同一次伤害不会再弹一次【净化之术】
+	检(not (引擎._await_id == 1 and 引擎._pending_respond_id == 3904),
+		"同一次伤害不应再次触发【净化之术】（否则会循环）")
+
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用
 func _检异教徒() -> void:
