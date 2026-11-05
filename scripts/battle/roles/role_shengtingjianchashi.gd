@@ -366,9 +366,9 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	_庇护步 = 1
 	_庇护伤害 = harm
 	if not engine.has_reply():
+		# 发动询问不写 ask 文案：提示条默认显示技能表说明（技能维护约定「询问文案约定」第 1 条）
 		询问(player.id, BI_HU_LING_YU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-			GConst.提示原文(BI_HU_LING_YU, 1))
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
 		return WAIT
 	var 发动: bool = take_skill_reply()
 	_庇护步 = 0
