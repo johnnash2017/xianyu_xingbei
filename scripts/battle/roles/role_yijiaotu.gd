@@ -222,7 +222,7 @@ func _审判可选目标() -> Array[int]:
 # ============================================================
 # 9504 末日预言：F8 同步钩子 —— 因承受伤害摸牌时第 1 张从预言堆拿
 # ============================================================
-func 伤害摸牌替换(_pid: int) -> int:
+func 伤害摸牌替换(pid: int) -> int:
 	if not engine.有场卡(末日预言名):
 		return -1
 	var 表: Dictionary = engine.取场卡(末日预言名)
@@ -231,6 +231,9 @@ func 伤害摸牌替换(_pid: int) -> int:
 		return -1
 	var 牌: int = int(堆.pop_back())
 	表["counter"] = 堆.size()
+	# 有人因伤害摸牌时改从【预言】堆拿走 1 张：战斗日志写清谁从谁的预言堆摸走，并播技能发动
+	_日志末日("从", "摸走", pid, 1)
+	notice_skill(MO_RI_YU_YAN, [pid])
 	# 最后 1 张被拿走的这一次伤害结算完才翻面：先记标记，等 p_harm_end（伤害流水线最后一步）
 	# 再压翻面钩子。原来在这里直接 push 钩子，但没把 _翻面步 置 1，钩子跑进去什么都不做，
 	# 表现就是「预言抽到 0 张却不翻面」。
@@ -634,12 +637,15 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				候选.resize(空位)
 			if 空位 > 0:
 				# 「将其余弃牌面朝下洗混放置到【预言】堆顶部」：只打乱这批弃牌，再压到顶部
+				var 放入数: int = 0
 				for c4: Variant in 候选:
 					var 取2: int = engine.deck.取出实例(int(c4))
 					if 取2 >= 0:
 						堆2.append(取2)
+						放入数 += 1
 				表2["pile"] = 堆2
 				表2["counter"] = 堆2.size()
+				_日志末日("在", "放入", player.id, 放入数)
 				engine._broadcast_game()
 		return SUCCESS
 	# 献祭：系别已在二级技能栏里选好，直接结算
@@ -660,6 +666,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			# 同系：移除该预言，我方战绩区 +1 宝石
 			堆3.pop_back()
 			表3["counter"] = 堆3.size()
+			_日志末日("从", "移除", player.id, 1)
 			engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 			engine.to_discard([牌], {"owner": player.id, "source": "other", "cause": XIAN_JI})
 		else:
@@ -670,6 +677,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				堆3.append(int(顶[0]))
 				表3["pile"] = 堆3
 				表3["counter"] = 堆3.size()
+				_日志末日("从", "移除", player.id, 1)
+				_日志末日("在", "放入", player.id, 1)
 				player.add_hand_cards([牌])
 				engine._broadcast_game()
 		engine._broadcast_game()
@@ -735,6 +744,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 表: Dictionary = engine.取场卡(末日预言名)
 		表["pile"] = 新堆
 		表["counter"] = 新堆.size()
+		_日志末日("在", "放入", player.id, 新堆.size())
 		_重算手牌上限()
 		_翻面步 = 0
 		engine.解除不爆牌(player.id)
@@ -756,7 +766,7 @@ func _翻面为(名: String) -> int:
 	engine.移除场卡(末日预言名)
 	engine.加场卡({"id": 名, "owner": player.id, "attached": -1,
 		"counter": 0, "counter_max": 0, "state": 1})
-	notice_skill(MO_RI_YU_YAN, [player.id])
+	# 翻面本身不播技能发动（用户口径：抽牌/移动预言时才提示）
 	_在展示 = 名
 	_展示已用.clear()
 	_展示贪婪 = false
@@ -764,6 +774,24 @@ func _翻面为(名: String) -> int:
 	# 先把「是否发动贪婪」问掉，再决定发动一项还是两项（贪婪＝两项都发动、顺序自定）
 	_展示步 = 10
 	return p_yi_jiao_tu_ask({"player": player.id})
+
+
+## 战斗日志称呼（与引擎 _称号 同口径：[职业名]）
+func _称号(pid: int) -> String:
+	var pp: BattlePlayer = engine.p(pid)
+	return "[%s]" % Data.role_name(pp.role_id) if pp != null else "?"
+
+
+## 【末日预言】牌堆移动日志：[谁]从/在[谁]的【末日预言】摸走/移除/放入 X 张牌
+func _日志末日(前缀: String, 动作: String, 操作者: int, 数: int) -> void:
+	if 数 <= 0:
+		return
+	engine.broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Discard,
+		"txt": "%s%s%s的【末日预言】%s %d 张牌" % [
+			_称号(操作者), 前缀, _称号(player.id), 动作, 数],
+		"id": player.id,
+	})
 
 
 ## 翻面 / 预言取空的检查：堆空且还挂着【末日预言】就进入翻面询问
