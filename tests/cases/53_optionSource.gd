@@ -83,4 +83,97 @@ func 跑() -> void:
 		if str(退回[i]) != str(旧[i]):
 			逐项一致 = false
 	检(逐项一致, "options 与 args 对不上时，应整份退回平行数组")
+
+	_补测边界形状(窗)
 	窗.free()
+
+
+## ④ 再加两组「边界形状」，确认两条来源在这些情况下也一致（5.4 删旧路径前先把这些钉住）：
+##   A. 5 个选项 + 标签为空（客户端应回落成选项值文字）+ 可选=false + 牌白带 -1 哨兵
+##   B. 选项本身就是技能（skill_id>0）+ 元素着色 + 技能组 + 多张预览牌 + 不改提示
+func _补测边界形状(窗: Control) -> void:
+	# ---- A：数量多、有空标签、有 -1 哨兵 ----
+	var 值A: Array[int] = [11, 12, 13, 14, 15]
+	var 平A: Dictionary = {
+		"notes": ["甲", "", "丙", "丁", "戊"],
+		"option_enabled": [true, true, false, true, true],
+		"option_skill_ids": [0, 0, 0, 0, 0],
+		"option_need_cards": [0, 0, 0, 0, 0],
+		"option_need_targets": [0, 0, 0, 0, 0],
+		"option_elements": [{"ids": []}, {"ids": []}, {"ids": []}, {"ids": []}, {"ids": []}],
+		"option_skill_groups": [{"ids": []}, {"ids": []}, {"ids": []}, {"ids": []}, {"ids": []}],
+		"option_card_ids": [-1, -1, -1, -1, -1],
+		"option_no_prompt_change": [false, false, false, false, false],
+		"option_prompts": ["", "", "", "", ""],
+		"option_cards": [{"ids": []}, {"ids": []}, {"ids": [-1]}, {"ids": []}, {"ids": []}],
+		"option_targets": [{"ids": []}, {"ids": []}, {"ids": []}, {"ids": []}, {"ids": []}],
+		"option_preview_cards": [{"ids": []}, {"ids": []}, {"ids": []}, {"ids": []}, {"ids": []}],
+	}
+	var 嵌A: Array = []
+	for i: int in range(值A.size()):
+		嵌A.append({
+			"value": 值A[i],
+			"label": (平A["notes"] as Array)[i],
+			"enabled": (平A["option_enabled"] as Array)[i],
+			"skill_id": 0, "need_card": 0, "need_target": 0, "target_max": 0,
+			"card_id": -1, "card_source": -1, "cover_need": 0,
+			"targets": {"ids": []}, "cards": (平A["option_cards"] as Array)[i],
+			"elements": {"ids": []}, "preview_cards": {"ids": []},
+			"skill_group": {"ids": []}, "prompt": "", "no_prompt_change": false,
+		})
+	平A["options"] = 嵌A
+	_两路比对(窗, 值A, 平A, 嵌A, "A：5 选项 + 空标签 + -1 哨兵")
+
+	# ---- B：选项本身就是技能 + 元素 + 技能组 + 多张预览牌 ----
+	var 值B: Array[int] = [21, 22]
+	var 平B: Dictionary = {
+		"notes": ["炎之剑", "冰之枪"],
+		"option_enabled": [true, false],
+		"option_skill_ids": [103, 201],
+		"option_need_cards": [1, 2],
+		"option_need_targets": [1, 0],
+		"option_elements": [{"ids": [GConst.CardElement.Fire]}, {"ids": [GConst.CardElement.Water]}],
+		"option_skill_groups": [{"ids": [103, 104]}, {"ids": []}],
+		"option_card_ids": [5, -1],
+		"option_no_prompt_change": [true, false],
+		"option_prompts": ["用炎之剑", ""],
+		"option_cards": [{"ids": [5, 6]}, {"ids": []}],
+		"option_targets": [{"ids": [2]}, {"ids": []}],
+		"option_preview_cards": [{"ids": [7, 8]}, {"ids": []}],
+	}
+	var 嵌B: Array = [
+		{"value": 21, "label": "炎之剑", "enabled": true, "skill_id": 103, "need_card": 1,
+			"need_target": 1, "target_max": 0, "card_id": 5, "card_source": -1, "cover_need": 0,
+			"targets": {"ids": [2]}, "cards": {"ids": [5, 6]},
+			"elements": {"ids": [GConst.CardElement.Fire]},
+			"preview_cards": {"ids": [7, 8]}, "skill_group": {"ids": [103, 104]},
+			"prompt": "用炎之剑", "no_prompt_change": true},
+		{"value": 22, "label": "冰之枪", "enabled": false, "skill_id": 201, "need_card": 2,
+			"need_target": 0, "target_max": 0, "card_id": -1, "card_source": -1, "cover_need": 0,
+			"targets": {"ids": []}, "cards": {"ids": []},
+			"elements": {"ids": [GConst.CardElement.Water]},
+			"preview_cards": {"ids": []}, "skill_group": {"ids": []},
+			"prompt": "", "no_prompt_change": false},
+	]
+	平B["options"] = 嵌B
+	_两路比对(窗, 值B, 平B, 嵌B, "B：选项即技能 + 元素 + 技能组 + 预览牌")
+
+
+## 同一组数据分别走「新路径（options）」和「旧路径（13 个平行数组）」，逐项逐字段比对
+func _两路比对(窗: Control, 值们: Array[int], 平铺: Dictionary, 嵌套: Array, 标签: String) -> void:
+	窗.set("_skill_options", 值们)
+	窗.set("_pending", 平铺)
+	var 旧: Array = 窗.call("_选项源_平行数组")
+	var 新: Array = 窗.call("_选项源_嵌套", 嵌套)
+	检(新.size() == 旧.size(), "%s：条数不同 新 %d / 旧 %d" % [标签, 新.size(), 旧.size()])
+	for i: int in range(mini(新.size(), 旧.size())):
+		var 新项: Dictionary = 新[i]
+		var 旧项: Dictionary = 旧[i]
+		for k: Variant in 旧项.keys():
+			检(新项.has(k), "%s：第 %d 项少了字段 %s" % [标签, i, str(k)])
+			if 新项.has(k):
+				检(str(新项[k]) == str(旧项[k]),
+					"%s：第 %d 项的 %s 不一致：新 %s / 旧 %s"
+					% [标签, i, str(k), str(新项[k]), str(旧项[k])])
+	# 同一份数据也必须能通过「选项值对得上」这道理
+	检(bool(窗.call("_选项值对得上", 嵌套)), "%s：value 应与 args 里的选项值一一对应" % 标签)
