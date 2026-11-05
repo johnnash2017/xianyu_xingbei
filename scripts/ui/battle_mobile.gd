@@ -6406,6 +6406,9 @@ func _恩典弃牌头像提示() -> Dictionary:
 		return out
 	if not _是技能询问 or _skill_ask_need_card != 1 or _提炼阶段 == 4:
 		return out
+	# 只有选中的弃牌是圣类命格（会展示并造成伤害）才写
+	if not _已选牌含圣命格():
+		return out
 	for pid: int in _sel_players:
 		out[pid] = "1 法术伤害"
 	return out
@@ -8661,6 +8664,16 @@ func _已选牌含法术() -> bool:
 	return false
 
 
+## 已选中的牌里有没有圣类命格（【恩典神授】弃牌时「可展示 → 1 点法术伤害」的条件：
+## 弃的不是圣类命格，就不该点目标对手）
+func _已选牌含圣命格() -> bool:
+	for 牌id: int in _sel_cards:
+		var 牌: GCard = Data.get_card(牌id)
+		if 牌 != null and 牌.fate_pattern_enum() == GConst.FatePattern.Holy:
+			return true
+	return false
+
+
 ## 通用「本次伤害」预览：服务端在技能询问里带 preview_base（本次伤害数值）与 preview_ids
 ## （画在谁头上）时，直接在那几名头像上写「N 法术伤害 / N 攻击伤害 / +N 治疗」。
 ## 文案与 `技能指示器` 表里的静态头像提示完全一致：**不写「点」**（工程内既有写法都是
@@ -10180,9 +10193,10 @@ func _玩家可选(player_id: int) -> bool:
 		if _目标需法术牌() and not _已选牌含法术():
 			return false
 		# 需求目标数为 0 时默认谁都不亮；但【恩典神授】弃牌那条允许「顺手指定 1 名对手挨伤害」，
-		# 服务端下发了目标白名单就照样点亮（不选也行：只有弃的是圣类命格才展示并造成伤害）
+		# 只有在选中的弃牌是圣类命格（会展示并造成伤害）时才让点
 		if _skill_ask_need_target <= 0 \
-				and not (_skill_ask_id == 恩典神授技能号 and not _skill_targets.is_empty()):
+				and not (_skill_ask_id == 恩典神授技能号 and not _skill_targets.is_empty()
+					and _已选牌含圣命格()):
 			return false
 		# 参数选项带了各自的目标白名单时，按选中那一项（还没选就按并集）点亮 ——
 		# 如吟游诗人【希望赋格曲】的「放置」不含自己、「转移」含自己

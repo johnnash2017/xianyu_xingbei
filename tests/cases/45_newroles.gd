@@ -505,6 +505,38 @@ func _检圣庭检察士() -> void:
 	var 自动选: bool = bool(窗.call("_套用自动选目标", {"自动选目标": "自己"}))
 	检(自动选 and (窗.get("_sel_players") as Array).has(Logic.my_player_id),
 		"「自动选目标：自己」应把目标锁定在自己身上")
+	# 【恩典神授】弃牌那条：只有弃的是圣类命格，对手头像才可点（并写「1 法术伤害」）
+	窗.set("_mode", 3)
+	窗.set("_是技能询问", true)
+	窗.set("_skill_ask_id", 3903)
+	窗.set("_skill_ask_need_card", 1)
+	窗.set("_skill_ask_need_target", 0)
+	窗.set("_提炼阶段", 0)
+	窗.set("_目标锁死", false)
+	窗.set("_skill_targets", 对手表)
+	var 测圣牌: int = -1
+	var 测非圣牌: int = -1
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual:
+			continue
+		if c.fate_pattern_enum() == GConst.FatePattern.Holy and 测圣牌 < 0:
+			测圣牌 = c.id
+		elif c.fate_pattern_enum() != GConst.FatePattern.Holy and 测非圣牌 < 0:
+			测非圣牌 = c.id
+		if 测圣牌 >= 0 and 测非圣牌 >= 0:
+			break
+	检(测圣牌 >= 0 and 测非圣牌 >= 0, "卡库里应有圣类 / 非圣类命格的牌")
+	var 非圣手牌: Array[int] = [测非圣牌]
+	窗.set("_sel_cards", 非圣手牌)
+	检(not bool(窗.call("_玩家可选", 2)), "弃非圣类命格时对手头像不该可点")
+	检((窗.call("_恩典弃牌头像提示") as Dictionary).is_empty(),
+		"弃非圣类命格时不该写「1 法术伤害」")
+	var 圣手牌: Array[int] = [测圣牌]
+	窗.set("_sel_cards", 圣手牌)
+	检(bool(窗.call("_玩家可选", 2)), "弃圣类命格时对手头像应可点")
+	窗.set("_sel_players", 对手表)
+	检(str((窗.call("_恩典弃牌头像提示") as Dictionary).get(2, "")) == "1 法术伤害",
+		"弃圣类命格并点时应在对手头像写「1 法术伤害」")
 	窗.free()
 
 
