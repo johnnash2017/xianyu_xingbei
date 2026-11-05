@@ -284,6 +284,10 @@ const SUB: Dictionary = {
 		# 选中该项后名单外的牌置灰（如天雷/地裂选雷系后只剩雷系牌可点）。
 		# 用 i32：可能带 -1（手牌白名单_全禁＝一张都不给点）。
 		56: {"n": "option_cards", "t": "msg", "r": true, "s": "OptionTargets"},
+		# 带选项的询问里，整份选项（阶段 5 的目标结构：一个选项一条 Option 消息）。
+		# **当前没人发**：服务端仍发上面那些平行数组，客户端也还没读这个字段（5.1 预埋，5.2 起启用）。
+		# 旧端收到不认识的字段号会按 wire type 跳过，所以加它不影响兼容性。
+		57: {"n": "options", "t": "msg", "r": true, "s": "Option"},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {
@@ -322,6 +326,31 @@ const SUB: Dictionary = {
 		# 选项涉及的可选系别（CardElement，按配置顺序）：如御刃「魔刃」选项的火/水系。
 		# 只用于把选项文字里的「火系/水系」按系别标色，不参与提交。
 		16: {"n": "elements", "t": "u32", "r": true},
+	},
+	# 技能询问的「一项选项」——阶段 5 的目标结构：一个选项一条消息，自带全部属性，
+	# 取代现在那 13 个「与 args 下标对齐」的平行数组（见计划文档 §8）。
+	# **当前只加了结构**：服务端还没往 Command.options 里塞、客户端也还没读（5.1 预埋，5.2 起启用）。
+	"Option": {
+		1: {"n": "value", "t": "u32"},
+		2: {"n": "label", "t": "str"},
+		3: {"n": "enabled", "t": "bool"},
+		4: {"n": "skill_id", "t": "u32"},
+		5: {"n": "need_card", "t": "u32"},
+		6: {"n": "need_target", "t": "u32"},
+		7: {"n": "target_max", "t": "u32"},
+		# -1 ＝ 这一项不对应牌（0 是合法牌号：卡表#0 圣盾），故用 i32
+		8: {"n": "card_id", "t": "i32"},
+		# -1 ＝ 沿用技能本体的选牌来源
+		9: {"n": "card_source", "t": "i32"},
+		10: {"n": "cover_need", "t": "u32"},
+		# 下面几个都是「包一层 ids」的列表，复用 OptionTargets（i32，负数哨兵原样过线）
+		11: {"n": "targets", "t": "msg", "s": "OptionTargets"},
+		12: {"n": "cards", "t": "msg", "s": "OptionTargets"},
+		13: {"n": "elements", "t": "msg", "s": "OptionTargets"},
+		14: {"n": "preview_cards", "t": "msg", "s": "OptionTargets"},
+		15: {"n": "skill_group", "t": "msg", "s": "OptionTargets"},
+		16: {"n": "prompt", "t": "str"},
+		17: {"n": "no_prompt_change", "t": "bool"},
 	},
 	# 某个选项各自的可点目标（option_targets 的一项）
 	# 也用于 extra_attack_cards / extra_attack_targets / option_preview_cards：
