@@ -10434,155 +10434,184 @@ func _确定不可用() -> bool:
 	# 额外行动提示：点按钮只选中，选中后才允许确定
 	if _额外行动单选 >= 0 and not _是技能询问:
 		return not _额外行动可选
-	# 本地二级栏选项步骤（冒险者天堂选提炼方式 / 特殊行动选星石）：选好一项才让点「确定」
-	# （冒险者天堂最后一步走 mode 3 的分配通道，确定＝分满才可用，见下面 _分配配置 那一段）
+	# 本地二级栏选项步骤（冒险家提炼方式 / 特殊行动选星石）：选好一项才让点「确定」
+	# （冒险者天堂最后一步走 mode 3 的分配通道，确定＝分满才可用，见 _确定_分配型）
 	if _本地选项阶段 > 0:
-		# 常规提炼：自己星石满了就提炼不出来，列表照摆但「确定」置灰
-		if _本地选项阶段 == 2 and _待定特殊行动 == GConst.SpecialAction.Extract \
-				and not _提炼是冒险家流程:
-			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-			if 我 != null and 我.get_energy() >= 我.energy_max:
-				return true
-		# 【恩典神授】选代价：选「我方合计 2 治疗」时还要点头像把 2 点治疗的目标点够
-		if _本地选项阶段 == 6 and _二级选中 >= 0:
-			var 代价选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else -1
-			if 代价选择 == 1:
-				return not _恩典代价选择有效()
-		return _二级选中 < 0
+		return _确定_本地选项步()
 	if _mode == 1:
-		# 不可行动：手牌要全弃掉换 4 张，只等玩家点「确定」
-		if _不可行动:
-			return false
-		# 【圣盾】【虚弱】【中毒】：目标只能点人头像来定（点谁就施加给谁，点自己头像＝施加给自己）。
-		# 不给目标提交时服务端默认就是对自己施放，按「确定」会误把自己当成目标 —— 所以直接灰掉，
-		# 不再允许「按确定给自己施加效果」
-		if _选中是点头像定目标的牌():
-			return true
-		return _sel_cards.is_empty() and _sel_players.is_empty()
+		return _确定_行动()
 	if _mode == 3:
-		# 攒应战：应战方式没选、应战牌没选都灰着；仅应战选【圣光】抵挡时不要求反击目标
-		if _攒应战选应战:
-			if _二级选中 < 0 or _sel_cards.is_empty():
-				return true
-			if _攒应战选择 < 2 and _选中是圣光():
-				return false
-			return _sel_players.is_empty()
-		# 单份额外行动（如【迅捷赐福】/【风怒追击】）：确定＝发动它；引擎判「不能发动」时置灰
-		if _额外行动单选 >= 0:
-			return not _额外行动可选
-		# 分配型指示器（如冰霜祷言）：选够治疗点、且要选牌时选够牌才让「确定」
-		if not _分配配置().is_empty():
-			var 治疗牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
-			if not (治疗牌够 and _分配已满()):
-				return true
-			# 分配到的目标也必须还在当前用法的白名单里（换了用法后可能已不合法）
-			if not _分配目标都合法():
-				return true
-			return false
-		if not _是技能询问:
+		return _确定_技能询问()
+	if _mode == 4:
+		return _确定_发动技能()
+	if _mode == 2:
+		return _确定_应答()
+	return true
+
+
+# ---------------- _确定不可用 的分模式判定 ----------------
+# 主函数只做三条跨模式前置（额外攻击响应 / 单份额外行动 / 本地选项步），再按 _mode 分派。
+# 每个函数返回「确定键是否要灰着」（true＝不可用）。
+
+## 本地二级栏选项步骤（特殊行动选星石 / 提炼方式 / 恩典神授选代价）：选好一项才让点「确定」
+func _确定_本地选项步() -> bool:
+	# 常规提炼：自己星石满了就提炼不出来，列表照摆但「确定」置灰
+	if _本地选项阶段 == 2 and _待定特殊行动 == GConst.SpecialAction.Extract \
+			and not _提炼是冒险家流程:
+		var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+		if 我 != null and 我.get_energy() >= 我.energy_max:
 			return true
-		# 【元素射击】把「选子弹」与「视为系别」合成一次询问：
-		# 普通【子弹】选 1 张就能确定；光/暗【子弹】必须先选一种视为系别
-		if _skill_ask_id == GConst.技能_元素射击SORA and _二级栏:
+	# 【恩典神授】选代价：选「我方合计 2 治疗」时还要点头像把 2 点治疗的目标点够
+	if _本地选项阶段 == 6 and _二级选中 >= 0:
+		var 代价选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else -1
+		if 代价选择 == 1:
+			return not _恩典代价选择有效()
+	return _二级选中 < 0
+
+
+## 行动阶段（mode 1）
+func _确定_行动() -> bool:
+	# 不可行动：手牌要全弃掉换 4 张，只等玩家点「确定」
+	if _不可行动:
+		return false
+	# 【圣盾】【虚弱】【中毒】：目标只能点人头像来定（点谁就施加给谁，点自己头像＝施加给自己）。
+	# 不给目标提交时服务端默认就是对自己施放，按「确定」会误把自己当成目标 —— 所以直接灰掉，
+	# 不再允许「按确定给自己施加效果」
+	if _选中是点头像定目标的牌():
+		return true
+	return _sel_cards.is_empty() and _sel_players.is_empty()
+
+
+## 是否发动技能的询问（mode 3）
+func _确定_技能询问() -> bool:
+	# 攒应战：应战方式没选、应战牌没选都灰着；仅应战选【圣光】抵挡时不要求反击目标
+	if _攒应战选应战:
+		if _二级选中 < 0 or _sel_cards.is_empty():
+			return true
+		if _攒应战选择 < 2 and _选中是圣光():
+			return false
+		return _sel_players.is_empty()
+	# 单份额外行动（如【迅捷赐福】/【风怒追击】）：确定＝发动它；引擎判「不能发动」时置灰
+	if _额外行动单选 >= 0:
+		return not _额外行动可选
+	if not _分配配置().is_empty():
+		return _确定_分配型()
+	if not _是技能询问:
+		return true
+	# 【元素射击】把「选子弹」与「视为系别」合成一次询问：
+	# 普通【子弹】选 1 张就能确定；光/暗【子弹】必须先选一种视为系别
+	if _skill_ask_id == GConst.技能_元素射击SORA and _二级栏:
+		if _sel_cards.is_empty():
+			return true
+		return _选中子弹是光暗() and _二级选中 < 0
+	# 「需盖牌系别」的询问（如魔弓【魔贯冲击】）：盖牌区里已经没有该系的牌可移除 → 发动不了，
+	# 「确定」灰着（盖牌区照样摆着给他看，只能按「取消」放弃）
+	var 需系: int = _需盖牌系别()
+	if 需系 > 0 and not _盖牌区有系别(需系):
+		return true
+	# need_card 是「最少要选几张」，点选上限另由 _skill_card_max 管（如【法术反弹】可弃 1~N 张同系牌），
+	# 所以这里用 ≥ 而不是 ==，否则多选了反而点不动「确定」
+	var 牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
+	# 「目标需法术牌」型（如【沉沦协奏曲】）：没挑到法术牌时本来就没那 1 点伤害，不必选目标；
+	# 挑到了就必须选目标（按服务端给的需求数判）。注意这里不能直接借 _目标数合法() ——
+	# 那个函数读的是发动技能通道的 _skill_need_target，与询问通道的 _skill_ask_need_target 不是一回事
+	var 免选目标: bool = _目标需法术牌() and not _已选牌含法术()
+	# 目标数：「目标随牌」的技能（如女武神【英灵召唤】：弃了法术牌才给治疗）随已选牌数现算 ——
+	# 没弃牌就一个人都不用选、弃了就必须正好选 1 名（见 _目标数合法）；其余按服务端给的需求数
+	var 目标够: bool = 免选目标 or (_目标数合法() if _目标随牌阈值() > 0 \
+		else (_sel_players.size() >= _skill_ask_need_target if _skill_ask_need_target > 0 else true))
+	# 二级技能栏：先在技能栏里选一个效果，再选够牌 / 目标，才让点「确定」
+	if _二级栏:
+		return not (牌够 and 目标够 and _二级选中 >= 0)
+	return not (牌够 and 目标够)
+
+
+## 发动技能（mode 4）
+func _确定_发动技能() -> bool:
+	if not _分配配置().is_empty():
+		return _确定_分配型()
+	# 二级技能栏：得先在技能栏里选一个效果，且选够它要求的牌 / 目标，才让点「确定」
+	# （「先弹选项」型的需牌 / 目标已在选效果时由 _应用选项目标数 还原 / 收紧）
+	if _二级栏:
+		var 项: Dictionary = _二级选中项()
+		if 项.is_empty():
+			return true
+		var 需牌: int = maxi(_skill_need_card, int(项["需牌"]))
+		var 需目标: int = maxi(_skill_need_target, int(项["需目标"]))
+		# 手牌+盖牌混选的项（如【倒逆之蝶】第 ② 项：2 张手牌 + 2 张【茧】）还要数够盖牌张数
+		var 盖选中: int = 0
+		for c: Variant in _sel_cards:
+			if _is_my_cover(int(c)):
+				盖选中 += 1
+		# 不叫「牌够」：同一个函数后面另有一个 牌够，重名会触发 CONFUSABLE_LOCAL_DECLARATION
+		var 本项牌够: bool = _sel_cards.size() >= 需牌 if 需牌 > 0 else true
+		if _skill_cover_need > 0 and 盖选中 < _skill_cover_need:
+			本项牌够 = false
+		var 目标够: bool = _sel_players.size() >= 需目标 if 需目标 > 0 else true
+		return not (本项牌够 and 目标够 and _目标在白名单(项["目标白名单"]) and _目标数合法())
+	# 手牌 + 盖牌混选型（如【魔贯冲击】：1 张攻击牌 + 1 张火系【充能】）：
+	# 分别校验手牌数与盖牌数，不能只数总张数（否则选两张手牌也能按「确定」，提交后才被服务端拒）
+	if _skill_cover_need > 0:
+		var 盖选中: int = 0
+		for c: Variant in _sel_cards:
+			if _is_my_cover(int(c)):
+				盖选中 += 1
+		var 手选中: int = _sel_cards.size() - 盖选中
+		if 手选中 < _skill_need_card - _skill_cover_need or 盖选中 < _skill_cover_need:
+			return true
+		return not _目标数合法()
+	# 需牌是最少张数（如【暗影流星】要弃 2 张、【欺诈】要弃 2 张），选够才让点「确定」
+	# need_card==0 表示「一张都不选也可以」（如【灵魂镜像】最多弃 GConst.灵魂镜像张数 张、也可不弃），
+	# 点选上限另由 card_max 管，故这里直接放行
+	var 牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
+	return not (牌够 and _目标数合法())
+
+
+## 应答（mode 2）：应战 / 魔弹传递 / 弃牌 / 虚弱 / 治疗抵挡
+func _确定_应答() -> bool:
+	match int(_pending.get("respond_id", 0)):
+		GConst.RespondType.ReplyAttack:
 			if _sel_cards.is_empty():
 				return true
-			return _选中子弹是光暗() and _二级选中 < 0
-		# 「需盖牌系别」的询问（如魔弓【魔贯冲击】）：盖牌区里已经没有该系的牌可移除 → 发动不了，
-		# 「确定」灰着（盖牌区照样摆着给他看，只能按「取消」放弃）
-		var 需系: int = _需盖牌系别()
-		if 需系 > 0 and not _盖牌区有系别(需系):
-			return true
-		# need_card 是「最少要选几张」，点选上限另由 _skill_card_max 管（如【法术反弹】可弃 1~N 张同系牌），
-		# 所以这里用 ≥ 而不是 ==，否则多选了反而点不动「确定」
-		var 牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
-		# 「目标需法术牌」型（如【沉沦协奏曲】）：没挑到法术牌时本来就没那 1 点伤害，不必选目标；
-		# 挑到了就必须选目标（按服务端给的需求数判）。注意这里不能直接借 _目标数合法() ——
-		# 那个函数读的是发动技能通道的 _skill_need_target，与询问通道的 _skill_ask_need_target 不是一回事
-		var 免选目标: bool = _目标需法术牌() and not _已选牌含法术()
-		# 目标数：「目标随牌」的技能（如女武神【英灵召唤】：弃了法术牌才给治疗）随已选牌数现算 ——
-		# 没弃牌就一个人都不用选、弃了就必须正好选 1 名（见 _目标数合法）；其余按服务端给的需求数
-		var 目标够: bool = 免选目标 or (_目标数合法() if _目标随牌阈值() > 0 \
-			else (_sel_players.size() >= _skill_ask_need_target if _skill_ask_need_target > 0 else true))
-		# 二级技能栏：先在技能栏里选一个效果，再选够牌 / 目标，才让点「确定」
-		if _二级栏:
-			return not (牌够 and 目标够 and _二级选中 >= 0)
-		return not (牌够 and 目标够)
-	if _mode == 4:
-		# 分配型指示器（如圣疗 / 治愈之光 / 治疗术 / 神圣领域）：选够治疗点、且要选牌时选够牌才让「确定」
-		if not _分配配置().is_empty():
-			var 治疗牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
-			if not (治疗牌够 and _分配已满()):
+			if _选中是圣光():
+				return false
+			if not _可应战():
 				return true
-			# 分配到的目标也必须还在当前用法的白名单里（换了用法后可能已不合法）；
-			# 「自动选」型（【辉耀】/【圣光祈愈】）由 _分配目标都合法 直接放行
-			if not _分配目标都合法():
+			return _sel_players.is_empty()
+		GConst.RespondType.Bullet:
+			# 组合不成立（没选牌 / 10603 只选了 1 张同系牌 / 两张不同系）都灰着：
+			# 服务端只认 1 张【圣光】抵挡或 1 张真【魔弹】/ 2 张同系牌继续传递；
+			# 【圣光】抵挡不需要目标；继续传递的落点由服务端给定 —— 只有一个落点时
+			# 选好牌直接按「确定」就传下去，不用再点一次头像
+			var 魔弹方式: int = _魔弹响应提交方式()
+			if 魔弹方式 == GConst.Reattack.Block:
+				return false
+			if 魔弹方式 != GConst.Reattack.Attack:
 				return true
+			if not _sel_players.is_empty():
+				return false
+			return _魔弹传递目标列表().size() != 1
+		GConst.RespondType.Discard, GConst.RespondType.DiscardCover:
+			return _sel_cards.size() != _need_cards
+		GConst.RespondType.Weaken, GConst.RespondType.Heal:
 			return false
-		# 二级技能栏：得先在技能栏里选一个效果，且选够它要求的牌 / 目标，才让点「确定」
-		# （「先弹选项」型的需牌 / 目标已在选效果时由 _应用选项目标数 还原 / 收紧）
-		if _二级栏:
-			var 项: Dictionary = _二级选中项()
-			if 项.is_empty():
-				return true
-			var 需牌: int = maxi(_skill_need_card, int(项["需牌"]))
-			var 需目标: int = maxi(_skill_need_target, int(项["需目标"]))
-			# 手牌+盖牌混选的项（如【倒逆之蝶】第 ② 项：2 张手牌 + 2 张【茧】）还要数够盖牌张数
-			var 盖选中: int = 0
-			for c: Variant in _sel_cards:
-				if _is_my_cover(int(c)):
-					盖选中 += 1
-			# 不叫「牌够」：同一个函数后面另有一个 牌够，重名会触发 CONFUSABLE_LOCAL_DECLARATION
-			var 本项牌够: bool = _sel_cards.size() >= 需牌 if 需牌 > 0 else true
-			if _skill_cover_need > 0 and 盖选中 < _skill_cover_need:
-				本项牌够 = false
-			var 目标够: bool = _sel_players.size() >= 需目标 if 需目标 > 0 else true
-			return not (本项牌够 and 目标够 and _目标在白名单(项["目标白名单"]) and _目标数合法())
-		# 手牌 + 盖牌混选型（如【魔贯冲击】：1 张攻击牌 + 1 张火系【充能】）：
-		# 分别校验手牌数与盖牌数，不能只数总张数（否则选两张手牌也能按「确定」，提交后才被服务端拒）
-		if _skill_cover_need > 0:
-			var 盖选中: int = 0
-			for c: Variant in _sel_cards:
-				if _is_my_cover(int(c)):
-					盖选中 += 1
-			var 手选中: int = _sel_cards.size() - 盖选中
-			if 手选中 < _skill_need_card - _skill_cover_need or 盖选中 < _skill_cover_need:
-				return true
-			return not _目标数合法()
-		# 需牌是最少张数（如【暗影流星】要弃 2 张、【欺诈】要弃 2 张），选够才让点「确定」
-		# need_card==0 表示「一张都不选也可以」（如【灵魂镜像】最多弃 GConst.灵魂镜像张数 张、也可不弃），
-		# 点选上限另由 card_max 管，故这里直接放行
-		var 牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
-		return not (牌够 and _目标数合法())
-	if _mode == 2:
-		match int(_pending.get("respond_id", 0)):
-			GConst.RespondType.ReplyAttack:
-				if _sel_cards.is_empty():
-					return true
-				if _选中是圣光():
-					return false
-				if not _可应战():
-					return true
-				return _sel_players.is_empty()
-			GConst.RespondType.Bullet:
-				# 组合不成立（没选牌 / 10603 只选了 1 张同系牌 / 两张不同系）都灰着：
-				# 服务端只认 1 张【圣光】抵挡或 1 张真【魔弹】/ 2 张同系牌继续传递；
-				# 【圣光】抵挡不需要目标；继续传递的落点由服务端给定 —— 只有一个落点时
-				# 选好牌直接按「确定」就传下去，不用再点一次头像
-				var 魔弹方式: int = _魔弹响应提交方式()
-				if 魔弹方式 == GConst.Reattack.Block:
-					return false
-				if 魔弹方式 != GConst.Reattack.Attack:
-					return true
-				if not _sel_players.is_empty():
-					return false
-				return _魔弹传递目标列表().size() != 1
-			GConst.RespondType.Discard, GConst.RespondType.DiscardCover:
-				return _sel_cards.size() != _need_cards
-			GConst.RespondType.Weaken, GConst.RespondType.Heal:
-				return false
-			_:
-				return false
+		_:
+			return false
+	# 兜底（match 分支已覆盖所有情况，这里只为让「所有路径都有返回值」显式成立）
 	return true
+
+
+## 「点头像分配」型指示器（治疗术 / 治愈之光 / 冰霜祷言 / 圣疗 / 神圣契约 / 神圣领域…）：
+## 选够治疗点、且要选牌时选够牌，才让点「确定」。技能询问与发动技能两条通道共用。
+func _确定_分配型() -> bool:
+	var 治疗牌够: bool = _sel_cards.size() >= _skill_need_card if _skill_need_card > 0 else true
+	if not (治疗牌够 and _分配已满()):
+		return true
+	# 分配到的目标也必须还在当前用法的白名单里（换了用法后可能已不合法）；
+	# 「自动选」型（【辉耀】/【圣光祈愈】）由 _分配目标都合法 直接放行
+	if not _分配目标都合法():
+		return true
+	return false
 
 
 ## 行动阶段才能「无法行动」
