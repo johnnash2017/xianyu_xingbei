@@ -653,6 +653,46 @@ func _检圣庭检察士() -> void:
 	检(not (引擎._await_id == 1 and 引擎._pending_respond_id == 3904),
 		"没有法术牌时取消后不应再询问")
 
+	# 神圣鞭策：选 X 的询问要正常下发并走完（以前选项传 int，服务端 ask_skill 直接报错，
+	# 表现是「点了技能什么都不发生、客户端也动不了」）
+	角色 = _建引擎(39)
+	玩家 = 引擎.p(1)
+	玩家.add_token(0, 2)  # 裁决指示物（槽 0）
+	var 鞭策手牌: Array[int] = []
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and 鞭策手牌.size() < 3:
+			鞭策手牌.append(c.id)
+	检(鞭策手牌.size() == 3, "卡库里应有足够的牌")
+	玩家.hand_cards.clear()
+	玩家.add_hand_cards(鞭策手牌)
+	角色.set("_鞭策步", 1)
+	引擎.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": 1}, []))
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907,
+		"【神圣鞭策】应下发选 X 的询问（等待 %s / 询问 %s）"
+		% [str(引擎._await_id), str(引擎._pending_respond_id)])
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3907, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [],
+	})
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907
+		and 引擎._pending_skill_need_target == 1, "【神圣鞭策】选 X 后应逐名指定摸牌目标")
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3907, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [2],
+	})
+	引擎.run()
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3907, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [3],
+	})
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907,
+		"【神圣鞭策】指定完目标应问弃 X 张牌")
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3907, "src_id": 1, "card_ids": [鞭策手牌[0], 鞭策手牌[1]], "args": [], "dst_ids": [],
+	})
+	引擎.run()
+	检(not 玩家.有手牌(鞭策手牌[0]), "【神圣鞭策】应弃掉 X 张牌")
+
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用
 func _检异教徒() -> void:

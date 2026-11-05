@@ -53,7 +53,6 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 # ============================================================
 func available_skills() -> Array:
 	var 裁决: int = player.token_num(CAI_SLOT)
-	var 全体: Array[int] = _全体角色()
 	return [
 		{
 			# 裁决者是「启动」：技能类型必须是 SpecialSkill（引擎按这个 + is_free_skill 判启动），
@@ -63,10 +62,11 @@ func available_skills() -> Array:
 			"enabled": player.get_energy() >= 1,
 		},
 		{
+			# 神圣鞭策：X 与「各摸牌的目标」都在发动后由服务端逐步问，
+			# 技能本体这里不需要选牌 / 选目标（以前误带了 targets: 全体，客户端会把它当成可选目标）
 			"type": GConst.ActionType.MagicSkill,
 			"id": SHEN_SHENG_BIAN_CE,
 			"need_card": 0,
-			"targets": 全体,
 			"enabled": 裁决 >= 1 and player.get_energy() >= 1 and player.hand_cards.size() >= 1,
 		},
 	]
@@ -439,10 +439,12 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 	# 神圣鞭策：选 X
 	if _鞭策步 == 1:
 		if not engine.has_reply():
+			# 选项必须是 {value, label} 字典（引擎 ask_skill 按字典读 value）；传 int 会直接报错，
+			# 表现就是「点了技能什么都没发生」。X 已付 1 能量发动，这里不许取消，必须选一档
 			var 选项: Array = []
 			for i: int in range(1, player.token_num(CAI_SLOT) + 1):
-				选项.append(i)
-			询问(player.id, SHEN_SHENG_BIAN_CE, 0, 0, GConst.CardSource.Hand, [0] + 选项, 0, "", [], true,
+				选项.append({"value": i, "label": str(i)})
+			询问(player.id, SHEN_SHENG_BIAN_CE, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				GConst.提示原文(SHEN_SHENG_BIAN_CE, 1))
 			return WAIT
