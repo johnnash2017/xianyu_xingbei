@@ -2248,7 +2248,6 @@ func _on_command(data: Dictionary) -> void:
 	# 需要选牌的分支（技能询问 / 发动技能 / 点选行动）都会自己把这几项重新设好
 	_skill_ask_id = -1
 	_是技能询问 = false
-	_本地询问 = false
 	_额外行动单选 = -1
 	_额外行动单选原因 = -1
 	_额外行动可选 = true
@@ -4171,7 +4170,6 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 		_二级选项.append(项结构)
 	# 技能本体 + 选项排成一行；技能栏整排左对齐（场景里 ChildrenSkillArea 的 alignment = BEGIN）
 	_二级栏父技能号 = 父技能号 if 父 != null else 0
-	_二级栏父按钮 = 父
 	_二级栏 = true
 	_二级选中 = -1
 	_已选参数.clear()
