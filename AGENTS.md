@@ -871,17 +871,17 @@ powershell -ExecutionPolicy Bypass -File tests\runSelfCheck.ps1
 
 用例覆盖：数据与素材、界面版面、音频、战斗交互、指示器、角色分配、强制弃牌、阴阳师/月女/圣弓等技能边界、协议字段、场景资源完整性，以及 13 名 3★/3.5★ 角色、F1~F9 公共能力（额外行动/指示物/基础效果/伤害转移/额外回合/牌库顶/跨玩家）和客户端角色特性收口。
 
-### 11.1.1 三个只读巡检脚本（手动跑，不进自检）
+### 11.1.1 四个只读巡检脚本（手动跑，不进自检）
 
 ```powershell
+# 一条命令跑完下面三个（约 30 秒），日常用这个就够：
+powershell -ExecutionPolicy Bypass -File tests\查一遍.ps1
+powershell -ExecutionPolicy Bypass -File tests\查一遍.ps1 -详细
+
+# 单独跑某一个：
 powershell -ExecutionPolicy Bypass -File tests\查死代码.ps1          # 列出全仓没人引用的函数
-powershell -ExecutionPolicy Bypass -File tests\查死代码.ps1 -详细    # 连位置一起看
-
 powershell -ExecutionPolicy Bypass -File tests\查配置键.ps1          # 技能指示器里有没有「配了没人读」的键
-powershell -ExecutionPolicy Bypass -File tests\查配置键.ps1 -详细    # 每个键被多少条技能用到、代码在哪几行读
-
 powershell -ExecutionPolicy Bypass -File tests\查协议字段.ps1        # proto_schema 里哪些字段只发不收 / 只收不发
-powershell -ExecutionPolicy Bypass -File tests\查协议字段.ps1 -详细  # 全部字段的发/读计数
 ```
 
 - **查死代码**：扫 `scripts/` + `tests/` 的 `.gd` 和 `scenes/` 的 `.tscn`，列出「全仓没人引用」的函数；
