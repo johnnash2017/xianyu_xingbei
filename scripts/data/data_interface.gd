@@ -215,6 +215,18 @@ func role_personal_name(rid: int) -> String:
 	return str(role_personal_name_db.get(rid, ""))
 
 
+## 角色势力（角色表的「势力」列，如「战技殿堂」「神圣教廷」）；未配置 / 没有这一列时返回空串。
+## 角色悬停说明的名字一行会把它接在职业名 + 姓名后面（见 角色技能提示.悬浮提示）
+func role_faction(rid: int) -> String:
+	var row: Array = _角色行(rid)
+	if row.is_empty():
+		return ""
+	var 列: int = int(数据表格.表元数据["角色表"]["列索引"].get("势力", -1))
+	if 列 < 0 or 列 >= row.size():
+		return ""
+	return str(row[列]).strip_edges()
+
+
 ## 该角色属于哪个版本（未定义返回 0）
 func role_version(rid: int) -> int:
 	return int(role_version_db.get(rid, 0))

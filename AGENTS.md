@@ -930,6 +930,7 @@ powershell -ExecutionPolicy Bypass -File tests\runLanPlay.ps1 -窗口数 4
 | 战斗界面排版 | [scenes/BattleUIMobile.tscn](scenes/BattleUIMobile.tscn) | 节点通过 `@export` 绑到脚本 |
 | 战斗交互（出牌/选目标/技能/应战） | [battle_mobile.gd](scripts/ui/battle_mobile.gd) | 最大的脚本，建议先看目录注释 |
 | 玩家头像面板 | [PlayerStatusMobile.gd](scripts/PlayerStatusMobile.gd) | 头像、状态图标、治疗/星石显示 |
+| 角色悬停技能说明（名字 + 势力、描边按命格上色） | [role_skill_tip.gd](scripts/ui/role_skill_tip.gd) / [tip_box.gd](scripts/ui/tip_box.gd) | 名字行 = 职业名 + 姓名 + 势力；描边色在 `角色技能提示.命格描边颜色`（血红 / 咏橙 / 技绿 / 圣蓝 / 幻紫，统一 50% 不透明度），非角色说明恢复提示框默认描边 |
 | 卡牌控件 / 技能按钮 | [CardUI.gd](scripts/CardUI.gd) / [SkillUI.gd](scripts/SkillUI.gd) | |
 | 战斗规则 | [battle_engine.gd](scripts/battle/battle_engine.gd) | 状态机 + 伤害流水线 |
 | 某个角色的技能 | `scripts/battle/roles/role_*.gd` | 对照设计表里的技能号/提示列 |

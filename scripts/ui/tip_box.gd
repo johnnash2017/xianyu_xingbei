@@ -63,6 +63,12 @@ var _待摆中: bool = false
 var _沉降中: bool = false
 ## 显示沉降属于哪一轮（_轮次 一变，这条就作废）
 var _沉降轮次: int = 0
+## 底板默认描边（TipBox.tscn 里 StyleBoxFlat 的 border_color / border_width）：
+## 技能 / 状态 / 卡面提示都用它，只有「角色说明」会按命格换成别的颜色（见 显示角色说明）
+var _默认描边: Color = Color(1, 1, 1, 0.22)
+var _默认描边宽: int = 2
+## 角色说明的描边加粗到多宽：命格色要一眼能分出来，默认那 2px 整框再缩一档就看不清了
+const 角色说明描边宽: int = 3
 
 
 ## 行距：RichTextLabel 在字体行高之外还会加一截空隙（行间 / 段落间各一份），折半，别显得松散。
@@ -72,6 +78,30 @@ func _ready() -> void:
 		_折半行距(文本.get_theme_constant("line_separation")))
 	文本.add_theme_constant_override("paragraph_separation",
 		_折半行距(文本.get_theme_constant("paragraph_separation")))
+	# 默认描边以场景里的底板为准（换了 TipBox.tscn 不用再来改这份代码）
+	var 底板: StyleBoxFlat = _底板样式()
+	if 底板 != null:
+		_默认描边 = 底板.border_color
+		_默认描边宽 = maxi(底板.border_width_left, 1)
+
+
+## 底板样式（PanelContainer 的 panel）；不是 StyleBoxFlat（换成九宫格贴图）时返回 null
+func _底板样式() -> StyleBoxFlat:
+	return 框.get_theme_stylebox("panel") as StyleBoxFlat
+
+
+## 换提示框描边。底板的 StyleBoxFlat 是 resource_local_to_scene，每个提示框实例一份，
+## 改它不会影响别的界面（战斗界面与选角界面各有一个提示框）
+func _设描边(颜色: Color, 宽: int = -1) -> void:
+	var 底板: StyleBoxFlat = _底板样式()
+	if 底板 == null:
+		return
+	var 线宽: int = _默认描边宽 if 宽 < 0 else 宽
+	底板.border_color = 颜色
+	底板.border_width_left = 线宽
+	底板.border_width_top = 线宽
+	底板.border_width_right = 线宽
+	底板.border_width_bottom = 线宽
 
 
 ## 显示一段说明：图标矩形取「视图坐标」，框摆在它正上方并夹在宿主内。
@@ -84,6 +114,8 @@ func 显示(说明: String, 图标矩形: Rect2, 宽度: float, 字号: int, 整
 		return
 	_卸内容()
 	_隐藏星数()
+	# 上一条可能是角色说明（按命格染过描边）：普通说明一律恢复默认描边
+	_设描边(_默认描边)
 	_基缩放 = 整体缩放
 	_让开图标 = 让开图标
 	文本.visible = true
@@ -136,6 +168,9 @@ static func 设置角色说明缩放档(档: float) -> void:
 func 显示角色说明(角色号: int, 图标矩形: Rect2, 对局中: bool = false) -> void:
 	显示(角色技能提示.悬浮提示(角色号, 角色说明字号缩放, 对局中), 图标矩形,
 		角色说明宽度, 角色说明字号, 档位到缩放(当前角色说明缩放档()), true, true)
+	# 描边按命格换色（血红 / 咏橙 / 技绿 / 圣蓝 / 幻紫）；没配命格就保持默认描边
+	var 描边: Color = 角色技能提示.描边颜色(角色号)
+	_设描边(描边 if 描边.a > 0.0 else _默认描边, 角色说明描边宽 if 描边.a > 0.0 else -1)
 	if 星数标签 != null:
 		var 星数: String = 角色技能提示.星数文本(角色号)
 		星数标签.text = 星数
@@ -149,6 +184,8 @@ func 显示内容(内容节点: Control, 图标矩形: Rect2) -> void:
 		return
 	_卸内容()
 	_隐藏星数()
+	# 自定义内容（卡面预览等）不属于角色说明，恢复默认描边
+	_设描边(_默认描边)
 	_基缩放 = 1.0
 	_让开图标 = false
 	内容 = 内容节点
