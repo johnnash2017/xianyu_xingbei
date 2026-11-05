@@ -370,6 +370,19 @@ func _检翻面天雷() -> void:
 	引擎.run()
 	检(引擎._await_id == 2, "应问目标对手弃任意张该系牌（等待 %s / %s）"
 		% [str(引擎._await_id), str(引擎._await_kind)])
+	# 这一步不能取消（可以一张都不弃，但没有「取消」按钮）
+	var 目标弃问: Dictionary = {}
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.CmdReq:
+			continue
+		var 命令2: Array = (r["data"] as Dictionary).get("commands", [])
+		if 命令2.is_empty():
+			continue
+		var c2: Dictionary = 命令2[0]
+		if int(c2.get("respond_id", 0)) == 9507 and int(c2.get("src_id", -1)) == 2:
+			目标弃问 = c2
+	检(not 目标弃问.is_empty() and bool(目标弃问.get("can_cancel", true)) == false,
+		"目标弃牌询问应不可取消：%s" % str(目标弃问.get("can_cancel", "缺省")))
 	_应答([], [], 敌雷)
 	_收伤害()
 	检(引擎.deck.discard.has(int(敌雷[0])), "目标对手弃掉的牌应进弃牌堆")

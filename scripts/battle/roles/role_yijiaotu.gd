@@ -478,7 +478,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if 上限 <= 0:
 			return _展示本项伤害()
 		if not engine.has_reply():
-			询问(_展示对手, _展示技能号(), 0, 0, GConst.CardSource.Hand, [], 上限, "", 牌面, true,
+			# 目标弃牌这一步不可取消（can_cancel=false）：可以一张都不弃，但不能点「取消」跳过
+			询问(_展示对手, _展示技能号(), 0, 0, GConst.CardSource.Hand, [], 上限, "", 牌面, false,
 				0, _展示对手, [], 上限, {}, 0, 0, false, [], true, -1, 0,
 				GConst.提示原文(_展示技能号(), 4)
 				% [_在展示, GConst.element_to_chinese(_展示系)])
