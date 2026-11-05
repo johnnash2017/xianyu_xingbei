@@ -439,14 +439,13 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			# 选项必须是 {value, label} 字典（引擎 ask_skill 按字典读 value）；传 int 会直接报错，
 			# 表现就是「点了技能什么都没发生」。X 已付 1 能量发动，这里不许取消，必须选一档。
-			# 选项文案走技能表「按钮」列（移除 X 点【裁决】）；弃 X 张牌，手牌不够的档位置灰但照样摆出来
-			var 手牌数: int = player.hand_cards.size()
+			# 选项文案走技能表「按钮」列（移除 X 点【裁决】）；
+			# 手牌不足 X 张也允许选这一档（弃牌那步按实际手牌弃，能弃几张弃几张）
 			var 选项: Array = []
 			for i: int in range(1, player.token_num(CAI_SLOT) + 1):
 				选项.append({
 					"value": i,
 					"label": GConst.按钮原文(SHEN_SHENG_BIAN_CE, 0, {"n": i}),
-					"enabled": i <= 手牌数,
 				})
 			询问(player.id, SHEN_SHENG_BIAN_CE, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
@@ -456,8 +455,8 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
 		var x: int = int(args[0]) if not args.is_empty() else 0
-		# 手牌不够 X 张时不能选这一档（客户端已按 enabled 置灰，这里兜底）
-		if x <= 0 or x > player.hand_cards.size() or not player.remove_token(CAI_SLOT, x):
+		# 只有 1..裁决数 这些档位会被下发，正常不会越界；扣不掉（裁决不够）就收尾
+		if x <= 0 or not player.remove_token(CAI_SLOT, x):
 			_鞭策步 = 0
 			return SUCCESS
 		_鞭策X = x
@@ -488,9 +487,8 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 			_鞭策目标.append(int(ds[0]))
 		engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
 		return URGENT
-	# 神圣鞭策：你弃 X 张牌
+	# 神圣鞭策：你弃 X 张牌（手牌不足 X 张时按实际手牌弃，少弃不报错）
 	if _鞭策步 == 4:
-		# 选 X 时已经按手牌数置灰；这里只兜底（中途手牌不会变少，摸牌只会变多）
 		var 需: int = mini(_鞭策X, player.hand_cards.size())
 		if 需 <= 0:
 			_鞭策步 = 0

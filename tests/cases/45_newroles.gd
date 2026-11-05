@@ -707,6 +707,35 @@ func _检圣庭检察士() -> void:
 	引擎.run()
 	检(not 玩家.有手牌(鞭策手牌[0]), "【神圣鞭策】应弃掉 X 张牌")
 
+	# 手牌不足 X 张也允许选该档：X=2、手里只留 1 张，弃牌那步就弃这 1 张
+	角色 = _建引擎(39)
+	玩家 = 引擎.p(1)
+	玩家.add_token(0, 2)
+	玩家.hand_cards.clear()
+	玩家.add_hand_cards([鞭策手牌[0]])
+	角色.set("_鞭策步", 1)
+	引擎.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": 1}, []))
+	引擎.run()
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3907, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [],
+	})
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907,
+		"手牌不足 X 张也应允许选该档位")
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3907, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [2],
+	})
+	引擎.run()
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3907, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [3],
+	})
+	引擎.run()
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3907, "src_id": 1, "card_ids": [鞭策手牌[0]], "args": [], "dst_ids": [],
+	})
+	引擎.run()
+	检(玩家.hand_cards.is_empty(), "手牌不足时弃牌应按实际手牌弃、不报错")
+
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用
 func _检异教徒() -> void:
