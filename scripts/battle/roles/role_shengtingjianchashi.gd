@@ -2,7 +2,8 @@ extends BattleRole
 ## 圣庭检察士（39）：狂信徒 / 裁决论定 / 恩典神授 / 净化之术 / 庇护领域 / 裁决者 / 神圣鞭策
 ##
 ## 【裁决】＝0 号指示物（角色表 0:裁决:3）。
-## 【异端裁决所】＝场卡（F1）：id = "异端裁决所"，owner = 自己，counter = 它拥有的【治疗】点数。
+## 【异端裁决所】＝场卡（F1）：id = "异端裁决所"，owner = 自己，
+##   counter = 它拥有的【治疗】点数，**上限 4**（count_max = 4；客户端悬停提示按「当前/4」显示）。
 ##
 ## 口径：
 ## 1. 【狂信徒】开局放【异端裁决所】；「我方队友存在圣类命格时治疗上限 +1」每次自己回合开始按队友重算
@@ -26,6 +27,8 @@ const SHEN_SHENG_BIAN_CE: int = 3907
 
 const CAI_SLOT: int = 0
 const 裁决所名: String = "异端裁决所"
+## 【异端裁决所】能存多少【治疗】点数（场卡计数上限；客户端悬停按「当前/上限」显示）
+const 裁决所治疗上限: int = 4
 
 ## 恩典神授的目标队友
 var _恩典队友: int = -1
@@ -41,7 +44,7 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	if not engine.有场卡(裁决所名):
 		engine.加场卡({
 			"id": 裁决所名, "owner": player.id, "attached": -1,
-			"counter": 0, "counter_max": 0, "state": 0,
+			"counter": 0, "counter_max": 裁决所治疗上限, "state": 0,
 		})
 	_重算治疗上限()
 
