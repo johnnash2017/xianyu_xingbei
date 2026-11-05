@@ -156,21 +156,22 @@ func p_magic_skill(action: Dictionary) -> int:
 	player.remove_energy(1)
 	player.remove_token(CAI_SLOT, x)
 	notice_skill(SHEN_SHENG_BIAN_CE, [player.id] + 目标)
-	# 每名目标各摸 1 张牌【强制】
-	for pid: int in 目标:
-		engine.push_draw(pid, 1, SHEN_SHENG_BIAN_CE)
-	# 你弃 X 张牌（手牌不足 X 张就按实际手牌弃）：弃哪些牌随发动一次提交，不再单独问
+	# 顺序：先让 X 名目标各摸 1 张牌【强制】，你再弃 X 张牌（手牌不足 X 张就按实际手牌弃）。
+	# 弃哪些牌随发动一次提交（不再单独问），但要等摸牌结算完再弃 ——
+	# 先压「弃牌」钩子、再压摸牌状态：栈顶先跑摸牌，回到底下的钩子时才弃牌
 	var 弃: Array[int] = []
 	for cid: Variant in action.get("card_ids", []):
 		if 弃.size() < x and player.有手牌(int(cid)):
 			弃.append(int(cid))
-	if not 弃.is_empty():
-		engine.take_from_hand(player.id, 弃, false)
-		engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": SHEN_SHENG_BIAN_CE})
-		# 日志带张数 → 客户端播弃牌动画
-		engine._log_discard(player.id, 弃)
-	engine._broadcast_game()
+	_鞭策弃牌 = 弃
+	_鞭策步 = 1
+	engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
+	for pid: int in 目标:
+		engine.push_draw(pid, 1, SHEN_SHENG_BIAN_CE)
 	return URGENT
+
+var _鞭策步: int = 0
+var _鞭策弃牌: Array[int] = []
 
 
 # ============================================================
@@ -476,6 +477,23 @@ var _庇护伤害: Dictionary = {}
 # ============================================================
 func p_sheng_ting_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	# 神圣鞭策：摸牌结算完之后才走到这里 —— 弃掉发动时选好的 X 张牌（不再询问）
+	if _鞭策步 == 1:
+		_鞭策步 = 0
+		var 弃: Array[int] = _鞭策弃牌
+		_鞭策弃牌 = []
+		var 真弃: Array[int] = []
+		for cid: int in 弃:
+			if player.有手牌(cid):
+				真弃.append(cid)
+		if 真弃.is_empty():
+			return SUCCESS
+		engine.take_from_hand(player.id, 真弃, false)
+		engine.to_discard(真弃, {"owner": player.id, "source": "hand", "cause": SHEN_SHENG_BIAN_CE})
+		# 日志带张数 → 客户端播弃牌动画
+		engine._log_discard(player.id, 真弃)
+		engine._broadcast_game()
 		return SUCCESS
 	# 恩典神授：弃 1 张牌；圣命格可【展示】换 1 点法术伤害。
 	# 弃牌 + 「展示 / 不展示」+「法术伤害打谁」都在同一条询问里选：展示默认选上，
