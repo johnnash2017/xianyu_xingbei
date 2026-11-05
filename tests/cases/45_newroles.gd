@@ -609,14 +609,9 @@ func _检圣庭检察士() -> void:
 	引擎.push(BattleEngine.SHook.new("p_harm_end", {"dst": 1}, []))
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3904,
-		"【净化之术】应先问是否发动：等待 %s / 询问 %s"
+		"【净化之术】应直接问弃哪张法术牌（一次提交）：等待 %s / 询问 %s"
 		% [str(引擎._await_id), str(引擎._pending_respond_id)])
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3904, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [],
-	})
-	引擎.run()
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3904,
-		"【净化之术】发动后应问弃哪张法术牌（等待 %s）" % str(引擎._await_id))
+	# 选牌 + 确定就是发动：不再有「是否发动」那一问
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 3904, "src_id": 1, "args": [], "card_ids": [净化法术牌], "dst_ids": [],
 	})

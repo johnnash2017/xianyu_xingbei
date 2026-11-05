@@ -358,31 +358,35 @@ func p_harm_end(ctx: Dictionary) -> int:
 	# 没有这道闸就会被「摸 1 张牌」补回来的法术牌反复触发（表现是无限循环地弹发动询问）
 	if bool(ctx.get("_净化已处理", false)):
 		return SUCCESS
-	if _净华步 != 0 and not engine.has_reply():
-		# 等回复期间（_净华步 == 1 且有回复）放行到下面 take
-		return SUCCESS
 	var 法术牌: Array[int] = magic_hand_ids()
 	if 法术牌.is_empty():
 		return SUCCESS
-	_净华步 = 1
-	_净华牌 = 法术牌
+	# 发动＝选 1 张法术牌弃掉，**一次提交**：不再先问「是否发动」再问选牌。
+	# 想放弃点「取消」＝不发动（服务端收到空回复直接跳过）。
 	if not engine.has_reply():
-		# 发动询问不写 ask 文案（提示条默认显示技能说明）；
-		# 具体弃哪张法术牌放在下一步问，这里只问发不发动
-		询问(player.id, JING_HUA_ZHI_SHU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
+		询问(player.id, JING_HUA_ZHI_SHU, 1, 0, GConst.CardSource.Hand, [], 1, "magic", [], true,
+			0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0, "")
 		return WAIT
-	if not take_skill_reply():
-		_净华步 = 0
-		ctx["_净化已处理"] = true
-		return SUCCESS
-	_净华步 = 2
+	var r7: Dictionary = take_skill_reply_full()
 	ctx["_净化已处理"] = true
-	engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
+	var cards7: Array = r7.get("card_ids", [])
+	if cards7.is_empty() or not player.有手牌(int(cards7[0])):
+		return SUCCESS
+	var cid7: int = int(cards7[0])
+	var 卡7: GCard = Data.get_card(cid7)
+	if 卡7 == null or not 卡7.is_magic():
+		return SUCCESS
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": [cid7], "is_real": true,
+	})
+	engine.take_from_hand(player.id, [cid7], false)
+	engine.to_discard([cid7], {"owner": player.id, "source": "hand", "cause": JING_HUA_ZHI_SHU})
+	engine._log_discard(player.id, [cid7])
+	施加治疗(player.id, 1)
+	engine.push_draw(player.id, 1, JING_HUA_ZHI_SHU)
+	engine.场卡加计数(裁决所名, -1)
 	return URGENT
-
-var _净华步: int = 0
-var _净华牌: Array[int] = []
 
 
 # ============================================================
@@ -553,35 +557,6 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 			})
 			return URGENT
 		return SUCCESS
-	# 净化之术：弃 1 张法术牌【展示】→ +1 治疗、摸 1、裁决所 -1 治疗
-	if _净华步 == 2:
-		if not engine.has_reply():
-			询问(player.id, JING_HUA_ZHI_SHU, 1, 0, GConst.CardSource.Hand, [], 1, "magic", [], true,
-				0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(JING_HUA_ZHI_SHU, 2))
-			return WAIT
-		# 阶段在取完回复之后再推进：重入时 _净华步 仍是 2
-		var r7: Dictionary = take_skill_reply_full()
-		_净华步 = 3
-		var cards7: Array = r7.get("card_ids", [])
-		_净华步 = 0
-		if cards7.is_empty() or not player.有手牌(int(cards7[0])):
-			return SUCCESS
-		var cid7: int = int(cards7[0])
-		var 卡7: GCard = Data.get_card(cid7)
-		if 卡7 == null or not 卡7.is_magic():
-			return SUCCESS
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": [cid7], "is_real": true,
-		})
-		engine.take_from_hand(player.id, [cid7], false)
-		engine.to_discard([cid7], {"owner": player.id, "source": "hand", "cause": JING_HUA_ZHI_SHU})
-		engine._log_discard(player.id, [cid7], false)
-		施加治疗(player.id, 1)
-		engine.push_draw(player.id, 1, JING_HUA_ZHI_SHU)
-		engine.场卡加计数(裁决所名, -1)
-		return URGENT
 	return SUCCESS
 
 
