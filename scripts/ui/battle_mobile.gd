@@ -2571,7 +2571,7 @@ func _技能询问_重置与展示() -> void:
 		var 展示按钮: 技能按钮 = _新技能按钮(_skill_ask_id,
 			GConst.询问按钮文案(_skill_ask_id, _skill_ask_need_target))
 		if _是响应赐福(_skill_ask_id):
-			展示按钮.设置底色(GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87)))
+			展示按钮.设置底色(_响应底色())
 		展示按钮.设置选中(true)
 		_排技能栏.call_deferred()
 
@@ -3005,6 +3005,12 @@ const 额外行动按钮色: Color = Color("c0392b")
 ## 赐福类技能施加时是法术，贴到目标身上触发时是响应
 func _是响应赐福(cause: int) -> bool:
 	return GConst.响应赐福.has(cause)
+
+
+## 「响应」类技能的底色（技能类型颜色表里没配时的兜底）。
+## 展示按钮 / 二级栏父技能 / 选项按钮三处上色共用，要调色只改这里。
+func _响应底色() -> Color:
+	return GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
 
 
 ## 额外行动按钮统一用红底：不再按来源技能的类型上色 —— 以前攻击额外行动是红色、
@@ -4171,7 +4177,7 @@ func _二级栏_摆父钮(父技能号: int, 父按钮: 技能按钮, 行动钮:
 		ChildrenSkillArea.move_child(行动钮, 0)
 	父.设置选中(true)
 	if _是响应赐福(父技能号):
-		父.设置底色(GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87)))
+		父.设置底色(_响应底色())
 	if 返回回调.is_valid():
 		_添加返回按钮(返回回调)
 	return 父
@@ -4191,7 +4197,7 @@ func _二级栏_造选项钮(选项: Array, 选项底色: Color, 父技能号: i
 		# 按借用它的技能的类型色显示（4606 是法术）
 		if _是响应赐福(项技能号):
 			if bool(_pending.get("no_parent", false)):
-				用底色 = GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87))
+				用底色 = _响应底色()
 			elif 父技能号 > 0:
 				用底色 = GConst.skill_type_color(父技能号)
 		# 该项本身就是技能时绑上技能号：鼠标指向它就和普通技能按钮一样弹技能说明
