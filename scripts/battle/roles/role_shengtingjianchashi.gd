@@ -496,50 +496,41 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		_鞭策X = 0
 		_鞭策目标 = []
 		return SUCCESS
-	# 恩典神授：弃 1 张牌；圣命格可【展示】换 1 点法术伤害
+	# 恩典神授：弃 1 张牌；圣命格可【展示】换 1 点法术伤害。
+	# 弃牌和「法术伤害打谁」在同一条询问里选（目标可选：不选＝不展示、不造成伤害）
 	if _恩典步 == 4:
 		if not engine.has_reply():
 			询问(player.id, EN_DIAN_SHEN_SHOU, 1, 0, GConst.CardSource.Hand, [], 1, "", [], true,
-				0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
+				0, player.id, enemy_ids(), 1, {}, 0, 0, false, [], true, -1, 0,
 				GConst.提示原文(EN_DIAN_SHEN_SHOU, 3))
 			return WAIT
 		var r5: Dictionary = take_skill_reply_full()
 		var cards5: Array = r5.get("card_ids", [])
+		var 目标5: Array = r5.get("dst_ids", [])
 		_恩典步 = 0
 		if cards5.is_empty() or not player.有手牌(int(cards5[0])):
 			return SUCCESS
 		var cid: int = int(cards5[0])
 		var 圣: bool = Data.get_card(cid) != null \
 			and Data.get_card(cid).fate_pattern_enum() == GConst.FatePattern.Holy
+		# 只有弃的是圣类命格、且玩家点了 1 名对手，才展示并造成 1 点法术伤害
+		var 伤害目标: int = -1
+		if 圣 and 目标5.size() == 1:
+			var 目标者: BattlePlayer = engine.p(int(目标5[0]))
+			if 目标者 != null and 目标者.color != player.color:
+				伤害目标 = 目标者.id
 		engine.take_from_hand(player.id, [cid], false)
-		if 圣:
+		if 伤害目标 >= 0:
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 				"card_ids": [cid], "is_real": true,
 			})
-			# 先压「伤害询问」的钩子、再走统一弃牌入口：牌按标准弃置先进弃牌堆
-			# （触发 F6 弃牌前拦截，如噬神者【渗蚀】），回头再问是否造成法术伤害
-			engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
-			engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": EN_DIAN_SHEN_SHOU})
-			engine._log_discard(player.id, [cid], false)
-			_恩典步 = 5
-			return URGENT
+		# 牌按标准弃置进弃牌堆（触发 F6 弃牌前拦截，如噬神者【渗蚀】）
 		engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": EN_DIAN_SHEN_SHOU})
 		engine._log_discard(player.id, [cid], false)
-		return SUCCESS
-	# 恩典神授：展示后的法术伤害
-	if _恩典步 == 5:
-		if not engine.has_reply():
-			询问(player.id, EN_DIAN_SHEN_SHOU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(EN_DIAN_SHEN_SHOU, 4))
-			return WAIT
-		var r6: Dictionary = take_skill_reply_full()
-		var ds6: Array = r6.get("dst_ids", [])
-		_恩典步 = 0
-		if ds6.size() == 1:
+		if 伤害目标 >= 0:
 			engine.push_harm({
-				"src": player.id, "dst": int(ds6[0]), "point": 1,
+				"src": player.id, "dst": 伤害目标, "point": 1,
 				"cause": EN_DIAN_SHEN_SHOU, "type": GConst.HarmType.Magic,
 			})
 			return URGENT

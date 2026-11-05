@@ -334,18 +334,12 @@ func _检圣庭检察士() -> void:
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3903,
 		"提炼结算完应问「弃 1 张牌」：等待 %s / 询问号 %s"
 		% [str(引擎._await_id), str(引擎._pending_respond_id)])
-	# 弃那张圣牌：展示 + 对目标对手 1 点法术伤害
+	# 弃牌和伤害目标在同一条询问里选：弃圣牌 + 顺手点 1 名对手 → 直接 1 点法术伤害
 	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3903, "src_id": 1, "args": [], "card_ids": [圣牌], "dst_ids": [],
+		"respond_id": 3903, "src_id": 1, "args": [], "card_ids": [圣牌], "dst_ids": [2],
 	})
 	引擎.run()
 	检(引擎.deck.discard.has(圣牌), "【恩典神授】弃掉的牌应进弃牌堆")
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3903
-		and 引擎._pending_skill_need_target == 1, "圣类弃牌后应问目标对手")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3903, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [2],
-	})
-	引擎.run()
 	var 有伤害: bool = false
 	for r: Dictionary in 发送记录:
 		if int(r["msg"]) != GConst.Msg.Hurt:
@@ -353,7 +347,42 @@ func _检圣庭检察士() -> void:
 		var d: Dictionary = r["data"]
 		if int(d.get("dst_id", -1)) == 2 and int(d.get("hurt", 0)) == 1:
 			有伤害 = true
-	检(有伤害, "【恩典神授】展示圣牌后应对目标对手造成 1 点法术伤害")
+	检(有伤害, "【恩典神授】弃圣牌并点时对目标对手造成 1 点法术伤害")
+
+	# 弃非圣类命格：不展示、不造成伤害（就算顺手点了对手也不打）
+	角色 = _建引擎(39)
+	玩家 = 引擎.p(1)
+	引擎.set_team_gem(GConst.BLUE, 1)
+	引擎.场卡加计数("异端裁决所", 3)
+	var 非圣牌: int = -1
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.fate_pattern_enum() != GConst.FatePattern.Holy:
+			非圣牌 = c.id
+			break
+	检(非圣牌 >= 0, "卡库里应有非圣类命格的牌")
+	玩家.hand_cards.clear()
+	玩家.add_hand_cards([非圣牌])
+	引擎.current_id = 1
+	引擎.行动允许 = GConst.ActionType.Any
+	发送记录.clear()
+	引擎.resolve_action(GConst.ActionType.Special, {
+		"action_id": GConst.SpecialAction.Extract,
+		"dst_ids": [3], "card_ids": [], "args": [3903, 0, 0, 1, 0, 0, 1, 0],
+	})
+	引擎.run()
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3903, "src_id": 1, "args": [], "card_ids": [非圣牌], "dst_ids": [2],
+	})
+	引擎.run()
+	检(引擎.deck.discard.has(非圣牌), "【恩典神授】非圣类弃牌也应进弃牌堆")
+	var 非圣有伤害: bool = false
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.Hurt:
+			continue
+		var d2: Dictionary = r["data"]
+		if int(d2.get("dst_id", -1)) == 2 and int(d2.get("hurt", 0)) == 1:
+			非圣有伤害 = true
+	检(not 非圣有伤害, "【恩典神授】弃非圣类命格时不该造成法术伤害")
 
 	# ---- 代价类型 1：由玩家指定从哪几名我方角色身上扣（1 人 2 点 / 2 人各 1 点）----
 	角色 = _建引擎(39)

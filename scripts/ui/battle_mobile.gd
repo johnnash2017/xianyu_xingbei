@@ -10140,7 +10140,10 @@ func _玩家可选(player_id: int) -> bool:
 		# 「目标需法术牌」型（如【沉沦协奏曲】）：弃的牌里还没挑到法术牌时谁都不亮、点不动
 		if _目标需法术牌() and not _已选牌含法术():
 			return false
-		if _skill_ask_need_target <= 0:
+		# 需求目标数为 0 时默认谁都不亮；但【恩典神授】弃牌那条允许「顺手指定 1 名对手挨伤害」，
+		# 服务端下发了目标白名单就照样点亮（不选也行：只有弃的是圣类命格才展示并造成伤害）
+		if _skill_ask_need_target <= 0 \
+				and not (_skill_ask_id == 恩典神授技能号 and not _skill_targets.is_empty()):
 			return false
 		# 参数选项带了各自的目标白名单时，按选中那一项（还没选就按并集）点亮 ——
 		# 如吟游诗人【希望赋格曲】的「放置」不含自己、「转移」含自己
