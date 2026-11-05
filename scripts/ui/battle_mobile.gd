@@ -6402,6 +6402,29 @@ func _自锁技能头像提示() -> Dictionary:
 	return {Logic.my_player_id: 文}
 
 
+## 【庇护领域】（3905，我方角色受伤③时发动）：本次伤害 -1。
+## 头像上写两行（学【精准射击】等改变伤害的写法）：上行原伤害划掉（行首 [zwj]）、下行减 1 后的伤害。
+## 原伤害 / 伤害类型 / 挨打的人由服务端随询问下发（preview_base / preview_kind / preview_ids）
+func _庇护领域头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_庇护领域:
+		return out
+	var 原: int = int(_pending.get("preview_base", 0))
+	if 原 <= 0:
+		return out
+	var 类型: int = int(_pending.get("preview_kind", 0))
+	var 格式: String = "%d 法术伤害" if 类型 == GConst.HarmType.Magic else "%d 攻击伤害"
+	var 新: int = maxi(原 - 1, 0)
+	var 文: String = "[zwj]%s\n%s" % [格式 % 原, 格式 % 新]
+	var 目标表: Array = _pending.get("preview_ids", [])
+	if 目标表.is_empty():
+		目标表 = _pending.get("dst_ids", [])
+	for pid: Variant in 目标表:
+		if int(pid) >= 0:
+			out[int(pid)] = 文
+	return out
+
+
 ## 【恩典神授】弃牌那条：是否选了「展示」（默认展示；选「不展示」就只弃牌、不造成伤害，也不让点目标）
 func _恩典选展示() -> bool:
 	return _已选参数.is_empty() or int(_已选参数[0]) == 1
@@ -8817,6 +8840,8 @@ func _刷新头像提示() -> void:
 		动态提示 = _恩典弃牌头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _自锁技能头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _庇护领域头像提示()
 	# 魔弹 / 念弹这类「写不进静态指示器表、只能现算」的提示优先：
 	# 魔弹的数值随传递递增；念弹的自身伤害取决于目标有无治疗与自身斗气数
 	if 动态提示.is_empty():
