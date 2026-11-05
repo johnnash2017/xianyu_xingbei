@@ -504,8 +504,8 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 	if _恩典步 == 4:
 		if not engine.has_reply():
 			var 展示选项: Array = [
-				{"value": 1, "text": GConst.按钮原文(EN_DIAN_SHEN_SHOU, 4)},
-				{"value": 0, "text": GConst.按钮原文(EN_DIAN_SHEN_SHOU, 5)},
+				{"value": 1, "label": GConst.按钮原文(EN_DIAN_SHEN_SHOU, 4)},
+				{"value": 0, "label": GConst.按钮原文(EN_DIAN_SHEN_SHOU, 5)},
 			]
 			询问(player.id, EN_DIAN_SHEN_SHOU, 1, 0, GConst.CardSource.Hand, 展示选项, 1, "", [], true,
 				0, player.id, enemy_ids(), 1, {}, 0, 0, false, [], true, -1, 0,
