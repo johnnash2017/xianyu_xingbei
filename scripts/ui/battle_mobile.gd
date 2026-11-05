@@ -5390,14 +5390,24 @@ func _技能牌能点(面: int, card_id: int) -> bool:
 	if _二级栏:
 		# 选项各自带牌白名单、但还没选任何选项时：可点牌集合还没确定（如天雷/地裂的
 		# 雷火地水四选一），先把手牌整片置灰，选完系别再放开对应系别的牌。
-		if _二级选中 < 0:
-			for 项0: Dictionary in _二级选项:
-				if not (项0.get("牌白", []) as Array).is_empty():
-					return false
+		if _选项未选时禁牌():
+			return false
 		var 项牌白: Array = _二级选中项().get("牌白", [])
 		if not 项牌白.is_empty() and not 项牌白.has(面):
 			return false
 	return _符合选牌规则(card_id)
+
+
+## 「选项各自带牌白名单、但还没选任何选项」时是否要整片禁牌（天雷/地裂那种四选一）。
+## 抽成独立函数：既给 _技能牌能点 用，也给 selfCheck 的 49 号用例断言用
+## （那条用例原来 call 的是一个根本不存在的同名函数，等于没测）。
+func _选项未选时禁牌() -> bool:
+	if not _二级栏 or _二级选中 >= 0:
+		return false
+	for 项0: Dictionary in _二级选项:
+		if not (项0.get("牌白", []) as Array).is_empty():
+			return true
+	return false
 
 
 ## 按选牌规则过滤可点牌（服务端给的 card_rule）：

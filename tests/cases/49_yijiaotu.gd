@@ -587,6 +587,7 @@ func _检系别选项牌白() -> void:
 		"没有地系手牌时该选项应下 -1（一张都不给点）")
 	# 没选系别前，客户端应整片禁牌；选了系别后才放开该系
 	var 窗: Control = load("res://scripts/ui/battle_mobile.gd").new()
+	窗.set("_二级栏", true)
 	窗.set("_二级选项", [{"牌白": [GConst.牌号(int(雷[0]))]}])
 	窗.set("_二级选中", -1)
 	检(bool(窗.call("_选项未选时禁牌")), "没选系别时应禁牌")
