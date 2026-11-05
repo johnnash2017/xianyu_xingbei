@@ -475,6 +475,15 @@ func _检圣庭检察士() -> void:
 	窗.set("_pending_skill_id", 3901)
 	检((窗.call("_裁决者头像提示") as Dictionary).is_empty(),
 		"不是【裁决者】时不画它的头像提示")
+	# 只作用于自己的技能（【裁决者】）：进场即把自己锁定高亮、不许取消
+	窗.set("_pending_skill_id", 3906)
+	窗.set("_目标锁死", true)
+	检(not bool(窗.call("_取消可用")), "【裁决者】锁定自己后不应能取消")
+	窗.set("_目标锁死", false)
+	检(bool(窗.call("_取消可用")), "没锁定时【裁决者】仍可取消")
+	var 自动选: bool = bool(窗.call("_套用自动选目标", {"自动选目标": "自己"}))
+	检(自动选 and (窗.get("_sel_players") as Array).has(Logic.my_player_id),
+		"「自动选目标：自己」应把目标锁定在自己身上")
 	窗.free()
 
 

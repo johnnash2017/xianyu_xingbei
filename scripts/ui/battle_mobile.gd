@@ -10423,6 +10423,9 @@ func _取消可用() -> bool:
 			return _skill_ask_can_cancel
 		return true
 	if _mode == 4 or _mode == 6:
+		# 只作用于自己的技能（如【裁决者】）：指示器把自己锁定高亮后不许取消，避免误点重来
+		if _mode == 4 and _目标锁死 and bool(_指示器配置().get("锁定不可取消", false)):
+			return false
 		return true
 	if _mode == 2:
 		var rid: int = int(_pending.get("respond_id", 0))
