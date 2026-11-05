@@ -2641,35 +2641,93 @@ func _技能询问_选项前置() -> void:
 
 
 ## `_进入技能询问` 第 4 步：选项归一化 → 进二级技能栏 → 默认选中 → 攒应战。
+## 本次询问的选项源，统一成「每项一个规整前的字典」。
+## 服务端 5.2 起会同时发 `options`（一个选项一条消息）；条数对得上、且每项的值与 args 里的
+## 选项值一一对应时才用它，否则退回那 13 个平行数组 —— 老服务端 / 解码异常都不会把界面搞乱。
+func _技能询问_选项源() -> Array:
+	var 嵌套: Array = _pending.get("options", [])
+	if not 嵌套.is_empty() and 嵌套.size() == _skill_options.size() and _选项值对得上(嵌套):
+		return _选项源_嵌套(嵌套)
+	return _选项源_平行数组()
+
+
+## 新路径的自检：每项的 value 必须等于 args 里的第 i 个选项值。
+## 不成立就说明两份数据对不上（老服务端 / 解码截断 / 顺序变了），宁可退回旧路径。
+func _选项值对得上(嵌套: Array) -> bool:
+	for i: int in range(嵌套.size()):
+		var o: Variant = 嵌套[i]
+		if not (o is Dictionary):
+			return false
+		if int((o as Dictionary).get("value", -1)) != int(_skill_options[i]):
+			return false
+	return true
+
+
+## 新路径：从 `options`（一个选项一条 Option 消息）还原成规整前的字典。
+func _选项源_嵌套(嵌套: Array) -> Array:
+	var out: Array = []
+	for i: int in range(嵌套.size()):
+		var o: Dictionary = 嵌套[i]
+		var 元素: Array = _子id(o.get("elements", {}))
+		var 名: String = str(o.get("label", ""))
+		if 名.is_empty():
+			名 = str(_skill_options[i])
+		if not 元素.is_empty():
+			名 = _选项系别着色(名, 元素)
+		out.append({
+			"文本": 名,
+			"参数": [int(o.get("value", 0))],
+			"元素": 元素,
+			"技能组": _子id(o.get("skill_group", {})),
+			"技能号": int(o.get("skill_id", 0)),
+			"卡牌": int(o.get("card_id", -1)),
+			"不改提示": bool(o.get("no_prompt_change", false)),
+			"提示": str(o.get("prompt", "")),
+			"牌白": _子id(o.get("cards", {})),
+			"需牌": int(o.get("need_card", 0)),
+			"需目标": int(o.get("need_target", 0)),
+			"可用": bool(o.get("enabled", true)),
+			"目标白名单": _子id(o.get("targets", {})),
+			"预览牌": _子id(o.get("preview_cards", {})),
+		})
+	return out
+
+
+## 旧路径：13 个「与选项值按下标对齐」的平行数组。服务端只下发用得到的那几个，
+## 统一用 _第i项 取（不够长就落回默认）——以前每项一个 if，漏抄一个数组就静默少一种能力。
+func _选项源_平行数组() -> Array:
+	var notes: Array = _pending.get("notes", [])
+	var out: Array = []
+	for i: int in range(_skill_options.size()):
+		var 项元素: Array = _子id(_第i项(_pending.get("option_elements", []), i, {}))
+		var 名: String = str(notes[i]) if i < notes.size() and str(notes[i]) != "" else str(_skill_options[i])
+		if not 项元素.is_empty():
+			名 = _选项系别着色(名, 项元素)
+		out.append({
+			"文本": 名,
+			"参数": [int(_skill_options[i])],
+			"元素": 项元素,
+			"技能组": _子id(_第i项(_pending.get("option_skill_groups", []), i, {})),
+			"技能号": int(_第i项(_pending.get("option_skill_ids", []), i, 0)),
+			"卡牌": int(_第i项(_pending.get("option_card_ids", []), i, -1)),
+			"不改提示": bool(_第i项(_pending.get("option_no_prompt_change", []), i, false)),
+			"提示": str(_第i项(_pending.get("option_prompts", []), i, "")),
+			"牌白": _子id(_第i项(_pending.get("option_cards", []), i, {})),
+			"需牌": int(_第i项(_pending.get("option_need_cards", []), i, 0)),
+			"需目标": int(_第i项(_pending.get("option_need_targets", []), i, 0)),
+			"可用": bool(_第i项(_pending.get("option_enabled", []), i, true)),
+			"目标白名单": _子id(_第i项(_pending.get("option_targets", []), i, {})),
+			"预览牌": _子id(_第i项(_pending.get("option_preview_cards", []), i, {})),
+		})
+	return out
+
+
 func _技能询问_摆选项() -> void:
 	var 指示配置: Dictionary = GConst.技能指示器.get(_skill_ask_id, {})
 	if not _skill_options.is_empty():
-		var notes: Array = _pending.get("notes", [])
-		# 选项的附加属性都是「与选项值按下标对齐」的平行数组，服务端只下发用得到的那几个。
-		# 这里统一用 _第i项 取（数组不够长就落回默认），不再一项一个 if ——
-		# 以前漏抄一个数组，界面就静默少一种能力（注释里反复踩过这个坑）。
 		var 项们: Array = []
-		for i: int in range(_skill_options.size()):
-			var 项元素: Array = _子id(_第i项(_pending.get("option_elements", []), i, {}))
-			var 名: String = str(notes[i]) if i < notes.size() and str(notes[i]) != "" else str(_skill_options[i])
-			if not 项元素.is_empty():
-				名 = _选项系别着色(名, 项元素)
-			项们.append(_规整选项({
-				"文本": 名,
-				"参数": [int(_skill_options[i])],
-				"元素": 项元素,
-				"技能组": _子id(_第i项(_pending.get("option_skill_groups", []), i, {})),
-				"技能号": int(_第i项(_pending.get("option_skill_ids", []), i, 0)),
-				"卡牌": int(_第i项(_pending.get("option_card_ids", []), i, -1)),
-				"不改提示": bool(_第i项(_pending.get("option_no_prompt_change", []), i, false)),
-				"提示": str(_第i项(_pending.get("option_prompts", []), i, "")),
-				"牌白": _子id(_第i项(_pending.get("option_cards", []), i, {})),
-				"需牌": int(_第i项(_pending.get("option_need_cards", []), i, 0)),
-				"需目标": int(_第i项(_pending.get("option_need_targets", []), i, 0)),
-				"可用": bool(_第i项(_pending.get("option_enabled", []), i, true)),
-				"目标白名单": _子id(_第i项(_pending.get("option_targets", []), i, {})),
-				"预览牌": _子id(_第i项(_pending.get("option_preview_cards", []), i, {})),
-			}))
+		for 项: Dictionary in _技能询问_选项源():
+			项们.append(_规整选项(项))
 		# 自动填充第二层取消时要原样退回第一层；先留一份第一层的归一化选项。
 		if 圣弓_自动填充.has(_skill_ask_id):
 			_自动填充第一层选项 = 项们.duplicate(true)
