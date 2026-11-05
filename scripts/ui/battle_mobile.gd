@@ -3802,13 +3802,16 @@ func _构建技能按钮(cmds: Array) -> void:
 		var args: Array = c.get("args", [])
 		if 技能类型 == GConst.ActionType.ChooseExtraAction:
 			continue
-		if args.is_empty():
+		# 技能栏按钮的规格：优先读命名字段（阶段 5.5 起服务端双写），
+		# 读不到再按老布局从 args 里取 —— 老服务端 / 新服务端都能跑。
+		var 技能号: int = int(c.get("skill_id", int(args[0]) if args.size() > 0 else 0))
+		if 技能号 <= 0:
 			continue
-		var 技能号: int = int(args[0])
-		var 需牌: int = int(args[1]) if args.size() > 1 else 0
-		var 需目标: int = int(args[2]) if args.size() > 2 else 0
-		var 最多目标: int = int(args[3]) if args.size() > 3 else 0
-		var 选牌来源: int = int(args[4]) if args.size() > 4 else GConst.CardSource.Hand
+		var 需牌: int = int(c.get("need_card", int(args[1]) if args.size() > 1 else 0))
+		var 需目标: int = int(c.get("need_target", int(args[2]) if args.size() > 2 else 0))
+		var 最多目标: int = int(c.get("target_max", int(args[3]) if args.size() > 3 else 0))
+		var 选牌来源: int = int(c.get("card_source",
+			int(args[4]) if args.size() > 4 else GConst.CardSource.Hand))
 		var 合法目标: Array = c.get("dst_ids", [])
 		var 合法牌: Array = c.get("card_ids", [])
 		var 最多牌: int = int(c.get("card_max", 0))
@@ -4951,7 +4954,9 @@ func _静默刷新技能可用(cmds: Array) -> void:
 		var 命令: Dictionary = {}
 		for c: Dictionary in cmds:
 			var 参数: Array = c.get("args", [])
-			if not 参数.is_empty() and int(参数[0]) == 技能号:
+			# 技能号优先读命名字段（阶段 5.5），老数据仍从 args[0] 取
+			var 这条技能号: int = int(c.get("skill_id", int(参数[0]) if not 参数.is_empty() else 0))
+			if 这条技能号 == 技能号:
 				命令 = c
 				break
 		if 命令.is_empty():

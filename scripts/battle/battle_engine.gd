@@ -2403,6 +2403,12 @@ func _技能按钮命令(pl: BattlePlayer, sk: Dictionary, action_type: int) -> 
 		技能可用 = false
 	return {
 		"respond_id": int(sk.get("type", 0)), "src_id": pl.id,
+		# 技能栏按钮的规格：命名字段（阶段 5.5）。老客户端读下面的 args，新客户端读这几个。
+		"skill_id": int(sk.get("id", 0)),
+		"need_card": int(sk.get("need_card", 0)),
+		"need_target": int(sk.get("need_target", 0)),
+		"target_max": int(sk.get("target_max", 0)),
+		"card_source": int(sk.get("card_source", GConst.CardSource.Hand)),
 		# false＝这条技能本次不可用：界面照样摆出来，但半透明、点不动
 		"enabled": 技能可用,
 		# 这条技能把本次出牌固定视为哪个系别（0＝不固定）：额外行动阶段客户端本地切换
