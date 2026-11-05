@@ -253,7 +253,8 @@ const 日志标签色: Dictionary = {
 	"卡牌": "#B9B4C7",     # 弃牌 / 交牌 / 手牌数量与上限变化 / 资源消耗
 	"指示物": "#C6A6FF",   # 指示物变化
 	"士气": "#E8A0D8",     # 队伍士气升降
-	"提示": "#FFB27A",     # 超时 / 掉线 / 无效操作 / 错误
+	"提示": "#FFB27A",     # 超时 / 掉线 / 无效操作
+	"报错": "#FF5F5F",     # 脚本 / 规则的内部错误（正常对局不应出现）
 	"聊天": "#8FE0D8",     # 玩家发言
 }
 ## 日志正文的颜色（白）
@@ -315,6 +316,8 @@ func _日志标签(kind: int) -> String:
 			return "士气"
 		GConst.GossipType.Warn:
 			return "提示"
+		GConst.GossipType.Error:
+			return "报错"
 		_:
 			return "系统"
 

@@ -29,6 +29,7 @@ func 跑() -> void:
 	_检灾殃止息()
 	_检放逐()
 	_检翻面用记下的正面()
+	_检缺正面报错()
 	_检放逐超时()
 	_检放逐提示不切换()
 	_检审判()
@@ -340,7 +341,8 @@ func _检翻面天雷() -> void:
 		"天雷劫火应配「%%d 法术伤害（不写点）、每牌 1 + 偏移 1、空选也算」：%s" % str(指示))
 	var 提示窗: Control = load("res://scripts/ui/battle_mobile.gd").new()
 	检(int(提示窗.call("_提示数值", 指示, 0)) == 1, "没选牌时头像伤害应显示 1")
-	提示窗._sel_cards = [1, 2]
+	var 两张已选: Array[int] = [1, 2]
+	提示窗.set("_sel_cards", 两张已选)
 	检(int(提示窗.call("_提示数值", 指示, 0)) == 3, "选 2 张牌时头像伤害应显示 3")
 	提示窗.queue_free()
 	_应答([GConst.CardElement.Thunder])
@@ -549,6 +551,33 @@ func _检放逐() -> void:
 	检(int(额外.get("allow_action", 0)) == GConst.ActionType.AttackMagic,
 		"这份额外行动应同时允许攻击与法术：%s" % str(额外.get("allow_action", 0)))
 	检(引擎._不爆牌.is_empty(), "放逐结算完应解除不爆牌状态")
+
+
+# ============================================================
+# 7b. 场卡缺少 front：不翻面、不询问，战斗日志输出 [报错]
+# ============================================================
+func _检缺正面报错() -> void:
+	_建引擎()
+	引擎.加场卡({"id": "末日预言", "owner": 1, "attached": -1,
+		"counter": 0, "counter_max": 6, "state": 0, "pile": []})
+	角色._检查预言取空()
+	引擎.run()
+	检(引擎.有场卡("末日预言") and not 引擎.有场卡("天雷劫火")
+		and not 引擎.有场卡("地裂波涛"), "缺少 front 时不应翻面")
+	检(引擎._await_id < 0, "缺少 front 时不应弹任何询问")
+	var 报错: String = ""
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.Gossip:
+			continue
+		var 数据: Dictionary = r["data"]
+		if int(数据.get("type", 0)) == GConst.GossipType.Error:
+			报错 = str(数据.get("txt", ""))
+	检(报错.contains("front") and 报错.contains("无法翻面"),
+		"缺少 front 应在战斗日志输出 [报错]：%s" % 报错)
+	var 窗: Control = load("res://scripts/ui/battle_mobile.gd").new()
+	检(窗.call("_日志标签", GConst.GossipType.Error) == "报错",
+		"客户端应把 GossipType.Error 显示成 [报错]")
+	窗.queue_free()
 
 
 # ============================================================

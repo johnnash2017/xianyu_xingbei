@@ -2184,6 +2184,17 @@ func broadcast(msg_type: int, data: Dictionary) -> void:
 	send(-1, msg_type, data)
 
 
+## 战斗日志输出一条 [报错]（GossipType.Error）。
+## 只用在「正常流程有前置保证、但数据和状态确实可能异常」的地方：
+## 报错后按「什么都不做 / 结束当前步骤」处理，不要静默改选目标、随机选择、自动补牌。
+func 报错(文本: String, pid: int = -1) -> void:
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Error,
+		"txt": 文本,
+		"id": pid,
+	})
+
+
 ## 行动阶段询问（附带角色可选技能）
 ## can_give_up：本阶段是否允许「放弃行动」（对照原版 Coder::askForAction 的 canGiveUp 分支，
 ## 允许时额外下发一条 ACTION_NONE 命令，客户端据此显示「放弃行动」）
