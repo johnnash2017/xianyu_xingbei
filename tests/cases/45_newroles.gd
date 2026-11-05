@@ -245,6 +245,25 @@ func _检圣庭检察士() -> void:
 		"【裁决者】应作为启动技（SpecialSkill）下发")
 	检(角色.v_magic_skill({"action_id": 3906, "src_id": 1}) == GConst.GE_INVALID_ACTION,
 		"【裁决者】不应有法术技能入口")
+	# 【狂信徒】攻击行动结束时由玩家指定 1 名「目标角色」+1 治疗 ——
+	# 原文「目标角色」＝场上任意一名角色（自己 / 队友 / 对手都能选），不是自动给本次攻击目标加
+	var 行动ctx: Dictionary = {"player": 1, "kind": "attack"}
+	角色.p_action_end(行动ctx)
+	检(引擎._await_id == 1, "【狂信徒】攻击行动结束应问发动者指定目标角色")
+	检(引擎._pending_skill_need_target == 1, "【狂信徒】应要求选 1 名目标角色")
+	检(not 引擎._pending_skill_can_cancel, "【狂信徒】选目标不能取消（原文没有「可」）")
+	检(引擎._pending_skill_targets.size() == 4,
+		"【狂信徒】目标白名单应是场上全部角色：%d" % 引擎._pending_skill_targets.size())
+	var 攻击目标治疗: int = 引擎.p(2).cross_num
+	var 指定治疗: int = 引擎.p(3).cross_num
+	# 手工驱动钩子时不能走 on_message（它会把回复交给状态机），
+	# 按「引擎重入钩子时能看到回复」的状态直接喂一条「指定 3 号」的回复
+	引擎._reply = {"respond_id": 3901, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": [3]}
+	引擎._has_reply = true
+	引擎._await_state = 引擎._当前状态
+	角色.p_action_end(行动ctx)
+	检(引擎.p(3).cross_num == 指定治疗 + 1, "【狂信徒】应给指定的 3 号 +1 治疗")
+	检(引擎.p(2).cross_num == 攻击目标治疗, "【狂信徒】不应自动给本次攻击目标加治疗")
 
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用

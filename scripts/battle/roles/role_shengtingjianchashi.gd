@@ -6,7 +6,8 @@ extends BattleRole
 ##
 ## 口径：
 ## 1. 【狂信徒】开局放【异端裁决所】；「我方队友存在圣类命格时治疗上限 +1」每次自己回合开始按队友重算
-##    （队友可能被替换 → 不能只在 setup 里加一次）。
+##    （队友可能被替换 → 不能只在 setup 里加一次）；「你的【攻击行动】结束时」目标角色 +1 治疗 ——
+##    原文写「目标角色」＝由你指定场上的任意一名角色（自己 / 队友 / 对手都能选），**不是**本次攻击目标。
 ## 2. 【裁决论定】用 F3 治疗溢出钩子：我方角色治疗溢出 → 裁决所 +1 治疗，若真的加了 → 你 +1 水晶。
 ## 3. 【恩典神授】的时机是「你执行【提炼】时」，但引擎的 p_before_extract 是同步钩子（不能等待玩家），
 ##    所以放在 p_after_extract 里问（星石已经进手，发动时代价 + 全部转交给目标队友）。
@@ -26,8 +27,6 @@ const SHEN_SHENG_BIAN_CE: int = 3907
 const CAI_SLOT: int = 0
 const 裁决所名: String = "异端裁决所"
 
-## 攻击目标（【狂信徒】：攻击行动结束时给目标角色 +1 治疗）
-var _攻击目标: int = -1
 ## 恩典神授的目标队友
 var _恩典队友: int = -1
 ## 神圣鞭策的 X 与已选目标
@@ -134,31 +133,49 @@ var _鞭策步: int = 0
 # ============================================================
 # 3901 狂信徒
 # ============================================================
-## 自己的回合开始：按队友命格重算治疗上限；清攻击目标
+## 自己的回合开始：按队友命格重算治疗上限
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		_重算治疗上限()
-		_攻击目标 = -1
 	return SUCCESS
 
 
-## 记下攻击目标，供行动结束时 +1 治疗用
-func p_before_attack(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) == player.id:
-		_攻击目标 = int(ctx.get("dst", -1))
-	return SUCCESS
+## 【狂信徒】选「目标角色」的分步进度存 ctx：同一次行动的重入拿同一份 ctx，
+## 下一次行动天然是新的一份，不会把上一击的进度带过来（与 10704 嫉妒追放同一写法）。
+const KEY_KUANG_XIN_STEP: String = "_shengting_kuang_xin_step"
+const KUANG_XIN_STEP_ASK: int = 1
 
 
-## 你的【攻击行动】结束时：目标角色 +1【治疗】
+## 你的【攻击行动】结束时：由你指定 1 名「目标角色」+1【治疗】。
+## 原文写「目标角色」＝玩家可以指定场上的任意一名角色（自己 / 队友 / 对手都能选），
+## 不是本次攻击的目标；原文没有「可」＝强制选人，不能取消，超时由引擎从下发的 targets 里替选一名。
 func p_action_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	if str(ctx.get("kind", "")) != "attack":
 		return SUCCESS
-	if _攻击目标 < 0:
+	var 阶段: int = int(ctx.get(KEY_KUANG_XIN_STEP, 0))
+	if 阶段 >= STEP_DONE:
 		return SUCCESS
-	var dst: BattlePlayer = engine.p(_攻击目标)
-	_攻击目标 = -1
+	if 阶段 == 0:
+		ctx[KEY_KUANG_XIN_STEP] = KUANG_XIN_STEP_ASK
+		if not engine.has_reply():
+			# 文案不在这里写死：客户端对技能询问默认显示技能说明（原文已写清效果落在谁身上）；
+			# 目标白名单＝场上全部角色（「目标角色」＝要选人，不限于本次攻击目标）。
+			询问(player.id, KUANG_XIN_TU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+				0, -1, _全体角色())
+			return WAIT
+	if 阶段 != KUANG_XIN_STEP_ASK:
+		return SUCCESS
+	if not engine.has_reply():
+		return WAIT
+	# 阶段在取完回复之后再推进：重入时阶段仍是 ASK，才能走到 take
+	ctx[KEY_KUANG_XIN_STEP] = STEP_DONE
+	var 回复: Dictionary = take_skill_reply_full()
+	var 目标表: Array = 回复.get("dst_ids", [])
+	# 0 是合法座位号，「没有」才是 -1（超时兜底会在不可取消 + 有目标时补一名，正常不会为空）
+	var 目标号: int = int(目标表[0]) if 目标表.size() == 1 else -1
+	var dst: BattlePlayer = engine.p(目标号)
 	if dst == null:
 		return SUCCESS
 	notice_skill(KUANG_XIN_TU, [dst.id])
