@@ -3739,9 +3739,6 @@ func _构建技能按钮(cmds: Array) -> void:
 	for i: int in range(1, cmds.size()):
 		var c: Dictionary = cmds[i]
 		var 技能类型: int = int(c.get("respond_id", 0))
-		# 本阶段不放行的技能也照样摆出来、只置灰（额外攻击行动里法术技能会亮着但点不动），
-		# 让玩家看得见「有这个技能、现在用不了」
-		var 阶段放行: bool = GConst.放行动作(技能类型, _行动允许)
 		var args: Array = c.get("args", [])
 		if 技能类型 == GConst.ActionType.ChooseExtraAction:
 			continue
@@ -3765,8 +3762,9 @@ func _构建技能按钮(cmds: Array) -> void:
 		# 如【别烦我……】10601 发动时把替她发动的右手边队友亮出来
 		var 高亮: Array = c.get("highlight_ids", [])
 		var go: 技能按钮 = _新技能按钮(技能号)
-		# 服务端标了「本次不可用」（条件不满足）或本阶段不放行的：半透明、点不动，悬停说明照常可看
-		if not 阶段放行 or not bool(c.get("enabled", true)):
+		# 服务端标了「本次不可用」（条件不满足）或本阶段不放行、或系别不符的：照样摆出来、只置灰，
+		# 让玩家看得见「有这个技能、现在用不了」。判定见 _技能按钮可用。
+		if not _技能按钮可用(c, 阶段系别):
 			go.设置选项可用(false)
 		# 记下「这颗按钮要求哪种动作种类 / 服务端是否允许」：额外行动阶段本地切换行动后
 		# 要按新行动的放行种类重算可用性（见 _本地选择额外攻击）。
@@ -3775,11 +3773,6 @@ func _构建技能按钮(cmds: Array) -> void:
 		go.set_meta(元数据_行动技能类型, 技能类型)
 		go.set_meta(元数据_行动服务端可用, bool(c.get("enabled", true)))
 		go.set_meta(元数据_行动技能系别, int(c.get("skill_element", 0)))
-		# 会改系别的技能（3805＝风系）：当前这份额外行动的系别要求不符时置灰
-		# （本地切换行动时再按切换后的系别重算，见 _本地选择额外攻击）
-		var 固定系: int = int(c.get("skill_element", 0))
-		if 固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别:
-			go.设置选项可用(false)
 		go.connect("点击", _选择技能.bind(技能类型, 需牌, 需目标, 合法目标, 合法牌, 最多牌,
 			最多目标, 目标上限减牌数, 选牌来源, 选牌规则, 首张技能, 次张系别, 参数选项, go, 盖牌需数, 高亮))
 		# 点下去就把挂着的技能说明收掉，别挡着选牌选目标（悬停 / 离开悬停由 _新技能按钮 统一接）
@@ -4806,6 +4799,18 @@ func _切换后复检手牌(可取消选中: bool = true) -> void:
 	_更新按键()
 
 
+## 行动技能栏里「这颗技能按钮此刻能不能点」：服务端 enabled + 本阶段放行的动作种类 + 系别要求。
+## 建按钮（_构建技能按钮）与原地刷新（_静默刷新技能可用）共用这一条 ——
+## 以前两处各算一遍，加一条限制就会漏改一边。
+func _技能按钮可用(命令: Dictionary, 阶段系别: int) -> bool:
+	if not bool(命令.get("enabled", true)):
+		return false
+	if not GConst.放行动作(int(命令.get("respond_id", 0)), _行动允许):
+		return false
+	var 固定系: int = int(命令.get("skill_element", 0))
+	return not (固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别)
+
+
 ## 静默更新行动技能栏：只改按钮的可用/系别元数据，不重建按钮、不清当前选择、不发 ErrorInput。
 ## 牌面系别切换后服务端会回一份刷新后的 action commands；玩家看到的是按钮原地亮起/变灰。
 func _静默刷新技能可用(cmds: Array) -> void:
@@ -4844,10 +4849,7 @@ func _静默刷新技能可用(cmds: Array) -> void:
 		var 技能类型: int = int(命令.get("respond_id", 0))
 		var 服务端可用: bool = bool(命令.get("enabled", true))
 		var 固定系: int = int(命令.get("skill_element", 0))
-		var 可用: bool = 服务端可用 and GConst.放行动作(技能类型, _行动允许)
-		if 可用 and 固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别:
-			可用 = false
-		按钮.设置选项可用(可用)
+		按钮.设置选项可用(_技能按钮可用(命令, 阶段系别))
 		钮.set_meta(元数据_行动技能类型, 技能类型)
 		钮.set_meta(元数据_行动服务端可用, 服务端可用)
 		钮.set_meta(元数据_行动技能系别, 固定系)
