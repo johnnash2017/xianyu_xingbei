@@ -5034,148 +5034,221 @@ func _卡牌能点(card_id: int) -> bool:
 	# 进来的是实例号（手牌 / 盖牌节点带实例号），也可能是牌号（服务端列表）。
 	# 规则比较一律按牌面：白名单、选项牌系、技能选牌规则都是牌面语义
 	var 面: int = GConst.牌号(card_id)
-	# 额外行动要求某系时，魔刃/异刃必须按这张实例的当前系别再过滤一次：
-	# 服务端白名单是牌面，其他噬神者/同牌面实例可能被误点。
-	if _当前额外攻击选择 > 0 and (面 == GConst.噬神者_魔刃卡 or 面 == GConst.噬神者_异刃卡):
-		var 需系: int = _当前额外行动系别()
-		if 需系 > 0:
-			var 额外牌: GCard = Data.get_card(card_id)
-			if 额外牌 == null or 额外牌.element_enum() != 需系:
-				return false
+	if not _牌过额外行动系别(面, card_id):
+		return false
 	# 攻击结束响应里选中额外攻击后：只让点该额外攻击白名单内的攻击牌
 	if _额外攻击响应选择 > 0:
-		var 在手中: bool = false
-		for c: GCard in Data.hand_cards:
-			if c.id == 面:
-				在手中 = true
-				break
-		if not 在手中:
-			return false
-		var 牌: GCard = Data.get_card(card_id)
-		if 牌 == null or not 牌.is_attack():
-			return false
-		return _额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(面)
+		return _额外攻击响应能点(面, card_id)
 	# 式神咒束 / 阴阳转换的同一步选牌：按当前选项过滤，不走普通技能栏的牌数规则；盖牌不能当手牌应战
 	if _攒应战选应战:
-		if _是普通盖牌(card_id):
-			return false
-		return _攒应战可应战牌(card_id)
-	# 盖牌只在本阶段确实要选盖牌时才点得动（盖牌超限弃牌 / 来源为盖牌区的技能询问）；
-	# 其余场合（行动出牌、普通弃牌…）盖牌一律不给点 —— 否则会被当成手牌选中提交，
-	# 服务端判「操作无效」再推一份快照回来，画面就会闪一下。
-	# 例外：精灵射手【精灵祝福形态】下她的【祝福】在「打牌 / 应战」时可当手牌（见 _盖牌视同手牌），
-	# 这时它不算「普通盖牌」，会继续往下按同号手牌的规则判（行动 / 应战 / 魔弹…）；
-	# 但弃牌类询问（下方 Discard / CardSource.Hand）仍按盖牌挡掉
-	if _是普通盖牌(card_id) and not _selecting_cover:
+		return _攒应战牌能点(card_id)
+	# 盖牌只在本阶段确实要选盖牌时才点得动（完整口径见 _牌过盖牌来源）
+	if not _牌过盖牌来源(card_id):
 		return false
 	# 魔弓三技能只是展示盖牌：牌面亮着，但一张都不能点
 	if _盖牌纯展示() and _is_my_cover(card_id):
 		return false
-	# 「先弹选项」型：选定的效果若限定了发动牌系别（如【百鬼夜行】展示火系妖力必须真用火系牌），
-	# 其余系的牌整片置灰 —— 否则选错牌提交后服务端判无效、整条技能静默不生效（看着像「只打了一个人」）
-	if _先弹选项 and not _已选参数.is_empty():
-		var 系表: Dictionary = _指示器配置().get("选项牌系", {})
-		var 需系: int = int(系表.get(int(_已选参数[0]), 0))
-		if 需系 > 0:
-			var 当前牌: GCard = Data.get_card(card_id)
-			if 当前牌 == null or 当前牌.element_enum() != 需系:
-				return false
-	# 技能询问里「一张牌都用不到」的才整片置灰；need_card=0 但给了 card_max 表示可弃可不弃
-	# （如【英灵召唤】可额外弃 0~1 张法术牌），这种仍要能点
-	if _mode == 3 and _skill_need_card <= 0 and _skill_card_max <= 0:
+	# 「先弹选项」型：选定的效果若限定了发动牌系别，其余系的牌整片置灰（完整口径见 _牌过选项牌系）
+	if not _牌过选项牌系(card_id):
 		return false
-	# 应答（应战/抵挡、弃牌、魔弹传递等）同样要能点手牌
-	if _mode == 2 and _need_cards <= 0:
+	# 这一步一张牌都用不到 / 应答根本不选牌：整片置灰（完整口径见 _牌过本步需牌数）
+	if not _牌过本步需牌数():
 		return false
-	# 弃牌询问的选牌来源：普通弃牌只手牌，盖牌超限只盖牌。
-	# 「视同手牌」的盖牌（精灵射手【祝福】）在这里必须按盖牌挡掉 —— 盖牌能当手牌打 / 应战，
-	# 但任何弃手牌效果都不能弃盖牌，也不该列出来给玩家选
-	if _mode == 2:
-		var 应答号: int = int(_pending.get("respond_id", 0))
-		if 应答号 == GConst.RespondType.Discard and _is_my_cover(card_id):
-			return false
-		if 应答号 == GConst.RespondType.DiscardCover and not _is_my_cover(card_id):
-			return false
+	# 弃牌询问的选牌来源：普通弃牌只手牌，盖牌超限只盖牌（完整口径见 _牌过弃牌来源）
+	if not _牌过弃牌来源(card_id):
+		return false
 	if _mode != 1 and _mode != 2 and _mode != 3 and _mode != 4:
 		return false
-	# 选牌来源限制：盖牌询问只收盖牌，手牌询问只收手牌，两者皆可则都收。
-	# 「从手牌选牌」的技能（CardSource.Hand，多为弃牌 / 交牌代价）同样不列盖牌
-	if _mode == 3 and _是技能询问:
-		if _skill_card_source == GConst.CardSource.Cover and not _is_my_cover(card_id):
-			return false
-		if _skill_card_source == GConst.CardSource.Hand and _is_my_cover(card_id):
-			return false
-	# 应战：只有「同系攻击牌」和【圣光】能用
+	# 选牌来源限制：盖牌询问只收盖牌，手牌询问只收手牌，两者皆可则都收（完整口径见 _牌过技能选牌来源）
+	if not _牌过技能选牌来源(card_id):
+		return false
+	# 应战：只有「同系攻击牌」和【圣光】能用（完整口径见 _应战牌能点）
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.ReplyAttack:
-		if not _可应战牌(card_id):
-			return false
-		# 本次攻击禁用的应战牌（如 9703 爱死天流禁【暗灭】）：服务端随询问下发卡名，客户端置灰
-		var 禁牌名: Array = _pending.get("ban_reattack_card_names", [])
-		if not 禁牌名.is_empty():
-			var 牌面: GCard = Data.get_card(card_id)
-			if 牌面 != null and 禁牌名.has(牌面.card_name_enum()):
-				return false
-		return true
+		return _应战牌能点(card_id)
 	# 魔弹传递：只有【圣光】（抵挡）或【魔弹】/火系/地系牌（继续传递）能用
 	if _mode == 2 and int(_pending.get("respond_id", 0)) == GConst.RespondType.Bullet:
 		return _可回魔弹牌(card_id)
-	# 行动阶段：只有能主动出手的牌可点（【圣光】只作响应，回合内置灰点不动）。
-	# 服务端给了普通行动的手牌白名单时（如【修罗连斩】的额外攻击只能出火系攻击牌），只有白名单里的牌可点
+	# 行动阶段：只有能主动出手的牌可点（【圣光】只作响应，回合内置灰点不动），完整口径见 _行动牌能点
 	if _mode == 1:
-		# 额外行动自己带的命格限制（如技之剑意 = 只能出技类攻击牌）：与「额外行动系别」同一套兜底表。
-		# 白名单之外再兜一道 —— 白名单没下发时也不会给出必被服务端驳回的牌。
-		if not _额外命格允许(面):
-			return false
-		var 白名单: Array = _行动手牌白名单()
-		if not 白名单.is_empty() and not 白名单.has(面):
-			return false
-		return _可主动使用牌(card_id)
-	# 发动技能 / 技能询问：按服务端给的选牌来源过滤（手牌 / 盖牌区 / 场上基础效果牌），
-	# 再看合法牌白名单与选牌系别规则（如【魔道法典】只能选互异系、【法术反弹】只能选同系）
+		return _行动牌能点(面, card_id)
+	# 发动技能 / 技能询问：按服务端给的选牌来源、白名单、选牌规则过滤（完整口径见 _技能牌能点）
 	if _mode == 4 or _mode == 3:
-		# 这个技能一张牌都不用选（如女武神【秩序之印】）：手牌整片置灰，只留「确定 / 取消」
-		if _mode == 4 and _skill_need_card <= 0 and _skill_card_max <= 0:
-			return false
-		match _skill_card_source:
-			GConst.CardSource.Cover:
-				if not _is_my_cover(card_id):
-					return false
-			GConst.CardSource.BasicEffect:
-				if not _是场上基础效果牌(card_id):
-					return false
-			GConst.CardSource.HandOrCover:
-				# 手牌 + 盖牌混选（如【魔贯冲击】）：两边都收，具体由白名单与 cover_need 约束
-				pass
-			_:
-				if _是普通盖牌(card_id):
-					return false
-		if not _skill_cards.is_empty() and not _skill_cards.has(面):
-			return false
-		# 「要凑多张」的技能（最多牌 ≥ 2，如元素师法术「发动牌 + 加成牌」）选满上限后，
-		# 没选上的牌一律置灰：必须先点掉已选的牌才能换，否则会出现「点第三张牌 → 整批清空重选 →
-		# 组合里混进不合法的牌」这种界面能提交、服务端必驳回的状态。
-		# 只要 1 张的询问（最多牌 = 1，如元素射击选子弹）保持「点别的牌直接替换」的老手感。
-		# 额外攻击响应同理：那边点新牌就是替换第一张。
-		if _额外攻击响应选择 <= 0 and _skill_card_max >= 2 \
-				and _sel_cards.size() >= _skill_card_max and not _sel_cards.has(card_id):
-			return false
-		# 「选项自带牌白名单」型（如灵熙之潮【海神御巫】切到哪颗独有技，就只让点带该技能的牌）：
-		# 选中项下发了自己的牌白名单时，名单外的牌一律置灰（切换选项后立刻重判）
-		if _二级栏:
-			# 选项各自带牌白名单、但还没选任何选项时：可点牌集合还没确定（如天雷/地裂的
-			# 雷火地水四选一），先把手牌整片置灰，选完系别再放开对应系别的牌。
-			if _二级选中 < 0:
-				for 项0: Dictionary in _二级选项:
-					if not (项0.get("牌白", []) as Array).is_empty():
-						return false
-			var 项牌白: Array = _二级选中项().get("牌白", [])
-			if not 项牌白.is_empty() and not 项牌白.has(面):
-				return false
-		return _符合选牌规则(card_id)
-	# 特殊行动（购买/合成/提炼）与本地选项步骤期间不点牌
-	if _mode == 6:
-		return false
+		return _技能牌能点(面, card_id)
+	# 走到这里只剩「应答：弃牌 / 虚弱 / 治疗抵挡」——都是从手牌里选，直接放行
+	# （特殊行动 / 本地选项步等其余模式在中间那道 _mode 检查里就已经被挡掉了）
 	return true
+
+
+# ---------------- _卡牌能点 的分条判定 ----------------
+# 主函数按顺序调下面这些小判定，命中就置灰。**顺序本身有意义**（先拦的优先），
+# 所以下面每个函数名都写清它拦的是什么；要改规则就改对应的那一个，别在主函数里加分支。
+
+## 额外行动要求某系时，魔刃/异刃必须按这张实例的当前系别再过滤一次：
+## 服务端白名单是牌面，其他噬神者 / 同牌面实例可能被误点。
+func _牌过额外行动系别(面: int, card_id: int) -> bool:
+	if _当前额外攻击选择 <= 0:
+		return true
+	if 面 != GConst.噬神者_魔刃卡 and 面 != GConst.噬神者_异刃卡:
+		return true
+	var 需系: int = _当前额外行动系别()
+	if 需系 <= 0:
+		return true
+	var 额外牌: GCard = Data.get_card(card_id)
+	return 额外牌 != null and 额外牌.element_enum() == 需系
+
+
+## 攻击结束响应里选中额外攻击后：只让点该额外攻击白名单内的攻击牌
+func _额外攻击响应能点(面: int, card_id: int) -> bool:
+	var 在手中: bool = false
+	for c: GCard in Data.hand_cards:
+		if c.id == 面:
+			在手中 = true
+			break
+	if not 在手中:
+		return false
+	var 牌: GCard = Data.get_card(card_id)
+	if 牌 == null or not 牌.is_attack():
+		return false
+	return _额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(面)
+
+
+## 式神咒束 / 阴阳转换的同一步选牌：盖牌不能当手牌应战，其余按当前选项过滤
+func _攒应战牌能点(card_id: int) -> bool:
+	if _是普通盖牌(card_id):
+		return false
+	return _攒应战可应战牌(card_id)
+
+
+## 盖牌只在本阶段确实要选盖牌时才点得动（盖牌超限弃牌 / 来源为盖牌区的技能询问）；
+## 其余场合（行动出牌、普通弃牌…）盖牌一律不给点 —— 否则会被当成手牌选中提交，
+## 服务端判「操作无效」再推一份快照回来，画面就会闪一下。
+## 例外：精灵射手【精灵祝福形态】下她的【祝福】在「打牌 / 应战」时可当手牌（见 _盖牌视同手牌），
+## 这时它不算「普通盖牌」，会继续往下按同号手牌的规则判（行动 / 应战 / 魔弹…）；
+## 但弃牌类询问（Discard / CardSource.Hand）仍按盖牌挡掉，见 _牌过弃牌来源 / _牌过技能选牌来源
+func _牌过盖牌来源(card_id: int) -> bool:
+	if not _是普通盖牌(card_id):
+		return true
+	return _selecting_cover
+
+
+## 「先弹选项」型：选定的效果若限定了发动牌系别（如【百鬼夜行】展示火系妖力必须真用火系牌），
+## 其余系的牌整片置灰 —— 否则选错牌提交后服务端判无效、整条技能静默不生效
+func _牌过选项牌系(card_id: int) -> bool:
+	if not _先弹选项 or _已选参数.is_empty():
+		return true
+	var 系表: Dictionary = _指示器配置().get("选项牌系", {})
+	var 需系: int = int(系表.get(int(_已选参数[0]), 0))
+	if 需系 <= 0:
+		return true
+	var 当前牌: GCard = Data.get_card(card_id)
+	return 当前牌 != null and 当前牌.element_enum() == 需系
+
+
+## 这一步到底要不要选牌：技能询问里「一张牌都用不到」的整片置灰；
+## need_card=0 但给了 card_max 表示可弃可不弃（如【英灵召唤】可额外弃 0~1 张法术牌），这种仍要能点
+func _牌过本步需牌数() -> bool:
+	if _mode == 3:
+		return _skill_need_card > 0 or _skill_card_max > 0
+	if _mode == 2:
+		# 应答（应战 / 抵挡、弃牌、魔弹传递等）同样要能点手牌
+		return _need_cards > 0
+	return true
+
+
+## 弃牌询问的选牌来源：普通弃牌只手牌，盖牌超限只盖牌。
+## 「视同手牌」的盖牌（精灵射手【祝福】）在这里必须按盖牌挡掉 —— 盖牌能当手牌打 / 应战，
+## 但任何弃手牌效果都不能弃盖牌，也不该列出来给玩家选
+func _牌过弃牌来源(card_id: int) -> bool:
+	if _mode != 2:
+		return true
+	var 应答号: int = int(_pending.get("respond_id", 0))
+	if 应答号 == GConst.RespondType.Discard:
+		return not _is_my_cover(card_id)
+	if 应答号 == GConst.RespondType.DiscardCover:
+		return _is_my_cover(card_id)
+	return true
+
+
+## 选牌来源限制：盖牌询问只收盖牌，手牌询问只收手牌，两者皆可则都收。
+## 「从手牌选牌」的技能（CardSource.Hand，多为弃牌 / 交牌代价）同样不列盖牌
+func _牌过技能选牌来源(card_id: int) -> bool:
+	if _mode != 3 or not _是技能询问:
+		return true
+	if _skill_card_source == GConst.CardSource.Cover:
+		return _is_my_cover(card_id)
+	if _skill_card_source == GConst.CardSource.Hand:
+		return not _is_my_cover(card_id)
+	return true
+
+
+## 应战：只有「同系攻击牌」和【圣光】能用；
+## 本次攻击禁用的应战牌（如 9703 爱死天流禁【暗灭】）也挡掉 —— 服务端随询问下发卡名
+func _应战牌能点(card_id: int) -> bool:
+	if not _可应战牌(card_id):
+		return false
+	var 禁牌名: Array = _pending.get("ban_reattack_card_names", [])
+	if 禁牌名.is_empty():
+		return true
+	var 牌面: GCard = Data.get_card(card_id)
+	return 牌面 == null or not 禁牌名.has(牌面.card_name_enum())
+
+
+## 行动阶段：只有能主动出手的牌可点（【圣光】只作响应，回合内置灰点不动）。
+## 额外行动自己带的命格限制（如技之剑意 = 只能出技类攻击牌）与手牌白名单
+## （如【修罗连斩】的额外攻击只能出火系攻击牌）都在这里兜一道 ——
+## 白名单没下发时也不会给出必被服务端驳回的牌
+func _行动牌能点(面: int, card_id: int) -> bool:
+	if not _额外命格允许(面):
+		return false
+	var 白名单: Array = _行动手牌白名单()
+	if not 白名单.is_empty() and not 白名单.has(面):
+		return false
+	return _可主动使用牌(card_id)
+
+
+## 发动技能 / 技能询问：按服务端给的选牌来源过滤（手牌 / 盖牌区 / 场上基础效果牌），
+## 再看合法牌白名单、凑多张的锁定、选项自带的牌白名单与选牌系别规则
+## （如【魔道法典】只能选互异系、【法术反弹】只能选同系）
+func _技能牌能点(面: int, card_id: int) -> bool:
+	# 这个技能一张牌都不用选（如女武神【秩序之印】）：手牌整片置灰，只留「确定 / 取消」
+	if _mode == 4 and _skill_need_card <= 0 and _skill_card_max <= 0:
+		return false
+	match _skill_card_source:
+		GConst.CardSource.Cover:
+			if not _is_my_cover(card_id):
+				return false
+		GConst.CardSource.BasicEffect:
+			if not _是场上基础效果牌(card_id):
+				return false
+		GConst.CardSource.HandOrCover:
+			# 手牌 + 盖牌混选（如【魔贯冲击】）：两边都收，具体由白名单与 cover_need 约束
+			pass
+		_:
+			if _是普通盖牌(card_id):
+				return false
+	if not _skill_cards.is_empty() and not _skill_cards.has(面):
+		return false
+	# 「要凑多张」的技能（最多牌 ≥ 2，如元素师法术「发动牌 + 加成牌」）选满上限后，
+	# 没选上的牌一律置灰：必须先点掉已选的牌才能换，否则会出现「点第三张牌 → 整批清空重选 →
+	# 组合里混进不合法的牌」这种界面能提交、服务端必驳回的状态。
+	# 只要 1 张的询问（最多牌 = 1，如元素射击选子弹）保持「点别的牌直接替换」的老手感。
+	# 额外攻击响应同理：那边点新牌就是替换第一张。
+	if _额外攻击响应选择 <= 0 and _skill_card_max >= 2 \
+			and _sel_cards.size() >= _skill_card_max and not _sel_cards.has(card_id):
+		return false
+	# 「选项自带牌白名单」型（如灵熙之潮【海神御巫】切到哪颗独有技，就只让点带该技能的牌）：
+	# 选中项下发了自己的牌白名单时，名单外的牌一律置灰（切换选项后立刻重判）
+	if _二级栏:
+		# 选项各自带牌白名单、但还没选任何选项时：可点牌集合还没确定（如天雷/地裂的
+		# 雷火地水四选一），先把手牌整片置灰，选完系别再放开对应系别的牌。
+		if _二级选中 < 0:
+			for 项0: Dictionary in _二级选项:
+				if not (项0.get("牌白", []) as Array).is_empty():
+					return false
+		var 项牌白: Array = _二级选中项().get("牌白", [])
+		if not 项牌白.is_empty() and not 项牌白.has(面):
+			return false
+	return _符合选牌规则(card_id)
 
 
 ## 按选牌规则过滤可点牌（服务端给的 card_rule）：
