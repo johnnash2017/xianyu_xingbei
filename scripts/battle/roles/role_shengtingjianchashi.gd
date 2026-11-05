@@ -222,12 +222,14 @@ func p_heal_overflow(ctx: Dictionary) -> int:
 # ============================================================
 ## 提炼校验覆写（对照 role_maoxian.v_extract）：头位不是 3903 ＝ 常规提炼 / 别人的【冒险者天堂】，
 ## 退回通用校验；是 3903 时 args = [标记, 自己的宝石, 自己的水晶, 队友的宝石, 队友的水晶, 0,
-## 目标颗数, 代价类型] —— 自己的那两位恒为 0（本次提炼出的星石全部交给唯一的队友），额外能量 X 恒为 0；
-## 代价类型由玩家在提炼前选：0＝移除【异端裁决所】3【治疗】，1＝移除我方角色合计 2【治疗】。
+## 目标颗数, 代价类型]（自己的那两位恒为 0，额外能量 X 恒为 0）——
+## 代价类型 0＝移除【异端裁决所】3【治疗】（到此为止）；
+## 代价类型 1＝移除我方角色合计 2【治疗】，后面再接 [人数, 目标1, 点数1, 目标2, 点数2]：
+## 1 人扣 2 点、2 人各扣 1 点（由玩家在提炼前点选，点数必须正好凑满 2）。
 func v_extract(args: Array, team_gem: int, team_crystal: int, dst_ids: Array) -> int:
 	if args.is_empty() or int(args[0]) != EN_DIAN_SHEN_SHOU:
 		return V_NOT_OVERRIDE
-	if args.size() != 8 or dst_ids.size() != 1:
+	if args.size() < 8 or dst_ids.size() != 1:
 		return GConst.GE_INVALID_ARGUMENT
 	var 自己宝石: int = int(args[1])
 	var 自己水晶: int = int(args[2])
@@ -251,7 +253,15 @@ func v_extract(args: Array, team_gem: int, team_crystal: int, dst_ids: Array) ->
 	if 队友宝石 > team_gem or 队友水晶 > team_crystal:
 		return GConst.GE_INVALID_ACTION
 	# 代价按玩家选的那一种复核（另一种付得起也不行：提交哪种就付哪种）
-	if not _恩典代价可付(代价类型):
+	if 代价类型 == 0:
+		if args.size() != 8:
+			return GConst.GE_INVALID_ARGUMENT
+		if not _恩典代价可付(0):
+			return GConst.GE_INVALID_ACTION
+	elif 代价类型 == 1:
+		if _解析代价目标(args).is_empty():
+			return GConst.GE_INVALID_ACTION
+	else:
 		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 
@@ -272,7 +282,7 @@ func p_after_extract(ctx: Dictionary) -> int:
 	var 参: Array = ctx.get("args", [])
 	var 代价类型: int = int(参[7]) if 参.size() > 7 else 0
 	notice_skill(EN_DIAN_SHEN_SHOU, ctx.get("dst_ids", []))
-	_付恩典代价(代价类型)
+	_付恩典代价(代价类型, 参)
 	engine._broadcast_game()
 	if player.hand_cards.is_empty():
 		return SUCCESS
@@ -298,26 +308,44 @@ func _恩典代价可付(类型: int) -> bool:
 	return 合计 >= 2
 
 
-## 付玩家选定的代价：0＝裁决所的 3 治疗；1＝我方角色合计 2 治疗（先自己、再按座位顺序）
-func _付恩典代价(类型: int) -> void:
+## 解析并校验「我方合计 2 治疗」的代价目标：
+## args = [..., 代价类型=1, 人数, 目标1, 点数1, 目标2, 点数2]
+## 规则：1~2 名我方角色、每人当前治疗够扣、点数合计正好 2（1 人＝2 点、2 人＝各 1 点）。
+## 返回 [{"pid": int, "point": int}, ...]；形状 / 点数 / 治疗量不对返回空数组。
+func _解析代价目标(args: Array) -> Array:
+	if args.size() != 13:
+		return []
+	var 人数: int = int(args[8])
+	if 人数 != 1 and 人数 != 2:
+		return []
+	var out: Array = []
+	for i: int in range(人数):
+		var pid: int = int(args[9 + i * 2])
+		var 点: int = int(args[10 + i * 2])
+		if 人数 == 1 and 点 != 2:
+			return []
+		if 人数 == 2 and 点 != 1:
+			return []
+		if i == 1 and pid == int(args[9]):
+			return []
+		var pp: BattlePlayer = engine.p(pid)
+		if pp == null or pp.color != player.color:
+			return []
+		if pp.cross_num < 点:
+			return []
+		out.append({"pid": pid, "point": 点})
+	return out
+
+
+## 付玩家选定的代价：0＝裁决所的 3 治疗；1＝按选定的目标逐人扣（见 _解析代价目标）
+func _付恩典代价(类型: int, 参: Array) -> void:
 	if 类型 == 0:
 		engine.场卡加计数(裁决所名, -3)
 		return
-	var 需: int = 2
-	var 序: Array[int] = [player.id]
-	for pid: int in engine.order:
-		if pid != player.id and engine.p(pid) != null and engine.p(pid).color == player.color:
-			序.append(pid)
-	for pid: int in 序:
-		if 需 <= 0:
-			break
-		var pp: BattlePlayer = engine.p(pid)
-		if pp == null:
-			continue
-		var 扣: int = mini(pp.cross_num, 需)
-		if 扣 > 0:
-			pp.sub_cross_num(扣)
-			需 -= 扣
+	for 项: Dictionary in _解析代价目标(参):
+		var pp: BattlePlayer = engine.p(int(项.get("pid", -1)))
+		if pp != null:
+			pp.sub_cross_num(mini(int(项.get("point", 0)), pp.cross_num))
 
 
 # ============================================================

@@ -92,6 +92,10 @@ var _提炼全给一人: bool = false
 ## 圣庭检察士【恩典神授】选定的代价：0＝移除【异端裁决所】3【治疗】，1＝移除我方角色合计 2【治疗】
 ## （-1＝还没选；随提炼的 args 末位提交给服务端）
 var _恩典代价类型: int = -1
+## 【恩典神授】选「我方合计 2 治疗」那档代价时：正在点我方头像选治疗目标（1~2 人）
+var _恩典选代价目标: bool = false
+## 已点的代价目标（点选顺序；1 人扣 2 点治疗，2 人各扣 1 点）
+var _恩典代价目标: Array[int] = []
 
 ## 预制体目录（格子/聊天条目与参考脚本一致）
 const 预制目录: String = "res://scenes/prefabs/battlemobile/"
@@ -4958,6 +4962,10 @@ func _on_player_clicked(player_id: int) -> void:
 		return
 	if not _玩家可选(player_id):
 		return
+	# 【恩典神授】选代价目标：点我方头像加/取消「移除 N 治疗」的目标
+	if _恩典选代价目标:
+		_点恩典代价目标(player_id)
+		return
 	# 点头像分配型：点一次给该角色加「每次」点治疗（配置允许时可重复点同一人），分满后确定
 	if not _分配配置().is_empty():
 		_点治疗目标(player_id)
@@ -5759,6 +5767,10 @@ func _刷新攒应战提示() -> void:
 
 # ---------------- 确定 / 取消 / 放弃 ----------------
 func _on_ok() -> void:
+	# 【恩典神授】选代价目标：确定＝凑够 2 点治疗后进「选构成 + 选队友」
+	if _恩典选代价目标:
+		_确认恩典代价目标()
+		return
 	# 攒应战（式神咒束 / 阴阳转换）：应战牌和反击目标都在本地选好后，
 	# 把「技能号 + 效果 + 牌 + 目标」一次性提交；3301 的参数前面多一个「发动 3301」。
 	if _攒应战应答号 > 0:
@@ -5926,6 +5938,11 @@ func _on_ok() -> void:
 
 
 func _on_cancel() -> void:
+	# 【恩典神授】选代价目标：取消＝退回「选代价」那一层
+	if _恩典选代价目标:
+		_退出恩典代价目标()
+		_恩典神授选代价()
+		return
 	# 攒应战（式神咒束 / 阴阳转换）：取消＝不发动这条技能，回对应技能号的空应答。
 	# 3306 取消后引擎仍会按普通应战询问（想用普通应战牌 / 圣光时走那一步即可）；
 	# 3301 取消则不改队友的应战目标。
@@ -6283,6 +6300,7 @@ func _恩典神授选代价() -> void:
 	_提炼全给一人 = false
 	_提炼阶段 = 0
 	_恩典代价类型 = -1
+	_恩典代价目标.clear()
 	var 选项: Array = [
 		{"text": GConst.按钮原文(恩典神授技能号, 2), "args": [0],
 			"enabled": _裁决所治疗() >= 3},
@@ -6304,8 +6322,139 @@ func _确认恩典代价() -> void:
 	if 选择 == 1 and _我方治疗合计() < 2:
 		return
 	_恩典代价类型 = 选择
+	if 选择 == 1:
+		# 「移除我方角色合计 2 治疗」要先点人头像挑从谁身上扣
+		_恩典神授选代价目标()
+		return
 	_本地选项阶段 = 0
 	_本地询问 = false
+	_提炼是冒险家流程 = true
+	_提炼全给一人 = true
+	_提炼阶段 = 0
+	_提炼总数 = 2
+	_提炼减能量 = 0
+	_提炼宝石 = 0
+	_提炼水晶 = 0
+	_天堂列组合()
+
+
+## 【恩典神授】选代价目标：点我方有【治疗】的角色（1~2 人），凑够 2 点治疗才让确定。
+## 1 人＝从他身上扣 2 点（治疗需 ≥2）；2 人＝每人各扣 1 点。
+## 走「本地询问」框架借点头像 / 确定 / 取消，不发服务端（提交时随提炼 args 一起带）。
+func _恩典神授选代价目标() -> void:
+	_恩典选代价目标 = true
+	_恩典代价目标.clear()
+	_提炼是冒险家流程 = false
+	_提炼全给一人 = false
+	_提炼阶段 = 0
+	_本地选项阶段 = 0
+	_本地询问 = true
+	_是技能询问 = false
+	_mode = 3
+	_二级选中 = -1
+	_二级选项 = []
+	_pending_type = GConst.Msg.Respond
+	_pending = {
+		"respond_id": 恩典神授技能号,
+		"args": [0, 1, GConst.CardSource.Hand, 0],
+		"dst_ids": _恩典代价候选(),
+		"can_cancel": true,
+	}
+	_进入技能询问()
+	_指令提示(GConst.提示原文(恩典神授技能号, 5))
+	_刷新恩典代价提示()
+
+
+## 我方的角色（含自己）：恩典神授的代价目标从这里挑
+func _是我方(player_id: int) -> bool:
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	var p: GPlayer = Data.get_player_by_id(player_id)
+	return 我 != null and p != null and p.color == 我.color
+
+
+## 某角色当前有没有【治疗】（>0 才能被选作代价目标）
+func _有治疗(player_id: int) -> bool:
+	var p: GPlayer = Data.get_player_by_id(player_id)
+	return p != null and p.cross_num > 0
+
+
+## 恩典神授「我方合计 2 治疗」这一档的可选目标：我方 + 有治疗
+func _恩典代价候选() -> Array[int]:
+	var out: Array[int] = []
+	for p: GPlayer in Data.player_list:
+		if _是我方(p.id) and p.cross_num > 0:
+			out.append(p.id)
+	return out
+
+
+## 某个已点目标这次要扣几点：只点 1 人＝2 点，点 2 人＝各 1 点
+func _恩典代价点数(player_id: int) -> int:
+	if not _恩典代价目标.has(player_id):
+		return 0
+	return 2 if _恩典代价目标.size() == 1 else 1
+
+
+## 现在已经凑够 2 点治疗了吗（确定按钮的可用条件）
+func _恩典代价有效() -> bool:
+	if _恩典代价目标.size() == 1:
+		var p: GPlayer = Data.get_player_by_id(_恩典代价目标[0])
+		return p != null and p.cross_num >= 2
+	if _恩典代价目标.size() == 2:
+		for pid: int in _恩典代价目标:
+			var pp: GPlayer = Data.get_player_by_id(pid)
+			if pp == null or pp.cross_num < 1:
+				return false
+		return true
+	return false
+
+
+## 点我方头像：选中 / 取消选中的代价目标（最多 2 人）
+func _点恩典代价目标(player_id: int) -> void:
+	if _恩典代价目标.has(player_id):
+		_恩典代价目标.erase(player_id)
+	elif _恩典代价目标.size() < 2:
+		_恩典代价目标.append(player_id)
+	else:
+		return
+	_刷新恩典代价提示()
+
+
+## 把「移除 N 治疗」画在已点的人头上；其余头像提示收掉，并把已点的人点亮
+func _刷新恩典代价提示() -> void:
+	_sel_players.clear()
+	for pid: int in _治疗提示表:
+		var 提示: RichTextLabel = _治疗提示表[pid]
+		if is_instance_valid(提示):
+			提示.visible = false
+	for pid: int in _恩典代价目标:
+		var 点数: int = _恩典代价点数(pid)
+		for 面板: 战斗玩家面板 in _面板列表:
+			if 面板.ID == pid:
+				_贴头像提示(面板, _取治疗提示(pid), _效果文本(-点数, 0))
+				_sel_players.append(pid)
+	刷新选中面板()
+	_更新按键()
+
+
+## 退出「选代价目标」这一步（取消 / 选完）：把标记、已点和头像提示都收掉
+func _退出恩典代价目标() -> void:
+	_恩典选代价目标 = false
+	_恩典代价目标.clear()
+	_本地询问 = false
+	_sel_players.clear()
+	for pid: int in _治疗提示表:
+		var 提示: RichTextLabel = _治疗提示表[pid]
+		if is_instance_valid(提示):
+			提示.visible = false
+	刷新选中面板()
+	_更新按键()
+
+
+## 选完代价目标：进「选构成 + 点头像选队友」那一步（整份交给 1 名队友）
+func _确认恩典代价目标() -> void:
+	if not _恩典代价有效():
+		return
+	_退出恩典代价目标()
 	_提炼是冒险家流程 = true
 	_提炼全给一人 = true
 	_提炼阶段 = 0
@@ -6660,6 +6809,12 @@ func _发送冒险家提炼分配() -> void:
 	# 冒险家的两种天堂不带这一位（服务端各自的 v_extract 按自己的形状校验）
 	if _当前提炼转交标记() == 恩典神授技能号:
 		args.append(_恩典代价类型)
+		if _恩典代价类型 == 1:
+			# 代价目标：人数 + 逐人（目标 id, 点数）—— 1 人扣 2 点、2 人各扣 1 点
+			args.append(_恩典代价目标.size())
+			for pid: int in _恩典代价目标:
+				args.append(pid)
+				args.append(_恩典代价点数(pid))
 	# 提交前把流程状态收掉（这份 args 已带全「给自己 / 给队友」两份）
 	_提炼阶段 = 0
 	_本地选项阶段 = 0
@@ -6667,6 +6822,7 @@ func _发送冒险家提炼分配() -> void:
 	_提炼是冒险家流程 = false
 	_提炼全给一人 = false
 	_恩典代价类型 = -1
+	_恩典代价目标.clear()
 	_发送行动(GConst.ActionType.Special, GConst.SpecialAction.Extract, 目标表, [], args)
 
 
@@ -9941,6 +10097,11 @@ func _玩家可选(player_id: int) -> bool:
 	# 目标已锁死（【瘟疫】/【剧毒新星】自动选全体）：头像一律不可点，改不了目标
 	if _目标锁死:
 		return false
+	# 【恩典神授】选「我方合计 2 治疗」的代价目标：只有我方、且当前有【治疗】的角色可点，
+	# 最多 2 人（已点过的可以再点一次取消）
+	if _恩典选代价目标:
+		return _是我方(player_id) and _有治疗(player_id) \
+			and (_恩典代价目标.has(player_id) or _恩典代价目标.size() < 2)
 	# 攒应战（式神咒束 / 阴阳转换）同一步选目标：牌和目标的先后不限
 	if _攒应战选应战:
 		return _攒应战可反击目标(player_id)
@@ -10079,6 +10240,9 @@ func _刷新视为系别可用() -> void:
 
 
 func _确定不可用() -> bool:
+	# 【恩典神授】选代价目标：凑够 2 点治疗（1 人 ≥2 点 / 2 人各 1 点）才让点「确定」
+	if _恩典选代价目标:
+		return not _恩典代价有效()
 	# 攻击结束响应里选中额外攻击：靠点手牌 + 敌方头像发起，不靠确定；
 	# 迅捷赐福例外：它只是移除赐福获得额外攻击行动，点确定提交。
 	if _额外攻击响应选择 > 0:

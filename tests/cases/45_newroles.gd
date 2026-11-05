@@ -355,6 +355,32 @@ func _检圣庭检察士() -> void:
 			有伤害 = true
 	检(有伤害, "【恩典神授】展示圣牌后应对目标对手造成 1 点法术伤害")
 
+	# ---- 代价类型 1：由玩家指定从哪几名我方角色身上扣（1 人 2 点 / 2 人各 1 点）----
+	角色 = _建引擎(39)
+	玩家 = 引擎.p(1)
+	引擎.set_team_gem(GConst.BLUE, 2)
+	引擎.p(3).add_cross_num(2)      # 3 号队友有 2 点治疗
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1, 1, 1, 1, 2, 0, 0], 2, 0, [3])
+		== GConst.GE_INVALID_ACTION, "治疗不够扣的目标不能当代价目标（1 号此时没有治疗）")
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1, 1, 1, 2, 2, 0, 0], 2, 0, [3])
+		== GConst.GE_INVALID_ACTION, "敌方角色不能当治疗代价目标")
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1, 1, 1, 3, 2, 0, 0], 2, 0, [3])
+		== GConst.GE_SUCCESS, "3 号有 2 点治疗时应可通过「单人扣 2 点」")
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1, 1, 2, 3, 1, 3, 1], 2, 0, [3])
+		== GConst.GE_INVALID_ACTION, "同一名角色不能当两个代价目标")
+	# 真跑一次：星石交给 3 号，代价也从 3 号扣 2 点
+	玩家.hand_cards.clear()
+	引擎.current_id = 1
+	引擎.行动允许 = GConst.ActionType.Any
+	引擎.resolve_action(GConst.ActionType.Special, {
+		"action_id": GConst.SpecialAction.Extract,
+		"dst_ids": [3], "card_ids": [],
+		"args": [3903, 0, 0, 2, 0, 0, 2, 1, 1, 3, 2, 0, 0],
+	})
+	引擎.run()
+	检(引擎.p(3).cross_num == 0, "代价应从指定的 3 号扣掉 2 点治疗：%d" % 引擎.p(3).cross_num)
+	检(引擎.p(3).gem == 2, "星石应交给 3 号队友：%d" % 引擎.p(3).gem)
+
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用
 func _检异教徒() -> void:

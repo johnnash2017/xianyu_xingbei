@@ -700,7 +700,7 @@ func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -
 | 能力 | 落点 | 说明 |
 | --- | --- | --- |
 | 场卡 | `BattleEngine.field_cards` + `Game.field_cards`（`FieldCard`） | 摆在场上 / 某人面前的公共卡（【异端裁决所】【末日预言】【天雷劫火】【地裂波涛】【绝界】），带计数 / 上限 / 状态 / 隐藏牌堆张数；客户端在拥有者面板状态区画图标 |
-| 提炼转交 | `GConst.提炼转交标记` + `_do_special` 的「天堂」分支 | 把一次提炼出的星石**直接**交给队友（不进自己手）：冒険家【冒险者天堂】1202 / 圣庭检察士【恩典神授】3903 共用；args 头位是标记，角色自己的 `v_extract` 校验形状与代价，`p_after_extract` 里做后续结算。恩典神授在末位多带一个「代价类型」（0＝裁决所 3 治疗 / 1＝我方合计 2 治疗），由玩家在提炼前选 |
+| 提炼转交 | `GConst.提炼转交标记` + `_do_special` 的「天堂」分支 | 把一次提炼出的星石**直接**交给队友（不进自己手）：冒険家【冒险者天堂】1202 / 圣庭检察士【恩典神授】3903 共用；args 头位是标记，角色自己的 `v_extract` 校验形状与代价，`p_after_extract` 里做后续结算。恩典神授在末位多带一个「代价类型」（0＝裁决所 3 治疗 / 1＝我方合计 2 治疗），由玩家在提炼前选；选 1 时再接 `[人数, 目标1, 点数1, 目标2, 点数2]`（1 人扣 2 点、2 人各扣 1 点） |
 | 盖牌「面朝上」 | `BattlePlayer.cover_open` / `cover_tags` + `cover_opens` 快照 | 【结界】这类放在角色旁、牌面公开的旁置牌；`engine.add_cover(pid, cards, src, cause, open, tag)` 放进去时打标记 |
 | 【律法】标记 | `BattlePlayer.laws` + `laws` 快照 | 星坠女巫放在角色面前的标记（不是牌） |
 | 治疗溢出 | `BattleRole.p_heal_overflow` | 治疗加到上限还有剩余时触发（裁决论定 / 神选者） |
