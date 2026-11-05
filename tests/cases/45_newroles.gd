@@ -294,14 +294,21 @@ func _检圣庭检察士() -> void:
 	角色 = _建引擎(39)
 	玩家 = 引擎.p(1)
 	引擎.set_team_gem(GConst.BLUE, 2)
-	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1], 2, 0, [1]) == GConst.GE_INVALID_PLAYERID,
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1, 0], 2, 0, [1]) == GConst.GE_INVALID_PLAYERID,
 		"【恩典神授】的目标必须是非自己的队友")
 	检(角色.v_extract([1, 0], 2, 0, []) == BattleRole.V_NOT_OVERRIDE,
 		"常规提炼（头位不是 3903）应退回通用校验")
-	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1], 2, 0, [3]) == GConst.GE_INVALID_ACTION,
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1, 0], 2, 0, [3]) == GConst.GE_INVALID_ACTION,
 		"代价付不起时【恩典神授】应驳回（此时裁决所 0、全队治疗 0）")
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1, 7], 2, 0, [3]) == GConst.GE_INVALID_ACTION,
+		"未知的代价类型应驳回")
 	# 给够代价：裁决所 3 治疗
 	引擎.场卡加计数("异端裁决所", 3)
+	# 代价按「玩家选的那一种」复核：选了「我方合计 2 治疗」就要求治疗够，不能拿裁决所顶
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1, 1], 2, 0, [3]) == GConst.GE_INVALID_ACTION,
+		"选「我方合计 2 治疗」作代价时，全队治疗 0 应驳回")
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1, 0], 2, 0, [3]) == GConst.GE_SUCCESS,
+		"裁决所 3 治疗时应可付「裁决所 3 治疗」这一种代价")
 	# 让 1 号成为当前行动者（建引擎后可能已经轮到别人），并放行特殊行动
 	引擎.current_id = 1
 	引擎.行动允许 = GConst.ActionType.Any
@@ -316,7 +323,7 @@ func _检圣庭检察士() -> void:
 	玩家.add_hand_cards([圣牌])
 	引擎.resolve_action(GConst.ActionType.Special, {
 		"action_id": GConst.SpecialAction.Extract,
-		"dst_ids": [3], "card_ids": [], "args": [3903, 0, 0, 2, 0, 0, 2],
+		"dst_ids": [3], "card_ids": [], "args": [3903, 0, 0, 2, 0, 0, 2, 0],
 	})
 	引擎.run()
 	检(引擎.p(3).gem == 2, "【恩典神授】应把提炼出的星石直接交给目标队友：%d" % 引擎.p(3).gem)

@@ -221,12 +221,13 @@ func p_heal_overflow(ctx: Dictionary) -> int:
 # 3903 恩典神授：提炼时把提炼出的星石直接交给目标队友（流程照冒险家【冒险者天堂】）
 # ============================================================
 ## 提炼校验覆写（对照 role_maoxian.v_extract）：头位不是 3903 ＝ 常规提炼 / 别人的【冒险者天堂】，
-## 退回通用校验；是 3903 时 args = [标记, 自己的宝石, 自己的水晶, 队友的宝石, 队友的水晶, 0, 目标颗数]
-## —— 自己的那两位恒为 0（本次提炼出的星石全部交给唯一的队友），额外能量 X 恒为 0。
+## 退回通用校验；是 3903 时 args = [标记, 自己的宝石, 自己的水晶, 队友的宝石, 队友的水晶, 0,
+## 目标颗数, 代价类型] —— 自己的那两位恒为 0（本次提炼出的星石全部交给唯一的队友），额外能量 X 恒为 0；
+## 代价类型由玩家在提炼前选：0＝移除【异端裁决所】3【治疗】，1＝移除我方角色合计 2【治疗】。
 func v_extract(args: Array, team_gem: int, team_crystal: int, dst_ids: Array) -> int:
 	if args.is_empty() or int(args[0]) != EN_DIAN_SHEN_SHOU:
 		return V_NOT_OVERRIDE
-	if args.size() != 7 or dst_ids.size() != 1:
+	if args.size() != 8 or dst_ids.size() != 1:
 		return GConst.GE_INVALID_ARGUMENT
 	var 自己宝石: int = int(args[1])
 	var 自己水晶: int = int(args[2])
@@ -234,6 +235,7 @@ func v_extract(args: Array, team_gem: int, team_crystal: int, dst_ids: Array) ->
 	var 队友水晶: int = int(args[4])
 	var 多余能量: int = int(args[5])
 	var 目标颗数: int = int(args[6])
+	var 代价类型: int = int(args[7])
 	var 总数: int = 队友宝石 + 队友水晶
 	if 自己宝石 != 0 or 自己水晶 != 0 or 多余能量 != 0:
 		return GConst.GE_INVALID_ACTION
@@ -248,13 +250,13 @@ func v_extract(args: Array, team_gem: int, team_crystal: int, dst_ids: Array) ->
 		return GConst.GE_INVALID_ACTION
 	if 队友宝石 > team_gem or 队友水晶 > team_crystal:
 		return GConst.GE_INVALID_ACTION
-	# 代价：裁决所 3 治疗 或 我方合计 2 治疗 —— 付不起就不许这么提炼
-	if not _恩典可付():
+	# 代价按玩家选的那一种复核（另一种付得起也不行：提交哪种就付哪种）
+	if not _恩典代价可付(代价类型):
 		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
 
 
-## 提炼结算完的后续：先扣代价 + 播报【恩典神授】，再问「弃 1 张牌」；
+## 提炼结算完的后续：先播报【恩典神授】、扣玩家选定的代价，再问「弃 1 张牌」；
 ## 若弃的是圣类命格，可【展示】换对目标对手的 1 点法术伤害。
 ## 只有「恩典神授」这种把星石交给队友的提炼才走这里（常规提炼 is_heaven = false，什么都不做）。
 ## 注意：引擎是先压 p_extract_to 再压 p_after_extract（后压先跑），所以代价与播报放这里，
@@ -267,9 +269,10 @@ func p_after_extract(ctx: Dictionary) -> int:
 	# 后续流程只起一次：等「弃 1 张牌」的回复时本钩子会重入同一份 ctx
 	if bool(ctx.get("_恩典后续已启动", false)):
 		return SUCCESS
-	# 代价：裁决所 3【治疗】优先，否则我方角色合计 2【治疗】（先自己后队友）
-	_付恩典代价()
+	var 参: Array = ctx.get("args", [])
+	var 代价类型: int = int(参[7]) if 参.size() > 7 else 0
 	notice_skill(EN_DIAN_SHEN_SHOU, ctx.get("dst_ids", []))
+	_付恩典代价(代价类型)
 	engine._broadcast_game()
 	if player.hand_cards.is_empty():
 		return SUCCESS
@@ -281,10 +284,12 @@ func p_after_extract(ctx: Dictionary) -> int:
 var _恩典步: int = 0
 
 
-## 恩典神授付得起吗：裁决所 ≥3 或 我方角色治疗合计 ≥2
-func _恩典可付() -> bool:
-	if int(engine.取场卡(裁决所名).get("counter", 0)) >= 3:
-		return true
+## 恩典神授的某种代价现在付得起吗：0＝【异端裁决所】≥3【治疗】，1＝我方角色治疗合计 ≥2
+func _恩典代价可付(类型: int) -> bool:
+	if 类型 == 0:
+		return int(engine.取场卡(裁决所名).get("counter", 0)) >= 3
+	if 类型 != 1:
+		return false
 	var 合计: int = 0
 	for pid: int in engine.order:
 		var pp: BattlePlayer = engine.p(pid)
@@ -293,10 +298,9 @@ func _恩典可付() -> bool:
 	return 合计 >= 2
 
 
-## 付代价：优先裁决所的 3 治疗，其次我方角色合计 2 治疗（先自己、再按座位顺序）
-func _付恩典代价() -> void:
-	var 所: Dictionary = engine.取场卡(裁决所名)
-	if int(所.get("counter", 0)) >= 3:
+## 付玩家选定的代价：0＝裁决所的 3 治疗；1＝我方角色合计 2 治疗（先自己、再按座位顺序）
+func _付恩典代价(类型: int) -> void:
+	if 类型 == 0:
 		engine.场卡加计数(裁决所名, -3)
 		return
 	var 需: int = 2
