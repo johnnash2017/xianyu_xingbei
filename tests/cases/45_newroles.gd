@@ -463,6 +463,18 @@ func _检圣庭检察士() -> void:
 	var 净华自身: Dictionary = (GConst.技能指示器.get(3904, {}) as Dictionary).get("自身", {})
 	检(str(净华自身.get("文案", "")) == "+%d 治疗" and int(净华自身.get("每目标", 0)) == 1,
 		"【净化之术】应在自己头像上写「+1 治疗」")
+	# 3907 神圣鞭策：选中的每名角色各摸 1 张牌
+	检(str((GConst.技能指示器.get(3907, {}) as Dictionary).get("文案", "")) == "摸 %d 张牌",
+		"【神圣鞭策】头像提示应写「摸 %d 张牌」")
+	# 3906 裁决者：自己头像上写「+1 裁决」「裁决所 +2 治疗」（数值不同，走动态现算）
+	窗.set("_mode", 4)
+	窗.set("_pending_skill_id", 3906)
+	var 裁决提示: Dictionary = 窗.call("_裁决者头像提示")
+	检(str(裁决提示.get(Logic.my_player_id, "")) == "+1 裁决\n裁决所 +2 治疗",
+		"【裁决者】应在自己头像写「+1 裁决 / 裁决所 +2 治疗」：%s" % str(裁决提示))
+	窗.set("_pending_skill_id", 3901)
+	检((窗.call("_裁决者头像提示") as Dictionary).is_empty(),
+		"不是【裁决者】时不画它的头像提示")
 	窗.free()
 
 
