@@ -2496,6 +2496,28 @@ func _弃牌提示(cause: int, 张数: int) -> String:
 ## 选项文案在命令的 notes 里；有选项时改为渲染选项按钮，点哪个就回哪个值
 func _进入技能询问() -> void:
 	_mode = 3
+	_技能询问_解析字段()
+	# 盖牌区 / 选牌选择复位，没有选项的询问顺手摆一颗展示按钮
+	_技能询问_重置与展示()
+	# 「先弹选项」「攻击结束二选一」「自动选目标」「顺带点亮」这些进场规则
+	_技能询问_选项前置()
+	# 选项归一化 → 进二级技能栏 → 默认选中 → 攒应战
+	_技能询问_摆选项()
+	# 【元素射击】把「选子弹」与「视为系别」合成一次询问：五个系别选项先全部置灰，
+	# 选中光/暗子弹后才点亮（普通子弹不需要选系别，直接按「确定」）
+	if _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
+		_刷新视为系别可用()
+	# 攻击结束响应期间：已获得但还没用的攻击行动摆成红色快捷按钮（只展示、不可点）
+	_技能询问_摆额外攻击响应()
+	var 提示文案: String = _询问提示文案()
+	if not 提示文案.is_empty():
+		_指令提示(提示文案)
+	_刷新交互()
+
+
+## `_进入技能询问` 第 1 步：把命令里的字段读进来（需牌 / 需目标 / 来源 / 规则 / 白名单 / 选项值），
+## 并记下「选项切换时要还原的原始需求」。
+func _技能询问_解析字段() -> void:
 	var args: Array = _pending.get("args", [])
 	_skill_need_card = int(args[0]) if args.size() > 0 else 0
 	_skill_ask_need_target = int(args[1]) if args.size() > 1 else 0
@@ -2533,6 +2555,11 @@ func _进入技能询问() -> void:
 	for i: int in range(选项数):
 		if args.size() > 4 + i:
 			_skill_options.append(int(args[4 + i]))
+
+
+## `_进入技能询问` 第 2 步：复位选牌选择，决定盖牌区亮不亮；
+## 没有选项的响应询问（如血气屏障）在技能栏里摆一颗展示按钮（有选项的走二级技能栏）。
+func _技能询问_重置与展示() -> void:
 	# 只有「从盖牌区选牌」的技能询问才把盖牌区亮出来（HandAndBasicEffect 的手牌整片置灰，与盖牌无关）
 	_selecting_cover = _skill_card_source == GConst.CardSource.Cover \
 			or _skill_card_source == GConst.CardSource.HandOrCover
@@ -2540,8 +2567,6 @@ func _进入技能询问() -> void:
 	_sel_players.clear()
 	_重置治疗分配()
 	_清空技能按钮()
-	# 没有选项的响应询问（如血气屏障）：在技能栏里摆出正在响应的那颗技能，只作展示；
-	# 有选项的走 _进入二级技能栏，那里本来就会摆父技能按钮。
 	if _skill_options.is_empty() and _skill_card_source != GConst.CardSource.HandAndBasicEffect:
 		var 展示按钮: 技能按钮 = _新技能按钮(_skill_ask_id,
 			GConst.询问按钮文案(_skill_ask_id, _skill_ask_need_target))
@@ -2549,9 +2574,14 @@ func _进入技能询问() -> void:
 			展示按钮.设置底色(GConst.技能类型颜色.get("响应", Color(0.54, 0.31, 0.87)))
 		展示按钮.设置选中(true)
 		_排技能栏.call_deferred()
-	# 带选项的询问（如英灵人形【怒火压制/魔纹融合】的二选一、【百鬼夜行】的展示与否）：
-	# 进「二级技能栏」—— 技能区只留这个技能（最左）+ 它的选项（紧挨右侧，同样用技能按钮显示）。
-	# 默认选好一项再按「确定」提交；攻击结束二选一也是选中后可切换、选够目标/弃牌再按一次确定。
+
+
+## `_进入技能询问` 第 3 步：带选项的询问进场时要先定几件事。
+##  - 「先弹选项」：还没选效果，先不让点牌 / 选目标（配了「允许先选牌」的不清零）
+##  - 「攻击结束二选一」：选项各自带需牌 / 需目标，选项没选之前本体这边先按 0 处理
+##  - 「自动选目标」：服务端点名挨效果的角色，进场即选中并锁死
+##  - 「顺带点亮」：只高亮给人看，不参与选择、不提交（如【别烦我……】替她发动的队友）
+func _技能询问_选项前置() -> void:
 	var 指示配置: Dictionary = GConst.技能指示器.get(_skill_ask_id, {})
 	_先弹选项 = bool(指示配置.get("先弹选项", false)) and not _skill_options.is_empty()
 	# 「选中项自带需牌 / 需目标」型：选选项之前不让点目标 / 点牌，选完由该项自己的需目标 / 需牌放开。
@@ -2608,6 +2638,11 @@ func _进入技能询问() -> void:
 			_skill_need_card = 0
 			_skill_card_max = 0
 			_need_cards = 0
+
+
+## `_进入技能询问` 第 4 步：选项归一化 → 进二级技能栏 → 默认选中 → 攒应战。
+func _技能询问_摆选项() -> void:
+	var 指示配置: Dictionary = GConst.技能指示器.get(_skill_ask_id, {})
 	if not _skill_options.is_empty():
 		var notes: Array = _pending.get("notes", [])
 		# 服务端标了「这一项本身就是技能」时（如【蓄力一击】/【气绝崩击】），选项按钮绑上技能号，
@@ -2722,12 +2757,12 @@ func _进入技能询问() -> void:
 		# 【天使之歌】：询问一到就把二级技能栏摆出来（此刻只有技能本体一颗），
 		# 选完目标再由 _刷新基础效果选项 把该目标面前的基础效果填进去 —— 不用先按一次「确定」
 		_进入二级技能栏(_skill_ask_id, null, [])
-	# 【元素射击】把「选子弹」与「视为系别」合成一次询问：五个系别选项先全部置灰，
-	# 选中光/暗子弹后才点亮（普通子弹不需要选系别，直接按「确定」）
-	if _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
-		_刷新视为系别可用()
+
+
+## `_进入技能询问` 第 6 步：把已获得但还没用的攻击行动摆成红色快捷按钮。
+## 按新规则响应阶段不能使用行动，所以这些按钮一律置灰不可点，真正使用留到响应结束后的额外行动阶段。
+func _技能询问_摆额外攻击响应() -> void:
 	# 攻击结束响应期间：已获得但还没用的攻击行动摆成红色快捷按钮，只用来显示「有几个额外行动」；
-	# 按新规则响应阶段不能使用行动，所以这些按钮一律置灰不可点，真正使用留到响应结束后的额外行动阶段。
 	var 额外攻击: Array = _pending.get("extra_attack_causes", [])
 	var 额外攻击ID: Array = _pending.get("extra_attack_uids", [])
 	var 额外允许: Array = _pending.get("allow_actions", [])
@@ -2769,10 +2804,6 @@ func _进入技能询问() -> void:
 			if 快捷钮 != null and 快捷钮.get_parent() == ChildrenSkillArea:
 				ChildrenSkillArea.move_child(快捷钮, 插入位 + i)
 		_排技能栏.call_deferred()
-	var 提示文案: String = _询问提示文案()
-	if not 提示文案.is_empty():
-		_指令提示(提示文案)
-	_刷新交互()
 
 
 ## 计算「这次技能询问」应该显示的提示文案（纯计算，不写界面；空串＝不改提示条）。
