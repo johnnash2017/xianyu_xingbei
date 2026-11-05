@@ -2497,6 +2497,8 @@ func _进入技能询问() -> void:
 	_skill_cards.clear()
 	for 合法牌id: Variant in _pending.get("card_ids", []):
 		_skill_cards.append(int(合法牌id))
+	# 记一份原始白名单：二级栏选项带系别时按选项收紧（见 _按选中系别收紧可点牌）
+	_skill_cards_all = _skill_cards.duplicate()
 	# 服务端给了合法目标白名单就只让这几名玩家可点（如【天使之歌】只能选面前有基础效果的人）；空＝不限制
 	_skill_targets.clear()
 	for 合法目标id: Variant in _pending.get("dst_ids", []):

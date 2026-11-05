@@ -402,10 +402,16 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				0, player.id, enemy_ids(), 4, {}, 0, 0, false, [], true, -1, 0, "")
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
+		var 超时: bool = bool(r2.get("is_timeout", false))
 		var args2: Array = r2.get("args", [])
 		var 选系: int = int(args2[0]) if not args2.is_empty() else -1
 		if not _展示可发动(选系):
-			# 超时 / 提交了置灰项：取第一个还能发的系
+			if not 超时:
+				# 提交了置灰 / 非法系别：驳回重问，不替玩家改选
+				engine.send(player.id, GConst.Msg.ErrorInput,
+					{"error_type": GConst.CmdType.Respond, "commands": []})
+				return p_yi_jiao_tu_ask({"player": player.id})
+			# 超时才取第一个还能发的系
 			for 系2: int in 可发系:
 				选系 = 系2
 				break
@@ -416,17 +422,43 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			_翻面步 = 0
 			return SUCCESS
 		_展示系 = 选系
-		# 弃牌：只认该系、最多 4 张；X＝实际选中的张数
+		# 校验弃牌：每张都必须还在手、属于刚选的系别、最多 4 张；非法就驳回重问
+		var 输入牌: Array = r2.get("card_ids", [])
 		var 弃: Array = []
-		for c: Variant in r2.get("card_ids", []):
-			if 弃.size() >= 4:
+		var 牌非法: bool = 输入牌.size() > 4
+		for c: Variant in 输入牌:
+			if 牌非法:
 				break
 			var cid3: int = int(c)
 			if not player.有手牌(cid3) or 弃.has(cid3):
-				continue
+				牌非法 = true
+				break
 			var 卡3: GCard = Data.get_card(cid3)
-			if 卡3 != null and 卡3.element_enum() == _展示系:
-				弃.append(cid3)
+			if 卡3 == null or 卡3.element_enum() != _展示系:
+				牌非法 = true
+				break
+			弃.append(cid3)
+		if 牌非法:
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return p_yi_jiao_tu_ask({"player": player.id})
+		# 目标也先校验：非法就驳回重问，不静默换人
+		var 敌表3: Array = enemy_ids()
+		var ds3: Array = r2.get("dst_ids", [])
+		_展示对手 = -1
+		if 敌表3.is_empty():
+			return _展示本项结束()
+		if ds3.size() == 1 and 敌表3.has(int(ds3[0])):
+			_展示对手 = int(ds3[0])
+		elif not 超时:
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return p_yi_jiao_tu_ask({"player": player.id})
+		else:
+			# 超时兜底：随机指定一名对手，别把这次展示白丢
+			_展示对手 = int(敌表3[engine._rng.randi_range(0, 敌表3.size() - 1)])
+		if _展示对手 < 0 or engine.p(_展示对手) == null:
+			return _展示本项结束()
 		if not 弃.is_empty():
 			engine.broadcast(GConst.Msg.Card, {
 				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -436,16 +468,6 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": _展示技能号()})
 			engine._log_discard(player.id, 弃, false)
 		_展示X = 弃.size()
-		var 敌表3: Array = enemy_ids()
-		var ds3: Array = r2.get("dst_ids", [])
-		_展示对手 = -1
-		if ds3.size() == 1 and 敌表3.has(int(ds3[0])):
-			_展示对手 = int(ds3[0])
-		elif not 敌表3.is_empty():
-			# 超时 / 跳过：随机指定一名对手，别把这次展示白丢
-			_展示对手 = int(敌表3[engine._rng.randi_range(0, 敌表3.size() - 1)])
-		if _展示对手 < 0 or engine.p(_展示对手) == null:
-			return _展示本项结束()
 		# 先压「继续走」的钩子、再压摸牌：摸完（含超限结算）回来问目标对手弃牌
 		_展示步 = 7
 		engine.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": player.id}, []))
@@ -476,22 +498,37 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				% [_在展示, GConst.element_to_chinese(_展示系)])
 			return WAIT
 		var r7: Dictionary = take_skill_reply_full()
+		var 超时7: bool = bool(r7.get("is_timeout", false))
 		var 已弃: Array = []
 		var 对手2: BattlePlayer = engine.p(_展示对手)
+		var 弃牌非法: bool = false
 		if 对手2 != null:
 			for c: Variant in r7.get("card_ids", []):
+				if 已弃.size() >= 上限:
+					弃牌非法 = true
+					break
 				var cid2: int = int(c)
 				var 卡3: GCard = Data.get_card(cid2)
-				if 已弃.size() < 上限 and 对手2.有手牌(cid2) and 卡3 != null 						and 卡3.element_enum() == _展示系 and not 已弃.has(cid2):
+				if 对手2.有手牌(cid2) and 卡3 != null and 卡3.element_enum() == _展示系 						and not 已弃.has(cid2):
 					已弃.append(cid2)
-			if not 已弃.is_empty():
-				engine.broadcast(GConst.Msg.Card, {
-					"type": GConst.CardMsgType.Show, "src_id": _展示对手, "dst_id": _展示对手,
-					"card_ids": 已弃, "is_real": true,
-				})
-				engine.take_from_hand(_展示对手, 已弃, false)
-				engine.to_discard(已弃, {"owner": _展示对手, "source": "hand", "cause": _展示技能号()})
-				engine._log_discard(_展示对手, 已弃, false)
+				else:
+					弃牌非法 = true
+					break
+		if 弃牌非法:
+			if not 超时7:
+				# 提交了不在手 / 不是该系 / 超过上限的牌：驳回重问
+				engine.send(_展示对手, GConst.Msg.ErrorInput,
+					{"error_type": GConst.CmdType.Respond, "commands": []})
+				return p_yi_jiao_tu_ask({"player": player.id})
+			已弃.clear()
+		if not 已弃.is_empty():
+			engine.broadcast(GConst.Msg.Card, {
+				"type": GConst.CardMsgType.Show, "src_id": _展示对手, "dst_id": _展示对手,
+				"card_ids": 已弃, "is_real": true,
+			})
+			engine.take_from_hand(_展示对手, 已弃, false)
+			engine.to_discard(已弃, {"owner": _展示对手, "source": "hand", "cause": _展示技能号()})
+			engine._log_discard(_展示对手, 已弃, false)
 		return _展示本项伤害()
 	# 展示时（每一项）：伤害结算完 → 进入下一项（贪婪）或收尾
 	if _展示步 == 9:
@@ -523,12 +560,24 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				GConst.提示原文(SHEN_PAN, 1))
 			return WAIT
 		var r6: Dictionary = take_skill_reply_full()
+		var 超时6: bool = bool(r6.get("is_timeout", false))
 		var cards6: Array = r6.get("card_ids", [])
 		var cid: int = -1
-		if not cards6.is_empty() and pp.有手牌(int(cards6[0])):
-			cid = int(cards6[0])
+		if not cards6.is_empty():
+			if pp.有手牌(int(cards6[0])):
+				cid = int(cards6[0])
+			elif not 超时6:
+				# 提交了不在手的牌：驳回重问，不替玩家随机弃
+				engine.send(pid2, GConst.Msg.ErrorInput,
+					{"error_type": GConst.CmdType.Respond, "commands": []})
+				return p_yi_jiao_tu_ask({"player": player.id})
 		if cid < 0:
-			# 超时 / 跳过：自动弃掉一张（随机），不卡住流程
+			if not 超时6:
+				# 强制弃牌必须选 1 张；空提交也驳回
+				engine.send(pid2, GConst.Msg.ErrorInput,
+					{"error_type": GConst.CmdType.Respond, "commands": []})
+				return p_yi_jiao_tu_ask({"player": player.id})
+			# 超时：自动弃掉一张（随机），不卡住流程
 			var 手6: Array = pp.hand_cards.duplicate()
 			if not 手6.is_empty():
 				cid = int(手6[engine._rng.randi_range(0, 手6.size() - 1)])
@@ -702,6 +751,24 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
+		var 超时3: bool = bool(r3.get("is_timeout", false))
+		# 非超时必须恰好选 6 张、且都在手、不重复；非法就直接驳回重问
+		if not 超时3:
+			var 输入3: Array = r3.get("card_ids", [])
+			if 输入3.size() != 6:
+				engine.send(player.id, GConst.Msg.ErrorInput,
+					{"error_type": GConst.CmdType.Respond, "commands": []})
+				_放逐步 = 2
+				return p_yi_jiao_tu_ask({"player": player.id})
+			var 查重: Array = []
+			for c0: Variant in 输入3:
+				var cid0: int = int(c0)
+				if not player.有手牌(cid0) or 查重.has(cid0):
+					engine.send(player.id, GConst.Msg.ErrorInput,
+						{"error_type": GConst.CmdType.Respond, "commands": []})
+					_放逐步 = 2
+					return p_yi_jiao_tu_ask({"player": player.id})
+				查重.append(cid0)
 		_放逐步 = 0
 		var a3: Array = r3.get("args", [])
 		# 超时 / 跳过：随机从【天雷劫火】/【地裂波涛】里选一个，不卡住流程
@@ -711,10 +778,12 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			"counter": 0, "counter_max": 预言上限, "state": 0, "pile": [], "front": 正面})
 		var 已选: Array = []
 		for c: Variant in r3.get("card_ids", []):
+			if 已选.size() >= 6:
+				break
 			var cid: int = int(c)
-			if 已选.size() < 6 and player.有手牌(cid) and not 已选.has(cid):
+			if player.有手牌(cid) and not 已选.has(cid):
 				已选.append(cid)
-		# 超时 / 没选够 6 张：从手牌里随机补足，保证放逐一定结算完
+		# 只有超时会走到这里（非超时上面已保证 6 张合法）：随机补足，保证放逐结算完
 		if 已选.size() < 6:
 			var 候选: Array = player.hand_cards.duplicate()
 			候选.shuffle()
@@ -728,13 +797,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			var 取: int = player.取出实例(player.hand_cards, int(cid2))
 			if 取 >= 0 and 新堆.size() < 6:
 				新堆.append(取)
-		# 兜底：选中里混进了已经不在手 / 0 号这类取不出来的牌时，再从当前手牌补满 6 张
-		while 新堆.size() < 6 and not player.hand_cards.is_empty():
-			var 补: int = player.取出实例(player.hand_cards, player.hand_cards[0])
-			if 补 < 0:
-				break
-			新堆.append(补)
-		新堆.shuffle()
+		if 新堆.size() != 6:
+			engine.报错("【放逐】没能凑齐 6 张【预言】（实际 %d 张）" % 新堆.size(), player.id)
 		var 表: Dictionary = engine.取场卡(末日预言名)
 		表["pile"] = 新堆
 		表["counter"] = 新堆.size()

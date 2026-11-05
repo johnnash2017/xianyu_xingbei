@@ -31,6 +31,9 @@ func 跑() -> void:
 	_检翻面用记下的正面()
 	_检缺正面报错()
 	_检末日日志()
+	_检选项换系收紧牌()
+	_检展示非法牌驳回()
+	_检放逐非法牌驳回()
 	_检放逐超时()
 	_检放逐提示不切换()
 	_检审判()
@@ -559,6 +562,89 @@ func _检放逐() -> void:
 	检(int(额外.get("allow_action", 0)) == GConst.ActionType.AttackMagic,
 		"这份额外行动应同时允许攻击与法术：%s" % str(额外.get("allow_action", 0)))
 	检(引擎._不爆牌.is_empty(), "放逐结算完应解除不爆牌状态")
+
+
+# ============================================================
+# 6b. 客户端：切换系别选项后，已选的不合法牌要收回
+# ============================================================
+func _检选项换系收紧牌() -> void:
+	var 雷卡: int = -1
+	var 火卡: int = -1
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual:
+			continue
+		if 雷卡 < 0 and c.element_enum() == GConst.CardElement.Thunder:
+			雷卡 = c.id
+		if 火卡 < 0 and c.element_enum() == GConst.CardElement.Fire:
+			火卡 = c.id
+		if 雷卡 >= 0 and 火卡 >= 0:
+			break
+	检(雷卡 >= 0 and 火卡 >= 0, "应能找到雷/火牌面用于测试")
+	var 窗: Control = load("res://scripts/ui/battle_mobile.gd").new()
+	窗.set("_二级选项", [{"元素": [GConst.CardElement.Thunder]}])
+	窗.set("_二级选中", 0)
+	var 白: Array[int] = [雷卡, 火卡]
+	窗.set("_skill_cards_all", 白)
+	窗.set("_skill_cards", 白)
+	窗.set("_sel_cards", 白)
+	窗.call("_按选中系别收紧可点牌")
+	var 可选: Array = 窗.get("_skill_cards")
+	var 已选: Array = 窗.get("_sel_cards")
+	检(可选 == [雷卡] and 已选 == [雷卡],
+		"切到雷系后应只留雷牌、并收回已选的火牌：可点 %s / 已选 %s" % [str(可选), str(已选)])
+	窗.queue_free()
+
+
+# ============================================================
+# 6c. 服务端：合并询问里提交非本系牌 → 驳回重问
+# ============================================================
+func _检展示非法牌驳回() -> void:
+	_建引擎()
+	玩家1.set_crystal(0)
+	玩家1.set_gem(0)
+	_发牌(玩家1, GConst.CardElement.Thunder, 1)
+	var 火: Array = _发牌(玩家1, GConst.CardElement.Fire, 1)
+	_放末日([])
+	角色._检查预言取空()
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9507,
+		"应已进入天雷劫火合并询问")
+	var 标记: int = 发送记录.size()
+	# 选雷系却提交火牌：应 ErrorInput + 重新问这一步，不能静默吞掉
+	_应答([GConst.CardElement.Thunder], [2], 火)
+	引擎.run()
+	var 有驳回: bool = false
+	for i: int in range(标记, 发送记录.size()):
+		if int(发送记录[i]["msg"]) == GConst.Msg.ErrorInput:
+			有驳回 = true
+	检(有驳回, "提交非本系牌应被驳回")
+	检(玩家1.有手牌(int(火[0])), "被驳回的火牌不应被静默弃掉")
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9507,
+		"驳回后应重新问合并询问")
+
+
+# ============================================================
+# 6d. 放逐：非超时提交重复/不在手的 6 张 → 驳回重问，不静默补齐
+# ============================================================
+func _检放逐非法牌驳回() -> void:
+	_建引擎()
+	_发牌(玩家1, GConst.CardElement.Wind, 6)
+	角色._放逐步 = 2
+	引擎.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": 1}, []))
+	引擎.run()
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505, "应先问放逐的正面 + 6 张手牌")
+	var 手: Array = 玩家1.hand_cards.duplicate()
+	var 重复: Array = [int(手[0]), int(手[0]), int(手[1]), int(手[2]), int(手[3]), int(手[4])]
+	var 标记: int = 发送记录.size()
+	_应答([1], [], 重复)
+	引擎.run()
+	var 有驳回: bool = false
+	for i: int in range(标记, 发送记录.size()):
+		if int(发送记录[i]["msg"]) == GConst.Msg.ErrorInput:
+			有驳回 = true
+	检(有驳回, "放逐提交重复牌应被驳回")
+	检(玩家1.hand_cards.size() == 6, "驳回后手牌不应被取走")
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505, "驳回后应重新问放逐这一步")
 
 
 # ============================================================
