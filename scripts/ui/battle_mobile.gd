@@ -72,6 +72,7 @@ var _本地询问: bool = false
 ## 本地「先在二级技能栏里选一项」的步骤（不走服务端，0＝没有）：
 ##   2＝特殊行动（购买/合成/提炼）选星石组合  3＝特殊行动三选一
 ##   4＝冒险家提炼前选提炼方式（常规提炼 / 额外提取 1~3 颗，原来分两步问，现并成一步）
+##   5＝圣庭检察士提炼前选提炼方式（常规提炼 / 恩典神授交给队友）
 var _本地选项阶段: int = 0
 ## 【冒险者天堂】提炼流程的阶段（0＝不在流程中）：4＝选取星石组合并点头像分配
 var _提炼阶段: int = 0
@@ -608,17 +609,36 @@ const 圣弓_圣屑未命中: Array[int] = [37021, 88021]
 ## 【冒险者天堂】的技能号：冒险家提炼前先问把星石给谁（对照 role_maoxian）
 const 冒险者天堂技能号: int = GConst.技能_冒险者天堂
 const 冒险者天堂Trick技能号: int = GConst.技能_冒险者天堂Trick
+## 圣庭检察士（39）的【恩典神授】：提炼时把星石直接交给 1 名目标队友（流程照【冒险者天堂】）
+const 恩典神授技能号: int = GConst.技能_恩典神授
+const 圣庭检察士角色号: int = 39
+## 【异端裁决所】的场卡 id（与服务端 加场卡 的 "id" 一致）：客户端只看它当前的治疗点数
+const 场卡_异端裁决所: String = "异端裁决所"
 
 
-## 当前玩家这一版冒险家的【冒险者天堂】技能号：Trick 用 8902，原版用 1202
-func _当前冒险者天堂技能号() -> int:
+## 当前玩家「把提炼出的星石直接交给队友」用的技能号：
+## 冒险家 Trick 8902、冒险家原版 1202、圣庭检察士【恩典神授】3903
+func _当前提炼转交技能号() -> int:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	return 冒险者天堂Trick技能号 if 我 != null and 我.role_id == 冒险家Trick角色号 else 冒险者天堂技能号
+	if 我 == null:
+		return 冒险者天堂技能号
+	if 我.role_id == 冒险家Trick角色号:
+		return 冒险者天堂Trick技能号
+	if 我.role_id == 圣庭检察士角色号:
+		return 恩典神授技能号
+	return 冒险者天堂技能号
 
 
-## 收到的技能询问是不是任意一版的【冒险者天堂】
-func _是冒险者天堂技能(skill_id: int) -> bool:
-	return skill_id == 冒险者天堂技能号 or skill_id == 冒险者天堂Trick技能号
+## 提炼提交时 args 的头位标记：只有【恩典神授】用它自己的技能号，冒险家两版都写 1202
+## （服务端各自的 v_extract 只认自己那一个，见 GConst.提炼转交标记）
+func _当前提炼转交标记() -> int:
+	return 恩典神授技能号 if _当前提炼转交技能号() == 恩典神授技能号 else GConst.提炼天堂标记
+
+
+## 收到的技能询问是不是「提炼转交」这一类（任意一版【冒险者天堂】/【恩典神授】）
+func _是提炼转交技能(skill_id: int) -> bool:
+	return skill_id == 冒险者天堂技能号 or skill_id == 冒险者天堂Trick技能号 \
+		or skill_id == 恩典神授技能号
 
 
 func _ready() -> void:
@@ -4222,6 +4242,9 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 	if _本地选项阶段 == 4:
 		_确认提炼方式()
 		return
+	if _本地选项阶段 == 5:
+		_确认恩典提炼方式()
+		return
 	# 月女【苍白之月】第二项：点进去还不提交，先在本地进入第二步选「移除 1/2 点【新月】」
 	if _mode == 4 and _pending_skill_id == GConst.技能_苍白之月 and not _苍白第二步 \
 			and _已选参数.size() == 1 and int(_已选参数[0]) == 2:
@@ -5773,6 +5796,9 @@ func _on_ok() -> void:
 	if _本地选项阶段 == 4:
 		_确认提炼方式()
 		return
+	if _本地选项阶段 == 5:
+		_确认恩典提炼方式()
+		return
 	if _本地选项阶段 == 2:
 		_确认特殊行动选石()
 		return
@@ -5919,6 +5945,9 @@ func _on_cancel() -> void:
 	# 本地二级栏选项步骤：取消＝退回上一层
 	# （提炼前选提炼方式 → 特殊行动三选一；购买/合成/常规提炼选星石 → 三选一）
 	if _本地选项阶段 == 4:
+		_取消特殊行动选石()
+		return
+	if _本地选项阶段 == 5:
 		_取消特殊行动选石()
 		return
 	if _本地选项阶段 == 2:
@@ -6071,7 +6100,8 @@ func _特殊行动可用() -> Array[bool]:
 	结果[0] = 我.hand_cards_num + 3 <= 我.hand_cards_max
 	结果[1] = 结果[0] and 星石 >= 3
 	结果[2] = 星石 > 0 and (我.get_energy() < 我.energy_max \
-			or (冒险家角色号.has(我.role_id) and not _提炼候选队友().is_empty()))
+			or (冒险家角色号.has(我.role_id) and not _提炼候选队友().is_empty()) \
+			or (我.role_id == 圣庭检察士角色号 and _恩典代价可付() and not _提炼候选队友().is_empty()))
 	return 结果
 
 
@@ -6194,6 +6224,72 @@ func _冒险家12提炼() -> void:
 	_天堂列组合()
 
 
+## 圣庭检察士【恩典神授】：点「提炼」后先选提炼方式 ——「提炼」＝常规提炼给自己，
+## 「恩典神授」＝把本次提炼出的星石全部交给 1 名目标队友（流程与冒险家【冒险者天堂】一致）。
+## 代价由服务端在提炼结算时扣（裁决所 3 治疗 或 我方角色合计 2 治疗）；付不起 / 没人收得下时
+## 那一项置灰但照样摆出来（约定：不可用选项也要下发，玩家要看见技能存在）。
+func _恩典神授选提炼方式() -> void:
+	_提炼是冒险家流程 = false
+	_提炼全给一人 = false
+	_提炼阶段 = 0
+	_提炼总数 = 0
+	_提炼减能量 = 0
+	_提炼宝石 = 0
+	_提炼水晶 = 0
+	var 选项: Array = [
+		{"text": GConst.文本("通用_提炼"), "args": [0], "enabled": true},
+		{"text": GConst.skill_name(恩典神授技能号), "args": [1],
+			"enabled": _恩典代价可付() and not _提炼候选队友().is_empty()},
+	]
+	_进入本地选项(5, 0, 选项, GConst.提示原文(恩典神授技能号, 1), 二级选项底色, true, _进入特殊行动)
+
+
+## 恩典神授选完提炼方式：选「提炼」＝走常规提炼；选「恩典神授」＝整份交给 1 名队友
+## （复用冒险家 12 号【冒险者天堂】那套「全给一人」流程：先选构成，再点头像选队友）
+func _确认恩典提炼方式() -> void:
+	if _二级选中 < 0:
+		return
+	var 选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else 0
+	_本地选项阶段 = 0
+	_本地询问 = false
+	if 选择 <= 0:
+		_列提炼组合()
+		return
+	if not _恩典代价可付() or _提炼候选队友().is_empty():
+		return
+	_提炼是冒险家流程 = true
+	_提炼全给一人 = true
+	_提炼阶段 = 0
+	_提炼总数 = 2
+	_提炼减能量 = 0
+	_提炼宝石 = 0
+	_提炼水晶 = 0
+	_天堂列组合()
+
+
+## 恩典神授的代价付得起吗（客户端预判，只用于置灰；最终由服务端 v_extract 复核）：
+## 【异端裁决所】≥3 治疗，或我方角色治疗合计 ≥2
+func _恩典代价可付() -> bool:
+	if _裁决所治疗() >= 3:
+		return true
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	if 我 == null:
+		return false
+	var 合计: int = 0
+	for p: GPlayer in Data.player_list:
+		if p.color == 我.color:
+			合计 += p.cross_num
+	return 合计 >= 2
+
+
+## 我名下的【异端裁决所】当前治疗点数（没有这张场卡就是 0）
+func _裁决所治疗() -> int:
+	for 表: Dictionary in Data.玩家场卡(Logic.my_player_id):
+		if str(表.get("id", "")) == 场卡_异端裁决所:
+			return int(表.get("counter", 0))
+	return 0
+
+
 func _天堂选提炼方式() -> void:
 	_提炼是冒险家流程 = false
 	_提炼全给一人 = false
@@ -6203,7 +6299,7 @@ func _天堂选提炼方式() -> void:
 	_提炼宝石 = 0
 	_提炼水晶 = 0
 	var 上限: int = _天堂额外上限()
-	var 天堂技能号: int = _当前冒险者天堂技能号()
+	var 天堂技能号: int = _当前提炼转交技能号()
 	var 选项: Array = [{"text": GConst.按钮原文(天堂技能号, 0), "args": [0], "enabled": true}]
 	for x: int in range(1, 4):
 		var 文本: String = GConst.按钮原文(天堂技能号, 1, {"n": x, "花费": _自身能量花费文案(x)})
@@ -6351,7 +6447,7 @@ func _天堂列组合() -> void:
 	_提炼阶段 = 4
 	_本地询问 = true
 	_是技能询问 = false
-	var 天堂技能号: int = _当前冒险者天堂技能号()
+	var 天堂技能号: int = _当前提炼转交技能号()
 	_skill_ask_id = 天堂技能号
 	_提炼宝石 = 0
 	_提炼水晶 = 0
@@ -6364,7 +6460,7 @@ func _天堂列组合() -> void:
 	}
 	_进入技能询问()
 	var 父: 技能按钮 = _造特殊行动父按钮()
-	var 返回回调: Callable = _返回提炼选择 if _提炼全给一人 else _天堂选提炼方式
+	var 返回回调: Callable = _提炼返回回调()
 	_进入二级技能栏(0, 父, _选项项(选项), 二级选项底色, 返回回调)
 	_重置治疗分配()
 	# 默认选上第一项：提示条与头像立刻可用
@@ -6382,6 +6478,15 @@ func _返回提炼选择() -> void:
 	_提炼宝石 = 0
 	_提炼水晶 = 0
 	_进入特殊行动()
+
+
+## 提炼「选构成」那一步的「返回」目标：回到各自的方式选择
+## （冒险家原版 12 号没有方式层，直接回特殊行动三选一；Trick 回「常规 / 额外提取」；
+##  圣庭检察士回「提炼 / 恩典神授」）
+func _提炼返回回调() -> Callable:
+	if _当前提炼转交技能号() == 恩典神授技能号:
+		return _恩典神授选提炼方式
+	return _返回提炼选择 if _提炼全给一人 else _天堂选提炼方式
 
 
 ## 冒险家【冒险者天堂】最后一步：把二级栏里选定的构成记下来（args = [宝石, 水晶]），
@@ -6494,7 +6599,7 @@ func _发送冒险家提炼分配() -> void:
 		颗数表.append(int(数[0]) + int(数[1]))
 		队友宝石 += int(数[0])
 		队友水晶 += int(数[1])
-	var args: Array = [GConst.提炼天堂标记, 0, 0, 队友宝石, 队友水晶, _提炼减能量]
+	var args: Array = [_当前提炼转交标记(), 0, 0, 队友宝石, 队友水晶, _提炼减能量]
 	args.append_array(颗数表)
 	# 提交前把流程状态收掉（这份 args 已带全「给自己 / 给队友」两份）
 	_提炼阶段 = 0
@@ -6507,12 +6612,13 @@ func _发送冒险家提炼分配() -> void:
 
 ## 选定一种特殊行动后，再选「用哪些星石」——选项逐条对照原客户端
 ## Role::buy（战绩区 4 个时二选一、5 个已满）/ Role::synthetize / Role::extract 的选项盒。
-## 冒险家点「提炼」时不走这里，改成先选提炼方式（常规 / 额外提取 1~3 颗，见 _天堂选提炼方式）
+## 冒险家 / 圣庭检察士点「提炼」时不走这里，改成先选提炼方式
+## （冒险家：常规 / 额外提取 1~3 颗；圣庭检察士：常规 / 恩典神授交给队友）
 func _选特殊行动(action_id: int) -> void:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	if 我 == null or 我.color == GConst.TEAM_NONE:
 		return
-	# 提炼单开一条（冒险家还要先选提炼方式），这里只处理购买 / 合成
+	# 提炼单开一条（冒险家 / 圣庭检察士还要先选提炼方式），这里只处理购买 / 合成
 	if action_id == GConst.SpecialAction.Extract:
 		_提炼是冒险家流程 = false
 		_提炼全给一人 = false
@@ -6521,6 +6627,9 @@ func _选特殊行动(action_id: int) -> void:
 			return
 		if 我.role_id == 冒险家Trick角色号:
 			_天堂选提炼方式()
+			return
+		if 我.role_id == 圣庭检察士角色号:
+			_恩典神授选提炼方式()
 			return
 		_列提炼组合()
 		return
@@ -7078,7 +7187,7 @@ func _分配上限() -> int:
 	if 配置.is_empty():
 		return 0
 	# 【冒险者天堂】的上限＝本次提炼出的星石总数（取到的宝石 + 水晶）
-	if _mode == 3 and _是冒险者天堂技能(_skill_ask_id):
+	if _mode == 3 and _是提炼转交技能(_skill_ask_id):
 		return _提炼宝石 + _提炼水晶
 	var 上限: int = int(配置.get("上限", 0))
 	if 上限 > 0:
@@ -7134,7 +7243,7 @@ func _点治疗目标(player_id: int) -> void:
 			if 目标已有 + 每次 > 封顶:
 				return
 	# 【冒险者天堂】每名队友各有限额（其能量空位）：已装不下的队友再点不再增加
-	if _mode == 3 and _是冒险者天堂技能(_skill_ask_id):
+	if _mode == 3 and _是提炼转交技能(_skill_ask_id):
 		var 已有: int = 0
 		for id: int in _治疗分配:
 			if id == player_id:
@@ -7166,7 +7275,7 @@ func _刷新治疗分配() -> void:
 		var 每次: int = int(配置.get("每次", 1))
 		# 【冒险者天堂】分的是星石颗数，还要按「先宝石、后水晶」拆开写（见 _提炼分配文本表）
 		var 提炼文本: Dictionary = {}
-		if _mode == 3 and _是冒险者天堂技能(_skill_ask_id):
+		if _mode == 3 and _是提炼转交技能(_skill_ask_id):
 			提炼文本 = _提炼分配文本表()
 		# 【血腥祷言】转出去多少点治疗，自己就吃等量法术伤害（配置「转出反噬」）；
 		# 【神圣契约】则是转出去多少点，自己头像就写「移除 X 治疗」（配置「转出移除」）。
@@ -7538,7 +7647,7 @@ func _重置治疗分配() -> void:
 ## 技能询问（发动与否）与发动技能两条通道分别回不同的包
 func _发送治疗分配() -> void:
 	# 【冒险者天堂】分配的不是「点数」而是「星石颗数」，且走特殊行动（提炼）提交，单独一条
-	if _mode == 3 and _是冒险者天堂技能(_skill_ask_id):
+	if _mode == 3 and _是提炼转交技能(_skill_ask_id):
 		_发送冒险家提炼分配()
 		return
 	# 配了「阵营效果」的技能（【神圣领域】）：只有一个目标，args 不是点数而是「用哪种用法」——

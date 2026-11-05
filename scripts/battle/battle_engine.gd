@@ -6101,8 +6101,9 @@ func _do_special(cur: BattlePlayer, data: Dictionary) -> int:
 		if bool(提炼前.get("forbidden", false)):
 			return _reject_action(cur)
 		_log_special(cur, aid)
-		# 常规提炼 args = [宝石, 水晶]；【冒险者天堂】的头位是 GConst.提炼天堂标记
-		var 是天堂: bool = not args.is_empty() and int(args[0]) == GConst.提炼天堂标记
+		# 常规提炼 args = [宝石, 水晶]；「星石直接交给队友」的提炼（【冒险者天堂】1202 /
+		# 【恩典神授】3903）头位是 GConst.提炼转交标记 里的值，之后才是自己那份 / 队友那份
+		var 是天堂: bool = not args.is_empty() and GConst.是提炼转交标记(int(args[0]))
 		# 本次提炼的星石总数（供 p_after_extract / 10604 读取；天堂按自己+队友两份合计）
 		var 提炼宝石: int = 0
 		var 提炼水晶: int = 0

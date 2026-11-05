@@ -290,6 +290,64 @@ func _检圣庭检察士() -> void:
 	检(int(雷项.get("被动技能", -1)) == 9507, "【天雷劫火】的说明仍应走 9507")
 	检(int(雷项.get("count", 0)) == -1, "【天雷劫火】没配计数时不应在图标上写数字")
 
+	# ---- 【恩典神授】照【冒险者天堂】：提炼时把星石直接交给目标队友，代价在结算时扣 ----
+	角色 = _建引擎(39)
+	玩家 = 引擎.p(1)
+	引擎.set_team_gem(GConst.BLUE, 2)
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1], 2, 0, [1]) == GConst.GE_INVALID_PLAYERID,
+		"【恩典神授】的目标必须是非自己的队友")
+	检(角色.v_extract([1, 0], 2, 0, []) == BattleRole.V_NOT_OVERRIDE,
+		"常规提炼（头位不是 3903）应退回通用校验")
+	检(角色.v_extract([3903, 0, 0, 1, 0, 0, 1], 2, 0, [3]) == GConst.GE_INVALID_ACTION,
+		"代价付不起时【恩典神授】应驳回（此时裁决所 0、全队治疗 0）")
+	# 给够代价：裁决所 3 治疗
+	引擎.场卡加计数("异端裁决所", 3)
+	# 让 1 号成为当前行动者（建引擎后可能已经轮到别人），并放行特殊行动
+	引擎.current_id = 1
+	引擎.行动允许 = GConst.ActionType.Any
+	# 手里只留一张圣类命格的牌：打完能走「展示 → 1 点法术伤害」那条
+	var 圣牌: int = -1
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.fate_pattern_enum() == GConst.FatePattern.Holy:
+			圣牌 = c.id
+			break
+	检(圣牌 >= 0, "卡库里应有圣类命格的牌")
+	玩家.hand_cards.clear()
+	玩家.add_hand_cards([圣牌])
+	引擎.resolve_action(GConst.ActionType.Special, {
+		"action_id": GConst.SpecialAction.Extract,
+		"dst_ids": [3], "card_ids": [], "args": [3903, 0, 0, 2, 0, 0, 2],
+	})
+	引擎.run()
+	检(引擎.p(3).gem == 2, "【恩典神授】应把提炼出的星石直接交给目标队友：%d" % 引擎.p(3).gem)
+	检(玩家.gem == 0, "【恩典神授】不该给自己留星石：%d" % 玩家.gem)
+	检(引擎.team_gem[GConst.BLUE] == 0, "战绩区应扣掉提炼的 2 宝石：%d" % 引擎.team_gem[GConst.BLUE])
+	检(int(引擎.取场卡("异端裁决所").get("counter", 0)) == 0,
+		"代价应扣裁决所 3 治疗：%d" % int(引擎.取场卡("异端裁决所").get("counter", 0)))
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3903,
+		"提炼结算完应问「弃 1 张牌」：等待 %s / 询问号 %s"
+		% [str(引擎._await_id), str(引擎._pending_respond_id)])
+	# 弃那张圣牌：展示 + 对目标对手 1 点法术伤害
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3903, "src_id": 1, "args": [], "card_ids": [圣牌], "dst_ids": [],
+	})
+	引擎.run()
+	检(引擎.deck.discard.has(圣牌), "【恩典神授】弃掉的牌应进弃牌堆")
+	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3903
+		and 引擎._pending_skill_need_target == 1, "圣类弃牌后应问目标对手")
+	引擎.on_message(1, GConst.Msg.Respond, {
+		"respond_id": 3903, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [2],
+	})
+	引擎.run()
+	var 有伤害: bool = false
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.Hurt:
+			continue
+		var d: Dictionary = r["data"]
+		if int(d.get("dst_id", -1)) == 2 and int(d.get("hurt", 0)) == 1:
+			有伤害 = true
+	检(有伤害, "【恩典神授】展示圣牌后应对目标对手造成 1 点法术伤害")
+
 
 ## 95 异教徒：开局 +1 水晶；末日预言的预言堆给 F8 用
 func _检异教徒() -> void:

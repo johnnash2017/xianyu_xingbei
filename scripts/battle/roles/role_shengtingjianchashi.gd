@@ -10,10 +10,11 @@ extends BattleRole
 ##    （队友可能被替换 → 不能只在 setup 里加一次）；「你的【攻击行动】结束时」目标角色 +1 治疗 ——
 ##    原文写「目标角色」＝由你指定场上的任意一名角色（自己 / 队友 / 对手都能选），**不是**本次攻击目标。
 ## 2. 【裁决论定】用 F3 治疗溢出钩子：我方角色治疗溢出 → 裁决所 +1 治疗，若真的加了 → 你 +1 水晶。
-## 3. 【恩典神授】的时机是「你执行【提炼】时」，但引擎的 p_before_extract 是同步钩子（不能等待玩家），
-##    所以放在 p_after_extract 里问（星石已经进手，发动时代价 + 全部转交给目标队友）。
-##    代价两种：移除我方角色合计 2【治疗】（先自己后队友，按座位顺序）或 裁决所 3【治疗】；
-##    哪种付得起就用哪种，付不起就问都不问。
+## 3. 【恩典神授】照冒险家【冒险者天堂】的形状做：提炼时选「把星石直接交给目标队友」这种方式
+##    （args 头位 3903，引擎按 GConst.提炼转交标记 走「天堂」分支，星石直接发给队友，不经自己手）。
+##    v_extract 校验形状 / 目标队友空位 / 代价付得起；提炼结算后由 p_after_extract 扣代价 + 播报
+##    （裁决所 3【治疗】优先，否则我方角色合计 2【治疗】，先自己后队友）。
+##    提炼结算完再问「弃 1 张牌」：若为圣类命格可【展示】→ 对目标对手 1 点法术伤害③。
 ## 4. 【庇护领域】在 p_timeline_3（伤害结算前③）结算，本次伤害 -1（最少 0），你 +1【裁决】。
 ## 5. 【神圣鞭策】的 X 由玩家选（1~裁决数），然后逐名指定 X 名目标角色各摸 1 张，最后你弃 X 张。
 
@@ -30,8 +31,6 @@ const 裁决所名: String = "异端裁决所"
 ## 【异端裁决所】能存多少【治疗】点数（场卡计数上限；客户端悬停按「当前/上限」显示）
 const 裁决所治疗上限: int = 4
 
-## 恩典神授的目标队友
-var _恩典队友: int = -1
 ## 神圣鞭策的 X 与已选目标
 var _鞭策X: int = 0
 var _鞭策目标: Array[int] = []
@@ -219,42 +218,67 @@ func p_heal_overflow(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 3903 恩典神授：提炼后把所得转交目标队友
+# 3903 恩典神授：提炼时把提炼出的星石直接交给目标队友（流程照冒险家【冒险者天堂】）
 # ============================================================
+## 提炼校验覆写（对照 role_maoxian.v_extract）：头位不是 3903 ＝ 常规提炼 / 别人的【冒险者天堂】，
+## 退回通用校验；是 3903 时 args = [标记, 自己的宝石, 自己的水晶, 队友的宝石, 队友的水晶, 0, 目标颗数]
+## —— 自己的那两位恒为 0（本次提炼出的星石全部交给唯一的队友），额外能量 X 恒为 0。
+func v_extract(args: Array, team_gem: int, team_crystal: int, dst_ids: Array) -> int:
+	if args.is_empty() or int(args[0]) != EN_DIAN_SHEN_SHOU:
+		return V_NOT_OVERRIDE
+	if args.size() != 7 or dst_ids.size() != 1:
+		return GConst.GE_INVALID_ARGUMENT
+	var 自己宝石: int = int(args[1])
+	var 自己水晶: int = int(args[2])
+	var 队友宝石: int = int(args[3])
+	var 队友水晶: int = int(args[4])
+	var 多余能量: int = int(args[5])
+	var 目标颗数: int = int(args[6])
+	var 总数: int = 队友宝石 + 队友水晶
+	if 自己宝石 != 0 or 自己水晶 != 0 or 多余能量 != 0:
+		return GConst.GE_INVALID_ACTION
+	if 队友宝石 < 0 or 队友水晶 < 0 or 总数 < 1 or 总数 > 2:
+		return GConst.GE_INVALID_ACTION
+	if 目标颗数 != 总数:
+		return GConst.GE_INVALID_ACTION
+	var dst: BattlePlayer = engine.p(int(dst_ids[0]))
+	if dst == null or dst.color != player.color or dst.id == player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if 总数 > dst.energy_max - dst.get_energy():
+		return GConst.GE_INVALID_ACTION
+	if 队友宝石 > team_gem or 队友水晶 > team_crystal:
+		return GConst.GE_INVALID_ACTION
+	# 代价：裁决所 3 治疗 或 我方合计 2 治疗 —— 付不起就不许这么提炼
+	if not _恩典可付():
+		return GConst.GE_INVALID_ACTION
+	return GConst.GE_SUCCESS
+
+
+## 提炼结算完的后续：先扣代价 + 播报【恩典神授】，再问「弃 1 张牌」；
+## 若弃的是圣类命格，可【展示】换对目标对手的 1 点法术伤害。
+## 只有「恩典神授」这种把星石交给队友的提炼才走这里（常规提炼 is_heaven = false，什么都不做）。
+## 注意：引擎是先压 p_extract_to 再压 p_after_extract（后压先跑），所以代价与播报放这里，
+## 不能再放 p_extract_to —— 否则会排到「弃牌 / 伤害」之后。
 func p_after_extract(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if bool(ctx.get("is_heaven", false)):
+	if not bool(ctx.get("is_heaven", false)):
 		return SUCCESS
-	var 宝石: int = int(ctx.get("gem", 0))
-	var 水晶: int = int(ctx.get("crystal", 0))
-	if 宝石 + 水晶 <= 0:
+	# 后续流程只起一次：等「弃 1 张牌」的回复时本钩子会重入同一份 ctx
+	if bool(ctx.get("_恩典后续已启动", false)):
 		return SUCCESS
-	if not _恩典可付():
-		return SUCCESS
-	if _恩典步 != 0 and not engine.has_reply():
-		# 正在等这一问的回复时（_恩典步 == 1 且有回复）要放行到下面 take，
-		# 否则回复回来就被这句挡住、技能静默不结算
-		return SUCCESS
-	_恩典步 = 1
-	_恩典宝石 = 宝石
-	_恩典水晶 = 水晶
-	if not engine.has_reply():
-		询问(player.id, EN_DIAN_SHEN_SHOU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-			GConst.提示原文(EN_DIAN_SHEN_SHOU, 1))
-		return WAIT
-	if not take_skill_reply():
-		_恩典步 = 0
-		return SUCCESS
+	# 代价：裁决所 3【治疗】优先，否则我方角色合计 2【治疗】（先自己后队友）
 	_付恩典代价()
-	_恩典步 = 2
+	notice_skill(EN_DIAN_SHEN_SHOU, ctx.get("dst_ids", []))
+	engine._broadcast_game()
+	if player.hand_cards.is_empty():
+		return SUCCESS
+	ctx["_恩典后续已启动"] = true
+	_恩典步 = 4
 	engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
 	return URGENT
 
 var _恩典步: int = 0
-var _恩典宝石: int = 0
-var _恩典水晶: int = 0
 
 
 ## 恩典神授付得起吗：裁决所 ≥3 或 我方角色治疗合计 ≥2
@@ -440,43 +464,6 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 		_鞭策X = 0
 		_鞭策目标 = []
 		return SUCCESS
-	# 恩典神授：选目标队友
-	if _恩典步 == 2:
-		if not engine.has_reply():
-			询问(player.id, EN_DIAN_SHEN_SHOU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, ally_ids() if not ally_ids().is_empty() else _全体角色(), -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(EN_DIAN_SHEN_SHOU, 2))
-			return WAIT
-		var r4: Dictionary = take_skill_reply_full()
-		var ds4: Array = r4.get("dst_ids", [])
-		_恩典步 = 3
-		if ds4.size() == 1:
-			_恩典队友 = int(ds4[0])
-			engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
-			return URGENT
-		_恩典步 = 0
-		return SUCCESS
-	# 恩典神授：转交星石 + 你弃 1 张牌
-	if _恩典步 == 3:
-		_恩典步 = 4
-		var dst: BattlePlayer = engine.p(_恩典队友)
-		if dst != null:
-			var 给: int = mini(_恩典宝石, player.gem)
-			player.set_gem(player.gem - 给)
-			dst.set_gem(dst.gem + 给)
-			var 给水: int = mini(_恩典水晶, player.crystal)
-			player.set_crystal(player.crystal - 给水)
-			dst.set_crystal(dst.crystal + 给水)
-			notice_skill(EN_DIAN_SHEN_SHOU, [dst.id])
-			engine._broadcast_game()
-		_恩典宝石 = 0
-		_恩典水晶 = 0
-		_恩典队友 = -1
-		if player.hand_cards.is_empty():
-			_恩典步 = 0
-			return SUCCESS
-		engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
-		return URGENT
 	# 恩典神授：弃 1 张牌；圣命格可【展示】换 1 点法术伤害
 	if _恩典步 == 4:
 		if not engine.has_reply():
