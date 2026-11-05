@@ -1,4 +1,4 @@
-extends 自检用例
+﻿extends 自检用例
 ## R7 新角色（39 / 40 / 43 / 79 / 82 / 84 / 95）数据与核心契约自检。
 ##
 ## 本分支按需求「先功能后角色」，只做代码检查、未跑全量自检；本用例覆盖
@@ -653,10 +653,11 @@ func _检圣庭检察士() -> void:
 	检(not (引擎._await_id == 1 and 引擎._pending_respond_id == 3904),
 		"没有法术牌时取消后不应再询问")
 
-	# 神圣鞭策：选 X 的询问要正常下发并走完（以前选项传 int，服务端 ask_skill 直接报错，
-	# 表现是「点了技能什么都不发生、客户端也动不了」）
+	# 神圣鞭策：选项直接决定目标数 —— 选档位 + 选 X 名目标 + 确定 = 一次提交；
+	# 之后只剩「弃 X 张牌」这一步（不再先问 X、再一个个问目标）
 	角色 = _建引擎(39)
 	玩家 = 引擎.p(1)
+	玩家.set_crystal(1)
 	玩家.add_token(0, 2)  # 裁决指示物（槽 0）
 	var 鞭策手牌: Array[int] = []
 	for c: GCard in Data.card_db:
@@ -665,71 +666,46 @@ func _检圣庭检察士() -> void:
 	检(鞭策手牌.size() == 3, "卡库里应有足够的牌")
 	玩家.hand_cards.clear()
 	玩家.add_hand_cards(鞭策手牌)
-	角色.set("_鞭策步", 1)
-	引擎.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": 1}, []))
+	# 选项：第 i 档要求选 i 名目标
+	var 鞭策项: Array = []
+	for 项: Dictionary in 角色.available_skills():
+		if int(项.get("id", 0)) == 3907:
+			鞭策项 = 项.get("arg_choices", [])
+	检(鞭策项.size() == 玩家.token_num(0),
+		"【神圣鞭策】选项数应等于当前裁决数：%d / %d" % [鞭策项.size(), 玩家.token_num(0)])
+	if 鞭策项.size() >= 2:
+		检(int((鞭策项[1] as Dictionary).get("need_target", 0)) == 2,
+			"【神圣鞭策】第 2 档应要求一次选 2 名目标")
+		检(str((鞭策项[1] as Dictionary).get("text", "")) == "移除 2 点【裁决】",
+			"【神圣鞭策】档位按钮文案应是「移除 N 点【裁决】」")
+	# 参数校验：目标数必须与 X 一致
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2]})
+		!= GConst.GE_SUCCESS, "目标数不等于 X 时不应通过校验")
+	检(角色.v_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2, 3]})
+		== GConst.GE_SUCCESS, "X=2 且一次选 2 名目标应通过校验")
+	var 前裁决: int = 玩家.token_num(0)
+	角色.p_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2, 3]})
 	引擎.run()
+	检(玩家.token_num(0) == 前裁决 - 2, "【神圣鞭策】应按 X 移除裁决")
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907,
-		"【神圣鞭策】应下发选 X 的询问（等待 %s / 询问 %s）"
-		% [str(引擎._await_id), str(引擎._pending_respond_id)])
-	检(GConst.按钮原文(3907, 0, {"n": 2}) == "移除 2 点【裁决】",
-		"【神圣鞭策】选 X 的按钮文案应是「移除 N 点【裁决】」：%s"
-		% GConst.按钮原文(3907, 0, {"n": 2}))
-	var 找到选X文案: bool = false
-	for r: Dictionary in 发送记录:
-		if int(r["msg"]) != GConst.Msg.CmdReq:
-			continue
-		for cmd: Dictionary in (r["data"] as Dictionary).get("commands", []):
-			if int(cmd.get("respond_id", 0)) != 3907:
-				continue
-			for 条: Variant in (cmd.get("notes", []) as Array):
-				if str(条) == "移除 2 点【裁决】":
-					找到选X文案 = true
-	检(找到选X文案, "【神圣鞭策】选 X 的选项按钮应写「移除 N 点【裁决】」，不能只写数字")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3907, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [],
-	})
-	引擎.run()
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907
-		and 引擎._pending_skill_need_target == 1, "【神圣鞭策】选 X 后应逐名指定摸牌目标")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3907, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [2],
-	})
-	引擎.run()
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3907, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [3],
-	})
-	引擎.run()
-	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907,
-		"【神圣鞭策】指定完目标应问弃 X 张牌")
+		"【神圣鞭策】提交后应只剩弃 X 张牌这一步（等待 %s）" % str(引擎._await_id))
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 3907, "src_id": 1, "card_ids": [鞭策手牌[0], 鞭策手牌[1]], "args": [], "dst_ids": [],
 	})
 	引擎.run()
 	检(not 玩家.有手牌(鞭策手牌[0]), "【神圣鞭策】应弃掉 X 张牌")
 
-	# 手牌不足 X 张也允许选该档：X=2、手里只留 1 张，弃牌那步就弃这 1 张
+	# 手牌不足 X 张也允许：库里只留 1 张，弃牌那步只弃这 1 张、不报错
 	角色 = _建引擎(39)
 	玩家 = 引擎.p(1)
+	玩家.set_crystal(1)
 	玩家.add_token(0, 2)
 	玩家.hand_cards.clear()
 	玩家.add_hand_cards([鞭策手牌[0]])
-	角色.set("_鞭策步", 1)
-	引擎.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": 1}, []))
-	引擎.run()
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3907, "src_id": 1, "args": [2], "card_ids": [], "dst_ids": [],
-	})
+	角色.p_magic_skill({"src_id": 1, "action_id": 3907, "args": [2], "dst_ids": [2, 3]})
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 3907,
-		"手牌不足 X 张也应允许选该档位")
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3907, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [2],
-	})
-	引擎.run()
-	引擎.on_message(1, GConst.Msg.Respond, {
-		"respond_id": 3907, "src_id": 1, "args": [], "card_ids": [], "dst_ids": [3],
-	})
-	引擎.run()
+		"手牌不足 X 张也应允许发动")
 	引擎.on_message(1, GConst.Msg.Respond, {
 		"respond_id": 3907, "src_id": 1, "card_ids": [鞭策手牌[0]], "args": [], "dst_ids": [],
 	})

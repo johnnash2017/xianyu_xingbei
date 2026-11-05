@@ -31,9 +31,8 @@ const 裁决所名: String = "异端裁决所"
 ## 【异端裁决所】能存多少【治疗】点数（场卡计数上限；客户端悬停按「当前/上限」显示）
 const 裁决所治疗上限: int = 4
 
-## 神圣鞭策的 X 与已选目标
+## 神圣鞭策：本次选了几个（X），弃牌那步按它算
 var _鞭策X: int = 0
-var _鞭策目标: Array[int] = []
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -52,6 +51,15 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 # ============================================================
 func available_skills() -> Array:
 	var 裁决: int = player.token_num(CAI_SLOT)
+	# 神圣鞭策：选 X 的选项直接带「需目标 = X」——选中档位后点 X 名目标、一次确定就提交，
+	# 不再先问 X、再一个个问目标（X 由选项决定要选几名目标）
+	var 鞭策选项: Array = []
+	for i: int in range(1, 裁决 + 1):
+		鞭策选项.append({
+			"text": GConst.按钮原文(SHEN_SHENG_BIAN_CE, 0, {"n": i}),
+			"args": [i],
+			"need_target": i,
+		})
 	return [
 		{
 			# 裁决者是「启动」：技能类型必须是 SpecialSkill（引擎按这个 + is_free_skill 判启动），
@@ -61,11 +69,13 @@ func available_skills() -> Array:
 			"enabled": player.get_energy() >= 1,
 		},
 		{
-			# 神圣鞭策：X 与「各摸牌的目标」都在发动后由服务端逐步问，
-			# 技能本体这里不需要选牌 / 选目标（以前误带了 targets: 全体，客户端会把它当成可选目标）
+			# 神圣鞭策：X 由选项决定，选完选项同一次里选 X 名目标、按「确定」一次性提交
 			"type": GConst.ActionType.MagicSkill,
 			"id": SHEN_SHENG_BIAN_CE,
 			"need_card": 0,
+			"need_target": 0,
+			"targets": _全体角色(),
+			"arg_choices": 鞭策选项,
 			"enabled": 裁决 >= 1 and player.get_energy() >= 1 and player.hand_cards.size() >= 1,
 		},
 	]
@@ -110,6 +120,17 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if player.hand_cards.is_empty():
 		return GConst.GE_INVALID_ACTION
+	# 选项带 X（args[0]），同一次里必须选出正好 X 名目标
+	var args: Array = action.get("args", [])
+	var x: int = int(args[0]) if not args.is_empty() else 0
+	if x < 1 or x > player.token_num(CAI_SLOT):
+		return GConst.GE_INVALID_ACTION
+	var 目标: Array = action.get("dst_ids", [])
+	if 目标.size() != x:
+		return GConst.GE_INVALID_ACTION
+	for pid: Variant in 目标:
+		if engine.p(int(pid)) == null:
+			return GConst.GE_INVALID_PLAYERID
 	return GConst.GE_SUCCESS
 
 
@@ -119,10 +140,19 @@ func p_magic_skill(action: Dictionary) -> int:
 	var 校验: int = v_magic_skill(action)
 	if 校验 != GConst.GE_SUCCESS:
 		return 校验
+	var args: Array = action.get("args", [])
+	var x: int = int(args[0])
+	var 目标: Array[int] = []
+	for pid: Variant in action.get("dst_ids", []):
+		目标.append(int(pid))
 	player.remove_energy(1)
-	notice_skill(SHEN_SHENG_BIAN_CE, [player.id])
-	_鞭策X = 0
-	_鞭策目标 = []
+	player.remove_token(CAI_SLOT, x)
+	notice_skill(SHEN_SHENG_BIAN_CE, [player.id] + 目标)
+	# 每名目标各摸 1 张牌【强制】
+	for pid: int in 目标:
+		engine.push_draw(pid, 1, SHEN_SHENG_BIAN_CE)
+	# 剩最后一步：你弃 X 张牌（手牌不足 X 张就按实际手牌弃）
+	_鞭策X = x
 	_鞭策步 = 1
 	engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
 	return URGENT
@@ -434,66 +464,13 @@ var _庇护伤害: Dictionary = {}
 func p_sheng_ting_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 神圣鞭策：选 X（移除 X 点【裁决】）
+	# 神圣鞭策：只剩「你弃 X 张牌」这一步（选 X 与 X 名目标已经随发动一次性提交）。
+	# 手牌不足 X 张时按实际手牌弃，少弃不报错
 	if _鞭策步 == 1:
-		if not engine.has_reply():
-			# 选项必须是 {value, label} 字典（引擎 ask_skill 按字典读 value）；传 int 会直接报错，
-			# 表现就是「点了技能什么都没发生」。X 已付 1 能量发动，这里不许取消，必须选一档。
-			# 选项文案走技能表「按钮」列（移除 X 点【裁决】）；
-			# 手牌不足 X 张也允许选这一档（弃牌那步按实际手牌弃，能弃几张弃几张）
-			var 选项: Array = []
-			for i: int in range(1, player.token_num(CAI_SLOT) + 1):
-				选项.append({
-					"value": i,
-					"label": GConst.按钮原文(SHEN_SHENG_BIAN_CE, 0, {"n": i}),
-				})
-			询问(player.id, SHEN_SHENG_BIAN_CE, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(SHEN_SHENG_BIAN_CE, 1))
-			return WAIT
-		# 阶段在取完回复之后再推进：重入时 _鞭策步 仍是 1，才能走到这里
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		var x: int = int(args[0]) if not args.is_empty() else 0
-		# 只有 1..裁决数 这些档位会被下发，正常不会越界；扣不掉（裁决不够）就收尾
-		if x <= 0 or not player.remove_token(CAI_SLOT, x):
-			_鞭策步 = 0
-			return SUCCESS
-		_鞭策X = x
-		_鞭策目标 = []
-		_鞭策步 = 3
-		engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
-		return URGENT
-	# 神圣鞭策：逐名选目标（X 名，不能重复）
-	if _鞭策步 == 3:
-		if _鞭策目标.size() >= _鞭策X:
-			for pid: int in _鞭策目标:
-				engine.push_draw(pid, 1, SHEN_SHENG_BIAN_CE)
-			_鞭策步 = 4
-			engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
-			return URGENT
-		if not engine.has_reply():
-			var 池: Array[int] = []
-			for pid: int in _全体角色():
-				if not _鞭策目标.has(pid):
-					池.append(pid)
-			询问(player.id, SHEN_SHENG_BIAN_CE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, 池, -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(SHEN_SHENG_BIAN_CE, 2) % (_鞭策X - _鞭策目标.size()))
-			return WAIT
-		var r2: Dictionary = take_skill_reply_full()
-		var ds: Array = r2.get("dst_ids", [])
-		if ds.size() == 1 and not _鞭策目标.has(int(ds[0])):
-			_鞭策目标.append(int(ds[0]))
-		engine.push(BattleEngine.SHook.new("p_sheng_ting_ask", {"player": player.id}, []))
-		return URGENT
-	# 神圣鞭策：你弃 X 张牌（手牌不足 X 张时按实际手牌弃，少弃不报错）
-	if _鞭策步 == 4:
 		var 需: int = mini(_鞭策X, player.hand_cards.size())
 		if 需 <= 0:
 			_鞭策步 = 0
 			_鞭策X = 0
-			_鞭策目标 = []
 			return SUCCESS
 		if not engine.has_reply():
 			询问(player.id, SHEN_SHENG_BIAN_CE, 需, 0, GConst.CardSource.Hand, [], 需, "", [], false,
@@ -513,7 +490,6 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 			engine._log_discard(player.id, 弃)
 		_鞭策步 = 0
 		_鞭策X = 0
-		_鞭策目标 = []
 		return SUCCESS
 	# 恩典神授：弃 1 张牌；圣命格可【展示】换 1 点法术伤害。
 	# 弃牌 + 「展示 / 不展示」+「法术伤害打谁」都在同一条询问里选：展示默认选上，
