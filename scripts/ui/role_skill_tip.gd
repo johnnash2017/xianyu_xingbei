@@ -64,10 +64,10 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0, 对局中: b
 	var 姓名: String = Data.role_personal_name(角色号)
 	if 姓名 != "":
 		角色名 = "%s %s" % [角色名, 姓名]
-	# 势力名接在角色名后面（角色表「势力」列，如「风之剑圣 威斯特姆 · 战技殿堂」）
+	# 势力名接在角色名后面，用斜杠隔开（角色表「势力」列，如「风之剑圣 威斯特姆/战技殿堂」）
 	var 势力: String = Data.role_faction(角色号)
 	if 势力 != "":
-		角色名 = "%s · %s" % [角色名, 势力]
+		角色名 = "%s/%s" % [角色名, 势力]
 	var 文本: String = "[font_size=%d]%s[/font_size]" % [姓名号, 角色名]
 	var 信息: String = Data.role_skill_info(角色号)
 	if 角色号 == 108 and 信息 != "":
