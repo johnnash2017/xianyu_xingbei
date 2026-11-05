@@ -255,6 +255,7 @@ const 日志标签色: Dictionary = {
 	"士气": "#E8A0D8",     # 队伍士气升降
 	"提示": "#FFB27A",     # 超时 / 掉线 / 无效操作
 	"报错": "#FF5F5F",     # 脚本 / 规则的内部错误（正常对局不应出现）
+	"星石": "#FFCF6B",     # 个人 / 战绩区宝石、水晶增减
 	"聊天": "#8FE0D8",     # 玩家发言
 }
 ## 日志正文的颜色（白）
@@ -318,6 +319,8 @@ func _日志标签(kind: int) -> String:
 			return "提示"
 		GConst.GossipType.Error:
 			return "报错"
+		GConst.GossipType.Gem:
+			return "星石"
 		_:
 			return "系统"
 

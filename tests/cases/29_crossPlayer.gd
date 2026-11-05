@@ -134,6 +134,17 @@ func _有错误输入(pid: int) -> bool:
 	return false
 
 
+## 是否有包含片段的 [星石] 战斗日志
+func _有星石日志(片段: String) -> bool:
+	for r: Dictionary in 发送记录:
+		if int(r["msg"]) != GConst.Msg.Gossip:
+			continue
+		var d: Dictionary = r["data"]
+		if int(d.get("type", 0)) == GConst.GossipType.Gem and str(d.get("txt", "")).contains(片段):
+			return true
+	return false
+
+
 func _卸下所有角色() -> void:
 	for pid: int in 引擎.order:
 		引擎.p(pid).role = null
@@ -346,6 +357,9 @@ func _测试提炼钩子() -> void:
 	_挂角色(玩家2, 提炼观察)
 	引擎.team_gem[GConst.BLUE] = 2
 	引擎.team_crystal[GConst.BLUE] = 1
+	# 先让引擎把当前星石记成基线，再提炼；否则测试直接改 team_gem 会绕过逐状态差分
+	引擎._check_energy_change()
+	发送记录.clear()
 	引擎.current_id = 1
 	引擎.resolve_action(GConst.ActionType.Special, {
 		"action_id": GConst.SpecialAction.Extract, "args": [1, 1], "dst_ids": [],
@@ -373,6 +387,11 @@ func _测试提炼钩子() -> void:
 	检(引擎.team_gem[GConst.BLUE] == 1 and 引擎.team_crystal[GConst.BLUE] == 0,
 		"提炼结算后战绩区应为 1/0")
 	检(玩家1.gem == 1 and 玩家1.crystal == 1, "提炼者个人能量应为 1/1")
+	# 星石增减归 [星石] 类别：战绩区移出 + 个人获得都要有日志
+	检(_有星石日志("战绩区移除 1 宝石、1 水晶"),
+		"提炼后战绩区减少应写 [星石] 日志：%s" % str(发送记录))
+	检(_有星石日志("获得 1 宝石、1 水晶"),
+		"提炼者个人获得星石应写 [星石] 日志")
 	检(提炼观察.特殊行动记录.size() == 1, "p_after_special 应收到提炼")
 	if not 提炼观察.特殊行动记录.is_empty():
 		检(int(提炼观察.特殊行动记录[0].get("action_id", -1)) == GConst.SpecialAction.Extract,

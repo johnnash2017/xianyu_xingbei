@@ -1023,9 +1023,9 @@ func _check_token_change() -> void:
 		_token_counts[pid] = 现在
 
 
-## 每个状态跑完后对比各玩家与各阵营战绩区的星石：只在「获得」时写一条（消耗不必刷屏）。
-## 个人写「谁获得 x 宝石 x 水晶」；战绩区写「哪一队战绩区 获得 x 宝石 x 水晶」。
-## 只获得其中一类时就只写那一类（由 _星石片段 拼）
+## 每个状态跑完后对比各玩家与各阵营战绩区的星石：获得和移除都写一条。
+## 个人写「谁获得/移除 x 宝石 x 水晶」；战绩区写「哪一队战绩区获得/移除 x 宝石 x 水晶」。
+## 同一次增减里两类都有时由 _星石片段 分开拼「获得 …、移除 …」
 func _check_energy_change() -> void:
 	for pid: int in order:
 		var pp: BattlePlayer = players.get(pid)
@@ -1040,7 +1040,7 @@ func _check_energy_change() -> void:
 			continue
 		var 个人片段: String = _星石片段(个人现在[0] - int(个人上次[0]), 个人现在[1] - int(个人上次[1]))
 		if not 个人片段.is_empty():
-			_播星石日志("%s 获得 %s" % [_称号(pp), 个人片段], pp.id)
+			_播星石日志("%s %s" % [_称号(pp), 个人片段], pp.id)
 		_gems[pid] = 个人现在
 	for color: int in [GConst.RED, GConst.BLUE]:
 		var 队伍现在: Array[int] = [team_gem[color], team_crystal[color]]
@@ -1052,18 +1052,29 @@ func _check_energy_change() -> void:
 			continue
 		var 队伍片段: String = _星石片段(队伍现在[0] - int(队伍上次[0]), 队伍现在[1] - int(队伍上次[1]))
 		if not 队伍片段.is_empty():
-			_播星石日志("%s 战绩区获得 %s" % [_阵营名(color), 队伍片段], -1)
+			_播星石日志("%s 战绩区%s" % [_阵营名(color), 队伍片段], -1)
 		_team_energies[color] = 队伍现在
 
 
-## 星石增减的文案片段：只写「获得了」的那一类（个人与战绩区共用）。
-## 两类都没增加（含纯消耗）就返回空串，调用方据此不写日志
+## 星石增减的文案片段（个人与战绩区共用）：
+## 正数写「获得 …」，负数写「移除 …」；两类都有就拼成「获得 …、移除 …」。
+## 没有变化返回空串，调用方据此不写日志。
 func _星石片段(宝石增量: int, 水晶增量: int) -> String:
-	var 段: Array[String] = []
+	var 获得: Array[String] = []
+	var 移除: Array[String] = []
 	if 宝石增量 > 0:
-		段.append("%d 宝石" % 宝石增量)
+		获得.append("%d 宝石" % 宝石增量)
+	elif 宝石增量 < 0:
+		移除.append("%d 宝石" % -宝石增量)
 	if 水晶增量 > 0:
-		段.append("%d 水晶" % 水晶增量)
+		获得.append("%d 水晶" % 水晶增量)
+	elif 水晶增量 < 0:
+		移除.append("%d 水晶" % -水晶增量)
+	var 段: Array[String] = []
+	if not 获得.is_empty():
+		段.append("获得 " + "、".join(获得))
+	if not 移除.is_empty():
+		段.append("移除 " + "、".join(移除))
 	return "、".join(段)
 
 
@@ -1072,10 +1083,10 @@ func _阵营名(color: int) -> String:
 	return "红队" if color == GConst.RED else "蓝队"
 
 
-## 星石获得日志：个人与战绩区共用，类别沿用「指示物」
+## 星石增减日志：个人与战绩区共用，类别 [星石]（提炼、购买、合成等增减都走这里）
 func _播星石日志(文案: String, 相关玩家: int) -> void:
 	broadcast(GConst.Msg.Gossip, {
-		"type": GConst.GossipType.Token,
+		"type": GConst.GossipType.Gem,
 		"txt": 文案,
 		"id": 相关玩家,
 	})
