@@ -6,7 +6,7 @@ extends BattleRole
 ##
 ## 口径：
 ## 1. 【命定之理】手牌上限 = 基础值 + (1 - 律法数)：律法数每次变化后重算。
-## 2. 【星环】X 由玩家实际选的地系牌张数决定（目标数 = X-1，X=1 时 0 名），
+## 2. 【星环】X 由玩家实际选的地系牌张数决定（最多指定 X-1 名角色，可以少点/不点），
 ##    结算按目标逐个进行：先 +1 治疗、再【强制】摸 1 张（等摸牌完整结算完），最后轮到自己，收尾 +1 法术行动。
 ## 3. 【星刻】在攻击 / 法术行动结束时，从牌库顶取 1 张面朝下放进盖牌区（tag="卢恩"）。
 ##    add_cover 自己会让出执行权先跑 p_cover_change，这里不能 return URGENT（会重入再加一张）。
@@ -95,7 +95,7 @@ func available_skills() -> Array:
 		"type": GConst.ActionType.MagicSkill,
 		"id": XING_HUAN,
 		"need_card": 1,
-		"card_max": maxi(1, mini(地系.size(), 其他.size() + 1)),
+		"card_max": maxi(1, 地系.size()),
 		"cards": 地系,
 		"need_target": 0,
 		"target_max_from_cards": 1,
@@ -176,13 +176,13 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	match int(action.get("action_id", 0)):
 		XING_HUAN:
-			# 总张数 X ＝ 选中的地系牌张数；目标数必须正好 X-1（X=1 时 0 名）
+			# 总张数 X ＝ 选中的地系牌张数；最多指定 X-1 名角色（可以少点、甚至不点）
 			var cards: Array = action.get("card_ids", [])
 			var dsts: Array = action.get("dst_ids", [])
 			var x: int = cards.size()
 			if x < 1:
 				return GConst.GE_INVALID_CARDID
-			if dsts.size() != x - 1:
+			if dsts.size() > x - 1:
 				return GConst.GE_INVALID_ARGUMENT
 			var 已见: Array = []
 			for c: Variant in cards:
@@ -224,9 +224,9 @@ func p_magic_skill(action: Dictionary) -> int:
 	return EMPTY_HANDLE
 
 
-## 4002 星环：弃 X 张地系牌【展示】 → 指定 X-1 名其他角色与你各 +1 治疗、各摸 1 张【强制】，
-## 你 +1【法术行动】。X 由选牌张数决定（目标是 X-1 名）；结算按目标逐个进行：
-## 先加治疗、再摸牌（等这次摸牌完整结算完），才轮到下一个目标。
+## 4002 星环：弃 X 张地系牌【展示】 → **最多**指定 X-1 名其他角色（可以少点/不点），
+## 他们与你各 +1 治疗、各摸 1 张【强制】，你 +1【法术行动】。X 由选牌张数决定；
+## 结算按目标逐个进行：先加治疗、再摸牌（等这次摸牌完整结算完），才轮到下一个目标。
 func _p_星环(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])

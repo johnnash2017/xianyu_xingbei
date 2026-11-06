@@ -1237,6 +1237,12 @@ func _检星坠女巫() -> void:
 		and int(星环项.get("target_max_from_cards", 0)) == 1
 		and (星环项.get("arg_choices", []) as Array).is_empty(),
 		"【星环】X 应由选牌张数决定，目标数随 X-1 现算（不下发 X 选项）")
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
+		"card_ids": [地牌], "dst_ids": []})) == GConst.GE_SUCCESS,
+		"【星环】目标没点满（0 名）也应能发动")
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
+		"card_ids": [地牌], "dst_ids": [2]})) != GConst.GE_SUCCESS,
+		"【星环】目标数不能超过 X-1")
 	检(int(GConst.律法技能.get(1, 0)) == 4006 and int(GConst.律法技能.get(2, 0)) == 4007
 		and int(GConst.律法技能.get(3, 0)) == 4008,
 		"【律法】状态图标要能查到对应的技能行（悬停显示技能说明）")

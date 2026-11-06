@@ -10389,10 +10389,11 @@ func _目标数合法() -> bool:
 	var 随牌阈值: int = _目标随牌阈值()
 	if 随牌阈值 > 0:
 		return _sel_players.size() == (1 if _sel_cards.size() >= 随牌阈值 else 0)
-	# 「目标数＝已选牌数 - 减数」且没有固定最少目标的（星坠女巫【星环】：X 张牌 → X-1 名角色）：
-	# 目标数必须**正好**对上（X=1 时是 0 名），不能多选也不能少选
+	# 「目标数随选牌数、没有固定最少目标」型（星坠女巫【星环】：X 张牌最多指定 X-1 名角色）：
+	# 目标**不用点满**也能确定（场上角色不够、或玩家只想少指定几名时都允许），
+	# 只要求不超过「已选牌数 - 减数」，选多了才不让确定
 	if _skill_target_max_from_cards > 0 and _skill_need_target <= 0:
-		return _sel_players.size() == maxi(0, _sel_cards.size() - _skill_target_max_from_cards)
+		return _sel_players.size() <= maxi(0, _sel_cards.size() - _skill_target_max_from_cards)
 	if _skill_need_target <= 0:
 		return _sel_players.is_empty()
 	if _sel_players.size() < _skill_need_target:
