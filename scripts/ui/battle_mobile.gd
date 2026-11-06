@@ -4163,7 +4163,12 @@ func _选项文案(原文: String) -> String:
 	var 右括号: int = 原文.find("】")
 	if 右括号 < 0:
 		return 原文
-	return 原文.substr(右括号 + 1).lstrip("：:　 ")
+	var 尾: String = 原文.substr(右括号 + 1)
+	# 只瘦身「发动【技能名】：后半句」这种格式；像「发动【律法：繁星】」这种
+	# 整个括号就是按钮全文的，括号后面没有冒号，不能裁（裁完就成空白按钮了）
+	if not (尾.begins_with("：") or 尾.begins_with(":")):
+		return 原文
+	return 尾.lstrip("：:　 ")
 
 
 ## 平行数组取第 i 项（数组不够长就落回默认值）。
@@ -4334,6 +4339,9 @@ func _二级栏_造选项钮(选项: Array, 选项底色: Color, 父技能号: i
 		var d: Dictionary = 选项[i]
 		var 项技能号: int = int(d.get("技能号", 0))
 		var 用底色: Color = GConst.skill_type_color(项技能号) if 项技能号 > 0 else 选项底色
+		# 律法选项（发动【律法：X】）是参数按钮：专属技没有类型配色，按技能色会变纯白、字看不见
+		if GConst.律法技能.values().has(项技能号):
+			用底色 = 选项底色
 		# 迅捷赐福 / 威力赐福本身是响应技：只有作为「持有者行动结束时的响应」出现时才用响应紫色
 		# （聚合器下发的 no_parent 询问）；作为独有技被别的技能借用（如 4606 海神御巫的选项）时，
 		# 按借用它的技能的类型色显示（4606 是法术）
@@ -4599,7 +4607,8 @@ func _返回群星启示第一层() -> void:
 	_sel_cards.clear()
 	_skill_cards.clear()
 	var 父: 技能按钮 = _二级栏父按钮
-	_进入二级技能栏(_pending_skill_id, 父, _skill_arg_choices, 二级选项底色, _on_cancel)
+	# _skill_arg_choices 是服务端原始格式（text/args），二级栏要的是归一化后的「文本/参数」
+	_进入二级技能栏(_pending_skill_id, 父, _选项项(_skill_arg_choices), 二级选项底色, _on_cancel)
 	_刷新交互()
 	_刷新二级栏提示()
 
