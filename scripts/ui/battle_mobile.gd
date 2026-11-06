@@ -4561,7 +4561,7 @@ func _群星发动文案(法号: int) -> String:
 
 func _群星不发动文案() -> String:
 	var 文: String = GConst.文本("通用_不发动", false)
-	return 文 if not 文.is_empty() and 文 != "通用_不发动" else "不发动"
+	return 文 if not 文.is_empty() and 文 != "通用_不发动" else "没有可发动【律法】了"
 
 
 ## 下级界面：三颗律法（默认置灰）＋「不发动」（没有律法可发动时才亮）

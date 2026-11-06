@@ -42,7 +42,6 @@ const 律法表: Array[int] = [律法_繁星, 律法_影月, 律法_蚀日]
 const 步_启示选律法: int = 1
 const 步_启示摸牌: int = 2
 const 步_黄金律交换: int = 7
-const 步_创刻摸牌: int = 8
 const 步_创刻卢恩: int = 9
 const 步_星环结算: int = 10
 const 步_律法移除: int = 11
@@ -126,6 +125,10 @@ func available_skills() -> Array:
 			"enabled": not 卢恩.is_empty(),
 		},
 	]
+	var 创刻选项: Array = [
+		{"value": 0, "text": GConst.按钮原文(CHUANG_KE_LV_DONG, 2), "args": [0]},
+		{"value": 1, "text": GConst.按钮原文(CHUANG_KE_LV_DONG, 3), "args": [1]},
+	]
 	return [
 		星环技能,
 		{
@@ -136,8 +139,10 @@ func available_skills() -> Array:
 			"enabled": 模式1可用 or not 卢恩.is_empty(),
 		},
 		{
+			# 创刻律动也走「点技能直接进二级栏」：先选不摸 / 摸 1 张，取消＝返回不发动
 			"type": GConst.ActionType.MagicSkill,
 			"id": CHUANG_KE_LV_DONG,
+			"arg_choices": 创刻选项,
 			"enabled": player.gem >= 1,
 		},
 	]
@@ -225,6 +230,9 @@ func v_magic_skill(action: Dictionary) -> int:
 		CHUANG_KE_LV_DONG:
 			if player.gem < 1:
 				return GConst.GE_INVALID_ACTION
+			var 参数: Array = action.get("args", [])
+			if 参数.is_empty() or (int(参数[0]) != 0 and int(参数[0]) != 1):
+				return GConst.GE_INVALID_ARGUMENT
 			return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 
@@ -246,7 +254,7 @@ func p_magic_skill(action: Dictionary) -> int:
 		XING_HUAN:
 			return _p_星环(action)
 		CHUANG_KE_LV_DONG:
-			return _p_创刻律动()
+			return _p_创刻律动(action)
 	return EMPTY_HANDLE
 
 
@@ -311,12 +319,21 @@ func _p_群星启示(action: Dictionary) -> int:
 	return URGENT
 
 
-## 4009 创刻律动：付 1 宝石 → 无视手牌上限摸 0~1 张 → 最多 (1+律法数) 张手牌作【卢恩】
-func _p_创刻律动() -> int:
+## 4009 创刻律动：二级栏先选「不摸 / 摸 1 张」（取消＝返回不发动），付 1 宝石后按选项结算；
+## 然后最多 (1+律法数) 张手牌作【卢恩】
+func _p_创刻律动(action: Dictionary) -> int:
+	var args: Array = action.get("args", [])
+	var 摸: int = int(args[0]) if not args.is_empty() else 0
 	player.set_gem(player.gem - 1)
 	notice_skill(CHUANG_KE_LV_DONG, [player.id])
-	_步 = 步_创刻摸牌
-	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
+	_步 = 步_创刻卢恩
+	if 摸 <= 0:
+		return _创刻选卢恩()
+	# 「无视你的手牌上限摸」：本次结算期间进入「不爆牌」，摸完在续跑钩子里解除
+	engine.进入不爆牌(player.id)
+	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask",
+		{"player": player.id, "创刻摸完": true}, []))
+	engine.push_draw(player.id, 1, CHUANG_KE_LV_DONG)
 	return URGENT
 
 
@@ -387,8 +404,6 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			return _黄金律问()
 		步_黄金律交换:
 			return _黄金律交换()
-		步_创刻摸牌:
-			return _创刻选摸牌()
 		步_创刻卢恩:
 			return _创刻选卢恩()
 		步_星环结算:
@@ -728,7 +743,7 @@ func _移除律法文案(法号: int) -> String:
 
 func _不发动文案() -> String:
 	var 文: String = GConst.文本("通用_不发动", false)
-	return 文 if not 文.is_empty() and 文 != "通用_不发动" else "不发动"
+	return 文 if not 文.is_empty() and 文 != "通用_不发动" else "没有可发动【律法】了"
 
 
 ## 移除哪个律法由玩家选：只列当前拥有的（没拥有的移除不了），文案与悬停同选律法
@@ -861,28 +876,8 @@ func _黄金律交换() -> int:
 
 
 # ============================================================
-# 创刻律动：摸 0~1 张（无视手牌上限）→ 最多 (1+律法数) 张手牌作【卢恩】
+# 创刻律动：先选摸 0~1 张（二级栏），然后最多 (1+律法数) 张手牌作【卢恩】
 # ============================================================
-func _创刻选摸牌() -> int:
-	if not engine.has_reply():
-		询问(player.id, CHUANG_KE_LV_DONG, 0, 0, GConst.CardSource.Hand, _摸牌选项(CHUANG_KE_LV_DONG), 0, "", [], false,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-			GConst.提示原文(CHUANG_KE_LV_DONG, 1))
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var 摸: int = int(args[0]) if not args.is_empty() else 0
-	_步 = 步_创刻卢恩
-	if 摸 <= 0:
-		return _创刻选卢恩()
-	# 「无视你的手牌上限摸」：本次结算期间进入「不爆牌」，摸完在续跑钩子里解除
-	engine.进入不爆牌(player.id)
-	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask",
-		{"player": player.id, "创刻摸完": true}, []))
-	engine.push_draw(player.id, 1, CHUANG_KE_LV_DONG)
-	return URGENT
-
-
 func _创刻选卢恩() -> int:
 	var 可放: int = mini(1 + player.律法数(), player.cover_space())
 	var 可选: int = mini(可放, player.hand_cards.size())
