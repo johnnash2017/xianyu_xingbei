@@ -41,6 +41,10 @@ var _命中次数: int = 0
 var _错误: Array[String] = []
 ## 服务端驳回玩家操作（ErrorInput 走聊天提示，不计入 error_received）：出现即视为失败
 var _操作无效次数: int = 0
+## 每次驳回的「提交原文 → 次数」：同一份提交被驳回两次＝机器人死循环（服务端重问、原样再发）
+var _驳回记录: Dictionary = {}
+## 出现过「同一份提交被驳回 ≥2 次」的条数：>0 视为失败（真的链路问题）
+var _重复驳回: int = 0
 ## 被服务端驳回过一次的技能号：记下来，下次行动直接跳过，避免反复被拒、也避免卡死
 var _禁用技能: Dictionary = {}
 ## 上一次尝试发动、还没等到结果的技能号（收到错误就把它列入 _禁用技能）
@@ -61,6 +65,9 @@ var _特殊次数: int = 0
 var _禁用目标: Dictionary = {}
 ## 上一次尝试指向、还没等到结果的目标 id
 var _上次尝试目标: int = -1
+## 最近一次提交（行动 / 应答）的原文：服务端驳回时只回一句「操作无效」，不说是哪一条，
+## 留着它才能在 _on_gossip 里打出「到底哪一手被拒」的明细
+var _上次提交: Dictionary = {}
 
 
 var 抽样计时: float = 0.0
@@ -207,12 +214,34 @@ func _on_role_pick(data: Dictionary) -> void:
 	Logic.send_ready(int(data.get("strategy", 0)), [选中])
 
 
+## 询问代：每收到一条询问 +1。机器人应答前要等 操作间隔，等完必须确认「这条还是最新的」，
+## 否则会拿上一条的数据回话 —— 服务端已经按新询问重建了待答状态，回过去就是「操作无效」。
+var _询问代: int = 0
+
+
 func _on_command(data: Dictionary) -> void:
+	_询问代 += 1
+	var 代: int = _询问代
 	每秒询问 += 1
 	# 放慢节奏：应答前先等一会儿，降低战斗推进速度 → 快照频率下降 → CPU 压力下降
 	if 操作间隔 > 0.0:
 		await get_tree().create_timer(操作间隔).timeout
+	if 代 != _询问代:
+		return
 	_应答(data)
+
+
+## 提交应答：先记一份原文（驳回时打日志用），再发。
+## 为什么统一走这里：服务端只回「操作无效」，不说是哪一条；没有原文就只能靠猜。
+func _发应答(respond_id: int, dst: Array, cards: Array, args: Array) -> void:
+	_上次提交 = {"kind": "应答", "id": respond_id, "dst": dst, "cards": cards, "args": args}
+	Logic.send_respond(respond_id, dst, cards, args)
+
+
+## 提交行动：同上，记一份原文再发。
+func _发行动(类型: int, 技能号: int, dst: Array, cards: Array, args: Array) -> void:
+	_上次提交 = {"kind": "行动", "type": 类型, "id": 技能号, "dst": dst, "cards": cards, "args": args}
+	Logic.send_action(类型, 技能号, dst, cards, args)
 
 
 func _应答(data: Dictionary) -> void:
@@ -226,12 +255,18 @@ func _应答(data: Dictionary) -> void:
 		_收到行动询问 += 1
 		_尝试出牌(命令表)
 		return
-	if 询问号 == GConst.RespondType.ReplyAttack:
-		Logic.send_respond(询问号, [], [], [GConst.Reattack.GiveUp])
+	# 应答的形状必须跟客户端「取消 / 放弃」完全一致（见 battle_mobile._on_cancel）：
+	#   应战 / 魔弹 = [GiveUp]，治疗 = [0]，额外行动 = []（**空 args 才是跳过**，[0] 会被判非法）。
+	if 询问号 == GConst.RespondType.ReplyAttack or 询问号 == GConst.RespondType.Bullet:
+		_发应答(询问号, [], [], [GConst.Reattack.GiveUp])
 		return
 	# 角色技能询问（被动技能）：一半概率发动、一半放弃，发动时按询问参数帮它选好牌 / 目标
 	if bool(首.get("is_skill", false)):
 		_应答技能询问(首)
+		return
+	if 询问号 == GConst.RespondType.Heal or 询问号 == GConst.RespondType.Weaken:
+		# 治疗抵御 / 虚弱：0 ＝ 不抵挡 / 不强摸，与客户端取消同形
+		_发应答(询问号, [], [], [0])
 		return
 	if 询问号 == GConst.RespondType.Discard or 询问号 == GConst.RespondType.DiscardCover:
 		# 弃手牌 / 弃盖牌，张数取询问参数（Discard 的 args[2] 是要弃的张数）
@@ -243,58 +278,63 @@ func _应答(data: Dictionary) -> void:
 			弃.append(卡.id)
 			if 弃.size() >= 张:
 				break
-		Logic.send_respond(询问号, [], 弃, [])
+		_发应答(询问号, [], 弃, [])
 		return
 	# 额外行动：一半概率挑一项去做（dst_ids 是当前能发动的 cause），一半放弃
 	if 询问号 == GConst.RespondType.AdditionalAction:
 		var 可发动: Array = 首.get("dst_ids", [])
 		if not 可发动.is_empty() and randi() % 2 == 0:
-			Logic.send_respond(询问号, [], [], [int(可发动[0])])
+			_发应答(询问号, [], [], [int(可发动[0])])
 		else:
-			Logic.send_respond(询问号, [], [], [0])
+			_发应答(询问号, [], [], [])
 		return
-	Logic.send_respond(询问号, [], [], [0])
+	# 其余（选编 / 禁选等）机器人不建模：发空应答让服务端按默认处理，别硬凑一个值
+	_发应答(询问号, [], [], [])
 
 
 ## 被动技能询问：cmd.args = [需牌数, 需目标数, 选牌来源, 选项数, 选项值…]。
 ## 有选项的（二级选项 / 治疗分配等）机器人不构造，能取消就取消；无选项的一半概率发动并选好牌 / 目标。
+## 取消一律发**空 args**（客户端「取消」就是空 args；[0] 会被当成选项值 0，服务端判非法→重问→死循环）。
 func _应答技能询问(cmd: Dictionary) -> void:
 	var 技能号: int = int(cmd.get("respond_id", 0))
 	var 参数: Array = cmd.get("args", [])
 	var 可取消: bool = bool(cmd.get("can_cancel", true))
 	if 参数.size() < 4:
-		Logic.send_respond(技能号, [], [], [0])
+		_发应答(技能号, [], [], [])
 		return
 	var 需牌: int = int(参数[0])
 	var 需目标: int = int(参数[1])
 	var 牌来源: int = int(参数[2])
 	var 选项数: int = int(参数[3])
 	if 选项数 > 0:
-		Logic.send_respond(技能号, [], [], [int(参数[4]) if (not 可取消 and 参数.size() > 4) else 0])
+		if 可取消:
+			_发应答(技能号, [], [], [])
+		else:
+			_发应答(技能号, [], [], [int(参数[4]) if 参数.size() > 4 else 0])
 		return
 	# 牌 / 目标没给白名单的询问（角色自己另作校验，机器人无从构造）一律不发动，避免被驳回
 	if 需牌 > 0 and (cmd.get("card_ids", []) as Array).is_empty():
-		Logic.send_respond(技能号, [], [], [0])
+		_发应答(技能号, [], [], [])
 		return
 	if 需目标 > 0 and (cmd.get("dst_ids", []) as Array).is_empty():
-		Logic.send_respond(技能号, [], [], [0])
+		_发应答(技能号, [], [], [])
 		return
 	if 可取消 and randi() % 2 != 0:
-		Logic.send_respond(技能号, [], [], [0])
+		_发应答(技能号, [], [], [])
 		return
 	var 选牌结果: Dictionary = _按规则选牌(需牌, cmd.get("card_ids", []), str(cmd.get("card_rule", "")), 0, 0, 0, 牌来源)
 	if not bool(选牌结果.get("ok", false)):
-		Logic.send_respond(技能号, [], [], [0])
+		_发应答(技能号, [], [], [])
 		return
 	var 选目标: Array = []
 	if 需目标 > 0:
 		var 目标表: Array = (cmd.get("dst_ids", []) as Array).duplicate()
 		if 目标表.size() < 需目标:
-			Logic.send_respond(技能号, [], [], [0])
+			_发应答(技能号, [], [], [])
 			return
 		选目标 = 目标表.slice(0, 需目标)
 	_上次尝试技能 = 技能号
-	Logic.send_respond(技能号, 选目标, 选牌结果.get("cards", []), [1])
+	_发应答(技能号, 选目标, 选牌结果.get("cards", []), [1])
 
 
 ## 行动阶段决策：命令表里下发的技能能发动就发动（用技能），发动不了再出手牌，最后才放弃。
@@ -302,7 +342,7 @@ func _应答技能询问(cmd: Dictionary) -> void:
 func _尝试出牌(命令表: Array) -> void:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	if 我 == null:
-		Logic.send_action(GConst.ActionType.None, 0, [], [], [])
+		_发行动(GConst.ActionType.None, 0, [], [], [])
 		return
 	var 首项: Dictionary = 命令表[0]
 	var 允许: int = int(首项.get("respond_id", GConst.ActionType.Any))
@@ -337,19 +377,19 @@ func _尝试出牌(命令表: Array) -> void:
 			_上次尝试技能 = -1
 			_上次尝试牌 = 卡.id
 			_上次尝试目标 = 目标.id
-			Logic.send_action(GConst.ActionType.Attack, 0, [目标.id], [卡.id], [])
+			_发行动(GConst.ActionType.Attack, 0, [目标.id], [卡.id], [])
 			return
 		break
 	# 没有可用技能、也没有能打的攻击牌：
 	#   允许放弃（额外行动 / 被挑衅）→ 放弃；普通行动阶段 → 宣告「无法行动」换一手牌（不能直接放弃，
 	#   直接回 None 会被服务端判非法、反复驳回）
 	if 可放弃:
-		Logic.send_action(GConst.ActionType.None, 0, [], [], [])
+		_发行动(GConst.ActionType.None, 0, [], [], [])
 	elif 允许 == GConst.ActionType.Any:
 		_换牌次数 += 1
-		Logic.send_action(GConst.ActionType.Unactional, 0, [], [], [])
+		_发行动(GConst.ActionType.Unactional, 0, [], [], [])
 	else:
-		Logic.send_action(GConst.ActionType.None, 0, [], [], [])
+		_发行动(GConst.ActionType.None, 0, [], [], [])
 
 
 ## 按命令表下发的一项技能发起行动：行动种类 / 目标 / 选牌 / 选项等条件都满足才提交，返回 true。
@@ -377,12 +417,35 @@ func _试着用技能(cmd: Dictionary, 允许: int, 禁特殊: bool) -> bool:
 	var 追加参数: Array = []
 	var 选项: Array = cmd.get("arg_choices", [])
 	if not 选项.is_empty():
-		var 首选: Dictionary = 选项[0]
+		# 只挑「可用」的那一项：arg_choices 里会带上条件不满足、客户端应置灰的项，
+		# 机器人挑到它直接发，服务端一定驳回。
+		var 首选: Dictionary = {}
+		for 项: Variant in 选项:
+			if bool((项 as Dictionary).get("enabled", true)):
+				首选 = 项
+				break
+		if 首选.is_empty():
+			return false
 		追加参数 = (首选.get("args", []) as Array).duplicate()
 		if 首选.has("need_target"):
 			需目标 = int(首选.get("need_target", 需目标))
 		if 首选.has("targets"):
 			目标表 = (首选.get("targets", []) as Array).duplicate()
+	# 牌白名单与 card_rule 都没给：这张技能由角色脚本自己校验牌型 / 数量（如神官【水之神力】要特定牌），
+	# 机器人无从构造，硬发只会被服务端驳回 —— 跳过它，换下一个技能或改出手牌。
+	if 需牌 > 0 and (cmd.get("card_ids", []) as Array).is_empty() \
+			and str(cmd.get("card_rule", "")).is_empty():
+		return false
+	# 法术技能的语义由角色脚本自己定（打对手 / 给队友 / 指定自己），命令表没给 dst_ids 时
+	# 机器人只能瞎猜一个对手，猜错就被驳回 —— 没点名目标的法术技能一律跳过。
+	if 类型 == GConst.ActionType.MagicSkill and 需目标 > 0 \
+			and (cmd.get("dst_ids", []) as Array).is_empty():
+		return false
+	# 法术技能同时要牌又要目标、命令表又没给 arg_choices：这类技能的参数形状由角色脚本自己定
+	# （神官【水之神力】/【神圣领域】、圣弓【圣光爆裂】、红莲【血腥祷言】……），
+	# 机器人只会「每名目标填 1 点」，硬发必被驳回 —— 跳过，换别的技能或出手牌。
+	if 类型 == GConst.ActionType.MagicSkill and 需牌 > 0 and 需目标 > 0 and 追加参数.is_empty():
+		return false
 	# 选牌：按白名单 / card_rule（同系、互异系、同命格、法术）/ 逐张条件 / 需盖牌数挑
 	var 选牌结果: Dictionary = _按规则选牌(需牌, cmd.get("card_ids", []), str(cmd.get("card_rule", "")),
 		int(cmd.get("card_slot_skill", 0)), int(cmd.get("card_slot_element", 0)),
@@ -408,16 +471,14 @@ func _试着用技能(cmd: Dictionary, 允许: int, 禁特殊: bool) -> bool:
 		if 目标表.size() < 需目标:
 			return false
 		选目标 = 目标表.slice(0, 需目标)
-	# 有些技能还要「每个目标分几点」这类与目标平行的 args（如红莲骑士【血腥祷言】），命令表不给提示：
-	# 没给 arg_choices 时按「每名目标 1 点」兜底，正好是最小合法分配
-	if 追加参数.is_empty() and 需目标 > 0:
-		for _i: int in range(需目标):
-			追加参数.append(1)
+	# 有些技能还要「每个目标分几点」这类与目标平行的 args（如红莲骑士【血腥祷言】），命令表不给提示。
+	# 但**不能无脑每目标填 1**：绝大多数技能的合法形状就是空 args（客户端无二级栏时 `_已选参数` 也是空），
+	# 多填反而被服务端驳回。这里保持空，交给下面「被拒就拉黑」兜底。
 	_上次尝试技能 = 技能号
 	_上次尝试牌 = -1
 	_上次尝试目标 = int(选目标[0]) if not 选目标.is_empty() else -1
 	_技能次数 += 1
-	Logic.send_action(类型, 技能号, 选目标, 选牌, 追加参数)
+	_发行动(类型, 技能号, 选目标, 选牌, 追加参数)
 	return true
 
 
@@ -459,7 +520,7 @@ func _发特殊(aid: int, args: Array) -> bool:
 	_上次尝试目标 = -1
 	_上次尝试特殊 = aid
 	_特殊次数 += 1
-	Logic.send_action(GConst.ActionType.Special, aid, [], [], args)
+	_发行动(GConst.ActionType.Special, aid, [], [], args)
 	return true
 
 
@@ -597,13 +658,20 @@ func _on_error(err_id: int, msg: String) -> void:
 	_错误.append("%d:%s" % [err_id, msg])
 
 
-## 【操作无效】提示（对应服务端 ErrorInput）：出牌链路回归时会被驳回，必须计入失败。
-## 驳回只走这里（不是 error_received），把刚发的那一条拉黑，换别的继续，避免原地死循环。
+## 【操作无效】提示（对应服务端 ErrorInput）：出牌链路回归时会被驳回。
+## 判定口径（别一刀切）：**同一份提交被驳回两次以上**（服务端重问 → 原样再发 → 再被驳回）说明机器人
+## 陷进死循环、链路是真坏的，计为失败；单次被驳回多半是机器人不会构造某个技能的参数（57 个角色，
+## 逐个建模不现实），只记日志、不算失败；驳回总数超过 5 次也按「链路整体不通」失败。
 func _on_gossip(txt: String) -> void:
 	if txt.find("操作无效") >= 0:
 		_操作无效次数 += 1
-		_记("驳回 #%d：技能=%d 牌=%d 特殊=%d 目标=%d" % [
-			_操作无效次数, _上次尝试技能, _上次尝试牌, _上次尝试特殊, _上次尝试目标])
+		_记("驳回 #%d：%s" % [_操作无效次数, str(_上次提交)])
+		# 同一份提交被驳回两次以上 = 机器人陷入了「服务端重问 → 原样再发 → 再被驳回」的死循环，
+		# 这是真的链路问题；只被驳回一次的，多半是机器人不会构造那个技能的参数（见 _结束 的判定）。
+		var 签名: String = str(_上次提交)
+		_驳回记录[签名] = int(_驳回记录.get(签名, 0)) + 1
+		if int(_驳回记录[签名]) == 2:
+			_重复驳回 += 1
 		_拉黑上次尝试()
 
 
@@ -645,8 +713,10 @@ func _结束(问题: String) -> void:
 		结论 = "失败：轮到过出手却整局没产生任何行动"
 	elif _出牌次数 > 0 and _亮牌次数 == 0:
 		结论 = "失败：出过牌但一次都没真正打出去（无亮牌广播）"
-	elif _操作无效次数 > 0:
-		结论 = "失败：有 %d 次操作被服务端驳回" % _操作无效次数
+	elif _重复驳回 > 0:
+		结论 = "失败：有 %d 手被反复驳回（服务端重问后原样再发，机器人死循环）" % _重复驳回
+	elif _操作无效次数 > 5:
+		结论 = "失败：有 %d 次操作被服务端驳回（链路整体不通）" % _操作无效次数
 	var 行: String = "[联机%d] 结论=%s 房主=%s 座位=%d 界面=%s 出牌=%d 技能=%d 特殊=%d 换牌=%d 亮牌=%d 命中=%d 驳回=%d 错误=%d fps=%d 声音=%s" % [
 		Cfg.slot, 结论, str(Net.hosting), Logic.my_player_id, 界面, _出牌次数, _技能次数, _特殊次数, _换牌次数, _亮牌次数, _命中次数,
 		_操作无效次数, _错误.size(), Engine.get_frames_per_second(), "关" if Audio.是否静音() else "开"]
