@@ -380,9 +380,9 @@ func _律法选项() -> Array:
 
 func _启示选律法() -> int:
 	if not engine.has_reply():
+		# 不带额外提示文案：提示条全程用【群星启示】自身的技能说明
 		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, _律法选项(), 0, "", [], false,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-			GConst.提示原文(QUN_XING_QI_SHI, 2))
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -405,9 +405,9 @@ func _启示选律法() -> int:
 
 func _启示摸牌() -> int:
 	if not engine.has_reply():
+		# 不带额外提示文案：提示条全程用【群星启示】自身的技能说明
 		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, _摸牌选项(QUN_XING_QI_SHI), 0, "", [], false,
-			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-			GConst.提示原文(QUN_XING_QI_SHI, 4))
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
