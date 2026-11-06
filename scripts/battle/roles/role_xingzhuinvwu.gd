@@ -710,19 +710,20 @@ func _问律法效果(律: Dictionary, 需目标: int, 目标: Array[int],
 		_效果提示(律), -1, "", [], [], 可用)
 
 
-## 该条效果自己的提示文案（技能表「提示」列；%d 用本效果的点数填）
+## 该条效果自己的提示：直接从技能「说明」里截取对应那一句原句（含条件括号）
 func _效果提示(律: Dictionary) -> String:
 	var 技能号: int = int(律.get("技能号", 0))
 	var 序号: int = int(律.get("提示序号", 0))
-	var 文: String = GConst.提示原文(技能号, 序号)
-	if not 文.is_empty() and 律.has("值") and 文.contains("%d"):
-		var 值: int = int(律["值"])
-		if 值 > 0:
-			文 = 文 % 值
-		else:
-			# 条件不成立时点数不适用：显示 X，别写「造成 0 点」误导玩家
-			文 = 文.replace("%d", "X")
-	return 文
+	var 说明: String = GConst.skill_desc(技能号).replace("\n", "").strip_edges()
+	var 句们: Array[String] = []
+	for 段: String in 说明.split("；"):
+		for 子: String in 段.split("。"):
+			var 句: String = 子.strip_edges()
+			if not 句.is_empty():
+				句们.append(句)
+	if 序号 >= 0 and 序号 < 句们.size():
+		return 句们[序号]
+	return 说明
 
 
 ## 律法发动选项文案：文本表「通用_发动律法」填【律法：X】；表没加载到就按同句式兜底
