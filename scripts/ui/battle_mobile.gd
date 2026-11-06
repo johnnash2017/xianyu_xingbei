@@ -10931,9 +10931,6 @@ func _确定_行动() -> bool:
 
 ## 是否发动技能的询问（mode 3）
 func _确定_技能询问() -> bool:
-	# 条件不满足的效果询问：确定置灰，只能取消
-	if not bool(_pending.get("confirm_enabled", true)):
-		return true
 	# 攒应战：应战方式没选、应战牌没选都灰着；仅应战选【圣光】抵挡时不要求反击目标
 	if _攒应战选应战:
 		if _二级选中 < 0 or _sel_cards.is_empty():

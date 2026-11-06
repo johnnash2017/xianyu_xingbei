@@ -2511,7 +2511,7 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 高亮目标 非空时随询问下发（highlight_ids）：只把这几名角色点亮给人看，**不参与选择、不参与提交**。
 ## 用于「效果落在不受玩家选择的角色身上」的技能 —— 如【别烦我……】让目标弃牌那一步，
 ## 同时点亮「不弃就 +1 治疗」的那名队友（目标自己由客户端点亮）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = [], timeout_targets: Array = [], confirm_enabled: bool = true) -> void:
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = [], timeout_targets: Array = []) -> void:
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
@@ -2719,9 +2719,6 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 整段专属提示（如 9703 改写后的【血腥咆哮】）：客户端提示条直接用它，不再套技能说明
 	if not ask_prompt.is_empty():
 		cmd["ask_prompt"] = ask_prompt
-	# 条件不满足的效果询问：按钮照常弹，但「确定」置灰，只能取消
-	if not confirm_enabled:
-		cmd["confirm_enabled"] = false
 	_pending_respond_id = skill_id
 	_pending_args = args.duplicate()
 	_pending_is_skill = true

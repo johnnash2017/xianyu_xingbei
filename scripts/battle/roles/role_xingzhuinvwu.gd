@@ -182,12 +182,11 @@ func v_special_skill(action: Dictionary) -> int:
 				已见.append(cid)
 			var 结果: Dictionary = _判定律法(cards)
 			if 法号 == 0:
-				# 不发动：只有一条可用效果都没有时才允许
-				for 号: int in 律法表:
-					if _结果律法可用(结果, 号):
-						return GConst.GE_INVALID_ACTION
+				# 不发动：只有一条能发动的效果都没有时才允许
+				if not 结果.is_empty():
+					return GConst.GE_INVALID_ACTION
 			else:
-				if not player.有律法(法号) or not _结果律法可用(结果, 法号):
+				if not player.有律法(法号) or not 结果.has(法号):
 					return GConst.GE_INVALID_ACTION
 		_:
 			return GConst.GE_INVALID_ACTION
@@ -495,11 +494,11 @@ func _载入律法效果(法号: int) -> void:
 	_律法下标 = 0
 
 
-## 本次移除的卢恩还能发动哪些律法（没发动过、且至少一条效果条件成立）
+## 本次移除的卢恩还能发动哪些律法（没发动过；结果里有的就是有条件成立的）
 func _剩余可发动() -> Array[int]:
 	var out: Array[int] = []
 	for 号: int in 律法表:
-		if not _已发动律法.has(号) and _律法有可用效果(号):
+		if _律法结果.has(号) and not _已发动律法.has(号):
 			out.append(号)
 	return out
 
@@ -557,16 +556,13 @@ func _律法选发动面板() -> int:
 	return URGENT
 
 
-## 当前律法的一条效果：先问「是否发动」（条件不满足只能取消），确认后结算；
+## 当前律法的一条效果（只有条件成立的才会进队列）：先问「是否发动」，确认后结算；
 ## 需要目标的效果在同一次询问里让玩家自己选，不再自动挑目标。
 func _律法效果() -> int:
 	if _律法下标 >= _律法队列.size():
 		return _律法效果完成()
 	var 律: Dictionary = _律法队列[_律法下标]
 	var 种类: String = str(律["种类"])
-	var 可用: bool = bool(律.get("可用", false))
-	if 种类 == "繁星队友" and ally_ids().is_empty():
-		可用 = false
 	if not engine.has_reply():
 		var 需目标: int = 0
 		var 目标: Array[int] = []
@@ -578,29 +574,17 @@ func _律法效果() -> int:
 		elif 种类 == "影月伤害":
 			需目标 = 1
 			目标 = _全体角色()
-			# 让头像上直接显示「X 点法术伤害」；条件不成立时不显示伤害
-			if 可用:
-				预览基准 = int(律.get("值", 0))
-				预览类型 = GConst.HarmType.Magic
+			# 让头像上直接显示「X 点法术伤害」
+			预览基准 = int(律.get("值", 0))
+			预览类型 = GConst.HarmType.Magic
 		elif 种类 == "影月治疗":
 			需目标 = 1
 			目标 = _我方角色()
 			预览基准 = int(律.get("值", 0))
 			预览类型 = GConst.预览类型_治疗
-		# 条件不成立：只给「取消」，不点目标、不画伤害 / 点数
-		if not 可用:
-			需目标 = 0
-			目标.clear()
-			预览基准 = 0
-			预览类型 = 0
-		_问律法效果(律, 需目标, 目标, 预览基准, 预览类型, 可用)
+		_问律法效果(律, 需目标, 目标, 预览基准, 预览类型)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
-	# 条件不满足：即使硬提交也当作不发动
-	if not 可用:
-		_律法下标 += 1
-		_步 = 步_律法效果
-		return URGENT
 	var dsts: Array = r.get("dst_ids", [])
 	var args: Array = r.get("args", [])
 	var 发动: bool = (not dsts.is_empty()) or (args.size() > 0 and int(args[0]) == 1)
@@ -690,24 +674,17 @@ func _律法效果完成() -> int:
 	return _律法选发动面板()
 
 
-## 一条律法效果的询问：提示用该条效果自己的文案；目标在同一次里选；条件不满足时确定置灰
+## 一条律法效果的询问：提示用该条效果自己的文案；需要目标的效果同一次里选
 func _问律法效果(律: Dictionary, 需目标: int, 目标: Array[int],
-		预览基准: int, 预览类型: int, 可用: bool) -> void:
+		预览基准: int, 预览类型: int) -> void:
 	var 技能号: int = int(律.get("技能号", 0))
 	var 询问号: int = int(律.get("询问技能号", 技能号))
-	# 条件不成立的 AOE 不走 40061：否则会自动点亮敌方头像并画伤害，误导成能打
-	if not 可用 and 询问号 == 40061:
-		询问号 = 技能号
 	# 影月的治疗分配走 40071 的子询问配置（分配界面），提示仍用 4007 的效果文案
 	if str(律["种类"]) == "影月治疗":
 		询问号 = 影月治疗询问
-	# 条件不成立的影月治疗不走分配界面，只留「取消」
-	if not 可用 and 询问号 == 影月治疗询问:
-		询问号 = 技能号
-	var 预览伤害: int = int(律["值"]) if str(律["种类"]) == "影月伤害" else -1
 	询问(player.id, 询问号, 0, 需目标, GConst.CardSource.Hand, [], 0, "", [], true,
-		0, -1, 目标, -1, {}, 预览基准, 预览类型, false, [], true, 预览伤害, 0,
-		_效果提示(律), -1, "", [], [], 可用)
+		0, -1, 目标, -1, {}, 预览基准, 预览类型, false, [], true, -1, 0,
+		_效果提示(律), -1, "", [], [])
 
 
 ## 该条效果自己的提示：直接从技能「说明」里截取对应那一句原句（含条件括号）
@@ -939,46 +916,30 @@ func _判定律法(牌表: Array) -> Dictionary:
 	var 四命: bool = 命计数.size() >= 4
 	var out: Dictionary = {}
 	if player.有律法(律法_繁星):
-		out[律法_繁星] = {
-			"技能号": FAN_XING,
-			"效果": [
-				{"种类": "繁星AOE", "技能号": FAN_XING, "询问技能号": 40061, "提示序号": 0, "可用": 四系 or 四命},
-				{"种类": "繁星队友", "技能号": FAN_XING, "提示序号": 1, "可用": 四系 and 四命},
-			],
-		}
+		var 效果: Array = []
+		if 四系 or 四命:
+			效果.append({"种类": "繁星AOE", "技能号": FAN_XING, "询问技能号": 40061, "提示序号": 0})
+		if 四系 and 四命 and not ally_ids().is_empty():
+			效果.append({"种类": "繁星队友", "技能号": FAN_XING, "提示序号": 1})
+		if not 效果.is_empty():
+			out[律法_繁星] = {"技能号": FAN_XING, "效果": 效果}
 	if player.有律法(律法_影月):
-		out[律法_影月] = {
-			"技能号": YING_YUE,
-			"效果": [
-				{"种类": "影月伤害", "技能号": YING_YUE, "提示序号": 0, "值": 系对, "可用": 系对 > 1},
-				{"种类": "影月治疗", "技能号": YING_YUE, "提示序号": 1, "值": 命对, "可用": 命对 > 1},
-			],
-		}
+		var 效果2: Array = []
+		if 系对 > 1:
+			效果2.append({"种类": "影月伤害", "技能号": YING_YUE, "提示序号": 0, "值": 系对})
+		if 命对 > 1:
+			效果2.append({"种类": "影月治疗", "技能号": YING_YUE, "提示序号": 1, "值": 命对})
+		if not 效果2.is_empty():
+			out[律法_影月] = {"技能号": YING_YUE, "效果": 效果2}
 	if player.有律法(律法_蚀日):
-		out[律法_蚀日] = {
-			"技能号": SHI_RI,
-			"效果": [
-				{"种类": "蚀日自身", "技能号": SHI_RI, "提示序号": 0, "值": 系三, "可用": 系三 > 0},
-				{"种类": "蚀日队伍", "技能号": SHI_RI, "提示序号": 1, "值": 命三, "可用": 命三 > 0},
-			],
-		}
+		var 效果3: Array = []
+		if 系三 > 0:
+			效果3.append({"种类": "蚀日自身", "技能号": SHI_RI, "提示序号": 0, "值": 系三})
+		if 命三 > 0:
+			效果3.append({"种类": "蚀日队伍", "技能号": SHI_RI, "提示序号": 1, "值": 命三})
+		if not 效果3.is_empty():
+			out[律法_蚀日] = {"技能号": SHI_RI, "效果": 效果3}
 	return out
-
-
-## 判定结果里这颗律法有没有「条件成立」的效果（v_* 校验用，不依赖当前 _律法结果）
-func _结果律法可用(结果: Dictionary, 法号: int) -> bool:
-	if not 结果.has(法号):
-		return false
-	var 效果表: Array = 结果[法号]["效果"]
-	for 效果: Variant in 效果表:
-		if bool((效果 as Dictionary).get("可用", false)):
-			return true
-	return false
-
-
-## 一颗律法里还有没有「条件成立」的效果（面板选项是否点亮看它）
-func _律法有可用效果(法号: int) -> bool:
-	return _结果律法可用(_律法结果, 法号)
 
 
 # ============================================================
