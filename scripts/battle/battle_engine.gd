@@ -1161,7 +1161,7 @@ func _播治疗日志(pp: BattlePlayer, amount: int, src_id: int, 前: int) -> v
 	var 来源: String = "自身" if src_id == pp.id else _称号(players.get(src_id))
 	broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Heal,
-		"txt": "%s 获得来自 %s 的 %d 点治疗（治疗 %d→%d）" % [_称号(pp), 来源, amount, 前, pp.cross_num],
+		"txt": "%s 获得 %s 的 %d 点治疗（治疗 %d→%d）" % [_称号(pp), 来源, amount, 前, pp.cross_num],
 		"id": pp.id,
 		# 点数单独给一份：客户端据此决定头像上冒几个「+」，不必去解析日志文案
 		"num": amount,
