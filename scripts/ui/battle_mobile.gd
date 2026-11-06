@@ -4575,6 +4575,8 @@ func _群星启示下级选项() -> Array:
 
 ## 点了「移除 X 个卢恩」：把二级栏换成律法下级界面（保留上一步的选牌配置：盖牌区 1~N 个卢恩）
 func _进入群星启示下级() -> void:
+	# ② 的代价是盖牌区的卢恩：进下级界面时清掉之前可能选着的其它牌
+	_sel_cards.clear()
 	var 项: Dictionary = _二级选中项()
 	var 牌白: Array = (项.get("牌白", []) as Array).duplicate()
 	var 父: 技能按钮 = _二级栏父按钮
@@ -4642,12 +4644,13 @@ func _群星律法可用(牌们: Array) -> Dictionary:
 		命对 += int(命计数[k2]) / 2
 		命三 += int(命计数[k2]) / 3
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	var 拥有 := func(号: int) -> bool:
-		return 我 != null and 我.laws.has(号)
+	var 有1: bool = 我 != null and 我.laws.has(1)
+	var 有2: bool = 我 != null and 我.laws.has(2)
+	var 有3: bool = 我 != null and 我.laws.has(3)
 	return {
-		1: 拥有.call(1) and (系计数.size() >= 4 or 命计数.size() >= 4),
-		2: 拥有.call(2) and (系对 > 1 or 命对 > 1),
-		3: 拥有.call(3) and (系三 > 0 or 命三 > 0),
+		1: 有1 and (系计数.size() >= 4 or 命计数.size() >= 4),
+		2: 有2 and (系对 > 1 or 命对 > 1),
+		3: 有3 and (系三 > 0 or 命三 > 0),
 	}
 
 
