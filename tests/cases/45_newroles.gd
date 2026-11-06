@@ -1274,6 +1274,17 @@ func _检星坠女巫() -> void:
 	for 项3: Dictionary in 启示选项:
 		检(not str(项3.get("text", "")).is_empty() and not (项3.get("args", []) as Array).is_empty(),
 			"【群星启示】模式选项必须同时带 text 与 args（缺一客户端按钮空白 / 提交空模式）")
+	# 选项文案：正式短句、用逗号分隔，不写「+」，也不能是纯数字
+	检(not str(启示选项[0].get("text", "")).contains("+")
+		and str(启示选项[0].get("text", "")).contains("，"),
+		"【群星启示】①文案要用逗号分隔的正式句式：%s" % str(启示选项[0].get("text", "")))
+	检(not str(启示选项[1].get("text", "")).contains("+")
+		and str(启示选项[1].get("text", "")).contains("，"),
+		"【群星启示】②文案要用逗号分隔的正式句式：%s" % str(启示选项[1].get("text", "")))
+	var 摸牌选项: Array = 角色.call("_摸牌选项", 4004)
+	检(摸牌选项.size() == 2 and str(摸牌选项[0].get("label", "")) == "不摸牌"
+		and str(摸牌选项[1].get("label", "")) == "摸 1 张牌",
+		"【群星启示】摸牌选项要显示「不摸牌 / 摸 1 张牌」：%s" % str(摸牌选项))
 	检(角色.v_magic_skill({"action_id": 4004, "src_id": 1}) == GConst.GE_INVALID_ACTION,
 		"【群星启示】不应有法术技能入口")
 	# 星刻：攻击行动结束时牌库顶 1 张面朝下作为【卢恩】

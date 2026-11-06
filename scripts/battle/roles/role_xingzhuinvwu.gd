@@ -816,11 +816,13 @@ func _我方角色() -> Array[int]:
 
 
 ## 「摸 0~1 张」的可选项：文案取技能表「按钮3 / 按钮4」（不摸牌 / 摸 1 张牌），
-## 不允许只写数字（选项禁止纯数字，见技能维护约定）
+## 不允许只写数字（选项禁止纯数字，见技能维护约定）。
+## 注意：这里走的是 ask_skill 的 options，客户端读的是 `label`（不是 arg_choices 的 `text`），
+## 键写错会退回显示选项值（0 / 1）。
 func _摸牌选项(技能号: int) -> Array:
 	return [
-		{"value": 0, "text": GConst.按钮原文(技能号, 2)},
-		{"value": 1, "text": GConst.按钮原文(技能号, 3)},
+		{"value": 0, "label": GConst.按钮原文(技能号, 2)},
+		{"value": 1, "label": GConst.按钮原文(技能号, 3)},
 	]
 
 

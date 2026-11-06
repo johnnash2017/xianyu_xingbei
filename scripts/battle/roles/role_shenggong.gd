@@ -544,8 +544,8 @@ func p_after_special(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id or not sheng_huang_exit_pending:
 		return SUCCESS
 	var 选项: Array = [
-		{"text": GConst.按钮原文(SHENG_HUANG_MO_SHI, 2), "args": [1]},
-		{"text": GConst.按钮原文(SHENG_HUANG_MO_SHI, 3), "args": [2]},
+		{"value": 1, "label": GConst.按钮原文(SHENG_HUANG_MO_SHI, 2)},
+		{"value": 2, "label": GConst.按钮原文(SHENG_HUANG_MO_SHI, 3)},
 	]
 	if not engine.has_reply():
 		询问(player.id, SHENG_HUANG_MO_SHI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false)

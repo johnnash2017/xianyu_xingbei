@@ -283,8 +283,10 @@ func p_zhou_fu_ask(ctx: Dictionary) -> int:
 				continue
 			步.魑魅选择:
 				if not engine.has_reply():
-					_问选项(player.id, CHI_MEI_WANG_LIANG, [ZHOU_FU_HUO_LI, ZHOU_FU_DONG_TIAN],
-						"【魑魅魍魉】：选择视为发动哪一个咒符")
+					_问选项(player.id, CHI_MEI_WANG_LIANG, [
+						{"value": ZHOU_FU_HUO_LI, "label": GConst.按钮原文(CHI_MEI_WANG_LIANG, 0)},
+						{"value": ZHOU_FU_DONG_TIAN, "label": GConst.按钮原文(CHI_MEI_WANG_LIANG, 1)},
+					], "【魑魅魍魉】：选择视为发动哪一个咒符")
 					return WAIT
 				var r6: Dictionary = take_skill_reply_full()
 				var args6: Array = r6.get("args", [])
