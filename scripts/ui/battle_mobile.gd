@@ -5127,6 +5127,12 @@ func _on_card_clicked(card_id: int) -> void:
 		if _need_cards > 0 and _sel_cards.size() >= _need_cards:
 			_sel_cards.clear()
 		_sel_cards.append(card_id)
+	# 「目标数随选牌数、没有固定最少目标」型（星坠女巫【星环】：X 张牌 → X-1 名角色）：
+	# 牌数一变就重算目标上限；多选的目标收回，少选时由 _目标数合法 把「确定」挡住
+	if _mode == 4 and _skill_target_max_from_cards > 0 and _skill_need_target <= 0:
+		_need_players = maxi(0, _sel_cards.size() - _skill_target_max_from_cards)
+		while _sel_players.size() > _need_players:
+			_sel_players.pop_back()
 	# 攒应战里选【圣光】＝抵挡，不需要反击目标：把已点的目标清掉，别让它一直亮着
 	if _攒应战选应战 and _选中是圣光():
 		_sel_players.clear()
@@ -10383,6 +10389,10 @@ func _目标数合法() -> bool:
 	var 随牌阈值: int = _目标随牌阈值()
 	if 随牌阈值 > 0:
 		return _sel_players.size() == (1 if _sel_cards.size() >= 随牌阈值 else 0)
+	# 「目标数＝已选牌数 - 减数」且没有固定最少目标的（星坠女巫【星环】：X 张牌 → X-1 名角色）：
+	# 目标数必须**正好**对上（X=1 时是 0 名），不能多选也不能少选
+	if _skill_target_max_from_cards > 0 and _skill_need_target <= 0:
+		return _sel_players.size() == maxi(0, _sel_cards.size() - _skill_target_max_from_cards)
 	if _skill_need_target <= 0:
 		return _sel_players.is_empty()
 	if _sel_players.size() < _skill_need_target:
@@ -10581,6 +10591,12 @@ func _可选_发动技能(player_id: int) -> bool:
 	# 「目标需法术牌」型（如【沉沦协奏曲】）：弃的牌里还没挑到法术牌时谁都不亮、点不动
 	if _目标需法术牌() and not _已选牌含法术():
 		return false
+	# 「目标数随选牌数、没有固定最少目标」型（星坠女巫【星环】）：至少要选到「减数 + 1」张牌
+	# 才会出现第 1 名目标；牌不够时谁都不亮
+	if _skill_target_max_from_cards > 0 and _skill_need_target <= 0:
+		if _sel_cards.size() <= _skill_target_max_from_cards:
+			return false
+		return _可选_按选项与白名单(player_id)
 	if _skill_need_target <= 0 and _skill_target_max <= 0:
 		return false
 	return _可选_按选项与白名单(player_id)

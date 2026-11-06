@@ -6,7 +6,8 @@ extends BattleRole
 ##
 ## 口径：
 ## 1. 【命定之理】手牌上限 = 基础值 + (1 - 律法数)：律法数每次变化后重算。
-## 2. 【星环】一次提交：二级技能栏选总张数 X → 同一步选 X 张地系牌 + X-1 名其他角色。
+## 2. 【星环】X 由玩家实际选的地系牌张数决定（目标数 = X-1，X=1 时 0 名），
+##    结算按目标逐个进行：先 +1 治疗、再【强制】摸 1 张（等摸牌完整结算完），最后轮到自己，收尾 +1 法术行动。
 ## 3. 【星刻】在攻击 / 法术行动结束时，从牌库顶取 1 张面朝下放进盖牌区（tag="卢恩"）。
 ##    add_cover 自己会让出执行权先跑 p_cover_change，这里不能 return URGENT（会重入再加一张）。
 ## 4. 【群星启示】两种模式都走它自己的技能按钮（二级技能栏选 1/2）：
@@ -45,10 +46,14 @@ const 步_繁星队友: int = 6
 const 步_黄金律交换: int = 7
 const 步_创刻摸牌: int = 8
 const 步_创刻卢恩: int = 9
+const 步_星环结算: int = 10
 
 var _步: int = 0
 ## 【星环】是回合限定：本回合发动过就置位，自己回合开始时清回 false
 var _星环已用: bool = false
+## 【星环】逐个结算的目标队列（先 X-1 名其他角色，最后是自己）与当前下标
+var _星环队列: Array[int] = []
+var _星环下标: int = 0
 ## 群星启示②：本次要逐条询问的律法效果、当前问到第几个
 var _律法队列: Array[Dictionary] = []
 var _律法下标: int = 0
@@ -71,6 +76,8 @@ func _重算手牌上限() -> void:
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		_星环已用 = false
+		_星环队列.clear()
+		_星环下标 = 0
 		_重算手牌上限()
 	return SUCCESS
 
@@ -82,16 +89,20 @@ func available_skills() -> Array:
 	var 地系: Array[int] = _地系手牌()
 	var 其他: Array[int] = _其他角色()
 	var 卢恩: Array[int] = _卢恩()
-	var 星环选项: Array = []
-	if not _星环已用 and not 地系.is_empty():
-		# 总张数 X 上限：地系手牌张数，且 X-1 名其他角色必须点得出来
-		var 上限: int = mini(地系.size(), 其他.size() + 1)
-		for x: int in range(1, 上限 + 1):
-			星环选项.append({
-				"value": x, "text": GConst.按钮原文(XING_HUAN, 0) % x, "args": [x],
-				"need_card": x, "need_target": x - 1,
-				"targets": (其他 if x > 1 else []),
-			})
+	# 【星环】的 X 由玩家实际选了几张地系牌决定：可选的牌数上限 = 地系张数，
+	# 可选的目标数随牌数现算（X-1），服务端在 v_magic_skill 里按同一口径复核
+	var 星环技能: Dictionary = {
+		"type": GConst.ActionType.MagicSkill,
+		"id": XING_HUAN,
+		"need_card": 1,
+		"card_max": maxi(1, mini(地系.size(), 其他.size() + 1)),
+		"cards": 地系,
+		"need_target": 0,
+		"target_max_from_cards": 1,
+		"enabled": not _星环已用 and not 地系.is_empty(),
+	}
+	if not 其他.is_empty():
+		星环技能["targets"] = 其他
 	# 两个模式是固定分支：条件不满足也照样下发，用 enabled 置灰（约定 #1）
 	var 模式1可用: bool = not player.hand_cards.is_empty() and player.can_add_cover_cards(1) \
 		and not _未拥有律法().is_empty()
@@ -108,12 +119,7 @@ func available_skills() -> Array:
 		},
 	]
 	return [
-		{
-			"type": GConst.ActionType.MagicSkill,
-			"id": XING_HUAN,
-			"arg_choices": 星环选项,
-			"enabled": not 星环选项.is_empty(),
-		},
+		星环技能,
 		{
 			# 群星启示是「启动」：必须是 SpecialSkill（见 v_special_skill / p_special_skill）
 			"type": GConst.ActionType.SpecialSkill,
@@ -170,12 +176,11 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	match int(action.get("action_id", 0)):
 		XING_HUAN:
-			# 总张数 X ＝ 选中的地系牌张数；目标数必须正好 X-1
-			var args: Array = action.get("args", [])
-			var x: int = int(args[0]) if not args.is_empty() else 0
+			# 总张数 X ＝ 选中的地系牌张数；目标数必须正好 X-1（X=1 时 0 名）
 			var cards: Array = action.get("card_ids", [])
 			var dsts: Array = action.get("dst_ids", [])
-			if x < 1 or cards.size() != x:
+			var x: int = cards.size()
+			if x < 1:
 				return GConst.GE_INVALID_CARDID
 			if dsts.size() != x - 1:
 				return GConst.GE_INVALID_ARGUMENT
@@ -220,7 +225,8 @@ func p_magic_skill(action: Dictionary) -> int:
 
 
 ## 4002 星环：弃 X 张地系牌【展示】 → 指定 X-1 名其他角色与你各 +1 治疗、各摸 1 张【强制】，
-## 你 +1【法术行动】。X 与目标在同一次行动里提交，服务端一次校验、一次结算。
+## 你 +1【法术行动】。X 由选牌张数决定（目标是 X-1 名）；结算按目标逐个进行：
+## 先加治疗、再摸牌（等这次摸牌完整结算完），才轮到下一个目标。
 func _p_星环(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
@@ -231,15 +237,32 @@ func _p_星环(action: Dictionary) -> int:
 	engine.take_from_hand(player.id, cards, true)
 	engine.to_discard(cards, {"owner": player.id, "source": "hand", "cause": XING_HUAN})
 	engine._log_discard(player.id, cards, true)
-	施加治疗(player.id, 1)
+	_星环队列.clear()
 	for d: Variant in dsts:
-		var pid: int = int(d)
+		_星环队列.append(int(d))
+	# 最后才轮到自己（原文「…与你各 +1 治疗并各摸 1 张牌」）
+	_星环队列.append(player.id)
+	_星环下标 = 0
+	_步 = 步_星环结算
+	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
+	return URGENT
+
+
+## 星环的逐个结算：一个目标「先治疗 → 再摸 1 张」，摸完（含超限结算）由续跑钩子回来处理下一个
+func _星环结算() -> int:
+	if _星环下标 < _星环队列.size():
+		var pid: int = _星环队列[_星环下标]
+		_星环下标 += 1
 		施加治疗(pid, 1)
-		engine.push_强制摸牌(pid, 1, XING_HUAN)
-	engine.push_强制摸牌(player.id, 1, XING_HUAN)
+		engine.push_强制摸牌(pid, 1, XING_HUAN, "p_xing_zhui_ask",
+			{"player": player.id, "星环续": true})
+		return URGENT
+	_步 = 0
+	_星环队列.clear()
+	_星环下标 = 0
 	player.add_action(GConst.ActionType.Magic, XING_HUAN, true, true)
 	engine._broadcast_game()
-	return URGENT
+	return SUCCESS
 
 
 ## 4004 群星启示：按二级技能栏选定的模式进入各自的子流程
@@ -298,6 +321,9 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	# 摸牌 / 不爆牌这类「状态结算完再继续」的续跑点：标记只消费一次，之后按 _步 走
+	if bool(ctx.get("星环续", false)):
+		ctx["星环续"] = false
+		return _星环结算()
 	if bool(ctx.get("启示摸完", false)):
 		ctx["启示摸完"] = false
 		return _黄金律()
@@ -327,6 +353,8 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			return _创刻选摸牌()
 		步_创刻卢恩:
 			return _创刻选卢恩()
+		步_星环结算:
+			return _星环结算()
 	return SUCCESS
 
 

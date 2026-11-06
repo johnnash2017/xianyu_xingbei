@@ -1222,7 +1222,7 @@ func _检星坠女巫() -> void:
 	角色.p_before_turn_begin({"player": 1})
 	检(玩家.hand_cards_max == GConst.HAND_CARDS_MAX + 1 - 玩家.律法数(),
 		"手牌上限应随律法数变化")
-	# 【星环】：总张数 X 与「X 张地系牌 + X-1 名其他角色」一次提交，选项必须带齐按钮文案与需求
+	# 【星环】：X 由选牌张数决定（不再下发 X 选项），目标数按 X-1 现算（X=1 时 0 名）
 	玩家.hand_cards.clear()
 	var 地牌: int = _找牌("地", "attack")
 	检(地牌 > 0, "卡表里应有地系攻击牌")
@@ -1232,13 +1232,11 @@ func _检星坠女巫() -> void:
 	for 项2: Dictionary in 技能表:
 		if int(项2.get("id", 0)) == 4002:
 			星环项 = 项2
-	var 星环选项: Array = 星环项.get("arg_choices", [])
-	var 首项参数: Array = 星环选项[0].get("args", []) if not 星环选项.is_empty() else []
-	检(not 星环选项.is_empty() and not str(星环选项[0].get("text", "")).is_empty()
-		and int(星环选项[0].get("need_card", 0)) == 1
-		and not 首项参数.is_empty() and int(首项参数[0]) == 1,
-		"【星环】选项要带 text / need_card / args（总张数 X）")
-	检(GConst.按钮原文(4002, 0).contains("%d"), "【星环】X 选项文案要从技能表按钮列取（带 %d）")
+	检(int(星环项.get("need_card", 0)) == 1 and int(星环项.get("card_max", 0)) == 1
+		and int(星环项.get("need_target", -1)) == 0
+		and int(星环项.get("target_max_from_cards", 0)) == 1
+		and (星环项.get("arg_choices", []) as Array).is_empty(),
+		"【星环】X 应由选牌张数决定，目标数随 X-1 现算（不下发 X 选项）")
 	检(int(GConst.律法技能.get(1, 0)) == 4006 and int(GConst.律法技能.get(2, 0)) == 4007
 		and int(GConst.律法技能.get(3, 0)) == 4008,
 		"【律法】状态图标要能查到对应的技能行（悬停显示技能说明）")
