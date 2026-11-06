@@ -4657,23 +4657,25 @@ func _圣光爆裂群体说明(x: int, 手牌数: int) -> String:
 
 
 ## 圣光爆裂群体分支的第二层选项：X=1..3，决定移除多少治疗；
-## 每项按 X 收紧弃牌数（X 张）和目标数（最多 X 名），不足 X 治疗的置灰。
+## 每项按 X 收紧弃牌数（X 张）与目标数：有可选对手时必须选满 min(X, 合法对手数)，
+## 合法对手不足 X 时多出来的名额就是溢出（代价照付）。
 func _圣光爆裂第二层选项(治疗: int) -> Array:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	var 手牌数: int = 我.hand_cards_num if 我 != null else 0
 	var 选项: Array = []
 	for x: int in range(1, 4):
 		var 群体目标: Array = _圣光爆裂群体目标(x)
+		var 需: int = mini(x, 群体目标.size())
 		选项.append({
 			"text": GConst.按钮原文(_pending_skill_id, 2) % [x, x, x],
 			"args": [2, x],
 			"need_card": x,
-			"need_target": 1,
-			"target_max": x,
+			"need_target": 需,
+			"target_max": 需,
 			"targets": 群体目标,
 			# 只要还有 1 名符合手牌条件的目标就能选这档；不要求凑满 X 名，
-			# 也不要求所有对手都符合条件。
-			"enabled": 治疗 >= x and 群体目标.size() >= 1,
+			# 也不要求所有对手都符合条件
+			"enabled": 治疗 >= x and 需 >= 1,
 			"说明": _圣光爆裂群体说明(x, 手牌数),
 		})
 	return 选项

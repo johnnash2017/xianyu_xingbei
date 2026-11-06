@@ -25,14 +25,23 @@ func available_skills() -> Array:
 		"card_max": player.hand_count(), "card_rule": GConst.选牌规则_互异系,
 		"enabled": player.gem > 0 and _max_different_elements() >= 2})
 	# 圣洁法典要弃 X 张两两异系的牌（v_magic_skill：cards.size() >= 3 且全异系）：
-	# 最少 3 张，最多只能选到手牌里不同元素的种数；目标数上限 = 弃牌数 - 2（服务端 cards.size()-2）。
-	# 上限随弃牌数变化，故用 target_max_from_cards 告诉客户端（取消一张牌后上限要跟着降），
-	# target_max 仍给「按当前手牌算出来的」最大值，仅供界面显示用
-	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_JIE_FA_DIAN, "need_card": 3, "need_target": 1,
+	# 最少 3 张，最多只能选到手牌里不同元素的种数；目标数 = min(弃牌数 - 2, 场上角色数)，
+	# 有可选目标时必须选满（客户端 target_max_from_cards 现算、服务端 v_magic_skill 同口径复核）
+	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_JIE_FA_DIAN, "need_card": 3, "need_target": 0,
 		"target_max": maxi(1, _max_different_elements() - 2),
 		"target_max_from_cards": 2,
+		"targets": _全体角色id(),
 		"card_max": _max_different_elements(), "card_rule": GConst.选牌规则_互异系,
 		"enabled": player.gem > 0 and _max_different_elements() >= 3})
+	return out
+
+
+## 场上所有角色（含自己）：圣洁法典的「X-2 名角色」可以是任意角色
+func _全体角色id() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		if engine.p(pid) != null:
+			out.append(pid)
 	return out
 
 
@@ -143,10 +152,16 @@ func v_magic_skill(action: Dictionary) -> int:
 		var dsts: Array = action.get("dst_ids", [])
 		if _element_kind(cards) != ElementKind.AllDifferent or player.gem == 0:
 			return GConst.GE_INVALID_ACTION
-		if cards.size() < 3 or cards.size() - 2 < dsts.size():
+		if cards.size() < 3:
+			return GConst.GE_INVALID_ACTION
+		# 目标数 = min(X-2, 场上角色数)：有可选目标必须选满，X 超过角色数时多出来的就是溢出
+		if dsts.size() != mini(cards.size() - 2, _全体角色id().size()):
 			return GConst.GE_INVALID_ACTION
 		if _has_duplicate(dsts):
 			return GConst.GE_INVALID_ACTION
+		for d: Variant in dsts:
+			if engine.p(int(d)) == null:
+				return GConst.GE_INVALID_PLAYERID
 		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 

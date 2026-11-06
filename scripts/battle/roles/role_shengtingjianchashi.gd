@@ -48,16 +48,20 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 # ============================================================
 func available_skills() -> Array:
 	var 裁决: int = player.token_num(CAI_SLOT)
-	# 神圣鞭策：选 X 的选项直接带「需目标 = X」——选中档位后点 X 名目标、一次确定就提交；
+	# 神圣鞭策：选 X 的选项直接带「需目标 = min(X, 场上角色数)」——有可选目标时必须选满，
+	# X 超过角色数时多出来的名额就是溢出（裁决照扣、牌照弃）；
 	# 要弃的牌也在同一次里选（需牌 / 最多牌 = min(X, 手牌数)，手牌为 0 时不用选牌）
 	var 手牌数: int = player.hand_cards.size()
+	var 角色数: int = _全体角色().size()
 	var 鞭策选项: Array = []
 	for i: int in range(1, 裁决 + 1):
 		var 需弃: int = mini(i, 手牌数)
+		var 需目标: int = mini(i, 角色数)
 		鞭策选项.append({
 			"text": GConst.按钮原文(SHEN_SHENG_BIAN_CE, 0, {"n": i}),
 			"args": [i],
-			"need_target": i,
+			"need_target": 需目标,
+			"target_max": 需目标,
 			"need_card": 需弃,
 			"card_max": 需弃,
 		})
@@ -120,14 +124,16 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if player.token_num(CAI_SLOT) < 1 or player.get_energy() < 1:
 		return GConst.GE_INVALID_ACTION
-	# 选项带 X（args[0]）：同一次里要选出正好 X 名目标，以及要弃的 min(X, 手牌数) 张牌。
-	# 手牌为 0 也能发动（那就一张都不用弃）
+	# 选项带 X（args[0]）：同一次里要选出 min(X, 场上角色数) 名目标（必须选满，目标不够才算溢出），
+	# 以及要弃的 min(X, 手牌数) 张牌。手牌为 0 也能发动（那就一张都不用弃）
 	var args: Array = action.get("args", [])
 	var x: int = int(args[0]) if not args.is_empty() else 0
 	if x < 1 or x > player.token_num(CAI_SLOT):
 		return GConst.GE_INVALID_ACTION
 	var 目标: Array = action.get("dst_ids", [])
-	if 目标.size() != x:
+	if 目标.size() != mini(x, _全体角色().size()):
+		return GConst.GE_INVALID_ACTION
+	if _has_duplicate(目标):
 		return GConst.GE_INVALID_ACTION
 	for pid: Variant in 目标:
 		if engine.p(int(pid)) == null:

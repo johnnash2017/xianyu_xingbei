@@ -671,7 +671,7 @@ func v_magic_skill(action: Dictionary) -> int:
 				for c: Variant in cards:
 					if not player.has_hand_card(int(c)):
 						return GConst.GE_INVALID_CARDID
-				if dsts.is_empty() or dsts.size() > x or _has_duplicate(dsts):
+				if dsts.size() != mini(x, _sheng_guang_mode2_targets(x).size()) or _has_duplicate(dsts):
 					return GConst.GE_INVALID_ACTION
 				var 手牌上限: int = player.hand_cards.size() - x
 				if 手牌上限 < 0:
