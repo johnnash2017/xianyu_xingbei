@@ -14,7 +14,7 @@ extends BattleRole
 ##    add_cover 自己会让出执行权先跑 p_cover_change，这里不能 return URGENT（会重入再加一张）。
 ## 4. 【群星启示】两种模式都走它自己的技能按钮（二级技能栏选 1/2）：
 ##    ① 1 张手牌作【卢恩】+ 选 1 个未拥有的【律法】+ 摸 0~1 张；
-##    ② 直接选 X 个【卢恩】→ 逐个询问当前拥有的、条件成立的律法是否发动 → 最后移除 1 个【律法】。
+##    ② 直接选 X 个【卢恩】→ 逐个询问当前拥有的、条件成立的律法是否发动 → 由玩家选择移除 1 个【律法】。
 ## 5. 【黄金律】群星启示结算完、手牌 < 2 时强制摸 1 张；之后可将 1 张手牌与 1 个【卢恩】交换。
 ## 6. 【繁星】/【影月】/【蚀日】判定都用「本次移除的那 X 个卢恩」的牌面，且只发动**自己拥有**的律法：
 ##    繁星＝4 个不同系别 或 4 个不同命格；影月＝成对的同系 / 同命格数；蚀日＝每 3 个同系 / 同命格。
@@ -49,6 +49,7 @@ const 步_黄金律交换: int = 7
 const 步_创刻摸牌: int = 8
 const 步_创刻卢恩: int = 9
 const 步_星环结算: int = 10
+const 步_律法移除: int = 11
 
 var _步: int = 0
 ## 【星环】是回合限定：本回合发动过就置位，自己回合开始时清回 false
@@ -357,6 +358,8 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			return _创刻选卢恩()
 		步_星环结算:
 			return _星环结算()
+		步_律法移除:
+			return _律法移除()
 	return SUCCESS
 
 
@@ -611,15 +614,57 @@ func _影月治疗() -> int:
 	return URGENT
 
 
-## 律法全部问完：移除 1 个律法，然后走黄金律
+## 律法全部问完：由玩家选择移除 1 个律法，然后走黄金律
 func _律法收尾() -> int:
-	_步 = 0
 	_律法队列.clear()
 	_律法下标 = 0
-	if player.律法数() > 0:
-		player.移除律法()
+	if player.律法数() <= 0:
+		_步 = 0
+		return _黄金律()
+	_步 = 步_律法移除
+	return _律法移除()
+
+
+## 移除哪个律法由玩家选：只列当前拥有的（没拥有的移除不了），文案与悬停同选律法
+func _移除律法选项() -> Array:
+	var 选项: Array = []
+	for 法号: int in 律法表:
+		if not player.有律法(法号):
+			continue
+		选项.append({
+			"value": 法号,
+			"label": GConst.按钮原文(QUN_XING_QI_SHI, 4 + 法号 - 1),
+			"技能组": [int(GConst.律法技能.get(法号, 0))],
+		})
+	return 选项
+
+
+## 群星启示②：发动完律法后，移除 1 个【律法】—— 问玩家移除哪一个
+func _律法移除() -> int:
+	var 选项: Array = _移除律法选项()
+	if 选项.is_empty():
+		_步 = 0
+		return _黄金律()
+	if not engine.has_reply():
+		# 不带额外提示文案：提示条全程用【群星启示】自身的技能说明
+		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false,
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var 号: int = int(args[0]) if not args.is_empty() else -1
+	if not player.有律法(号):
+		if not bool(r.get("is_timeout", false)):
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return _律法移除()
+		# 超时兜底：移除选项里的第一个（最保守）
+		号 = int(选项[0].get("value", -1))
+	if player.有律法(号):
+		player.移除律法(号)
 		_重算手牌上限()
 		engine._broadcast_game()
+	_步 = 0
 	return _黄金律()
 
 
