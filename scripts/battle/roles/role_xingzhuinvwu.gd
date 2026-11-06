@@ -48,6 +48,7 @@ const 步_星环结算: int = 10
 const 步_律法移除: int = 11
 const 步_律法选发动: int = 12
 const 步_律法效果: int = 13
+const 步_黄金律问: int = 14
 
 var _步: int = 0
 ## 【星环】是回合限定：本回合发动过就置位，自己回合开始时清回 false
@@ -61,6 +62,8 @@ var _律法下标: int = 0
 ## 群星启示②：本次移除的卢恩判定结果（法号 → {技能号, 效果[]}）与已发动过的律法
 var _律法结果: Dictionary = {}
 var _已发动律法: Array[int] = []
+## 黄金律交换：第一步已选的手牌（-1＝还没选，下一步选【卢恩】）
+var _黄金律已选牌: int = -1
 
 
 # ============================================================
@@ -380,6 +383,8 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			return _律法效果()
 		步_律法选发动:
 			return _律法选发动面板()
+		步_黄金律问:
+			return _黄金律问()
 		步_黄金律交换:
 			return _黄金律交换()
 		步_创刻摸牌:
@@ -770,57 +775,87 @@ func _律法移除() -> int:
 
 
 # ============================================================
-# 4005 黄金律：群星启示结算完、手牌 < 2 → 强制摸 1 张，并可将 1 张手牌与 1 个【卢恩】交换
+# 4005 黄金律：群星启示结算完、手牌 < 2 → 先问是否发动，确认才摸 1 张；
+# 摸完可把 1 张手牌与 1 个【卢恩】交换（没有【卢恩】就不选；选牌过程中不能取消）
 # ============================================================
 func _黄金律() -> int:
 	if player.hand_cards.size() >= 2:
 		return SUCCESS
+	_黄金律已选牌 = -1
+	_步 = 步_黄金律问
+	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
+	return URGENT
+
+
+func _黄金律问() -> int:
+	if not engine.has_reply():
+		# 不带额外提示文案：提示条用技能说明
+		询问(player.id, HUANG_JIN_LV, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var 发动: bool = args.size() > 0 and int(args[0]) == 1
+	if not 发动:
+		_步 = 0
+		return SUCCESS
 	notice_skill(HUANG_JIN_LV, [player.id])
+	_步 = 0
 	engine.push_强制摸牌(player.id, 1, HUANG_JIN_LV, "p_xing_zhui_ask",
 		{"player": player.id, "黄金律摸完": true})
 	return URGENT
 
 
+## 摸完后的交换：先选 1 张手牌，再选 1 个【卢恩】；两次都不能取消。
+## 没有【卢恩】/ 没有手牌时直接跳过（没法换）。
 func _黄金律交换() -> int:
 	var 卢恩: Array[int] = _卢恩()
 	if player.hand_cards.is_empty() or 卢恩.is_empty():
+		_黄金律已选牌 = -1
 		_步 = 0
 		return SUCCESS
 	if not engine.has_reply():
-		# 1 张手牌 + 1 个【卢恩】，一次选完提交；取消＝不交换
 		_步 = 步_黄金律交换
-		询问(player.id, HUANG_JIN_LV, 2, 0, GConst.CardSource.HandOrCover, [], 2, "", [],
-			true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1)
+		if _黄金律已选牌 < 0:
+			询问(player.id, HUANG_JIN_LV, 1, 0, GConst.CardSource.Hand, [], 0, "", [], false)
+		else:
+			询问(player.id, HUANG_JIN_LV, 1, 0, GConst.CardSource.Cover, [], 0, "",
+				_牌面表(卢恩), false)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var 提交: Array = r.get("card_ids", [])
-	if 提交.is_empty() or bool(r.get("is_timeout", false)):
-		# 空提交＝取消，不交换
-		_步 = 0
-		return SUCCESS
-	var 手: int = -1
-	var 盖: int = -1
-	for c: Variant in 提交:
-		var cid: int = int(c)
-		if 手 < 0 and player.有手牌(cid):
-			手 = cid
-			continue
-		if 盖 < 0 and _是卢恩(cid):
-			盖 = cid
-	if 手 < 0 or 盖 < 0:
-		engine.send(player.id, GConst.Msg.ErrorInput,
-			{"error_type": GConst.CmdType.Respond, "commands": []})
-		return _黄金律交换()
-	var 手实例: int = player.取出实例(player.hand_cards, 手)
-	var 盖实例: int = player.盖牌实例(盖)
+	var 选: int = int(提交[0]) if not 提交.is_empty() else -1
+	if _黄金律已选牌 < 0:
+		# 第一步：手牌
+		if 选 < 0 or not player.有手牌(选):
+			# 不能取消：超时兜底拿第一张手牌；仍没有就跳过
+			if not player.hand_cards.is_empty():
+				_黄金律已选牌 = int(player.hand_cards[0])
+			else:
+				_步 = 0
+				return SUCCESS
+		else:
+			_黄金律已选牌 = 选
+		_步 = 步_黄金律交换
+		return URGENT
+	# 第二步：卢恩
+	if 选 < 0 or not _是卢恩(选):
+		# 不能取消：超时兜底拿第一个【卢恩】；仍没有就跳过
+		var 卢恩们: Array[int] = _卢恩()
+		if 卢恩们.is_empty():
+			_黄金律已选牌 = -1
+			_步 = 0
+			return SUCCESS
+		选 = int(卢恩们[0])
+	var 手实例: int = player.取出实例(player.hand_cards, _黄金律已选牌)
+	var 盖实例: int = player.盖牌实例(选)
+	_黄金律已选牌 = -1
+	_步 = 0
 	if 手实例 < 0 or 盖实例 < 0:
 		engine.报错("【黄金律】交换的牌已不在原区域", player.id)
-		_步 = 0
 		return SUCCESS
 	engine.remove_cover(player.id, [盖实例], player.id, HUANG_JIN_LV)
 	player.add_hand_cards([盖实例])
 	engine.add_cover(player.id, [手实例], player.id, HUANG_JIN_LV, false, LU_EN标记)
-	_步 = 0
 	engine._broadcast_game()
 	return SUCCESS
 
