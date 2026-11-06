@@ -3460,19 +3460,14 @@ func _显示技能说明(按钮: 技能按钮) -> void:
 			if not 技能组.is_empty() and _说明提示 != null:
 				var 说明: String = ""
 				for 技能号: Variant in 技能组:
+					# 律法选项：直接复用状态图标的悬停内容（大图 → 「律法：名字」→ 技能说明）
+					var 法号: int = _律法号由技能(int(技能号))
+					if 法号 > 0:
+						_显示律法选项悬停(法号, int(技能号), 按钮, 视觉矩形)
+						return
 					var 单条: String = 角色技能提示.单个技能(int(技能号), 0, GConst.角色_噬神者)
 					if 单条.is_empty():
 						continue
-					# 律法选项（选律法 / 移除律法 / 发动律法）：悬停和状态图标一致，
-					# 显示律法图标 + 名字 + 对应技能说明，而不是只有技能说明
-					var 法号: int = _律法号由技能(int(技能号))
-					if 法号 > 0:
-						var 图标: String = str(GConst.律法图标.get(法号, ""))
-						var 名: String = str(GConst.律法名.get(法号, "律法"))
-						var 头: String = "律法：%s" % 名
-						if not 图标.is_empty():
-							头 = "[img=32x32]%s[/img] %s" % [图标, 头]
-						单条 = "%s\n%s" % [头, 单条]
 					if not 说明.is_empty():
 						说明 += "\n\n"
 					说明 += 单条
@@ -4541,6 +4536,24 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 ## 这些分支都是按技能号 / 本地步骤写死的（清单见计划文档 §4.3）——
 ## 收成一处，是为了让 _选中二级选项 的主流程只剩「记参数 → 应用需求 → 复检」。
 # ---------------- 群星启示②：律法 + 卢恩下级界面 ----------------
+## 律法选项悬停：和状态图标完全同一套内容（放大图标 → 「律法：名字」→ 技能说明）
+func _显示律法选项悬停(法号: int, 技能号: int, 按钮: 技能按钮, 矩形: Rect2) -> void:
+	var 名: String = str(GConst.律法名.get(法号, "律法"))
+	var 图标: TextureRect = TextureRect.new()
+	var 路径: String = str(GConst.律法图标.get(法号, ""))
+	if not 路径.is_empty() and ResourceLoader.exists(路径):
+		图标.texture = load(路径) as Texture2D
+	var 内容: Control = _造被动状态内容(图标, "律法：%s" % 名, 技能号)
+	_悬停角色面板 = null
+	_悬停状态图标 = false
+	_悬停技能按钮 = 按钮
+	if 内容 != null:
+		_说明提示.显示内容(内容, 矩形)
+		return
+	var 说明: String = 角色技能提示.单个技能(技能号, 0, GConst.角色_噬神者)
+	_说明提示.显示("律法：%s\n%s" % [名, 说明], 矩形, 技能说明宽度, 技能说明字号)
+
+
 ## 技能号 → 律法号（不是律法技能返回 -1）；选项悬停用来补「图标 + 律法名」
 func _律法号由技能(技能号: int) -> int:
 	for 号: Variant in GConst.律法技能.keys():
