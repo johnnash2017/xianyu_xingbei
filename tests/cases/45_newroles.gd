@@ -1298,14 +1298,30 @@ func _检星坠女巫() -> void:
 		"【群星启示】移除律法时只能从自己拥有的律法里选：%s" % str(移除律法选项))
 	检(角色.v_magic_skill({"action_id": 4004, "src_id": 1}) == GConst.GE_INVALID_ACTION,
 		"【群星启示】不应有法术技能入口")
-	# 星刻：攻击行动结束时牌库顶 1 张面朝下作为【卢恩】
+	# 星刻：攻击行动结束时先问是否发动，确认后才从牌库顶放 1 张【卢恩】
 	检(玩家.can_add_cover_cards(1), "星坠女巫应有盖牌槽（卢恩）")
 	var 牌数前: int = 引擎.deck.pile.size()
-	var 星刻返回: int = 角色.p_action_end({"player": 1, "kind": "attack"})
+	引擎._has_reply = false
+	引擎._reply = {}
+	var 星刻ctx: Dictionary = {"player": 1, "kind": "attack"}
+	var 星刻返回: int = 角色.p_action_end(星刻ctx)
+	检(星刻返回 == BattleRole.WAIT, "【星刻】不应自动发动，要先询问是否放置【卢恩】")
+	引擎._reply = {"respond_id": 4003, "src_id": 1, "args": [1], "card_ids": [], "dst_ids": []}
+	引擎._has_reply = true
+	引擎._await_state = 引擎._当前状态
+	星刻返回 = 角色.p_action_end(星刻ctx)
 	检(星刻返回 == BattleRole.SUCCESS, "【星刻】放完【卢恩】要 return SUCCESS（URGENT 会重入、一次放满）")
 	检(玩家.盖牌按标记("卢恩").size() == 1, "【星刻】应放下 1 个【卢恩】")
 	检(引擎.deck.pile.size() == 牌数前 - 1, "【星刻】应从牌库顶取 1 张")
 	检(玩家.公开盖牌牌面().is_empty(), "【卢恩】应面朝下（不公开牌面）")
+	# 取消＝不发动：问完不放卢恩
+	var 拒绝ctx: Dictionary = {"player": 1, "kind": "magic"}
+	检(角色.p_action_end(拒绝ctx) == BattleRole.WAIT, "【星刻】法术行动结束也要先问")
+	引擎._reply = {"respond_id": 4003, "src_id": 1, "args": [0], "card_ids": [], "dst_ids": []}
+	引擎._has_reply = true
+	引擎._await_state = 引擎._当前状态
+	角色.p_action_end(拒绝ctx)
+	检(玩家.盖牌按标记("卢恩").size() == 1, "【星刻】取消时不应放【卢恩】")
 
 
 # ============================================================

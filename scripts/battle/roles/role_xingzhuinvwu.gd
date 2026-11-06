@@ -10,7 +10,7 @@ extends BattleRole
 ##    有可选目标时必须选满 min(X-1, 场上角色数)；X-1 超过场上角色数时多出来的名额就"溢出"，
 ##    代价照付、不补目标。
 ##    结算按目标逐个进行：先 +1 治疗、再【强制】摸 1 张（等摸牌完整结算完），最后轮到自己，收尾 +1 法术行动。
-## 3. 【星刻】在攻击 / 法术行动结束时，从牌库顶取 1 张面朝下放进盖牌区（tag="卢恩"）。
+## 3. 【星刻】在攻击 / 法术行动结束时先询问是否发动：确认后从牌库顶取 1 张面朝下放进盖牌区（tag="卢恩"）。
 ##    add_cover 自己会让出执行权先跑 p_cover_change，这里不能 return URGENT（会重入再加一张）。
 ## 4. 【群星启示】两种模式都走它自己的技能按钮（二级技能栏选 1/2）：
 ##    ① 1 张手牌作【卢恩】+ 选 1 个未拥有的【律法】+ 摸 0~1 张；
@@ -305,7 +305,20 @@ func p_action_end(ctx: Dictionary) -> int:
 	var 种类: String = str(ctx.get("kind", ""))
 	if 种类 != "attack" and 种类 != "magic":
 		return SUCCESS
-	if not player.can_add_cover_cards(1):
+	# 同一次行动结束只问一次（问完 / 放弃后重入不再问）
+	if bool(ctx.get("星刻已处理", false)):
+		return SUCCESS
+	if not player.can_add_cover_cards(1) or engine.deck.pile.is_empty():
+		ctx["星刻已处理"] = true
+		return SUCCESS
+	if not engine.has_reply():
+		# 不自动发动：先问是否放置【卢恩】；取消＝不发动
+		询问(player.id, XING_KE, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	ctx["星刻已处理"] = true
+	var args: Array = r.get("args", [])
+	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
 	var 顶: Array[int] = engine.移除牌库顶(1)
 	if 顶.is_empty():
