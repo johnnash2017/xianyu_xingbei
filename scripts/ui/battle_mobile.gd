@@ -3060,6 +3060,101 @@ func _换选项后重校验() -> void:
 	_更新按键()
 
 
+## 「换了一个东西」之后的收尾：牌 / 目标按新上下文复检，再刷新界面。
+## 四条切换路（二级栏选项 / 额外行动 / 行动结束响应的额外攻击 / 换技能）**都从这里走**，
+## 差异全部集中在这一个 match 里 —— 以前是四份代码散在四个函数尾部，改一处容易漏另外三处。
+##
+## 差异表（要改哪一路的规则，只改它那一支）：
+##   来源            牌怎么筛                                      目标                     额外做的事
+##   二级栏选项      已在调用点由 _换选项后重校验 跑过             —                       刷二级栏提示文案
+##   额外行动        技能规则 + 这份行动白名单 + 放行种类         按 _玩家可选 复检        按钮可用性按新放行/系别重算
+##   额外攻击响应    只留 1 张攻击牌，且要在新白名单里            **整片清空**             指令提示 + 响应按钮选中态
+##   换技能          —（调用点已经 _筛出当前技能可留的牌）         —                       无
+enum 切换来源 { 二级栏选项, 额外行动, 额外攻击响应, 换技能 }
+
+
+func _切换收尾(来源: int, 上下文: Dictionary = {}) -> void:
+	match 来源:
+		切换来源.二级栏选项:
+			# 牌的复检在 _换选项后重校验 里（它还要处理治疗分配），这里只补提示与刷新
+			_刷新二级栏提示()
+			_刷新交互()
+		切换来源.额外行动:
+			var uid: int = int(上下文.get("uid", 0))
+			var 放行: int = int(上下文.get("放行", 0))
+			# 旧选择先按新行动的规矩复检（白名单 / 放行种类都已换成新的）：
+			# 技能已准备（mode 4）先过技能自己的选牌规则，再叠一层「这份行动放不放行」；其余按普通出牌判。
+			var 留牌: Array[int] = []
+			if _mode == 4:
+				var 行动牌白: Array = _额外手牌白名单_选择
+				for cid: Variant in _筛出当前技能可留的牌(_sel_cards):
+					# mode 4 时 _可主动使用牌 只判「放行种类」，这里补上这份行动自己的出牌白名单
+					# （白名单是牌面，选中的是实例号，比较前先折回牌面）
+					if not 行动牌白.is_empty() and not 行动牌白.has(GConst.牌号(int(cid))):
+						continue
+					if _可主动使用牌(int(cid)):
+						留牌.append(int(cid))
+			else:
+				for cid: Variant in _sel_cards:
+					if _可主动使用牌(int(cid)):
+						留牌.append(int(cid))
+			_sel_cards = 留牌
+			var 留目标: Array[int] = []
+			for pid: Variant in _sel_players:
+				if _玩家可选(int(pid)):
+					留目标.append(int(pid))
+			_sel_players = 留目标
+			# 技能按钮的可用性也跟着换：切到只放行法术的行动后，攻击技能要置灰（反之亦然），
+			# 否则界面亮着、点下去被服务端按新行动的种类驳回。
+			# 另外还要看系别：会改系别的技能（3805 精灵的剑舞＝风系）切到「要求火系/暗系」的行动后要置灰，
+			# 否则点了必被服务端按系别驳回（服务端只按切换前那份行动算过一次 enabled）。
+			var 选中系别: int = 0
+			for 项: Dictionary in _额外攻击切换项:
+				if int(项.get("uid", 0)) == uid:
+					选中系别 = int(项.get("element", 0))
+					break
+			for 钮: Node in _技能按钮:
+				if not (钮 is 技能按钮) or not 钮.has_meta(元数据_行动技能类型):
+					continue
+				var 类: int = int(钮.get_meta(元数据_行动技能类型))
+				var 固定系: int = int(钮.get_meta(元数据_行动技能系别)) if 钮.has_meta(元数据_行动技能系别) else 0
+				var 可用: bool = _按钮可用核心(bool(钮.get_meta(元数据_行动服务端可用)), 类, 固定系, 放行, 选中系别)
+				(钮 as 技能按钮).设置选项可用(可用)
+			for 项: Dictionary in _额外攻击切换项:
+				var b: Variant = 项.get("按钮")
+				if is_instance_valid(b):
+					(b as 技能按钮).设置选中(int(项.get("uid", 0)) == uid)
+			_刷新交互()
+		切换来源.额外攻击响应:
+			var uid2: int = int(上下文.get("uid", 0))
+			# 已经选好的攻击牌如果仍在新白名单里就保留，避免玩家先选牌再点额外攻击按钮时把牌清掉；
+			# 但响应里的额外攻击永远只对应一张攻击牌，不能把之前多选的牌一起保留。
+			var 保留牌: Array[int] = []
+			for cid: int in _sel_cards:
+				var card: GCard = Data.get_card(cid)
+				if card != null and card.is_attack() \
+						and (_额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(GConst.牌号(cid))):
+					保留牌.append(cid)
+					break
+			_sel_cards = 保留牌
+			_sel_players.clear()
+			# 响应技能选项保留可见，但取消它的选中（改由这次额外攻击接管）
+			_二级选中 = -1
+			_已选参数.clear()
+			for 项: Dictionary in _二级选项:
+				var 技能钮: Variant = 项.get("按钮")
+				if is_instance_valid(技能钮):
+					(技能钮 as 技能按钮).设置选中(false)
+			for 项: Dictionary in _额外攻击响应按钮:
+				var b: Variant = 项.get("按钮")
+				if is_instance_valid(b):
+					(b as 技能按钮).设置选中(int(项.get("uid", 0)) == uid2)
+			_指令提示(_额外行动获得提示(int(上下文.get("cause", 0))))
+			_刷新交互()
+		切换来源.换技能:
+			_刷新交互()
+
+
 ## 行动选项（额外行动）的按钮红底：攻击 / 法术 / 特殊、以及「两类都行」都用同一个红，
 ## 和普通技能 / 参数选项的杂色区分开 —— 玩家一眼就能认出「这是要消耗 / 获得的额外行动」。
 const 额外行动按钮色: Color = Color("c0392b")
@@ -3200,28 +3295,8 @@ func _选中额外攻击响应(_技能号: int, uid: int, cause: int, 牌白: Ar
 	_额外攻击响应_目标白 = 目标白.duplicate()
 	# 已经选好的攻击牌如果仍在新白名单里就保留，避免玩家先选牌再点额外攻击按钮时把牌清掉；
 	# 但响应里的额外攻击永远只对应一张攻击牌，不能把之前多选的牌一起保留。
-	var 保留牌: Array[int] = []
-	for cid: int in _sel_cards:
-		var card: GCard = Data.get_card(cid)
-		if card != null and card.is_attack() \
-				and (_额外攻击响应_牌白.is_empty() or _额外攻击响应_牌白.has(GConst.牌号(cid))):
-			保留牌.append(cid)
-			break
-	_sel_cards = 保留牌
-	_sel_players.clear()
-	# 响应技能选项保留可见，但取消它的选中（改由这次额外攻击接管）
-	_二级选中 = -1
-	_已选参数.clear()
-	for 项: Dictionary in _二级选项:
-		var 技能钮: Variant = 项.get("按钮")
-		if is_instance_valid(技能钮):
-			(技能钮 as 技能按钮).设置选中(false)
-	for 项: Dictionary in _额外攻击响应按钮:
-		var b: Variant = 项.get("按钮")
-		if is_instance_valid(b):
-			(b as 技能按钮).设置选中(int(项.get("uid", 0)) == uid)
-	_指令提示(_额外行动获得提示(cause))
-	_刷新交互()
+	# 复检 + 刷新统一走 _切换收尾（差异见那里的表）
+	_切换收尾(切换来源.额外攻击响应, {"uid": uid, "cause": cause})
 
 
 func _清除额外攻击响应选择() -> void:
@@ -3870,49 +3945,10 @@ func _本地选择额外攻击(_技能号: int, uid: int, _cause: int, 牌白: A
 	# 新行动仍放行这个技能时一律保留（已选的牌 / 目标原样不动）。
 	if _mode == 4 and _pending_skill_id > 0 and not GConst.放行动作(_pending_skill_type, 放行):
 		_取消失效的当前技能()
-	# 旧选择先按新行动的规矩复检（白名单 / 放行种类都已换成新的）：
+	# 旧选择按新行动的规矩复检（白名单 / 放行种类都已换成新的）：
 	# 技能已准备（mode 4）先过技能自己的选牌规则，再叠一层「这份行动放不放行」；其余按普通出牌判。
-	var 留牌: Array[int] = []
-	if _mode == 4:
-		var 行动牌白: Array = _额外手牌白名单_选择
-		for cid: Variant in _筛出当前技能可留的牌(_sel_cards):
-			# mode 4 时 _可主动使用牌 只判「放行种类」，这里补上这份行动自己的出牌白名单
-			# （白名单是牌面，选中的是实例号，比较前先折回牌面）
-			if not 行动牌白.is_empty() and not 行动牌白.has(GConst.牌号(int(cid))):
-				continue
-			if _可主动使用牌(int(cid)):
-				留牌.append(int(cid))
-	else:
-		for cid: Variant in _sel_cards:
-			if _可主动使用牌(int(cid)):
-				留牌.append(int(cid))
-	_sel_cards = 留牌
-	var 留目标: Array[int] = []
-	for pid: Variant in _sel_players:
-		if _玩家可选(int(pid)):
-			留目标.append(int(pid))
-	_sel_players = 留目标
-	# 技能按钮的可用性也跟着换：切到只放行法术的行动后，攻击技能要置灰（反之亦然），
-	# 否则界面亮着、点下去被服务端按新行动的种类驳回。
-	# 另外还要看系别：会改系别的技能（3805 精灵的剑舞＝风系）切到「要求火系/暗系」的行动后要置灰，
-	# 否则点了必被服务端按系别驳回（服务端只按切换前那份行动算过一次 enabled）。
-	var 选中系别: int = 0
-	for 项: Dictionary in _额外攻击切换项:
-		if int(项.get("uid", 0)) == uid:
-			选中系别 = int(项.get("element", 0))
-			break
-	for 钮: Node in _技能按钮:
-		if not (钮 is 技能按钮) or not 钮.has_meta(元数据_行动技能类型):
-			continue
-		var 类: int = int(钮.get_meta(元数据_行动技能类型))
-		var 固定系: int = int(钮.get_meta(元数据_行动技能系别)) if 钮.has_meta(元数据_行动技能系别) else 0
-		var 可用: bool = _按钮可用核心(bool(钮.get_meta(元数据_行动服务端可用)), 类, 固定系, 放行, 选中系别)
-		(钮 as 技能按钮).设置选项可用(可用)
-	for 项: Dictionary in _额外攻击切换项:
-		var b: Variant = 项.get("按钮")
-		if is_instance_valid(b):
-			(b as 技能按钮).设置选中(int(项.get("uid", 0)) == uid)
-	_刷新交互()
+	# 复检 + 刷新统一走 _切换收尾（差异见那里的表）
+	_切换收尾(切换来源.额外行动, {"uid": uid, "放行": 放行})
 
 
 ## 切换额外行动时，把「已经点开、但在新行动下不能发动」的技能整手取消：
@@ -4456,8 +4492,7 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 	# （服务端也不会造成伤害；头像高亮跟着收掉）
 	if _是技能询问 and _skill_ask_id == 恩典神授技能号 and not _恩典选展示():
 		_sel_players.clear()
-	_刷新二级栏提示()
-	_刷新交互()
+	_切换收尾(切换来源.二级栏选项)
 
 
 ## 点中某个选项的「立刻要做的事」：进第二层、直接提交、切换应战方式……
@@ -7546,7 +7581,7 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		_指令提示("发动【%s】%s" % [
 			GConst.skill_name(技能号), ("：" + 提示段) if not 提示段.is_empty() else "",
 		])
-	_刷新交互()
+	_切换收尾(切换来源.换技能)
 
 
 ## 技能按钮自带的选牌提示（action_commands 里的 card_prompt，如【充能】的「弃到 4 张牌，」）：
