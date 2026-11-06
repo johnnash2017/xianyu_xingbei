@@ -555,8 +555,9 @@ func _律法选发动面板() -> int:
 			engine.send(player.id, GConst.Msg.ErrorInput,
 				{"error_type": GConst.CmdType.Respond, "commands": []})
 			return _律法选发动面板()
-		# 超时兜底：发动第一个还可发动的律法
-		法号 = 剩余[0]
+		# 超时兜底：不再发动剩余律法，直接进「移除律法」（避免替玩家白嫖效果）
+		_步 = 步_律法移除
+		return _律法移除()
 	_已发动律法.append(法号)
 	_载入律法效果(法号)
 	_步 = 步_律法效果
