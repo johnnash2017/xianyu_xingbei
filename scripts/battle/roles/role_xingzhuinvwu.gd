@@ -41,9 +41,6 @@ const 律法表: Array[int] = [律法_繁星, 律法_影月, 律法_蚀日]
 ## 当前步骤（0＝空闲）；子流程统一由 p_xing_zhui_ask 接管
 const 步_启示选律法: int = 1
 const 步_启示摸牌: int = 2
-const 步_影月伤害: int = 4
-const 步_影月治疗: int = 5
-const 步_繁星队友: int = 6
 const 步_黄金律交换: int = 7
 const 步_创刻摸牌: int = 8
 const 步_创刻卢恩: int = 9
@@ -185,10 +182,12 @@ func v_special_skill(action: Dictionary) -> int:
 				已见.append(cid)
 			var 结果: Dictionary = _判定律法(cards)
 			if 法号 == 0:
-				if not 结果.is_empty():
-					return GConst.GE_INVALID_ACTION
+				# 不发动：只有一条可用效果都没有时才允许
+				for 号: int in 律法表:
+					if _结果律法可用(结果, 号):
+						return GConst.GE_INVALID_ACTION
 			else:
-				if not player.有律法(法号) or not 结果.has(法号):
+				if not player.有律法(法号) or not _结果律法可用(结果, 法号):
 					return GConst.GE_INVALID_ACTION
 		_:
 			return GConst.GE_INVALID_ACTION
@@ -382,12 +381,6 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			return _律法效果()
 		步_律法选发动:
 			return _律法选发动面板()
-		步_影月伤害:
-			return _影月伤害()
-		步_影月治疗:
-			return _影月治疗()
-		步_繁星队友:
-			return _繁星队友()
 		步_黄金律交换:
 			return _黄金律交换()
 		步_创刻摸牌:
@@ -502,11 +495,11 @@ func _载入律法效果(法号: int) -> void:
 	_律法下标 = 0
 
 
-## 本次移除的卢恩还能发动哪些律法（没发动过的）
+## 本次移除的卢恩还能发动哪些律法（没发动过、且至少一条效果条件成立）
 func _剩余可发动() -> Array[int]:
 	var out: Array[int] = []
 	for 号: int in 律法表:
-		if _律法结果.has(号) and not _已发动律法.has(号):
+		if not _已发动律法.has(号) and _律法有可用效果(号):
 			out.append(号)
 	return out
 
@@ -564,53 +557,122 @@ func _律法选发动面板() -> int:
 	return URGENT
 
 
-## 当前律法的效果逐条结算（不再问「是否发动」）
+## 当前律法的一条效果：先问「是否发动」（条件不满足只能取消），确认后结算；
+## 需要目标的效果在同一次询问里让玩家自己选，不再自动挑目标。
 func _律法效果() -> int:
 	if _律法下标 >= _律法队列.size():
 		return _律法效果完成()
 	var 律: Dictionary = _律法队列[_律法下标]
-	match str(律["种类"]):
-		"繁星":
+	var 种类: String = str(律["种类"])
+	var 可用: bool = bool(律.get("可用", false))
+	if 种类 == "繁星队友" and ally_ids().is_empty():
+		可用 = false
+	if not engine.has_reply():
+		var 需目标: int = 0
+		var 目标: Array[int] = []
+		var 预览基准: int = 0
+		var 预览类型: int = 0
+		if 种类 == "繁星队友":
+			需目标 = 1
+			目标 = ally_ids()
+		elif 种类 == "影月伤害":
+			需目标 = 1
+			目标 = _全体角色()
+		elif 种类 == "影月治疗":
+			需目标 = 1
+			目标 = _我方角色()
+			预览基准 = int(律.get("值", 0))
+			预览类型 = GConst.预览类型_治疗
+		_问律法效果(律, 需目标, 目标, 预览基准, 预览类型, 可用)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	# 条件不满足：即使硬提交也当作不发动
+	if not 可用:
+		_律法下标 += 1
+		_步 = 步_律法效果
+		return URGENT
+	var dsts: Array = r.get("dst_ids", [])
+	var args: Array = r.get("args", [])
+	var 发动: bool = (not dsts.is_empty()) or (args.size() > 0 and int(args[0]) == 1)
+	if not 发动:
+		_律法下标 += 1
+		_步 = 步_律法效果
+		return URGENT
+	var 超时: bool = bool(r.get("is_timeout", false))
+	match 种类:
+		"繁星AOE":
 			notice_skill(FAN_XING, enemy_ids())
 			for pid: int in enemy_ids():
 				engine.push_harm({
 					"src": player.id, "dst": pid, "point": 1,
 					"cause": FAN_XING, "type": GConst.HarmType.Magic,
 				})
-			if bool(律["双"]) and not ally_ids().is_empty():
-				_步 = 步_繁星队友
-				return URGENT
-			_律法下标 += 1
-			_步 = 步_律法效果
-			return URGENT
+		"繁星队友":
+			var 友id: int = int(dsts[0]) if not dsts.is_empty() else -1
+			if not ally_ids().has(友id):
+				if not 超时:
+					engine.send(player.id, GConst.Msg.ErrorInput,
+						{"error_type": GConst.CmdType.Respond, "commands": []})
+					return _律法效果()
+				# 超时：放弃这条效果
+			else:
+				var 友: BattlePlayer = engine.p(友id)
+				if 友 != null:
+					友.set_gem(友.gem + 1)
+				notice_skill(FAN_XING, [友id])
+				engine._broadcast_game()
 		"影月伤害":
-			_步 = 步_影月伤害
-			return URGENT
+			var 目标id: int = int(dsts[0]) if not dsts.is_empty() else -1
+			if not _全体角色().has(目标id):
+				if not 超时:
+					engine.send(player.id, GConst.Msg.ErrorInput,
+						{"error_type": GConst.CmdType.Respond, "commands": []})
+					return _律法效果()
+				# 超时：放弃这条效果
+			else:
+				notice_skill(YING_YUE, [目标id])
+				engine.push_harm({
+					"src": player.id, "dst": 目标id, "point": int(律["值"]),
+					"cause": YING_YUE, "type": GConst.HarmType.Magic,
+				})
 		"影月治疗":
-			_步 = 步_影月治疗
-			return URGENT
+			var 点数: int = int(律["值"])
+			var 合计: int = 0
+			var 合法: bool = not dsts.is_empty() and dsts.size() <= 2 and dsts.size() == args.size()
+			var 已见: Array = []
+			for i: int in range(dsts.size()):
+				var pid2: int = int(dsts[i])
+				var 点: int = int(args[i]) if i < args.size() else 0
+				if not _我方角色().has(pid2) or 已见.has(pid2) or 点 <= 0:
+					合法 = false
+				已见.append(pid2)
+				合计 += 点
+			if not 合法 or 合计 != 点数:
+				if not 超时:
+					engine.send(player.id, GConst.Msg.ErrorInput,
+						{"error_type": GConst.CmdType.Respond, "commands": []})
+					return _律法效果()
+				# 超时：放弃这条效果，不替玩家选目标
+			else:
+				notice_skill(YING_YUE, dsts)
+				for i: int in range(dsts.size()):
+					施加治疗(int(dsts[i]), int(args[i]))
 		"蚀日自身":
 			notice_skill(SHI_RI, [player.id])
 			player.set_gem(player.gem + int(律["值"]))
 			engine._broadcast_game()
-			_律法下标 += 1
-			_步 = 步_律法效果
-			return URGENT
 		"蚀日队伍":
 			notice_skill(SHI_RI, [player.id])
 			engine.set_team_gem(player.color, engine.team_gem[player.color] + int(律["值"]))
 			engine._broadcast_game()
-			_律法下标 += 1
-			_步 = 步_律法效果
-			return URGENT
 		_:
-			engine.报错("【群星启示】未知的律法效果：%s" % str(律["种类"]), player.id)
-			_律法下标 += 1
-			_步 = 步_律法效果
-			return URGENT
+			engine.报错("【群星启示】未知的律法效果：%s" % 种类, player.id)
+	_律法下标 += 1
+	_步 = 步_律法效果
+	return URGENT
 
 
-## 一颗律法的效果结算完：回面板继续选（没有可发动的时面板只剩「不发动」，点了才进移除律法）
+## 一颗律法的两条效果都问完：回面板继续选（没有可发动的时面板只剩「不发动」，点了才进移除律法）
 func _律法效果完成() -> int:
 	_律法队列.clear()
 	_律法下标 = 0
@@ -618,114 +680,26 @@ func _律法效果完成() -> int:
 	return _律法选发动面板()
 
 
-## 繁星双条件：给 1 名队友 +1 宝石（只有 1 名队友时直接给，多于 1 名才问）
-func _繁星队友() -> int:
-	var 队: Array[int] = ally_ids()
-	if 队.size() == 1:
-		var 友: BattlePlayer = engine.p(队[0])
-		if 友 != null:
-			友.set_gem(友.gem + 1)
-		engine._broadcast_game()
-		_律法下标 += 1
-		_步 = 步_律法效果
-		return URGENT
-	if not engine.has_reply():
-		询问(player.id, FAN_XING, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-			0, -1, 队, -1, {}, 0, 0, false, [], true, -1, 0)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var dsts: Array = r.get("dst_ids", [])
-	var 目标: int = int(dsts[0]) if not dsts.is_empty() else -1
-	if not 队.has(目标):
-		if not bool(r.get("is_timeout", false)):
-			engine.send(player.id, GConst.Msg.ErrorInput,
-				{"error_type": GConst.CmdType.Respond, "commands": []})
-			return _繁星队友()
-		目标 = 队[0]
-	var 友2: BattlePlayer = engine.p(目标)
-	if 友2 != null:
-		友2.set_gem(友2.gem + 1)
-	engine._broadcast_game()
-	_律法下标 += 1
-	_步 = 步_律法效果
-	return URGENT
+## 一条律法效果的询问：提示用该条效果自己的文案；目标在同一次里选；条件不满足时确定置灰
+func _问律法效果(律: Dictionary, 需目标: int, 目标: Array[int],
+		预览基准: int, 预览类型: int, 可用: bool) -> void:
+	var 技能号: int = int(律.get("技能号", 0))
+	# 影月的治疗分配走 40071 的子询问配置（分配界面），提示仍用 4007 的效果文案
+	if str(律["种类"]) == "影月治疗":
+		技能号 = 影月治疗询问
+	询问(player.id, 技能号, 0, 需目标, GConst.CardSource.Hand, [], 0, "", [], true,
+		0, -1, 目标, -1, {}, 预览基准, 预览类型, false, [], true, -1, 0,
+		_效果提示(律), -1, "", [], [], 可用)
 
 
-## 影月·同系：对 1 名角色造成 X 点法术伤害（目标角色＝场上任意一名，含自己）
-func _影月伤害() -> int:
-	var 律: Dictionary = _律法队列[_律法下标]
-	var 点数: int = int(律["值"])
-	if not engine.has_reply():
-		询问(player.id, YING_YUE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-			0, -1, _全体角色(), -1, {}, 点数, GConst.HarmType.Magic,
-			false, [], true, -1, 0, GConst.提示原文(YING_YUE, 1) % 点数)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var dsts: Array = r.get("dst_ids", [])
-	var 目标: int = int(dsts[0]) if not dsts.is_empty() else -1
-	if engine.p(目标) == null:
-		if not bool(r.get("is_timeout", false)):
-			engine.send(player.id, GConst.Msg.ErrorInput,
-				{"error_type": GConst.CmdType.Respond, "commands": []})
-			return _影月伤害()
-		# 超时：从场上现挑一名合法目标（不含已经倒下的座位）
-		for pid: int in _全体角色():
-			目标 = pid
-			break
-	if engine.p(目标) == null:
-		engine.报错("【影月】没有可指定的目标", player.id)
-		_律法下标 += 1
-		_步 = 步_律法效果
-		return URGENT
-	notice_skill(YING_YUE, [目标])
-	_律法下标 += 1
-	_步 = 步_律法效果
-	engine.push_harm({
-		"src": player.id, "dst": 目标, "point": 点数,
-		"cause": YING_YUE, "type": GConst.HarmType.Magic,
-	})
-	return URGENT
-
-
-## 影月·同命格：把 X 点治疗任意分给 1~2 名我方（客户端按治疗分配界面点人，点数随回复上传）
-func _影月治疗() -> int:
-	var 律: Dictionary = _律法队列[_律法下标]
-	var 点数: int = int(律["值"])
-	if not engine.has_reply():
-		# need_target=1 是客户端「头像可点」的开关（分配型询问沿用同一套目标点亮），
-		# 实际分给 1~2 人、每人几点由治疗分配界面决定，服务端按 args 逐人复核
-		询问(player.id, 影月治疗询问, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-			0, -1, _我方角色(), -1, {}, 点数, GConst.预览类型_治疗)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var dsts: Array = r.get("dst_ids", [])
-	var args: Array = r.get("args", [])
-	var 合计: int = 0
-	var 合法: bool = not dsts.is_empty() and dsts.size() <= 2 and dsts.size() == args.size()
-	var 已见: Array = []
-	for i: int in range(dsts.size()):
-		var pid: int = int(dsts[i])
-		var 点: int = int(args[i]) if i < args.size() else 0
-		if not _我方角色().has(pid) or 已见.has(pid) or 点 <= 0:
-			合法 = false
-		已见.append(pid)
-		合计 += 点
-	if not 合法 or 合计 != 点数:
-		if not bool(r.get("is_timeout", false)):
-			engine.send(player.id, GConst.Msg.ErrorInput,
-				{"error_type": GConst.CmdType.Respond, "commands": []})
-			return _影月治疗()
-		# 超时兜底：X 点全给第一个我方角色（最保守，不替玩家挑第二个人）
-		var 队: Array[int] = _我方角色()
-		if not 队.is_empty():
-			施加治疗(队[0], 点数)
-	else:
-		notice_skill(YING_YUE, dsts)
-		for i: int in range(dsts.size()):
-			施加治疗(int(dsts[i]), int(args[i]))
-	_律法下标 += 1
-	_步 = 步_律法效果
-	return URGENT
+## 该条效果自己的提示文案（技能表「提示」列；%d 用本效果的点数填）
+func _效果提示(律: Dictionary) -> String:
+	var 技能号: int = int(律.get("技能号", 0))
+	var 序号: int = int(律.get("提示序号", 0))
+	var 文: String = GConst.提示原文(技能号, 序号)
+	if not 文.is_empty() and 律.has("值") and 文.contains("%d"):
+		文 = 文 % int(律["值"])
+	return 文
 
 
 ## 律法发动选项文案：文本表「通用_发动律法」填【律法：X】；表没加载到就按同句式兜底
@@ -931,26 +905,47 @@ func _判定律法(牌表: Array) -> Dictionary:
 	var 四系: bool = 系计数.size() >= 4
 	var 四命: bool = 命计数.size() >= 4
 	var out: Dictionary = {}
-	if player.有律法(律法_繁星) and (四系 or 四命):
+	if player.有律法(律法_繁星):
 		out[律法_繁星] = {
 			"技能号": FAN_XING,
-			"效果": [{"种类": "繁星", "双": 四系 and 四命}],
+			"效果": [
+				{"种类": "繁星AOE", "技能号": FAN_XING, "提示序号": 0, "可用": 四系 or 四命},
+				{"种类": "繁星队友", "技能号": FAN_XING, "提示序号": 1, "可用": 四系 and 四命},
+			],
 		}
-	if player.有律法(律法_影月) and (系对 > 1 or 命对 > 1):
-		var 效果: Array = []
-		if 系对 > 1:
-			效果.append({"种类": "影月伤害", "值": 系对})
-		if 命对 > 1:
-			效果.append({"种类": "影月治疗", "值": 命对})
-		out[律法_影月] = {"技能号": YING_YUE, "效果": 效果}
-	if player.有律法(律法_蚀日) and (系三 > 0 or 命三 > 0):
-		var 效果3: Array = []
-		if 系三 > 0:
-			效果3.append({"种类": "蚀日自身", "值": 系三})
-		if 命三 > 0:
-			效果3.append({"种类": "蚀日队伍", "值": 命三})
-		out[律法_蚀日] = {"技能号": SHI_RI, "效果": 效果3}
+	if player.有律法(律法_影月):
+		out[律法_影月] = {
+			"技能号": YING_YUE,
+			"效果": [
+				{"种类": "影月伤害", "技能号": YING_YUE, "提示序号": 0, "值": 系对, "可用": 系对 > 1},
+				{"种类": "影月治疗", "技能号": YING_YUE, "提示序号": 1, "值": 命对, "可用": 命对 > 1},
+			],
+		}
+	if player.有律法(律法_蚀日):
+		out[律法_蚀日] = {
+			"技能号": SHI_RI,
+			"效果": [
+				{"种类": "蚀日自身", "技能号": SHI_RI, "提示序号": 0, "值": 系三, "可用": 系三 > 0},
+				{"种类": "蚀日队伍", "技能号": SHI_RI, "提示序号": 1, "值": 命三, "可用": 命三 > 0},
+			],
+		}
 	return out
+
+
+## 判定结果里这颗律法有没有「条件成立」的效果（v_* 校验用，不依赖当前 _律法结果）
+func _结果律法可用(结果: Dictionary, 法号: int) -> bool:
+	if not 结果.has(法号):
+		return false
+	var 效果表: Array = 结果[法号]["效果"]
+	for 效果: Variant in 效果表:
+		if bool((效果 as Dictionary).get("可用", false)):
+			return true
+	return false
+
+
+## 一颗律法里还有没有「条件成立」的效果（面板选项是否点亮看它）
+func _律法有可用效果(法号: int) -> bool:
+	return _结果律法可用(_律法结果, 法号)
 
 
 # ============================================================
