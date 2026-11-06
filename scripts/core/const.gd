@@ -1278,6 +1278,8 @@ const 律法图标: Dictionary = {
 	2: "res://assets/textures/icon/yingYue.png",
 	3: "res://assets/textures/icon/shiRi.png",
 }
+## 【律法】对应的技能行：状态图标悬停时按这条技能显示完整说明（同魔刃/异刃的状态提示）
+const 律法技能: Dictionary = {1: 4006, 2: 4007, 3: 4008}
 
 ## 额外行动的指令条提示：键 = 该额外行动的 cause（发起它的技能号）。
 ## 服务端在行动询问里下发 is_extra / extra_cause，客户端据此写成「获得额外……行动：限制」。

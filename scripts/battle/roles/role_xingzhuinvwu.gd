@@ -88,7 +88,7 @@ func available_skills() -> Array:
 		var 上限: int = mini(地系.size(), 其他.size() + 1)
 		for x: int in range(1, 上限 + 1):
 			星环选项.append({
-				"value": x, "text": str(x), "args": [x],
+				"value": x, "text": GConst.按钮原文(XING_HUAN, 0) % x, "args": [x],
 				"need_card": x, "need_target": x - 1,
 				"targets": (其他 if x > 1 else []),
 			})

@@ -1238,6 +1238,10 @@ func _检星坠女巫() -> void:
 		and int(星环选项[0].get("need_card", 0)) == 1
 		and not 首项参数.is_empty() and int(首项参数[0]) == 1,
 		"【星环】选项要带 text / need_card / args（总张数 X）")
+	检(GConst.按钮原文(4002, 0).contains("%d"), "【星环】X 选项文案要从技能表按钮列取（带 %d）")
+	检(int(GConst.律法技能.get(1, 0)) == 4006 and int(GConst.律法技能.get(2, 0)) == 4007
+		and int(GConst.律法技能.get(3, 0)) == 4008,
+		"【律法】状态图标要能查到对应的技能行（悬停显示技能说明）")
 	# 【群星启示】是启动技：必须作为 SpecialSkill 下发，且不能有法术技能入口
 	var 启示项: Dictionary = {}
 	for 项: Dictionary in 技能表:

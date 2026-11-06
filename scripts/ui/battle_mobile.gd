@@ -1166,12 +1166,16 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 		var 场卡项: Dictionary = 场卡状态项(str(表.get("id", "")), 表)
 		if not 场卡项.is_empty():
 			额外状态.append(场卡项)
-	# 【律法】（星坠女巫）：放在角色面前的标记，状态区显示名字
+	# 【律法】（星坠女巫）：放在角色面前的标记，状态区显示名字；
+	# 悬停按对应的技能行（繁星/影月/蚀日）显示完整说明，口径同魔刃/异刃的状态提示
 	for 号: int in p.laws:
+		var 律法技能号: int = int(GConst.律法技能.get(号, 0))
 		额外状态.append({
 			"name": str(GConst.律法名.get(号, "律法")),
 			"icon": str(GConst.律法图标.get(号, "")),
+			"tip": "律法：%s" % str(GConst.律法名.get(号, "律法")),
 			"desc": "律法：%s（由【群星启示】放置 / 移除）" % str(GConst.律法名.get(号, "律法")),
+			"被动技能": 律法技能号,
 		})
 	# 面朝上的盖牌（结界师【结界】等）：牌面公开，按卡面图标显示在状态区
 	for cid: int in p.cover_opens:
