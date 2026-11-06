@@ -728,13 +728,18 @@ func _影月治疗() -> int:
 	return URGENT
 
 
-## 律法发动选项文案：文本表「通用_发动律法」填【律法：X】
+## 律法发动选项文案：文本表「通用_发动律法」填【律法：X】；表没加载到就按同句式兜底
 func _发动律法文案(法号: int) -> String:
-	return GConst.文本("通用_发动律法") % GConst.律法名[法号]
+	var 名: String = str(GConst.律法名.get(法号, ""))
+	var 模板: String = GConst.文本("通用_发动律法", false)
+	if 模板.contains("%s"):
+		return 模板.replace("%s", 名)
+	return "发动【律法：%s】" % 名
 
 
 func _不发动文案() -> String:
-	return GConst.文本("通用_不发动")
+	var 文: String = GConst.文本("通用_不发动", false)
+	return 文 if not 文.is_empty() and 文 != "通用_不发动" else "不发动"
 
 
 ## 移除哪个律法由玩家选：只列当前拥有的（没拥有的移除不了），文案与悬停同选律法

@@ -4541,13 +4541,19 @@ func _群星启示要开下级(序号: int) -> bool:
 	return 参数.size() == 1 and int(参数[0]) == 2
 
 
-## 「发动【律法：X】」文案：文本表「通用_发动律法」
+## 「发动【律法：X】」文案：文本表「通用_发动律法」。
+## 表没加载到 / 模板被改坏时按同一句式兜底，绝不能把空串交给按钮（否则整颗律法按钮没名字）。
 func _群星发动文案(法号: int) -> String:
-	return GConst.文本("通用_发动律法") % GConst.律法名[法号]
+	var 名: String = str(GConst.律法名.get(法号, ""))
+	var 模板: String = GConst.文本("通用_发动律法", false)
+	if 模板.contains("%s"):
+		return 模板.replace("%s", 名)
+	return "发动【律法：%s】" % 名
 
 
 func _群星不发动文案() -> String:
-	return GConst.文本("通用_不发动")
+	var 文: String = GConst.文本("通用_不发动", false)
+	return 文 if not 文.is_empty() and 文 != "通用_不发动" else "不发动"
 
 
 ## 下级界面：三颗律法（默认置灰）＋「不发动」（没有律法可发动时才亮）
