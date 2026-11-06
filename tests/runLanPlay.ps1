@@ -100,6 +100,11 @@ for ($k = 0; $k -lt $窗口数; $k++) {
 if ($失败 -eq 0) {
     "联机测试通过（$窗口数 个窗口）"
 } else {
+    # 失败时把日志留档：日志目录每次运行前都会清空，卡在准备室 / 超时这类偶发问题
+    # 不留下现场就没法查（实测偶发过一次「四个窗口全没结论行、全卡在 ReadyRoom」）。
+    $留档 = "$日志`_失败_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+    Copy-Item -Recurse -LiteralPath $日志 -Destination $留档 -ErrorAction SilentlyContinue
+    "日志已留档：$留档"
     "联机测试未通过：$失败 项"
     exit 1
 }

@@ -45,6 +45,9 @@ var _操作无效次数: int = 0
 var _驳回记录: Dictionary = {}
 ## 出现过「同一份提交被驳回 ≥2 次」的条数：>0 视为失败（真的链路问题）
 var _重复驳回: int = 0
+## 出牌 / 应答被驳回的次数（不含技能尝试）：这两类是**照客户端抄的形状**，
+## 被拒就说明不是机器人不会，而是链路不对 —— 一次也算失败
+var _非技能驳回: int = 0
 ## 被服务端驳回过一次的技能号：记下来，下次行动直接跳过，避免反复被拒、也避免卡死
 var _禁用技能: Dictionary = {}
 ## 上一次尝试发动、还没等到结果的技能号（收到错误就把它列入 _禁用技能）
@@ -398,6 +401,11 @@ func _试着用技能(cmd: Dictionary, 允许: int, 禁特殊: bool) -> bool:
 	var 类型: int = int(cmd.get("respond_id", 0))
 	if 类型 != GConst.ActionType.AttackSkill and 类型 != GConst.ActionType.MagicSkill and 类型 != GConst.ActionType.SpecialSkill:
 		return false
+	# 服务端把「现在不能用」的技能也留在命令表里，只把 enabled 置 false（客户端据此置灰、点不动）。
+	# 机器人必须跟着跳过 —— 否则点了就是「操作无效」（实测：格斗家【百式幻龙拳】本回合已发动过启动技能，
+	# 服务端发了 enabled=false 的按钮，机器人照点照被拒）。
+	if not bool(cmd.get("enabled", true)):
+		return false
 	if not GConst.放行动作(类型, 允许):
 		return false
 	if 禁特殊 and 类型 == GConst.ActionType.SpecialSkill:
@@ -658,20 +666,27 @@ func _on_error(err_id: int, msg: String) -> void:
 	_错误.append("%d:%s" % [err_id, msg])
 
 
-## 【操作无效】提示（对应服务端 ErrorInput）：出牌链路回归时会被驳回。
-## 判定口径（别一刀切）：**同一份提交被驳回两次以上**（服务端重问 → 原样再发 → 再被驳回）说明机器人
-## 陷进死循环、链路是真坏的，计为失败；单次被驳回多半是机器人不会构造某个技能的参数（57 个角色，
-## 逐个建模不现实），只记日志、不算失败；驳回总数超过 5 次也按「链路整体不通」失败。
+## 【操作无效】提示（对应服务端 ErrorInput）。判定分三档，别一刀切：
+##   ① 同一份提交被驳回 ≥2 次 → 服务端重问、原样再发 = 死循环，**失败**；
+##   ② 出牌 / 应答被驳回（机器人这两类是照客户端抄的形状）→ **失败**，一次也算；
+##   ③ 技能尝试被驳回 → 57 个角色逐个建模不现实，只记日志；但总数 >5 仍按「链路不通」失败。
 func _on_gossip(txt: String) -> void:
 	if txt.find("操作无效") >= 0:
 		_操作无效次数 += 1
 		_记("驳回 #%d：%s" % [_操作无效次数, str(_上次提交)])
-		# 同一份提交被驳回两次以上 = 机器人陷入了「服务端重问 → 原样再发 → 再被驳回」的死循环，
-		# 这是真的链路问题；只被驳回一次的，多半是机器人不会构造那个技能的参数（见 _结束 的判定）。
+		# 同一份提交被驳回两次以上 = 机器人陷入了「服务端重问 → 原样再发 → 再被驳回」的死循环。
 		var 签名: String = str(_上次提交)
 		_驳回记录[签名] = int(_驳回记录.get(签名, 0)) + 1
 		if int(_驳回记录[签名]) == 2:
 			_重复驳回 += 1
+		# 出牌 / 应答被拒 = 链路问题（这两类的形状是照客户端抄的，不该被拒）；技能尝试不算
+		var 是技能尝试: bool = false
+		if str(_上次提交.get("kind", "")) == "行动":
+			var t: int = int(_上次提交.get("type", 0))
+			是技能尝试 = t == GConst.ActionType.AttackSkill \
+				or t == GConst.ActionType.MagicSkill or t == GConst.ActionType.SpecialSkill
+		if not 是技能尝试:
+			_非技能驳回 += 1
 		_拉黑上次尝试()
 
 
@@ -715,8 +730,10 @@ func _结束(问题: String) -> void:
 		结论 = "失败：出过牌但一次都没真正打出去（无亮牌广播）"
 	elif _重复驳回 > 0:
 		结论 = "失败：有 %d 手被反复驳回（服务端重问后原样再发，机器人死循环）" % _重复驳回
+	elif _非技能驳回 > 0:
+		结论 = "失败：出牌 / 应答被驳回 %d 次（这两类形状是照客户端抄的，被拒就是链路问题）" % _非技能驳回
 	elif _操作无效次数 > 5:
-		结论 = "失败：有 %d 次操作被服务端驳回（链路整体不通）" % _操作无效次数
+		结论 = "失败：被驳回 %d 次（技能尝试也算，说明整条链路都不通）" % _操作无效次数
 	var 行: String = "[联机%d] 结论=%s 房主=%s 座位=%d 界面=%s 出牌=%d 技能=%d 特殊=%d 换牌=%d 亮牌=%d 命中=%d 驳回=%d 错误=%d fps=%d 声音=%s" % [
 		Cfg.slot, 结论, str(Net.hosting), Logic.my_player_id, 界面, _出牌次数, _技能次数, _特殊次数, _换牌次数, _亮牌次数, _命中次数,
 		_操作无效次数, _错误.size(), Engine.get_frames_per_second(), "关" if Audio.是否静音() else "开"]
