@@ -6,7 +6,9 @@ extends BattleRole
 ##
 ## 口径：
 ## 1. 【命定之理】手牌上限 = 基础值 + (1 - 律法数)：律法数每次变化后重算。
-## 2. 【星环】X 由玩家实际选的地系牌张数决定（最多指定 X-1 名角色，含自己，可以少点/不点），
+## 2. 【星环】X 由玩家实际选的地系牌张数决定：目标最多 X-1 名（只能是其他角色）。
+##    有可选目标时必须选满 min(X-1, 其他角色数)；X-1 超过场上其他角色数时多出来的名额就"溢出"，
+##    代价照付、不补目标。
 ##    结算按目标逐个进行：先 +1 治疗、再【强制】摸 1 张（等摸牌完整结算完），最后轮到自己，收尾 +1 法术行动。
 ## 3. 【星刻】在攻击 / 法术行动结束时，从牌库顶取 1 张面朝下放进盖牌区（tag="卢恩"）。
 ##    add_cover 自己会让出执行权先跑 p_cover_change，这里不能 return URGENT（会重入再加一张）。
@@ -89,8 +91,8 @@ func available_skills() -> Array:
 	var 地系: Array[int] = _地系手牌()
 	var 卢恩: Array[int] = _卢恩()
 	# 【星环】的 X 由玩家实际选了几张地系牌决定：可选的牌数上限 = 地系张数，
-	# 可选的目标数随牌数现算（最多 X-1），目标可以是场上任意角色（含自己）；
-	# 服务端在 v_magic_skill 里按同一口径复核
+	# 目标最多 X-1 名（只能是其他角色）；X-1 超过场上其他角色数时多出来的名额就"溢出"，
+	# 有可选目标时必须选满，只有目标不够时才允许少于 X-1。服务端在 v_magic_skill 里按同一口径复核
 	var 星环技能: Dictionary = {
 		"type": GConst.ActionType.MagicSkill,
 		"id": XING_HUAN,
@@ -100,8 +102,10 @@ func available_skills() -> Array:
 		"need_target": 0,
 		"target_max_from_cards": 1,
 		"enabled": not _星环已用 and not 地系.is_empty(),
-		"targets": _全体角色(),
 	}
+	var 其他: Array[int] = _其他角色()
+	if not 其他.is_empty():
+		星环技能["targets"] = 其他
 	# 两个模式是固定分支：条件不满足也照样下发，用 enabled 置灰（约定 #1）
 	var 模式1可用: bool = not player.hand_cards.is_empty() and player.can_add_cover_cards(1) \
 		and not _未拥有律法().is_empty()
@@ -175,13 +179,14 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	match int(action.get("action_id", 0)):
 		XING_HUAN:
-			# 总张数 X ＝ 选中的地系牌张数；最多指定 X-1 名角色（可以少点、甚至不点）
+			# 总张数 X ＝ 选中的地系牌张数；目标最多 X-1 名（只能是其他角色）：
+			# 有可选目标时必须选满 min(X-1, 其他角色数)，只有目标不够时才允许少于 X-1
 			var cards: Array = action.get("card_ids", [])
 			var dsts: Array = action.get("dst_ids", [])
 			var x: int = cards.size()
 			if x < 1:
 				return GConst.GE_INVALID_CARDID
-			if dsts.size() > x - 1:
+			if dsts.size() != mini(x - 1, _其他角色().size()):
 				return GConst.GE_INVALID_ARGUMENT
 			var 已见: Array = []
 			for c: Variant in cards:
@@ -191,7 +196,7 @@ func v_magic_skill(action: Dictionary) -> int:
 					return GConst.GE_INVALID_CARDID
 			for d: Variant in dsts:
 				var pid: int = int(d)
-				if 已见.has(pid) or engine.p(pid) == null:
+				if pid == player.id or 已见.has(pid) or engine.p(pid) == null:
 					return GConst.GE_INVALID_ARGUMENT
 				已见.append(pid)
 			return GConst.GE_SUCCESS
@@ -223,9 +228,9 @@ func p_magic_skill(action: Dictionary) -> int:
 	return EMPTY_HANDLE
 
 
-## 4002 星环：弃 X 张地系牌【展示】 → **最多**指定 X-1 名角色（目标可以是自己，也可以少点/不点），
-## 他们与你各 +1 治疗、各摸 1 张【强制】，你 +1【法术行动】。X 由选牌张数决定；
-## 结算按目标逐个进行：先加治疗、再摸牌（等这次摸牌完整结算完），才轮到下一个目标。
+## 4002 星环：弃 X 张地系牌【展示】 → 指定 min(X-1, 场上其他角色数) 名其他角色（有可选目标时必须选满；
+## X-1 超出时多出来的名额"溢出"，代价照付）→ 他们与你各 +1 治疗、各摸 1 张【强制】，你 +1【法术行动】。
+## X 由选牌张数决定；结算按目标逐个进行：先加治疗、再摸牌（等这次摸牌完整结算完），才轮到下一个目标。
 func _p_星环(action: Dictionary) -> int:
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
@@ -799,6 +804,14 @@ func _全体角色() -> Array[int]:
 	var out: Array[int] = []
 	for pid: int in engine.order:
 		if engine.p(pid) != null:
+			out.append(pid)
+	return out
+
+
+func _其他角色() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		if pid != player.id and engine.p(pid) != null:
 			out.append(pid)
 	return out
 

@@ -1222,7 +1222,7 @@ func _检星坠女巫() -> void:
 	角色.p_before_turn_begin({"player": 1})
 	检(玩家.hand_cards_max == GConst.HAND_CARDS_MAX + 1 - 玩家.律法数(),
 		"手牌上限应随律法数变化")
-	# 【星环】：X 由选牌张数决定（不再下发 X 选项），目标数按 X-1 现算（X=1 时 0 名）
+	# 【星环】：X 由选牌张数决定（不再下发 X 选项）；目标有可选时必须选满 min(X-1, 其他角色数)
 	玩家.hand_cards.clear()
 	var 地牌: int = _找牌("地", "attack")
 	检(地牌 > 0, "卡表里应有地系攻击牌")
@@ -1236,20 +1236,29 @@ func _检星坠女巫() -> void:
 		and int(星环项.get("need_target", -1)) == 0
 		and int(星环项.get("target_max_from_cards", 0)) == 1
 		and (星环项.get("arg_choices", []) as Array).is_empty(),
-		"【星环】X 应由选牌张数决定，目标数随 X-1 现算（不下发 X 选项）")
+		"【星环】X 应由选牌张数决定，目标数按 X-1 现算（不下发 X 选项）")
+	检(not (星环项.get("targets", []) as Array).has(1), "【星环】目标只能是其他角色（不能选自己）")
 	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
 		"card_ids": [地牌], "dst_ids": []})) == GConst.GE_SUCCESS,
-		"【星环】目标没点满（0 名）也应能发动")
+		"【星环】X=1 时没有目标，可以发动")
 	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
 		"card_ids": [地牌], "dst_ids": [2]})) != GConst.GE_SUCCESS,
 		"【星环】目标数不能超过 X-1")
-	检((星环项.get("targets", []) as Array).has(1), "【星环】目标白名单应包含自己")
-	# 目标可以是自己：2 张牌 + 指定自己 1 名 → 合法（自己先按目标结算一次，最后还有「与你」那一份）
+	# 2 张牌 → 必须正好 1 名目标：有空位时不选目标要被拒；选自己 / 选两名也要被拒
 	var 地牌2: int = GConst.实例号(地牌, 1)
 	玩家.add_hand_cards([地牌2])
 	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
-		"card_ids": [地牌, 地牌2], "dst_ids": [1]})) == GConst.GE_SUCCESS,
-		"【星环】目标应可以选择自己")
+		"card_ids": [地牌, 地牌2], "dst_ids": []})) != GConst.GE_SUCCESS,
+		"【星环】有可选目标时不能一个都不选")
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
+		"card_ids": [地牌, 地牌2], "dst_ids": [1]})) != GConst.GE_SUCCESS,
+		"【星环】不能指定自己")
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
+		"card_ids": [地牌, 地牌2], "dst_ids": [2, 3]})) != GConst.GE_SUCCESS,
+		"【星环】目标数不能超过 X-1")
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
+		"card_ids": [地牌, 地牌2], "dst_ids": [2]})) == GConst.GE_SUCCESS,
+		"【星环】2 张牌选满 1 名目标应合法")
 	检(int(GConst.律法技能.get(1, 0)) == 4006 and int(GConst.律法技能.get(2, 0)) == 4007
 		and int(GConst.律法技能.get(3, 0)) == 4008,
 		"【律法】状态图标要能查到对应的技能行（悬停显示技能说明）")
