@@ -1243,6 +1243,13 @@ func _检星坠女巫() -> void:
 	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
 		"card_ids": [地牌], "dst_ids": [2]})) != GConst.GE_SUCCESS,
 		"【星环】目标数不能超过 X-1")
+	检((星环项.get("targets", []) as Array).has(1), "【星环】目标白名单应包含自己")
+	# 目标可以是自己：2 张牌 + 指定自己 1 名 → 合法（自己先按目标结算一次，最后还有「与你」那一份）
+	var 地牌2: int = GConst.实例号(地牌, 1)
+	玩家.add_hand_cards([地牌2])
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 4002,
+		"card_ids": [地牌, 地牌2], "dst_ids": [1]})) == GConst.GE_SUCCESS,
+		"【星环】目标应可以选择自己")
 	检(int(GConst.律法技能.get(1, 0)) == 4006 and int(GConst.律法技能.get(2, 0)) == 4007
 		and int(GConst.律法技能.get(3, 0)) == 4008,
 		"【律法】状态图标要能查到对应的技能行（悬停显示技能说明）")

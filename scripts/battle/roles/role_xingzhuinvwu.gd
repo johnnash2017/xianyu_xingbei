@@ -6,7 +6,7 @@ extends BattleRole
 ##
 ## 口径：
 ## 1. 【命定之理】手牌上限 = 基础值 + (1 - 律法数)：律法数每次变化后重算。
-## 2. 【星环】X 由玩家实际选的地系牌张数决定（最多指定 X-1 名角色，可以少点/不点），
+## 2. 【星环】X 由玩家实际选的地系牌张数决定（最多指定 X-1 名角色，含自己，可以少点/不点），
 ##    结算按目标逐个进行：先 +1 治疗、再【强制】摸 1 张（等摸牌完整结算完），最后轮到自己，收尾 +1 法术行动。
 ## 3. 【星刻】在攻击 / 法术行动结束时，从牌库顶取 1 张面朝下放进盖牌区（tag="卢恩"）。
 ##    add_cover 自己会让出执行权先跑 p_cover_change，这里不能 return URGENT（会重入再加一张）。
@@ -87,10 +87,10 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 # ============================================================
 func available_skills() -> Array:
 	var 地系: Array[int] = _地系手牌()
-	var 其他: Array[int] = _其他角色()
 	var 卢恩: Array[int] = _卢恩()
 	# 【星环】的 X 由玩家实际选了几张地系牌决定：可选的牌数上限 = 地系张数，
-	# 可选的目标数随牌数现算（X-1），服务端在 v_magic_skill 里按同一口径复核
+	# 可选的目标数随牌数现算（最多 X-1），目标可以是场上任意角色（含自己）；
+	# 服务端在 v_magic_skill 里按同一口径复核
 	var 星环技能: Dictionary = {
 		"type": GConst.ActionType.MagicSkill,
 		"id": XING_HUAN,
@@ -100,9 +100,8 @@ func available_skills() -> Array:
 		"need_target": 0,
 		"target_max_from_cards": 1,
 		"enabled": not _星环已用 and not 地系.is_empty(),
+		"targets": _全体角色(),
 	}
-	if not 其他.is_empty():
-		星环技能["targets"] = 其他
 	# 两个模式是固定分支：条件不满足也照样下发，用 enabled 置灰（约定 #1）
 	var 模式1可用: bool = not player.hand_cards.is_empty() and player.can_add_cover_cards(1) \
 		and not _未拥有律法().is_empty()
@@ -192,7 +191,7 @@ func v_magic_skill(action: Dictionary) -> int:
 					return GConst.GE_INVALID_CARDID
 			for d: Variant in dsts:
 				var pid: int = int(d)
-				if pid == player.id or 已见.has(pid) or engine.p(pid) == null:
+				if 已见.has(pid) or engine.p(pid) == null:
 					return GConst.GE_INVALID_ARGUMENT
 				已见.append(pid)
 			return GConst.GE_SUCCESS
@@ -224,7 +223,7 @@ func p_magic_skill(action: Dictionary) -> int:
 	return EMPTY_HANDLE
 
 
-## 4002 星环：弃 X 张地系牌【展示】 → **最多**指定 X-1 名其他角色（可以少点/不点），
+## 4002 星环：弃 X 张地系牌【展示】 → **最多**指定 X-1 名角色（目标可以是自己，也可以少点/不点），
 ## 他们与你各 +1 治疗、各摸 1 张【强制】，你 +1【法术行动】。X 由选牌张数决定；
 ## 结算按目标逐个进行：先加治疗、再摸牌（等这次摸牌完整结算完），才轮到下一个目标。
 func _p_星环(action: Dictionary) -> int:
@@ -800,14 +799,6 @@ func _全体角色() -> Array[int]:
 	var out: Array[int] = []
 	for pid: int in engine.order:
 		if engine.p(pid) != null:
-			out.append(pid)
-	return out
-
-
-func _其他角色() -> Array[int]:
-	var out: Array[int] = []
-	for pid: int in engine.order:
-		if pid != player.id and engine.p(pid) != null:
 			out.append(pid)
 	return out
 
