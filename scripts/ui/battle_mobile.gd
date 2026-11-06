@@ -7668,8 +7668,13 @@ func _套用自动选目标(指示配置: Dictionary) -> bool:
 ## 都按真实点选顺序判。
 func _筛出当前技能可留的牌(原选: Array[int]) -> Array[int]:
 	var 保留: Array[int] = []
-	if 原选.is_empty() or _skill_card_max <= 0:
+	if 原选.is_empty():
 		return 保留
+	# card_max=0 是「不设上限」（如群星启示按卢恩个数选），不是「一张都不能留」。
+	# 上限按原选张数算，下面逐张用 _卡牌能点 复检：真正不需要选牌的技能会把它们全部刷掉。
+	var 上限: int = _skill_card_max
+	if 上限 <= 0:
+		上限 = 原选.size()
 	# 「先弹选项」且不允许先选牌的技能：选效果前本来就不让点牌，旧选择全部收回。
 	# 但已经选过效果后（_已选参数 非空）是正常的换效果复检，不能把牌全清掉。
 	if _先弹选项 and _已选参数.is_empty() \
@@ -7678,7 +7683,7 @@ func _筛出当前技能可留的牌(原选: Array[int]) -> Array[int]:
 	var 备份: Array[int] = _sel_cards
 	_sel_cards = 保留
 	for cid: int in 原选:
-		if 保留.size() >= _skill_card_max:
+		if 保留.size() >= 上限:
 			break
 		if 保留.has(cid):
 			continue
