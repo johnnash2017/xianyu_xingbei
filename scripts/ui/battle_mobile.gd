@@ -7592,6 +7592,14 @@ func _套用自动选目标(指示配置: Dictionary) -> bool:
 		"全体":
 			for 玩家: GPlayer in Data.player_list:
 				_sel_players.append(玩家.id)
+		"对手":
+			# 对该技能的所有对手：如繁星 AOE，进场即把敌方头像锁死并画伤害
+			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+			if 我 == null:
+				return false
+			for 玩家: GPlayer in Data.player_list:
+				if 玩家 != null and 玩家.color != 我.color:
+					_sel_players.append(玩家.id)
 		"询问目标":
 			_sel_players.append_array(_skill_targets)
 		"队友":
