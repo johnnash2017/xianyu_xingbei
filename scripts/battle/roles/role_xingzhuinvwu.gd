@@ -397,7 +397,7 @@ func _启示选律法() -> int:
 
 func _启示摸牌() -> int:
 	if not engine.has_reply():
-		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, _摸牌选项(), 0, "", [], false,
+		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, _摸牌选项(QUN_XING_QI_SHI), 0, "", [], false,
 			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 			GConst.提示原文(QUN_XING_QI_SHI, 4))
 		return WAIT
@@ -676,7 +676,7 @@ func _黄金律交换() -> int:
 # ============================================================
 func _创刻选摸牌() -> int:
 	if not engine.has_reply():
-		询问(player.id, CHUANG_KE_LV_DONG, 0, 0, GConst.CardSource.Hand, _摸牌选项(), 0, "", [], false,
+		询问(player.id, CHUANG_KE_LV_DONG, 0, 0, GConst.CardSource.Hand, _摸牌选项(CHUANG_KE_LV_DONG), 0, "", [], false,
 			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 			GConst.提示原文(CHUANG_KE_LV_DONG, 1))
 		return WAIT
@@ -815,9 +815,13 @@ func _我方角色() -> Array[int]:
 	return out
 
 
-## 「摸 0~1 张」的可选项：0 = 不摸，1 = 摸 1 张（数值档位，按钮只写数字）
-func _摸牌选项() -> Array:
-	return [{"value": 0, "text": "0"}, {"value": 1, "text": "1"}]
+## 「摸 0~1 张」的可选项：文案取技能表「按钮3 / 按钮4」（不摸牌 / 摸 1 张牌），
+## 不允许只写数字（选项禁止纯数字，见技能维护约定）
+func _摸牌选项(技能号: int) -> Array:
+	return [
+		{"value": 0, "text": GConst.按钮原文(技能号, 2)},
+		{"value": 1, "text": GConst.按钮原文(技能号, 3)},
+	]
 
 
 ## 展示这几张牌（广播 Card.Show；牌只做展示，移动由调用方做）

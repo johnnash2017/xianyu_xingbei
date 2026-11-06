@@ -181,9 +181,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				_t1_step = 3
 				var 选项: Array = []
 				for i: int in range(1, player.token_num(YIN_SLOT) + 1):
-					选项.append(i)
-				# 发动询问不写 ask 文案：提示条默认显示技能表说明（同上）
-				询问(player.id, SHENG_CAI, 0, 0, GConst.CardSource.Hand, [0] + 选项, 0, "", [], true,
+					选项.append({"value": i, "label": GConst.按钮原文(SHENG_CAI, 0, {"n": i})})
+				# 发动询问不写 ask 文案：提示条默认显示技能表说明（同上）；取消＝不发动
+				询问(player.id, SHENG_CAI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
 					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
 				return WAIT
 			_t1_step = 3
@@ -324,8 +324,8 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			var 选项: Array = []
 			for i: int in range(1, player.token_num(YIN_SLOT) + 1):
-				选项.append(i)
-			询问(player.id, SHENG_YU, 0, 0, GConst.CardSource.Hand, [0] + 选项, 0, "", [], true,
+				选项.append({"value": i, "label": GConst.按钮原文(SHENG_YU, 0, {"n": i})})
+			询问(player.id, SHENG_YU, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
 				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 				GConst.提示原文(SHENG_YU, 1))
 			return WAIT
