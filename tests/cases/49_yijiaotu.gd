@@ -206,6 +206,12 @@ func _发牌(p: BattlePlayer, 元素: int, n: int) -> Array:
 		if c == null or c.is_virtual or c.element_enum() != 元素:
 			continue
 		p.add_hand_cards([c.id])
+		# 必须同时把它从牌库拿走：这里是「直接塞进手牌」，不是走 deck.draw()。
+		# 不拿的话牌库还留着这张，后面【放逐】随机摸 6 张时可能又摸到它 →
+		# 手里出现两个相同的实例号 → 服务端按「不重复」驳回、流程原地重问，
+		# 表现成「偶尔莫名其妙没生效」。同理 discard 也清掉，免得洗回牌库又摸到。
+		引擎.deck.pile.erase(c.id)
+		引擎.deck.discard.erase(c.id)
 		out.append(c.id)
 		if out.size() >= n:
 			break
