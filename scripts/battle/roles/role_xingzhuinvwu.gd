@@ -6,12 +6,14 @@ extends BattleRole
 ##
 ## 口径：
 ## 1. 【命定之理】手牌上限 = 基础值 + (1 - 律法数)：律法数每次变化后重算。
-## 2. 【星刻】在攻击 / 法术行动结束时，从牌库顶取 1 张面朝下放进盖牌区（tag="卢恩"）。
-## 3. 【群星启示】两种模式都走它自己的技能按钮（二级技能栏选 1/2）：
-##    ① 1 张手牌作【卢恩】+ 选 1 个【律法】+ 摸 0~1 张；
-##    ② 移除 X 个【卢恩】【展示】→ 逐个判定符合条件的律法（繁星/影月/蚀日）→ 最后移除 1 个【律法】。
-## 4. 【黄金律】：群星启示结算完、手牌 < 2 时摸 1 张（交换手牌与卢恩按简化口径不做，见计划文档）。
-## 5. 【繁星】/【影月】/【蚀日】判定都用「本次移除的那 X 个卢恩」的牌面：
+## 2. 【星环】一次提交：二级技能栏选总张数 X → 同一步选 X 张地系牌 + X-1 名其他角色。
+## 3. 【星刻】在攻击 / 法术行动结束时，从牌库顶取 1 张面朝下放进盖牌区（tag="卢恩"）。
+##    add_cover 自己会让出执行权先跑 p_cover_change，这里不能 return URGENT（会重入再加一张）。
+## 4. 【群星启示】两种模式都走它自己的技能按钮（二级技能栏选 1/2）：
+##    ① 1 张手牌作【卢恩】+ 选 1 个未拥有的【律法】+ 摸 0~1 张；
+##    ② 直接选 X 个【卢恩】→ 逐个询问当前拥有的、条件成立的律法是否发动 → 最后移除 1 个【律法】。
+## 5. 【黄金律】群星启示结算完、手牌 < 2 时强制摸 1 张；之后可将 1 张手牌与 1 个【卢恩】交换。
+## 6. 【繁星】/【影月】/【蚀日】判定都用「本次移除的那 X 个卢恩」的牌面，且只发动**自己拥有**的律法：
 ##    繁星＝4 个不同系别 或 4 个不同命格；影月＝成对的同系 / 同命格数；蚀日＝每 3 个同系 / 同命格。
 
 const MING_DING_ZHI_LI: int = 4001
@@ -24,21 +26,32 @@ const YING_YUE: int = 4007
 const SHI_RI: int = 4008
 const CHUANG_KE_LV_DONG: int = 4009
 
+## 影月·同命格的治疗分配是 4007 的子询问（技能表不单独占行，名字/说明折到 4007）
+const 影月治疗询问: int = 40071
+
 const LU_EN标记: String = "卢恩"
-const 卢恩上限: int = 6
 const 律法_繁星: int = 1
 const 律法_影月: int = 2
 const 律法_蚀日: int = 3
+const 律法表: Array[int] = [律法_繁星, 律法_影月, 律法_蚀日]
 
-## 群星启示的子流程
+## 当前步骤（0＝空闲）；子流程统一由 p_xing_zhui_ask 接管
+const 步_启示选律法: int = 1
+const 步_启示摸牌: int = 2
+const 步_律法询问: int = 3
+const 步_影月伤害: int = 4
+const 步_影月治疗: int = 5
+const 步_繁星队友: int = 6
+const 步_黄金律交换: int = 7
+const 步_创刻摸牌: int = 8
+const 步_创刻卢恩: int = 9
+
 var _步: int = 0
-var _模式: int = 0
-var _目标: Array[int] = []
-var _下标: int = 0
-var _X: int = 0
-var _移除卢恩: Array[int] = []
-## 星环的目标数
-var _星环X: int = 0
+## 【星环】是回合限定：本回合发动过就置位，自己回合开始时清回 false
+var _星环已用: bool = false
+## 群星启示②：本次要逐条询问的律法效果、当前问到第几个
+var _律法队列: Array[Dictionary] = []
+var _律法下标: int = 0
 
 
 # ============================================================
@@ -57,6 +70,7 @@ func _重算手牌上限() -> void:
 
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
+		_星环已用 = false
 		_重算手牌上限()
 	return SUCCESS
 
@@ -65,26 +79,47 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 # 技能栏
 # ============================================================
 func available_skills() -> Array:
-	var 地系: Array[int] = hand_ids_where(
-		func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Earth)
-	var 全体: Array[int] = _全体角色()
+	var 地系: Array[int] = _地系手牌()
+	var 其他: Array[int] = _其他角色()
+	var 卢恩: Array[int] = _卢恩()
+	var 星环选项: Array = []
+	if not _星环已用 and not 地系.is_empty():
+		# 总张数 X 上限：地系手牌张数，且 X-1 名其他角色必须点得出来
+		var 上限: int = mini(地系.size(), 其他.size() + 1)
+		for x: int in range(1, 上限 + 1):
+			星环选项.append({
+				"value": x, "text": str(x), "args": [x],
+				"need_card": x, "need_target": x - 1,
+				"targets": (其他 if x > 1 else []),
+			})
+	# 两个模式是固定分支：条件不满足也照样下发，用 enabled 置灰（约定 #1）
+	var 模式1可用: bool = not player.hand_cards.is_empty() and player.can_add_cover_cards(1) \
+		and not _未拥有律法().is_empty()
+	var 启示选项: Array = [
+		{
+			"value": 1, "text": GConst.按钮原文(QUN_XING_QI_SHI, 0), "args": [1],
+			"need_card": 1, "card_source": GConst.CardSource.Hand, "enabled": 模式1可用,
+		},
+		{
+			"value": 2, "text": GConst.按钮原文(QUN_XING_QI_SHI, 1), "args": [2],
+			"need_card": 1, "card_max": maxi(卢恩.size(), 1),
+			"card_source": GConst.CardSource.Cover, "cards": _牌面表(卢恩),
+			"enabled": not 卢恩.is_empty(),
+		},
+	]
 	return [
 		{
 			"type": GConst.ActionType.MagicSkill,
 			"id": XING_HUAN,
-			"need_card": 1,
-			"cards": 地系,
-			"enabled": not 地系.is_empty(),
+			"arg_choices": 星环选项,
+			"enabled": not 星环选项.is_empty(),
 		},
 		{
 			# 群星启示是「启动」：必须是 SpecialSkill（见 v_special_skill / p_special_skill）
 			"type": GConst.ActionType.SpecialSkill,
 			"id": QUN_XING_QI_SHI,
-			"arg_choices": [
-				{"value": 1, "label": GConst.按钮原文(QUN_XING_QI_SHI, 0)},
-				{"value": 2, "label": GConst.按钮原文(QUN_XING_QI_SHI, 1)},
-			],
-			"enabled": player.hand_cards.size() >= 1 or player.盖牌按标记(LU_EN标记).size() >= 1,
+			"arg_choices": 启示选项,
+			"enabled": 模式1可用 or not 卢恩.is_empty(),
 		},
 		{
 			"type": GConst.ActionType.MagicSkill,
@@ -98,25 +133,36 @@ func is_free_skill(skill_id: int) -> bool:
 	return skill_id == QUN_XING_QI_SHI
 
 
+# ============================================================
+# 校验
+# ============================================================
 func v_special_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
 	if int(action.get("action_id", 0)) != QUN_XING_QI_SHI:
 		return GConst.GE_INVALID_ACTION
+	var args: Array = action.get("args", [])
+	var cards: Array = action.get("card_ids", [])
+	var 模式: int = int(args[0]) if not args.is_empty() else 0
+	match 模式:
+		1:
+			# 模式①：恰好 1 张手牌作【卢恩】，且盖牌区放得下、还有没拥有的律法可选
+			if cards.size() != 1 or not player.有手牌(int(cards[0])):
+				return GConst.GE_INVALID_CARDID
+			if not player.can_add_cover_cards(1):
+				return GConst.GE_INVALID_ACTION
+			if _未拥有律法().is_empty():
+				return GConst.GE_INVALID_ACTION
+		2:
+			# 模式②：至少 1 个【卢恩】，且选中的都得是卢恩
+			if cards.is_empty() or cards.size() > _卢恩().size():
+				return GConst.GE_INVALID_CARDID
+			for c: Variant in cards:
+				if not _是卢恩(int(c)):
+					return GConst.GE_INVALID_CARDID
+		_:
+			return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
-
-
-func p_special_skill(action: Dictionary) -> int:
-	if int(action.get("action_id", 0)) != QUN_XING_QI_SHI:
-		return EMPTY_HANDLE
-	# 启动技每回合只能发动一个（引擎也会在行动入口拦；这里防直接调用绕过）
-	if player.boot_skill_used:
-		return GConst.GE_INVALID_ACTION
-	var rc: int = _p_群星启示(action)
-	if rc == GConst.GE_INVALID_ACTION or rc == GConst.GE_INVALID_ARGUMENT:
-		return rc
-	player.boot_skill_used = true
-	return rc
 
 
 func v_magic_skill(action: Dictionary) -> int:
@@ -124,20 +170,44 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	match int(action.get("action_id", 0)):
 		XING_HUAN:
+			# 总张数 X ＝ 选中的地系牌张数；目标数必须正好 X-1
+			var args: Array = action.get("args", [])
+			var x: int = int(args[0]) if not args.is_empty() else 0
 			var cards: Array = action.get("card_ids", [])
-			if cards.size() != 1:
+			var dsts: Array = action.get("dst_ids", [])
+			if x < 1 or cards.size() != x:
 				return GConst.GE_INVALID_CARDID
-			var 卡: GCard = Data.get_card(int(cards[0]))
-			if 卡 == null or not player.有手牌(int(cards[0])):
-				return GConst.GE_INVALID_CARDID
-			if 卡.element_enum() != GConst.CardElement.Earth:
-				return GConst.GE_INVALID_CARDID
+			if dsts.size() != x - 1:
+				return GConst.GE_INVALID_ARGUMENT
+			var 已见: Array = []
+			for c: Variant in cards:
+				var cid: int = int(c)
+				var 卡: GCard = Data.get_card(cid)
+				if 卡 == null or not player.有手牌(cid) or 卡.element_enum() != GConst.CardElement.Earth:
+					return GConst.GE_INVALID_CARDID
+			for d: Variant in dsts:
+				var pid: int = int(d)
+				if pid == player.id or 已见.has(pid) or engine.p(pid) == null:
+					return GConst.GE_INVALID_ARGUMENT
+				已见.append(pid)
 			return GConst.GE_SUCCESS
 		CHUANG_KE_LV_DONG:
 			if player.gem < 1:
 				return GConst.GE_INVALID_ACTION
 			return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
+
+
+# ============================================================
+# 技能本体
+# ============================================================
+func p_special_skill(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) != QUN_XING_QI_SHI:
+		return EMPTY_HANDLE
+	var rc: int = _p_群星启示(action)
+	if rc == SUCCESS or rc == WAIT or rc == URGENT:
+		player.boot_skill_used = true
+	return rc
 
 
 func p_magic_skill(action: Dictionary) -> int:
@@ -149,24 +219,53 @@ func p_magic_skill(action: Dictionary) -> int:
 	return EMPTY_HANDLE
 
 
-# ============================================================
-# 4002 星环：弃 X 张地系牌 → (X-1) 名角色与你各 +1 治疗、各摸 1 张；你 +1 法术行动
-# ============================================================
+## 4002 星环：弃 X 张地系牌【展示】 → 指定 X-1 名其他角色与你各 +1 治疗、各摸 1 张【强制】，
+## 你 +1【法术行动】。X 与目标在同一次行动里提交，服务端一次校验、一次结算。
 func _p_星环(action: Dictionary) -> int:
-	var 校验: int = v_magic_skill(action)
-	if 校验 != GConst.GE_SUCCESS:
-		return 校验
-	var cid: int = int((action.get("card_ids", []) as Array)[0])
-	notice_skill(XING_HUAN, [])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [cid], "is_real": true,
-	})
-	engine.take_from_hand(player.id, [cid], false)
-	engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": XING_HUAN})
-	engine._log_discard(player.id, [cid], false)
-	_星环X = 1
-	_步 = 10
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	_星环已用 = true
+	notice_skill(XING_HUAN, dsts)
+	_展示(cards)
+	# 「【展示】」要照常触发展示手牌类响应（如封印师的五系封印），所以带 已展示=true
+	engine.take_from_hand(player.id, cards, true)
+	engine.to_discard(cards, {"owner": player.id, "source": "hand", "cause": XING_HUAN})
+	engine._log_discard(player.id, cards, true)
+	施加治疗(player.id, 1)
+	for d: Variant in dsts:
+		var pid: int = int(d)
+		施加治疗(pid, 1)
+		engine.push_强制摸牌(pid, 1, XING_HUAN)
+	engine.push_强制摸牌(player.id, 1, XING_HUAN)
+	player.add_action(GConst.ActionType.Magic, XING_HUAN, true, true)
+	engine._broadcast_game()
+	return URGENT
+
+
+## 4004 群星启示：按二级技能栏选定的模式进入各自的子流程
+func _p_群星启示(action: Dictionary) -> int:
+	var args: Array = action.get("args", [])
+	var cards: Array = action.get("card_ids", [])
+	var 模式: int = int(args[0]) if not args.is_empty() else 0
+	notice_skill(QUN_XING_QI_SHI, [player.id])
+	if 模式 == 2:
+		return _启示移除卢恩(cards)
+	# 模式①：先把这 1 张手牌面朝下放成【卢恩】，再选律法
+	var 实例: int = player.取出一张手牌(int(cards[0]))
+	if 实例 < 0:
+		engine.报错("【群星启示】要放成【卢恩】的手牌已不在手里", player.id)
+		return SUCCESS
+	engine.add_cover(player.id, [实例], player.id, QUN_XING_QI_SHI, false, LU_EN标记)
+	_步 = 步_启示选律法
+	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
+	return URGENT
+
+
+## 4009 创刻律动：付 1 宝石 → 无视手牌上限摸 0~1 张 → 最多 (1+律法数) 张手牌作【卢恩】
+func _p_创刻律动() -> int:
+	player.set_gem(player.gem - 1)
+	notice_skill(CHUANG_KE_LV_DONG, [player.id])
+	_步 = 步_创刻摸牌
 	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
 	return URGENT
 
@@ -187,46 +286,9 @@ func p_action_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	engine.add_cover(player.id, [int(顶[0])], player.id, XING_KE, false, LU_EN标记)
 	notice_skill(XING_KE, [player.id])
-	return URGENT
-
-
-# ============================================================
-# 4004 群星启示
-# ============================================================
-func _p_群星启示(action: Dictionary) -> int:
-	var args: Array = action.get("args", [])
-	var 模式: int = int(args[0]) if not args.is_empty() else 1
-	_模式 = 模式
-	_步 = 0
-	_X = 0
-	_移除卢恩 = []
-	目标.clear()
-	if 模式 == 2:
-		var 卢恩: Array[int] = player.盖牌按标记(LU_EN标记)
-		if 卢恩.is_empty():
-			return GConst.GE_INVALID_ACTION
-		_步 = 20
-	else:
-		if player.hand_cards.is_empty():
-			return GConst.GE_INVALID_ACTION
-		_步 = 11
-	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-	return URGENT
-
-var 目标: Array[int] = []
-
-
-# ============================================================
-# 4009 创刻律动：付 1 宝石 → 摸 0~1 张 → 最多 (1+律法数) 张手牌作【卢恩】
-# ============================================================
-func _p_创刻律动() -> int:
-	if player.gem < 1:
-		return GConst.GE_INVALID_ACTION
-	player.set_gem(player.gem - 1)
-	notice_skill(CHUANG_KE_LV_DONG, [player.id])
-	_步 = 30
-	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-	return URGENT
+	# add_cover 已压入 p_cover_change，SHook 会先让出执行权再回来；这里 return URGENT 会把同一钩子
+	# 重跑一遍、一次行动放满 6 个【卢恩】（约定 #13）
+	return SUCCESS
 
 
 # ============================================================
@@ -235,299 +297,414 @@ func _p_创刻律动() -> int:
 func p_xing_zhui_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
+	# 摸牌 / 不爆牌这类「状态结算完再继续」的续跑点：标记只消费一次，之后按 _步 走
+	if bool(ctx.get("启示摸完", false)):
+		ctx["启示摸完"] = false
+		return _黄金律()
+	if bool(ctx.get("黄金律摸完", false)):
+		ctx["黄金律摸完"] = false
+		return _黄金律交换()
+	if bool(ctx.get("创刻摸完", false)):
+		ctx["创刻摸完"] = false
+		engine.解除不爆牌(player.id)
+		return _创刻选卢恩()
 	match _步:
-		10:  # 星环：选 X（地系牌张数）
-			if not engine.has_reply():
-				var 地系: Array[int] = hand_ids_where(
-					func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Earth)
-				var 选项: Array = []
-				for i: int in range(1, 地系.size() + 1):
-					选项.append(i)
-				if 选项.is_empty():
-					_步 = 0
-					return SUCCESS
-				询问(player.id, XING_HUAN, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
-					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(XING_HUAN, 1))
-				return WAIT
-			var r: Dictionary = take_skill_reply_full()
-			var args: Array = r.get("args", [])
-			var 再弃: int = int(args[0]) if not args.is_empty() else 1
-			_星环X += 再弃
-			_再弃 = 再弃
-			_步 = 11
-			engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-			return URGENT
-		11:  # 星环：再弃 N 张地系牌
-			var 地系2: Array[int] = hand_ids_where(
-				func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Earth)
-			var 需: int = mini(_再弃, 地系2.size())
-			if 需 > 0:
-				if not engine.has_reply():
-					询问(player.id, XING_HUAN, 需, 0, GConst.CardSource.Hand, [], 需, "", [], false,
-						0, player.id, [], 需, {}, 0, 0, false, [], true, -1, 0,
-						GConst.提示原文(XING_HUAN, 2) % 需)
-					return WAIT
-				var r2: Dictionary = take_skill_reply_full()
-				var cards: Array = r2.get("card_ids", [])
-				var 弃: Array = []
-				for c: Variant in cards:
-					if 弃.size() < 需 and player.有手牌(int(c)):
-						弃.append(int(c))
-				if not 弃.is_empty():
-					engine.broadcast(GConst.Msg.Card, {
-						"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-						"card_ids": 弃, "is_real": true,
-					})
-					engine.take_from_hand(player.id, 弃, false)
-					engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": XING_HUAN})
-					engine._log_discard(player.id, 弃, false)
-				_步 = 12
-				engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-				return URGENT
-			_步 = 12
-			engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-			return URGENT
-		12:  # 星环：选 (X-1) 名其他角色
-			var 需人: int = maxi(_星环X - 1, 0)
-			if 需人 <= 0 or 目标.size() >= 需人:
-				_步 = 13
-				engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-				return URGENT
-			if not engine.has_reply():
-				var 池: Array[int] = []
-				for pid: int in _全体角色():
-					if pid != player.id and not 目标.has(pid):
-						池.append(pid)
-				if 池.is_empty():
-					_步 = 13
-					engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-					return URGENT
-				询问(player.id, XING_HUAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-					0, -1, 池, -1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(XING_HUAN, 3) % (需人 - 目标.size()))
-				return WAIT
-			var r3: Dictionary = take_skill_reply_full()
-			var ds: Array = r3.get("dst_ids", [])
-			if ds.size() == 1 and not 目标.has(int(ds[0])):
-				目标.append(int(ds[0]))
-			engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-			return URGENT
-		13:  # 星环：结算治疗 + 摸牌 + 额外法术行动
-			_步 = 0
-			for pid: int in 目标:
-				施加治疗(pid, 1)
-				engine.push_draw(pid, 1, XING_HUAN)
-			施加治疗(player.id, 1)
-			engine.push_draw(player.id, 1, XING_HUAN)
-			player.add_action(GConst.ActionType.Magic, XING_HUAN, true, true)
-			目标 = []
-			engine._broadcast_game()
-			return URGENT
-		11 + 1000:  # 占位（不会走到）
-			return SUCCESS
-		20:  # 群星启示②：移除 X 个卢恩
-			var 卢恩2: Array[int] = player.盖牌按标记(LU_EN标记)
-			if 卢恩2.is_empty():
-				_步 = 0
-				return SUCCESS
-			if not engine.has_reply():
-				var 选项2: Array = []
-				for i2: int in range(1, 卢恩2.size() + 1):
-					选项2.append(i2)
-				询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, 选项2, 0, "", [], false,
-					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(QUN_XING_QI_SHI, 1))
-				return WAIT
-			var r4: Dictionary = take_skill_reply_full()
-			var args4: Array = r4.get("args", [])
-			var x4: int = int(args4[0]) if not args4.is_empty() else 1
-			x4 = clampi(x4, 1, 卢恩2.size())
-			_移除卢恩 = []
-			for i3: int in range(x4):
-				_移除卢恩.append(int(卢恩2[i3]))
-			_步 = 21
-			engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-			return URGENT
-		21:  # 群星启示②：逐个移除并展示
-			if _下标 < _移除卢恩.size():
-				var 牌: int = int(_移除卢恩[_下标])
-				_下标 += 1
-				engine.broadcast(GConst.Msg.Card, {
-					"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-					"card_ids": [牌], "is_real": true,
-				})
-				if player.有盖牌(牌):
-					engine.remove_cover(player.id, [牌], player.id, QUN_XING_QI_SHI)
-				engine.to_discard([牌], {"owner": player.id, "source": "cover", "cause": QUN_XING_QI_SHI})
-				engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-				return URGENT
-			_下标 = 0
-			_步 = 22
-			engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-			return URGENT
-		22:  # 群星启示②：判定并发动符合条件的律法
-			_步 = 0
-			var 结果: Dictionary = _律法判定(_移除卢恩)
-			if 结果.get("繁星", false):
-				_发动繁星(bool(结果.get("繁星双", false)))
-			if int(结果.get("影月同系", 0)) > 1:
-				_发动影月(int(结果.get("影月同系", 0)))
-			if int(结果.get("影月同命", 0)) > 1:
-				_发动影月治疗(int(结果.get("影月同命", 0)))
-			if int(结果.get("蚀日同系", 0)) > 0:
-				player.set_gem(player.gem + int(结果.get("蚀日同系", 0)))
-				engine._broadcast_game()
-			if int(结果.get("蚀日同命", 0)) > 0:
-				engine.set_team_gem(player.color,
-					engine.team_gem[player.color] + int(结果.get("蚀日同命", 0)))
-				engine._broadcast_game()
-			# 然后移除 1 个律法
-			if player.律法数() > 0:
-				player.移除律法()
-				_重算手牌上限()
-				engine._broadcast_game()
-			_检查黄金律()
-			return SUCCESS
-		30:  # 创刻律动：摸 0~1 张
-			if not engine.has_reply():
-				询问(player.id, CHUANG_KE_LV_DONG, 0, 0, GConst.CardSource.Hand, [0, 1], 0, "", [], true,
-					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(CHUANG_KE_LV_DONG, 1))
-				return WAIT
-			var r5: Dictionary = take_skill_reply_full()
-			var args5: Array = r5.get("args", [])
-			var 摸: int = int(args5[0]) if not args5.is_empty() else 0
-			if 摸 > 0:
-				engine.push_draw(player.id, 摸, CHUANG_KE_LV_DONG)
-			_步 = 31
-			engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-			return URGENT
-		31:  # 创刻律动：选最多 (1+律法数) 张手牌作卢恩
-			var 可放: int = mini(1 + player.律法数(), player.cover_space())
-			var 可选: int = mini(可放, player.hand_cards.size())
-			if 可选 <= 0:
-				_步 = 0
-				return SUCCESS
-			if not engine.has_reply():
-				询问(player.id, CHUANG_KE_LV_DONG, 0, 0, GConst.CardSource.Hand, [], 可选, "",
-					player.hand_cards.duplicate(), true, 0, player.id, [], 可选, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(CHUANG_KE_LV_DONG, 2) % 可选)
-				return WAIT
-			var r6: Dictionary = take_skill_reply_full()
-			var cards6: Array = r6.get("card_ids", [])
-			var 放: Array = []
-			for c6: Variant in cards6:
-				if 放.size() < 可选 and player.有手牌(int(c6)):
-					var 实例: int = player.取出实例(player.hand_cards, int(c6))
-					if 实例 >= 0:
-						放.append(实例)
-			_步 = 0
-			if not 放.is_empty():
-				engine.add_cover(player.id, 放, player.id, CHUANG_KE_LV_DONG, false, LU_EN标记)
-			_检查黄金律()
-			return URGENT
-		40:  # 影月：选目标角色，造成 X 点法术伤害
-			if not engine.has_reply():
-				询问(player.id, YING_YUE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-					0, -1, _全体角色(), -1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(YING_YUE, 1) % _影月伤害)
-				return WAIT
-			var r10: Dictionary = take_skill_reply_full()
-			var ds10: Array = r10.get("dst_ids", [])
-			_步 = 0
-			if ds10.size() == 1:
-				engine.push_harm({
-					"src": player.id, "dst": int(ds10[0]), "point": _影月伤害,
-					"cause": YING_YUE, "type": GConst.HarmType.Magic,
-				})
-				return URGENT
-			return SUCCESS
-		41:  # 影月：把 X 点治疗分给 1 名我方（简化：指定的 1 名我方 +X）
-			if not engine.has_reply():
-				询问(player.id, YING_YUE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-					0, -1, _我方角色(), -1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(YING_YUE, 2) % 影月治疗点)
-				return WAIT
-			var r11: Dictionary = take_skill_reply_full()
-			var ds11: Array = r11.get("dst_ids", [])
-			_步 = 0
-			if ds11.size() == 1:
-				施加治疗(int(ds11[0]), 影月治疗点)
-				return URGENT
-			return SUCCESS
-		11:  # 群星启示①：选律法
-			var 可选律法: Array = [律法_繁星, 律法_影月, 律法_蚀日]
-			if not engine.has_reply():
-				询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, 可选律法, 0, "", [], false,
-					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(QUN_XING_QI_SHI, 2))
-				return WAIT
-			var r7: Dictionary = take_skill_reply_full()
-			var args7: Array = r7.get("args", [])
-			var 律: int = int(args7[0]) if not args7.is_empty() else 律法_繁星
-			player.加律法(律)
-			_重算手牌上限()
-			_步 = 12
-			engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-			return URGENT
-		12:  # 群星启示①：选 1 张手牌面朝下作为卢恩
-			if not player.can_add_cover_cards(1) or player.hand_cards.is_empty():
-				_步 = 13
-				engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-				return URGENT
-			if not engine.has_reply():
-				询问(player.id, QUN_XING_QI_SHI, 1, 0, GConst.CardSource.Hand, [], 1, "", [], false,
-					0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(QUN_XING_QI_SHI, 3))
-				return WAIT
-			var r8: Dictionary = take_skill_reply_full()
-			var cards8: Array = r8.get("card_ids", [])
-			_步 = 13
-			if not cards8.is_empty():
-				var 实: int = player.取出实例(player.hand_cards, int(cards8[0]))
-				if 实 >= 0:
-					engine.add_cover(player.id, [实], player.id, QUN_XING_QI_SHI, false, LU_EN标记)
-			engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-			return URGENT
-		13:  # 群星启示①：摸 0~1 张，然后黄金律
-			if not engine.has_reply():
-				询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, [0, 1], 0, "", [], true,
-					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.提示原文(QUN_XING_QI_SHI, 4))
-				return WAIT
-			var r9: Dictionary = take_skill_reply_full()
-			var args9: Array = r9.get("args", [])
-			var 摸9: int = int(args9[0]) if not args9.is_empty() else 0
-			_步 = 0
-			if 摸9 > 0:
-				engine.push_draw(player.id, 摸9, QUN_XING_QI_SHI)
-			_检查黄金律()
-			return URGENT
+		步_启示选律法:
+			return _启示选律法()
+		步_启示摸牌:
+			return _启示摸牌()
+		步_律法询问:
+			return _律法询问()
+		步_影月伤害:
+			return _影月伤害()
+		步_影月治疗:
+			return _影月治疗()
+		步_繁星队友:
+			return _繁星队友()
+		步_黄金律交换:
+			return _黄金律交换()
+		步_创刻摸牌:
+			return _创刻选摸牌()
+		步_创刻卢恩:
+			return _创刻选卢恩()
 	return SUCCESS
 
-var _再弃: int = 1
+
+# ============================================================
+# 群星启示①：选律法 → 摸 0~1 张 → 黄金律
+# ============================================================
+func _启示选律法() -> int:
+	# 三个律法是固定分支：已拥有的照样列出，只置灰（约定 #1）
+	var 选项: Array = []
+	for 法号: int in 律法表:
+		选项.append({
+			"value": 法号, "label": str(GConst.律法名[法号]),
+			"enabled": not player.有律法(法号),
+		})
+	if not engine.has_reply():
+		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false,
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+			GConst.提示原文(QUN_XING_QI_SHI, 2))
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var 号: int = int(args[0]) if not args.is_empty() else 0
+	if player.有律法(号):
+		if not bool(r.get("is_timeout", false)):
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return _启示选律法()
+		# 超时兜底：取第一个还没拥有的律法
+		for 可选: int in 律法表:
+			if not player.有律法(可选):
+				号 = 可选
+				break
+	player.加律法(号)
+	_重算手牌上限()
+	_步 = 步_启示摸牌
+	return URGENT
+
+
+func _启示摸牌() -> int:
+	if not engine.has_reply():
+		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, _摸牌选项(), 0, "", [], false,
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+			GConst.提示原文(QUN_XING_QI_SHI, 4))
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var 摸: int = int(args[0]) if not args.is_empty() else 0
+	_步 = 0
+	if 摸 <= 0:
+		return _黄金律()
+	# 摸完再回来走黄金律：先压「继续」的钩子、再压摸牌（栈顶是摸牌）
+	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask",
+		{"player": player.id, "启示摸完": true}, []))
+	engine.push_draw(player.id, 1, QUN_XING_QI_SHI)
+	return URGENT
 
 
 # ============================================================
-# 4005 黄金律：群星启示后手牌 < 2 → 摸 1 张
+# 群星启示②：移除卢恩 → 逐条询问律法 → 移除 1 个律法 → 黄金律
 # ============================================================
-func _检查黄金律() -> void:
+func _启示移除卢恩(选择: Array) -> int:
+	var 卢恩表: Array[int] = []
+	for c: Variant in 选择:
+		var 实例: int = player.盖牌实例(int(c))
+		if 实例 >= 0:
+			卢恩表.append(实例)
+	if 卢恩表.is_empty():
+		engine.报错("【群星启示】选中的牌已经不在盖牌区", player.id)
+		return SUCCESS
+	_展示(卢恩表)
+	for 实例: int in 卢恩表:
+		engine.remove_cover(player.id, [实例], player.id, QUN_XING_QI_SHI)
+		engine.to_discard([实例], {"owner": player.id, "source": "cover", "cause": QUN_XING_QI_SHI})
+	engine._log_discard(player.id, 卢恩表, false)
+	_律法队列 = _判定律法(卢恩表)
+	_律法下标 = 0
+	_步 = 步_律法询问
+	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
+	return URGENT
+
+
+## 当前问到的律法：先问「是否发动」；不发动就直接问下一条
+func _律法询问() -> int:
+	if _律法下标 >= _律法队列.size():
+		return _律法收尾()
+	var 律: Dictionary = _律法队列[_律法下标]
+	var 技能号: int = int(律["技能号"])
+	if not engine.has_reply():
+		询问(player.id, 技能号, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var 发动: bool = args.size() > 0 and int(args[0]) == 1
+	if not 发动:
+		_律法下标 += 1
+		return URGENT
+	match str(律["种类"]):
+		"繁星":
+			notice_skill(FAN_XING, enemy_ids())
+			for pid: int in enemy_ids():
+				engine.push_harm({
+					"src": player.id, "dst": pid, "point": 1,
+					"cause": FAN_XING, "type": GConst.HarmType.Magic,
+				})
+			if bool(律["双"]) and not ally_ids().is_empty():
+				_步 = 步_繁星队友
+				return URGENT
+			_律法下标 += 1
+			_步 = 步_律法询问
+			return URGENT
+		"影月伤害":
+			_步 = 步_影月伤害
+			return URGENT
+		"影月治疗":
+			_步 = 步_影月治疗
+			return URGENT
+		"蚀日自身":
+			notice_skill(SHI_RI, [player.id])
+			player.set_gem(player.gem + int(律["值"]))
+			engine._broadcast_game()
+			_律法下标 += 1
+			_步 = 步_律法询问
+			return URGENT
+		"蚀日队伍":
+			notice_skill(SHI_RI, [player.id])
+			engine.set_team_gem(player.color, engine.team_gem[player.color] + int(律["值"]))
+			engine._broadcast_game()
+			_律法下标 += 1
+			_步 = 步_律法询问
+			return URGENT
+		_:
+			engine.报错("【群星启示】未知的律法效果：%s" % str(律["种类"]), player.id)
+			_律法下标 += 1
+			return URGENT
+
+
+## 繁星双条件：给 1 名队友 +1 宝石（只有 1 名队友时直接给，多于 1 名才问）
+func _繁星队友() -> int:
+	var 队: Array[int] = ally_ids()
+	if 队.size() == 1:
+		var 友: BattlePlayer = engine.p(队[0])
+		if 友 != null:
+			友.set_gem(友.gem + 1)
+		engine._broadcast_game()
+		_律法下标 += 1
+		_步 = 步_律法询问
+		return URGENT
+	if not engine.has_reply():
+		询问(player.id, FAN_XING, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+			0, -1, 队, -1, {}, 0, 0, false, [], true, -1, 0)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var dsts: Array = r.get("dst_ids", [])
+	var 目标: int = int(dsts[0]) if not dsts.is_empty() else -1
+	if not 队.has(目标):
+		if not bool(r.get("is_timeout", false)):
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return _繁星队友()
+		目标 = 队[0]
+	var 友2: BattlePlayer = engine.p(目标)
+	if 友2 != null:
+		友2.set_gem(友2.gem + 1)
+	engine._broadcast_game()
+	_律法下标 += 1
+	_步 = 步_律法询问
+	return URGENT
+
+
+## 影月·同系：对 1 名角色造成 X 点法术伤害（目标角色＝场上任意一名，含自己）
+func _影月伤害() -> int:
+	var 律: Dictionary = _律法队列[_律法下标]
+	var 点数: int = int(律["值"])
+	if not engine.has_reply():
+		询问(player.id, YING_YUE, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+			0, -1, _全体角色(), -1, {}, 点数, GConst.HarmType.Magic,
+			false, [], true, -1, 0, GConst.提示原文(YING_YUE, 1) % 点数)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var dsts: Array = r.get("dst_ids", [])
+	var 目标: int = int(dsts[0]) if not dsts.is_empty() else -1
+	if engine.p(目标) == null:
+		if not bool(r.get("is_timeout", false)):
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return _影月伤害()
+		# 超时：从场上现挑一名合法目标（不含已经倒下的座位）
+		for pid: int in _全体角色():
+			目标 = pid
+			break
+	if engine.p(目标) == null:
+		engine.报错("【影月】没有可指定的目标", player.id)
+		_律法下标 += 1
+		_步 = 步_律法询问
+		return URGENT
+	notice_skill(YING_YUE, [目标])
+	_律法下标 += 1
+	_步 = 步_律法询问
+	engine.push_harm({
+		"src": player.id, "dst": 目标, "point": 点数,
+		"cause": YING_YUE, "type": GConst.HarmType.Magic,
+	})
+	return URGENT
+
+
+## 影月·同命格：把 X 点治疗任意分给 1~2 名我方（客户端按治疗分配界面点人，点数随回复上传）
+func _影月治疗() -> int:
+	var 律: Dictionary = _律法队列[_律法下标]
+	var 点数: int = int(律["值"])
+	if not engine.has_reply():
+		# need_target=1 是客户端「头像可点」的开关（分配型询问沿用同一套目标点亮），
+		# 实际分给 1~2 人、每人几点由治疗分配界面决定，服务端按 args 逐人复核
+		询问(player.id, 影月治疗询问, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+			0, -1, _我方角色(), -1, {}, 点数, GConst.预览类型_治疗)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var dsts: Array = r.get("dst_ids", [])
+	var args: Array = r.get("args", [])
+	var 合计: int = 0
+	var 合法: bool = not dsts.is_empty() and dsts.size() <= 2 and dsts.size() == args.size()
+	var 已见: Array = []
+	for i: int in range(dsts.size()):
+		var pid: int = int(dsts[i])
+		var 点: int = int(args[i]) if i < args.size() else 0
+		if not _我方角色().has(pid) or 已见.has(pid) or 点 <= 0:
+			合法 = false
+		已见.append(pid)
+		合计 += 点
+	if not 合法 or 合计 != 点数:
+		if not bool(r.get("is_timeout", false)):
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return _影月治疗()
+		# 超时兜底：X 点全给第一个我方角色（最保守，不替玩家挑第二个人）
+		var 队: Array[int] = _我方角色()
+		if not 队.is_empty():
+			施加治疗(队[0], 点数)
+	else:
+		notice_skill(YING_YUE, dsts)
+		for i: int in range(dsts.size()):
+			施加治疗(int(dsts[i]), int(args[i]))
+	_律法下标 += 1
+	_步 = 步_律法询问
+	return URGENT
+
+
+## 律法全部问完：移除 1 个律法，然后走黄金律
+func _律法收尾() -> int:
+	_步 = 0
+	_律法队列.clear()
+	_律法下标 = 0
+	if player.律法数() > 0:
+		player.移除律法()
+		_重算手牌上限()
+		engine._broadcast_game()
+	return _黄金律()
+
+
+# ============================================================
+# 4005 黄金律：群星启示结算完、手牌 < 2 → 强制摸 1 张，并可将 1 张手牌与 1 个【卢恩】交换
+# ============================================================
+func _黄金律() -> int:
 	if player.hand_cards.size() >= 2:
-		return
+		return SUCCESS
 	notice_skill(HUANG_JIN_LV, [player.id])
-	engine.push_draw(player.id, 1, HUANG_JIN_LV)
-	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id, "黄金律": true}, []))
+	engine.push_强制摸牌(player.id, 1, HUANG_JIN_LV, "p_xing_zhui_ask",
+		{"player": player.id, "黄金律摸完": true})
+	return URGENT
+
+
+func _黄金律交换() -> int:
+	var 卢恩: Array[int] = _卢恩()
+	if player.hand_cards.is_empty() or 卢恩.is_empty():
+		_步 = 0
+		return SUCCESS
+	if not engine.has_reply():
+		# 1 张手牌 + 1 个【卢恩】，一次选完提交；取消＝不交换
+		_步 = 步_黄金律交换
+		询问(player.id, HUANG_JIN_LV, 2, 0, GConst.CardSource.HandOrCover, [], 2, "", [],
+			true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var 提交: Array = r.get("card_ids", [])
+	if 提交.is_empty() or bool(r.get("is_timeout", false)):
+		# 空提交＝取消，不交换
+		_步 = 0
+		return SUCCESS
+	var 手: int = -1
+	var 盖: int = -1
+	for c: Variant in 提交:
+		var cid: int = int(c)
+		if 手 < 0 and player.有手牌(cid):
+			手 = cid
+			continue
+		if 盖 < 0 and _是卢恩(cid):
+			盖 = cid
+	if 手 < 0 or 盖 < 0:
+		engine.send(player.id, GConst.Msg.ErrorInput,
+			{"error_type": GConst.CmdType.Respond, "commands": []})
+		return _黄金律交换()
+	var 手实例: int = player.取出实例(player.hand_cards, 手)
+	var 盖实例: int = player.盖牌实例(盖)
+	if 手实例 < 0 or 盖实例 < 0:
+		engine.报错("【黄金律】交换的牌已不在原区域", player.id)
+		_步 = 0
+		return SUCCESS
+	engine.remove_cover(player.id, [盖实例], player.id, HUANG_JIN_LV)
+	player.add_hand_cards([盖实例])
+	engine.add_cover(player.id, [手实例], player.id, HUANG_JIN_LV, false, LU_EN标记)
+	_步 = 0
+	engine._broadcast_game()
+	return SUCCESS
+
+
+# ============================================================
+# 创刻律动：摸 0~1 张（无视手牌上限）→ 最多 (1+律法数) 张手牌作【卢恩】
+# ============================================================
+func _创刻选摸牌() -> int:
+	if not engine.has_reply():
+		询问(player.id, CHUANG_KE_LV_DONG, 0, 0, GConst.CardSource.Hand, _摸牌选项(), 0, "", [], false,
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+			GConst.提示原文(CHUANG_KE_LV_DONG, 1))
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var 摸: int = int(args[0]) if not args.is_empty() else 0
+	_步 = 步_创刻卢恩
+	if 摸 <= 0:
+		return _创刻选卢恩()
+	# 「无视你的手牌上限摸」：本次结算期间进入「不爆牌」，摸完在续跑钩子里解除
+	engine.进入不爆牌(player.id)
+	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask",
+		{"player": player.id, "创刻摸完": true}, []))
+	engine.push_draw(player.id, 1, CHUANG_KE_LV_DONG)
+	return URGENT
+
+
+func _创刻选卢恩() -> int:
+	var 可放: int = mini(1 + player.律法数(), player.cover_space())
+	var 可选: int = mini(可放, player.hand_cards.size())
+	if 可选 <= 0:
+		_步 = 0
+		return SUCCESS
+	if not engine.has_reply():
+		询问(player.id, CHUANG_KE_LV_DONG, 0, 0, GConst.CardSource.Hand, [], 可选, "",
+			player.hand_cards.duplicate(), true, 0, player.id, [], 可选, {}, 0, 0, false, [], true, -1, 0,
+			GConst.提示原文(CHUANG_KE_LV_DONG, 2) % 可选)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var 提交: Array = r.get("card_ids", [])
+	var 放: Array = []
+	for c: Variant in 提交:
+		var cid: int = int(c)
+		if 放.size() >= 可选 or not player.有手牌(cid):
+			continue
+		var 实例: int = player.取出实例(player.hand_cards, cid)
+		if 实例 >= 0:
+			放.append(实例)
+	if 放.is_empty() and not 提交.is_empty() and not bool(r.get("is_timeout", false)):
+		# 选了牌却一张都不合法＝硬提交，驳回重问；空提交（取消 / 不放）合法，直接结束
+		engine.send(player.id, GConst.Msg.ErrorInput,
+			{"error_type": GConst.CmdType.Respond, "commands": []})
+		return _创刻选卢恩()
+	_步 = 0
+	if not 放.is_empty():
+		engine.add_cover(player.id, 放, player.id, CHUANG_KE_LV_DONG, false, LU_EN标记)
+		engine._broadcast_game()
+	return SUCCESS
 
 
 # ============================================================
 # 律法判定
 # ============================================================
-## 对本次移除的卢恩做组成判定：
-##   繁星：4 个不同系别 或 4 个不同命格（两者同时 → 繁星双）
-##   影月：成对的同系 / 同命格 的对数（取整）
+## 对本次移除的卢恩做组成判定，只保留**自己拥有**的律法，返回逐条要询问的效果：
+##   繁星：4 个不同系别 或 4 个不同命格（两者同时 → 双，目标队友 +1 宝石）
+##   影月：成对的同系 / 同命格（对数 > 1 才发动）
 ##   蚀日：每 3 个同系 / 每 3 个同命格
-func _律法判定(牌表: Array) -> Dictionary:
+func _判定律法(牌表: Array) -> Array[Dictionary]:
 	var 系计数: Dictionary = {}
 	var 命计数: Dictionary = {}
 	for cid: Variant in 牌表:
@@ -552,59 +729,57 @@ func _律法判定(牌表: Array) -> Dictionary:
 		命三 += int(命计数[k2]) / 3
 	var 四系: bool = 系计数.size() >= 4
 	var 四命: bool = 命计数.size() >= 4
-	return {
-		"繁星": 四系 or 四命, "繁星双": 四系 and 四命,
-		"影月同系": 系对, "影月同命": 命对,
-		"蚀日同系": 系三, "蚀日同命": 命三,
-	}
-
-
-## 【繁星】：对所有对手各 1 点法术伤害；双条件同时 → 目标队友 +1 宝石
-func _发动繁星(双: bool) -> void:
-	notice_skill(FAN_XING, enemy_ids())
-	for i: int in range(enemy_ids().size() - 1, -1, -1):
-		engine.push_harm({
-			"src": player.id, "dst": int(enemy_ids()[i]), "point": 1,
-			"cause": FAN_XING, "type": GConst.HarmType.Magic,
-		})
-	if 双:
-		var 队: Array[int] = ally_ids()
-		if not 队.is_empty():
-			var 友: BattlePlayer = engine.p(int(队[0]))
-			if 友 != null:
-				友.set_gem(友.gem + 1)
-	engine._broadcast_game()
-
-
-## 【影月】：同系对数 > 1 → 目标角色 X 点法术伤害
-func _发动影月(对数: int) -> void:
-	notice_skill(YING_YUE, [player.id])
-	_影月伤害 = 对数
-	_步 = 40
-	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-
-var _影月伤害: int = 0
-
-
-## 【影月】的同命格分支：任意分配 X 点治疗给 1~2 位我方（简化：指定的 1 名我方 +X）
-func _发动影月治疗(点数: int) -> void:
-	var 队: Array[int] = _我方角色()
-	if 队.is_empty():
-		return
-	影月治疗点 = 点数
-	_步 = 41
-	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
-
-var 影月治疗点: int = 0
+	var out: Array[Dictionary] = []
+	if player.有律法(律法_繁星) and (四系 or 四命):
+		out.append({"技能号": FAN_XING, "种类": "繁星", "双": 四系 and 四命})
+	if player.有律法(律法_影月) and 系对 > 1:
+		out.append({"技能号": YING_YUE, "种类": "影月伤害", "值": 系对})
+	if player.有律法(律法_影月) and 命对 > 1:
+		out.append({"技能号": YING_YUE, "种类": "影月治疗", "值": 命对})
+	if player.有律法(律法_蚀日) and 系三 > 0:
+		out.append({"技能号": SHI_RI, "种类": "蚀日自身", "值": 系三})
+	if player.有律法(律法_蚀日) and 命三 > 0:
+		out.append({"技能号": SHI_RI, "种类": "蚀日队伍", "值": 命三})
+	return out
 
 
 # ============================================================
 # 小工具
 # ============================================================
+func _地系手牌() -> Array[int]:
+	return hand_ids_where(
+		func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Earth)
+
+
+func _卢恩() -> Array[int]:
+	return player.盖牌按标记(LU_EN标记)
+
+
+func _是卢恩(id: int) -> bool:
+	var 实例: int = player.盖牌实例(id)
+	return 实例 >= 0 and player.盖牌标记(实例) == LU_EN标记
+
+
+func _未拥有律法() -> Array[int]:
+	var out: Array[int] = []
+	for 号: int in 律法表:
+		if not player.有律法(号):
+			out.append(号)
+	return out
+
+
 func _全体角色() -> Array[int]:
 	var out: Array[int] = []
 	for pid: int in engine.order:
 		if engine.p(pid) != null:
+			out.append(pid)
+	return out
+
+
+func _其他角色() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		if pid != player.id and engine.p(pid) != null:
 			out.append(pid)
 	return out
 
@@ -615,4 +790,27 @@ func _我方角色() -> Array[int]:
 		var pp: BattlePlayer = engine.p(pid)
 		if pp != null and pp.color == player.color:
 			out.append(pid)
+	return out
+
+
+## 「摸 0~1 张」的可选项：0 = 不摸，1 = 摸 1 张（数值档位，按钮只写数字）
+func _摸牌选项() -> Array:
+	return [{"value": 0, "text": "0"}, {"value": 1, "text": "1"}]
+
+
+## 展示这几张牌（广播 Card.Show；牌只做展示，移动由调用方做）
+func _展示(cards: Array) -> void:
+	if cards.is_empty():
+		return
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": _牌面表(cards), "is_real": true,
+	})
+
+
+## 选项里的牌白名单要按牌面下发（arg_choices 不经过引擎折面）
+func _牌面表(cards: Array) -> Array:
+	var out: Array = []
+	for c: Variant in cards:
+		out.append(GConst.牌号(int(c)))
 	return out

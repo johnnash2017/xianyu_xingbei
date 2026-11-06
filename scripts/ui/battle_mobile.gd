@@ -2968,7 +2968,17 @@ func _应用选项目标数() -> void:
 		# 牌数要按它加，否则选项选上了却仍按 0 张处理，手牌整片点不动
 		var 项需牌: int = int(项["需牌"]) if not 项.is_empty() else 0
 		_skill_need_card = maxi(_skill_need_card, 项需牌)
+		# 选项自带的「最多牌」也要认（如星坠女巫【群星启示】模式②：1~N 个【卢恩】）：
+		# 「先弹选项」型走的是这个函数，不认的话上限只到「需牌」
+		_skill_card_max = maxi(_skill_card_max, int(项.get("最多牌", 0)))
 		_skill_card_max = maxi(_skill_card_max, _skill_need_card)
+		# 选项自带的选牌来源也要认（模式②要改到盖牌区选【卢恩】）；
+		# -1＝沿用技能本体的来源
+		var 项来源: int = int(项.get("选牌来源", -1)) if not 项.is_empty() else -1
+		if 项来源 >= 0:
+			_skill_card_source = 项来源
+			_selecting_cover = 项来源 == GConst.CardSource.Cover \
+				or 项来源 == GConst.CardSource.HandOrCover or _skill_cover_need > 0
 		_need_cards = _skill_card_max
 		_skill_need_target = 目标数
 		_skill_target_max = maxi(目标数, _选项原始最多目标)
@@ -7736,6 +7746,9 @@ func _分配上限() -> int:
 	# 【冒险者天堂】的上限＝本次提炼出的星石总数（取到的宝石 + 水晶）
 	if _mode == 3 and _是提炼转交技能(_skill_ask_id):
 		return _提炼宝石 + _提炼水晶
+	# 上限由服务端随询问现给（如星坠女巫【影月】同命格：可分配点数＝本次判出的对数）
+	if bool(配置.get("上限随预览", false)):
+		return maxi(int(_pending.get("preview_base", 0)), 0)
 	var 上限: int = int(配置.get("上限", 0))
 	if 上限 > 0:
 		return 上限
@@ -9006,6 +9019,9 @@ func _预览伤害头像提示() -> Dictionary:
 	# 3301 式神咒束 / 3306 阴阳转换的 preview_base 是「本次攻击牌 id」（_开始攒应战 也按牌号读），
 	# 不是伤害数值：这两条询问一进来不能把牌号当伤害画到攻击者头像上（旧版本没有这条提示）。
 	if _skill_ask_id == GConst.技能_式神咒束 or _skill_ask_id == GConst.技能_阴阳转换:
+		return out
+	# 分配型询问（如星坠女巫【影月】同命格）的点数由分配界面逐人头像写，不再走这里的整段预览
+	if not _分配配置().is_empty():
 		return out
 	var 伤害: int = int(_pending.get("preview_base", 0))
 	if 伤害 <= 0:

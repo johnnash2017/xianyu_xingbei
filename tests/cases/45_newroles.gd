@@ -1222,19 +1222,41 @@ func _检星坠女巫() -> void:
 	角色.p_before_turn_begin({"player": 1})
 	检(玩家.hand_cards_max == GConst.HAND_CARDS_MAX + 1 - 玩家.律法数(),
 		"手牌上限应随律法数变化")
+	# 【星环】：总张数 X 与「X 张地系牌 + X-1 名其他角色」一次提交，选项必须带齐按钮文案与需求
+	玩家.hand_cards.clear()
+	var 地牌: int = _找牌("地", "attack")
+	检(地牌 > 0, "卡表里应有地系攻击牌")
+	玩家.add_hand_cards([地牌])
+	var 技能表: Array = 角色.available_skills()
+	var 星环项: Dictionary = {}
+	for 项2: Dictionary in 技能表:
+		if int(项2.get("id", 0)) == 4002:
+			星环项 = 项2
+	var 星环选项: Array = 星环项.get("arg_choices", [])
+	var 首项参数: Array = 星环选项[0].get("args", []) if not 星环选项.is_empty() else []
+	检(not 星环选项.is_empty() and not str(星环选项[0].get("text", "")).is_empty()
+		and int(星环选项[0].get("need_card", 0)) == 1
+		and not 首项参数.is_empty() and int(首项参数[0]) == 1,
+		"【星环】选项要带 text / need_card / args（总张数 X）")
 	# 【群星启示】是启动技：必须作为 SpecialSkill 下发，且不能有法术技能入口
 	var 启示项: Dictionary = {}
-	for 项: Dictionary in 角色.available_skills():
+	for 项: Dictionary in 技能表:
 		if int(项.get("id", 0)) == 4004:
 			启示项 = 项
 	检(int(启示项.get("type", 0)) == GConst.ActionType.SpecialSkill,
 		"【群星启示】应作为启动技（SpecialSkill）下发")
+	var 启示选项: Array = 启示项.get("arg_choices", [])
+	检(not 启示选项.is_empty(), "【群星启示】应下发模式选项")
+	for 项3: Dictionary in 启示选项:
+		检(not str(项3.get("text", "")).is_empty() and not (项3.get("args", []) as Array).is_empty(),
+			"【群星启示】模式选项必须同时带 text 与 args（缺一客户端按钮空白 / 提交空模式）")
 	检(角色.v_magic_skill({"action_id": 4004, "src_id": 1}) == GConst.GE_INVALID_ACTION,
 		"【群星启示】不应有法术技能入口")
 	# 星刻：攻击行动结束时牌库顶 1 张面朝下作为【卢恩】
 	检(玩家.can_add_cover_cards(1), "星坠女巫应有盖牌槽（卢恩）")
 	var 牌数前: int = 引擎.deck.pile.size()
-	角色.p_action_end({"player": 1, "kind": "attack"})
+	var 星刻返回: int = 角色.p_action_end({"player": 1, "kind": "attack"})
+	检(星刻返回 == BattleRole.SUCCESS, "【星刻】放完【卢恩】要 return SUCCESS（URGENT 会重入、一次放满）")
 	检(玩家.盖牌按标记("卢恩").size() == 1, "【星刻】应放下 1 个【卢恩】")
 	检(引擎.deck.pile.size() == 牌数前 - 1, "【星刻】应从牌库顶取 1 张")
 	检(玩家.公开盖牌牌面().is_empty(), "【卢恩】应面朝下（不公开牌面）")
