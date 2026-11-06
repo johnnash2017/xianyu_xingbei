@@ -363,16 +363,24 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 # ============================================================
 # 群星启示①：选律法 → 摸 0~1 张 → 黄金律
 # ============================================================
-func _启示选律法() -> int:
-	# 三个律法是固定分支：已拥有的照样列出，只置灰（约定 #1）
+## 选律法的三个选项：文案取技能表「按钮5~7」（【律法：繁星】…），
+## 并带「技能组」＝对应的律法技能行 —— 客户端鼠标指向选项时弹出那颗技能的说明。
+## 三个律法是固定分支：已拥有的照样列出，只置灰（约定 #1）。
+func _律法选项() -> Array:
 	var 选项: Array = []
 	for 法号: int in 律法表:
 		选项.append({
-			"value": 法号, "label": str(GConst.律法名[法号]),
+			"value": 法号,
+			"label": GConst.按钮原文(QUN_XING_QI_SHI, 4 + 法号 - 1),
+			"技能组": [int(GConst.律法技能.get(法号, 0))],
 			"enabled": not player.有律法(法号),
 		})
+	return 选项
+
+
+func _启示选律法() -> int:
 	if not engine.has_reply():
-		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false,
+		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, _律法选项(), 0, "", [], false,
 			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 			GConst.提示原文(QUN_XING_QI_SHI, 2))
 		return WAIT

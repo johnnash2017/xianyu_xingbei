@@ -1285,6 +1285,13 @@ func _检星坠女巫() -> void:
 	检(摸牌选项.size() == 2 and str(摸牌选项[0].get("label", "")) == "不摸牌"
 		and str(摸牌选项[1].get("label", "")) == "摸 1 张牌",
 		"【群星启示】摸牌选项要显示「不摸牌 / 摸 1 张牌」：%s" % str(摸牌选项))
+	var 律法选项: Array = 角色.call("_律法选项")
+	检(律法选项.size() == 3
+		and str(律法选项[0].get("label", "")) == "【律法：繁星】"
+		and (律法选项[0].get("技能组", []) as Array).has(4006)
+		and (律法选项[1].get("技能组", []) as Array).has(4007)
+		and (律法选项[2].get("技能组", []) as Array).has(4008),
+		"【群星启示】选律法选项要显示【律法：X】并带对应技能说明：%s" % str(律法选项))
 	检(角色.v_magic_skill({"action_id": 4004, "src_id": 1}) == GConst.GE_INVALID_ACTION,
 		"【群星启示】不应有法术技能入口")
 	# 星刻：攻击行动结束时牌库顶 1 张面朝下作为【卢恩】
