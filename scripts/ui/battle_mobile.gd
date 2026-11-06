@@ -565,6 +565,8 @@ var _skill_card_source: int = GConst.CardSource.Hand
 ## 手牌 + 盖牌混选时要求其中几张必须是盖牌（服务端给的 cover_need；0＝不要求，
 ## 如【魔贯冲击】：1 张手牌攻击牌 + 1 张火系【充能】）
 var _skill_cover_need: int = 0
+## 混选时盖牌最多几张（cover_max；0＝不限制。如黄金律 1 手牌 + 1 卢恩）
+var _skill_cover_max: int = 0
 ## 本次发动技能的参数选项（服务端在技能上给的 arg_choices：每项一个按钮，点它就用当前已选的牌/目标提交）
 var _skill_arg_choices: Array = []
 ## 本次对局收到的询问代数：每来一条 CmdReq +1。用来判断「应答发出后，下一条询问是不是
@@ -2258,6 +2260,7 @@ func _on_command(data: Dictionary) -> void:
 	_skill_card_rule = ""
 	_skill_card_source = GConst.CardSource.Hand
 	_skill_cover_need = 0
+	_skill_cover_max = 0
 	_skill_cards.clear()
 	_skill_targets.clear()
 	# 「顺带点亮」只对当前这一条询问有效（10601 / 10605 等每条询问自己重新给）
@@ -2532,6 +2535,7 @@ func _技能询问_解析字段() -> void:
 	_skill_card_rule = str(_pending.get("card_rule", ""))
 	# 手牌+盖牌混选的询问（如美杜莎之眼：1 张暗月盖牌 + 1 张手牌）
 	_skill_cover_need = int(_pending.get("cover_need", 0))
+	_skill_cover_max = int(_pending.get("cover_max", 0))
 	# 选项切换时要还原的原始需求：技能询问这条通道也必须先记下来，
 	# 否则共振这类「选项自己带 need_target」的询问会拿到上一次/默认的 0，选了选项也不亮目标
 	_选项原始目标数 = _skill_ask_need_target
@@ -3991,6 +3995,7 @@ func _取消失效的当前技能() -> void:
 	_本地询问 = false
 	_selecting_cover = false
 	_skill_cover_need = 0
+	_skill_cover_max = 0
 	# 二级栏开着时：收掉选项与「要消耗的行动」按钮，把被它们藏起来的主技能栏重新显示出来
 	if _二级栏:
 		_清空二级选项()
@@ -5657,6 +5662,15 @@ func _技能牌能点(面: int, card_id: int) -> bool:
 				return false
 	if not _skill_cards.is_empty() and not _skill_cards.has(面):
 		return false
+	# 盖牌最多 N 张（如黄金律：1 张手牌 + 1 个卢恩，盖牌不能再点第二张）：
+	# 已选够盖牌后，其余盖牌置灰；要换先点掉已选的那张
+	if _skill_cover_max > 0 and _is_my_cover(card_id) and not _sel_cards.has(card_id):
+		var 盖已选: int = 0
+		for c: Variant in _sel_cards:
+			if _is_my_cover(int(c)):
+				盖已选 += 1
+		if 盖已选 >= _skill_cover_max:
+			return false
 	# 「要凑多张」的技能（最多牌 ≥ 2，如元素师法术「发动牌 + 加成牌」）选满上限后，
 	# 没选上的牌一律置灰：必须先点掉已选的牌才能换，否则会出现「点第三张牌 → 整批清空重选 →
 	# 组合里混进不合法的牌」这种界面能提交、服务端必驳回的状态。
@@ -7536,6 +7550,7 @@ func _复位行动阶段选牌状态() -> void:
 	_skill_card_rule = ""
 	_skill_card_source = GConst.CardSource.Hand
 	_skill_cover_need = 0
+	_skill_cover_max = 0
 	_skill_cards.clear()
 	_skill_targets.clear()
 	_skill_slot_skill = 0
@@ -7570,6 +7585,7 @@ func _回到行动阶段() -> void:
 	# 退回行动阶段就不再选盖牌了：不关掉会把盖牌区一直亮着、挡住界面（如取消【倒逆之蝶】选 2 张【茧】那一步）
 	_selecting_cover = false
 	_skill_cover_need = 0
+	_skill_cover_max = 0
 	_清空技能按钮()
 	if not _行动命令.is_empty():
 		_构建技能按钮(_行动命令)
@@ -8565,6 +8581,7 @@ func _清空待选() -> void:
 	_skill_slot_element = 0
 	_skill_card_source = GConst.CardSource.Hand
 	_skill_cover_need = 0
+	_skill_cover_max = 0
 	_skill_arg_choices.clear()
 	_skill_ask_can_cancel = true
 	_本地询问 = false
