@@ -735,6 +735,15 @@ func _发动律法文案(法号: int) -> String:
 	return "发动【律法：%s】" % 名
 
 
+## 移除律法选项文案：文本表「通用_移除律法」填【律法：X】；表没加载到就按同句式兜底
+func _移除律法文案(法号: int) -> String:
+	var 名: String = str(GConst.律法名.get(法号, ""))
+	var 模板: String = GConst.文本("通用_移除律法", false)
+	if 模板.contains("%s"):
+		return 模板.replace("%s", 名)
+	return "移除【律法：%s】" % 名
+
+
 func _不发动文案() -> String:
 	var 文: String = GConst.文本("通用_不发动", false)
 	return 文 if not 文.is_empty() and 文 != "通用_不发动" else "不发动"
@@ -748,7 +757,7 @@ func _移除律法选项() -> Array:
 			continue
 		选项.append({
 			"value": 法号,
-			"label": GConst.按钮原文(QUN_XING_QI_SHI, 4 + 法号 - 1),
+			"label": _移除律法文案(法号),
 			"技能组": [int(GConst.律法技能.get(法号, 0))],
 		})
 	return 选项
