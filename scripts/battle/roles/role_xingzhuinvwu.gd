@@ -41,7 +41,6 @@ const 律法表: Array[int] = [律法_繁星, 律法_影月, 律法_蚀日]
 ## 当前步骤（0＝空闲）；子流程统一由 p_xing_zhui_ask 接管
 const 步_启示选律法: int = 1
 const 步_启示摸牌: int = 2
-const 步_律法询问: int = 3
 const 步_影月伤害: int = 4
 const 步_影月治疗: int = 5
 const 步_繁星队友: int = 6
@@ -50,6 +49,8 @@ const 步_创刻摸牌: int = 8
 const 步_创刻卢恩: int = 9
 const 步_星环结算: int = 10
 const 步_律法移除: int = 11
+const 步_律法选发动: int = 12
+const 步_律法效果: int = 13
 
 var _步: int = 0
 ## 【星环】是回合限定：本回合发动过就置位，自己回合开始时清回 false
@@ -60,6 +61,9 @@ var _星环下标: int = 0
 ## 群星启示②：本次要逐条询问的律法效果、当前问到第几个
 var _律法队列: Array[Dictionary] = []
 var _律法下标: int = 0
+## 群星启示②：本次移除的卢恩判定结果（法号 → {技能号, 效果[]}）与已发动过的律法
+var _律法结果: Dictionary = {}
+var _已发动律法: Array[int] = []
 
 
 # ============================================================
@@ -115,6 +119,8 @@ func available_skills() -> Array:
 		},
 		{
 			"value": 2, "text": GConst.按钮原文(QUN_XING_QI_SHI, 1), "args": [2],
+			# 这两个键只用于客户端下级界面的选牌配置（盖牌区 1~N 个【卢恩】）；
+			# 实际提交时 args 会变成 [2, 法号]，card_ids 仍是选中的卢恩
 			"need_card": 1, "card_max": maxi(卢恩.size(), 1),
 			"card_source": GConst.CardSource.Cover, "cards": _牌面表(卢恩),
 			"enabled": not 卢恩.is_empty(),
@@ -162,12 +168,28 @@ func v_special_skill(action: Dictionary) -> int:
 			if _未拥有律法().is_empty():
 				return GConst.GE_INVALID_ACTION
 		2:
-			# 模式②：至少 1 个【卢恩】，且选中的都得是卢恩
+			# 模式②：args=[2, 法号]（0=不发动），card_ids 是本次要移除的【卢恩】。
+			# 选律法 + 选卢恩在下级界面里一次提交；不发动只有在没有任何律法可发动时才允许。
+			if args.size() < 2:
+				return GConst.GE_INVALID_ARGUMENT
+			var 法号: int = int(args[1])
+			if 法号 < 0 or 法号 > 律法表.size():
+				return GConst.GE_INVALID_ARGUMENT
 			if cards.is_empty() or cards.size() > _卢恩().size():
 				return GConst.GE_INVALID_CARDID
+			var 已见: Array = []
 			for c: Variant in cards:
-				if not _是卢恩(int(c)):
+				var cid: int = int(c)
+				if 已见.has(cid) or not _是卢恩(cid):
 					return GConst.GE_INVALID_CARDID
+				已见.append(cid)
+			var 结果: Dictionary = _判定律法(cards)
+			if 法号 == 0:
+				if not 结果.is_empty():
+					return GConst.GE_INVALID_ACTION
+			else:
+				if not player.有律法(法号) or not 结果.has(法号):
+					return GConst.GE_INVALID_ACTION
 		_:
 			return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
@@ -275,7 +297,8 @@ func _p_群星启示(action: Dictionary) -> int:
 	var 模式: int = int(args[0]) if not args.is_empty() else 0
 	notice_skill(QUN_XING_QI_SHI, [player.id])
 	if 模式 == 2:
-		return _启示移除卢恩(cards)
+		var 法号: int = int(args[1]) if args.size() > 1 else 0
+		return _启示移除卢恩(cards, 法号)
 	# 模式①：先把这 1 张手牌面朝下放成【卢恩】，再选律法
 	var 实例: int = player.取出一张手牌(int(cards[0]))
 	if 实例 < 0:
@@ -355,8 +378,10 @@ func p_xing_zhui_ask(ctx: Dictionary) -> int:
 			return _启示选律法()
 		步_启示摸牌:
 			return _启示摸牌()
-		步_律法询问:
-			return _律法询问()
+		步_律法效果:
+			return _律法效果()
+		步_律法选发动:
+			return _律法选发动面板()
 		步_影月伤害:
 			return _影月伤害()
 		步_影月治疗:
@@ -439,9 +464,9 @@ func _启示摸牌() -> int:
 
 
 # ============================================================
-# 群星启示②：移除卢恩 → 逐条询问律法 → 移除 1 个律法 → 黄金律
+# 群星启示②：移除卢恩 → 选律法（下级界面同时选卢恩）→ 移除 1 个律法 → 黄金律
 # ============================================================
-func _启示移除卢恩(选择: Array) -> int:
+func _启示移除卢恩(选择: Array, 法号: int) -> int:
 	var 卢恩表: Array[int] = []
 	for c: Variant in 选择:
 		var 实例: int = player.盖牌实例(int(c))
@@ -455,28 +480,94 @@ func _启示移除卢恩(选择: Array) -> int:
 		engine.remove_cover(player.id, [实例], player.id, QUN_XING_QI_SHI)
 		engine.to_discard([实例], {"owner": player.id, "source": "cover", "cause": QUN_XING_QI_SHI})
 	engine._log_discard(player.id, 卢恩表, false)
-	_律法队列 = _判定律法(卢恩表)
-	_律法下标 = 0
-	_步 = 步_律法询问
+	_律法结果 = _判定律法(卢恩表)
+	_已发动律法.clear()
+	if 法号 <= 0:
+		# 不发动：本次卢恩没有凑出任何律法，直接进「移除律法」
+		_步 = 步_律法移除
+	else:
+		_已发动律法.append(法号)
+		_载入律法效果(法号)
+		_步 = 步_律法效果
 	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
 	return URGENT
 
 
-## 当前问到的律法：先问「是否发动」；不发动就直接问下一条
-func _律法询问() -> int:
-	if _律法下标 >= _律法队列.size():
-		return _律法收尾()
-	var 律: Dictionary = _律法队列[_律法下标]
-	var 技能号: int = int(律["技能号"])
+## 把一颗律法的效果装进逐条结算队列
+func _载入律法效果(法号: int) -> void:
+	_律法队列.clear()
+	var 效果表: Array = _律法结果[法号]["效果"]
+	for 效果: Variant in 效果表:
+		_律法队列.append(效果 as Dictionary)
+	_律法下标 = 0
+
+
+## 本次移除的卢恩还能发动哪些律法（没发动过的）
+func _剩余可发动() -> Array[int]:
+	var out: Array[int] = []
+	for 号: int in 律法表:
+		if _律法结果.has(号) and not _已发动律法.has(号):
+			out.append(号)
+	return out
+
+
+## 选律法面板：三颗律法各一个选项（可发动的才亮），最后一项「不发动」只在没有律法可发动时亮
+func _律法发动选项(剩余: Array[int]) -> Array:
+	var 选项: Array = []
+	for 法号: int in 律法表:
+		var 技能号: int = int(GConst.律法技能.get(法号, 0))
+		选项.append({
+			"value": 法号,
+			"label": _发动律法文案(法号),
+			"skill_id": 技能号,
+			"技能组": [技能号],
+			"enabled": 剩余.has(法号),
+		})
+	选项.append({
+		"value": 0,
+		"label": _不发动文案(),
+		"enabled": 剩余.is_empty(),
+	})
+	return 选项
+
+
+## 选下一个要发动的律法；没有可发动的时候面板只剩「不发动」，点了才进「移除律法」
+func _律法选发动面板() -> int:
+	var 剩余: Array[int] = _剩余可发动()
 	if not engine.has_reply():
-		询问(player.id, 技能号, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true)
+		# 不带额外提示文案：提示条全程用【群星启示】自身的技能说明
+		询问(player.id, QUN_XING_QI_SHI, 0, 0, GConst.CardSource.Hand, _律法发动选项(剩余), 0, "", [], false,
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
-	var 发动: bool = args.size() > 0 and int(args[0]) == 1
-	if not 发动:
-		_律法下标 += 1
-		return URGENT
+	var 法号: int = int(args[0]) if not args.is_empty() else -1
+	if 剩余.is_empty():
+		# 只剩「不发动」：选它（或超时）就进移除律法
+		if 法号 != 0 and not bool(r.get("is_timeout", false)):
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return _律法选发动面板()
+		_步 = 步_律法移除
+		return _律法移除()
+	if not 剩余.has(法号):
+		if not bool(r.get("is_timeout", false)):
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return _律法选发动面板()
+		# 超时兜底：发动第一个还可发动的律法
+		法号 = 剩余[0]
+	_已发动律法.append(法号)
+	_载入律法效果(法号)
+	_步 = 步_律法效果
+	return URGENT
+
+
+## 当前律法的效果逐条结算（不再问「是否发动」）
+func _律法效果() -> int:
+	if _律法下标 >= _律法队列.size():
+		return _律法效果完成()
+	var 律: Dictionary = _律法队列[_律法下标]
 	match str(律["种类"]):
 		"繁星":
 			notice_skill(FAN_XING, enemy_ids())
@@ -489,7 +580,7 @@ func _律法询问() -> int:
 				_步 = 步_繁星队友
 				return URGENT
 			_律法下标 += 1
-			_步 = 步_律法询问
+			_步 = 步_律法效果
 			return URGENT
 		"影月伤害":
 			_步 = 步_影月伤害
@@ -502,19 +593,28 @@ func _律法询问() -> int:
 			player.set_gem(player.gem + int(律["值"]))
 			engine._broadcast_game()
 			_律法下标 += 1
-			_步 = 步_律法询问
+			_步 = 步_律法效果
 			return URGENT
 		"蚀日队伍":
 			notice_skill(SHI_RI, [player.id])
 			engine.set_team_gem(player.color, engine.team_gem[player.color] + int(律["值"]))
 			engine._broadcast_game()
 			_律法下标 += 1
-			_步 = 步_律法询问
+			_步 = 步_律法效果
 			return URGENT
 		_:
 			engine.报错("【群星启示】未知的律法效果：%s" % str(律["种类"]), player.id)
 			_律法下标 += 1
+			_步 = 步_律法效果
 			return URGENT
+
+
+## 一颗律法的效果结算完：回面板继续选（没有可发动的时面板只剩「不发动」，点了才进移除律法）
+func _律法效果完成() -> int:
+	_律法队列.clear()
+	_律法下标 = 0
+	_步 = 步_律法选发动
+	return _律法选发动面板()
 
 
 ## 繁星双条件：给 1 名队友 +1 宝石（只有 1 名队友时直接给，多于 1 名才问）
@@ -526,7 +626,7 @@ func _繁星队友() -> int:
 			友.set_gem(友.gem + 1)
 		engine._broadcast_game()
 		_律法下标 += 1
-		_步 = 步_律法询问
+		_步 = 步_律法效果
 		return URGENT
 	if not engine.has_reply():
 		询问(player.id, FAN_XING, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
@@ -546,7 +646,7 @@ func _繁星队友() -> int:
 		友2.set_gem(友2.gem + 1)
 	engine._broadcast_game()
 	_律法下标 += 1
-	_步 = 步_律法询问
+	_步 = 步_律法效果
 	return URGENT
 
 
@@ -574,11 +674,11 @@ func _影月伤害() -> int:
 	if engine.p(目标) == null:
 		engine.报错("【影月】没有可指定的目标", player.id)
 		_律法下标 += 1
-		_步 = 步_律法询问
+		_步 = 步_律法效果
 		return URGENT
 	notice_skill(YING_YUE, [目标])
 	_律法下标 += 1
-	_步 = 步_律法询问
+	_步 = 步_律法效果
 	engine.push_harm({
 		"src": player.id, "dst": 目标, "point": 点数,
 		"cause": YING_YUE, "type": GConst.HarmType.Magic,
@@ -623,19 +723,18 @@ func _影月治疗() -> int:
 		for i: int in range(dsts.size()):
 			施加治疗(int(dsts[i]), int(args[i]))
 	_律法下标 += 1
-	_步 = 步_律法询问
+	_步 = 步_律法效果
 	return URGENT
 
 
-## 律法全部问完：由玩家选择移除 1 个律法，然后走黄金律
-func _律法收尾() -> int:
-	_律法队列.clear()
-	_律法下标 = 0
-	if player.律法数() <= 0:
-		_步 = 0
-		return _黄金律()
-	_步 = 步_律法移除
-	return _律法移除()
+## 律法发动选项文案：「发动」＋按钮5~7 的「【律法：X】」。
+## TODO 文本表补「通用_发动律法 / 通用_不发动」后改成 GConst.文本（当前设计表被占用，见提交说明）
+func _发动律法文案(法号: int) -> String:
+	return "发动" + GConst.按钮原文(QUN_XING_QI_SHI, 4 + 法号 - 1)
+
+
+func _不发动文案() -> String:
+	return "不发动"
 
 
 ## 移除哪个律法由玩家选：只列当前拥有的（没拥有的移除不了），文案与悬停同选律法
@@ -796,11 +895,12 @@ func _创刻选卢恩() -> int:
 # ============================================================
 # 律法判定
 # ============================================================
-## 对本次移除的卢恩做组成判定，只保留**自己拥有**的律法，返回逐条要询问的效果：
+## 对本次移除的卢恩做组成判定，只保留**自己拥有**的律法：
 ##   繁星：4 个不同系别 或 4 个不同命格（两者同时 → 双，目标队友 +1 宝石）
-##   影月：成对的同系 / 同命格（对数 > 1 才发动）
+##   影月：成对的同系 / 同命格（对数 > 1 才发动；两个条件都满足时两个效果都算）
 ##   蚀日：每 3 个同系 / 每 3 个同命格
-func _判定律法(牌表: Array) -> Array[Dictionary]:
+## 返回 法号 → {技能号, 效果[]}；一颗律法一个选项，效果按「先后两个条件」的顺序排。
+func _判定律法(牌表: Array) -> Dictionary:
 	var 系计数: Dictionary = {}
 	var 命计数: Dictionary = {}
 	for cid: Variant in 牌表:
@@ -825,17 +925,26 @@ func _判定律法(牌表: Array) -> Array[Dictionary]:
 		命三 += int(命计数[k2]) / 3
 	var 四系: bool = 系计数.size() >= 4
 	var 四命: bool = 命计数.size() >= 4
-	var out: Array[Dictionary] = []
+	var out: Dictionary = {}
 	if player.有律法(律法_繁星) and (四系 or 四命):
-		out.append({"技能号": FAN_XING, "种类": "繁星", "双": 四系 and 四命})
-	if player.有律法(律法_影月) and 系对 > 1:
-		out.append({"技能号": YING_YUE, "种类": "影月伤害", "值": 系对})
-	if player.有律法(律法_影月) and 命对 > 1:
-		out.append({"技能号": YING_YUE, "种类": "影月治疗", "值": 命对})
-	if player.有律法(律法_蚀日) and 系三 > 0:
-		out.append({"技能号": SHI_RI, "种类": "蚀日自身", "值": 系三})
-	if player.有律法(律法_蚀日) and 命三 > 0:
-		out.append({"技能号": SHI_RI, "种类": "蚀日队伍", "值": 命三})
+		out[律法_繁星] = {
+			"技能号": FAN_XING,
+			"效果": [{"种类": "繁星", "双": 四系 and 四命}],
+		}
+	if player.有律法(律法_影月) and (系对 > 1 or 命对 > 1):
+		var 效果: Array = []
+		if 系对 > 1:
+			效果.append({"种类": "影月伤害", "值": 系对})
+		if 命对 > 1:
+			效果.append({"种类": "影月治疗", "值": 命对})
+		out[律法_影月] = {"技能号": YING_YUE, "效果": 效果}
+	if player.有律法(律法_蚀日) and (系三 > 0 or 命三 > 0):
+		var 效果3: Array = []
+		if 系三 > 0:
+			效果3.append({"种类": "蚀日自身", "值": 系三})
+		if 命三 > 0:
+			效果3.append({"种类": "蚀日队伍", "值": 命三})
+		out[律法_蚀日] = {"技能号": SHI_RI, "效果": 效果3}
 	return out
 
 

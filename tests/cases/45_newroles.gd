@@ -1296,6 +1296,18 @@ func _检星坠女巫() -> void:
 	检(移除律法选项.size() == 玩家.律法数()
 		and (移除律法选项[0].get("技能组", []) as Array).has(4006),
 		"【群星启示】移除律法时只能从自己拥有的律法里选：%s" % str(移除律法选项))
+	var 剩余三: Array[int] = [1, 2, 3]
+	var 律法发动选项: Array = 角色.call("_律法发动选项", 剩余三)
+	检(律法发动选项.size() == 4
+		and str(律法发动选项[0].get("label", "")) == "发动【律法：繁星】"
+		and bool(律法发动选项[0].get("enabled", false))
+		and not bool(律法发动选项[3].get("enabled", true)),
+		"【群星启示】选律法面板应有「发动【律法：X】」三项 + 不发动（有律法亮时不发动置灰）：%s" % str(律法发动选项))
+	var 剩余空: Array[int] = []
+	var 律法发动选项空: Array = 角色.call("_律法发动选项", 剩余空)
+	检(not bool(律法发动选项空[0].get("enabled", true))
+		and bool(律法发动选项空[3].get("enabled", false)),
+		"【群星启示】没有律法可发动时只有「不发动」亮：%s" % str(律法发动选项空))
 	检(角色.v_magic_skill({"action_id": 4004, "src_id": 1}) == GConst.GE_INVALID_ACTION,
 		"【群星启示】不应有法术技能入口")
 	# 星刻：攻击行动结束时先问是否发动，确认后才从牌库顶放 1 张【卢恩】

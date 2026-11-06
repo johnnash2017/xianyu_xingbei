@@ -4414,6 +4414,14 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		var b: 技能按钮 = _二级选项[i]["按钮"]
 		if is_instance_valid(b):
 			b.设置选中(i == 序号)
+	# 群星启示②：点「移除 X 个卢恩」后不走普通选牌流程，先打开「律法 + 卢恩」下级界面
+	if _群星启示下级中():
+		_选中群星启示下级(序号)
+		return
+	if _群星启示要开下级(序号):
+		_应用选项目标数()
+		_进入群星启示下级()
+		return
 	# 有些技能 / 本地步骤在「点中选项」这一刻就要立刻做别的事（进第二层、直接提交…），
 	# 命中就不走下面的通用流程（应用选项需求 / 重新校验）
 	if _选项选中立刻处理(序号):
@@ -4514,6 +4522,160 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 ## 命中返回 true（后面的通用流程不再跑）；没命中返回 false。
 ## 这些分支都是按技能号 / 本地步骤写死的（清单见计划文档 §4.3）——
 ## 收成一处，是为了让 _选中二级选项 的主流程只剩「记参数 → 应用需求 → 复检」。
+# ---------------- 群星启示②：律法 + 卢恩下级界面 ----------------
+## 当前二级栏是不是群星启示②的下级界面（选项带「群星律法」标记）
+func _群星启示下级中() -> bool:
+	for 项: Dictionary in _二级选项:
+		if bool(项.get("群星律法", false)):
+			return true
+	return false
+
+
+## 刚点中的是不是「群星启示② / 移除 X 个卢恩」那一项（参数只有一个 2）
+func _群星启示要开下级(序号: int) -> bool:
+	if _mode != 4 or _pending_skill_id != GConst.技能_群星启示:
+		return false
+	if 序号 < 0 or 序号 >= _二级选项.size():
+		return false
+	var 参数: Array = _二级选项[序号].get("参数", [])
+	return 参数.size() == 1 and int(参数[0]) == 2
+
+
+## 「发动【律法：X】」文案：前缀 + 技能表按钮5~7。
+## TODO 文本表补「通用_发动律法 / 通用_不发动」后改成 GConst.文本（当前设计表被占用）
+func _群星发动文案(法号: int) -> String:
+	return "发动" + GConst.按钮原文(GConst.技能_群星启示, 4 + 法号 - 1)
+
+
+func _群星不发动文案() -> String:
+	return "不发动"
+
+
+## 下级界面：三颗律法（默认置灰）＋「不发动」（没有律法可发动时才亮）
+func _群星启示下级选项() -> Array:
+	var 选项: Array = []
+	for 法号: int in [1, 2, 3]:
+		var 技能号: int = int(GConst.律法技能.get(法号, 0))
+		选项.append({
+			"文本": _群星发动文案(法号),
+			"参数": [2, 法号],
+			"技能号": 技能号,
+			"技能组": [技能号],
+			"可用": false,
+			"群星律法": true,
+		})
+	选项.append({
+		"文本": _群星不发动文案(),
+		"参数": [2, 0],
+		"可用": true,
+		"群星律法": true,
+	})
+	return 选项
+
+
+## 点了「移除 X 个卢恩」：把二级栏换成律法下级界面（保留上一步的选牌配置：盖牌区 1~N 个卢恩）
+func _进入群星启示下级() -> void:
+	var 项: Dictionary = _二级选中项()
+	var 牌白: Array = (项.get("牌白", []) as Array).duplicate()
+	var 父: 技能按钮 = _二级栏父按钮
+	_进入二级技能栏(_pending_skill_id, 父, _群星启示下级选项(), 二级选项底色, _返回群星启示第一层)
+	# 只让点【卢恩】（没有别的盖牌时就是全部盖牌）
+	_skill_cards.assign(牌白)
+	_刷新群星启示下级()
+	_刷新交互()
+	_刷新二级栏提示()
+
+
+## 下级界面的「返回」：退回模式①/②，清掉已经选的卢恩
+func _返回群星启示第一层() -> void:
+	_sel_cards.clear()
+	_skill_cards.clear()
+	var 父: 技能按钮 = _二级栏父按钮
+	_进入二级技能栏(_pending_skill_id, 父, _skill_arg_choices, 二级选项底色, _on_cancel)
+	_刷新交互()
+	_刷新二级栏提示()
+
+
+## 选中下级界面的律法 / 不发动：只记下要提交的参数 [2, 法号]，不动选牌配置
+func _选中群星启示下级(序号: int) -> void:
+	if 序号 < 0 or 序号 >= _二级选项.size():
+		return
+	_隐藏技能说明()
+	_二级选中 = 序号
+	_已选参数 = (_二级选项[序号]["参数"] as Array).duplicate()
+	for i: int in range(_二级选项.size()):
+		var b: 技能按钮 = _二级选项[i]["按钮"]
+		if is_instance_valid(b):
+			b.设置选中(i == 序号)
+	_刷新交互()
+	_刷新二级栏提示()
+
+
+## 从选中的卢恩算「哪些律法条件成立」。与服务端 _判定律法 同口径：
+##   繁星 4 个不同系 / 4 个不同命格；影月 同系对 > 1 / 同命对 > 1；蚀日 同系三连 / 同命三连
+func _群星律法可用(牌们: Array) -> Dictionary:
+	var 系计数: Dictionary = {}
+	var 命计数: Dictionary = {}
+	for cid: Variant in 牌们:
+		var 卡: GCard = Data.get_card(int(cid))
+		if 卡 == null:
+			# 兜底：用并行的盖牌实例号 / 卡面列表找
+			var 位: int = Data.cover_iids.find(int(cid))
+			if 位 >= 0 and 位 < Data.cover_cards.size():
+				卡 = Data.cover_cards[位]
+		if 卡 == null:
+			continue
+		var 系: int = 卡.element_enum()
+		var 命: int = 卡.fate_pattern_enum()
+		if 系 > 0:
+			系计数[系] = int(系计数.get(系, 0)) + 1
+		if 命 > 0:
+			命计数[命] = int(命计数.get(命, 0)) + 1
+	var 系对: int = 0
+	var 命对: int = 0
+	var 系三: int = 0
+	var 命三: int = 0
+	for k: Variant in 系计数.keys():
+		系对 += int(系计数[k]) / 2
+		系三 += int(系计数[k]) / 3
+	for k2: Variant in 命计数.keys():
+		命对 += int(命计数[k2]) / 2
+		命三 += int(命计数[k2]) / 3
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	var 拥有 := func(号: int) -> bool:
+		return 我 != null and 我.laws.has(号)
+	return {
+		1: 拥有.call(1) and (系计数.size() >= 4 or 命计数.size() >= 4),
+		2: 拥有.call(2) and (系对 > 1 or 命对 > 1),
+		3: 拥有.call(3) and (系三 > 0 or 命三 > 0),
+	}
+
+
+## 卢恩一改就重算：律法选项按条件点亮 / 置灰；不发动只在没有律法亮时可用；
+## 当前选中的律法若条件失效，连选中一起撤销
+func _刷新群星启示下级() -> void:
+	if not _群星启示下级中():
+		return
+	var 可用表: Dictionary = _群星律法可用(_sel_cards)
+	var 有律法: bool = bool(可用表.get(1, false)) or bool(可用表.get(2, false)) \
+		or bool(可用表.get(3, false))
+	for i: int in range(_二级选项.size()):
+		var 项: Dictionary = _二级选项[i]
+		var 参数: Array = 项.get("参数", [])
+		var 法号: int = int(参数[1]) if 参数.size() > 1 else 0
+		var 可: bool = (not 有律法) if 法号 == 0 else bool(可用表.get(法号, false))
+		项["可用"] = 可
+		var 按钮: 技能按钮 = 项["按钮"]
+		if is_instance_valid(按钮):
+			按钮.设置选项可用(可)
+		if i == _二级选中 and not 可:
+			按钮.设置选中(false)
+			_二级选中 = -1
+			_已选参数.clear()
+	_刷新交互()
+	_刷新二级栏提示()
+
+
 func _选项选中立刻处理(序号: int) -> bool:
 	# 攻击结束二选一（10804 / 4504 / 4501）：点选项只选中（可切换），按该项自己的
 	# 需目标 / 需牌放开点选；选够后按「确定」一次性提交，不再走目标的二次确认。
@@ -4798,6 +4960,13 @@ func _二级栏提示文案() -> String:
 	if not 选项提示文案.is_empty() and not _已选参数.is_empty():
 		return 选项提示文案.replace("%d", str(int(_已选参数[0])))
 	var 选中项: Dictionary = _二级选中项()
+	# 群星启示②的下级界面：选中哪颗律法，提示条就换成那颗律法的说明
+	if _群星启示下级中() and not 选中项.is_empty():
+		var 律法技能号: int = int(选中项.get("技能号", 0))
+		if 律法技能号 > 0:
+			var 律法说明: String = _技能效果提示(律法技能号)
+			if not 律法说明.is_empty():
+				return 律法说明
 	# 选项自带「选中后提示文案」（如天雷 / 地裂选系别后写该系效果）：
 	# 选中后写这一项的效果；没选中时询问文案为空，客户端会显示完整技能说明。
 	var 项提示: String = str(选中项.get("提示", ""))
@@ -5153,6 +5322,9 @@ func _on_card_clicked(card_id: int) -> void:
 	# 【元素射击】选/换【子弹】后，刷新「视为系别」选项的可点状态（只有光/暗子弹才点亮）
 	if _mode == 3 and _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
 		_刷新视为系别可用()
+	# 群星启示②：卢恩一改，三颗律法的条件就可能变 —— 重新点亮 / 置灰，选中项失效就撤销
+	if _群星启示下级中():
+		_刷新群星启示下级()
 	# 换了牌就要重算「哪些敌人能打」：攻击牌选出后目标才亮
 	刷新选中面板()
 	_更新按键()
