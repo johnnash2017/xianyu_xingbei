@@ -1308,15 +1308,6 @@ func _检星坠女巫() -> void:
 	检(not bool(律法发动选项空[0].get("enabled", true))
 		and bool(律法发动选项空[3].get("enabled", false)),
 		"【群星启示】没有律法可发动时只有「不发动」亮：%s" % str(律法发动选项空))
-	# ② 的提交形状：args=[2, 法号] + 卢恩；没凑出律法时只能提交 0
-	var 卢恩示例: Array[int] = 玩家.盖牌按标记("卢恩")
-	检(not 卢恩示例.is_empty(), "【群星启示】② 校验前应已有 1 个【卢恩】")
-	检(角色.v_special_skill({"src_id": 1, "action_id": 4004, "args": [2, 1],
-		"card_ids": [卢恩示例[0]]}) != GConst.GE_SUCCESS,
-		"【群星启示】② 卢恩没凑出律法时不能提交发动")
-	检(角色.v_special_skill({"src_id": 1, "action_id": 4004, "args": [2, 0],
-		"card_ids": [卢恩示例[0]]}) == GConst.GE_SUCCESS,
-		"【群星启示】② 没有律法可发动时可以提交「不发动」")
 	检(角色.v_magic_skill({"action_id": 4004, "src_id": 1}) == GConst.GE_INVALID_ACTION,
 		"【群星启示】不应有法术技能入口")
 	# 星刻：攻击行动结束时先问是否发动，确认后才从牌库顶放 1 张【卢恩】
@@ -1335,6 +1326,15 @@ func _检星坠女巫() -> void:
 	检(玩家.盖牌按标记("卢恩").size() == 1, "【星刻】应放下 1 个【卢恩】")
 	检(引擎.deck.pile.size() == 牌数前 - 1, "【星刻】应从牌库顶取 1 张")
 	检(玩家.公开盖牌牌面().is_empty(), "【卢恩】应面朝下（不公开牌面）")
+	# ② 的提交形状：args=[2, 法号] + 卢恩；没凑出律法时只能提交 0
+	var 卢恩示例: Array[int] = 玩家.盖牌按标记("卢恩")
+	检(not 卢恩示例.is_empty(), "【群星启示】② 校验前应已有 1 个【卢恩】")
+	检(角色.v_special_skill({"src_id": 1, "action_id": 4004, "args": [2, 1],
+		"card_ids": [卢恩示例[0]]}) != GConst.GE_SUCCESS,
+		"【群星启示】② 卢恩没凑出律法时不能提交发动")
+	检(角色.v_special_skill({"src_id": 1, "action_id": 4004, "args": [2, 0],
+		"card_ids": [卢恩示例[0]]}) == GConst.GE_SUCCESS,
+		"【群星启示】② 没有律法可发动时可以提交「不发动」")
 	# 取消＝不发动：问完不放卢恩
 	var 拒绝ctx: Dictionary = {"player": 1, "kind": "magic"}
 	检(角色.p_action_end(拒绝ctx) == BattleRole.WAIT, "【星刻】法术行动结束也要先问")
