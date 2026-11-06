@@ -698,7 +698,12 @@ func _效果提示(律: Dictionary) -> String:
 	var 序号: int = int(律.get("提示序号", 0))
 	var 文: String = GConst.提示原文(技能号, 序号)
 	if not 文.is_empty() and 律.has("值") and 文.contains("%d"):
-		文 = 文 % int(律["值"])
+		var 值: int = int(律["值"])
+		if 值 > 0:
+			文 = 文 % 值
+		else:
+			# 条件不成立时点数不适用：显示 X，别写「造成 0 点」误导玩家
+			文 = 文.replace("%d", "X")
 	return 文
 
 
