@@ -2904,11 +2904,12 @@ func _询问提示文案() -> String:
 	elif _selecting_cover:
 		询问文案 = "【%s】：%s" % [GConst.skill_name(_skill_ask_id), GConst.文本("提示_从盖牌区选择一张")]
 	elif not _skill_ask_can_cancel:
-		询问文案 = "【%s】：请%s%s（本次必须执行，不能取消）" % [
-			GConst.skill_name(_skill_ask_id),
-			"（需选牌）" if _skill_need_card > 0 else "",
-			"（需选目标）" if _skill_ask_need_target > 0 else "",
-		]
+		# 提示文案禁止用（）括补充说明：要求直接写成一句话
+		var 要求: String = (_需选牌提示(_skill_need_card) + _需选目标提示(_skill_ask_need_target)).trim_suffix("，")
+		if 要求.is_empty():
+			询问文案 = "【%s】：本次必须执行，不能取消" % GConst.skill_name(_skill_ask_id)
+		else:
+			询问文案 = "【%s】：请%s，本次必须执行，不能取消" % [GConst.skill_name(_skill_ask_id), 要求]
 	else:
 		# 响应技能没有单独文案时，写技能说明（效果），不再问“是否发动”
 		var 效果: String = _技能效果提示(_skill_ask_id)
@@ -2934,7 +2935,7 @@ func _询问提示文案() -> String:
 			var 说明: String = _技能效果提示(_skill_ask_id)
 			if not 说明.is_empty():
 				if not 有可用选项:
-					说明 += "（当前没有可用的应战方式，点「取消」放弃应战）"
+					说明 += "。当前没有可用的应战方式，点「取消」放弃应战"
 				询问文案 = 说明
 	# 指示器配了「选项提示文案」的技能（如【三秒原则】的「弃 X 张牌，获得 X 张【魔弹】」）：
 	# 默认选项已经替玩家选好了，提示条要直接写这一步要做什么，不能被上面那套技能说明盖掉
@@ -6166,7 +6167,7 @@ func _on_ok() -> void:
 			return
 		if card.is_attack():
 			if _sel_players.is_empty():
-				_指令提示("攻击请点敌方头像出手（选好攻击牌后直接点要打的人）")
+				_指令提示("攻击请点敌方头像出手，选好攻击牌后直接点要打的人")
 				return
 			var 额外参数: Array = _额外攻击行动参数()
 			_发送行动(GConst.ActionType.Attack, 0, _sel_players, _sel_cards, 额外参数)
@@ -6183,7 +6184,7 @@ func _on_ok() -> void:
 	match respond_id:
 		GConst.RespondType.ReplyAttack:
 			if _sel_cards.is_empty():
-				_指令提示("请先选择一张手牌（同系攻击牌应战，或【圣光】抵挡）")
+				_指令提示("请先选择一张手牌，同系攻击牌应战，或【圣光】抵挡")
 				return
 			var card2: GCard = Data.get_card(_sel_cards[0])
 			if card2 == null:
@@ -6220,7 +6221,7 @@ func _on_ok() -> void:
 				if 落点们.size() == 1:
 					_sel_players = [落点们[0]]
 				else:
-					_指令提示("魔弹传递请点亮起的敌人头像（选好牌后直接点他），或点「取消」承受伤害")
+					_指令提示("魔弹传递请点亮起的敌人头像，选好牌后直接点他，或点「取消」承受伤害")
 					return
 			_发送应答(respond_id, _sel_players, _sel_cards, [GConst.Reattack.Attack])
 		GConst.RespondType.Discard, GConst.RespondType.DiscardCover:

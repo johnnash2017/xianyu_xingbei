@@ -111,12 +111,12 @@ func _检询问文案() -> void:
 ", "").strip_edges()]
 	检(str(窗.call("_询问提示文案")) == 说明期望,
 		"没有文案时应退回技能说明：%s" % str(窗.call("_询问提示文案")))
-	# 4) 强制询问：写「本次必须执行，不能取消」
+	# 4) 强制询问：写「本次必须执行，不能取消」，且不用括号括补充说明
 	窗._skill_ask_can_cancel = false
 	窗._skill_need_card = 6
 	var 强制: String = str(窗.call("_询问提示文案"))
-	检(强制.contains("不能取消") and 强制.contains("需选牌"),
-		"强制询问应写明不能取消 + 需选牌：%s" % 强制)
+	检(强制.contains("不能取消") and 强制.contains("从手牌中选6张") and not 强制.contains("（"),
+		"强制询问应写明不能取消 + 选牌数，且不用括号：%s" % 强制)
 	窗._skill_ask_can_cancel = true
 	窗._skill_need_card = 0
 	# 5) 从场上基础效果牌里选：写操作指引
