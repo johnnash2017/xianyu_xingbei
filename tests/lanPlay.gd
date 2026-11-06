@@ -200,6 +200,11 @@ func _on_role_pick(data: Dictionary) -> void:
 	_记("选将：候选 %d 个（用 step 的 %d 个），本窗口取第 %d 个 → 角色 %d（%s）" % [
 		候选.size(), 用step.size(), 位, 选中, Data.role_name(选中)])
 	Logic.send_pick(int(data.get("strategy", 0)), [选中])
+	# 选角阶段只有「全员点立即开始」或 60 秒超时才收尾（见 local_server._on_pick_ban_candidates）。
+	# 机器人只 send_pick 的话，服务端会一直等满 60 秒；而本脚本等开局只有 20 秒 → 必然超时。
+	# 这里补一次「立即开始」（等同玩家点选角界面底部那颗按钮）；延迟 2 秒，让四个窗口的 send_pick 先落地。
+	await _等(2.0)
+	Logic.send_ready(int(data.get("strategy", 0)), [选中])
 
 
 func _on_command(data: Dictionary) -> void:
@@ -597,6 +602,8 @@ func _on_error(err_id: int, msg: String) -> void:
 func _on_gossip(txt: String) -> void:
 	if txt.find("操作无效") >= 0:
 		_操作无效次数 += 1
+		_记("驳回 #%d：技能=%d 牌=%d 特殊=%d 目标=%d" % [
+			_操作无效次数, _上次尝试技能, _上次尝试牌, _上次尝试特殊, _上次尝试目标])
 		_拉黑上次尝试()
 
 
