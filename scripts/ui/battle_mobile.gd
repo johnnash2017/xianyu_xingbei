@@ -242,10 +242,9 @@ const 飘字色_攻击伤害: Color = Color("ff3c3c")
 const 行动播报间隔: float = 1.0
 const 行动播报起始偏移: float = -72.0
 const 行动播报上飘: float = 82.0
-## 上飘只走这一段；飘完后原地停留，直到淡出。
-## 原来把 82px 摊在 9.2s + EASE_OUT 上，速度低到接近静止，文字在亚像素位置抖动；
-## 先像伤害飘字一样用 ~2s 飘完，再原地停留淡出。
-const 行动播报上飘时长: float = 2.0
+## 上飘时长保持原来的 9.2 秒；之前用 SINE EASE_OUT，后段速度趋近 0，
+## 文字在亚像素位置走走停停，看起来像一抖一抖。改成线性，速度恒定。
+const 行动播报时长: float = 9.2
 const 行动播报出场时长: float = 0.28
 const 行动播报淡入时长: float = 0.24
 const 行动播报淡出时长: float = 3.04
@@ -8435,8 +8434,8 @@ func _生成行动播报(player_id: int, 文本: String) -> void:
 	t.tween_property(播报, "modulate:a", 1.0, 行动播报淡入时长)
 	t.tween_property(播报, "scale", Vector2.ONE, 行动播报出场时长) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	t.tween_property(播报, "position", 终点, 行动播报上飘时长) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	t.tween_property(播报, "position", 终点, 行动播报时长) \
+		.set_trans(Tween.TRANS_LINEAR)
 	t.tween_property(播报, "modulate:a", 0.0, 行动播报淡出时长).set_delay(行动播报淡出延迟)
 	t.chain().tween_callback(播报.queue_free)
 
