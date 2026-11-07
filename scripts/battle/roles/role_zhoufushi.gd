@@ -42,16 +42,17 @@ const 咒符_单目标: int = 1
 const 咒符_双目标: int = 2
 
 ## 魑魅魍魉的相位：普通钩子每轮开始会把 step 清零，所以用自己的成员变量记
+## 问（选咒符）→ 选目标（1 名 / 重塑后 2 名 + 挑妖力，可「返回」回问）→ 展示（地系）→ 结算 → 转移治疗
 const 魑魅_问: int = 0
-const 魑魅_展示: int = 1
-const 魑魅_结算: int = 2
-const 魑魅_转移: int = 3
+const 魑魅_选目标: int = 1
+const 魑魅_展示: int = 2
+const 魑魅_结算: int = 3
+const 魑魅_转移: int = 4
 
-## 魑魅魍魉第一问的选项值：1 火璃 / 2 冻天 / 3 火璃+咒力重塑 / 4 冻天+咒力重塑
-const 魑魅_火璃: int = 1
-const 魑魅_冻天: int = 2
-const 魑魅_火璃重塑: int = 3
-const 魑魅_冻天重塑: int = 4
+## 魑魅魍魉第二段的解析结果：成功 / 玩家点了「返回」（退回第一段）/ 不发动
+const 解析_成功: int = 0
+const 解析_返回: int = 1
+const 解析_失败: int = 2
 
 ## 本次咒符：是不是火璃、选中的目标（重塑后 2 名）、有没有发动重塑
 var _火璃: bool = false
@@ -300,115 +301,158 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _魑魅已用:
 		return SUCCESS
-	if _魑魅相位 == 魑魅_问:
-		if player.cover_cards.is_empty():
+	# 三段询问串起来跑：选咒符 →（可返回）选 1 名 / 重塑后 2 名目标 → 地系妖力要不要展示
+	while true:
+		if _魑魅相位 == 魑魅_问:
+			if player.cover_cards.is_empty():
+				_魑魅已用 = true
+				return SUCCESS
+			if not engine.has_reply():
+				# 只问「视为发动哪个咒符」；点一项就进下一段（客户端点中即提交）
+				询问(player.id, 魑魅魍魉, 0, 0, GConst.CardSource.Hand, _魑魅符选项(), 0, "", [], true)
+				return WAIT
+			if not _解析魑魅符():
+				return SUCCESS
+			_魑魅相位 = 魑魅_选目标
+			continue
+		if _魑魅相位 == 魑魅_选目标:
+			if not engine.has_reply():
+				# 与正常施法同一条二级栏：对 1 名角色 / -1【水晶】发动【咒力重塑】，对 2 名角色，
+				# 同一问里挑 1 张【妖力】（盖牌）；右侧「返回」退回上一段重选咒符
+				询问(player.id, _魑魅选目标技能号(), 1, 1, GConst.CardSource.Cover,
+					_魑魅目标选项(), 0, "", [], true, 0, -1, _全体角色())
+				return WAIT
+			match _解析魑魅目标():
+				解析_返回:
+					_魑魅相位 = 魑魅_问
+					continue
+				解析_失败:
+					return SUCCESS
+			_魑魅相位 = 魑魅_展示 if _妖力是地系() else 魑魅_结算
+			continue
+		if _魑魅相位 == 魑魅_展示:
+			if not engine.has_reply():
+				# 两项选项而不是「是 / 否」：带 card_id 的那项把这张地系【妖力】随询问下发，
+				# 鼠标指向「展示」就能直接看到要展示的牌；目标随询问下发并自动选中，
+				# 头像上写「原效果划掉 → 展示后的新效果」
+				var 选项: Array = [
+					{"value": 1, "label": GConst.按钮原文(魑魅魍魉, 2), "text": GConst.按钮原文(魑魅魍魉, 2),
+						"card_id": _魑魅妖力},
+					{"value": 0, "label": GConst.按钮原文(魑魅魍魉, 3), "text": GConst.按钮原文(魑魅魍魉, 3)},
+				]
+				询问(player.id, _魑魅展示技能号(), 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
+					0, -1, _魑魅目标)
+				return WAIT
+			if take_skill_reply():
+				_魑魅加成 = 1
+				engine.broadcast(GConst.Msg.Card, {
+					"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+					"card_ids": [_魑魅妖力], "is_real": true,
+				})
+			_魑魅相位 = 魑魅_结算
+			continue
+		if _魑魅相位 == 魑魅_结算:
 			_魑魅已用 = true
-			return SUCCESS
-		if not engine.has_reply():
-			# 一次问完：选哪个【妖力】（盖牌）、视为哪个咒符、打谁 —— 与灵符师【百鬼夜行】同一条写法
-			询问(player.id, 魑魅魍魉, 1, 1, GConst.CardSource.Cover, _魑魅选项(), 0, "", [], true,
-				0, -1, _全体角色())
-			return WAIT
-		if not _解析魑魅():
-			return SUCCESS
-		_魑魅相位 = 魑魅_展示 if _妖力是地系() else 魑魅_结算
-	if _魑魅相位 == 魑魅_展示:
-		if not engine.has_reply():
-			# 给两项选项而不是「是 / 否」：带 card_id 的那项把这张地系【妖力】随询问下发，
-			# 鼠标指向「展示」就能直接看到要展示的牌（客户端 _选中二级选项 的悬停卡面）
-			var 选项: Array = [
-				{"value": 1, "label": GConst.按钮原文(魑魅魍魉, 4), "text": GConst.按钮原文(魑魅魍魉, 4),
-					"card_id": _魑魅妖力},
-				{"value": 0, "label": GConst.按钮原文(魑魅魍魉, 5), "text": GConst.按钮原文(魑魅魍魉, 5)},
-			]
-			询问(player.id, 魑魅魍魉, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true)
-			return WAIT
-		if take_skill_reply():
-			_魑魅加成 = 1
-			engine.broadcast(GConst.Msg.Card, {
-				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-				"card_ids": [_魑魅妖力], "is_real": true,
-			})
-		_魑魅相位 = 魑魅_结算
-	if _魑魅相位 == 魑魅_结算:
-		_魑魅已用 = true
-		_移除妖力()
-		if _魑魅符 == 咒符_火璃:
-			_魑魅相位 = 魑魅_问
-			_压火璃结算(_魑魅目标, _魑魅加成)
+			_移除妖力()
+			if _魑魅符 == 咒符_火璃:
+				_魑魅相位 = 魑魅_问
+				_压火璃结算(_魑魅目标, _魑魅加成)
+				return URGENT
+			_魑魅相位 = 魑魅_转移
+			_转移次数 = 2 if _魑魅重塑 else 1
+			_转过来源.clear()
+			# 状态栈后进先出：逆序压，实际按点选顺序逐个让目标弃牌
+			for i: int in range(_魑魅目标.size() - 1, -1, -1):
+				engine.push(BattleEngine.SRequestDiscard.new(_魑魅目标[i], 冻天弃牌 + _魑魅加成, 0, 咒符_冻天))
 			return URGENT
-		_魑魅相位 = 魑魅_转移
-		_转移次数 = 2 if _魑魅重塑 else 1
-		_转过来源.clear()
-		# 状态栈后进先出：逆序压，实际按点选顺序逐个让目标弃牌
-		for i: int in range(_魑魅目标.size() - 1, -1, -1):
-			engine.push(BattleEngine.SRequestDiscard.new(_魑魅目标[i], 冻天弃牌 + _魑魅加成, 0, 咒符_冻天))
-		return URGENT
+		return SUCCESS
 	return SUCCESS
 
 
-## 第一问的四个选项：火璃 / 冻天 / 重塑后的火璃 / 重塑后的冻天。
-## 后两项绑【咒力重塑】的技能号（按钮响应配色、悬停弹它的说明），选中＝发动重塑、付 1 点能量；
-## 没有能量时照样摆出来、只置灰。
-func _魑魅选项() -> Array:
-	var 可付: bool = player.get_energy() >= 1
+## 第一段：视为发动哪个咒符（点一项就进第二段，客户端点中即提交）
+func _魑魅符选项() -> Array:
 	return [
-		{"value": 魑魅_火璃, "label": GConst.按钮原文(魑魅魍魉, 0), "text": GConst.按钮原文(魑魅魍魉, 0),
-			"need_target": 1},
-		{"value": 魑魅_冻天, "label": GConst.按钮原文(魑魅魍魉, 1), "text": GConst.按钮原文(魑魅魍魉, 1),
-			"need_target": 1},
-		{"value": 魑魅_火璃重塑, "label": GConst.按钮原文(魑魅魍魉, 2),
-			"text": GConst.按钮原文(魑魅魍魉, 2), "need_target": 2,
-			"skill_id": 咒力重塑, "enabled": 可付},
-		{"value": 魑魅_冻天重塑, "label": GConst.按钮原文(魑魅魍魉, 3),
-			"text": GConst.按钮原文(魑魅魍魉, 3), "need_target": 2,
-			"skill_id": 咒力重塑, "enabled": 可付},
+		{"value": 咒符_火璃, "label": GConst.按钮原文(魑魅魍魉, 0), "text": GConst.按钮原文(魑魅魍魉, 0)},
+		{"value": 咒符_冻天, "label": GConst.按钮原文(魑魅魍魉, 1), "text": GConst.按钮原文(魑魅魍魉, 1)},
 	]
 
 
-## 解析魑魅的那一次询问；返回 false＝不发动（取消 / 超时 / 非法提交）
-func _解析魑魅() -> bool:
+## 第二段：与正常施法同一套两个选项（文案读所选咒符自己的按钮列）
+func _魑魅目标选项() -> Array:
+	return [
+		{"value": 咒符_单目标, "label": GConst.按钮原文(_魑魅符, 0), "text": GConst.按钮原文(_魑魅符, 0),
+			"need_target": 1},
+		{"value": 咒符_双目标, "label": GConst.按钮原文(_魑魅符, 1), "text": GConst.按钮原文(_魑魅符, 1),
+			"need_target": 2, "skill_id": 咒力重塑, "enabled": player.get_energy() >= 1},
+	]
+
+
+## 第二段 / 第三段用哪颗子询问号（名字与说明折到 8404，头像指示器各配一份）
+func _魑魅选目标技能号() -> int:
+	return GConst.技能_魑魅目标火璃 if _魑魅符 == 咒符_火璃 else GConst.技能_魑魅目标冻天
+
+
+func _魑魅展示技能号() -> int:
+	return GConst.技能_魑魅展示火璃 if _魑魅符 == 咒符_火璃 else GConst.技能_魑魅展示冻天
+
+
+## 第一段回复：返回 false＝不发动（取消 / 超时 / 非法提交）
+func _解析魑魅符() -> bool:
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
-	# 取消 / 超时都不发动。超时可能带着「只选了效果、还没选妖力和目标」的分步应答
-	# （先弹选项型询问会先把选项报上来），那不是非法提交，别写 [报错]。
 	if args.is_empty() or bool(r.get("is_timeout", false)):
 		_魑魅已用 = true
 		return false
 	var 选: int = int(args[0])
-	if 选 < 魑魅_火璃 or 选 > 魑魅_冻天重塑:
-		engine.报错("【魑魅魍魉】提交的选项不合法", player.id)
+	if 选 != 咒符_火璃 and 选 != 咒符_冻天:
+		engine.报错("【魑魅魍魉】提交的咒符不合法", player.id)
 		_魑魅已用 = true
 		return false
-	var 重塑: bool = 选 >= 魑魅_火璃重塑
+	_魑魅符 = 选
+	return true
+
+
+## 第二段回复：选 1 名 / 重塑后 2 名目标 + 这张【妖力】。
+## 返回解析_成功 / 解析_返回（点了「返回」，退回第一段）/ 解析_失败（不发动）
+func _解析魑魅目标() -> int:
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	# 空应答＝「返回」或超时：退回第一段重选咒符，妖力还没动过
+	if args.is_empty() or bool(r.get("is_timeout", false)):
+		return 解析_返回
+	var 选: int = int(args[0])
+	if 选 != 咒符_单目标 and 选 != 咒符_双目标:
+		engine.报错("【魑魅魍魉】提交的目标档不合法", player.id)
+		_魑魅已用 = true
+		return 解析_失败
+	var 重塑: bool = 选 == 咒符_双目标
 	var cards: Array = r.get("card_ids", [])
 	var dsts: Array = r.get("dst_ids", [])
 	var cid: int = int(cards[0]) if cards.size() == 1 else -1
 	if cid < 0 or not player.有盖牌(cid) or dsts.size() != (2 if 重塑 else 1):
 		engine.报错("【魑魅魍魉】提交的牌或目标不合法", player.id)
 		_魑魅已用 = true
-		return false
+		return 解析_失败
 	var 目标: Array[int] = []
 	for d: Variant in dsts:
 		var 目标id: int = int(d)
 		if engine.p(目标id) == null or 目标.has(目标id):
 			engine.报错("【魑魅魍魉】提交的目标不合法", player.id)
 			_魑魅已用 = true
-			return false
+			return 解析_失败
 		目标.append(目标id)
 	if 重塑:
 		if player.get_energy() < 1:
 			engine.报错("【魑魅魍魉】没有能量发动【咒力重塑】", player.id)
 			_魑魅已用 = true
-			return false
+			return 解析_失败
 		player.remove_energy(1)
 		notice_skill(咒力重塑, [player.id])
-	_魑魅符 = 咒符_火璃 if (选 == 魑魅_火璃 or 选 == 魑魅_火璃重塑) else 咒符_冻天
 	_魑魅重塑 = 重塑
 	_魑魅妖力 = cid
 	_魑魅目标 = 目标
 	notice_skill(魑魅魍魉, 目标)
-	return true
+	return 解析_成功
 
 
 func _妖力是地系() -> bool:
