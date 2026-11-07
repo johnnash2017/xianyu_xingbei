@@ -1017,7 +1017,7 @@ func _check_token_change() -> void:
 			片段.append("【%s】%d→%d" % [名, int(上次[i]), 现在[i]])
 			var 差: int = 现在[i] - int(上次[i])
 			if 差 > 0:
-				增益.append({"num": 差, "name": 名})
+				增益.append({"num": 差, "name": 名, "slot": i})
 		if not 片段.is_empty():
 			broadcast(GConst.Msg.Gossip, {
 				"type": GConst.GossipType.Token,
@@ -1032,6 +1032,7 @@ func _check_token_change() -> void:
 				"id": pp.id,
 				"res_num": int(项["num"]),
 				"res_name": str(项["name"]),
+				"res_slot": int(项["slot"]),
 			})
 		_token_counts[pid] = 现在
 
@@ -3269,6 +3270,7 @@ func add_cover(dst_id: int, cards: Array, src_id: int, cause: int, open: bool = 
 			"id": dst_id,
 			"res_num": cards.size(),
 			"res_name": 盖牌名,
+			"res_slot": 2,
 		})
 
 

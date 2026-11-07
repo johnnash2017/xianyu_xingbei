@@ -510,6 +510,8 @@ const TABLE: Dictionary = {
 		# 资源获得（治疗走 Heal；指示物 / 盖牌走这里）：数量 + 名字，客户端在头像上飘「+ X 名字」
 		9: {"n": "res_num", "t": "i32"},
 		10: {"n": "res_name", "t": "str"},
+		# 资源槽：0＝黄魂、1＝蓝魂、2＝盖牌（客户端据此选飘字颜色）
+		11: {"n": "res_slot", "t": "u32"},
 	},
 	GConst.Msg.Error: {
 		1: {"n": "id", "t": "i32"},

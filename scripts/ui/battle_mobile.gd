@@ -8281,12 +8281,18 @@ func _on_heal_received(pid: int, num: int) -> void:
 		_资源飘字(pid, "+ %d 治疗" % num, Color(提示色_治疗))
 
 
-## 指示物 / 盖牌获得：服务端随 Gossip 带 res_num / res_name，这里飘「+ X 名字」
-func _on_resource_gained(pid: int, num: int, res_name: String) -> void:
+## 指示物 / 盖牌获得：服务端随 Gossip 带 res_num / res_name / res_slot
+func _on_resource_gained(pid: int, num: int, res_name: String, slot: int) -> void:
 	if num <= 0:
 		return
 	var 名: String = res_name if not res_name.is_empty() else "资源"
-	_资源飘字(pid, "+ %d %s" % [num, 名])
+	var 色: Color = Color("#9CFFB0") # 盖牌：浅绿
+	match slot:
+		0:
+			色 = Color("#FFE9A8") # 黄魂：黄白
+		1:
+			色 = Color("#8FC7FF") # 蓝魂：蓝
+	_资源飘字(pid, "+ %d %s" % [num, 名], 色)
 
 
 ## 治疗加号特效：在头像附近随机撒一圈「+」，各自上浮、放大并淡出
