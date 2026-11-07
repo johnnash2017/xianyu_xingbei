@@ -203,6 +203,9 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	match int(action.get("action_id", 0)):
 		XING_HUAN:
+			# 回合限定：本回合已经发动过就不能再交（available_skills 已置灰，这里兜服务端）
+			if _星环已用:
+				return GConst.GE_INVALID_ACTION
 			# 总张数 X ＝ 选中的地系牌张数；目标最多 X-1 名（可以是场上任意角色，含自己）：
 			# 有可选目标时必须选满 min(X-1, 场上角色数)，只有目标不够时才允许少于 X-1
 			var cards: Array = action.get("card_ids", [])
@@ -213,11 +216,14 @@ func v_magic_skill(action: Dictionary) -> int:
 			if dsts.size() != mini(x - 1, _全体角色().size()):
 				return GConst.GE_INVALID_ARGUMENT
 			var 已见: Array = []
+			var 已见牌: Array = []
 			for c: Variant in cards:
 				var cid: int = int(c)
 				var 卡: GCard = Data.get_card(cid)
-				if 卡 == null or not player.有手牌(cid) or 卡.element_enum() != GConst.CardElement.Earth:
+				if 已见牌.has(cid) or 卡 == null or not player.有手牌(cid) \
+						or 卡.element_enum() != GConst.CardElement.Earth:
 					return GConst.GE_INVALID_CARDID
+				已见牌.append(cid)
 			for d: Variant in dsts:
 				var pid: int = int(d)
 				if 已见.has(pid) or engine.p(pid) == null:
@@ -323,6 +329,8 @@ func _p_创刻律动(action: Dictionary) -> int:
 	var 摸: int = int(args[0]) if not args.is_empty() else 0
 	player.set_gem(player.gem - 1)
 	notice_skill(CHUANG_KE_LV_DONG, [player.id])
+	# 宝石已扣：先广播，后面即使不摸牌 / 不选卢恩，客户端也看得到代价
+	engine._broadcast_game()
 	_步 = 步_创刻卢恩
 	if 摸 <= 0:
 		return _创刻选卢恩()
@@ -437,7 +445,8 @@ func _启示选律法() -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var 号: int = int(args[0]) if not args.is_empty() else 0
-	if player.有律法(号):
+	var 合法: bool = 号 >= 1 and 号 <= 律法表.size() and not player.有律法(号)
+	if not 合法:
 		if not bool(r.get("is_timeout", false)):
 			engine.send(player.id, GConst.Msg.ErrorInput,
 				{"error_type": GConst.CmdType.Respond, "commands": []})
@@ -447,8 +456,13 @@ func _启示选律法() -> int:
 			if not player.有律法(可选):
 				号 = 可选
 				break
+	if 号 < 1 or 号 > 律法表.size() or player.有律法(号):
+		_步 = 0
+		return SUCCESS
 	player.加律法(号)
 	_重算手牌上限()
+	# 律法状态 / 手牌上限变了：立刻广播，别等下一次摸牌 / 行动快照才刷新
+	engine._broadcast_game()
 	_步 = 步_启示摸牌
 	return URGENT
 
@@ -462,6 +476,12 @@ func _启示摸牌() -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
 	var 摸: int = int(args[0]) if not args.is_empty() else 0
+	if 摸 != 0 and 摸 != 1:
+		if not bool(r.get("is_timeout", false)):
+			engine.send(player.id, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
+			return _启示摸牌()
+		摸 = 0
 	_步 = 0
 	if 摸 <= 0:
 		return _黄金律()
@@ -833,6 +853,10 @@ func _黄金律交换() -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var 提交: Array = r.get("card_ids", [])
 	var 超时: bool = bool(r.get("is_timeout", false))
+	if 提交.size() != 2 and not 超时:
+		engine.send(player.id, GConst.Msg.ErrorInput,
+			{"error_type": GConst.CmdType.Respond, "commands": []})
+		return _黄金律交换()
 	var 手: int = -1
 	var 盖: int = -1
 	for c: Variant in 提交:
@@ -930,11 +954,11 @@ func _判定律法(牌表: Array) -> Dictionary:
 	var 系三: int = 0
 	var 命三: int = 0
 	for k: Variant in 系计数.keys():
-		系对 += int(系计数[k]) / 2
-		系三 += int(系计数[k]) / 3
+		系对 += int(float(系计数[k]) / 2.0)
+		系三 += int(float(系计数[k]) / 3.0)
 	for k2: Variant in 命计数.keys():
-		命对 += int(命计数[k2]) / 2
-		命三 += int(命计数[k2]) / 3
+		命对 += int(float(命计数[k2]) / 2.0)
+		命三 += int(float(命计数[k2]) / 3.0)
 	var 四系: bool = 系计数.size() >= 4
 	var 四命: bool = 命计数.size() >= 4
 	var out: Dictionary = {}
