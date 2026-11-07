@@ -3388,8 +3388,8 @@ func debug_key(pid: int, kind: int) -> void:
 			测试跳过回合 = _await_id
 			run()
 	elif kind == GConst.DebugKey.ToggleTokens:
-		# 测试用（战斗界面按 6）：自己的标识物（指示物）拉满 ↔ 再按清空
-		var 已有值: bool = false
+		# 测试用（战斗界面按 6）：自己的标识物（指示物）拉满 + 盖牌填满 ↔ 再按清空
+		var 已有值: bool = not p0.cover_cards.is_empty()
 		for t: Variant in p0.tokens:
 			if t != null and int((t as Dictionary).get("num", 0)) > 0:
 				已有值 = true
@@ -3399,6 +3399,12 @@ func debug_key(pid: int, kind: int) -> void:
 				continue
 			var 槽2: Dictionary = t2
 			槽2["num"] = 0 if 已有值 else int(槽2.get("max", 0))
+		if 已有值:
+			var 盖们: Array = p0.cover_cards.duplicate()
+			if not 盖们.is_empty():
+				remove_cover(p0.id, 盖们, p0.id, 0)
+		else:
+			draw_cover(p0.id, p0.cover_space())
 	elif kind == GConst.DebugKey.RandomEnergy:
 		# 测试用（战斗界面按 7）：战绩区已经有星石 → 再按清空；是空的 → 按战绩区上限逐颗随机填成宝石 / 水晶
 		# （总数恰好等于上限，故直接累加，不走 set_team_gem/set_team_crystal 的夹取）
@@ -3467,6 +3473,10 @@ func _实例在场(实例: int) -> bool:
 ## 要攻击 = true 发攻击牌（斩）、false 发法术牌；同系 = true 这 count 张要同一种系别，
 ## false 则要互不相同的系别。候选不再排除手里的牌 —— 同牌面可以克隆（见 _发一张到手里）。
 func _发测试牌(p0: BattlePlayer, count: int, 要攻击: bool, 同系: bool) -> void:
+	# 测试指令 3 不把牌发到手牌上限以上：按当前空位截断
+	count = mini(count, maxi(p0.hand_cards_max - p0.hand_cards.size(), 0))
+	if count <= 0:
+		return
 	var 分组: Dictionary = {}
 	for cid: int in range(GConst.CARDSUM):
 		var c: GCard = Data.get_card(cid)
