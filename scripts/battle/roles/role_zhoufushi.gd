@@ -430,8 +430,12 @@ func _解析魑魅符() -> bool:
 func _解析魑魅目标() -> int:
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
-	# 空应答＝「返回」或超时：退回第一段重选咒符，妖力还没动过
-	if args.is_empty() or bool(r.get("is_timeout", false)):
+	# 超时＝不发动（别把挂机玩家再弹回第一段、白白多等一轮倒计时）；
+	# 空应答是玩家点了「返回」：退回第一段重选咒符，妖力还没动过。
+	if bool(r.get("is_timeout", false)):
+		_魑魅已用 = true
+		return 解析_失败
+	if args.is_empty():
 		return 解析_返回
 	var 选: int = int(args[0])
 	if 选 != 咒符_单目标 and 选 != 咒符_双目标:
