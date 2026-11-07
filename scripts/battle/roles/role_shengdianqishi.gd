@@ -55,7 +55,7 @@ func available_skills() -> Array:
 			"id": SHENG_YU,
 			"need_target": 1,
 			"targets": 队友,
-			"enabled": 圣印 >= 1 and player.hand_cards.size() >= 1 and not 队友.is_empty(),
+			"enabled": 圣印 >= 1 and not 队友.is_empty(),
 		},
 		{
 			"type": GConst.ActionType.MagicSkill,
@@ -70,7 +70,7 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	match int(action.get("action_id", 0)):
 		SHENG_YU:
-			if player.token_num(YIN_SLOT) < 1 or player.hand_cards.is_empty():
+			if player.token_num(YIN_SLOT) < 1:
 				return GConst.GE_INVALID_ACTION
 			var ds: Array = action.get("dst_ids", [])
 			if ds.size() != 1:
@@ -142,9 +142,17 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			if not engine.has_reply():
 				# 阶段落到「等神威回复」；回复回来由 1 号分支取走
 				_t1_step = 1
+				var 攻目标: int = int(ctx.get("dst", -1))
+				var 原伤害: int = int((ctx.get("harm", {}) as Dictionary).get("point", 0))
+				var 攻击卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+				var 神威加伤: int = 1 if 攻击卡 != null \
+					and 攻击卡.fate_pattern_enum() == GConst.FatePattern.Holy else 0
+				var 预览目标: Array = [攻目标] if 攻目标 >= 0 else []
+				var 新伤害: int = 原伤害 + 神威加伤
 				# 发动询问不写 ask 文案：提示条默认显示技能表说明（技能维护约定「询问文案约定」第 1 条）
 				询问(player.id, SHEN_WEI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
+					0, -1, [], -1, {}, 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
+					新伤害 if 原伤害 > 0 else -1, 0, "")
 				return WAIT
 			# 极少见：进 0 号分支时已有回复（等待期被插队后又回到这里），交给 1 号分支
 			_t1_step = 1
@@ -182,9 +190,13 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				var 选项: Array = []
 				for i: int in range(1, player.token_num(YIN_SLOT) + 1):
 					选项.append({"value": i, "label": GConst.按钮原文(SHENG_CAI, 0, {"n": i})})
+				var 攻目标: int = int(ctx.get("dst", -1))
+				var 原伤害: int = int((ctx.get("harm", {}) as Dictionary).get("point", 0))
+				var 预览目标: Array = [攻目标] if 攻目标 >= 0 else []
 				# 发动询问不写 ask 文案：提示条默认显示技能表说明（同上）；取消＝不发动
 				询问(player.id, SHENG_CAI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
-					0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, "")
+					0, -1, [], -1, {}, 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
+					-1, 0, "")
 				return WAIT
 			_t1_step = 3
 			return p_timeline_1(ctx)
@@ -319,65 +331,42 @@ func p_turn_end(ctx: Dictionary) -> int:
 func p_sheng_dian_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 圣愈：先选 X
+	# 圣愈：X 与「弃 1 张牌」在同一问里选完；手牌为 0 时只选 X
 	if _圣愈步 == 1:
+		var 需弃: int = mini(1, player.hand_cards.size())
 		if not engine.has_reply():
 			var 选项: Array = []
 			for i: int in range(1, player.token_num(YIN_SLOT) + 1):
 				选项.append({"value": i, "label": GConst.按钮原文(SHENG_YU, 0, {"n": i})})
-			询问(player.id, SHENG_YU, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+			询问(player.id, SHENG_YU, 需弃, 0, GConst.CardSource.Hand, 选项, 需弃, "", [], true,
+				0, player.id, [], 1, {}, 0, GConst.预览类型_治疗, false, [_圣愈目标], true, -1, 0,
 				GConst.提示原文(SHENG_YU, 1))
 			return WAIT
 		# 阶段在取完回复之后再推进：重入时 _圣愈步 仍是 1，才能走到这里
 		var r: Dictionary = take_skill_reply_full()
-		_圣愈步 = 2
+		_圣愈步 = 0
 		var args: Array = r.get("args", [])
 		var x: int = int(args[0]) if not args.is_empty() else 0
 		if x <= 0 or not player.remove_token(YIN_SLOT, x):
-			_圣愈步 = 0
 			return SUCCESS
-		_圣愈X = x
-		_圣愈步 = 3
-		engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
-		return URGENT
-	# 圣愈：弃 1 张牌
-	if _圣愈步 == 3:
-		if player.hand_cards.is_empty():
-			_圣愈步 = 4
-			engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
-			return URGENT
-		if not engine.has_reply():
-			询问(player.id, SHENG_YU, 1, 0, GConst.CardSource.Hand, [], 1, "", [], true,
-				0, player.id, [], 1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(SHENG_YU, 2))
-			return WAIT
-		var r2: Dictionary = take_skill_reply_full()
-		var cards: Array = r2.get("card_ids", [])
+		var cards: Array = r.get("card_ids", [])
 		if not cards.is_empty() and player.有手牌(int(cards[0])):
 			var cid: int = int(cards[0])
 			engine.take_from_hand(player.id, [cid], false)
 			engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": SHENG_YU})
 			engine._log_discard(player.id, [cid], false)
-		_圣愈步 = 4
-		engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
-		return URGENT
-	# 圣愈：加治疗 + 额外攻击行动
-	if _圣愈步 == 4:
-		_圣愈步 = 0
 		var dst: BattlePlayer = engine.p(_圣愈目标)
 		if dst != null:
-			施加治疗(dst.id, _圣愈X)
+			施加治疗(dst.id, x)
 		player.add_action(GConst.ActionType.Attack, SHENG_YU, true, true)
 		_圣愈目标 = -1
-		_圣愈X = 0
 		engine._broadcast_game()
 		return SUCCESS
 	# 圣炎收尾：对目标对手 1 点法术伤害
 	if _圣炎收尾 == 1:
 		if not engine.has_reply():
 			询问(player.id, SHEN_ZHI_ZI, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
+				0, -1, enemy_ids(), -1, {}, 1, GConst.HarmType.Magic, false, [], true, -1, 0,
 				GConst.提示原文(SHEN_ZHI_ZI, 1))
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
@@ -412,7 +401,7 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 	if _圣炎收尾 == 4:
 		if not engine.has_reply():
 			询问(player.id, SHENG_YAN_QI_YUAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-				0, -1, _全体角色(), -1, {}, 0, 0, false, [], true, -1, 0,
+				0, -1, _全体角色(), -1, {}, 2, GConst.预览类型_治疗, false, [], true, -1, 0,
 				GConst.提示原文(SHENG_YAN_QI_YUAN, 2))
 			return WAIT
 		var r4: Dictionary = take_skill_reply_full()
@@ -425,7 +414,6 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	return SUCCESS
 
-var _圣愈X: int = 0
 
 
 # ============================================================

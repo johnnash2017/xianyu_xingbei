@@ -9569,6 +9569,12 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _诸神终焉头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _神威头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _圣裁头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _圣愈头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _预览伤害头像提示()
 	# 先把上一帧画过、这一帧不再画的头像收起（否则切换目标时旧目标的文本会残留）
 	for 旧: int in _动态提示过的头像:
@@ -9867,6 +9873,63 @@ func _魔纹融合头像提示() -> Dictionary:
 		return out
 	for 目标id: int in _skill_targets:
 		out[目标id] = "%d 法术伤害" % 伤害
+	return out
+
+
+## 圣殿骑士【神威】：服务端下发原伤害（preview_base）与加伤后的新伤害（preview_damage）。
+## 上行划掉原伤害，下行写新伤害；没有加伤时只写原伤害。
+func _神威头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != 4302:
+		return out
+	var 原伤害: int = int(_pending.get("preview_base", 0))
+	if 原伤害 <= 0:
+		return out
+	var 新伤害: int = int(_pending.get("preview_damage", 原伤害))
+	for 目标: Variant in _pending.get("preview_ids", []):
+		var pid: int = int(目标)
+		if pid < 0:
+			continue
+		if 新伤害 != 原伤害:
+			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 新伤害]
+		else:
+			out[pid] = "%d 攻击伤害" % 原伤害
+	return out
+
+
+## 圣殿骑士【圣裁】：X 在选项里选，攻击伤害 +(X-1)；选 X 后实时划掉原伤害写新伤害。
+func _圣裁头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != 4303:
+		return out
+	var 原伤害: int = int(_pending.get("preview_base", 0))
+	if 原伤害 <= 0:
+		return out
+	var x: int = int(_已选参数[0]) if not _已选参数.is_empty() else 0
+	var 加伤: int = maxi(x - 1, 0)
+	for 目标: Variant in _pending.get("preview_ids", []):
+		var pid: int = int(目标)
+		if pid < 0:
+			continue
+		if 加伤 > 0:
+			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 加伤]
+		else:
+			out[pid] = "%d 攻击伤害" % 原伤害
+	return out
+
+
+## 圣殿骑士【圣愈】：选 X 后，在目标队友头像上写「+X 治疗」。
+func _圣愈头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != 4304 or _已选参数.is_empty():
+		return out
+	var x: int = int(_已选参数[0])
+	if x <= 0:
+		return out
+	for 目标: Variant in _pending.get("preview_ids", []):
+		var pid: int = int(目标)
+		if pid >= 0:
+			out[pid] = "+%d 治疗" % x
 	return out
 
 
