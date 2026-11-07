@@ -310,7 +310,6 @@ func _退出圣炎(收尾: bool) -> void:
 		engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
 
 var _圣炎收尾: int = 0
-var _收尾目标: int = -1
 
 
 ## 自己的下个回合结束时退出形态并结算收尾
@@ -380,37 +379,24 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 			engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
 			return URGENT
 		return SUCCESS
-	# 圣炎祈愿：退出形态时目标角色 +2 治疗（消耗 1 点能量）
+	# 圣炎祈愿：退出形态时目标角色 +2 治疗（消耗 1 点能量）。
+	# 选目标本身就是「发动」：不再先问一次是否发动再问目标，取消即不发动。
 	if _圣炎收尾 == 3:
-		if not engine.has_reply():
-			# 能量不够就不问；有回复时直接取走（能量检查只放在「还没问」这一步）
-			if player.get_energy() < 1:
-				_圣炎收尾 = 0
-				return SUCCESS
-			询问(player.id, SHENG_YAN_QI_YUAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(SHENG_YAN_QI_YUAN, 1))
-			return WAIT
-		if not take_skill_reply():
+		if player.get_energy() < 1:
 			_圣炎收尾 = 0
 			return SUCCESS
-		_收尾目标 = -1
-		_圣炎收尾 = 4
-		engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
-		return URGENT
-	if _圣炎收尾 == 4:
 		if not engine.has_reply():
-			询问(player.id, SHENG_YAN_QI_YUAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+			询问(player.id, SHENG_YAN_QI_YUAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 				0, -1, _全体角色(), -1, {}, 2, GConst.预览类型_治疗, false, [], true, -1, 0,
 				GConst.提示原文(SHENG_YAN_QI_YUAN, 2))
 			return WAIT
-		var r4: Dictionary = take_skill_reply_full()
-		var ds4: Array = r4.get("dst_ids", [])
+		var r3: Dictionary = take_skill_reply_full()
+		var ds3: Array = r3.get("dst_ids", [])
 		_圣炎收尾 = 0
-		if ds4.size() == 1:
+		if ds3.size() == 1:
 			player.remove_energy(1)
-			notice_skill(SHENG_YAN_QI_YUAN, [int(ds4[0])])
-			施加治疗(int(ds4[0]), 2)
+			notice_skill(SHENG_YAN_QI_YUAN, [int(ds3[0])])
+			施加治疗(int(ds3[0]), 2)
 		return SUCCESS
 	return SUCCESS
 
