@@ -4761,7 +4761,6 @@ func _进入圣裁下级() -> void:
 		子.append({
 			"text": "移除 %d 【圣印】" % x,
 			"args": [2, x],
-			"skill_id": 4303,
 		})
 	var 回第一层: Callable = func() -> void:
 		_圣裁下级中 = false
@@ -4775,12 +4774,11 @@ func _选项选中立刻处理(序号: int) -> bool:
 	# 神威点中即提交；圣裁点中只展开，不向服务端发请求；子项选中后带 [2, x] 一次提交。
 	if _是技能询问 and _skill_ask_id == 4302:
 		if _圣裁下级中:
-			_圣裁下级中 = false
-			_发送应答(_skill_ask_id, [], [], _已选参数)
+			# 选中 X 只选中，不提交；最后按「确定」统一提交 [2, x]
 			return true
 		var 参: Array = _已选参数
 		if not 参.is_empty() and int(参[0]) == 1:
-			_发送应答(_skill_ask_id, [], [], 参)
+			# 神威也只选中，按「确定」再发动
 			return true
 		if not 参.is_empty() and int(参[0]) == 2:
 			_进入圣裁下级()
