@@ -34,6 +34,7 @@ var role_name: String = "角色"
 var hand_cards_max: int = GConst.HAND_CARDS_MAX
 var hand_cards_num: int = 0
 var cross_num: int = 0        # 当前治疗值
+var no_heal: bool = false      # 本回合无法获得治疗（神威）
 var cross_max: int = GConst.CROSS_MAX
 var gem: int = 0
 var crystal: int = 0

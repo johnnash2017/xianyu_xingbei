@@ -1133,6 +1133,13 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 	面板.set("Knelt", p.tap)
 	# 额外状态（血色剑灵【血蔷薇庭院】）：挂在状态图标区，不再作为横置形态名显示
 	var 额外状态: Array = []
+	# 神威：本回合无法获得治疗（圣殿骑士 4302）
+	if p.no_heal:
+		额外状态.append({
+			"name": "神威",
+			"icon": "res://assets/textures/icon/ShenWei.png",
+			"desc": "无法获得【治疗】",
+		})
 	if p.xue_qiang_wei:
 		额外状态.append({
 			"name": "血蔷薇庭院",

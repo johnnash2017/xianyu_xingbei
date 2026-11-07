@@ -991,6 +991,28 @@ func _播手牌日志(pp: BattlePlayer, 文案: String) -> void:
 	})
 
 
+## 【神威】的「本回合无法获得治疗」按 round_id 自动过期：
+## 新一回合开始时清空标记、写一条结束日志，并广播快照让客户端收起状态图标。
+func _检查神威过期(旧回合: int) -> void:
+	var 过期: Array[int] = []
+	for pid: int in order:
+		var p0: BattlePlayer = players.get(pid)
+		if p0 == null or p0.no_heal_round != 旧回合:
+			continue
+		p0.no_heal_round = -1
+		过期.append(pid)
+	for pid: int in 过期:
+		var p0: BattlePlayer = players.get(pid)
+		if p0 != null:
+			broadcast(GConst.Msg.Gossip, {
+				"type": GConst.GossipType.Notice,
+				"txt": "%s 的【神威】效果结束，可以正常获得【治疗】" % _称号(p0),
+				"id": pid,
+			})
+	if not 过期.is_empty():
+		_broadcast_game()
+
+
 ## 每个状态跑完后对比各玩家指示物数量：有变化就往战斗日志写一条（只记录，不改变流程）
 ## 注意：tokens 是未类型化的 Array，槽位可能是 null（角色未用到），要按 Variant 取
 func _check_token_change() -> void:
@@ -4351,8 +4373,12 @@ class SNextPlayer:
 		# 普通回合没有续位，照常从 current_id 推到下家。
 		var nid: int = 续位 if 续位 >= 0 else e.next_id(e.current_id)
 		if nid == e.first_id:
+			var 旧回合: int = e.round_id
 			e.round_id += 1
-		e.current_id = nid
+			e.current_id = nid
+			e._检查神威过期(旧回合)
+		else:
+			e.current_id = nid
 		e.broadcast(GConst.Msg.TurnBegin, {"id": e.current_id, "round": e.round_id, "extra_turn": false})
 		e.push(SCheckTurnStart.new())
 		return BattleEngine.CONTINUE

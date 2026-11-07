@@ -1123,6 +1123,8 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"role_id": role_id,
 		"hand_count": hand_cards.size(),
 		"heal_count": cross_num,
+		# 本回合无法获得治疗（圣殿骑士【神威】）：客户端据此在角色状态区显示神威图标
+		"no_heal": 无法获得治疗(),
 		# 治疗上限：角色被动会改（神官 +4 等），客户端按它画治疗格的空位
 		"max_heal": cross_max,
 		# 能量上限：角色被动会改（如贤者 +1），客户端判「星石已满 / 还有空位」要用它

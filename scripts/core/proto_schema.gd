@@ -69,6 +69,8 @@ const PLAYER_INFO_FIELDS: Dictionary = {
 	# 客户端据此在状态区画「剑守誓言」图标，额外回合结束服务端清零、图标随之移除。
 	36: {"n": "extra_turn_cause", "t": "u32"},
 	37: {"n": "extra_turn_bonus", "t": "u32"},
+	# 本回合无法获得治疗（圣殿骑士【神威】）：客户端在状态区显示神威图标，回合结束服务端清除
+	38: {"n": "no_heal", "t": "bool"},
 }
 
 ## 子消息字段表（作为 msg 类型的 schema）
