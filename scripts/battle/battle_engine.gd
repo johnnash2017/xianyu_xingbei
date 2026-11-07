@@ -1001,7 +1001,7 @@ func 清除神威禁疗(pid: int, 写日志: bool = true) -> bool:
 	if 写日志:
 		broadcast(GConst.Msg.Gossip, {
 			"type": GConst.GossipType.Heal,
-			"txt": "%s 本回合可以正常获得治疗" % _称号(p0),
+			"txt": "%s 可以正常获得治疗" % _称号(p0),
 			"id": pid,
 			"num": 0,
 		})

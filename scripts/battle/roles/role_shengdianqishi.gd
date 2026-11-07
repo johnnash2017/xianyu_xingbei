@@ -192,7 +192,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 					if p0 != null:
 						engine.broadcast(GConst.Msg.Gossip, {
 							"type": GConst.GossipType.Heal,
-							"txt": "%s 本回合无法获得治疗" % engine._称号(p0),
+							"txt": "%s 无法获得治疗" % engine._称号(p0),
 							"id": pid,
 							"num": 0,
 						})
