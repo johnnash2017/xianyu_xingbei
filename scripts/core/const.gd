@@ -481,10 +481,10 @@ const EXCLUSIVE_NUM: int = 5
 ## 卡牌实例号 → 牌号（牌面）。牌库里原来那张的实例号就是牌号，传牌号进来还是它自己；
 ## 调试克隆出来的副本（序号 ≥ 1）折回同一张牌面。服务端/客户端都靠这一步把「哪一份」
 ## 换算成「哪张牌」，所以两边不需要传「实例号 → 牌号」的映射表。
-static func 牌号(实例号: int) -> int:
-	if 实例号 < 0:
-		return 实例号
-	return 实例号 % 实例步长
+static func 牌号(卡实例号: int) -> int:
+	if 卡实例号 < 0:
+		return 卡实例号
+	return 卡实例号 % 实例步长
 
 
 ## 牌号 + 序号 → 实例号：序号 0 = 牌库里原来那张，1 起 = 同一牌面的克隆副本。
@@ -1074,8 +1074,8 @@ static func 借用独有技(角色号: int) -> Array[int]:
 	var out: Array[int] = []
 	var 项: Variant = 角色借用独有技.get(角色号, null)
 	if 项 is Dictionary:
-		for 技能号: Variant in (项.get("技能", []) as Array):
-			out.append(int(技能号))
+		for 借用号: Variant in (项.get("技能", []) as Array):
+			out.append(int(借用号))
 	return out
 
 
@@ -1103,10 +1103,10 @@ const 角色技能说明覆盖: Dictionary = {
 
 
 ## 该角色对某颗技能改写后的说明正文（没有覆盖返回空串）
-static func 技能说明覆盖(角色号: int, 技能号: int) -> String:
+static func 技能说明覆盖(角色号: int, 技号: int) -> String:
 	var 表: Variant = 角色技能说明覆盖.get(角色号, null)
 	if 表 is Dictionary:
-		return str((表 as Dictionary).get(技能号, ""))
+		return str((表 as Dictionary).get(技号, ""))
 	return ""
 
 
@@ -1116,19 +1116,19 @@ static func 技能说明覆盖(角色号: int, 技能号: int) -> String:
 ## 用在技能栏按钮 / 鼠标悬停的技能名 / 角色说明的「独有技」标题 —— 都按「当前是谁的技能」取。
 ## 例：【血腥咆哮*柠歌】、【雷击*惕惕子】。
 ## 该角色对某颗技能改写后的新技能名（没改写 / 没配姓名返回空串）
-static func 技能名覆盖(角色号: int, 技能号: int) -> String:
-	if 技能说明覆盖(角色号, 技能号) == "":
+static func 技能名覆盖(角色号: int, 技号: int) -> String:
+	if 技能说明覆盖(角色号, 技号) == "":
 		return ""
 	var 姓名: String = Data.role_personal_name(角色号) if Data != null else ""
 	if 姓名 == "":
 		return ""
-	return "%s*%s" % [skill_name(技能号), 姓名]
+	return "%s*%s" % [skill_name(技号), 姓名]
 
 
 ## 显示用的技能名（没改名就用技能表默认名）
-static func 技能名显示(角色号: int, 技能号: int) -> String:
-	var 新名: String = 技能名覆盖(角色号, 技能号)
-	return 新名 if 新名 != "" else skill_name(技能号)
+static func 技能名显示(角色号: int, 技号: int) -> String:
+	var 新名: String = 技能名覆盖(角色号, 技号)
+	return 新名 if 新名 != "" else skill_name(技号)
 
 ## 角色特性表：角色号 → 特性字典（键都可缺省）。客户端只认这张表，不再写 [8, 76] 之类的名单。
 ##   魔弹系别     —— 该角色的牌可以「当【魔弹】传递」的系别（4703 / 8703 / 10703、以及旧 803 / 7602）
@@ -1166,8 +1166,8 @@ const 询问按钮文案表: Dictionary = {
 
 
 ## 取一次询问里「被问的技能」按钮该用的文案（空＝按平常的技能名显示）
-static func 询问按钮文案(技能号: int, 需目标: int) -> String:
-	var 表: Variant = 询问按钮文案表.get(技能号, null)
+static func 询问按钮文案(技号: int, 需目标: int) -> String:
+	var 表: Variant = 询问按钮文案表.get(技号, null)
 	if not (表 is Dictionary):
 		return ""
 	if 需目标 <= 0:
@@ -1942,9 +1942,9 @@ static func skill_desc(skill_id: int) -> String:
 ##   7. 普通数字：3
 ## 严格按「前后各一个空格」处理（标点、括号旁也照加）；连续空格压成一个。
 ## BBCode 标签与 {占位符} 整段保护，不往里面加空格。
-static func 技能文本数字空格(文本: String) -> String:
-	if 文本.is_empty():
-		return 文本
+static func 技能文本数字空格(原文案: String) -> String:
+	if 原文案.is_empty():
+		return 原文案
 	if _技能文本数字空格正则 == null:
 		_技能文本数字空格正则 = RegEx.new()
 		var 模式: String = (
@@ -1964,10 +1964,10 @@ static func 技能文本数字空格(文本: String) -> String:
 		_技能文本连续空格正则.compile("[ \\t]{2,}")
 	var 出: String = ""
 	var 上次: int = 0
-	for m: RegExMatch in _技能文本数字空格正则.search_all(文本):
+	for m: RegExMatch in _技能文本数字空格正则.search_all(原文案):
 		var 起: int = m.get_start()
 		if 起 > 上次:
-			出 += 文本.substr(上次, 起 - 上次)
+			出 += 原文案.substr(上次, 起 - 上次)
 		var 原文: String = m.get_string()
 		if m.get_start("protect") >= 0:
 			# BBCode / 占位符整段原样保留
@@ -1980,8 +1980,8 @@ static func 技能文本数字空格(文本: String) -> String:
 		else:
 			出 += " " + 原文 + " "
 		上次 = m.get_end()
-	if 上次 < 文本.length():
-		出 += 文本.substr(上次)
+	if 上次 < 原文案.length():
+		出 += 原文案.substr(上次)
 	return _技能文本连续空格正则.sub(出, " ", true)
 
 
@@ -2023,13 +2023,13 @@ static func skill_type(skill_id: int) -> String:
 ## 按显示宽度把文字截断：超出可用宽就用「…」收尾。宽度是估的 —— 汉字 / 全角按 1.05 个字宽、
 ## ASCII 按 0.62 个字宽，不去量字体：该字体对中文的测量偏小，照它截往往截不够而溢出。
 ## 宁可少显示一个字，也不让文字换行或顶出框。
-static func 截断文字(文本: String, 可用宽: float, 字号: int) -> String:
-	if _估宽(文本, 字号) <= 可用宽:
-		return 文本
+static func 截断文字(原文案: String, 可用宽: float, 字号: int) -> String:
+	if _估宽(原文案, 字号) <= 可用宽:
+		return 原文案
 	var 结果: String = ""
 	var 宽: float = 0.0
 	var 省略宽: float = _字宽("…", 字号)
-	for 字: String in 文本:
+	for 字: String in 原文案:
 		var 单字宽: float = _字宽(字, 字号)
 		if 宽 + 单字宽 + 省略宽 > 可用宽:
 			break
@@ -2039,9 +2039,9 @@ static func 截断文字(文本: String, 可用宽: float, 字号: int) -> Strin
 
 
 ## 估一整串文字的显示宽度（见 截断文字）
-static func _估宽(文本: String, 字号: int) -> float:
+static func _估宽(原文案: String, 字号: int) -> float:
 	var 宽: float = 0.0
-	for 字: String in 文本:
+	for 字: String in 原文案:
 		宽 += _字宽(字, 字号)
 	return 宽
 
@@ -2159,20 +2159,20 @@ static func _提示元素文本(元素: Variant) -> String:
 
 ## 填占位符：{键} → 值。`提示原文` / `文本` / 各处拼文案共用这一处口径。
 static func 填文本(模板: String, 额外: Dictionary = {}) -> String:
-	var 文本: String = 模板
+	var 结果: String = 模板
 	for 键: Variant in 额外:
-		文本 = 文本.replace("{%s}" % str(键), str(额外[键]))
-	return 文本
+		结果 = 结果.replace("{%s}" % str(键), str(额外[键]))
+	return 结果
 
 
 ## 读文本表（公用的跨技能文案）：id → 文本。缺 id 时返回 id 本身并打警告，不崩。
 ## 文本表放「不属于单个技能」的公用句式；技能步骤文案仍走技能表「提示」列（提示原文）。
-static func 文本(id: String, 告警: bool = true) -> String:
-	var 行: Variant = 数据表格.文本表.get(id, null)
+static func 文本(文本id: String, 告警: bool = true) -> String:
+	var 行: Variant = 数据表格.文本表.get(文本id, null)
 	if 行 == null:
 		if 告警:
-			push_warning("[文本表] 找不到文案 id：%s" % id)
-		return id
+			push_warning("[文本表] 找不到文案 id：%s" % 文本id)
+		return 文本id
 	if 行 is Array and not (行 as Array).is_empty():
 		return str((行 as Array)[0]).strip_edges()
 	return str(行).strip_edges()
@@ -2240,25 +2240,25 @@ static func 提示文本(skill_id: int, 序号: int, 发起者: String, 张数: 
 	var 列表: Array[String] = 技能提示列表(skill_id)
 	if 序号 < 0 or 序号 >= 列表.size():
 		return ""
-	var 文本: String = 列表[序号]
+	var 文案: String = 列表[序号]
 	# 先填数字占位符，再按数字规则加空格；{src}/{dst} 是玩家名，放到最后替换，
 	# 免得玩家昵称里的数字被当成技能文案里的数字拆出空格。
-	文本 = 文本.replace("{n}", str(张数))
-	文本 = 文本.replace("{n1}", str(张数))
+	文案 = 文案.replace("{n}", str(张数))
+	文案 = 文案.replace("{n1}", str(张数))
 	for 键: Variant in 额外:
-		文本 = 文本.replace("{%s}" % str(键), str(额外[键]))
-	文本 = 技能文本数字空格(文本)
-	文本 = 文本.replace("{src}", 发起者)
-	文本 = 文本.replace("{dst}", 收牌人)
+		文案 = 文案.replace("{%s}" % str(键), str(额外[键]))
+	文案 = 技能文本数字空格(文案)
+	文案 = 文案.replace("{src}", 发起者)
+	文案 = 文案.replace("{dst}", 收牌人)
 	# 显示用：整段首尾不保留空白（句中 token 仍严格前后加空格）
-	return 去掉确定提示(文本.strip_edges())
+	return 去掉确定提示(文案.strip_edges())
 
 
 ## 技能提示末尾常写「选好后点『确定』」这类操作说明：占地方，提示条本身已经摆着确定按钮，
 ## 统一去掉；句中夹着的「，选好后点『确定』：」（如【神圣领域】）也一并去掉。
 ## 只处理技能提示里的这两种固定说法，不动「你不可行动，点『确定』将手牌弃掉」这类非技能操作提示。
-static func 去掉确定提示(文本: String) -> String:
-	var 纯: String = 文本.strip_edges()
+static func 去掉确定提示(原文案: String) -> String:
+	var 纯: String = 原文案.strip_edges()
 	# 有些提示把「选好后点『确定』：」夹在句子中间（如【神圣领域】），
 	# 只去结尾会漏掉；这两个短语带前置逗号，去掉后句子仍然通顺。
 	纯 = 纯.replace("，选好后点「确定」", "")
@@ -2272,7 +2272,7 @@ static func 去掉确定提示(文本: String) -> String:
 		if 无句末.ends_with(尾):
 			var 结果: String = 无句末.substr(0, 无句末.length() - 尾.length()).strip_edges()
 			return 结果.trim_suffix("，").trim_suffix("、").strip_edges()
-	return 纯 if 纯 != 文本.strip_edges() else 文本
+	return 纯 if 纯 != 原文案.strip_edges() else 原文案
 
 
 # ============================================================
