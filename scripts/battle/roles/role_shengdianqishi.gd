@@ -502,7 +502,7 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			询问(player.id, SHENG_YAN_QI_YUAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
 				0, -1, _全体角色(), -1, {}, 2, GConst.预览类型_治疗, false, [], true, -1, 0,
-				GConst.提示原文(SHENG_YAN_QI_YUAN, 2))
+				"")
 			return WAIT
 		var r3: Dictionary = take_skill_reply_full()
 		var ds3: Array = r3.get("dst_ids", [])
