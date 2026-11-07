@@ -4767,7 +4767,8 @@ func _进入圣裁下级() -> void:
 	var 子: Array = []
 	for x: int in range(1, 圣印数 + 1):
 		子.append({
-			"text": "移除 %d 【圣印】" % x,
+			# 按钮文案取技能表 4303 的「按钮」列（移除 {n} 点【圣印】），不要写死在这里
+			"text": GConst.按钮原文(4303, 0, {"n": x}),
 			"args": [2, x],
 		})
 	var 回第一层: Callable = func() -> void:
