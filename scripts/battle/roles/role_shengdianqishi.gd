@@ -237,11 +237,13 @@ func p_timeline_1(ctx: Dictionary) -> int:
 					and 攻击卡.fate_pattern_enum() == GConst.FatePattern.Holy else 0
 				var 预览目标: Array = [攻目标] if 攻目标 >= 0 else []
 				var 选项: Array = _神威圣裁选项()
-				var 主技能: int = SHEN_WEI if _可神威() else SHENG_CAI
+				# 主询问始终挂在【神威】名下：圣裁只有 1 圣印时也走同一套「第一段二选一 →
+				# 本地展开圣裁 X」的界面，不再因为主技能换成 4303 而走另一条流程。
+				var 主技能: int = SHEN_WEI
 				# 选项本身就是技能：no_parent=true 不再多摆一颗「本体技能」
 				engine.ask_skill(player.id, 主技能, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
 					"", [], 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
-					原伤害 + 神威加伤 if 原伤害 > 0 and 主技能 == SHEN_WEI else -1,
+					原伤害 + 神威加伤 if 原伤害 > 0 and _可神威() else -1,
 					0, false, -1, true, "", 预览目标, [], 0)
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
