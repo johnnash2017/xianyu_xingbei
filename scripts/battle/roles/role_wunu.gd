@@ -31,9 +31,12 @@ func available_skills() -> Array:
 	var out: Array = []
 	out.append({"type": GConst.ActionType.MagicSkill, "id": TONG_SHENG_GONG_SI, "need_card": 0, "need_target": 1,
 		"enabled": tong_sheng_id == -1})
-	# 逆流任意 2 张手牌都可弃，无牌类限制，故不下发 cards
-	out.append({"type": GConst.ActionType.MagicSkill, "id": NI_LIU, "need_card": 2, "need_target": 0,
-		"enabled": player.tap and player.hand_cards.size() >= 2})
+	# 逆流：括号里只有「仅流血形态」是发动条件；弃牌是结算效果，手牌不足 2 张也照常发动，
+	# 能弃几张弃几张（0 张也行）。
+	var 逆流需弃: int = mini(2, player.hand_cards.size())
+	out.append({"type": GConst.ActionType.MagicSkill, "id": NI_LIU,
+		"need_card": 逆流需弃, "card_max": 逆流需弃, "need_target": 0,
+		"enabled": player.tap})
 	var 悲鸣牌: Array[int] = hand_ids_with_skill(XUE_ZHI_BEI_MING)
 	# 血之悲鸣仅【流血形态】（横置）下可发动；只能弃带【血之悲鸣】特技的牌（v_magic_skill 校验同一条）；
 	# v_magic_skill 允许 args[0] 取 1~3，执行体对目标与自己各造成该点数的法术伤害，
@@ -261,8 +264,11 @@ func v_magic_skill(action: Dictionary) -> int:
 			return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	if aid == NI_LIU:
-		if not player.tap or cards.size() != 2:
+		if not player.tap or cards.size() != mini(2, player.hand_cards.size()):
 			return GConst.GE_INVALID_ACTION
+		for c: Variant in cards:
+			if not player.has_hand_card(int(c)):
+				return GConst.GE_INVALID_CARDID
 		return GConst.GE_SUCCESS
 	if aid == XUE_ZHI_BEI_MING:
 		if not player.tap:
