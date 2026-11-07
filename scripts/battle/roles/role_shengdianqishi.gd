@@ -349,6 +349,10 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		if x <= 0 or not player.remove_token(YIN_SLOT, x):
 			return SUCCESS
 		var cards: Array = r.get("card_ids", [])
+		# 手牌非空时「弃 1 张」是强制代价；空回复 / 非法牌按第一张补，不能白跳过。
+		if 需弃 > 0 and (cards.is_empty() or not player.有手牌(int(cards[0]))):
+			if not player.hand_cards.is_empty():
+				cards = [player.hand_cards[0]]
 		if not cards.is_empty() and player.有手牌(int(cards[0])):
 			var cid: int = int(cards[0])
 			engine.take_from_hand(player.id, [cid], false)
