@@ -489,7 +489,7 @@ func _create_token(node_name: String, 槽: int) -> Label:
 		图标.mouse_entered.connect(func() -> void: _报告指示物悬停(槽, 图标))
 		图标.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
 	if go is TextureRect:
-		(go as TextureRect).texture = Art.token_icon(槽)
+		(go as TextureRect).texture = Art.token_icon(槽, RoleID)
 	var lbl: Label = go.find_child("Text", true, false) as Label
 	if lbl != null:
 		# 数字标签在预制体里默认隐藏（状态图标用它时就是藏着的），指示物这里才亮出来

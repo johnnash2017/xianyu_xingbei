@@ -31,6 +31,10 @@ const EXCLUSIVE_ICON: Array[String] = ["ShuFu", "TiaoXin", "LianJie", "TongSheng
 
 ## 指示物槽位 → status 图标名
 const TOKEN_ICON: Array[String] = ["token0", "token1", "token2"]
+## 角色专属指示物图标：角色号 → 按槽位的图标名（缺省/越界回退 TOKEN_ICON）
+const ROLE_TOKEN_ICON: Dictionary = {
+	27: ["zhanWen", "moWen"], # 英灵人形：战纹 / 魔纹
+}
 
 var _cache: Dictionary = {}
 var _sfx: AudioStreamPlayer = null
@@ -103,9 +107,12 @@ func exclusive_icon(idx: int) -> Texture2D:
 	return _icon(EXCLUSIVE_ICON[idx])
 
 
-func token_icon(slot: int) -> Texture2D:
+func token_icon(slot: int, role_id: int = 0) -> Texture2D:
 	if slot < 0 or slot >= TOKEN_ICON.size():
 		return null
+	var 专属: Array = ROLE_TOKEN_ICON.get(role_id, [])
+	if slot < 专属.size() and not str(专属[slot]).is_empty():
+		return _icon(str(专属[slot]))
 	return _icon(TOKEN_ICON[slot])
 
 
