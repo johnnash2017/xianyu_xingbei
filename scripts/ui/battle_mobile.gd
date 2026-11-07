@@ -9473,15 +9473,18 @@ func _头像提示配置() -> Dictionary:
 	if 技能号 == GConst.技能_沉沦协奏曲:
 		return {}
 	var 配置: Dictionary = GConst.技能指示器.get(技能号, {})
-	# 「先弹选项」型还没在二级技能栏里选效果时不画任何头像提示
+	# 「默认」那一份：配了文案 / 分目标 / 自身才算（只配「选项提示」「自动选目标」这类开关时是空表）
+	var 默认配置: Dictionary = 配置 if 配置.has("文案") or 配置.has("分目标") or 配置.has("自身") else {}
+	# 「先弹选项」型还没在二级技能栏里选效果时：配了默认文案就先按默认画
+	# （如咒符师【魑魅魍魉】展示妖力那一段：没选「展示 / 不展示」时先写基础的 1 点），没配就和以前一样不画
 	if bool(配置.get("先弹选项", false)) and _已选参数.is_empty():
-		return {}
+		return 默认配置
 	var 分效果: Dictionary = 配置.get("选项提示", {})
 	if not 分效果.is_empty():
 		if _已选参数.is_empty():
-			return {}
+			return 默认配置
 		return 分效果.get(int(_已选参数[0]), {})
-	return 配置 if 配置.has("文案") or 配置.has("分目标") or 配置.has("自身") else {}
+	return 默认配置
 
 
 ## 一句展示提示的最终数值：先取它自己的固定值（「每目标」或「总数 ÷ 选中人数」），
