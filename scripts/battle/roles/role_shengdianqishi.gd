@@ -31,6 +31,8 @@ var _圣炎: bool = false
 var _圣炎到回合: int = 0
 ## 本回合不能发动【神威】（【神临圣启】的代价）
 var _神威禁: bool = false
+## 本回合被【神威】禁止获得治疗的目标（含多次攻击叠起来的名单）
+var _神威目标们: Array[int] = []
 ## 攻击前钩子的子步骤（1＝神威、2＝圣裁；同一次攻击里两个都可以发动）
 var _t1_step: int = 0
 var _t1_神威: bool = false
@@ -99,9 +101,11 @@ func p_magic_skill(action: Dictionary) -> int:
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		_神威禁 = false
+		_神威目标们.clear()
 	return SUCCESS
 
 
+## 自己的回合结束：神威的「无法获得治疗」只持续到圣殿骑士的回合结束，双方一起清
 # ============================================================
 # 4301 神选者
 # ============================================================
@@ -176,6 +180,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 				if dst != null:
 					dst.no_heal_round = engine.round_id
+					if not _神威目标们.has(dst.id):
+						_神威目标们.append(dst.id)
 				engine._broadcast_game()
 			_t1_step = 2
 			return p_timeline_1(ctx)
@@ -314,9 +320,17 @@ var _圣炎收尾: int = 0
 
 ## 自己的下个回合结束时退出形态并结算收尾
 func p_turn_end(ctx: Dictionary) -> int:
-	if not _圣炎:
-		return SUCCESS
 	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	# 神威的禁止治疗只到圣殿骑士自己的回合结束，双方一起清
+	var 清过: bool = engine.清除神威禁疗(player.id)
+	for pid: int in _神威目标们:
+		if engine.清除神威禁疗(pid):
+			清过 = true
+	_神威目标们.clear()
+	if 清过:
+		engine._broadcast_game()
+	if not _圣炎:
 		return SUCCESS
 	if engine.round_id < _圣炎到回合:
 		return SUCCESS

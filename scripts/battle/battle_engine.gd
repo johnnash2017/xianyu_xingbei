@@ -991,25 +991,33 @@ func _播手牌日志(pp: BattlePlayer, 文案: String) -> void:
 	})
 
 
-## 【神威】的「本回合无法获得治疗」按 round_id 自动过期：
-## 新一回合开始时清空标记、写一条结束日志，并广播快照让客户端收起状态图标。
+## 清除一名玩家身上的【神威】禁疗标记；写日志由调用方决定。
+## 圣殿骑士自己的回合结束时由角色清除双方；round 过期只是兜底。
+func 清除神威禁疗(pid: int, 写日志: bool = true) -> bool:
+	var p0: BattlePlayer = players.get(pid)
+	if p0 == null or p0.no_heal_round < 0:
+		return false
+	p0.no_heal_round = -1
+	if 写日志:
+		broadcast(GConst.Msg.Gossip, {
+			"type": GConst.GossipType.Notice,
+			"txt": "%s 的【神威】效果结束，可以正常获得【治疗】" % _称号(p0),
+			"id": pid,
+		})
+	return true
+
+
+## 【神威】的「本回合无法获得治疗」按 round_id 自动过期（兜底）：
+## 正常路径由圣殿骑士 p_turn_end 在圣殿骑士回合结束时清除双方。
 func _检查神威过期(旧回合: int) -> void:
-	var 过期: Array[int] = []
+	var 有过期: bool = false
 	for pid: int in order:
 		var p0: BattlePlayer = players.get(pid)
 		if p0 == null or p0.no_heal_round != 旧回合:
 			continue
-		p0.no_heal_round = -1
-		过期.append(pid)
-	for pid: int in 过期:
-		var p0: BattlePlayer = players.get(pid)
-		if p0 != null:
-			broadcast(GConst.Msg.Gossip, {
-				"type": GConst.GossipType.Notice,
-				"txt": "%s 的【神威】效果结束，可以正常获得【治疗】" % _称号(p0),
-				"id": pid,
-			})
-	if not 过期.is_empty():
+		if 清除神威禁疗(pid):
+			有过期 = true
+	if 有过期:
 		_broadcast_game()
 
 
