@@ -151,7 +151,7 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 			else:
 				var kind: int = int(data.get("type", GConst.GossipType.Notice))
 				# 治疗日志额外发一条事件给战斗界面播「+」特效（日志本身照常走 notice_received）
-				if kind == GConst.GossipType.Heal:
+				if kind == GConst.GossipType.Heal and int(data.get("num", 0)) > 0:
 					heal_received.emit(int(data.get("id", -1)), int(data.get("num", 0)))
 				# 弃牌日志额外发一条事件给战斗界面播弃牌特效（num = 弃牌张数，其余 Discard 类日志不带）
 				elif kind == GConst.GossipType.Discard and int(data.get("num", 0)) > 0:

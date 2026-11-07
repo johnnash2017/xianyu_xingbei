@@ -1000,9 +1000,10 @@ func 清除神威禁疗(pid: int, 写日志: bool = true) -> bool:
 	p0.no_heal_round = -1
 	if 写日志:
 		broadcast(GConst.Msg.Gossip, {
-			"type": GConst.GossipType.Notice,
-			"txt": "%s 的【神威】效果结束，可以正常获得【治疗】" % _称号(p0),
+			"type": GConst.GossipType.Heal,
+			"txt": "%s 本回合可以正常获得治疗" % _称号(p0),
 			"id": pid,
+			"num": 0,
 		})
 	return true
 
@@ -1145,14 +1146,9 @@ func add_cross(pid: int, amount: int, src_id: int) -> void:
 	var pp: BattlePlayer = players.get(pid)
 	if pp == null:
 		return
-	# 「本回合无法获得治疗」（圣殿骑士【神威】）：整笔作废，写一条日志让玩家知道为什么没加
+	# 「本回合无法获得治疗」（圣殿骑士【神威】）：整笔作废。
+	# 状态获得 / 结束时已经在【神威】那里逐人播报过，这里不再重复写同一句。
 	if pp.无法获得治疗():
-		broadcast(GConst.Msg.Gossip, {
-			"type": GConst.GossipType.Heal,
-			"txt": "%s 本回合无法获得治疗" % _称号(pp),
-			"id": pp.id,
-			"num": 0,
-		})
 		return
 	var 前: int = pp.cross_num
 	pp.add_cross_num(amount)
@@ -1185,12 +1181,7 @@ func add_cross_pierce(pid: int, amount: int, src_id: int, 封顶: int) -> void:
 	if pp == null:
 		return
 	if pp.无法获得治疗():
-		broadcast(GConst.Msg.Gossip, {
-			"type": GConst.GossipType.Heal,
-			"txt": "%s 本回合无法获得治疗" % _称号(pp),
-			"id": pp.id,
-			"num": 0,
-		})
+		# 获得【神威】时已按双方各播报一条，这里不重复
 		return
 	var 前: int = pp.cross_num
 	var 新: int = 前 + amount

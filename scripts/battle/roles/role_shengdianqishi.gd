@@ -175,13 +175,27 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				var harm: Dictionary = ctx.get("harm", {})
 				if 卡 != null and 卡.fate_pattern_enum() == GConst.FatePattern.Holy and not harm.is_empty():
 					harm["point"] = int(harm.get("point", 0)) + 1
-				# 本回合你与攻击目标无法获得治疗
-				player.no_heal_round = engine.round_id
+				# 本回合你与攻击目标无法获得治疗；只有本次新进入禁疗的人才播报
+				var 新禁疗: Array[int] = []
+				if not player.无法获得治疗():
+					新禁疗.append(player.id)
 				var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+				if dst != null and not dst.无法获得治疗():
+					新禁疗.append(dst.id)
+				player.no_heal_round = engine.round_id
 				if dst != null:
 					dst.no_heal_round = engine.round_id
 					if not _神威目标们.has(dst.id):
 						_神威目标们.append(dst.id)
+				for pid: int in 新禁疗:
+					var p0: BattlePlayer = engine.p(pid)
+					if p0 != null:
+						engine.broadcast(GConst.Msg.Gossip, {
+							"type": GConst.GossipType.Heal,
+							"txt": "%s 本回合无法获得治疗" % engine._称号(p0),
+							"id": pid,
+							"num": 0,
+						})
 				engine._broadcast_game()
 			_t1_step = 2
 			return p_timeline_1(ctx)
