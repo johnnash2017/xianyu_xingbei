@@ -8286,12 +8286,12 @@ func _on_resource_gained(pid: int, num: int, res_name: String, slot: int) -> voi
 	if num <= 0:
 		return
 	var 名: String = res_name if not res_name.is_empty() else "资源"
-	var 色: Color = Color("#9CFFB0") # 盖牌：浅绿
+	var 色: Color = Color("#D4FFDE") # 盖牌：更白的浅绿
 	match slot:
 		0:
 			色 = Color("#FFC46B") # 黄魂：偏橙
 		1:
-			色 = Color("#A8D2FF") # 蓝魂：偏蓝
+			色 = Color("#7FB8FF") # 蓝魂：更蓝
 	_资源飘字(pid, "+ %d %s" % [num, 名], 色)
 
 
