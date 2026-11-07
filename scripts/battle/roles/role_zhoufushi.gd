@@ -320,8 +320,11 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 				# 与正常施法**同一颗技能号**（火璃 / 冻天）：二级栏的父按钮、两个选项文案、
 				# 头像提示、技能说明全都和直接施法一模一样；区别只有费用牌从手牌换成 1 张【妖力】（盖牌），
 				# 右侧「返回」退回上一段重选咒符。
+				# ask_prompt（第 23 个参数）把提示条固定在魑魅魍魉的说明上，再加上选项的「不改提示」，
+				# 选哪一档都不会被火璃 / 冻天 / 咒力重塑的说明顶掉。
 				询问(player.id, _魑魅符, 1, 1, GConst.CardSource.Cover,
-					_魑魅目标选项(), 0, "", [], true, 0, -1, _全体角色())
+					_魑魅目标选项(), 0, "", [], true, 0, -1, _全体角色(),
+					-1, {}, 0, 0, false, [], true, -1, 0, _魑魅提示())
 				return WAIT
 			match _解析魑魅目标():
 				解析_返回:
@@ -370,22 +373,35 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 第一段：视为发动哪个咒符（点一项就进第二段，客户端点中即提交）
+## 第一段：视为发动哪个咒符（点一项就进第二段，客户端点中即提交）。
+## 绑各自技能号：按钮按「法术」配色，鼠标指向时弹那颗咒符的技能说明。
 func _魑魅符选项() -> Array:
 	return [
-		{"value": 咒符_火璃, "label": GConst.按钮原文(魑魅魍魉, 0), "text": GConst.按钮原文(魑魅魍魉, 0)},
-		{"value": 咒符_冻天, "label": GConst.按钮原文(魑魅魍魉, 1), "text": GConst.按钮原文(魑魅魍魉, 1)},
+		{"value": 咒符_火璃, "label": GConst.按钮原文(魑魅魍魉, 0), "text": GConst.按钮原文(魑魅魍魉, 0),
+			"skill_id": 咒符_火璃},
+		{"value": 咒符_冻天, "label": GConst.按钮原文(魑魅魍魉, 1), "text": GConst.按钮原文(魑魅魍魉, 1),
+			"skill_id": 咒符_冻天},
 	]
 
 
-## 第二段：与正常施法同一套两个选项（文案读所选咒符自己的按钮列）
+## 第二段：与正常施法同一套两个选项（文案读所选咒符自己的按钮列）。
+## 「不改提示」：选哪一档，提示条都保持魑魅魍魉的技能说明（见 _魑魅提示）。
 func _魑魅目标选项() -> Array:
 	return [
 		{"value": 咒符_单目标, "label": GConst.按钮原文(_魑魅符, 0), "text": GConst.按钮原文(_魑魅符, 0),
-			"need_target": 1},
+			"need_target": 1, "no_prompt_change": true},
 		{"value": 咒符_双目标, "label": GConst.按钮原文(_魑魅符, 1), "text": GConst.按钮原文(_魑魅符, 1),
-			"need_target": 2, "skill_id": 咒力重塑, "enabled": player.get_energy() >= 1},
+			"need_target": 2, "no_prompt_change": true,
+			"skill_id": 咒力重塑, "enabled": player.get_energy() >= 1},
 	]
+
+
+## 魑魅这几段询问期间，提示条固定写魑魅魍魉的技能说明（不看火璃 / 冻天各自的说明）
+func _魑魅提示() -> String:
+	var 说明: String = GConst.skill_desc(魑魅魍魉)
+	if 说明.is_empty():
+		return ""
+	return "【%s】：%s" % [GConst.skill_name(魑魅魍魉), 说明]
 
 
 ## 第二段 / 第三段用哪颗子询问号（名字与说明折到 8404，头像指示器各配一份）
