@@ -676,6 +676,7 @@ func _ready() -> void:
 	Logic.gossip_received.connect(_on_gossip)
 	Logic.notice_received.connect(_on_notice)
 	Logic.heal_received.connect(_on_heal_received)
+	Logic.resource_gained.connect(_on_resource_gained)
 	Logic.discard_received.connect(_on_discard_received)
 	Logic.special_action_received.connect(_on_special_action)
 	Logic.basic_effect_removed.connect(_on_basic_effect_removed)
@@ -841,8 +842,6 @@ func _on_game_info(info: Dictionary) -> void:
 	TxtRID.text = str(int(info.get("room_id", 0)))
 	# 手牌/盖牌/目标可选状态跟着快照走（Data.build_player_list 已同步好）
 	_刷新交互()
-	# 快照里的指示物 / 盖牌数量增加 → 头像上飘「+ X 名字」
-	_检测资源获得(started and not 之前已开局)
 
 
 ## 等待提示：读「正在等谁回复、还剩多久」
@@ -1412,8 +1411,6 @@ var _展示飞行延迟: float = 0.0
 var _行动播报队列: Dictionary = {}
 ## 玩家 id → 是否有播报协程正在跑（见 _播行动播报队列）
 var _行动播报中: Dictionary = {}
-## 资源获得飘字：上一份快照的指示物 / 盖牌数量与名字（玩家号 → {值, 名}）
-var _资源快照: Dictionary = {}
 ## 同一玩家短时间内多个资源获取时的上飘错位序号
 var _资源飘字序号: Dictionary = {}
 
@@ -8281,7 +8278,15 @@ func _铺粗删除线(提示: RichTextLabel, 原文行: PackedStringArray, 纯�
 func _on_heal_received(pid: int, num: int) -> void:
 	_播放治疗加号(pid, num)
 	if num > 0:
-		_资源飘字(pid, "+ %d 治疗" % num)
+		_资源飘字(pid, "+ %d 治疗" % num, Color(提示色_治疗))
+
+
+## 指示物 / 盖牌获得：服务端随 Gossip 带 res_num / res_name，这里飘「+ X 名字」
+func _on_resource_gained(pid: int, num: int, res_name: String) -> void:
+	if num <= 0:
+		return
+	var 名: String = res_name if not res_name.is_empty() else "资源"
+	_资源飘字(pid, "+ %d %s" % [num, 名])
 
 
 ## 治疗加号特效：在头像附近随机撒一圈「+」，各自上浮、放大并淡出
@@ -8383,40 +8388,8 @@ func _面板中心(player_id: int) -> Vector2:
 	return Vector2(-1.0, -1.0)
 
 
-## 快照里的资源增加：指示物槽 0/1 → 名字；槽 2 是盖牌（茧 / 卢恩 / 充能…）。
-## 只在数量增加时飘字；首次快照 / 新一局只记录，不飘。
-func _检测资源获得(新一局: bool) -> void:
-	if 新一局:
-		_资源快照.clear()
-		_资源飘字序号.clear()
-	var 新快照: Dictionary = {}
-	for p: GPlayer in Data.player_list:
-		if p == null:
-			continue
-		var 值: Array[int] = [0, 0, 0]
-		var 名: Array[String] = ["", "", ""]
-		for i: int in range(3):
-			var tok: GPlayer.Token = p.tokens[i] as GPlayer.Token
-			if tok != null:
-				值[i] = int(tok.num)
-				名[i] = str(tok.name)
-		var 旧: Variant = _资源快照.get(p.id, null)
-		if 旧 is Dictionary:
-			var 旧值: Array = 旧.get("值", [])
-			for i: int in range(3):
-				var 增: int = 值[i] - (int(旧值[i]) if i < 旧值.size() else 0)
-				if 增 <= 0:
-					continue
-				var 资源名: String = 名[i]
-				if 资源名.is_empty():
-					资源名 = "盖牌" if i == 2 else "指示物"
-				_资源飘字(p.id, "+ %d %s" % [增, 资源名])
-		新快照[p.id] = {"值": 值, "名": 名}
-	_资源快照 = 新快照
-
-
 ## 资源获得飘字：白绿色小字，从头像中心上飘，和伤害数字区分开
-func _资源飘字(player_id: int, 文本: String) -> void:
+func _资源飘字(player_id: int, 文本: String, 色: Color = Color("#9CFFB0")) -> void:
 	if 文本.is_empty() or Root == null:
 		return
 	var 中心: Vector2 = _面板中心(player_id)
@@ -8428,7 +8401,7 @@ func _资源飘字(player_id: int, 文本: String) -> void:
 	if 播报 == null:
 		return
 	播报.text = 文本
-	播报.add_theme_color_override("font_color", Color("#9CFFB0"))
+	播报.add_theme_color_override("font_color", 色)
 	播报.add_theme_font_size_override("font_size", 30)
 	var 尺寸: Vector2 = 播报.size
 	if 尺寸.x <= 0.0 or 尺寸.y <= 0.0:

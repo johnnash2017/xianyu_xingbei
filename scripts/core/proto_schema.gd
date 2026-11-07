@@ -507,6 +507,9 @@ const TABLE: Dictionary = {
 		7: {"n": "card", "t": "u32"},
 		# 这次基础效果移除是不是「被自身效果触发」（抵挡 / 中毒结算这类）；普通拿走是 false
 		8: {"n": "triggered", "t": "bool"},
+		# 资源获得（治疗走 Heal；指示物 / 盖牌走这里）：数量 + 名字，客户端在头像上飘「+ X 名字」
+		9: {"n": "res_num", "t": "i32"},
+		10: {"n": "res_name", "t": "str"},
 	},
 	GConst.Msg.Error: {
 		1: {"n": "id", "t": "i32"},

@@ -1008,17 +1008,30 @@ func _check_token_change() -> void:
 		if 上次 == 现在:
 			continue
 		var 片段: Array[String] = []
+		var 增益: Array[Dictionary] = []
 		for i: int in range(mini(上次.size(), 现在.size())):
 			if int(上次[i]) == 现在[i]:
 				continue
 			var 槽: Variant = pp.tokens[i]
 			var 名: String = str((槽 as Dictionary).get("name", "指示物")) if 槽 is Dictionary else "指示物"
 			片段.append("【%s】%d→%d" % [名, int(上次[i]), 现在[i]])
+			var 差: int = 现在[i] - int(上次[i])
+			if 差 > 0:
+				增益.append({"num": 差, "name": 名})
 		if not 片段.is_empty():
 			broadcast(GConst.Msg.Gossip, {
 				"type": GConst.GossipType.Token,
 				"txt": "%s 的%s" % [_称号(pp), "、".join(片段)],
 				"id": pp.id,
+			})
+		# 指示物增加：给客户端一条不带日志的资源获得事件（治疗走 Heal 类）
+		for 项: Dictionary in 增益:
+			broadcast(GConst.Msg.Gossip, {
+				"type": GConst.GossipType.Token,
+				"txt": "",
+				"id": pp.id,
+				"res_num": int(项["num"]),
+				"res_name": str(项["name"]),
 			})
 		_token_counts[pid] = 现在
 
@@ -3248,6 +3261,15 @@ func add_cover(dst_id: int, cards: Array, src_id: int, cause: int, open: bool = 
 		for c: Variant in cards:
 			dst.记盖牌标记(int(c), open)
 	_apply_cover_change(dst_id, GConst.CHANGE_ADD, cards, src_id, cause)
+	if dst != null and not cards.is_empty():
+		var 盖牌名: String = str(Data.role_token_def(dst.role_id, 2).get("name", "盖牌"))
+		broadcast(GConst.Msg.Gossip, {
+			"type": GConst.GossipType.Token,
+			"txt": "",
+			"id": dst_id,
+			"res_num": cards.size(),
+			"res_name": 盖牌名,
+		})
 
 
 func remove_cover(dst_id: int, cards: Array, src_id: int, cause: int) -> void:

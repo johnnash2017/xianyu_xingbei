@@ -10,6 +10,8 @@ signal gossip_received(txt: String)
 signal notice_received(txt: String, kind: int)
 ## 治疗事件（目标 id + 本次治疗点数）：战斗界面据此在目标头像上喷「+」特效
 signal heal_received(pid: int, num: int)
+## 指示物 / 盖牌获得（目标 id + 数量 + 名字）：战斗界面头像飘「+ X 名字」
+signal resource_gained(pid: int, num: int, res_name: String)
 ## 基础效果被移除（Gossip 带 card 字段）：被移除的牌面 + 这次是不是被自身效果触发。
 ## 战斗界面据此在【圣盾】/【天使之墙】抵挡攻击 / 魔弹时补音效。
 signal basic_effect_removed(dst_id: int, card_id: int, triggered: bool)
@@ -162,7 +164,13 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 				if data.has("card"):
 					basic_effect_removed.emit(int(data.get("id", -1)), int(data.get("card", -1)),
 						bool(data.get("triggered", false)))
-				notice_received.emit(str(data.get("txt", "")), kind)
+				# 指示物 / 盖牌获得：单独的资源事件，不带日志（txt 为空）
+				var 资源数: int = int(data.get("res_num", 0))
+				if 资源数 > 0:
+					resource_gained.emit(int(data.get("id", -1)), 资源数, str(data.get("res_name", "")))
+				var 正文: String = str(data.get("txt", ""))
+				if not 正文.is_empty():
+					notice_received.emit(正文, kind)
 		GConst.Msg.HeartBeat:
 			# 服务端心跳：原样回一声，服务端按「发包时刻 → 收到回声」算这一路的往返延迟
 			Net.send(GConst.Msg.HeartBeat, {})
