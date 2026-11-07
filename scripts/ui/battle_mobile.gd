@@ -242,13 +242,13 @@ const 飘字色_攻击伤害: Color = Color("ff3c3c")
 const 行动播报间隔: float = 1.0
 const 行动播报起始偏移: float = -72.0
 const 行动播报上飘: float = 82.0
-## 上飘时长保持原来的 9.2 秒；之前用 SINE EASE_OUT，后段速度趋近 0，
-## 文字在亚像素位置走走停停，看起来像一抖一抖。改成线性，速度恒定。
-const 行动播报时长: float = 9.2
+## 上飘总时长 6 秒；速度恒定（线性），不再用后段趋近 0 的 EASE_OUT。
+## 淡出从第 4 秒开始、2 秒淡完，正好在第 6 秒回收。
+const 行动播报时长: float = 6.0
 const 行动播报出场时长: float = 0.28
 const 行动播报淡入时长: float = 0.24
-const 行动播报淡出时长: float = 3.04
-const 行动播报淡出延迟: float = 5.76
+const 行动播报淡出时长: float = 2.0
+const 行动播报淡出延迟: float = 4.0
 const 行动播报起始缩放: float = 0.86
 
 ## 战斗日志的样式：每行开头一个彩色的「[类别]」标识，后面的正文一律白字（方便一眼扫类别）。
