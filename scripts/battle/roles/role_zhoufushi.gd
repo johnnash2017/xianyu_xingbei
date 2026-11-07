@@ -2,7 +2,7 @@ extends BattleRole
 ## 咒符师（84）：咒符-火璃 / 咒符-冻天 / 念咒 / 魑魅魍魉 / 咒力重塑
 ##
 ## 区域：本角色没有专属区域 ——【妖力】＝盖牌区面朝下的牌（角色表「指示物」列槽 2 的上限 2），
-## 放进去时用 engine.add_cover(..., open = false, tag = "妖力") 打标记，取出来用 盖牌按标记("妖力")。
+## 放进去用 engine.add_cover(..., open = false)；她的盖牌区里的牌都当【妖力】，不再按用途标记区分。
 ##
 ## 口径（开发时定下的，写在这里免得以后重复讨论）：
 ## 1. 【咒符】是法术技能（技能栏）。费用「弃 1 张火 / 水系牌」在发动时结算（点选即付、已付不退）。
@@ -21,7 +21,6 @@ const NIAN_ZHOU: int = 8403
 const CHI_MEI_WANG_LIANG: int = 8404
 const ZHOU_LI_CHONG_SU: int = 8405
 
-const YAO_LI标记: String = "妖力"
 const 火璃伤害: int = 1
 
 enum 步 {
@@ -350,7 +349,7 @@ func p_zhou_fu_ask(ctx: Dictionary) -> int:
 				var cid5: int = int(cards5[0])
 				notice_skill(NIAN_ZHOU)
 				engine.take_from_hand(player.id, [cid5], false)
-				engine.add_cover(player.id, [cid5], player.id, NIAN_ZHOU, false, YAO_LI标记)
+				engine.add_cover(player.id, [cid5], player.id, NIAN_ZHOU)
 				_压下步 = 步.空闲
 				_结算中 = true
 				return URGENT
@@ -367,7 +366,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _步 != 步.空闲:
 		return SUCCESS
-	var 妖力: Array[int] = player.盖牌按标记(YAO_LI标记)
+	var 妖力: Array[int] = player.cover_cards.duplicate()
 	if 妖力.is_empty():
 		return SUCCESS
 	if not engine.has_reply():

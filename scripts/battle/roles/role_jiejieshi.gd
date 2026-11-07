@@ -4,7 +4,7 @@ extends BattleRole
 ## 区域与标记：
 ## - 【祭】＝0 号指示物（角色表「指示物」0:祭:3，上限 3），统一用 player.add_token(0) / remove_token(0)。
 ## - 【结界】＝盖牌区**面朝上**的牌（角色表槽 2 上限 2），放进去用
-##   engine.add_cover(..., open = true, tag = "结界")，读出来用 player.盖牌按标记("结界")。
+##   engine.add_cover(..., open = true)；她的盖牌区里的牌都当【结界】，不再按用途标记区分。
 ##   面朝上意味着牌面公开：快照的 cover_opens 会带上牌面，客户端在面板状态区按卡面显示。
 ## - 【绝界】＝场卡（F1）：owner＝结界师，attached＝拥有它的角色；拥有者的基础效果无法触发。
 ##
@@ -24,7 +24,6 @@ const JUE_JIE: int = 8206
 const FU_MO_JING: int = 8207
 
 const JI_SLOT: int = 0
-const JIE_JIE标记: String = "结界"
 const 绝界名: String = "绝界"
 
 var _t1_step: int = 0
@@ -126,7 +125,7 @@ func _p_结界仪式(action: Dictionary) -> int:
 			放.append(cid)
 	if 放.is_empty():
 		return SUCCESS
-	engine.add_cover(player.id, 放, player.id, JIE_JIE_YI_SHI, true, JIE_JIE标记)
+	engine.add_cover(player.id, 放, player.id, JIE_JIE_YI_SHI, true)
 	_加祭(1, JIE_JIE_YI_SHI)
 	return URGENT
 
@@ -232,7 +231,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if not player.remove_token(JI_SLOT, 3):
 		return SUCCESS
 	# 移除 1 个结界
-	var 结界: Array[int] = player.盖牌按标记(JIE_JIE标记)
+	var 结界: Array[int] = player.cover_cards.duplicate()
 	if not 结界.is_empty():
 		engine.remove_cover(player.id, [int(结界[0])], player.id, HUANG_SHEN_JI_YI)
 		engine.to_discard([int(结界[0])], {"owner": player.id, "source": "cover", "cause": HUANG_SHEN_JI_YI})
@@ -290,7 +289,7 @@ func p_action_end(ctx: Dictionary) -> int:
 	if not player.remove_token(JI_SLOT, 0):
 		return SUCCESS
 	_加祭(1, JUE_JIE)
-	var 结界: Array[int] = player.盖牌按标记(JIE_JIE标记)
+	var 结界: Array[int] = player.cover_cards.duplicate()
 	if 结界.is_empty():
 		return SUCCESS
 	var 取: int = int(结界[0])
@@ -310,13 +309,13 @@ func p_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	if int(ctx.get("player", -1)) != 拥有者:
 		return SUCCESS
-	var 结界: Array[int] = player.盖牌按标记(JIE_JIE标记)
+	var 结界: Array[int] = player.cover_cards.duplicate()
 	if not 结界.is_empty():
 		var 取: int = int(结界[0])
 		engine.remove_cover(player.id, [取], player.id, JUE_JIE)
 		engine.to_discard([取], {"owner": player.id, "source": "cover", "cause": JUE_JIE})
 		engine._broadcast_game()
-		var 余: Array[int] = player.盖牌按标记(JIE_JIE标记)
+		var 余: Array[int] = player.cover_cards.duplicate()
 		if not 余.is_empty():
 			return SUCCESS
 	return _检查绝界破散()
@@ -326,7 +325,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 func _检查绝界破散() -> int:
 	if _绝界拥有者() < 0:
 		return SUCCESS
-	var 结界: Array[int] = player.盖牌按标记(JIE_JIE标记)
+	var 结界: Array[int] = player.cover_cards.duplicate()
 	if not 结界.is_empty():
 		return SUCCESS
 	# 拥有者回合结束前移除 1 个结界：这里再补一次（没有结界就直接破散）
@@ -355,7 +354,7 @@ func _绝界拥有者() -> int:
 
 ## 场上的【结界】牌（盖牌区面朝上、标记为结界）
 func _结界() -> Array[int]:
-	return player.盖牌按标记(JIE_JIE标记)
+	return player.cover_cards.duplicate()
 
 
 ## 结界里出现的系别（去重）
@@ -490,7 +489,7 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			_mod_step = 0
 			_琉璃_step = 0
 			if 要 and _琉璃待放 >= 0 and player.can_add_cover_cards(1):
-				engine.add_cover(player.id, [_琉璃待放], player.id, LIU_LI_JING, true, JIE_JIE标记)
+				engine.add_cover(player.id, [_琉璃待放], player.id, LIU_LI_JING, true)
 				_琉璃待放 = -1
 				return URGENT
 			if _琉璃待放 >= 0:

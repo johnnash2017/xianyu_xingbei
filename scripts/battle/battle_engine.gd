@@ -3240,13 +3240,13 @@ func _log_basic_effect_remove(doer_id: int, dst_id: int, card_id: int, triggered
 ## 盖牌变动入口（对照服务端 StateCoverChange）：立刻加/减盖牌并广播，随后对全体跑
 ## p_cover_change（doer 为本次变动发起者，direction 见 GConst.CHANGE_*）。
 ## 盖牌超限由状态边界的 _check_cover_overflow 结算。
-## 放进盖牌区。open/tag 见 BattlePlayer.记盖牌标记：
-## open=true 是「面朝上、牌面公开」的旁置牌（结界师【结界】），tag 用来区分用途（"卢恩"/"结界"/"妖力"）。
-func add_cover(dst_id: int, cards: Array, src_id: int, cause: int, open: bool = false, tag: String = "") -> void:
+## 放进盖牌区。open 见 BattlePlayer.记盖牌标记：
+## open=true 是「面朝上、牌面公开」的旁置牌（结界师【结界】）。
+func add_cover(dst_id: int, cards: Array, src_id: int, cause: int, open: bool = false) -> void:
 	var dst: BattlePlayer = players.get(dst_id)
-	if dst != null and (open or not tag.is_empty()):
+	if dst != null and open:
 		for c: Variant in cards:
-			dst.记盖牌标记(int(c), open, tag)
+			dst.记盖牌标记(int(c), open)
 	_apply_cover_change(dst_id, GConst.CHANGE_ADD, cards, src_id, cause)
 
 
@@ -3404,14 +3404,11 @@ func debug_key(pid: int, kind: int) -> void:
 			if not 盖们.is_empty():
 				remove_cover(p0.id, 盖们, p0.id, 0)
 		else:
-			# 星坠女巫的调试盖牌要带【卢恩】标记，否则群星启示模式②选不中
 			var 张数: int = p0.cover_space()
 			if 张数 > 0:
 				var 牌们: Array[int] = deck.draw(张数)
 				if not 牌们.is_empty():
-					var 标记: String = GConst.卢恩标记 \
-						if Data.role_skills(p0.role_id).has(4004) else ""
-					add_cover(p0.id, 牌们, p0.id, 0, false, 标记)
+					add_cover(p0.id, 牌们, p0.id, 0)
 	elif kind == GConst.DebugKey.RandomEnergy:
 		# 测试用（战斗界面按 7）：战绩区已经有星石 → 再按清空；是空的 → 按战绩区上限逐颗随机填成宝石 / 水晶
 		# （总数恰好等于上限，故直接累加，不走 set_team_gem/set_team_crystal 的夹取）

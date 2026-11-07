@@ -19,10 +19,6 @@ var 异刃实例: int = -1
 ## 盖牌区里哪些是**面朝上**的（键＝实例号）：结界师【结界】这种“放在角色旁、牌面公开”的旁置牌。
 ## 面朝下的照旧只给张数；面朝上的牌面随快照下发给所有人（见 to_proto 的 cover_opens）。
 var cover_open: Dictionary = {}
-## 盖牌区每张牌的用途标记（键＝实例号，值＝"卢恩" / "结界" / "妖力" / ""）：
-## 同一个角色可能同时挂着几种“放在角色旁”的牌（星坠女巫的【卢恩】、别人给的东西），
-## 用标记区分，不要靠牌面猜。没有标记＝普通盖牌。
-var cover_tags: Dictionary = {}
 ## 【律法】（星坠女巫放在角色面前的标记）：1=繁星 / 2=影月 / 3=蚀日，按放置顺序存
 var laws: Array[int] = []
 ## 「本回合无法获得治疗」标记：记下设置时的回合号，回合号变了自动失效
@@ -248,15 +244,11 @@ func remove_cover_cards(cards: Array) -> void:
 
 
 # ============================================================
-# 盖牌的「面朝上」与用途标记
+# 盖牌的「面朝上」
 # ============================================================
-## 放一张盖牌并记标记：面朝上＝牌面公开（结界师【结界】）/ 面朝下＝只给张数（【卢恩】【妖力】）
-func 记盖牌标记(cid: int, open: bool = false, tag: String = "") -> void:
+## 放一张盖牌并记面朝上：面朝上＝牌面公开（结界师【结界】）/ 面朝下＝只给张数
+func 记盖牌标记(cid: int, open: bool = false) -> void:
 	cover_open[cid] = open
-	if tag.is_empty():
-		cover_tags.erase(cid)
-	else:
-		cover_tags[cid] = tag
 
 
 ## 这张盖牌是不是面朝上的（所有人可见）
@@ -264,24 +256,9 @@ func 盖牌公开(cid: int) -> bool:
 	return bool(cover_open.get(cid, false))
 
 
-## 这张盖牌是谁放的 / 用途（""＝普通盖牌）
-func 盖牌标记(cid: int) -> String:
-	return str(cover_tags.get(cid, ""))
-
-
-## 盖牌离开盖牌区时清掉标记，避免同号牌再进来时串味
+## 盖牌离开盖牌区时清掉面朝上标记，避免同号牌再进来时串味
 func 忘盖牌标记(cid: int) -> void:
 	cover_open.erase(cid)
-	cover_tags.erase(cid)
-
-
-## 某个用途标记的盖牌（如 "卢恩" / "结界" / "妖力"）
-func 盖牌按标记(tag: String) -> Array[int]:
-	var out: Array[int] = []
-	for cid: int in cover_cards:
-		if str(cover_tags.get(cid, "")) == tag:
-			out.append(cid)
-	return out
 
 
 ## 面朝上的盖牌牌面（下发给所有人看的那几张）
@@ -293,11 +270,10 @@ func 公开盖牌牌面() -> Array[int]:
 	return out
 
 
-## 清空盖牌区（同时清标记）
+## 清空盖牌区（同时清面朝上标记）
 func 清空盖牌() -> void:
 	cover_cards.clear()
 	cover_open.clear()
-	cover_tags.clear()
 
 
 # ============================================================

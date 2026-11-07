@@ -32,7 +32,6 @@ const CHUANG_KE_LV_DONG: int = 4009
 ## 影月·同命格的治疗分配是 4007 的子询问（技能表不单独占行，名字/说明折到 4007）
 const 影月治疗询问: int = 40071
 
-const LU_EN标记: String = GConst.卢恩标记
 const 律法_繁星: int = 1
 const 律法_影月: int = 2
 const 律法_蚀日: int = 3
@@ -311,7 +310,7 @@ func _p_群星启示(action: Dictionary) -> int:
 	if 实例 < 0:
 		engine.报错("【群星启示】要放成【卢恩】的手牌已不在手里", player.id)
 		return SUCCESS
-	engine.add_cover(player.id, [实例], player.id, QUN_XING_QI_SHI, false, LU_EN标记)
+	engine.add_cover(player.id, [实例], player.id, QUN_XING_QI_SHI)
 	_步 = 步_启示选律法
 	engine.push(BattleEngine.SHook.new("p_xing_zhui_ask", {"player": player.id}, []))
 	return URGENT
@@ -362,7 +361,7 @@ func p_action_end(ctx: Dictionary) -> int:
 	var 顶: Array[int] = engine.移除牌库顶(1)
 	if 顶.is_empty():
 		return SUCCESS
-	engine.add_cover(player.id, [int(顶[0])], player.id, XING_KE, false, LU_EN标记)
+	engine.add_cover(player.id, [int(顶[0])], player.id, XING_KE)
 	notice_skill(XING_KE, [player.id])
 	# add_cover 已压入 p_cover_change，SHook 会先让出执行权再回来；这里 return URGENT 会把同一钩子
 	# 重跑一遍、一次行动放满 6 个【卢恩】（约定 #13）
@@ -864,7 +863,7 @@ func _黄金律交换() -> int:
 		return SUCCESS
 	engine.remove_cover(player.id, [盖实例], player.id, HUANG_JIN_LV)
 	player.add_hand_cards([盖实例])
-	engine.add_cover(player.id, [手实例], player.id, HUANG_JIN_LV, false, LU_EN标记)
+	engine.add_cover(player.id, [手实例], player.id, HUANG_JIN_LV)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -900,7 +899,7 @@ func _创刻选卢恩() -> int:
 		return _创刻选卢恩()
 	_步 = 0
 	if not 放.is_empty():
-		engine.add_cover(player.id, 放, player.id, CHUANG_KE_LV_DONG, false, LU_EN标记)
+		engine.add_cover(player.id, 放, player.id, CHUANG_KE_LV_DONG)
 		engine._broadcast_game()
 	return SUCCESS
 
@@ -975,12 +974,11 @@ func _地系手牌() -> Array[int]:
 
 
 func _卢恩() -> Array[int]:
-	return player.盖牌按标记(LU_EN标记)
+	return player.cover_cards.duplicate()
 
 
 func _是卢恩(id: int) -> bool:
-	var 实例: int = player.盖牌实例(id)
-	return 实例 >= 0 and player.盖牌标记(实例) == LU_EN标记
+	return player.盖牌实例(id) >= 0
 
 
 func _未拥有律法() -> Array[int]:
