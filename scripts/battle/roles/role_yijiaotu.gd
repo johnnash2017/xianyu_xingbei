@@ -193,7 +193,7 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 
 
 func _重算手牌上限() -> void:
-	player.hand_cards_max = GConst.HAND_CARDS_MAX - (1 if engine.有场卡(末日预言名) else 0)
+	player.设手牌上限修正("末日预言", -1 if engine.有场卡(末日预言名) else 0)
 
 
 ## 记录本回合被你造成过伤害的对手（【审判】条件 + 给牌目标白名单）；

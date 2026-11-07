@@ -21,7 +21,6 @@ const TOKEN_NU_QI: int = 0           # 「怒气」指示物下标
 const TOKEN_ZHI_XING: int = 1        # 「知性」指示物下标
 
 const JING_PI_HAND_MAX: int = 4      # 精疲力竭期间的手牌上限
-const HAND_MAX_DEFAULT: int = 6      # 恢复后的默认手牌上限
 
 
 var using_NuHou: bool = false        # 本次攻击是否发动了怒吼
@@ -94,7 +93,7 @@ func p_before_action(_ctx: Dictionary) -> int:
 		return SUCCESS
 	# 解除精疲力竭：恢复手牌上限并对自己造成 3 点法术伤害
 	notice_skill(JING_PI_LI_JIE, [player.id])
-	player.hand_cards_max = HAND_MAX_DEFAULT
+	player.清手牌上限恒定()
 	engine.set_tap(player.id, false)
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": 3,
@@ -380,7 +379,7 @@ func _jin_duan_zhi_li(ctx: Dictionary, hit: bool) -> int:
 
 ## 精疲力竭：横置，额外 +1 攻击行动，手牌上限恒定为 4
 func _jing_pi_li_jie() -> void:
-	player.hand_cards_max = JING_PI_HAND_MAX
+	player.设手牌上限恒定(JING_PI_HAND_MAX)
 	player.add_action(GConst.ActionType.Attack, JING_PI_LI_JIE, true)
 	engine.set_tap(player.id, true)
 

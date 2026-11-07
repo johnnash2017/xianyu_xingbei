@@ -15,8 +15,7 @@ const MO_RI_SHEN_PAN: int = 1403
 const SHEN_PAN_LANG_CHAO: int = 1404
 const PAN_JUE_TIAN_PING: int = 1405
 
-## 服务端 setHandCardsMaxFixed：普通形态 6，审判形态 5
-const HAND_MAX_NORMAL: int = 6
+## 服务端 setHandCardsMaxFixed：审判形态 5；脱离后按基础 + 修正重算
 const HAND_MAX_TRIAL: int = 5
 
 
@@ -124,7 +123,7 @@ func _apply_yi_shi_zhong_duan() -> void:
 	player.boot_skill_used = true
 	engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 	player.tap = false
-	player.hand_cards_max = HAND_MAX_NORMAL
+	player.清手牌上限恒定()
 	engine._broadcast_game()
 
 
@@ -134,7 +133,7 @@ func _apply_zhong_cai_yi_shi() -> void:
 	player.boot_skill_used = true
 	player.set_gem(player.gem - 1)
 	player.tap = true
-	player.hand_cards_max = HAND_MAX_TRIAL
+	player.设手牌上限恒定(HAND_MAX_TRIAL)
 	engine._broadcast_game()
 
 

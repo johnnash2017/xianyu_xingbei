@@ -73,7 +73,7 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 
 func _重算手牌上限() -> void:
-	player.hand_cards_max = GConst.HAND_CARDS_MAX + 1 - player.律法数()
+	player.设手牌上限恒定(GConst.HAND_CARDS_MAX + 1 - player.律法数())
 
 
 func p_before_turn_begin(ctx: Dictionary) -> int:

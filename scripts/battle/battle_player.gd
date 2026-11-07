@@ -10,6 +10,11 @@ var player_name: String = ""
 
 var hand_cards: Array[int] = []
 var hand_cards_max: int = GConst.HAND_CARDS_MAX
+## 手牌上限的组成：基础值 + 各来源修正；恒定效果直接覆盖最终值（-1＝没有恒定效果）。
+## 直接写 hand_cards_max 会绕过这套口径，角色里改上限必须走下面的方法。
+var hand_cards_max_基础: int = GConst.HAND_CARDS_MAX
+var hand_cards_max_修正: Dictionary = {}
+var hand_cards_max_恒定: int = -1
 var cover_cards: Array[int] = []
 var cover_cards_max: int = 0
 ## 噬神者专属：本人拥有的【魔刃】/【异刃】唯一实例号（-1＝不是噬神者/未初始化）。
@@ -217,6 +222,58 @@ func has_discard_card(cid: int) -> bool:
 
 func hand_count() -> int:
 	return hand_cards.size()
+
+
+# ============================================================
+# 手牌上限：基础 + 修正 + 恒定覆盖
+# ============================================================
+## 设置基础值（默认 6）；会重算最终上限
+func 设手牌上限基础(v: int) -> void:
+	hand_cards_max_基础 = maxi(v, 0)
+	重算手牌上限()
+
+
+## 注册 / 更新一条相对修正（来源相同会覆盖，不叠加）；值 0 等于清除
+func 设手牌上限修正(来源: String, 值: int) -> void:
+	if 值 == 0:
+		hand_cards_max_修正.erase(来源)
+	else:
+		hand_cards_max_修正[来源] = 值
+	重算手牌上限()
+
+
+func 清手牌上限修正(来源: String) -> void:
+	hand_cards_max_修正.erase(来源)
+	重算手牌上限()
+
+
+## 恒定效果：把最终上限直接覆盖成 v，期间所有相对修正都不改变结果；清除后恢复基础+修正
+func 设手牌上限恒定(v: int) -> void:
+	hand_cards_max_恒定 = maxi(v, 0)
+	重算手牌上限()
+
+
+func 清手牌上限恒定() -> void:
+	hand_cards_max_恒定 = -1
+	重算手牌上限()
+
+
+## 恢复初始状态（引擎重置玩家时用）
+func 重置手牌上限状态() -> void:
+	hand_cards_max_基础 = GConst.HAND_CARDS_MAX
+	hand_cards_max_修正.clear()
+	hand_cards_max_恒定 = -1
+	hand_cards_max = GConst.HAND_CARDS_MAX
+
+
+func 重算手牌上限() -> void:
+	if hand_cards_max_恒定 >= 0:
+		hand_cards_max = hand_cards_max_恒定
+		return
+	var v: int = hand_cards_max_基础
+	for 来源: Variant in hand_cards_max_修正.keys():
+		v += int(hand_cards_max_修正[来源])
+	hand_cards_max = maxi(v, 0)
 
 
 # ============================================================

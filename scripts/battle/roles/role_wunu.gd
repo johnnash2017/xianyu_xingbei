@@ -52,9 +52,13 @@ func available_skills() -> Array:
 		"need_card": 需弃, "card_max": 需弃, "need_target": 1,
 		"enabled": player.gem >= 1})
 	# 【血之哀伤】为「启动」：自己场上有【同生共死】时可发动（二选一：转移 / 移除）
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG, "need_card": 0, "need_target": 1,
+	# 转移只能选「当前【同生共死】目标以外」的角色
+	var 转移目标: Array[int] = _转移可选目标()
+	out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG,
+		"need_card": 0, "need_target": 1, "targets": 转移目标,
 		"arg_choices": [
-			{"text": GConst.按钮文本(XUE_ZHI_AI_SHANG, 0), "args": [1], "need_card": 0, "need_target": 1},
+			{"text": GConst.按钮文本(XUE_ZHI_AI_SHANG, 0), "args": [1], "need_card": 0, "need_target": 1,
+				"targets": 转移目标},
 			{"text": GConst.按钮文本(XUE_ZHI_AI_SHANG, 1), "args": [2], "need_card": 0, "need_target": 0},
 		],
 		"enabled": tong_sheng_id != -1})
@@ -105,9 +109,10 @@ func v_special_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if choice == 1:
 		var dsts: Array = action.get("dst_ids", [])
-		if dsts.is_empty():
+		if dsts.size() != 1:
 			return GConst.GE_INVALID_ARGUMENT
-		if engine.p(int(dsts[0])) == null:
+		var new_dst: int = int(dsts[0])
+		if new_dst == tong_sheng_id or engine.p(new_dst) == null:
 			return GConst.GE_INVALID_PLAYERID
 	return GConst.GE_SUCCESS
 
@@ -160,16 +165,7 @@ func _to_normal_form() -> int:
 	if not player.tap or player.hand_cards.size() >= 3:
 		return SUCCESS
 	player.tap = false
-	if tong_sheng_id == -1:
-		engine._broadcast_game()
-		return SUCCESS
-	if tong_sheng_id == player.id:
-		player.hand_cards_max -= 3
-	else:
-		var dst: BattlePlayer = engine.p(tong_sheng_id)
-		if dst != null:
-			dst.hand_cards_max -= 3
-		player.hand_cards_max -= 3
+	_同步同生共死手牌上限()
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -187,16 +183,34 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 		return SUCCESS
 	engine.set_tap(player.id, true)
 	施加治疗(player.id, 1)
-	if tong_sheng_id != -1:
-		if tong_sheng_id == player.id:
-			player.hand_cards_max += 3
-		else:
-			var dst: BattlePlayer = engine.p(tong_sheng_id)
-			if dst != null:
-				dst.hand_cards_max += 3
-			player.hand_cards_max += 3
+	_同步同生共死手牌上限()
 	engine._broadcast_game()
 	return SUCCESS
+
+
+## 把【同生共死】的手牌上限影响同步到本人 / 当前目标：
+## 普通形态双方各 -2，流血形态各 +1；目标就是自己时只有本人这一份
+func _同步同生共死手牌上限() -> void:
+	if tong_sheng_id == -1:
+		player.清手牌上限修正("同生共死-自身")
+		return
+	var 值: int = 1 if player.tap else -2
+	player.设手牌上限修正("同生共死-自身", 值)
+	if tong_sheng_id != player.id:
+		var dst: BattlePlayer = engine.p(tong_sheng_id)
+		if dst != null:
+			dst.设手牌上限修正("同生共死-目标", 值)
+
+
+## 血之哀伤转移【同生共死】的可选目标：所有在场角色，但排除当前目标
+func _转移可选目标() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		if pid == tong_sheng_id:
+			continue
+		if engine.p(pid) != null:
+			out.append(pid)
+	return out
 
 
 ## 转移【同生共死】到新目标，并按形态联动双方手牌上限
@@ -208,19 +222,11 @@ func _transfer_tong_sheng(new_dst: int) -> void:
 	var old: BattlePlayer = engine.p(tong_sheng_id)
 	if old != null:
 		old.remove_exclusive_effect(GConst.Exclusive.TongShengGongSi)
+		if tong_sheng_id != player.id:
+			old.清手牌上限修正("同生共死-目标")
 	dst.add_exclusive_effect(GConst.Exclusive.TongShengGongSi)
-	if new_dst != player.id:
-		if player.tap:
-			dst.hand_cards_max += 1
-		else:
-			dst.hand_cards_max -= 2
-	if tong_sheng_id != player.id:
-		if old != null:
-			if player.tap:
-				old.hand_cards_max -= 1
-			else:
-				old.hand_cards_max += 2
 	tong_sheng_id = new_dst
+	_同步同生共死手牌上限()
 
 
 ## 移除【同生共死】，并按形态联动双方手牌上限
@@ -229,22 +235,10 @@ func _remove_tong_sheng() -> void:
 	var old: BattlePlayer = engine.p(tong_sheng_id)
 	if old != null:
 		old.remove_exclusive_effect(GConst.Exclusive.TongShengGongSi)
-	if tong_sheng_id == player.id:
-		if player.tap:
-			player.hand_cards_max -= 1
-		else:
-			player.hand_cards_max += 2
-	else:
-		if old != null:
-			if player.tap:
-				old.hand_cards_max -= 1
-			else:
-				old.hand_cards_max += 2
-		if player.tap:
-			player.hand_cards_max -= 1
-		else:
-			player.hand_cards_max += 2
+		if tong_sheng_id != player.id:
+			old.清手牌上限修正("同生共死-目标")
 	tong_sheng_id = -1
+	player.清手牌上限修正("同生共死-自身")
 
 
 # ============================================================
@@ -329,18 +323,7 @@ func p_tong_sheng_after_draw(ctx: Dictionary) -> int:
 		return SUCCESS
 	tong_sheng_id = dst_id
 	dst.add_exclusive_effect(GConst.Exclusive.TongShengGongSi)
-	if dst_id == player.id:
-		if player.tap:
-			player.hand_cards_max += 1
-		else:
-			player.hand_cards_max -= 2
-	else:
-		if player.tap:
-			player.hand_cards_max += 1
-			dst.hand_cards_max += 1
-		else:
-			player.hand_cards_max -= 2
-			dst.hand_cards_max -= 2
+	_同步同生共死手牌上限()
 	engine._broadcast_game()
 	return SUCCESS
 

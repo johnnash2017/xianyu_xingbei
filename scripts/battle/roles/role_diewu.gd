@@ -30,7 +30,7 @@ var _diao_harms: Array[Dictionary] = []
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
-	p.hand_cards_max = _life_fire_max()
+	p.设手牌上限恒定(_life_fire_max())
 
 
 func available_skills() -> Array:
@@ -441,7 +441,7 @@ func _life_fire_max() -> int:
 func _set_yong(delta: int) -> void:
 	var t: Dictionary = player.tokens[0]
 	t["num"] = clampi(int(t["num"]) + delta, 0, int(t["max"]))
-	player.hand_cards_max = _life_fire_max()
+	player.设手牌上限恒定(_life_fire_max())
 
 
 ## 把牌作为【茧】加入盖牌区（超限由引擎询问玩家弃哪几张，对照 StateRequestCover）

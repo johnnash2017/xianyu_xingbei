@@ -130,7 +130,7 @@ func _apply_fu_wen_gai_zao(action: Dictionary) -> int:
 	notice_skill(FU_WEN_GAI_ZAO, [player.id])
 	player.boot_skill_used = true
 	player.set_gem(player.gem - 1)
-	player.hand_cards_max += FU_WEN_HAND_ADD
+	player.设手牌上限修正("符文改造", FU_WEN_HAND_ADD)
 	engine.push_draw(player.id, 1)
 	engine.set_tap(player.id, true)
 	_set_zhan_wen(num)
@@ -462,7 +462,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	step = STEP_DONE
 	notice_skill(FU_WEN_GAI_ZAO, [player.id])
-	player.hand_cards_max -= FU_WEN_HAND_ADD
+	player.设手牌上限修正("符文改造", 0)
 	engine.set_tap(player.id, false)
 	engine._broadcast_game()
 	return URGENT

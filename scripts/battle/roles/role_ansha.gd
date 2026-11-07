@@ -104,7 +104,7 @@ func _qian_xing_enter() -> void:
 	player.boot_skill_used = true
 	player.tap = true
 	player.set_gem(player.gem - 1)
-	player.hand_cards_max = maxi(player.hand_cards_max - QIAN_XING_HAND_MINUS, 0)
+	player.设手牌上限修正("潜行", -QIAN_XING_HAND_MINUS)
 	engine._broadcast_game()
 
 
@@ -121,7 +121,7 @@ func p_qian_xing_enter(ctx: Dictionary) -> int:
 ## 潜行结束：重置横置并还原手牌上限
 func _qian_xing_end() -> void:
 	player.tap = false
-	player.hand_cards_max = player.hand_cards_max + QIAN_XING_HAND_MINUS
+	player.设手牌上限修正("潜行", 0)
 	engine._broadcast_game()
 
 

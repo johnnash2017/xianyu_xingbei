@@ -754,7 +754,7 @@ func 替换角色(pid: int, 新角色id: int, 重置上限: bool = true) -> int:
 	p0.reset_action_counts()
 	p0.boot_skill_used = false
 	if 重置上限:
-		p0.hand_cards_max = GConst.HAND_CARDS_MAX
+		p0.重置手牌上限状态()
 		p0.energy_max = GConst.ENERGY_MAX
 		p0.cross_max = GConst.CROSS_MAX
 	p0.cover_cards_max = 0

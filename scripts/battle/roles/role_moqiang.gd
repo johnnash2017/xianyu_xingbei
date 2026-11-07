@@ -21,7 +21,6 @@ const CHONG_YING: int = 2905
 const QI_HEI_ZHI_QIANG: int = 2906
 
 const HAND_MAX_ILLUSION: int = 5
-const HAND_MAX_NORMAL: int = 6
 
 var card_count: int = 0
 var hurt_id: int = -1
@@ -157,7 +156,7 @@ func _apply_an_zhi_jie_fang() -> void:
 	availabel_qi_hei_zhi_qiang = false
 	availabel_chong_ying = false
 	engine.set_tap(player.id, true)
-	player.hand_cards_max = HAND_MAX_ILLUSION
+	player.设手牌上限恒定(HAND_MAX_ILLUSION)
 	engine._broadcast_game()
 
 
@@ -206,7 +205,7 @@ func p_harm_end(ctx: Dictionary) -> int:
 	# 脱离[幻影形态]
 	using_huan_ying_xing_chen = false
 	player.tap = false
-	player.hand_cards_max = HAND_MAX_NORMAL
+	player.清手牌上限恒定()
 	var morale_lost: bool = huan_ying_morale_lost
 	huan_ying_morale_lost = false
 	var dst_id: int = hurt_id

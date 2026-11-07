@@ -70,7 +70,7 @@ func p_special_skill(_action: Dictionary) -> int:
 	player.tap = true
 	player.set_gem(player.gem - 1)
 	player.set_crystal(player.crystal + 1)
-	player.hand_cards_max = 7
+	player.设手牌上限恒定(7)
 	engine._broadcast_game()
 	return SUCCESS
 

@@ -118,7 +118,7 @@ func _get_away_from_fire() -> int:
 	if not player.tap:
 		return SUCCESS
 	player.tap = false
-	player.hand_cards_max += 2 - int(player.tokens[0]["num"])
+	player.清手牌上限修正("烈焰形态")
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -144,7 +144,7 @@ func p_special_skill(action: Dictionary) -> int:
 	notice_skill(MO_NV_ZHI_NU, [player.id])
 	player.boot_skill_used = true
 	engine.set_tap(player.id, true)
-	player.hand_cards_max += int(player.tokens[0]["num"]) - 2
+	player.设手牌上限修正("烈焰形态", int(player.tokens[0]["num"]) - 2)
 	if card_num > 0:
 		engine.push_draw(player.id, card_num)
 		engine._broadcast_game()
@@ -172,7 +172,7 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 	notice_skill(YONG_SHENG_YIN_SHI_JI, [player.id])
 	player.tokens[0]["num"] = int(player.tokens[0]["num"]) + 1
 	if player.tap:
-		player.hand_cards_max += 1
+		player.设手牌上限修正("烈焰形态", int(player.tokens[0]["num"]) - 2)
 	engine._broadcast_game()
 	return SUCCESS
 
