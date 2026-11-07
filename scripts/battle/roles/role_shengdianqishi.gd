@@ -228,7 +228,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			_t1_step = 0
 			return SUCCESS
 		4:
-			# 第一段：神威 / 圣裁二选一。选神威当场发动；选圣裁进入第二段选 X。
+			# 第一段：神威 / 圣裁二选一。圣裁的 X 由客户端本地展开，服务端只收一次最终 args。
 			if not engine.has_reply():
 				var 攻目标: int = int(ctx.get("dst", -1))
 				var 原伤害: int = int((ctx.get("harm", {}) as Dictionary).get("point", 0))
@@ -238,43 +238,26 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				var 预览目标: Array = [攻目标] if 攻目标 >= 0 else []
 				var 选项: Array = _神威圣裁选项()
 				var 主技能: int = SHEN_WEI if _可神威() else SHENG_CAI
-				询问(player.id, 主技能, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
-					0, -1, [], -1, {}, 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
+				# 选项本身就是技能：no_parent=true 不再多摆一颗「本体技能」
+				engine.ask_skill(player.id, 主技能, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
+					"", [], 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
 					原伤害 + 神威加伤 if 原伤害 > 0 and 主技能 == SHEN_WEI else -1,
-					0, "", -1, "", 预览目标, [], 0)
+					0, false, -1, true, "", 预览目标, [], 0)
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
-			var 选: int = int(r.get("args", [])[0]) if not (r.get("args", []) as Array).is_empty() else 0
+			var args: Array = r.get("args", [])
+			var 选: int = int(args[0]) if not args.is_empty() else 0
 			if 选 == 1 and _可神威() and player.remove_token(YIN_SLOT, 2):
 				_应用神威(ctx)
 				_t1_step = 0
 				return SUCCESS
-			if 选 == 2 and player.token_num(YIN_SLOT) >= 1:
-				_t1_step = 5
-				return p_timeline_1(ctx)
+			if 选 == 2 and args.size() >= 2:
+				var x: int = int(args[1])
+				if x > 0 and x <= player.token_num(YIN_SLOT) and player.remove_token(YIN_SLOT, x):
+					_t1_step = 0
+					return _应用圣裁(ctx, x)
 			_t1_step = 0
 			return SUCCESS
-		5:
-			# 第二段：圣裁的「移除 X 圣印」。取消＝返回第一段二选一。
-			if not engine.has_reply():
-				var 攻目标2: int = int(ctx.get("dst", -1))
-				var 原伤害2: int = int((ctx.get("harm", {}) as Dictionary).get("point", 0))
-				var 预览目标2: Array = [攻目标2] if 攻目标2 >= 0 else []
-				询问(player.id, SHENG_CAI, 0, 0, GConst.CardSource.Hand, _圣裁选项(), 0, "", [], true,
-					0, -1, [], -1, {}, 原伤害2, GConst.HarmType.Attack, false, 预览目标2, true,
-					-1, 0, "", -1, "", 预览目标2, [], 0)
-				return WAIT
-			var r2: Dictionary = take_skill_reply_full()
-			var args2: Array = r2.get("args", [])
-			if args2.is_empty():
-				_t1_step = 4
-				return p_timeline_1(ctx)
-			var x: int = int(args2[0])
-			if x > 0 and x <= player.token_num(YIN_SLOT) and player.remove_token(YIN_SLOT, x):
-				_t1_step = 0
-				return _应用圣裁(ctx, x)
-			_t1_step = 4
-			return p_timeline_1(ctx)
 	return SUCCESS
 
 
@@ -288,29 +271,18 @@ func _神威圣裁选项() -> Array:
 		{
 			"value": 1,
 			"label": GConst.skill_desc_name(SHEN_WEI),
+			"args": [1],
 			"skill_id": SHEN_WEI,
 			"enabled": _可神威(),
 		},
 		{
 			"value": 2,
 			"label": GConst.skill_desc_name(SHENG_CAI),
+			"args": [2],
 			"skill_id": SHENG_CAI,
 			"enabled": player.token_num(YIN_SLOT) >= 1,
 		},
 	]
-
-
-## 第二段圣裁 X 选项；文案按你的口径「移除 1 【圣印】」
-func _圣裁选项() -> Array:
-	var out: Array = []
-	for x: int in range(1, player.token_num(YIN_SLOT) + 1):
-		out.append({
-			"value": x,
-			"label": "移除 %d 【圣印】" % x,
-			"args": [x],
-			"skill_id": SHENG_CAI,
-		})
-	return out
 
 
 ## 应用【圣裁】（已由调用方扣圣印）：1 点法术伤害 + 攻击伤害 +(X-1)

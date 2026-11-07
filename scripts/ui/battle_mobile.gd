@@ -571,6 +571,8 @@ var _skill_cover_need: int = 0
 var _skill_cover_max: int = 0
 ## 本次发动技能的参数选项（服务端在技能上给的 arg_choices：每项一个按钮，点它就用当前已选的牌/目标提交）
 var _skill_arg_choices: Array = []
+## 圣殿骑士【圣裁】本地展开的 X 子菜单：不提交，选中 X 后才把 [2, x] 作为主询问应答
+var _圣裁下级中: bool = false
 ## 本次对局收到的询问代数：每来一条 CmdReq +1。用来判断「应答发出后，下一条询问是不是
 ## 已经在同一帧里递了回来」（进程内直连 / 快速回包，见 _发送应答）。
 var _询问代: int = 0
@@ -4747,7 +4749,42 @@ func _刷新群星启示下级() -> void:
 	_刷新二级栏提示()
 
 
+## 圣裁本地展开：把主询问的两个技能选项换成 X 子选项；返回按钮回主询问，不结束响应
+func _进入圣裁下级() -> void:
+	var 第一层: Array = _二级选项.duplicate(true)
+	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+	var 圣印数: int = 1
+	if 我 != null and not 我.tokens.is_empty() and 我.tokens[0] != null:
+		圣印数 = maxi(int((我.tokens[0] as GPlayer.Token).num), 1)
+	var 子: Array = []
+	for x: int in range(1, 圣印数 + 1):
+		子.append({
+			"text": "移除 %d 【圣印】" % x,
+			"args": [2, x],
+			"skill_id": 4303,
+		})
+	var 回第一层: Callable = func() -> void:
+		_圣裁下级中 = false
+		_进入二级技能栏(0, null, 第一层, 二级选项底色)
+	_圣裁下级中 = true
+	_进入二级技能栏(4303, null, _选项项(子), 二级选项底色, 回第一层)
+
+
 func _选项选中立刻处理(序号: int) -> bool:
+	# 圣殿骑士【神威/圣裁】：主询问只选一次；圣裁在本地展开 X 子菜单。
+	# 神威点中即提交；圣裁点中只展开，不向服务端发请求；子项选中后带 [2, x] 一次提交。
+	if _是技能询问 and _skill_ask_id == 4302:
+		if _圣裁下级中:
+			_圣裁下级中 = false
+			_发送应答(_skill_ask_id, [], [], _已选参数)
+			return true
+		var 参: Array = _已选参数
+		if not 参.is_empty() and int(参[0]) == 1:
+			_发送应答(_skill_ask_id, [], [], 参)
+			return true
+		if not 参.is_empty() and int(参[0]) == 2:
+			_进入圣裁下级()
+			return true
 	# 攻击结束二选一（10804 / 4504 / 4501）：点选项只选中（可切换），按该项自己的
 	# 需目标 / 需牌放开点选；选够后按「确定」一次性提交，不再走目标的二次确认。
 	if _攻击结束二选一:
@@ -8629,6 +8666,7 @@ func _清空待选() -> void:
 	_行动命令.clear()
 	_skill_ask_id = -1
 	_是技能询问 = false
+	_圣裁下级中 = false
 	_额外行动单选 = -1
 	_额外行动单选原因 = -1
 	_额外行动可选 = true
@@ -9891,6 +9929,13 @@ func _神威头像提示() -> Dictionary:
 		return out
 	var 原伤害: int = int(_pending.get("preview_base", 0))
 	if 原伤害 <= 0:
+		return out
+	# 圣裁的 X 子菜单：还没选 X 时先只写原攻击伤害，不显示神威的 +1
+	if _圣裁下级中:
+		for 目标: Variant in _pending.get("preview_ids", []):
+			var pid: int = int(目标)
+			if pid >= 0:
+				out[pid] = "%d 攻击伤害" % 原伤害
 		return out
 	var 新伤害: int = int(_pending.get("preview_damage", 原伤害))
 	for 目标: Variant in _pending.get("preview_ids", []):
