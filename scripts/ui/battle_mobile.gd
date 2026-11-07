@@ -841,6 +841,8 @@ func _on_game_info(info: Dictionary) -> void:
 	TxtRID.text = str(int(info.get("room_id", 0)))
 	# 手牌/盖牌/目标可选状态跟着快照走（Data.build_player_list 已同步好）
 	_刷新交互()
+	# 快照里的指示物 / 盖牌数量增加 → 头像上飘「+ X 名字」
+	_检测资源获得(started and not 之前已开局)
 
 
 ## 等待提示：读「正在等谁回复、还剩多久」
@@ -1410,6 +1412,10 @@ var _展示飞行延迟: float = 0.0
 var _行动播报队列: Dictionary = {}
 ## 玩家 id → 是否有播报协程正在跑（见 _播行动播报队列）
 var _行动播报中: Dictionary = {}
+## 资源获得飘字：上一份快照的指示物 / 盖牌数量与名字（玩家号 → {值, 名}）
+var _资源快照: Dictionary = {}
+## 同一玩家短时间内多个资源获取时的上飘错位序号
+var _资源飘字序号: Dictionary = {}
 
 
 
@@ -8274,6 +8280,8 @@ func _铺粗删除线(提示: RichTextLabel, 原文行: PackedStringArray, 纯�
 ## 收到一次治疗：在目标头像上喷一片浅蓝色「+」（治疗点数越多，冒得越多）
 func _on_heal_received(pid: int, num: int) -> void:
 	_播放治疗加号(pid, num)
+	if num > 0:
+		_资源飘字(pid, "+ %d 治疗" % num)
 
 
 ## 治疗加号特效：在头像附近随机撒一圈「+」，各自上浮、放大并淡出
@@ -8373,6 +8381,79 @@ func _面板中心(player_id: int) -> Vector2:
 		if 面板.ID == player_id:
 			return 面板.get_rect().get_center()
 	return Vector2(-1.0, -1.0)
+
+
+## 快照里的资源增加：指示物槽 0/1 → 名字；槽 2 是盖牌（茧 / 卢恩 / 充能…）。
+## 只在数量增加时飘字；首次快照 / 新一局只记录，不飘。
+func _检测资源获得(新一局: bool) -> void:
+	if 新一局:
+		_资源快照.clear()
+		_资源飘字序号.clear()
+	var 新快照: Dictionary = {}
+	for p: GPlayer in Data.player_list:
+		if p == null:
+			continue
+		var 值: Array[int] = [0, 0, 0]
+		var 名: Array[String] = ["", "", ""]
+		for i: int in range(3):
+			var tok: GPlayer.Token = p.tokens[i] as GPlayer.Token
+			if tok != null:
+				值[i] = int(tok.num)
+				名[i] = str(tok.name)
+		var 旧: Variant = _资源快照.get(p.id, null)
+		if 旧 is Dictionary:
+			var 旧值: Array = 旧.get("值", [])
+			for i: int in range(3):
+				var 增: int = 值[i] - (int(旧值[i]) if i < 旧值.size() else 0)
+				if 增 <= 0:
+					continue
+				var 资源名: String = 名[i]
+				if 资源名.is_empty():
+					资源名 = "盖牌" if i == 2 else "指示物"
+				_资源飘字(p.id, "+ %d %s" % [增, 资源名])
+		新快照[p.id] = {"值": 值, "名": 名}
+	_资源快照 = 新快照
+
+
+## 资源获得飘字：白绿色小字，从头像中心上飘，和伤害数字区分开
+func _资源飘字(player_id: int, 文本: String) -> void:
+	if 文本.is_empty() or Root == null:
+		return
+	var 中心: Vector2 = _面板中心(player_id)
+	if 中心.x < 0.0:
+		return
+	var 序: int = int(_资源飘字序号.get(player_id, 0))
+	_资源飘字序号[player_id] = 序 + 1
+	var 播报: Label = 行动播报预制.instantiate() as Label
+	if 播报 == null:
+		return
+	播报.text = 文本
+	播报.add_theme_color_override("font_color", Color("#9CFFB0"))
+	播报.add_theme_font_size_override("font_size", 30)
+	var 尺寸: Vector2 = 播报.size
+	if 尺寸.x <= 0.0 or 尺寸.y <= 0.0:
+		尺寸 = Vector2(480.0, 52.0)
+	var 起点: Vector2 = 中心 - 尺寸 * 0.5 + Vector2(0.0, 6.0 - float(序) * 26.0)
+	var 终点: Vector2 = 起点 + Vector2(0.0, -64.0)
+	播报.position = 起点
+	播报.pivot_offset = 尺寸 * 0.5
+	播报.modulate.a = 0.0
+	播报.z_index = 51
+	Root.add_child(播报)
+	var t: Tween = create_tween()
+	t.set_parallel(true)
+	t.tween_property(播报, "modulate:a", 1.0, 0.16)
+	t.tween_property(播报, "position", 终点, 1.8).set_trans(Tween.TRANS_LINEAR)
+	t.tween_property(播报, "modulate:a", 0.0, 0.45).set_delay(1.35)
+	t.chain().tween_callback(播报.queue_free)
+	# 让同一玩家后续资源从更低一行起步；1.8 秒后归还序号
+	get_tree().create_timer(1.8).timeout.connect(func() -> void:
+		if is_inside_tree():
+			var 现: int = int(_资源飘字序号.get(player_id, 1))
+			if 现 <= 1:
+				_资源飘字序号.erase(player_id)
+			else:
+				_资源飘字序号[player_id] = 现 - 1)
 
 
 ## 排一行行动播报：卡牌名 / 技能名从该玩家头像上飘出。
