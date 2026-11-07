@@ -55,8 +55,11 @@ func available_skills() -> Array:
 		{
 			"type": GConst.ActionType.MagicSkill,
 			"id": SHENG_YU,
+			"need_card": mini(1, player.hand_cards.size()),
+			"card_max": mini(1, player.hand_cards.size()),
 			"need_target": 1,
 			"targets": 队友,
+			"arg_choices": _圣愈选项(),
 			"enabled": 圣印 >= 1 and not 队友.is_empty(),
 		},
 		{
@@ -67,12 +70,23 @@ func available_skills() -> Array:
 	]
 
 
+func _圣愈选项() -> Array:
+	var out: Array = []
+	for n: int in range(1, player.token_num(YIN_SLOT) + 1):
+		out.append({"text": GConst.按钮文本(SHENG_YU, 0, {"n": n}), "args": [n]})
+	return out
+
+
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
 	match int(action.get("action_id", 0)):
 		SHENG_YU:
 			if player.token_num(YIN_SLOT) < 1:
+				return GConst.GE_INVALID_ACTION
+			var args: Array = action.get("args", [])
+			var x: int = int(args[0]) if not args.is_empty() else 0
+			if x < 1 or x > player.token_num(YIN_SLOT):
 				return GConst.GE_INVALID_ACTION
 			var ds: Array = action.get("dst_ids", [])
 			if ds.size() != 1:
@@ -344,14 +358,28 @@ func _p_圣愈(action: Dictionary) -> int:
 	if 校验 != GConst.GE_SUCCESS:
 		return 校验
 	var dst: int = int((action.get("dst_ids", []) as Array)[0])
+	var args: Array = action.get("args", [])
+	var x: int = int(args[0])
 	notice_skill(SHENG_YU, [dst])
-	_圣愈目标 = dst
-	_圣愈步 = 1
-	engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
-	return URGENT
-
-var _圣愈目标: int = -1
-var _圣愈步: int = 0
+	if not player.remove_token(YIN_SLOT, x):
+		return GConst.GE_INVALID_ACTION
+	# 顺序：目标先加治疗 → 自己弃 1 张牌 → 获得额外攻击行动
+	var 目标: BattlePlayer = engine.p(dst)
+	if 目标 != null:
+		施加治疗(目标.id, x)
+	var 需弃: int = mini(1, player.hand_cards.size())
+	var cards: Array = action.get("card_ids", [])
+	if 需弃 > 0 and (cards.is_empty() or not player.有手牌(int(cards[0]))):
+		if not player.hand_cards.is_empty():
+			cards = [player.hand_cards[0]]
+	if not cards.is_empty() and player.有手牌(int(cards[0])):
+		var cid: int = int(cards[0])
+		engine.take_from_hand(player.id, [cid], false)
+		engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": SHENG_YU})
+		engine._log_discard(player.id, [cid], false)
+	player.add_action(GConst.ActionType.Attack, SHENG_YU, true, true)
+	engine._broadcast_game()
+	return SUCCESS
 
 
 # ============================================================
@@ -442,45 +470,10 @@ func p_turn_end(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 统一的「小段询问」钩子：圣愈 / 圣炎收尾 / 圣炎祈愿
+# 统一的「小段询问」钩子：圣炎收尾 / 圣炎祈愿
 # ============================================================
 func p_sheng_dian_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	# 圣愈：X 与「弃 1 张牌」在同一问里选完；手牌为 0 时只选 X
-	if _圣愈步 == 1:
-		var 需弃: int = mini(1, player.hand_cards.size())
-		if not engine.has_reply():
-			var 选项: Array = []
-			for i: int in range(1, player.token_num(YIN_SLOT) + 1):
-				选项.append({"value": i, "label": GConst.按钮原文(SHENG_YU, 0, {"n": i})})
-			询问(player.id, SHENG_YU, 需弃, 0, GConst.CardSource.Hand, 选项, 需弃, "", [], true,
-				0, player.id, [], 1, {}, 0, GConst.预览类型_治疗, false, [_圣愈目标], true, -1, 0,
-				GConst.提示原文(SHENG_YU, 1))
-			return WAIT
-		# 阶段在取完回复之后再推进：重入时 _圣愈步 仍是 1，才能走到这里
-		var r: Dictionary = take_skill_reply_full()
-		_圣愈步 = 0
-		var args: Array = r.get("args", [])
-		var x: int = int(args[0]) if not args.is_empty() else 0
-		if x <= 0 or not player.remove_token(YIN_SLOT, x):
-			return SUCCESS
-		var cards: Array = r.get("card_ids", [])
-		# 手牌非空时「弃 1 张」是强制代价；空回复 / 非法牌按第一张补，不能白跳过。
-		if 需弃 > 0 and (cards.is_empty() or not player.有手牌(int(cards[0]))):
-			if not player.hand_cards.is_empty():
-				cards = [player.hand_cards[0]]
-		if not cards.is_empty() and player.有手牌(int(cards[0])):
-			var cid: int = int(cards[0])
-			engine.take_from_hand(player.id, [cid], false)
-			engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": SHENG_YU})
-			engine._log_discard(player.id, [cid], false)
-		var dst: BattlePlayer = engine.p(_圣愈目标)
-		if dst != null:
-			施加治疗(dst.id, x)
-		player.add_action(GConst.ActionType.Attack, SHENG_YU, true, true)
-		_圣愈目标 = -1
-		engine._broadcast_game()
 		return SUCCESS
 	# 圣炎收尾：对目标对手 1 点法术伤害
 	if _圣炎收尾 == 1:

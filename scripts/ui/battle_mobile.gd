@@ -10012,12 +10012,15 @@ func _圣裁头像提示() -> Dictionary:
 ## 圣殿骑士【圣愈】：选 X 后，在目标队友头像上写「+X 治疗」。
 func _圣愈头像提示() -> Dictionary:
 	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != 4304 or _已选参数.is_empty():
+	var 本技能: bool = (_mode == 4 and _pending_skill_id == 4304) \
+		or (_mode == 3 and _skill_ask_id == 4304)
+	if not 本技能 or _已选参数.is_empty():
 		return out
 	var x: int = int(_已选参数[0])
 	if x <= 0:
 		return out
-	for 目标: Variant in _pending.get("preview_ids", []):
+	var 目标表: Array = _sel_players if _mode == 4 else _pending.get("preview_ids", [])
+	for 目标: Variant in 目标表:
 		var pid: int = int(目标)
 		if pid >= 0:
 			out[pid] = "+%d 治疗" % x
