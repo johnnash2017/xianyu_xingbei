@@ -1045,6 +1045,7 @@ const 角色_灵熙之潮: int = 46
 const 角色_暴食少女: int = 47
 const 角色_EX魔弓: int = 75
 const 角色_矜贵之女: int = 78
+const 角色_结界师: int = 82
 const 角色_贪婪少女: int = 87
 const 角色_见习制片: int = 93
 const 角色_萝莉番长: int = 97
@@ -1163,6 +1164,9 @@ const 角色特性: Dictionary = {
 	角色_忌妒少女: {"魔弹系别": [GConst.CardElement.Earth, GConst.CardElement.Wind], "临时掌控来源": 技能_虚荣掌握},
 	角色_怠惰少女: {"双张魔弹": true},
 	角色_灵熙之潮: {"基础效果免疫": true},
+	# 结界师（82）：她的面朝上盖牌就是【结界】，状态区按「结界·X」显示（X＝牌面系别），
+	# 荒神之力 / 荒神祭仪 都按这个系别判定
+	角色_结界师: {"面朝上盖牌名": "结界·%s"},
 }
 
 ## 某一项角色特性的原始值（没有该特性返回 null）

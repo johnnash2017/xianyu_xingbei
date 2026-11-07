@@ -1191,15 +1191,22 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			"desc": "律法：%s（由【群星启示】放置 / 移除）" % str(GConst.律法名.get(号, "律法")),
 			"被动技能": 律法技能号,
 		})
-	# 面朝上的盖牌（结界师【结界】等）：牌面公开，按卡面图标显示在状态区
+	# 面朝上的盖牌（结界师【结界】等）：牌面公开，按卡面图标显示在状态区。
+	# 名字默认用卡名；角色特性配了「面朝上盖牌名」时按它写 —— 结界师写成「结界·X」，
+	# X 是这张牌的系别（荒神之力 / 荒神祭仪 都按系别判定，一眼要能看出来）
+	var 盖牌命名: Variant = GConst.角色特性值(p.role_id, "面朝上盖牌名")
 	for cid: int in p.cover_opens:
 		var 盖卡: GCard = Data.get_card(cid)
 		if 盖卡 == null:
 			continue
+		var 盖系名: String = GConst.element_to_chinese(盖卡.element_enum())
+		var 盖名: String = 盖卡.card_name
+		if 盖牌命名 is String and (盖牌命名 as String).contains("%s"):
+			盖名 = ((盖牌命名 as String) % 盖系名) if not 盖系名.is_empty() else "结界"
 		额外状态.append({
-			"name": 盖卡.card_name,
+			"name": 盖名,
 			"icon": 盖卡.sprite_path(),
-			"desc": "面朝上的盖牌（%s·%s 系）" % [盖卡.card_name, GConst.element_to_chinese(盖卡.element_enum())],
+			"desc": "面朝上的盖牌（%s·%s 系）" % [盖卡.card_name, 盖系名],
 		})
 	# 手牌里的魔刃/异刃是公开信息：头像旁显示图标 + 名字，悬停摊出完整卡面
 	for cid: int in p.hand_blades:

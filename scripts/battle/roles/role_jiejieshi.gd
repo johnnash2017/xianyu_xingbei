@@ -124,11 +124,19 @@ func _p_结界仪式(action: Dictionary) -> int:
 	notice_skill(JIE_JIE_YI_SHI)
 	var 放: Array[int] = []
 	for c: Variant in cards:
-		var cid: int = player.取出实例(player.hand_cards, int(c))
-		if cid >= 0:
+		# 只认人不动手：真正取走统一走 take_from_hand（它才会压「展示手牌」钩子）
+		var cid: int = player.手牌实例(int(c))
+		if cid >= 0 and not 放.has(cid):
 			放.append(cid)
-	if 放.is_empty():
-		return SUCCESS
+	if 放.size() != 2:
+		return GConst.GE_INVALID_CARDID
+	# 【展示】：这两张是面朝上放进盖牌区的，要先公开 —— 否则「展示手牌」类响应
+	# （封印师的 X 系封印等）看不到这次展示，不会触发
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": 放, "is_real": true,
+	})
+	engine.take_from_hand(player.id, 放, true)
 	engine.add_cover(player.id, 放, player.id, JIE_JIE_YI_SHI, true)
 	_加祭(1, JIE_JIE_YI_SHI)
 	return URGENT
