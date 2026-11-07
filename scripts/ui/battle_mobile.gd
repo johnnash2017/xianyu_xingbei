@@ -4765,8 +4765,10 @@ func _进入圣裁下级() -> void:
 	var 回第一层: Callable = func() -> void:
 		_圣裁下级中 = false
 		_进入二级技能栏(0, null, 第一层, 二级选项底色)
+		_刷新交互()
 	_圣裁下级中 = true
 	_进入二级技能栏(4303, null, _选项项(子), 二级选项底色, 回第一层)
+	_刷新交互()
 
 
 func _选项选中立刻处理(序号: int) -> bool:
@@ -4774,11 +4776,13 @@ func _选项选中立刻处理(序号: int) -> bool:
 	# 神威点中即提交；圣裁点中只展开，不向服务端发请求；子项选中后带 [2, x] 一次提交。
 	if _是技能询问 and _skill_ask_id == 4302:
 		if _圣裁下级中:
-			# 选中 X 只选中，不提交；最后按「确定」统一提交 [2, x]
+			# 选中 X 只选中，不提交；刷新确定键与头像伤害预览
+			_切换收尾(切换来源.二级栏选项)
 			return true
 		var 参: Array = _已选参数
 		if not 参.is_empty() and int(参[0]) == 1:
-			# 神威也只选中，按「确定」再发动
+			# 神威也只选中，按「确定」再发动；刷新确定键
+			_切换收尾(切换来源.二级栏选项)
 			return true
 		if not 参.is_empty() and int(参[0]) == 2:
 			_进入圣裁下级()
@@ -9928,12 +9932,24 @@ func _神威头像提示() -> Dictionary:
 	var 原伤害: int = int(_pending.get("preview_base", 0))
 	if 原伤害 <= 0:
 		return out
-	# 圣裁的 X 子菜单：还没选 X 时先只写原攻击伤害，不显示神威的 +1
+	# 圣裁的 X 子菜单：没选 X 时只写原攻击伤害；选了 X 后更新法术伤害与攻击加伤
 	if _圣裁下级中:
+		var x: int = int(_已选参数[1]) if _已选参数.size() >= 2 else 0
 		for 目标: Variant in _pending.get("preview_ids", []):
 			var pid: int = int(目标)
-			if pid >= 0:
-				out[pid] = "%d 攻击伤害" % 原伤害
+			if pid < 0:
+				continue
+			var 行: Array[String] = []
+			if x > 0:
+				行.append("1 法术伤害")
+				if x - 1 > 0:
+					行.append("[zwj]%d 攻击伤害" % 原伤害)
+					行.append("%d 攻击伤害" % (原伤害 + x - 1))
+				else:
+					行.append("%d 攻击伤害" % 原伤害)
+			else:
+				行.append("%d 攻击伤害" % 原伤害)
+			out[pid] = "\n".join(行)
 		return out
 	var 新伤害: int = int(_pending.get("preview_damage", 原伤害))
 	for 目标: Variant in _pending.get("preview_ids", []):
