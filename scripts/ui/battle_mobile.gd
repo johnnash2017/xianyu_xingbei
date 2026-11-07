@@ -9952,6 +9952,10 @@ func _神威头像提示() -> Dictionary:
 			out[pid] = "\n".join(行)
 		return out
 	var 新伤害: int = int(_pending.get("preview_damage", 原伤害))
+	# 第一层是神威/圣裁二选一：还没选、或选的是圣裁时都按原伤害显示；
+	# 选中神威后才显示 +1 后的新伤害。
+	if not _二级选项.is_empty() and (_已选参数.is_empty() or int(_已选参数[0]) != 1):
+		新伤害 = 原伤害
 	for 目标: Variant in _pending.get("preview_ids", []):
 		var pid: int = int(目标)
 		if pid < 0:
