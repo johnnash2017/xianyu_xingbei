@@ -138,12 +138,24 @@ func _检咒符师() -> void:
 	检(not 火璃.is_empty() and bool(火璃.get("enabled", false)), "有火系牌时【火璃】应可点")
 	var 冻天: Dictionary = _找技能(技能, 8402)
 	检(not 冻天.is_empty() and not bool(冻天.get("enabled", true)), "没有水系牌时【冻天】应置灰")
-	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 8401,
+	# 二级技能栏：两个选项（对 1 名角色 / -1【水晶】发动【咒力重塑】，对 2 名角色）
+	var 选项: Array = 火璃.get("arg_choices", [])
+	检(选项.size() == 2, "【火璃】应有「对 1 名角色 / 发动咒力重塑」两个选项，实际 %d" % 选项.size())
+	检(int((选项[1] as Dictionary).get("skill_id", 0)) == 8405,
+		"第二个选项应绑【咒力重塑】（响应配色 / 悬停说明）")
+	检(int((选项[1] as Dictionary).get("need_target", 0)) == 2, "第二个选项应要求 2 名目标")
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 8401, "args": [1],
 		"card_ids": [水法术], "dst_ids": [2]})) != GConst.GE_SUCCESS,
 		"【火璃】拿水系牌当费用应被拒")
-	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 8401,
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 8401, "args": [1],
 		"card_ids": [火法术], "dst_ids": [2]})) == GConst.GE_SUCCESS,
 		"【火璃】用火系牌 + 合法目标应通过校验")
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 8401, "args": [1],
+		"card_ids": [火法术], "dst_ids": [2, 3]})) != GConst.GE_SUCCESS,
+		"选「对 1 名角色」时给 2 名目标应被拒")
+	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 8401, "args": [2],
+		"card_ids": [火法术], "dst_ids": [2, 3]})) != GConst.GE_SUCCESS,
+		"没有能量时【咒力重塑】档应被拒")
 	# 【念咒】：放 1 张手牌进盖牌区当【妖力】
 	玩家.add_cover_cards([水法术])
 	玩家.记盖牌标记(水法术, false)
