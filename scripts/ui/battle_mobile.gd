@@ -8291,7 +8291,7 @@ func _on_resource_gained(pid: int, num: int, res_name: String, slot: int) -> voi
 		0:
 			色 = Color("#FFE9A8") # 黄魂：黄白
 		1:
-			色 = Color("#8FC7FF") # 蓝魂：蓝
+			色 = Color("#D8EEFF") # 蓝魂：蓝白
 	_资源飘字(pid, "+ %d %s" % [num, 名], 色)
 
 
