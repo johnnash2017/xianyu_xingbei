@@ -421,6 +421,9 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if harm.is_empty() or int(harm.get("dst", -1)) != player.id:
 		return SUCCESS
+	# 已经被其他效果减到 0 的伤害不算“受到伤害”，不触发圣炎抵御/退出
+	if int(harm.get("point", 0)) <= 0:
+		return SUCCESS
 	if bool(harm.get("圣炎已抵御", false)):
 		return SUCCESS
 	harm["圣炎已抵御"] = true
@@ -442,14 +445,16 @@ func _退出圣炎(收尾: bool) -> void:
 		return
 	_圣炎 = false
 	_圣炎到回合 = 0
-	player.tap = false
-	engine._broadcast_game()
 	if 收尾:
 		_圣炎收尾 = 1
 	else:
 		# 受伤脱离：不再对对手造成 1 点收尾伤害，但仍触发【圣炎祈愿】
 		_圣炎收尾 = 2
 	engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
+	# 先压「圣炎收尾 / 祈愿」钩子，再重置形态：tap=false 会压 p_tap，
+	# 后进先出保证先完成【重置】相关钩子，再结算收尾 / 祈愿。
+	player.tap = false
+	engine._broadcast_game()
 
 var _圣炎收尾: int = 0
 
@@ -495,9 +500,9 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 				"src": player.id, "dst": int(ds[0]), "point": 1,
 				"cause": SHEN_ZHI_ZI, "type": GConst.HarmType.Magic,
 			})
-			engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
-			return URGENT
-		return SUCCESS
+		# 即使没有合法目标 / 超时没选到人，也不能把后续的圣炎祈愿一起吞掉
+		engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
+		return URGENT
 	# 圣炎祈愿：退出形态时目标角色 +2 治疗（消耗 1 点能量）。
 	# 选目标本身就是「发动」：不再先问一次是否发动再问目标，取消即不发动。
 	if _圣炎收尾 == 2:
