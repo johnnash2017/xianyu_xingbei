@@ -322,7 +322,14 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		_魑魅相位 = 魑魅_展示 if _妖力是地系() else 魑魅_结算
 	if _魑魅相位 == 魑魅_展示:
 		if not engine.has_reply():
-			询问(player.id, 魑魅魍魉, 0, 0)
+			# 给两项选项而不是「是 / 否」：带 card_id 的那项把这张地系【妖力】随询问下发，
+			# 鼠标指向「展示」就能直接看到要展示的牌（客户端 _选中二级选项 的悬停卡面）
+			var 选项: Array = [
+				{"value": 1, "label": GConst.按钮原文(魑魅魍魉, 2), "text": GConst.按钮原文(魑魅魍魉, 2),
+					"card_id": _魑魅妖力},
+				{"value": 0, "label": GConst.按钮原文(魑魅魍魉, 3), "text": GConst.按钮原文(魑魅魍魉, 3)},
+			]
+			询问(player.id, 魑魅魍魉, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true)
 			return WAIT
 		if take_skill_reply():
 			_魑魅加成 = 1
