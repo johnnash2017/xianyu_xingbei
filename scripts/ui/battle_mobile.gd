@@ -9892,34 +9892,15 @@ func _神威头像提示() -> Dictionary:
 	var 原伤害: int = int(_pending.get("preview_base", 0))
 	if 原伤害 <= 0:
 		return out
-	var 合并: bool = not (_pending.get("options", []) as Array).is_empty()
-	var 选神威: int = 1
-	var 选圣裁: int = 0
-	if 合并:
-		# 合并菜单还没选时只显示原伤害；选中后 _已选参数 = [神威, X]
-		if _已选参数.size() < 2:
-			for 目标: Variant in _pending.get("preview_ids", []):
-				var pid0: int = int(目标)
-				if pid0 >= 0:
-					out[pid0] = "%d 攻击伤害" % 原伤害
-			return out
-		选神威 = int(_已选参数[0])
-		选圣裁 = int(_已选参数[1])
-	var 神威加伤: int = maxi(int(_pending.get("preview_damage", 原伤害)) - 原伤害, 0)
-	var 新伤害: int = 原伤害 + (神威加伤 if 选神威 != 0 else 0) + maxi(选圣裁 - 1, 0)
+	var 新伤害: int = int(_pending.get("preview_damage", 原伤害))
 	for 目标: Variant in _pending.get("preview_ids", []):
 		var pid: int = int(目标)
 		if pid < 0:
 			continue
-		var 行: Array[String] = []
-		if 选圣裁 > 0:
-			行.append("1 法术伤害")
 		if 新伤害 != 原伤害:
-			行.append("[zwj]%d 攻击伤害" % 原伤害)
-			行.append("%d 攻击伤害" % 新伤害)
+			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 新伤害]
 		else:
-			行.append("%d 攻击伤害" % 原伤害)
-		out[pid] = "\n".join(行)
+			out[pid] = "%d 攻击伤害" % 原伤害
 	return out
 
 

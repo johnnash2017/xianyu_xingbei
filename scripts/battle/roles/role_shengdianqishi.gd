@@ -139,11 +139,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	# 神威 / 圣裁都能发动时，合并成同一次询问；不再先弹神威、再弹圣裁
 		0:
 			_t1_神威 = false
-			if not _神威禁 and player.token_num(YIN_SLOT) >= 2:
-				_t1_step = 4
-				return p_timeline_1(ctx)
-			# 只能问圣裁（或都不能问）
-			_t1_step = 2
+			if player.token_num(YIN_SLOT) < 1:
+				_t1_step = 0
+				return SUCCESS
+			_t1_step = 4
 			return p_timeline_1(ctx)
 		1:
 			# 等【神威】的回复；没有回复说明这次进来是残留状态（上一手被打断），清掉等下一次攻击
@@ -229,7 +228,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			_t1_step = 0
 			return SUCCESS
 		4:
-			# 神威 + 圣裁合并询问：选项里直接带 X，一次选完
+			# 第一段：神威 / 圣裁二选一。选神威当场发动；选圣裁进入第二段选 X。
 			if not engine.has_reply():
 				var 攻目标: int = int(ctx.get("dst", -1))
 				var 原伤害: int = int((ctx.get("harm", {}) as Dictionary).get("point", 0))
@@ -237,73 +236,97 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				var 神威加伤: int = 1 if 攻击卡 != null \
 					and 攻击卡.fate_pattern_enum() == GConst.FatePattern.Holy else 0
 				var 预览目标: Array = [攻目标] if 攻目标 >= 0 else []
-				询问(player.id, SHEN_WEI, 0, 0, GConst.CardSource.Hand, _合并选项(), 0, "", [], true,
+				var 选项: Array = _神威圣裁选项()
+				var 主技能: int = SHEN_WEI if _可神威() else SHENG_CAI
+				询问(player.id, 主技能, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
 					0, -1, [], -1, {}, 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
-					原伤害 + 神威加伤 if 原伤害 > 0 else -1, 0, "", -1, "", 预览目标, [], 0)
+					原伤害 + 神威加伤 if 原伤害 > 0 and 主技能 == SHEN_WEI else -1,
+					0, "", -1, "", 预览目标, [], 0)
 				return WAIT
 			var r: Dictionary = take_skill_reply_full()
+			var 选: int = int(r.get("args", [])[0]) if not (r.get("args", []) as Array).is_empty() else 0
+			if 选 == 1 and _可神威() and player.remove_token(YIN_SLOT, 2):
+				_应用神威(ctx)
+				_t1_step = 0
+				return SUCCESS
+			if 选 == 2 and player.token_num(YIN_SLOT) >= 1:
+				_t1_step = 5
+				return p_timeline_1(ctx)
 			_t1_step = 0
-			return _结算神威圣裁(ctx, r.get("args", []))
+			return SUCCESS
+		5:
+			# 第二段：圣裁的「移除 X 圣印」。取消＝返回第一段二选一。
+			if not engine.has_reply():
+				var 攻目标2: int = int(ctx.get("dst", -1))
+				var 原伤害2: int = int((ctx.get("harm", {}) as Dictionary).get("point", 0))
+				var 预览目标2: Array = [攻目标2] if 攻目标2 >= 0 else []
+				询问(player.id, SHENG_CAI, 0, 0, GConst.CardSource.Hand, _圣裁选项(), 0, "", [], true,
+					0, -1, [], -1, {}, 原伤害2, GConst.HarmType.Attack, false, 预览目标2, true,
+					-1, 0, "", -1, "", 预览目标2, [], 0)
+				return WAIT
+			var r2: Dictionary = take_skill_reply_full()
+			var args2: Array = r2.get("args", [])
+			if args2.is_empty():
+				_t1_step = 4
+				return p_timeline_1(ctx)
+			var x: int = int(args2[0])
+			if x > 0 and x <= player.token_num(YIN_SLOT) and player.remove_token(YIN_SLOT, x):
+				_t1_step = 0
+				return _应用圣裁(ctx, x)
+			_t1_step = 4
+			return p_timeline_1(ctx)
 	return SUCCESS
 
 
-## 神威/圣裁合并菜单：神威、圣裁 X、神威+圣裁 X；取消即都不发动
-func _合并选项() -> Array:
-	var 圣印: int = player.token_num(YIN_SLOT)
-	var out: Array = []
-	var 神威名: String = GConst.skill_desc_name(SHEN_WEI)
-	var 圣裁名: String = GConst.skill_desc_name(SHENG_CAI)
-	if 圣印 >= 2:
-		out.append({"value": 1, "label": 神威名, "args": [1, 0], "skill_id": SHEN_WEI})
-	for x: int in range(1, 圣印 + 1):
-		out.append({
-			"value": 100 + x,
-			"label": "%s X=%d" % [圣裁名, x],
-			"args": [0, x],
-			"skill_id": SHENG_CAI,
-		})
-	for x: int in range(1, maxi(圣印 - 2, 0) + 1):
-		out.append({
-			"value": 200 + x,
-			"label": "%s + %s X=%d" % [神威名, 圣裁名, x],
-			"args": [1, x],
+func _可神威() -> bool:
+	return not _神威禁 and player.token_num(YIN_SLOT) >= 2
+
+
+## 第一段二选一：两个响应都摆出来，资源不够的一项置灰
+func _神威圣裁选项() -> Array:
+	return [
+		{
+			"value": 1,
+			"label": GConst.skill_desc_name(SHEN_WEI),
 			"skill_id": SHEN_WEI,
+			"enabled": _可神威(),
+		},
+		{
+			"value": 2,
+			"label": GConst.skill_desc_name(SHENG_CAI),
+			"skill_id": SHENG_CAI,
+			"enabled": player.token_num(YIN_SLOT) >= 1,
+		},
+	]
+
+
+## 第二段圣裁 X 选项；文案按你的口径「移除 1 【圣印】」
+func _圣裁选项() -> Array:
+	var out: Array = []
+	for x: int in range(1, player.token_num(YIN_SLOT) + 1):
+		out.append({
+			"value": x,
+			"label": "移除 %d 【圣印】" % x,
+			"args": [x],
+			"skill_id": SHENG_CAI,
 		})
 	return out
 
 
-func _结算神威圣裁(ctx: Dictionary, args: Array) -> int:
-	var 神威: int = 0
-	var x: int = 0
-	if args.size() >= 2:
-		神威 = int(args[0])
-		x = int(args[1])
-	elif args.size() == 1:
-		# 兼容旧格式（测试 / 旧客户端）：只给一个值表示只发动神威
-		神威 = int(args[0])
-	var 花费: int = (2 if 神威 != 0 else 0) + maxi(x, 0)
-	if 花费 <= 0 or player.token_num(YIN_SLOT) < 花费:
-		return SUCCESS
-	if not player.remove_token(YIN_SLOT, 花费):
-		return SUCCESS
-	if 神威 != 0:
-		_应用神威(ctx)
-	if x > 0:
-		_t1_圣裁 = x
-		notice_skill(SHENG_CAI, [int(ctx.get("dst", -1))])
-		var harm2: Dictionary = ctx.get("harm", {})
-		if not harm2.is_empty():
-			harm2["point"] = int(harm2.get("point", 0)) + (x - 1)
-		engine._broadcast_game()
-		engine.push_harm({
-			"src": player.id, "dst": int(ctx.get("dst", -1)),
-			"point": 1, "cause": SHENG_CAI, "type": GConst.HarmType.Magic,
-		})
-		ctx["圣殿骑士_攻击前已结算"] = true
-		return URGENT
-	if 神威 != 0:
-		engine._broadcast_game()
-	return SUCCESS
+## 应用【圣裁】（已由调用方扣圣印）：1 点法术伤害 + 攻击伤害 +(X-1)
+func _应用圣裁(ctx: Dictionary, x: int) -> int:
+	_t1_圣裁 = x
+	notice_skill(SHENG_CAI, [int(ctx.get("dst", -1))])
+	var harm2: Dictionary = ctx.get("harm", {})
+	if not harm2.is_empty():
+		harm2["point"] = int(harm2.get("point", 0)) + (x - 1)
+	engine._broadcast_game()
+	engine.push_harm({
+		"src": player.id, "dst": int(ctx.get("dst", -1)),
+		"point": 1, "cause": SHENG_CAI, "type": GConst.HarmType.Magic,
+	})
+	ctx["圣殿骑士_攻击前已结算"] = true
+	return URGENT
 
 
 ## 应用【神威】（已由调用方扣圣印）：无法应战、圣类 +1、双方禁疗并逐人播报
