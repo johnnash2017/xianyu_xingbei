@@ -1,4 +1,4 @@
-extends BattleRole
+﻿extends BattleRole
 ## 结界师（82）：结界仪式 / 荒神之力 / 荒神祭仪 / 禁魔境 / 琉璃境 / 绝界 / 伏魔境
 ##
 ## 区域与标记：
@@ -27,7 +27,11 @@ const HUANG_SHEN_ZHI_LI: int = 8202
 const HUANG_SHEN_JI_YI: int = 8203
 const JIN_MO_JING: int = 8204
 const LIU_LI_JING: int = 8205
-const JUE_JIE: int = 8206
+## 【绝界】场卡的三条能力各自成行（原 8206 拆出来）：
+## 8206 灭界破散（被动）/ 8208 白二羯磨（响应）/ 8209 虚空境（被动）
+const 灭界破散: int = 8206
+const 白二羯磨: int = 8208
+const 虚空境: int = 8209
 const FU_MO_JING: int = 8207
 
 const JI_SLOT: int = 0
@@ -240,8 +244,10 @@ func p_lose_morale(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 8206 绝界（场卡）：结界为 0 时移除；拥有者回合结束前结界师移除 1 个结界；
-# 拥有者攻击行动结束时，结界师 +1 祭、拥有者把 1 个结界加入手牌
+# 8206 灭界破散（被动）：结界为 0 时【横置】并移除【绝界】；
+# 拥有此卡的角色回合结束前，结界师移除 1 个结界
+# 8208 白二羯磨（响应）：拥有者攻击行动结束时，结界师 +1 祭、拥有者把 1 个结界加入手牌
+# 8209 虚空境（被动）：拥有者的基础效果无法触发（见 基础效果被禁止）
 # ============================================================
 func p_action_end(ctx: Dictionary) -> int:
 	var 拥有者: int = _绝界拥有者()
@@ -249,8 +255,8 @@ func p_action_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	if str(ctx.get("kind", "")) != "attack":
 		return SUCCESS
-	notice_skill(JUE_JIE, [拥有者])
-	_加祭(1, JUE_JIE)
+	notice_skill(白二羯磨, [拥有者])
+	_加祭(1, 白二羯磨)
 	if _结界().is_empty():
 		return SUCCESS
 	_mod_step = 步_绝界给结界
@@ -278,7 +284,7 @@ func _检查绝界破散() -> int:
 		return SUCCESS
 	player.tap = true
 	engine.移除场卡(绝界名)
-	notice_skill(JUE_JIE, [player.id])
+	notice_skill(灭界破散, [player.id])
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -327,30 +333,30 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			return _检查绝界破散()
 		步_绝界给结界:
 			if not engine.has_reply():
-				_问选结界(JUE_JIE)
+				_问选结界(白二羯磨)
 				return WAIT
 			var 给: int = _取询问盖牌()
 			_mod_step = 0
 			if 给 < 0:
 				return SUCCESS
 			var 拥有: int = _绝界拥有者()
-			engine.remove_cover(player.id, [给], player.id, JUE_JIE)
+			engine.remove_cover(player.id, [给], player.id, 白二羯磨)
 			var 拥有者: BattlePlayer = engine.p(拥有)
 			if 拥有者 != null:
 				拥有者.add_hand_cards([给])
-			notice_skill(JUE_JIE, [拥有])
+			notice_skill(白二羯磨, [拥有])
 			engine._broadcast_game()
 			return _检查绝界破散()
 		步_绝界回合结束:
 			if not engine.has_reply():
-				_问选结界(JUE_JIE)
+				_问选结界(灭界破散)
 				return WAIT
 			var 移: int = _取询问盖牌()
 			_mod_step = 0
 			if 移 >= 0:
-				engine.remove_cover(player.id, [移], player.id, JUE_JIE)
+				engine.remove_cover(player.id, [移], player.id, 灭界破散)
 				engine.to_discard([移], {"owner": player.id, "source": "cover",
-					"cause": JUE_JIE, "face_up": true})
+					"cause": 灭界破散, "face_up": true})
 				engine._broadcast_game()
 			return _检查绝界破散()
 	return SUCCESS
