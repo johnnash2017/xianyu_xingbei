@@ -136,30 +136,14 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if bool(ctx.get("圣殿骑士_攻击前已结算", false)):
 		return SUCCESS
 	match _t1_step:
+	# 神威 / 圣裁都能发动时，合并成同一次询问；不再先弹神威、再弹圣裁
 		0:
-			# 第一步：问【神威】（付 2 圣印）
 			_t1_神威 = false
-			if _神威禁 or player.token_num(YIN_SLOT) < 2:
-				# 问不了神威也要接着问圣裁（两步互相独立）
-				_t1_step = 2
+			if not _神威禁 and player.token_num(YIN_SLOT) >= 2:
+				_t1_step = 4
 				return p_timeline_1(ctx)
-			if not engine.has_reply():
-				# 阶段落到「等神威回复」；回复回来由 1 号分支取走
-				_t1_step = 1
-				var 攻目标: int = int(ctx.get("dst", -1))
-				var 原伤害: int = int((ctx.get("harm", {}) as Dictionary).get("point", 0))
-				var 攻击卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-				var 神威加伤: int = 1 if 攻击卡 != null \
-					and 攻击卡.fate_pattern_enum() == GConst.FatePattern.Holy else 0
-				var 预览目标: Array = [攻目标] if 攻目标 >= 0 else []
-				var 新伤害: int = 原伤害 + 神威加伤
-				# 发动询问不写 ask 文案：提示条默认显示技能表说明（技能维护约定「询问文案约定」第 1 条）
-				询问(player.id, SHEN_WEI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-					0, -1, [], -1, {}, 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
-					新伤害 if 原伤害 > 0 else -1, 0, "", -1, "", 预览目标, [], 0)
-				return WAIT
-			# 极少见：进 0 号分支时已有回复（等待期被插队后又回到这里），交给 1 号分支
-			_t1_step = 1
+			# 只能问圣裁（或都不能问）
+			_t1_step = 2
 			return p_timeline_1(ctx)
 		1:
 			# 等【神威】的回复；没有回复说明这次进来是残留状态（上一手被打断），清掉等下一次攻击
@@ -244,7 +228,115 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				return URGENT
 			_t1_step = 0
 			return SUCCESS
+		4:
+			# 神威 + 圣裁合并询问：选项里直接带 X，一次选完
+			if not engine.has_reply():
+				var 攻目标: int = int(ctx.get("dst", -1))
+				var 原伤害: int = int((ctx.get("harm", {}) as Dictionary).get("point", 0))
+				var 攻击卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+				var 神威加伤: int = 1 if 攻击卡 != null \
+					and 攻击卡.fate_pattern_enum() == GConst.FatePattern.Holy else 0
+				var 预览目标: Array = [攻目标] if 攻目标 >= 0 else []
+				询问(player.id, SHEN_WEI, 0, 0, GConst.CardSource.Hand, _合并选项(), 0, "", [], true,
+					0, -1, [], -1, {}, 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
+					原伤害 + 神威加伤 if 原伤害 > 0 else -1, 0, "", -1, "", 预览目标, [], 0)
+				return WAIT
+			var r: Dictionary = take_skill_reply_full()
+			_t1_step = 0
+			return _结算神威圣裁(ctx, r.get("args", []))
 	return SUCCESS
+
+
+## 神威/圣裁合并菜单：神威、圣裁 X、神威+圣裁 X；取消即都不发动
+func _合并选项() -> Array:
+	var 圣印: int = player.token_num(YIN_SLOT)
+	var out: Array = []
+	var 神威名: String = GConst.skill_desc_name(SHEN_WEI)
+	var 圣裁名: String = GConst.skill_desc_name(SHENG_CAI)
+	if 圣印 >= 2:
+		out.append({"value": 1, "label": 神威名, "args": [1, 0], "skill_id": SHEN_WEI})
+	for x: int in range(1, 圣印 + 1):
+		out.append({
+			"value": 100 + x,
+			"label": "%s X=%d" % [圣裁名, x],
+			"args": [0, x],
+			"skill_id": SHENG_CAI,
+		})
+	for x: int in range(1, maxi(圣印 - 2, 0) + 1):
+		out.append({
+			"value": 200 + x,
+			"label": "%s + %s X=%d" % [神威名, 圣裁名, x],
+			"args": [1, x],
+			"skill_id": SHEN_WEI,
+		})
+	return out
+
+
+func _结算神威圣裁(ctx: Dictionary, args: Array) -> int:
+	var 神威: int = 0
+	var x: int = 0
+	if args.size() >= 2:
+		神威 = int(args[0])
+		x = int(args[1])
+	elif args.size() == 1:
+		# 兼容旧格式（测试 / 旧客户端）：只给一个值表示只发动神威
+		神威 = int(args[0])
+	var 花费: int = (2 if 神威 != 0 else 0) + maxi(x, 0)
+	if 花费 <= 0 or player.token_num(YIN_SLOT) < 花费:
+		return SUCCESS
+	if not player.remove_token(YIN_SLOT, 花费):
+		return SUCCESS
+	if 神威 != 0:
+		_应用神威(ctx)
+	if x > 0:
+		_t1_圣裁 = x
+		notice_skill(SHENG_CAI, [int(ctx.get("dst", -1))])
+		var harm2: Dictionary = ctx.get("harm", {})
+		if not harm2.is_empty():
+			harm2["point"] = int(harm2.get("point", 0)) + (x - 1)
+		engine._broadcast_game()
+		engine.push_harm({
+			"src": player.id, "dst": int(ctx.get("dst", -1)),
+			"point": 1, "cause": SHENG_CAI, "type": GConst.HarmType.Magic,
+		})
+		ctx["圣殿骑士_攻击前已结算"] = true
+		return URGENT
+	if 神威 != 0:
+		engine._broadcast_game()
+	return SUCCESS
+
+
+## 应用【神威】（已由调用方扣圣印）：无法应战、圣类 +1、双方禁疗并逐人播报
+func _应用神威(ctx: Dictionary) -> void:
+	_t1_神威 = true
+	notice_skill(SHEN_WEI, [int(ctx.get("dst", -1))])
+	ctx["hit_rate"] = GConst.HitRate.NoReattack
+	ctx["can_light"] = false
+	var 卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+	var harm: Dictionary = ctx.get("harm", {})
+	if 卡 != null and 卡.fate_pattern_enum() == GConst.FatePattern.Holy and not harm.is_empty():
+		harm["point"] = int(harm.get("point", 0)) + 1
+	var 新禁疗: Array[int] = []
+	if not player.无法获得治疗():
+		新禁疗.append(player.id)
+	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+	if dst != null and not dst.无法获得治疗():
+		新禁疗.append(dst.id)
+	player.no_heal_round = engine.round_id
+	if dst != null:
+		dst.no_heal_round = engine.round_id
+		if not _神威目标们.has(dst.id):
+			_神威目标们.append(dst.id)
+	for pid: int in 新禁疗:
+		var p0: BattlePlayer = engine.p(pid)
+		if p0 != null:
+			engine.broadcast(GConst.Msg.Gossip, {
+				"type": GConst.GossipType.Heal,
+				"txt": "%s 无法获得治疗" % engine._称号(p0),
+				"id": pid,
+				"num": 0,
+			})
+	engine._broadcast_game()
 
 
 # ============================================================
