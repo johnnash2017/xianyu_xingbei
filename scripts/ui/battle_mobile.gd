@@ -9918,10 +9918,16 @@ func _圣裁头像提示() -> Dictionary:
 		var pid: int = int(目标)
 		if pid < 0:
 			continue
+		var 攻击行: String
 		if 加伤 > 0:
-			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 加伤]
+			攻击行 = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 加伤]
 		else:
-			out[pid] = "%d 攻击伤害" % 原伤害
+			攻击行 = "%d 攻击伤害" % 原伤害
+		# 圣裁先对目标造成 1 点法术伤害，再结算攻击；选了 X 才显示这段法术伤害。
+		if x > 0:
+			out[pid] = "1 法术伤害\n%s" % 攻击行
+		else:
+			out[pid] = 攻击行
 	return out
 
 

@@ -156,7 +156,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				# 发动询问不写 ask 文案：提示条默认显示技能表说明（技能维护约定「询问文案约定」第 1 条）
 				询问(player.id, SHEN_WEI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 					0, -1, [], -1, {}, 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
-					新伤害 if 原伤害 > 0 else -1, 0, "")
+					新伤害 if 原伤害 > 0 else -1, 0, "", -1, "", 预览目标, [], 0)
 				return WAIT
 			# 极少见：进 0 号分支时已有回复（等待期被插队后又回到这里），交给 1 号分支
 			_t1_step = 1
@@ -202,7 +202,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				# 发动询问不写 ask 文案：提示条默认显示技能表说明（同上）；取消＝不发动
 				询问(player.id, SHENG_CAI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
 					0, -1, [], -1, {}, 原伤害, GConst.HarmType.Attack, false, 预览目标, true,
-					-1, 0, "")
+					-1, 0, "", -1, "", 预览目标, [], 0)
 				return WAIT
 			_t1_step = 3
 			return p_timeline_1(ctx)
