@@ -352,7 +352,7 @@ func _绝界拥有者() -> int:
 	return int(engine.取场卡(绝界名).get("attached", -1))
 
 
-## 场上的【结界】牌（盖牌区面朝上、标记为结界）
+## 她的【结界】牌＝盖牌区里的全部牌（面朝上）
 func _结界() -> Array[int]:
 	return player.cover_cards.duplicate()
 
