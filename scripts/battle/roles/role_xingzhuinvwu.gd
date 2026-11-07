@@ -32,7 +32,7 @@ const CHUANG_KE_LV_DONG: int = 4009
 ## 影月·同命格的治疗分配是 4007 的子询问（技能表不单独占行，名字/说明折到 4007）
 const 影月治疗询问: int = 40071
 
-const LU_EN标记: String = "卢恩"
+const LU_EN标记: String = GConst.卢恩标记
 const 律法_繁星: int = 1
 const 律法_影月: int = 2
 const 律法_蚀日: int = 3

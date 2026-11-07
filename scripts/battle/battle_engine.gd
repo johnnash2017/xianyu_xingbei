@@ -3404,7 +3404,14 @@ func debug_key(pid: int, kind: int) -> void:
 			if not 盖们.is_empty():
 				remove_cover(p0.id, 盖们, p0.id, 0)
 		else:
-			draw_cover(p0.id, p0.cover_space())
+			# 星坠女巫的调试盖牌要带【卢恩】标记，否则群星启示模式②选不中
+			var 张数: int = p0.cover_space()
+			if 张数 > 0:
+				var 牌们: Array[int] = deck.draw(张数)
+				if not 牌们.is_empty():
+					var 标记: String = GConst.卢恩标记 \
+						if Data.role_skills(p0.role_id).has(4004) else ""
+					add_cover(p0.id, 牌们, p0.id, 0, false, 标记)
 	elif kind == GConst.DebugKey.RandomEnergy:
 		# 测试用（战斗界面按 7）：战绩区已经有星石 → 再按清空；是空的 → 按战绩区上限逐颗随机填成宝石 / 水晶
 		# （总数恰好等于上限，故直接累加，不走 set_team_gem/set_team_crystal 的夹取）

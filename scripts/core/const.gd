@@ -1272,6 +1272,7 @@ const 场卡显示: Dictionary = {
 }
 
 ## 【律法】（星坠女巫）：编号 → 显示名 / 图标。放在角色面前，不是牌。
+const 卢恩标记: String = "卢恩"
 const 律法名: Dictionary = {1: "繁星", 2: "影月", 3: "蚀日"}
 const 律法图标: Dictionary = {
 	1: "res://assets/textures/icon/fanXing.png",
