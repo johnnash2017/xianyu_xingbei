@@ -1843,13 +1843,18 @@ func _牌显示名(牌: GCard, 带命格: bool = true) -> String:
 
 
 ## 战斗日志里的卡名：A·B·C —— 名字 · 系别 · 命格（如「虚弱·暗·血」）。
-## 系别写在中间：法术牌光看名字分不出地 / 水 / 风 / 火 / 雷 / 暗
+## 攻击牌（斩 / 暗灭）名字本身带系别，不再重复写系别；魔刃 / 异刃除外。
+## 法术牌光看名字分不出地 / 水 / 风 / 火 / 雷 / 暗，仍写系别。
 func _牌日志名(牌: GCard, 带命格: bool = true) -> String:
 	if 牌 == null or 牌.card_name.is_empty():
 		return ""
 	var 部件: Array[String] = [牌.card_name]
+	# 斩 / 暗灭这类攻击牌的名字本身已带系别（风神斩、地裂斩、暗灭…），日志不再重复写「·风」；
+	# 魔刃 / 异刃名字不带系别，且系别会切换，仍然要带。
+	var 名字带系别: bool = 牌.is_attack() \
+		and 牌.id != GConst.噬神者_魔刃卡 and 牌.id != GConst.噬神者_异刃卡
 	var 系别: String = GConst.element_to_chinese(牌.element_enum())
-	if not 系别.is_empty() and 系别 != "?":
+	if not 名字带系别 and not 系别.is_empty() and 系别 != "?":
 		部件.append(系别)
 	if 带命格 and not 牌.fate_pattern.is_empty():
 		部件.append(牌.fate_pattern)
