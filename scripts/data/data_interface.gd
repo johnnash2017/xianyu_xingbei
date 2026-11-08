@@ -17,6 +17,9 @@ var role_version_db: Dictionary = {}
 ## 每项 {value:int, name:String, count:int}，建房面板据此摆版本复选框
 var role_version_options: Array[Dictionary] = []
 var role_skill_db: Dictionary = {}      # roleID -> 技能文本
+## roleID -> 技能条目（结构化）：每项 {大类, 专属卡牌, 文本}。
+## 悬停说明按「专属卡牌」分组画子框时用（见 角色技能提示.悬浮提示块）
+var role_skill_entries: Dictionary = {}
 var role_personal_name_db: Dictionary = {}  # roleID -> 姓名（角色表「姓名」列，如 猎巫人 → 白狼卡拉马）
 var role_fate_pattern_db: Dictionary = {}   # roleID -> 命格（技 / 血 / 幻 / 咏 / 圣）
 var role_tokens_db: Dictionary = {}     # roleID -> { 槽位: {name, max} }（取自角色表的指示物列）
@@ -148,13 +151,17 @@ const 技能分段标题: Dictionary = {"普通": "普通技", "独有技": "独
 ## 日志、提示条、单个技能悬停说明等其他地方仍用「技能名」列（见 GConst.skill_name）。
 func _load_role_skill_db() -> void:
 	role_skill_db.clear()
+	role_skill_entries.clear()
 	var 列索引: Dictionary = 数据表格.表元数据["技能表"]["列索引"]
 	var 分段列: int = int(列索引["大类"])
+	# 「专属卡牌」列是后加的：老导表产物里没有这一列时按 -1 兜底（＝所有技能都没有专属卡牌）
+	var 专属列: int = int(列索引.get("专属卡牌", -1))
 	var 角色索引列: int = int(数据表格.表元数据["角色表"]["列索引"]["角色索引"])
 	for key: String in 数据表格.角色表.keys():
 		var 角色行: Array = 数据表格.角色表[key]
 		var 角色号: int = int(角色行[角色索引列])
 		var 分组: Dictionary = {}
+		var 条目列表: Array = []
 		for 技能号: int in role_skills(角色号):
 			var row: Array = GConst.技能行(技能号)
 			if row.is_empty():
@@ -165,12 +172,23 @@ func _load_role_skill_db() -> void:
 			var 条目: String = "【%s】%s：%s" % [
 				GConst.skill_type(技能号), GConst.skill_desc_name(技能号), 说明]
 			var 分段: String = str(row[分段列])
+			var 专属: String = ""
+			if 专属列 >= 0 and 专属列 < row.size():
+				专属 = str(row[专属列]).strip_edges()
+			条目列表.append({"大类": 分段, "专属卡牌": 专属, "文本": 条目})
 			if not 分组.has(分段):
 				分组[分段] = []
 			var 本段行: Array = 分组[分段]
 			if not 本段行.has(条目):
 				本段行.append(条目)
 		role_skill_db[角色号] = _拼技能文本(分组)
+		role_skill_entries[角色号] = 条目列表
+
+
+## 某角色的技能条目（结构化）：每项 {大类, 专属卡牌, 文本}。
+## 悬停说明按「专属卡牌」分组画子框时用（见 角色技能提示.悬浮提示块）
+func role_skill_条目(角色号: int) -> Array:
+	return role_skill_entries.get(角色号, [])
 
 
 ## 把某角色的分段字典拼成一段文本：一级标题（大类）一行，该段每条技能各占一行。

@@ -1,4 +1,4 @@
-## 角色技能说明文本的组装与排版（上色 + 悬停提示）。
+﻿## 角色技能说明文本的组装与排版（上色 + 悬停提示）。
 ## 原先这里是个「英雄详情窗」（搬自参考工程 InfomationUI）：战斗内点头像弹它；
 ## 现在战斗内也改成和选角界面一样「鼠标指向头像就地弹提示」，那个窗不再需要，
 ## 只留下这组静态函数 —— 谁要显示角色技能说明都调 悬浮提示()。
@@ -103,6 +103,67 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0, 对局中: b
 			标题上方留白字号, 标识物号, 提示框标识物颜色.to_html(false), 标识物]
 	return 文本
 
+
+## 悬停提示的「分块」版本：技能表里「专属卡牌」非空的技能单独收进一块分组，
+## 由提示框用和整框同色的边框画一个小框（标题＝那个字符串）。
+## 返回空数组＝这个角色没有配专属卡牌，调用方走原来的整段文本（行为完全不变）。
+## 每块：{"文本": 已上色的 BBCode} 或 {"分组": true, "标题": 专属卡牌名, "文本": BBCode}
+static func 悬浮提示块(角色号: int, 字号缩放: float = 1.0, _对局中: bool = false) -> Array:
+	var 正文号: int = maxi(1, int(round(float(提示框正文字号) * 字号缩放)))
+	var 姓名号: int = maxi(1, int(round(float(提示框姓名行字号) * 字号缩放)))
+	var 标题号: int = maxi(1, int(round(float(提示框标题字号) * 字号缩放)))
+	var 条目: Array = Data.role_skill_条目(角色号)
+	var 有分组: bool = false
+	for 项: Variant in 条目:
+		if not str((项 as Dictionary).get("专属卡牌", "")).is_empty():
+			有分组 = true
+			break
+	if not 有分组:
+		return []
+	var 块: Array = []
+	# 角色名 + 势力（与整段版同一套写法）
+	var 角色名: String = Data.role_name(角色号)
+	var 姓名: String = Data.role_personal_name(角色号)
+	if 姓名 != "":
+		角色名 = "%s %s" % [角色名, 姓名]
+	var 名行: String = "[font_size=%d]%s[/font_size]" % [姓名号, 角色名]
+	var 势力: String = Data.role_faction(角色号)
+	if 势力 != "":
+		var 势力号: int = maxi(1, int(round(float(提示框势力字号) * 字号缩放)))
+		名行 += " [font_size=%d]%s[/font_size]" % [势力号, 势力]
+	块.append({"文本": 名行})
+	# 按大类分块：普通条目一块，每个「专属卡牌」各自一块（标题＝那个字符串）
+	for 分段: String in Data.技能分段顺序:
+		var 普通行: Array = []
+		var 组序: Array = []
+		var 组表: Dictionary = {}
+		for 项2: Variant in 条目:
+			var d: Dictionary = 项2
+			if str(d.get("大类", "")) != 分段:
+				continue
+			var 专: String = str(d.get("专属卡牌", ""))
+			if 专.is_empty():
+				普通行.append(正文前缀 + str(d.get("文本", "")))
+			else:
+				if not 组表.has(专):
+					组表[专] = []
+					组序.append(专)
+				(组表[专] as Array).append(正文前缀 + str(d.get("文本", "")))
+		var 本段行: Array = [str(Data.技能分段标题.get(分段, 分段))]
+		本段行.append_array(普通行)
+		if 本段行.size() > 1 or not 组序.is_empty():
+			块.append({"文本": 上色("\n".join(本段行), 正文号, 标题号, true)})
+		for 专名: String in 组序:
+			块.append({"分组": true, "标题": 专名,
+				"文本": 上色("\n".join(组表[专名]), 正文号, 标题号)})
+	# 右下角：专属标识物一览
+	var 标识物: String = 标识物一览(角色号)
+	if 标识物 != "":
+		var 标识物号: int = maxi(1, int(round(float(正文号) * 提示框标识物字号缩放)))
+		标识物 = 标识物.replace("∞", "[font_size=%d]∞[/font_size]" % (标识物号 + 提示框无限字号增量))
+		块.append({"文本": "[right][font_size=%d][color=#%s]%s[/color][/font_size][/right]" % [
+			标识物号, 提示框标识物颜色.to_html(false), 标识物]})
+	return 块
 
 ## 剑之子（108）的角色说明动态部分：
 ##  - 剑之魔女在场时，【剑守誓言】10803 无法发动，整段划删除线；
