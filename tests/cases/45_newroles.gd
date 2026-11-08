@@ -201,6 +201,8 @@ func _检结界师() -> void:
 	角色.p_magic_skill({"src_id": 1, "action_id": 8204, "dst_ids": [2]})
 	检(引擎.玩家有场卡(2, "绝界"), "【绝界】应挂在目标 2 号面前")
 	检(not 引擎.玩家有场卡(1, "绝界"), "【绝界】不该在拥有者 1 号面前生效")
+	检(引擎.p(2).基础效果禁用, "【禁魔境】放下【绝界】后，目标应禁止基础效果生效")
+	检(not 引擎.p(1).基础效果禁用, "结界师自己不该被禁止基础效果")
 	检(玩家.token_num(0) == 1, "【禁魔境】应移除 1 点【祭】")
 	var 旧场卡: Array[Dictionary] = Data.场卡表.duplicate()
 	Data.场卡表.clear()
@@ -368,6 +370,7 @@ func _检结界师() -> void:
 	# ---- 绝界的三条技能都只认「拥有绝界的角色」（attached），不是结界师自己 ----
 	引擎.加场卡({"id": "绝界", "owner": 1, "attached": 2,
 		"counter": 0, "counter_max": 0, "state": 0})
+	角色.call("_设置绝界基础效果禁用", 2, true)
 	玩家.tap = false
 	玩家.cover_cards.clear()
 	引擎.add_cover(1, [火法术], 1, 8206, true)
@@ -379,8 +382,27 @@ func _检结界师() -> void:
 		"绝界在 2 号时，结界师自己的攻击行动结束不该触发白二羯磨")
 	检(角色.p_action_end({"player": 2, "kind": "attack"}) == BattleRole.WAIT,
 		"绝界拥有者 2 号的攻击行动结束应先问他自己是否发动白二羯磨")
-	检(角色.基础效果被禁止(2), "虚空境应禁止绝界拥有者 2 号的基础效果")
-	检(not 角色.基础效果被禁止(1), "虚空境不该禁止结界师自己的基础效果")
+	检(引擎.基础效果被禁止(2), "虚空境应禁止绝界拥有者 2 号的基础效果")
+	检(not 引擎.基础效果被禁止(1), "虚空境不该禁止结界师自己的基础效果")
+	# 虚空境：中毒不结算、圣盾不挡、效果牌原样留着
+	var 毒牌: int = Data.card_id_by_name_enum(GConst.CardName.Poison)
+	var 盾牌: int = Data.card_id_by_name_enum(GConst.CardName.Shield)
+	检(毒牌 >= 0 and 盾牌 >= 0, "测试缺少【中毒】/【圣盾】牌")
+	引擎.p(2).basic_effects.clear()
+	引擎.p(2).add_basic_effect(毒牌, 1)
+	引擎.p(2).add_basic_effect(盾牌, 1)
+	引擎._states.clear()
+	引擎.current_id = 2
+	BattleEngine.SCheckTurnStart.new().handle(引擎)
+	var 有毒状态: bool = false
+	for st: Variant in 引擎._states:
+		if st is BattleEngine.SPoison:
+			有毒状态 = true
+	检(not 有毒状态, "虚空境：中毒不应在回合开始结算")
+	检(not 引擎.call("_missile_block_by_basic", 2), "虚空境：圣盾不应挡魔弹")
+	检(引擎.p(2).basic_effects.size() == 2, "虚空境：基础效果牌应原样留着")
+	引擎.p(2).basic_effects.clear()
+	引擎._states.clear()
 	# 白二羯磨：持有者自己决定发动，并从选项里挑 1 个【结界】（客户端点不了别人的盖牌）
 	玩家.set_gem(0)
 	玩家.set_crystal(0)
@@ -393,6 +415,7 @@ func _检结界师() -> void:
 	检(角色.p_action_end(白二ctx) == BattleRole.SUCCESS, "白二羯磨选完结界应结算")
 	检(引擎.p(2).hand_cards.has(火法术), "白二羯磨应把选中的结界交给持有者")
 	检(not 引擎.有场卡("绝界"), "最后一个结界被拿走时【灭界破散】应移除【绝界】")
+	检(not 引擎.p(2).基础效果禁用, "【绝界】被移除后，【虚空境】应解除基础效果禁用")
 
 	# ---- 伏魔境：祭增加时问是否发动 → 选对手 → 1 点法术伤害；士气下降 → 移除 1 星石、+1 水晶 ----
 	玩家.set_gem(1)

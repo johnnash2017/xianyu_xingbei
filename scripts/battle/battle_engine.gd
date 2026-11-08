@@ -238,7 +238,7 @@ func 基础效果额外行动已确认(cause: int) -> bool:
 func 基础效果额外行动选项(pid: int) -> Array:
 	var cur: BattlePlayer = players.get(pid)
 	var out: Array = []
-	if cur == null:
+	if cur == null or cur.基础效果禁用:
 		return out
 	for cause: int in GConst.基础效果额外行动:
 		if 基础效果额外行动已确认(cause):
@@ -305,7 +305,7 @@ func _分派行动结束选项(pid: int, cause: int, reply: Dictionary, kind: St
 		ctx: Dictionary) -> Dictionary:
 	if kind == 行动来源_基础:
 		var 基础cur: BattlePlayer = players.get(pid)
-		if 基础cur == null or not 基础cur.check_basic_effect_skill(cause) \
+		if 基础cur == null or 基础cur.基础效果禁用 or not 基础cur.check_basic_effect_skill(cause) \
 				or 基础效果额外行动已确认(cause):
 			return {"result": GConst.GE_INVALID_ACTION, "terminal": true}
 		_确认基础效果额外行动(pid, cause)
@@ -2968,8 +2968,12 @@ func draw(pid: int, n: int) -> Array:
 	return cards
 
 
-## 基础效果能不能触发：依次问所有角色（结界师【绝界】把这一路挡掉）
+## 基础效果能不能触发：先看这名角色自己的「禁止基础效果生效」属性（【虚空境】），
+## 再依次问所有角色（历史上【绝界】走角色钩子，现在改由属性驱动）。
 func 基础效果被禁止(pid: int) -> bool:
+	var 本人: BattlePlayer = players.get(pid)
+	if 本人 != null and 本人.基础效果禁用:
+		return true
 	for 座位: int in order:
 		var pp: BattlePlayer = players.get(座位)
 		if pp == null or pp.role == null:
@@ -4047,10 +4051,11 @@ class SCheckTurnStart:
 		e.本回合跳过行动阶段 = false
 		e.本回合跳过行动阶段来源 = 0
 		var poison_cards: Array[int] = []
-		for be: Dictionary in cur.basic_effects:
-			var c: GCard = Data.get_card(int(be["card"]))
-			if c != null and c.card_name_enum() == GConst.CardName.Poison:
-				poison_cards.append(int(be["card"]))
+		if not cur.基础效果禁用:
+			for be: Dictionary in cur.basic_effects:
+				var c: GCard = Data.get_card(int(be["card"]))
+				if c != null and c.card_name_enum() == GConst.CardName.Poison:
+					poison_cards.append(int(be["card"]))
 		e.push(SActionPhase.new())
 		# F7：额外回合与普通回合走同一套开始流程，只是上下文里带 extra_turn 标记（角色可区分）
 		var 回合上下文: Dictionary = {
@@ -4080,6 +4085,9 @@ class SPoison:
 		cards = cs
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
+		# 禁止基础效果生效（【虚空境】）：中毒不结算、牌留在原处
+		if cur.基础效果禁用:
+			return BattleEngine.CONTINUE
 		for cid: int in cards:
 			# 伤害来源取「施加【中毒】的那名玩家」（对照原版 GameGrail.cpp 的 poisonHarm.srcID = it->srcUser）
 			var 来源: int = 0
@@ -4106,6 +4114,9 @@ class SWeaken:
 
 	func handle(e: BattleEngine) -> int:
 		var cur: BattlePlayer = e.p(e.current_id)
+		# 禁止基础效果生效（【虚空境】）：虚弱不询问、牌留在原处
+		if cur.基础效果禁用:
+			return BattleEngine.CONTINUE
 		# 数值必须只算一次：玩家回复后引擎会再跑一次本状态，重算会得到空数组、
 		# 于是在下面直接 CONTINUE，玩家的「确定 / 取消」被丢掉，摸牌与跳过回合双双失效。
 		if not 已计算:
@@ -4838,7 +4849,7 @@ class SAttackedAsk:
 					return BattleEngine.CONTINUE
 			# 放弃应战：【圣盾】或视作【圣盾】的【天使之墙】自动挡下
 			dst.reattacker = -1
-			if bool(owner.ctx.get("check_shield", true)):
+			if bool(owner.ctx.get("check_shield", true)) and not dst.基础效果禁用:
 				var shield_card: int = -1
 				if dst.check_basic_effect_name(GConst.CardName.Shield):
 					shield_card = e._find_basic_card(dst, GConst.CardName.Shield)
@@ -6139,7 +6150,7 @@ func _next_missile_target(from_id: int, post_dir: bool, used: Array[int], 禁选
 ## 目标若拥有【圣盾】或视作【圣盾】的【天使之墙】，移除之并返回 true（魔弹视作未命中）
 func _missile_block_by_basic(target_id: int) -> bool:
 	var dst: BattlePlayer = players.get(target_id)
-	if dst == null:
+	if dst == null or dst.基础效果禁用:
 		return false
 	var cid: int = -1
 	if dst.check_basic_effect_name(GConst.CardName.Shield):

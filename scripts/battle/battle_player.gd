@@ -30,6 +30,9 @@ var laws: Array[int] = []
 ## （圣殿骑士【神威】：本回合你与攻击目标无法获得治疗）
 var no_heal_round: int = -1
 var basic_effects: Array[Dictionary] = []   # [{card:int, src:int}]
+## 禁止基础效果生效（结界师【虚空境】）：true 时这名角色面前的基础效果一律不结算 / 不触发。
+## 由技能在放置 / 移除【绝界】时置位 / 清除；引擎各结算点统一看它（随快照下发，客户端置灰图标）。
+var 基础效果禁用: bool = false
 var exclusive_effects: Array[bool] = [false, false, false, false, false]
 ## 与 exclusive_effects 一一对应：每张专属牌是谁放的（-1＝没记）。
 ## 【挑衅】要靠它知道「被挑衅的人只能主动攻击哪个玩家」（见 exclusive_owner / base_v_attack）
@@ -1184,6 +1187,8 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"heal_count": cross_num,
 		# 本回合无法获得治疗（圣殿骑士【神威】）：客户端据此在角色状态区显示神威图标
 		"no_heal": 无法获得治疗(),
+		# 禁止基础效果生效（结界师【虚空境】）：客户端把面前的基础效果图标置灰
+		"no_basic": 基础效果禁用,
 		# 治疗上限：角色被动会改（神官 +4 等），客户端按它画治疗格的空位
 		"max_heal": cross_max,
 		# 能量上限：角色被动会改（如贤者 +1），客户端判「星石已满 / 还有空位」要用它

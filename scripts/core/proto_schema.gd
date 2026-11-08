@@ -71,6 +71,8 @@ const PLAYER_INFO_FIELDS: Dictionary = {
 	37: {"n": "extra_turn_bonus", "t": "u32"},
 	# 本回合无法获得治疗（圣殿骑士【神威】）：客户端在状态区显示神威图标，回合结束服务端清除
 	38: {"n": "no_heal", "t": "bool"},
+	# 禁止基础效果生效（结界师【虚空境】）：客户端把该玩家面前的基础效果图标置灰
+	39: {"n": "no_basic", "t": "bool"},
 }
 
 ## 子消息字段表（作为 msg 类型的 schema）

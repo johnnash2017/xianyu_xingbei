@@ -204,7 +204,7 @@ func p_show_hand(ctx: Dictionary) -> int:
 	if 角色 == null or 引擎 == null or 玩家 == null:
 		return BattleRole.SUCCESS
 	var target: BattlePlayer = 引擎.p(int(ctx.get("player", -1)))
-	if target == null:
+	if target == null or target.基础效果禁用:
 		return BattleRole.SUCCESS
 	var 已触发: Array = ctx.get("seals_triggered", [])
 	var 展示牌: Array = ctx.get("cards", [])

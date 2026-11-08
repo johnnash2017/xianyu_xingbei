@@ -157,10 +157,15 @@ func _p_禁魔境(action: Dictionary) -> int:
 		return SUCCESS
 	notice_skill(JIN_MO_JING, [dst])
 	# 同一张【绝界】只存在一份：加场卡按 id 顶掉旧的（转移＝换个 attached / 重新放置）
+	var 旧持有者: int = _绝界持有者()
+	if 旧持有者 >= 0 and 旧持有者 != dst:
+		_设置绝界基础效果禁用(旧持有者, false)
 	engine.加场卡({
 		"id": 绝界名, "owner": player.id, "attached": dst,
 		"counter": 0, "counter_max": 0, "state": 0,
 	})
+	# 虚空境：绝界挂在谁面前，谁的基础效果一律不触发
+	_设置绝界基础效果禁用(dst, true)
 	engine._broadcast_game()
 	# 灭界破散是「结界为 0 时」的状态：她这时没有【结界】，绝界放下就当场破散
 	_检查绝界破散()
@@ -570,15 +575,26 @@ func p_cover_change(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 8209 虚空境：只禁止绝界持有者自己的基础效果（不是结界师、也不是别人）
-func 基础效果被禁止(pid: int) -> bool:
-	return engine.玩家有场卡(pid, 绝界名)
+## 8209 虚空境：不再走角色钩子 —— 绝界持有者的「禁止基础效果生效」属性由
+## _设置绝界基础效果禁用 维护，引擎各结算点直接看这个属性。
+
+## 虚空境：绝界挂在谁面前，谁的基础效果就一律不触发（属性随快照下发，客户端置灰图标）。
+func _设置绝界基础效果禁用(pid: int, 禁用: bool) -> void:
+	if pid < 0:
+		return
+	var 目标: BattlePlayer = engine.p(pid)
+	if 目标 == null or 目标.基础效果禁用 == 禁用:
+		return
+	目标.基础效果禁用 = 禁用
+	engine._broadcast_game()
 
 
 ## 结界为 0 时：结界师【横置】，移除【绝界】（同步结算，不询问）
 func _检查绝界破散() -> void:
-	if _绝界持有者() < 0 or not _结界().is_empty():
+	var 持有者: int = _绝界持有者()
+	if 持有者 < 0 or not _结界().is_empty():
 		return
+	_设置绝界基础效果禁用(持有者, false)
 	# 已经横置时不要再写一次 tap：setter 会无条件压一轮 p_tap，
 	# 兽灵【兽魂警戒】会把「本来就横置」误当成一次新的横置
 	if not player.tap:

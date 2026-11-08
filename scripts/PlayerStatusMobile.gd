@@ -214,6 +214,13 @@ var Covered: int = 0:
 var BasicAndExCards: Array = []:
 	set(value):
 		set_BasicAndExCards(value)
+## 面前的基础效果是否一律不触发（结界师【虚空境】）：图标照画，但置灰
+var BasicDisabled: bool = false:
+	set(value):
+		if BasicDisabled == value:
+			return
+		BasicDisabled = value
+		_刷新状态图标()
 var ExclusiveCards: Array = []:
 	set(value):
 		set_ExclusiveCards(value)
@@ -754,6 +761,9 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 	if go is TextureRect:
 		(go as TextureRect).texture = tex
 		(go as TextureRect).custom_minimum_size = Vector2(状态图标尺寸, 状态图标尺寸)
+		# 虚空境：基础效果图标保留，但整枚置灰（悬停说明仍可看）
+		if 基础牌id >= 0 and BasicDisabled:
+			(go as TextureRect).modulate = Color(0.45, 0.45, 0.45, 1.0)
 		if 基础牌id >= 0 and _基础牌可点:
 			(go as TextureRect).mouse_filter = Control.MOUSE_FILTER_STOP
 			(go as TextureRect).gui_input.connect(_on_基础牌图标输入.bind(基础牌id))

@@ -576,6 +576,7 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.hand_cards_num = int(pi.get("hand_count", 0))
 	p.cross_num = int(pi.get("heal_count", 0))
 	p.no_heal = bool(pi.get("no_heal", false))
+	p.no_basic = bool(pi.get("no_basic", false))
 	p.gem = int(pi.get("gem", 0))
 	p.crystal = int(pi.get("crystal", 0))
 	p.tap = bool(pi.get("is_knelt", false))

@@ -131,7 +131,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	var attacker_id: int = int(harm.get("src", ctx.get("src", -1)))
 	var attacker: BattlePlayer = engine.p(attacker_id)
-	if attacker == null:
+	if attacker == null or attacker.基础效果禁用:
 		return SUCCESS
 	var effect_card: int = _find_effect_card(attacker, WEI_LI_CI_FU, player.id)
 	if effect_card < 0:
@@ -194,7 +194,7 @@ func p_after_magic(ctx: Dictionary) -> int:
 ## 移除该赐福牌改在玩家选择该额外行动时结算）
 func _xun_jie_effect(pid: int) -> void:
 	var target: BattlePlayer = engine.p(pid)
-	if target == null or target.hand_cards.is_empty():
+	if target == null or target.hand_cards.is_empty() or target.基础效果禁用:
 		return
 	# 只认队列里那一份：正在行动的那份不算「已经排着」（否则目标刚用完一次赐福行动，就再也不会被授予）
 	if not target.额外行动队列数据(XUN_JIE_CI_FU).is_empty():

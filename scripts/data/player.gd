@@ -35,6 +35,8 @@ var hand_cards_max: int = GConst.HAND_CARDS_MAX
 var hand_cards_num: int = 0
 var cross_num: int = 0        # 当前治疗值
 var no_heal: bool = false      # 本回合无法获得治疗（神威）
+## 禁止基础效果生效（结界师【虚空境】）：客户端把面前的基础效果图标置灰
+var no_basic: bool = false
 var cross_max: int = GConst.CROSS_MAX
 var gem: int = 0
 var crystal: int = 0

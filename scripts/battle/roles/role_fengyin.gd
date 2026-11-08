@@ -131,6 +131,9 @@ func _feng_yin_effect(player_id: int, cards: Array, ctx: Dictionary) -> int:
 	var target: BattlePlayer = engine.p(player_id)
 	if target == null:
 		return SUCCESS
+	# 虚空境：目标的基础效果一律不触发，封印也不结算
+	if target.基础效果禁用:
+		return SUCCESS
 	var 已触发: Array = ctx.get("seals_triggered", [])
 	for e: Dictionary in target.basic_effects:
 		var 封印牌: int = int(e["card"])

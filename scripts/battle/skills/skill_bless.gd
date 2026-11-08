@@ -178,7 +178,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return BattleRole.SUCCESS
 	var 攻击者id: int = int(harm.get("src", ctx.get("src", -1)))
 	var 攻击者: BattlePlayer = 角色.engine.p(攻击者id)
-	if 攻击者 == null:
+	if 攻击者 == null or 攻击者.基础效果禁用:
 		return BattleRole.SUCCESS
 	var 赐福牌: int = find_blessing(攻击者, WEI_LI_CI_FU, 角色.player.id)
 	if 赐福牌 < 0:
@@ -231,7 +231,7 @@ func 触发迅捷赐福(pid: int) -> void:
 	if not 可用():
 		return
 	var 持有者: BattlePlayer = 角色.engine.p(pid)
-	if 持有者 == null or 持有者.hand_cards.is_empty():
+	if 持有者 == null or 持有者.hand_cards.is_empty() or 持有者.基础效果禁用:
 		return
 	for a: Dictionary in 持有者.additional_actions:
 		if int(a.get("cause", 0)) == XUN_JIE_CI_FU:
@@ -291,6 +291,9 @@ func _目标合法(目标: BattlePlayer, 技能号: int) -> bool:
 ## 移除赐福牌 + 进弃牌堆（发动者记本角色，供 p_basic_effect_change / 天使羁绊这类钩子区分）
 func _移除赐福(dst_id: int, card_id: int, 技能号: int) -> void:
 	if not 可用():
+		return
+	# 虚空境：目标的基础效果一律不触发，赐福也不消耗
+	if 角色.engine.基础效果被禁止(dst_id):
 		return
 	角色.engine.remove_basic_effect(dst_id, card_id, 技能号, 角色.player.id)
 	角色.engine.to_discard([card_id])

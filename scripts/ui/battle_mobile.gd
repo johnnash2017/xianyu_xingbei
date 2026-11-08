@@ -1258,6 +1258,8 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			# 传实例号（没记就退回牌面）：图标点击要能认出「哪一张」
 			基础牌.append(st.实例号 if st.实例号 >= 0 else st.card.id)
 	面板.set("BasicAndExCards", 基础牌)
+	# 虚空境：这名角色面前的基础效果一律不触发 → 图标置灰
+	面板.set("BasicDisabled", p.no_basic)
 	var 独有效果: Array = []
 	for i: int in range(GConst.EXCLUSIVE_NUM):
 		if p.specials[i]:
