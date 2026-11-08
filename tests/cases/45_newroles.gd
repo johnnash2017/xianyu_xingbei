@@ -423,9 +423,8 @@ func _检结界师() -> void:
 	引擎.set_team_gem(玩家.color, 1)
 	引擎.set_team_crystal(玩家.color, 0)
 	var 伏魔ctx: Dictionary = {"player": 1}
-	检(角色.p_fu_mo_ask(伏魔ctx) == BattleRole.WAIT, "【伏魔境】应先问是否发动")
-	_应答([1])
-	检(角色.p_fu_mo_ask(伏魔ctx) == BattleRole.WAIT, "【伏魔境】应问目标对手")
+	检(角色.p_fu_mo_ask(伏魔ctx) == BattleRole.WAIT,
+		"【伏魔境】应在同一步选目标对手并确认发动")
 	_应答([], [], [2])
 	检(角色.p_fu_mo_ask(伏魔ctx) == BattleRole.URGENT, "【伏魔境】应压入伤害")
 	检(玩家.get_energy() == 0, "【伏魔境】应支付 1 点能量")

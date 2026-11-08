@@ -620,30 +620,16 @@ func p_fu_mo_ask(ctx: Dictionary) -> int:
 					return SUCCESS
 				ctx[键_伏魔] = 1
 				if not engine.has_reply():
-					询问(player.id, FU_MO_JING)
+					# 一次问完：选目标对手 + 确认＝发动；取消＝不发动。
+					询问(player.id, FU_MO_JING, 0, 1, GConst.CardSource.Hand, [], 0, "", [],
+						true, 0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
+						提示原文(FU_MO_JING, 2))
 					return WAIT
 			1:
 				if not engine.has_reply():
 					return WAIT
 				var r: Dictionary = take_skill_reply_full()
-				if not _是发动(r):
-					ctx[键_伏魔] = STEP_DONE
-					return SUCCESS
-				var 对手: Array[int] = enemy_ids()
-				if 对手.is_empty() or player.get_energy() < 1:
-					ctx[键_伏魔] = STEP_DONE
-					return SUCCESS
-				ctx[键_伏魔] = 2
-				if not engine.has_reply():
-					询问(player.id, FU_MO_JING, 0, 1, GConst.CardSource.Hand, [], 0, "", [],
-						false, 0, -1, 对手, -1, {}, 0, 0, false, [], true, -1, 0,
-						提示原文(FU_MO_JING, 2))
-					return WAIT
-			2:
-				if not engine.has_reply():
-					return WAIT
-				var r2: Dictionary = take_skill_reply_full()
-				var ds: Array = r2.get("dst_ids", [])
+				var ds: Array = r.get("dst_ids", [])
 				var 目标: int = int(ds[0]) if ds.size() == 1 else -1
 				ctx[键_伏魔] = STEP_DONE
 				if not enemy_ids().has(目标) or engine.p(目标) == null:
