@@ -33,6 +33,9 @@ var _伏笔牌: Array = []
 ## Surprise!：1＝等选手牌放回 / 2＝等选目标
 var _惊爆阶段: int = 0
 var _惊爆牌: Array = []
+## Trick or Treat：1＝等选结算分支
+var _糖果阶段: int = 0
+var _糖果已用: bool = false
 
 
 # ============================================================
@@ -222,6 +225,7 @@ func p_timeline_2_miss(_ctx: Dictionary) -> int:
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		player.清手牌上限修正(手牌上限来源)
+		_糖果已用 = false
 	return SUCCESS
 
 
@@ -347,3 +351,100 @@ func _有基础效果者() -> Array:
 				out.append(pid)
 				break
 	return out
+
+
+# ============================================================
+# Trick or Treat（被动）：行动阶段结束时（这里用回合结束时点）场上 Tricky>4
+# ============================================================
+func p_turn_end(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	if _糖果阶段 == 1:
+		return _糖果结算(take_skill_reply_full())
+	if _糖果已用 or _trickies.size() <= 4:
+		return SUCCESS
+	_糖果已用 = true
+	notice_skill(TRICK_OR_TREAT, [player.id])
+	# 展示所有 Trickies，并逐人结算「弃 1 张同系牌」
+	var 我方数: int = 0
+	var 敌方数: int = 0
+	var 未做: Array = []
+	for 项: Dictionary in _trickies:
+		var dst: int = int(项["dst"])
+		var 真牌: int = int(项["card"])
+		engine.broadcast(GConst.Msg.Card, {
+			"type": GConst.CardMsgType.Show, "src_id": dst, "dst_id": dst,
+			"card_ids": [真牌], "is_real": true,
+		})
+		var dp: BattlePlayer = engine.p(dst)
+		if dp == null:
+			continue
+		var 牌: GCard = Data.get_card(真牌)
+		var 系: int = 牌.element_enum() if 牌 != null else 0
+		var 弃: int = -1
+		for cid: int in dp.hand_cards:
+			var c: GCard = Data.get_card(cid)
+			if c != null and c.element_enum() == 系:
+				弃 = cid
+				break
+		if 弃 < 0:
+			未做.append(dst)
+			continue
+		engine.take_from_hand(dst, [弃])
+		engine.to_discard([弃], {"owner": dst, "source": "hand", "cause": TRICK_OR_TREAT, "face_up": true})
+		if dp.color == player.color:
+			我方数 += 1
+		else:
+			敌方数 += 1
+	# 每有人不如此做：2 点法术伤害
+	for dst2: Variant in 未做:
+		engine.push_harm({"src": player.id, "dst": int(dst2), "point": 2,
+			"cause": TRICK_OR_TREAT, "type": GConst.HarmType.Magic})
+	# 移除所有 Trickies
+	for 项2: Dictionary in _trickies:
+		var dp2: BattlePlayer = engine.p(int(项2["dst"]))
+		if dp2 != null:
+			dp2.remove_basic_effect(Tricky占位牌)
+	_trickies.clear()
+	engine._broadcast_game()
+	# 我方弃得更多 / 更少
+	if 我方数 < 敌方数:
+		engine.set_team_gem(1 - player.color, engine.team_gem[1 - player.color] + 1)
+		return SUCCESS
+	if 我方数 > 敌方数:
+		_糖果阶段 = 1
+		询问(player.id, TRICK_OR_TREAT, 0, 0, GConst.CardSource.Hand, _糖果选项(), 0, "", [], true,
+			0, -1, [], -1, {})
+		return WAIT
+	return SUCCESS
+
+
+func _糖果选项() -> Array:
+	return [
+		{"value": 1, "label": GConst.按钮原文(TRICK_OR_TREAT, 0), "text": GConst.按钮原文(TRICK_OR_TREAT, 0)},
+		{"value": 2, "label": GConst.按钮原文(TRICK_OR_TREAT, 1), "text": GConst.按钮原文(TRICK_OR_TREAT, 1)},
+	]
+
+
+func _糖果结算(r: Dictionary) -> int:
+	var args: Array = r.get("args", [])
+	_糖果阶段 = 0
+	if args.is_empty():
+		return SUCCESS
+	if int(args[0]) == 1:
+		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
+		player.set_crystal(player.crystal + 1)
+		engine._broadcast_game()
+		return SUCCESS
+	# 分支 2：你弃 1 张牌，并额外获得一个回合
+	var 弃: Array = []
+	for cid: int in player.hand_cards:
+		弃.append(cid)
+		break
+	if not 弃.is_empty():
+		engine.take_from_hand(player.id, 弃)
+		engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": TRICK_OR_TREAT})
+		engine._log_discard(player.id, 弃, false)
+	安排额外回合(0, TRICK_OR_TREAT)
+	engine._broadcast_game()
+	return SUCCESS
