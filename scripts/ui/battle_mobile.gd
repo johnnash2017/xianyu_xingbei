@@ -849,6 +849,25 @@ func _on_game_info(info: Dictionary) -> void:
 	TxtRID.text = str(int(info.get("room_id", 0)))
 	# 手牌/盖牌/目标可选状态跟着快照走（Data.build_player_list 已同步好）
 	_刷新交互()
+	# 【不可行动】换手牌后，快照可能晚于新的行动询问到达：用刚同步好的手牌重算一次，
+	# 否则界面会停在按旧手牌判的「不可行动」，让玩家把刚摸到的牌再弃一次。
+	_重算不可行动()
+
+
+## 行动询问里已经判成「不可行动」、随后又收到快照时，用手牌重算一次。
+## 只处理 true → false（新手牌能打了）；false 不在这里改成 true，交给正常询问流程。
+func _重算不可行动() -> void:
+	if not _不可行动 or _mode != 1 or _pending_type != GConst.Msg.Action:
+		return
+	if bool(_pending.get("is_extra", false)):
+		return
+	var 新值: bool = _行动允许 == GConst.ActionType.Any and _无可用技能() \
+		and _手里没有能用的牌() and not _可特殊行动()
+	if 新值 == _不可行动:
+		return
+	_不可行动 = 新值
+	_指令提示("你不可行动，点「确定」将手牌弃掉抽到 4 张牌。" if _不可行动 else "轮到你行动了")
+	_刷新交互()
 
 
 ## 等待提示：读「正在等谁回复、还剩多久」
