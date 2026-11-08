@@ -3007,7 +3007,7 @@ func _询问提示文案() -> String:
 		if not 效果.is_empty():
 			询问文案 = 效果
 		else:
-			询问文案 = "发动【%s】" % GConst.skill_name(_skill_ask_id)
+			询问文案 = "【%s】：" % GConst.skill_name(_skill_ask_id)
 	# 式神咒束：选效果、选应战牌、选反击目标都在同一步完成，提示条写操作指引；
 	# 三档全置灰时说明没有可用应战方式，只能取消。
 	# 阴阳转换：提示条用技能说明（与其他响应技能一致）；只有三档全灰时在说明后补一句只能取消。
@@ -3082,7 +3082,7 @@ func _应用选项目标数() -> void:
 		# 提示按实际要弃的张数说，别少说一张（末尾不再写“点确定”，按钮就在旁边）
 		var 提示需牌: int = _skill_need_card
 		var 提示片段: String = (_需选牌提示(提示需牌) + _需选目标提示(_skill_need_target)).trim_suffix("，")
-		_指令提示("发动【%s】%s" % [
+		_指令提示("【%s】：%s" % [
 			GConst.skill_name(技能号), ("：" + 提示片段) if not 提示片段.is_empty() else "",
 		])
 		_刷新交互()
@@ -3464,7 +3464,7 @@ func _进入额外行动(causes: Array, 可发动: Array, 允许: Array = [], ui
 		if 效果提示.is_empty():
 			效果提示 = GConst.skill_desc(唯一)
 		if 效果提示.is_empty():
-			_指令提示("发动【%s】" % GConst.skill_name(唯一))
+			_指令提示("【%s】：" % GConst.skill_name(唯一))
 		else:
 			_指令提示(效果提示)
 	else:
@@ -8053,7 +8053,7 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	elif not 指示提示.is_empty():
 		_指令提示(指示提示)
 	elif 选牌来源 == GConst.CardSource.HandAndBasicEffect:
-		_指令提示("发动【%s】：%s%s再在技能栏里选要%s的基础效果" % [
+		_指令提示("【%s】：%s%s再在技能栏里选要%s的基础效果" % [
 			GConst.skill_name(技能号), _需选牌提示(需牌), _需选目标提示(需目标), _基础效果动作(技能号),
 		])
 	else:
@@ -8062,7 +8062,7 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		if 选牌提示.is_empty():
 			选牌提示 = _需选牌提示(需牌)
 		var 提示段: String = (选牌提示 + _需选目标提示(需目标)).trim_suffix("，")
-		_指令提示("发动【%s】%s" % [
+		_指令提示("【%s】：%s" % [
 			GConst.skill_name(技能号), ("：" + 提示段) if not 提示段.is_empty() else "",
 		])
 	_切换收尾(切换来源.换技能)
