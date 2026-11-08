@@ -9710,6 +9710,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _元素射击头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _元素射击索拉头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _圣愈头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _预览伤害头像提示()
@@ -10349,6 +10351,36 @@ func _元素射击头像提示() -> Dictionary:
 		if pid < 0:
 			continue
 		if 火:
+			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 1]
+		else:
+			out[pid] = "%d 攻击伤害" % 原伤害
+	return out
+
+## 游击士【元素射击*索拉】（3802）：攻击宣告①移除 1 个【子弹】，按子弹系别追加效果。
+## 火系子弹＝本次攻击伤害 +1，所以被攻击的目标头像写「原伤害划掉 → +1 后的伤害」；
+## 其余系别只写原伤害。子弹还没选、或选的是光/暗但还没选定视为系别时，先按原伤害显示。
+## 原伤害由服务端随询问下发 preview_base（荒神之力已在宣告前并进 harm）。
+func _元素射击索拉头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_元素射击SORA:
+		return out
+	var 原伤害: int = int(_pending.get("preview_base", 0))
+	if 原伤害 <= 0:
+		return out
+	# 选中的【子弹】是盖牌，进 _sel_cards；光/暗要再看「视为系别」选项选了什么
+	var 系别: int = 0
+	if not _sel_cards.is_empty():
+		var 子弹: GCard = Data.get_card(int(_sel_cards[0]))
+		if 子弹 != null:
+			系别 = 子弹.element_enum()
+	if (系别 == GConst.CardElement.Light or 系别 == GConst.CardElement.Darkness) \
+			and not _已选参数.is_empty():
+		系别 = int(_已选参数[0])
+	for 目标: Variant in _pending.get("preview_ids", []):
+		var pid: int = int(目标)
+		if pid < 0:
+			continue
+		if 系别 == GConst.CardElement.Fire:
 			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 1]
 		else:
 			out[pid] = "%d 攻击伤害" % 原伤害

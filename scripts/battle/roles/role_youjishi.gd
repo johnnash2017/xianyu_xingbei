@@ -1,4 +1,4 @@
-extends BattleRole
+﻿extends BattleRole
 ## 游击士（roleID 38）—— 3.5 星 / 特典 / 技
 ## 指示物：槽 2 盖牌【子弹】（上限见角色表）；开局从牌库顶取 6 张面朝下作为【子弹】。
 ## 技能：
@@ -199,7 +199,11 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		# 光/暗子弹「视为任一系别」也合并在同一次询问里：五个系别选项一直下发，
 		# 客户端只在选中光/暗子弹时点亮，普通子弹直接确定。
 		if not engine.has_reply():
-			询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.Cover, _视为系别选项())
+			# 预览：把「本次攻击伤害」和攻击目标随询问下发 —— 火系子弹会 +1，
+			# 客户端据此在目标头像上写「原伤害划掉 → 加 1 后的伤害」
+			询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.Cover, _视为系别选项(),
+				0, "", [], true, 0, -1, [], -1, {}, int((ctx.get("harm", {}) as Dictionary).get("point", 0)),
+				GConst.HarmType.Attack, false, [int(ctx.get("dst", -1))])
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var cid: int = _取盖牌(r.get("card_ids", []))
