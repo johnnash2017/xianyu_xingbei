@@ -232,7 +232,7 @@ func 伤害摸牌替换(pid: int) -> int:
 	var 牌: int = int(堆.pop_back())
 	表["counter"] = 堆.size()
 	# 有人因伤害摸牌时改从【预言】堆拿走 1 张：战斗日志写清谁从谁的预言堆摸走，并播技能发动
-	_日志末日("从", "摸走", pid, 1)
+	_日志末日("摸走", pid, 1)
 	notice_skill(MO_RI_YU_YAN, [pid])
 	# 最后 1 张被拿走的这一次伤害结算完才翻面：先记标记，等 p_harm_end（伤害流水线最后一步）
 	# 再压翻面钩子。原来在这里直接 push 钩子，但没把 _翻面步 置 1，钩子跑进去什么都不做，
@@ -688,7 +688,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 						放入数 += 1
 				表2["pile"] = 堆2
 				表2["counter"] = 堆2.size()
-				_日志末日("在", "放入", player.id, 放入数)
+				_日志末日("放入", player.id, 放入数)
 				engine._broadcast_game()
 		return SUCCESS
 	# 献祭：系别已在二级技能栏里选好，直接结算
@@ -709,7 +709,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			# 同系：移除该预言，我方战绩区 +1 宝石
 			堆3.pop_back()
 			表3["counter"] = 堆3.size()
-			_日志末日("从", "移除", player.id, 1)
+			_日志末日("移除", player.id, 1)
 			engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 			engine.to_discard([牌], {"owner": player.id, "source": "other", "cause": XIAN_JI})
 		else:
@@ -720,8 +720,8 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				堆3.append(int(顶[0]))
 				表3["pile"] = 堆3
 				表3["counter"] = 堆3.size()
-				_日志末日("从", "移除", player.id, 1)
-				_日志末日("在", "放入", player.id, 1)
+				_日志末日("移除", player.id, 1)
+				_日志末日("放入", player.id, 1)
 				player.add_hand_cards([牌])
 				engine._broadcast_game()
 		engine._broadcast_game()
@@ -802,7 +802,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 表: Dictionary = engine.取场卡(末日预言名)
 		表["pile"] = 新堆
 		表["counter"] = 新堆.size()
-		_日志末日("在", "放入", player.id, 新堆.size())
+		_日志末日("放入", player.id, 新堆.size())
 		_重算手牌上限()
 		_翻面步 = 0
 		engine.解除不爆牌(player.id)
@@ -842,13 +842,14 @@ func _称号(pid: int) -> String:
 
 
 ## 【末日预言】牌堆移动日志：[谁]从/在[谁]的【末日预言】摸走/移除/放入 X 张牌
-func _日志末日(前缀: String, 动作: String, 操作者: int, 数: int) -> void:
+## 动作 是文本表 id 的后缀（日志_末日预言_摸走 / _放入 / _移除），句子本身不写在代码里。
+func _日志末日(动作: String, 操作者: int, 数: int) -> void:
 	if 数 <= 0:
 		return
 	engine.broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Discard,
-		"txt": GConst.文本("日志_末日预言展示") % [
-			_称号(操作者), 前缀, _称号(player.id), 动作, 数],
+		"txt": GConst.文本("日志_末日预言_" + 动作) % [
+			_称号(操作者), _称号(player.id), 数],
 		"id": player.id,
 	})
 
