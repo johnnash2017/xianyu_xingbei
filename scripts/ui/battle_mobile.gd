@@ -2757,6 +2757,9 @@ func _选项源_嵌套(嵌套: Array) -> Array:
 			"牌白": _子id(o.get("cards", {})),
 			"需牌": int(o.get("need_card", 0)),
 			"需目标": int(o.get("need_target", 0)),
+			# 选项自带的混选张数（如美杜莎两个分支：0 手牌 / 1 手牌，都 1 张盖牌）
+			"需盖牌": int(o.get("cover_need", 0)),
+			"手牌数": int(o.get("hand_need", -1)),
 			"可用": bool(o.get("enabled", true)),
 			"目标白名单": _子id(o.get("targets", {})),
 			"预览牌": _子id(o.get("preview_cards", {})),
