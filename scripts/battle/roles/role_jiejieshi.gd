@@ -620,10 +620,10 @@ func p_fu_mo_ask(ctx: Dictionary) -> int:
 					return SUCCESS
 				ctx[键_伏魔] = 1
 				if not engine.has_reply():
-					# 一次问完：选目标对手 + 确认＝发动；取消＝不发动。提示用技能说明第一段
+					# 一次问完：选目标对手 + 确认＝发动；取消＝不发动。提示用完整技能说明
 					询问(player.id, FU_MO_JING, 0, 1, GConst.CardSource.Hand, [], 0, "", [],
 						true, 0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0,
-						_伏魔_发动提示())
+						GConst.skill_desc(FU_MO_JING))
 					return WAIT
 			1:
 				if not engine.has_reply():
@@ -678,10 +678,10 @@ func p_harm_end(ctx: Dictionary) -> int:
 					return SUCCESS
 				ctx[键_伏魔尾] = 1
 				if not engine.has_reply():
-					# 后半段（移除我方战绩区 1 星石 + 1 水晶）：提示用技能说明第二段
+					# 后半段（移除我方战绩区 1 星石 + 1 水晶）：同样用完整技能说明
 					询问(player.id, FU_MO_JING, 0, 0, GConst.CardSource.Hand, _星石选项(),
 						0, "", [], true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-						_伏魔_尾提示())
+						GConst.skill_desc(FU_MO_JING))
 					return WAIT
 			1:
 				if not engine.has_reply():
@@ -725,21 +725,6 @@ func _星石选项() -> Array:
 func _荒神_发动提示() -> String:
 	var 说明: String = GConst.skill_desc(HUANG_SHEN_JI_YI)
 	return "【%s】：%s" % [GConst.skill_name(HUANG_SHEN_JI_YI), 说明.get_slice("；", 0).strip_edges()]
-
-
-## 伏魔境第一段（选目标 / 造成 1 点法术伤害）用技能说明的第一段；
-## 第二段（移除星石 + 水晶）用第二段。和荒神祭仪同一口径：只取到「；」为止的那一段。
-func _伏魔_发动提示() -> String:
-	var 说明: String = GConst.skill_desc(FU_MO_JING)
-	return "【%s】：%s" % [GConst.skill_name(FU_MO_JING), 说明.get_slice("；", 0).strip_edges()]
-
-
-func _伏魔_尾提示() -> String:
-	var 说明: String = GConst.skill_desc(FU_MO_JING)
-	var 第二段: String = 说明.get_slice("；", 1).strip_edges()
-	if 第二段.is_empty():
-		第二段 = 说明
-	return "【%s】：%s" % [GConst.skill_name(FU_MO_JING), 第二段]
 
 
 ## 加【祭】；真的加上去了才触发【伏魔境】（返回 true＝压了询问钩子，调用方要 return URGENT）
