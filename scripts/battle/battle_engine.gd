@@ -5878,6 +5878,12 @@ func 取消技能行动() -> void:
 ## 换完手牌重新进入行动阶段让玩家拿新牌继续行动。
 ## 客户端在「技能栏没可用技能、手牌全打不出去、特殊行动也做不了」时提示玩家点「确定」触发
 func _do_unactional(cur: BattlePlayer) -> int:
+	# 战斗日志：宣布不可行动本身也是一次行动声明
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Skill,
+		"txt": "%s宣称不可行动" % _称号(cur),
+		"id": cur.id,
+	})
 	# 不结束回合：换完手牌重新进入行动阶段
 	push(SActionPhase.new())
 	var old: Array = cur.hand_cards.duplicate()
@@ -5891,6 +5897,9 @@ func _do_unactional(cur: BattlePlayer) -> int:
 	# 摸 4 张一般不会超上限，但手牌上限小于 4 的角色仍要照常结算爆牌
 	push(SHandOverflow.new())
 	draw(cur.id, 4)
+	# 关键：摸完立刻发一次完整快照。否则客户端手里还是「弃牌后的空/旧手牌」，
+	# 下一条行动询问会按旧数据重新判成「不可行动」，让玩家第二次把刚摸到的牌全弃掉。
+	_broadcast_game()
 	return CONTINUE
 
 
