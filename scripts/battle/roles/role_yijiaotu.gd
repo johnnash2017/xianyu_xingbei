@@ -362,7 +362,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 		var 预定: String = str(场.get("front", ""))
 		_翻面步 = 2
 		if 预定.is_empty():
-			engine.报错("【末日预言】缺少 front，无法翻面（正常只能由【放逐】放置）", player.id)
+			engine.报错(GConst.文本("报错_末日预言缺front"), player.id)
 			_翻面步 = 0
 			return SUCCESS
 		return _翻面为(预定)
@@ -416,7 +416,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 				选系 = 系2
 				break
 		if not _展示可发动(选系):
-			engine.报错("【%s】没有可发动的系别，展示取消" % _在展示, player.id)
+			engine.报错(GConst.文本("报错_展示没有可发动系别") % _在展示, player.id)
 			_展示步 = 0
 			_展示已用.clear()
 			_翻面步 = 0
@@ -798,7 +798,7 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 			if 取 >= 0 and 新堆.size() < 6:
 				新堆.append(取)
 		if 新堆.size() != 6:
-			engine.报错("【放逐】没能凑齐 6 张【预言】（实际 %d 张）" % 新堆.size(), player.id)
+			engine.报错(GConst.文本("报错_放逐预言不足") % 新堆.size(), player.id)
 		var 表: Dictionary = engine.取场卡(末日预言名)
 		表["pile"] = 新堆
 		表["counter"] = 新堆.size()

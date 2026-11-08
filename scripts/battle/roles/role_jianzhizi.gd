@@ -536,24 +536,13 @@ func _剑守誓言选项(牌表: Array) -> Array:
 	var 选项: Array = []
 	for i: int in range(牌表.size()):
 		var 牌: GCard = Data.get_card(int(牌表[i]))
-		var 标签: String = "未知牌"
-		if 牌 != null:
-			标签 = "%s %s" % [牌.card_name, _元素字(牌.element_enum())]
+		if 牌 == null:
+			push_error(GConst.文本("报错_剑守誓言牌不存在") % int(牌表[i]))
+			continue
+		var 标签: String = "%s %s" % [牌.card_name, GConst.element_to_chinese(牌.element_enum())]
 		# card_id 只用于客户端悬停选项时摊出牌面；服务端仍按选项值结算。
 		选项.append({"value": i + 1, "label": 标签, "card_id": int(牌表[i])})
 	return 选项
-
-
-func _元素字(元素: int) -> String:
-	match 元素:
-		GConst.CardElement.Earth: return "地"
-		GConst.CardElement.Wind: return "风"
-		GConst.CardElement.Fire: return "火"
-		GConst.CardElement.Water: return "水"
-		GConst.CardElement.Thunder: return "雷"
-		GConst.CardElement.Light: return "光"
-		GConst.CardElement.Darkness: return "暗"
-	return ""
 
 
 ## 10803 结算：选中 1 张加入手牌，其余进弃牌堆；这次弃置的整批牌里有法术牌时

@@ -307,7 +307,10 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			# card_id 只用于客户端悬停选项时摊出牌面（同剑之子【剑守誓言】），服务端按选项值结算。
 			# 取消或超时都按「不获得」：空 args 时 take_skill_reply() 返回 false。
 			var 弃牌: GCard = Data.get_card(cid3) if cid3 >= 0 else null
-			var 牌名: String = 弃牌.card_name if 弃牌 != null else "这张牌"
+			if 弃牌 == null:
+				push_error(GConst.文本("报错_异象剑牌不存在"))
+				return SUCCESS
+			var 牌名: String = 弃牌.card_name
 			询问(player.id, YI_XIANG_JIAN, 0, 0, GConst.CardSource.Hand, [
 				{"value": 1, "label": GConst.按钮原文(YI_XIANG_JIAN, 0) % 牌名, "card_id": cid3},
 				{"value": 2, "label": GConst.按钮原文(YI_XIANG_JIAN, 1)},

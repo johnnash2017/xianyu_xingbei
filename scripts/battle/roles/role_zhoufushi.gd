@@ -260,7 +260,7 @@ func _问一次转移() -> int:
 	var dsts: Array = r.get("dst_ids", [])
 	var src: BattlePlayer = engine.p(int(dsts[0])) if dsts.size() == 1 else null
 	if src == null or src.id == player.id or src.cross_num <= 0:
-		engine.报错("【咒符-冻天】提交的治疗来源不合法", player.id)
+		engine.报错(GConst.文本("报错_咒符冻天治疗来源不合法"), player.id)
 		_转移次数 = 0
 		return SUCCESS
 	src.sub_cross_num(1)
@@ -418,7 +418,7 @@ func _解析魑魅符() -> bool:
 		return false
 	var 选: int = int(args[0])
 	if 选 != 咒符_火璃 and 选 != 咒符_冻天:
-		engine.报错("【魑魅魍魉】提交的咒符不合法", player.id)
+		engine.报错(GConst.文本("报错_魑魅魍魉咒符不合法"), player.id)
 		_魑魅已用 = true
 		return false
 	_魑魅符 = 选
@@ -439,7 +439,7 @@ func _解析魑魅目标() -> int:
 		return 解析_返回
 	var 选: int = int(args[0])
 	if 选 != 咒符_单目标 and 选 != 咒符_双目标:
-		engine.报错("【魑魅魍魉】提交的目标档不合法", player.id)
+		engine.报错(GConst.文本("报错_魑魅魍魉目标档不合法"), player.id)
 		_魑魅已用 = true
 		return 解析_失败
 	var 重塑: bool = 选 == 咒符_双目标
@@ -447,20 +447,20 @@ func _解析魑魅目标() -> int:
 	var dsts: Array = r.get("dst_ids", [])
 	var cid: int = int(cards[0]) if cards.size() == 1 else -1
 	if cid < 0 or not player.有盖牌(cid) or dsts.size() != (2 if 重塑 else 1):
-		engine.报错("【魑魅魍魉】提交的牌或目标不合法", player.id)
+		engine.报错(GConst.文本("报错_魑魅魍魉牌或目标不合法"), player.id)
 		_魑魅已用 = true
 		return 解析_失败
 	var 目标: Array[int] = []
 	for d: Variant in dsts:
 		var 目标id: int = int(d)
 		if engine.p(目标id) == null or 目标.has(目标id):
-			engine.报错("【魑魅魍魉】提交的目标不合法", player.id)
+			engine.报错(GConst.文本("报错_魑魅魍魉目标不合法"), player.id)
 			_魑魅已用 = true
 			return 解析_失败
 		目标.append(目标id)
 	if 重塑:
 		if player.get_energy() < 1:
-			engine.报错("【魑魅魍魉】没有能量发动【咒力重塑】", player.id)
+			engine.报错(GConst.文本("报错_魑魅魍魉没有能量"), player.id)
 			_魑魅已用 = true
 			return 解析_失败
 		player.remove_energy(1)

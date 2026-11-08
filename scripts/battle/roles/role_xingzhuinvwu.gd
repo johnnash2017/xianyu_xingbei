@@ -314,7 +314,7 @@ func _p_群星启示(action: Dictionary) -> int:
 	# 模式①：先把这 1 张手牌面朝下放成【卢恩】，再选律法
 	var 实例: int = player.取出一张手牌(int(cards[0]))
 	if 实例 < 0:
-		engine.报错("【群星启示】要放成【卢恩】的手牌已不在手里", player.id)
+		engine.报错(GConst.文本("报错_群星启示卢恩牌不在手牌"), player.id)
 		return SUCCESS
 	engine.add_cover(player.id, [实例], player.id, QUN_XING_QI_SHI)
 	_步 = 步_启示选律法
@@ -502,7 +502,7 @@ func _启示移除卢恩(选择: Array, 法号: int) -> int:
 		if 实例 >= 0:
 			卢恩表.append(实例)
 	if 卢恩表.is_empty():
-		engine.报错("【群星启示】选中的牌已经不在盖牌区", player.id)
+		engine.报错(GConst.文本("报错_群星启示牌不在盖牌区"), player.id)
 		return SUCCESS
 	_展示(卢恩表)
 	for 实例: int in 卢恩表:
@@ -697,7 +697,7 @@ func _律法效果() -> int:
 			engine.set_team_gem(player.color, engine.team_gem[player.color] + int(律["值"]))
 			engine._broadcast_game()
 		_:
-			engine.报错("【群星启示】未知的律法效果：%s" % 种类, player.id)
+			engine.报错(GConst.文本("报错_群星启示未知律法效果") % 种类, player.id)
 	_律法下标 += 1
 	_步 = 步_律法效果
 	return URGENT
@@ -743,19 +743,21 @@ func _效果提示(律: Dictionary) -> String:
 ## 律法发动选项文案：文本表「通用_发动律法」填【律法：X】；表没加载到就按同句式兜底
 func _发动律法文案(法号: int) -> String:
 	var 名: String = str(GConst.律法名.get(法号, ""))
-	var 模板: String = GConst.文本("通用_发动律法", false)
-	if 模板.contains("%s"):
-		return 模板.replace("%s", 名)
-	return "发动【律法：%s】" % 名
+	var 模板: String = GConst.文本("通用_发动律法")
+	if not 模板.contains("%s"):
+		push_error("文本表 通用_发动律法 缺少 %s 占位符")
+		return ""
+	return 模板.replace("%s", 名)
 
 
 ## 移除律法选项文案：文本表「通用_移除律法」填【律法：X】；表没加载到就按同句式兜底
 func _移除律法文案(法号: int) -> String:
 	var 名: String = str(GConst.律法名.get(法号, ""))
-	var 模板: String = GConst.文本("通用_移除律法", false)
-	if 模板.contains("%s"):
-		return 模板.replace("%s", 名)
-	return "移除【律法：%s】" % 名
+	var 模板: String = GConst.文本("通用_移除律法")
+	if not 模板.contains("%s"):
+		push_error("文本表 通用_移除律法 缺少 %s 占位符")
+		return ""
+	return 模板.replace("%s", 名)
 
 
 func _不发动文案() -> String:
@@ -883,7 +885,7 @@ func _黄金律交换() -> int:
 	var 盖实例: int = player.盖牌实例(盖)
 	_步 = 0
 	if 手实例 < 0 or 盖实例 < 0:
-		engine.报错("【黄金律】交换的牌已不在原区域", player.id)
+		engine.报错(GConst.文本("报错_黄金律交换牌不在原区域"), player.id)
 		return SUCCESS
 	engine.remove_cover(player.id, [盖实例], player.id, HUANG_JIN_LV)
 	player.add_hand_cards([盖实例])

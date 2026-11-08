@@ -133,7 +133,7 @@ func _p_结界仪式(action: Dictionary) -> int:
 		if cid >= 0:
 			放.append(cid)
 	if 放.size() != 2 or 放[0] == 放[1]:
-		engine.报错("【结界仪式】提交的牌已不在手牌", player.id)
+		engine.报错(GConst.文本("报错_结界仪式牌不在手牌"), player.id)
 		return SUCCESS
 	notice_skill(JIE_JIE_YI_SHI, [player.id])
 	engine.broadcast(GConst.Msg.Card, {
@@ -153,7 +153,7 @@ func _p_禁魔境(action: Dictionary) -> int:
 	var dsts: Array = action.get("dst_ids", [])
 	var dst: int = int(dsts[0]) if not dsts.is_empty() else -1
 	if dst < 0 or not player.remove_token(JI_SLOT, 1):
-		engine.报错("【禁魔境】目标或【祭】不成立", player.id)
+		engine.报错(GConst.文本("报错_禁魔境目标或祭不成立"), player.id)
 		return SUCCESS
 	notice_skill(JIN_MO_JING, [dst])
 	# 同一张【绝界】只存在一份：加场卡按 id 顶掉旧的（转移＝换个 attached / 重新放置）
