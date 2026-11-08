@@ -452,7 +452,11 @@ func _白二_结界选项() -> Array:
 		var 卡: GCard = Data.get_card(cid)
 		if 卡 == null:
 			continue
-		out.append({"value": cid, "label": "将【结界】%s 加入手牌" % 卡.card_name, "card_id": cid})
+		var 系名: String = GConst.element_to_chinese(卡.element_enum())
+		var 标签: String = "将【结界】%s 加入手牌" % 卡.card_name
+		if not 系名.is_empty() and 系名 != "?":
+			标签 = "将【结界·%s】%s 加入手牌" % [系名, 卡.card_name]
+		out.append({"value": cid, "label": 标签, "card_id": cid})
 	return out
 
 
