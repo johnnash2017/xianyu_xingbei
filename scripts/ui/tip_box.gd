@@ -1,4 +1,4 @@
-class_name 说明提示框
+﻿class_name 说明提示框
 extends Control
 ## 通用悬浮说明框：深色圆角底板 + BBCode 富文本，摆在锚点正上方并夹在宿主控件内。
 ## 战斗界面（悬停头像 / 技能按钮）与选角界面（悬停角色卡）共用同一套外观与排版 ——
@@ -8,6 +8,9 @@ extends Control
 ## 再调 显示() / 显示角色说明()；框会挂在宿主下，共用宿主的坐标与缩放。
 ## 注意：本节点必须是 Control（CanvasItem）——若换成普通 Node，子控件不继承宿主缩放
 ## （会落到画布空间），_摆 算出的本地坐标就对不上，提示框会摆到离目标很远的错位处。
+##
+## 整块提示只是「看」的：所有子节点都设 mouse_filter = IGNORE（见 _全忽略），
+## 不参与点击 / mouse_entered / mouse_exited，也不会挡住它下面的控件。
 
 ## 角色说明的默认排版（战斗 / 选角共用；宽度 / 字号改这里，整体大小走设置窗的「技能说明尺寸」）
 const 角色说明宽度: float = 684.0
@@ -103,6 +106,9 @@ func _ready() -> void:
 	# 否则框盖到被悬停的头像 / 技能按钮上时，鼠标一挪进去就把下面的控件判成「离开」，
 	# 悬停说明被收起、鼠标又回到头像上重新弹出 —— 表现为框疯狂闪（分块说明更高，更容易碰到）
 	框.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 只设根 / 底板不够：mouse_filter 是逐节点的，子节点默认 STOP 仍然会吃鼠标。
+	# 整棵子树递归设成 IGNORE，点击 / mouse_entered / mouse_exited 都不会再在这块提示上触发。
+	_全忽略(self)
 	# 收起缓冲的计时器
 	_收起计时 = Timer.new()
 	_收起计时.one_shot = true
@@ -123,6 +129,19 @@ func _ready() -> void:
 ## 底板样式（PanelContainer 的 panel）；不是 StyleBoxFlat（换成九宫格贴图）时返回 null
 func _底板样式() -> StyleBoxFlat:
 	return 框.get_theme_stylebox("panel") as StyleBoxFlat
+
+
+## 整棵子树都设成「不吃鼠标」：提示框只负责看，所有点击 / 进入 / 离开都放给下面的控件。
+## 只设根节点不够 —— mouse_filter 是逐节点的，子节点默认 STOP 照样会挡住鼠标信号。
+## 新挂进框里的内容（分块、卡面预览等）在 add_child 之后都要再过一遍。
+## 顺便把键盘焦点也关掉：提示框里的按钮 / 富文本不该被 Tab 聚焦，也不该响应回车。
+func _全忽略(节点: Node) -> void:
+	if 节点 is Control:
+		var 控件: Control = 节点
+		控件.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		控件.focus_mode = Control.FOCUS_NONE
+	for 子: Node in 节点.get_children():
+		_全忽略(子)
 
 
 ## 换提示框描边。底板的 StyleBoxFlat 是 resource_local_to_scene，每个提示框实例一份，
@@ -269,6 +288,7 @@ func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) 
 			新容器.add_child(标签)
 	块容器 = 新容器
 	框.add_child(块容器)
+	_全忽略(块容器)
 	_块角色号 = 角色号
 	_块缩放 = 缩放
 	_块要显示 = true
@@ -394,6 +414,7 @@ func 显示内容(内容节点: Control, 图标矩形: Rect2) -> void:
 	内容 = 内容节点
 	文本.visible = false
 	框.add_child(内容)
+	_全忽略(内容)
 	_轮次 += 1
 	框.visible = true
 	_摆(图标矩形)
@@ -529,6 +550,9 @@ func _折半行距(原值: int) -> int:
 func _摆(图标矩形: Rect2) -> void:
 	if not 框.visible or not is_inside_tree():
 		return
+	# 摆之前再过一遍：卡面预览之类的内容节点可能在挂进来之后才建子节点，
+	# 这里兜住所有后来者，保证整块提示始终不吃鼠标
+	_全忽略(框)
 	var 主: Control = 宿主()
 	# 换成更短的说明时 size 不会自己缩：Godot 只保证 size ≥ 最小尺寸，最小尺寸变小它不动。
 	# 先按当前内容重置回最小尺寸，再量 —— 否则先看过（高的）角色说明，再指技能，框会一直那么大。
