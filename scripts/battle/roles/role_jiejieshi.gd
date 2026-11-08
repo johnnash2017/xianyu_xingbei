@@ -16,8 +16,9 @@ extends BattleRole
 ##    take_from_hand(..., true) 会压「展示手牌」钩子，压了钩子就 return URGENT，别让行动结束响应插到前面。
 ## 3. 8202 在 p_before_attack 改 harm.point：后面的应战提示、荒神祭仪的询问都拿得到加后的伤害
 ##    （同游击士【元素射击】3802 在宣告阶段改点数的口径）。
-## 4. 8203 是响应：先问是否发动，确认才 +1【祭】；额外移除 3 点【祭】是第二个问题（取消＝不做前半段），
-##    弃 1 张牌走引擎通用弃牌状态 SRequestDiscard（强制、超时按手牌顺序补）。
+## 4. 8203 是响应：先问是否发动，确认才 +1【祭】；额外移除 3 点【祭】、弃 1 张牌、移除 1 个【结界】
+##    合成**一次**询问（need_card=2 + cover_need=1 + cover_max=1 → 1 张手牌 + 1 个结界），
+##    取消＝不额外移除。结算顺序固定：移除 3 祭 → 弃手牌 → 移除结界 → 横置。
 ## 5. 8204 摸场卡照圣庭检察士【狂信徒】3901：engine.加场卡 写 id / owner / attached。
 ## 6. 8205 是 p_lose_morale 里的响应，照天使【神之庇护】706 直接在本钩子里询问；
 ##    让别人弃牌走 engine.ask_respond(RespondType.Discard)（矜贵之女【友情羁绊】7805），
@@ -47,6 +48,8 @@ const 星石_水晶: int = 2
 
 ## ctx 里的分步键：每个钩子一份，互不干扰
 const 键_荒神: String = "_jiejie_荒神"
+## 荒神祭仪后半段一次提交时选中的那张【结界】（实例号）
+const 键_荒神_盖: String = "_jiejie_荒神盖"
 const 键_琉璃: String = "_jiejie_琉璃"
 const 键_琉璃_候选: String = "_jiejie_琉璃候选"
 const 键_琉璃_弃牌人: String = "_jiejie_琉璃弃牌人"
@@ -231,35 +234,58 @@ func p_timeline_1(ctx: Dictionary) -> int:
 					return SUCCESS
 				ctx[键_荒神] = 3
 				if not engine.has_reply():
-					询问(player.id, HUANG_SHEN_JI_YI, 0, 0, GConst.CardSource.Hand, [], 0, "", [],
-						true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-						提示原文(HUANG_SHEN_JI_YI, 1))
+					# 一次问完：确认额外移除 3 祭 + 选 1 张手牌弃掉 + 选 1 个【结界】移除。
+					# need_card=2 + cover_need=1 + cover_max=1 → 正好 1 张手牌 + 1 个盖牌；
+					# 取消＝不额外移除（保留前面 +1 祭）。
+					询问(player.id, HUANG_SHEN_JI_YI, 2, 0, GConst.CardSource.HandOrCover, [], 2, "", [],
+						true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1,
+						提示原文(HUANG_SHEN_JI_YI, 1), -1, "", [], [], 1)
 					return WAIT
 			3:
 				if not engine.has_reply():
 					return WAIT
 				var r2: Dictionary = take_skill_reply_full()
-				if not _是发动(r2) or not player.remove_token(JI_SLOT, 3):
+				if not _是发动(r2):
 					ctx[键_荒神] = STEP_DONE
 					return SUCCESS
+				var 提交: Array = r2.get("card_ids", [])
+				var 手卡: int = -1
+				var 盖卡: int = -1
+				for c: Variant in 提交:
+					var cid2: int = int(c)
+					if 手卡 < 0 and player.有手牌(cid2):
+						手卡 = cid2
+					elif 盖卡 < 0 and player.有盖牌(cid2):
+						盖卡 = cid2
+				if 提交.size() != 2 or 手卡 < 0 or 盖卡 < 0:
+					# 硬提交了不合法的组合（如两张手牌 / 两张盖牌）：驳回重问，不静默换牌
+					engine.send(player.id, GConst.Msg.ErrorInput,
+						{"error_type": GConst.CmdType.Respond, "commands": []})
+					ctx[键_荒神] = 2
+					continue
+				var 手实例: int = player.手牌实例(手卡)
+				var 盖实例: int = player.盖牌实例(盖卡)
+				if 手实例 < 0 or 盖实例 < 0 or not player.remove_token(JI_SLOT, 3):
+					ctx[键_荒神] = STEP_DONE
+					return SUCCESS
+				ctx[键_荒神_盖] = 盖实例
 				notice_skill(HUANG_SHEN_JI_YI, [player.id])
 				engine._broadcast_game()
-				# 顺序照原文：先弃 1 张牌，再问移除哪个【结界】、最后【横置】
+				# 结算顺序照原文：移除 3 点【祭】→ 弃 1 张牌 → 移除 1 个【结界】→ 横置
+				engine.take_from_hand(player.id, [手实例])
+				engine.to_discard([手实例], {"owner": player.id, "source": "hand",
+					"cause": HUANG_SHEN_JI_YI, "face_up": false})
+				engine._log_discard(player.id, [手实例])
 				ctx[键_荒神] = 4
-				engine.push(BattleEngine.SRequestDiscard.new(player.id, 1, 0, HUANG_SHEN_JI_YI))
 				return URGENT
 			4:
+				var 移: int = int(ctx.get(键_荒神_盖, -1))
 				ctx[键_荒神] = 5
-				if not engine.has_reply():
-					_问选结界(HUANG_SHEN_JI_YI)
-					return WAIT
+				if 移 >= 0:
+					_移除结界并弃置([移], HUANG_SHEN_JI_YI)
+				return URGENT
 			5:
-				if not engine.has_reply():
-					return WAIT
-				var cid: int = _取询问盖牌()
 				ctx[键_荒神] = STEP_DONE
-				if cid >= 0:
-					_移除结界并弃置([cid], HUANG_SHEN_JI_YI)
 				_横置并查破散()
 				return SUCCESS
 			_:

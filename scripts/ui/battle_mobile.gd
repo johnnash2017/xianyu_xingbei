@@ -11473,10 +11473,19 @@ func _确定_技能询问() -> bool:
 	# 没弃牌就一个人都不用选、弃了就必须正好选 1 名（见 _目标数合法）；其余按服务端给的需求数
 	var 目标够: bool = 免选目标 or (_目标数合法() if _目标随牌阈值() > 0 \
 		else (_sel_players.size() >= _skill_ask_need_target if _skill_ask_need_target > 0 else true))
+	# 手牌 + 盖牌混选时，至少有几张必须是盖牌（如荒神祭仪：1 张手牌 + 1 个【结界】一次交上来）。
+	# 发动技能那条一直有这个校验，技能询问这条原来漏了，会放任「两张手牌」提交后被服务端驳回。
+	var 盖够: bool = true
+	if _skill_cover_need > 0:
+		var 盖选中: int = 0
+		for c: Variant in _sel_cards:
+			if _is_my_cover(int(c)):
+				盖选中 += 1
+		盖够 = 盖选中 >= _skill_cover_need
 	# 二级技能栏：先在技能栏里选一个效果，再选够牌 / 目标，才让点「确定」
 	if _二级栏:
-		return not (牌够 and 目标够 and _二级选中 >= 0)
-	return not (牌够 and 目标够)
+		return not (牌够 and 目标够 and 盖够 and _二级选中 >= 0)
+	return not (牌够 and 目标够 and 盖够)
 
 
 ## 发动技能（mode 4）
