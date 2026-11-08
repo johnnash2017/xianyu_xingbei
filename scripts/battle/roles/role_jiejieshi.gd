@@ -452,7 +452,7 @@ func _白二_结界选项() -> Array:
 		var 卡: GCard = Data.get_card(cid)
 		if 卡 == null:
 			continue
-		out.append({"value": cid, "label": 卡.card_name, "card_id": cid})
+		out.append({"value": cid, "label": "将【结界】%s 加入手牌" % 卡.card_name, "card_id": cid})
 	return out
 
 
