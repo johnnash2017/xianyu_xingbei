@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_indent"]
+content_margin_left = 32.0
+
+[node name="技能行" type="RichTextLabel"]
+mouse_filter = 2
+theme_override_styles/normal = SubResource("StyleBoxEmpty_indent")
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+autowrap_mode = 3
+theme_override_constants/line_separation = -3
+theme_override_constants/paragraph_separation = 0
+theme_override_font_sizes/normal_font_size = 16
+text = "【类型】技能名：说明文字（运行时替换）"

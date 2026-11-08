@@ -15,9 +15,12 @@ extends Control
 ## 角色说明的默认排版（战斗 / 选角共用；宽度 / 字号改这里，整体大小走设置窗的「技能说明尺寸」）
 const 角色说明宽度: float = 684.0
 const 角色说明字号: int = 16
-## 专属卡牌分组框 / 分组里每条技能说明的预制体（结构 / 标题字号 / 间距 / 内边距都在场景里调）
+## 专属卡牌分组框 / 分组里每条技能 / 普通说明行（标题、姓名、脚注）/ 正文技能行的预制体
+## （结构、字号、缩进、间距都在场景里调）
 const 分组框预制: PackedScene = preload("res://scenes/prefabs/ui/SkillGroupBox.tscn")
 const 分组技能预制: PackedScene = preload("res://scenes/prefabs/ui/SkillGroupItem.tscn")
+const 说明行预制: PackedScene = preload("res://scenes/prefabs/ui/SkillTipRow.tscn")
+const 正文行预制: PackedScene = preload("res://scenes/prefabs/ui/SkillTipBodyRow.tscn")
 ## 「原版说明（被角色改写后列出来对照）」的删除线：用字体自带的 [s]，位置 / 长度天然准；
 ## 只是它默认半透明（主题常量 strikethrough_alpha=50，见 _ready 改成不透明），不然压在灰字上看不清。
 ## 文字整块再压到 90%（角色名 36→32、标题 27→24、正文 18→16）
@@ -41,9 +44,6 @@ const 最大宽比例: float = 0.94
 const 高度阈值比例: float = 0.8
 ## 每次加宽的步长（像素）：一步一量，直到放得下或到上限
 const 加宽步长: float = 120.0
-## 行距减半用的「压到多紧」：默认那截空隙本来就是 0 时（间距全来自字体行高），
-## 往回压这么多像素，保证「减半」看得出效果。
-const 行距下限: int = -3
 
 
 ## 深色圆角底板（结构在 TipBox.tscn 里，可所见即所得地改）
@@ -57,8 +57,9 @@ var 内容: Control = null
 ## 当前显示的是哪个角色 / 哪个缩放档：同一张卡反复悬停时直接不重排
 var _说明角色号: int = -1
 var _说明缩放: float = -1.0
-## 分块内容（专属卡牌分组用的节点树）
-var 块容器: VBoxContainer = null
+## 分块说明的内容容器：角色名 / 分段标题 / 每条技能 / 分组框都放这里。
+## 常驻在 TipBox.tscn（不再运行时拼容器），行间距就是它的 separation，直接在场景里调。
+@export var 块容器: VBoxContainer
 ## 当前显示的分块角色 / 缩放档（同一张卡反复悬停时不再重建）
 var _块角色号: int = -1
 var _块缩放: float = -1.0
@@ -115,10 +116,6 @@ func _ready() -> void:
 	_收起计时.wait_time = 收起缓冲
 	_收起计时.timeout.connect(_真正收起)
 	add_child(_收起计时)
-	文本.add_theme_constant_override("line_separation",
-		_折半行距(文本.get_theme_constant("line_separation")))
-	文本.add_theme_constant_override("paragraph_separation",
-		_折半行距(文本.get_theme_constant("paragraph_separation")))
 	# 默认描边以场景里的底板为准（换了 TipBox.tscn 不用再来改这份代码）
 	var 底板: StyleBoxFlat = _底板样式()
 	if 底板 != null:
@@ -253,8 +250,10 @@ func _命中描边与星数(角色号: int) -> void:
 		星数标签.visible = 星数 != ""
 
 
-## 建分块：一块一块富文本竖着排；配了专属卡牌的分组用 SkillGroupBox.tscn 的预制体
-## （外缩进 / 圆角描边面板 / 标题 / 技能列表都在场景里，可直接在编辑器里调）。
+## 建分块：角色名 / 分段标题 / 每条技能 / 标识物都各是一行（说明行预制体），
+## 配了专属卡牌的分组换成 SkillGroupBox 预制体；行与行之间的间距＝块容器的 separation。
+## 全部结构都在场景里（TipBox.tscn 的 块容器 / SkillTipRow.tscn / SkillGroupBox.tscn），
+## 不在这里拼节点，方便直接在编辑器里调间距。
 ## 宽度固定用 角色说明宽度 —— 不做「一档档加宽重排」（那正是以前抖动 / 错位的来源）。
 func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) -> void:
 	_卸内容()
@@ -263,8 +262,6 @@ func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) 
 	var 描边: Color = 角色技能提示.描边颜色(角色号)
 	if 描边.a <= 0.0:
 		描边 = _默认描边
-	var 新容器: VBoxContainer = VBoxContainer.new()
-	新容器.add_theme_constant_override("separation", 6)
 	for 项: Variant in 块:
 		var d: Dictionary = 项
 		if d.has("分组"):
@@ -281,13 +278,21 @@ func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) 
 				var 条: RichTextLabel = 分组技能预制.instantiate() as RichTextLabel
 				条.text = str(技能).replace("[indent]", "").replace("[/indent]", "")
 				分组框.加技能(条)
-			新容器.add_child(分组框)
+			块容器.add_child(分组框)
 		else:
-			var 标签: RichTextLabel = _新块标签(0)
-			标签.text = str(d.get("文本", ""))
-			新容器.add_child(标签)
-	块容器 = 新容器
-	框.add_child(块容器)
+			var 文本: String = str(d.get("文本", ""))
+			var 条: RichTextLabel
+			if 文本.contains("[indent]"):
+				# 正文技能行：去掉 [indent]（它出现在富文本最开头会先另起一行，等于多一条空行），
+				# 缩进改用正文行预制体 normal StyleBox 的 content_margin_left
+				条 = 正文行预制.instantiate() as RichTextLabel
+				条.text = 文本.replace("[indent]", "").replace("[/indent]", "")
+			else:
+				# 角色名 / 分段标题 / 右下角标识物：不缩进的说明行
+				条 = 说明行预制.instantiate() as RichTextLabel
+				条.text = 文本
+			块容器.add_child(条)
+	块容器.visible = true
 	_全忽略(块容器)
 	_块角色号 = 角色号
 	_块缩放 = 缩放
@@ -314,22 +319,6 @@ func _块显示() -> void:
 	_排重摆(_待摆矩形)
 
 
-## 分块用的富文本标签：字号 / 行距 / 自动换行与整段版一致；不吃鼠标
-func _新块标签(_占位: int = 0) -> RichTextLabel:
-	var 标签: RichTextLabel = RichTextLabel.new()
-	标签.bbcode_enabled = true
-	标签.fit_content = true
-	标签.scroll_active = false
-	标签.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	标签.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	标签.add_theme_font_size_override("normal_font_size", 角色说明字号)
-	标签.add_theme_constant_override("line_separation",
-		_折半行距(标签.get_theme_constant("line_separation")))
-	标签.add_theme_constant_override("paragraph_separation",
-		_折半行距(标签.get_theme_constant("paragraph_separation")))
-	return 标签
-
-
 ## 把这一档宽度下每个标签都定好宽（RichTextLabel 必须同时改 size 才会按新宽度折行）
 func _块总高(宽: float) -> float:
 	if 块容器 == null:
@@ -351,7 +340,9 @@ func _单块高(节点: Node, 宽: float) -> float:
 		var 边距: MarginContainer = 节点
 		var 扣: float = float(边距.get_theme_constant("margin_left")) \
 			+ float(边距.get_theme_constant("margin_right"))
-		var 内高: float = 0.0
+		# 上下边距也算进这一行的高度（说明行的上下留白就在预制体里调）
+		var 内高: float = float(边距.get_theme_constant("margin_top")) \
+			+ float(边距.get_theme_constant("margin_bottom"))
 		for 孙: Node in 边距.get_children():
 			内高 += _单块高(孙, 宽 - 扣)
 		return 内高
@@ -391,14 +382,15 @@ func _单块高(节点: Node, 宽: float) -> float:
 	return 0.0
 
 
-## 释放分块容器
+## 清空分块容器：容器本身是 TipBox.tscn 里的常驻节点，不删，只清掉上一轮的行
 func _清块容器() -> void:
 	_块角色号 = -1
 	if 块容器 == null:
 		return
-	框.remove_child(块容器)
-	块容器.queue_free()
-	块容器 = null
+	for 子: Node in 块容器.get_children():
+		块容器.remove_child(子)
+		子.queue_free()
+	块容器.visible = false
 
 
 func 显示内容(内容节点: Control, 图标矩形: Rect2) -> void:
@@ -534,13 +526,6 @@ func _算角色说明宽度() -> float:
 ## 宿主控件：框挂在它下面，坐标 / 缩放 / 可用范围都按它算
 func 宿主() -> Control:
 	return get_parent() as Control
-
-
-## 把一段现有行距折半；现有值是 0（没额外空隙）就退到下限
-func _折半行距(原值: int) -> int:
-	if 原值 == 0:
-		return 行距下限
-	return int(round(float(原值) * 0.5))
 
 
 ## 摆在图标正上方并夹在宿主内，位置按「宿主的本地坐标」算：

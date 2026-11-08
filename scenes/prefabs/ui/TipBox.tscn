@@ -19,13 +19,14 @@ corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
-[node name="说明提示框" type="Control" node_paths=PackedStringArray("框", "文本", "星数标签")]
+[node name="说明提示框" type="Control" node_paths=PackedStringArray("框", "文本", "星数标签", "块容器")]
 layout_mode = 3
 mouse_filter = 2
 script = ExtResource("1_tipbox")
 "框" = NodePath("框")
 "文本" = NodePath("框/文本")
 "星数标签" = NodePath("框/文本/星数")
+"块容器" = NodePath("框/块容器")
 
 [node name="框" type="PanelContainer" parent="."]
 visible = false
@@ -38,6 +39,8 @@ mouse_filter = 2
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
+theme_override_constants/line_separation = -3
+theme_override_constants/paragraph_separation = -3
 
 [node name="星数" type="Label" parent="框/文本"]
 visible = false
@@ -59,3 +62,9 @@ theme_override_font_sizes/font_size = 32
 text = "★3.5"
 horizontal_alignment = 2
 vertical_alignment = 1
+
+[node name="块容器" type="VBoxContainer" parent="框"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
