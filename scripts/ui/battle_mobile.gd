@@ -9686,6 +9686,10 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _圣煌辉光炮头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _圣屑飓暴头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _转换头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _攻击加成头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _怒潮荒涛头像提示()
@@ -10347,6 +10351,35 @@ func _双重回响头像提示() -> Dictionary:
 		out[int(目标id)] = "%d 法术伤害" % 伤害
 	return out
 
+
+## 圣弓【圣屑飓暴】（3702 / Trick 8802）：弃 2 张同系牌，以**该系**【圣】命格攻击牌发起一次主动攻击，
+## 基础 2 点攻击伤害。攻击牌的系别就是弃掉那两张的系别，所以按已选牌取系别再叠【荒神之力】。
+func _圣屑飓暴头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4:
+		return out
+	if _pending_skill_id != GConst.技能_圣屑飓暴 and _pending_skill_id != GConst.技能_圣屑飓暴Trick:
+		return out
+	if _sel_players.is_empty():
+		return out
+	var 伤害: int = BattleEngine.ATTACK_BASE_POINT + _荒神之力加伤(_本次攻击元素())
+	for pid: int in _sel_players:
+		out[int(pid)] = "%d 攻击伤害" % 伤害
+	return out
+
+
+## 猎巫人【转换】（4201）：法术牌按对应系攻击牌结算，基础 2 点攻击伤害。
+## 攻击牌就是打出的那张法术牌（同系），按它的系别叠【荒神之力】。
+func _转换头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 4 or _pending_skill_id != GConst.技能_转换:
+		return out
+	if _sel_players.is_empty():
+		return out
+	var 伤害: int = BattleEngine.ATTACK_BASE_POINT + _荒神之力加伤(_本次攻击元素())
+	for pid: int in _sel_players:
+		out[int(pid)] = "%d 攻击伤害" % 伤害
+	return out
 
 ## 魔弓【多重射击】的指示器（现算）：这次额外攻击视为**暗系**主动攻击、伤害 -1，
 ## 所以点选的敌人头像上写「基础攻击伤害划掉 → 实际伤害」——
