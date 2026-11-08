@@ -1,4 +1,4 @@
-﻿extends Control
+extends Control
 ## 战斗界面（手机版）容器 —— 把本项目的战斗数据灌进「参考工程搬来的」BattleUIMobile 控件里。
 ##
 ## 背景与取舍：
@@ -10416,20 +10416,19 @@ func _转换头像提示() -> Dictionary:
 	return out
 
 ## 魔弓【多重射击】的指示器（现算）：这次额外攻击视为**暗系**主动攻击、伤害 -1，
-## 所以点选的敌人头像上写「基础攻击伤害划掉 → 实际伤害」——
-## 和【精准射击】-1 同一套写法，不能只写减完之后的 1。
-## 再叠上结界师【荒神之力】（暗系结界在场时 +1）。
+## 所以点选的敌人头像上写「不发动时的伤害划掉 → 发动后的伤害」——
+## 和【精准射击】-1 同一套写法，不能只写减完之后的数。
+## 不发动时的伤害里还要算上结界师【荒神之力】（暗系结界在场时 +1）。
 func _多重射击头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 3 or _skill_ask_id != GConst.技能_多重射击 or _sel_players.is_empty():
 		return out
-	var 基础: int = BattleEngine.ATTACK_BASE_POINT
-	var 实际: int = maxi(基础 - GConst.多重射击减伤 + _荒神之力加伤(GConst.CardElement.Darkness), 0)
+	# 不发动时的伤害＝暗系攻击基础 + 结界师【荒神之力】（暗系结界在场时 +1）；
+	# 发动后 -1。两者被抵平（3 − 1 = 2）时也要看得见划掉的那行，所以固定写两行。
+	var 原伤害: int = BattleEngine.ATTACK_BASE_POINT + _荒神之力加伤(GConst.CardElement.Darkness)
+	var 新伤害: int = maxi(原伤害 - GConst.多重射击减伤, 0)
 	for 目标id: int in _sel_players:
-		if 实际 != 基础:
-			out[int(目标id)] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [基础, 实际]
-		else:
-			out[int(目标id)] = "%d 攻击伤害" % 实际
+		out[int(目标id)] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 新伤害]
 	return out
 
 
