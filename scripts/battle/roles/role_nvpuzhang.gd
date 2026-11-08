@@ -1,0 +1,621 @@
+extends BattleRole
+## 女仆长（roleID 81）
+##
+## 【影】＝角色旁的盖牌（面朝下，角色表「盖牌槽」3 张）；【糸】＝0 号指示物（上限 4）；
+## 【风穴】＝挂在对手面前的场卡（专属卡，owner 始终是女仆长）。
+##
+## 技能：
+##   影之穴 8101（启动）：移除 1 点【糸】，把【风穴】转移 / 放到目标对手面前，他弃 1 张牌。
+##   秘术·摹影 8102（响应）：主动攻击命中②，把这次攻击牌面朝下作为【影】。
+##   瞬·影·杀 8103（响应【回合限定】）：主动攻击未命中②，移除 1 个【影】→ 额外 +1【攻击行动】；
+##       本回合你的主动攻击无法应战、也不能再发动【秘术·摹影】。
+##   影缝 8104（响应）：持有【风穴】的对手回合开始时，移除 X 点【糸】（X<4）→ 他弃 X 张牌，
+##       你从中挑 1 张面朝下作为【影】；若他实际弃牌数小于 X，对方士气 -1。
+##   侍奉之道 8105（响应）：你的回合结束时，移除 2 个【影】【展示】→ +1【糸】；
+##       若两张【影】同系，把其中 1 张交给目标角色【强制】，然后你【横置】。
+##   禁术·影牢 8106（响应）：其他角色【特殊行动】结束时 +1【糸】；若你已【横置】，
+##       可额外移除 3 点【糸】→【重置】，对目标对手 2 点法术伤害③，或指定目标队友弃 1 张牌。
+##   影之风 8107（专属技·被动）：拥有【风穴】时，主动攻击命中的攻击牌进弃牌堆后作为【影】；
+##       你每次【攻击行动】结束时 +1【糸】。
+##   风止 8109（专属技·响应）：拥有【风穴】时，你的回合结束可发动：手牌补到上限【强制】，
+##       弃 2 张牌作为【影】，然后移除【风穴】。
+##   真·摹影 8108（启动·必杀技【宝石】）：把 2 张手牌面朝下作为【影】。
+
+const YING_ZHI_XUE: int = 8101
+const MI_SHU_MO_YING: int = 8102
+const SHUN_YING_SHA: int = 8103
+const YING_FENG: int = 8104
+const SHI_FENG_ZHI_DAO: int = 8105
+const JIN_SHU_YING_LAO: int = 8106
+const YING_ZHI_FENG: int = 8107
+const ZHEN_MO_YING: int = 8108
+const FENG_ZHI: int = 8109
+
+const 糸槽: int = 0
+const 风穴名: String = "风穴"
+
+## 影之穴：0＝还没付代价 / 1＝等对手弃牌
+var _影之穴阶段: int = 0
+## 本回合的主动攻击标记（timeline 钩子写入、p_after_attack 消费）
+var _本次命中: bool = false
+## 瞬·影·杀：本回合主动攻击无法应战、不能再发动秘术·摹影
+var _本回合禁应战: bool = false
+var _本回合禁摹影: bool = false
+var _瞬影杀已用: bool = false
+## 影缝：1＝等选 X / 2＝等对手弃牌 / 3＝等从弃牌里挑 1 张
+var _影缝阶段: int = 0
+var _影缝X: int = 0
+var _影缝目标: int = -1
+var _影缝弃牌: Array = []
+## 侍奉之道：1＝等选 2 个影 / 2＝等选交给谁
+var _侍奉阶段: int = 0
+var _侍奉牌: Array = []
+## 禁术·影牢：1＝等选效果
+var _影牢阶段: int = 0
+## 风止：1＝已问过、等摸牌 / 2＝等弃 2 张
+var _风止阶段: int = 0
+
+
+# ============================================================
+# 技能栏
+# ============================================================
+func available_skills() -> Array:
+	var 对手: Array[int] = 敌人()
+	return [
+		{
+			"type": GConst.ActionType.SpecialSkill,
+			"id": YING_ZHI_XUE,
+			"need_card": 0,
+			"need_target": 1,
+			"targets": 对手,
+			"enabled": player.token_num(糸槽) >= 1 and not 对手.is_empty(),
+		},
+		{
+			"type": GConst.ActionType.SpecialSkill,
+			"id": ZHEN_MO_YING,
+			"need_card": 2,
+			"need_target": 0,
+			"cards": player.hand_cards.duplicate(),
+			"enabled": player.gem > 0 and player.hand_cards.size() >= 2 and player.cover_space() >= 2,
+		},
+	]
+
+
+func is_free_skill(skill_id: int) -> bool:
+	return skill_id == YING_ZHI_XUE or skill_id == ZHEN_MO_YING
+
+
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	var 技能号: int = int(action.get("action_id", 0))
+	if 技能号 == YING_ZHI_XUE:
+		if player.token_num(糸槽) < 1:
+			return GConst.GE_INVALID_ACTION
+		var dsts: Array = action.get("dst_ids", [])
+		if dsts.is_empty():
+			return GConst.GE_INVALID_ARGUMENT
+		var dp: BattlePlayer = engine.p(int(dsts[0]))
+		if dp == null or dp.color == player.color:
+			return GConst.GE_INVALID_ACTION
+		return GConst.GE_SUCCESS
+	if 技能号 == ZHEN_MO_YING:
+		var cards: Array = action.get("card_ids", [])
+		if player.gem <= 0 or cards.size() != 2 or player.cover_space() < 2:
+			return GConst.GE_INVALID_ACTION
+		for c: Variant in cards:
+			if not player.has_hand_card(int(c)):
+				return GConst.GE_INVALID_ACTION
+		return GConst.GE_SUCCESS
+	return GConst.GE_INVALID_ACTION
+
+
+func p_special_skill(action: Dictionary) -> int:
+	var 技能号: int = int(action.get("action_id", 0))
+	if 技能号 == ZHEN_MO_YING:
+		return _真摹影(action)
+	if 技能号 == YING_ZHI_XUE:
+		return _影之穴(action)
+	return SUCCESS
+
+
+## 真·摹影：付 1 宝石，2 张手牌面朝下作为【影】
+func _真摹影(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	player.boot_skill_used = true
+	notice_skill(ZHEN_MO_YING, [player.id])
+	player.set_gem(player.gem - 1)
+	engine.take_from_hand(player.id, cards)
+	engine.add_cover(player.id, cards, player.id, ZHEN_MO_YING, false)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 影之穴：移 1【糸】，把【风穴】放到目标对手面前，他弃 1 张牌
+func _影之穴(action: Dictionary) -> int:
+	var dst: int = int((action.get("dst_ids", []) as Array)[0])
+	var dp: BattlePlayer = engine.p(dst)
+	player.boot_skill_used = true
+	if _影之穴阶段 == 0:
+		player.remove_token(糸槽, 1)
+		# 同一张【风穴】只存在一份：加场卡按 id 顶掉旧的（转移＝换个 attached）
+		engine.加场卡({"id": 风穴名, "owner": player.id, "attached": dst})
+		notice_skill(YING_ZHI_XUE, [dst])
+		_影之穴阶段 = 1
+		engine._broadcast_game()
+	if _影之穴阶段 == 1:
+		if not engine.has_reply():
+			engine.ask_respond(dst, GConst.RespondType.Discard, [dst, YING_ZHI_XUE, 1], [dst])
+			engine.wait_for(dst, GConst.Msg.Respond)
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		_影之穴阶段 = 0
+		var 弃: int = -1
+		var cards: Array = r.get("card_ids", [])
+		if not cards.is_empty() and dp != null and dp.has_hand_card(int(cards[0])):
+			弃 = int(cards[0])
+		elif dp != null and not dp.hand_cards.is_empty():
+			# 强制弃牌：超时 / 空回复按手牌顺序补一张
+			弃 = int(dp.hand_cards[0])
+		if 弃 >= 0 and dp != null:
+			engine.take_from_hand(dp.id, [弃])
+			engine.to_discard([弃], {"owner": dp.id, "source": "hand", "cause": YING_ZHI_XUE})
+			engine._log_discard(dp.id, [弃], false)
+		engine._broadcast_game()
+	return SUCCESS
+
+
+# ============================================================
+# 攻击命中 / 攻击结束
+# ============================================================
+func p_timeline_2_hit(ctx: Dictionary) -> int:
+	var harm: Dictionary = ctx.get("harm", {})
+	if int(harm.get("src", -1)) == player.id and bool(ctx.get("is_active", false)):
+		_本次命中 = true
+	return SUCCESS
+
+
+## 影之风：每次攻击行动结束 +1【糸】；命中的攻击牌按是否拥有【风穴】走两条路
+func p_after_attack(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	var 牌: int = int(ctx.get("card_id", -1))
+	# 同一个钩子可能因为询问 / 压栈回来重跑：+1【糸】只做一次
+	if step == 0:
+		step = 1
+		player.add_token(糸槽, 1)
+		engine._broadcast_game()
+	if _本次命中:
+		_本次命中 = false
+		return _命中后放影(牌)
+	return _未命中瞬影杀()
+
+
+## 命中后：拥有【风穴】走影之风（自动），否则问秘术·摹影
+func _命中后放影(牌: int) -> int:
+	if 牌 < 0 or player.cover_space() <= 0:
+		return SUCCESS
+	if 拥有风穴():
+		_把弃牌变成影(牌, YING_ZHI_FENG)
+		return SUCCESS
+	if _本回合禁摹影 or step >= STEP_DONE:
+		return SUCCESS
+	if not engine.has_reply():
+		询问(player.id, MI_SHU_MO_YING, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, [], -1, {})
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	step = STEP_DONE
+	var args: Array = r.get("args", [])
+	if args.is_empty() or int(args[0]) != 1:
+		return SUCCESS
+	_把弃牌变成影(牌, MI_SHU_MO_YING)
+	return SUCCESS
+
+
+## 把刚打完的攻击牌从弃牌堆取出来，面朝下放到自己角色旁作为【影】
+func _把弃牌变成影(牌: int, cause: int) -> void:
+	if player.cover_space() <= 0:
+		return
+	var 实例: int = engine.deck.取出实例(牌)
+	if 实例 < 0:
+		return
+	notice_skill(cause, [player.id])
+	engine.add_cover(player.id, [实例], player.id, cause, false)
+	engine._broadcast_game()
+
+
+## 瞬·影·杀：未命中时可选，移除 1 个【影】→ 额外 +1 攻击行动、本回合禁应战 / 禁摹影
+func _未命中瞬影杀() -> int:
+	if _瞬影杀已用 or player.cover_cards.is_empty() or step >= STEP_DONE:
+		return SUCCESS
+	if not engine.has_reply():
+		询问(player.id, SHUN_YING_SHA, 1, 0, GConst.CardSource.Cover, [], 0, "", [], true, 0, -1, [], -1, {})
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	step = STEP_DONE
+	var args: Array = r.get("args", [])
+	var cards: Array = r.get("card_ids", [])
+	if args.is_empty() or int(args[0]) != 1 or cards.is_empty():
+		return SUCCESS
+	var cid: int = int(cards[0])
+	if not player.有盖牌(cid):
+		return SUCCESS
+	_瞬影杀已用 = true
+	_本回合禁应战 = true
+	_本回合禁摹影 = true
+	notice_skill(SHUN_YING_SHA, [player.id])
+	engine.remove_cover(player.id, [cid], player.id, SHUN_YING_SHA)
+	engine.to_discard([cid], {"owner": player.id, "source": "cover", "cause": SHUN_YING_SHA})
+	player.add_action(GConst.ActionType.Attack, SHUN_YING_SHA, true)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 瞬·影·杀生效期间：本回合你的主动攻击无法应战
+func p_before_attack(ctx: Dictionary) -> int:
+	if _本回合禁应战 and int(ctx.get("src", -1)) == player.id:
+		ctx["hit_rate"] = GConst.HitRate.NoReattack
+	return SUCCESS
+
+
+func p_before_turn_begin(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) == player.id:
+		_本回合禁应战 = false
+		_本回合禁摹影 = false
+		_瞬影杀已用 = false
+		_本次命中 = false
+	return SUCCESS
+
+
+# ============================================================
+# 影缝：持有【风穴】的对手回合开始时
+# ============================================================
+func p_turn_begin(ctx: Dictionary) -> int:
+	if _影缝阶段 != 0:
+		return _影缝()
+	var 当前: int = int(ctx.get("player", -1))
+	if 当前 != player.id and 持有风穴(当前) and player.token_num(糸槽) >= 1:
+		_影缝目标 = 当前
+		_影缝阶段 = 1
+		return _影缝()
+	return SUCCESS
+
+
+func _影缝() -> int:
+	if _影缝阶段 == 1:
+		if not engine.has_reply():
+			_询问影缝X()
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		var args: Array = r.get("args", [])
+		if args.is_empty():
+			_影缝阶段 = 0
+			return SUCCESS
+		_影缝X = int(args[0])
+		if _影缝X < 1 or _影缝X > player.token_num(糸槽):
+			engine.报错("【影缝】提交的 X 不合法", player.id)
+			_影缝阶段 = 0
+			return SUCCESS
+		player.remove_token(糸槽, _影缝X)
+		notice_skill(YING_FENG, [_影缝目标])
+		engine._broadcast_game()
+		_影缝弃牌.clear()
+		_影缝阶段 = 2
+	if _影缝阶段 == 2:
+		var dp: BattlePlayer = engine.p(_影缝目标)
+		if dp == null:
+			_影缝阶段 = 0
+			return SUCCESS
+		if not engine.has_reply():
+			engine.ask_respond(_影缝目标, GConst.RespondType.Discard,
+				[_影缝目标, YING_FENG, _影缝X], [_影缝目标])
+			engine.wait_for(_影缝目标, GConst.Msg.Respond)
+			return WAIT
+		var r2: Dictionary = take_skill_reply_full()
+		var cards: Array = r2.get("card_ids", [])
+		var 可用: Array = []
+		for c: Variant in cards:
+			if dp.has_hand_card(int(c)) and not 可用.has(int(c)) and 可用.size() < _影缝X:
+				可用.append(int(c))
+		# 强制弃满 X 张：不够就按手牌顺序补
+		for cid: int in dp.hand_cards:
+			if 可用.size() >= _影缝X:
+				break
+			if not 可用.has(cid):
+				可用.append(cid)
+		_影缝弃牌 = 可用.duplicate()
+		if 可用.size() < _影缝X:
+			# 实际弃牌数小于 X：对方士气 -1
+			engine.lose_morale(dp, 1, YING_FENG)
+		engine.take_from_hand(_影缝目标, 可用)
+		engine.to_discard(可用, {"owner": _影缝目标, "source": "hand", "cause": YING_FENG})
+		engine._log_discard(_影缝目标, 可用, true)
+		engine._broadcast_game()
+		if 可用.is_empty() or player.cover_space() <= 0:
+			_影缝阶段 = 0
+			return SUCCESS
+		_影缝阶段 = 3
+	if _影缝阶段 == 3:
+		if _影缝弃牌.size() == 1:
+			_影缝收入影(int(_影缝弃牌[0]))
+			_影缝阶段 = 0
+			return SUCCESS
+		if not engine.has_reply():
+			询问(player.id, YING_FENG, 0, 0, GConst.CardSource.Hand, _影缝挑牌选项(), 0, "", [], false,
+				0, -1, [], -1, {})
+			return WAIT
+		var r3: Dictionary = take_skill_reply_full()
+		var args3: Array = r3.get("args", [])
+		_影缝阶段 = 0
+		if not args3.is_empty():
+			var idx: int = int(args3[0])
+			if idx >= 0 and idx < _影缝弃牌.size():
+				_影缝收入影(int(_影缝弃牌[idx]))
+	return SUCCESS
+
+
+## 影缝的 X 选项（X<4，且不超过当前【糸】）
+func _询问影缝X() -> void:
+	var 上限: int = mini(3, player.token_num(糸槽))
+	var out: Array = []
+	for x: int in range(1, 4):
+		out.append({
+			"value": x,
+			"label": GConst.按钮原文(YING_FENG, x - 1),
+			"text": GConst.按钮原文(YING_FENG, x - 1),
+			"enabled": x <= 上限,
+		})
+	询问(player.id, YING_FENG, 0, 0, GConst.CardSource.Hand, out, 0, "", [], true, 0, -1, [], -1, {})
+
+
+## 影缝：从这些弃牌里挑 1 张（选项带 card_id，客户端悬停能摊出牌面）
+func _影缝挑牌选项() -> Array:
+	var out: Array = []
+	for i: int in range(_影缝弃牌.size()):
+		var cid: int = int(_影缝弃牌[i])
+		var 牌: GCard = Data.get_card(cid)
+		var 名: String = 牌.card_name if 牌 != null else ""
+		out.append({
+			"value": i,
+			"label": "%s %s" % [名, GConst.element_to_chinese(牌.element_enum()) if 牌 != null else ""],
+			"card_id": cid,
+		})
+	return out
+
+
+## 从弃牌堆里取一张作为自己的【影】
+func _影缝收入影(cid: int) -> void:
+	var 实例: int = engine.deck.取出实例(cid)
+	if 实例 < 0:
+		return
+	engine.add_cover(player.id, [实例], player.id, YING_FENG, false)
+	engine._broadcast_game()
+
+
+# ============================================================
+# 侍奉之道：回合结束移 2 个影
+# ============================================================
+func p_turn_end(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	# 风止与侍奉之道都在回合结束，先在同一个钩子里把风止跑完，再跑侍奉
+	if 拥有风穴() or _风止阶段 != 0:
+		var rc: int = _风止()
+		if rc != SUCCESS:
+			return rc
+	return _侍奉之道()
+
+
+func _侍奉之道() -> int:
+	if _侍奉阶段 == 0:
+		if player.cover_cards.size() < 2:
+			return SUCCESS
+		if not engine.has_reply():
+			_侍奉阶段 = 1
+			询问(player.id, SHI_FENG_ZHI_DAO, 2, 0, GConst.CardSource.Cover, [], 0, "", [], true, 0, -1, [], -1, {})
+			return WAIT
+	if _侍奉阶段 == 1:
+		var r: Dictionary = take_skill_reply_full()
+		var args: Array = r.get("args", [])
+		var cards: Array = r.get("card_ids", [])
+		if args.is_empty() or int(args[0]) != 1 or cards.size() != 2:
+			_侍奉阶段 = 0
+			return SUCCESS
+		var 甲: int = int(cards[0])
+		var 乙: int = int(cards[1])
+		if not player.有盖牌(甲) or not player.有盖牌(乙) or 甲 == 乙:
+			_侍奉阶段 = 0
+			return SUCCESS
+		_侍奉牌 = [甲, 乙]
+		notice_skill(SHI_FENG_ZHI_DAO, [player.id])
+		engine.broadcast(GConst.Msg.Card, {
+			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+			"card_ids": [甲, 乙], "is_real": true,
+		})
+		engine.remove_cover(player.id, [甲, 乙], player.id, SHI_FENG_ZHI_DAO)
+		player.add_token(糸槽, 1)
+		var 甲牌: GCard = Data.get_card(甲)
+		var 乙牌: GCard = Data.get_card(乙)
+		_侍奉阶段 = 2 if (甲牌 != null and 乙牌 != null \
+			and 甲牌.element_enum() == 乙牌.element_enum()) else 3
+		engine._broadcast_game()
+	if _侍奉阶段 == 2:
+		if not engine.has_reply():
+			询问(player.id, SHI_FENG_ZHI_DAO, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+				0, -1, 全部角色(), -1, {})
+			return WAIT
+		var r2: Dictionary = take_skill_reply_full()
+		var dsts: Array = r2.get("dst_ids", [])
+		if not dsts.is_empty() and engine.p(int(dsts[0])) != null:
+			_把影交给(int(dsts[0]), int(_侍奉牌[0]))
+		else:
+			engine.to_discard([int(_侍奉牌[0]), int(_侍奉牌[1])], {"owner": player.id, "source": "cover", "cause": SHI_FENG_ZHI_DAO})
+		_侍奉阶段 = 3
+		engine._broadcast_game()
+	if _侍奉阶段 == 3:
+		_侍奉阶段 = 0
+		player.tap = true
+	return SUCCESS
+
+
+## 同系的其中 1 张【影】交给目标角色【强制】，另一张进弃牌堆
+func _把影交给(dst: int, 给: int) -> void:
+	var 另一: int = int(_侍奉牌[0]) if int(_侍奉牌[1]) == 给 else int(_侍奉牌[1])
+	var dp: BattlePlayer = engine.p(dst)
+	if dp == null:
+		return
+	dp.add_hand_cards([给])
+	engine.播获得牌日志(dst, [给])
+	engine.to_discard([另一], {"owner": player.id, "source": "cover", "cause": SHI_FENG_ZHI_DAO})
+
+
+# ============================================================
+# 禁术·影牢：其他角色【特殊行动】结束时
+# ============================================================
+func p_after_special(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) == player.id:
+		return SUCCESS
+	# 同一个钩子可能因询问 / 压栈回来重跑：+1【糸】只做一次
+	if step == 0:
+		step = 1
+		player.add_token(糸槽, 1)
+		engine._broadcast_game()
+	if not player.tap or player.token_num(糸槽) < 3:
+		return SUCCESS
+	return _影牢()
+
+
+func _影牢() -> int:
+	if _影牢阶段 == 0:
+		_影牢阶段 = 1
+		询问(player.id, JIN_SHU_YING_LAO, 0, 0, GConst.CardSource.Hand, _影牢选项(), 0, "", [], true,
+			0, -1, [], -1, {})
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	_影牢阶段 = 0
+	if args.is_empty():
+		return SUCCESS
+	var 选择: int = int(args[0])
+	var dsts: Array = r.get("dst_ids", [])
+	var dst: int = int(dsts[0]) if not dsts.is_empty() else -1
+	var dp: BattlePlayer = engine.p(dst)
+	var 合法: bool = dp != null and (dp.color != player.color if 选择 == 1 else dp.color == player.color)
+	if not 合法:
+		engine.报错("【禁术·影牢】提交的目标不合法", player.id)
+		return SUCCESS
+	player.remove_token(糸槽, 3)
+	player.tap = false
+	notice_skill(JIN_SHU_YING_LAO, [dst])
+	if 选择 == 1:
+		engine.push_harm({"src": player.id, "dst": dst, "point": 2,
+			"cause": JIN_SHU_YING_LAO, "type": GConst.HarmType.Magic})
+		return URGENT
+	engine.push(BattleEngine.SRequestDiscard.new(dst, 1, 0, JIN_SHU_YING_LAO))
+	return URGENT
+
+
+func _影牢选项() -> Array:
+	return [
+		{
+			"value": 1,
+			"label": GConst.按钮原文(JIN_SHU_YING_LAO, 0),
+			"text": GConst.按钮原文(JIN_SHU_YING_LAO, 0),
+			"need_target": 1,
+			"targets": 敌人(),
+		},
+		{
+			"value": 2,
+			"label": GConst.按钮原文(JIN_SHU_YING_LAO, 1),
+			"text": GConst.按钮原文(JIN_SHU_YING_LAO, 1),
+			"need_target": 1,
+			"targets": 队友(),
+		},
+	]
+
+
+# ============================================================
+# 风止：拥有【风穴】时，回合结束可发动
+# ============================================================
+func _风止() -> int:
+	if _风止阶段 == 0:
+		if not engine.has_reply():
+			_风止阶段 = 1
+			询问(player.id, FENG_ZHI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, [], -1, {})
+			return WAIT
+	if _风止阶段 == 1:
+		var r: Dictionary = take_skill_reply_full()
+		var args: Array = r.get("args", [])
+		if args.is_empty() or int(args[0]) != 1:
+			_风止阶段 = 0
+			return SUCCESS
+		notice_skill(FENG_ZHI, [player.id])
+		var 需: int = maxi(player.hand_cards_max - player.hand_cards.size(), 0)
+		_风止阶段 = 2
+		if 需 > 0:
+			engine.push_强制摸牌(player.id, 需, FENG_ZHI)
+			return URGENT
+	if _风止阶段 == 2:
+		# 手牌已补到上限：弃 2 张，弃牌面朝下作为【影】，然后移除【风穴】
+		if not engine.has_reply():
+			engine.ask_respond(player.id, GConst.RespondType.Discard, [player.id, FENG_ZHI, 2], [player.id])
+			engine.wait_for(player.id, GConst.Msg.Respond)
+			return WAIT
+		var r2: Dictionary = take_skill_reply_full()
+		_风止阶段 = 0
+		var cards: Array = r2.get("card_ids", [])
+		var 弃: Array = []
+		for c: Variant in cards:
+			if player.has_hand_card(int(c)) and not 弃.has(int(c)) and 弃.size() < 2:
+				弃.append(int(c))
+		# 强制弃 2 张：不够就按手牌顺序补
+		for cid: int in player.hand_cards:
+			if 弃.size() >= 2:
+				break
+			if not 弃.has(cid):
+				弃.append(cid)
+		if not 弃.is_empty():
+			engine.take_from_hand(player.id, 弃)
+			engine.add_cover(player.id, 弃, player.id, FENG_ZHI, false)
+		engine.移除场卡(风穴名)
+		engine._broadcast_game()
+	return SUCCESS
+
+
+# ============================================================
+# 小工具
+# ============================================================
+## 场上有没有【风穴】（不论挂在谁面前）
+func 拥有风穴() -> bool:
+	return engine.有场卡(风穴名)
+
+
+## 【风穴】是不是挂在这名玩家面前
+func 持有风穴(pid: int) -> bool:
+	var 表: Dictionary = engine.取场卡(风穴名)
+	return not 表.is_empty() and int(表.get("attached", -1)) == pid
+
+
+func 敌人() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		var p0: BattlePlayer = engine.p(pid)
+		if p0 != null and p0.color != player.color:
+			out.append(pid)
+	return out
+
+
+func 队友() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		var p0: BattlePlayer = engine.p(pid)
+		if p0 != null and p0.color == player.color and p0.id != player.id:
+			out.append(pid)
+	return out
+
+
+func 全部角色() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		out.append(pid)
+	return out
