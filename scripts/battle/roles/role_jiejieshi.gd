@@ -10,10 +10,10 @@
 ## 口径（逐条对照 79 以下的参考角色）：
 ## 1. 【荒神之力】原文「所有与【结界】系别相同的攻击伤害额外 +1」：主动攻击与反击都算，
 ##    同系多张结界也只 +1（写在 harm.point 上并打标记防重复，同 4203【法术剥离】那类加伤）。
-## 2. 【荒神祭仪】对所有角色的**主动攻击**生效：同系先 +1【祭】（纯收益，不问）；
-##    再问要不要额外移除 3【祭】—— 是则：弃 1 张牌（SRequestDiscard，强制、超时按手牌顺序补弃）
-##    → 由她选 1 个【结界】移除 → 【横置】。移除哪个结界必须让她选（系别影响后续判定）；
-##    横置放在所有询问之后（技能维护约定 §19：改形态别放在还要问玩家的询问之前）。
+## 2. 【荒神祭仪】对所有角色的**主动攻击**生效：同系先问要不要发动；确认后 +1【祭】；
+##    再问要不要额外移除 3【祭】—— 是则：弃 1 张牌 → 由她选 1 个【结界】移除 → 【横置】。
+##    移除哪个结界必须让她选（系别影响后续判定）；横置放在所有询问之后（技能维护约定 §19：
+##    改形态别放在还要问玩家的询问之前）。
 ## 3. 【禁魔境】把【绝界】转移 / 放置到目标角色前；「你弃 1 张牌」是强制，走 SRequestDiscard。
 ## 4. 【琉璃境】目标弃 1 张牌【展示】参照兽灵【兽魂警戒】3604：不可取消、超时按手牌顺序补弃、
 ##    先公开（take_from_hand 的「已展示」）再决定去向；之后可把这 1 张面朝上放进盖牌区当【结界】。
@@ -189,8 +189,8 @@ func p_before_attack(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 8203 荒神祭仪：目标角色主动攻击①，若攻击系别与结界相同 → 你 +1 祭；
-# 可再额外移除 3 祭：弃 1 张牌、移除 1 个结界并横置【持续】
+# 8203 荒神祭仪：目标角色主动攻击①，若攻击系别与结界相同 → 先问是否发动；
+# 确认后 +1【祭】；可再额外移除 3 祭：弃 1 张牌、移除 1 个结界并横置【持续】
 # ============================================================
 func p_timeline_1(ctx: Dictionary) -> int:
 	if not bool(ctx.get("is_active", false)):
@@ -203,15 +203,31 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if bool(ctx.get("荒神祭仪已结算", false)):
 		return SUCCESS
+	# 触发时先问要不要发动：不确认＝整段都不发生，不能自动 +1【祭】
+	if not engine.has_reply():
+		询问(player.id, HUANG_SHEN_JI_YI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+			_荒神_发动提示())
+		return WAIT
 	ctx["荒神祭仪已结算"] = true
+	if not take_skill_reply():
+		return SUCCESS
 	notice_skill(HUANG_SHEN_JI_YI, [player.id])
 	_加祭(1, HUANG_SHEN_JI_YI)
-	# 后半段是可选：祭够 3 点、手里有牌才问（取消＝不发动后半段）
-	if player.token_num(JI_SLOT) < 3 or player.hand_cards.is_empty():
+	# 后半段是可选：祭够 3 点、手里有牌、场上有【结界】才问（取消＝不发动后半段）
+	if player.token_num(JI_SLOT) < 3 or player.hand_cards.is_empty() or _结界().is_empty():
 		return SUCCESS
 	_mod_step = 步_荒神问额外
 	engine.push(BattleEngine.SHook.new("p_jie_jie_ask", {"player": player.id}, []))
 	return URGENT
+
+
+## 荒神祭仪的「是否发动」提示：优先用技能表 提示 第 0 条；没配就用一句兜底
+func _荒神_发动提示() -> String:
+	var 提示: String = GConst.提示原文(HUANG_SHEN_JI_YI, 0)
+	if 提示.is_empty():
+		提示 = "发动【荒神祭仪】：要不要 +1【祭】？"
+	return 提示
 
 
 # ============================================================
@@ -318,8 +334,11 @@ func p_jie_jie_ask(ctx: Dictionary) -> int:
 			# 强制弃牌的状态已经跑完，接着选要移除的结界
 			_mod_step = 步_荒神选结界
 			if _结界().is_empty():
+				# 没有结界可移除也要横置；这里没有走下面的「移除后」分支，
+				# 得自己补一次快照，否则客户端看不到横置（_检查绝界破散 没有绝界时直接返回、不广播）
 				player.tap = true
 				_mod_step = 0
+				engine._broadcast_game()
 				return _检查绝界破散()
 			_问选结界(HUANG_SHEN_JI_YI)
 			return WAIT

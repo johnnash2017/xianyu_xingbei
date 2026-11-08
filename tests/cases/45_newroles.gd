@@ -253,6 +253,49 @@ func _检结界师() -> void:
 		图标.free()
 		界面实例.free()
 
+	# ---- 荒神祭仪：先问是否发动，确认才 +1 祭；移除结界后横置 ----
+	玩家.hand_cards.clear()
+	玩家.cover_cards.clear()
+	var 火法术: int = _找牌("火", "magic")
+	玩家.add_hand_cards([火攻击])
+	引擎.add_cover(1, [火法术], 1, 8203, true)
+	# 【祭】上限是 3：先清空再放 2，确认后刚好 3，才能验证「+1」真的加进去了
+	玩家.remove_token(0, 玩家.token_num(0))
+	玩家.add_token(0, 2)
+	var 荒神ctx: Dictionary = {"is_active": true, "src": 2, "dst": 1,
+		"card_id": 火攻击, "harm": {"src": 2, "dst": 1, "point": 1}}
+	var 祭前: int = 玩家.token_num(0)
+	检(角色.p_timeline_1(荒神ctx) == BattleRole.WAIT, "【荒神祭仪】应先询问是否发动")
+	检(玩家.token_num(0) == 祭前, "【荒神祭仪】没确认前不该自动 +1 祭")
+	引擎._reply = {"args": [1], "card_ids": [], "dst_ids": [], "respond_id": 0}
+	引擎._has_reply = true
+	引擎._await_state = 引擎._当前状态
+	角色.p_timeline_1(荒神ctx)
+	检(玩家.token_num(0) == 祭前 + 1, "【荒神祭仪】确认后应 +1 祭")
+	# 弃牌后的「选结界」步：选 1 张结界移除后应【横置】
+	玩家.tap = false
+	角色._mod_step = 21  # 步_荒神弃牌
+	引擎._has_reply = false
+	检(角色.p_jie_jie_ask({"player": 1}) == BattleRole.WAIT,
+		"【荒神祭仪】弃牌后应询问要移除的结界")
+	引擎._reply = {"args": [], "card_ids": [火法术], "dst_ids": [], "respond_id": 0}
+	引擎._has_reply = true
+	引擎._await_state = 引擎._当前状态
+	角色.p_jie_jie_ask({"player": 1})
+	检(玩家.cover_cards.is_empty(), "【荒神祭仪】应移除 1 张结界")
+	检(玩家.tap, "【荒神祭仪】移除结界后应【横置】")
+
+	# 客户端：结界师面板的横置名牌要能显示「荒神祭仪」（不是只看服务端 tap）
+	var 面板: Control = (load("res://scenes/prefabs/battlemobile/PlayerSelfPanel.tscn") as PackedScene).instantiate()
+	add_child(面板)
+	await 等帧(1)
+	面板.set("RoleID", 82)
+	面板.set("Knelt", true)
+	var 横置标签: Label = 面板.get("knelt") as Label
+	检(横置标签 != null and 横置标签.visible and 横置标签.text == "荒神祭仪",
+		"结界师面板的横置名牌没有显示「荒神祭仪」：%s" % (横置标签.text if 横置标签 != null else "无节点"))
+	面板.queue_free()
+
 
 ## 43 圣殿骑士：治疗上限 -1；神威让本次攻击无法应战并禁止双方获得治疗
 func _检圣殿骑士() -> void:
