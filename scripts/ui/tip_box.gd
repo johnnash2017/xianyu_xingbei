@@ -51,6 +51,15 @@ var 内容: Control = null
 ## 当前显示的是哪个角色 / 哪个缩放档：同一张卡反复悬停时直接不重排
 var _说明角色号: int = -1
 var _说明缩放: float = -1.0
+## 分块内容（专属卡牌分组用的节点树）
+var 块容器: VBoxContainer = null
+## 当前显示的分块角色 / 缩放档（同一张卡反复悬停时不再重建）
+var _块角色号: int = -1
+var _块缩放: float = -1.0
+## 这块内容这一帧还该不该显示（收起时清掉，防止迟到的回调把它又弹出来）
+var _块要显示: bool = false
+## 正在等下一帧量尺寸（RichTextLabel 刚进树那一帧内容高是 0）
+var _块沉降中: bool = false
 ## 收起的缓冲计时器（见 收起缓冲）
 var _收起计时: Timer = null
 ## 本次说明的「基准整体缩放」（角色说明按设置窗里的档位取）。摆框时若按它仍塞不进宿主，会在它基础上再等比缩小兜底
@@ -190,39 +199,194 @@ static func 设置角色说明缩放档(档: float) -> void:
 
 
 ## 显示角色说明（角色名一行 + 技能说明，含 BBCode）——战斗 / 选角同款
-## 对局中=true 时（只有战斗内头像悬停传）才按场上有没有剑之魔女动态改剑之子的技能说明。
-## 技能表里配了「专属卡牌」的角色：文字里用单列表格把同名技能框起来，
-## 边框颜色由表格主题色（table_border）决定 —— 这里把它设成和整框一样的描边色。
+## 技能表里配了「专属卡牌」的角色走分块版：每组的技能套一个和整框同色的粗边框子面板；
+## 其余角色仍走原来的整段富文本（一行没动）。
 func 显示角色说明(角色号: int, 图标矩形: Rect2, 对局中: bool = false) -> void:
 	_取消收起()
 	var 缩放: float = 当前角色说明缩放档()
-	# 同一张卡上反复悬停：内容、大小都没变，一个像素都不动（重排版就是闪的来源）
-	if _说明角色号 == 角色号 and is_equal_approx(_说明缩放, 缩放) and 框.visible:
+	# 同一张卡上反复悬停：内容、大小都没变，一个像素都不动（重排就是闪的来源）
+	if _块角色号 == 角色号 and is_equal_approx(_块缩放, 缩放) and 框.visible \
+			and 块容器 != null and 块容器.visible:
 		return
-	var 分组结果: Dictionary = 角色技能提示.悬浮提示分组(角色号, 角色说明字号缩放, 对局中)
-	var 说明: String = ""
-	if 分组结果.is_empty():
-		说明 = 角色技能提示.悬浮提示(角色号, 角色说明字号缩放, 对局中)
-	else:
-		说明 = str(分组结果.get("文本", ""))
-	# 有分组（文字里有表格）时不做「加宽循环」：反复试宽度会让表格的行布局算错，
-	# 实测会让相邻分组框互相压住。固定用基准宽度，表格布局一次到位。
-	显示(说明, 图标矩形, 角色说明宽度, 角色说明字号, 档位到缩放(缩放), 分组结果.is_empty(), true)
-	# 描边按命格换色（血红 / 咏橙 / 技绿 / 圣蓝 / 幻紫）；没配命格就保持默认描边
+	var 块: Array = 角色技能提示.悬浮提示块(角色号, 角色说明字号缩放, 对局中)
+	if 块.is_empty():
+		_块角色号 = 角色号
+		_块缩放 = 缩放
+		_清块容器()
+		显示(角色技能提示.悬浮提示(角色号, 角色说明字号缩放, 对局中), 图标矩形,
+			角色说明宽度, 角色说明字号, 档位到缩放(缩放), true, true)
+		_命中描边与星数(角色号)
+		return
+	_建分块(块, 图标矩形, 角色号, 缩放)
+	_命中描边与星数(角色号)
+
+
+## 描边按命格换色 + 右上角星数
+func _命中描边与星数(角色号: int) -> void:
 	var 描边: Color = 角色技能提示.描边颜色(角色号)
 	_设描边(描边 if 描边.a > 0.0 else _默认描边, 角色说明描边宽 if 描边.a > 0.0 else -1)
-	# 专属卡牌的分组框：表格描边色跟随整框（没有分组时设成透明，免得别的说明出现表格边框）
-	# 表格边框固定 1px，用不透明的描边色才够清楚（半透明会更虚、看着像断线）
-	var 框色: Color = 描边
-	框色.a = 1.0 if 框色.a > 0.0 else 0.0
-	文本.add_theme_color_override("table_border",
-		框色 if not 分组结果.is_empty() and 框色.a > 0.0 else Color(0, 0, 0, 0))
-	_说明角色号 = 角色号
-	_说明缩放 = 缩放
 	if 星数标签 != null:
 		var 星数: String = 角色技能提示.星数文本(角色号)
 		星数标签.text = 星数
 		星数标签.visible = 星数 != ""
+
+
+## 建分块：一块一块富文本竖着排；分组块套一个和整框同色的小面板（标题＝专属卡牌名）。
+## 宽度固定用 角色说明宽度 —— 不做「一档档加宽重排」（那正是以前抖动 / 错位的来源）。
+func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) -> void:
+	_卸内容()
+	文本.visible = false
+	_清块容器()
+	var 描边: Color = 角色技能提示.描边颜色(角色号)
+	if 描边.a <= 0.0:
+		描边 = _默认描边
+	# 标题字号：比正文大一档、比「普通技 / 专属技」小一档
+	var 标题号: int = maxi(1, int(round(float(角色技能提示.提示框标题字号) * 角色说明字号缩放 * 0.75)))
+	# 子框整体缩进两下（对齐正文的「　　」缩进）
+	var 缩进: int = int(round(float(角色说明字号) * 2.0))
+	var 新容器: VBoxContainer = VBoxContainer.new()
+	新容器.add_theme_constant_override("separation", 6)
+	for 项: Variant in 块:
+		var d: Dictionary = 项
+		if d.has("分组"):
+			var 边距: MarginContainer = MarginContainer.new()
+			边距.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			边距.add_theme_constant_override("margin_left", 缩进)
+			var 面板: PanelContainer = PanelContainer.new()
+			面板.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			面板.add_theme_stylebox_override("panel", _分组框样式(描边))
+			var 竖排: VBoxContainer = VBoxContainer.new()
+			竖排.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			# 标题和内容紧贴，组内每条技能之间留一点空隙
+			竖排.add_theme_constant_override("separation", 4)
+			var 标题: RichTextLabel = _新块标签(0)
+			标题.add_theme_constant_override("line_separation", 0)
+			标题.add_theme_constant_override("paragraph_separation", 0)
+			标题.text = "[font_size=%d]%s[/font_size]" % [标题号, str(d.get("分组", ""))]
+			竖排.add_child(标题)
+			# 组里每个技能各占一个节点
+			for 技能: Variant in d.get("技能", []):
+				var 条: RichTextLabel = _新块标签(0)
+				条.add_theme_constant_override("paragraph_separation", 0)
+				条.text = str(技能)
+				竖排.add_child(条)
+			面板.add_child(竖排)
+			边距.add_child(面板)
+			新容器.add_child(边距)
+		else:
+			var 标签: RichTextLabel = _新块标签(0)
+			标签.text = str(d.get("文本", ""))
+			新容器.add_child(标签)
+	块容器 = 新容器
+	框.add_child(块容器)
+	_块角色号 = 角色号
+	_块缩放 = 缩放
+	_块要显示 = true
+	_待摆矩形 = 图标矩形
+	框.visible = false
+	# 下一帧量准尺寸再显示（RichTextLabel 刚进树那一帧量到的内容高是 0）
+	if not _块沉降中:
+		_块沉降中 = true
+		get_tree().process_frame.connect(_块显示, CONNECT_ONE_SHOT)
+
+
+## 分块内容建好后的第一帧收尾：给每个标签定宽（按这一档折好行）→ 显示 → 摆放
+func _块显示() -> void:
+	_块沉降中 = false
+	if 块容器 == null or not is_inside_tree() or not _块要显示:
+		return
+	var 宽: float = 角色说明宽度
+	_块总高(宽)
+	块容器.custom_minimum_size.x = 宽
+	框.visible = true
+	框.reset_size()
+	_摆(_待摆矩形)
+	_排重摆(_待摆矩形)
+
+
+## 分块用的富文本标签：字号 / 行距 / 自动换行与整段版一致；不吃鼠标
+func _新块标签(_占位: int = 0) -> RichTextLabel:
+	var 标签: RichTextLabel = RichTextLabel.new()
+	标签.bbcode_enabled = true
+	标签.fit_content = true
+	标签.scroll_active = false
+	标签.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	标签.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	标签.add_theme_font_size_override("normal_font_size", 角色说明字号)
+	标签.add_theme_constant_override("line_separation",
+		_折半行距(标签.get_theme_constant("line_separation")))
+	标签.add_theme_constant_override("paragraph_separation",
+		_折半行距(标签.get_theme_constant("paragraph_separation")))
+	return 标签
+
+
+## 分组子框的样式：和整框同样的圆角，线更粗，颜色用整框的描边色（命格色）
+func _分组框样式(描边: Color) -> StyleBoxFlat:
+	var 样式: StyleBoxFlat = StyleBoxFlat.new()
+	样式.bg_color = Color(0.06, 0.07, 0.1, 0.55)
+	样式.set_border_width_all(3)
+	样式.border_color = 描边
+	样式.set_corner_radius_all(8)
+	样式.content_margin_left = 10.0
+	样式.content_margin_right = 10.0
+	样式.content_margin_top = 6.0
+	样式.content_margin_bottom = 8.0
+	return 样式
+
+
+## 把这一档宽度下每个标签都定好宽（RichTextLabel 必须同时改 size 才会按新宽度折行）
+func _块总高(宽: float) -> float:
+	if 块容器 == null:
+		return 0.0
+	var 总: float = 0.0
+	var 子们: Array = 块容器.get_children()
+	for 子: Node in 子们:
+		总 += _单块高(子, 宽)
+	总 += float(块容器.get_theme_constant("separation")) * maxf(float(子们.size() - 1), 0.0)
+	return 总
+
+
+func _单块高(节点: Node, 宽: float) -> float:
+	if 节点 is MarginContainer:
+		var 边距: MarginContainer = 节点
+		var 扣: float = float(边距.get_theme_constant("margin_left")) \
+			+ float(边距.get_theme_constant("margin_right"))
+		var 内高: float = 0.0
+		for 孙: Node in 边距.get_children():
+			内高 += _单块高(孙, 宽 - 扣)
+		return 内高
+	if 节点 is PanelContainer:
+		var 面板: PanelContainer = 节点
+		var 样式: StyleBox = 面板.get_theme_stylebox("panel")
+		var 内宽: float = 宽 - 样式.get_minimum_size().x
+		var 高: float = 样式.get_minimum_size().y
+		for 孙: Node in 面板.get_children():
+			高 += _单块高(孙, 内宽)
+		return 高
+	if 节点 is VBoxContainer:
+		var 竖排: VBoxContainer = 节点
+		var 合计: float = 0.0
+		for 孙: Node in 竖排.get_children():
+			合计 += _单块高(孙, 宽)
+		合计 += float(竖排.get_theme_constant("separation")) \
+			* maxf(float(竖排.get_child_count() - 1), 0.0)
+		return 合计
+	if 节点 is RichTextLabel:
+		var 标签: RichTextLabel = 节点
+		标签.custom_minimum_size.x = 宽
+		标签.size = Vector2(宽, 标签.size.y)
+		return 标签.get_content_height()
+	return 0.0
+
+
+## 释放分块容器
+func _清块容器() -> void:
+	_块角色号 = -1
+	if 块容器 == null:
+		return
+	框.remove_child(块容器)
+	块容器.queue_free()
+	块容器 = null
 
 
 func 显示内容(内容节点: Control, 图标矩形: Rect2) -> void:
@@ -246,6 +410,10 @@ func 显示内容(内容节点: Control, 图标矩形: Rect2) -> void:
 
 ## 卸掉上一次递进来的自定义内容（与文字模式互斥）：框里只留一份内容
 func _卸内容() -> void:
+	# 短提示（技能 / 状态图标）顶上来时，分块内容先藏起来，别和文字叠在一起
+	_块要显示 = false
+	if 块容器 != null:
+		块容器.visible = false
 	if 内容 == null:
 		return
 	框.remove_child(内容)
@@ -272,6 +440,7 @@ func _取消收起() -> void:
 
 func _真正收起() -> void:
 	_轮次 += 1
+	_块要显示 = false
 	框.visible = false
 	_隐藏星数()
 

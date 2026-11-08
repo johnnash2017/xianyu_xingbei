@@ -104,16 +104,14 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0, 对局中: b
 	return 文本
 
 
-## 悬停提示的「分组」版本：技能表里「专属卡牌」非空的技能收进一个小框，标题＝那个字符串。
-## 框是用文字里的单列表格画的（边框吃 RichTextLabel 的 table_border 主题色），
-## 不另建节点、不改排版 —— 和普通说明完全同一条渲染路径。
-## 返回 {"文本": 整段 BBCode}；返回空字典＝这个角色没配专属卡牌，调用方走原来的整段说明。
-static func 悬浮提示分组(角色号: int, 字号缩放: float = 1.0, _对局中: bool = false) -> Dictionary:
+## 悬停提示的「分块」版本：每个技能都是独立一块（说明框一块一个富文本节点），
+## 技能表「专属卡牌」非空的技能各自成一组，由说明框给每组套一个同色粗边框的子面板。
+## 返回空数组＝这个角色没配专属卡牌，调用方走原来的整段说明（行为完全不变）。
+## 每块：{"文本": 已上色的 BBCode} / {"分组": 专属卡牌名, "技能": [各技能的 BBCode]}
+static func 悬浮提示块(角色号: int, 字号缩放: float = 1.0, _对局中: bool = false) -> Array:
 	var 正文号: int = maxi(1, int(round(float(提示框正文字号) * 字号缩放)))
 	var 姓名号: int = maxi(1, int(round(float(提示框姓名行字号) * 字号缩放)))
 	var 标题号: int = maxi(1, int(round(float(提示框标题字号) * 字号缩放)))
-	# 分组标题：比正文大一档、比「普通技 / 专属技」小一档（0.75 折中）
-	var 副标题号: int = maxi(1, int(round(float(提示框标题字号) * 字号缩放 * 0.75)))
 	var 条目: Array = Data.role_skill_条目(角色号)
 	var 有分组: bool = false
 	for 项: Variant in 条目:
@@ -121,9 +119,9 @@ static func 悬浮提示分组(角色号: int, 字号缩放: float = 1.0, _对�
 			有分组 = true
 			break
 	if not 有分组:
-		return {}
-	# 先排好片段：普通片段照常上色；分组片段的第一行是「专属卡牌名」（副标题字号）
-	var 片段们: Array = []
+		return []
+	var 块: Array = []
+	# 角色名 + 势力（与整段版同一套写法）
 	var 角色名: String = Data.role_name(角色号)
 	var 姓名: String = Data.role_personal_name(角色号)
 	if 姓名 != "":
@@ -133,7 +131,7 @@ static func 悬浮提示分组(角色号: int, 字号缩放: float = 1.0, _对�
 	if 势力 != "":
 		var 势力号: int = maxi(1, int(round(float(提示框势力字号) * 字号缩放)))
 		名行 += " [font_size=%d]%s[/font_size]" % [势力号, 势力]
-	片段们.append({"文本": 名行})
+	块.append({"文本": 名行})
 	for 分段: String in Data.技能分段顺序:
 		var 普通行: Array = []
 		var 组序: Array = []
@@ -150,31 +148,24 @@ static func 悬浮提示分组(角色号: int, 字号缩放: float = 1.0, _对�
 					组表[专] = []
 					组序.append(专)
 				(组表[专] as Array).append(正文前缀 + str(d.get("文本", "")))
-		if not 普通行.is_empty() or not 组序.is_empty():
-			var 本段行: Array = [str(Data.技能分段标题.get(分段, 分段))]
-			本段行.append_array(普通行)
-			片段们.append({"文本": 上色("\n".join(本段行), 正文号, 标题号, true)})
+		if 普通行.is_empty() and 组序.is_empty():
+			continue
+		块.append({"文本": 上色(str(Data.技能分段标题.get(分段, 分段)), 正文号, 标题号)})
+		for 行: Variant in 普通行:
+			块.append({"文本": 上色(str(行), 正文号, 标题号)})
 		for 专名: String in 组序:
-			# 整组套一个单列表格：边框由 RichTextLabel 自己画（table_border 用整框的描边色），
-			# 框的大小跟着内容走 —— 不另建节点，也就不可能有排版抖动。
-			# 外面的两个全角空格让整个框缩进两下。
-			var 标题行: String = "[font_size=%d]%s[/font_size]" % [副标题号, 专名]
-			var 组正文: String = 上色("\n".join(组表[专名]), 正文号, 标题号)
-			片段们.append({"文本": "[indent][table=1][cell]%s\n%s[/cell][/table][/indent]" % [标题行, 组正文]})
-	# 拼成一整段
-	var 文本: String = ""
-	for 片段: Variant in 片段们:
-		if 文本 != "":
-			文本 += "\n"
-		文本 += str((片段 as Dictionary).get("文本", ""))
+			var 技能们: Array = []
+			for 行: Variant in 组表[专名]:
+				技能们.append(上色(str(行), 正文号, 标题号))
+			块.append({"分组": 专名, "技能": 技能们})
 	# 右下角：专属标识物一览
 	var 标识物: String = 标识物一览(角色号)
 	if 标识物 != "":
 		var 标识物号: int = maxi(1, int(round(float(正文号) * 提示框标识物字号缩放)))
 		标识物 = 标识物.replace("∞", "[font_size=%d]∞[/font_size]" % (标识物号 + 提示框无限字号增量))
-		文本 += "\n[right][font_size=%d][color=#%s]%s[/color][/font_size][/right]" % [
-			标识物号, 提示框标识物颜色.to_html(false), 标识物]
-	return {"文本": 文本}
+		块.append({"文本": "[right][font_size=%d][color=#%s]%s[/color][/font_size][/right]" % [
+			标识物号, 提示框标识物颜色.to_html(false), 标识物]})
+	return 块
 
 
 ## 剑之子（108）的角色说明动态部分：
