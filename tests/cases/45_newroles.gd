@@ -296,6 +296,32 @@ func _检结界师() -> void:
 		"结界师面板的横置名牌没有显示「荒神祭仪」：%s" % (横置标签.text if 横置标签 != null else "无节点"))
 	面板.queue_free()
 
+	# ---- 绝界的三条技能都只认「拥有绝界的角色」（attached），不是结界师自己 ----
+	引擎.加场卡({"id": "绝界", "owner": 1, "attached": 2,
+		"counter": 0, "counter_max": 0, "state": 0})
+	玩家.tap = false
+	玩家.cover_cards.clear()
+	引擎.add_cover(1, [火法术], 1, 8206, true)
+	var 结界数: int = 玩家.cover_cards.size()
+	# 结界师（1 号）回合结束：不触发灭界破散、不移除结界
+	角色._mod_step = 0
+	检(角色.p_turn_end({"player": 1}) == BattleRole.SUCCESS,
+		"绝界在 2 号时，结界师自己回合结束不该触发灭界破散")
+	检(玩家.cover_cards.size() == 结界数, "结界师自己回合结束不该移除结界")
+	# 绝界拥有者（2 号）回合结束：才进入灭界破散流程
+	检(角色.p_turn_end({"player": 2}) != BattleRole.SUCCESS,
+		"绝界拥有者 2 号回合结束应触发灭界破散")
+	# 白二羯磨：只有拥有者的攻击行动结束才 +1 祭 / 要结界
+	角色._mod_step = 0
+	检(角色.p_action_end({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
+		"绝界在 2 号时，结界师自己的攻击行动结束不该触发白二羯磨")
+	检(角色.p_action_end({"player": 2, "kind": "attack"}) != BattleRole.SUCCESS,
+		"绝界拥有者 2 号的攻击行动结束应触发白二羯磨")
+	# 虚空境：只禁止拥有者的基础效果，不禁止结界师自己的
+	检(角色.基础效果被禁止(2), "虚空境应禁止绝界拥有者 2 号的基础效果")
+	检(not 角色.基础效果被禁止(1), "虚空境不该禁止结界师自己的基础效果")
+	角色._mod_step = 0
+
 
 ## 43 圣殿骑士：治疗上限 -1；神威让本次攻击无法应战并禁止双方获得治疗
 func _检圣殿骑士() -> void:
