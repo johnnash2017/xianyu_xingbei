@@ -1,4 +1,4 @@
-extends Control
+﻿extends Control
 ## 战斗界面（手机版）容器 —— 把本项目的战斗数据灌进「参考工程搬来的」BattleUIMobile 控件里。
 ##
 ## 背景与取舍：
@@ -9712,6 +9712,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _元素射击索拉头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _地枪头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _圣愈头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _预览伤害头像提示()
@@ -10352,6 +10354,27 @@ func _元素射击头像提示() -> Dictionary:
 			continue
 		if 火:
 			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 1]
+		else:
+			out[pid] = "%d 攻击伤害" % 原伤害
+	return out
+
+## 圣枪【地枪】（1005）：主动攻击命中后②移除 X 点【治疗】、本次攻击伤害 +X（X 最高 4）。
+## 选 X 后在被攻击目标头像上写「原伤害划掉 → +X 后的伤害」；还没选时只写原伤害。
+## 原伤害由服务端随询问下发 preview_base（荒神之力已在攻击宣告前并进 harm）。
+func _地枪头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_地枪:
+		return out
+	var 原伤害: int = int(_pending.get("preview_base", 0))
+	if 原伤害 <= 0:
+		return out
+	var 加伤: int = int(_已选参数[0]) if not _已选参数.is_empty() else 0
+	for 目标: Variant in _pending.get("preview_ids", []):
+		var pid: int = int(目标)
+		if pid < 0:
+			continue
+		if 加伤 > 0:
+			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 加伤]
 		else:
 			out[pid] = "%d 攻击伤害" % 原伤害
 	return out

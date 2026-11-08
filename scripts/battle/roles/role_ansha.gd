@@ -1,4 +1,4 @@
-extends BattleRole
+﻿extends BattleRole
 ## 暗杀者（roleID 5）—— 移植自服务端 role/AnSha.cpp
 ## 技能：
 ##   反噬（501）——【被动】你承受攻击伤害时，攻击你的对手摸 1 张牌【强制】（p_timeline_6_drawn）
@@ -150,6 +150,15 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	harm["point"] = int(harm.get("point", 0)) + player.get_energy()
 	return SUCCESS
+
+
+## 【潜行】的攻击加伤（+剩余能量）预告给被攻击者看：只用于应战提示，不改变实际结算
+func p_attack_preview(ctx: Dictionary) -> int:
+	if not bool(ctx.get("is_active", false)) or not player.tap:
+		return 0
+	if int(ctx.get("src", -1)) != player.id:
+		return 0
+	return player.get_energy()
 
 
 # ============================================================

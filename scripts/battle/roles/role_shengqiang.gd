@@ -1,4 +1,4 @@
-extends BattleRole
+﻿extends BattleRole
 ## 圣枪（roleID 10）—— 移植自服务端 role/ShengQiang.cpp
 ## 技能：
 ##   辉耀（1001，法术，弃 1 张水系牌，所有人各 +1 治疗，额外 +1 攻击行动）
@@ -145,7 +145,11 @@ func _di_qiang(ctx: Dictionary) -> int:
 		var 选项: Array = []
 		for n: int in range(1, 5):
 			选项.append({"value": n, "label": GConst.按钮文本(DI_QIANG, 0, {"n": n}), "enabled": n <= 上限})
-		询问(player.id, DI_QIANG, 0, 0, GConst.CardSource.Hand, 选项)
+			# 预览：把「本次攻击伤害」和攻击目标随询问下发，选 X 后目标头像上
+			# 写「原伤害划掉 → +X 后的伤害」
+			询问(player.id, DI_QIANG, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
+				0, -1, [], -1, {}, int((ctx.get("harm", {}) as Dictionary).get("point", 0)),
+				GConst.HarmType.Attack, false, [int(ctx.get("dst", -1))])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
