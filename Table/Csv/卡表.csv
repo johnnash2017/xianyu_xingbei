@@ -153,3 +153,4 @@ string,string,string,string,string,string,int,技能表,技能表,int,string
 卡表#149,attack,water,血,水涟斩,shuiLianZhan,2,技能#血影狂刀,技能#血之悲鸣,0,
 卡表#1005,attack,fire or water,血,魔刃,moRen,0,,,0,
 卡表#1006,attack,thunder or wind,血,异刃,yiRen,0,,,0,
+卡表#1007,attack,earth,幻,史书,shiShu,0,,,0,
