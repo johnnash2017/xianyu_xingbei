@@ -7652,9 +7652,9 @@ func _选特殊行动(action_id: int) -> void:
 				else:
 					组合.append({"text": GConst.文本("通用_星石_战绩区加1宝石1水晶"), "gem": 1, "crystal": 1})
 			elif 宝石 + 水晶 == 4:
-				组合.append({"text": GConst.文本("通用_星石_一个宝石"), "gem": 1, "crystal": 0})
+				组合.append({"text": GConst.文本("通用_星石_战绩区加一宝石"), "gem": 1, "crystal": 0})
 				if not 地下法则:
-					组合.append({"text": GConst.文本("通用_星石_一个水晶"), "gem": 0, "crystal": 1})
+					组合.append({"text": GConst.文本("通用_星石_战绩区加一水晶"), "gem": 0, "crystal": 1})
 			else:
 				组合.append({"text": GConst.文本("通用_星石_战绩区已满"), "gem": 0, "crystal": 0})
 		GConst.SpecialAction.Synthesize:

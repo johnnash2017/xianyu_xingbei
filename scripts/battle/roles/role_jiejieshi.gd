@@ -711,8 +711,8 @@ func p_harm_end(ctx: Dictionary) -> int:
 
 ## 「移除战绩区 1 星石」的两个选项：固定两项，做不了的置灰（照 10802 风之剑 / 7804 强予愿行）
 func _星石选项() -> Array:
-	var 宝石文: String = GConst.文本("通用_星石_一个宝石")
-	var 水晶文: String = GConst.文本("通用_星石_一个水晶")
+	var 宝石文: String = GConst.文本("通用_星石_我方战绩区减一宝石")
+	var 水晶文: String = GConst.文本("通用_星石_我方战绩区减一水晶")
 	return [
 		{"value": 星石_宝石, "label": 宝石文, "text": 宝石文,
 			"enabled": engine.team_gem[player.color] > 0},
