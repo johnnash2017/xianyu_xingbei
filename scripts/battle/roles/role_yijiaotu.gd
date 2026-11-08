@@ -847,7 +847,7 @@ func _日志末日(前缀: String, 动作: String, 操作者: int, 数: int) -> 
 		return
 	engine.broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Discard,
-		"txt": "%s%s%s的【末日预言】%s %d 张牌" % [
+		"txt": GConst.文本("日志_末日预言展示") % [
 			_称号(操作者), 前缀, _称号(player.id), 动作, 数],
 		"id": player.id,
 	})
@@ -893,7 +893,8 @@ func _展示系别选项() -> Array:
 			"enabled": _展示可发动(系),
 			"skill_id": 技能号,
 			"cards": 牌白,
-			"提示": "【%s】：%s" % [_在展示, GConst.填文本(效果模板, {"s": 系名})],
+			"提示": GConst.文本("通用_技能提示") % [
+				_在展示, GConst.填文本(效果模板, {"s": 系名})],
 		})
 	return out
 

@@ -127,7 +127,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 		"targets": 单体目标,
 		"enabled": player.cross_num > 0 and not 单体目标.is_empty(),
 		# 单体分支先摸 1 张再判定伤害；摸牌受手牌上限约束，目标手牌须严格小于摸牌后的手牌数。
-		"说明": "【圣光爆裂】：摸 1 牌，对 1 名手牌数小于 %d 的对手造成 2 点攻击伤害，你 +1【信仰】。" % _sheng_guang_single_hand_limit(),
+		"说明": GConst.按钮原文(SHENG_GUANG_BAO_LIE, 3) % _sheng_guang_single_hand_limit(),
 	})
 	var 群体目标: Array[int] = _sheng_guang_mode2_targets(1)
 	out.append({
@@ -138,7 +138,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 		"target_max": 0,
 		"targets": [],
 		"enabled": player.cross_num > 0 and not 群体目标.is_empty(),
-		"说明": "【圣光爆裂】：移除 X 治疗，弃 X 张牌，对最多 X 名手牌数小于（你的手牌数 - X + 1）的对手各造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数，你获得 X 点【信仰】。X 在下一步选择。",
+		"说明": GConst.按钮原文(SHENG_GUANG_BAO_LIE, 4),
 	})
 	return out
 
@@ -197,12 +197,12 @@ func _hui_guang_enabled(side: int) -> bool:
 ## 不再在选项里选攻击/法术；余辉没有额外行动。两者都只选士气方向。
 ## 技能号 区分正反两面（8806 辉光炮 / 8808 余辉），按钮文案各读各的技能行。
 func _hui_guang_pao_choices(含额外行动: bool, 技能号: int) -> Array:
-	var 额外说明: String = "然后你获得 1 次攻击或法术行动。" if 含额外行动 else ""
+	var 额外说明: String = GConst.按钮原文(HUI_GUANG_PAO, 4) if 含额外行动 else ""
 	return [
 		{"text": GConst.按钮原文(技能号, 0), "args": [1],
-			"说明": "我方士气调整为与敌方相同。" + 额外说明},
+			"说明": GConst.按钮原文(HUI_GUANG_PAO, 2) + 额外说明},
 		{"text": GConst.按钮原文(技能号, 1), "args": [0],
-			"说明": "敌方士气调整为与我方相同。" + 额外说明},
+			"说明": GConst.按钮原文(HUI_GUANG_PAO, 3) + 额外说明},
 	]
 
 

@@ -453,9 +453,9 @@ func _白二_结界选项() -> Array:
 		if 卡 == null:
 			continue
 		var 系名: String = GConst.element_to_chinese(卡.element_enum())
-		var 标签: String = "将【结界】%s 加入手牌" % 卡.card_name
+		var 标签: String = GConst.文本("通用_结界加入手牌") % 卡.card_name
 		if not 系名.is_empty() and 系名 != "?":
-			标签 = "将【结界·%s】%s 加入手牌" % [系名, 卡.card_name]
+			标签 = GConst.按钮原文(白二羯磨, 0) % [系名, 卡.card_name]
 		out.append({"value": cid, "label": 标签, "card_id": cid})
 	return out
 
@@ -728,7 +728,8 @@ func _星石选项() -> Array:
 ## 说明的后半段（额外 3 祭换弃牌 / 移除结界 / 横置）由第二次询问的「提示2」说明，不在这一步重复。
 func _荒神_发动提示() -> String:
 	var 说明: String = GConst.skill_desc(HUANG_SHEN_JI_YI)
-	return "【%s】：%s" % [GConst.skill_name(HUANG_SHEN_JI_YI), 说明.get_slice("；", 0).strip_edges()]
+	return GConst.文本("通用_技能提示") % [
+		GConst.skill_name(HUANG_SHEN_JI_YI), 说明.get_slice("；", 0).strip_edges()]
 
 
 ## 加【祭】；真的加上去了才触发【伏魔境】（返回 true＝压了询问钩子，调用方要 return URGENT）

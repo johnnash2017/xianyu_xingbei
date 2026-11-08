@@ -248,7 +248,7 @@ func _应用神威(ctx: Dictionary) -> void:
 		if p0 != null:
 			engine.broadcast(GConst.Msg.Gossip, {
 				"type": GConst.GossipType.Heal,
-				"txt": "%s 无法获得治疗" % engine._称号(p0),
+				"txt": GConst.文本("日志_无法获得治疗") % engine._称号(p0),
 				"id": pid,
 				"num": 0,
 			})

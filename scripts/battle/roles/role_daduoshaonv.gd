@@ -611,6 +611,6 @@ func _zai_shui_yi_xia结算() -> void:
 	engine._发送对局快照()
 	engine.broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Morale,
-		"txt": "%s 方士气 +1" % ("红" if player.color == GConst.RED else "蓝"),
+		"txt": GConst.文本("日志_士气加一") % ("红" if player.color == GConst.RED else "蓝"),
 		"id": player.id,
 	})

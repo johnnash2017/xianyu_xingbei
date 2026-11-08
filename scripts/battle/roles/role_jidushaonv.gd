@@ -243,9 +243,9 @@ func _全部角色() -> Array[int]:
 ## 发动者与目标同队时水晶进的是目标自己这边（我方），否则是对面（对方）。
 func _cu_yi_弃牌文案(dst_id: int) -> String:
 	var 目标: BattlePlayer = engine.p(dst_id)
-	var 阵营: String = "我方" if 目标 != null and 目标.color == player.color else "对方"
-	return "【%s】：弃 1 张法术牌【展示】，（若不这么做）你受到 %d 点法术伤害，%s【战绩区】+1【水晶】" \
-		% [GConst.skill_name(CU_YI_XIU_XIN), CU_YI_HARM_POINT, 阵营]
+	var 阵营: String = GConst.文本("通用_我方") if 目标 != null and 目标.color == player.color \
+		else GConst.文本("通用_对方")
+	return GConst.提示原文(CU_YI_XIU_XIN, 1) % [GConst.skill_name(CU_YI_XIU_XIN), CU_YI_HARM_POINT, 阵营]
 
 
 ## 目标不弃法术牌的惩罚：我方【战绩区】+1【水晶】，并对他造成 2 点法术伤害③。

@@ -126,7 +126,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 		"target_max": 1,
 		"targets": 友方,
 		"enabled": player.cross_num > 0 and not 友方.is_empty(),
-		"说明": "【圣光爆裂】：摸 1 张牌【强制】，移除 1【治疗】，你 +1【信仰】，目标队友 +1【治疗】。",
+		"说明": GConst.按钮原文(SHENG_GUANG_BAO_LIE, 3),
 	})
 	var 群体目标: Array[int] = _sheng_guang_mode2_targets(1)
 	out.append({
@@ -137,7 +137,7 @@ func _sheng_guang_bao_lie_choices() -> Array:
 		"target_max": 0,
 		"targets": [],
 		"enabled": player.cross_num > 0 and not 群体目标.is_empty(),
-		"说明": "【圣光爆裂】：移除 X 治疗，弃 X 张牌，对最多 X 名手牌数不大于（你的手牌数 - X）的对手各造成（Y+2）点攻击伤害，Y为目标中拥有【治疗】的人数。X 在下一步选择。",
+		"说明": GConst.按钮原文(SHENG_GUANG_BAO_LIE, 4),
 	})
 	return out
 
@@ -195,12 +195,12 @@ func _hui_guang_enabled(side: int) -> bool:
 ## 辉光炮/余辉的士气方向选项。辉光炮的额外行动固定是「攻击或法术行动」，
 ## 不再在选项里选攻击/法术；余辉没有额外行动。两者都只选士气方向。
 func _hui_guang_pao_choices(含额外行动: bool) -> Array:
-	var 额外说明: String = "然后你获得 1 次攻击或法术行动。" if 含额外行动 else ""
+	var 额外说明: String = GConst.按钮原文(HUI_GUANG_PAO, 4) if 含额外行动 else ""
 	return [
 		{"text": GConst.按钮原文(HUI_GUANG_PAO, 0), "args": [1],
-			"说明": "我方士气调整为与敌方相同。" + 额外说明},
+			"说明": GConst.按钮原文(HUI_GUANG_PAO, 2) + 额外说明},
 		{"text": GConst.按钮原文(HUI_GUANG_PAO, 1), "args": [0],
-			"说明": "敌方士气调整为与我方相同。" + 额外说明},
+			"说明": GConst.按钮原文(HUI_GUANG_PAO, 3) + 额外说明},
 	]
 
 
