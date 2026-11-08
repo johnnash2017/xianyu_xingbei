@@ -415,7 +415,14 @@ func _检结界师() -> void:
 	窗.set("_skill_card_max", 2)
 	窗.set("_skill_card_source", GConst.CardSource.HandOrCover)
 	窗.set("_skill_cover_need", 1)
-	窗.set("_sel_cards", [-11, -12])
+	var 空选: Array[int] = []
+	var 手一: Array[int] = [-11]
+	var 手二: Array[int] = [-11, -12]
+	窗.set("_sel_cards", 空选)
+	检(bool(窗.call("_卡牌能点", -12)), "荒神祭仪：还没选牌时手牌应可点")
+	窗.set("_sel_cards", 手一)
+	检(not bool(窗.call("_卡牌能点", -12)), "荒神祭仪：已选 1 张手牌后，第二张手牌应点不动")
+	窗.set("_sel_cards", 手二)
 	检(bool(窗.call("_确定不可用")), "荒神祭仪：两张手牌、没有盖牌时「确定」应灰着")
 	窗.free()
 

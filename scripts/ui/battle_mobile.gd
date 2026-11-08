@@ -5787,6 +5787,17 @@ func _技能牌能点(面: int, card_id: int) -> bool:
 				盖已选 += 1
 		if 盖已选 >= _skill_cover_max:
 			return false
+	# 手牌 + 盖牌混选时「手牌最多几张」= 总上限 - 至少几张盖牌。
+	# 如荒神祭仪：2 张里要求 1 张盖牌 → 选满 1 张手牌后，其余手牌直接置灰，
+	# 不让玩家先点两张手牌、再等按「确定」时才发现没盖牌。
+	if _skill_cover_need > 0 and _skill_card_max > 0 and not _is_my_cover(card_id) \
+			and not _sel_cards.has(card_id):
+		var 手已选: int = 0
+		for c2: Variant in _sel_cards:
+			if not _is_my_cover(int(c2)):
+				手已选 += 1
+		if 手已选 >= _skill_card_max - _skill_cover_need:
+			return false
 	# 「要凑多张」的技能（最多牌 ≥ 2，如元素师法术「发动牌 + 加成牌」）选满上限后，
 	# 没选上的牌一律置灰：必须先点掉已选的牌才能换，否则会出现「点第三张牌 → 整批清空重选 →
 	# 组合里混进不合法的牌」这种界面能提交、服务端必驳回的状态。
