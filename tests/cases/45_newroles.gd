@@ -1,4 +1,4 @@
-﻿extends 自检用例
+extends 自检用例
 ## R7 新角色（39 / 40 / 43 / 79 / 82 / 84 / 95）数据与核心契约自检。
 ##
 ## 本分支按需求「先功能后角色」，只做代码检查、未跑全量自检；本用例覆盖
@@ -96,6 +96,13 @@ func _检噬神者被动() -> void:
 
 
 ## 重建一个 4 人引擎并给 1 号挂上指定角色脚本
+## 直接给角色钩子喂一条回复（不经过引擎的 run 循环）
+func _应答(args: Array, cards: Array = [], dsts: Array = []) -> void:
+	引擎._reply = {"args": args, "card_ids": cards, "dst_ids": dsts}
+	引擎._has_reply = true
+	引擎._await_state = 引擎._当前状态
+
+
 func _建引擎(角色号: int) -> BattleRole:
 	引擎 = BattleEngine.new()
 	发送记录.clear()
@@ -162,20 +169,25 @@ func _检咒符师() -> void:
 	检(玩家.cover_cards.has(水法术), "【妖力】应能在盖牌区检索到")
 
 
-## 82 结界师：结界仪式放 2 张面朝上的盖牌 +1 祭；荒神之力对同系攻击 +1
+## 82 结界师：结界仪式放 2 张面朝上的盖牌 +1 祭；荒神之力对同系攻击 +1；
+## 荒神祭仪先问再 +1 祭、额外 3 祭换弃牌 + 移除结界 + 横置；禁魔境挂【绝界】；
+## 琉璃境（0 号牌也合法）；伏魔境（士气下降后移除 1 星石、+1 水晶）；绝界三条只认 attached。
 func _检结界师() -> void:
 	var 角色: BattleRole = _建引擎(82)
 	var 玩家: BattlePlayer = 引擎.p(1)
 	var 两张: Array = _找两张牌("火")
 	检(两张.size() == 2, "找不到两张火系牌")
+	玩家.hand_cards.clear()
+	玩家.cover_cards.clear()
+	玩家.remove_token(0, 玩家.token_num(0))
 	for c: int in 两张:
 		玩家.add_hand_cards([c])
 	检(int(角色.v_magic_skill({"src_id": 1, "action_id": 8201, "card_ids": 两张})) == GConst.GE_SUCCESS,
 		"【结界仪式】2 张手牌应通过校验")
-	引擎.add_cover(1, 两张, 1, 8201, true)
+	# 实际结算：2 张面朝上放进盖牌区 + 1 祭
+	角色.p_magic_skill({"src_id": 1, "action_id": 8201, "card_ids": 两张})
 	检(玩家.cover_cards.size() == 2, "【结界】应放进盖牌区")
 	检(玩家.公开盖牌牌面().size() == 2, "【结界】应面朝上（公开牌面）")
-	玩家.add_token(0, 1)
 	检(玩家.token_num(0) == 1, "【祭】应加进 0 号指示物")
 	# 荒神之力：火系攻击 +1
 	var harm: Dictionary = {"src": 2, "dst": 1, "point": 1, "type": GConst.HarmType.Attack}
@@ -183,34 +195,13 @@ func _检结界师() -> void:
 	var ctx: Dictionary = {"src": 2, "dst": 1, "is_active": true, "card_id": 火攻击, "harm": harm}
 	角色.p_before_attack(ctx)
 	检(int(harm.get("point", 0)) == 2, "【荒神之力】应让同系攻击伤害 +1：%d" % int(harm.get("point", 0)))
-	# 卡表#0 是合法牌、座位 0 是合法人：琉璃境不能把 0 当「没有」
-	# 先把上面塞满的两张【结界】收走，留出盖牌位（结界师只有 2 个结界槽）
-	引擎.remove_cover(1, 两张, 1, 8201)
-	角色._mod_step = 5
-	角色._琉璃_step = 4
-	角色._琉璃待放 = 0
-	角色._琉璃弃牌人 = 0
-	引擎._reply = {"args": [1], "card_ids": [], "dst_ids": [], "respond_id": 0}
-	引擎._has_reply = true
-	引擎._await_state = 引擎._当前状态
-	检(角色.p_jie_jie_ask({"player": 1}) == BattleRole.URGENT,
-		"琉璃境：0 号牌也要能放进盖牌区作为【结界】")
-	检(玩家.cover_cards.has(0), "0 号牌应作为【结界】进盖牌区")
-	# 不做成结界时：0 号牌必须进弃牌堆（不能被 > 0 吞掉而凭空消失）
-	角色._mod_step = 5
-	角色._琉璃待放 = 0
-	角色._琉璃弃牌人 = 0
-	引擎._reply = {"args": [0], "card_ids": [], "dst_ids": [], "respond_id": 0}
-	引擎._has_reply = true
-	引擎._await_state = 引擎._当前状态
-	角色.p_jie_jie_ask({"player": 1})
-	检(引擎.deck.discard.has(0), "琉璃境：0 号牌不当作结界时必须进弃牌堆")
 
 	# ---- 禁魔境：绝界只挂在目标面前，不能再画在拥有者（结界师）自己面板上 ----
-	引擎.加场卡({"id": "绝界", "owner": 1, "attached": 2,
-		"counter": 0, "counter_max": 0, "state": 0})
+	玩家.add_token(0, 1)
+	角色.p_magic_skill({"src_id": 1, "action_id": 8204, "dst_ids": [2]})
 	检(引擎.玩家有场卡(2, "绝界"), "【绝界】应挂在目标 2 号面前")
 	检(not 引擎.玩家有场卡(1, "绝界"), "【绝界】不该在拥有者 1 号面前生效")
+	检(玩家.token_num(0) == 1, "【禁魔境】应移除 1 点【祭】")
 	var 旧场卡: Array[Dictionary] = Data.场卡表.duplicate()
 	Data.场卡表.clear()
 	Data.场卡表.append({"id": "绝界", "owner": 1, "attached": 2})
@@ -253,13 +244,53 @@ func _检结界师() -> void:
 		图标.free()
 		界面实例.free()
 
-	# ---- 荒神祭仪：先问是否发动，确认才 +1 祭；移除结界后横置 ----
+	# ---- 琉璃境：0 号牌是合法牌（不是「没有」）----
+	玩家.cover_cards.clear()
+	玩家.tap = true
+	# 同步掉士气链（合成星杯 / 逆反居合斩 / 暗月诅咒）里不能等玩家输入：sync 标记直接放行
+	检(角色.p_lose_morale({"dst": 1, "amount": 1, "type": GConst.HarmType.None, "sync": true})
+		== BattleRole.SUCCESS, "同步掉士气链里【琉璃境】不该发询问")
+	var 零ctx: Dictionary = {"dst": 1, "amount": 1, "type": GConst.HarmType.Attack,
+		"_jiejie_琉璃": 5, "_jiejie_琉璃牌": 0, "_jiejie_琉璃弃牌人": 1}
+	_应答([1])
+	检(角色.p_lose_morale(零ctx) == BattleRole.URGENT,
+		"琉璃境：0 号牌也要能放进盖牌区作为【结界】")
+	检(玩家.cover_cards.has(0), "0 号牌应作为【结界】进盖牌区")
+	玩家.cover_cards.clear()
+	var 零ctx2: Dictionary = {"dst": 1, "amount": 1, "type": GConst.HarmType.Attack,
+		"_jiejie_琉璃": 5, "_jiejie_琉璃牌": 0, "_jiejie_琉璃弃牌人": 1}
+	_应答([0])
+	角色.p_lose_morale(零ctx2)
+	检(引擎.deck.discard.has(0), "琉璃境：0 号牌不当作结界时必须进弃牌堆")
+
+	# ---- 琉璃境完整流程：是否发动 → 选目标 → 目标弃 1 张【展示】→ 放成结界 ----
+	玩家.hand_cards.clear()
+	玩家.cover_cards.clear()
+	玩家.tap = true
+	var 水攻击: int = _找牌("水", "attack")
+	玩家.add_hand_cards([水攻击])
+	var 宝石前: int = 引擎.team_gem[玩家.color]
+	var 琉璃ctx: Dictionary = {"dst": 1, "amount": 1, "type": GConst.HarmType.Attack}
+	检(角色.p_lose_morale(琉璃ctx) == BattleRole.WAIT, "【琉璃境】应先问是否发动")
+	_应答([1])
+	检(角色.p_lose_morale(琉璃ctx) == BattleRole.WAIT, "【琉璃境】确认后应问指定哪名角色弃牌")
+	检(not 玩家.tap, "【琉璃境】发动后应【重置】")
+	检(引擎.team_gem[玩家.color] == 宝石前 + 1, "【琉璃境】应给战绩区 +1【宝石】")
+	_应答([], [], [1])
+	检(角色.p_lose_morale(琉璃ctx) == BattleRole.WAIT, "【琉璃境】应等目标弃牌")
+	_应答([], [水攻击], [])
+	检(角色.p_lose_morale(琉璃ctx) == BattleRole.URGENT, "【琉璃境】展示后应挂起")
+	检(角色.p_lose_morale(琉璃ctx) == BattleRole.WAIT, "【琉璃境】应问要不要把弃牌当【结界】")
+	_应答([1])
+	检(角色.p_lose_morale(琉璃ctx) == BattleRole.URGENT, "【琉璃境】放结界后应挂起")
+	检(玩家.cover_cards.has(水攻击), "弃牌应面朝上放进盖牌区作为【结界】")
+
+	# ---- 荒神祭仪：先问是否发动，确认才 +1 祭；额外 3 祭 → 弃 1 张、移除 1 个结界、横置 ----
 	玩家.hand_cards.clear()
 	玩家.cover_cards.clear()
 	var 火法术: int = _找牌("火", "magic")
 	玩家.add_hand_cards([火攻击])
 	引擎.add_cover(1, [火法术], 1, 8203, true)
-	# 【祭】上限是 3：先清空再放 2，确认后刚好 3，才能验证「+1」真的加进去了
 	玩家.remove_token(0, 玩家.token_num(0))
 	玩家.add_token(0, 2)
 	var 荒神ctx: Dictionary = {"is_active": true, "src": 2, "dst": 1,
@@ -267,23 +298,19 @@ func _检结界师() -> void:
 	var 祭前: int = 玩家.token_num(0)
 	检(角色.p_timeline_1(荒神ctx) == BattleRole.WAIT, "【荒神祭仪】应先询问是否发动")
 	检(玩家.token_num(0) == 祭前, "【荒神祭仪】没确认前不该自动 +1 祭")
-	引擎._reply = {"args": [1], "card_ids": [], "dst_ids": [], "respond_id": 0}
-	引擎._has_reply = true
-	引擎._await_state = 引擎._当前状态
-	角色.p_timeline_1(荒神ctx)
+	_应答([1])
+	检(角色.p_timeline_1(荒神ctx) == BattleRole.WAIT,
+		"【荒神祭仪】+1 祭后应问是否额外移除 3 祭")
 	检(玩家.token_num(0) == 祭前 + 1, "【荒神祭仪】确认后应 +1 祭")
-	# 弃牌后的「选结界」步：选 1 张结界移除后应【横置】
-	玩家.tap = false
-	角色._mod_step = 21  # 步_荒神弃牌
-	引擎._has_reply = false
-	检(角色.p_jie_jie_ask({"player": 1}) == BattleRole.WAIT,
-		"【荒神祭仪】弃牌后应询问要移除的结界")
-	引擎._reply = {"args": [], "card_ids": [火法术], "dst_ids": [], "respond_id": 0}
-	引擎._has_reply = true
-	引擎._await_state = 引擎._当前状态
-	角色.p_jie_jie_ask({"player": 1})
+	_应答([1])
+	检(角色.p_timeline_1(荒神ctx) == BattleRole.URGENT, "【荒神祭仪】额外代价后应压弃牌状态")
+	检(玩家.token_num(0) == 0, "【荒神祭仪】应移除 3 点【祭】")
+	检(角色.p_timeline_1(荒神ctx) == BattleRole.WAIT, "【荒神祭仪】弃牌后应询问要移除的结界")
+	_应答([], [火法术], [])
+	角色.p_timeline_1(荒神ctx)
 	检(玩家.cover_cards.is_empty(), "【荒神祭仪】应移除 1 张结界")
 	检(玩家.tap, "【荒神祭仪】移除结界后应【横置】")
+	检(not 引擎.有场卡("绝界"), "结界变成 0 时【绝界】应被【灭界破散】移除")
 
 	# 客户端：结界师面板的横置名牌要能显示「荒神祭仪」（不是只看服务端 tap）
 	var 面板: Control = (load("res://scenes/prefabs/battlemobile/PlayerSelfPanel.tscn") as PackedScene).instantiate()
@@ -302,25 +329,38 @@ func _检结界师() -> void:
 	玩家.tap = false
 	玩家.cover_cards.clear()
 	引擎.add_cover(1, [火法术], 1, 8206, true)
-	var 结界数: int = 玩家.cover_cards.size()
-	# 结界师（1 号）回合结束：不触发灭界破散、不移除结界
-	角色._mod_step = 0
 	检(角色.p_turn_end({"player": 1}) == BattleRole.SUCCESS,
 		"绝界在 2 号时，结界师自己回合结束不该触发灭界破散")
-	检(玩家.cover_cards.size() == 结界数, "结界师自己回合结束不该移除结界")
-	# 绝界拥有者（2 号）回合结束：才进入灭界破散流程
-	检(角色.p_turn_end({"player": 2}) != BattleRole.SUCCESS,
-		"绝界拥有者 2 号回合结束应触发灭界破散")
-	# 白二羯磨：只有拥有者的攻击行动结束才 +1 祭 / 要结界
-	角色._mod_step = 0
+	检(角色.p_turn_end({"player": 2}) == BattleRole.WAIT,
+		"绝界拥有者 2 号回合结束应询问移除哪个结界")
 	检(角色.p_action_end({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
 		"绝界在 2 号时，结界师自己的攻击行动结束不该触发白二羯磨")
-	检(角色.p_action_end({"player": 2, "kind": "attack"}) != BattleRole.SUCCESS,
-		"绝界拥有者 2 号的攻击行动结束应触发白二羯磨")
-	# 虚空境：只禁止拥有者的基础效果，不禁止结界师自己的
+	检(角色.p_action_end({"player": 2, "kind": "attack"}) == BattleRole.WAIT,
+		"绝界拥有者 2 号的攻击行动结束应先问结界师是否发动白二羯磨")
 	检(角色.基础效果被禁止(2), "虚空境应禁止绝界拥有者 2 号的基础效果")
 	检(not 角色.基础效果被禁止(1), "虚空境不该禁止结界师自己的基础效果")
-	角色._mod_step = 0
+
+	# ---- 伏魔境：祭增加时问是否发动 → 选对手 → 1 点法术伤害；士气下降 → 移除 1 星石、+1 水晶 ----
+	玩家.set_gem(1)
+	玩家.set_crystal(0)
+	引擎.set_team_gem(玩家.color, 1)
+	引擎.set_team_crystal(玩家.color, 0)
+	var 伏魔ctx: Dictionary = {"player": 1}
+	检(角色.p_fu_mo_ask(伏魔ctx) == BattleRole.WAIT, "【伏魔境】应先问是否发动")
+	_应答([1])
+	检(角色.p_fu_mo_ask(伏魔ctx) == BattleRole.WAIT, "【伏魔境】应问目标对手")
+	_应答([], [], [2])
+	检(角色.p_fu_mo_ask(伏魔ctx) == BattleRole.URGENT, "【伏魔境】应压入伤害")
+	检(玩家.get_energy() == 0, "【伏魔境】应支付 1 点能量")
+	var 前士气: Array = [引擎.team_morale[GConst.BLUE], 引擎.team_morale[GConst.RED]]
+	引擎.team_morale[GConst.RED] -= 1
+	var 尾ctx: Dictionary = {"harm": {"cause": 8207, "src": 1, "dst": 2,
+		"_jiejie_伏魔前士气": 前士气}}
+	检(角色.p_harm_end(尾ctx) == BattleRole.WAIT, "【伏魔境】：士气下降后应问移除哪种星石")
+	_应答([1])
+	角色.p_harm_end(尾ctx)
+	检(引擎.team_gem[玩家.color] == 0, "【伏魔境】应移除我方战绩区 1 颗【宝石】")
+	检(玩家.crystal == 1, "【伏魔境】应 +1【水晶】")
 
 
 ## 43 圣殿骑士：治疗上限 -1；神威让本次攻击无法应战并禁止双方获得治疗

@@ -6319,6 +6319,9 @@ func lose_morale(target: BattlePlayer, amount: int, cause: int) -> void:
 	var ctx: Dictionary = {
 		"dst": target.id, "amount": amount, "cause": cause,
 		"harm_cause": cause, "type": GConst.HarmType.None,
+		# 同步链：钩子内部不能等玩家输入。需要询问的掉士气响应（琉璃境 8205 等）
+		# 据此跳过这条路，只在 SOverloadMorale（可等待）里响应。
+		"sync": true,
 	}
 	# 对照原版掉士气链：StateBeforeLoseMorale → StateXinYue → StateLoseMorale → StateFixMorale
 	# → StateTrueLoseMorale，全部跑完才真正扣士气（角色在钩子里可以改 ctx["amount"]，
