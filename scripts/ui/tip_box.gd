@@ -212,8 +212,11 @@ func 显示角色说明(角色号: int, 图标矩形: Rect2, 对局中: bool = f
 	var 描边: Color = 角色技能提示.描边颜色(角色号)
 	_设描边(描边 if 描边.a > 0.0 else _默认描边, 角色说明描边宽 if 描边.a > 0.0 else -1)
 	# 专属卡牌的分组框：表格描边色跟随整框（没有分组时设成透明，免得别的说明出现表格边框）
+	# 表格边框固定 1px，用不透明的描边色才够清楚（半透明会更虚、看着像断线）
+	var 框色: Color = 描边
+	框色.a = 1.0 if 框色.a > 0.0 else 0.0
 	文本.add_theme_color_override("table_border",
-		描边 if not 分组结果.is_empty() and 描边.a > 0.0 else Color(0, 0, 0, 0))
+		框色 if not 分组结果.is_empty() and 框色.a > 0.0 else Color(0, 0, 0, 0))
 	_说明角色号 = 角色号
 	_说明缩放 = 缩放
 	if 星数标签 != null:

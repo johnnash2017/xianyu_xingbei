@@ -160,7 +160,7 @@ static func 悬浮提示分组(角色号: int, 字号缩放: float = 1.0, _对�
 			# 外面的两个全角空格让整个框缩进两下。
 			var 标题行: String = "[font_size=%d]%s[/font_size]" % [副标题号, 专名]
 			var 组正文: String = 上色("\n".join(组表[专名]), 正文号, 标题号)
-			片段们.append({"文本": "　　[table=1][cell]%s\n%s[/cell][/table]" % [标题行, 组正文]})
+			片段们.append({"文本": "[indent][table=1][cell]%s\n%s[/cell][/table][/indent]" % [标题行, 组正文]})
 	# 拼成一整段
 	var 文本: String = ""
 	for 片段: Variant in 片段们:
