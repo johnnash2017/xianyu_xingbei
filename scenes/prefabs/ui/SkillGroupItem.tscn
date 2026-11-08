@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_indent"]
+content_margin_left = 32.0
+
+[node name="技能说明" type="RichTextLabel"]
+mouse_filter = 2
+theme_override_styles/normal = SubResource("StyleBoxEmpty_indent")
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+autowrap_mode = 3
+theme_override_constants/line_separation = -3
+theme_override_constants/paragraph_separation = 0
+theme_override_font_sizes/normal_font_size = 16
+text = "【法术】技能名：【提示】这里是一段示例技能说明，编辑分组框时用来对照标题与正文的间距，进游戏后会被真实内容替换。"

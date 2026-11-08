@@ -1,4 +1,4 @@
-﻿class_name 说明提示框
+class_name 说明提示框
 extends Control
 ## 通用悬浮说明框：深色圆角底板 + BBCode 富文本，摆在锚点正上方并夹在宿主控件内。
 ## 战斗界面（悬停头像 / 技能按钮）与选角界面（悬停角色卡）共用同一套外观与排版 ——
@@ -12,6 +12,9 @@ extends Control
 ## 角色说明的默认排版（战斗 / 选角共用；宽度 / 字号改这里，整体大小走设置窗的「技能说明尺寸」）
 const 角色说明宽度: float = 684.0
 const 角色说明字号: int = 16
+## 专属卡牌分组框 / 分组里每条技能说明的预制体（结构 / 标题字号 / 间距 / 内边距都在场景里调）
+const 分组框预制: PackedScene = preload("res://scenes/prefabs/ui/SkillGroupBox.tscn")
+const 分组技能预制: PackedScene = preload("res://scenes/prefabs/ui/SkillGroupItem.tscn")
 ## 「原版说明（被角色改写后列出来对照）」的删除线：用字体自带的 [s]，位置 / 长度天然准；
 ## 只是它默认半透明（主题常量 strikethrough_alpha=50，见 _ready 改成不透明），不然压在灰字上看不清。
 ## 文字整块再压到 90%（角色名 36→32、标题 27→24、正文 18→16）
@@ -231,9 +234,8 @@ func _命中描边与星数(角色号: int) -> void:
 		星数标签.visible = 星数 != ""
 
 
-## 建分块：一块一块富文本竖着排；分组块套一个和整框同色的小面板（标题＝专属卡牌名）。
-## 分组标题不单独建标签，而是写成第一条技能的首行（见下面）—— 这样标题和技能之间
-## 只有普通换行，标签自身的行距 / 段距撑不出空隙来。
+## 建分块：一块一块富文本竖着排；配了专属卡牌的分组用 SkillGroupBox.tscn 的预制体
+## （外缩进 / 圆角描边面板 / 标题 / 技能列表都在场景里，可直接在编辑器里调）。
 ## 宽度固定用 角色说明宽度 —— 不做「一档档加宽重排」（那正是以前抖动 / 错位的来源）。
 func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) -> void:
 	_卸内容()
@@ -242,42 +244,25 @@ func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) 
 	var 描边: Color = 角色技能提示.描边颜色(角色号)
 	if 描边.a <= 0.0:
 		描边 = _默认描边
-	# 标题字号：比正文大一档、比「普通技 / 专属技」小一档
-	var 标题号: int = maxi(1, int(round(float(角色技能提示.提示框标题字号) * 角色说明字号缩放 * 0.75)))
-	# 子框整体缩进两下（对齐正文的「　　」缩进）
-	var 缩进: int = int(round(float(角色说明字号) * 2.0))
 	var 新容器: VBoxContainer = VBoxContainer.new()
 	新容器.add_theme_constant_override("separation", 6)
 	for 项: Variant in 块:
 		var d: Dictionary = 项
 		if d.has("分组"):
-			var 边距: MarginContainer = MarginContainer.new()
-			边距.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			边距.add_theme_constant_override("margin_left", 缩进)
-			var 面板: PanelContainer = PanelContainer.new()
-			面板.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			面板.add_theme_stylebox_override("panel", _分组框样式(描边))
-			var 竖排: VBoxContainer = VBoxContainer.new()
-			竖排.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			# 标题紧贴第一条技能，组内技能之间留一点空隙
-			竖排.add_theme_constant_override("separation", 0)
-			# 分组标题直接写成第一条技能的「首行」，和技能正文放在同一个富文本里：
-			# 只是普通换行，没有第二个标签，标签自身的行距 / 段距就撑不出空隙来。
-			# （以前标题单独一个 RichTextLabel：它按整行行高占位，标题下面必然空出小半行；
-			#   按 1.25 倍字号硬压高度只是补丁，换个字体 / 字号档位又会露出来。）
-			var 技能们: Array = d.get("技能", [])
-			for i: int in 技能们.size():
-				var 条: RichTextLabel = _新块标签(0)
-				条.add_theme_constant_override("paragraph_separation", 0)
-				if i == 0:
-					条.text = "[font_size=%d]%s[/font_size]\n%s" % [
-						标题号, str(d.get("分组", "")), str(技能们[i])]
-				else:
-					条.text = str(技能们[i])
-				竖排.add_child(条)
-			面板.add_child(竖排)
-			边距.add_child(面板)
-			新容器.add_child(边距)
+			var 分组框: 专属卡牌分组框 = 分组框预制.instantiate() as 专属卡牌分组框
+			分组框.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			分组框.设置标题(str(d.get("分组", "")))
+			分组框.设描边(描边)
+			# 组里每个技能各占一个节点（预制体里已经配好字号 / 行距 / 左侧缩进，这里只填文本）。
+			# 注意：上色() 给正文套的是 [indent]，而 [indent] 出现在富文本最开头时会先另起一行
+			# （等于凭空多一条空行，标题下面那截空隙的真因）。分组里每条技能都是独立富文本，
+			# 所以这里把 [indent] 去掉，改用预制体 normal StyleBox 的 content_margin_left 缩进，
+			# 首行和折行都对齐，也不会多出空行。
+			for 技能: Variant in d.get("技能", []):
+				var 条: RichTextLabel = 分组技能预制.instantiate() as RichTextLabel
+				条.text = str(技能).replace("[indent]", "").replace("[/indent]", "")
+				分组框.加技能(条)
+			新容器.add_child(分组框)
 		else:
 			var 标签: RichTextLabel = _新块标签(0)
 			标签.text = str(d.get("文本", ""))
@@ -325,21 +310,6 @@ func _新块标签(_占位: int = 0) -> RichTextLabel:
 	return 标签
 
 
-## 分组子框的样式：和整框同样的圆角，线更粗，颜色用整框的描边色（命格色）
-func _分组框样式(描边: Color) -> StyleBoxFlat:
-	var 样式: StyleBoxFlat = StyleBoxFlat.new()
-	样式.bg_color = Color(0.06, 0.07, 0.1, 0.55)
-	样式.set_border_width_all(3)
-	样式.border_color = 描边
-	样式.set_corner_radius_all(8)
-	样式.content_margin_left = 10.0
-	样式.content_margin_right = 10.0
-	# 上下留白压到最小：标题和第一条技能之间不要再空一大截
-	样式.content_margin_top = 2.0
-	样式.content_margin_bottom = 4.0
-	return 样式
-
-
 ## 把这一档宽度下每个标签都定好宽（RichTextLabel 必须同时改 size 才会按新宽度折行）
 func _块总高(宽: float) -> float:
 	if 块容器 == null:
@@ -347,12 +317,16 @@ func _块总高(宽: float) -> float:
 	var 总: float = 0.0
 	var 子们: Array = 块容器.get_children()
 	for 子: Node in 子们:
+		if 子 is CanvasItem and not (子 as CanvasItem).visible:
+			continue
 		总 += _单块高(子, 宽)
 	总 += float(块容器.get_theme_constant("separation")) * maxf(float(子们.size() - 1), 0.0)
 	return 总
 
 
 func _单块高(节点: Node, 宽: float) -> float:
+	if 节点 is CanvasItem and not (节点 as CanvasItem).visible:
+		return 0.0
 	if 节点 is MarginContainer:
 		var 边距: MarginContainer = 节点
 		var 扣: float = float(边距.get_theme_constant("margin_left")) \
@@ -369,13 +343,20 @@ func _单块高(节点: Node, 宽: float) -> float:
 		for 孙: Node in 面板.get_children():
 			高 += _单块高(孙, 内宽)
 		return 高
+	if 节点 is Label:
+		# 分组标题（Label）：高度就是字体行高，不改尺寸，让容器自己排
+		return (节点 as Label).get_combined_minimum_size().y
 	if 节点 is VBoxContainer:
 		var 竖排: VBoxContainer = 节点
 		var 合计: float = 0.0
+		var 可见数: int = 0
 		for 孙: Node in 竖排.get_children():
+			if 孙 is CanvasItem and not (孙 as CanvasItem).visible:
+				continue
 			合计 += _单块高(孙, 宽)
+			可见数 += 1
 		合计 += float(竖排.get_theme_constant("separation")) \
-			* maxf(float(竖排.get_child_count() - 1), 0.0)
+			* maxf(float(可见数 - 1), 0.0)
 		return 合计
 	if 节点 is RichTextLabel:
 		var 标签: RichTextLabel = 节点
