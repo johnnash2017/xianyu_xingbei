@@ -17,7 +17,7 @@ extends BattleRole
 ## 3. 8202 在 p_before_attack 改 harm.point：后面的应战提示、荒神祭仪的询问都拿得到加后的伤害
 ##    （同游击士【元素射击】3802 在宣告阶段改点数的口径）。
 ## 4. 8203 是响应：先问是否发动，确认才 +1【祭】；额外移除 3 点【祭】、弃 1 张牌、移除 1 个【结界】
-##    合成**一次**询问（need_card=2 + cover_need=1 + cover_max=1 → 1 张手牌 + 1 个结界），
+##    合成**一次**询问：直接传「手牌 hand_need=1 张 + 盖牌 cover_need=1 张」，
 ##    取消＝不额外移除。结算顺序固定：移除 3 祭 → 弃手牌 → 移除结界 → 横置。
 ## 5. 8204 摸场卡照圣庭检察士【狂信徒】3901：engine.加场卡 写 id / owner / attached。
 ## 6. 8205 是 p_lose_morale 里的响应，照天使【神之庇护】706 直接在本钩子里询问；
@@ -236,11 +236,11 @@ func p_timeline_1(ctx: Dictionary) -> int:
 				ctx[键_荒神] = 3
 				if not engine.has_reply():
 					# 一次问完：确认额外移除 3 祭 + 选 1 张手牌弃掉 + 选 1 个【结界】移除。
-					# need_card=2 + cover_need=1 + cover_max=1 → 正好 1 张手牌 + 1 个盖牌；
+					# 直接传「手牌 1 张（hand_need）+ 盖牌 1 张（cover_need）」，客户端按张数卡死。
 					# 取消＝不额外移除（保留前面 +1 祭）。
 					询问(player.id, HUANG_SHEN_JI_YI, 2, 0, GConst.CardSource.HandOrCover, [], 2, "", [],
 						true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1,
-						提示原文(HUANG_SHEN_JI_YI, 1), -1, "", [], [], 1)
+						提示原文(HUANG_SHEN_JI_YI, 1), -1, "", [], [], 1, 1)
 					return WAIT
 			3:
 				if not engine.has_reply():

@@ -327,6 +327,7 @@ func _检结界师() -> void:
 			额外问 = 命令2[0]
 	检(int(额外问.get("cover_need", 0)) == 1, "【荒神祭仪】额外询问应要求至少 1 张盖牌")
 	检(int(额外问.get("cover_max", 0)) == 1, "【荒神祭仪】额外询问最多只能选 1 张盖牌")
+	检(int(额外问.get("hand_need", -1)) == 1, "【荒神祭仪】额外询问应直接给出手牌张数 1")
 	# 一次提交：1 张手牌（弃掉）+ 1 个盖牌（结界，移除）
 	_应答([1], [火攻击, 火法术], [])
 	检(角色.p_timeline_1(荒神ctx) == BattleRole.URGENT, "【荒神祭仪】一次提交后应压弃牌 / 移除结界")
@@ -415,6 +416,7 @@ func _检结界师() -> void:
 	窗.set("_skill_card_max", 2)
 	窗.set("_skill_card_source", GConst.CardSource.HandOrCover)
 	窗.set("_skill_cover_need", 1)
+	窗.set("_skill_hand_need", 1)
 	var 空选: Array[int] = []
 	var 手一: Array[int] = [-11]
 	var 手二: Array[int] = [-11, -12]

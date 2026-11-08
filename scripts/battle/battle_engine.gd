@@ -2546,7 +2546,7 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 高亮目标 非空时随询问下发（highlight_ids）：只把这几名角色点亮给人看，**不参与选择、不参与提交**。
 ## 用于「效果落在不受玩家选择的角色身上」的技能 —— 如【别烦我……】让目标弃牌那一步，
 ## 同时点亮「不弃就 +1 治疗」的那名队友（目标自己由客户端点亮）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = [], timeout_targets: Array = [], cover_max: int = 0) -> void:
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = [], timeout_targets: Array = [], cover_max: int = 0, hand_need: int = -1) -> void:
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
@@ -2668,6 +2668,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 混选时盖牌最多几张（如黄金律：1 张手牌 + 1 个【卢恩】，盖牌不能选第 2 张）
 	if cover_max > 0:
 		cmd["cover_max"] = cover_max
+	# 混选时**直接**给手牌张数：客户端按「手牌 hand_need 张 + 盖牌 cover_need 张」卡，
+	# 不用再拿「总张数 - 至少盖牌数」倒算。不传（-1）＝沿用旧口径。
+	if hand_need >= 0:
+		cmd["hand_need"] = hand_need
 	if not notes.is_empty():
 		cmd["notes"] = notes
 	# 有「本身就是技能」的选项时才下发（如【蓄力一击】/【气绝崩击】），客户端据此让这些选项悬停弹技能说明

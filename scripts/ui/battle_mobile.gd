@@ -569,6 +569,9 @@ var _skill_card_source: int = GConst.CardSource.Hand
 var _skill_cover_need: int = 0
 ## 混选时盖牌最多几张（cover_max；0＝不限制。如黄金律 1 手牌 + 1 卢恩）
 var _skill_cover_max: int = 0
+## 混选时**手牌需要几张**（服务端给的 hand_need；-1＝没给，沿用旧的「总张数 - 至少盖牌数」倒算）。
+## 传了就按「手牌 hand_need 张 + 盖牌 cover_need 张」直接卡，别再做减法。
+var _skill_hand_need: int = -1
 ## 本次发动技能的参数选项（服务端在技能上给的 arg_choices：每项一个按钮，点它就用当前已选的牌/目标提交）
 var _skill_arg_choices: Array = []
 ## 圣殿骑士【圣裁】本地展开的 X 子菜单：不提交，选中 X 后才把 [2, x] 作为主询问应答
@@ -2306,6 +2309,7 @@ func _on_command(data: Dictionary) -> void:
 	_skill_card_rule = ""
 	_skill_card_source = GConst.CardSource.Hand
 	_skill_cover_need = 0
+	_skill_hand_need = -1
 	_skill_cover_max = 0
 	_skill_cards.clear()
 	_skill_targets.clear()
@@ -2582,6 +2586,12 @@ func _技能询问_解析字段() -> void:
 	# 手牌+盖牌混选的询问（如美杜莎之眼：1 张暗月盖牌 + 1 张手牌）
 	_skill_cover_need = int(_pending.get("cover_need", 0))
 	_skill_cover_max = int(_pending.get("cover_max", 0))
+	# 服务端直接给了「手牌几张」（hand_need）：按 hand_need + cover_need 精确卡，不再倒算总张数
+	_skill_hand_need = int(_pending.get("hand_need", -1))
+	if _skill_hand_need >= 0:
+		_skill_need_card = _skill_hand_need + _skill_cover_need
+		_skill_card_max = _skill_need_card
+		_skill_cover_max = _skill_cover_need
 	# 选项切换时要还原的原始需求：技能询问这条通道也必须先记下来，
 	# 否则共振这类「选项自己带 need_target」的询问会拿到上一次/默认的 0，选了选项也不亮目标
 	_选项原始目标数 = _skill_ask_need_target
@@ -4048,6 +4058,7 @@ func _取消失效的当前技能() -> void:
 	_本地询问 = false
 	_selecting_cover = false
 	_skill_cover_need = 0
+	_skill_hand_need = -1
 	_skill_cover_max = 0
 	# 二级栏开着时：收掉选项与「要消耗的行动」按钮，把被它们藏起来的主技能栏重新显示出来
 	if _二级栏:
@@ -5756,6 +5767,11 @@ func _行动牌能点(面: int, card_id: int) -> bool:
 	return _可主动使用牌(card_id)
 
 
+## 混选时手牌最多几张：服务端直接给 hand_need，就按它卡；-1＝这次不是「手牌 N 张 + 盖牌 M 张」的询问，不限。
+func _本题手牌上限() -> int:
+	return _skill_hand_need
+
+
 ## 发动技能 / 技能询问：按服务端给的选牌来源过滤（手牌 / 盖牌区 / 场上基础效果牌），
 ## 再看合法牌白名单、凑多张的锁定、选项自带的牌白名单与选牌系别规则
 ## （如【魔道法典】只能选互异系、【法术反弹】只能选同系）
@@ -5787,16 +5803,15 @@ func _技能牌能点(面: int, card_id: int) -> bool:
 				盖已选 += 1
 		if 盖已选 >= _skill_cover_max:
 			return false
-	# 手牌 + 盖牌混选时「手牌最多几张」= 总上限 - 至少几张盖牌。
-	# 如荒神祭仪：2 张里要求 1 张盖牌 → 选满 1 张手牌后，其余手牌直接置灰，
-	# 不让玩家先点两张手牌、再等按「确定」时才发现没盖牌。
-	if _skill_cover_need > 0 and _skill_card_max > 0 and not _is_my_cover(card_id) \
-			and not _sel_cards.has(card_id):
+	# 混选手牌上限：服务端给了「手牌几张」就直接用；没给才用「总上限 - 至少盖牌数」倒算。
+	# 选满手牌上限后其余手牌置灰，逼玩家去盖牌区选（如荒神祭仪 1 手牌 + 1 结界）。
+	var 手上限: int = _本题手牌上限()
+	if 手上限 >= 0 and not _is_my_cover(card_id) and not _sel_cards.has(card_id):
 		var 手已选: int = 0
 		for c2: Variant in _sel_cards:
 			if not _is_my_cover(int(c2)):
 				手已选 += 1
-		if 手已选 >= _skill_card_max - _skill_cover_need:
+		if 手已选 >= 手上限:
 			return false
 	# 「要凑多张」的技能（最多牌 ≥ 2，如元素师法术「发动牌 + 加成牌」）选满上限后，
 	# 没选上的牌一律置灰：必须先点掉已选的牌才能换，否则会出现「点第三张牌 → 整批清空重选 →
@@ -7679,6 +7694,7 @@ func _复位行动阶段选牌状态() -> void:
 	_skill_card_rule = ""
 	_skill_card_source = GConst.CardSource.Hand
 	_skill_cover_need = 0
+	_skill_hand_need = -1
 	_skill_cover_max = 0
 	_skill_cards.clear()
 	_skill_targets.clear()
@@ -7714,6 +7730,7 @@ func _回到行动阶段() -> void:
 	# 退回行动阶段就不再选盖牌了：不关掉会把盖牌区一直亮着、挡住界面（如取消【倒逆之蝶】选 2 张【茧】那一步）
 	_selecting_cover = false
 	_skill_cover_need = 0
+	_skill_hand_need = -1
 	_skill_cover_max = 0
 	_清空技能按钮()
 	if not _行动命令.is_empty():
@@ -8773,6 +8790,7 @@ func _清空待选() -> void:
 	_skill_slot_element = 0
 	_skill_card_source = GConst.CardSource.Hand
 	_skill_cover_need = 0
+	_skill_hand_need = -1
 	_skill_cover_max = 0
 	_skill_arg_choices.clear()
 	_skill_ask_can_cancel = true
@@ -11486,15 +11504,24 @@ func _确定_技能询问() -> bool:
 	# 没弃牌就一个人都不用选、弃了就必须正好选 1 名（见 _目标数合法）；其余按服务端给的需求数
 	var 目标够: bool = 免选目标 or (_目标数合法() if _目标随牌阈值() > 0 \
 		else (_sel_players.size() >= _skill_ask_need_target if _skill_ask_need_target > 0 else true))
-	# 手牌 + 盖牌混选时，至少有几张必须是盖牌（如荒神祭仪：1 张手牌 + 1 个【结界】一次交上来）。
-	# 发动技能那条一直有这个校验，技能询问这条原来漏了，会放任「两张手牌」提交后被服务端驳回。
+	# 手牌 + 盖牌混选时：服务端直接给了「手牌几张」（hand_need）就两边各数各的；
+	# 没给才沿用旧口径「至少几张必须是盖牌」（如美杜莎之眼、黄金律）。
 	var 盖够: bool = true
-	if _skill_cover_need > 0:
+	if _skill_hand_need >= 0:
+		var 手选中: int = 0
 		var 盖选中: int = 0
 		for c: Variant in _sel_cards:
 			if _is_my_cover(int(c)):
 				盖选中 += 1
-		盖够 = 盖选中 >= _skill_cover_need
+			else:
+				手选中 += 1
+		盖够 = 手选中 >= _skill_hand_need and 盖选中 >= _skill_cover_need
+	elif _skill_cover_need > 0:
+		var 盖选中2: int = 0
+		for c2: Variant in _sel_cards:
+			if _is_my_cover(int(c2)):
+				盖选中2 += 1
+		盖够 = 盖选中2 >= _skill_cover_need
 	# 二级技能栏：先在技能栏里选一个效果，再选够牌 / 目标，才让点「确定」
 	if _二级栏:
 		return not (牌够 and 目标够 and 盖够 and _二级选中 >= 0)

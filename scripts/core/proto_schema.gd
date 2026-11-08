@@ -256,6 +256,10 @@ const SUB: Dictionary = {
 		52: {"n": "option_skill_groups", "t": "msg", "r": true, "s": "OptionTargets"},
 		# 手牌+盖牌混选时盖牌最多几张（黄金律：1 张手牌 + 1 个【卢恩】）
 		63: {"n": "cover_max", "t": "u32"},
+		# 手牌 + 盖牌混选时的**手牌张数**：和 cover_need（盖牌张数）各算各的，
+		# 客户端直接按「手牌 hand_need 张 + 盖牌 cover_need 张」卡，不再拿总张数倒算。
+		# 不传＝沿用旧的「need_card 总张数 + cover_need 至少几张盖牌」口径。
+		64: {"n": "hand_need", "t": "u32"},
 		# 这条技能会把本次出牌固定视为哪个系别（如 3805 精灵的剑舞＝风系；0＝不固定）：
 		# 客户端在额外行动阶段本地切换行动时，据此把与所选行动系别不符的技能按钮置灰。
 		46: {"n": "skill_element", "t": "u32"},
