@@ -1,4 +1,4 @@
-﻿class_name 说明提示框
+class_name 说明提示框
 extends Control
 ## 通用悬浮说明框：深色圆角底板 + BBCode 富文本，摆在锚点正上方并夹在宿主控件内。
 ## 战斗界面（悬停头像 / 技能按钮）与选角界面（悬停角色卡）共用同一套外观与排版 ——
@@ -56,6 +56,8 @@ var _块角色号: int = -1
 var _块要显示: bool = false
 ## 分块内容建的时候用的缩放档（换档要重建，否则字号/尺寸对不上）
 var _块缩放: float = -1.0
+## 上一次量出来的折行宽度：换角色时先用它当初始宽度，框的大小不会跳一大下（跳变看起来像闪）
+var _块宽: float = 0.0
 ## 分块模式正在等下一帧量尺寸（RichTextLabel 进场当帧量到的内容高度是 0）
 var _块沉降中: bool = false
 ## 本次说明的「基准整体缩放」（角色说明按设置窗里的档位取）。摆框时若按它仍塞不进宿主，会在它基础上再等比缩小兜底
@@ -221,18 +223,16 @@ func 显示角色说明(角色号: int, 图标矩形: Rect2, 对局中: bool = f
 ## 分块模式：一块一块富文本竖着排；分组块套一个和整框同色的小面板（标题＝专属卡牌名）。
 ## 布局（宽度档位 / 摆放 / 等比缩小兜底）沿用整段模式那一套，只是量高度改成量各块之和。
 func _显示角色说明块(块: Array, 图标矩形: Rect2, 角色号: int) -> void:
-	# 注意顺序：_卸内容 → _清块容器 会把 _块要显示 清成 false，所以建完块要重新置 true
 	_卸内容()
-	_清块容器()
 	_块要显示 = true
 	_块缩放 = 当前角色说明缩放档()
 	_隐藏星数()
 	_基缩放 = 档位到缩放(当前角色说明缩放档())
 	_让开图标 = true
 	文本.visible = false
-	块容器 = VBoxContainer.new()
-	块容器.add_theme_constant_override("separation", 6)
-	框.add_child(块容器)
+	# 先在旁边把新块建好，再一次性换掉旧的 —— 先拆后建的话，中间会有一帧框里是空的
+	var 新容器: VBoxContainer = VBoxContainer.new()
+	新容器.add_theme_constant_override("separation", 6)
 	var 描边: Color = 角色技能提示.描边颜色(角色号)
 	if 描边.a <= 0.0:
 		描边 = _默认描边
@@ -249,35 +249,33 @@ func _显示角色说明块(块: Array, 图标矩形: Rect2, 角色号: int) -> 
 			var 面板: PanelContainer = PanelContainer.new()
 			面板.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			面板.add_theme_stylebox_override("panel", _分组框样式(描边))
-			var 竖排: VBoxContainer = VBoxContainer.new()
-			竖排.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			# 标题和内容之间不留空隙
-			竖排.add_theme_constant_override("separation", 0)
-			var 标题标签: RichTextLabel = _新块标签()
-			# 标题行不留行距 / 段距：否则标题和下面第一条技能之间会多出一截空隙
-			标题标签.add_theme_constant_override("line_separation", 0)
-			标题标签.add_theme_constant_override("paragraph_separation", 0)
-			标题标签.text = "[font_size=%d]%s[/font_size]" % [
-				标题号, str(d.get("标题", ""))]
-			竖排.add_child(标题标签)
-			var 正文标签: RichTextLabel = _新块标签()
-			# 正文首行也不留段距，紧贴标题
-			正文标签.add_theme_constant_override("paragraph_separation", 0)
-			正文标签.text = str(d.get("文本", ""))
-			竖排.add_child(正文标签)
-			面板.add_child(竖排)
-			边距容器.add_child(面板)
-			块容器.add_child(边距容器)
-		else:
+			# 标题和正文放在同一个富文本里：分成两个标签时，标签自身的行距 / 段距总会在
+			# 标题下面留出一截空隙（怎么调标签间距都去不干净）。同一条文本里就是普通的换行。
 			var 标签: RichTextLabel = _新块标签()
-			标签.text = str(d.get("文本", ""))
-			块容器.add_child(标签)
+			标签.add_theme_constant_override("line_separation", 0)
+			标签.add_theme_constant_override("paragraph_separation", 0)
+			标签.text = "[font_size=%d]%s[/font_size]\n%s" % [
+				标题号, str(d.get("标题", "")), str(d.get("文本", ""))]
+			面板.add_child(标签)
+			边距容器.add_child(面板)
+			新容器.add_child(边距容器)
+		else:
+			var 标签2: RichTextLabel = _新块标签()
+			标签2.text = str(d.get("文本", ""))
+			新容器.add_child(标签2)
+	# 交换：旧容器整个换掉
+	_清块容器()
+	块容器 = 新容器
+	框.add_child(块容器)
+	# 注意：_清块容器 会把 _块要显示 清成 false，所以这里必须重新置 true（顺序反了就永远不显示）
+	_块要显示 = true
 	_块角色号 = 角色号
 	_轮次 += 1
 	_待摆矩形 = 图标矩形
-	# 先按基准宽度立刻摆出来（这一帧标签还没布局，量不准，但框至少是显示的、位置是对的），
+	# 先按宿主上限宽度立刻摆出来（这一帧标签还没布局，量不准，但框至少是显示的、位置是对的），
 	# 下一帧再按真实内容量一次宽度并重摆。这样绝不会出现「建好了却一直藏着」。
-	块容器.custom_minimum_size.x = maxf(宿主().size.x * 最大宽比例, 角色说明宽度)
+	# 初始宽度：沿用上一次量出来的宽度（没有就用宿主上限），换角色时框的大小不跳变
+	块容器.custom_minimum_size.x = _块宽 if _块宽 > 0.0 else maxf(宿主().size.x * 最大宽比例, 角色说明宽度)
 	框.visible = true
 	框.reset_size()
 	_摆(图标矩形)
@@ -299,6 +297,10 @@ func _块沉降显示() -> void:
 	if 块容器 == null or not is_inside_tree() or not _块要显示:
 		return
 	var 宽: float = _算块宽度()
+	# 让每个标签都按「最终这一档宽度」折好行：只设容器的 custom_minimum_size 的话，
+	# 标签还停在测量时最后试过的那一档，下一帧又会按新宽度重排 —— 尺寸来回抖，看起来就是闪
+	_块总高(宽)
+	_块宽 = 宽
 	块容器.custom_minimum_size.x = 宽
 	框.visible = true
 	框.reset_size()
