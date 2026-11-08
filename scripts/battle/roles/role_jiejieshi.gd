@@ -50,10 +50,10 @@ const 星石_水晶: int = 2
 const 键_荒神: String = "_jiejie_荒神"
 ## 荒神祭仪后半段一次提交时选中的那张【结界】（实例号）
 const 键_荒神_盖: String = "_jiejie_荒神盖"
+## 琉璃境两条链的进度键前缀（键本身＝阶段；候选 / 弃牌人 / 牌 = 前缀 + 后缀）
 const 键_琉璃: String = "_jiejie_琉璃"
-const 键_琉璃_候选: String = "_jiejie_琉璃候选"
-const 键_琉璃_弃牌人: String = "_jiejie_琉璃弃牌人"
-const 键_琉璃_牌: String = "_jiejie_琉璃牌"
+## 同步掉士气链（合成星杯 / 逆反居合斩 / 暗月诅咒）扣完士气后补问的那条
+const 键_琉璃后: String = "_jiejie_琉璃后"
 const 键_白二: String = "_jiejie_白二"
 const 键_灭界: String = "_jiejie_灭界"
 const 键_伏魔: String = "_jiejie_伏魔"
@@ -298,23 +298,36 @@ func p_timeline_1(ctx: Dictionary) -> int:
 # 8205 琉璃境：我方士气下降时，若你已【横置】→【重置】、战绩区 +1 宝石、
 # 指定 1 名目标角色弃 1 张牌【展示】，你可把该弃牌面朝上放进盖牌区作为【结界】。
 #
-# 为什么跳过 sync：engine.lose_morale() 是同步钩子链（合成星杯 / 逆反居合斩 / 暗月诅咒），
-# 里面不能等玩家输入；那条路径的 ctx 带 sync 标记。伤害 / 超限掉士气走 SOverloadMorale，可等待。
+# 两条链分开记进度：
+#   · 可等待的掉士气（伤害 / 超限）：SOverloadMorale 里 p_lose_morale 直接问；
+#   · 同步掉士气（合成星杯 / 逆反居合斩 / 暗月诅咒）：同步链不能等玩家输入，
+#     引擎在 lose_morale 扣完士气后补压 p_lose_morale_after，由那条钩子问。
 # ============================================================
 func p_lose_morale(ctx: Dictionary) -> int:
+	# 同步链不在这里问：扣完士气后由 p_lose_morale_after 补问
+	if bool(ctx.get("sync", false)):
+		return SUCCESS
+	return _琉璃响应(ctx, 键_琉璃)
+
+
+## 同步链扣完士气后补问（ctx.sync=true）：士气已经扣完，响应只做后半段。
+func p_lose_morale_after(ctx: Dictionary) -> int:
+	return _琉璃响应(ctx, 键_琉璃后)
+
+
+## 琉璃境响应流程。前缀区分两条链的进度键，互不覆盖。
+func _琉璃响应(ctx: Dictionary, 前缀: String) -> int:
 	# 「已横置」只在流程起点判：发动后她自己会【重置】（tap=false），
 	# 重入时不能再拿它当门槛，否则后面的选人 / 弃牌 / 放结界整段不生效（约定 §20）。
-	if int(ctx.get(键_琉璃, 0)) == 0 and not player.tap:
-		return SUCCESS
-	if bool(ctx.get("sync", false)):
+	if int(ctx.get(前缀, 0)) == 0 and not player.tap:
 		return SUCCESS
 	var 掉方: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if 掉方 == null or 掉方.color != player.color:
 		return SUCCESS
 	while true:
-		match int(ctx.get(键_琉璃, 0)):
+		match int(ctx.get(前缀, 0)):
 			0:
-				ctx[键_琉璃] = 1
+				ctx[前缀] = 1
 				if not engine.has_reply():
 					询问(player.id, LIU_LI_JING)
 					return WAIT
@@ -323,7 +336,7 @@ func p_lose_morale(ctx: Dictionary) -> int:
 					return WAIT
 				var r: Dictionary = take_skill_reply_full()
 				if not _是发动(r):
-					ctx[键_琉璃] = STEP_DONE
+					ctx[前缀] = STEP_DONE
 					return SUCCESS
 				notice_skill(LIU_LI_JING, [player.id])
 				player.tap = false
@@ -331,10 +344,10 @@ func p_lose_morale(ctx: Dictionary) -> int:
 				engine._broadcast_game()
 				var 有牌: Array[int] = _有手牌角色()
 				if 有牌.is_empty():
-					ctx[键_琉璃] = STEP_DONE
+					ctx[前缀] = STEP_DONE
 					return SUCCESS
-				ctx[键_琉璃_候选] = 有牌
-				ctx[键_琉璃] = 2
+				ctx[前缀 + "候选"] = 有牌
+				ctx[前缀] = 2
 				if not engine.has_reply():
 					# 「目标角色」＝场上任意一名角色（自己 / 队友 / 对手都能选），没手牌的人不可选
 					询问(player.id, LIU_LI_JING, 0, 1, GConst.CardSource.Hand, [], 0, "", [],
@@ -345,14 +358,14 @@ func p_lose_morale(ctx: Dictionary) -> int:
 				if not engine.has_reply():
 					return WAIT
 				var r2: Dictionary = take_skill_reply_full()
-				var 候选: Array = ctx.get(键_琉璃_候选, [])
+				var 候选: Array = ctx.get(前缀 + "候选", [])
 				var ds: Array = r2.get("dst_ids", [])
 				var 目标: int = int(ds[0]) if ds.size() == 1 else -1
 				if not 候选.has(目标):
-					ctx[键_琉璃] = STEP_DONE
+					ctx[前缀] = STEP_DONE
 					return SUCCESS
-				ctx[键_琉璃_弃牌人] = 目标
-				ctx[键_琉璃] = 3
+				ctx[前缀 + "弃牌人"] = 目标
+				ctx[前缀] = 3
 				# 让别人弃牌走标准弃牌应答：客户端提示条自动写「【琉璃境】：请选择 1 张牌弃掉」
 				engine.ask_respond(目标, GConst.RespondType.Discard, [目标, LIU_LI_JING, 1], [目标])
 				engine.wait_for(目标, GConst.Msg.Respond)
@@ -361,15 +374,15 @@ func p_lose_morale(ctx: Dictionary) -> int:
 				if not engine.has_reply():
 					return WAIT
 				var r3: Dictionary = take_skill_reply_full()
-				var tgt: BattlePlayer = engine.p(int(ctx.get(键_琉璃_弃牌人, -1)))
+				var tgt: BattlePlayer = engine.p(int(ctx.get(前缀 + "弃牌人", -1)))
 				if tgt == null or tgt.hand_cards.is_empty():
-					ctx[键_琉璃] = STEP_DONE
+					ctx[前缀] = STEP_DONE
 					return SUCCESS
 				var cid: int = _取一张手牌(tgt, r3.get("card_ids", []))
 				if cid < 0:
-					ctx[键_琉璃] = STEP_DONE
+					ctx[前缀] = STEP_DONE
 					return SUCCESS
-				ctx[键_琉璃_牌] = cid
+				ctx[前缀 + "牌"] = cid
 				# 【展示】：先公开再决定去向（作为结界 / 进弃牌堆）
 				engine.broadcast(GConst.Msg.Card, {
 					"type": GConst.CardMsgType.Show, "src_id": tgt.id, "dst_id": tgt.id,
@@ -377,16 +390,16 @@ func p_lose_morale(ctx: Dictionary) -> int:
 				})
 				engine.take_from_hand(tgt.id, [cid], true)
 				# 压了「展示手牌」钩子：先让它结算完，回来再问要不要放进盖牌区
-				ctx[键_琉璃] = 4
+				ctx[前缀] = 4
 				return URGENT
 			4:
-				if int(ctx.get(键_琉璃_牌, -1)) < 0:
-					ctx[键_琉璃] = STEP_DONE
+				if int(ctx.get(前缀 + "牌", -1)) < 0:
+					ctx[前缀] = STEP_DONE
 					return SUCCESS
 				if not player.can_add_cover_cards(1):
-					_弃置琉璃弃牌(ctx)
+					_弃置琉璃弃牌(ctx, 前缀)
 					return URGENT
-				ctx[键_琉璃] = 5
+				ctx[前缀] = 5
 				if not engine.has_reply():
 					询问(player.id, LIU_LI_JING, 0, 0, GConst.CardSource.Hand, [], 0, "", [],
 						true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
@@ -397,10 +410,10 @@ func p_lose_morale(ctx: Dictionary) -> int:
 					return WAIT
 				var r5: Dictionary = take_skill_reply_full()
 				if not _是发动(r5):
-					_弃置琉璃弃牌(ctx)
+					_弃置琉璃弃牌(ctx, 前缀)
 					return URGENT
-				var 放: int = int(ctx.get(键_琉璃_牌, -1))
-				ctx[键_琉璃] = STEP_DONE
+				var 放: int = int(ctx.get(前缀 + "牌", -1))
+				ctx[前缀] = STEP_DONE
 				engine.add_cover(player.id, [放], player.id, LIU_LI_JING, true)
 				return URGENT
 			_:
@@ -409,11 +422,11 @@ func p_lose_morale(ctx: Dictionary) -> int:
 
 
 ## 琉璃境那张弃牌不进盖牌区：进弃牌堆（owner 必须是真正弃牌的人）
-func _弃置琉璃弃牌(ctx: Dictionary) -> void:
-	var cid: int = int(ctx.get(键_琉璃_牌, -1))
-	var 主人: int = int(ctx.get(键_琉璃_弃牌人, -1))
-	ctx[键_琉璃] = STEP_DONE
-	ctx[键_琉璃_牌] = -1
+func _弃置琉璃弃牌(ctx: Dictionary, 前缀: String) -> void:
+	var cid: int = int(ctx.get(前缀 + "牌", -1))
+	var 主人: int = int(ctx.get(前缀 + "弃牌人", -1))
+	ctx[前缀] = STEP_DONE
+	ctx[前缀 + "牌"] = -1
 	if cid < 0:
 		return
 	if 主人 < 0:
@@ -427,9 +440,20 @@ func _弃置琉璃弃牌(ctx: Dictionary) -> void:
 # 8206 灭界破散（被动）/ 8208 白二羯磨（响应）/ 8209 虚空境（被动）
 # 三条都只认「绝界挂在谁面前」：attached 那名角色才是「拥有此卡的角色」。
 # ============================================================
-## 8208 白二羯磨：持有【绝界】的角色【攻击行动】结束时发动 ——
-## 结界师 +1【祭】，持有者把 1 个【结界】加入手牌【强制】。
-## 先问结界师是否发动（响应技先问施法者），确认才 +1 祭；再加牌。
+## 白二羯磨：把结界师的每个【结界】做成给持有者点的选项（值＝盖牌实例号）。
+func _白二_结界选项() -> Array:
+	var out: Array = []
+	for cid: int in player.cover_cards:
+		var 卡: GCard = Data.get_card(cid)
+		if 卡 == null:
+			continue
+		out.append({"value": cid, "label": 卡.card_name, "card_id": cid})
+	return out
+
+
+## 8208 白二羯磨：拥有【绝界】的角色【攻击行动】结束时发动 ——
+## 「你」＝绝界持有者：由他决定发不发动；结界师 +1【祭】，他再把 1 个【结界】加入手牌【强制】。
+## 客户端点不了别人的盖牌区，所以「拿哪个结界」做成选项列表给持有者点。
 func p_action_end(ctx: Dictionary) -> int:
 	if str(ctx.get("kind", "")) != "attack":
 		return SUCCESS
@@ -444,7 +468,8 @@ func p_action_end(ctx: Dictionary) -> int:
 			0:
 				ctx[键_白二] = 1
 				if not engine.has_reply():
-					询问(player.id, 白二羯磨)
+					# 原文「你」＝拥有【绝界】的人，不是结界师：发不发动由他说
+					询问(持有者, 白二羯磨)
 					return WAIT
 			1:
 				if not engine.has_reply():
@@ -462,16 +487,28 @@ func p_action_end(ctx: Dictionary) -> int:
 				if _结界().is_empty():
 					ctx[键_白二] = STEP_DONE
 					return SUCCESS
+				var 选项: Array = _白二_结界选项()
+				if 选项.is_empty():
+					ctx[键_白二] = STEP_DONE
+					return SUCCESS
 				ctx[键_白二] = 3
 				if not engine.has_reply():
-					_问选结界(白二羯磨)
+					# 持有者挑 1 个【结界】（选项值＝盖牌实例号）
+					询问(持有者, 白二羯磨, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [],
+						false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+						GConst.skill_desc(白二羯磨))
 					return WAIT
 			3:
 				if not engine.has_reply():
 					return WAIT
-				var cid: int = _取询问盖牌()
+				var r3: Dictionary = take_skill_reply_full()
+				var args: Array = r3.get("args", [])
+				var cid: int = int(args[0]) if not args.is_empty() else -1
 				ctx[键_白二] = STEP_DONE
-				if cid < 0:
+				# 超时 / 非法选项：技能是【强制】的，改拿结界师的第一个【结界】
+				if cid < 0 or not player.有盖牌(cid):
+					cid = player.cover_cards[0] if not player.cover_cards.is_empty() else -1
+				if cid < 0 or not player.有盖牌(cid):
 					return SUCCESS
 				var 目标: int = _绝界持有者()
 				var 收牌人: BattlePlayer = engine.p(目标)
@@ -614,8 +651,8 @@ func p_fu_mo_ask(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 伏魔境的伤害结算完：对方士气下降 →（移除我方战绩区 1 星石）你 +1【水晶】。
-## 士气没降则整段收尾（不给水晶）。
+## 伏魔境的伤害结算完：对方士气下降 → 询问是否移除我方战绩区 1 星石；
+## 确认移除才扣星石并 +1【水晶】，取消 / 没有星石都不给。
 func p_harm_end(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("cause", 0)) != FU_MO_JING or int(harm.get("src", -1)) != player.id:
@@ -634,16 +671,14 @@ func p_harm_end(ctx: Dictionary) -> int:
 					ctx[键_伏魔尾] = STEP_DONE
 					return SUCCESS
 				if engine.team_gem[player.color] + engine.team_crystal[player.color] <= 0:
-					# 没有星石可移除：士气照降，水晶照给（水晶是士气下降的回报，不是移除星石的代价）
-					player.set_crystal(player.crystal + 1)
+					# 没有星石可移除：后半段做不了，不给水晶（必须移除才加）
 					ctx[键_伏魔尾] = STEP_DONE
-					engine._broadcast_game()
 					return SUCCESS
 				ctx[键_伏魔尾] = 1
 				if not engine.has_reply():
 					# 表里没有这一步的专用「提示」：整段用技能说明，玩家看得到「移除我方【战绩区】1星石」
 					询问(player.id, FU_MO_JING, 0, 0, GConst.CardSource.Hand, _星石选项(),
-						0, "", [], false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
+						0, "", [], true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
 						GConst.skill_desc(FU_MO_JING))
 					return WAIT
 			1:
@@ -651,17 +686,15 @@ func p_harm_end(ctx: Dictionary) -> int:
 					return WAIT
 				var r: Dictionary = take_skill_reply_full()
 				var args: Array = r.get("args", [])
-				var 选择: int = int(args[0]) if not args.is_empty() else 0
+				var 选择: int = int(args[0]) if not args.is_empty() else -1
 				ctx[键_伏魔尾] = STEP_DONE
-				# 超时 / 空回复 / 硬提交了不可用的类型：按「有宝石先扣宝石」补一个合法类型
+				# 取消 / 超时 / 非法：不移除 → 不给【水晶】
 				if 选择 == 星石_宝石 and engine.team_gem[player.color] > 0:
 					engine.set_team_gem(player.color, engine.team_gem[player.color] - 1)
 				elif 选择 == 星石_水晶 and engine.team_crystal[player.color] > 0:
 					engine.set_team_crystal(player.color, engine.team_crystal[player.color] - 1)
-				elif engine.team_gem[player.color] > 0:
-					engine.set_team_gem(player.color, engine.team_gem[player.color] - 1)
 				else:
-					engine.set_team_crystal(player.color, engine.team_crystal[player.color] - 1)
+					return SUCCESS
 				player.set_crystal(player.crystal + 1)
 				engine._broadcast_game()
 				return SUCCESS

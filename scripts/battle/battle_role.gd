@@ -111,6 +111,10 @@ func p_before_lose_morale(_ctx: Dictionary) -> int: return SUCCESS
 ## ctx: {dst 超限者, amount 超限张数, cards 已选好要弃的牌, harm_cause, type, before_discard}
 func p_xin_yue(_ctx: Dictionary) -> int: return SUCCESS
 func p_lose_morale(_ctx: Dictionary) -> int: return SUCCESS
+## 同步掉士气链（合成星杯 / 逆反居合斩 / 暗月诅咒）真正扣完士气后补压的一轮钩子。
+## 同步链里不能等玩家输入，需要询问的「士气下降时」响应（结界师【琉璃境】）在这里问；
+## 士气已经扣完，响应不会改变它。ctx 同 p_lose_morale（带 sync=true）。
+func p_lose_morale_after(_ctx: Dictionary) -> int: return SUCCESS
 func p_fix_morale(_ctx: Dictionary) -> int: return SUCCESS
 func p_true_lose_morale(_ctx: Dictionary) -> int: return SUCCESS
 ## 盖牌变动（对照服务端 PlayerEntity::p_cover_change）：任意盖牌的加入/移出都会对全体触发一次。

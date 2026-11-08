@@ -247,9 +247,24 @@ func _检结界师() -> void:
 	# ---- 琉璃境：0 号牌是合法牌（不是「没有」）----
 	玩家.cover_cards.clear()
 	玩家.tap = true
-	# 同步掉士气链（合成星杯 / 逆反居合斩 / 暗月诅咒）里不能等玩家输入：sync 标记直接放行
+	# 同步掉士气链（合成星杯 / 逆反居合斩 / 暗月诅咒）里不能等玩家输入：sync 标记直接放行，
+	# 由引擎在扣完士气后补压的 p_lose_morale_after 再问
 	检(角色.p_lose_morale({"dst": 1, "amount": 1, "type": GConst.HarmType.None, "sync": true})
-		== BattleRole.SUCCESS, "同步掉士气链里【琉璃境】不该发询问")
+		== BattleRole.SUCCESS, "同步掉士气链里【琉璃境】不该在扣士气前发询问")
+	检(角色.p_lose_morale_after({"dst": 1, "amount": 1, "type": GConst.HarmType.None, "sync": true})
+		== BattleRole.WAIT, "同步掉士气扣完后应补问【琉璃境】")
+	# 引擎侧：同步掉士气真的扣完后要补压 p_lose_morale_after，不能只在角色里手调
+	引擎._states.clear()
+	var 目标2: BattlePlayer = 引擎.p(2)
+	var 士气前: int = 引擎.team_morale[目标2.color]
+	引擎.lose_morale(目标2, 1, 0)
+	检(引擎.team_morale[目标2.color] == 士气前 - 1, "同步掉士气应真的扣士气")
+	var 有后钩: bool = false
+	for st: Variant in 引擎._states:
+		if st is BattleEngine.SHook and str(st.get("hook")) == "p_lose_morale_after":
+			有后钩 = true
+	检(有后钩, "同步掉士气后引擎应补压 p_lose_morale_after")
+	引擎._states.clear()
 	var 零ctx: Dictionary = {"dst": 1, "amount": 1, "type": GConst.HarmType.Attack,
 		"_jiejie_琉璃": 5, "_jiejie_琉璃牌": 0, "_jiejie_琉璃弃牌人": 1}
 	_应答([1])
@@ -363,9 +378,21 @@ func _检结界师() -> void:
 	检(角色.p_action_end({"player": 1, "kind": "attack"}) == BattleRole.SUCCESS,
 		"绝界在 2 号时，结界师自己的攻击行动结束不该触发白二羯磨")
 	检(角色.p_action_end({"player": 2, "kind": "attack"}) == BattleRole.WAIT,
-		"绝界拥有者 2 号的攻击行动结束应先问结界师是否发动白二羯磨")
+		"绝界拥有者 2 号的攻击行动结束应先问他自己是否发动白二羯磨")
 	检(角色.基础效果被禁止(2), "虚空境应禁止绝界拥有者 2 号的基础效果")
 	检(not 角色.基础效果被禁止(1), "虚空境不该禁止结界师自己的基础效果")
+	# 白二羯磨：持有者自己决定发动，并从选项里挑 1 个【结界】（客户端点不了别人的盖牌）
+	玩家.set_gem(0)
+	玩家.set_crystal(0)
+	玩家.remove_token(0, 玩家.token_num(0))
+	var 白二ctx: Dictionary = {"player": 2, "kind": "attack"}
+	检(角色.p_action_end(白二ctx) == BattleRole.WAIT, "白二羯磨应先问持有者是否发动")
+	_应答([1])
+	检(角色.p_action_end(白二ctx) == BattleRole.WAIT, "白二羯磨确认后应让持有者选 1 个结界")
+	_应答([火法术])
+	检(角色.p_action_end(白二ctx) == BattleRole.SUCCESS, "白二羯磨选完结界应结算")
+	检(引擎.p(2).hand_cards.has(火法术), "白二羯磨应把选中的结界交给持有者")
+	检(not 引擎.有场卡("绝界"), "最后一个结界被拿走时【灭界破散】应移除【绝界】")
 
 	# ---- 伏魔境：祭增加时问是否发动 → 选对手 → 1 点法术伤害；士气下降 → 移除 1 星石、+1 水晶 ----
 	玩家.set_gem(1)
@@ -388,6 +415,25 @@ func _检结界师() -> void:
 	角色.p_harm_end(尾ctx)
 	检(引擎.team_gem[玩家.color] == 0, "【伏魔境】应移除我方战绩区 1 颗【宝石】")
 	检(玩家.crystal == 1, "【伏魔境】应 +1【水晶】")
+	# 没有星石可移除：后半段做不了，不问也不给水晶
+	引擎.set_team_gem(玩家.color, 0)
+	引擎.set_team_crystal(玩家.color, 0)
+	玩家.set_crystal(0)
+	var 无石ctx: Dictionary = {"harm": {"cause": 8207, "src": 1, "dst": 2,
+		"_jiejie_伏魔前士气": [引擎.team_morale[GConst.BLUE], 引擎.team_morale[GConst.RED] + 1]}}
+	检(角色.p_harm_end(无石ctx) == BattleRole.SUCCESS, "【伏魔境】没有星石时不该再问")
+	检(玩家.crystal == 0, "【伏魔境】没有星石可移除时不该给水晶")
+	# 取消移除：不扣星石、不给水晶
+	引擎.set_team_gem(玩家.color, 1)
+	引擎.set_team_crystal(玩家.color, 0)
+	玩家.set_crystal(0)
+	var 取消ctx: Dictionary = {"harm": {"cause": 8207, "src": 1, "dst": 2,
+		"_jiejie_伏魔前士气": [引擎.team_morale[GConst.BLUE], 引擎.team_morale[GConst.RED] + 1]}}
+	检(角色.p_harm_end(取消ctx) == BattleRole.WAIT, "【伏魔境】士气下降后应问是否移除星石")
+	_应答([])
+	角色.p_harm_end(取消ctx)
+	检(引擎.team_gem[玩家.color] == 1, "【伏魔境】取消移除时不该扣星石")
+	检(玩家.crystal == 0, "【伏魔境】取消移除时不该给水晶")
 
 	# ---- 通用区域区分：实例号精确在手牌 / 盖牌区，不能按同牌面串区 ----
 	玩家.hand_cards.clear()

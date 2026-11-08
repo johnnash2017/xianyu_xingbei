@@ -6337,8 +6337,13 @@ func lose_morale(target: BattlePlayer, amount: int, cause: int) -> void:
 			if p0 != null and p0.role != null:
 				p0.role.call_hook(钩子, ctx)
 	amount = int(ctx.get("amount", amount))
+	var 前士气: int = team_morale[target.color]
 	set_morale(target.color, team_morale[target.color] - amount)
 	_check_game_over()
+	# 同步链里不能等玩家输入：士气**真的降了**再补压一条可等待的「事后」钩子，
+	# 让【琉璃境】这类「我方士气下降时」的响应仍能问（士气已扣，响应不改变它）。
+	if team_morale[target.color] < 前士气 and phase != Phase.Over:
+		push(SHook.new("p_lose_morale_after", ctx, []))
 
 
 func _check_game_over() -> void:
