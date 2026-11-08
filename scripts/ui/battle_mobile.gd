@@ -6155,9 +6155,22 @@ func _可主动使用牌(card_id: int) -> bool:
 		return false
 	match 牌.card_name_enum():
 		GConst.CardName.Shield, GConst.CardName.Weaken, GConst.CardName.Poison, GConst.CardName.Missile:
+			# 行动阶段一个合法目标都没有（如所有人都有【圣盾】）＝这张牌打不出去：
+			# 直接置灰，并让它参与「手里没有能用的牌」判定，进入无法出牌处理。
+			if _mode == 1 and not _有合法法术目标(牌):
+				return false
 			return GConst.放行动作(GConst.ActionType.Magic, _当前放行())
 		_:
 			return false
+
+
+## 这张法术牌当前有没有合法目标（圣盾 / 虚弱 / 中毒看全场头像，魔弹看固定落点）。
+## 和 _可作法术目标 同一口径，供「手牌能不能主动使用」提前置灰用。
+func _有合法法术目标(牌: GCard) -> bool:
+	for p: GPlayer in Data.player_list:
+		if p != null and _可作法术目标(牌, p.id):
+			return true
+	return false
 
 
 ## 本次行动里技能栏有没有可用的技能（行动询问里第 1 项起就是技能；第 0 项是通用行动）
