@@ -212,8 +212,9 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			0:
 				ctx[键_荒神] = 1
 				if not engine.has_reply():
-					# 发动询问不写 ask 文本：提示条默认显示技能说明
-					询问(player.id, HUANG_SHEN_JI_YI)
+					# 发动询问的提示用技能说明的前半段（只讲 +1 祭），后半段在额外代价那条询问里由「提示2」说明
+					询问(player.id, HUANG_SHEN_JI_YI, 0, 0, GConst.CardSource.Hand, [], 0, "", [],
+						true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, _荒神_发动提示())
 					return WAIT
 			1:
 				if not engine.has_reply():
@@ -684,6 +685,13 @@ func _星石选项() -> Array:
 # ============================================================
 # 内部
 # ============================================================
+## 荒神祭仪的发动询问提示：只取技能说明的前半段（到第一个「；」），前面套「【荒神祭仪】：」。
+## 说明的后半段（额外 3 祭换弃牌 / 移除结界 / 横置）由第二次询问的「提示2」说明，不在这一步重复。
+func _荒神_发动提示() -> String:
+	var 说明: String = GConst.skill_desc(HUANG_SHEN_JI_YI)
+	return "【%s】：%s" % [GConst.skill_name(HUANG_SHEN_JI_YI), 说明.get_slice("；", 0).strip_edges()]
+
+
 ## 加【祭】；真的加上去了才触发【伏魔境】（返回 true＝压了询问钩子，调用方要 return URGENT）
 func _加祭(n: int) -> bool:
 	if player.add_token(JI_SLOT, n) <= 0:

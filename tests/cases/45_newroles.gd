@@ -298,6 +298,18 @@ func _检结界师() -> void:
 	var 祭前: int = 玩家.token_num(0)
 	检(角色.p_timeline_1(荒神ctx) == BattleRole.WAIT, "【荒神祭仪】应先询问是否发动")
 	检(玩家.token_num(0) == 祭前, "【荒神祭仪】没确认前不该自动 +1 祭")
+	# 发动询问的提示只写技能说明前半段（【荒神祭仪】：…），后半段留给额外代价那条询问
+	var 荒神问: Dictionary = {}
+	for 记: Dictionary in 发送记录:
+		if int(记.get("msg", 0)) != GConst.Msg.CmdReq:
+			continue
+		var 命令: Array = (记.get("data", {}) as Dictionary).get("commands", [])
+		if not 命令.is_empty() and int((命令[0] as Dictionary).get("respond_id", 0)) == 8203:
+			荒神问 = 命令[0]
+	检(str(荒神问.get("ask_prompt", "")).begins_with("【荒神祭仪】："),
+		"【荒神祭仪】的发动询问应写「【荒神祭仪】：…」：%s" % str(荒神问.get("ask_prompt", "")))
+	检(not str(荒神问.get("ask_prompt", "")).contains("；"),
+		"【荒神祭仪】的发动询问只写说明前半段，不重复后半段")
 	_应答([1])
 	检(角色.p_timeline_1(荒神ctx) == BattleRole.WAIT,
 		"【荒神祭仪】+1 祭后应一次问「移除 3 祭 + 弃 1 张牌 + 移除 1 个结界」")
