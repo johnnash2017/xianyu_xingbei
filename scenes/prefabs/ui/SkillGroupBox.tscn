@@ -1,6 +1,6 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://kysut1dkuxse"]
 
-[ext_resource type="Script" path="res://scripts/ui/skill_group_box.gd" id="1_group"]
+[ext_resource type="Script" uid="uid://cwx61kgpf142r" path="res://scripts/ui/skill_group_box.gd" id="1_group"]
 [ext_resource type="PackedScene" path="res://scenes/prefabs/ui/SkillGroupItem.tscn" id="2_item"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_group"]
@@ -20,7 +20,7 @@ corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
-[node name="专属卡牌分组框" type="MarginContainer" node_paths=PackedStringArray("边框", "标题", "技能", "示例技能")]
+[node name="专属卡牌分组框" type="MarginContainer" unique_id=895719575 node_paths=PackedStringArray("边框", "标题", "技能", "示例技能")]
 mouse_filter = 2
 theme_override_constants/margin_left = 32
 script = ExtResource("1_group")
@@ -29,21 +29,26 @@ script = ExtResource("1_group")
 "技能" = NodePath("边框/内容/技能")
 "示例技能" = NodePath("边框/内容/技能/示例技能")
 
-[node name="边框" type="PanelContainer" parent="."]
+[node name="边框" type="PanelContainer" parent="." unique_id=16372974]
+layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_group")
 
-[node name="内容" type="VBoxContainer" parent="边框"]
+[node name="内容" type="VBoxContainer" parent="边框" unique_id=212949146]
+layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = -8
+theme_override_constants/separation = 8
 
-[node name="标题" type="Label" parent="边框/内容"]
+[node name="标题" type="Label" parent="边框/内容" unique_id=1128248975]
+layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 18
 text = "专属卡牌名"
 
-[node name="技能" type="VBoxContainer" parent="边框/内容"]
+[node name="技能" type="VBoxContainer" parent="边框/内容" unique_id=600584345]
+layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 0
+theme_override_constants/separation = 8
 
-[node name="示例技能" parent="边框/内容/技能" instance=ExtResource("2_item")]
+[node name="示例技能" parent="边框/内容/技能" unique_id=786295464 instance=ExtResource("2_item")]
+layout_mode = 2
