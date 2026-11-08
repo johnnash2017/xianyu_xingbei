@@ -2106,6 +2106,8 @@ func 场卡快照(viewer_id: int) -> Array:
 			"counter_max": int(表.get("counter_max", 0)),
 			"state": int(表.get("state", 0)),
 			"pile_count": (表.get("pile", []) as Array).size(),
+			# 场卡上叠着的明牌（【王权宝珠】）：牌面，-1＝没有牌
+			"card": int(表.get("card", -1)),
 		}
 		# 隐藏信息（【末日预言】的正面）：只给拥有者自己看，别人拿不到
 		if int(表.get("owner", -1)) == viewer_id and 表.has("front"):

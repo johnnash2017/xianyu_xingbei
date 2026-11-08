@@ -1,4 +1,4 @@
-﻿class_name GConst
+class_name GConst
 extends RefCounted
 ## 全局常量与枚举
 ## 对照 C++ 端：客户端 data/Common.h、服务端 DiceGameServer/GameGrailCommon.h、CardEntity.h
@@ -1300,6 +1300,13 @@ const 场卡显示: Dictionary = {
 		# 绝界的三条能力拆成 8206 / 8208 / 8209 各自成行，悬停时三条都要列出来
 		"被动技能": [8206, 8208, 8209],
 		"被动技能角色": 82,
+	},
+	"王权宝珠": {
+		"图标": "res://assets/textures/icon/wangQuanBaoZhu.png",
+		"说明": "王权宝珠：铸律者的场卡；它放到谁面前，谁就要为【圣律威压】二选一，结算后传给右手边的下家。",
+		# 圣律威压（9206）与神言咏赞（9208）拆成两行，悬停时两条都列出来
+		"被动技能": [9206, 9208],
+		"被动技能角色": 92,
 	},
 }
 

@@ -1117,6 +1117,12 @@ static func 场卡状态项(卡号: String, 表: Dictionary) -> Dictionary:
 	var 正面: String = str(表.get("front", ""))
 	if not 正面.is_empty():
 		提示名 = "%s（%s）" % [提示名, 正面]
+	# 叠在场卡上的明牌（铸律者【王权宝珠】）：牌名放进悬停提示
+	var 叠牌: int = int(表.get("card", -1))
+	if 叠牌 >= 0:
+		var 叠牌对象: GCard = Data.get_card(叠牌)
+		if 叠牌对象 != null:
+			提示名 = "%s（%s）" % [提示名, 叠牌对象.card_name]
 	if 上限 > 0:
 		计数 = 点数
 		提示名 = "%s %d/%d" % [提示名, 计数, 上限]
