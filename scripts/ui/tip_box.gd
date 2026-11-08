@@ -1,4 +1,4 @@
-class_name 说明提示框
+﻿class_name 说明提示框
 extends Control
 ## 通用悬浮说明框：深色圆角底板 + BBCode 富文本，摆在锚点正上方并夹在宿主控件内。
 ## 战斗界面（悬停头像 / 技能按钮）与选角界面（悬停角色卡）共用同一套外观与排版 ——
@@ -210,8 +210,8 @@ func _显示角色说明块(块: Array, 图标矩形: Rect2, 角色号: int) -> 
 	var 描边: Color = 角色技能提示.描边颜色(角色号)
 	if 描边.a <= 0.0:
 		描边 = _默认描边
-	# 标题字号＝分段标题的一半（原来和「普通技 / 专属技」一样大，在子框里太抢眼）
-	var 标题号: int = maxi(1, int(round(float(角色技能提示.提示框标题字号) * 角色说明字号缩放 * 0.5)))
+	# 标题字号：比正文大一档、比「普通技 / 专属技」小一档（原来的 0.5 太小，取 0.75 折中）
+	var 标题号: int = maxi(1, int(round(float(角色技能提示.提示框标题字号) * 角色说明字号缩放 * 0.75)))
 	# 子框整体缩进两下（对齐正文的「　　」缩进），用左边距做，不靠空格
 	var 缩进: int = int(round(float(角色说明字号) * 2.0))
 	for 项: Variant in 块:
@@ -228,10 +228,15 @@ func _显示角色说明块(块: Array, 图标矩形: Rect2, 角色号: int) -> 
 			# 标题和内容之间不留空隙
 			竖排.add_theme_constant_override("separation", 0)
 			var 标题标签: RichTextLabel = _新块标签()
+			# 标题行不留行距 / 段距：否则标题和下面第一条技能之间会多出一截空隙
+			标题标签.add_theme_constant_override("line_separation", 0)
+			标题标签.add_theme_constant_override("paragraph_separation", 0)
 			标题标签.text = "[font_size=%d]%s[/font_size]" % [
 				标题号, str(d.get("标题", ""))]
 			竖排.add_child(标题标签)
 			var 正文标签: RichTextLabel = _新块标签()
+			# 正文首行也不留段距，紧贴标题
+			正文标签.add_theme_constant_override("paragraph_separation", 0)
 			正文标签.text = str(d.get("文本", ""))
 			竖排.add_child(正文标签)
 			面板.add_child(竖排)
@@ -246,10 +251,12 @@ func _显示角色说明块(块: Array, 图标矩形: Rect2, 角色号: int) -> 
 	_块角色号 = 角色号
 	_轮次 += 1
 	_待摆矩形 = 图标矩形
-	框.visible = false
-	_沉降轮次 = _轮次
-	_沉降中 = false
-	_排沉降()
+	# 直接显示再补摆：原来先隐藏、等下一帧沉降再显示 —— 沉降回调只要被打断（比如上一轮收起），
+	# 框就一直藏着，要等鼠标再动一次才出来。这里先按当前尺寸摆一次，下一帧再补一次准确位置。
+	框.visible = true
+	框.reset_size()
+	_摆(图标矩形)
+	_排重摆(图标矩形)
 
 
 ## 分块模式用的富文本标签（样式与整段模式里的 文本 一致：字号 / 行距 / 自动换行）
