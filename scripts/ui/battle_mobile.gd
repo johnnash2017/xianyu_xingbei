@@ -1,4 +1,4 @@
-extends Control
+﻿extends Control
 ## 战斗界面（手机版）容器 —— 把本项目的战斗数据灌进「参考工程搬来的」BattleUIMobile 控件里。
 ##
 ## 背景与取舍：
@@ -2409,7 +2409,7 @@ func _进入待选() -> void:
 				# 写在提示最前面，让被攻击者一眼看到不阻止的话要挨多少
 				var 受伤前缀: String = ""
 				if args.size() > 5:
-					受伤前缀 = "受到 %d 伤害攻击，" % (int(args[5]) + _攻击提示加伤(_原攻击者()))
+					受伤前缀 = "受到 %d 伤害攻击，" % (int(args[5]) + _攻击提示加伤(_原攻击者()) + _荒神之力加伤(_攻击牌元素(args)))
 				# 本次攻击禁用的应战牌（如 9703 爱死天流禁【暗灭】）：牌置灰，提示里也要点明
 				var 禁暗灭: bool = (_pending.get("ban_reattack_card_names", []) as Array).has(GConst.CardName.DarkSlash)
 				# 应战牌必须与本次攻击同系，暗系牌可替任意系：提示点名「X或暗系斩」并给系别上色；
@@ -2581,6 +2581,8 @@ func _技能询问_解析字段() -> void:
 	_skill_targets.clear()
 	for 合法目标id: Variant in _pending.get("dst_ids", []):
 		_skill_targets.append(int(合法目标id))
+	# 结界师【荒神之力】：同系【结界】在场时本次攻击伤害 +1，并进预览值（各现算指示器都按它画）
+	_荒神补预览伤害()
 	# 复用 _need_cards 驱动点选上限与「确定」可用性
 	_need_cards = _skill_card_max
 	_need_players = _skill_ask_need_target
@@ -6363,7 +6365,9 @@ func _刷新攒应战提示() -> void:
 	# 3301 是替队友挡，写成「队友受到 X 点伤害攻击」；3306 写「受到 X 伤害攻击」。
 	var 受伤前缀: String = ""
 	if _攒应战伤害 >= 0:
-		var 提示伤害: int = _攒应战伤害 + _攻击提示加伤(_攒应战攻击者)
+		var 攒应战攻牌: GCard = Data.get_card(_攒应战攻击牌)
+		var 攒应战元素: int = 攒应战攻牌.element_enum() if 攒应战攻牌 != null else 0
+		var 提示伤害: int = _攒应战伤害 + _攻击提示加伤(_攒应战攻击者) + _荒神之力加伤(攒应战元素)
 		if 是3301:
 			受伤前缀 = "队友受到 %d 点伤害攻击，" % 提示伤害
 		else:
@@ -8802,6 +8806,68 @@ func _攻击提示加伤(player_id: int) -> int:
 	return int(GConst.攻击提示角色加成.get(攻击者.role_id, 0)) if 攻击者 != null else 0
 
 
+## 结界师【荒神之力】（8202）：场上有结界师、且她面朝上的【结界】里有与本次攻击同系的牌，
+## 本次攻击伤害就 +1（服务端在命中时按 harm.point 结算）。
+## 所有「攻击伤害」的预览都要把这 1 点算进来，否则显示会比实际结算少 1。
+## 只对**按攻击牌结算**的伤害生效：技能直接 push_harm 的法术伤害、以及非攻击伤害都不算。
+func _荒神之力加伤(元素: int) -> int:
+	if 元素 <= 0:
+		return 0
+	for p: GPlayer in Data.player_list:
+		if p == null or p.role_id != GConst.角色_结界师:
+			continue
+		for cid: Variant in p.cover_opens:
+			var 卡: GCard = Data.get_card(int(cid))
+			if 卡 != null and 卡.element_enum() == 元素:
+				return 1
+	return 0
+
+
+## 询问 args 里的攻击牌（args[1]）的系别；没有就 0（应战提示用）
+func _攻击牌元素(args: Array) -> int:
+	if args.size() <= 1:
+		return 0
+	var 卡: GCard = Data.get_card(int(args[1]))
+	return 卡.element_enum() if 卡 != null else 0
+
+
+## 最近一张打出的攻击牌的系别（荒神之力按它判定；没有就 0）
+func _最近攻击元素() -> int:
+	if _最近攻击牌 <= 0:
+		return 0
+	var 卡: GCard = Data.get_card(_最近攻击牌)
+	return 卡.element_enum() if 卡 != null else 0
+
+
+## 本次攻击的元素：发动技能时＝这次要打出的那张攻击牌；技能询问时＝刚打出的那张攻击牌
+func _本次攻击元素() -> int:
+	var 牌id: int = int(_sel_cards[0]) if not _sel_cards.is_empty() else _最近攻击牌
+	var 卡: GCard = Data.get_card(牌id)
+	return 卡.element_enum() if 卡 != null else 0
+
+
+## 技能询问进入时：把【荒神之力】那 1 点并进 preview_base。
+## 各技能的攻击伤害指示器都按 preview_base 画「原值划掉 → 新值」，在这里补一次，
+## 就不用每个现算函数各写一遍。法术伤害 / 治疗预览不补；3301 / 3306 的 preview_base
+## 是「本次攻击牌 id」不是伤害，也不能补。
+func _荒神补预览伤害() -> void:
+	if bool(_pending.get("荒神已补", false)):
+		return
+	var 类型: int = int(_pending.get("preview_kind", 0))
+	if 类型 == GConst.HarmType.Magic or 类型 == GConst.预览类型_治疗:
+		return
+	if _skill_ask_id == GConst.技能_式神咒束 or _skill_ask_id == GConst.技能_阴阳转换:
+		return
+	var 原: int = int(_pending.get("preview_base", 0))
+	if 原 <= 0:
+		return
+	var 加: int = _荒神之力加伤(_最近攻击元素())
+	if 加 <= 0:
+		return
+	_pending["preview_base"] = 原 + 加
+	_pending["荒神已补"] = true
+
+
 ## 应战的反击目标是否可选：敌方玩家、且不是原攻击者（规则同服务端 v_reattack）
 func _可作反击目标(player_id: int) -> bool:
 	if player_id == Logic.my_player_id or player_id == _原攻击者():
@@ -10282,16 +10348,21 @@ func _双重回响头像提示() -> Dictionary:
 	return out
 
 
-## 魔弓【多重射击】的指示器（现算）：这次额外攻击是暗系、伤害 -1，
-## 所以在点选的敌人头像上写「本次攻击伤害」＝主动攻击基础 − 多重射击减伤。
-## 目标由玩家在这次询问里点选，故用 _sel_players（不是服务端那张合法目标白名单）。
+## 魔弓【多重射击】的指示器（现算）：这次额外攻击视为**暗系**主动攻击、伤害 -1，
+## 所以点选的敌人头像上写「基础攻击伤害划掉 → 实际伤害」——
+## 和【精准射击】-1 同一套写法，不能只写减完之后的 1。
+## 再叠上结界师【荒神之力】（暗系结界在场时 +1）。
 func _多重射击头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 3 or _skill_ask_id != GConst.技能_多重射击 or _sel_players.is_empty():
 		return out
-	var 伤害: int = BattleEngine.ATTACK_BASE_POINT - GConst.多重射击减伤
+	var 基础: int = BattleEngine.ATTACK_BASE_POINT
+	var 实际: int = maxi(基础 - GConst.多重射击减伤 + _荒神之力加伤(GConst.CardElement.Darkness), 0)
 	for 目标id: int in _sel_players:
-		out[int(目标id)] = "%d 攻击伤害" % 伤害
+		if 实际 != 基础:
+			out[int(目标id)] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [基础, 实际]
+		else:
+			out[int(目标id)] = "%d 攻击伤害" % 实际
 	return out
 
 
@@ -10437,15 +10508,19 @@ func _攻击加成头像提示() -> Dictionary:
 	else:
 		return out
 	# 角色被动（如狂战士【狂化】）对所有主动攻击都加成，与具体技能无关。
-	# 它是「不发动本技能时就有的伤害」，并入划掉的那一行；只有本技能自己的加成才另起一行写新伤害
+	# 它是「不发动本技能时就有的伤害」，并入划掉的那一行；只有本技能自己的加成才另起一行写新伤害。
+	# 结界师【荒神之力】同理（同系结界在场时攻击伤害 +1），也并进划掉的那一行。
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
 	var 被动: int = int(GConst.攻击提示角色加成.get(我.role_id, 0))
+	# 发动技能（mode 4）时基础伤害是本地常量，这里补荒神；技能询问（mode 3）的 preview_base
+	# 已在 _荒神补预览伤害 里补过，不能再加一次
+	var 荒神: int = _荒神之力加伤(_本次攻击元素()) if _mode == 4 else 0
 	# 格斗【蓄力一击】会脱离【百式幻龙拳】（主动攻击 +2）：这一下不是「只 +1」，而是先丢掉百式的 +2。
 	# 于是划掉的那行写「保持百式」的伤害（基础 + 百式 +2），下面写用了【蓄力一击】之后的伤害（基础 +1）
 	var 破百式: bool = 技能号 == GConst.技能_蓄力一击 \
 			and 我.role_id == GConst.角色_格斗 and 我.tap
 	for 目标id: int in 目标们:
-		var 原伤害: int = maxi(基础 + 被动, 0)
+		var 原伤害: int = maxi(基础 + 被动 + 荒神, 0)
 		var 加成: int = 选项加成 if 技能号 == GConst.技能_灭茶苦茶 else _攻击加成值(规则, 目标id)
 		if 破百式:
 			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [
@@ -10578,10 +10653,12 @@ func _攒应战头像提示() -> Dictionary:
 	# 仅应战选【圣光】是抵挡，不产生反击伤害
 	if _攒应战选择 < 2 and _选中是圣光():
 		return out
-	var 伤害: int = BattleEngine.ATTACK_BASE_POINT
+	# 结界师【荒神之力】：反击也是一次攻击，同系【结界】在场时伤害 +1
+	var 荒神: int = _荒神之力加伤(_本次攻击元素())
+	var 伤害: int = BattleEngine.ATTACK_BASE_POINT + 荒神
 	if _攒应战选择 >= 2 and _我在式神形态():
 		var 加成: int = 2 if _攒应战选择 >= 3 else 1
-		伤害 = mini(_我的鬼火数() + 加成, _我的鬼火上限())
+		伤害 = mini(_我的鬼火数() + 加成, _我的鬼火上限()) + 荒神
 	for pid: int in _sel_players:
 		out[pid] = "%d 攻击伤害" % 伤害
 	return out
