@@ -55,6 +55,14 @@ func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
 	var 技能号: int = int(action.get("action_id", 0))
+	if 技能号 == TIAN_SHI:
+		var 牌0: Array = action.get("card_ids", [])
+		if 牌0.is_empty() or not _是天使之墙(int(牌0[0])):
+			return GConst.GE_INVALID_ACTION
+		var dst0: Array = action.get("dst_ids", [])
+		if dst0.is_empty() or engine.p(int(dst0[0])) == null:
+			return GConst.GE_INVALID_ARGUMENT
+		return GConst.GE_SUCCESS
 	if 技能号 == PAN_NI_ZHI_QIANG:
 		var 牌: Array = action.get("card_ids", [])
 		if 牌.is_empty() or not _是圣盾(int(牌[0])):
@@ -73,6 +81,8 @@ func v_magic_skill(action: Dictionary) -> int:
 
 
 func p_magic_skill(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) == TIAN_SHI:
+		return _天使(action)
 	if int(action.get("action_id", 0)) == PAN_NI_ZHI_QIANG:
 		return _叛逆之墙(action)
 	if _惊爆阶段 != 0:
@@ -448,3 +458,46 @@ func _糖果结算(r: Dictionary) -> int:
 	安排额外回合(0, TRICK_OR_TREAT)
 	engine._broadcast_game()
 	return SUCCESS
+
+
+# ============================================================
+# 天使？（法术）：把有【天使之墙】的圣命格攻击牌当【圣盾】使用
+# 做法：这张牌照常离手进弃牌堆，改为在目标面前放一张【圣盾】基础效果（用卡表#0 的牌面）。
+# 没有动引擎的「牌型视为」，因此它不是法术行动、也不消耗法术行动。
+# ============================================================
+func _天使(action: Dictionary) -> int:
+	var 牌: int = int((action.get("card_ids", []) as Array)[0])
+	var dst: int = int((action.get("dst_ids", []) as Array)[0])
+	if not player.has_hand_card(牌) or not _是天使之墙(牌):
+		return SUCCESS
+	if engine.v_basic_effect_target(dst, 0) != GConst.GE_SUCCESS:
+		engine.报错("【天使？】目标不能接收基础效果", player.id)
+		return SUCCESS
+	player.boot_skill_used = true
+	notice_skill(TIAN_SHI, [dst])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": [牌], "is_real": true,
+	})
+	engine.take_from_hand(player.id, [牌])
+	engine.to_discard([牌], {"owner": player.id, "source": "hand", "cause": TIAN_SHI})
+	engine._log_discard(player.id, [牌], false)
+	engine.add_basic_effect(dst, 0, player.id, TIAN_SHI)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 手牌里带【天使之墙】的圣命格攻击牌
+func _天使之墙牌() -> Array:
+	var out: Array = []
+	for cid: int in player.hand_cards:
+		if _是天使之墙(cid):
+			out.append(cid)
+	return out
+
+
+func _是天使之墙(cid: int) -> bool:
+	var 牌: GCard = Data.get_card(cid)
+	if 牌 == null or not 牌.is_attack():
+		return false
+	return 牌.fate_pattern_enum() == GConst.FatePattern.Holy and 牌.has_skill_id(703)
