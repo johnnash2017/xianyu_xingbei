@@ -50,6 +50,8 @@ const 行距下限: int = -3
 var 内容: Control = null
 ## 分块模式的容器（技能表配了「专属卡牌」的角色说明才用；见 显示角色说明）
 var 块容器: VBoxContainer = null
+## 分块模式当前显示的是哪个角色（-1＝没有）：同一个角色重复悬停时不重建，避免框闪
+var _块角色号: int = -1
 ## 本次说明的「基准整体缩放」（角色说明按设置窗里的档位取）。摆框时若按它仍塞不进宿主，会在它基础上再等比缩小兜底
 var _基缩放: float = 1.0
 ## 本次说明被上下夹住、和图标重叠时，是否横向让到图标一侧（角色说明用；
@@ -76,6 +78,10 @@ const 角色说明描边宽: int = 3
 ## 行距：RichTextLabel 在字体行高之外还会加一截空隙（行间 / 段落间各一份），折半，别显得松散。
 ## 主题里的原值只有引擎知道，得运行期读出来再覆盖，故放在 _ready
 func _ready() -> void:
+	# 提示框只是「看」的：整框不吃鼠标事件。
+	# 否则框盖到被悬停的头像 / 技能按钮上时，鼠标一挪进去就把下面的控件判成「离开」，
+	# 悬停说明被收起、鼠标又回到头像上重新弹出 —— 表现为框疯狂闪（分块说明更高，更容易碰到）
+	框.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	文本.add_theme_constant_override("line_separation",
 		_折半行距(文本.get_theme_constant("line_separation")))
 	文本.add_theme_constant_override("paragraph_separation",
@@ -171,6 +177,12 @@ func 显示角色说明(角色号: int, 图标矩形: Rect2, 对局中: bool = f
 	# 技能表里配了「专属卡牌」的角色：按块显示，专属卡牌相同的技能收进一个同色边框的子框
 	var 块: Array = 角色技能提示.悬浮提示块(角色号, 角色说明字号缩放, 对局中)
 	if not 块.is_empty():
+		# 同一个角色重复触发悬停（鼠标在头像上轻移会反复 emit）：只重摆，不重建 ——
+		# 重建会先隐藏框、下一帧再显示，看起来就是「整个悬停提示在闪」
+		if _块角色号 == 角色号 and 块容器 != null:
+			框.visible = true
+			_排重摆(图标矩形)
+			return
 		_显示角色说明块(块, 图标矩形, 角色号)
 	else:
 		显示(角色技能提示.悬浮提示(角色号, 角色说明字号缩放, 对局中), 图标矩形,
@@ -198,29 +210,40 @@ func _显示角色说明块(块: Array, 图标矩形: Rect2, 角色号: int) -> 
 	var 描边: Color = 角色技能提示.描边颜色(角色号)
 	if 描边.a <= 0.0:
 		描边 = _默认描边
-	var 标题号: int = maxi(1, int(round(float(角色技能提示.提示框标题字号) * 角色说明字号缩放)))
+	# 标题字号＝分段标题的一半（原来和「普通技 / 专属技」一样大，在子框里太抢眼）
+	var 标题号: int = maxi(1, int(round(float(角色技能提示.提示框标题字号) * 角色说明字号缩放 * 0.5)))
+	# 子框整体缩进两下（对齐正文的「　　」缩进），用左边距做，不靠空格
+	var 缩进: int = int(round(float(角色说明字号) * 2.0))
 	for 项: Variant in 块:
 		var d: Dictionary = 项
 		if bool(d.get("分组", false)):
+			var 边距容器: MarginContainer = MarginContainer.new()
+			边距容器.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			边距容器.add_theme_constant_override("margin_left", 缩进)
 			var 面板: PanelContainer = PanelContainer.new()
+			面板.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			面板.add_theme_stylebox_override("panel", _分组框样式(描边))
 			var 竖排: VBoxContainer = VBoxContainer.new()
-			竖排.add_theme_constant_override("separation", 2)
+			竖排.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			# 标题和内容之间不留空隙
+			竖排.add_theme_constant_override("separation", 0)
 			var 标题标签: RichTextLabel = _新块标签()
-			标题标签.text = "[font_size=%d][b]%s[/b][/font_size]" % [
+			标题标签.text = "[font_size=%d]%s[/font_size]" % [
 				标题号, str(d.get("标题", ""))]
 			竖排.add_child(标题标签)
 			var 正文标签: RichTextLabel = _新块标签()
 			正文标签.text = str(d.get("文本", ""))
 			竖排.add_child(正文标签)
 			面板.add_child(竖排)
-			块容器.add_child(面板)
+			边距容器.add_child(面板)
+			块容器.add_child(边距容器)
 		else:
 			var 标签: RichTextLabel = _新块标签()
 			标签.text = str(d.get("文本", ""))
 			块容器.add_child(标签)
 	var 宽: float = _算块宽度()
 	块容器.custom_minimum_size.x = 宽
+	_块角色号 = 角色号
 	_轮次 += 1
 	_待摆矩形 = 图标矩形
 	框.visible = false
@@ -282,31 +305,43 @@ func _块总高(宽: float) -> float:
 	var 总: float = 0.0
 	var 子们: Array = 块容器.get_children()
 	for 子: Node in 子们:
-		if 子 is PanelContainer:
-			var 面板: PanelContainer = 子
-			var 样式: StyleBox = 面板.get_theme_stylebox("panel")
-			var 内宽: float = 宽 - 样式.get_minimum_size().x
-			var 面板高: float = 样式.get_minimum_size().y
-			for 孙: Node in 面板.get_children():
-				if 孙 is RichTextLabel:
-					var 标签: RichTextLabel = 孙
-					标签.custom_minimum_size.x = 内宽
-					面板高 += 标签.get_content_height()
-				elif 孙 is VBoxContainer:
-					var 竖排: VBoxContainer = 孙
-					for 曾孙: Node in 竖排.get_children():
-						if 曾孙 is RichTextLabel:
-							var 标签2: RichTextLabel = 曾孙
-							标签2.custom_minimum_size.x = 内宽
-							面板高 += 标签2.get_content_height()
-					面板高 += 2.0 * maxf(float(竖排.get_child_count() - 1), 0.0)
-			总 += 面板高
-		elif 子 is RichTextLabel:
-			var 直接: RichTextLabel = 子
-			直接.custom_minimum_size.x = 宽
-			总 += 直接.get_content_height()
+		总 += _单块高(子, 宽)
 	总 += 6.0 * maxf(float(子们.size() - 1), 0.0)
 	return 总
+
+
+## 单个块在「宽」这一档下的高度：普通富文本＝内容高；分组块＝面板样式内边距 + 标题/正文高；
+## 外面套了「缩进两下」的边距容器时，先把左右边距扣掉
+func _单块高(节点: Node, 宽: float) -> float:
+	if 节点 is MarginContainer:
+		var 边距: MarginContainer = 节点
+		var 扣: float = float(边距.get_theme_constant("margin_left")) \
+			+ float(边距.get_theme_constant("margin_right"))
+		var 内高: float = 0.0
+		for 孙: Node in 边距.get_children():
+			内高 += _单块高(孙, 宽 - 扣)
+		return 内高
+	if 节点 is PanelContainer:
+		var 面板: PanelContainer = 节点
+		var 样式: StyleBox = 面板.get_theme_stylebox("panel")
+		var 内宽: float = 宽 - 样式.get_minimum_size().x
+		var 高: float = 样式.get_minimum_size().y
+		for 孙: Node in 面板.get_children():
+			高 += _单块高(孙, 内宽)
+		return 高
+	if 节点 is VBoxContainer:
+		var 竖排: VBoxContainer = 节点
+		var 合计: float = 0.0
+		for 孙: Node in 竖排.get_children():
+			合计 += _单块高(孙, 宽)
+		合计 += float(竖排.get_theme_constant("separation")) \
+			* maxf(float(竖排.get_child_count() - 1), 0.0)
+		return 合计
+	if 节点 is RichTextLabel:
+		var 标签: RichTextLabel = 节点
+		标签.custom_minimum_size.x = 宽
+		return 标签.get_content_height()
+	return 0.0
 
 
 ## 显示一段自定义内容（如一张完整的卡牌视图）：内容节点由调用方造好递进来，
@@ -346,6 +381,7 @@ func _清块容器() -> void:
 	框.remove_child(块容器)
 	块容器.queue_free()
 	块容器 = null
+	_块角色号 = -1
 
 
 ## 收起说明框（状态一变就不该再挂着）
