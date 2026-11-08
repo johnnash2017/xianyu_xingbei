@@ -30,8 +30,9 @@ var _trickies: Array = []          # [{dst, card}]
 var _伏笔阶段: int = 0
 var _伏笔张数: int = 0
 var _伏笔牌: Array = []
-## 惊爆：1＝等弃 1 张牌
+## Surprise!：1＝等选手牌放回 / 2＝等选目标
 var _惊爆阶段: int = 0
+var _惊爆牌: Array = []
 
 
 # ============================================================
@@ -50,7 +51,16 @@ func available_skills() -> Array:
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) != SURPRISE:
+	var 技能号: int = int(action.get("action_id", 0))
+	if 技能号 == PAN_NI_ZHI_QIANG:
+		var 牌: Array = action.get("card_ids", [])
+		if 牌.is_empty() or not _是圣盾(int(牌[0])):
+			return GConst.GE_INVALID_ACTION
+		var dsts: Array = action.get("dst_ids", [])
+		if dsts.is_empty() or engine.p(int(dsts[0])) == null:
+			return GConst.GE_INVALID_ARGUMENT
+		return GConst.GE_SUCCESS
+	if 技能号 != SURPRISE:
 		return GConst.GE_INVALID_ACTION
 	if player.get_energy() < 1:
 		return GConst.GE_INVALID_ACTION
@@ -60,6 +70,10 @@ func v_magic_skill(action: Dictionary) -> int:
 
 
 func p_magic_skill(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) == PAN_NI_ZHI_QIANG:
+		return _叛逆之墙(action)
+	if _惊爆阶段 != 0:
+		return _惊爆放回()
 	player.remove_energy(1)
 	notice_skill(SURPRISE, [player.id])
 	# 弃 1 张牌
@@ -82,6 +96,12 @@ func p_magic_skill(action: Dictionary) -> int:
 		player.add_hand_cards(收)
 		engine.播获得牌日志(player.id, 收)
 	engine._broadcast_game()
+	# 再把 X 张手牌面朝下放回 X 名角色面前
+	if not player.hand_cards.is_empty():
+		_惊爆阶段 = 1
+		询问(player.id, SURPRISE, 1, 0, GConst.CardSource.Hand, [], 2, "", [], true,
+			0, -1, [], -1, {})
+		return WAIT
 	return SUCCESS
 
 
@@ -220,4 +240,110 @@ func 全部角色() -> Array[int]:
 	var out: Array[int] = []
 	for pid: int in engine.order:
 		out.append(pid)
+	return out
+
+
+# ============================================================
+# 叛逆之墙（法术）：把手牌 1 个【圣盾】与场上 1 个基础效果交换，然后弃 1 张牌
+# ============================================================
+func _叛逆之墙(action: Dictionary) -> int:
+	var 牌: int = int((action.get("card_ids", []) as Array)[0])
+	var 目标: int = int((action.get("dst_ids", []) as Array)[0])
+	var dp: BattlePlayer = engine.p(目标)
+	if dp == null or not player.has_hand_card(牌) or not _是圣盾(牌):
+		return GConst.GE_INVALID_ACTION
+	notice_skill(PAN_NI_ZHI_QIANG, [目标])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": [牌], "is_real": true,
+	})
+	# 拿走对方面前 1 个基础效果（跳过 Tricky 占位，避免与 _trickies 脱节）
+	var 拿: int = -1
+	for be: Dictionary in dp.basic_effects:
+		if int(be["card"]) != Tricky占位牌:
+			拿 = int(be["card"])
+			break
+	if 拿 >= 0:
+		engine.remove_basic_effect(目标, 拿, PAN_NI_ZHI_QIANG, player.id)
+		player.add_hand_cards([拿])
+		engine.播获得牌日志(player.id, [拿])
+	# 自己的圣盾放到对方面前
+	engine.take_from_hand(player.id, [牌])
+	engine.add_basic_effect(目标, 牌, player.id, PAN_NI_ZHI_QIANG)
+	engine._broadcast_game()
+	# 你弃 1 张牌（强制，超时按手牌顺序补）
+	var 弃: Array = []
+	for cid: int in player.hand_cards:
+		弃.append(cid)
+		break
+	if not 弃.is_empty():
+		engine.take_from_hand(player.id, 弃)
+		engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": PAN_NI_ZHI_QIANG})
+		engine._log_discard(player.id, 弃, false)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+# ============================================================
+# Surprise! 的放回：1＝等选手牌 / 2＝等选目标 / 3＝落 Tricky
+# ============================================================
+func _惊爆放回() -> int:
+	if _惊爆阶段 == 1:
+		var r: Dictionary = take_skill_reply_full()
+		var cards: Array = r.get("card_ids", [])
+		var 选: Array = []
+		for c: Variant in cards:
+			if player.has_hand_card(int(c)) and not 选.has(int(c)) and 选.size() < 2:
+				选.append(int(c))
+		if 选.is_empty():
+			_惊爆阶段 = 0
+			return SUCCESS
+		_惊爆牌 = 选
+		_惊爆阶段 = 2
+		询问(player.id, SURPRISE, 0, 选.size(), GConst.CardSource.Hand, [], 0, "", [], false,
+			0, -1, 全部角色(), -1, {})
+		return WAIT
+	# 阶段 2：收目标
+	var r2: Dictionary = take_skill_reply_full()
+	var dsts: Array = r2.get("dst_ids", [])
+	_惊爆阶段 = 0
+	if dsts.size() != _惊爆牌.size():
+		engine.报错("【Surprise!】目标数不对", player.id)
+		_惊爆牌 = []
+		return SUCCESS
+	engine.take_from_hand(player.id, _惊爆牌)
+	for i: int in range(_惊爆牌.size()):
+		_放Tricky(int(dsts[i]), int(_惊爆牌[i]))
+	_惊爆牌 = []
+	engine._broadcast_game()
+	return SUCCESS
+
+
+# ============================================================
+# 小工具
+# ============================================================
+func _是圣盾(cid: int) -> bool:
+	var 牌: GCard = Data.get_card(cid)
+	return 牌 != null and 牌.card_name_enum() == GConst.CardName.Shield
+
+
+func _手牌圣盾() -> Array:
+	var out: Array = []
+	for cid: int in player.hand_cards:
+		if _是圣盾(cid):
+			out.append(cid)
+	return out
+
+
+## 面前有基础效果（不含纯 Tricky 占位）的角色
+func _有基础效果者() -> Array:
+	var out: Array = []
+	for pid: int in engine.order:
+		var p0: BattlePlayer = engine.p(pid)
+		if p0 == null:
+			continue
+		for be: Dictionary in p0.basic_effects:
+			if int(be["card"]) != Tricky占位牌:
+				out.append(pid)
+				break
 	return out
