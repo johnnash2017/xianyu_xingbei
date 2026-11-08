@@ -1,4 +1,4 @@
-class_name 说明提示框
+﻿class_name 说明提示框
 extends Control
 ## 通用悬浮说明框：深色圆角底板 + BBCode 富文本，摆在锚点正上方并夹在宿主控件内。
 ## 战斗界面（悬停头像 / 技能按钮）与选角界面（悬停角色卡）共用同一套外观与排版 ——
@@ -48,12 +48,6 @@ const 行距下限: int = -3
 @export var 星数标签: Label
 ## 自定义内容节点（如一张完整的卡牌视图，见 显示内容）；非空时文字隐藏，整框改按它的尺寸走
 var 内容: Control = null
-## 分组绘制层：贴在「文本」底下画专属卡牌子框（见 _画分组）；不吃鼠标
-var 分组层: Control = null
-## 分组子框的描边色（跟随整框的命格色）
-var _描边色: Color = Color(1, 1, 1, 0.22)
-## 当前角色说明里各分组占的字符区间：[{起, 止, 标题}]（见 角色技能提示.悬浮提示分组）
-var _分组字符: Array = []
 ## 当前显示的是哪个角色 / 哪个缩放档：同一张卡反复悬停时直接不重排
 var _说明角色号: int = -1
 var _说明缩放: float = -1.0
@@ -84,7 +78,7 @@ const 角色说明描边宽: int = 3
 ## 立刻收起再弹出看着就是闪。延后一点收，这期间只要又显示了就取消收起。
 const 收起缓冲: float = 0.12
 ## 临时排查开关：角色说明的显示/收起在「输出」里打一行日志（问题定位完就改 false）
-const 悬停调试: bool = true
+const 悬停调试: bool = false
 
 
 ## 行距：RichTextLabel 在字体行高之外还会加一截空隙（行间 / 段落间各一份），折半，别显得松散。
@@ -97,14 +91,6 @@ func _ready() -> void:
 	# 否则框盖到被悬停的头像 / 技能按钮上时，鼠标一挪进去就把下面的控件判成「离开」，
 	# 悬停说明被收起、鼠标又回到头像上重新弹出 —— 表现为框疯狂闪（分块说明更高，更容易碰到）
 	框.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# 分组框的绘制层：挂在「文本」下面、画在它背后（show_behind_parent），
-	# 用文本自己的行坐标画圆角底 + 描边 —— 不参与排版，也就不会引起尺寸抖动
-	分组层 = Control.new()
-	分组层.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	分组层.set_anchors_preset(Control.PRESET_FULL_RECT)
-	分组层.show_behind_parent = true
-	文本.add_child(分组层)
-	分组层.draw.connect(_画分组)
 	# 收起缓冲的计时器
 	_收起计时 = Timer.new()
 	_收起计时.one_shot = true
@@ -133,7 +119,6 @@ func _设描边(颜色: Color, 宽: int = -1) -> void:
 	var 底板: StyleBoxFlat = _底板样式()
 	if 底板 == null:
 		return
-	_描边色 = 颜色
 	var 线宽: int = _默认描边宽 if 宽 < 0 else 宽
 	底板.border_color = 颜色
 	底板.border_width_left = 线宽
@@ -153,8 +138,6 @@ func 显示(说明: String, 图标矩形: Rect2, 宽度: float, 字号: int, 整
 		return
 	# 任何提示走这里都会被当成「不是某角色的说明」：避免下一次悬停同一角色时被误判成没变
 	_说明角色号 = -1
-	_分组字符 = []
-	_重画分组()
 	_卸内容()
 	_隐藏星数()
 	# 上一条可能是角色说明（按命格染过描边）：普通说明一律恢复默认描边
@@ -208,8 +191,8 @@ static func 设置角色说明缩放档(档: float) -> void:
 
 ## 显示角色说明（角色名一行 + 技能说明，含 BBCode）——战斗 / 选角同款
 ## 对局中=true 时（只有战斗内头像悬停传）才按场上有没有剑之魔女动态改剑之子的技能说明。
-## 技能表里配了「专属卡牌」的角色：文字仍是一整段（和普通说明完全同一条渲染路径），
-## 只是额外记下各分组的字符区间，由 分组层 在文字底下画框。
+## 技能表里配了「专属卡牌」的角色：文字里用单列表格把同名技能框起来，
+## 边框颜色由表格主题色（table_border）决定 —— 这里把它设成和整框一样的描边色。
 func 显示角色说明(角色号: int, 图标矩形: Rect2, 对局中: bool = false) -> void:
 	_取消收起()
 	var 缩放: float = 当前角色说明缩放档()
@@ -222,66 +205,21 @@ func 显示角色说明(角色号: int, 图标矩形: Rect2, 对局中: bool = f
 		说明 = 角色技能提示.悬浮提示(角色号, 角色说明字号缩放, 对局中)
 	else:
 		说明 = str(分组结果.get("文本", ""))
-	# 注意顺序：显示() 会把 _说明角色号 / _分组字符 复位（它是所有提示共用的入口），
-	# 所以这两个要在 显示() 之后再写
-	显示(说明, 图标矩形, 角色说明宽度, 角色说明字号, 档位到缩放(缩放), true, true)
-	_分组字符 = []
-	for 段: Variant in 分组结果.get("分组", []) if not 分组结果.is_empty() else []:
-		var d0: Dictionary = 段
-		# 记下来的是「含 BBCode 的下标」，这里换算成渲染字符下标（get_character_line 只认后者）
-		_分组字符.append({
-			"起": 角色技能提示.可见下标(说明, int(d0.get("起", 0))),
-			"止": 角色技能提示.可见下标(说明, int(d0.get("止", 0))),
-			"标题": str(d0.get("标题", "")),
-		})
-	_说明角色号 = 角色号
-	_说明缩放 = 缩放
+	# 有分组（文字里有表格）时不做「加宽循环」：反复试宽度会让表格的行布局算错，
+	# 实测会让相邻分组框互相压住。固定用基准宽度，表格布局一次到位。
+	显示(说明, 图标矩形, 角色说明宽度, 角色说明字号, 档位到缩放(缩放), 分组结果.is_empty(), true)
 	# 描边按命格换色（血红 / 咏橙 / 技绿 / 圣蓝 / 幻紫）；没配命格就保持默认描边
 	var 描边: Color = 角色技能提示.描边颜色(角色号)
 	_设描边(描边 if 描边.a > 0.0 else _默认描边, 角色说明描边宽 if 描边.a > 0.0 else -1)
+	# 专属卡牌的分组框：表格描边色跟随整框（没有分组时设成透明，免得别的说明出现表格边框）
+	文本.add_theme_color_override("table_border",
+		描边 if not 分组结果.is_empty() and 描边.a > 0.0 else Color(0, 0, 0, 0))
+	_说明角色号 = 角色号
+	_说明缩放 = 缩放
 	if 星数标签 != null:
 		var 星数: String = 角色技能提示.星数文本(角色号)
 		星数标签.text = 星数
 		星数标签.visible = 星数 != ""
-	_重画分组()
-
-
-## 分组框：在说明文字底下画圆角底 + 描边（描边色与整框一致）。
-## 用的是「文本」这个富文本自己的行坐标，所以不会影响排版，也不可能有节点层面的抖动。
-func _画分组() -> void:
-	if 分组层 == null or _分组字符.is_empty():
-		return
-	var 样式: StyleBoxFlat = _分组框样式(_描边色)
-	for 段: Variant in _分组字符:
-		var d: Dictionary = 段
-		var 起: int = int(d.get("起", -1))
-		var 止: int = int(d.get("止", -1))
-		if 起 < 0 or 止 < 起:
-			continue
-		var 起行: int = 文本.get_character_line(起)
-		var 止行: int = 文本.get_character_line(止)
-		if 起行 < 0 or 止行 < 起行:
-			continue
-		var 上: float = 文本.get_line_offset(起行) - 3.0
-		var 下: float = 文本.get_line_offset(止行) + 文本.get_line_height(止行) + 3.0
-		var 矩形: Rect2 = Rect2(0.0, 上, 文本.size.x, 下 - 上)
-		分组层.draw_style_box(样式, 矩形)
-
-
-## 让分组层按最新的行布局重画一次（说明显示 / 摆位之后调）
-func _重画分组() -> void:
-	if 分组层 != null:
-		分组层.queue_redraw()
-
-
-## 分组子框的样式：和整框同样的圆角描边，颜色用整框的描边色（命格色），底子稍微提亮一点
-func _分组框样式(描边: Color) -> StyleBoxFlat:
-	var 样式: StyleBoxFlat = StyleBoxFlat.new()
-	样式.bg_color = Color(0.06, 0.07, 0.1, 0.55)
-	样式.set_border_width_all(2)
-	样式.border_color = 描边
-	样式.set_corner_radius_all(6)
-	return 样式
 
 
 func 显示内容(内容节点: Control, 图标矩形: Rect2) -> void:
@@ -465,5 +403,3 @@ func _摆(图标矩形: Rect2) -> void:
 			位置.x = 图.end.x + 10.0
 		位置.x = clampf(位置.x, 左, 右)
 	框.position = 位置
-	# 行布局随宽度变了，分组框的位置也要跟着重画
-	_重画分组()

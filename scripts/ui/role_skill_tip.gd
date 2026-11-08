@@ -105,9 +105,9 @@ static func 悬浮提示(角色号: int, 字号缩放: float = 1.0, 对局中: b
 
 
 ## 悬停提示的「分组」版本：技能表里「专属卡牌」非空的技能收进一个小框，标题＝那个字符串。
-## 返回 {"文本": 整段 BBCode, "分组": [{起, 止, 标题}]}；起/止 是分组在「文本」里的字符下标，
-## 说明框据此在文字底下画框（不另建节点、不改排版 —— 与普通说明完全同一条渲染路径）。
-## 返回空字典＝这个角色没配专属卡牌，调用方走原来的整段说明（行为完全不变）。
+## 框是用文字里的单列表格画的（边框吃 RichTextLabel 的 table_border 主题色），
+## 不另建节点、不改排版 —— 和普通说明完全同一条渲染路径。
+## 返回 {"文本": 整段 BBCode}；返回空字典＝这个角色没配专属卡牌，调用方走原来的整段说明。
 static func 悬浮提示分组(角色号: int, 字号缩放: float = 1.0, _对局中: bool = false) -> Dictionary:
 	var 正文号: int = maxi(1, int(round(float(提示框正文字号) * 字号缩放)))
 	var 姓名号: int = maxi(1, int(round(float(提示框姓名行字号) * 字号缩放)))
@@ -155,22 +155,18 @@ static func 悬浮提示分组(角色号: int, 字号缩放: float = 1.0, _对�
 			本段行.append_array(普通行)
 			片段们.append({"文本": 上色("\n".join(本段行), 正文号, 标题号, true)})
 		for 专名: String in 组序:
+			# 整组套一个单列表格：边框由 RichTextLabel 自己画（table_border 用整框的描边色），
+			# 框的大小跟着内容走 —— 不另建节点，也就不可能有排版抖动。
+			# 外面的两个全角空格让整个框缩进两下。
 			var 标题行: String = "[font_size=%d]%s[/font_size]" % [副标题号, 专名]
-			片段们.append({"分组": 专名,
-				"文本": 标题行 + "\n" + 上色("\n".join(组表[专名]), 正文号, 标题号)})
-	# 拼成一整段，同时记下每个分组占的字符区间
+			var 组正文: String = 上色("\n".join(组表[专名]), 正文号, 标题号)
+			片段们.append({"文本": "　　[table=1][cell]%s\n%s[/cell][/table]" % [标题行, 组正文]})
+	# 拼成一整段
 	var 文本: String = ""
-	var 分组: Array = []
 	for 片段: Variant in 片段们:
-		var d2: Dictionary = 片段
 		if 文本 != "":
 			文本 += "\n"
-		if d2.has("分组"):
-			var 起: int = 文本.length()
-			文本 += str(d2.get("文本", ""))
-			分组.append({"起": 起, "止": 文本.length() - 1, "标题": str(d2.get("分组", ""))})
-		else:
-			文本 += str(d2.get("文本", ""))
+		文本 += str((片段 as Dictionary).get("文本", ""))
 	# 右下角：专属标识物一览
 	var 标识物: String = 标识物一览(角色号)
 	if 标识物 != "":
@@ -178,26 +174,7 @@ static func 悬浮提示分组(角色号: int, 字号缩放: float = 1.0, _对�
 		标识物 = 标识物.replace("∞", "[font_size=%d]∞[/font_size]" % (标识物号 + 提示框无限字号增量))
 		文本 += "\n[right][font_size=%d][color=#%s]%s[/color][/font_size][/right]" % [
 			标识物号, 提示框标识物颜色.to_html(false), 标识物]
-	return {"文本": 文本, "分组": 分组}
-
-
-## 把「带 BBCode 的字符串下标」换算成 RichTextLabel 认的「可见字符下标」
-## （RichTextLabel 的 get_character_line / get_total_character_count 都只数渲染出来的字符，
-##   而我们在拼接文本时记的是含标签的原始下标）。我们自己生成的文本里 "[" 只可能是标签。
-static func 可见下标(原文: String, 下标: int) -> int:
-	var 可见: int = 0
-	var i: int = 0
-	var 上限: int = mini(下标, 原文.length())
-	while i < 上限:
-		if 原文[i] == "[":
-			var 结束: int = 原文.find("]", i)
-			if 结束 < 0:
-				break
-			i = 结束 + 1
-			continue
-		可见 += 1
-		i += 1
-	return 可见
+	return {"文本": 文本}
 
 
 ## 剑之子（108）的角色说明动态部分：
