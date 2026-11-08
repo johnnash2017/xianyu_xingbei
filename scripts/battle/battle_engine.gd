@@ -2638,6 +2638,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 			# -1＝沿用技能本体的选牌来源
 			"card_source": int(o.get("card_source", -1)),
 			"cover_need": int(o.get("cover_need", 0)),
+			"hand_need": int(o.get("hand_need", -1)),
 			"targets": {"ids": 目标},
 			"cards": {"ids": _牌面表(o.get("cards", []))},
 			"elements": {"ids": o.get("elements", [])},

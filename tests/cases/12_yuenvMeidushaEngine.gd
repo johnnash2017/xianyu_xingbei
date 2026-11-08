@@ -77,6 +77,11 @@ func 跑() -> void:
 		"应要求至少 1 张盖牌：%s" % str(问.get("cover_need", 0)))
 	检((问.get("option_need_cards", []) as Array) == [1, 2],
 		"普通分支选 1 张、法术牌分支选 2 张（暗月+弃牌）：%s" % str(问.get("option_need_cards", [])))
+	var 选项: Array = 问.get("options", [])
+	检(选项.size() == 2
+		and int((选项[0] as Dictionary).get("hand_need", -1)) == 0
+		and int((选项[1] as Dictionary).get("hand_need", -1)) == 1,
+		"两个分支的手牌张数应直接下发 0 / 1：%s" % str(选项))
 	var 可用: Array = 问.get("option_enabled", [])
 	# 两项都可用时服务端省略 option_enabled（客户端按 true 处理）
 	检(可用.is_empty() or (可用.size() == 2 and bool(可用[0]) and bool(可用[1])),

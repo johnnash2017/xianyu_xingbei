@@ -845,10 +845,10 @@ func _黄金律交换() -> int:
 		return SUCCESS
 	if not engine.has_reply():
 		_步 = 步_黄金律交换
-		# 混选：手牌 + 盖牌各 1 张。cover_max=1 让客户端不能再点第二个盖牌，
-		# 通用选牌逻辑负责置灰，服务端这里只做最终复核。
+		# 混选：直接给「手牌 1 张（hand_need）+ 盖牌 1 张（cover_need）」，
+		# 客户端按张数把两边卡死，服务端这里只做最终复核。
 		询问(player.id, HUANG_JIN_LV, 2, 0, GConst.CardSource.HandOrCover, [], 2, "", [],
-			false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1, "", -1, "", [], [], 1)
+			false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1, "", -1, "", [], [], 0, 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var 提交: Array = r.get("card_ids", [])

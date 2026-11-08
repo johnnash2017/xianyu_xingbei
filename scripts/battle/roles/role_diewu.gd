@@ -64,8 +64,8 @@ func _dao_ni_choices() -> Array:
 	var out: Array = [
 		{"text": GConst.按钮文本(DAO_NI_ZHI_DIE, 0), "args": [1], "need_card": 2, "need_target": 1},
 		{"text": GConst.按钮文本(DAO_NI_ZHI_DIE, 1), "args": [2],
-			# 一步选 4 张：2 张手牌 + 盖牌区里的 2 张【茧】，所以来源是「手牌+盖牌」、其中 2 张必须是盖牌
-			"need_card": 4, "card_source": GConst.CardSource.HandOrCover, "cover_need": 2,
+			# 一步选 4 张：2 张手牌 + 盖牌区里的 2 张【茧】，手牌 / 盖牌张数直接给
+			"need_card": 4, "hand_need": 2, "card_source": GConst.CardSource.HandOrCover, "cover_need": 2,
 			"enabled": 有蛹 and player.cover_cards.size() >= 2},
 		{"text": GConst.按钮文本(DAO_NI_ZHI_DIE, 2), "args": [0], "need_card": 2, "enabled": 有蛹},
 	]

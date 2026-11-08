@@ -344,6 +344,8 @@ const SUB: Dictionary = {
 		# 选项涉及的可选系别（CardElement，按配置顺序）：如御刃「魔刃」选项的火/水系。
 		# 只用于把选项文字里的「火系/水系」按系别标色，不参与提交。
 		16: {"n": "elements", "t": "u32", "r": true},
+		# 该项自带的手牌张数（-1＝沿用技能本体；如【倒逆之蝶】第 ② 项 2 张手牌 + 2 张【茧】）
+		17: {"n": "hand_need", "t": "i32"},
 	},
 	# 技能询问的「一项选项」——阶段 5 的目标结构：一个选项一条消息，自带全部属性，
 	# 取代现在那 13 个「与 args 下标对齐」的平行数组（见计划文档 §8）。
@@ -369,6 +371,8 @@ const SUB: Dictionary = {
 		15: {"n": "skill_group", "t": "msg", "s": "OptionTargets"},
 		16: {"n": "prompt", "t": "str"},
 		17: {"n": "no_prompt_change", "t": "bool"},
+		# 该项自带的手牌张数（-1＝沿用本体；如【倒逆之蝶】第 ② 项 2 张手牌 + 2 张【茧】）
+		18: {"n": "hand_need", "t": "i32"},
 	},
 	# 某个选项各自的可点目标（option_targets 的一项）
 	# 也用于 extra_attack_cards / extra_attack_targets / option_preview_cards：

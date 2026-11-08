@@ -146,10 +146,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			# 1 张同系法术【暗月】+ 1 张手牌一起交上来，不再另开一次弃牌询问。
 			询问(player.id, MEI_DU_SHA, 1, 0, GConst.CardSource.HandOrCover, [
 				{"value": 1, "label": GConst.按钮原文(MEI_DU_SHA, 0),
-					"enabled": true, "need_card": 1},
+					"enabled": true, "need_card": 1, "hand_need": 0},
 				{"value": 2, "label": GConst.按钮原文(MEI_DU_SHA, 1),
 					"enabled": not 合法法术暗月.is_empty() and not 敌人.is_empty() and not player.hand_cards.is_empty(),
-					"need_card": 2, "need_target": 1, "targets": 敌人},
+					"need_card": 2, "hand_need": 1, "need_target": 1, "targets": 敌人},
 			], 1, "", 可选牌, true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()

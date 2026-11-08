@@ -535,6 +535,8 @@ var _选项原始最多牌: int = 0
 ## （如【倒逆之蝶】第 ② 项要在盖牌区点 2 张【茧】，来源就变成「手牌+盖牌」、需盖牌 2）
 var _选项原始来源: int = GConst.CardSource.Hand
 var _选项原始盖牌需数: int = 0
+## 同上，技能本体的手牌张数（-1＝没配；选项自带「手牌数」时以选项为准）
+var _选项原始手牌数: int = -1
 ## 已选定要发动的技能号与它对应的 action_type
 var _pending_skill_id: int = -1
 var _pending_skill_type: int = -1
@@ -2599,6 +2601,7 @@ func _技能询问_解析字段() -> void:
 	_选项原始最多牌 = _skill_card_max
 	_选项原始来源 = _skill_card_source
 	_选项原始盖牌需数 = _skill_cover_need
+	_选项原始手牌数 = _skill_hand_need
 	# 「目标上限随选牌数变化」与「逐张选牌条件」只用于发动技能（mode 4）；询问这条通道不认它们，清零免得串味
 	_skill_target_max_from_cards = 0
 	_skill_slot_skill = 0
@@ -3081,6 +3084,14 @@ func _应用选项目标数() -> void:
 	# 把已经选好的合法手牌全部清掉（魔纹融合从怒火档切到弃 2 张档时的手牌回收）。
 	_skill_card_max = maxi(_skill_card_max, _skill_need_card)
 	_need_cards = _skill_card_max
+	# 选项自带「手牌几张」：按 hand_need + cover_need 直接定总数（如美杜莎之眼的两个分支）
+	var 项手牌3: int = int(选中项.get("手牌数", -1)) if not 选中项.is_empty() else -1
+	_skill_hand_need = 项手牌3 if 项手牌3 >= 0 else _选项原始手牌数
+	if _skill_hand_need >= 0:
+		_skill_need_card = _skill_hand_need + _skill_cover_need
+		_skill_card_max = _skill_need_card
+		_need_cards = _skill_card_max
+		_skill_cover_max = _skill_cover_need
 	var 片段: Array[String] = []
 	if _skill_need_card > 0:
 		片段.append("选%d张盖牌" % _skill_need_card if _skill_card_source == GConst.CardSource.Cover
@@ -4183,6 +4194,8 @@ func _选项项(参数选项: Array) -> Array:
 			# 该项自带的选牌来源 / 需盖牌数（-1 / 0 ＝ 沿用技能本体的；如【倒逆之蝶】第 ② 项的 2 张【茧】）
 			"选牌来源": int(d.get("card_source", -1)),
 			"需盖牌": int(d.get("cover_need", 0)),
+			# 该项自带的手牌张数（-1＝沿用本体的；如【倒逆之蝶】第 ② 项 2 张手牌 + 2 张【茧】）
+			"手牌数": int(d.get("hand_need", -1)),
 		}))
 	return out
 
@@ -4566,6 +4579,15 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		_skill_need_target = maxi(_选项原始目标数, 项需目标)
 		_skill_target_max = maxi(maxi(_选项原始最多目标, _skill_need_target), 项最多目标)
 		_need_players = _skill_target_max
+		# 选项自带「手牌几张」：直接按 hand_need + cover_need 定总数，不再倒算
+		# （如【倒逆之蝶】第 ② 项：2 张手牌 + 2 张【茧】）
+		var 项手牌: int = int(项.get("手牌数", -1))
+		_skill_hand_need = 项手牌 if 项手牌 >= 0 else _选项原始手牌数
+		if _skill_hand_need >= 0:
+			_skill_need_card = _skill_hand_need + _skill_cover_need
+			_skill_card_max = _skill_need_card
+			_need_cards = _skill_card_max
+			_skill_cover_max = _skill_cover_need
 		# 雷光散射只移除 1 张雷系【充能】时是全体敌方 AOE：把所有敌方头像选中并锁死，
 		# 不再让玩家点目标。移除 2 张以上才有「指定一名额外受伤」的目标，保持可点选。
 		if _pending_skill_id == GConst.技能_雷光散射 and not _已选参数.is_empty():
@@ -4587,7 +4609,8 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		# 提交出去等于放弃发动。不需要「先弹选项」那张配置表。
 		var 项3: Dictionary = _二级选中项()
 		var 项3有要求: bool = int(项3.get("需牌", 0)) > 0 or int(项3.get("需目标", 0)) > 0 \
-			or not (项3.get("牌白", []) as Array).is_empty()
+			or not (项3.get("牌白", []) as Array).is_empty() \
+			or int(项3.get("手牌数", -1)) >= 0 or int(项3.get("需盖牌", 0)) > 0
 		if not 项3.is_empty() and 项3有要求:
 			_应用选项目标数()
 			_换选项后重校验()
@@ -7875,6 +7898,8 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 	_skill_card_source = 选牌来源
 	# 手牌 + 盖牌混选（如【魔贯冲击】）：其中若干张必须是盖牌
 	_skill_cover_need = 盖牌需数
+	# 技能本体没配手牌张数；选项自带「手牌数」时由 _应用选项目标数 现设
+	_skill_hand_need = -1
 	# 选牌规则随技能一起带过来（不能沿用「建技能按钮」时循环残留的那个，否则多技能角色会串味）
 	_skill_card_rule = 选牌规则
 	_skill_slot_skill = 首张技能
@@ -7947,6 +7972,7 @@ func _选择技能(技能号: int, 技能类型: int, 需牌: int, 需目标: in
 		_选项原始最多目标 = _skill_target_max
 		_选项原始来源 = _skill_card_source
 		_选项原始盖牌需数 = _skill_cover_need
+		_选项原始手牌数 = _skill_hand_need
 	# 「先弹选项」默认在选效果前不让点牌 / 点目标（把需牌 / 目标数临时清零，选完在 _应用选项目标数 里还原）；
 	# 配了「允许先选牌」的技能（神官【神圣领域】）不清零：可以先点要弃的牌，用法仍必须先选
 	if _先弹选项 and not bool(指示配置.get("允许先选牌", false)):
@@ -11547,7 +11573,12 @@ func _确定_发动技能() -> bool:
 				盖选中 += 1
 		# 不叫「牌够」：同一个函数后面另有一个 牌够，重名会触发 CONFUSABLE_LOCAL_DECLARATION
 		var 本项牌够: bool = _sel_cards.size() >= 需牌 if 需牌 > 0 else true
-		if _skill_cover_need > 0 and 盖选中 < _skill_cover_need:
+		if _skill_hand_need >= 0:
+			# 选项直接给了手牌张数：手牌 / 盖牌各数各的
+			var 手选中: int = _sel_cards.size() - 盖选中
+			if 手选中 < _skill_hand_need or 盖选中 < _skill_cover_need:
+				本项牌够 = false
+		elif _skill_cover_need > 0 and 盖选中 < _skill_cover_need:
 			本项牌够 = false
 		var 目标够: bool = _sel_players.size() >= 需目标 if 需目标 > 0 else true
 		return not (本项牌够 and 目标够 and _目标在白名单(项["目标白名单"]) and _目标数合法())
@@ -11559,7 +11590,10 @@ func _确定_发动技能() -> bool:
 			if _is_my_cover(int(c)):
 				盖选中 += 1
 		var 手选中: int = _sel_cards.size() - 盖选中
-		if 手选中 < _skill_need_card - _skill_cover_need or 盖选中 < _skill_cover_need:
+		if _skill_hand_need >= 0:
+			if 手选中 < _skill_hand_need or 盖选中 < _skill_cover_need:
+				return true
+		elif 手选中 < _skill_need_card - _skill_cover_need or 盖选中 < _skill_cover_need:
 			return true
 		return not _目标数合法()
 	# 需牌是最少张数（如【暗影流星】要弃 2 张、【欺诈】要弃 2 张），选够才让点「确定」
