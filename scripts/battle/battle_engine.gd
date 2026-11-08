@@ -157,6 +157,9 @@ var 当前额外回合来源: int = 0
 var 额外回合续位: int = -1
 ## 各玩家上次记录的手牌数量（player_id -> 张数），用于在「手牌变化」时触发 p_hand_change
 var _hand_counts: Dictionary = {}
+## 刚写过「获得【具体牌名】」的玩家：SRunHandChange 不再补一条泛化的「获得 N 张牌」，
+## 避免同一次获得出现三行（具体牌 / 获得 N 张 / 手牌变化）。
+var _获得牌已播: Dictionary = {}
 ## 各玩家上次记录的手牌上限（player_id -> 张数），用于在「手牌上限变化」时写日志
 var _hand_maxes: Dictionary = {}
 ## 各玩家上次记录的指示物数量（player_id -> Array[int]），用于在「指示物变化」时写日志
@@ -1235,6 +1238,7 @@ func 播获得牌日志(pid: int, cards: Array) -> void:
 		var 牌: GCard = Data.get_card(int(c))
 		名表.append("【%s】" % (_牌日志名(牌) if 牌 != null else str(int(c))))
 	_播手牌日志(pp, "%s 获得 %s" % [_称号(pp), "、".join(名表)])
+	_获得牌已播[pid] = true
 
 
 ## 交牌日志（不公开亮牌的「把牌交给别人」用）：交牌双方在日志里看到具体牌名，
@@ -5477,7 +5481,11 @@ class SRunHandChange:
 		var 新: int = p0.hand_cards.size()
 		var 旧: int = int(e._hand_counts.get(pid, 新))
 		if 旧 != 新:
-			# 手牌数量变化日志：谁的手牌从多少变成了多少（与手牌上限同一类：[卡牌]）
+			# 手牌数量变化日志：先写「获得 N 张牌」（只写涨、不写跌），再写「手牌 X→Y」。
+			# 走「获得【具体牌名】」的场合（播获得牌日志）已经写过一次获得，不再补泛化那条。
+			if 新 > 旧 and not bool(e._获得牌已播.get(pid, false)):
+				e._播手牌日志(p0, "%s 获得 %d 张牌" % [e._称号(p0), 新 - 旧])
+			e._获得牌已播.erase(pid)
 			e._播手牌日志(p0, "%s 的手牌 %d→%d" % [e._称号(p0), 旧, 新])
 		e._hand_counts[pid] = 新
 		e.push(SHook.new("p_hand_change", {"player": pid}, []))
