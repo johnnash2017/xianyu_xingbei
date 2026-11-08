@@ -154,3 +154,4 @@ string,string,string,string,string,string,int,技能表,技能表,int,string
 卡表#1005,attack,fire or water,血,魔刃,moRen,0,,,0,
 卡表#1006,attack,thunder or wind,血,异刃,yiRen,0,,,0,
 卡表#1007,attack,earth,幻,史书,shiShu,0,,,0,
+卡表#1008,magic,earth,幻,Tricky,,0,,,1,【Tricky】：捣蛋萝莉面朝下放在角色面前的基础效果占位牌（虚拟牌，无卡面）；真实牌面只存在服务端。
