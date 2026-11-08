@@ -257,12 +257,16 @@ func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) 
 			面板.add_theme_stylebox_override("panel", _分组框样式(描边))
 			var 竖排: VBoxContainer = VBoxContainer.new()
 			竖排.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			# 标题和内容紧贴，组内每条技能之间留一点空隙
-			竖排.add_theme_constant_override("separation", 4)
+			# 标题紧贴第一条技能，组内技能之间留一点空隙
+			竖排.add_theme_constant_override("separation", 0)
 			var 标题: RichTextLabel = _新块标签(0)
 			标题.add_theme_constant_override("line_separation", 0)
 			标题.add_theme_constant_override("paragraph_separation", 0)
 			标题.text = "[font_size=%d]%s[/font_size]" % [标题号, str(d.get("分组", ""))]
+			# 标题行按「字号 × 1.25」收紧（富文本自带的行高会多出小半行，正是标题下面那截空隙）。
+			# 注意：fit_content 会把最小尺寸钉成内容高度，所以要先关掉它，收紧才生效。
+			标题.fit_content = false
+			标题.set_meta("tight_h", 标题号)
 			竖排.add_child(标题)
 			# 组里每个技能各占一个节点
 			for 技能: Variant in d.get("技能", []):
@@ -329,8 +333,9 @@ func _分组框样式(描边: Color) -> StyleBoxFlat:
 	样式.set_corner_radius_all(8)
 	样式.content_margin_left = 10.0
 	样式.content_margin_right = 10.0
-	样式.content_margin_top = 6.0
-	样式.content_margin_bottom = 8.0
+	# 上下留白压到最小：标题和第一条技能之间不要再空一大截
+	样式.content_margin_top = 2.0
+	样式.content_margin_bottom = 4.0
 	return 样式
 
 
@@ -373,9 +378,18 @@ func _单块高(节点: Node, 宽: float) -> float:
 		return 合计
 	if 节点 is RichTextLabel:
 		var 标签: RichTextLabel = 节点
-		标签.custom_minimum_size.x = 宽
+		# 先把宽度定下来再量高度：RichTextLabel 的 get_content_height() 按当前宽度折行，
+		# 只改 custom_minimum_size.x 时它还是按旧宽度（刚建时是 1px）算，高度会虚高很多 ——
+		# 标题下面那截大空隙就是这么来的。
 		标签.size = Vector2(宽, 标签.size.y)
-		return 标签.get_content_height()
+		var 高: float = 标签.get_content_height()
+		if 标签.has_meta("tight_h"):
+			标签.fit_content = false
+			高 = minf(高, roundf(float(标签.get_meta("tight_h")) * 1.25))
+			标签.size = Vector2(宽, 高)
+		# 连最小高度一起写死：否则容器仍然按旧的（虚高的）最小高度排，空隙还在
+		标签.custom_minimum_size = Vector2(宽, 高)
+		return 高
 	return 0.0
 
 
