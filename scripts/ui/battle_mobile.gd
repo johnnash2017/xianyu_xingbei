@@ -9045,9 +9045,11 @@ func _选中是法术牌() -> bool:
 
 ## 该卡牌是否为自己的盖牌
 ## 这张牌是不是我盖牌区里的（传进来的可能是实例号，也可能是牌号：两种都认）。
-## 同一牌面可能有多份副本，实例号能精确对上；给的是牌号时按牌面匹配。
-## 兜底再扫一遍 Data.cover_cards（有些路径只填了卡面列表，没填并行的实例号）。
+## **实例号优先**：同一个号精确在手牌区里时它一定是手牌，不能因为盖牌区有同牌面的另一份
+## 就认成盖牌（这是「手牌当盖牌」的根）；反过来也一样，精确在盖牌区里才按盖牌算。
 func _is_my_cover(card_id: int) -> bool:
+	if Data.hand_iids.has(card_id):
+		return false
 	if Data.cover_iids.has(card_id):
 		return true
 	var 面: int = GConst.牌号(card_id)

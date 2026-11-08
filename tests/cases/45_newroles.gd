@@ -314,6 +314,19 @@ func _检结界师() -> void:
 	检(角色.p_timeline_1(荒神ctx) == BattleRole.WAIT,
 		"【荒神祭仪】+1 祭后应一次问「移除 3 祭 + 弃 1 张牌 + 移除 1 个结界」")
 	检(玩家.token_num(0) == 祭前 + 1, "【荒神祭仪】确认后应 +1 祭")
+	# 额外询问必须带 cover_need=1 / cover_max=1：正好 1 张手牌 + 1 个盖牌
+	var 额外问: Dictionary = {}
+	for 记2: Dictionary in 发送记录:
+		if int(记2.get("msg", 0)) != GConst.Msg.CmdReq:
+			continue
+		var 命令2: Array = (记2.get("data", {}) as Dictionary).get("commands", [])
+		if 命令2.is_empty() or int((命令2[0] as Dictionary).get("respond_id", 0)) != 8203:
+			continue
+		var 参数2: Array = (命令2[0] as Dictionary).get("args", [])
+		if not 参数2.is_empty() and int(参数2[0]) == 2:
+			额外问 = 命令2[0]
+	检(int(额外问.get("cover_need", 0)) == 1, "【荒神祭仪】额外询问应要求至少 1 张盖牌")
+	检(int(额外问.get("cover_max", 0)) == 1, "【荒神祭仪】额外询问最多只能选 1 张盖牌")
 	# 一次提交：1 张手牌（弃掉）+ 1 个盖牌（结界，移除）
 	_应答([1], [火攻击, 火法术], [])
 	检(角色.p_timeline_1(荒神ctx) == BattleRole.URGENT, "【荒神祭仪】一次提交后应压弃牌 / 移除结界")
@@ -374,6 +387,37 @@ func _检结界师() -> void:
 	角色.p_harm_end(尾ctx)
 	检(引擎.team_gem[玩家.color] == 0, "【伏魔境】应移除我方战绩区 1 颗【宝石】")
 	检(玩家.crystal == 1, "【伏魔境】应 +1【水晶】")
+
+	# ---- 通用区域区分：实例号精确在手牌 / 盖牌区，不能按同牌面串区 ----
+	玩家.hand_cards.clear()
+	玩家.cover_cards.clear()
+	var 克隆零: int = GConst.实例号(0, 1)
+	玩家.add_hand_cards([克隆零])
+	玩家.add_cover_cards([0])
+	检(not 玩家.有手牌(0), "0 号牌精确在盖牌区时不能当成手牌")
+	检(玩家.有盖牌(0), "0 号牌在盖牌区应认得出")
+	检(玩家.有手牌(克隆零), "克隆手牌应认得出")
+	检(玩家.手牌实例(0) < 0, "手牌实例不能把盖牌区的 0 号牌认成手牌")
+	检(玩家.盖牌实例(0) == 0, "盖牌实例应认到盖牌区那一份")
+	玩家.hand_cards.clear()
+	玩家.cover_cards.clear()
+	玩家.cover_cards.append(克隆零)
+	玩家.add_hand_cards([0])
+	检(玩家.有手牌(0) and not 玩家.有盖牌(0), "0 号牌精确在手牌区时不能当成盖牌")
+	检(玩家.盖牌实例(0) < 0, "盖牌实例不能把手牌区的 0 号牌认成盖牌")
+	检(玩家.有盖牌(克隆零) and not 玩家.有手牌(克隆零), "克隆盖牌不能当成手牌")
+	# 客户端：2 张手牌、没有盖牌时「确定」应灰着（cover_need=1 的混选）
+	var 窗: Control = (load("res://scripts/ui/battle_mobile.gd") as GDScript).new()
+	窗.set("_mode", 3)
+	窗.set("_是技能询问", true)
+	窗.set("_skill_ask_id", 8203)
+	窗.set("_skill_need_card", 2)
+	窗.set("_skill_card_max", 2)
+	窗.set("_skill_card_source", GConst.CardSource.HandOrCover)
+	窗.set("_skill_cover_need", 1)
+	窗.set("_sel_cards", [-11, -12])
+	检(bool(窗.call("_确定不可用")), "荒神祭仪：两张手牌、没有盖牌时「确定」应灰着")
+	窗.free()
 
 
 ## 43 圣殿骑士：治疗上限 -1；神威让本次攻击无法应战并禁止双方获得治疗

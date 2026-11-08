@@ -130,9 +130,30 @@ func _找一张(列: Array[int], id: int) -> int:
 	return -1
 
 
-## 这一列里有没有这张牌（按实例号或牌面都算）
-func _有这张(列: Array[int], id: int) -> bool:
-	return _找一张(列, id) >= 0
+## 只按牌面找（跳过实例精确匹配）
+func _找面(列: Array[int], 面: int) -> int:
+	for i: int in range(列.size()):
+		if GConst.牌号(列[i]) == 面:
+			return i
+	return -1
+
+
+## 只按实例号删（不按牌面兜底）
+func _删实例(列: Array[int], id: int) -> bool:
+	var 位置: int = 列.find(id)
+	if 位置 < 0:
+		return false
+	列.remove_at(位置)
+	return true
+
+
+## 只按牌面删（不按实例精确匹配）
+func _删面(列: Array[int], 面: int) -> bool:
+	var 位置: int = _找面(列, 面)
+	if 位置 < 0:
+		return false
+	列.remove_at(位置)
+	return true
 
 
 ## 从一列牌里删掉指定的一张，返回是否删到
@@ -156,25 +177,41 @@ func 取出实例(列: Array[int], id: int) -> int:
 	return 实例
 
 
-## 取出一张手牌（含「盖牌视同手牌」形态下的盖牌），返回实际实例号；找不到返回 -1
+## 取出一张手牌（含「盖牌视同手牌」形态下的盖牌），返回实际实例号；找不到返回 -1。
+## 手牌 / 盖牌两个区按**实例号**分：一个号精确在盖牌区里时，不能因为手牌区还有同牌面的
+## 另一份就按牌面把手牌拿走（反过来也一样）—— 这是「盖牌当手牌 / 手牌当盖牌」的根。
 func 取出一张手牌(id: int) -> int:
+	if hand_cards.has(id):
+		return 取出实例(hand_cards, id)
+	var 可当手: bool = role != null and role.盖牌可当手牌()
+	if cover_cards.has(id):
+		return 取出实例(cover_cards, id) if 可当手 else -1
 	var 实例: int = 取出实例(hand_cards, id)
 	if 实例 >= 0:
 		return 实例
-	if role != null and role.盖牌可当手牌():
+	if 可当手:
 		return 取出实例(cover_cards, id)
 	return -1
 
 
-## 盖牌区里有没有这张（按实例号或牌面；替代直接 cover_cards.has 的写法）
+## 盖牌区里有没有这张（先按实例号精确认人；给的是牌面才按牌面找）
 func 有盖牌(id: int) -> bool:
-	return _有这张(cover_cards, id)
+	if cover_cards.has(id):
+		return true
+	# 这个号精确在手牌区里：它是手牌，不能因为盖牌区有同牌面的另一份就认成盖牌
+	if hand_cards.has(id):
+		return false
+	return _找面(cover_cards, GConst.牌号(id)) >= 0
 
 
 ## 盖牌区里这一张实际是哪一份（不改动，找不到返回 -1）。
 ## 给「先拿到实例号、再交给引擎 remove_cover 删除」这类场景用，避免删完之后拿牌号去补一张新的。
 func 盖牌实例(id: int) -> int:
-	var 位置: int = _找一张(cover_cards, id)
+	if cover_cards.has(id):
+		return id
+	if hand_cards.has(id):
+		return -1
+	var 位置: int = _找面(cover_cards, GConst.牌号(id))
 	if 位置 < 0:
 		return -1
 	return cover_cards[位置]
@@ -182,7 +219,11 @@ func 盖牌实例(id: int) -> int:
 
 ## 手牌里这一张实际是哪一份（不改动，找不到返回 -1）
 func 手牌实例(id: int) -> int:
-	var 位置: int = _找一张(hand_cards, id)
+	if hand_cards.has(id):
+		return id
+	if cover_cards.has(id):
+		return -1
+	var 位置: int = _找面(hand_cards, GConst.牌号(id))
 	if 位置 < 0:
 		return -1
 	return hand_cards[位置]
@@ -190,34 +231,52 @@ func 手牌实例(id: int) -> int:
 
 ## 手牌里有没有这张（只看真实手牌，语义同 has_discard_card）
 func 有手牌(id: int) -> bool:
-	return _有这张(hand_cards, id)
+	if hand_cards.has(id):
+		return true
+	# 这个号精确在盖牌区里：它是盖牌，不能因为手牌区有同牌面的另一份就认成手牌
+	if cover_cards.has(id):
+		return false
+	return _找面(hand_cards, GConst.牌号(id)) >= 0
 
 
 func remove_hand_cards(cards: Array) -> void:
 	for c: Variant in cards:
 		var cid: int = int(c)
-		# 打出一张「盖牌视同手牌」的牌（精灵射手【精灵祝福形态】下的【祝福】）时，
-		# 手牌里没有就从盖牌区删。弃牌路径不会走到这里 —— 弃牌一律只认真实手牌（见 has_discard_card）
-		if _删一张(hand_cards, cid):
+		if _删实例(hand_cards, cid):
+			continue
+		# 精确是盖牌区里的那一份：只按盖牌处理，不能再按牌面删一张同牌面的手牌
+		if cover_cards.has(cid):
+			if role != null and role.盖牌可当手牌():
+				_删实例(cover_cards, cid)
+			continue
+		# 给的是牌面（或调试克隆的号）：先手牌、再按「盖牌视同手牌」找盖牌
+		if _删面(hand_cards, GConst.牌号(cid)):
 			continue
 		if role != null and role.盖牌可当手牌():
-			_删一张(cover_cards, cid)
+			_删面(cover_cards, GConst.牌号(cid))
 
 
 ## 手牌里有没有这张牌（对照服务端 PlayerEntity::checkOneHandCard）：
 ## 盖牌能当手牌用的形态下，盖牌同时算手牌（如精灵射手的【祝福】）——
 ## 只用于「打出 / 应战」这类把牌用出去的场合
 func has_hand_card(cid: int) -> bool:
-	if _有这张(hand_cards, cid):
+	if hand_cards.has(cid):
 		return true
-	return role != null and role.盖牌可当手牌() and _有这张(cover_cards, cid)
+	var 可当手: bool = role != null and role.盖牌可当手牌()
+	# 这个号精确是盖牌区里的那一份：只有「盖牌视同手牌」形态才能当手牌用
+	if cover_cards.has(cid):
+		return 可当手
+	var 面: int = GConst.牌号(cid)
+	if _找面(hand_cards, 面) >= 0:
+		return true
+	return 可当手 and _找面(cover_cards, 面) >= 0
 
 
 ## 这张牌能不能作为「弃手牌」的对象：只看真实手牌。
 ## 【祝福】这类「盖牌视同手牌」只用于出牌 / 应战，任何弃手牌效果（爆牌、技能代价、
 ## 他人令弃）都不能弃盖牌，也不把盖牌列出来给玩家选
 func has_discard_card(cid: int) -> bool:
-	return _有这张(hand_cards, cid)
+	return 有手牌(cid)
 
 
 func hand_count() -> int:
