@@ -1,4 +1,4 @@
-class_name GConst
+﻿class_name GConst
 extends RefCounted
 ## 全局常量与枚举
 ## 对照 C++ 端：客户端 data/Common.h、服务端 DiceGameServer/GameGrailCommon.h、CardEntity.h
@@ -991,6 +991,10 @@ const 攻击提示加成: Dictionary = {
 	# preview_base 下发，客户端据此画「原伤害划掉 → +1 后伤害」
 	技能_喧哗上等: 1,
 }
+
+## 这些技能在「命中后」才询问：服务端下发的 preview_base 是本次攻击的**当前伤害**，
+## 已经含了角色被动（狂化）和荒神之力这类加成，客户端的现算指示器不要再并一次。
+const 攻击提示_命中后结算: Array[int] = [技能_撕裂]
 
 ## 狂战士（角色号，见角色表）
 const 角色_狂战士: int = 2

@@ -169,8 +169,11 @@ func _p_禁魔境(action: Dictionary) -> int:
 
 # ============================================================
 # 8202 荒神之力：与【结界】系别相同的攻击伤害 +1（主动攻击与反击都算）
+# 结算时机放在**攻击宣告前**（p_before_attack），不是命中时：
+# 这样后面的所有询问（攻击前技能、命中后技能）拿到的 harm.point 都已经含这 1 点，
+# 客户端不用再猜，也不会因为「结界师坐得前 / 后」导致预览忽多忽少。
 # ============================================================
-func p_timeline_2_hit(ctx: Dictionary) -> int:
+func p_before_attack(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if harm.is_empty() or bool(harm.get("荒神之力已加", false)):
 		return SUCCESS

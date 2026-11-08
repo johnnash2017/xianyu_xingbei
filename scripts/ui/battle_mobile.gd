@@ -2409,7 +2409,7 @@ func _进入待选() -> void:
 				# 写在提示最前面，让被攻击者一眼看到不阻止的话要挨多少
 				var 受伤前缀: String = ""
 				if args.size() > 5:
-					受伤前缀 = "受到 %d 伤害攻击，" % (int(args[5]) + _攻击提示加伤(_原攻击者()) + _荒神之力加伤(_攻击牌元素(args)))
+					受伤前缀 = "受到 %d 伤害攻击，" % (int(args[5]) + _攻击提示加伤(_原攻击者()))
 				# 本次攻击禁用的应战牌（如 9703 爱死天流禁【暗灭】）：牌置灰，提示里也要点明
 				var 禁暗灭: bool = (_pending.get("ban_reattack_card_names", []) as Array).has(GConst.CardName.DarkSlash)
 				# 应战牌必须与本次攻击同系，暗系牌可替任意系：提示点名「X或暗系斩」并给系别上色；
@@ -2581,8 +2581,6 @@ func _技能询问_解析字段() -> void:
 	_skill_targets.clear()
 	for 合法目标id: Variant in _pending.get("dst_ids", []):
 		_skill_targets.append(int(合法目标id))
-	# 结界师【荒神之力】：同系【结界】在场时本次攻击伤害 +1，并进预览值（各现算指示器都按它画）
-	_荒神补预览伤害()
 	# 复用 _need_cards 驱动点选上限与「确定」可用性
 	_need_cards = _skill_card_max
 	_need_players = _skill_ask_need_target
@@ -6367,7 +6365,7 @@ func _刷新攒应战提示() -> void:
 	if _攒应战伤害 >= 0:
 		var 攒应战攻牌: GCard = Data.get_card(_攒应战攻击牌)
 		var 攒应战元素: int = 攒应战攻牌.element_enum() if 攒应战攻牌 != null else 0
-		var 提示伤害: int = _攒应战伤害 + _攻击提示加伤(_攒应战攻击者) + _荒神之力加伤(攒应战元素)
+		var 提示伤害: int = _攒应战伤害 + _攻击提示加伤(_攒应战攻击者)
 		if 是3301:
 			受伤前缀 = "队友受到 %d 点伤害攻击，" % 提示伤害
 		else:
@@ -8846,28 +8844,6 @@ func _本次攻击元素() -> int:
 	return 卡.element_enum() if 卡 != null else 0
 
 
-## 技能询问进入时：把【荒神之力】那 1 点并进 preview_base。
-## 各技能的攻击伤害指示器都按 preview_base 画「原值划掉 → 新值」，在这里补一次，
-## 就不用每个现算函数各写一遍。法术伤害 / 治疗预览不补；3301 / 3306 的 preview_base
-## 是「本次攻击牌 id」不是伤害，也不能补。
-func _荒神补预览伤害() -> void:
-	if bool(_pending.get("荒神已补", false)):
-		return
-	var 类型: int = int(_pending.get("preview_kind", 0))
-	if 类型 == GConst.HarmType.Magic or 类型 == GConst.预览类型_治疗:
-		return
-	if _skill_ask_id == GConst.技能_式神咒束 or _skill_ask_id == GConst.技能_阴阳转换:
-		return
-	var 原: int = int(_pending.get("preview_base", 0))
-	if 原 <= 0:
-		return
-	var 加: int = _荒神之力加伤(_最近攻击元素())
-	if 加 <= 0:
-		return
-	_pending["preview_base"] = 原 + 加
-	_pending["荒神已补"] = true
-
-
 ## 应战的反击目标是否可选：敌方玩家、且不是原攻击者（规则同服务端 v_reattack）
 func _可作反击目标(player_id: int) -> bool:
 	if player_id == Logic.my_player_id or player_id == _原攻击者():
@@ -10570,7 +10546,10 @@ func _攻击加成头像提示() -> Dictionary:
 	# 它是「不发动本技能时就有的伤害」，并入划掉的那一行；只有本技能自己的加成才另起一行写新伤害。
 	# 结界师【荒神之力】同理（同系结界在场时攻击伤害 +1），也并进划掉的那一行。
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	var 被动: int = int(GConst.攻击提示角色加成.get(我.role_id, 0))
+	# 命中后才询问的技能（如【撕裂】）：服务端的 preview_base 已经是命中时的当前伤害，
+	# 已含狂化，客户端再并一次就会多算 1 点
+	var 被动: int = 0 if GConst.攻击提示_命中后结算.has(技能号) \
+			else int(GConst.攻击提示角色加成.get(我.role_id, 0))
 	# 发动技能（mode 4）时基础伤害是本地常量，这里补荒神；技能询问（mode 3）的 preview_base
 	# 已在 _荒神补预览伤害 里补过，不能再加一次
 	var 荒神: int = _荒神之力加伤(_本次攻击元素()) if _mode == 4 else 0

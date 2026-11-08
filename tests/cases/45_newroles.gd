@@ -181,7 +181,7 @@ func _检结界师() -> void:
 	var harm: Dictionary = {"src": 2, "dst": 1, "point": 1, "type": GConst.HarmType.Attack}
 	var 火攻击: int = _找牌("火", "attack")
 	var ctx: Dictionary = {"src": 2, "dst": 1, "is_active": true, "card_id": 火攻击, "harm": harm}
-	角色.p_timeline_2_hit(ctx)
+	角色.p_before_attack(ctx)
 	检(int(harm.get("point", 0)) == 2, "【荒神之力】应让同系攻击伤害 +1：%d" % int(harm.get("point", 0)))
 	# 卡表#0 是合法牌、座位 0 是合法人：琉璃境不能把 0 当「没有」
 	# 先把上面塞满的两张【结界】收走，留出盖牌位（结界师只有 2 个结界槽）
