@@ -1079,7 +1079,8 @@ func _刷新玩家面板() -> void:
 ## GConst.场卡显示 里登记的场卡返回 {}（不画）。
 ## - 图标底下只写名字（名字 / 隐藏的正面放在悬停提示 tip 里，不摆到场上）；
 ## - 计数：配了上限的写「n/m」进提示、并把数字写在图标上；没有上限的场卡数字只进提示。
-## - 说明：配了 "被动技能" 的用那颗技能的说明（含【被动】类型标色），否则用表里的「说明」。
+## - 说明：配了 "被动技能" 的用那颗 / 那组技能的说明（含【被动】类型标色），否则用表里的「说明」。
+##   "被动技能" 可以是单颗（int）或一组（Array）：单颗仍按 int 返回，一组（【绝界】3 条）返回数组。
 static func 场卡状态项(卡号: String, 表: Dictionary) -> Dictionary:
 	var 显示: Dictionary = GConst.场卡显示.get(卡号, {})
 	if 显示.is_empty():
@@ -1099,20 +1100,38 @@ static func 场卡状态项(卡号: String, 表: Dictionary) -> Dictionary:
 		# 没配上限的场卡：数字只进悬停提示，图标上不写
 		提示名 = "%s %d" % [提示名, 点数]
 	var 说明: String = str(显示.get("说明", ""))
-	# 配了「被动技能」的场卡（【异端裁决所】→ 庇护领域 3905、【末日预言】→ 9504…）：
-	# 名字下面显示那颗技能的说明（不是卡面那句解释），悬停走「【被动】技能名：说明」的被动提示框
-	var 被动号: int = int(显示.get("被动技能", -1))
-	if 被动号 > 0:
-		var 被动: String = GConst.skill_desc(被动号)
-		if not 被动.is_empty():
-			说明 = 被动
+	# 配了「被动技能」的场卡（【异端裁决所】→ 庇护领域 3905、【末日预言】→ 9504、
+	# 【绝界】→ 灭界破散 / 白二羯磨 / 虚空境…）：名字下面显示技能说明，悬停走逐条被动提示框
+	var 被动配置: Variant = 显示.get("被动技能", null)
+	var 被动们: Array[int] = []
+	if 被动配置 is Array:
+		for 号: Variant in 被动配置:
+			if int(号) > 0:
+				被动们.append(int(号))
+	elif 被动配置 != null and int(被动配置) > 0:
+		被动们.append(int(被动配置))
+	if not 被动们.is_empty():
+		var 说明们: Array[String] = []
+		for 号: int in 被动们:
+			var 被动: String = GConst.skill_desc(号)
+			if not 被动.is_empty():
+				说明们.append(被动)
+		if not 说明们.is_empty():
+			说明 = "\n".join(说明们)
+	# 单颗保持原来的 int（旧调用 / 自检按 int 取）；一组返回数组
+	var 被动返回: Variant = -1
+	if 被动们.size() == 1:
+		被动返回 = 被动们[0]
+	elif 被动们.size() > 1:
+		被动返回 = 被动们
 	return {
 		"name": 卡号,
 		"icon": str(显示.get("图标", "")),
 		"desc": 说明,
 		"tip": 提示名,
 		"count": 计数,
-		"被动技能": 被动号,
+		"被动技能": 被动返回,
+		"被动技能角色": int(显示.get("被动技能角色", -1)),
 	}
 
 
@@ -1190,6 +1209,7 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			"tip": "律法：%s" % str(GConst.律法名.get(号, "律法")),
 			"desc": "律法：%s（由【群星启示】放置 / 移除）" % str(GConst.律法名.get(号, "律法")),
 			"被动技能": 律法技能号,
+			"被动技能角色": 40,
 		})
 	# 面朝上的盖牌（结界师【结界】等）：牌面公开，按卡面图标显示在状态区。
 	# 名字默认用卡名；角色特性配了「面朝上盖牌名」时按它写 —— 结界师写成「结界·X」，
@@ -3707,13 +3727,17 @@ func _造提示文本行(文本: String, 用BBCode: bool) -> RichTextLabel:
 	return 标签
 
 
-## 场卡的被动说明（对照魔刃的刃状态内容）：标题 →「【被动】技能名：说明」。
+## 场卡的被动说明（对照魔刃的刃状态内容）：标题 → 每条「【类型】技能名：说明」。
 ## 说明走 角色技能提示.单个技能，带【类型】上色；限宽 + 自动换行，长文本不会横向撑爆提示框。
-func _造被动状态内容(图标: Control, 标题文本: String, 技能号: int) -> Control:
-	# 9504 是异教徒（角色 95）的【末日预言】；角色号只影响技能名按角色改写，这里固定给 95。
-	# 正文字号传 0（同魔刃）：字号由提示框的 RichTextLabel 统一给，文本里不再套 [font_size]
-	var 说明: String = 角色技能提示.单个技能(技能号, 0, 95)
-	if 说明.is_empty():
+## 技能们：一颗或多颗技能号（【绝界】= 灭界破散 / 白二羯磨 / 虚空境）；角色号用于按角色取技能名 / 改写说明。
+func _造被动状态内容(图标: Control, 标题文本: String, 技能们: Array, 角色号: int = -1) -> Control:
+	var 行们: Array[String] = []
+	for 号: Variant in 技能们:
+		# 正文字号传 0（同魔刃）：字号由提示框的 RichTextLabel 统一给，文本里不再套 [font_size]
+		var 说明: String = 角色技能提示.单个技能(int(号), 0, 角色号)
+		if not 说明.is_empty():
+			行们.append(说明)
+	if 行们.is_empty():
 		return null
 	var 内容: VBoxContainer = VBoxContainer.new()
 	内容.add_theme_constant_override("separation", 8)
@@ -3727,23 +3751,24 @@ func _造被动状态内容(图标: Control, 标题文本: String, 技能号: in
 		图标预览.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		内容.add_child(图标预览)
 	内容.add_child(_造提示文本行(标题文本, false))
-	内容.add_child(_造提示文本行(说明, true))
+	for 说明: String in 行们:
+		内容.add_child(_造提示文本行(说明, true))
 	return 内容
 
 
 ## 鼠标指向状态图标（基础效果牌 / 指示物）：在图标正上方弹提示 ——
 ## 基础效果牌摊出这张牌的完整卡面 + 状态名，指示物只有一行「名字 当前/上限」
 func _显示状态图标说明(图标: Control, 文本: String, 牌id: int, 显示大图: bool,
-		被动技能号: int = -1) -> void:
+		被动技能们: Array = [], 被动技能角色: int = -1) -> void:
 	_悬停技能按钮 = null
 	# 注意：不要清 _悬停角色面板 —— 状态图标是头像的子节点，鼠标从头像划到图标上时
 	# 人还指着头像。清掉的话，离开图标时就不知道该把「角色说明」补回来了，
 	# 表现就是「指着某个头像却不显示说明，要再动一下鼠标才出来」。
 	_悬停状态图标 = true
-	# 场卡带被动技能号（【末日预言】）：和魔刃一样走自定义内容提示框 ——
-	# 标题一行（名字 + 隐藏的正面 + 计数），下面接「【被动】技能名：说明」，限宽自动换行
-	if 被动技能号 > 0:
-		var 内容: Control = _造被动状态内容(图标, 文本, 被动技能号)
+	# 场卡带被动技能（【末日预言】/【绝界】）：和魔刃一样走自定义内容提示框 ——
+	# 标题一行（名字 + 隐藏的正面 + 计数），下面逐条接「【类型】技能名：说明」，限宽自动换行
+	if not 被动技能们.is_empty():
+		var 内容: Control = _造被动状态内容(图标, 文本, 被动技能们, 被动技能角色)
 		if 内容 != null:
 			_说明提示.显示内容(内容, 图标.get_global_rect())
 			return
@@ -3773,7 +3798,7 @@ func _显示状态图标说明(图标: Control, 文本: String, 牌id: int, 显�
 ## 显示大图：提示里是否再摊一张放大的高清原图（星杯这类有图标的要；士气这种纯数字不要）
 func _接悬停提示(控件: Control, 文本: String, 显示大图: bool = false) -> void:
 	控件.mouse_filter = Control.MOUSE_FILTER_STOP
-	控件.mouse_entered.connect(func() -> void: _显示状态图标说明(控件, 文本, -1, 显示大图, -1))
+	控件.mouse_entered.connect(func() -> void: _显示状态图标说明(控件, 文本, -1, 显示大图, [], -1))
 	控件.mouse_exited.connect(_隐藏状态图标说明)
 
 
@@ -4580,7 +4605,7 @@ func _显示律法选项悬停(法号: int, 技能号: int, 按钮: 技能按钮
 	var 路径: String = str(GConst.律法图标.get(法号, ""))
 	if not 路径.is_empty() and ResourceLoader.exists(路径):
 		图标.texture = load(路径) as Texture2D
-	var 内容: Control = _造被动状态内容(图标, "律法：%s" % 名, 技能号)
+	var 内容: Control = _造被动状态内容(图标, "律法：%s" % 名, [技能号], 40)
 	_悬停角色面板 = null
 	_悬停状态图标 = false
 	_悬停技能按钮 = 按钮

@@ -206,6 +206,53 @@ func _检结界师() -> void:
 	角色.p_jie_jie_ask({"player": 1})
 	检(引擎.deck.discard.has(0), "琉璃境：0 号牌不当作结界时必须进弃牌堆")
 
+	# ---- 禁魔境：绝界只挂在目标面前，不能再画在拥有者（结界师）自己面板上 ----
+	引擎.加场卡({"id": "绝界", "owner": 1, "attached": 2,
+		"counter": 0, "counter_max": 0, "state": 0})
+	检(引擎.玩家有场卡(2, "绝界"), "【绝界】应挂在目标 2 号面前")
+	检(not 引擎.玩家有场卡(1, "绝界"), "【绝界】不该在拥有者 1 号面前生效")
+	var 旧场卡: Array[Dictionary] = Data.场卡表.duplicate()
+	Data.场卡表.clear()
+	Data.场卡表.append({"id": "绝界", "owner": 1, "attached": 2})
+	检(Data.玩家场卡(2).size() == 1, "【绝界】应显示在目标 2 号的面板上")
+	检(Data.玩家场卡(1).is_empty(),
+		"【绝界】挂在 2 号面前时，拥有者 1 号面板上不该再画一个")
+	# 没有挂人的场卡（异端裁决所 / 末日预言）仍归拥有者
+	Data.场卡表.clear()
+	Data.场卡表.append({"id": "异端裁决所", "owner": 1, "attached": -1})
+	检(Data.玩家场卡(1).size() == 1, "没挂人的场卡仍应画在拥有者 1 号面板上")
+	Data.场卡表.assign(旧场卡)
+
+	# ---- 绝界图标的悬停说明应列出 3 条技能：灭界破散 / 白二羯磨 / 虚空境 ----
+	var 战斗界面脚本: GDScript = load("res://scripts/ui/battle_mobile.gd")
+	var 绝界项: Dictionary = 战斗界面脚本.场卡状态项("绝界", {"id": "绝界"})
+	var 绝界被动: Variant = 绝界项.get("被动技能", null)
+	检(绝界被动 is Array and (绝界被动 as Array).size() == 3,
+		"【绝界】的场卡提示应带 3 条被动技能：%s" % str(绝界被动))
+	if 绝界被动 is Array:
+		for 号: int in [8206, 8208, 8209]:
+			检((绝界被动 as Array).has(号), "【绝界】的被动技能应包含 %d：%s" % [号, str(绝界被动)])
+	检(int(绝界项.get("被动技能角色", -1)) == 82, "【绝界】的被动技能应按结界师 82 取说明")
+	for 号: int in [8206, 8208, 8209]:
+		检(not GConst.skill_desc(号).is_empty(), "技能 %d 没有说明文本" % 号)
+	# 悬停内容实际拼出来：标题 + 3 条技能 = 4 行富文本
+	if 绝界被动 is Array:
+		var 界面实例: Control = (load("res://scripts/ui/battle_mobile.gd") as GDScript).new()
+		var 图标: TextureRect = TextureRect.new()
+		图标.texture = load("res://assets/textures/icon/jueJie.png") as Texture2D
+		var 内容: Control = 界面实例._造被动状态内容(图标, "绝界", 绝界被动, 82)
+		检(内容 != null, "【绝界】的悬停内容没有生成")
+		if 内容 != null:
+			var 文本行数: int = 0
+			for 子: Node in 内容.get_children():
+				if 子 is RichTextLabel:
+					文本行数 += 1
+			检(文本行数 == 4,
+				"【绝界】的悬停内容应是标题 + 3 条技能（实际 %d 行文本）" % 文本行数)
+			内容.free()
+		图标.free()
+		界面实例.free()
+
 
 ## 43 圣殿骑士：治疗上限 -1；神威让本次攻击无法应战并禁止双方获得治疗
 func _检圣殿骑士() -> void:

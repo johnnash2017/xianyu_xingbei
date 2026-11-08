@@ -48,7 +48,8 @@ func _有指示物日志(名字: String) -> bool:
 ## 点开某枚指示物的悬停提示，返回文案（「名字 当前/上限」）
 func _读面板提示(面板: 战斗玩家面板, 槽: int, 标签: Label) -> String:
 	var 提示: Array[String] = []
-	面板.状态图标悬停.connect(func(_图标: Control, 文本: String, _牌id: int, _大图: bool, _被动: int) -> void:
+	面板.状态图标悬停.connect(func(_图标: Control, 文本: String, _牌id: int, _大图: bool,
+			_被动: Array, _被动角色: int) -> void:
 		提示.append(文本))
 	面板.call("_报告指示物悬停", 槽, 标签.get_parent())
 	return 提示[0] if not 提示.is_empty() else ""

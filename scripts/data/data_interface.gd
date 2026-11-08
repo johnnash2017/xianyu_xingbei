@@ -480,11 +480,17 @@ func get_blue_team() -> GTeam:
 	return blue
 
 
-## 某名玩家名下的场卡（拥有者或挂在他面前）：客户端画状态图标用
+## 某名玩家名下的场卡（客户端画状态图标用）：
+## 挂在某人面前（attached >= 0）的只归那个人；没挂人的才归拥有者（owner）。
+## 【绝界】owner=结界师、attached=目标：只画在目标面板上，不能同时画在结界师身上。
 func 玩家场卡(pid: int) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for 表: Dictionary in 场卡表:
-		if int(表.get("owner", -1)) == pid or int(表.get("attached", -1)) == pid:
+		var 挂: int = int(表.get("attached", -1))
+		if 挂 >= 0:
+			if 挂 == pid:
+				out.append(表)
+		elif int(表.get("owner", -1)) == pid:
 			out.append(表)
 	return out
 

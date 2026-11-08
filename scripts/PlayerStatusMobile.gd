@@ -22,7 +22,8 @@ signal 离开悬停()
 ## （牌id >= 0 表示带上了卡牌；容器用图标的矩形摆位，保证提示不压住图标）
 ## 显示大图：这个控件要不要在提示里摆一张放大的原图（状态图标 / 指示物要；星石 / 手牌那种
 ## 扁平方块不要，放大反而更糊、还占地方）
-signal 状态图标悬停(图标: Control, 文本: String, 牌id: int, 显示大图: bool, 被动技能号: int)
+signal 状态图标悬停(图标: Control, 文本: String, 牌id: int, 显示大图: bool,
+	被动技能们: Array, 被动技能角色: int)
 signal 状态图标离开悬停()
 
 ## 消息类型枚举走全局 class_name Msg（见 scripts/framework/Msg.gd）。
@@ -530,7 +531,7 @@ func _报告指示物悬停(槽: int, 图标: Control) -> void:
 		return
 	var 名: String = _指示物名字(槽)
 	var 上限文本: String = 指示物上限文本(int(定义["max"]))
-	状态图标悬停.emit(图标, "%s %d/%s" % [名, _指示物数值[槽], 上限文本], -1, true, -1)
+	状态图标悬停.emit(图标, "%s %d/%s" % [名, _指示物数值[槽], 上限文本], -1, true, [], -1)
 
 
 ## 鼠标指到某枚基础效果牌图标：报出这张牌的 id（容器据此摊出完整卡面）+ 一行
@@ -543,7 +544,7 @@ func _报告基础效果悬停(牌id: int, 图标: Control) -> void:
 		return
 	状态图标悬停.emit(图标,
 		"基础效果：%s（%s·%s）" % [状态名(牌), 牌.fate_pattern, GConst.element_to_chinese(牌.element_enum())],
-		牌id, true, -1)
+		牌id, true, [], -1)
 
 
 ## 这张牌摆在头像上当状态用时，那个状态叫什么。
@@ -705,13 +706,21 @@ func _刷新状态图标() -> void:
 		# 悬停标题（可选）：隐藏信息 / 计数这类「只给本人看」的内容写这一行，
 		# 图标底下仍只写 name（如【末日预言】），不把（天雷劫火）5/6 摆在场上
 		var 状态提示: String = str(d.get("tip", 状态文字))
-		# 带「被动技能」的场卡（【末日预言】）走自定义内容：说明由那边按技能说明排版（带【被动】标色），
-		# 这里再拼一遍 desc 会让同一段说明出现两次、而且拼进来的这份没有类型标色
-		if not 状态说明.is_empty() and int(d.get("被动技能", -1)) <= 0:
+		# 带「被动技能」的场卡（【末日预言】/【绝界】）走自定义内容：说明由那边按技能说明排版
+		# （带【被动】标色），这里再拼一遍 desc 会让同一段说明出现两次、而且拼进来的这份没有类型标色。
+		# 「被动技能」可能是单颗 int，也可能是一组 Array（【绝界】3 条），统一规整成数组。
+		var 被动配置: Variant = d.get("被动技能", -1)
+		var 被动们: Array = []
+		if 被动配置 is Array:
+			被动们 = 被动配置
+		elif 被动配置 != null and int(被动配置) > 0:
+			被动们 = [int(被动配置)]
+		if not 状态说明.is_empty() and 被动们.is_empty():
 			状态提示 = "%s
 %s" % [状态提示, 状态说明]
 		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示,
-			额外牌id, 状态文字, int(d.get("count", -1)), int(d.get("被动技能", -1)))
+			额外牌id, 状态文字, int(d.get("count", -1)), 被动们,
+			int(d.get("被动技能角色", -1)))
 	_状态已初始化 = true
 	_状态弹出起点 = 新起点
 	_摆图标(basicAndExCardArea, 状态区列数, 状态区每列格数, 状态图标格)
@@ -738,7 +747,7 @@ func 五系束缚应摸张数() -> int:
 ## 提示 是给独有效果用的纯文字提示（它们没有卡牌对象，弹不出卡面）
 func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary,
 		基础牌id: int = -1, 提示: String = "", 额外牌id: int = -1, 名称: String = "",
-		数量: int = -1, 被动技能号: int = -1) -> void:
+		数量: int = -1, 被动技能们: Array = [], 被动技能角色: int = -1) -> void:
 	if tex == null:
 		return
 	var go := ps.instantiate()
@@ -769,7 +778,8 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 		if 基础牌id >= 0:
 			图标.mouse_entered.connect(func() -> void: _报告基础效果悬停(基础牌id, 图标))
 		elif 提示 != "":
-			图标.mouse_entered.connect(func() -> void: 状态图标悬停.emit(图标, 提示, 额外牌id, true, 被动技能号))
+			图标.mouse_entered.connect(func() -> void: 状态图标悬停.emit(
+				图标, 提示, 额外牌id, true, 被动技能们, 被动技能角色))
 		if 基础牌id >= 0 or 提示 != "":
 			图标.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
 		var 旧列表: Array = _状态弹出起点.get(标识, [])
@@ -891,7 +901,7 @@ func _接格子提示(格: Control, 文本: String) -> void:
 	if 格 == null:
 		return
 	格.mouse_filter = Control.MOUSE_FILTER_STOP
-	格.mouse_entered.connect(func() -> void: 状态图标悬停.emit(格, 文本, -1, false, -1))
+	格.mouse_entered.connect(func() -> void: 状态图标悬停.emit(格, 文本, -1, false, [], -1))
 	格.mouse_exited.connect(func() -> void: 状态图标离开悬停.emit())
 	格.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
