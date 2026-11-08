@@ -232,6 +232,8 @@ func _命中描边与星数(角色号: int) -> void:
 
 
 ## 建分块：一块一块富文本竖着排；分组块套一个和整框同色的小面板（标题＝专属卡牌名）。
+## 分组标题不单独建标签，而是写成第一条技能的首行（见下面）—— 这样标题和技能之间
+## 只有普通换行，标签自身的行距 / 段距撑不出空隙来。
 ## 宽度固定用 角色说明宽度 —— 不做「一档档加宽重排」（那正是以前抖动 / 错位的来源）。
 func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) -> void:
 	_卸内容()
@@ -259,20 +261,19 @@ func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) 
 			竖排.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			# 标题紧贴第一条技能，组内技能之间留一点空隙
 			竖排.add_theme_constant_override("separation", 0)
-			var 标题: RichTextLabel = _新块标签(0)
-			标题.add_theme_constant_override("line_separation", 0)
-			标题.add_theme_constant_override("paragraph_separation", 0)
-			标题.text = "[font_size=%d]%s[/font_size]" % [标题号, str(d.get("分组", ""))]
-			# 标题行按「字号 × 1.25」收紧（富文本自带的行高会多出小半行，正是标题下面那截空隙）。
-			# 注意：fit_content 会把最小尺寸钉成内容高度，所以要先关掉它，收紧才生效。
-			标题.fit_content = false
-			标题.set_meta("tight_h", 标题号)
-			竖排.add_child(标题)
-			# 组里每个技能各占一个节点
-			for 技能: Variant in d.get("技能", []):
+			# 分组标题直接写成第一条技能的「首行」，和技能正文放在同一个富文本里：
+			# 只是普通换行，没有第二个标签，标签自身的行距 / 段距就撑不出空隙来。
+			# （以前标题单独一个 RichTextLabel：它按整行行高占位，标题下面必然空出小半行；
+			#   按 1.25 倍字号硬压高度只是补丁，换个字体 / 字号档位又会露出来。）
+			var 技能们: Array = d.get("技能", [])
+			for i: int in 技能们.size():
 				var 条: RichTextLabel = _新块标签(0)
 				条.add_theme_constant_override("paragraph_separation", 0)
-				条.text = str(技能)
+				if i == 0:
+					条.text = "[font_size=%d]%s[/font_size]\n%s" % [
+						标题号, str(d.get("分组", "")), str(技能们[i])]
+				else:
+					条.text = str(技能们[i])
 				竖排.add_child(条)
 			面板.add_child(竖排)
 			边距.add_child(面板)
@@ -380,13 +381,9 @@ func _单块高(节点: Node, 宽: float) -> float:
 		var 标签: RichTextLabel = 节点
 		# 先把宽度定下来再量高度：RichTextLabel 的 get_content_height() 按当前宽度折行，
 		# 只改 custom_minimum_size.x 时它还是按旧宽度（刚建时是 1px）算，高度会虚高很多 ——
-		# 标题下面那截大空隙就是这么来的。
+		# 以前标题单独占一个节点时，这截虚高就全落在标题和第一条技能之间。
 		标签.size = Vector2(宽, 标签.size.y)
 		var 高: float = 标签.get_content_height()
-		if 标签.has_meta("tight_h"):
-			标签.fit_content = false
-			高 = minf(高, roundf(float(标签.get_meta("tight_h")) * 1.25))
-			标签.size = Vector2(宽, 高)
 		# 连最小高度一起写死：否则容器仍然按旧的（虚高的）最小高度排，空隙还在
 		标签.custom_minimum_size = Vector2(宽, 高)
 		return 高
