@@ -2190,6 +2190,19 @@ func 转移士气(从颜色: int, 到颜色: int, 点: int = 1) -> int:
 	_broadcast_game()
 	if team_morale[从颜色] <= 0:
 		_check_game_over()
+	# 被转走的那一队也是「士气下降」：补压事后钩子，让【琉璃境】这类响应能问
+	if 扣 > 0 and phase != Phase.Over:
+		var 代表: int = -1
+		for pid: int in order:
+			var p0: BattlePlayer = players.get(pid)
+			if p0 != null and p0.color == 从颜色:
+				代表 = p0.id
+				break
+		if 代表 >= 0:
+			push(SHook.new("p_lose_morale_after", {
+				"dst": 代表, "amount": 扣, "cause": 0,
+				"harm_cause": 0, "type": GConst.HarmType.None, "sync": true,
+			}, []))
 	return 扣
 
 
