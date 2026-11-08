@@ -1,4 +1,4 @@
-extends BattleRole
+﻿extends BattleRole
 ## 精灵射手（roleID 32）—— 移植自服务端 role/JingLingSheShou.cpp
 ## 形态：tap（【精灵祝福形态】）；盖牌：【祝福】(cover_cards_max)，上限见角色表
 ## 技能：元素射击（3201，响应・回合限定：主动攻击时若攻击牌非暗系，弃 1 张法术牌或移除 1 张【祝福】，
@@ -170,7 +170,11 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		# （空＝不限，反倒变成什么都能选），所以要另外给选牌规则 magic_cover —— 界面按它自己判
 		var 可弃: Array[int] = magic_hand_ids()
 		可弃.append_array(player.cover_cards)
-		询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.HandOrCover, [], 1, "magic_cover", 可弃)
+		# 预览：把「本次攻击伤害」和攻击目标随询问下发 —— 火之矢会 +1，
+		# 客户端据此在目标头像上写「原伤害划掉 → 加 1 后的伤害」
+		询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.HandOrCover, [], 1, "magic_cover", 可弃,
+			true, 0, -1, [], -1, {}, int((ctx.get("harm", {}) as Dictionary).get("point", 0)),
+			GConst.HarmType.Attack, false, [int(ctx.get("dst", -1))])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

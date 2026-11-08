@@ -9732,6 +9732,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _圣裁头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _元素射击头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _圣愈头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _预览伤害头像提示()
@@ -10351,6 +10353,30 @@ func _双重回响头像提示() -> Dictionary:
 		out[int(目标id)] = "%d 法术伤害" % 伤害
 	return out
 
+
+## 精灵射手【元素射击】（3201）：攻击宣告①的响应，按攻击牌系别附加元素箭。
+## 只有【火之矢】改本次攻击伤害（+1），其余几根箭不改伤害 ——
+## 所以在被攻击的目标头像上写「原伤害划掉 → +1 后的伤害」，别的箭只写原伤害。
+## 原伤害由服务端随询问下发 preview_base（已在 _荒神补预览伤害 里并进荒神之力）。
+func _元素射击头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or _skill_ask_id != GConst.技能_元素射击:
+		return out
+	var 原伤害: int = int(_pending.get("preview_base", 0))
+	if 原伤害 <= 0:
+		return out
+	# 攻击牌是刚打出的那张（不是这次要弃的法术牌 / 【祝福】），按它判是不是火之矢
+	var 攻: GCard = Data.get_card(_最近攻击牌)
+	var 火: bool = 攻 != null and 攻.element_enum() == GConst.CardElement.Fire
+	for 目标: Variant in _pending.get("preview_ids", []):
+		var pid: int = int(目标)
+		if pid < 0:
+			continue
+		if 火:
+			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 1]
+		else:
+			out[pid] = "%d 攻击伤害" % 原伤害
+	return out
 
 ## 圣弓【圣屑飓暴】（3702 / Trick 8802）：弃 2 张同系牌，以**该系**【圣】命格攻击牌发起一次主动攻击，
 ## 基础 2 点攻击伤害。攻击牌的系别就是弃掉那两张的系别，所以按已选牌取系别再叠【荒神之力】。
