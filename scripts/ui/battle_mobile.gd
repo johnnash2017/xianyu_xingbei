@@ -8475,9 +8475,11 @@ func _铺粗删除线(提示: RichTextLabel, 原文行: PackedStringArray, 纯�
 
 ## 收到一次治疗：在目标头像上喷一片浅蓝色「+」（治疗点数越多，冒得越多）
 func _on_heal_received(pid: int, num: int) -> void:
+	# 治疗日志现在拆成两行，只有第一行带 num；第二行（治疗 X→Y）num=0，不再播加号
+	if num <= 0:
+		return
 	_播放治疗加号(pid, num)
-	if num > 0:
-		_资源飘字(pid, "+ %d 治疗" % num, Color(提示色_治疗))
+	_资源飘字(pid, "+ %d 治疗" % num, Color(提示色_治疗))
 
 
 ## 指示物 / 盖牌获得：服务端随 Gossip 带 res_num / res_name / res_slot
