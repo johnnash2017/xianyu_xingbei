@@ -744,6 +744,13 @@ func 替换角色(pid: int, 新角色id: int, 重置上限: bool = true) -> int:
 	if p0 == null:
 		return GConst.GE_INVALID_PLAYERID
 	var 旧角色名: String = Data.role_name(p0.role_id)
+	# 指示物：两张角色卡共用同一个计数板时（红衣主教 / 铸律者的【银制子弹】【圣遗物】），
+	# 数值要跟着换过去的角色卡走 —— 否则「+2 银制子弹 / +2 圣遗物」在替换这一步凭空消失
+	var 旧指示物: Array = []
+	for 槽: int in [0, 1]:
+		var 旧定义: Dictionary = p0.token_def(槽)
+		if not 旧定义.is_empty():
+			旧指示物.append({"name": str(旧定义.get("name", "")), "num": int(旧定义.get("num", 0))})
 	if p0.role != null:
 		p0.role.call_hook("p_before_role_replace", {"player": pid, "new_role_id": 新角色id})
 	# 解绑旧角色：setter 会把它自己的 player / engine 置空，之后引擎的钩子轮次不会再调用它
@@ -770,6 +777,15 @@ func 替换角色(pid: int, 新角色id: int, 重置上限: bool = true) -> int:
 	if 新角色 == null:
 		# 没有脚本的角色（白板）也按角色表初始化指示物 / 盖牌上限（与开局同口径）
 		p0.按表初始化指示物()
+	# 同名指示物把数值带过去（新角色表里没有这个名字的槽位就保持 0）
+	for 槽: int in [0, 1]:
+		var 新定义: Dictionary = p0.token_def(槽)
+		if 新定义.is_empty():
+			continue
+		for 旧: Dictionary in 旧指示物:
+			if str(旧["name"]) == str(新定义.get("name", "")):
+				新定义["num"] = clampi(int(旧["num"]), 0, int(新定义.get("max", 0)))
+				break
 	broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Notice,
 		"txt": "[%s] 的角色卡替换为【%s】" % [旧角色名, Data.role_name(新角色id)],
