@@ -383,8 +383,8 @@ func p_special_skill(action: Dictionary) -> int:
 	# 先问交换、再做【稽古识典】：稽古要等玩家选弃哪张牌，放在最后收尾
 	if player.hand_cards.size() >= 2 and _遗迹数() > 0:
 		_古今阶段 = 1
-		询问(player.id, GU_JIN_HU_JIAN, 交换上限, 0, GConst.CardSource.Hand,
-			_交换选项(GU_JIN_HU_JIAN), 0, "", [], true, 0, -1, [], -1, {})
+		询问(player.id, GU_JIN_HU_JIAN, 0, 0, GConst.CardSource.HandOrCover,
+			_交换选项(GU_JIN_HU_JIAN, 交换上限), 0, "", [], true, 0, -1, [], -1, {})
 		return WAIT
 	_稽古检查()
 	return _稽古推进()
@@ -392,14 +392,13 @@ func p_special_skill(action: Dictionary) -> int:
 
 func _古今交换(r: Dictionary) -> void:
 	var args: Array = r.get("args", [])
-	var cards: Array = r.get("card_ids", [])
 	if args.is_empty():
 		return
 	var X: int = int(args[0])
-	if X < 1 or X > mini(交换上限, _遗迹数()) or cards.size() != 交换上限:
+	if X < 1 or X > mini(交换上限, _遗迹数()):
 		engine.报错("【古今互鉴】交换参数不对", player.id)
 		return
-	_交换遗迹(X, cards, GU_JIN_HU_JIAN, 交换上限)
+	_交换遗迹(X, r.get("card_ids", []), GU_JIN_HU_JIAN, 交换上限)
 
 
 # ============================================================
@@ -453,14 +452,13 @@ func _引稽编鉴(ctx: Dictionary) -> int:
 		_引稽阶段 = 0
 		_引稽已完结 = true
 		var args2: Array = r2.get("args", [])
-		var cards2: Array = r2.get("card_ids", [])
 		if args2.is_empty():
 			return _遗迹论破(ctx)
 		var X: int = int(args2[0])
-		if X < 1 or X > mini(交换上限, _遗迹数()) or cards2.size() != X:
+		if X < 1 or X > mini(交换上限, _遗迹数()):
 			engine.报错("【引稽编鉴】交换参数不对", player.id)
 			return _遗迹论破(ctx)
-		_交换遗迹(X, cards2, YIN_JI_BIAN_JIAN, X)
+		_交换遗迹(X, r2.get("card_ids", []), YIN_JI_BIAN_JIAN, X)
 		return _遗迹论破(ctx)
 	var dst: int = int(ctx.get("dst", -1))
 	var dp2: BattlePlayer = engine.p(dst)
@@ -482,8 +480,8 @@ func _引稽交换(ctx: Dictionary) -> int:
 		_引稽已完结 = true
 		return _遗迹论破(ctx)
 	_引稽阶段 = 2
-	询问(player.id, YIN_JI_BIAN_JIAN, 1, 0, GConst.CardSource.Hand, _交换选项(YIN_JI_BIAN_JIAN),
-		上限, "", [], true, 0, -1, [], -1, {})
+	询问(player.id, YIN_JI_BIAN_JIAN, 0, 0, GConst.CardSource.HandOrCover,
+		_交换选项(YIN_JI_BIAN_JIAN, 0, 上限, true), 0, "", [], true, 0, -1, [], -1, {})
 	return WAIT
 
 
@@ -641,41 +639,51 @@ func _移除史书() -> void:
 	engine.放入移除牌堆(史书号)
 
 
-func _交换选项(技能号: int) -> Array:
-	var 上限: int = mini(交换上限, _遗迹数())
+func _交换选项(技能号: int, 手牌数: int, 上限: int = 0, 手牌随档: bool = false) -> Array:
+	var 可换: int = mini(交换上限, _遗迹数())
+	if 上限 > 0:
+		可换 = mini(可换, 上限)
 	var 选项: Array = []
 	for x: int in range(1, 交换上限 + 1):
 		var 文案: String = GConst.按钮原文(技能号, x - 1)
+		var 手: int = x if 手牌随档 else 手牌数
 		选项.append({
 			"value": x,
 			"label": 文案,
 			"text": 文案,
-			"enabled": x <= 上限,
+			"enabled": x <= 可换,
+			# 手牌 + 盖牌混选：这一档要「手牌 手 张 + 盖牌 X 张」（客户端据此卡选牌数）
+			"need_card": 手 + x,
+			"hand_need": 手,
+			"cover_need": x,
 		})
 	return 选项
 
 
-## 把 X 张手牌放进【遗迹】、取回 X 个【遗迹】。给牌 must 恰好 需要张数 张。
-func _交换遗迹(X: int, 给牌: Array, cause: int, 需要张数: int) -> void:
+## 【遗迹】交换：把 X 张手牌放进【遗迹】区、取回 X 个【遗迹】。
+## 给牌是两个区混选的回复，按「在手牌 / 在盖牌」拆开；张数不对按非法提交处理（不静默少换）。
+func _交换遗迹(X: int, 给牌: Array, cause: int, 需要手牌数: int) -> void:
 	if X <= 0 or X > _遗迹数():
 		return
-	var 给: Array = []
+	var 手: Array = []
+	var 盖: Array = []
 	for c: Variant in 给牌:
-		var 实例: int = player.手牌实例(int(c))
-		if 实例 >= 0 and not 给.has(实例):
-			给.append(实例)
-		if 给.size() >= 需要张数:
-			break
-	if 给.size() < 需要张数:
+		var 手实例: int = player.手牌实例(int(c))
+		if 手实例 >= 0:
+			if not 手.has(手实例):
+				手.append(手实例)
+			continue
+		var 盖实例: int = player.盖牌实例(int(c))
+		if 盖实例 >= 0 and not 盖.has(盖实例):
+			盖.append(盖实例)
+	if 手.size() != 需要手牌数 or 盖.size() != X:
+		engine.报错("【遗迹】交换提交的牌不对", player.id)
 		return
-	var 取: Array = []
-	for i: int in range(X):
-		取.append(int(player.cover_cards[i]))
-	engine.remove_cover(player.id, 取, player.id, cause)
-	player.add_hand_cards(取)
-	engine.播获得牌日志(player.id, 取)
-	engine.take_from_hand(player.id, 给)
-	engine.add_cover(player.id, 给, player.id, cause, true)
+	engine.remove_cover(player.id, 盖, player.id, cause)
+	player.add_hand_cards(盖)
+	engine.播获得牌日志(player.id, 盖)
+	engine.take_from_hand(player.id, 手)
+	engine.add_cover(player.id, 手, player.id, cause, true)
 	engine._broadcast_game()
 
 
