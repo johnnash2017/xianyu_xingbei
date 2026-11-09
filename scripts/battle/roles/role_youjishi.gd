@@ -1,4 +1,4 @@
-﻿extends BattleRole
+extends BattleRole
 ## 游击士（roleID 38）—— 3.5 星 / 特典 / 技
 ## 指示物：槽 2 盖牌【子弹】（上限见角色表）；开局从牌库顶取 6 张面朝下作为【子弹】。
 ## 技能：
@@ -109,6 +109,8 @@ func p_attack_skill(action: Dictionary) -> int:
 		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT,
 		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack,
 		"card_id": 视为, "is_active": true,
+		# 这次攻击背后有真实打出的牌（她用的那张）：记录实体实例，供「真实 / 虚拟攻击」判定
+		"card_id_instance": cid,
 		# 虚牌不是真实卡：本次攻击不参与「同命格」判定（阴阳转换等），
 		# 也不采用 66 卡面的【幻】命格（与欺诈 1201 同一口径）
 		"virtual_no_fate": true,

@@ -5141,6 +5141,8 @@ class SReattackGo:
 			"src": defender.id, "dst": 目标, "point": e.攻击基础伤害(defender.id),
 			"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack,
 			"reattack": true, "card_id": 用牌, "is_active": false,
+			# 反击用的是应战者真实打出的那张牌（「视为」只换牌面，牌本身是他的）
+			"card_id_instance": 原牌,
 		}
 		var 是噬神刃: bool = GConst.牌号(原牌) == GConst.噬神者_魔刃卡 \
 			or GConst.牌号(原牌) == GConst.噬神者_异刃卡

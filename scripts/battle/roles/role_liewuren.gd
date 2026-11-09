@@ -135,6 +135,8 @@ func p_attack_skill(action: Dictionary) -> int:
 	var harm: Dictionary = {
 		"src": player.id, "dst": dst_id, "point": 2, "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
+		# 这次攻击背后就是玩家真实打出的那张牌：记录实体实例，供「真实 / 虚拟攻击」判定
+		"card_id_instance": cid,
 	}
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, cid, harm))
 	engine.take_from_hand(player.id, [cid], true)

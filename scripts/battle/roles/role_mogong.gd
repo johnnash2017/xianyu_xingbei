@@ -377,6 +377,8 @@ func _resolve_duo_chong(dst_id: int) -> int:
 		"src": player.id, "dst": dst_id, "point": 2,
 		"cause": DUO_CHONG_SHE_JI, "type": GConst.HarmType.Attack,
 		"card_id": VIRTUAL_DUO_CHONG_CARD, "is_active": true,
+		# 这次攻击背后是玩家真实付出的那张风系【充能】（移除的盖牌）：记录实体实例，供「真实 / 虚拟攻击」判定
+		"card_id_instance": 充能,
 	}
 	engine.push(BattleEngine.SHook.new("p_after_attack",
 		{"player": player.id, "card_id": VIRTUAL_DUO_CHONG_CARD, "dst": dst_id}, []))
@@ -437,6 +439,8 @@ func _duo_chong_she_ji_ask() -> int:
 		"src": player.id, "dst": dst_id, "point": 2,
 		"cause": DUO_CHONG_SHE_JI, "type": GConst.HarmType.Attack,
 		"card_id": VIRTUAL_DUO_CHONG_CARD, "is_active": true,
+		# 这次攻击背后是玩家真实付出的那张风系【充能】（移除的盖牌）：记录实体实例，供「真实 / 虚拟攻击」判定
+		"card_id_instance": 充能,
 	}
 	# 【多重射击】本身视为一次暗系主动攻击：这次攻击结算完后，再触发一次「攻击行动结束」
 	# （p_after_attack），在那里继续问要不要接着发动。
