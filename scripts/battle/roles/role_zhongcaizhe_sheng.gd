@@ -511,6 +511,8 @@ func _放牌(侧: int, 牌: int) -> void:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [牌], "is_real": true,
 	})
+	# 技能表写的是「面朝上【展示】」放到天平上：走展示手牌钩子（封印师的 X 之封印靠它结算）
+	engine.push_show_hand(player.id, [牌])
 	engine._broadcast_game()
 	# 罪灭之左：左侧牌数增加且增加后 >1 → 对（X-1）名目标对手各 1 点攻击伤害
 	if 侧 == 左 and 已有.size() > 1:

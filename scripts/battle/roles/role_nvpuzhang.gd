@@ -441,6 +441,7 @@ func _侍奉之道() -> int:
 		engine.remove_cover(player.id, [甲, 乙], player.id, SHI_FENG_ZHI_DAO)
 		player.add_token(糸槽, 1)
 		_侍奉牌 = [甲, 乙]
+		# 这两张是盖牌区的【影】（不是从手里展示出来的），封印类「从手中展示出」不触发
 		engine._broadcast_game()
 		if 甲牌.element_enum() != 乙牌.element_enum():
 			# 系别不同：没有「交给谁」这一步，两张影都进弃牌堆（原来会凭空消失）

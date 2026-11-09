@@ -140,6 +140,9 @@ func _言灵术(action: Dictionary) -> int:
 		engine._broadcast_game()
 		_言灵术阶段 = 1
 		engine.push_强制摸牌(player.id, 1, YAN_LING_SHU)
+		# 【言灵】是面朝上摆出来的：要触发「展示手牌」钩子（封印师的 X 之封印靠它结算）。
+		# 压在摸牌之后 → LIFO 下先结算展示响应，再摸牌。
+		engine.push_show_hand(player.id, cards)
 		return URGENT
 	if _言灵术阶段 == 1:
 		# 摸牌（含超限弃牌 / 言灵超限）结算完回来：不管有没有同系手牌都要问这一问
@@ -170,12 +173,15 @@ func _言灵术(action: Dictionary) -> int:
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": [弃], "is_real": true,
 	})
+	# 这张牌是公开弃掉的（技能表写的是弃 1 张【展示】）：走「展示手牌」钩子。
+	# 压在最后 → LIFO 下先结算展示响应（封印类），再跑这次技能的行动结束。
 	engine.take_from_hand(player.id, [弃])
 	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": YAN_LING_SHU})
 	engine._log_discard(player.id, [弃], false)
 	player.add_token(秘术槽, 1)
+	engine.push_show_hand(player.id, [弃])
 	engine._broadcast_game()
-	return SUCCESS
+	return URGENT
 
 
 ## 摸完牌要回来接着问「额外弃牌」：只放行 8001 的这一步
@@ -423,7 +429,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": [补], "is_real": true,
 		})
-		engine.take_from_hand(player.id, [补])
+		# 这张手牌面朝上当作【言灵】摆出来：走「展示手牌」钩子（封印响应）
+		engine.take_from_hand(player.id, [补], true)
 		engine.add_cover(player.id, [补], player.id, SHOU_HU_LING, true)
 	engine._broadcast_game()
 	return SUCCESS
@@ -529,6 +536,8 @@ func _禁忌弃牌推进() -> int:
 		"card_ids": 得, "is_real": true,
 	})
 	engine.add_cover(player.id, 得, player.id, JIN_JI_MI_FA, true)
+	# 注意：这两张是别人手里弃掉的牌（不是自己从手里展示出来的），
+	# 封印类「从手中打出或展示出」不触发，所以这里不压 p_show_hand。
 	engine._broadcast_game()
 	return SUCCESS
 

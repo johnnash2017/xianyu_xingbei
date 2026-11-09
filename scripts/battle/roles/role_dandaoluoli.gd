@@ -182,8 +182,8 @@ func _叛逆之墙(action: Dictionary) -> int:
 		engine.remove_basic_effect(目标, 拿, PAN_NI_ZHI_QIANG, player.id)
 		player.add_hand_cards([拿])
 		engine.播获得牌日志(player.id, [拿])
-	# 自己的圣盾放到对方面前
-	engine.take_from_hand(player.id, [牌])
+	# 自己的圣盾放到对方面前（技能表写的是「手牌【圣盾】【展示】」：走展示手牌钩子）
+	engine.take_from_hand(player.id, [牌], true)
 	engine.add_basic_effect(目标, 牌, player.id, PAN_NI_ZHI_QIANG)
 	engine._broadcast_game()
 	# 你弃 1 张牌（由本人选）
@@ -479,6 +479,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 		已列.append(dst)
 		var 牌: GCard = Data.get_card(真牌)
 		_糖果对象.append({"pid": dst, "card": 真牌, "element": 牌.element_enum() if 牌 != null else 0})
+	# 【Tricky】是早已放在场上的暗牌（不是手牌），封印类「从手中展示出」不触发
 	engine._broadcast_game()
 	_糖果阶段 = 1
 	return _糖果推进()
