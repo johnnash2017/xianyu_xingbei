@@ -177,19 +177,22 @@ func _影之穴(action: Dictionary) -> int:
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
-	if int(harm.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	var 牌: int = int(harm.get("card_id", -1))
-	if 牌 < 0:
-		return SUCCESS
-	if 拥有风穴():
-		# 影之风：拥有【风穴】时，命中后**真实**的攻击牌进弃牌堆后变成【影】。
-		# 「真实」的判定看 harm.card_id_instance（真正打出去的那张实体牌）——
-		#   · 普通出牌 / 「视为某系斩击」的主动攻击（如苍炎魔女烈焰形态）：有实体牌 → 变影；
-		#   · 虚拟攻击（如魔弓【多重射击】按虚拟暗灭打出、应战反击的虚拟牌）：没有实体牌 → 不触发。
+	var 攻方: int = int(harm.get("src", -1))
+	# 影之风：挂着【风穴】的那个人主动攻击命中后，他这次打出的**真实**攻击牌变成女仆长的【影】。
+	# 「你」＝拥有【风穴】的人（卡挂在谁面前就是谁），不是女仆长自己。
+	# 真实性看 harm.card_id_instance（真正打出去的实体牌）：普通出牌 / 「视为某系斩击」的攻击都有；
+	# 虚拟攻击（如【多重射击】按虚拟暗灭打出）没有 → 不触发。
+	if 持有风穴(攻方):
 		var 实体: int = int(harm.get("card_id_instance", -1))
 		if 实体 >= 0:
 			_把弃牌变成影(实体, YING_ZHI_FENG)
+		return SUCCESS
+	if 攻方 != player.id:
+		return SUCCESS
+	var 牌: int = int(harm.get("card_id", -1))
+	if 牌 < 0:
 		return SUCCESS
 	if _本回合禁摹影:
 		return SUCCESS
@@ -249,12 +252,10 @@ func _把弃牌变成影(牌: int, cause: int) -> void:
 	engine._broadcast_game()
 
 
-## 影之风：拥有【风穴】时，你每次【攻击行动】结束时 +1【糸】
-## （专属技跟着卡走：风穴不在场上就没这条被动，别不管有没有卡都加）
+## 影之风：挂着【风穴】的那个人每次【攻击行动】结束 → 女仆长 +1【糸】
+## （专属技跟着卡走：「你」＝拥有【风穴】的人，卡不在场上就没这条被动）
 func p_after_attack(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	if not 拥有风穴():
+	if not 持有风穴(int(ctx.get("player", -1))):
 		return SUCCESS
 	if step == 0:
 		step = 1
