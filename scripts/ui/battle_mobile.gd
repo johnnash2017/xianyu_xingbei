@@ -9879,6 +9879,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _审判头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _侍奉之道头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _诸神终焉头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _神威头像提示()
@@ -10083,6 +10085,33 @@ func _审判头像提示() -> Dictionary:
 		return out
 	var 文: String = "给予【%s】" % 卡.card_name
 	# 只在已选中的目标头像上写（目标指示器选中敌人时才有内容）
+	for pid: int in _sel_players:
+		out[pid] = 文
+	return out
+
+
+## 女仆长【侍奉之道】「将其中 1 个【影】交给目标角色【强制】」：选中目标头像时，
+## 在头像上写「给予【这张影的卡名】」——卡名取当前选中的二级选项附带的卡面（option_card_ids），
+## 口径同异教徒【审判】/ 噬神者【侵刻】。
+func _侍奉之道头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or int(_skill_ask_id) != GConst.技能_侍奉之道:
+		return out
+	if _已选参数.is_empty():
+		return out
+	var 选中值: int = int(_已选参数[0])
+	var 牌面: int = -1
+	for 项: Dictionary in _二级选项:
+		var 参: Array = 项.get("参数", [])
+		if 参.size() == 1 and int(参[0]) == 选中值:
+			牌面 = int(项.get("卡牌", -1))
+			break
+	if 牌面 < 0:
+		return out
+	var 卡: GCard = Data.get_card(牌面)
+	if 卡 == null:
+		return out
+	var 文: String = "给予【%s】" % 卡.card_name
 	for pid: int in _sel_players:
 		out[pid] = 文
 	return out
