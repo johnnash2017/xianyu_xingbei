@@ -541,6 +541,10 @@ func p_before_special(ctx: Dictionary) -> int:
 
 ## 圣煌形态解除后的奖励：+1【治疗】或 +1【信仰】。
 func p_after_special(ctx: Dictionary) -> int:
+	# 只认真正的【特殊行动】（购买 / 合成 / 提炼）：p_after_special 也会被「启动」技能触发，
+	# 那两个不是特殊行动，不该消耗这里挂着的形态解除奖励
+	if not bool(ctx.get("special_action", false)):
+		return SUCCESS
 	if int(ctx.get("player", -1)) != player.id or not sheng_huang_exit_pending:
 		return SUCCESS
 	var 选项: Array = [
