@@ -5657,11 +5657,16 @@ func _on_player_clicked(player_id: int) -> void:
 		_sel_players = [player_id]
 	刷新选中面板()
 	_更新按键()
-	# 「当作卡牌」型（神秘学者【真言术】）：牌和目标都选好了就直接把这张牌打出去，
-	# 不再要求按「确定」——它本来就是一次出牌（和普通出牌「选好牌点头像就打出」同一口径）
-	if _mode == 4 and _当作卡牌 and not _sel_cards.is_empty() and not _sel_players.is_empty() \
-			and _sel_cards.size() >= _skill_need_card and _sel_players.size() >= _skill_need_target:
-		_发送行动(_pending_skill_type, _pending_skill_id, _sel_players, _sel_cards, _已选参数)
+	# 「当作卡牌」型（神秘学者【真言术】的技能发动 / 真言压制白送的那次）：牌和目标都选好了
+	# 就直接把这张牌打出去，不再要求按「确定」——它本来就是一次出牌
+	if _当作出牌() and not _sel_cards.is_empty() and not _sel_players.is_empty() \
+			and _sel_cards.size() >= _skill_need_card:
+		if _mode == 4:
+			if _sel_players.size() < _skill_need_target:
+				return
+			_发送行动(_pending_skill_type, _pending_skill_id, _sel_players, _sel_cards, _已选参数)
+		else:
+			_发送应答(_skill_ask_id, _sel_players, _sel_cards, [1])
 		return
 	# 「基础效果牌」这类（【封印破碎】/【风之洁净】/【天使之歌】）：目标一变就把技能栏里的
 	# 「基础效果」选项跟着换（取消选中目标＝清空）
@@ -5716,7 +5721,7 @@ func _卡牌能点(card_id: int) -> bool:
 	if _mode == 4 or _mode == 3:
 		# 「当作卡牌」型技能（真言术）：盖牌是**当手牌真打出去**的，所以除了技能白名单，
 		# 还要过「这张牌本身能不能打出去」（没合法目标的法术牌、不能主动使用的牌一律置灰）
-		if _当作卡牌 and _mode == 4:
+		if _当作出牌():
 			return _技能牌能点(面, card_id) and _可主动使用牌(card_id)
 		return _技能牌能点(面, card_id)
 	# 走到这里只剩「应答：弃牌 / 虚弱 / 治疗抵挡」——都是从手牌里选，直接放行
@@ -9165,7 +9170,13 @@ func _选中是点头像定目标的牌() -> bool:
 ## 「当作卡牌」型技能（神秘学者【真言术】）：这一手选中的牌就是要打出去的那张牌，
 ## 所以所有「按选中的牌现算」的显示 / 判定都按普通出牌（mode 1）的口径走
 func _当作出牌() -> bool:
-	return _mode == 4 and _当作卡牌
+	if _mode == 4 and _当作卡牌:
+		return true
+	# 技能询问里也会出现「这一手选出来的牌就是要打出去的」（如真言压制白送的那次真言术）：
+	# 选牌来源是盖牌区、被问的技能配了「当作卡牌」→ 同样按出牌口径判目标、点头像即打出
+	if _mode == 3 and _skill_ask_id > 0 and _skill_card_source == GConst.CardSource.Cover:
+		return bool(GConst.技能指示器.get(_skill_ask_id, {}).get("当作卡牌", false))
+	return false
 
 
 ## 选中的手牌是不是攻击牌（点目标即出手）
@@ -11405,6 +11416,9 @@ func _可选_应答(player_id: int) -> bool:
 
 ## 技能询问（mode 3）
 func _可选_技能询问(player_id: int) -> bool:
+	# 「当作卡牌」型询问（真言压制白送的真言术）：目标整个复用普通出牌口径
+	if _当作出牌():
+		return _可选_行动(player_id)
 	# 「先弹选项」型还没选效果时不让点目标 —— 与发动技能（_可选_发动技能）同一口径：
 	# 目标数与白名单都由选中的那一档决定（如咒符师【魑魅魍魉】第二段「对 1 名 / 对 2 名」），
 	# 没选档位就点头像等于先猜一个数字。牌不受这条限制（配了「允许先选牌」的照样能先点费用牌）。
