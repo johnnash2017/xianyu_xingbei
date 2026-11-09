@@ -132,6 +132,11 @@ func p_before_draw(_ctx: Dictionary) -> int: return SUCCESS
 ## ctx: {player 溢出者, overflow 溢出点数, before 加之前, amount 本次加的量, src 来源}
 ## （圣庭检察士【裁决论定】= 我方目标角色溢出时给【异端裁决所】+1 治疗；圣殿骑士【神选者】= 自己溢出时 +1【圣印】）
 func p_heal_overflow(_ctx: Dictionary) -> int: return SUCCESS
+## 某玩家的【治疗】数**真正增加**后对全体角色各触发一次（可以等待玩家输入）。
+## ctx: {player 获得治疗者, before 加之前, after 加之后, amount 本次加的量, src 来源}
+## 只在确实加进上限里时触发：加满再加、被禁疗而作废的都不算。
+## 例：铸律者【神律封锁】「每次你的治疗数增加时，我方士气 -1」。
+func p_heal_gained(_ctx: Dictionary) -> int: return SUCCESS
 ## 某名玩家身上的基础效果能不能触发（结界师【绝界】：「你拥有的基础效果无法触发」）。
 ## 引擎在基础效果即将自身触发时问所有角色，任一返回 true 就当作「不触发」。
 func 基础效果被禁止(_pid: int) -> bool: return false

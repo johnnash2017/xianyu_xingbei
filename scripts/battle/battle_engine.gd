@@ -1176,6 +1176,19 @@ func add_cross(pid: int, amount: int, src_id: int) -> void:
 	pp.add_cross_num(amount)
 	_播治疗日志(pp, amount, src_id, 前)
 	_治疗溢出后(pp, 前, amount, src_id)
+	_治疗增加后(pp, 前, amount, src_id)
+
+
+## 治疗数**真正增加**后压一轮 p_heal_gained 钩子（铸律者【神律封锁】「每次你的治疗数增加时」）。
+## 只在加进上限里、确实变多时才触发；加满再加、被禁疗而作废的都不算。
+func _治疗增加后(pp: BattlePlayer, 前: int, amount: int, src_id: int) -> void:
+	if pp == null or pp.cross_num <= 前:
+		return
+	if not _running or phase != Phase.Playing:
+		return
+	push(SHook.new("p_heal_gained", {
+		"player": pp.id, "before": 前, "after": pp.cross_num, "amount": amount, "src": src_id,
+	}, []))
 
 
 ## 治疗溢出（F3）：本次加到上限之后仍有剩余 → 压一次 p_heal_overflow 钩子，让角色自己响应
@@ -1214,6 +1227,7 @@ func add_cross_pierce(pid: int, amount: int, src_id: int, 封顶: int) -> void:
 		新 = mini(新, 封顶)
 	pp.cross_num = maxi(新, 前)
 	_播治疗日志(pp, amount, src_id, 前)
+	_治疗增加后(pp, 前, amount, src_id)
 
 
 ## 治疗日志（按「输出量」记，与是否被上限截断无关）。

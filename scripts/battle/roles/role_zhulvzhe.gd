@@ -39,6 +39,8 @@ const 红衣主教: int = 111
 const 神律来源: String = "神律封锁"
 
 var _圣银颂恩已用: bool = false
+## 王车易位：0＝未问 / 1＝等选从谁身上扣治疗
+var _王车阶段: int = 0
 ## 信仰重铸：0＝未开始 / 1＝已问、等回复 / 2＝已放牌在宝珠上，等摸牌 / 3＝王权宝珠链进行中
 var _信仰阶段: int = 0
 ## 王权宝珠的传递链：1＝问当前持有者【圣律威压】/ 3＝传给下家（并检查圣遗物）/ 4＝问铸律者收尾
@@ -83,11 +85,16 @@ func _同步神律封锁() -> void:
 			p0.清手牌上限修正(神律来源)
 
 
-## 你的治疗数增加时：我方士气 -1，但至少留 1（强制）
-func _治疗增加后() -> void:
+## 你的治疗数增加时：我方士气 -1，但至少留 1（强制）。
+## 走引擎的 p_heal_gained：只有当治疗真的加上去时才触发（加满再加 / 被禁疗作废都不算），
+## 别的角色给你加治疗（如【圣银颂恩】选自己）也会触发。
+func p_heal_gained(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
 	if engine.team_morale[player.color] > 1:
 		engine.lose_morale(player, 1, SHEN_LV_FENG_SUO)
 	_同步神律封锁()
+	return SUCCESS
 
 
 ## 换角色卡时把神律封锁加的修正清干净（新角色会重新算）
@@ -96,6 +103,10 @@ func p_before_role_replace(_ctx: Dictionary) -> int:
 		var p0: BattlePlayer = engine.p(pid)
 		if p0 != null:
 			p0.清手牌上限修正(神律来源)
+	# 宝珠链的分步状态跟着旧角色走不了，直接收链（场卡本身留在场上，由新角色重新开始）
+	_宝珠阶段 = 0
+	_宝珠持有者 = -1
+	_王车阶段 = 0
 	return SUCCESS
 
 
@@ -125,7 +136,6 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	notice_skill(SHENG_XUE_ZHI_JI, [int(harm.get("dst", -1))])
 	harm["point"] = int(harm.get("point", 0)) + 1
 	施加治疗(player.id, 1)
-	_治疗增加后()
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -196,34 +206,66 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if _场上治疗合计() < 2:
 		return GConst.GE_INVALID_ACTION
+	_王车阶段 = 0
 	return GConst.GE_SUCCESS
 
 
 func p_magic_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != WANG_CHE_YI_WEI:
 		return GConst.GE_INVALID_ACTION
+	if _王车阶段 == 1:
+		var r: Dictionary = take_skill_reply_full()
+		_王车阶段 = 0
+		_王车移除治疗(r.get("dst_ids", []))
+		return _王车收尾()
+	# 先让施法者挑从谁身上扣治疗（说明里是代价，但玩家应该有选择权）；挑完再结算
+	var 有治疗: Array = player_ids_where(func(p: BattlePlayer) -> bool: return p.cross_num > 0, true)
+	if 有治疗.is_empty():
+		return SUCCESS
+	_王车阶段 = 1
+	询问(player.id, WANG_CHE_YI_WEI, 0, mini(2, 有治疗.size()), GConst.CardSource.Hand, [], 0, "", [], false,
+		0, -1, 有治疗, -1, {})
+	return WAIT
+
+
+## 从玩家选中的角色身上各扣 1 点；不够 2 点的部分从已选的人身上继续扣，最后按座位顺序补齐
+func _王车移除治疗(dsts: Array) -> void:
+	var 还需: int = 2
+	var 已选: Array = []
+	for d: Variant in dsts:
+		if 还需 <= 0:
+			break
+		var p0: BattlePlayer = engine.p(int(d))
+		if p0 == null or p0.cross_num <= 0 or 已选.has(p0.id):
+			continue
+		p0.sub_cross_num(1)
+		还需 -= 1
+		已选.append(p0.id)
+	while 还需 > 0:
+		var 扣到: bool = false
+		for pid: int in (已选 if not 已选.is_empty() else engine.order):
+			var p1: BattlePlayer = engine.p(pid)
+			if p1 == null or p1.cross_num <= 0:
+				continue
+			p1.sub_cross_num(1)
+			还需 -= 1
+			扣到 = true
+			break
+		if not 扣到:
+			break
+	if 还需 > 0:
+		engine.报错("【王车易位】场上治疗不足 2 点", player.id)
+
+
+func _王车收尾() -> int:
 	notice_skill(WANG_CHE_YI_WEI, [player.id])
-	_移除场上治疗(2)
 	player.add_token(银弹槽, 2)
 	_移除全部基础效果与治疗()
 	# 替换角色会清掉额外行动，所以「+1 攻击行动」放在换卡之后再给
 	替换角色(红衣主教)
 	player.add_action(GConst.ActionType.Attack, WANG_CHE_YI_WEI, true)
+	engine._broadcast_game()
 	return SUCCESS
-
-
-## 移除场上合计 n 点治疗（按座位顺序，够不够由调用方先校验）
-func _移除场上治疗(n: int) -> void:
-	var 还需: int = n
-	for pid: int in engine.order:
-		if 还需 <= 0:
-			return
-		var p0: BattlePlayer = engine.p(pid)
-		if p0 == null or p0.cross_num <= 0:
-			continue
-		var 扣: int = mini(还需, p0.cross_num)
-		p0.sub_cross_num(扣)
-		还需 -= 扣
 
 
 func _场上治疗合计() -> int:
