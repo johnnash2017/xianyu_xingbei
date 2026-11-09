@@ -54,7 +54,7 @@ var _侍奉阶段: int = 0
 var _侍奉牌: Array = []
 ## 禁术·影牢：0＝未问 / 1＝等「是否发动」 / 2＝已 +1 糸、等下一拍弹第二段 / 3＝等选效果+目标
 var _影牢阶段: int = 0
-## 风止：1＝已补手牌、等弃 2 张 / 2＝已问弃牌、等答复
+## 风止：0＝未问 / 1＝等「是否发动」 / 2＝等补手牌后弃 2 张 / 3＝已问弃牌、等答复
 var _风止阶段: int = 0
 
 
@@ -613,6 +613,10 @@ func _影牢选项() -> Array:
 ## 风止：拥有【风穴】的那个人（卡挂在他面前）回合结束时发动 ——
 ## 他的手牌补到上限【强制】→ 弃 2 张 → 弃牌面朝下作为女仆长的【影】→ 移除【风穴】。
 ## 「响应者」是持有【风穴】的人，不是女仆长自己；补手牌 / 弃牌都作用在他的手牌上。
+## 风止：拥有【风穴】的那个人（卡挂在他面前）回合结束时**先问他发不发动** ——
+## 发动才有效果：他的手牌补到上限【强制】→ 弃 2 张 → 弃牌面朝下作为女仆长的【影】→ 移除【风穴】。
+## 不发动 / 取消：什么都不发生，【风穴】留在原处。
+## 「响应者」是持有【风穴】的人，不是女仆长自己；补手牌 / 弃牌都作用在他的手牌上。
 func _风止(host: int) -> int:
 	var hp: BattlePlayer = engine.p(host)
 	if hp == null:
@@ -620,47 +624,60 @@ func _风止(host: int) -> int:
 		return SUCCESS
 	if _风止阶段 == 0:
 		_风止阶段 = 1
+		询问(host, FENG_ZHI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, [], -1, {})
+		return WAIT
+	if _风止阶段 == 1:
+		var r: Dictionary = take_skill_reply_full()
+		var args: Array = r.get("args", [])
+		_风止阶段 = 0
+		if args.is_empty() or int(args[0]) != 1:
+			return SUCCESS
 		notice_skill(FENG_ZHI, [host])
+		_风止阶段 = 2
 		var 需: int = maxi(hp.hand_cards_max - hp.hand_cards.size(), 0)
 		if 需 > 0:
 			engine.push_强制摸牌(host, 需, FENG_ZHI)
 			return URGENT
-	if _风止阶段 == 1:
+	if _风止阶段 == 2:
 		var 要弃: int = mini(2, hp.hand_cards.size())
-		if 要弃 > 0 and not engine.has_reply():
-			_风止阶段 = 2
-			engine.ask_respond(host, GConst.RespondType.Discard, [host, FENG_ZHI, 要弃], [host])
-			engine.wait_for(host, GConst.Msg.Respond)
-			return WAIT
-		if 要弃 > 0:
-			var r: Dictionary = take_skill_reply_full()
-			var 弃: Array = []
-			for c: Variant in r.get("card_ids", []):
-				var 实例: int = hp.手牌实例(int(c))
-				if 实例 >= 0 and not 弃.has(实例) and 弃.size() < 2:
-					弃.append(实例)
-			# 强制弃 2 张：不够就按手牌顺序补
-			for cid: int in hp.hand_cards:
-				if 弃.size() >= 2:
-					break
-				if not 弃.has(cid):
-					弃.append(cid)
-			if not 弃.is_empty():
-				var 空位: int = player.cover_space()
-				var 作影: Array = []
-				var 入堆: Array = []
-				for c0: Variant in 弃:
-					if 作影.size() < 空位:
-						作影.append(int(c0))
-					else:
-						入堆.append(int(c0))
-				engine.take_from_hand(host, 弃)
-				if not 作影.is_empty():
-					engine.add_cover(player.id, 作影, player.id, FENG_ZHI, false)
-				if not 入堆.is_empty():
-					engine.to_discard(入堆, {"owner": host, "source": "hand", "cause": FENG_ZHI})
-					engine._log_discard(host, 入堆)
+		if 要弃 <= 0:
+			_风止阶段 = 0
+			engine.移除场卡(风穴名)
+			engine._broadcast_game()
+			return SUCCESS
+		_风止阶段 = 3
+		engine.ask_respond(host, GConst.RespondType.Discard, [host, FENG_ZHI, 要弃], [host])
+		engine.wait_for(host, GConst.Msg.Respond)
+		return WAIT
+	if _风止阶段 == 3:
+		var r2: Dictionary = take_skill_reply_full()
 		_风止阶段 = 0
+		var 弃: Array = []
+		for c: Variant in r2.get("card_ids", []):
+			var 实例: int = hp.手牌实例(int(c))
+			if 实例 >= 0 and not 弃.has(实例) and 弃.size() < 2:
+				弃.append(实例)
+		# 强制弃 2 张：不够就按手牌顺序补
+		for cid: int in hp.hand_cards:
+			if 弃.size() >= 2:
+				break
+			if not 弃.has(cid):
+				弃.append(cid)
+		if not 弃.is_empty():
+			var 空位: int = player.cover_space()
+			var 作影: Array = []
+			var 入堆: Array = []
+			for c0: Variant in 弃:
+				if 作影.size() < 空位:
+					作影.append(int(c0))
+				else:
+					入堆.append(int(c0))
+			engine.take_from_hand(host, 弃)
+			if not 作影.is_empty():
+				engine.add_cover(player.id, 作影, player.id, FENG_ZHI, false)
+			if not 入堆.is_empty():
+				engine.to_discard(入堆, {"owner": host, "source": "hand", "cause": FENG_ZHI})
+				engine._log_discard(host, 入堆)
 		engine.移除场卡(风穴名)
 		engine._broadcast_game()
 		return SUCCESS
