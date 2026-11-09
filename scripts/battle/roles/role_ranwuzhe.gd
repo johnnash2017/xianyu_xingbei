@@ -281,6 +281,22 @@ func v_block(_card_id: int) -> int:
 
 
 # ============================================================
+# 攻击「预告加伤」：应战询问里告诉被打的人这一下实际要挨多少
+#   神弃之裔（目标有治疗 +1）＋ 狂戾形态（造成伤害 +1）—— 两项都在③结算，预告要算进去
+# ============================================================
+func p_attack_preview(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+		return 0
+	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+	var 加: int = 0
+	if dst != null and dst.cross_num > 0:
+		加 += 1
+	if player.tap:
+		加 += 1
+	return 加
+
+
+# ============================================================
 # 伤害时间线③：被动加伤 + 神智污染的可选加伤
 #   神弃之裔：对拥有治疗的角色伤害 +1
 #   狂戾形态：造成的伤害 +1
