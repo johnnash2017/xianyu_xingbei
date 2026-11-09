@@ -339,8 +339,6 @@ func _日志标签(kind: int) -> String:
 ## 客户端只按 GConst.可当魔弹 / 魔弹掌控 / 基础效果免疫 等查询函数取。
 ## 仲裁者：审判满上限时本回合只能发动【末日审判】（对照 ZhongCai::v_allow_action）
 const 仲裁者角色: int = 14
-## 苍炎魔女：【烈焰形态】下除水系、暗系外的攻击牌视为火系（对照 role_monv._is_fire_like）
-const 苍炎魔女角色: int = 30
 ## 精灵射手（32）【精灵祝福形态】的「盖牌视同手牌」不再按角色号写死在客户端：
 ## 服务端随快照下发 cover_as_hand（BattleRole.盖牌可当手牌()），见 _盖牌视同手牌
 
@@ -6396,19 +6394,8 @@ func _可应战牌(card_id: int) -> bool:
 	if _应战同命格:
 		# 阴阳转换：打同命格的攻击牌应战
 		return not 牌.fate_pattern.is_empty() and 牌.fate_pattern == 攻击牌.fate_pattern
-	return _实际系别(牌) == 攻击系 or 牌.element_enum() == GConst.CardElement.Darkness
-
-
-## 我这边的这张牌「实际算」哪一系：苍炎魔女【烈焰形态】下，除水系、暗系外的攻击牌视为火系
-## （服务端 getCardElement / role_monv._is_fire_like）。凡是「按系别放行」的判定都得用它，
-## 不然客户端把牌点亮、发出去却被服务端拒，玩家只看到一句「操作无效」
-func _实际系别(牌: GCard) -> int:
-	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	if 我 != null and 我.role_id == 苍炎魔女角色 and 我.tap and 牌.is_attack():
-		var 系: int = 牌.element_enum()
-		if 系 != GConst.CardElement.Water and 系 != GConst.CardElement.Darkness:
-			return GConst.CardElement.Fire
-	return 牌.element_enum()
+	# 牌自己的「有效系别」就带着卡牌系别属性（如【烈焰形态】视为火），不用再在客户端特判
+	return 牌.element_enum() == 攻击系 or 牌.element_enum() == GConst.CardElement.Darkness
 
 
 ## 本次攻击能否用【圣光】抵挡：
