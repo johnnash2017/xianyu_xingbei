@@ -41,8 +41,6 @@ var _告解已用: bool = false
 ## 路标放置后的后续（告解 / 弥撒）阶段：0＝无 / 1＝告解摸牌 / 2＝告解收尾 / 3＝弥撒
 var _路标阶段: int = 0
 var _路标持有者: int = -1
-## 弥撒询问挂起中（p_turn_end / 转移流程重入时先把它跑完）
-var _弥撒进行: bool = false
 ## 传道：1＝等选摸几张 / 2＝等弃自己的牌 / 3＝等持有者弃牌
 var _传道阶段: int = 0
 var _传道摸: int = 0
@@ -112,8 +110,14 @@ func _属灵恩赐(action: Dictionary) -> int:
 	notice_skill(SHU_LING_EN_CI, [player.id])
 	player.remove_energy(1)
 	施加治疗(player.id, 1)
-	engine.to_discard(cards, {"owner": player.id, "source": "hand", "cause": SHU_LING_EN_CI})
-	engine.take_from_hand(player.id, cards)
+	var 弃: Array = []
+	for c: Variant in cards:
+		var 实例: int = player.手牌实例(int(c))
+		if 实例 >= 0 and not 弃.has(实例):
+			弃.append(实例)
+	engine.take_from_hand(player.id, 弃)
+	engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": SHU_LING_EN_CI})
+	engine._log_discard(player.id, 弃)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -123,6 +127,8 @@ func _属灵恩赐(action: Dictionary) -> int:
 # ============================================================
 func _传道() -> int:
 	if _传道阶段 == 0:
+		# 「启动」技能：本回合只能发动一个（引擎只校验这个标记）
+		player.boot_skill_used = true
 		_传道阶段 = 1
 		询问(player.id, CHUAN_DAO, 0, 0, GConst.CardSource.Hand, _传道摸牌选项(), 0, "", [], true,
 			0, -1, [], -1, {})
@@ -221,10 +227,14 @@ func p_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	_告解已用 = false
+	if _弥撒阶段 != 0:
+		return _弥撒()
+	if _路标阶段 != 0:
+		return _路标后续()
 	if not _首回合已放:
-		_首回合已放 = true
 		var 左: int = 左手边(player.id)
-		if 左 >= 0:
+		if 左 >= 0 and 左 != player.id:
+			_首回合已放 = true
 			return _放置路标(左)
 	return SUCCESS
 
@@ -232,8 +242,10 @@ func p_turn_begin(ctx: Dictionary) -> int:
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if _弥撒进行:
+	if _弥撒阶段 != 0:
 		return _弥撒()
+	if _路标阶段 != 0:
+		return _路标后续()
 	if player.action_count_of("special") > 0:
 		return SUCCESS
 	var 持有者: int = 路标持有者()
@@ -259,6 +271,186 @@ func _放置路标(目标: int) -> int:
 	engine._broadcast_game()
 	_路标阶段 = 1
 	return _路标后续()
+
+
+## 把【路标】转移到某人面前（保留 owner）
+func _路标放下(目标: int) -> void:
+	engine.加场卡({"id": 路标名, "owner": player.id, "attached": 目标})
+	_路标持有者 = 目标
+	engine._broadcast_game()
+
+
+## 路标到达之后的后续：先【告解式】9606，再【弥撒】9608
+## 阶段：1＝告解式摸牌 / 2＝告解式传牌与传教士弃牌 / 3＝弥撒
+func _路标后续() -> int:
+	if _路标阶段 == 1:
+		var 到: int = 路标持有者()
+		if _告解已用 or 到 < 0 or 到 == player.id:
+			_路标阶段 = 3
+			return _路标后续()
+		_告解已用 = true
+		notice_skill(LU_BIAO, [到])
+		_路标阶段 = 2
+		engine.push_强制摸牌(到, 2, LU_BIAO)
+		return URGENT
+	if _路标阶段 == 2:
+		# 我方【战绩区】+1【水晶】→ 此卡转移到到达者左手边 → 传教士弃 1 张牌
+		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
+		var 到2: int = 路标持有者()
+		var 左: int = 左手边(到2)
+		if 左 >= 0 and 左 != player.id and 左 != 到2:
+			_路标放下(左)
+		_路标阶段 = 3
+		if player.hand_cards.is_empty():
+			return _路标后续()
+		engine.push(BattleEngine.SRequestDiscard.new(player.id, 1, 0, LU_BIAO))
+		return URGENT
+	if _路标阶段 == 3:
+		_路标阶段 = 0
+		if player.get_energy() < 1:
+			return SUCCESS
+		return _弥撒()
+	_路标阶段 = 0
+	return SUCCESS
+
+
+# ============================================================
+# 弥撒 9608（响应·必杀【水晶】）：路标转移/放置后，+1 虔诚，二选一
+# ============================================================
+## 0＝未问 / 1＝等选效果 / 2＝等选收入哪张基础效果
+var _弥撒阶段: int = 0
+
+
+func _弥撒() -> int:
+	if _弥撒阶段 == 0:
+		_弥撒阶段 = 1
+		询问(player.id, MI_SA, 0, 0, GConst.CardSource.Hand, _弥撒选项(), 0, "", [], true,
+			0, -1, [], -1, {})
+		return WAIT
+	if _弥撒阶段 == 1:
+		var r: Dictionary = take_skill_reply_full()
+		var args: Array = r.get("args", [])
+		var cards: Array = r.get("card_ids", [])
+		_弥撒阶段 = 0
+		if args.is_empty():
+			return SUCCESS
+		var 持有: int = 路标持有者()
+		var dp: BattlePlayer = engine.p(持有)
+		player.remove_energy(1)
+		player.add_token(虔诚槽, 1)
+		notice_skill(MI_SA, [持有])
+		engine._broadcast_game()
+		if int(args[0]) == 1:
+			# ·弃 1 张牌【展示】；（若为【虚弱】/【中毒】/【圣盾】）放到持有者面前作为基础效果
+			var 弃: int = -1
+			for c: Variant in cards:
+				var 实例: int = player.手牌实例(int(c))
+				if 实例 >= 0:
+					弃 = 实例
+					break
+			if 弃 < 0:
+				return SUCCESS
+			engine.broadcast(GConst.Msg.Card, {
+				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+				"card_ids": [弃], "is_real": true,
+			})
+			engine.take_from_hand(player.id, [弃], true)
+			var 牌: GCard = Data.get_card(弃)
+			if dp != null and 牌 != null and _是基础效果牌(牌):
+				engine.add_basic_effect(持有, 弃, player.id, MI_SA)
+			else:
+				engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": MI_SA})
+				engine._log_discard(player.id, [弃], false)
+			engine._broadcast_game()
+			return SUCCESS
+		# ·把持有者面前 1 张基础效果收入手中，你 +1【虔诚】
+		if dp == null:
+			return SUCCESS
+		var 可选: Array = _基础效果列表(dp)
+		if 可选.is_empty():
+			return SUCCESS
+		player.add_token(虔诚槽, 1)
+		if 可选.size() == 1:
+			_收入基础效果(dp.id, int(可选[0]))
+			return SUCCESS
+		_弥撒阶段 = 2
+		询问(player.id, MI_SA, 0, 0, GConst.CardSource.Hand, _收入选项(可选), 0, "", [], false,
+			0, -1, [], -1, {})
+		return WAIT
+	# 阶段 2：从多张基础效果里选一张
+	var r2: Dictionary = take_skill_reply_full()
+	var args2: Array = r2.get("args", [])
+	_弥撒阶段 = 0
+	if args2.is_empty():
+		return SUCCESS
+	var 持有2: int = 路标持有者()
+	var dp2: BattlePlayer = engine.p(持有2)
+	if dp2 == null:
+		return SUCCESS
+	var 表: Array = _基础效果列表(dp2)
+	var 序: int = int(args2[0]) - 1
+	if 序 < 0 or 序 >= 表.size():
+		engine.报错("【弥撒】选项号越界", player.id)
+		return SUCCESS
+	_收入基础效果(持有2, int(表[序]))
+	return SUCCESS
+
+
+func _弥撒选项() -> Array:
+	var 持有: int = 路标持有者()
+	var dp: BattlePlayer = engine.p(持有)
+	var 有基础: bool = dp != null and not _基础效果列表(dp).is_empty()
+	return [
+		{
+			"value": 1,
+			"label": GConst.按钮原文(MI_SA, 0),
+			"text": GConst.按钮原文(MI_SA, 0),
+			"need_card": 1 if not player.hand_cards.is_empty() else 0,
+			"enabled": not player.hand_cards.is_empty(),
+		},
+		{
+			"value": 2,
+			"label": GConst.按钮原文(MI_SA, 1),
+			"text": GConst.按钮原文(MI_SA, 1),
+			"enabled": 有基础,
+		},
+	]
+
+
+## 持有者面前的基础效果牌（跳过 Tricky 占位，避免与捣蛋萝莉的脚本状态脱节）
+func _基础效果列表(dp: BattlePlayer) -> Array:
+	var out: Array = []
+	for be: Dictionary in dp.basic_effects:
+		if int(be["card"]) != 1008:
+			out.append(int(be["card"]))
+	return out
+
+
+func _收入选项(表: Array) -> Array:
+	var out: Array = []
+	for i: int in range(表.size()):
+		var 牌: GCard = Data.get_card(int(表[i]))
+		var 文案: String = 牌.card_name if 牌 != null else ""
+		out.append({"value": i + 1, "label": 文案, "text": 文案, "card_id": int(表[i])})
+	return out
+
+
+func _收入基础效果(持有: int, 牌: int) -> void:
+	var dp: BattlePlayer = engine.p(持有)
+	if dp == null:
+		return
+	engine.remove_basic_effect(持有, 牌, MI_SA, player.id)
+	player.add_hand_cards([牌])
+	engine.播获得牌日志(player.id, [牌])
+	engine._broadcast_game()
+
+
+## 【虚弱】/【中毒】/【圣盾】：这三张是「放到角色面前」的基础效果牌
+func _是基础效果牌(牌: GCard) -> bool:
+	match 牌.card_name_enum():
+		GConst.CardName.Shield, GConst.CardName.Weaken, GConst.CardName.Poison:
+			return true
+	return false
 
 
 ## 转移＝先跑【启示】（可选，移 2 虔诚），再放置路标
@@ -312,8 +504,8 @@ func _转移路标(目标: int) -> int:
 	var 牌: GCard = Data.get_card(新牌) if 新牌 >= 0 else null
 	if 新牌 >= 0:
 		engine.broadcast(GConst.Msg.Card, {
-			type: GConst.CardMsgType.Show, src_id: player.id, dst_id: player.id,
-			card_ids: [新牌], is_real: true,
+			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+			"card_ids": [新牌], "is_real": true,
 		})
 	if 牌 != null and (牌.is_magic() or 牌.fate_pattern_enum() == GConst.FatePattern.Holy):
 		# 取消本次转移：移除【路标】，改放到启示选中的目标面前
@@ -335,12 +527,26 @@ func _启示选项() -> Array:
 # ============================================================
 # 事奉：因自身技能弃牌时，移除 1 治疗把该牌交给路标持有者
 # ============================================================
+## 只有 wants_before_discard 返回 true，引擎才会推迟这次弃牌、跑下面的 p_before_discard
+func wants_before_discard(ctx: Dictionary) -> bool:
+	if int(ctx.get("owner", -1)) != player.id:
+		return false
+	if str(ctx.get("source", "")) != "hand":
+		return false
+	if not [CHUAN_DAO, SHU_LING_EN_CI, MI_SA].has(int(ctx.get("cause", 0))):
+		return false
+	if player.cross_num <= 0:
+		return false
+	var 持有者: int = 路标持有者()
+	return 持有者 >= 0 and 持有者 != player.id
+
+
 func p_before_discard(ctx: Dictionary) -> int:
 	if int(ctx.get("owner", -1)) != player.id:
 		return SUCCESS
 	if str(ctx.get("source", "")) != "hand":
 		return SUCCESS
-	if int(ctx.get("cause", 0)) != CHUAN_DAO:
+	if not [CHUAN_DAO, SHU_LING_EN_CI, MI_SA].has(int(ctx.get("cause", 0))):
 		return SUCCESS
 	if player.cross_num <= 0:
 		return SUCCESS
