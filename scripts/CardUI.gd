@@ -140,6 +140,9 @@ var _曲线贴图: CurveTexture = null
 const DESIGN_FACE_SIZE: Vector2 = Vector2(126.0, 190.0)
 ## 预制体上的装饰基准 {Control: Vector4(offset_left, top, right, bottom)}；技能名另有字号与描边基准
 var _装饰基准: Dictionary = {}
+## 装饰的 pivot_offset 基准（Card.tscn 里技能名是 scale 0.5 + pivot 放大的写法：
+## 只缩 offset、不缩 pivot 的话，缩小后整块会朝 pivot 那边偏 —— 右下角技能名偏右就是这个原因）
+var _装饰pivot基准: Dictionary = {}
 var _基准字号: int = 0
 var _基准描边: int = 0
 var _基准已抓: bool = false
@@ -473,16 +476,20 @@ func _抓装饰基准() -> void:
 	_基准已抓 = true
 	if fate_pattern_root != null:
 		_装饰基准[fate_pattern_root] = _原偏移(fate_pattern_root)
+	_装饰pivot基准[fate_pattern_root] = fate_pattern_root.pivot_offset
 	if elementRoot != null:
 		for n: Node in elementRoot.get_children():
 			if n is Control:
 				_装饰基准[n] = _原偏移(n)
+			_装饰pivot基准[n] = (n as Control).pivot_offset
 	if txtSkill1 != null:
 		_装饰基准[txtSkill1] = _原偏移(txtSkill1)
+		_装饰pivot基准[txtSkill1] = txtSkill1.pivot_offset
 		_基准字号 = txtSkill1.get_theme_font_size("font_size")
 		_基准描边 = txtSkill1.get_theme_constant("outline_size")
 	if txtSkill2 != null:
 		_装饰基准[txtSkill2] = _原偏移(txtSkill2)
+		_装饰pivot基准[txtSkill2] = txtSkill2.pivot_offset
 
 
 ## 命格图标 / 元素图标 / 技能名跟着卡面尺寸等比缩放（卡面相对 DESIGN_FACE_SIZE 的比例）。
@@ -501,6 +508,10 @@ func _fit_decor() -> void:
 		c.offset_top = b.y * s
 		c.offset_right = b.z * s
 		c.offset_bottom = b.w * s
+		# pivot 也要跟着缩：预制体里技能名是 scale 0.5 + 大 pivot 的写法，
+		# 只缩 offset 会让整块绕固定 pivot 缩，越小越朝 pivot 方向偏
+		if _装饰pivot基准.has(c):
+			c.pivot_offset = (_装饰pivot基准[c] as Vector2) * s
 	if _基准字号 > 0:
 		var 字号: int = maxi(1, int(round(float(_基准字号) * s)))
 		if txtSkill1 != null:
