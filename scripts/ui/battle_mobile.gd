@@ -161,7 +161,7 @@ const 展示牌下移像素: float = 10.0
 const 提示基础字号: int = 22
 const 提示最小字号: int = 13
 ## 选中的手牌往上抽出来的距离（视觉上「已拿出、等确定」）；顶部提示的上移量也取它
-const 选中上浮像素: float = 18.0
+const 选中上浮像素: float = 0.0
 ## 新补进手牌的「向下放置」动画：从比「点击抽出」更高的位置落回原位
 const 补牌落下高度: float = 92.0
 const 补牌落下时长: float = 0.3
@@ -707,8 +707,7 @@ func _ready() -> void:
 	Hint.offset_bottom -= 选中上浮像素
 	_提示原顶 = Hint.offset_top
 	_提示原底 = Hint.offset_bottom
-	# 提示条自身高度缩 10%（以原中心为轴收缩；文字更长时仍按内容高自动加高）
-	_提示原高 = maxf((_提示原底 - _提示原顶) * 0.9, 24.0)
+	_提示原高 = maxf(_提示原底 - _提示原顶, 24.0)
 	# ---- 交互层（第三步）：接收询问 + 确定/取消/盖牌/特殊行动/放弃行动 ----
 	Logic.command_received.connect(_on_command)
 	Logic.card_element_changed.connect(_on_card_element_changed)
