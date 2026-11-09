@@ -449,7 +449,8 @@ func _侍奉之道() -> int:
 		_侍奉阶段 = 2
 	if _侍奉阶段 == 2:
 		if not engine.has_reply():
-			询问(player.id, SHI_FENG_ZHI_DAO, 0, 1, GConst.CardSource.Hand, _侍奉选项(), 0, "", [], true,
+			# 「将其中 1 个【影】交给目标角色【强制】」：同系这一路是强制的，不给取消
+			询问(player.id, SHI_FENG_ZHI_DAO, 0, 1, GConst.CardSource.Hand, _侍奉选项(), 0, "", [], false,
 				0, -1, [], -1, {})
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
