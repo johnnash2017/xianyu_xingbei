@@ -36,7 +36,8 @@ var _真言阶段: int = 0
 ## 真言术选中的言灵、是否加伤、加伤待结算
 var _真言牌: int = -1
 var _真言加伤: bool = false
-var _真言待伤: bool = false
+## 真言术行动结束后的收尾阶段：0＝未处理 / 1＝等「是否额外移除 1 点【秘术】」 / 2＝等选伤害目标 / 3＝已结算
+var _真言伤阶段: int = 0
 ## 真言术给出的额外行动还没打出去时，这张牌在手里（回合结束放回【言灵】）
 var _真言待打: int = -1
 ## 禁忌秘法：0＝未开始 / 1＝等选 2 名目标 / 2＝等两名目标各弃 1 张
@@ -108,7 +109,7 @@ func v_magic_skill(action: Dictionary) -> int:
 		_真言阶段 = 0
 		_真言牌 = -1
 		_真言加伤 = false
-		_真言待伤 = false
+		_真言伤阶段 = 0
 		_真言压制重真言 = false
 		_真言待打 = -1
 		return GConst.GE_SUCCESS
@@ -189,47 +190,44 @@ func _真言术() -> int:
 		if 可用.is_empty():
 			return SUCCESS
 		_真言阶段 = 1
-		询问(player.id, ZHEN_YAN_SHU, 0, 0, GConst.CardSource.Hand, _言灵选项(可用), 0, "", [], true,
+		# 参考精灵射手：点技能后直接打开盖牌区，点 1 张【言灵】当手牌用
+		# （白名单＝除光系外的言灵；光系的在盖牌区里会置灰点不动）
+		询问(player.id, ZHEN_YAN_SHU, 1, 0, GConst.CardSource.Cover, [], 0, "", 可用, true,
 			0, -1, [], -1, {})
 		return WAIT
-	if _真言阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		var 可用2: Array = _可用言灵()
-		if args.is_empty():
-			_真言阶段 = 3
-			return SUCCESS
-		var 档: int = int(args[0])
-		if 档 < 1 or 档 > 可用2.size():
-			engine.报错("【真言术】选项号越界", player.id)
-			_真言阶段 = 3
-			return SUCCESS
-		_真言牌 = int(可用2[档 - 1])
-		var 牌: GCard = Data.get_card(_真言牌)
-		if 牌 == null:
-			engine.报错("【真言术】言灵不存在", player.id)
-			_真言阶段 = 3
-			return SUCCESS
-		_真言加伤 = 牌.is_magic() or 牌.fate_pattern_enum() == GConst.FatePattern.Cast
-		if not _真言加伤 and player.token_num(秘术槽) > 0:
-			# 不是咏类 / 法术牌时，才可以额外移除 1 点【秘术】换那 1 点伤害
-			_真言阶段 = 2
-			询问(player.id, ZHEN_YAN_SHU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, [], -1, {})
-			return WAIT
-		return _真言出牌()
-	# 阶段 2：是否额外移除 1 点【秘术】
-	var r2: Dictionary = take_skill_reply_full()
-	if _真言出牌_是否确认(r2):
-		player.remove_token(秘术槽, 1)
-		_真言加伤 = true
+	# 阶段 1：读选中的那张言灵
+	var r: Dictionary = take_skill_reply_full()
+	_真言阶段 = 3
+	var 选中: int = -1
+	for c: Variant in r.get("card_ids", []):
+		var 实例: int = player.盖牌实例(int(c))
+		if 实例 >= 0 and _可用言灵().has(实例):
+			选中 = 实例
+			break
+	if 选中 < 0:
+		# 取消 / 没有合法的言灵：不发动
+		return SUCCESS
+	_真言牌 = 选中
+	var 牌: GCard = Data.get_card(_真言牌)
+	if 牌 == null:
+		engine.报错("【真言术】言灵不存在", player.id)
+		return SUCCESS
+	# 咏类命格 / 法术牌 = 行动结束后直接打 1 点；否则要到行动结束后再问「是否额外移除 1 点【秘术】」
+	_真言加伤 = 牌.is_magic() or 牌.fate_pattern_enum() == GConst.FatePattern.Cast
 	return _真言出牌()
 
 
-## 「是否额外移除 1 点秘术」的确认：players 点「确定」时客户端回 args[0]=1
-func _真言出牌_是否确认(r: Dictionary) -> bool:
+## 「是否额外移除 1 点秘术」的确认：玩家点「确定」时客户端回 args[0]=1
+func _是确认(r: Dictionary) -> bool:
 	var args: Array = r.get("args", [])
 	return args.size() > 0 and int(args[0]) == 1
+
+
+## 技能表「说明」的后半段（第一个「；」之后）。「额外移除 1 点【秘术】」那一问的提示只用这半句。
+func _真言后半段() -> String:
+	var 全: String = GConst.skill_desc(ZHEN_YAN_SHU)
+	var 切: int = 全.find("；")
+	return 全.substr(切 + 1).strip_edges() if 切 >= 0 else 全
 
 
 ## 言灵离开【言灵】区 → 加入手牌 → 给一份「只能用这张牌」的立刻行动
@@ -246,7 +244,7 @@ func _真言出牌() -> int:
 	# 真正打出去时出牌路径会触发「展示手牌」钩子，所以这里只广播、不压钩子。
 	engine.展示牌(player.id, [_真言牌])
 	_真言待打 = _真言牌
-	_真言待伤 = _真言加伤
+	_真言伤阶段 = 0
 	var 种类: int = GConst.ActionType.Attack if 牌.is_attack() else GConst.ActionType.Magic
 	player.add_action(种类, ZHEN_YAN_SHU, true, false, {"cards": [GConst.牌号(_真言牌)]})
 	engine._broadcast_game()
@@ -310,7 +308,7 @@ func resolve_action_end_option(cause: int, reply: Dictionary, _ctx: Dictionary) 
 	return resolve_queued_extra_action(cause)
 
 
-## 真言术给出的行动结算完：加伤则对目标对手 1 点法术伤害③；妖精秘术的攻击结束则收尾
+## 真言术给出的行动结算完：按「咏类/法术牌 → 直接打；否则有【秘术】才问」处理那 1 点法术伤害③
 func p_action_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
@@ -319,26 +317,65 @@ func p_action_end(ctx: Dictionary) -> int:
 	match int(ctx.get("extra_cause", 0)):
 		ZHEN_YAN_SHU:
 			_真言待打 = -1
-			if not _真言待伤:
+			if _真言伤阶段 == 3:
 				return SUCCESS
-			_真言待伤 = false
-			if not engine.has_reply():
-				询问(player.id, ZHEN_YAN_SHU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-					0, -1, enemy_ids(), -1, {}, 1, GConst.HarmType.Magic)
-				return WAIT
-			var r: Dictionary = take_skill_reply_full()
-			var dsts: Array = r.get("dst_ids", [])
-			if dsts.is_empty():
+			if _真言伤阶段 == 1:
+				# 等「是否额外移除 1 点【秘术】」的答复（取消＝不打这 1 点）
+				var r: Dictionary = take_skill_reply_full()
+				_真言伤阶段 = 0
+				if not _是确认(r) or player.token_num(秘术槽) <= 0:
+					_真言伤阶段 = 3
+					return SUCCESS
+				player.remove_token(秘术槽, 1)
+				engine._broadcast_game()
+				return _真言打伤(ctx)
+			if _真言伤阶段 == 2:
+				return _真言选目标(take_skill_reply_full(), ctx)
+			if _真言加伤:
+				return _真言打伤(ctx)
+			if player.token_num(秘术槽) <= 0:
+				_真言伤阶段 = 3
 				return SUCCESS
-			var dst: int = int(dsts[0])
-			if not enemy_ids().has(dst):
-				return SUCCESS
-			engine.push_harm({"src": player.id, "dst": dst, "point": 1,
-				"cause": ZHEN_YAN_SHU, "type": GConst.HarmType.Magic})
-			return URGENT
+			# 不是咏类 / 法术牌：行动结束后才问「是否额外移除 1 点【秘术】」，
+			# 这一问的提示只写技能后半段（不重复前半段的选言灵部分）
+			_真言伤阶段 = 1
+			询问(player.id, ZHEN_YAN_SHU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, _真言后半段())
+			return WAIT
 		YAO_JING_MI_SHU:
 			_妖精攻击中 = false
 	return SUCCESS
+
+
+## 打那 1 点法术伤害③：行动目标本身是对手就直接打它，否则（打自己 / 队友）才让人选一名对手
+func _真言打伤(ctx: Dictionary) -> int:
+	var 候选: Array = enemy_ids()
+	if 候选.is_empty():
+		_真言伤阶段 = 3
+		return SUCCESS
+	var 目标: int = int(ctx.get("dst", -1))
+	if 候选.has(目标):
+		_真言伤阶段 = 3
+		engine.push_harm({"src": player.id, "dst": 目标, "point": 1,
+			"cause": ZHEN_YAN_SHU, "type": GConst.HarmType.Magic})
+		return URGENT
+	_真言伤阶段 = 2
+	询问(player.id, ZHEN_YAN_SHU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
+		0, -1, 候选, -1, {}, 1, GConst.HarmType.Magic)
+	return WAIT
+
+
+func _真言选目标(r: Dictionary, _ctx: Dictionary) -> int:
+	_真言伤阶段 = 3
+	var dsts: Array = r.get("dst_ids", [])
+	if dsts.is_empty():
+		return SUCCESS
+	var dst: int = int(dsts[0])
+	if not enemy_ids().has(dst):
+		return SUCCESS
+	engine.push_harm({"src": player.id, "dst": dst, "point": 1,
+		"cause": ZHEN_YAN_SHU, "type": GConst.HarmType.Magic})
+	return URGENT
 
 
 ## 回合结束：真言术给出的行动没打出去时，把那张牌放回【言灵】区（不白拿一张手牌）
@@ -347,7 +384,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	_妖精攻击中 = false
 	_真言压制重真言 = false
-	_真言待伤 = false
+	_真言伤阶段 = 0
 	if _真言待打 < 0:
 		return SUCCESS
 	var 牌: int = _真言待打
@@ -553,18 +590,6 @@ func _同系手牌() -> Array:
 		var 牌: GCard = Data.get_card(cid)
 		if 牌 != null and 系们.has(牌.element_enum()):
 			out.append(cid)
-	return out
-
-
-func _言灵选项(可用: Array) -> Array:
-	var out: Array = []
-	for i: int in range(可用.size()):
-		var cid: int = int(可用[i])
-		var 牌: GCard = Data.get_card(cid)
-		if 牌 == null:
-			continue
-		var 文案: String = "%s %s" % [牌.card_name, GConst.element_to_chinese(牌.element_enum())]
-		out.append({"value": i + 1, "label": 文案, "card_id": cid})
 	return out
 
 
