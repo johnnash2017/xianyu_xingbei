@@ -36,8 +36,10 @@ const 风穴名: String = "风穴"
 
 ## 影之穴：0＝还没付代价 / 1＝等对手弃牌
 var _影之穴阶段: int = 0
-## 本回合的主动攻击标记（timeline 钩子写入、p_after_attack 消费）
-var _本次命中: bool = false
+## 秘术·摹影：0＝未问 / 1＝等是否发动
+var _摹影阶段: int = 0
+## 瞬·影·杀：0＝未问 / 1＝等选影
+var _瞬影杀阶段: int = 0
 ## 瞬·影·杀：本回合主动攻击无法应战、不能再发动秘术·摹影
 var _本回合禁应战: bool = false
 var _本回合禁摹影: bool = false
@@ -52,8 +54,9 @@ var _侍奉阶段: int = 0
 var _侍奉牌: Array = []
 ## 禁术·影牢：1＝等选效果
 var _影牢阶段: int = 0
-## 风止：1＝已问过、等摸牌 / 2＝等弃 2 张
+## 风止：1＝已问过、等摸牌 / 2＝等弃 2 张；_风止已处理＝本回合这次收尾已经跑过
 var _风止阶段: int = 0
+var _风止已处理: bool = false
 
 
 # ============================================================
@@ -166,49 +169,64 @@ func _影之穴(action: Dictionary) -> int:
 
 
 # ============================================================
-# 攻击命中 / 攻击结束
+# 攻击命中② / 未命中②：影之风（自动）、秘术·摹影（响应）、瞬·影·杀（响应）
 # ============================================================
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
-	if int(harm.get("src", -1)) == player.id and bool(ctx.get("is_active", false)):
-		_本次命中 = true
-	return SUCCESS
-
-
-## 影之风：每次攻击行动结束 +1【糸】；命中的攻击牌按是否拥有【风穴】走两条路
-func p_after_attack(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
+	if int(harm.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	var 牌: int = int(ctx.get("card_id", -1))
-	# 同一个钩子可能因为询问 / 压栈回来重跑：+1【糸】只做一次
-	if step == 0:
-		step = 1
-		player.add_token(糸槽, 1)
-		engine._broadcast_game()
-	if _本次命中:
-		_本次命中 = false
-		return _命中后放影(牌)
-	return _未命中瞬影杀()
-
-
-## 命中后：拥有【风穴】走影之风（自动），否则问秘术·摹影
-func _命中后放影(牌: int) -> int:
+	var 牌: int = int(harm.get("card_id", -1))
 	if 牌 < 0 or player.cover_space() <= 0:
 		return SUCCESS
 	if 拥有风穴():
+		# 影之风：拥有【风穴】时，命中后进弃牌堆的攻击牌自动变成【影】
 		_把弃牌变成影(牌, YING_ZHI_FENG)
 		return SUCCESS
-	if _本回合禁摹影 or step >= STEP_DONE:
+	if _本回合禁摹影:
 		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, MI_SHU_MO_YING, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, [], -1, {})
+	if _摹影阶段 == 0:
+		_摹影阶段 = 1
+		询问(player.id, MI_SHU_MO_YING, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			0, -1, [], -1, {})
 		return WAIT
+	_摹影阶段 = 0
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
 	var args: Array = r.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
 	_把弃牌变成影(牌, MI_SHU_MO_YING)
+	return SUCCESS
+
+
+## 瞬·影·杀：主动攻击未命中②，移除 1 个【影】→ 额外 +1 攻击行动；本回合主动攻击无法应战、禁【秘术·摹影】
+func p_timeline_2_miss(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+		return SUCCESS
+	if _瞬影杀已用 or player.cover_cards.is_empty():
+		return SUCCESS
+	if _瞬影杀阶段 == 0:
+		_瞬影杀阶段 = 1
+		询问(player.id, SHUN_YING_SHA, 1, 0, GConst.CardSource.Cover, [], 0, "", [], true,
+			0, -1, [], -1, {})
+		return WAIT
+	_瞬影杀阶段 = 0
+	var r: Dictionary = take_skill_reply_full()
+	var args: Array = r.get("args", [])
+	var cards: Array = r.get("card_ids", [])
+	if args.is_empty() or int(args[0]) != 1 or cards.is_empty():
+		return SUCCESS
+	var cid: int = int(cards[0])
+	if not player.有盖牌(cid):
+		return SUCCESS
+	_瞬影杀已用 = true
+	_本回合禁应战 = true
+	_本回合禁摹影 = true
+	notice_skill(SHUN_YING_SHA, [player.id])
+	engine.remove_cover(player.id, [cid], player.id, SHUN_YING_SHA)
+	engine.to_discard([cid], {"owner": player.id, "source": "cover", "cause": SHUN_YING_SHA})
+	engine._log_discard(player.id, [cid], false)
+	player.add_action(GConst.ActionType.Attack, SHUN_YING_SHA, true)
+	engine._broadcast_game()
 	return SUCCESS
 
 
@@ -224,36 +242,20 @@ func _把弃牌变成影(牌: int, cause: int) -> void:
 	engine._broadcast_game()
 
 
-## 瞬·影·杀：未命中时可选，移除 1 个【影】→ 额外 +1 攻击行动、本回合禁应战 / 禁摹影
-func _未命中瞬影杀() -> int:
-	if _瞬影杀已用 or player.cover_cards.is_empty() or step >= STEP_DONE:
+## 影之风：你每次【攻击行动】结束时 +1【糸】
+func p_after_attack(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, SHUN_YING_SHA, 1, 0, GConst.CardSource.Cover, [], 0, "", [], true, 0, -1, [], -1, {})
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
-	var args: Array = r.get("args", [])
-	var cards: Array = r.get("card_ids", [])
-	if args.is_empty() or int(args[0]) != 1 or cards.is_empty():
-		return SUCCESS
-	var cid: int = int(cards[0])
-	if not player.有盖牌(cid):
-		return SUCCESS
-	_瞬影杀已用 = true
-	_本回合禁应战 = true
-	_本回合禁摹影 = true
-	notice_skill(SHUN_YING_SHA, [player.id])
-	engine.remove_cover(player.id, [cid], player.id, SHUN_YING_SHA)
-	engine.to_discard([cid], {"owner": player.id, "source": "cover", "cause": SHUN_YING_SHA})
-	player.add_action(GConst.ActionType.Attack, SHUN_YING_SHA, true)
-	engine._broadcast_game()
+	if step == 0:
+		step = 1
+		player.add_token(糸槽, 1)
+		engine._broadcast_game()
 	return SUCCESS
 
 
 ## 瞬·影·杀生效期间：本回合你的主动攻击无法应战
 func p_before_attack(ctx: Dictionary) -> int:
-	if _本回合禁应战 and int(ctx.get("src", -1)) == player.id:
+	if _本回合禁应战 and int(ctx.get("src", -1)) == player.id and bool(ctx.get("is_active", false)):
 		ctx["hit_rate"] = GConst.HitRate.NoReattack
 	return SUCCESS
 
@@ -263,7 +265,9 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 		_本回合禁应战 = false
 		_本回合禁摹影 = false
 		_瞬影杀已用 = false
-		_本次命中 = false
+		_摹影阶段 = 0
+		_瞬影杀阶段 = 0
+		_风止已处理 = false
 	return SUCCESS
 
 
@@ -398,11 +402,12 @@ func _影缝收入影(cid: int) -> void:
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 风止与侍奉之道都在回合结束，先在同一个钩子里把风止跑完，再跑侍奉
-	if 拥有风穴() or _风止阶段 != 0:
+	# 风止与侍奉之道都在回合结束：先把风止整段跑完（含摸牌挂起），再跑侍奉
+	if not _风止已处理 and (拥有风穴() or _风止阶段 != 0):
 		var rc: int = _风止()
 		if rc != SUCCESS:
 			return rc
+		_风止已处理 = true
 	return _侍奉之道()
 
 
@@ -410,23 +415,24 @@ func _侍奉之道() -> int:
 	if _侍奉阶段 == 0:
 		if player.cover_cards.size() < 2:
 			return SUCCESS
-		if not engine.has_reply():
-			_侍奉阶段 = 1
-			询问(player.id, SHI_FENG_ZHI_DAO, 2, 0, GConst.CardSource.Cover, [], 0, "", [], true, 0, -1, [], -1, {})
-			return WAIT
+		_侍奉阶段 = 1
+		询问(player.id, SHI_FENG_ZHI_DAO, 2, 0, GConst.CardSource.Cover, [], 0, "", [], true, 0, -1, [], -1, {})
+		return WAIT
 	if _侍奉阶段 == 1:
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])
 		var cards: Array = r.get("card_ids", [])
+		_侍奉阶段 = 0
 		if args.is_empty() or int(args[0]) != 1 or cards.size() != 2:
-			_侍奉阶段 = 0
 			return SUCCESS
-		var 甲: int = int(cards[0])
-		var 乙: int = int(cards[1])
-		if not player.有盖牌(甲) or not player.有盖牌(乙) or 甲 == 乙:
-			_侍奉阶段 = 0
+		var 甲: int = player.盖牌实例(int(cards[0]))
+		var 乙: int = player.盖牌实例(int(cards[1]))
+		if 甲 < 0 or 乙 < 0 or 甲 == 乙:
 			return SUCCESS
-		_侍奉牌 = [甲, 乙]
+		var 甲牌: GCard = Data.get_card(甲)
+		var 乙牌: GCard = Data.get_card(乙)
+		if 甲牌 == null or 乙牌 == null:
+			return SUCCESS
 		notice_skill(SHI_FENG_ZHI_DAO, [player.id])
 		engine.broadcast(GConst.Msg.Card, {
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -434,39 +440,68 @@ func _侍奉之道() -> int:
 		})
 		engine.remove_cover(player.id, [甲, 乙], player.id, SHI_FENG_ZHI_DAO)
 		player.add_token(糸槽, 1)
-		var 甲牌: GCard = Data.get_card(甲)
-		var 乙牌: GCard = Data.get_card(乙)
-		_侍奉阶段 = 2 if (甲牌 != null and 乙牌 != null \
-			and 甲牌.element_enum() == 乙牌.element_enum()) else 3
+		_侍奉牌 = [甲, 乙]
 		engine._broadcast_game()
+		if 甲牌.element_enum() != 乙牌.element_enum():
+			# 系别不同：没有「交给谁」这一步，两张影都进弃牌堆（原来会凭空消失）
+			_侍奉弃掉两张()
+			return SUCCESS
+		_侍奉阶段 = 2
 	if _侍奉阶段 == 2:
 		if not engine.has_reply():
-			询问(player.id, SHI_FENG_ZHI_DAO, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-				0, -1, 全部角色(), -1, {})
+			询问(player.id, SHI_FENG_ZHI_DAO, 0, 1, GConst.CardSource.Hand, _侍奉选项(), 0, "", [], true,
+				0, -1, [], -1, {})
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
+		var args2: Array = r2.get("args", [])
 		var dsts: Array = r2.get("dst_ids", [])
-		if not dsts.is_empty() and engine.p(int(dsts[0])) != null:
-			_把影交给(int(dsts[0]), int(_侍奉牌[0]))
-		else:
-			engine.to_discard([int(_侍奉牌[0]), int(_侍奉牌[1])], {"owner": player.id, "source": "cover", "cause": SHI_FENG_ZHI_DAO})
-		_侍奉阶段 = 3
-		engine._broadcast_game()
-	if _侍奉阶段 == 3:
 		_侍奉阶段 = 0
+		if args2.is_empty() or dsts.is_empty():
+			_侍奉弃掉两张()
+			return SUCCESS
+		var 选: int = int(args2[0])
+		var dst: int = int(dsts[0])
+		var dp: BattlePlayer = engine.p(dst)
+		if dp == null or 选 < 1 or 选 > _侍奉牌.size():
+			engine.报错("【侍奉之道】提交的参数不合法", player.id)
+			_侍奉弃掉两张()
+			return SUCCESS
+		var 给: int = int(_侍奉牌[选 - 1])
+		var 另一: int = int(_侍奉牌[0]) if 选 == 2 else int(_侍奉牌[1])
+		dp.add_hand_cards([给])
+		engine.播获得牌日志(dst, [给])
+		engine.to_discard([另一], {"owner": player.id, "source": "cover", "cause": SHI_FENG_ZHI_DAO})
+		_侍奉牌 = []
 		player.tap = true
+		engine._broadcast_game()
 	return SUCCESS
 
 
-## 同系的其中 1 张【影】交给目标角色【强制】，另一张进弃牌堆
-func _把影交给(dst: int, 给: int) -> void:
-	var 另一: int = int(_侍奉牌[0]) if int(_侍奉牌[1]) == 给 else int(_侍奉牌[1])
-	var dp: BattlePlayer = engine.p(dst)
-	if dp == null:
-		return
-	dp.add_hand_cards([给])
-	engine.播获得牌日志(dst, [给])
-	engine.to_discard([另一], {"owner": player.id, "source": "cover", "cause": SHI_FENG_ZHI_DAO})
+## 两张【影】都没交出去：进弃牌堆，不留死牌
+func _侍奉弃掉两张() -> void:
+	if not _侍奉牌.is_empty():
+		engine.to_discard(_侍奉牌, {"owner": player.id, "source": "cover", "cause": SHI_FENG_ZHI_DAO})
+		engine._log_discard(player.id, _侍奉牌, false)
+		_侍奉牌 = []
+	engine._broadcast_game()
+
+
+## 同系时选「哪一张交给谁」：选项＝交给哪张影，目标＝任意角色
+func _侍奉选项() -> Array:
+	var out: Array = []
+	for i: int in range(_侍奉牌.size()):
+		var cid: int = int(_侍奉牌[i])
+		var 牌: GCard = Data.get_card(cid)
+		var 文案: String = "%s %s" % [牌.card_name if 牌 != null else "",
+			GConst.element_to_chinese(牌.element_enum()) if 牌 != null else ""]
+		out.append({
+			"value": i + 1,
+			"label": 文案,
+			"card_id": cid,
+			"need_target": 1,
+			"targets": 全部角色(),
+		})
+	return out
 
 
 # ============================================================
@@ -563,11 +598,14 @@ func _风止() -> int:
 			return WAIT
 		var r2: Dictionary = take_skill_reply_full()
 		_风止阶段 = 0
+		# 弃牌前先看盖牌槽还剩几张：放不下的牌只能进弃牌堆（装满后再放置会触发盖牌超限）
+		var 空位: int = player.cover_space()
 		var cards: Array = r2.get("card_ids", [])
 		var 弃: Array = []
 		for c: Variant in cards:
-			if player.has_hand_card(int(c)) and not 弃.has(int(c)) and 弃.size() < 2:
-				弃.append(int(c))
+			var 实例: int = player.手牌实例(int(c))
+			if 实例 >= 0 and not 弃.has(实例) and 弃.size() < 2:
+				弃.append(实例)
 		# 强制弃 2 张：不够就按手牌顺序补
 		for cid: int in player.hand_cards:
 			if 弃.size() >= 2:
@@ -575,8 +613,19 @@ func _风止() -> int:
 			if not 弃.has(cid):
 				弃.append(cid)
 		if not 弃.is_empty():
+			var 作影: Array = []
+			var 入堆: Array = []
+			for c0: Variant in 弃:
+				if 作影.size() < 空位:
+					作影.append(int(c0))
+				else:
+					入堆.append(int(c0))
 			engine.take_from_hand(player.id, 弃)
-			engine.add_cover(player.id, 弃, player.id, FENG_ZHI, false)
+			if not 作影.is_empty():
+				engine.add_cover(player.id, 作影, player.id, FENG_ZHI, false)
+			if not 入堆.is_empty():
+				engine.to_discard(入堆, {"owner": player.id, "source": "hand", "cause": FENG_ZHI})
+				engine._log_discard(player.id, 入堆)
 		engine.移除场卡(风穴名)
 		engine._broadcast_game()
 	return SUCCESS
