@@ -3717,10 +3717,14 @@ func 转移伤害(harm: Dictionary, 新目标id: int, 免士气: bool = true) ->
 
 ## 攻击/法术/特殊行动收尾：先跑具体的「行动结束」钩子与通用 p_action_end，再进入回合结束。
 ## 「是不是额外行动 / 来源」取当前行动阶段的状态（见 action_commands 的 is_extra / extra_cause）
-## 技能出牌（技能出牌()）时**不压回合结束**：那次出牌是技能效果的一部分，回合还没结束。
+## 技能出牌（技能出牌()）时**不压回合结束**：那次出牌是技能效果的一部分，回合还没结束；
+## 同时把行动结束响应整组延后到 p_action_end 之后 —— 真言术这种「行动结束后还有第二段」的技能，
+## 必须先结算完第二段，再问妖精秘术 / 真言压制这些响应。
 func push_after_action(hook: String, ctx: Dictionary) -> void:
-	if not _技能出牌中:
-		push(STurnEnd.new())
+	if _技能出牌中:
+		_push_action_end_hooks(hook, ctx, 行动额外, 行动额外来源 if 行动额外 else 0, true)
+		return
+	push(STurnEnd.new())
 	_push_action_end_hooks(hook, ctx, 行动额外, 行动额外来源 if 行动额外 else 0)
 
 
@@ -3771,7 +3775,11 @@ func 技能出牌(pid: int, action_type: int, card_ids: Array, dst_ids: Array, c
 ## 一次行动结束的两个钩子（F2）：先跑具体的 p_after_attack / p_after_magic / p_after_special，
 ## 再跑通用的 p_action_end；两者收到同一份带本回合行动计数的上下文。
 ## STurnEnd 由调用方压（普通行动见 push_after_action；技能行动在 _进入技能行动 里提前压）。
-func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra_cause: int) -> void:
+## 行动结束钩子组。延后响应=true（技能出牌＝技能效果里打出的一张牌，见 技能出牌）：
+## 把「行动结束响应」整组压到 p_action_end 之下 —— LIFO 下 p_action_end 先跑，
+## 等技能把「行动结束之后还有第二段」的结算（真言术的 1 点法术伤害）做完，才问聚合器里的响应。
+func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool,
+		extra_cause: int, 延后响应: bool = false) -> void:
 	var 上下文: Dictionary = ctx.duplicate()
 	var cur: BattlePlayer = players.get(int(上下文.get("player", current_id)))
 	if cur != null:
@@ -3782,16 +3790,23 @@ func _push_action_end_hooks(hook: String, ctx: Dictionary, is_extra: bool, extra
 		上下文["magic_action_count"] = cur.magic_action_count
 		上下文["special_action_count"] = cur.special_action_count
 		上下文["extra_action_count"] = cur.extra_action_count
-	push(SHook.new("p_action_end", 上下文, []))
+	# 响应组（先压 → 后跑）
+	var 响应组: Array = []
 	if hook == "p_after_attack" or hook == "p_after_magic":
 		# 行动聚合器：只聚合当前时点可执行的行动选项
-		push(S行动聚合器.new(上下文))
-	push(SHook.new(hook, 上下文, []))
+		响应组.append(S行动聚合器.new(上下文))
+	响应组.append(SHook.new(hook, 上下文, []))
 	# 最高优先级行动结束结算（如格斗家念弹）：必须排在普通行动结束响应之前
-	if hook == "p_after_magic":
-		var 当前: BattlePlayer = players.get(int(上下文.get("player", current_id)))
-		if 当前 != null and 当前.role != null and 当前.role.has_priority_action_end():
-			push(SHook.new("p_priority_action_end", 上下文, []))
+	if hook == "p_after_magic" and cur != null and cur.role != null and cur.role.has_priority_action_end():
+		响应组.append(SHook.new("p_priority_action_end", 上下文, []))
+	if 延后响应:
+		for 状态: Variant in 响应组:
+			push(状态)
+		push(SHook.new("p_action_end", 上下文, []))
+		return
+	push(SHook.new("p_action_end", 上下文, []))
+	for 状态2: Variant in 响应组:
+		push(状态2)
 
 
 ## 额外行动的单份行动"可用牌"白名单：技能直接给的 id 表优先；没给 id 表但给了
