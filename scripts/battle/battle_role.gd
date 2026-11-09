@@ -189,8 +189,8 @@ func p_after_turn_end(_ctx: Dictionary) -> int: return SUCCESS
 ## ctx: {card_id 打出的牌, doer 应战者, target 反击目标, 改用 视为哪张牌, real 是否实体牌}
 ## 角色也可设置 ctx["block"] = true，把这次应战当作「格挡」（本次攻击落空、不反击），如阴阳师光系应战
 func p_reattack(_ctx: Dictionary) -> int: return SUCCESS
-## 主动攻击宣告时（对照应战那条的 p_reattack）：角色可把本次打出的攻击牌「视为」另一张，
-## 如苍炎魔女【烈焰形态】下除水系 / 暗系外的攻击牌一律视为火系虚拟【火焰斩】。
+## 主动攻击宣告时（对照应战那条的 p_reattack）：角色可把本次打出的攻击牌「视为」另一张结算
+## （如噬神者在这里记录本次打出的【魔刃】/【异刃】）。
 ## ctx: {player 攻击者, card_id 打出的牌, 改用 视为哪张牌（默认＝card_id）}
 ## 真牌照常从手牌进弃牌堆并展示，本次攻击按「改用」的那张结算（系别就是那张牌的系别）
 func p_attack_card(_ctx: Dictionary) -> int: return SUCCESS

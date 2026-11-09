@@ -5186,7 +5186,7 @@ class SAttackedAsk:
 					return BattleEngine.WAIT
 				# 应战成立：原攻击落空，应战者以自己的攻击牌对所选目标发起一次新攻击。
 				# 对照原版：先跑一轮 p_reattack（角色可把这张牌「视为」另一张，如魔女烈焰形态下的
-				# 虚拟【火焰斩】），再按结果结算（真牌照样进弃牌堆并展示，反击用「视为」的那张）
+				# 另一张牌），再按结果结算（真牌照样进弃牌堆并展示，反击用「视为」的那张）
 				var 应战: Dictionary = {"card_id": cid, "doer": defender.id, "target": 反击目标, "改用": cid, "real": true}
 				e.push(SReattackGo.new(defender, harm, 应战, cid, 反击目标))
 				e.push(SHook.new("p_reattack", 应战, []))
@@ -5236,7 +5236,7 @@ class SAttackedAsk:
 
 
 ## 应战成立后的结算（对照原版 setStateReattack）：
-## 反击用的是 p_reattack 给出的「视为」牌（可能是虚拟牌，如魔女的虚拟【火焰斩】87）；
+## 反击用的是 p_reattack 给出的「视为」牌（可能是虚拟牌）；
 ## 真牌一律从手牌进弃牌堆，并广播给所有人看（card_ids 是真牌，「视为」哪张放在 as_card_id）
 class SReattackGo:
 	var defender: BattlePlayer
@@ -6319,8 +6319,8 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	# （剑之子【剑残影】10804；它是玩家身上的标记，与这份行动 / 这张牌的规格无关）
 	cur.set_attack_lock(-1)
 	_记录行动并收尾(cur, "attack", "p_after_attack", {"player": cur.id, "card_id": 提交号, "dst": dst_id})
-	# 攻击方向也跑一次「视为」判定（与应战的 p_reattack 同一套）：角色可把这张攻击牌换成另一张，
-	# 如苍炎魔女【烈焰形态】下除水系 / 暗系外的攻击牌一律视为火系虚拟【火焰斩】。
+	# 攻击方向也跑一次「视为」判定（与应战的 p_reattack 同一套）：角色可把这张攻击牌换成另一张结算
+	# （如噬神者在这里记录本次打出的【魔刃】/【异刃】）。
 	# 真牌照样展示 + 进弃牌堆，本次攻击按「视为」的那张结算（系别就是那张牌的系别）
 	var 出牌: Dictionary = {"player": cur.id, "card_id": 提交号, "card_id_instance": 提交号, "改用": cid}
 	if cur.role != null:
@@ -6360,7 +6360,7 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		take_from_hand(cur.id, [提交号], true)
 		to_discard([提交号], {"owner": cur.id, "source": "hand", "cause": GConst.CAUSE_ATTACK})
 	# 广播里面把「视为」的那张放 as_card_id（同应战那条）：客户端按它出声、出特效
-	# （如苍炎魔女【烈焰形态】下普通攻击视为火系【火焰斩】→ 播火斩特效与火系攻击音）；
+	# （「视为」换掉系别时，客户端按它播对应系的斩击特效 / 攻击音）；
 	# 摊牌与日志仍用真正打出的牌
 	broadcast(GConst.Msg.Card, {"type": GConst.CardMsgType.Use, "src_id": cur.id, "dst_id": dst_id,
 		"card_ids": [cid], "is_real": true, "as_card_id": 表现面 if 表现面 != cid else -1,
