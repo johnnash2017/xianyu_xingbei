@@ -324,48 +324,36 @@ func p_harm_end(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id or int(harm.get("cause", 0)) != ZHEN_YAN_YA_ZHI:
 		return SUCCESS
+	# 读完「哪张言灵 + 打谁」：合法就直接当那张牌打出去（技能出牌，不消耗行动）
 	if _真言压制阶段 == 2:
-		# 读了「是否发动真言术」：选「不发动」/ 取消 → 结束
 		var r: Dictionary = take_skill_reply_full()
 		_真言压制阶段 = 0
-		var args: Array = r.get("args", [])
-		if args.is_empty() or int(args[0]) != 1 or _可用言灵().is_empty():
-			return SUCCESS
-		# 选发动：问「哪张【言灵】+ 打谁」，和真言术本体同一个选法
-		_真言压制阶段 = 3
-		询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "", _可用言灵(), true,
-			0, -1, 全部角色(), -1, {})
-		return WAIT
-	if _真言压制阶段 == 3:
-		# 读了「哪张言灵 + 打谁」：合法就直接当那张牌打出去（技能出牌，不消耗行动）
-		var r2: Dictionary = take_skill_reply_full()
-		_真言压制阶段 = 0
-		var cards: Array = r2.get("card_ids", [])
-		var dsts: Array = r2.get("dst_ids", [])
+		var cards: Array = r.get("card_ids", [])
+		var dsts: Array = r.get("dst_ids", [])
 		if cards.is_empty() or dsts.is_empty():
+			# 取消 ＝ 不发动【真言术】
 			return SUCCESS
 		var 实例: int = player.盖牌实例(int(cards[0]))
 		var 牌: GCard = Data.get_card(实例) if 实例 >= 0 else null
 		if 牌 == null or not _真言能打(实例, 牌, int(dsts[0])):
 			# 这张言灵对这名角色不合法：报错重问，别让玩家白丢这次机会
 			engine.报错("【真言压制】这张【言灵】不能对这名角色使用", player.id)
-			_真言压制阶段 = 3
+			_真言压制阶段 = 2
 			询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "",
 				_可用言灵(), true, 0, -1, 全部角色(), -1, {})
 			return WAIT
-		return _真言术(r2)
+		return _真言术(r)
 	if _真言压制阶段 != 1:
 		return SUCCESS
 	_真言压制阶段 = 0
+	# 「你可立即执行一次【真言术】」直接进真言术的选牌（省掉中间那一问）：
+	# 没有可用【言灵】就不发动；玩家不想发动点取消即可。
 	if _可用言灵().is_empty():
 		return SUCCESS
 	_真言压制阶段 = 2
-	询问(player.id, ZHEN_YAN_YA_ZHI, 0, 0, GConst.CardSource.Hand, [
-		{"value": 1, "label": GConst.skill_name(ZHEN_YAN_SHU), "enabled": true},
-		{"value": 2, "label": "不发动【%s】" % GConst.skill_name(ZHEN_YAN_SHU), "enabled": true},
-	], 0, "", [], true)
+	询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "", _可用言灵(), true,
+		0, -1, 全部角色(), -1, {})
 	return WAIT
-
 
 ## 真言术给出的行动结算完：按「咏类/法术牌 → 直接打；否则有【秘术】才问」处理那 1 点法术伤害③
 func p_action_end(ctx: Dictionary) -> int:
