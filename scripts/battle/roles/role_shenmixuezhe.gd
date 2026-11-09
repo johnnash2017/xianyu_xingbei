@@ -31,8 +31,6 @@ const 秘术槽: int = 0
 
 ## 言灵术：0＝未开始 / 1＝已放言灵等摸牌 / 2＝等额外弃牌 / 3＝完成
 var _言灵术阶段: int = 0
-## 真言术：0＝未开始 / 1＝等「哪张言灵 + 打谁」的回复
-var _真言阶段: int = 0
 ## 出牌那一下：盖牌区里的【言灵】可以当手牌用（同步窗口，出牌调用返回就关掉）
 var _真言行动中: bool = false
 ## 真言术这次用掉的言灵是不是咏类 / 法术牌（行动结束后据此决定要不要问【秘术】）
@@ -58,13 +56,7 @@ var _守护灵阶段: int = 0
 func available_skills() -> Array:
 	if _真言压制重真言:
 		# 「你可立即执行一次【真言术】」：这一手只给真言术，别的技能按钮都不摆
-		return [{
-			"type": GConst.ActionType.MagicSkill,
-			"id": ZHEN_YAN_SHU,
-			"need_card": 0,
-			"need_target": 0,
-			"enabled": not _可用言灵().is_empty(),
-		}]
+		return [_真言技能项()]
 	return [
 		{
 			"type": GConst.ActionType.MagicSkill,
@@ -76,14 +68,24 @@ func available_skills() -> Array:
 			# （与魔弓【充能】同一套处理，见 SCoverOverflow）；所以这里不再看 cover_space
 			"enabled": not player.hand_cards.is_empty(),
 		},
-		{
-			"type": GConst.ActionType.MagicSkill,
-			"id": ZHEN_YAN_SHU,
-			"need_card": 0,
-			"need_target": 0,
-			"enabled": not _可用言灵().is_empty(),
-		},
+		_真言技能项(),
 	]
+
+
+## 【真言术】的技能栏规格（和别的技能一样由 available_skills 声明选牌 / 选目标，
+## 客户端点技能按钮就直接进「盖牌区点 1 张言灵 + 点 1 名目标」的选牌状态，不另开询问）
+func _真言技能项() -> Dictionary:
+	var 可用: Array = _可用言灵()
+	return {
+		"type": GConst.ActionType.MagicSkill,
+		"id": ZHEN_YAN_SHU,
+		"need_card": 1,
+		"need_target": 1,
+		"card_source": GConst.CardSource.Cover,
+		"cards": 可用,
+		"targets": 全部角色(),
+		"enabled": not 可用.is_empty(),
+	}
 
 
 func v_magic_skill(action: Dictionary) -> int:
@@ -103,9 +105,17 @@ func v_magic_skill(action: Dictionary) -> int:
 		_言灵术阶段 = 0
 		return GConst.GE_SUCCESS
 	if 技能号 == ZHEN_YAN_SHU:
-		if _可用言灵().is_empty():
+		# 提交的是「盖牌区里的一张言灵 + 一名目标」：逐项复核（客户端只是体验过滤）
+		var cards2: Array = action.get("card_ids", [])
+		var dsts: Array = action.get("dst_ids", [])
+		if _可用言灵().is_empty() or cards2.size() != 1 or dsts.size() != 1:
 			return GConst.GE_INVALID_ACTION
-		_真言阶段 = 0
+		var 实例: int = player.盖牌实例(int(cards2[0]))
+		if 实例 < 0 or not _可用言灵().has(实例):
+			return GConst.GE_INVALID_CARDID
+		var 牌: GCard = Data.get_card(实例)
+		if 牌 == null or not _真言能打(实例, 牌, int(dsts[0])):
+			return GConst.GE_INVALID_ACTION
 		_真言加伤 = false
 		_真言伤阶段 = 0
 		_真言压制重真言 = false
@@ -118,7 +128,7 @@ func p_magic_skill(action: Dictionary) -> int:
 	if 技能号 == YAN_LING_SHU:
 		return _言灵术(action)
 	if 技能号 == ZHEN_YAN_SHU:
-		return _真言术()
+		return _真言术(action)
 	return EMPTY_HANDLE
 
 
@@ -178,73 +188,37 @@ func 技能URGENT后重入(action: Dictionary = {}) -> bool:
 
 # ============================================================
 # 真言术：把 1 个非光系【言灵】当手牌打出
-# 交互＝「魔弓【雷光散射】的开场 + 精灵射手【祝福】的用法」：
-#   点技能 → 直接进一个只能用【言灵】的行动阶段（盖牌区亮出来、别的牌/技能都置灰），
-#   玩家在盖牌区点 1 张言灵 → 点目标 → 确定，就是正常出牌；想放弃点「放弃行动」。
-#   不需要「选完再塞到手里」的中间步骤，也没有多余的确认窗。
+# 和别的技能一样由 available_skills 声明「选 1 张盖牌 + 选 1 名目标」：
+#   点技能按钮 → 客户端直接进选牌状态（盖牌区亮出来）→ 点言灵 → 点目标 → 确定，
+#   这一次提交里就带着「哪张言灵 + 打谁」，服务端直接当那张牌打出去。
+#   点「取消」＝技能不发动，退回行动阶段。
 # ============================================================
-func _真言术() -> int:
-	if _真言阶段 == 1:
-		return _真言用牌(take_skill_reply_full())
-	if _可用言灵().is_empty():
+func _真言术(action: Dictionary) -> int:
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
 		return SUCCESS
-	_真言阶段 = 1
-	_真言询问()
-	return WAIT
-
-
-## 一次问完：盖牌区选 1 张【言灵】 + 选 1 名目标；点取消＝不发动（退回行动阶段）
-func _真言询问() -> void:
-	询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "", _可用言灵(), true,
-		0, -1, 全部角色(), -1, {})
-
-
-## 收到「哪张言灵 + 打谁」之后：校验 → 直接当那张牌打出（技能出牌，不消耗攻击/法术行动）
-func _真言用牌(r: Dictionary) -> int:
-	var 选中: int = -1
-	for c: Variant in r.get("card_ids", []):
-		var 实例: int = player.盖牌实例(int(c))
-		if 实例 >= 0 and _可用言灵().has(实例):
-			选中 = 实例
-			break
-	var dsts: Array = r.get("dst_ids", [])
-	var dst: int = int(dsts[0]) if not dsts.is_empty() else -1
-	if 选中 < 0 or dst < 0:
-		# 取消 / 空回复：真言术不发动，退回行动阶段（不消耗这次法术行动）
-		_真言阶段 = 0
-		engine.取消技能行动()
+	var 选中: int = player.盖牌实例(int(cards[0]))
+	if 选中 < 0:
 		return SUCCESS
 	var 牌: GCard = Data.get_card(选中)
 	if 牌 == null:
-		engine.报错("【真言术】言灵不存在", player.id)
-		_真言阶段 = 0
-		engine.取消技能行动()
 		return SUCCESS
-	if not _真言能打(选中, 牌, dst):
-		# 这张言灵对这名角色不合法：报错重问，不能替玩家改选，也不能白白消耗技能
-		engine.报错("【真言术】这张【言灵】不能对这名角色使用", player.id)
-		_真言询问()
-		return WAIT
-	_真言阶段 = 0
-	_真言加伤 = false
-	_真言伤阶段 = 0
+	var dst: int = int(dsts[0])
 	notice_skill(ZHEN_YAN_SHU, [dst])
 	# 出牌这一步里这张盖牌要能当手牌用（引擎出牌路径靠 has_hand_card 认牌、remove_hand_cards 从盖牌区删）
 	_真言行动中 = true
 	var 种类: int = GConst.ActionType.Attack if 牌.is_attack() else GConst.ActionType.Magic
 	var 结果: int = engine.技能出牌(player.id, 种类, [选中], [dst], ZHEN_YAN_SHU)
 	_真言行动中 = false
-	if 结果 == GConst.GE_INVALID_ACTION or 结果 == GConst.GE_INVALID_CARDID \
-			or 结果 == GConst.GE_INVALID_PLAYERID:
+	if 结果 < 0:
 		engine.报错("【真言术】这张【言灵】打不出去", player.id)
-		_真言阶段 = 1
-		_真言询问()
-		return WAIT
+		return SUCCESS
 	engine._broadcast_game()
 	return URGENT
 
 
-## 这张言灵能不能对这名角色用（与引擎出牌路径同一套 v_* 校验）
+## 这张言灵能不能对这名角色用（与引擎出牌路径同一套 v_* 校验；v_magic_skill 用它复核提交）
 func _真言能打(cid: int, 牌: GCard, dst: int) -> bool:
 	var dp: BattlePlayer = engine.p(dst)
 	if dp == null:
@@ -420,7 +394,6 @@ func p_turn_end(ctx: Dictionary) -> int:
 	_妖精攻击中 = false
 	_真言压制重真言 = false
 	_真言伤阶段 = 0
-	_真言阶段 = 0
 	_真言行动中 = false
 	return SUCCESS
 
