@@ -707,7 +707,8 @@ func _ready() -> void:
 	Hint.offset_bottom -= 选中上浮像素
 	_提示原顶 = Hint.offset_top
 	_提示原底 = Hint.offset_bottom
-	_提示原高 = maxf(_提示原底 - _提示原顶, 24.0)
+	# 提示条自身高度缩 10%（以原中心为轴收缩；文字更长时仍按内容高自动加高）
+	_提示原高 = maxf((_提示原底 - _提示原顶) * 0.9, 24.0)
 	# ---- 交互层（第三步）：接收询问 + 确定/取消/盖牌/特殊行动/放弃行动 ----
 	Logic.command_received.connect(_on_command)
 	Logic.card_element_changed.connect(_on_card_element_changed)
