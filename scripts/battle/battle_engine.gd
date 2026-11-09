@@ -2394,6 +2394,9 @@ func 设置卡牌元素(pid: int, card_id: int, element: int) -> bool:
 	send(pid, GConst.Msg.CardElement, {
 		"card_id": card_id, "element": element, "commands": cmds,
 	})
+	# 再补一次快照：卡牌的「有效系别」可能被卡牌系别属性改写过（如苍炎魔女【烈焰形态】视为火），
+	# 客户端要按快照里的 hand_elements / hand_attrs 重新算显示，只发 CardElement 会停在旧系别上
+	_broadcast_game()
 	return true
 
 

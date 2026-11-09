@@ -248,7 +248,9 @@ func _刷新元素栏() -> void:
 			var 元素: int = card.可选元素[i]
 			按钮[i].text = GConst.element_to_chinese(元素)
 			按钮[i].visible = true
-			按钮[i].disabled = 元素 == card.element_enum()
+			# 选中态按「牌面自己的系别」判断：烈焰形态这类属性会把有效系别改成火，
+			# 但切换条要反映的是「这张牌自己现在切到哪一系」，否则两个按钮都像可选
+			按钮[i].disabled = 元素 == card.基础元素()
 		else:
 			按钮[i].visible = false
 	_元素栏.visible = true
