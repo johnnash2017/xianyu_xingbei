@@ -242,9 +242,12 @@ func _把弃牌变成影(牌: int, cause: int) -> void:
 	engine._broadcast_game()
 
 
-## 影之风：你每次【攻击行动】结束时 +1【糸】
+## 影之风：拥有【风穴】时，你每次【攻击行动】结束时 +1【糸】
+## （专属技跟着卡走：风穴不在场上就没这条被动，别不管有没有卡都加）
 func p_after_attack(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	if not 拥有风穴():
 		return SUCCESS
 	if step == 0:
 		step = 1
