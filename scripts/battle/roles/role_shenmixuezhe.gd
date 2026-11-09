@@ -41,8 +41,8 @@ var _真言伤阶段: int = 0
 var _禁忌阶段: int = 0
 var _禁忌目标: Array = []
 var _禁忌弃牌: Array = []
-## 真言压制给出的「立即执行一次【真言术】」还挂着：此时行动阶段只放行 8003
-var _真言压制重真言: bool = false
+## 真言压制：0＝没挂 / 1＝等那 1 点伤害结算完 / 2＝等「是否发动真言术」/ 3＝等选言灵+目标
+var _真言压制阶段: int = 0
 ## 妖精秘术：本回合已用；给出的攻击行动进行中
 var _妖精已用: bool = false
 var _妖精攻击中: bool = false
@@ -54,9 +54,6 @@ var _守护灵阶段: int = 0
 # 技能栏
 # ============================================================
 func available_skills() -> Array:
-	if _真言压制重真言:
-		# 「你可立即执行一次【真言术】」：这一手只给真言术，别的技能按钮都不摆
-		return [_真言技能项()]
 	return [
 		{
 			"type": GConst.ActionType.MagicSkill,
@@ -92,8 +89,6 @@ func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
 	var 技能号: int = int(action.get("action_id", 0))
-	if _真言压制重真言 and 技能号 != ZHEN_YAN_SHU:
-		return GConst.GE_INVALID_ACTION
 	if 技能号 == YAN_LING_SHU:
 		var cards: Array = action.get("card_ids", [])
 		# 不再限制「不能超过盖牌上限」：超出的部分由盖牌超限询问让玩家弃（同魔弓【充能】）
@@ -116,16 +111,11 @@ func v_magic_skill(action: Dictionary) -> int:
 		var 牌: GCard = Data.get_card(实例)
 		if 牌 == null:
 			return GConst.GE_INVALID_ACTION
-		# 这张盖牌此刻要能当手牌用：v_attack / v_shield 这些校验都走 has_hand_card，
-		# 不打开窗口的话「盖牌里的攻击牌」会被判成「手里没有这张牌」而打不出去
-		_真言行动中 = true
-		var 能打: bool = _真言能打(实例, 牌, int(dsts[0]))
-		_真言行动中 = false
-		if not 能打:
+		if not _真言能打(实例, 牌, int(dsts[0])):
 			return GConst.GE_INVALID_ACTION
 		_真言加伤 = false
 		_真言伤阶段 = 0
-		_真言压制重真言 = false
+		_真言压制阶段 = 0
 		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 
@@ -230,6 +220,15 @@ func _真言能打(cid: int, 牌: GCard, dst: int) -> bool:
 	var dp: BattlePlayer = engine.p(dst)
 	if dp == null:
 		return false
+	# v_attack / v_shield 这些校验都走 has_hand_card：校验期间要把这张盖牌当手牌用
+	var 原窗口: bool = _真言行动中
+	_真言行动中 = true
+	var 结果: bool = _真言能打内(牌, cid, dst, dp)
+	_真言行动中 = 原窗口
+	return 结果
+
+
+func _真言能打内(牌: GCard, cid: int, dst: int, dp: BattlePlayer) -> bool:
 	if 牌.is_attack():
 		return player.v_attack(cid, dst, engine.players) == GConst.GE_SUCCESS \
 			and dp.v_attacked() == GConst.GE_SUCCESS
@@ -304,15 +303,63 @@ func resolve_action_end_option(cause: int, reply: Dictionary, _ctx: Dictionary) 
 			return GConst.GE_INVALID_PLAYERID
 		notice_skill(ZHEN_YAN_YA_ZHI, [dst])
 		player.remove_energy(1)
-		# 「你可立即执行一次【真言术】」：给一份只放行 8003 的立刻法术行动
-		_真言压制重真言 = true
-		player.add_action(GConst.ActionType.Magic, ZHEN_YAN_YA_ZHI, true, false,
-			{"cards": [GConst.手牌白名单_全禁]})
+		# 「你可立即执行一次【真言术】」＝响应后白送的一次发动，不消耗任何行动：
+		# 先结算这 1 点法术伤害，伤害结算完再问「是否发动真言术」（见 p_harm_end）
+		_真言压制阶段 = 1
 		engine.push_harm({"src": player.id, "dst": dst, "point": 1,
 			"cause": ZHEN_YAN_YA_ZHI, "type": GConst.HarmType.Magic})
 		engine._broadcast_game()
 		return URGENT
 	return resolve_queued_extra_action(cause)
+
+
+## 真言压制那 1 点法术伤害结算完之后：问「是否发动真言术」；选发动再走真言术的选牌流程。
+## 这一整段都不消耗行动（不是额外行动，也不进行动阶段）。
+func p_harm_end(ctx: Dictionary) -> int:
+	var harm: Dictionary = ctx.get("harm", {})
+	if int(harm.get("src", -1)) != player.id or int(harm.get("cause", 0)) != ZHEN_YAN_YA_ZHI:
+		return SUCCESS
+	if _真言压制阶段 == 2:
+		# 读了「是否发动真言术」：选「不发动」/ 取消 → 结束
+		var r: Dictionary = take_skill_reply_full()
+		_真言压制阶段 = 0
+		var args: Array = r.get("args", [])
+		if args.is_empty() or int(args[0]) != 1 or _可用言灵().is_empty():
+			return SUCCESS
+		# 选发动：问「哪张【言灵】+ 打谁」，和真言术本体同一个选法
+		_真言压制阶段 = 3
+		询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "", _可用言灵(), true,
+			0, -1, 全部角色(), -1, {})
+		return WAIT
+	if _真言压制阶段 == 3:
+		# 读了「哪张言灵 + 打谁」：合法就直接当那张牌打出去（技能出牌，不消耗行动）
+		var r2: Dictionary = take_skill_reply_full()
+		_真言压制阶段 = 0
+		var cards: Array = r2.get("card_ids", [])
+		var dsts: Array = r2.get("dst_ids", [])
+		if cards.is_empty() or dsts.is_empty():
+			return SUCCESS
+		var 实例: int = player.盖牌实例(int(cards[0]))
+		var 牌: GCard = Data.get_card(实例) if 实例 >= 0 else null
+		if 牌 == null or not _真言能打(实例, 牌, int(dsts[0])):
+			# 这张言灵对这名角色不合法：报错重问，别让玩家白丢这次机会
+			engine.报错("【真言压制】这张【言灵】不能对这名角色使用", player.id)
+			_真言压制阶段 = 3
+			询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "",
+				_可用言灵(), true, 0, -1, 全部角色(), -1, {})
+			return WAIT
+		return _真言术(r2)
+	if _真言压制阶段 != 1:
+		return SUCCESS
+	_真言压制阶段 = 0
+	if _可用言灵().is_empty():
+		return SUCCESS
+	_真言压制阶段 = 2
+	询问(player.id, ZHEN_YAN_YA_ZHI, 0, 0, GConst.CardSource.Hand, [
+		{"value": 1, "label": GConst.skill_name(ZHEN_YAN_SHU), "enabled": true},
+		{"value": 2, "label": "不发动【%s】" % GConst.skill_name(ZHEN_YAN_SHU), "enabled": true},
+	], 0, "", [], true)
+	return WAIT
 
 
 ## 真言术给出的行动结算完：按「咏类/法术牌 → 直接打；否则有【秘术】才问」处理那 1 点法术伤害③
@@ -383,7 +430,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	_妖精攻击中 = false
-	_真言压制重真言 = false
+	_真言压制阶段 = 0
 	_真言伤阶段 = 0
 	_真言行动中 = false
 	return SUCCESS
@@ -450,7 +497,7 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	_妖精已用 = false
-	_真言压制重真言 = false
+	_真言压制阶段 = 0
 	if _禁忌阶段 == 2:
 		return _禁忌弃牌推进()
 	if _禁忌阶段 == 1:
