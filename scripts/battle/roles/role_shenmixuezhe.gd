@@ -353,6 +353,9 @@ func p_harm_end(ctx: Dictionary) -> int:
 			engine.报错("【真言压制】这张【言灵】不能对这名角色使用", player.id)
 			_问真言选牌()
 			return WAIT
+		# 这次真言术是「真言压制白送」的：不再单开一轮行动结束响应，
+		# 等它结算完直接回到外层那次响应的待决里继续问（否则会一层层套娃、取消很多次）
+		engine.技能出牌不开响应 = true
 		return _真言术(r)
 	if _真言压制阶段 != 1:
 		return SUCCESS

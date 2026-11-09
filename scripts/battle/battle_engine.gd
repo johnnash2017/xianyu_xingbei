@@ -101,6 +101,10 @@ var 行动额外: bool = false
 var 行动额外来源: int = 0
 ## 正处在「技能出牌」里（见 技能出牌）：那次出牌是技能效果的一部分，不压回合结束
 var _技能出牌中: bool = false
+## 这次技能出牌要不要顺带开「行动结束响应」：默认要（真言术本体）；
+## 但由响应技能（真言压制）白送的那次真言术不要 —— 它本身还在外层响应的「待决」里，
+## 再开一轮响应就会套娃，玩家得一层层取消。角色在调 技能出牌 之前把它置 true。
+var 技能出牌不开响应: bool = false
 ## 本次行动阶段是否禁止「特殊行动」（购买/合成/提炼）。发动过「启动」技能后，行动阶段照旧继续，
 ## 但只能再攻击 / 法术，不能再走特殊行动（启动技与特殊行动互斥）
 var 行动禁特殊: bool = false
@@ -3722,6 +3726,21 @@ func 转移伤害(harm: Dictionary, 新目标id: int, 免士气: bool = true) ->
 ## 必须先结算完第二段，再问妖精秘术 / 真言压制这些响应。
 func push_after_action(hook: String, ctx: Dictionary) -> void:
 	if _技能出牌中:
+		if 技能出牌不开响应:
+			# 只压 p_action_end（技能自己的收尾 / 第二段），不开行动结束响应：
+			# 外层那次响应的「待决」会在本段结算完后继续收集剩余选项，不再套一层
+			var 上下文: Dictionary = ctx.duplicate()
+			var cur2: BattlePlayer = players.get(int(上下文.get("player", current_id)))
+			if cur2 != null:
+				上下文["is_extra"] = 行动额外
+				上下文["extra_cause"] = 行动额外来源 if 行动额外 else 0
+				上下文["action_count"] = cur2.action_count()
+				上下文["attack_action_count"] = cur2.attack_action_count
+				上下文["magic_action_count"] = cur2.magic_action_count
+				上下文["special_action_count"] = cur2.special_action_count
+				上下文["extra_action_count"] = cur2.extra_action_count
+			push(SHook.new("p_action_end", 上下文, []))
+			return
 		_push_action_end_hooks(hook, ctx, 行动额外, 行动额外来源 if 行动额外 else 0, true)
 		return
 	push(STurnEnd.new())
@@ -3766,6 +3785,7 @@ func 技能出牌(pid: int, action_type: int, card_ids: Array, dst_ids: Array, c
 	var 数据: Dictionary = {"action_type": action_type, "card_ids": card_ids, "dst_ids": dst_ids}
 	var 结果: int = _do_attack(cur, 数据) if action_type == GConst.ActionType.Attack else _do_magic(cur, 数据)
 	_技能出牌中 = false
+	技能出牌不开响应 = false
 	行动额外 = 原额外
 	行动额外来源 = 原来源
 	当前额外行动数据 = 原数据
