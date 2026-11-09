@@ -170,6 +170,8 @@ var _获得牌已播: Dictionary = {}
 var _hand_maxes: Dictionary = {}
 ## 各玩家上次记录的指示物数量（player_id -> Array[int]），用于在「指示物变化」时写日志
 var _token_counts: Dictionary = {}
+## 各玩家上次记录的盖牌张数（player_id -> int），用于在「盖牌变化」时写一条和指示物同类的日志
+var _cover_counts: Dictionary = {}
 ## 各玩家上次记录的星石（player_id -> [宝石, 水晶]），只在「获得」时写日志
 var _gems: Dictionary = {}
 ## 各阵营战绩区上次记录的星石（color -> [宝石, 水晶]），只在「获得」时写日志
@@ -875,6 +877,7 @@ func run() -> void:
 		_check_cover_overflow()
 		_check_hand_change()
 		_check_token_change()
+		_check_cover_change()
 		_check_energy_change()
 		if idx >= _states.size():
 			break
@@ -969,6 +972,29 @@ func _check_cover_overflow() -> void:
 		if pp != null and pp.cover_cards_max > 0 and pp.cover_cards.size() > pp.cover_cards_max:
 			push(SCoverOverflow.new())
 			return
+
+
+## 每个状态跑完后对比各玩家**盖牌张数**：有变化就往战斗日志写一条（和指示物同一类、同一格式）。
+## 盖牌不计在 tokens 里（槽 2 只存上限），所以 _check_token_change 抓不到它，这里单独比。
+func _check_cover_change() -> void:
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp == null:
+			continue
+		var 现在: int = pp.cover_cards.size()
+		if not _cover_counts.has(pid):
+			_cover_counts[pid] = 现在
+			continue
+		var 上次: int = int(_cover_counts[pid])
+		if 上次 == 现在:
+			continue
+		_cover_counts[pid] = 现在
+		var 名: String = str(Data.role_token_def(pp.role_id, 2).get("name", "盖牌"))
+		broadcast(GConst.Msg.Gossip, {
+			"type": GConst.GossipType.Token,
+			"txt": "%s 的【%s】%d→%d" % [_称号(pp), 名, 上次, 现在],
+			"id": pp.id,
+		})
 
 
 ## 每个状态跑完后对比各玩家手牌数量：有变化就触发一次 p_hand_change
