@@ -290,8 +290,10 @@ func resolve_action_end_option(cause: int, reply: Dictionary, _ctx: Dictionary) 
 	if cause == YAO_JING_MI_SHU:
 		_妖精已用 = true
 		_妖精攻击中 = true
+		# 发动播报在这里做一次就够：进入额外行动时引擎还会再宣告一次（add_action 的 skip_notice），
+		# 不跳过就会在头像上飘两个「妖精秘术」
 		notice_skill(YAO_JING_MI_SHU, [player.id])
-		player.add_action(GConst.ActionType.Attack, YAO_JING_MI_SHU, true)
+		player.add_action(GConst.ActionType.Attack, YAO_JING_MI_SHU, true, true)
 		engine._broadcast_game()
 		return SUCCESS
 	if cause == ZHEN_YAN_YA_ZHI:
