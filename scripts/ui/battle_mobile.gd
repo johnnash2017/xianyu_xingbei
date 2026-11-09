@@ -9157,6 +9157,12 @@ func _选中是点头像定目标的牌() -> bool:
 	return 名 == GConst.CardName.Shield or 名 == GConst.CardName.Weaken or 名 == GConst.CardName.Poison
 
 
+## 「当作卡牌」型技能（神秘学者【真言术】）：这一手选中的牌就是要打出去的那张牌，
+## 所以所有「按选中的牌现算」的显示 / 判定都按普通出牌（mode 1）的口径走
+func _当作出牌() -> bool:
+	return _mode == 4 and _当作卡牌
+
+
 ## 选中的手牌是不是攻击牌（点目标即出手）
 func _选中是攻击牌() -> bool:
 	if _sel_cards.is_empty():
@@ -9948,7 +9954,7 @@ func _魔弹头像提示() -> Dictionary:
 		for t: int in _魔弹传递目标列表():
 			out[t] = "%d 法术伤害" % (当前 + 1)
 		return out
-	if _mode == 1 and _sel_cards.size() == 1:
+	if (_mode == 1 or _当作出牌()) and _sel_cards.size() == 1:
 		var 牌: GCard = Data.get_card(_sel_cards[0])
 		if 牌 == null or 牌.card_name_enum() != GConst.CardName.Missile:
 			return out

@@ -114,7 +114,14 @@ func v_magic_skill(action: Dictionary) -> int:
 		if 实例 < 0 or not _可用言灵().has(实例):
 			return GConst.GE_INVALID_CARDID
 		var 牌: GCard = Data.get_card(实例)
-		if 牌 == null or not _真言能打(实例, 牌, int(dsts[0])):
+		if 牌 == null:
+			return GConst.GE_INVALID_ACTION
+		# 这张盖牌此刻要能当手牌用：v_attack / v_shield 这些校验都走 has_hand_card，
+		# 不打开窗口的话「盖牌里的攻击牌」会被判成「手里没有这张牌」而打不出去
+		_真言行动中 = true
+		var 能打: bool = _真言能打(实例, 牌, int(dsts[0]))
+		_真言行动中 = false
+		if not 能打:
 			return GConst.GE_INVALID_ACTION
 		_真言加伤 = false
 		_真言伤阶段 = 0
