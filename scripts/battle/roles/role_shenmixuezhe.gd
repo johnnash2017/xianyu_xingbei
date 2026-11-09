@@ -35,13 +35,13 @@ var _言灵术阶段: int = 0
 var _真言行动中: bool = false
 ## 真言术这次用掉的言灵是不是咏类 / 法术牌（行动结束后据此决定要不要问【秘术】）
 var _真言加伤: bool = false
-## 真言术行动结束后的收尾阶段：0＝未处理 / 1＝等「是否额外移除 1 点【秘术】」 / 2＝等选伤害目标 / 3＝已结算
+## 真言术第二段：0＝未处理 / 1＝等「两选项 + 1 名目标」的答复 / 3＝已结算
 var _真言伤阶段: int = 0
 ## 禁忌秘法：0＝未开始 / 1＝等选 2 名目标 / 2＝等两名目标各弃 1 张
 var _禁忌阶段: int = 0
 var _禁忌目标: Array = []
 var _禁忌弃牌: Array = []
-## 真言压制：0＝没挂 / 1＝等那 1 点伤害结算完 / 2＝等「是否发动真言术」/ 3＝等选言灵+目标
+## 真言压制：0＝没挂 / 1＝等那 1 点伤害结算完（p_harm_end 里接着问真言术）/ 2＝等选言灵+目标
 var _真言压制阶段: int = 0
 ## 妖精秘术：本回合已用；给出的攻击行动进行中
 var _妖精已用: bool = false
@@ -320,7 +320,6 @@ func resolve_action_end_option(cause: int, reply: Dictionary, _ctx: Dictionary) 
 	return resolve_queued_extra_action(cause)
 
 
-## 真言压制那 1 点法术伤害结算完之后：问「是否发动真言术」；选发动再走真言术的选牌流程。
 ## 真言术的说明全文（「【真言术】：…」）：真言压制触发的那次询问直接拿它当提示条
 func _真言说明全文() -> String:
 	var 说明: String = GConst.skill_desc(ZHEN_YAN_SHU).replace("\\n", "").replace("\n", "").strip_edges()
@@ -334,6 +333,9 @@ func _问真言选牌() -> void:
 	_真言压制阶段 = 2
 	询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "", _可用言灵(), true,
 		0, -1, 全部角色(), -1, {}, 0, 0, false, [], true, -1, 0, _真言说明全文())
+
+
+## 真言压制那 1 点法术伤害结算完之后（p_harm_end）：直接进真言术的选牌；
 ## 这一整段都不消耗行动（不是额外行动，也不进行动阶段）。
 func p_harm_end(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
