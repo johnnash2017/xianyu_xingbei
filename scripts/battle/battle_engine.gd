@@ -157,8 +157,8 @@ var 当前额外回合来源: int = 0
 var 额外回合续位: int = -1
 ## 各玩家上次记录的手牌数量（player_id -> 张数），用于在「手牌变化」时触发 p_hand_change
 var _hand_counts: Dictionary = {}
-## 刚写过「获得【具体牌名】」的玩家：SRunHandChange 不再补一条泛化的「获得 N 张牌」，
-## 避免同一次获得出现三行（具体牌 / 获得 N 张 / 手牌变化）。
+## 刚写过「获得【具体牌名】」或摸牌「获得 N 张牌」的玩家：SRunHandChange 不再补一条
+## 泛化的「获得 N 张牌」，避免同一次获得出现三行（具体牌 / 获得 N 张 / 手牌变化）。
 var _获得牌已播: Dictionary = {}
 ## 各玩家上次记录的手牌上限（player_id -> 张数），用于在「手牌上限变化」时写日志
 var _hand_maxes: Dictionary = {}
@@ -3020,6 +3020,11 @@ func draw(pid: int, n: int) -> Array:
 		return []
 	var cards: Array[int] = deck.draw(n)
 	p0.add_hand_cards(cards)
+	if not cards.is_empty():
+		# 摸牌当场写「获得 N 张牌」：不能等手牌变化边界 —— 技能先把手牌放进盖牌区再摸、
+		# 或摸完马上 WAIT 时，手牌数可能净减少 / 边界被跳过，泛化日志就漏了。
+		_播手牌日志(p0, "%s 获得 %d 张牌" % [_称号(p0), cards.size()])
+		_获得牌已播[pid] = true
 	return cards
 
 
@@ -3085,6 +3090,8 @@ func 强制摸牌(pid: int, n: int, _cause: int = 0) -> Array[int]:
 	var cards: Array[int] = deck.draw(n)
 	p0.add_hand_cards(cards)
 	if not cards.is_empty():
+		_播手牌日志(p0, "%s 获得 %d 张牌" % [_称号(p0), cards.size()])
+		_获得牌已播[pid] = true
 		_broadcast_game()
 	return cards
 
