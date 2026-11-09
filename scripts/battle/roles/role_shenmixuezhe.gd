@@ -319,6 +319,19 @@ func resolve_action_end_option(cause: int, reply: Dictionary, _ctx: Dictionary) 
 
 
 ## 真言压制那 1 点法术伤害结算完之后：问「是否发动真言术」；选发动再走真言术的选牌流程。
+## 真言术的说明全文（「【真言术】：…」）：真言压制触发的那次询问直接拿它当提示条
+func _真言说明全文() -> String:
+	var 说明: String = GConst.skill_desc(ZHEN_YAN_SHU).replace("\\n", "").replace("\n", "").strip_edges()
+	if 说明.is_empty():
+		return ""
+	return "【%s】：%s" % [GConst.skill_name(ZHEN_YAN_SHU), 说明]
+
+
+## 「哪张【言灵】+ 打谁」的询问（真言压制白送的那次真言术用它，取消＝不发动）
+func _问真言选牌() -> void:
+	_真言压制阶段 = 2
+	询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "", _可用言灵(), true,
+		0, -1, 全部角色(), -1, {}, 0, 0, false, [], true, -1, 0, _真言说明全文())
 ## 这一整段都不消耗行动（不是额外行动，也不进行动阶段）。
 func p_harm_end(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
@@ -338,9 +351,7 @@ func p_harm_end(ctx: Dictionary) -> int:
 		if 牌 == null or not _真言能打(实例, 牌, int(dsts[0])):
 			# 这张言灵对这名角色不合法：报错重问，别让玩家白丢这次机会
 			engine.报错("【真言压制】这张【言灵】不能对这名角色使用", player.id)
-			_真言压制阶段 = 2
-			询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "",
-				_可用言灵(), true, 0, -1, 全部角色(), -1, {})
+			_问真言选牌()
 			return WAIT
 		return _真言术(r)
 	if _真言压制阶段 != 1:
@@ -350,9 +361,7 @@ func p_harm_end(ctx: Dictionary) -> int:
 	# 没有可用【言灵】就不发动；玩家不想发动点取消即可。
 	if _可用言灵().is_empty():
 		return SUCCESS
-	_真言压制阶段 = 2
-	询问(player.id, ZHEN_YAN_SHU, 1, 1, GConst.CardSource.Cover, [], 0, "", _可用言灵(), true,
-		0, -1, 全部角色(), -1, {})
+	_问真言选牌()
 	return WAIT
 
 ## 真言术给出的行动结算完：按「咏类/法术牌 → 直接打；否则有【秘术】才问」处理那 1 点法术伤害③
