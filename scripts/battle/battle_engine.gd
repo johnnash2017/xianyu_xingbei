@@ -3686,6 +3686,8 @@ func harm_ctx(harm: Dictionary) -> Dictionary:
 		"src": int(harm.get("src", -1)),
 		"dst": int(harm.get("dst", -1)),
 		"card_id": int(harm.get("card_id", -1)),
+		# 命格来源：攻击牌被「视为」换掉牌面时，命格仍按真正打出的那张牌算（没设就是 card_id 本身）
+		"fate_card_id": int(harm.get("fate_card_id", -1)),
 		"is_active": bool(harm.get("is_active", true)),
 	}
 

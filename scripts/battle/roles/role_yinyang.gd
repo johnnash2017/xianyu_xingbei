@@ -170,7 +170,7 @@ func _yin_yang_zhuan_huan(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 即便手里没有同系 / 同命格牌，也照样询问（三档全部置灰）：
 	# 不询问会让对手从「没弹询问」直接推断出阴阳师手里没有对应牌。
-	var 可阴阳: bool = not 无命格 and _has_same_fate_pattern_attack(atk_id)
+	var 可阴阳: bool = not 无命格 and _has_same_fate_pattern_attack(_命格来源(ctx, atk_id))
 	# 【圣光】也能算「仅应战」：手里没有同系攻击牌、但能用圣光抵挡时，仍要给玩家这一档，
 	# 否则他只能先取消、再等引擎的普通应战询问，又变回两步操作。
 	var 可圣光: bool = bool(ctx.get("can_light", true)) and _has_holy_light()
@@ -404,7 +404,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		# 可圣光传 false：3301 这条不能用圣光抵挡，客户端据此把【圣光】置灰。
 		询问(player.id, SHI_SHEN_ZHOU_SHU, 0, 0, GConst.CardSource.Hand,
 			_阴阳转换选项(SHI_SHEN_ZHOU_SHU, _has_base_reattack_card(atk_id),
-				not 无命格 and _has_same_fate_pattern_attack(atk_id)),
+				not 无命格 and _has_same_fate_pattern_attack(_命格来源(ctx, atk_id))),
 			0, "", [], true, 0, -1, [], -1, {},
 			atk_id, 0, false, [int(ctx.get("src", -1))], false, 预览伤害)
 		return WAIT
@@ -440,6 +440,13 @@ func _has_base_reattack_card(attack_card_id: int) -> bool:
 		if player.base_v_reattack(cid, attack_card_id) == GConst.GE_SUCCESS:
 			return true
 	return false
+
+
+## 「同命格」按哪张牌算：攻击牌被「视为」换掉牌面时（如游击士【精灵的剑舞】视为风神斩），
+## 命格仍取玩家真正打出的那张牌（harm.fate_card_id）；没设就用攻击牌本身。
+func _命格来源(ctx: Dictionary, atk_id: int) -> int:
+	var 牌: int = int(ctx.get("fate_card_id", -1))
+	return 牌 if 牌 >= 0 else atk_id
 
 
 ## 同命格攻击牌是否存在（阴阳转换用；光系不算，暗系攻击本身不可应战）
