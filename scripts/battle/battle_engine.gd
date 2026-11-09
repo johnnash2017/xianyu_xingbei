@@ -2132,6 +2132,12 @@ func 场卡快照(viewer_id: int) -> Array:
 		# 隐藏信息（【末日预言】的正面）：只给拥有者自己看，别人拿不到
 		if int(表.get("owner", -1)) == viewer_id and 表.has("front"):
 			项["front"] = str(表.get("front", ""))
+		# 明牌堆（仲裁者·圣的【天平·左】/【天平·右】）：牌面朝上摆在卡上，所有人看得到是哪几张
+		if bool(表.get("公开牌堆", false)):
+			var 明牌: Array = []
+			for c: Variant in 表.get("pile", []):
+				明牌.append(GConst.牌号(int(c)))
+			项["pile"] = 明牌
 		out.append(项)
 	return out
 

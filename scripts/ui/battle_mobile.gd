@@ -1123,6 +1123,14 @@ static func 场卡状态项(卡号: String, 表: Dictionary) -> Dictionary:
 		var 叠牌对象: GCard = Data.get_card(叠牌)
 		if 叠牌对象 != null:
 			提示名 = "%s（%s）" % [提示名, 叠牌对象.card_name]
+	# 摊在场卡上的明牌堆（仲裁者·圣的【天平·左】/【天平·右】）：逐张写牌名，看得到同侧有哪些牌
+	var 明牌堆: Array = 表.get("pile", [])
+	if not 明牌堆.is_empty():
+		var 牌名们: Array[String] = []
+		for c: Variant in 明牌堆:
+			var 牌对象: GCard = Data.get_card(int(c))
+			牌名们.append(牌对象.card_name if 牌对象 != null else str(int(c)))
+		提示名 = "%s（%s）" % [提示名, " · ".join(牌名们)]
 	if 上限 > 0:
 		计数 = 点数
 		提示名 = "%s %d/%d" % [提示名, 计数, 上限]

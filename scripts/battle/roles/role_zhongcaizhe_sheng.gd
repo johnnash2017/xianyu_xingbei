@@ -60,10 +60,12 @@ var _伤待选: int = 0
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
 	# 【神之天平】：开局拥有左右两张天平（counter_max=3 表示单侧上限 3）
+	# 「公开牌堆」＝上面摊着的牌对所有人可见（快照里随 pile 下发，客户端写进悬停提示）
 	for 侧: int in [左, 右]:
 		engine.加场卡({
 			"id": 天平名[侧], "owner": player.id, "attached": player.id,
 			"counter": 0, "counter_max": 3, "pile": [], "element": -1,
+			"公开牌堆": true,
 		})
 
 
