@@ -295,12 +295,17 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not engine.has_reply():
 		# 直接问「选 1 名角色」（水系提示 3 / 地系提示 4），目标不限敌我。
+		# 这一步的提示条只用对应附魔的那条专用提示：3802 是「响应」技能，客户端默认会把
+		# 响应询问的提示条换成整段技能说明（太长），所以用 ask_prompt 显式指定这两句。
 		# 头像预览：水系 +1 治疗、地系 1 点法术伤害 —— 客户端只在「已点选」的目标头像上画
 		# （与技能指示器同一套体验），不给每个候选人都画一遍
+		var 步骤: int = 2 if _子弹系别 == GConst.CardElement.Water else 3
 		询问(player.id, YUAN_SU_SHE_JI, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-			2 if _子弹系别 == GConst.CardElement.Water else 3,
+			步骤,
 			-1, [], -1, {}, 1,
-			GConst.预览类型_治疗 if _子弹系别 == GConst.CardElement.Water else GConst.HarmType.Magic)
+			GConst.预览类型_治疗 if _子弹系别 == GConst.CardElement.Water else GConst.HarmType.Magic,
+			false, [], true, -1, 0,
+			GConst.提示原文(YUAN_SU_SHE_JI, 步骤))
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var 目标: int = int(harm.get("dst", -1))
