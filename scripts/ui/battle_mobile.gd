@@ -1249,9 +1249,11 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			"被动技能": 律法技能号,
 			"被动技能角色": 40,
 		})
-	# 面朝上的盖牌（结界师【结界】等）：牌面公开，按卡面图标显示在状态区。
-	# 名字默认用卡名；角色特性配了「面朝上盖牌名」时按它写 —— 结界师写成「结界·X」，
-	# X 是这张牌的系别（荒神之力 / 荒神祭仪 都按系别判定，一眼要能看出来）
+	# 面朝上的盖牌（结界师【结界】、神秘学者【言灵】等）：牌面公开，按卡面图标显示在状态区。
+	# 名字默认用卡名；角色特性配了「面朝上盖牌名」时按它写：
+	#   模板带 %s 的按牌面系别填（结界师「结界·%s」）；
+	#   不带 %s 的整块当名字（神秘学者「言灵」：面朝上的牌统一叫言灵，不显示原本卡名）。
+	# 配了统一命名后，悬停说明也不再露出原本的卡牌名字（系别保留——真言术 / 结界都按系别判定）。
 	var 盖牌命名: Variant = GConst.角色特性值(p.role_id, "面朝上盖牌名")
 	for cid: int in p.cover_opens:
 		var 盖卡: GCard = Data.get_card(cid)
@@ -1259,12 +1261,19 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			continue
 		var 盖系名: String = GConst.element_to_chinese(盖卡.element_enum())
 		var 盖名: String = 盖卡.card_name
-		if 盖牌命名 is String and (盖牌命名 as String).contains("%s"):
-			盖名 = ((盖牌命名 as String) % 盖系名) if not 盖系名.is_empty() else "结界"
+		var 盖说明: String = "面朝上的盖牌（%s·%s 系）" % [盖卡.card_name, 盖系名]
+		if 盖牌命名 is String:
+			var 模板: String = 盖牌命名 as String
+			if 模板.contains("%s"):
+				盖名 = (模板 % 盖系名) if not 盖系名.is_empty() else 模板.replace("·%s", "").replace("%s", "")
+				盖说明 = "面朝上的盖牌（%s）" % 盖名
+			else:
+				盖名 = 模板
+				盖说明 = "面朝上的盖牌（%s%s）" % [盖名, ("·%s 系" % 盖系名) if not 盖系名.is_empty() else ""]
 		额外状态.append({
 			"name": 盖名,
 			"icon": 盖卡.sprite_path(),
-			"desc": "面朝上的盖牌（%s·%s 系）" % [盖卡.card_name, 盖系名],
+			"desc": 盖说明,
 		})
 	# 手牌里的魔刃/异刃是公开信息：头像旁显示图标 + 名字，悬停摊出完整卡面
 	for cid: int in p.hand_blades:
