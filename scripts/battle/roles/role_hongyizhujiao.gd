@@ -213,7 +213,7 @@ func _驱魔式(action: Dictionary) -> int:
 		_驱魔阶段 = 0
 		var cards: Array = r.get("card_ids", [])
 		var 弃: int = -1
-		if not cards.is_empty() and dp.has_hand_card(int(cards[0])):
+		if not cards.is_empty() and dp.has_discard_card(int(cards[0])):
 			弃 = int(cards[0])
 		else:
 			# 强制弃牌：超时 / 空回复按手牌顺序补一张，不能白跳过

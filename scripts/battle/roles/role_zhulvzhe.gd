@@ -126,6 +126,13 @@ func p_harm_end(_ctx: Dictionary) -> int:
 # ============================================================
 # 圣血之击：主动攻击命中②，伤害 +1、+1 治疗（再触发神律封锁的士气 -1）
 # ============================================================
+## 攻击「预告加伤」：圣血之击在命中②才 +1，应战提示要把它算进去（被打的人看到的是实际伤害）
+func p_attack_preview(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+		return 0
+	return 1
+
+
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
@@ -302,7 +309,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 		var args: Array = r.get("args", [])
 		var cards: Array = r.get("card_ids", [])
 		if args.is_empty() or int(args[0]) != 1 or cards.is_empty() \
-				or not player.has_hand_card(int(cards[0])):
+				or not player.has_discard_card(int(cards[0])):
 			_信仰阶段 = 0
 			return SUCCESS
 		_信仰阶段 = 2
@@ -441,7 +448,7 @@ func _圣律威压弃牌(holder: int, ids: Array) -> void:
 	if hp == null or ids.is_empty():
 		return
 	var cid: int = int(ids[0])
-	if not hp.has_hand_card(cid):
+	if not hp.has_discard_card(cid):
 		engine.报错("【圣律威压】提交的牌不在手牌里", holder)
 		return
 	engine.broadcast(GConst.Msg.Card, {

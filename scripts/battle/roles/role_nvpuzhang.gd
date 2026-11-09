@@ -107,7 +107,7 @@ func v_special_skill(action: Dictionary) -> int:
 		if player.gem <= 0 or cards.size() != 2 or player.cover_space() < 2:
 			return GConst.GE_INVALID_ACTION
 		for c: Variant in cards:
-			if not player.has_hand_card(int(c)):
+			if not player.has_discard_card(int(c)):
 				return GConst.GE_INVALID_ACTION
 		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
@@ -155,7 +155,7 @@ func _影之穴(action: Dictionary) -> int:
 		_影之穴阶段 = 0
 		var 弃: int = -1
 		var cards: Array = r.get("card_ids", [])
-		if not cards.is_empty() and dp != null and dp.has_hand_card(int(cards[0])):
+		if not cards.is_empty() and dp != null and dp.has_discard_card(int(cards[0])):
 			弃 = int(cards[0])
 		elif dp != null and not dp.hand_cards.is_empty():
 			# 强制弃牌：超时 / 空回复按手牌顺序补一张
@@ -319,7 +319,7 @@ func _影缝() -> int:
 		var cards: Array = r2.get("card_ids", [])
 		var 可用: Array = []
 		for c: Variant in cards:
-			if dp.has_hand_card(int(c)) and not 可用.has(int(c)) and 可用.size() < _影缝X:
+			if dp.has_discard_card(int(c)) and not 可用.has(int(c)) and 可用.size() < _影缝X:
 				可用.append(int(c))
 		# 强制弃满 X 张：不够就按手牌顺序补
 		for cid: int in dp.hand_cards:

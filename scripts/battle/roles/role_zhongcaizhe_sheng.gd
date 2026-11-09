@@ -150,7 +150,7 @@ func _善恶选牌() -> int:
 		return SUCCESS
 	var 侧: int = int(args[0])
 	var 牌: int = int(cards[0])
-	if not player.has_hand_card(牌) or 侧 < 0 or 侧 > 1:
+	if not player.has_discard_card(牌) or 侧 < 0 or 侧 > 1:
 		engine.报错("【善恶必计】提交的牌或天平不合法", player.id)
 		return SUCCESS
 	_善恶已用 = true
@@ -352,7 +352,7 @@ func _天罪放牌() -> int:
 		return SUCCESS
 	var 甲: int = int(cards[0])
 	var 乙: int = int(cards[1])
-	if 甲 == 乙 or not player.has_hand_card(甲) or not player.has_hand_card(乙):
+	if 甲 == 乙 or not player.has_discard_card(甲) or not player.has_discard_card(乙):
 		engine.报错("【天罪】提交的牌不合法", player.id)
 		return SUCCESS
 	notice_skill(TIAN_ZUI, [player.id])
@@ -410,7 +410,7 @@ func p_magic_skill(action: Dictionary) -> int:
 			return SUCCESS
 		var 侧: int = int(args[0])
 		var 牌: int = int(cards[0])
-		if not player.has_hand_card(牌) or not _是基本牌(牌) or 侧 < 0 or 侧 > 1:
+		if not player.has_discard_card(牌) or not _是基本牌(牌) or 侧 < 0 or 侧 > 1:
 			engine.报错("【罪迟必到】提交的牌或天平不合法", player.id)
 			_罪迟阶段 = 0
 			_罪迟剩余 = 0

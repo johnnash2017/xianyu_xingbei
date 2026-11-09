@@ -213,7 +213,7 @@ func _传道摸牌选项() -> Array:
 ## 从回复里认一张持有者手牌（超时按手牌第一张；没有手牌返回 -1）
 func _取一张(cards: Array, 主人: BattlePlayer) -> int:
 	for c: Variant in cards:
-		if 主人.has_hand_card(int(c)):
+		if 主人.has_discard_card(int(c)):
 			return int(c)
 	if not 主人.hand_cards.is_empty():
 		return int(主人.hand_cards[0])
