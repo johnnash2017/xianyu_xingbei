@@ -5714,6 +5714,10 @@ func _卡牌能点(card_id: int) -> bool:
 		return _行动牌能点(面, card_id)
 	# 发动技能 / 技能询问：按服务端给的选牌来源、白名单、选牌规则过滤（完整口径见 _技能牌能点）
 	if _mode == 4 or _mode == 3:
+		# 「当作卡牌」型技能（真言术）：盖牌是**当手牌真打出去**的，所以除了技能白名单，
+		# 还要过「这张牌本身能不能打出去」（没合法目标的法术牌、不能主动使用的牌一律置灰）
+		if _当作卡牌 and _mode == 4:
+			return _技能牌能点(面, card_id) and _可主动使用牌(card_id)
 		return _技能牌能点(面, card_id)
 	# 走到这里只剩「应答：弃牌 / 虚弱 / 治疗抵挡」——都是从手牌里选，直接放行
 	# （特殊行动 / 本地选项步等其余模式在中间那道 _mode 检查里就已经被挡掉了）
@@ -6206,9 +6210,10 @@ func _可主动使用牌(card_id: int) -> bool:
 		return false
 	match 牌.card_name_enum():
 		GConst.CardName.Shield, GConst.CardName.Weaken, GConst.CardName.Poison, GConst.CardName.Missile:
-			# 行动阶段一个合法目标都没有（如所有人都有【圣盾】）＝这张牌打不出去：
-			# 直接置灰，并让它参与「手里没有能用的牌」判定，进入无法出牌处理。
-			if _mode == 1 and not _有合法法术目标(牌):
+			# 一个合法目标都没有（如所有人都有【圣盾】）＝这张牌打不出去：直接置灰，
+			# 并让它参与「手里没有能用的牌」判定。「当作卡牌」型技能（真言术）里
+			# 这张牌也是要真打出去的，所以同一口径一起挡
+			if (_mode == 1 or _当作出牌()) and not _有合法法术目标(牌):
 				return false
 			return GConst.放行动作(GConst.ActionType.Magic, _当前放行())
 		_:
