@@ -251,12 +251,6 @@ func 盖牌可当手牌() -> bool:
 	return _真言行动中
 
 
-## 「是否额外移除 1 点秘术」的确认：玩家点「确定」时客户端回 args[0]=1
-func _是确认(r: Dictionary) -> bool:
-	var args: Array = r.get("args", [])
-	return args.size() > 0 and int(args[0]) == 1
-
-
 ## 技能表「说明」的后半段（第一个「；」之后）。「额外移除 1 点【秘术】」那一问的提示只用这半句。
 func _真言后半段() -> String:
 	var 全: String = GConst.skill_desc(ZHEN_YAN_SHU)
@@ -329,71 +323,56 @@ func p_action_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	match int(ctx.get("extra_cause", 0)):
 		ZHEN_YAN_SHU:
+			# 第二段统一一条路（攻击牌 / 法术牌完全一样）：
+			#   ① 打完先判断这次用的是不是咏类命格或法术牌；
+			#   ② 问一次「两个选项 + 1 名目标」，两条选项由上面的判断点亮（可取消＝不打伤害）；
+			#   ③ 确认后（选第 2 项要先移除 1 点【秘术】）对目标造成 1 点法术伤害。
 			if _真言伤阶段 == 3:
 				return SUCCESS
-			if _真言伤阶段 == 0:
-				var 用牌: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-				_真言加伤 = 用牌 != null and (用牌.is_magic() \
-					or 用牌.fate_pattern_enum() == GConst.FatePattern.Cast)
 			if _真言伤阶段 == 1:
-				# 等「是否额外移除 1 点【秘术】」的答复（取消＝不打这 1 点）
+				# 读第二段的答复：取消 / 没选目标 / 选项非法 → 不对目标造成伤害
 				var r: Dictionary = take_skill_reply_full()
-				_真言伤阶段 = 0
-				if not _是确认(r) or player.token_num(秘术槽) <= 0:
-					_真言伤阶段 = 3
+				_真言伤阶段 = 3
+				var args: Array = r.get("args", [])
+				var dsts: Array = r.get("dst_ids", [])
+				if args.is_empty() or dsts.is_empty():
 					return SUCCESS
-				player.remove_token(秘术槽, 1)
-				engine._broadcast_game()
-				return _真言打伤(ctx)
-			if _真言伤阶段 == 2:
-				return _真言选目标(take_skill_reply_full(), ctx)
-			if _真言加伤:
-				return _真言打伤(ctx)
-			if player.token_num(秘术槽) <= 0:
+				var 档: int = int(args[0])
+				var dst: int = int(dsts[0])
+				if not enemy_ids().has(dst):
+					return SUCCESS
+				if 档 == 2:
+					if _真言加伤 or player.token_num(秘术槽) <= 0:
+						return SUCCESS
+					player.remove_token(秘术槽, 1)
+					engine._broadcast_game()
+				elif 档 != 1 or not _真言加伤:
+					return SUCCESS
+				engine.push_harm({"src": player.id, "dst": dst, "point": 1,
+					"cause": ZHEN_YAN_SHU, "type": GConst.HarmType.Magic})
+				return URGENT
+			var 用牌: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+			_真言加伤 = 用牌 != null and (用牌.is_magic() \
+				or 用牌.fate_pattern_enum() == GConst.FatePattern.Cast)
+			var 有秘术: bool = player.token_num(秘术槽) > 0
+			if not _真言加伤 and not 有秘术:
+				# 两条加成的条件都不成立：第二段不发生
 				_真言伤阶段 = 3
 				return SUCCESS
-			# 不是咏类 / 法术牌：行动结束后才问「是否额外移除 1 点【秘术】」，
-			# 这一问的提示只写技能后半段（不重复前半段的选言灵部分）
+			# 选项固定两条，按这次用的牌点亮其中一条：
+			#   第 1 项＝（【言灵】为咏类命格或法术牌）→ 是才亮
+			#   第 2 项＝（额外移除 1 点【秘术】）→ 不是、且还有【秘术】才亮
 			_真言伤阶段 = 1
-			询问(player.id, ZHEN_YAN_SHU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, _真言后半段(), -1, _真言后半段())
+			询问(player.id, ZHEN_YAN_SHU, 0, 1, GConst.CardSource.Hand, [
+				{"value": 1, "label": "【言灵】为咏类命格或法术牌", "enabled": _真言加伤},
+				{"value": 2, "label": "额外移除 1 点【秘术】", "enabled": (not _真言加伤) and 有秘术},
+			], 0, "", [], true,
+				0, -1, enemy_ids(), -1, {}, 1, GConst.HarmType.Magic, false, [], true, -1, 0,
+				_真言后半段(), -1, _真言后半段())
 			return WAIT
 		YAO_JING_MI_SHU:
 			_妖精攻击中 = false
 	return SUCCESS
-
-
-## 打那 1 点法术伤害③：行动目标本身是对手就直接打它，否则（打自己 / 队友）才让人选一名对手
-func _真言打伤(ctx: Dictionary) -> int:
-	var 候选: Array = enemy_ids()
-	if 候选.is_empty():
-		_真言伤阶段 = 3
-		return SUCCESS
-	var 目标: int = int(ctx.get("dst", -1))
-	if 候选.has(目标):
-		_真言伤阶段 = 3
-		engine.push_harm({"src": player.id, "dst": 目标, "point": 1,
-			"cause": ZHEN_YAN_SHU, "type": GConst.HarmType.Magic})
-		return URGENT
-	_真言伤阶段 = 2
-	# 第二段（那 1 点法术伤害）的两条询问都直接显示技能说明的后半段原文，
-	# 不再让客户端退回整段技能说明
-	询问(player.id, ZHEN_YAN_SHU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-		0, -1, 候选, -1, {}, 1, GConst.HarmType.Magic, false, [], true, -1, 0, _真言后半段(), -1, _真言后半段())
-	return WAIT
-
-
-func _真言选目标(r: Dictionary, _ctx: Dictionary) -> int:
-	_真言伤阶段 = 3
-	var dsts: Array = r.get("dst_ids", [])
-	if dsts.is_empty():
-		return SUCCESS
-	var dst: int = int(dsts[0])
-	if not enemy_ids().has(dst):
-		return SUCCESS
-	engine.push_harm({"src": player.id, "dst": dst, "point": 1,
-		"cause": ZHEN_YAN_SHU, "type": GConst.HarmType.Magic})
-	return URGENT
 
 
 ## 回合结束：清掉真言术残留的分步标记（正常在行动结束时已经清完）
