@@ -1483,6 +1483,9 @@ func _清理状态遗留回复(st: Variant) -> void:
 func on_message(pid: int, kind: int, data: Dictionary) -> void:
 	if _await_id != pid or kind != _await_kind:
 		return
+	# 处理这次行动 / 应答之前，先按「持有者」同步一次卡牌系别属性：
+	# 调试发牌、刚交给她的牌可能还没等到状态边界，规则这边要立刻读到正确系别
+	_check_卡牌属性()
 	# 攻击结束响应里的「额外攻击行动」快捷按钮：放弃剩余响应，下一次直接进入所选额外攻击
 	if kind == GConst.Msg.Respond \
 			and int(data.get("respond_id", 0)) == GConst.RespondType.ChooseExtraAction:

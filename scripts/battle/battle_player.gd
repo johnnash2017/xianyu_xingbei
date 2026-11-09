@@ -1253,14 +1253,22 @@ func to_proto(viewer_id: int) -> Dictionary:
 		var 手牌元素: Array = []
 		for cid: int in hand_cards:
 			var c: GCard = Data.get_card(cid)
-			手牌元素.append(c.element_enum() if c != null else 0)
+			if c == null:
+				手牌元素.append(0)
+				continue
+			# 有效系别按「持有者」现算（不读 GCard.系别覆盖 的缓存）：
+			# 调试发牌 / 刚被塞进来的牌也要立刻在快照里显示成形态改过的系别
+			var 覆盖: int = role.牌系别覆盖(c) if role != null else 0
+			手牌元素.append(覆盖 if 覆盖 != 0 else c.基础元素())
 		# 与 hands 一一对应：这张牌挂着的「系别覆盖」属性名（空串＝无）。
 		# 客户端据此区分「玩家自己切的系别」和「形态属性覆盖」（如【烈焰形态】视为火）：
 		# 前者是 可选元素 里的一档、要在本地改当前系别；后者只覆盖读取系别，不能动牌面。
 		var 手牌属性: Array = []
+		var 属性名: String = role.牌系别属性名() if role != null else ""
 		for cid2: int in hand_cards:
 			var c2: GCard = Data.get_card(cid2)
-			手牌属性.append(c2.系别覆盖名 if c2 != null else "")
+			var 覆盖2: int = role.牌系别覆盖(c2) if (role != null and c2 != null) else 0
+			手牌属性.append(属性名 if 覆盖2 != 0 else "")
 		d["hand_elements"] = 手牌元素
 		d["hand_attrs"] = 手牌属性
 		d["covereds"] = cover_cards.duplicate()
