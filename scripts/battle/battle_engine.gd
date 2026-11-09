@@ -3697,6 +3697,13 @@ var last_harm_type: int = 0
 
 ## 伤害流水线入口：执行顺序（pop 顺序）3 → 钩子3 → 钩子4 → 治疗询问 → 钩子5 → 钩子6 → 摸牌 → 钩子6drawn → 伤害结束 → 手牌超限
 func push_harm(harm: Dictionary) -> void:
+	# 通用口径：**攻击**类伤害如果没有「真正打出去的那张实体牌」（harm 里没有 card_id_instance），
+	# 它就是用虚拟牌打出的攻击（欺诈 / 多重射击 / 圣屑飓暴这类手拼 harm 的），一律标成无命格，
+	# 不参与「同命格」判定（阴阳师【阴阳转换】/【式神咒束】等）；真实牌的攻击由引擎或角色填了
+	# card_id_instance，不受这条影响（要「无命格」仍可自己显式标 virtual_no_fate）。
+	if int(harm.get("type", GConst.HarmType.None)) == GConst.HarmType.Attack \
+			and not harm.has("card_id_instance"):
+		harm["virtual_no_fate"] = true
 	last_harm_cause = int(harm.get("cause", 0))
 	last_harm_type = int(harm.get("type", GConst.HarmType.None))
 	var hc: Dictionary = harm_ctx(harm)
