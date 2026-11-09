@@ -3252,20 +3252,12 @@ func 移除牌库顶(张数: int = 1) -> Array[int]:
 	return cards
 
 
-## 把若干张牌【展示】给全场看（展示牌库顶 / 弃置牌库顶牌类技能用）。
+## 把牌库顶的牌【展示】给全场看（展示牌库顶 / 弃置牌库顶牌类技能用）。
 ## 只是广播展示，不会移动牌；真正的移除/入弃牌由调用方做。
 ## 持久=true：客户端一直摆在展示区，直到下一条 Pick / Show（10803 选牌期间不自动收起）。
+## 牌库牌不属于手牌 → 走「展示牌」（不触发 p_show_hand 的封印判定）。
 func 展示牌库顶(展示者id: int, cards: Array, 持久: bool = false) -> void:
-	if cards.is_empty():
-		return
-	var 数据: Dictionary = {
-		"type": GConst.CardMsgType.Show, "src_id": 展示者id, "dst_id": 展示者id,
-		"card_ids": cards, "is_real": true,
-	}
-	if 持久:
-		数据["persist"] = true
-	broadcast(GConst.Msg.Card, 数据)
-	_broadcast_game()
+	展示牌(展示者id, cards, 持久)
 
 
 ## 从展示区选走一张牌（10803 剑守誓言）：给全场播一条 Pick，客户端把这张牌从展示位
@@ -3941,6 +3933,92 @@ func 校验基础效果放置目标(action: Dictionary) -> bool:
 ## 供需要区分「抵挡攻击」与其它公开打牌（如抵挡魔弹 / 弃牌展示）的角色判定（如圣女冰霜祷言）
 func push_show_hand(pid: int, cards: Array, show_only: bool = false, 格挡攻击: bool = false) -> void:
 	push(SHook.new("p_show_hand", {"player": pid, "cards": cards, "show_only": show_only, "格挡攻击": 格挡攻击}, []))
+
+
+# ============================================================
+# 公开亮牌：全工程唯一入口
+# ------------------------------------------------------------
+# 「牌面被别人看到」只有这三种情况，角色脚本不要再手写 broadcast(Card.Show)：
+#   展示牌    —— 牌不是从这个人的手里拿出来的（牌库顶 / 盖牌区 / 弃牌堆 / 场上）
+#   展示手牌  —— 牌是从他手里公开亮出来的（打出 / 展示 / 公开弃牌）
+#                → 客户端摊牌 + p_show_hand 钩子（封印师的五系封印靠它结算）
+#   私下看牌  —— 只发给本人看（查看类技能），不广播、也不触发钩子
+# 需要「亮完顺手把牌移走」时用下面两个封装（顺序固定：亮 → 离手 → 进区域）：
+#   展示手牌并弃     —— 手牌 → 弃牌堆（已亮过，不再播弃牌特效，只写文字日志）
+#   展示手牌进盖牌   —— 手牌 → 面朝上盖牌区（【言灵】/【遗迹】这类）
+# 时机：钩子是「压栈」，谁先压谁后跑由调用顺序决定。想让展示响应排在后面的结算之前，
+# 就把 展示手牌 放在那几处 push 之后再调（如「先 push_强制摸牌，再展示手牌」＝先结算封印再摸牌）。
+# ============================================================
+## 亮出牌面（只广播给全场，不触发 p_show_hand）：牌源不是手牌时用
+func 展示牌(pid: int, cards: Array, 持久: bool = false) -> void:
+	if cards.is_empty():
+		return
+	var 数据: Dictionary = {
+		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
+		"card_ids": _牌面表(cards), "is_real": true,
+	}
+	if 持久:
+		数据["persist"] = true
+	broadcast(GConst.Msg.Card, 数据)
+	_broadcast_game()
+
+
+## 公开亮出手牌：客户端摊牌 + 触发 p_show_hand（封印类技能的触发点）
+func 展示手牌(pid: int, cards: Array) -> void:
+	if cards.is_empty():
+		return
+	展示牌(pid, cards)
+	push_show_hand(pid, cards)
+
+
+## 只给本人看（查看类技能）：不广播、不触发 p_show_hand
+func 私下看牌(pid: int, cards: Array) -> void:
+	if cards.is_empty():
+		return
+	send(pid, GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": pid, "dst_id": pid,
+		"card_ids": _牌面表(cards), "is_real": true,
+	})
+
+
+## 亮出手牌并弃掉（返回实际离手的实例号）。ctx 与 to_discard 同形，owner/source 由这里补。
+func 展示手牌并弃(pid: int, cards: Array, ctx: Dictionary = {}) -> Array:
+	var 实际: Array = []
+	var p0: BattlePlayer = players.get(pid)
+	if p0 == null:
+		return 实际
+	for c: Variant in cards:
+		var 实例: int = p0.手牌实例(int(c))
+		if 实例 >= 0 and not 实际.has(实例):
+			实际.append(实例)
+	if 实际.is_empty():
+		return 实际
+	展示手牌(pid, 实际)
+	take_from_hand(pid, 实际)
+	var 上下文: Dictionary = ctx.duplicate()
+	上下文["owner"] = pid
+	上下文["source"] = "hand"
+	to_discard(实际, 上下文)
+	_log_discard(pid, 实际, false)
+	return 实际
+
+
+## 亮出手牌并面朝上放进盖牌区（【言灵】/【遗迹】这类；返回实际离手的实例号）
+func 展示手牌进盖牌(pid: int, cards: Array, cause: int) -> Array:
+	var 实际: Array = []
+	var p0: BattlePlayer = players.get(pid)
+	if p0 == null:
+		return 实际
+	for c: Variant in cards:
+		var 实例: int = p0.手牌实例(int(c))
+		if 实例 >= 0 and not 实际.has(实例):
+			实际.append(实例)
+	if 实际.is_empty():
+		return 实际
+	展示手牌(pid, 实际)
+	take_from_hand(pid, 实际)
+	add_cover(pid, 实际, pid, cause, true)
+	return 实际
 
 
 ## 目标资格校验（F4 / 4601）：dst 能不能被放上这张基础效果（由目标角色判定，默认成功）。

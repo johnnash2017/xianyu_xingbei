@@ -145,13 +145,10 @@ func _天使(action: Dictionary) -> int:
 	if not _是天使之墙(牌) or not _墙目标可收(dst):
 		return SUCCESS
 	notice_skill(TIAN_SHI, [dst])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [牌], "is_real": true,
-	})
-	# 牌本身进目标的基础效果区：引擎把【天使之墙】视作【圣盾】格挡（base_v_shield）
+	# 手牌公开亮出当作【圣盾】：统一入口（亮牌 + 触发封印）+ 进目标的基础效果区
+	engine.展示手牌(player.id, [牌])
+	engine.take_from_hand(player.id, [牌])
 	engine.add_basic_effect(dst, 牌, player.id, GConst.CAUSE_USE)
-	engine.take_from_hand(player.id, [牌], true)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -168,10 +165,8 @@ func _叛逆之墙(action: Dictionary) -> int:
 	if dp == null or player.手牌实例(牌) < 0 or not _是圣盾(牌):
 		return SUCCESS
 	notice_skill(PAN_NI_ZHI_QIANG, [目标])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [牌], "is_real": true,
-	})
+	# 手牌【圣盾】公开亮出：统一入口（亮牌 + 触发封印）
+	engine.展示手牌(player.id, [牌])
 	# 拿走对方面前 1 个基础效果（跳过 Tricky 占位，避免与 _trickies 脱节）
 	var 拿: int = -1
 	for be: Dictionary in dp.basic_effects:
@@ -182,8 +177,8 @@ func _叛逆之墙(action: Dictionary) -> int:
 		engine.remove_basic_effect(目标, 拿, PAN_NI_ZHI_QIANG, player.id)
 		player.add_hand_cards([拿])
 		engine.播获得牌日志(player.id, [拿])
-	# 自己的圣盾放到对方面前（技能表写的是「手牌【圣盾】【展示】」：走展示手牌钩子）
-	engine.take_from_hand(player.id, [牌], true)
+	# 自己的圣盾放到对方面前（手牌【圣盾】已在上面统一亮出）
+	engine.take_from_hand(player.id, [牌])
 	engine.add_basic_effect(目标, 牌, player.id, PAN_NI_ZHI_QIANG)
 	engine._broadcast_game()
 	# 你弃 1 张牌（由本人选）
@@ -306,11 +301,8 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		if 牌 == null:
 			_垂迹选中 = -1
 			return SUCCESS
-		# 查看：只把这张牌给发动者本人看
-		engine.send(player.id, GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": int(项["dst"]), "dst_id": player.id,
-			"card_ids": [真牌], "is_real": true,
-		})
+		# 查看：只把这张牌给发动者本人看（私下看牌，不广播、不触发封印）
+		engine.私下看牌(player.id, [真牌])
 		var 同系: Array = hand_ids_where(func(_cid: int, c: GCard) -> bool:
 			return c.element_enum() == 牌.element_enum())
 		if 同系.is_empty():
@@ -469,11 +461,8 @@ func p_turn_end(ctx: Dictionary) -> int:
 	for 项: Dictionary in _trickies:
 		var dst: int = int(项["dst"])
 		var 真牌: int = int(项["card"])
-		# 展示所有【Tricky】
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": dst, "dst_id": dst,
-			"card_ids": [真牌], "is_real": true,
-		})
+		# 展示所有【Tricky】（牌早已放在场上，不是手牌 → 只广播、不触发封印）
+		engine.展示牌(dst, [真牌])
 		if 已列.has(dst):
 			continue
 		已列.append(dst)

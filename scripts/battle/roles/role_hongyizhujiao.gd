@@ -219,13 +219,8 @@ func _驱魔式(action: Dictionary) -> int:
 			# 强制弃牌：超时 / 空回复按手牌顺序补一张，不能白跳过
 			弃 = int(dp.hand_cards[0])
 		var 牌: GCard = Data.get_card(弃)
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": 弃牌人, "dst_id": 弃牌人,
-			"card_ids": [弃], "is_real": true,
-		})
-		engine.take_from_hand(弃牌人, [弃], true)
-		engine.to_discard([弃], {"owner": 弃牌人, "source": "hand", "cause": QU_MO_SHI})
-		engine._log_discard(弃牌人, [弃], false)
+		# 「弃 1 张牌【展示】」：统一入口（亮牌 + 触发封印 + 离手 + 弃牌堆 + 日志）
+		engine.展示手牌并弃(弃牌人, [弃], {"cause": QU_MO_SHI})
 		if 牌 != null and 牌.fate_pattern_enum() == GConst.FatePattern.Holy:
 			notice_skill(QU_MO_SHI, [弃牌人])
 			施加治疗(player.id, 1)

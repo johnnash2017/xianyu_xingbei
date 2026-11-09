@@ -133,16 +133,10 @@ func _言灵术(action: Dictionary) -> int:
 		notice_skill(YAN_LING_SHU, [player.id])
 		engine.take_from_hand(player.id, cards)
 		engine.add_cover(player.id, cards, player.id, YAN_LING_SHU, true)
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": cards, "is_real": true,
-		})
-		engine._broadcast_game()
 		_言灵术阶段 = 1
 		engine.push_强制摸牌(player.id, 1, YAN_LING_SHU)
-		# 【言灵】是面朝上摆出来的：要触发「展示手牌」钩子（封印师的 X 之封印靠它结算）。
-		# 压在摸牌之后 → LIFO 下先结算展示响应，再摸牌。
-		engine.push_show_hand(player.id, cards)
+		# 公开亮出手牌（触发封印类响应）；压在摸牌之后 → 先结算展示响应，再摸牌
+		engine.展示手牌(player.id, cards)
 		return URGENT
 	if _言灵术阶段 == 1:
 		# 摸牌（含超限弃牌 / 言灵超限）结算完回来：不管有没有同系手牌都要问这一问
@@ -169,18 +163,13 @@ func _言灵术(action: Dictionary) -> int:
 		# 白名单已经把可弃的牌限死；走到这里说明是硬提交的非法牌
 		engine.报错("【言灵术】提交的牌与现存【言灵】不同系或不在手里", player.id)
 		return SUCCESS
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [弃], "is_real": true,
-	})
-	# 这张牌是公开弃掉的（技能表写的是弃 1 张【展示】）：走「展示手牌」钩子。
+	# 这张牌是公开弃掉的（技能表写的是弃 1 张【展示】）：走统一入口，顺带走「展示手牌」钩子。
 	# 压在最后 → LIFO 下先结算展示响应（封印类），再跑这次技能的行动结束。
 	engine.take_from_hand(player.id, [弃])
 	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": YAN_LING_SHU})
 	engine._log_discard(player.id, [弃], false)
 	player.add_token(秘术槽, 1)
-	engine.push_show_hand(player.id, [弃])
-	engine._broadcast_game()
+	engine.展示手牌(player.id, [弃])
 	return URGENT
 
 
@@ -253,10 +242,9 @@ func _真言出牌() -> int:
 	engine.remove_cover(player.id, [_真言牌], player.id, ZHEN_YAN_SHU)
 	player.add_hand_cards([_真言牌])
 	engine.播获得牌日志(player.id, [_真言牌])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [_真言牌], "is_real": true,
-	})
+	# 这张【言灵】本来面朝上摆在场边，这里只是亮出来说明它进了手牌；
+	# 真正打出去时出牌路径会触发「展示手牌」钩子，所以这里只广播、不压钩子。
+	engine.展示牌(player.id, [_真言牌])
 	_真言待打 = _真言牌
 	_真言待伤 = _真言加伤
 	var 种类: int = GConst.ActionType.Attack if 牌.is_attack() else GConst.ActionType.Magic
@@ -425,13 +413,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		if 补 < 0:
 			补 = int(player.hand_cards[0])
 		player.remove_token(秘术槽, 1)
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": [补], "is_real": true,
-		})
-		# 这张手牌面朝上当作【言灵】摆出来：走「展示手牌」钩子（封印响应）
-		engine.take_from_hand(player.id, [补], true)
-		engine.add_cover(player.id, [补], player.id, SHOU_HU_LING, true)
+		# 这张手牌面朝上当作【言灵】摆出来：走统一入口（亮牌 + 触发封印 + 离手 + 进盖牌）
+		engine.展示手牌进盖牌(player.id, [补], SHOU_HU_LING)
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -531,14 +514,10 @@ func _禁忌弃牌推进() -> int:
 	if 得.is_empty():
 		engine._broadcast_game()
 		return SUCCESS
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": 得, "is_real": true,
-	})
 	engine.add_cover(player.id, 得, player.id, JIN_JI_MI_FA, true)
 	# 注意：这两张是别人手里弃掉的牌（不是自己从手里展示出来的），
-	# 封印类「从手中打出或展示出」不触发，所以这里不压 p_show_hand。
-	engine._broadcast_game()
+	# 封印类「从手中打出或展示出」不触发，所以走 展示牌（只广播、不压展示钩子）。
+	engine.展示牌(player.id, 得)
 	return SUCCESS
 
 

@@ -434,10 +434,8 @@ func _侍奉之道() -> int:
 		if 甲牌 == null or 乙牌 == null:
 			return SUCCESS
 		notice_skill(SHI_FENG_ZHI_DAO, [player.id])
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": [甲, 乙], "is_real": true,
-		})
+		# 这两张是盖牌区的【影】（不是从手里展示出来的），只广播、不压展示钩子
+		engine.展示牌(player.id, [甲, 乙])
 		engine.remove_cover(player.id, [甲, 乙], player.id, SHI_FENG_ZHI_DAO)
 		player.add_token(糸槽, 1)
 		_侍奉牌 = [甲, 乙]

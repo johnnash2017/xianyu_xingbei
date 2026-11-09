@@ -341,11 +341,9 @@ func _信仰重铸可用() -> bool:
 func _发动信仰重铸(card: int) -> void:
 	notice_skill(XIN_YANG_CHONG_ZHU, [player.id])
 	player.remove_energy(1)
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [card], "is_real": true,
-	})
-	engine.take_from_hand(player.id, [card], true)
+	# 手牌面朝上放到【王权宝珠】上【展示】：统一入口（亮牌 + 触发封印）
+	engine.展示手牌(player.id, [card])
+	engine.take_from_hand(player.id, [card])
 	var 表: Dictionary = engine.取场卡(宝珠名)
 	表["card"] = GConst.牌号(card)
 	player.add_token(圣遗物槽, 2)
@@ -451,14 +449,8 @@ func _圣律威压弃牌(holder: int, ids: Array) -> void:
 	if not hp.has_discard_card(cid):
 		engine.报错("【圣律威压】提交的牌不在手牌里", holder)
 		return
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": holder, "dst_id": holder,
-		"card_ids": [cid], "is_real": true,
-	})
-	engine.take_from_hand(holder, [cid], true)
-	engine.to_discard([cid], {"owner": holder, "source": "hand", "cause": SHENG_LV_WEI_YA})
-	engine._log_discard(holder, [cid], false)
-	engine._broadcast_game()
+	# 「弃 1 张同种类的牌【展示】」：统一入口（亮牌 + 触发封印 + 离手 + 进弃牌堆 + 日志）
+	engine.展示手牌并弃(holder, [cid], {"cause": SHENG_LV_WEI_YA})
 
 
 ## 神言咏赞传回铸律者时的三个选项：换红衣主教 / 移 1 银弹让目标摸 1 / 移 2 银弹让目标摸 2

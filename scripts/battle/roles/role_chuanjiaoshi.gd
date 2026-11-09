@@ -159,14 +159,8 @@ func _传道() -> int:
 			return SUCCESS
 		_传道弃 = 弃
 		notice_skill(CHUAN_DAO, [player.id])
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": [弃], "is_real": true,
-		})
-		# 「弃 1 张牌【强制】【展示】」：公开亮牌，走展示手牌钩子（封印响应）
-		engine.take_from_hand(player.id, [弃], true)
-		engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": CHUAN_DAO})
-		engine._log_discard(player.id, [弃], false)
+		# 「弃 1 张牌【强制】【展示】」：统一入口（亮牌 + 触发封印 + 离手 + 弃牌堆 + 日志）
+		engine.展示手牌并弃(player.id, [弃], {"cause": CHUAN_DAO})
 		player.add_token(虔诚槽, 1)
 		engine._broadcast_game()
 		_传道阶段 = 4
@@ -187,12 +181,9 @@ func _传道() -> int:
 	var 得: int = _取一张(cards3, engine.p(持有者2))
 	if 得 < 0:
 		return SUCCESS
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": 持有者2, "dst_id": 持有者2,
-		"card_ids": [得], "is_real": true,
-	})
-	# 「持有【路标】的角色弃 1 张牌【展示】」：他那张也是公开亮出来的，走展示手牌钩子
-	engine.take_from_hand(持有者2, [得], true)
+	# 「持有【路标】的角色弃 1 张牌【展示】」：统一入口（亮牌 + 触发封印）
+	engine.展示手牌(持有者2, [得])
+	engine.take_from_hand(持有者2, [得])
 	player.add_hand_cards([得])
 	engine.播获得牌日志(player.id, [得])
 	# 与你弃掉的牌同系别或同命格 → 额外 +1 虔诚
@@ -352,11 +343,9 @@ func _弥撒() -> int:
 					break
 			if 弃 < 0:
 				return SUCCESS
-			engine.broadcast(GConst.Msg.Card, {
-				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-				"card_ids": [弃], "is_real": true,
-			})
-			engine.take_from_hand(player.id, [弃], true)
+			# 「弃 1 张牌【展示】」：统一入口（亮牌 + 触发封印 + 离手）；是基础效果牌就挂到持有者面前
+			engine.展示手牌(player.id, [弃])
+			engine.take_from_hand(player.id, [弃])
 			var 牌: GCard = Data.get_card(弃)
 			if dp != null and 牌 != null and _是基础效果牌(牌):
 				engine.add_basic_effect(持有, 弃, player.id, MI_SA)
@@ -505,12 +494,8 @@ func _转移路标(目标: int) -> int:
 			break
 	var 牌: GCard = Data.get_card(新牌) if 新牌 >= 0 else null
 	if 新牌 >= 0:
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-			"card_ids": [新牌], "is_real": true,
-		})
-		# 「你摸 1 张牌【强制】【展示】」：公开亮出这张手牌，走展示手牌钩子（封印响应）
-		engine.push_show_hand(player.id, [新牌])
+		# 「你摸 1 张牌【强制】【展示】」：统一入口（亮牌 + 触发封印）
+		engine.展示手牌(player.id, [新牌])
 	if 牌 != null and (牌.is_magic() or 牌.fate_pattern_enum() == GConst.FatePattern.Holy):
 		# 取消本次转移：移除【路标】，改放到启示选中的目标面前
 		# （这也是一次「放置」：照样跑告解式 / 弥撒，不能只是把场卡换个 attached）

@@ -443,11 +443,11 @@ func _引稽编鉴(ctx: Dictionary) -> int:
 		if 入 < 0:
 			_引稽已完结 = true
 			return _遗迹论破(ctx)
+		# 这张是攻击目标从手里拿出来、面朝上摆在【遗迹】区的：统一入口（亮牌 + 触发封印，
+		# 展示归属＝交牌的那名角色）
+		engine.展示手牌(dp.id, [入])
 		engine.take_from_hand(dp.id, [入])
 		engine.add_cover(player.id, [入], player.id, YIN_JI_BIAN_JIAN, true)
-		# 这张是攻击目标从手里拿出来、面朝上摆在【遗迹】区的：按「展示出手牌」处理，
-		# 要触发封印师的 X 之封印（展示归属＝交牌的那名角色）
-		engine.push_show_hand(dp.id, [入])
 		engine._broadcast_game()
 		return _引稽交换(ctx)
 	if _引稽阶段 == 2:
@@ -687,8 +687,8 @@ func _交换遗迹(X: int, 给牌: Array, cause: int, 需要手牌数: int) -> v
 	engine.播获得牌日志(player.id, 盖)
 	engine.take_from_hand(player.id, 手)
 	engine.add_cover(player.id, 手, player.id, cause, true)
-	# 交出去的这几张手牌是面朝上摆在【遗迹】区的：按「展示出手牌」处理，触发封印类响应
-	engine.push_show_hand(player.id, 手)
+	# 交出去的这几张手牌是面朝上摆在【遗迹】区的：统一入口（亮牌 + 触发封印）
+	engine.展示手牌(player.id, 手)
 	engine._broadcast_game()
 
 
