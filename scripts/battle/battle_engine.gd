@@ -4009,19 +4009,22 @@ func _规则攻击牌(系: int, 命格: int, pid: int = -1) -> Array:
 	if pid >= 0:
 		var p0: BattlePlayer = players.get(pid)
 		if p0 != null:
-			for 面: int in [GConst.噬神者_魔刃卡, GConst.噬神者_异刃卡]:
+			# 手里「有效系别 / 命格」符合的牌面也要放行：
+			#   · 魔刃 / 异刃按**实例**当前系别（同一张牌面在不同人手里系别不同）；
+			#   · 被卡牌系别属性改过系别的普通牌（如苍炎魔女【烈焰形态】把攻击牌视为火）也按改后的系别算 ——
+			#     否则「只能用火系攻击牌」这种额外行动会把她手里被视作火的斩驳回。
+			for cid: int in p0.hand_cards:
+				var 面: int = GConst.牌号(cid)
 				if 表.has(面):
 					continue
-				var 面卡: GCard = Data.get_card(面)
-				if 面卡 == null or (命格 > 0 and 面卡.fate_pattern_enum() != 命格):
+				var 实例卡: GCard = Data.get_card(cid)
+				if 实例卡 == null or not 实例卡.is_attack():
 					continue
-				for cid: int in p0.hand_cards:
-					if GConst.牌号(cid) != 面:
-						continue
-					var 实例卡: GCard = Data.get_card(cid)
-					if 实例卡 != null and (系 <= 0 or 实例卡.element_enum() == 系):
-						表.append(面)
-						break
+				if 系 > 0 and 实例卡.element_enum() != 系:
+					continue
+				if 命格 > 0 and 实例卡.fate_pattern_enum() != 命格:
+					continue
+				表.append(面)
 	else:
 		# 旧调用（无玩家上下文，测试/兜底）：按共用牌面当前系别补
 		for 面2: int in [GConst.噬神者_魔刃卡, GConst.噬神者_异刃卡]:

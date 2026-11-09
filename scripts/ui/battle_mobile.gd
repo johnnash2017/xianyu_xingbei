@@ -1511,10 +1511,17 @@ func _造展示卡牌视图(牌号: int, 显示元素: int = 0) -> Control:
 	if 卡 == null:
 		return null
 	# 魔刃/异刃的当前系别按实例走：展示时用一份临时副本，不能改共用牌面
-	if 显示元素 > 0 and 卡.可选元素.has(显示元素):
-		var 显示卡: GCard = 卡.复制()
-		显示卡.设置当前元素(显示元素)
-		卡 = 显示卡
+	if 显示元素 > 0:
+		if 卡.可选元素.has(显示元素):
+			var 显示卡: GCard = 卡.复制()
+			显示卡.设置当前元素(显示元素)
+			卡 = 显示卡
+		elif 显示元素 != 卡.element_enum():
+			# 被卡牌系别属性改过（如【烈焰形态】把攻击牌视为火）：展示的这份副本只覆盖显示，
+			# 牌面自己的系别一点不动
+			var 覆盖卡: GCard = 卡.复制()
+			覆盖卡.系别覆盖 = 显示元素
+			卡 = 覆盖卡
 	var 视图: Control = 卡牌视图预制.instantiate()
 	# Card.tscn 的根节点本身是 0 尺寸的（手牌区是代码给尺寸的），得显式给尺寸才画得出来
 	视图.set_anchors_preset(Control.PRESET_TOP_LEFT)
@@ -1691,6 +1698,10 @@ func _on_card(msg: Dictionary) -> void:
 			if 显示元素 > 0 and c.可选元素.has(显示元素):
 				c = c.复制()
 				c.设置当前元素(显示元素)
+			elif 显示元素 > 0 and 显示元素 != c.element_enum():
+				# 卡牌系别属性改过的牌（如【烈焰形态】视为火）：日志按有效系别算
+				c = c.复制()
+				c.系别覆盖 = 显示元素
 			# 日志里写全「名字·系别·命格」（头像飘字仍是短的「名字·命格」）
 			names.append(_牌日志名(c, not 无命格虚拟))
 			if 首张 == null:
