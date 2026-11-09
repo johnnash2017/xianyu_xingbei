@@ -79,7 +79,7 @@ func available_skills() -> Array:
 			"need_card": 2,
 			"need_target": 0,
 			"cards": player.hand_cards.duplicate(),
-			"enabled": player.gem > 0 and player.hand_cards.size() >= 2 and player.cover_space() >= 2,
+			"enabled": player.gem > 0 and player.hand_cards.size() >= 2,
 		},
 	]
 
@@ -107,7 +107,8 @@ func v_special_skill(action: Dictionary) -> int:
 		return GConst.GE_SUCCESS
 	if 技能号 == ZHEN_MO_YING:
 		var cards: Array = action.get("card_ids", [])
-		if player.gem <= 0 or cards.size() != 2 or player.cover_space() < 2:
+		# 不再看盖牌槽够不够：可以超出上限，多出来的由引擎「盖牌超限」询问让玩家自己选着弃
+		if player.gem <= 0 or cards.size() != 2:
 			return GConst.GE_INVALID_ACTION
 		for c: Variant in cards:
 			if not player.has_discard_card(int(c)):
@@ -179,7 +180,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if int(harm.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	var 牌: int = int(harm.get("card_id", -1))
-	if 牌 < 0 or player.cover_space() <= 0:
+	if 牌 < 0:
 		return SUCCESS
 	if 拥有风穴():
 		# 影之风：拥有【风穴】时，命中后进弃牌堆的攻击牌自动变成【影】
@@ -235,8 +236,6 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 
 ## 把刚打完的攻击牌从弃牌堆取出来，面朝下放到自己角色旁作为【影】
 func _把弃牌变成影(牌: int, cause: int) -> void:
-	if player.cover_space() <= 0:
-		return
 	var 实例: int = engine.deck.取出实例(牌)
 	if 实例 < 0:
 		return
@@ -352,7 +351,7 @@ func _影缝() -> int:
 		engine.to_discard(可用, {"owner": _影缝目标, "source": "hand", "cause": YING_FENG})
 		engine._log_discard(_影缝目标, 可用, true)
 		engine._broadcast_game()
-		if 可用.is_empty() or player.cover_space() <= 0:
+		if 可用.is_empty():
 			_影缝阶段 = 0
 			return SUCCESS
 		_影缝阶段 = 3
@@ -664,20 +663,9 @@ func _风止(host: int) -> int:
 			if not 弃.has(cid):
 				弃.append(cid)
 		if not 弃.is_empty():
-			var 空位: int = player.cover_space()
-			var 作影: Array = []
-			var 入堆: Array = []
-			for c0: Variant in 弃:
-				if 作影.size() < 空位:
-					作影.append(int(c0))
-				else:
-					入堆.append(int(c0))
+			# 两张都面朝下变【影】；超出盖牌上限的部分由引擎「盖牌超限」询问让玩家自己选着弃
 			engine.take_from_hand(host, 弃)
-			if not 作影.is_empty():
-				engine.add_cover(player.id, 作影, player.id, FENG_ZHI, false)
-			if not 入堆.is_empty():
-				engine.to_discard(入堆, {"owner": host, "source": "hand", "cause": FENG_ZHI})
-				engine._log_discard(host, 入堆)
+			engine.add_cover(player.id, 弃, player.id, FENG_ZHI, false)
 		engine.移除场卡(风穴名)
 		engine._broadcast_game()
 		return SUCCESS
