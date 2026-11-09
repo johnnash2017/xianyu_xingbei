@@ -9382,11 +9382,6 @@ func _补牌落高(card_id: int, 现在: int) -> float:
 ## 具体移除哪几张由服务端自己挑；这些牌要正常亮着，但不能点、也不能置灰。
 func _盖牌纯展示() -> bool:
 	var 技能号: int = _pending_skill_id if _mode == 4 else _skill_ask_id
-	# 通用口径：这次询问的选牌来源是盖牌区、又一张都不用选（need_card = 0）＝只把盖牌亮出来给人看
-	# （魔弓三技能、真言压制的「还有没有言灵」都是这一种），所以整片保持原色、不可点
-	if (_mode == 3 or _mode == 4) and _skill_card_source == GConst.CardSource.Cover \
-			and _选牌需求张数() <= 0:
-		return true
 	return 技能号 == GConst.技能_雷光散射 \
 		or 技能号 == GConst.技能_魔贯冲击 \
 		or 技能号 == GConst.技能_多重射击

@@ -281,9 +281,6 @@ func action_end_options(ctx: Dictionary) -> Array:
 		"skill_id": ZHEN_YAN_YA_ZHI,
 		"need_target": 1,
 		"targets": 全部角色(),
-		# 选这一项时把盖牌区亮出来给玩家看（纯展示、一张都点不动）：
-		# 让他先知道还有没有【言灵】可以接着发动真言术
-		"展示盖牌": true,
 		"enabled": player.get_energy() >= 1,
 	})
 	return out

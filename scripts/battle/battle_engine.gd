@@ -4726,11 +4726,6 @@ class S行动聚合器:
 					if int(o.get("need_card", 0)) > 0 and o.has("card_source"):
 						选牌来源 = int(o.get("card_source", 选牌来源))
 						break
-					# 「展示盖牌」型选项（如真言压制）：只把盖牌区亮出来给玩家看，
-					# 一张都不能点（ask 的 need_card 仍是 0），用来判断还有没有【言灵】
-					if bool(o.get("展示盖牌", false)):
-						选牌来源 = GConst.CardSource.Cover
-						break
 				e.ask_skill(pid, 首, 0, 0, 选牌来源,
 					待问, 0, "", [], true,
 					"行动结束时可以发动以下行动，选择一项（发动后还能发动另一项）",
