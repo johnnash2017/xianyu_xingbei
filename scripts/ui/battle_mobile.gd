@@ -340,9 +340,8 @@ func _日志标签(kind: int) -> String:
 const 仲裁者角色: int = 14
 ## 苍炎魔女：【烈焰形态】下除水系、暗系外的攻击牌视为火系（对照 role_monv._is_fire_like）
 const 苍炎魔女角色: int = 30
-## 精灵射手（32）：【精灵祝福形态】（横置 tap）下她的【祝福】盖牌视同手牌参与出牌 / 应战判定
-## （对照服务端 role_jinglingsheshou.盖牌可当手牌 与 BattlePlayer.has_hand_card）
-const 精灵射手角色: int = 32
+## 精灵射手（32）【精灵祝福形态】的「盖牌视同手牌」不再按角色号写死在客户端：
+## 服务端随快照下发 cover_as_hand（BattleRole.盖牌可当手牌()），见 _盖牌视同手牌
 
 
 ## 猎巫人【转换】是技能栏里可选发的响应，不是把普通法术牌自动放行成攻击牌；
@@ -9180,12 +9179,12 @@ func _is_my_cover(card_id: int) -> bool:
 	return false
 
 
-## 我此刻是否处于「盖牌视同手牌」的形态：精灵射手（role_id == 32）处于【精灵祝福形态】（横置 tap）。
-## 对照服务端 BattlePlayer.has_hand_card：role.盖牌可当手牌()（精灵射手覆写为 player.tap）时盖牌也算手牌。
-## 角色号与是否横置都取自客户端现成的 GPlayer 字段，不新增协议字段
+## 我此刻是否处于「盖牌视同手牌」的形态：服务端随快照下发 cover_as_hand
+## （BattleRole.盖牌可当手牌()，精灵射手【精灵祝福形态】横置时 = true、神秘学者【真言术】选言灵窗口 = true）。
+## 对照服务端 BattlePlayer.has_hand_card：钩子为 true 时盖牌也算手牌，客户端让盖牌区的牌可点。
 func _盖牌视同手牌() -> bool:
 	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	return 我 != null and 我.role_id == 精灵射手角色 and 我.tap
+	return 我 != null and 我.cover_as_hand
 
 
 ## 「按盖牌对待」的牌：我的盖牌里不属于「视同手牌」的那些（其余角色、或精灵射手不在形态时）。

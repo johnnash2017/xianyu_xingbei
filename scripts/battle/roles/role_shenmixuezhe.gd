@@ -31,15 +31,12 @@ const 秘术槽: int = 0
 
 ## 言灵术：0＝未开始 / 1＝已放言灵等摸牌 / 2＝等额外弃牌 / 3＝完成
 var _言灵术阶段: int = 0
-## 真言术：0＝未开始 / 1＝等选言灵 / 2＝等是否额外移除 1 秘术 / 3＝完成
-var _真言阶段: int = 0
-## 真言术选中的言灵、是否加伤、加伤待结算
-var _真言牌: int = -1
+## 真言术：正在「只能用【言灵】」的行动阶段里（盖牌可当手牌、技能栏清空）
+var _真言行动中: bool = false
+## 真言术这次用掉的言灵是不是咏类 / 法术牌（行动结束后据此决定要不要问【秘术】）
 var _真言加伤: bool = false
 ## 真言术行动结束后的收尾阶段：0＝未处理 / 1＝等「是否额外移除 1 点【秘术】」 / 2＝等选伤害目标 / 3＝已结算
 var _真言伤阶段: int = 0
-## 真言术给出的额外行动还没打出去时，这张牌在手里（回合结束放回【言灵】）
-var _真言待打: int = -1
 ## 禁忌秘法：0＝未开始 / 1＝等选 2 名目标 / 2＝等两名目标各弃 1 张
 var _禁忌阶段: int = 0
 var _禁忌目标: Array = []
@@ -57,6 +54,9 @@ var _守护灵阶段: int = 0
 # 技能栏
 # ============================================================
 func available_skills() -> Array:
+	if _真言行动中:
+		# 真言术的行动阶段：只能用盖牌区里的【言灵】出牌，技能栏不摆东西
+		return []
 	if _真言压制重真言:
 		# 「你可立即执行一次【真言术】」：这一手只给真言术，别的技能按钮都不摆
 		return [{
@@ -104,14 +104,11 @@ func v_magic_skill(action: Dictionary) -> int:
 		_言灵术阶段 = 0
 		return GConst.GE_SUCCESS
 	if 技能号 == ZHEN_YAN_SHU:
-		if _可用言灵().is_empty():
+		if _可用言灵().is_empty() or _真言行动中:
 			return GConst.GE_INVALID_ACTION
-		_真言阶段 = 0
-		_真言牌 = -1
 		_真言加伤 = false
 		_真言伤阶段 = 0
 		_真言压制重真言 = false
-		_真言待打 = -1
 		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 
@@ -181,40 +178,33 @@ func 技能URGENT后重入(action: Dictionary = {}) -> bool:
 
 # ============================================================
 # 真言术：把 1 个非光系【言灵】当手牌打出
+# 交互＝「魔弓【雷光散射】的开场 + 精灵射手【祝福】的用法」：
+#   点技能 → 直接进一个只能用【言灵】的行动阶段（盖牌区亮出来、别的牌/技能都置灰），
+#   玩家在盖牌区点 1 张言灵 → 点目标 → 确定，就是正常出牌；想放弃点「放弃行动」。
+#   不需要「选完再塞到手里」的中间步骤，也没有多余的确认窗。
 # ============================================================
 func _真言术() -> int:
-	if _真言阶段 == 3:
+	var 可用: Array = _可用言灵()
+	if 可用.is_empty():
 		return SUCCESS
-	if _真言阶段 == 0:
-		var 可用: Array = _可用言灵()
-		if 可用.is_empty():
-			return SUCCESS
-		_真言阶段 = 1
-		# 参考精灵射手：点技能后直接打开盖牌区，点 1 张【言灵】当手牌用
-		# （白名单＝除光系外的言灵；光系的在盖牌区里会置灰点不动）
-		询问(player.id, ZHEN_YAN_SHU, 1, 0, GConst.CardSource.Cover, [], 0, "", 可用, true,
-			0, -1, [], -1, {})
-		return WAIT
-	# 阶段 1：读选中的那张言灵
-	var r: Dictionary = take_skill_reply_full()
-	_真言阶段 = 3
-	var 选中: int = -1
-	for c: Variant in r.get("card_ids", []):
-		var 实例: int = player.盖牌实例(int(c))
-		if 实例 >= 0 and _可用言灵().has(实例):
-			选中 = 实例
-			break
-	if 选中 < 0:
-		# 取消 / 没有合法的言灵：不发动
+	if _真言行动中:
+		# 已经在真言术的行动阶段里（重复点了技能按钮）：什么都不做
 		return SUCCESS
-	_真言牌 = 选中
-	var 牌: GCard = Data.get_card(_真言牌)
-	if 牌 == null:
-		engine.报错("【真言术】言灵不存在", player.id)
-		return SUCCESS
-	# 咏类命格 / 法术牌 = 行动结束后直接打 1 点；否则要到行动结束后再问「是否额外移除 1 点【秘术】」
-	_真言加伤 = 牌.is_magic() or 牌.fate_pattern_enum() == GConst.FatePattern.Cast
-	return _真言出牌()
+	notice_skill(ZHEN_YAN_SHU, [player.id])
+	_真言行动中 = true
+	_真言伤阶段 = 0
+	# 攻击牌 / 法术牌都可能，所以这份额外行动两类都放行；可用牌＝除光系外的【言灵】
+	var 牌面: Array = []
+	for cid: int in 可用:
+		牌面.append(GConst.牌号(cid))
+	player.add_action(GConst.ActionType.AttackMagic, ZHEN_YAN_SHU, true, false, {"cards": 牌面})
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 这段时间盖牌区里的【言灵】可以当手牌用（引擎 has_hand_card / 出牌 / 应战都认）
+func 盖牌可当手牌() -> bool:
+	return _真言行动中
 
 
 ## 「是否额外移除 1 点秘术」的确认：玩家点「确定」时客户端回 args[0]=1
@@ -228,27 +218,6 @@ func _真言后半段() -> String:
 	var 全: String = GConst.skill_desc(ZHEN_YAN_SHU)
 	var 切: int = 全.find("；")
 	return 全.substr(切 + 1).strip_edges() if 切 >= 0 else 全
-
-
-## 言灵离开【言灵】区 → 加入手牌 → 给一份「只能用这张牌」的立刻行动
-func _真言出牌() -> int:
-	_真言阶段 = 3
-	var 牌: GCard = Data.get_card(_真言牌)
-	if 牌 == null:
-		return SUCCESS
-	notice_skill(ZHEN_YAN_SHU, [player.id])
-	engine.remove_cover(player.id, [_真言牌], player.id, ZHEN_YAN_SHU)
-	player.add_hand_cards([_真言牌])
-	engine.播获得牌日志(player.id, [_真言牌])
-	# 这张【言灵】本来面朝上摆在场边，这里只是亮出来说明它进了手牌；
-	# 真正打出去时出牌路径会触发「展示手牌」钩子，所以这里只广播、不压钩子。
-	engine.展示牌(player.id, [_真言牌])
-	_真言待打 = _真言牌
-	_真言伤阶段 = 0
-	var 种类: int = GConst.ActionType.Attack if 牌.is_attack() else GConst.ActionType.Magic
-	player.add_action(种类, ZHEN_YAN_SHU, true, false, {"cards": [GConst.牌号(_真言牌)]})
-	engine._broadcast_game()
-	return SUCCESS
 
 
 ## 真言术 / 真言压制 结算后的响应：妖精秘术（攻击行动）/ 真言压制（水晶 1 点法术伤害）
@@ -316,7 +285,15 @@ func p_action_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	match int(ctx.get("extra_cause", 0)):
 		ZHEN_YAN_SHU:
-			_真言待打 = -1
+			if not _真言行动中 and _真言伤阶段 == 0:
+				# 不是这次真言术的行动（例如别人的行动误入）：忽略
+				return SUCCESS
+			# 行动结束 = 这次真言术的「只能出言灵」窗口关闭
+			_真言行动中 = false
+			if _真言伤阶段 == 0:
+				var 用牌: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+				_真言加伤 = 用牌 != null and (用牌.is_magic() \
+					or 用牌.fate_pattern_enum() == GConst.FatePattern.Cast)
 			if _真言伤阶段 == 3:
 				return SUCCESS
 			if _真言伤阶段 == 1:
@@ -378,26 +355,16 @@ func _真言选目标(r: Dictionary, _ctx: Dictionary) -> int:
 	return URGENT
 
 
-## 回合结束：真言术给出的行动没打出去时，把那张牌放回【言灵】区（不白拿一张手牌）
+## 回合结束：真言术的「只能出言灵」窗口一定已经关掉（行动结束或放弃行动）
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	_妖精攻击中 = false
 	_真言压制重真言 = false
 	_真言伤阶段 = 0
-	if _真言待打 < 0:
+	if not _真言行动中:
 		return SUCCESS
-	var 牌: int = _真言待打
-	_真言待打 = -1
-	if player.手牌实例(牌) < 0:
-		return SUCCESS
-	engine.take_from_hand(player.id, [牌])
-	if player.cover_space() > 0:
-		engine.add_cover(player.id, [牌], player.id, ZHEN_YAN_SHU, true)
-	else:
-		# 言灵区满了：放进弃牌堆，不留成白拿的一张手牌
-		engine.to_discard([牌], {"owner": player.id, "source": "hand", "cause": ZHEN_YAN_SHU})
-		engine._log_discard(player.id, [牌])
+	_真言行动中 = false
 	engine._broadcast_game()
 	return SUCCESS
 

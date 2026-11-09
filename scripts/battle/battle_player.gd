@@ -1243,6 +1243,9 @@ func to_proto(viewer_id: int) -> Dictionary:
 		if (面 == GConst.噬神者_魔刃卡 or 面 == GConst.噬神者_异刃卡) and not 手中刃.has(面):
 			手中刃.append(面)
 	d["hand_blades"] = 手中刃
+	# 盖牌此刻能不能当手牌用（精灵射手【精灵祝福形态】、神秘学者【真言术】选言灵之后）：
+	# 客户端据此让盖牌区的牌可点 / 可出牌 / 可应战，与 has_hand_card 的服务端口径一致
+	d["cover_as_hand"] = role != null and role.盖牌可当手牌()
 	# 只有本人能看到自己的手牌/盖牌
 	if viewer_id == id:
 		d["hands"] = hand_cards.duplicate()

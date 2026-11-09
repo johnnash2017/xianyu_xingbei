@@ -69,6 +69,9 @@ var cover_opens: Array[int] = []
 var hand_blades: Array[int] = []
 ## 【律法】标记（星坠女巫）：1=繁星 / 2=影月 / 3=蚀日
 var laws: Array[int] = []
+## 盖牌此刻能不能当手牌用（服务端 BattleRole.盖牌可当手牌()）：
+## 精灵射手【精灵祝福形态】、神秘学者【真言术】选言灵之后这类窗口 —— 客户端据此让盖牌区的牌可点
+var cover_as_hand: bool = false
 
 var tokens: Array = [null, null, null]
 var ready: bool = false
