@@ -136,12 +136,6 @@ func 基础元素() -> int:
 	return GConst.element_from_string(element)
 
 
-## 是否挂着某个系别覆盖属性（名称为空＝只比是否有覆盖）
-func 有系别属性(名: String = "") -> bool:
-	if 系别覆盖 == 0:
-		return false
-	return 名.is_empty() or 系别覆盖名 == 名
-
 
 ## 命格枚举值
 func fate_pattern_enum() -> int:

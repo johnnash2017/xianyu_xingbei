@@ -64,54 +64,21 @@ func _is_fire_like(card_id: int) -> bool:
 	return card != null and card.element_enum() == GConst.CardElement.Fire
 
 
-## 【烈焰形态】：给她手里的攻击牌挂「烈焰形态」属性（除水 / 暗外一律视为火）。
-## 属性是引擎的通用机制（系别覆盖），挂上之后 element_enum() 就是火，其它逻辑不用特判。
-func _应用烈焰属性() -> void:
-	if not player.tap:
-		return
-	var 改了: bool = false
-	for cid: int in player.hand_cards:
-		var card: GCard = Data.get_card(cid)
-		if card == null or not card.is_attack():
-			continue
-		# 看「卡片自己的系别」：魔刃 / 异刃看当前选中的那一系
-		var 本系: int = card.基础元素()
-		if 本系 == GConst.CardElement.Water or 本系 == GConst.CardElement.Darkness:
-			if card.有系别属性(烈焰属性名):
-				engine.清卡牌属性(cid)
-				改了 = true
-			continue
-		if engine.设手牌属性系别(player.id, cid, GConst.CardElement.Fire, 烈焰属性名):
-			改了 = true
-	if 改了:
-		engine._broadcast_game()
-
-
-## 手牌变化（摸牌 / 弃牌 / 交牌）：形态期间属性跟着手牌走 —— 新进手的攻击牌补上属性，
-## 离手的牌由引擎的 _check_卡牌属性 自动清掉
-func p_hand_change(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id or not player.tap:
-		return SUCCESS
-	_应用烈焰属性()
-	return SUCCESS
-
-
-## 手里切换系别（魔刃 / 异刃）：烈焰形态下按切换后的系别重算这张牌的属性
-func p_card_element_change(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id or not player.tap:
-		return SUCCESS
-	var cid: int = int(ctx.get("card_id", -1))
-	var card: GCard = Data.get_card(cid)
-	if card == null:
-		return SUCCESS
+## 通用「卡牌系别属性」：烈焰形态下，我手里的攻击牌除水 / 暗外一律视为火。
+## 引擎每拍按「持有者」现算（见 BattleEngine._check_卡牌属性），所以不用给牌挂东西：
+## 别人在别的回合塞牌给我、我自己摸牌 / 弃牌 / 交牌，下一拍自动跟上。
+func 牌系别覆盖(card: GCard) -> int:
+	if not player.tap or card == null or not card.is_attack():
+		return 0
+	# 看「卡片自己的系别」：魔刃 / 异刃看当前选中的那一系
 	var 本系: int = card.基础元素()
-	if card.is_attack() and 本系 != GConst.CardElement.Water and 本系 != GConst.CardElement.Darkness:
-		if engine.设手牌属性系别(player.id, cid, GConst.CardElement.Fire, 烈焰属性名):
-			engine._broadcast_game()
-	elif card.有系别属性(烈焰属性名):
-		engine.清卡牌属性(cid)
-		engine._broadcast_game()
-	return SUCCESS
+	if 本系 == GConst.CardElement.Water or 本系 == GConst.CardElement.Darkness:
+		return 0
+	return GConst.CardElement.Fire
+
+
+func 牌系别属性名() -> String:
+	return 烈焰属性名
 
 
 ## 手牌中视为火系的牌数
@@ -137,7 +104,6 @@ func _get_away_from_fire() -> int:
 	if not player.tap:
 		return SUCCESS
 	player.tap = false
-	engine.清手牌属性系别(player.id, 烈焰属性名)
 	player.清手牌上限修正("烈焰形态")
 	engine._broadcast_game()
 	return SUCCESS
@@ -165,7 +131,6 @@ func p_special_skill(action: Dictionary) -> int:
 	player.boot_skill_used = true
 	engine.set_tap(player.id, true)
 	player.设手牌上限修正("烈焰形态", int(player.tokens[0]["num"]) - 2)
-	_应用烈焰属性()
 	if card_num > 0:
 		engine.push_draw(player.id, card_num)
 		engine._broadcast_game()

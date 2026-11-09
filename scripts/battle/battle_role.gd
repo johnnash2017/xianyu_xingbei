@@ -189,6 +189,18 @@ func p_after_turn_end(_ctx: Dictionary) -> int: return SUCCESS
 ## ctx: {card_id 打出的牌, doer 应战者, target 反击目标, 改用 视为哪张牌, real 是否实体牌}
 ## 角色也可设置 ctx["block"] = true，把这次应战当作「格挡」（本次攻击落空、不反击），如阴阳师光系应战
 func p_reattack(_ctx: Dictionary) -> int: return SUCCESS
+## 通用「卡牌系别属性」判定：这张牌在**我手里**时，有效系别是多少（0＝不改，按牌面算）。
+## 引擎每拍按「持有者」现算，所以别人在别的回合把牌交给我、我自己摸牌 / 弃牌都不需要额外处理。
+## 例：苍炎魔女【烈焰形态】—— 手里的攻击牌除水 / 暗外一律视为火。
+func 牌系别覆盖(_card: GCard) -> int:
+	return 0
+
+
+## 上面那条覆盖对应的属性名（写进快照 hand_attrs，客户端据此把左上角系别标签画成覆盖后的系别）
+func 牌系别属性名() -> String:
+	return ""
+
+
 ## 主动攻击宣告时（对照应战那条的 p_reattack）：角色可把本次打出的攻击牌「视为」另一张结算
 ## （如噬神者在这里记录本次打出的【魔刃】/【异刃】）。
 ## ctx: {player 攻击者, card_id 打出的牌, 改用 视为哪张牌（默认＝card_id）}

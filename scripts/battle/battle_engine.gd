@@ -2391,68 +2391,77 @@ func 设置卡牌元素(pid: int, card_id: int, element: int) -> bool:
 	send(pid, GConst.Msg.CardElement, {
 		"card_id": card_id, "element": element, "commands": cmds,
 	})
-	# 切系别可能让「系别覆盖」属性失效（如水系魔刃不该再算火）：交给角色自己重算
-	if p0.role != null:
-		p0.role.call_hook("p_card_element_change", {"player": pid, "card_id": card_id, "element": element})
 	return true
 
 
 # ============================================================
-# 通用「卡牌属性 · 系别覆盖」
+# 通用「卡牌系别属性」（按持有者现算，不需要给牌挂东西）
 # ============================================================
-## 属性挂在运行时实例副本上（Data.取实例卡），所以 card.element_enum() 之后一律返回覆盖后的系别：
-## 同系 / 异系、应战要求、弃牌费用、牌面左上角标签等通用逻辑全都自动跟着走，不需要各处特判，
-## 也就不需要为「魔刃 / 异刃」单独做兼容 —— 它们读到的也只是同一个 element_enum()。
-## 属性只在「持有者的手牌里」成立：牌离开手（打出 / 弃掉 / 交给别人）由 _check_卡牌属性 自动清；
-## 形态结束由角色调 清手牌属性系别 主动清。
-var _属性归属: Dictionary = {}   # 卡牌实例号 -> 属性持有者 player_id
+## 属性不是「挂上去」的，而是每拍按**持有者**现算：
+## 卡牌持有人若处于某个改变系别的形态（如苍炎魔女【烈焰形态】：除水 / 暗外的攻击牌视为火），
+## 这张牌的有效系别就按形态算 —— 别人隔着他的回合塞牌给她、她自己摸牌 / 弃牌 / 交牌，都不需要额外处理。
+## 计算结果写进 GCard.系别覆盖（element_enum() 优先返回它），所以同系 / 异系、应战要求、弃牌费用、
+## 攻击表现牌、卡面左上角标签……所有读 element_enum() 的地方自动跟着走，不含任何角色特判。
+var _属性归属: Dictionary = {}   # 卡牌实例号 -> 属性持有者 player_id（只用于「牌离手后清掉」）
 
 
-## 给某名玩家手里的一张牌挂「系别覆盖」属性（如苍炎魔女【烈焰形态】：除水 / 暗攻击牌外视为火）
-func 设手牌属性系别(pid: int, iid: int, 系别: int, 属性名: String) -> bool:
-	var p0: BattlePlayer = players.get(pid)
-	if p0 == null or 系别 == 0:
-		return false
-	var 在手: bool = p0.hand_cards.has(iid) 		or (p0.role != null and p0.role.盖牌可当手牌() and p0.cover_cards.has(iid))
-	if not 在手:
-		return false
-	var 牌: GCard = Data.取实例卡(iid)
-	if 牌 == null:
-		return false
-	if 牌.系别覆盖 == 系别 and 牌.系别覆盖名 == 属性名:
-		return false
-	牌.系别覆盖 = 系别
-	牌.系别覆盖名 = 属性名
-	_属性归属[iid] = pid
-	_规则攻击牌缓存.clear()
-	return true
+## 这名玩家此刻手里（含「盖牌当手牌」形态下的盖牌）的牌
+func _持有牌列表(pp: BattlePlayer) -> Array:
+	var out: Array = pp.hand_cards.duplicate()
+	if pp.role != null and pp.role.盖牌可当手牌():
+		out.append_array(pp.cover_cards)
+	return out
 
 
-## 清掉某名玩家挂着的系别覆盖属性（属性名留空＝清全部）；返回是否真的清过
-func 清手牌属性系别(pid: int, 属性名: String = "") -> bool:
-	var 清过: bool = false
-	for iid: int in _属性归属.keys().duplicate():
-		if int(_属性归属[iid]) != pid:
+## 每拍同步「卡牌系别属性」：① 手里每张牌按持有者现算；② 已经离手的清掉（正在攻击结算里的先留着）
+func _check_卡牌属性() -> void:
+	var 改了: bool = false
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp == null:
 			continue
-		var 牌: GCard = Data.get_card(iid)
-		if 牌 != null and not 属性名.is_empty() and 牌.系别覆盖名 != 属性名:
+		var 属性名: String = pp.role.牌系别属性名() if pp.role != null else ""
+		for iid: int in _持有牌列表(pp):
+			var 牌: GCard = Data.get_card(iid)
+			if 牌 == null:
+				continue
+			var 想要: int = pp.role.牌系别覆盖(牌) if pp.role != null else 0
+			if 想要 == 0:
+				if 牌.系别覆盖 != 0:
+					_清一条卡牌属性(iid)
+					改了 = true
+				continue
+			if 牌.系别覆盖 == 想要 and 牌.系别覆盖名 == 属性名:
+				continue
+			# 必须写到**运行时实例副本**上：牌库里序号为 0 的牌实例号 == 牌号，
+			# 直接改 get_card(iid) 拿到的那张牌面对象，会连其它同牌面的副本一起改掉。
+			var 实例牌: GCard = Data.取实例卡(iid)
+			if 实例牌 == null:
+				continue
+			实例牌.系别覆盖 = 想要
+			实例牌.系别覆盖名 = 属性名
+			_属性归属[iid] = pid
+			_规则攻击牌缓存.clear()
+			改了 = true
+	for iid: int in _属性归属.keys().duplicate():
+		var pid2: int = int(_属性归属[iid])
+		var pp2: BattlePlayer = players.get(pid2)
+		if pp2 != null and _持有牌列表(pp2).has(iid):
+			continue
+		if _牌在结算中(iid):
 			continue
 		_清一条卡牌属性(iid)
-		清过 = true
-	return 清过
-
-
-## 清掉一张牌的系别覆盖属性（按实例号）；返回是否真的清过
-func 清卡牌属性(iid: int) -> bool:
-	var 牌: GCard = Data.get_card(iid)
-	var 有: bool = 牌 != null and 牌.系别覆盖 != 0
-	_清一条卡牌属性(iid)
-	return 有
+		改了 = true
+	if 改了:
+		_broadcast_game()
 
 
 func _清一条卡牌属性(iid: int) -> void:
 	_属性归属.erase(iid)
-	var 牌: GCard = Data.get_card(iid)
+	# 只清实例副本：属性当初就是写在它上面的，牌面对象从来不动
+	if not Data.实例卡.has(iid):
+		return
+	var 牌: GCard = Data.实例卡[iid]
 	if 牌 == null or 牌.系别覆盖 == 0:
 		return
 	牌.系别覆盖 = 0
@@ -2475,30 +2484,6 @@ func _牌在结算中(iid: int) -> bool:
 			if int(r.原牌) == iid:
 				return true
 	return false
-
-
-## 每个状态跑完后检查：属性只该在「持有者手里」成立，牌离开手就自动失效
-## （否则它进了弃牌堆 / 别人手里还带着火，弃牌费用、同系判定都会错）
-func _check_卡牌属性() -> void:
-	if _属性归属.is_empty():
-		return
-	var 清了: bool = false
-	for iid: int in _属性归属.keys().duplicate():
-		var pid: int = int(_属性归属[iid])
-		var pp: BattlePlayer = players.get(pid)
-		var 还在手: bool = false
-		if pp != null:
-			还在手 = pp.hand_cards.has(iid) 				or (pp.role != null and pp.role.盖牌可当手牌() and pp.cover_cards.has(iid))
-		if 还在手:
-			continue
-		# 这张牌可能刚作为攻击牌离手、但这次攻击还在结算（应战要求 / 伤害 / 表现牌都要读它的系别）：
-		# 等攻击状态出栈后再清
-		if _牌在结算中(iid):
-			continue
-		_清一条卡牌属性(iid)
-		清了 = true
-	if 清了:
-		_broadcast_game()
 
 
 ## 重算「这名玩家此刻能放的技能」，有变化才重发一次行动询问。
