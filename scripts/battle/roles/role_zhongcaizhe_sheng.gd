@@ -71,13 +71,22 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 # 技能栏：天罪（启动）
 # ============================================================
 func available_skills() -> Array:
-	return [{
-		"type": GConst.ActionType.SpecialSkill,
-		"id": TIAN_ZUI,
-		"need_card": 0,
-		"need_target": 0,
-		"enabled": player.get_energy() >= 1,
-	}]
+	return [
+		{
+			"type": GConst.ActionType.SpecialSkill,
+			"id": TIAN_ZUI,
+			"need_card": 0,
+			"need_target": 0,
+			"enabled": player.get_energy() >= 1,
+		},
+		{
+			"type": GConst.ActionType.MagicSkill,
+			"id": ZUI_CHI_BI_DAO,
+			"need_card": 0,
+			"need_target": 0,
+			"enabled": player.get_energy() >= 1,
+		},
+	]
 
 
 func is_free_skill(skill_id: int) -> bool:
@@ -184,36 +193,30 @@ func p_turn_end(ctx: Dictionary) -> int:
 
 
 func _天平倾倒() -> int:
-	if _倾倒阶段 == 0:
-		if absi(张数(左) - 张数(右)) <= 1:
-			return SUCCESS
-		_倾倒阶段 = 1
-		var 多的一侧: int = 左 if 张数(左) > 张数(右) else 右
-		_移除侧(多的一侧)
-		_倾倒牌 = engine.逐张移除牌库顶(4, player.id)
-		_倾倒选.clear()
-		if _倾倒牌.is_empty():
-			_倾倒阶段 = 0
-			return SUCCESS
-		engine.展示牌库顶(player.id, _倾倒牌, true)
-		_倾倒问选()
-		return WAIT
-	if _倾倒阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		_倾倒阶段 = 2
-		_倾倒收选(r)
-		_倾倒问选()
-		return WAIT
 	if _倾倒阶段 == 2:
-		var r2: Dictionary = take_skill_reply_full()
-		_倾倒收选(r2)
-		_倾倒阶段 = 3
+		# 选完队友：+2 治疗
+		var r3: Dictionary = take_skill_reply_full()
+		var dsts: Array = r3.get("dst_ids", [])
+		_倾倒阶段 = 0
+		if dsts.is_empty():
+			engine.报错("【天平倾倒】没有选到队友", player.id)
+			return SUCCESS
+		施加治疗(int(dsts[0]), 2)
+		engine._broadcast_game()
+		return SUCCESS
+	if _倾倒阶段 == 1:
+		_倾倒收选(take_skill_reply_full())
+		if _倾倒选.size() < mini(2, _倾倒牌.size()) and not _倾倒剩余.is_empty():
+			_倾倒问选()
+			return WAIT
+		# 选够了（或牌不够）：剩下的弃掉、选中的入手、+1【罪】，再问给谁 +2 治疗
 		var 余: Array = []
 		for c: Variant in _倾倒牌:
 			if not _倾倒选.has(int(c)):
 				余.append(int(c))
 		if not 余.is_empty():
-			engine.to_discard(余, {"owner": player.id, "source": "deck", "cause": TIAN_PING_QING_DAO, "face_up": true})
+			engine.to_discard(余, {"owner": player.id, "source": "deck",
+				"cause": TIAN_PING_QING_DAO, "face_up": true})
 		if not _倾倒选.is_empty():
 			player.add_hand_cards(_倾倒选)
 			engine.播获得牌日志(player.id, _倾倒选)
@@ -221,19 +224,27 @@ func _天平倾倒() -> int:
 		_倾倒选 = []
 		_倾倒牌 = []
 		engine._broadcast_game()
+		var 队: Array = 队友()
+		if 队.is_empty():
+			_倾倒阶段 = 0
+			return SUCCESS
+		_倾倒阶段 = 2
 		询问(player.id, TIAN_PING_QING_DAO, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-			0, -1, 队友(), -1, {}, 2, GConst.预览类型_治疗)
+			0, -1, 队, -1, {}, 2, GConst.预览类型_治疗)
 		return WAIT
-	# 选完队友：+2 治疗
-	var r3: Dictionary = take_skill_reply_full()
-	var dsts: Array = r3.get("dst_ids", [])
-	_倾倒阶段 = 0
-	if dsts.is_empty():
-		engine.报错("【天平倾倒】没有选到队友", player.id)
+	# 起点：两侧牌数差 >1 才倒
+	if absi(张数(左) - 张数(右)) <= 1:
 		return SUCCESS
-	施加治疗(int(dsts[0]), 2)
-	engine._broadcast_game()
-	return SUCCESS
+	var 多的一侧: int = 左 if 张数(左) > 张数(右) else 右
+	_移除侧(多的一侧)
+	_倾倒牌 = engine.逐张移除牌库顶(4, player.id)
+	_倾倒选.clear()
+	if _倾倒牌.is_empty():
+		return SUCCESS
+	engine.展示牌库顶(player.id, _倾倒牌, true)
+	_倾倒阶段 = 1
+	_倾倒问选()
+	return WAIT
 
 
 ## 从展示的牌里再选 1 张（超时 / 非法按剩下的第一张）
@@ -547,11 +558,12 @@ func 敌人() -> Array[int]:
 	return out
 
 
+## 目标队友：按术语表**不含自己**（原文写「含自己」才含）
 func 队友() -> Array[int]:
 	var out: Array[int] = []
 	for pid: int in engine.order:
 		var p0: BattlePlayer = engine.p(pid)
-		if p0 != null and p0.color == player.color:
+		if p0 != null and p0.color == player.color and p0.id != player.id:
 			out.append(pid)
 	return out
 
