@@ -56,7 +56,6 @@ const 加宽步长: float = 120.0
 var 内容: Control = null
 ## 当前显示的是哪个角色 / 哪个缩放档：同一张卡反复悬停时直接不重排
 var _说明角色号: int = -1
-var _说明缩放: float = -1.0
 ## 分块说明的内容容器：角色名 / 分段标题 / 每条技能 / 分组框都放这里。
 ## 常驻在 TipBox.tscn（不再运行时拼容器），行间距就是它的 separation，直接在场景里调。
 @export var 块容器: VBoxContainer
@@ -283,17 +282,17 @@ func _建分块(块: Array, 图标矩形: Rect2, 角色号: int, 缩放: float) 
 				分组框.加技能(条)
 			块容器.add_child(分组框)
 		else:
-			var 文本: String = str(d.get("文本", ""))
+			var 本条文案: String = str(d.get("文本", ""))
 			var 条: RichTextLabel
-			if 文本.contains("[indent]"):
+			if 本条文案.contains("[indent]"):
 				# 正文技能行：去掉 [indent]（它出现在富文本最开头会先另起一行，等于多一条空行），
 				# 缩进改用正文行预制体 normal StyleBox 的 content_margin_left
 				条 = 正文行预制.instantiate() as RichTextLabel
-				条.text = 文本.replace("[indent]", "").replace("[/indent]", "")
+				条.text = 本条文案.replace("[indent]", "").replace("[/indent]", "")
 			else:
 				# 角色名 / 分段标题 / 右下角标识物：不缩进的说明行
 				条 = 说明行预制.instantiate() as RichTextLabel
-				条.text = 文本
+				条.text = 本条文案
 			块容器.add_child(条)
 	块容器.visible = true
 	_全忽略(块容器)
