@@ -4958,6 +4958,12 @@ class SAttackCard:
 		card = c
 		instance = inst
 		harm = h
+		# 通用口径：攻击状态创建时就判定「有没有真实打出的实体牌」（harm.card_id_instance），
+		# 没有就是虚拟攻击 → 标成无命格。必须在这里做：应战询问（阴阳师 3306 / 3301 读这个标记）
+		# 发生在 push_harm 之前，晚标就来不及了。
+		if int(harm.get("type", GConst.HarmType.None)) == GConst.HarmType.Attack \
+				and not harm.has("card_id_instance"):
+			harm["virtual_no_fate"] = true
 
 	func handle(e: BattleEngine) -> int:
 		if not ctx_built:
