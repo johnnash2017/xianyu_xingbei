@@ -5178,6 +5178,8 @@ class SReattackGo:
 			"reattack": true, "card_id": 用牌, "is_active": false,
 			# 反击用的是应战者真实打出的那张牌（「视为」只换牌面，牌本身是他的）
 			"card_id_instance": 原牌,
+			# 命格同理：按他真实打出的那张牌算
+			"fate_card_id": 原牌,
 		}
 		var 是噬神刃: bool = GConst.牌号(原牌) == GConst.噬神者_魔刃卡 \
 			or GConst.牌号(原牌) == GConst.噬神者_异刃卡
@@ -6228,6 +6230,8 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 		# 真正打出去的那张实体牌（实例号）：card_id 被「视为」换成虚拟牌面时靠它找回原件。
 		# 角色据此区分「真实牌」与「被视为的虚拟牌」（如女仆长【影之风】只认真实牌）
 		"card_id_instance": 提交号,
+		# 命格按真正打出的那张牌算（「视为」只换系别/牌面）：阴阳师【阴阳转换】等按它匹配
+		"fate_card_id": 提交号,
 	}
 	# 先压攻击状态，再离手：take_from_hand 的「展示手牌」钩子会压在这次攻击之上，
 	# 保持封印等钩子先于本次攻击结算（与旧顺序一致）。
