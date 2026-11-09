@@ -184,10 +184,11 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if 拥有风穴():
 		# 影之风：拥有【风穴】时，命中后**真实**的攻击牌进弃牌堆后变成【影】。
-		# 虚拟牌（被「视为」换掉牌面的攻击，如各种「视为某系斩击」）不触发 ——
-		# 判断办法：harm 里另外存了真正打出去的实例，只有 card_id 就是那个实例时才是真实牌。
+		# 「真实」的判定看 harm.card_id_instance（真正打出去的那张实体牌）——
+		#   · 普通出牌 / 「视为某系斩击」的主动攻击（如苍炎魔女烈焰形态）：有实体牌 → 变影；
+		#   · 虚拟攻击（如魔弓【多重射击】按虚拟暗灭打出、应战反击的虚拟牌）：没有实体牌 → 不触发。
 		var 实体: int = int(harm.get("card_id_instance", -1))
-		if 实体 >= 0 and 实体 == 牌:
+		if 实体 >= 0:
 			_把弃牌变成影(实体, YING_ZHI_FENG)
 		return SUCCESS
 	if _本回合禁摹影:
