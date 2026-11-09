@@ -254,29 +254,50 @@ func v_magic_skill(action: Dictionary) -> int:
 			return GConst.GE_INVALID_ACTION
 	else:
 		return GConst.GE_INVALID_ARGUMENT
+	# 新的一次发动：清掉上一次的分步（v_* 只在技能开始时调用一次）
+	_权能阶段 = 0
 	return GConst.GE_SUCCESS
 
 
 func p_magic_skill(action: Dictionary) -> int:
-	if _权能阶段 == 0:
-		var args: Array = action.get("args", [])
-		var 费用: int = int(args[0])
-		notice_skill(QUAN_NENG_NI_WEI, [player.id])
-		if 费用 == 1:
-			player.remove_token(银弹槽, 1)
-		else:
-			_移除我方治疗(2)
-		# +2【圣遗物】：换角色时同名指示物会跟着走（见 engine.替换角色）
-		player.add_token(圣遗物槽, 2)
-		_移除全部基础效果与治疗()
+	if _权能阶段 == 4:
+		# 等施法者选从谁身上扣「我方合计 2 治疗」
+		var r: Dictionary = take_skill_reply_full()
 		_权能阶段 = 1
-		engine._broadcast_game()
+		_权能移除治疗(r.get("dst_ids", []))
+		return _权能结算()
 	if _权能阶段 == 1:
-		if engine.调整手牌到(player.id, 4, QUAN_NENG_NI_WEI):
-			_权能阶段 = 2
-			return URGENT
-		_权能阶段 = 3
-	# 阶段 3：手牌已弃到 4 张（或本来就不超），换角色卡
+		return _权能结算()
+	if _权能阶段 == 5:
+		_权能阶段 = 0
+		替换角色(铸律者)
+		return SUCCESS
+	var args: Array = action.get("args", [])
+	var 费用: int = int(args[0]) if not args.is_empty() else 1
+	notice_skill(QUAN_NENG_NI_WEI, [player.id])
+	if 费用 == 2:
+		var 有治疗: Array = player_ids_where(func(p: BattlePlayer) -> bool:
+			return p.color == player.color and p.cross_num > 0, true)
+		_权能阶段 = 4
+		询问(player.id, QUAN_NENG_NI_WEI, 0, mini(2, 有治疗.size()), GConst.CardSource.Hand,
+			[], 0, "", [], false, 0, -1, 有治疗, -1, {})
+		return WAIT
+	player.remove_token(银弹槽, 1)
+	_权能阶段 = 1
+	return _权能结算()
+
+
+## 付费之后的固定结算：+2【圣遗物】、清掉自己的基础效果与治疗，手牌弃到 4 张，最后换【铸律者】
+func _权能结算() -> int:
+	_权能阶段 = 2
+	# +2【圣遗物】：换角色时同名指示物会跟着走（见 engine.替换角色）
+	player.add_token(圣遗物槽, 2)
+	_移除全部基础效果与治疗()
+	engine._broadcast_game()
+	# 「将手牌弃到 4 张」只弃不摸：手牌不足 4 张时不能反向补牌（不能用 调整手牌到）
+	if player.hand_cards.size() > 4:
+		engine.push(BattleEngine.SHandAdjust.new(player.id, 4, QUAN_NENG_NI_WEI))
+		return URGENT
 	_权能阶段 = 0
 	替换角色(铸律者)
 	return SUCCESS
@@ -286,7 +307,7 @@ func p_magic_skill(action: Dictionary) -> int:
 func 技能URGENT后重入(_action: Dictionary = {}) -> bool:
 	if _权能阶段 != 2:
 		return false
-	_权能阶段 = 3
+	_权能阶段 = 5
 	return true
 
 
@@ -297,18 +318,33 @@ func _移除全部基础效果与治疗() -> void:
 	player.sub_cross_num(player.cross_num)
 
 
-## 按座位顺序扣掉我方合计 n 点治疗（够不够由调用方先校验）
-func _移除我方治疗(n: int) -> void:
-	var 还需: int = n
-	for pid: int in 我方角色全部():
+## 从玩家选中的我方角色身上各扣 1 点治疗；不够 2 点的部分继续从选中的 / 座位顺序补
+func _权能移除治疗(dsts: Array) -> void:
+	var 还需: int = 2
+	var 已选: Array = []
+	for d: Variant in dsts:
 		if 还需 <= 0:
 			break
-		var p0: BattlePlayer = engine.p(pid)
-		if p0 == null or p0.cross_num <= 0:
+		var p0: BattlePlayer = engine.p(int(d))
+		if p0 == null or p0.cross_num <= 0 or 已选.has(p0.id):
 			continue
-		var 扣: int = mini(还需, p0.cross_num)
-		p0.sub_cross_num(扣)
-		还需 -= 扣
+		p0.sub_cross_num(1)
+		还需 -= 1
+		已选.append(p0.id)
+	while 还需 > 0:
+		var 扣到: bool = false
+		for pid: int in (已选 if not 已选.is_empty() else 我方角色全部()):
+			var p1: BattlePlayer = engine.p(pid)
+			if p1 == null or p1.cross_num <= 0:
+				continue
+			p1.sub_cross_num(1)
+			还需 -= 1
+			扣到 = true
+			break
+		if not 扣到:
+			break
+	if 还需 > 0:
+		engine.报错("【权能逆位】我方治疗不足 2 点", player.id)
 
 
 func _我方治疗合计() -> int:
