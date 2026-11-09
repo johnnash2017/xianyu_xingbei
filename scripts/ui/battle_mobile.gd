@@ -702,9 +702,8 @@ func _ready() -> void:
 	# 初始收起日志/聊天（同参考脚本 Start 里的处理）
 	LogRoot.visible = false
 	ChatRoot.visible = false
-	# 顶部提示抬高一段「选中手牌上浮」的高度，免得被抽出来等着确定的牌盖住
-	Hint.offset_top -= 选中上浮像素
-	Hint.offset_bottom -= 选中上浮像素
+	# 提示条的位置 / 高度以场景（scenes/BattleUIMobile.tscn 的 Root/Hint）为准，代码不再做偏移；
+	# 这里只记下基准值，供 _布局提示 在文字换行需要加高时以原中心为轴上下扩展。
 	_提示原顶 = Hint.offset_top
 	_提示原底 = Hint.offset_bottom
 	_提示原高 = maxf(_提示原底 - _提示原顶, 24.0)
