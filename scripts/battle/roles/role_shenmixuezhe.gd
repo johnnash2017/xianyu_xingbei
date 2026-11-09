@@ -425,7 +425,7 @@ func p_action_end(ctx: Dictionary) -> int:
 					"no_prompt_change": true},
 			], 0, "", [], true,
 				0, -1, enemy_ids(), -1, {}, 1, GConst.HarmType.Magic, false, [], true, -1, 0,
-				_真言后半段(), -1, _真言后半段())
+				_真言后半段(), 0, _真言后半段())
 			return WAIT
 		YAO_JING_MI_SHU:
 			_妖精攻击中 = false
