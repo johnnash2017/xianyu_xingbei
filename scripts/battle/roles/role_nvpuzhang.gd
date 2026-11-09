@@ -530,6 +530,10 @@ func _侍奉选项() -> Array:
 func p_after_special(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		return SUCCESS
+	# 只认真正的【特殊行动】（购买 / 合成 / 提炼）：ctx.special_action 由 _do_special 写。
+	# 「启动」技能也走 p_after_special，但它不是特殊行动（如魔弓的启动技不该让影牢发动）。
+	if not bool(ctx.get("special_action", false)):
+		return SUCCESS
 	# 【禁术·影牢】是响应：先问发不发动（+1【糸】属于发动效果，不再自动加）
 	if _影牢阶段 == 0:
 		_影牢阶段 = 1
