@@ -137,6 +137,10 @@ func p_heal_overflow(_ctx: Dictionary) -> int: return SUCCESS
 func 基础效果被禁止(_pid: int) -> bool: return false
 ## 士气下限（F5）：返回 >0 时，本队士气不会被扣到它以下（圣殿骑士【圣炎形态】：我方士气最少为 1）
 func morale_floor() -> int: return 0
+## 这名角色是否**始终**无法获得【治疗】（染污者【神弃之裔】：治疗上限为 0【恒定】）。
+## 引擎在 add_cross / add_cross_pierce 里除了看 BattlePlayer.no_heal_round（本回合禁疗）之外也问这里，
+## 返回 true 时整笔治疗作废 —— 「突破上限」类技能（神圣契约 / 圣光祈愈）也拿不到治疗。
+func 禁止获得治疗() -> bool: return false
 ## 因承受伤害摸牌时「本次摸牌的第 1 张改从别处拿」（F8）：返回牌号（实现里要自己从来源取出），
 ## -1＝不替换。**同步钩子**，不能等待玩家输入。（异教徒【末日预言】：从【预言】堆顶拿）
 func 伤害摸牌替换(_pid: int) -> int: return -1

@@ -1169,6 +1169,9 @@ func add_cross(pid: int, amount: int, src_id: int) -> void:
 	# 状态获得 / 结束时已经在【神威】那里逐人播报过，这里不再重复写同一句。
 	if pp.无法获得治疗():
 		return
+	# 角色自身「始终无法获得治疗」（染污者【神弃之裔】）：同样整笔作废
+	if pp.role != null and pp.role.禁止获得治疗():
+		return
 	var 前: int = pp.cross_num
 	pp.add_cross_num(amount)
 	_播治疗日志(pp, amount, src_id, 前)
@@ -1201,6 +1204,9 @@ func add_cross_pierce(pid: int, amount: int, src_id: int, 封顶: int) -> void:
 		return
 	if pp.无法获得治疗():
 		# 获得【神威】时已按双方各播报一条，这里不重复
+		return
+	# 「始终无法获得治疗」（染污者【神弃之裔】）：突破上限也拿不到
+	if pp.role != null and pp.role.禁止获得治疗():
 		return
 	var 前: int = pp.cross_num
 	var 新: int = 前 + amount

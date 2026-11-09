@@ -33,6 +33,8 @@ var _扭曲阶段: int = 0
 var _扭曲形态: int = 0
 var _扭曲弃牌: bool = false
 var _戾如泉涌已用: bool = false
+## 狂戾之心：0＝未问 / 1＝等选弃牌 + 目标
+var _狂戾阶段: int = 0
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -40,6 +42,11 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	# 【神弃之裔】：游戏初始 +1【水晶】；治疗上限恒定 0（cross_max=0 时施加治疗一律加不进去）
 	player.set_crystal(player.crystal + 1)
 	player.cross_max = 0
+
+
+## 【神弃之裔】：始终无法获得【治疗】（引擎 add_cross / add_cross_pierce 都会问这里）
+func 禁止获得治疗() -> bool:
+	return true
 
 
 # ============================================================
@@ -97,14 +104,19 @@ func p_special_skill(_action: Dictionary) -> int:
 		_扭曲弃牌 = 选择 < 2
 		if _扭曲弃牌:
 			var cards: Array = r.get("card_ids", [])
-			if cards.size() != 2 or int(cards[0]) == int(cards[1]) \
-					or not player.has_hand_card(int(cards[0])) \
-					or not player.has_hand_card(int(cards[1])):
+			var 弃: Array = []
+			for c: Variant in cards:
+				var 实例: int = player.手牌实例(int(c))
+				if 实例 >= 0 and not 弃.has(实例):
+					弃.append(实例)
+			if 弃.size() != 2:
 				engine.报错("【扭曲之爱】提交的弃牌不合法", player.id)
 				_扭曲阶段 = 0
 				return SUCCESS
 			# 代价先结（技能维护约定：先选的那一档代价要先结算完，再问下一档）
-			engine.to_discard(cards, {"owner": player.id, "source": "hand", "cause": NIU_QU_ZHI_AI})
+			engine.take_from_hand(player.id, 弃)
+			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": NIU_QU_ZHI_AI})
+			engine._log_discard(player.id, 弃)
 		_扭曲阶段 = 2
 		询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲戾气选项(),
 			0, "", [], false, 0, -1, [], -1, {}, 0, 0, false)
@@ -211,20 +223,22 @@ func p_harm_end(ctx: Dictionary) -> int:
 func _尝试狂戾变身() -> int:
 	if player.tap or player.token_num(戾气槽) < player.token_max(戾气槽):
 		return SUCCESS
-	if step >= STEP_DONE:
+	# 「你弃 1 张牌」是代价：手里一张牌都没有时这段结算不了，等下次触发
+	if player.hand_cards.is_empty():
 		return SUCCESS
-	if not engine.has_reply():
+	if _狂戾阶段 == 0:
+		_狂戾阶段 = 1
 		询问(player.id, KUANG_LI_ZHI_XIN, 1, 1, GConst.CardSource.Hand, [],
-			0, "", [], true, 0, -1, 全部角色(), -1, {})
+			0, "", [], false, 0, -1, 全部角色(), -1, {})
 		return WAIT
+	_狂戾阶段 = 0
 	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
 	var cards: Array = r.get("card_ids", [])
 	var dsts: Array = r.get("dst_ids", [])
 	if cards.is_empty() or dsts.is_empty():
 		return SUCCESS
-	var card: int = int(cards[0])
-	if not player.has_hand_card(card):
+	var card: int = player.手牌实例(int(cards[0]))
+	if card < 0:
 		engine.报错("【狂戾之心】提交的弃牌不在手牌里", player.id)
 		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(dsts[0]))
@@ -232,7 +246,9 @@ func _尝试狂戾变身() -> int:
 		engine.报错("【狂戾之心】提交的目标不存在", player.id)
 		return SUCCESS
 	notice_skill(KUANG_LI_ZHI_XIN, [dst.id])
+	engine.take_from_hand(player.id, [card])
 	engine.to_discard([card], {"owner": player.id, "source": "hand", "cause": KUANG_LI_ZHI_XIN})
+	engine._log_discard(player.id, [card])
 	# 「移除 2 治疗」：目标有多少扣多少
 	dst.sub_cross_num(mini(2, dst.cross_num))
 	player.tap = true
