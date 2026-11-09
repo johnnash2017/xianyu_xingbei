@@ -291,29 +291,6 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 	engine._broadcast_game()
 	return URGENT
 
-
-# ============================================================
-# 应战校验（服务端 v_reattack）：整体替换通用实现
-# 差别：服务端对暗系起源牌返回 GE_INVALID_CARDID（通用实现返回 GE_INVALID_ACTION）。
-# 【烈焰形态】不用在这里特判：属性（系别覆盖）已经落在手牌上，element_enum() 直接就是火。
-# 未移植：服务端签名中的 rate != RATE_NORMAL 判定与 dstID / orignID 校验，本引擎签名无法表达。
-# ============================================================
-func v_reattack(card_id: int, attack_card_id: int) -> int:
-	if not player.has_hand_card(card_id):
-		return GConst.GE_HANDCARD_NOT_FOUND
-	var card: GCard = Data.get_card(card_id)
-	var atk: GCard = Data.get_card(attack_card_id)
-	if card == null or atk == null or not card.is_attack():
-		return GConst.GE_INVALID_CARDID
-	if atk.element_enum() == GConst.CardElement.Darkness:
-		return GConst.GE_INVALID_CARDID
-	if card.element_enum() != GConst.CardElement.Darkness:
-		# 有效系别（烈焰形态的属性已经落在牌上，element_enum() 就是火）
-		if card.element_enum() != atk.element_enum():
-			return GConst.GE_INVALID_CARDID
-	return GConst.GE_SUCCESS
-
-
 # ============================================================
 # 主动法术技能
 # ============================================================
