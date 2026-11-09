@@ -77,6 +77,15 @@ BtnCancel = NodePath("Root/BtnCancel")
 BtnCovered = NodePath("Root/BtnCovered")
 BtnResign = NodePath("Root/BtnResign")
 BtnSetting = NodePath("Root/BtnSetting")
+卡牌基准尺寸 = Vector2(130, 192)
+手牌尺寸 = Vector2(97.812, 144.495)
+手牌下移像素 = 27.25
+展示牌下移像素 = -5.0
+选中上浮像素 = 15.0
+盖牌显示缩放 = 0.7
+盖牌显示下移 = 40.0
+技能尺寸 = Vector2(110, 90)
+技能栏缩放 = 0.8
 
 [node name="PlayerAgentUI" type="Control" parent="." unique_id=561347129]
 visible = false
@@ -172,10 +181,8 @@ grow_vertical = 2
 pivot_offset = Vector2(385, 45)
 mouse_filter = 2
 theme_override_constants/separation = 0
-alignment = 0
 
 [node name="Hint" type="TextureRect" parent="Root" unique_id=1236043393]
-visible = false
 layout_mode = 0
 anchor_left = 0.5
 anchor_top = 1.0
@@ -195,17 +202,13 @@ expand_mode = 1
 [node name="TxtHint" type="RichTextLabel" parent="Root/Hint" unique_id=1308289630]
 visible = false
 layout_mode = 0
-anchor_right = 0.0
-anchor_bottom = 0.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-bbcode_enabled = true
-fit_content = false
-scroll_active = false
-autowrap_mode = 3
 theme_override_colors/default_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/normal_font_size = 22
+theme_override_font_sizes/normal_font_size = 15
+bbcode_enabled = true
+scroll_active = false
 
 [node name="Status" type="TextureRect" parent="Root" unique_id=1754816046]
 layout_mode = 1
@@ -370,16 +373,17 @@ icon = ExtResource("5_b05bottonsetpng")
 expand_icon = true
 
 [node name="BtnResign" type="Button" parent="Root" unique_id=248496715]
-layout_mode = 0
+layout_mode = 1
+anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = -86.0
-offset_top = -300.5
-offset_bottom = -229.5
-grow_horizontal = 2
-grow_vertical = 2
+offset_top = -266.66666
+offset_bottom = -195.66663
+grow_horizontal = 0
+grow_vertical = 0
 pivot_offset = Vector2(43, 35.5)
 focus_mode = 0
 theme_override_styles/normal = SubResource("StyleBoxEmpty_noBox")
