@@ -356,7 +356,7 @@ func p_action_end(ctx: Dictionary) -> int:
 			# 这一问的提示只写技能后半段（不重复前半段的选言灵部分）
 			_真言伤阶段 = 1
 			询问(player.id, ZHEN_YAN_SHU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, _真言后半段())
+				0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, _真言后半段(), -1, _真言后半段())
 			return WAIT
 		YAO_JING_MI_SHU:
 			_妖精攻击中 = false
@@ -376,8 +376,10 @@ func _真言打伤(ctx: Dictionary) -> int:
 			"cause": ZHEN_YAN_SHU, "type": GConst.HarmType.Magic})
 		return URGENT
 	_真言伤阶段 = 2
+	# 第二段（那 1 点法术伤害）的两条询问都直接显示技能说明的后半段原文，
+	# 不再让客户端退回整段技能说明
 	询问(player.id, ZHEN_YAN_SHU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-		0, -1, 候选, -1, {}, 1, GConst.HarmType.Magic)
+		0, -1, 候选, -1, {}, 1, GConst.HarmType.Magic, false, [], true, -1, 0, _真言后半段(), -1, _真言后半段())
 	return WAIT
 
 
