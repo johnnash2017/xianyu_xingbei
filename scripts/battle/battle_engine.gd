@@ -6188,6 +6188,9 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	var harm: Dictionary = {
 		"src": cur.id, "dst": dst_id, "point": 攻击基础伤害(cur.id), "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": 用牌, "is_active": true,
+		# 真正打出去的那张实体牌（实例号）：card_id 被「视为」换成虚拟牌面时靠它找回原件。
+		# 角色据此区分「真实牌」与「被视为的虚拟牌」（如女仆长【影之风】只认真实牌）
+		"card_id_instance": 提交号,
 	}
 	# 先压攻击状态，再离手：take_from_hand 的「展示手牌」钩子会压在这次攻击之上，
 	# 保持封印等钩子先于本次攻击结算（与旧顺序一致）。
