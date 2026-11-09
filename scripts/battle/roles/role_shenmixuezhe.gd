@@ -296,7 +296,12 @@ func resolve_action_end_option(cause: int, reply: Dictionary, _ctx: Dictionary) 
 		return SUCCESS
 	if cause == ZHEN_YAN_YA_ZHI:
 		var dsts: Array = reply.get("dst_ids", [])
-		if dsts.is_empty() or player.get_energy() < 1:
+		if dsts.is_empty():
+			# 聚合器被唤醒后的「续跑」没有回复：这条技能的多步结算已经自己接管
+			# （伤害 → p_harm_end 问是否发动真言术 → …），这里直接返回成功，
+			# 让聚合器继续收集并询问剩下的选项（妖精秘术就是这么被漏掉的）
+			return GConst.GE_SUCCESS
+		if player.get_energy() < 1:
 			return GConst.GE_INVALID_ARGUMENT
 		var dst: int = int(dsts[0])
 		if engine.p(dst) == null:
