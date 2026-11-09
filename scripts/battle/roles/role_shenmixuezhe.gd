@@ -72,7 +72,9 @@ func available_skills() -> Array:
 			"need_card": 1,
 			"card_max": 2,
 			"need_target": 0,
-			"enabled": not player.hand_cards.is_empty() and player.cover_space() > 0,
+			# 【言灵】允许超过盖牌上限：多出来的由引擎的「盖牌超限」询问让玩家自己弃
+			# （与魔弓【充能】同一套处理，见 SCoverOverflow）；所以这里不再看 cover_space
+			"enabled": not player.hand_cards.is_empty(),
 		},
 		{
 			"type": GConst.ActionType.MagicSkill,
@@ -92,7 +94,8 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if 技能号 == YAN_LING_SHU:
 		var cards: Array = action.get("card_ids", [])
-		if cards.is_empty() or cards.size() > 2 or cards.size() > player.cover_space():
+		# 不再限制「不能超过盖牌上限」：超出的部分由盖牌超限询问让玩家弃（同魔弓【充能】）
+		if cards.is_empty() or cards.size() > 2:
 			return GConst.GE_INVALID_ACTION
 		for c: Variant in cards:
 			if player.手牌实例(int(c)) < 0:
@@ -139,13 +142,12 @@ func _言灵术(action: Dictionary) -> int:
 		engine.push_强制摸牌(player.id, 1, YAN_LING_SHU)
 		return URGENT
 	if _言灵术阶段 == 1:
-		# 摸牌（含超限弃牌）结算完回来：还有同系手牌才问额外弃牌
+		# 摸牌（含超限弃牌 / 言灵超限）结算完回来：不管有没有同系手牌都要问这一问
+		# （手里没有能弃的牌时，白名单用「全禁」，玩家只能点「取消」——这一步仍然摆出来）
 		var 同系: Array = _同系手牌()
-		if 同系.is_empty():
-			_言灵术阶段 = 3
-			return SUCCESS
 		_言灵术阶段 = 2
-		询问(player.id, YAN_LING_SHU, 1, 0, GConst.CardSource.Hand, [], 0, "", 同系, true,
+		询问(player.id, YAN_LING_SHU, 1, 0, GConst.CardSource.Hand, [], 0, "",
+			同系 if not 同系.is_empty() else [GConst.手牌白名单_全禁], true,
 			0, -1, [], -1, {})
 		return WAIT
 	# 阶段 2：额外弃 1 张同系牌 → +1【秘术】
@@ -161,6 +163,8 @@ func _言灵术(action: Dictionary) -> int:
 			弃 = 实例
 			break
 	if 弃 < 0:
+		# 白名单已经把可弃的牌限死；走到这里说明是硬提交的非法牌
+		engine.报错("【言灵术】提交的牌与现存【言灵】不同系或不在手里", player.id)
 		return SUCCESS
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
@@ -354,10 +358,15 @@ func p_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	var 牌: int = _真言待打
 	_真言待打 = -1
-	if player.手牌实例(牌) < 0 or player.cover_space() <= 0:
+	if player.手牌实例(牌) < 0:
 		return SUCCESS
 	engine.take_from_hand(player.id, [牌])
-	engine.add_cover(player.id, [牌], player.id, ZHEN_YAN_SHU, true)
+	if player.cover_space() > 0:
+		engine.add_cover(player.id, [牌], player.id, ZHEN_YAN_SHU, true)
+	else:
+		# 言灵区满了：放进弃牌堆，不留成白拿的一张手牌
+		engine.to_discard([牌], {"owner": player.id, "source": "hand", "cause": ZHEN_YAN_SHU})
+		engine._log_discard(player.id, [牌])
 	engine._broadcast_game()
 	return SUCCESS
 
@@ -432,7 +441,7 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 		return _禁忌弃牌推进()
 	if _禁忌阶段 == 1:
 		return _禁忌秘法()
-	if player.token_num(秘术槽) < 3 or player.cover_space() <= 0:
+	if player.token_num(秘术槽) < 3:
 		return SUCCESS
 	_禁忌阶段 = 1
 	询问(player.id, JIN_JI_MI_FA, 0, 2, GConst.CardSource.Hand, [], 0, "", [], true,
@@ -499,6 +508,7 @@ func _禁忌弃牌推进() -> int:
 		engine._log_discard(dp.id, [弃])
 		_禁忌弃牌.append({"pid": dp.id, "card": 弃})
 	# 弃牌都进弃牌堆之后，把它们面朝上放到自己角色旁作为【言灵】
+	# （允许超过盖牌上限：多出来的由引擎的盖牌超限询问让玩家自己弃，同魔弓【充能】）
 	var 得: Array = []
 	for 项: Dictionary in _禁忌弃牌:
 		var cid: int = int(项.get("card", -1))
@@ -506,9 +516,6 @@ func _禁忌弃牌推进() -> int:
 			continue
 		var 取回: int = engine.deck.取出实例(cid)
 		if 取回 < 0:
-			continue
-		if 得.size() >= player.cover_space():
-			engine.to_discard([取回], {"owner": player.id, "source": "other", "cause": JIN_JI_MI_FA})
 			continue
 		得.append(取回)
 	_禁忌弃牌 = []
