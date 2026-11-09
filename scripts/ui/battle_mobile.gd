@@ -5653,6 +5653,13 @@ func _on_player_clicked(player_id: int) -> void:
 		_sel_players = [player_id]
 	刷新选中面板()
 	_更新按键()
+	# 神秘学者【真言术】：盖牌区点 1 张【言灵】+ 点头像 ＝ 直接对这名角色用出这张牌
+	# （等价于普通出牌「选好牌点头像就打出」，不再要求按「确定」）。
+	# 取消仍然走「取消」按钮 → 服务端撤销这次技能行动、退回行动阶段。
+	if _mode == 3 and _skill_ask_id == GConst.技能_真言术 and not _sel_cards.is_empty() \
+			and not _sel_players.is_empty():
+		_发送应答(_skill_ask_id, _sel_players, _sel_cards, [1])
+		return
 	# 「基础效果牌」这类（【封印破碎】/【风之洁净】/【天使之歌】）：目标一变就把技能栏里的
 	# 「基础效果」选项跟着换（取消选中目标＝清空）
 	if _二级栏 and (_技能是基础效果牌型()):

@@ -99,6 +99,8 @@ var 行动可放弃: bool = false
 var 行动额外: bool = false
 ## 本次额外行动的触发来源（cause）：苍白之月要据此把提示写成「获得额外【无法应战】攻击行动」
 var 行动额外来源: int = 0
+## 正处在「技能出牌」里（见 技能出牌）：那次出牌是技能效果的一部分，不压回合结束
+var _技能出牌中: bool = false
 ## 本次行动阶段是否禁止「特殊行动」（购买/合成/提炼）。发动过「启动」技能后，行动阶段照旧继续，
 ## 但只能再攻击 / 法术，不能再走特殊行动（启动技与特殊行动互斥）
 var 行动禁特殊: bool = false
@@ -3715,8 +3717,10 @@ func 转移伤害(harm: Dictionary, 新目标id: int, 免士气: bool = true) ->
 
 ## 攻击/法术/特殊行动收尾：先跑具体的「行动结束」钩子与通用 p_action_end，再进入回合结束。
 ## 「是不是额外行动 / 来源」取当前行动阶段的状态（见 action_commands 的 is_extra / extra_cause）
+## 技能出牌（技能出牌()）时**不压回合结束**：那次出牌是技能效果的一部分，回合还没结束。
 func push_after_action(hook: String, ctx: Dictionary) -> void:
-	push(STurnEnd.new())
+	if not _技能出牌中:
+		push(STurnEnd.new())
 	_push_action_end_hooks(hook, ctx, 行动额外, 行动额外来源 if 行动额外 else 0)
 
 
@@ -3727,6 +3731,41 @@ func _记录行动并收尾(cur: BattlePlayer, kind: String, hook: String, ctx: 
 	上下文["kind"] = kind
 	cur.record_action(kind, 行动额外)
 	push_after_action(hook, 上下文)
+
+
+## 技能出牌（真言术：把 1 个【言灵】当手牌用掉）：在技能本体里直接把一张牌当行动打出去。
+## 和普通行动的区别：
+##   · 不进行动阶段（玩家不会再被问一次「要出哪张牌」）；
+##   · 记成**额外行动**，不消耗本次攻击 / 法术行动计数（技能本身已经消耗了行动）；
+##   · 不压回合结束（STurnEnd），由外层技能收尾。
+## 走的是引擎原生的 _do_attack / _do_magic，所以「视为 / 应战 / 命中 / 伤害 / 行动结束响应」全部照常。
+## 返回引擎的 CONTINUE / WAIT（调用方拿到后应返回 URGENT 等它跑完）；
+## 牌 / 目标不合法时返回 GConst.GE_*（这时什么都没压栈，调用方自己报错 / 重问）。
+func 技能出牌(pid: int, action_type: int, card_ids: Array, dst_ids: Array, cause: int) -> int:
+	var cur: BattlePlayer = players.get(pid)
+	if cur == null or card_ids.is_empty():
+		return GConst.GE_INVALID_ACTION
+	# 先按原生校验过一遍：不合法就原样退回，让角色自己报错重问（不能走 _do_attack 的驳回路径，
+	# 那会把玩家退回普通行动阶段）
+	if action_type == GConst.ActionType.Attack:
+		var 目标: BattlePlayer = players.get(int(dst_ids[0]) if not dst_ids.is_empty() else -1)
+		if 目标 == null or cur.v_attack(int(card_ids[0]), 目标.id, players) != GConst.GE_SUCCESS \
+				or 目标.v_attacked() != GConst.GE_SUCCESS:
+			return GConst.GE_INVALID_ACTION
+	var 原额外: bool = 行动额外
+	var 原来源: int = 行动额外来源
+	var 原数据: Dictionary = 当前额外行动数据
+	行动额外 = true
+	行动额外来源 = cause
+	当前额外行动数据 = {}
+	_技能出牌中 = true
+	var 数据: Dictionary = {"action_type": action_type, "card_ids": card_ids, "dst_ids": dst_ids}
+	var 结果: int = _do_attack(cur, 数据) if action_type == GConst.ActionType.Attack else _do_magic(cur, 数据)
+	_技能出牌中 = false
+	行动额外 = 原额外
+	行动额外来源 = 原来源
+	当前额外行动数据 = 原数据
+	return 结果
 
 
 ## 一次行动结束的两个钩子（F2）：先跑具体的 p_after_attack / p_after_magic / p_after_special，
