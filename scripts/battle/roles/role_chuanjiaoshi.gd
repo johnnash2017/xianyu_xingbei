@@ -509,11 +509,13 @@ func _转移路标(目标: int) -> int:
 		})
 	if 牌 != null and (牌.is_magic() or 牌.fate_pattern_enum() == GConst.FatePattern.Holy):
 		# 取消本次转移：移除【路标】，改放到启示选中的目标面前
+		# （这也是一次「放置」：照样跑告解式 / 弥撒，不能只是把场卡换个 attached）
 		engine.移除场卡(路标名)
 		engine.加场卡({"id": 路标名, "owner": player.id, "attached": _启示目标})
 		_路标持有者 = _启示目标
 		engine._broadcast_game()
-		return SUCCESS
+		_路标阶段 = 1
+		return _路标后续()
 	return _放置路标(_转移目标)
 
 
