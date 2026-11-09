@@ -52,7 +52,7 @@ var _影缝弃牌: Array = []
 ## 侍奉之道：1＝等选 2 个影 / 2＝等选交给谁
 var _侍奉阶段: int = 0
 var _侍奉牌: Array = []
-## 禁术·影牢：1＝等选效果
+## 禁术·影牢：0＝未问 / 1＝等「是否发动」 / 2＝已 +1 糸、等下一拍弹第二段 / 3＝等选效果+目标
 var _影牢阶段: int = 0
 ## 风止：1＝已问过、等摸牌 / 2＝等弃 2 张；_风止已处理＝本回合这次收尾已经跑过
 var _风止阶段: int = 0
@@ -270,6 +270,7 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 		_瞬影杀已用 = false
 		_摹影阶段 = 0
 		_瞬影杀阶段 = 0
+		_影牢阶段 = 0
 		_风止已处理 = false
 	return SUCCESS
 
@@ -513,25 +514,49 @@ func _侍奉选项() -> Array:
 func p_after_special(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		return SUCCESS
-	# 同一个钩子可能因询问 / 压栈回来重跑：+1【糸】只做一次
-	if step == 0:
-		step = 1
-		player.add_token(糸槽, 1)
-		engine._broadcast_game()
-	if not player.tap or player.token_num(糸槽) < 3:
-		return SUCCESS
-	return _影牢()
-
-
-func _影牢() -> int:
+	# 【禁术·影牢】是响应：先问发不发动（+1【糸】属于发动效果，不再自动加）
 	if _影牢阶段 == 0:
 		_影牢阶段 = 1
+		询问(player.id, JIN_SHU_YING_LAO, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
+			0, -1, [], -1, {})
+		return WAIT
+	if _影牢阶段 != 1:
+		return SUCCESS
+	var r: Dictionary = take_skill_reply_full()
+	_影牢阶段 = 0
+	var args: Array = r.get("args", [])
+	if args.is_empty() or int(args[0]) != 1:
+		return SUCCESS
+	notice_skill(JIN_SHU_YING_LAO, [player.id])
+	player.add_token(糸槽, 1)
+	engine._broadcast_game()
+	if not player.tap or player.token_num(糸槽) < 3:
+		return SUCCESS
+	# 第二段（移除 3 点【糸】+ 重置 + 打 2 / 令队友弃 1）要延后一拍再问：
+	# 上面 +1【糸】的播报得先发出去，否则界面看上去「没加糸却可以移除 3 糸」。
+	# 这里只 push 一个下一拍的钩子并返回 SUCCESS —— 本钩子轮次跑完后引擎才会结算
+	# 指示物变化（_check_token_change 只在 CONTINUE 时跑），播报先发，随后才弹询问。
+	_影牢阶段 = 2
+	engine.push(BattleEngine.SHook.new("p_影牢续", {}, []))
+	return SUCCESS
+
+
+## 影牢第二段的「下一拍」：+1【糸】的播报已经发出去，这时才弹效果 / 目标询问
+func p_影牢续(_ctx: Dictionary) -> int:
+	if _影牢阶段 == 2:
+		_影牢阶段 = 3
 		询问(player.id, JIN_SHU_YING_LAO, 0, 0, GConst.CardSource.Hand, _影牢选项(), 0, "", [], true,
 			0, -1, [], -1, {})
 		return WAIT
-	var r: Dictionary = take_skill_reply_full()
+	if _影牢阶段 == 3:
+		_影牢阶段 = 0
+		return _影牢结算(take_skill_reply_full())
+	return SUCCESS
+
+
+## 影牢第二段结算：移除 3【糸】、重置，然后对目标对手 2 点法术伤害 或 指定目标队友弃 1 张
+func _影牢结算(r: Dictionary) -> int:
 	var args: Array = r.get("args", [])
-	_影牢阶段 = 0
 	if args.is_empty():
 		return SUCCESS
 	var 选择: int = int(args[0])
@@ -544,14 +569,12 @@ func _影牢() -> int:
 		return SUCCESS
 	player.remove_token(糸槽, 3)
 	player.tap = false
-	notice_skill(JIN_SHU_YING_LAO, [dst])
 	if 选择 == 1:
 		engine.push_harm({"src": player.id, "dst": dst, "point": 2,
 			"cause": JIN_SHU_YING_LAO, "type": GConst.HarmType.Magic})
 		return URGENT
 	engine.push(BattleEngine.SRequestDiscard.new(dst, 1, 0, JIN_SHU_YING_LAO))
 	return URGENT
-
 
 func _影牢选项() -> Array:
 	return [
