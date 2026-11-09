@@ -364,8 +364,9 @@ func p_action_end(ctx: Dictionary) -> int:
 			#   第 2 项＝（额外移除 1 点【秘术】）→ 不是、且还有【秘术】才亮
 			_真言伤阶段 = 1
 			询问(player.id, ZHEN_YAN_SHU, 0, 1, GConst.CardSource.Hand, [
-				{"value": 1, "label": "【言灵】为咏类命格或法术牌", "enabled": _真言加伤},
-				{"value": 2, "label": "额外移除 1 点【秘术】", "enabled": (not _真言加伤) and 有秘术},
+				# 「不改提示」：点这两个选项时不把提示条换成别的内容（保持第二段说明原文）
+				{"value": 1, "label": "【言灵】为咏类命格或法术牌", "enabled": _真言加伤, "不改提示": true},
+				{"value": 2, "label": "额外移除 1 点【秘术】", "enabled": (not _真言加伤) and 有秘术, "不改提示": true},
 			], 0, "", [], true,
 				0, -1, enemy_ids(), -1, {}, 1, GConst.HarmType.Magic, false, [], true, -1, 0,
 				_真言后半段(), -1, _真言后半段())
