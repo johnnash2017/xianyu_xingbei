@@ -4040,7 +4040,10 @@ func 攻击表现牌(card_id: int) -> int:
 	var 卡: GCard = Data.get_card(card_id)
 	if 卡 == null or not 卡.is_attack():
 		return card_id
-	if 卡.id != GConst.噬神者_魔刃卡 and 卡.id != GConst.噬神者_异刃卡:
+	var 是刃: bool = 卡.id == GConst.噬神者_魔刃卡 or 卡.id == GConst.噬神者_异刃卡
+	# 普通攻击牌的「有效系别」被卡牌系别属性改过（如苍炎魔女【烈焰形态】视为火）时，
+	# 表现也要按改后的系别走：否则客户端会按牌面自己的系别播斩击特效 / 音效。
+	if not 是刃 and 卡.element_enum() == 卡.基础元素():
 		return card_id
 	var 表现: int = int(GConst.元素斩击表现牌.get(卡.element_enum(), 0))
 	return 表现 if 表现 > 0 else card_id

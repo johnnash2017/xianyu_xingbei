@@ -384,9 +384,12 @@ func _画命格元素(c: GCard) -> void:
 			if n is CanvasItem:
 				(n as CanvasItem).visible = n.name == c.fate_pattern
 	if elementRoot != null:
+		# 按「有效系别」显示：被卡牌系别属性改过（如苍炎魔女【烈焰形态】视为火）时图标也要跟着变，
+		# 直接比 c.element（牌面自己的系别）会一直停在原系别
+		var 系别名: String = GConst.element_to_string(c.element_enum())
 		for n: Node in elementRoot.get_children():
 			if n is CanvasItem:
-				(n as CanvasItem).visible = n.name == c.element
+				(n as CanvasItem).visible = n.name == 系别名
 
 
 ## 刷新边框：三种状态只差颜色，形状参数（宽度 / 实心 / 强度 / 圆角）都一样。

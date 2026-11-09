@@ -1755,7 +1755,8 @@ func _播出手特效(src: int, dst: int, msg: Dictionary, 音效名: String) ->
 ## 这次出牌该响哪一声（空串 = 不出声）：攻击牌 atk-<系别>，法术牌 spell-<卡名后缀>
 func _出手音效(牌: GCard) -> String:
 	if 牌.is_attack():
-		return "atk-" + 牌.element
+		# 按有效系别（被卡牌系别属性改过的牌，如【烈焰形态】下的雷牌，要响火系的音）
+		return "atk-" + GConst.element_to_string(牌.element_enum())
 	var 后缀: String = str(法术音效后缀.get(牌.card_name, ""))
 	return "" if 后缀 == "" else "spell-" + 后缀
 
