@@ -25,6 +25,13 @@ var is_virtual: bool = false   # 「虚拟牌」列：1 = 无卡面的虚拟牌�
 ## 才会写实例号 / 归属者。当前系别 element 在实例副本上可以各自不同。
 var 实例号: int = -1
 var 归属者: int = -1
+## 通用「系别覆盖」属性：0＝无；非 0 时 element_enum() 一律返回它。
+## 覆盖只影响「读取系别」，不改写牌面 element —— 所以移除属性后自动回到原系别
+## （魔刃 / 异刃的当前系别也不会被改掉）。
+## 目前由苍炎魔女【烈焰形态】使用：她手牌里除水 / 暗以外的攻击牌一律视为火。
+var 系别覆盖: int = 0
+## 系别覆盖的属性名（如「烈焰形态」），排查 / 日志用；空串＝只是随快照下发的显示用覆盖
+var 系别覆盖名: String = ""
 
 func 是实例() -> bool:
 	return 实例号 >= 0
@@ -46,6 +53,8 @@ func 复制() -> GCard:
 	c.skill_ids = skill_ids.duplicate()
 	c.skill_names = skill_names.duplicate()
 	c.is_virtual = is_virtual
+	c.系别覆盖 = 系别覆盖
+	c.系别覆盖名 = 系别覆盖名
 	return c
 
 
@@ -114,9 +123,24 @@ func is_magic() -> bool:
 	return type == "magic"
 
 
-## 元素枚举值
+## 元素枚举值（**有效系别**）：挂了「系别覆盖」属性时一律返回覆盖值，
+## 所有通用系别逻辑（同系 / 异系、攻击牌白名单、应战要求、卡面标签…）读到的都是它。
 func element_enum() -> int:
+	if 系别覆盖 != 0:
+		return 系别覆盖
 	return GConst.element_from_string(element)
+
+
+## 牌面自己的系别（不含系别覆盖属性）
+func 基础元素() -> int:
+	return GConst.element_from_string(element)
+
+
+## 是否挂着某个系别覆盖属性（名称为空＝只比是否有覆盖）
+func 有系别属性(名: String = "") -> bool:
+	if 系别覆盖 == 0:
+		return false
+	return 名.is_empty() or 系别覆盖名 == 名
 
 
 ## 命格枚举值

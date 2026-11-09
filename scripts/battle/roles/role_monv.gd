@@ -5,12 +5,15 @@ extends BattleRole
 ##       天火断空（3002，法术：弃 2 张火系牌，非烈焰形态再移除 1 点【重生】，
 ##                 对目标角色和自己各造成 3（敌方士气更高时为 4）点法术伤害）、
 ##       魔女之怒（3003，启动：手牌 ≤ 3 时进入【烈焰形态】、摸 0~2 张牌并调整手牌上限；
-##                 该形态下不另设技能按钮：普通「攻击行动」打出的攻击牌一律视为火系【火焰斩】(87)）、
+##                 该形态下不另设技能按钮：普通「攻击行动」打出的攻击牌一律视为火系（见文件末尾的属性说明））、
 ##       替身玩偶（3004，响应：受攻击伤害时弃 1 张法术牌，指定同队角色摸 1 张牌）、
 ##       永生银时计（3005，被动：因承受法术伤害掉士气时 +1【重生】）、
 ##       痛苦链接（3006，法术：耗 1 点能量，对目标对手和自己各 1 点法术伤害，然后弃到 3 张牌）、
 ##       魔能反转（3007，响应：受法术伤害且能量 ≥ 1 时，弃 X（X>1）张法术牌对目标对手造成 X-1 点法术伤害）
-## 【烈焰形态】下除水系、暗系外的攻击牌视为火系（服务端 getCardElement / IsFired）。
+## 【烈焰形态】下除水系、暗系外的攻击牌「视为火系」走引擎的通用卡牌属性机制（系别覆盖）：
+## 形态期间给她手牌里的这些攻击牌挂上「烈焰形态」属性，之后 card.element_enum() 一律返回火 ——
+## 同系 / 异系、应战要求、弃牌费用、卡面左上角标签都自动按火走；
+## 魔刃 / 异刃不需要单独兼容（它们读的也是同一个 element_enum()）。牌离开手 / 形态结束自动移除属性。
 
 const CANG_YAN_FA_DIAN: int = 3001
 const TIAN_HUO_DUAN_KONG: int = 3002
@@ -20,8 +23,8 @@ const YONG_SHENG_YIN_SHI_JI: int = 3005
 const TONG_KU_LIAN_JIE: int = 3006
 const MO_NENG_FAN_ZHUAN: int = 3007
 
-## 服务端用以代替任意攻击牌的虚拟卡：火焰斩
-const VIRTUAL_FIRE_SLASH: int = 87
+## 挂在手牌上的专属属性名（引擎通用「系别覆盖」机制用）
+const 烈焰属性名: String = "烈焰形态"
 
 
 func available_skills() -> Array:
@@ -54,17 +57,61 @@ func is_free_skill(skill_id: int) -> bool:
 	return skill_id == MO_NV_ZHI_NU
 
 
-## 烈焰形态下，除水系、暗系外的攻击牌均视为火系（服务端 getCardElement）
+## 这张牌现在算不算火系：烈焰形态的属性已经落在卡牌上（系别覆盖），
+## 所以这里只看 element_enum() —— 自己就是火的牌、以及形态下被覆盖成火的攻击牌都会命中
 func _is_fire_like(card_id: int) -> bool:
 	var card: GCard = Data.get_card(card_id)
+	return card != null and card.element_enum() == GConst.CardElement.Fire
+
+
+## 【烈焰形态】：给她手里的攻击牌挂「烈焰形态」属性（除水 / 暗外一律视为火）。
+## 属性是引擎的通用机制（系别覆盖），挂上之后 element_enum() 就是火，其它逻辑不用特判。
+func _应用烈焰属性() -> void:
+	if not player.tap:
+		return
+	var 改了: bool = false
+	for cid: int in player.hand_cards:
+		var card: GCard = Data.get_card(cid)
+		if card == null or not card.is_attack():
+			continue
+		# 看「卡片自己的系别」：魔刃 / 异刃看当前选中的那一系
+		var 本系: int = card.基础元素()
+		if 本系 == GConst.CardElement.Water or 本系 == GConst.CardElement.Darkness:
+			if card.有系别属性(烈焰属性名):
+				engine.清卡牌属性(cid)
+				改了 = true
+			continue
+		if engine.设手牌属性系别(player.id, cid, GConst.CardElement.Fire, 烈焰属性名):
+			改了 = true
+	if 改了:
+		engine._broadcast_game()
+
+
+## 手牌变化（摸牌 / 弃牌 / 交牌）：形态期间属性跟着手牌走 —— 新进手的攻击牌补上属性，
+## 离手的牌由引擎的 _check_卡牌属性 自动清掉
+func p_hand_change(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id or not player.tap:
+		return SUCCESS
+	_应用烈焰属性()
+	return SUCCESS
+
+
+## 手里切换系别（魔刃 / 异刃）：烈焰形态下按切换后的系别重算这张牌的属性
+func p_card_element_change(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) != player.id or not player.tap:
+		return SUCCESS
+	var cid: int = int(ctx.get("card_id", -1))
+	var card: GCard = Data.get_card(cid)
 	if card == null:
-		return false
-	var element: int = card.element_enum()
-	if element == GConst.CardElement.Fire:
-		return true
-	if player.tap and card.is_attack():
-		return element != GConst.CardElement.Water and element != GConst.CardElement.Darkness
-	return false
+		return SUCCESS
+	var 本系: int = card.基础元素()
+	if card.is_attack() and 本系 != GConst.CardElement.Water and 本系 != GConst.CardElement.Darkness:
+		if engine.设手牌属性系别(player.id, cid, GConst.CardElement.Fire, 烈焰属性名):
+			engine._broadcast_game()
+	elif card.有系别属性(烈焰属性名):
+		engine.清卡牌属性(cid)
+		engine._broadcast_game()
+	return SUCCESS
 
 
 ## 手牌中视为火系的牌数
@@ -86,38 +133,11 @@ func p_between_weak_and_action(_ctx: Dictionary) -> int:
 	return _get_away_from_fire()
 
 
-# ============================================================
-# 应战：烈焰形态(tap)下，用火系牌应战＝视为打出虚拟【火焰斩】(87)
-# 对应服务端 MoNv::p_reattack → ToFire：cardID=87、realCard=false。
-# 真牌仍然从手牌进弃牌堆并展示（由引擎结算），反击用的是这张虚拟牌
-# ============================================================
-func p_reattack(ctx: Dictionary) -> int:
-	if int(ctx.get("doer", -1)) != player.id:
-		return SUCCESS
-	var 视为: int = _fire_slash_card(Data.get_card(int(ctx.get("card_id", -1))))
-	if 视为 < 0:
-		return SUCCESS
-	ctx["改用"] = 视为
-	ctx["real"] = false
-	return SUCCESS
-
-
-## 烈焰形态下这张牌「视为」哪一张：服务端 MoNv::IsFired —— 横置形态下「除水 / 暗 / 火之外的攻击牌」
-## 才视为火系，改用虚拟【火焰斩】(87)；其余（含本来就火系的牌、非攻击牌、不在此形态）返回 -1＝不换。
-## 应战（p_reattack）与主动攻击（p_attack_card）共用这一条规则
-func _fire_slash_card(card: GCard) -> int:
-	if not player.tap or card == null or not card.is_attack():
-		return -1
-	var 系别: int = card.element_enum()
-	if 系别 == GConst.CardElement.Fire or 系别 == GConst.CardElement.Water or 系别 == GConst.CardElement.Darkness:
-		return -1
-	return VIRTUAL_FIRE_SLASH
-
-
 func _get_away_from_fire() -> int:
 	if not player.tap:
 		return SUCCESS
 	player.tap = false
+	engine.清手牌属性系别(player.id, 烈焰属性名)
 	player.清手牌上限修正("烈焰形态")
 	engine._broadcast_game()
 	return SUCCESS
@@ -145,6 +165,7 @@ func p_special_skill(action: Dictionary) -> int:
 	player.boot_skill_used = true
 	engine.set_tap(player.id, true)
 	player.设手牌上限修正("烈焰形态", int(player.tokens[0]["num"]) - 2)
+	_应用烈焰属性()
 	if card_num > 0:
 		engine.push_draw(player.id, card_num)
 		engine._broadcast_game()
@@ -308,8 +329,8 @@ func _mo_neng_fan_zhuan(ctx: Dictionary) -> int:
 
 # ============================================================
 # 应战校验（服务端 v_reattack）：整体替换通用实现
-# 差别一：【烈焰形态】下除水系、暗系外的攻击牌视为火系（服务端 getCardElement），可应战火系攻击；
-# 差别二：服务端对暗系起源牌返回 GE_INVALID_CARDID（通用实现返回 GE_INVALID_ACTION）。
+# 差别：服务端对暗系起源牌返回 GE_INVALID_CARDID（通用实现返回 GE_INVALID_ACTION）。
+# 【烈焰形态】不用在这里特判：属性（系别覆盖）已经落在手牌上，element_enum() 直接就是火。
 # 未移植：服务端签名中的 rate != RATE_NORMAL 判定与 dstID / orignID 校验，本引擎签名无法表达。
 # ============================================================
 func v_reattack(card_id: int, attack_card_id: int) -> int:
@@ -322,9 +343,8 @@ func v_reattack(card_id: int, attack_card_id: int) -> int:
 	if atk.element_enum() == GConst.CardElement.Darkness:
 		return GConst.GE_INVALID_CARDID
 	if card.element_enum() != GConst.CardElement.Darkness:
-		# 实际系别：烈焰形态下除水系、暗系外的攻击牌视为火系（服务端 getCardElement）
-		var effect_element: int = GConst.CardElement.Fire if _is_fire_like(card_id) else card.element_enum()
-		if effect_element != atk.element_enum():
+		# 有效系别（烈焰形态的属性已经落在牌上，element_enum() 就是火）
+		if card.element_enum() != atk.element_enum():
 			return GConst.GE_INVALID_CARDID
 	return GConst.GE_SUCCESS
 
@@ -466,13 +486,7 @@ func _tong_ku_lian_jie(action: Dictionary) -> int:
 
 
 # ============================================================
-# 主动攻击的「视为」判定：烈焰形态下除水系、暗系外的攻击牌一律视为火系【火焰斩】
+# 主动攻击 / 应战都不再做「视为」：烈焰形态下攻击牌本身就带着「烈焰形态」属性（系别覆盖成火），
+# 引擎通用逻辑读到的就是火系，所以 card_id / 命格 / 表现牌都保持这张真牌。
 # （不另设攻击技能按钮 —— 技能原文里这是形态自带的规则，正常走普通「攻击行动」）
 # ============================================================
-func p_attack_card(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	var 视为: int = _fire_slash_card(Data.get_card(int(ctx.get("card_id", -1))))
-	if 视为 >= 0:
-		ctx["改用"] = 视为
-	return SUCCESS

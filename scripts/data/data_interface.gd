@@ -429,7 +429,7 @@ func 取实例卡(iid: int, 元素: int = 0, 归属: int = -1) -> GCard:
 	var 已有: GCard = 实例卡.get(iid, null)
 	if 已有 != null:
 		if 元素 > 0:
-			已有.设置当前元素(元素)
+			_按快照元素取值(已有, 元素)
 		if 归属 >= 0:
 			已有.归属者 = 归属
 		return 已有
@@ -440,9 +440,26 @@ func 取实例卡(iid: int, 元素: int = 0, 归属: int = -1) -> GCard:
 	c.实例号 = iid
 	c.归属者 = 归属
 	if 元素 > 0:
-		c.设置当前元素(元素)
+		_按快照元素取值(c, 元素)
 	实例卡[iid] = c
 	return c
+
+
+## 按快照下发的「有效系别」设置实例卡：
+##   · 等于牌面系别 → 清掉系别覆盖（形态结束 / 属性被移除时走这条）
+##   · 是这张牌可切换的系别 → 改当前系别（魔刃 / 异刃）
+##   · 其它（服务端挂了系别覆盖属性，如【烈焰形态】视为火）→ 记成覆盖，牌面不动
+func _按快照元素取值(牌: GCard, 元素: int) -> void:
+	if 牌.可选元素.has(元素):
+		牌.设置当前元素(元素)
+		牌.系别覆盖 = 0
+		牌.系别覆盖名 = ""
+		return
+	if 元素 == 牌.基础元素():
+		牌.系别覆盖 = 0
+		牌.系别覆盖名 = ""
+		return
+	牌.系别覆盖 = 元素
 
 
 func get_card(cid: int) -> GCard:
@@ -541,13 +558,24 @@ func _sync_my_cards(infos: Array, my_pos: int) -> void:
 		return
 	var me: Dictionary = infos[my_pos]
 	var 元素表: Array = me.get("hand_elements", [])
+	var 属性表: Array = me.get("hand_attrs", [])
 	var i: int = 0
 	for cid: Variant in me.get("hands", []):
 		var iid: int = int(cid)
 		var 元素: int = int(元素表[i]) if i < 元素表.size() else 0
+		var 属性名: String = str(属性表[i]) if i < 属性表.size() else ""
 		# 手牌一律用运行时实例副本：同一牌面的不同实例可以有各自的当前系别
-		var c: GCard = 取实例卡(iid, 元素)
+		var c: GCard = 取实例卡(iid)
 		if c != null:
+			if not 属性名.is_empty():
+				# 形态属性（如【烈焰形态】视为火）：只覆盖「读取系别」，不改牌面 / 当前系别
+				c.系别覆盖 = 元素
+				c.系别覆盖名 = 属性名
+			else:
+				c.系别覆盖 = 0
+				c.系别覆盖名 = ""
+				if 元素 > 0:
+					_按快照元素取值(c, 元素)
 			hand_cards.append(c)
 			hand_iids.append(iid)
 		i += 1
