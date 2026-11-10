@@ -250,35 +250,40 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if dst == null or dst.hand_cards.is_empty() or not _can_bottle():
 		_boshi_step = 0
 		return SUCCESS
-	if _boshi_step == 0:
-		_boshi_target = dst.id
-		_boshi_step = 1
-		if not engine.has_reply():
-			# 常规响应：确认＝发动，右下角「取消」＝不发动，不再额外摆「不发动」选项。
-			询问(player.id, FA_SHU_BO_LI, 0, 0)
-			return WAIT
-	if _boshi_step == 1:
-		if not engine.has_reply():
-			return WAIT
-		# 常规响应：确认＝发动，右下角「取消」＝不发动，不再额外摆「不发动」选项。
-		if not take_skill_reply():
-			_boshi_step = 0
-			_boshi_target = -1
-			return SUCCESS
-		_boshi_step = 2
-		if not engine.has_reply():
-			询问(_boshi_target, FA_SHU_BO_LI, 1, 0, GConst.CardSource.Hand, [], 0, "", [], false)
-			return WAIT
-	if _boshi_step == 2:
-		if not engine.has_reply():
-			return WAIT
-		var r2: Dictionary = take_skill_reply_full()
-		var 目标: BattlePlayer = engine.p(_boshi_target)
-		var cid: int = _回复里的一张牌(目标, r2)
-		if cid >= 0:
-			_take_target_card_to_bottle(_boshi_target, cid, FA_SHU_BO_LI)
-		_boshi_step = 0
-		_boshi_target = -1
+	_boshi_target = dst.id
+	_boshi_step = 1
+	# 法术剥离：先问发动者要不要发动 → 再问被点名的目标弃哪张牌（第二段问的是他）
+	return 多步询问(FA_SHU_BO_LI, [
+		{"取消": _法术剥离收尾},
+		{"问谁": func(_答案: Array) -> int: return _boshi_target,
+		 "需牌": 1, "可取消": false,
+		 "跳过": func(_答案: Array) -> bool: return not _法术剥离目标可弃(),
+		 "取消": _法术剥离收尾},
+	], _法术剥离结算)
+
+
+## 第二段还能不能问：目标还在、手里还有牌、瓶子还立着
+func _法术剥离目标可弃() -> bool:
+	var target: BattlePlayer = engine.p(_boshi_target)
+	return target != null and not target.hand_cards.is_empty() and _can_bottle()
+
+
+## 取消 / 超时：清状态，什么都不做
+func _法术剥离收尾() -> int:
+	_boshi_step = 0
+	_boshi_target = -1
+	return SUCCESS
+
+
+## 目标答完：把他选的牌收进瓶子
+func _法术剥离结算(答案: Array) -> int:
+	var 目标: BattlePlayer = engine.p(_boshi_target)
+	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
+	var cid: int = _回复里的一张牌(目标, {"card_ids": 回.get("cards", [])})
+	if cid >= 0:
+		_take_target_card_to_bottle(_boshi_target, cid, FA_SHU_BO_LI)
+	_boshi_step = 0
+	_boshi_target = -1
 	return SUCCESS
 
 
