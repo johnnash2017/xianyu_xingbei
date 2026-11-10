@@ -8854,8 +8854,14 @@ func _发送行动(action_type: int, action_id: int, dst: Array, cards: Array, a
 		and (action_type == GConst.ActionType.AttackSkill \
 			or action_type == GConst.ActionType.MagicSkill \
 			or action_type == GConst.ActionType.SpecialSkill)
+	# 行动一发出，服务端可能在同一帧就把下一条询问递回来（进程内直连 / 快速回包，如
+	# 【扭曲之爱】这种「选完选项接着问下一段」的技能）：那时界面已经按新询问重建，
+	# 再 _清空待选 会把刚摆好的选项 / 提示一起抹掉，表现是「确认后界面闪一下」甚至「选项自动退出」。
+	# 同 _发送应答 的处理：询问代没变才清。
+	var 发前代: int = _询问代
 	Logic.send_action(action_type, action_id, dst, cards, args, 额外ID)
-	_清空待选()
+	if _询问代 == 发前代:
+		_清空待选()
 
 
 func _发送应答(respond_id: int, dst: Array, cards: Array, args: Array) -> void:

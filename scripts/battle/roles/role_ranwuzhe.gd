@@ -112,12 +112,14 @@ func p_special_skill(action: Dictionary) -> int:
 					_扭曲段 = 1
 					continue
 				if int(选[0]) == 1:
+					# 有多少弃多少：手牌不足 2 张时按实际张数收（0 张就是空弃）
+					var 需弃: int = mini(扭曲_弃张数, player.hand_cards.size())
 					var 弃: Array = []
 					for c: Variant in r.get("card_ids", []):
 						var 实例: int = player.手牌实例(int(c))
 						if 实例 >= 0 and not 弃.has(实例):
 							弃.append(实例)
-					if 弃.size() != 扭曲_弃张数:
+					if 弃.size() != 需弃:
 						engine.报错("【扭曲之爱】提交的弃牌不合法", player.id)
 						_扭曲段 = 0
 						return SUCCESS
@@ -166,12 +168,13 @@ func _扭曲形态选项() -> Array:
 	]
 
 
-## 第二段：弃 2 张（当场选牌，need_card=2）或摸 2 张
+## 第二段：弃 2 张（当场选牌）/ 摸 2 张。
+## 手牌不足 2 张也能选「弃」：有多少弃多少（标题里写的就是实际要弃的张数，0 张＝空弃）。
 func _扭曲弃摸选项() -> Array:
-	var 能弃: bool = player.hand_cards.size() >= 扭曲_弃张数
+	var 弃张数: int = mini(扭曲_弃张数, player.hand_cards.size())
 	return [
-		{"value": 1, "label": GConst.按钮原文(NIU_QU_ZHI_AI, 2) % 扭曲_弃张数,
-			"need_card": 扭曲_弃张数, "enabled": 能弃},
+		{"value": 1, "label": GConst.按钮原文(NIU_QU_ZHI_AI, 2) % 弃张数,
+			"need_card": 弃张数},
 		{"value": 2, "label": GConst.按钮原文(NIU_QU_ZHI_AI, 3) % 扭曲_摸张数},
 	]
 
