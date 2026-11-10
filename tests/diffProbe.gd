@@ -30,6 +30,8 @@ func _ready() -> void:
 	_场景神之子()
 	_场景魑魅魍魉()
 	_场景圣炎祈愿()
+	_场景剑影断念()
+	_场景水影()
 	_扫全角色()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
@@ -319,6 +321,19 @@ func _扫一序(角色号: int, 序号: int, 钩子表: Array) -> void:
 	_输出("扫 %d seq%d" % [角色号, 序号])
 
 
+
+## 两张水系牌（供【水影】这类「弃水系牌」的技能用）
+func _水系两张() -> Array[int]:
+	var 出: Array[int] = []
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.element_enum() == GConst.CardElement.Water:
+			出.append(c.id)
+			if 出.size() >= 2:
+				break
+	if 出.size() < 2:
+		return [87, 129]
+	return 出
+
 ## 找两张同系牌（同一元素）
 func _同系一对() -> Array[int]:
 	var 按系: Dictionary = {}
@@ -402,6 +417,38 @@ func _场景圣炎祈愿() -> void:
 	_跑(func() -> int: return int(引擎.p(1).role.p_sheng_dian_ask({"player": 1})))
 	_录状态()
 	_输出("圣炎祈愿4307")
+
+## 剑影断念 4504（剑之魔女）：攻击行动结束 → 聚合器摆选项 → 选 4504（付 1 宝石 + 弃 2 张）→ 结算
+func _场景剑影断念() -> void:
+	_新引擎({1: 45})
+	var 我: BattlePlayer = 引擎.p(1)
+	我.hand_cards = [66, 87, 129, 22] as Array[int]
+	我.set_gem(1)
+	var ctx: Dictionary = {}
+	var 选项: Array = 引擎.p(1).role.action_end_options(ctx)
+	var 摘要: Array = []
+	for o: Dictionary in 选项:
+		摘要.append([int(o.get("value", -1)), int(o.get("skill_id", -1)),
+			bool(o.get("enabled", true)), int(o.get("need_card", -1))])
+	记.append("OPTIONS 数=%d %s" % [选项.size(), str(摘要)])
+	var 回: Dictionary = {"args": [4504], "card_ids": [66, 87], "dst_ids": [3]}
+	应答序 = []
+	_跑(func() -> int: return int(引擎.p(1).role.resolve_action_end_option(4504, 回, ctx)))
+	_录状态()
+	_输出("剑影断念4504")
+
+## 水影 502（暗杀者）：摸牌前弃 X 张水系牌【展示】→ 摸 X+1？；不横置时第二步（额外弃法术牌）跳过
+func _场景水影() -> void:
+	_新引擎({1: 5})
+	var 水: Array[int] = _水系两张()
+	var p: BattlePlayer = 引擎.p(1)
+	p.hand_cards = [水[0], 水[1]] as Array[int]
+	p.tap = false
+	var ctx: Dictionary = {"player": 1}
+	应答序 = [_答([], [水[0], 水[1]])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_before_draw(ctx)))
+	_录状态()
+	_输出("水影502")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
