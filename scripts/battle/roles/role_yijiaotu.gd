@@ -74,6 +74,10 @@ var _展示对手: int = -1
 ## 贪婪时已经发动过的系别（选项板上置灰）
 var _展示已用: Array[int] = []
 var _展示贪婪: bool = false
+## 展示这次是不是只做一项（贪婪没发动）
+var _展示仅一项: bool = false
+## 展示这次是否已经问过「要不要发动贪婪」（取消后重开链时用）
+var _展示已问贪婪: bool = false
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -357,7 +361,9 @@ func _p_放逐(张: int) -> int:
 func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 审判 / 放逐已改成独立的多步询问链（各自按技能号记进度，不再共用 _xxx步）
+	# 审判 / 放逐 / 展示已改成独立的多步询问链（各自按技能号记进度，不再共用 _xxx步）
+	if 多步询问进行中(_展示技能号()):
+		return _展示链(_展示仅一项, _展示已问贪婪)
 	if _审判待问 or 多步询问进行中(SHEN_PAN):
 		return _审判链()
 	if _放逐待问 or 多步询问进行中(FANG_ZHU):
@@ -414,10 +420,11 @@ func p_yi_jiao_tu_ask(ctx: Dictionary) -> int:
 
 ## 展示：贪婪（两项都发动？）→ 每项「选系 + 选牌 + 选对手」→ 对手弃同系牌 → 造成 X+1 点法术伤害
 ## 一项问完才问下一项（最多两项），第二项只在「发动了贪婪且还有没用过的系」时出现。
-func _展示链() -> int:
+func _展示链(仅一项: bool = false, 跳过问贪婪: bool = false) -> int:
 	return 多步询问(_展示技能号(), [
 		{"技能号": TAN_LAN, "可取消": true,
-		 "跳过": func(_答案: Array) -> bool: return player.get_energy() <= 0,
+		 "取消": func() -> int: return _展示不贪婪(),
+		 "跳过": func(_答案: Array) -> bool: return 跳过问贪婪 or player.get_energy() <= 0,
 		 "答完": _展示贪婪答完},
 		{"需目标": 1, "牌上限": 4, "张数": 4, "收牌人": player.id,
 		 "牌白": func(_答案: Array) -> Array: return _展示可选牌(),
@@ -438,7 +445,7 @@ func _展示链() -> int:
 		{"需目标": 1, "牌上限": 4, "张数": 4, "收牌人": player.id,
 		 "牌白": func(_答案: Array) -> Array: return _展示可选牌(),
 		 "目标白": func(_答案: Array) -> Array: return enemy_ids(),
-		 "跳过": func(_答案: Array) -> bool: return not _展示还有第二项(),
+		 "跳过": func(_答案: Array) -> bool: return 仅一项 or not _展示还有第二项(),
 		 "校验": _展示选系合法,
 		 "答完": func(回: Dictionary, _答案: Array) -> int: return _展示选中答完(回)},
 		{"问谁": func(_答案: Array) -> int: return _展示对手,
@@ -449,10 +456,20 @@ func _展示链() -> int:
 		 "可取消": false,
 		 "询问文案": func(_答案: Array) -> String:
 			return GConst.提示原文(_展示技能号(), 4) % [_在展示, GConst.element_to_chinese(_展示系)],
-		 "跳过": func(_答案: Array) -> bool: return not _展示还有第二项() or _展示对手上限() <= 0,
+		 "跳过": func(_答案: Array) -> bool:
+			return 仅一项 or not _展示还有第二项() or _展示对手上限() <= 0,
 		 "校验": _展示对手弃牌合法,
 		 "答完": _展示对手弃牌答完},
 	], func(_答案: Array) -> int: return _展示收尾())
+
+
+## 贪婪这一步点了「取消」/不发动：只做一项，重新开一条只做一项的链
+func _展示不贪婪() -> int:
+	_展示贪婪 = false
+	_展示仅一项 = true
+	_展示已问贪婪 = true
+	_展示已用.clear()
+	return _展示链(true, true)
 
 
 ## 贪婪问完：确定这一项还是两项（消耗 1 水晶）
@@ -650,6 +667,8 @@ func _展示收尾() -> int:
 	_展示对手 = -1
 	_展示已用.clear()
 	_展示贪婪 = false
+	_展示仅一项 = false
+	_展示已问贪婪 = false
 	_翻面步 = 0
 	return SUCCESS
 
@@ -922,6 +941,7 @@ func _翻面为(名: String) -> int:
 	notice_skill(_展示技能号(), [player.id])
 	_展示已用.clear()
 	_展示贪婪 = false
+	_展示仅一项 = false
 	_展示对手 = -1
 	# 先问「是否发动贪婪」，再决定发动一项还是两项（贪婪＝两项都发动、顺序自定）
 	return _展示链()
