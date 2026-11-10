@@ -199,9 +199,9 @@ func p_before_draw(ctx: Dictionary) -> int:
 		 "跳过": func(答案: Array) -> bool:
 			if not 可问额外:
 				return true
-			# 第一步没真的弃出水系牌＝水影没成立（旧实现此时直接短路），第二步也不再问
-			if 答案.is_empty() \
-					or _有效水系牌((答案[0] as Dictionary).get("cards", [])).is_empty():
+			# 第一步没真的弃出水系牌＝水影没成立（旧实现此时直接短路），第二步也不再问。
+			# 注意用「答案」判断，不能查手牌：第一步的答完已经把牌弃掉了
+			if _答案水系牌(答案).is_empty():
 				return true
 			return _水影剩余法术牌(答案).is_empty()},
 	], _水影结算)
@@ -211,7 +211,7 @@ func p_before_draw(ctx: Dictionary) -> int:
 func _水影剩余法术牌(答案: Array) -> Array[int]:
 	if not player.tap:
 		return []
-	var 已弃: Array = _有效水系牌((答案[0] as Dictionary).get("cards", [])) if 答案.size() > 0 else []
+	var 已弃: Array = _答案水系牌(答案)
 	var out: Array[int] = []
 	for id: int in magic_hand_ids():
 		if not 已弃.has(id):
@@ -267,6 +267,23 @@ func p_timeline_6_drawn(ctx: Dictionary) -> int:
 ## 手里能弃的水系牌（水影主效果的合法牌）
 func _水系手牌() -> Array[int]:
 	return hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == GConst.CardElement.Water)
+
+
+## 答案里记录的水系牌：只按牌面判断，**不查是否还在手里**。
+## 第一段的「答完」会当场把牌弃掉，之后再拿 `_有效水系牌` 校验答案会一律判成空，
+## 第二段的「跳过」就永远成立——潜行下后半段永远不问（用户报的 bug）。
+func _答案水系牌(答案: Array) -> Array:
+	var out: Array = []
+	if 答案.is_empty():
+		return out
+	for c: Variant in (答案[0] as Dictionary).get("cards", []):
+		var cid: int = int(c)
+		if out.has(cid):
+			continue
+		var card: GCard = Data.get_card(cid)
+		if card != null and card.element_enum() == GConst.CardElement.Water:
+			out.append(cid)
+	return out
 
 
 ## 从回复的卡牌中筛出确实持有的水系牌
