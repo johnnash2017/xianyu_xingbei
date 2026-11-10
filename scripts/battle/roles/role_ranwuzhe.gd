@@ -262,35 +262,39 @@ func p_harm_end(ctx: Dictionary) -> int:
 
 ## 戾气满且还在【普通形态】时，询问「弃 1 张牌 + 指定 1 名角色移除 2 治疗」，
 ## 成立后横置进入【狂戾形态】。
+## 手牌为空不算「不能发动」：这一步照样触发，只是没有牌可弃（need_card 给 0）。
 func _尝试狂戾变身() -> int:
 	if player.tap or player.token_num(戾气槽) < player.token_max(戾气槽):
 		return SUCCESS
-	# 「你弃 1 张牌」是代价：手里一张牌都没有时这段结算不了，等下次触发
-	if player.hand_cards.is_empty():
-		return SUCCESS
+	var 需弃: int = 1 if not player.hand_cards.is_empty() else 0
 	if _狂戾阶段 == 0:
 		_狂戾阶段 = 1
-		询问(player.id, KUANG_LI_ZHI_XIN, 1, 1, GConst.CardSource.Hand, [],
+		询问(player.id, KUANG_LI_ZHI_XIN, 需弃, 1, GConst.CardSource.Hand, [],
 			0, "", [], false, 0, -1, 全部角色(), -1, {})
 		return WAIT
 	_狂戾阶段 = 0
 	var r: Dictionary = take_skill_reply_full()
 	var cards: Array = r.get("card_ids", [])
 	var dsts: Array = r.get("dst_ids", [])
-	if cards.is_empty() or dsts.is_empty():
-		return SUCCESS
-	var card: int = player.手牌实例(int(cards[0]))
-	if card < 0:
-		engine.报错("【狂戾之心】提交的弃牌不在手牌里", player.id)
+	if dsts.is_empty():
 		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(dsts[0]))
 	if dst == null:
 		engine.报错("【狂戾之心】提交的目标不存在", player.id)
 		return SUCCESS
+	var card: int = -1
+	if 需弃 > 0:
+		if cards.is_empty():
+			return SUCCESS
+		card = player.手牌实例(int(cards[0]))
+		if card < 0:
+			engine.报错("【狂戾之心】提交的弃牌不在手牌里", player.id)
+			return SUCCESS
 	notice_skill(KUANG_LI_ZHI_XIN, [dst.id])
-	engine.take_from_hand(player.id, [card])
-	engine.to_discard([card], {"owner": player.id, "source": "hand", "cause": KUANG_LI_ZHI_XIN})
-	engine._log_discard(player.id, [card])
+	if card >= 0:
+		engine.take_from_hand(player.id, [card])
+		engine.to_discard([card], {"owner": player.id, "source": "hand", "cause": KUANG_LI_ZHI_XIN})
+		engine._log_discard(player.id, [card])
 	# 「移除 2 治疗」：目标有多少扣多少
 	dst.sub_cross_num(mini(2, dst.cross_num))
 	player.tap = true
