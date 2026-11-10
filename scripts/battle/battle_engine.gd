@@ -2717,7 +2717,6 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 	# 这次应答不能用【圣光】（如染污者狂戾形态）：魔弹传递询问也走这条，客户端据此把圣光置灰
 	if not can_light:
 		cmd["can_light"] = false
-	_询问(pid, GConst.CmdType.Respond, [cmd])
 
 
 ## 询问某玩家是否发动某技能（客户端表现为「确定/取消」）
@@ -2749,7 +2748,8 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 高亮目标 非空时随询问下发（highlight_ids）：只把这几名角色点亮给人看，**不参与选择、不参与提交**。
 ## 用于「效果落在不受玩家选择的角色身上」的技能 —— 如【别烦我……】让目标弃牌那一步，
 ## 同时点亮「不弃就 +1 治疗」的那名队友（目标自己由客户端点亮）
-func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = [], timeout_targets: Array = [], cover_max: int = 0, hand_need: int = -1) -> void:
+func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = [], timeout_targets: Array = [], cover_max: int = 0, hand_need: int = -1,
+		allow_back: bool = false) -> void:
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
@@ -2955,6 +2955,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 本次攻击不能用【圣光】抵挡时才下发（客户端据此把【圣光】置灰）
 	if not can_light:
 		cmd["can_light"] = false
+	# 多步询问：这一段是「后面几步中的一步」，客户端在选项左侧摆「返回」，
+	# 玩家点了就回一条空应答，服务端把它当「退回上一段重问」（见角色里的分段函数）
+	if allow_back:
+		cmd["allow_back"] = true
 	# 同一次攻击的伤害预览（客户端「受到 N 伤害攻击」用）：普通应战里由 SAttackedAsk 下发，
 	# 3306 这种在同一步里先问效果的技能询问也要带上，提示才对得上。
 	if 预览伤害 >= 0:

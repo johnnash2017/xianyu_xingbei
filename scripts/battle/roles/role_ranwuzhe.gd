@@ -136,7 +136,8 @@ func _扭曲问弃摸() -> int:
 	_扭曲段 = 2
 	if not engine.has_reply():
 		询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲弃摸选项(),
-			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中)
+			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中,
+			[], true, -1, 0, "", -1, "", [], [], 0, -1, true)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var a: Array = r.get("args", [])
@@ -170,7 +171,8 @@ func _扭曲问戾气() -> int:
 	_扭曲段 = 3
 	if not engine.has_reply():
 		询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲戾气选项(),
-			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中)
+			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中,
+			[], true, -1, 0, "", -1, "", [], [], 0, -1, true)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var a: Array = r.get("args", [])
