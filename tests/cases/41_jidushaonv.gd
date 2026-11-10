@@ -402,8 +402,10 @@ func 跑() -> void:
 	_新一次攻击宣告()
 	发送记录.clear()
 	var 未命中上下文: Dictionary = _攻击上下文(火攻击, 1, 2, true, BattleEngine.ATTACK_BASE_POINT)
-	检(角色.p_timeline_2_miss(未命中上下文) == BattleRole.WAIT,
-		"主动攻击未命中时应问【醋意羞心】")
+	var 未命中返回: int = int(角色.p_timeline_2_miss(未命中上下文))
+	检(未命中返回 == BattleRole.WAIT,
+		"主动攻击未命中时应问【醋意羞心】（实际返回 %d，step=%d，链中=%s）"
+		% [未命中返回, int(角色.get("_cu_yi_step")), str(角色.多步询问进行中(10701))])
 	var 选人问: Dictionary = _取询问(1, 10701)
 	var 选人args: Array = 选人问.get("args", [])
 	检(not 选人问.is_empty() and 选人args.size() > 1 and int(选人args[0]) == 0
