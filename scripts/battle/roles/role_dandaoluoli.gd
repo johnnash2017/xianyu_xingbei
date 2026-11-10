@@ -48,7 +48,8 @@ var _糖果我方: int = 0
 var _糖果敌方: int = 0
 var _糖果未做: Array = []
 ## T-r-i-c-k-y!：0＝未问 / 1＝等选查看哪个 / 2＝等选同系弃牌
-var _垂迹阶段: int = 0
+## T-r-i-c-k-y! 第一段选中后可弃的同系手牌（第二段白名单）
+var _垂迹同系: Array = []
 var _垂迹选中: int = -1
 ## 叛逆之墙：0＝未问 / 1＝等选要弃的牌
 var _叛逆阶段: int = 0
@@ -296,50 +297,54 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _trickies.is_empty():
 		return SUCCESS
-	if _垂迹阶段 == 0:
-		_垂迹阶段 = 1
-		询问(player.id, TRICKY, 0, 0, GConst.CardSource.Hand, _垂迹选项(), 0, "", [], true,
-			0, -1, [], -1, {})
-		return WAIT
-	if _垂迹阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		_垂迹阶段 = 0
-		if args.is_empty():
-			return SUCCESS
-		var 档: int = int(args[0])
-		if 档 < 1 or 档 > _trickies.size():
-			engine.报错("【T-r-i-c-k-y!】选项号越界", player.id)
-			return SUCCESS
-		_垂迹选中 = 档 - 1
-		var 项: Dictionary = _trickies[_垂迹选中]
-		var 真牌: int = int(项["card"])
-		var 牌: GCard = Data.get_card(真牌)
-		if 牌 == null:
-			_垂迹选中 = -1
-			return SUCCESS
-		# 查看：只把这张牌给发动者本人看（私下看牌，不广播、不触发封印）
-		engine.私下看牌(player.id, [真牌])
-		var 同系: Array = hand_ids_where(func(_cid: int, c: GCard) -> bool:
-			return c.element_enum() == 牌.element_enum())
-		if 同系.is_empty():
-			_垂迹选中 = -1
-			return SUCCESS
-		_垂迹阶段 = 2
-		询问(player.id, TRICKY, 1, 0, GConst.CardSource.Hand, [], 0, "", 同系, true,
-			0, -1, [], -1, {})
-		return WAIT
-	# 阶段 2：移除该 Tricky + 弃 1 张同系牌 → 对原拥有者 2 点法术伤害③
-	var r2: Dictionary = take_skill_reply_full()
-	var cards2: Array = r2.get("card_ids", [])
-	_垂迹阶段 = 0
+	if step >= STEP_DONE:
+		return SUCCESS
+	_垂迹选中 = -1
+	_垂迹同系 = []
+	# T-r-i-c-k-y!：选一个 Tricky 私下看牌 → 弃 1 张同系牌 → 对他原拥有者 2 点法术伤害。
+	return 多步询问(TRICKY, [
+		{"选项": _垂迹选项(), "答完": _垂迹选牌答完},
+		{"需牌": 1, "牌白": func(_答案: Array) -> Array: return _垂迹同系,
+		 "跳过": func(_答案: Array) -> bool: return _垂迹同系.is_empty()},
+	], _垂迹结算)
+
+
+## 第 1 段答完：记下选中的 Tricky、私下看牌、算出可弃的同系牌
+func _垂迹选牌答完(回: Dictionary, _答案: Array) -> int:
+	var args: Array = 回.get("args", [])
+	if args.is_empty():
+		return SUCCESS
+	var 档: int = int(args[0])
+	if 档 < 1 or 档 > _trickies.size():
+		engine.报错("【T-r-i-c-k-y!】选项号越界", player.id)
+		return SUCCESS
+	_垂迹选中 = 档 - 1
+	var 项: Dictionary = _trickies[_垂迹选中]
+	var 真牌: int = int(项["card"])
+	var 牌: GCard = Data.get_card(真牌)
+	if 牌 == null:
+		_垂迹选中 = -1
+		return SUCCESS
+	# 查看：只把这张牌给发动者本人看（私下看牌，不广播、不触发封印）
+	engine.私下看牌(player.id, [真牌])
+	_垂迹同系 = hand_ids_where(func(_cid: int, c: GCard) -> bool:
+		return c.element_enum() == 牌.element_enum())
+	if _垂迹同系.is_empty():
+		_垂迹选中 = -1
+	return SUCCESS
+
+
+## 第 2 段答完：弃 1 张同系牌 → 移除该 Tricky → 对原拥有者 2 点法术伤害
+func _垂迹结算(答案: Array) -> int:
 	var 序: int = _垂迹选中
 	_垂迹选中 = -1
-	if cards2.is_empty() or 序 < 0 or 序 >= _trickies.size():
+	_垂迹同系 = []
+	if 序 < 0 or 序 >= _trickies.size():
 		return SUCCESS
 	var 项2: Dictionary = _trickies[序]
 	var 真牌2: int = int(项2["card"])
 	var 牌2: GCard = Data.get_card(真牌2)
+	var cards2: Array = (答案[1] as Dictionary).get("cards", []) if 答案.size() > 1 else []
 	var 弃: int = -1
 	for c: Variant in cards2:
 		var 实例: int = player.手牌实例(int(c))
@@ -363,6 +368,8 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 	engine._log_discard(player.id, [弃])
 	engine.push_harm({"src": player.id, "dst": 目标, "point": 2,
 		"cause": TRICKY, "type": GConst.HarmType.Magic})
+	# 结算里压了伤害并返回 URGENT：引擎重入本钩子时用 step 挡住
+	step = STEP_DONE
 	engine._broadcast_game()
 	return URGENT
 
