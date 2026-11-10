@@ -6295,6 +6295,9 @@ func _可回魔弹牌(card_id: int) -> bool:
 		return false
 	if GConst.魔弹全禁(我.role_id):
 		return false
+	# 服务端说这次不能用【圣光】（如染污者狂戾形态）：圣光置灰、点不动
+	if 牌.card_name_enum() == GConst.CardName.HolyLight and not bool(_pending.get("can_light", true)):
+		return false
 	var 上限: int = maxi(1, int(_pending.get("card_max", 1)))
 	if 上限 > 1:
 		# 10603：可以选 2 张同系牌；第一张必须本身能单出（圣光/魔弹）或手里还有一张同系搭档，

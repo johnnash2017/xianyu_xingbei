@@ -189,6 +189,13 @@ func p_after_turn_end(_ctx: Dictionary) -> int: return SUCCESS
 ## ctx: {card_id 打出的牌, doer 应战者, target 反击目标, 改用 视为哪张牌, real 是否实体牌}
 ## 角色也可设置 ctx["block"] = true，把这次应战当作「格挡」（本次攻击落空、不反击），如阴阳师光系应战
 func p_reattack(_ctx: Dictionary) -> int: return SUCCESS
+## 通用：此刻能不能用【圣光】（格挡攻击 / 抵挡魔弹都算）。
+## 形态类被动用（如染污者【狂戾之心】：狂戾形态下无法使用【圣光】）；false 时引擎会在
+## 攻击询问与魔弹询问里把 can_light 下发成 false（客户端把圣光置灰），并统一在 v_block 拒绝。
+func 能否使用圣光() -> bool:
+	return true
+
+
 ## 通用「卡牌系别属性」判定：这张牌在**我手里**时，有效系别是多少（0＝不改，按牌面算）。
 ## 引擎每拍按「持有者」现算，所以别人在别的回合把牌交给我、我自己摸牌 / 弃牌都不需要额外处理。
 ## 例：苍炎魔女【烈焰形态】—— 手里的攻击牌除水 / 暗外一律视为火。

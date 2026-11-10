@@ -66,18 +66,10 @@ func v_allow_action(action_type: int, _args: Array, _allow: int, _can_give_up: b
 
 ## 【暗影抗拒】（904）：在自己的行动阶段，他连【圣光】也不能用来抵挡/格挡
 ## （对照参考客户端 MoJian::attacked 的 if(isMyTurn) handArea->disableMagic()）。
-## 被攻击时把下发给界面的 can_light 置 0，界面就会把【圣光】置灰、点不动
-func p_attacked(ctx: Dictionary) -> int:
-	if engine.current_id == player.id and int(ctx.get("dst", -1)) == player.id:
-		ctx["can_light"] = false
-	return SUCCESS
-
-
-## 【暗影抗拒】（904）：同上，服务端兜底拒绝用【圣光】抵挡（格挡攻击与抵挡魔弹都走 v_block）
-func v_block(_card_id: int) -> int:
-	if engine.current_id == player.id:
-		return GConst.GE_INVALID_CARDID
-	return V_NOT_OVERRIDE
+## 走引擎的通用钩子：攻击询问 / 魔弹询问都会把 can_light 下发成 false，客户端把【圣光】置灰；
+## v_block 也统一拒绝，不用自己再写 p_attacked / v_block 两条
+func 能否使用圣光() -> bool:
+	return engine.current_id != player.id
 
 
 func v_missile(_card_id: int, _dst_id: int) -> int:

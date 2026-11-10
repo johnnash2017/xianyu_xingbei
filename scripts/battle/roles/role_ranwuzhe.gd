@@ -310,20 +310,12 @@ func p_turn_end(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 狂戾形态：无法使用【圣光】格挡（攻击 / 魔弹都走 v_block）
+# 狂戾形态：无法使用【圣光】
+#   用引擎的通用钩子表达：攻击询问 / 魔弹询问都会把 can_light 下发成 false（客户端把圣光置灰），
+#   v_block 也统一拒绝 —— 不用自己在每个入口各写一遍
 # ============================================================
-## 被攻击时把下发给界面的 can_light 置 0：界面据此把【圣光】置灰、点不动
-## （v_block 是服务端兜底，只有它的话客户端仍会亮着、点了才被拒）
-func p_attacked(ctx: Dictionary) -> int:
-	if player.tap and int(ctx.get("dst", -1)) == player.id:
-		ctx["can_light"] = false
-	return SUCCESS
-
-
-func v_block(_card_id: int) -> int:
-	if not player.tap:
-		return V_NOT_OVERRIDE
-	return GConst.GE_INVALID_CARDID
+func 能否使用圣光() -> bool:
+	return not player.tap
 
 
 # ============================================================

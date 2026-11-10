@@ -2686,7 +2686,7 @@ func _技能按钮命令(pl: BattlePlayer, sk: Dictionary, action_type: int) -> 
 
 func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], src_id: int = -1,
 		card_max: int = 0, card_rule: String = "", ask_text: String = "", allow_actions: Array = [],
-		option_uids: Array = [], ban_reattack_card_names: Array = []) -> void:
+		option_uids: Array = [], ban_reattack_card_names: Array = [], can_light: bool = true) -> void:
 	# 记录本次询问，供超时构造默认回复
 	_pending_respond_id = respond_id
 	_pending_args = args.duplicate()
@@ -2714,6 +2714,9 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 	# 本次攻击禁用来应战的卡名（如 9703 禁【暗灭】）：客户端据此置灰，服务端仍复核
 	if not ban_reattack_card_names.is_empty():
 		cmd["ban_reattack_card_names"] = ban_reattack_card_names
+	# 这次应答不能用【圣光】（如染污者狂戾形态）：魔弹传递询问也走这条，客户端据此把圣光置灰
+	if not can_light:
+		cmd["can_light"] = false
 	_询问(pid, GConst.CmdType.Respond, [cmd])
 
 
@@ -5145,6 +5148,10 @@ class SAttackedAsk:
 				# 指向不存在的玩家：清掉脏标记，按常规应战
 				dst.reattacker = -1
 		var hit_rate: int = int(owner.ctx.get("hit_rate", GConst.HitRate.Normal))
+		# 通用：应战者此刻不能用【圣光】（如染污者狂戾形态）→ 随询问下发 can_light=false，
+		# 客户端把圣光置灰；格挡校验也读同一个字段（见下面 owner.ctx.get("can_light")）
+		if defender.role != null and not defender.role.能否使用圣光():
+			owner.ctx["can_light"] = false
 		# 应战询问的参数；末位＝本次攻击伤害：harm["point"]（怒吼 / 精准射击 / 蓄力一击等「宣告阶段」
 		# 已加进去的）＋ 攻击者预告的「命中才结算」加伤（暗影之力 / 暗之解放…，见 p_attack_preview）。
 		# 客户端把它写进提示（「受到 N 伤害攻击，…」），让被攻击者一眼看到这一下要挨多少
@@ -5346,9 +5353,11 @@ class SMissileAsk:
 		if not e.has_reply():
 			# dst_ids = 本次可以把魔弹传给谁（候选，有【魔弹掌控】时左右各一个）
 			# args[0] 放持有者 id：客户端据此判断这条询问是不是发给自己的
+			var 持者: BattlePlayer = e.players.get(holder)
+			var 可圣光: bool = 持者 == null or 持者.role == null or 持者.role.能否使用圣光()
 			e.ask_respond(holder, GConst.RespondType.Bullet, [holder, point, src],
 				e._missile_relay_targets(holder, post_dir, used, src), src,
-				选牌上限, "", 提示)
+				选牌上限, "", 提示, [], [], [], 可圣光)
 			e.wait_for(holder, GConst.Msg.Respond)
 			return BattleEngine.WAIT
 		var r: Dictionary = e.take_reply()
@@ -5361,7 +5370,8 @@ class SMissileAsk:
 			if me.v_remissile_multi(cards) != GConst.GE_SUCCESS:
 				e.ask_respond(holder, GConst.RespondType.Bullet, [holder, point, src],
 					e._missile_relay_targets(holder, post_dir, used, src), src,
-					选牌上限, "", 提示)
+					选牌上限, "", 提示, [], [], [],
+					me == null or me.role == null or me.role.能否使用圣光())
 				e.wait_for(holder, GConst.Msg.Respond)
 				return BattleEngine.WAIT
 			var 多牌下轮: Array[int] = []

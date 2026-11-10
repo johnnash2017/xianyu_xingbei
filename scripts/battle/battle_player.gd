@@ -985,6 +985,9 @@ func base_v_reattack(card_id: int, attack_card_id: int) -> int:
 
 ## 格挡校验（圣光）
 func v_block(card_id: int) -> int:
+	# 通用：角色声明此刻不能用【圣光】（如染污者狂戾形态）→ 直接拒绝，不用各角色自己写 v_block
+	if role != null and not role.能否使用圣光():
+		return GConst.GE_INVALID_CARDID
 	if role != null:
 		var rc: int = role.v_block(card_id)
 		if rc != BattleRole.V_NOT_OVERRIDE:
