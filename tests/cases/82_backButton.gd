@@ -92,6 +92,32 @@ func 跑() -> void:
 	窗2.queue_free()
 	await 等帧(1)
 
+	# ================= 全量审计：所有「锁定不可取消」的技能 =================
+	# 返回 => 只要按钮存在就必须可用（不再跟 _取消可用 连坐）；锁定只该锁「取消」。
+	var 锁定技能: Array[int] = []
+	for 键: Variant in GConst.技能指示器:
+		if bool((GConst.技能指示器[键] as Dictionary).get("锁定不可取消", false)):
+			锁定技能.append(int(键))
+	检(锁定技能.size() >= 10, "带「锁定不可取消」的技能数量异常：%d" % 锁定技能.size())
+	var 窗3: Control = (load("res://scenes/BattleUIMobile.tscn") as PackedScene).instantiate()
+	get_tree().root.add_child(窗3)
+	await 等帧(1)
+	var 灰的: Array = []
+	for 技能号: int in 锁定技能:
+		窗3.set("_mode", 4)
+		窗3.set("_pending_skill_id", 技能号)
+		窗3.set("_目标锁死", true)
+		窗3.call("_进入二级技能栏", 技能号, null, [], Color(0, 0, 0, 0),
+			Callable(窗3, "_on_cancel"))
+		await 等帧(1)
+		var 返回钮: 技能按钮 = _返回按钮(窗3)
+		检(返回钮 != null, "锁定技能 %d 的二级栏没有「返回」" % 技能号)
+		if 返回钮 != null and 返回钮.plateButton.disabled:
+			灰的.append(技能号)
+	检(灰的.is_empty(), "这些「锁定不可取消」技能的「返回」仍是置灰的：%s" % str(灰的))
+	窗3.queue_free()
+	await 等帧(1)
+
 
 ## 二级栏里那颗「返回」按钮（没有返回 null）
 func _返回按钮(窗: Control) -> 技能按钮:
