@@ -502,7 +502,8 @@ var _多步链: Dictionary = {}
 ##     "超时默认"   Variant 没有「超时」回调时，超时把这一段当作这个答案；都没有就按「不发动」收尾
 ##     "问谁"       int / Callable(答案)  这一段问哪名玩家（默认自己；队友代答 / 问别人时用）
 ##     "技能号"     int / Callable(答案)  这一段用哪个技能号发询问（默认＝链号；一条链里两段是不同技能时用）
-##     "取消"       Callable()  玩家在这一段取消整条链时调用（清阶段标记 / 还原本地状态）
+##     "取消"       Callable() -> int  玩家在这一段取消整条链时调用（清阶段标记 / 还原本地状态）；
+##                  可以返回 URGENT/WAIT 表示「不这么做」本身要结算（框架原样返回）
 ##     "答完"       Callable(回, 答案) -> int  这一段答完立刻结算（可压状态并返回 URGENT/WAIT），
 ##                  返回值非 SUCCESS 时框架原样返回；段号已推进，重入时从下一段继续
 ##     "跳过"       Callable(答案) -> bool  条件段：返回 true 就跳过这一段不问
@@ -560,9 +561,13 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 			# 其余空应答＝整条链不发动（可取消时）；不能取消（异常空应答）就重问这一段
 			if bool(段.get("可取消", true)):
 				_多步链.erase(链号)
+				# 「取消」回调可以返回 URGENT / WAIT：有的技能「不这么做」本身就是一次结算
+				# （如忌妒少女【醋意休心】：目标不弃法术牌 → 直接 2 点法术伤害 + 水晶）
 				var 取消回调: Variant = 段.get("取消", null)
 				if 取消回调 is Callable:
-					(取消回调 as Callable).call()
+					var 取消返回: int = int((取消回调 as Callable).call())
+					if 取消返回 != SUCCESS:
+						return 取消返回
 				return SUCCESS
 			_多步问一段(链号, 段号, 段, 答案)
 			return WAIT
