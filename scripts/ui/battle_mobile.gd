@@ -2441,6 +2441,11 @@ func _进入待选() -> void:
 	_mode = 0
 	_selecting_cover = false
 	_不可行动 = false
+	# 目标锁死只属于「当前这一次技能选择」：新询问进来必须复位。
+	# 否则像【散华轮舞】这种「自动选目标自己 + 锁定」的启动技，服务端紧接着发来的
+	# 行动询问会带着锁死状态进来（_稍后清空待选 见新询问已到就不走 _清空待选），
+	# 之后所有头像都被 _玩家可选 的第一道 _目标锁死 判断挡掉——表现为「选不了目标」
+	_目标锁死 = false
 	var respond_id: int = int(_pending.get("respond_id", 0))
 	var args: Array = _pending.get("args", [])
 	if _pending_type == GConst.Msg.Action:
