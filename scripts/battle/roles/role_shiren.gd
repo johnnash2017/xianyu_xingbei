@@ -62,7 +62,8 @@ var bu_xie_num: int = 0
 
 ## 希望赋格曲的进度（同上：启动技能里也要连着问玩家几次，靠自有阶段推进）：
 ## 0＝刚收到发动（扣费、按选项摸牌）/ 1＝在问「选效果 + 点角色」/ 2＝在问「弃牌 + 收益」
-var xi_wang_phase: int = 0
+## 希望赋格曲：第 1 段选了「放置」时不再问第二段
+var _xi_wang_已放置: bool = false
 var xi_wang_dst: int = -1
 var xi_wang_kind: int = 0
 
@@ -599,10 +600,10 @@ func _xi_wang_attach(dst_id: int) -> void:
 ##   ① 选哪个效果 + 点哪名角色 →（选了「转移」才有的）② 弃 1 张牌 + 选 +1【治疗】或 +1【灵感】。
 ## 两步都是不能取消的询问（中途没有回退）。超时由引擎回一条空 args 的回复兜底，据此自动代打：
 ##   ①＝第一项效果 + 它的第一个可点角色；②＝随机一项收益 + 随机弃一张。
-## 「已执行过」由引擎的 SkillRun.checked 记着：回复后引擎会再进来一次接着走 xi_wang_phase
+## 「已执行过」由引擎的 SkillRun.checked 记着：回复后引擎会再进来一次接着走多步询问的链
 func _xi_wang_fu_ge_qu(action: Dictionary) -> int:
-	if xi_wang_phase == 0:
-		# 扣费、按选项摸牌与广播只在开头做一次，后面几步都只是选东西
+	# 扣费、按选项摸牌与广播只在开头做一次，后面几步都只是选东西
+	if not 多步询问进行中(XI_WANG_FU_GE_QU):
 		var args: Array = action.get("args", [])
 		notice_skill(XI_WANG_FU_GE_QU, [player.id])
 		player.boot_skill_used = true
@@ -617,11 +618,9 @@ func _xi_wang_fu_ge_qu(action: Dictionary) -> int:
 			engine.push(BattleEngine.SHook.new("p_xi_wang_effects", {"player": player.id}, []))
 			engine.push_draw(player.id, 1)
 			engine._broadcast_game()
-			xi_wang_phase = 1
 			# 压了摸牌就必须 URGENT：先摸完（含【水影】响应），再压行动结束响应 / 继续选效果
 			return URGENT
 		engine._broadcast_game()
-		xi_wang_phase = 1
 	return _xi_wang_effects()
 
 
@@ -635,83 +634,84 @@ func p_xi_wang_effects(ctx: Dictionary) -> int:
 ## 希望赋格曲：第一步起（选效果 + 点角色 →「转移」才有的第二步：弃 1 张牌 + 选收益）。
 ## 选了摸牌时它由 p_xi_wang_effects 钩子在摸牌之后调用；没选摸牌时 _xi_wang_fu_ge_qu 直接调用
 func _xi_wang_effects() -> int:
-	if xi_wang_phase == 1:
-		# 第一个确认：选效果 + 点角色（两项各自的可点角色随选项下发，见 _xi_wang_effect_options）
-		var 选项: Array = _xi_wang_effect_options()
-		var 首选: Dictionary = {}
-		for 项: Dictionary in 选项:
-			if bool(项.get("enabled", true)):
-				首选 = 项
-				break
-		if 首选.is_empty():
-			xi_wang_phase = 0
-			return SUCCESS
-		if not engine.has_reply():
-			询问(player.id, XI_WANG_FU_GE_QU, 0, 1, GConst.CardSource.Hand, 选项, 0, "", [], false, 0, -1,
-				_xi_wang_targets())
-			return WAIT
-		var r2: Dictionary = take_skill_reply_full()
-		var 效果args: Array = r2.get("args", [])
-		var 目标s: Array = r2.get("dst_ids", [])
-		var 效果: int = int(效果args[0]) if not 效果args.is_empty() else int(首选["value"])
-		var 选择项: Dictionary = _xi_wang_option(效果)
-		if 选择项.is_empty() or not bool(选择项.get("enabled", true)):
-			效果 = int(首选["value"])
-		var 白名单: Array = _xi_wang_option_targets(效果)
-		var 目标: int = int(目标s[0]) if not 目标s.is_empty() else -1
-		if not 白名单.has(目标):
-			# 超时兜底（或选了个不合法的）：按第一个可用效果 + 它的第一个可点角色代打
-			效果 = int(首选["value"])
-			白名单 = _xi_wang_option_targets(效果)
-			目标 = int(白名单[0]) if not 白名单.is_empty() else -1
-		if 目标 < 0:
-			xi_wang_phase = 0
-			return SUCCESS
-		xi_wang_kind = 效果
-		xi_wang_dst = 目标
-		if 效果 == XI_WANG_PLACE:
-			# 放置：把乐章挂到目标面前，到此结束
-			_xi_wang_attach(目标)
-			xi_wang_phase = 0
-			engine._broadcast_game()
-			return SUCCESS
-		xi_wang_phase = 2
-	if xi_wang_phase == 2:
-		# 第二个确认（只有「转移」）：弃 1 张牌 + 选 +1【治疗】或 +1【灵感】——
-		# 弃牌是这一步的代价，和收益在同一个询问里选，不能取消
-		if not engine.has_reply():
-			询问(player.id, XI_WANG_FU_GE_QU, 1, 0, GConst.CardSource.Hand, [
-				{"value": XI_WANG_HEAL, "label": GConst.按钮原文(XI_WANG_FU_GE_QU, 4)},
-				{"value": XI_WANG_LING_GAN, "label": GConst.按钮原文(XI_WANG_FU_GE_QU, 5)},
-			], 1, "", [], false, 0)
-			return WAIT
-		var r3: Dictionary = take_skill_reply_full()
-		xi_wang_phase = 0
-		var 回复args: Array = r3.get("args", [])
-		var 回复牌: Array = r3.get("card_ids", [])
-		# 超时兜底：引擎给的 args / card_ids 都是空的 → 收益随机挑一项、手牌随机抽一张
-		var 收益: int = int(回复args[0]) if not 回复args.is_empty() \
-			else (XI_WANG_HEAL if randi() % 2 == 0 else XI_WANG_LING_GAN)
-		var 候选: Array = 回复牌
-		if 候选.is_empty():
-			# _pick_cards 按给定顺序补齐，先洗一遍手牌即是「随机弃一张」
-			候选 = player.hand_cards.duplicate()
-			候选.shuffle()
-		var 弃: Array = _pick_cards(player, 候选, 1)
-		if not 弃.is_empty():
-			engine.take_from_hand(player.id, 弃)
-			engine.to_discard(弃, {"owner": player.id, "source": "hand"})
-			engine._log_discard(player.id, 弃)
-		if 收益 == XI_WANG_HEAL:
-			施加治疗(player.id, 1)
-		else:
-			_set_ling_gan(_ling_gan() + 1)
-		_xi_wang_attach(xi_wang_dst)
+	# 希望赋格曲：先「选效果 + 点角色」（不可取消）→ 选「转移」时再问「弃 1 张牌 + 选 +1 治疗 / +1 灵感」
+	if not 多步询问进行中(XI_WANG_FU_GE_QU):
+		_xi_wang_已放置 = false
+	return 多步询问(XI_WANG_FU_GE_QU, [
+		{"选项": func(_答案: Array) -> Array: return _xi_wang_effect_options(),
+		 "需目标": 1, "目标白": func(_答案: Array) -> Array: return _xi_wang_targets(),
+		 "可取消": false, "超时默认": [],
+		 "答完": _xi_wang_选效果答完},
+		{"选项": [
+			{"value": XI_WANG_HEAL, "label": GConst.按钮原文(XI_WANG_FU_GE_QU, 4)},
+			{"value": XI_WANG_LING_GAN, "label": GConst.按钮原文(XI_WANG_FU_GE_QU, 5)},
+		 ], "需牌": 1, "牌上限": 1, "可取消": false, "超时默认": [],
+		 "跳过": func(_答案: Array) -> bool: return _xi_wang_已放置},
+	], _xi_wang_结算)
+
+
+## 第 1 段答完：定下效果与目标；「放置」在这一步就做完（不再问第二段）
+func _xi_wang_选效果答完(回: Dictionary, _答案: Array) -> int:
+	var 效果args: Array = 回.get("args", [])
+	var 目标s: Array = 回.get("dsts", [])
+	var 选项: Array = _xi_wang_effect_options()
+	var 首选: Dictionary = {}
+	for 项: Dictionary in 选项:
+		if bool(项.get("enabled", true)):
+			首选 = 项
+			break
+	if 首选.is_empty():
+		return SUCCESS
+	var 效果: int = int(效果args[0]) if not 效果args.is_empty() else int(首选["value"])
+	var 选择项: Dictionary = _xi_wang_option(效果)
+	if 选择项.is_empty() or not bool(选择项.get("enabled", true)):
+		效果 = int(首选["value"])
+	var 白名单: Array = _xi_wang_option_targets(效果)
+	var 目标: int = int(目标s[0]) if not 目标s.is_empty() else -1
+	if not 白名单.has(目标):
+		# 超时兜底（或选了个不合法的）：按第一个可用效果 + 它的第一个可点角色代打
+		效果 = int(首选["value"])
+		白名单 = _xi_wang_option_targets(效果)
+		目标 = int(白名单[0]) if not 白名单.is_empty() else -1
+	if 目标 < 0:
+		return SUCCESS
+	xi_wang_kind = 效果
+	xi_wang_dst = 目标
+	if 效果 == XI_WANG_PLACE:
+		# 放置：把乐章挂到目标面前，到此结束
+		_xi_wang_attach(目标)
+		_xi_wang_已放置 = true
 		engine._broadcast_game()
 	return SUCCESS
 
 
-## 某个效果可点的角色（放置＝除自己外的队友；转移＝除当前持有者外的我方，含自己）
+## 第 2 段答完（只有「转移」会走到）：弃 1 张牌，然后 +1 治疗或 +1 灵感
+func _xi_wang_结算(答案: Array) -> int:
+	if _xi_wang_已放置 or xi_wang_dst < 0:
+		return SUCCESS
+	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
+	var 回复args: Array = 回.get("args", [])
+	var 回复牌: Array = 回.get("cards", [])
+	# 超时兜底：收益随机挑一项、手牌随机抽一张
+	var 收益: int = int(回复args[0]) if not 回复args.is_empty() \
+		else (XI_WANG_HEAL if randi() % 2 == 0 else XI_WANG_LING_GAN)
+	var 候选: Array = 回复牌
+	if 候选.is_empty():
+		# _pick_cards 按给定顺序补齐，先洗一遍手牌即是「随机弃一张」
+		候选 = player.hand_cards.duplicate()
+		候选.shuffle()
+	var 弃: Array = _pick_cards(player, 候选, 1)
+	if not 弃.is_empty():
+		engine.take_from_hand(player.id, 弃)
+		engine.to_discard(弃, {"owner": player.id, "source": "hand"})
+		engine._log_discard(player.id, 弃)
+	if 收益 == XI_WANG_HEAL:
+		施加治疗(player.id, 1)
+	else:
+		_set_ling_gan(_ling_gan() + 1)
+	_xi_wang_attach(xi_wang_dst)
+	engine._broadcast_game()
+	return SUCCESS
 func _xi_wang_option_targets(效果: int) -> Array:
 	return _xi_wang_move_targets() if 效果 == XI_WANG_MOVE else _xi_wang_place_targets()
 
