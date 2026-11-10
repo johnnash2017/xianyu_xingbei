@@ -8860,16 +8860,22 @@ func _发送行动(action_type: int, action_id: int, dst: Array, cards: Array, a
 	# 同 _发送应答 的处理：询问代没变才清。
 	var 发前代: int = _询问代
 	Logic.send_action(action_type, action_id, dst, cards, args, 额外ID)
-	if _询问代 == 发前代:
-		_清空待选()
+	_稍后清空待选(发前代)
 
 
 func _发送应答(respond_id: int, dst: Array, cards: Array, args: Array) -> void:
 	var 发前代: int = _询问代
 	Logic.send_respond(respond_id, dst, cards, args)
-	# 应答一发出，下一条询问可能就在同一帧里递了回来（进程内直连 / 快速回包）：
-	# 那时界面已经按新询问重建，不能再 _清空待选 —— 否则连续的同名询问会被抹掉，
-	# 表现就是「喧哗上等只让我确定一次」「同一技能的多步询问只出第一条」。
+	_稍后清空待选(发前代)
+
+
+## 发完应答 / 行动后「稍等一拍再清界面」：
+## 服务端经常要等引擎下一次 tick 才把下一段询问发回来（不是同一帧），
+## 立刻 _清空待选 会把界面先退回行动栏、再被新询问重建 —— 看起来就是「闪一下」；
+## 连续多段的询问（扭曲之爱这种）还可能因为清空把刚摆好的选项抹掉。
+## 这里让出一小段时间：期间来了新询问就什么都不做（界面已经按它重建），没来才清。
+func _稍后清空待选(发前代: int) -> void:
+	await get_tree().create_timer(0.15).timeout
 	if _询问代 == 发前代:
 		_清空待选()
 

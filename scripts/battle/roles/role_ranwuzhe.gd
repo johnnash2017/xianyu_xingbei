@@ -27,17 +27,7 @@ const NIU_QU_ZHI_AI: int = 8306
 ## 【戾气】在角色表「指示物」里的槽位（0:戾气:2）
 const 戾气槽: int = 0
 
-## 【扭曲之爱】三段式（形态 → 弃/摸 → 戾气），写法同魔弓【魔眼】：
-## 第一段在二级技能栏里选（可「返回」退出、不扣宝石），后两段是服务端询问，
-## 空应答＝退回上一段重问（指示器 选项可返回，客户端会摆「返回」）。
-const 扭曲_弃张数: int = 2
-const 扭曲_摸张数: int = 2
-## 0＝未开始 / 1＝重问形态（第二段返回时）/ 2＝等选弃或摸 / 3＝等选戾气
-var _扭曲段: int = 0
-var _扭曲形态: int = 0
-## 第二段选的是「弃」还是「摸」；弃哪几张先记下来，等三段都选完再一起结算
-var _扭曲弃牌: bool = true
-var _扭曲弃: Array = []
+# 【扭曲之爱】的状态变量见下面 8306 那一段（三段式）
 var _戾如泉涌已用: bool = false
 ## 狂戾之心：0＝未问 / 1＝等选弃牌 + 目标
 var _狂戾阶段: int = 0
@@ -64,8 +54,7 @@ func available_skills() -> Array:
 		"id": NIU_QU_ZHI_AI,
 		"need_card": 0,
 		"need_target": 0,
-		# 第一段（调整形态）在二级技能栏里选：点技能才进、可「返回」退出，不扣宝石（同魔弓【魔眼】）
-		"arg_choices": _扭曲形态选项(),
+		# 三段都是服务端询问（写法同【军神威光】）：点技能后第一段问形态，取消＝不发动
 		"enabled": player.gem > 0,
 	}]
 
@@ -86,79 +75,106 @@ func v_special_skill(action: Dictionary) -> int:
 
 
 # ============================================================
-# 【扭曲之爱】8306：三段式（形态 → 弃/摸 → 戾气）
-#   第一段：点技能进二级技能栏选形态（可「返回」退出，不发动、不扣宝石）
-#   第二段：选「你弃 2 张牌」（当场选好 2 张一起确认）或「你摸 2 张牌」
-#   第三段：选「调整【戾气】为 X」
-#   第二/三段都是服务端询问，空应答＝退回上一段重问（指示器 选项可返回）；
-#   弃的牌先记下来，三段选完才和费用一起结算 —— 中途返回不会白弃牌。
+# 【扭曲之爱】8306：三段询问（形态 → 弃/摸 → 戾气）
+#   写法照【军神威光】的两段式：每段一个函数、段号记在 _扭曲段 里，p_special_skill 按段号分派；
+#   后段「返回」＝重问前一段（整条链共用一个倒计时），第一段取消＝不发动（宝石不扣）。
+#   弃的牌先记着，三段都选完才和费用一起结算 —— 中途返回不会白弃牌。
 # ============================================================
-func p_special_skill(action: Dictionary) -> int:
-	while true:
-		match _扭曲段:
-			0:
-				var a0: Array = action.get("args", [])
-				_扭曲形态 = 1 if (not a0.is_empty() and int(a0[0]) == 1) else 0
-				_扭曲段 = 2
-			2:
-				if not engine.has_reply():
-					询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲弃摸选项(),
-						0, "", [], true, 0, -1, [], -1, {}, 0, 0, false)
-					return WAIT
-				var r: Dictionary = take_skill_reply_full()
-				var 选: Array = r.get("args", [])
-				if 选.is_empty() or int(选[0]) <= 0:
-					# 返回：重问形态一段（再取消一次才是「不发动」）
-					_扭曲段 = 1
-					continue
-				if int(选[0]) == 1:
-					# 有多少弃多少：手牌不足 2 张时按实际张数收（0 张就是空弃）
-					var 需弃: int = mini(扭曲_弃张数, player.hand_cards.size())
-					var 弃: Array = []
-					for c: Variant in r.get("card_ids", []):
-						var 实例: int = player.手牌实例(int(c))
-						if 实例 >= 0 and not 弃.has(实例):
-							弃.append(实例)
-					if 弃.size() != 需弃:
-						engine.报错("【扭曲之爱】提交的弃牌不合法", player.id)
-						_扭曲段 = 0
-						return SUCCESS
-					_扭曲弃牌 = true
-					_扭曲弃 = 弃
-				else:
-					_扭曲弃牌 = false
-					_扭曲弃 = []
-				_扭曲段 = 3
-			3:
-				if not engine.has_reply():
-					询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲戾气选项(),
-						0, "", [], true, 0, -1, [], -1, {}, 0, 0, false)
-					return WAIT
-				var r3: Dictionary = take_skill_reply_full()
-				var a3: Array = r3.get("args", [])
-				if a3.is_empty() or int(a3[0]) < 0:
-					_扭曲段 = 2
-					continue
-				var 值: int = clampi(int(a3[0]), 0, player.token_max(戾气槽))
-				_扭曲段 = 0
-				return _扭曲结算(值)
-			_:
-				# 1＝重问形态（第二段返回时）：选了就接着问第二段，取消＝不发动
-				if not engine.has_reply():
-					询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲形态选项(),
-						0, "", [], true, 0, -1, [], -1, {}, 0, 0, false)
-					return WAIT
-				var rf: Dictionary = take_skill_reply_full()
-				var af: Array = rf.get("args", [])
-				if af.is_empty() or int(af[0]) < 0:
-					_扭曲段 = 0
-					return SUCCESS
-				_扭曲形态 = 1 if int(af[0]) == 1 else 0
-				_扭曲段 = 2
-	return SUCCESS
+const 扭曲_弃张数: int = 2
+const 扭曲_摸张数: int = 2
+## 0＝未开始 / 1＝问形态 / 2＝问弃或摸 / 3＝问戾气
+var _扭曲段: int = 0
+var _扭曲形态: int = 0
+var _扭曲弃牌: bool = true
+var _扭曲弃: Array = []
+## 是不是已经在这条询问链里了（第 1 段问过之后为 true）：后几段沿用同一次等待的倒计时
+var _扭曲链中: bool = false
 
 
-## 第一段：调整形态（arg_choices 与询问共用同一份：arg_choices 读 text/args，询问读 label/value）
+func p_special_skill(_action: Dictionary) -> int:
+	match _扭曲段:
+		1:
+			return _扭曲问形态()
+		2:
+			return _扭曲问弃摸()
+		3:
+			return _扭曲问戾气()
+	_扭曲段 = 1
+	return _扭曲问形态()
+
+
+## 第一段：调整形态（取消＝不发动整条技能，宝石不扣）
+func _扭曲问形态() -> int:
+	_扭曲段 = 1
+	if not engine.has_reply():
+		询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲形态选项(),
+			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中)
+		_扭曲链中 = true
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var a: Array = r.get("args", [])
+	if a.is_empty() or int(a[0]) < 0:
+		_扭曲段 = 0
+		_扭曲链中 = false
+		return SUCCESS
+	_扭曲形态 = 1 if int(a[0]) == 1 else 0
+	_扭曲段 = 2
+	return _扭曲问弃摸()
+
+
+## 第二段：弃 2 张（当场选牌）/ 摸 2 张；「返回」＝重问第一段
+func _扭曲问弃摸() -> int:
+	_扭曲段 = 2
+	if not engine.has_reply():
+		询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲弃摸选项(),
+			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var a: Array = r.get("args", [])
+	if a.is_empty() or int(a[0]) <= 0:
+		_扭曲段 = 1
+		return _扭曲问形态()
+	if int(a[0]) == 1:
+		# 有多少弃多少：手牌不足 2 张时按实际张数收（0 张就是空弃）
+		var 需弃: int = mini(扭曲_弃张数, player.hand_cards.size())
+		var 弃: Array = []
+		for c: Variant in r.get("card_ids", []):
+			var 实例: int = player.手牌实例(int(c))
+			if 实例 >= 0 and not 弃.has(实例):
+				弃.append(实例)
+		if 弃.size() != 需弃:
+			engine.报错("【扭曲之爱】提交的弃牌不合法", player.id)
+			_扭曲段 = 0
+			_扭曲链中 = false
+			return SUCCESS
+		_扭曲弃牌 = true
+		_扭曲弃 = 弃
+	else:
+		_扭曲弃牌 = false
+		_扭曲弃 = []
+	_扭曲段 = 3
+	return _扭曲问戾气()
+
+
+## 第三段：调整【戾气】数；「返回」＝重问第二段
+func _扭曲问戾气() -> int:
+	_扭曲段 = 3
+	if not engine.has_reply():
+		询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲戾气选项(),
+			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var a: Array = r.get("args", [])
+	if a.is_empty() or int(a[0]) < 0:
+		_扭曲段 = 2
+		return _扭曲问弃摸()
+	var 值: int = clampi(int(a[0]), 0, player.token_max(戾气槽))
+	_扭曲段 = 0
+	_扭曲链中 = false
+	return _扭曲结算(值)
+
+
+## 第一段选项：调整形态（询问要 label/value；arg_choices 用 text/args，两套键都带上备用）
 func _扭曲形态选项() -> Array:
 	return [
 		{"value": 0, "args": [0],
@@ -168,7 +184,7 @@ func _扭曲形态选项() -> Array:
 	]
 
 
-## 第二段：弃 2 张（当场选牌）/ 摸 2 张。
+## 第二段选项：弃 2 张（当场选牌）/ 摸 2 张。
 ## 标题固定写 2 张，不随手牌数变化；手牌不足时照样能选 —— 实际是「有多少弃多少」（0 张＝空弃），
 ## 所以 need_card 给的是这一问实际要选的张数（min(2, 手牌数)），0 张时不用选牌也能确定。
 func _扭曲弃摸选项() -> Array:
@@ -180,7 +196,7 @@ func _扭曲弃摸选项() -> Array:
 	]
 
 
-## 第三段：戾气 0..上限（按角色表「戾气」槽的上限枚举）
+## 第三段选项：戾气 0..上限（按角色表「戾气」槽的上限枚举）
 func _扭曲戾气选项() -> Array:
 	var 上限: int = player.token_max(戾气槽)
 	var out: Array = []
