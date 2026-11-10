@@ -533,6 +533,15 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 		_多步链[链号] = {"段": 0, "答案": []}
 	var 链: Dictionary = _多步链[链号]
 	while true:
+		# 「重复」要等状态结算完再判的情况：答完压过状态，重入时先补判一次
+		if 链.has("待判重复"):
+			var 待: Dictionary = 链["待判重复"]
+			链.erase("待判重复")
+			var 待段: int = int(待.get("段", 0))
+			if 待段 < 段表.size():
+				var 待重复: Variant = (段表[待段] as Dictionary).get("重复", null)
+				if 待重复 is Callable and bool((待重复 as Callable).call(待.get("回", {}), 链.get("答案", []))):
+					链["段"] = 待段
 		var 段号: int = int(链.get("段", 0))
 		var 答案: Array = 链.get("答案", [])
 		if 段号 >= 段表.size():
@@ -616,12 +625,15 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 			答完返回2 = int((答完 as Callable).call(回, 答案))
 		# 「重复」：这一段要对不同对象反复问（循环段）——为真时留在本段，答案就地覆盖
 		var 重复: Variant = 段.get("重复", null)
+		if 答完返回2 != SUCCESS:
+			# 答完压了状态（URGENT/WAIT）：重复要等状态结算完再判，先记下来
+			if 重复 is Callable:
+				链["待判重复"] = {"段": 段号, "回": 回}
+			return 答完返回2
 		if 重复 is Callable and bool((重复 as Callable).call(回, 答案)):
 			答案.resize(段号)
 			答案.append(回)
 			链["段"] = 段号
-		if 答完返回2 != SUCCESS:
-			return 答完返回2
 	return SUCCESS
 
 

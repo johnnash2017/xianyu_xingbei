@@ -44,7 +44,9 @@ var _王车阶段: int = 0
 ## 信仰重铸：0＝未开始 / 1＝已问、等回复 / 2＝已放牌在宝珠上，等摸牌 / 3＝王权宝珠链进行中
 var _信仰阶段: int = 0
 ## 王权宝珠的传递链：1＝问当前持有者【圣律威压】/ 3＝传给下家（并检查圣遗物）/ 4＝问铸律者收尾
-var _宝珠阶段: int = 0
+## 宝珠传递链：还要不要继续循环 / 宝珠是不是传回了铸律者
+var _宝珠继续: bool = false
+var _宝珠到铸律者: bool = false
 var _宝珠持有者: int = -1
 var _宝珠选摸牌: bool = false
 
@@ -104,8 +106,9 @@ func p_before_role_replace(_ctx: Dictionary) -> int:
 		if p0 != null:
 			p0.清手牌上限修正(神律来源)
 	# 宝珠链的分步状态跟着旧角色走不了，直接收链（场卡本身留在场上，由新角色重新开始）
-	_宝珠阶段 = 0
 	_宝珠持有者 = -1
+	_宝珠继续 = false
+	_宝珠到铸律者 = false
 	_王车阶段 = 0
 	return SUCCESS
 
@@ -320,7 +323,8 @@ func p_turn_end(ctx: Dictionary) -> int:
 		_信仰阶段 = 3
 		_宝珠放下(player.id)
 		_宝珠持有者 = player.id
-		_宝珠阶段 = 1
+		_宝珠继续 = false
+		_宝珠到铸律者 = false
 	if _信仰阶段 == 3:
 		var rc: int = _宝珠推进()
 		if rc != SUCCESS:
@@ -367,50 +371,64 @@ func _宝珠放下(holder: int) -> void:
 # 王权宝珠的传递链：圣律威压 → 神言咏赞 → 下家圣律威压 → … → 回到铸律者收尾
 # ============================================================
 func _宝珠推进() -> int:
-	while true:
-		if _宝珠阶段 == 1:
-			if not engine.has_reply():
-				notice_skill(SHENG_LV_WEI_YA, [_宝珠持有者])
-				询问(_宝珠持有者, SHENG_LV_WEI_YA, 0, 0, GConst.CardSource.Hand,
-					_圣律威压选项(_宝珠持有者), 0, "", [], false, 0, -1, [], -1, {})
-				return WAIT
-			var r: Dictionary = take_skill_reply_full()
-			var args: Array = r.get("args", [])
-			_宝珠选摸牌 = args.is_empty() or int(args[0]) != 1
-			_宝珠阶段 = 3
-			if _宝珠选摸牌:
-				engine.push_强制摸牌(_宝珠持有者, 2, SHENG_LV_WEI_YA)
-				return URGENT
-			_圣律威压弃牌(_宝珠持有者, r.get("card_ids", []))
-			continue
-		if _宝珠阶段 == 3:
-			if _宝珠选摸牌:
-				# 「摸 2 张牌【强制】，铸律者阵营士气-1」：摸牌结算完再掉士气
-				_宝珠选摸牌 = false
-				engine.lose_morale(player, 1, SHENG_LV_WEI_YA)
-			if player.token_num(圣遗物槽) < 1:
-				engine.移除场卡(宝珠名)
-				_宝珠阶段 = 0
-				return SUCCESS
-			# 神言咏赞：传给右手边最近的玩家
-			var 下家: int = engine.next_id(_宝珠持有者)
-			_宝珠放下(下家)
-			notice_skill(SHEN_YAN_YONG_ZAN, [下家])
-			_宝珠持有者 = 下家
-			_宝珠阶段 = 4 if 下家 == player.id else 1
-			continue
-		if _宝珠阶段 == 4:
-			if not engine.has_reply():
-				notice_skill(SHEN_YAN_YONG_ZAN, [player.id])
-				询问(player.id, SHEN_YAN_YONG_ZAN, 0, 0, GConst.CardSource.Hand,
-					_神言咏赞选项(), 0, "", [], false, 0, -1, [], -1, {})
-				return WAIT
-			return _神言咏赞收尾(take_skill_reply_full())
-		break
+	# 王权宝珠的传递链：圣律威压（对持有者，循环）→ 神言咏赞（传回铸律者时）
+	# 第 1 段用「重复」段：每到一个人就问一次圣律威压，问完把宝珠传给下家；
+	# 摸牌那一支要等摸牌结算完才掉士气 / 传宝珠，所以重复判定会延后到重入时再做。
+	return 多步询问(SHENG_LV_WEI_YA, [
+		{"问谁": func(_答案: Array) -> int: return _宝珠持有者,
+		 "选项": func(_答案: Array) -> Array: return _圣律威压选项(_宝珠持有者),
+		 "可取消": false, "超时默认": [],
+		 "答完": _圣律威压答完,
+		 "重复": func(_回: Dictionary, _答案: Array) -> bool: return _宝珠循环一步()},
+		{"技能号": SHEN_YAN_YONG_ZAN,
+		 "选项": func(_答案: Array) -> Array: return _神言咏赞选项(),
+		 "可取消": false,
+		 "跳过": func(_答案: Array) -> bool: return not _宝珠到铸律者,
+		 "取消": func() -> int: return _神言咏赞收尾({})},
+	], _神言咏赞结算)
+
+
+## 圣律威压答完：选摸牌就压摸牌状态（掉士气 / 传宝珠留到重入时判重复里做），否则弃牌
+func _圣律威压答完(回: Dictionary, _答案: Array) -> int:
+	var args: Array = 回.get("args", [])
+	_宝珠选摸牌 = args.is_empty() or int(args[0]) != 1
+	if _宝珠选摸牌:
+		engine.push_强制摸牌(_宝珠持有者, 2, SHENG_LV_WEI_YA)
+		return URGENT
+	_圣律威压弃牌(_宝珠持有者, 回.get("cards", []))
 	return SUCCESS
 
 
-## 圣律威压的两个选项：弃 1 张与「卡上那张牌」同种类的牌 / 摸 2 张、铸律者阵营士气 -1
+## 一个人问完后的「阶段 3」：摸牌的掉士气 → 圣遗物不够就移除宝珠收尾 → 否则传给下家
+## 返回「还要不要继续循环」（宝珠传到铸律者时停，改问神言咏赞）
+func _宝珠循环一步() -> bool:
+	if _宝珠选摸牌:
+		# 「摸 2 张牌【强制】，铸律者阵营士气-1」：摸牌结算完再掉士气
+		_宝珠选摸牌 = false
+		engine.lose_morale(player, 1, SHENG_LV_WEI_YA)
+	if player.token_num(圣遗物槽) < 1:
+		engine.移除场卡(宝珠名)
+		_宝珠到铸律者 = false
+		_宝珠继续 = false
+		return false
+	# 神言咏赞：传给右手边最近的玩家
+	var 下家: int = engine.next_id(_宝珠持有者)
+	_宝珠放下(下家)
+	notice_skill(SHEN_YAN_YONG_ZAN, [下家])
+	_宝珠持有者 = 下家
+	_宝珠到铸律者 = 下家 == player.id
+	_宝珠继续 = not _宝珠到铸律者
+	return _宝珠继续
+
+
+## 神言咏赞答完：把选项回复转成原收尾函数要的形状
+func _神言咏赞结算(答案: Array) -> int:
+	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
+	return _神言咏赞收尾({
+		"args": 回.get("args", []), "card_ids": 回.get("cards", []), "dst_ids": 回.get("dsts", []),
+	})
+
+
 func _圣律威压选项(holder: int) -> Array:
 	var 同种类: Array = []
 	var 叠牌号: int = int(engine.取场卡(宝珠名).get("card", -1))
@@ -486,7 +504,8 @@ func _神言咏赞选项() -> Array:
 func _神言咏赞收尾(r: Dictionary) -> int:
 	var args: Array = r.get("args", [])
 	var 选择: int = int(args[0]) if not args.is_empty() else 1
-	_宝珠阶段 = 0
+	_宝珠继续 = false
+	_宝珠到铸律者 = false
 	if 选择 == 1:
 		notice_skill(SHEN_YAN_YONG_ZAN, [player.id])
 		替换角色(红衣主教)
