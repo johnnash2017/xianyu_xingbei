@@ -54,7 +54,6 @@ const 键_荒神_盖: String = "_jiejie_荒神盖"
 const 键_琉璃: String = "_jiejie_琉璃"
 ## 同步掉士气链（合成星杯 / 逆反居合斩 / 暗月诅咒）扣完士气后补问的那条
 const 键_琉璃后: String = "_jiejie_琉璃后"
-const 键_白二: String = "_jiejie_白二"
 const 键_灭界: String = "_jiejie_灭界"
 const 键_伏魔: String = "_jiejie_伏魔"
 ## 挂在伤害字典上：伏魔境伤害前的两队士气（p_harm_end 拿来比）
@@ -472,70 +471,50 @@ func p_action_end(ctx: Dictionary) -> int:
 	# 【祭】已满、又没有【结界】可给时，这次响应什么都不做，不弹询问
 	if player.token_num(JI_SLOT) >= player.token_max(JI_SLOT) and _结界().is_empty():
 		return SUCCESS
-	while true:
-		match int(ctx.get(键_白二, 0)):
-			0:
-				ctx[键_白二] = 1
-				if not engine.has_reply():
-					# 原文「你」＝拥有【绝界】的人，不是结界师：发不发动由他说
-					询问(持有者, 白二羯磨)
-					return WAIT
-			1:
-				if not engine.has_reply():
-					return WAIT
-				var r: Dictionary = take_skill_reply_full()
-				if not _是发动(r):
-					ctx[键_白二] = STEP_DONE
-					return SUCCESS
-				ctx[键_白二] = 2
-				notice_skill(白二羯磨, [持有者])
-				# 祭增加会触发【伏魔境】：先让它结算完，再给持有者发牌
-				if _加祭(1):
-					return URGENT
-			2:
-				if _结界().is_empty():
-					ctx[键_白二] = STEP_DONE
-					return SUCCESS
-				var 选项: Array = _白二_结界选项()
-				if 选项.is_empty():
-					ctx[键_白二] = STEP_DONE
-					return SUCCESS
-				ctx[键_白二] = 3
-				if not engine.has_reply():
-					# 持有者挑 1 个【结界】（选项值＝盖牌实例号）
-					询问(持有者, 白二羯磨, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [],
-						false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-						GConst.skill_desc(白二羯磨))
-					return WAIT
-			3:
-				if not engine.has_reply():
-					return WAIT
-				var r3: Dictionary = take_skill_reply_full()
-				var args: Array = r3.get("args", [])
-				var cid: int = int(args[0]) if not args.is_empty() else -1
-				ctx[键_白二] = STEP_DONE
-				# 超时 / 非法选项：技能是【强制】的，改拿结界师的第一个【结界】
-				if cid < 0 or not player.有盖牌(cid):
-					cid = player.cover_cards[0] if not player.cover_cards.is_empty() else -1
-				if cid < 0 or not player.有盖牌(cid):
-					return SUCCESS
-				var 目标: int = _绝界持有者()
-				var 收牌人: BattlePlayer = engine.p(目标)
-				if 收牌人 == null:
-					return SUCCESS
-				engine.remove_cover(player.id, [cid], player.id, 白二羯磨)
-				收牌人.add_hand_cards([cid])
-				engine._log_give_cards(player.id, 收牌人.id, [cid])
-				engine._broadcast_game()
-				_检查绝界破散()
-				return SUCCESS
-			_:
-				return SUCCESS
+	# 白二羯磨：【绝界】持有者攻击行动结束时问他要不要发动 → 结界师给他 1 个【结界】（强制，超时拿第一个）
+	return 多步询问(白二羯磨, [
+		{"问谁": 持有者, "取消": _白二不发动, "答完": func(回: Dictionary, _答案: Array) -> int:
+			return _白二发动答完(持有者, 回)},
+		{"问谁": 持有者, "选项": func(_答案: Array) -> Array: return _白二_结界选项(),
+		 "可取消": false, "询问文案": GConst.skill_desc(白二羯磨),
+		 "跳过": func(_答案: Array) -> bool: return _结界().is_empty()},
+	], _白二结算)
+
+
+## 第 1 段取消 / 超时：不发动
+func _白二不发动() -> int:
 	return SUCCESS
 
 
-## 8206 灭界破散：拥有【绝界】的角色回合结束前，结界师移除 1 个【结界】；
-## 结界为 0 时（不论何时变 0）结界师【横置】、移除【绝界】。
+## 第 1 段答完：发动时 +1【祭】（可能压伏魔境钩子），再问给哪个结界
+func _白二发动答完(持有者: int, 回: Dictionary) -> int:
+	if not _是发动(回):
+		return SUCCESS
+	notice_skill(白二羯磨, [持有者])
+	# 祭增加会触发【伏魔境】：先让它结算完，再给持有者发牌
+	if _加祭(1):
+		return URGENT
+	return SUCCESS
+
+
+## 第 2 段答完：把选中的【结界】交给持有者（超时 / 非法选项改拿第一个）
+func _白二结算(答案: Array) -> int:
+	var args: Array = (答案[1] as Dictionary).get("args", []) if 答案.size() > 1 else []
+	var cid: int = int(args[0]) if not args.is_empty() else -1
+	if cid < 0 or not player.有盖牌(cid):
+		cid = int(player.cover_cards[0]) if not player.cover_cards.is_empty() else -1
+	if cid < 0 or not player.有盖牌(cid):
+		return SUCCESS
+	var 目标: int = _绝界持有者()
+	var 收牌人: BattlePlayer = engine.p(目标)
+	if 收牌人 == null:
+		return SUCCESS
+	engine.remove_cover(player.id, [cid], player.id, 白二羯磨)
+	收牌人.add_hand_cards([cid])
+	engine._log_give_cards(player.id, 收牌人.id, [cid])
+	engine._broadcast_game()
+	_检查绝界破散()
+	return SUCCESS
 func p_turn_end(ctx: Dictionary) -> int:
 	var 持有者: int = _绝界持有者()
 	if 持有者 < 0 or int(ctx.get("player", -1)) != 持有者:
