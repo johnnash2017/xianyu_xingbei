@@ -14,13 +14,6 @@ const ZHAN_WEN_SUI_JI: int = 2703     # 战纹碎击（响应）
 ## 怒火压制／魔纹融合 的开局二选一
 const CHOICE_NU_HUO_YA_ZHI: int = 1
 const CHOICE_MO_WEN_RONG_HE: int = 2
-## 怒火压制／魔纹融合 的流程阶段：第一段二选一 → 第二段魔纹融合的翻转档
-const 阶段_二选一: int = 1
-const 阶段_魔纹选择: int = 2
-## 角色内部流程返回值（只在 p_timeline_2_miss 里用，不交给引擎）：
-##   第一段选中魔纹融合＝进第二段 / 第二段取消＝退回第一段
-const 进入魔纹子项: int = 10
-const 返回二选一: int = 11
 const FU_WEN_GAI_ZAO: int = 2705      # 符文改造（启动）
 const SHUANG_CHONG_HUI_XIANG: int = 2706 # 双重回响（响应）
 
@@ -226,15 +219,10 @@ func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
 
 # ============================================================
 # 主动攻击未命中后：怒火压制 / 魔纹融合（两段式：先二选一，再选魔纹融合的翻转档）
+#   用 BattleRole.多步询问 声明两段：第 1 段二选一，第 2 段翻转档（可「返回」=重问第 1 段）；
+#   第 1 段选了怒火压制时第 2 段自动跳过（条件段）。
+#   结算返回 URGENT（压了法术伤害）后引擎会重入本钩子：结算里把 step 置 STEP_DONE 挡住重入。
 # ============================================================
-## 推进阶段：0＝还没开始 / 阶段_二选一＝在问「怒火压制 / 魔纹融合」 /
-## 阶段_魔纹选择＝在问魔纹融合的翻转档（这一段取消＝退回二选一，不算放弃整次响应）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨两次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己主动攻击未命中（p_timeline_2_miss）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）。
-## 魔纹融合分支会返回 URGENT（压入了法术伤害），引擎在 URGENT 挂起后会重入本钩子：
-## 这里仍旧借引擎 step 记「本轮已完成」来挡住重入（自有变量已清回 0，不影响这次拦截）。
-var _nu_huo_step: int = 0
 
 
 func p_timeline_2_miss(ctx: Dictionary) -> int:
@@ -244,102 +232,78 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
-	if _nu_huo_step == 0:
-		_nu_huo_step = 阶段_二选一
-	var r: int = SUCCESS
-	var r2: int = SUCCESS
-	while true:
-		if _nu_huo_step == 阶段_二选一:
-			r = _nu_huo_xuan(ctx)
-			if r == WAIT:
-				return WAIT
-			if r == 进入魔纹子项:
-				_nu_huo_step = 阶段_魔纹选择
-				continue
-			_nu_huo_step = 0
-			if r == URGENT:
-				step = STEP_DONE
-			return r
-		r2 = _nu_huo_mo_wen_xuan(ctx)
-		if r2 == WAIT:
-			return WAIT
-		if r2 == 返回二选一:
-			_nu_huo_step = 阶段_二选一
-			continue
-		_nu_huo_step = 0
-		if r2 == URGENT:
-			step = STEP_DONE
-		return r2
-	# while true 里每条分支都会 return；这一行只为满足 GDScript 的「所有路径都有返回值」检查
-	return SUCCESS
-
-
-## 第一段：怒火压制（2704）/ 魔纹融合（2701）二选一，二级技能栏里只摆这两颗。
-## 选魔纹融合只是「进第二段」，这里不弃牌、也不结算；选怒火压制当场结算。
-## 询问挂在魔纹融合（2701）名下（它带着伤害 cause）；怒火压制分支按自己的号 2704 上报发动通知。
-func _nu_huo_xuan(ctx: Dictionary) -> int:
 	var dst_id: int = int(ctx.get("dst", -1))
+	return 多步询问(MO_WEN_RONG_HE, [
+		{"选项": _nu_huo_选项(dst_id), "牌规则": "diff",
+		 "目标白": [dst_id] if dst_id >= 0 else []},
+		{"选项": _mo_wen_档选项(dst_id), "牌规则": "diff", "牌上限": player.hand_count(),
+		 "目标白": [dst_id] if dst_id >= 0 else [],
+		 "可返回": true,
+		 "跳过": func(答案: Array) -> bool: return _nu_huo_选择(答案) != CHOICE_MO_WEN_RONG_HE},
+	], func(答案: Array) -> int: return _nu_huo_结算(dst_id, 答案))
+
+
+## 第 1 段选了什么（1＝怒火压制，2＝魔纹融合；没答就是 0）
+func _nu_huo_选择(答案: Array) -> int:
+	if 答案.is_empty():
+		return 0
+	var a: Array = (答案[0] as Dictionary).get("args", [])
+	return int(a[0]) if not a.is_empty() else 0
+
+
+## 第 1 段选项：怒火压制 2704 / 魔纹融合 2701 二选一（选魔纹融合只是进第二段，不结算）
+func _nu_huo_选项(dst_id: int) -> Array:
 	var 魔纹可用: bool = _mo_wen() >= 1 and player.hand_count() >= 2
-	if not engine.has_reply():
-		var 选项: Array = [
-			{"value": CHOICE_NU_HUO_YA_ZHI, "label": GConst.skill_desc_name(NU_HUO_YA_ZHI),
-				"skill_id": NU_HUO_YA_ZHI, "need_card": 0, "enabled": _zhan_wen() >= 1},
-			{"value": CHOICE_MO_WEN_RONG_HE, "label": GConst.按钮原文(MO_WEN_RONG_HE, 0),
-				"skill_id": MO_WEN_RONG_HE, "need_card": 0, "enabled": 魔纹可用},
-		]
-		var 伤害目标: Array = [dst_id] if dst_id >= 0 else []
-		# 询问文案一直是空（2701 没有默认步骤文案）：直接给空串，不要再去表里取空条目
-		engine.ask_skill(player.id, MO_WEN_RONG_HE, 0, 0, GConst.CardSource.Hand, 选项,
-			0, "diff", [], true, "", 伤害目标)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var choice: int = int(args[0]) if not args.is_empty() else 0
-	if choice == CHOICE_NU_HUO_YA_ZHI:
-		if _zhan_wen() < 1:
-			return SUCCESS
-		notice_skill(NU_HUO_YA_ZHI, [dst_id])
-		_set_zhan_wen(_zhan_wen() - 1)
-		_set_mo_wen(_mo_wen() + 1)
-		engine._broadcast_game()
-		return SUCCESS
-	if choice == CHOICE_MO_WEN_RONG_HE:
-		return 进入魔纹子项
-	return SUCCESS
+	return [
+		{"value": CHOICE_NU_HUO_YA_ZHI, "label": GConst.skill_desc_name(NU_HUO_YA_ZHI),
+		 "skill_id": NU_HUO_YA_ZHI, "need_card": 0, "enabled": _zhan_wen() >= 1},
+		{"value": CHOICE_MO_WEN_RONG_HE, "label": GConst.按钮原文(MO_WEN_RONG_HE, 0),
+		 "skill_id": MO_WEN_RONG_HE, "need_card": 0, "enabled": 魔纹可用},
+	]
 
 
-## 第二段：魔纹融合的三个翻转档（客户端会在这三颗左边摆出技能本体，共四个按钮）。
-## 取消（空 args）＝退回第一段二选一，不放弃整次响应。
-func _nu_huo_mo_wen_xuan(ctx: Dictionary) -> int:
-	var dst_id: int = int(ctx.get("dst", -1))
+## 第 2 段选项：魔纹融合的三个翻转档（客户端会在这三颗左边摆出技能本体，共四个按钮）
+func _mo_wen_档选项(_dst_id: int) -> Array:
 	var 有牌可弃: bool = player.hand_count() >= 2
 	var 魔纹基础可用: bool = _mo_wen() >= 1 and 有牌可弃
 	var 魔纹额外1可用: bool = player.tap and _mo_wen() >= 2 and 有牌可弃 \
-			and (_wen_max() - _zhan_wen() - 1) >= 1
+		and (_wen_max() - _zhan_wen() - 1) >= 1
 	var 魔纹额外2可用: bool = player.tap and _mo_wen() >= 3 and 有牌可弃 \
-			and (_wen_max() - _zhan_wen() - 1) >= 2
-	if not engine.has_reply():
-		var 选项: Array = [
-			{"value": CHOICE_MO_WEN_RONG_HE, "label": GConst.按钮原文(MO_WEN_RONG_HE, 1),
-				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹基础可用},
-			{"value": CHOICE_MO_WEN_RONG_HE + 1, "label": GConst.按钮原文(MO_WEN_RONG_HE, 2),
-				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹额外1可用},
-			{"value": CHOICE_MO_WEN_RONG_HE + 2, "label": GConst.按钮原文(MO_WEN_RONG_HE, 3),
-				"skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹额外2可用},
-		]
-		var 伤害目标: Array = [dst_id] if dst_id >= 0 else []
-		# 同上面那条：2701 没有默认步骤文案，别再取空条目
-		engine.ask_skill(player.id, MO_WEN_RONG_HE, 0, 0, GConst.CardSource.Hand, 选项,
-			player.hand_count(), "diff", [], true, "", 伤害目标)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	if args.is_empty():
-		return 返回二选一
-	var choice: int = int(args[0])
-	if choice < CHOICE_MO_WEN_RONG_HE:
+		and (_wen_max() - _zhan_wen() - 1) >= 2
+	return [
+		{"value": CHOICE_MO_WEN_RONG_HE, "label": GConst.按钮原文(MO_WEN_RONG_HE, 1),
+		 "skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹基础可用},
+		{"value": CHOICE_MO_WEN_RONG_HE + 1, "label": GConst.按钮原文(MO_WEN_RONG_HE, 2),
+		 "skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹额外1可用},
+		{"value": CHOICE_MO_WEN_RONG_HE + 2, "label": GConst.按钮原文(MO_WEN_RONG_HE, 3),
+		 "skill_id": MO_WEN_RONG_HE, "need_card": 2, "enabled": 魔纹额外2可用},
+	]
+
+
+## 整条链走完：怒火压制当场结算；魔纹融合交给 _nu_huo_rong_he
+func _nu_huo_结算(dst_id: int, 答案: Array) -> int:
+	step = STEP_DONE
+	var 选择: int = _nu_huo_选择(答案)
+	if 选择 == CHOICE_NU_HUO_YA_ZHI:
+		return _nu_huo_ya_zhi(dst_id)
+	if 选择 < CHOICE_MO_WEN_RONG_HE or 答案.size() < 2:
 		return SUCCESS
-	return _nu_huo_rong_he(dst_id, choice - CHOICE_MO_WEN_RONG_HE, r.get("card_ids", []))
+	var a1: Array = (答案[1] as Dictionary).get("args", [])
+	var 档: int = int(a1[0]) if not a1.is_empty() else 0
+	if 档 < CHOICE_MO_WEN_RONG_HE:
+		return SUCCESS
+	return _nu_huo_rong_he(dst_id, 档 - CHOICE_MO_WEN_RONG_HE, (答案[1] as Dictionary).get("cards", []))
+
+
+## 【怒火压制】结算：翻转 1 个【战纹】为【魔纹】
+func _nu_huo_ya_zhi(dst_id: int) -> int:
+	if _zhan_wen() < 1:
+		return SUCCESS
+	notice_skill(NU_HUO_YA_ZHI, [dst_id])
+	_set_zhan_wen(_zhan_wen() - 1)
+	_set_mo_wen(_mo_wen() + 1)
+	engine._broadcast_game()
+	return SUCCESS
 
 
 ## 魔纹融合结算：弃 ≥2 张互异系牌【展示】，对目标造成 (张数 - 1 + 额外翻转数) 点法术伤害

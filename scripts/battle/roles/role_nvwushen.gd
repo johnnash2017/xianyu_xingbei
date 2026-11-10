@@ -23,12 +23,6 @@ var _英灵_阶段: int = 0
 var _英灵_待横置: bool = false
 
 
-## 军神威光的推进阶段：两段询问 ——
-##   0                              ＝ 还没开始（进第 1 段问「选项① 还是 选项②」）
-##   JUN_SHEN_JIEDUAN_XUAN_XING_SHI ＝ 第 2 段：选「移除哪几个星石（组合）」+ 点一名目标 +X【治疗】
-##                                    （仅选过选项②才进）
-const JUN_SHEN_JIEDUAN_XUAN_XING_SHI: int = 1
-
 
 func available_skills() -> Array:
 	# 秩序之印无消耗，随时可用
@@ -36,119 +30,79 @@ func available_skills() -> Array:
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
-	_jun_shen_链中 = false
+	# 每回合开始清一次链：上一回合没走完的（例如中途被别的效果打断）不能残留到这一回合
+	多步询问重置(JUN_SHEN_WEI_GUANG)
 	return SUCCESS
 
 
-## 【军神威光】的推进阶段（取值见上面那个常量，0＝还没开始）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己回合开始且处于横置（p_turn_begin）触发一次，走完 / 取消 / 超时都把阶段清回 0。
-var _jun_shen_step: int = 0
-## 【军神威光】是不是已经在这条询问链里了（第 1 段问过一次之后为 true）。
-## 整条链共用第 1 次询问的倒计时：第 2 段、以及从第 2 段退回来重问第 1 段，都不重新计时
-## （见 询问 的 保留倒计时），免得玩家靠「点进去 / 退回来」把等待时间刷新一遍。
-## 每回合开始清回 false，每次自己回合开始才重新发起这条链。
-var _jun_shen_链中: bool = false
-
+## 【军神威光】的状态（阶段常量已删：段进度由 BattleRole.多步询问 保存）
+## 每回合开始清一次链，避免上一回合没走完的链残留。
 
 # ============================================================
 # 回合开始：军神威光（仅自身回合且处于横置形态时询问）
-# 两段询问，逐段推进（阶段见 _jun_shen_step），整条链共用一个倒计时（见 _jun_shen_链中）：
-#   第 1 段：问「发动哪个效果」——①＝你 +1【治疗】并【重置】脱离【英灵形态】；
-#           ②＝移除我方【战绩区】X 个星石（X<3，即 1 或 2）后给一名目标角色 +X【治疗】。
-#            这一段不能取消；整条链超时＝自动选①。
-#   第 2 段：仅当第 1 段选了②才进——同一窗口里选「移除哪几个星石（组合）」+ 点一名角色 +X【治疗】
-#            （X＝所选组合的星石数，两边共用 GConst.军神威光组合）。
-#            这一段取消＝退回第 1 段重问（此时还没扣星石，可以让玩家改选①）；
-#            「点进去 / 退回来」都不重新计时，靠的是询问的 保留倒计时。
-# （对照原版 JunShenWeiGuang → JunShenWeiGuang2，本复刻在此基础上把 X 放宽到 1~2、治疗改为给目标）
+#   两段询问，用 BattleRole.多步询问 声明：
+#     第 1 段：选①（+1 治疗并脱离形态）或②（移星石给目标 +X 治疗）；不可取消，超时＝①
+#     第 2 段：选星石组合 + 点一名目标；可「返回」＝重问第 1 段，超时＝①；
+#              第 1 段选了①时这一段自动跳过（条件段）
+#   星石组合的合法性用段级「校验」，不合法就退回第 1 段重问（与原行为一致）。
+#   副作用（扣星石、加治疗、清形态）全在结算里做，所以「返回」不用撤账。
 # ============================================================
 func p_turn_begin(_ctx: Dictionary) -> int:
 	if engine.current_id != player.id or not player.tap:
 		return SUCCESS
-	if _jun_shen_step == 0:
-		return _jun_shen_wen_guo_ju()
-	if _jun_shen_step == JUN_SHEN_JIEDUAN_XUAN_XING_SHI:
-		return _jun_shen_wen_xing_shi()
-	return SUCCESS
+	return 多步询问(JUN_SHEN_WEI_GUANG, [
+		{"选项": _jun_shen_wei_guang_choices(), "可取消": false, "超时默认": 1, "提示序号": -1},
+		{"选项": _jun_shen_wei_guang_energy_choices(), "需目标": 1, "目标白": engine.order,
+		 "询问文案": 提示原文(JUN_SHEN_WEI_GUANG, 2), "可返回": true,
+		 "跳过": func(答案: Array) -> bool: return _jun_shen_选择(答案) != 2,
+		 "校验": _jun_shen_第二段可用, "校验失败回退": true,
+		 "超时": _jun_shen_xuan_xiang_1},
+	], _jun_shen_settle)
 
 
-## 第 1 段：问「选项① 还是 选项②」。不能取消（客户端「取消」键灰掉）；整条链超时＝自动选选项①。
-func _jun_shen_wen_guo_ju() -> int:
-	if not engine.has_reply():
-		# 提示条不写「二选一，选好后点确定」这类操作说明：这一段不传技能表提示（序号 -1），
-		# 客户端按「被动技能」的默认口径显示技能说明（说明列已经写清两个选项）。
-		# 保留倒计时＝已在链中就沿用最早的截止时刻（从第 2 段退回来重问时不重新计时）
-		询问(player.id, JUN_SHEN_WEI_GUANG, 0, 0, GConst.CardSource.Hand, _jun_shen_wei_guang_choices(),
-			0, "", [], false, -1, -1, [], -1, {}, 0, 0, _jun_shen_链中)
-		_jun_shen_链中 = true
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var choice: int = 0
-	if not args.is_empty():
-		choice = int(args[0])
-	elif bool(r.get("is_timeout", false)):
-		# 本段不能取消，服务端超时兜底回的也是空 args：整条链超时＝自动选选项①
-		choice = 1
-	if choice == 1:
+## 第 1 段选了什么（1＝①，2＝②；还没答就是 0）
+func _jun_shen_选择(答案: Array) -> int:
+	if 答案.is_empty():
+		return 0
+	var a: Array = (答案[0] as Dictionary).get("args", [])
+	return int(a[0]) if not a.is_empty() else 0
+
+
+## 第 2 段的合法性：组合合法、星石够、点了目标
+func _jun_shen_第二段可用(回: Dictionary) -> bool:
+	var a: Array = 回.get("args", [])
+	var 组合: int = int(a[0]) if not a.is_empty() else 0
+	var 宝石用: int = _jun_shen_gem_of(组合)
+	var 水晶用: int = _jun_shen_crystal_of(组合)
+	if 宝石用 < 0 or 水晶用 < 0 or (回.get("dsts", []) as Array).is_empty():
+		return false
+	return 宝石用 <= engine.team_gem[player.color] and 水晶用 <= engine.team_crystal[player.color]
+
+
+## 整条链走完：① 或 ② 各自结算
+func _jun_shen_settle(答案: Array) -> int:
+	if _jun_shen_选择(答案) != 2 or 答案.size() < 2:
 		return _jun_shen_xuan_xiang_1()
-	if choice != 2:
-		# 取消：不发动，链到此结束
-		_jun_shen_step = 0
-		_jun_shen_链中 = false
-		return SUCCESS
-	# 选了选项②：进入第 2 段（同一窗口里选星石 + 点目标），倒计时沿用
-	_jun_shen_step = JUN_SHEN_JIEDUAN_XUAN_XING_SHI
-	return _jun_shen_wen_xing_shi()
-
-
-## 选项①：+1【治疗】并【重置】脱离【英灵形态】（第 1 段主动选①、或整条链超时都走这里）
-func _jun_shen_xuan_xiang_1() -> int:
-	_jun_shen_step = 0
-	_jun_shen_链中 = false
-	notice_skill(JUN_SHEN_WEI_GUANG, [player.id])
-	施加治疗(player.id, 1)
-	player.tap = false
+	var a1: Array = (答案[1] as Dictionary).get("args", [])
+	var 组合: int = int(a1[0]) if not a1.is_empty() else 0
+	var 目标: Array = (答案[1] as Dictionary).get("dsts", [])
+	var 宝石用: int = _jun_shen_gem_of(组合)
+	var 水晶用: int = _jun_shen_crystal_of(组合)
+	if 目标.is_empty() or 宝石用 < 0 or 水晶用 < 0:
+		return _jun_shen_xuan_xiang_1()
+	notice_skill(JUN_SHEN_WEI_GUANG, [int(目标[0])])
+	engine.set_team_gem(player.color, engine.team_gem[player.color] - 宝石用)
+	engine.set_team_crystal(player.color, engine.team_crystal[player.color] - 水晶用)
+	施加治疗(int(目标[0]), 宝石用 + 水晶用)
 	engine._broadcast_game()
 	return SUCCESS
 
 
-## 第 2 段：同一窗口里选「移除哪几个星石（组合）」+ 点一名角色 +X【治疗】（X＝组合的星石数）。
-## 取消 / 非法组合 / 没点目标＝退回第 1 段重问（倒计时沿用，不重新计时）；
-## 整条链（从第 1 段算起）超时＝按选项① 收尾。
-func _jun_shen_wen_xing_shi() -> int:
-	if not engine.has_reply():
-		# 这一段要选「移除哪几个星石 + 给谁治疗」：提示条用技能表第 3 条（写明移除的是我方【战绩区】星石），
-		# 选项本身只写 -N【水晶】/-N【宝石】；取消／「返回」＝退回第一段重问，界面在选项左侧提供返回按钮。
-		# 保留倒计时=true：整条链共用第 1 段那次等待的截止时刻
-		# 第二段提示直接取技能表第 3 条（已去掉“点取消返回上级”的后缀）
-		var 文案: String = 提示原文(JUN_SHEN_WEI_GUANG, 2)
-		engine.ask_skill(player.id, JUN_SHEN_WEI_GUANG, 0, 1, GConst.CardSource.Hand,
-			_jun_shen_wei_guang_energy_choices(), 0, "", [], true, 文案,
-			engine.order, 0, 0, true)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var 组合: int = int(args[0]) if not args.is_empty() else 0
-	var 宝石用: int = _jun_shen_gem_of(组合)
-	var 水晶用: int = _jun_shen_crystal_of(组合)
-	var dsts: Array = r.get("dst_ids", [])
-	if 宝石用 < 0 or 水晶用 < 0 or dsts.is_empty() \
-			or 宝石用 > engine.team_gem[player.color] or 水晶用 > engine.team_crystal[player.color]:
-		_jun_shen_step = 0
-		if bool(r.get("is_timeout", false)):
-			# 整条链超时：自动按选项① 收尾，不再来回问
-			return _jun_shen_xuan_xiang_1()
-		# 取消 / 非法组合：退回第一段「是否发动军神威光」的二选一重问，而不是整场取消
-		return _jun_shen_wen_guo_ju()
-	_jun_shen_step = 0
-	_jun_shen_链中 = false
-	notice_skill(JUN_SHEN_WEI_GUANG, [int(dsts[0])])
-	engine.set_team_gem(player.color, engine.team_gem[player.color] - 宝石用)
-	engine.set_team_crystal(player.color, engine.team_crystal[player.color] - 水晶用)
-	施加治疗(int(dsts[0]), 宝石用 + 水晶用)
+## 选项①：+1【治疗】并【重置】脱离【英灵形态】（第 1 段选①、或整条链超时都走这里）
+func _jun_shen_xuan_xiang_1() -> int:
+	notice_skill(JUN_SHEN_WEI_GUANG, [player.id])
+	施加治疗(player.id, 1)
+	player.tap = false
 	engine._broadcast_game()
 	return SUCCESS
 

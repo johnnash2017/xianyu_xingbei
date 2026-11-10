@@ -2872,18 +2872,12 @@ func _技能询问_摆选项() -> void:
 		# 第二段（3 个翻转档）的父按钮右侧摆「返回」，退回第一段二选一。
 		var 返回: Callable = Callable()
 		if _skill_ask_id == GConst.技能_魔纹融合:
-			if _skill_options.size() == 3:
-				返回 = _魔纹本体返回
 			var 有怒火: bool = false
 			for 选项技能: Variant in _pending.get("option_skill_ids", []):
 				if int(选项技能) == GConst.技能_怒火压制:
 					有怒火 = true
 					break
 			父技能号 = 0 if 有怒火 else _skill_ask_id
-		elif _skill_ask_id == GConst.技能_军神威光 and _skill_options.size() == 5:
-			# 军神威光第二段（选星石组合）是在第一段二选一之后才进的；
-			# 服务端把空应答当作「退回第一段重问」，所以这里必须摆一颗「返回」。
-			返回 = _军神威光返回
 		elif bool(_pending.get("allow_back", false)) or bool(指示配置.get("选项可返回", false)):
 			# 指示器标了「选项可返回」的分段询问（如咒符师【魑魅魍魉】第二段）：
 			# 服务端把空应答当作「退回上一段重问」（同【魔纹融合】第二段），这里摆「返回」。
@@ -4515,24 +4509,6 @@ func _二级栏_造选项钮(选项: Array, 选项底色: Color, 父技能号: i
 		var 项结构: Dictionary = _归一化二级选项(d)
 		项结构["按钮"] = 按钮
 		_二级选项.append(项结构)
-
-
-## 魔纹融合第二段：右侧「返回」按钮＝退回「怒火压制 / 魔纹融合」二选一。
-## 对服务端而言就是取消第二段（空 args），它会重新问第一段；取消键也走同一条路。
-func _魔纹本体返回(_技能号: int = 0) -> void:
-	if not _是技能询问 or _skill_ask_id != GConst.技能_魔纹融合:
-		return
-	_on_cancel()
-
-
-## 军神威光第二段（星石组合）的「返回」：取消当前这一段，服务端会重新问第一段二选一。
-## 服务端 _jun_shen_wen_xing_shi 对空 args 的处理就是退回第一段，不会结束整条技能。
-func _军神威光返回(_技能号: int = 0) -> void:
-	if not _是技能询问 or _skill_ask_id != GConst.技能_军神威光:
-		return
-	if _skill_options.size() != 5:
-		return
-	_on_cancel()
 
 
 ## 清掉二级栏的状态与选项按钮（技能本体按钮与其余技能由 _清空技能按钮 统一收）
