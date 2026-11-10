@@ -49,8 +49,8 @@ var _影缝阶段: int = 0
 var _影缝X: int = 0
 var _影缝目标: int = -1
 var _影缝弃牌: Array = []
-## 侍奉之道：1＝等选 2 个影 / 2＝等选交给谁
-var _侍奉阶段: int = 0
+## 侍奉之道：第一段选的两张【影】同不同系（同系才问「交给谁」）
+var _侍奉同系: bool = false
 var _侍奉牌: Array = []
 ## 禁术·影牢：0＝未问 / 1＝等「是否发动」 / 2＝已 +1 糸、等下一拍弹第二段 / 3＝等选效果+目标
 var _影牢阶段: int = 0
@@ -433,68 +433,72 @@ func p_turn_end(ctx: Dictionary) -> int:
 
 
 func _侍奉之道() -> int:
-	if _侍奉阶段 == 0:
-		if player.cover_cards.size() < 2:
-			return SUCCESS
-		_侍奉阶段 = 1
-		询问(player.id, SHI_FENG_ZHI_DAO, 2, 0, GConst.CardSource.Cover, [], 0, "", [], true, 0, -1, [], -1, {})
-		return WAIT
-	if _侍奉阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		var cards: Array = r.get("card_ids", [])
-		_侍奉阶段 = 0
-		if args.is_empty() or int(args[0]) != 1 or cards.size() != 2:
-			return SUCCESS
-		var 甲: int = player.盖牌实例(int(cards[0]))
-		var 乙: int = player.盖牌实例(int(cards[1]))
-		if 甲 < 0 or 乙 < 0 or 甲 == 乙:
-			return SUCCESS
-		var 甲牌: GCard = Data.get_card(甲)
-		var 乙牌: GCard = Data.get_card(乙)
-		if 甲牌 == null or 乙牌 == null:
-			return SUCCESS
-		notice_skill(SHI_FENG_ZHI_DAO, [player.id])
-		# 这两张是盖牌区的【影】（不是从手里展示出来的），只广播、不压展示钩子
-		engine.展示牌(player.id, [甲, 乙])
-		engine.remove_cover(player.id, [甲, 乙], player.id, SHI_FENG_ZHI_DAO)
-		player.add_token(糸槽, 1)
-		_侍奉牌 = [甲, 乙]
-		# 这两张是盖牌区的【影】（不是从手里展示出来的），封印类「从手中展示出」不触发
-		engine._broadcast_game()
-		if 甲牌.element_enum() != 乙牌.element_enum():
-			# 系别不同：没有「交给谁」这一步，两张影都进弃牌堆（原来会凭空消失）
-			_侍奉弃掉两张()
-			return SUCCESS
-		_侍奉阶段 = 2
-	if _侍奉阶段 == 2:
-		if not engine.has_reply():
-			# 「将其中 1 个【影】交给目标角色【强制】」：同系这一路是强制的，不给取消
-			询问(player.id, SHI_FENG_ZHI_DAO, 0, 1, GConst.CardSource.Hand, _侍奉选项(), 0, "", [], false,
-				0, -1, [], -1, {})
-			return WAIT
-		var r2: Dictionary = take_skill_reply_full()
-		var args2: Array = r2.get("args", [])
-		var dsts: Array = r2.get("dst_ids", [])
-		_侍奉阶段 = 0
-		if args2.is_empty() or dsts.is_empty():
-			_侍奉弃掉两张()
-			return SUCCESS
-		var 选: int = int(args2[0])
-		var dst: int = int(dsts[0])
-		var dp: BattlePlayer = engine.p(dst)
-		if dp == null or 选 < 1 or 选 > _侍奉牌.size():
-			engine.报错("【侍奉之道】提交的参数不合法", player.id)
-			_侍奉弃掉两张()
-			return SUCCESS
-		var 给: int = int(_侍奉牌[选 - 1])
-		var 另一: int = int(_侍奉牌[0]) if 选 == 2 else int(_侍奉牌[1])
-		dp.add_hand_cards([给])
-		engine.播获得牌日志(dst, [给])
-		engine.to_discard([另一], {"owner": player.id, "source": "cover", "cause": SHI_FENG_ZHI_DAO})
+	if player.cover_cards.size() < 2:
+		return SUCCESS
+	_侍奉同系 = false
+	return 多步询问(SHI_FENG_ZHI_DAO, [
+		# 第 1 段：选 2 个【影】（答完里展示、移出盖牌区、+1【糸】）
+		{"需牌": 2, "来源": GConst.CardSource.Cover, "答完": _侍奉取影答完},
+		# 第 2 段：同系才问「把哪一张交给谁」（选项在问的时候按 _侍奉牌 现造）
+		{"选项": func(_答案: Array) -> Array: return _侍奉选项(), "需目标": 1, "可取消": false,
+		 "跳过": func(_答案: Array) -> bool: return not _侍奉同系 or _侍奉牌.is_empty()},
+	], _侍奉结算)
+
+
+## 第 1 段答完：两张【影】展示 + 移出盖牌区 + +1【糸】；不同系就直接都进弃牌堆，不再问交给谁
+func _侍奉取影答完(回: Dictionary, _答案: Array) -> int:
+	var cards: Array = 回.get("cards", [])
+	if cards.size() != 2:
+		return SUCCESS
+	var 甲: int = player.盖牌实例(int(cards[0]))
+	var 乙: int = player.盖牌实例(int(cards[1]))
+	if 甲 < 0 or 乙 < 0 or 甲 == 乙:
+		return SUCCESS
+	var 甲牌: GCard = Data.get_card(甲)
+	var 乙牌: GCard = Data.get_card(乙)
+	if 甲牌 == null or 乙牌 == null:
+		return SUCCESS
+	notice_skill(SHI_FENG_ZHI_DAO, [player.id])
+	# 这两张是盖牌区的【影】（不是从手里展示出来的），只广播、不压展示钩子
+	engine.展示牌(player.id, [甲, 乙])
+	engine.remove_cover(player.id, [甲, 乙], player.id, SHI_FENG_ZHI_DAO)
+	player.add_token(糸槽, 1)
+	_侍奉牌 = [甲, 乙]
+	# 这两张是盖牌区的【影】（不是从手中展示出），封印类「从手中展示出」不触发
+	engine._broadcast_game()
+	if 甲牌.element_enum() != 乙牌.element_enum():
+		# 系别不同：没有「交给谁」这一步，两张影都进弃牌堆（原来会凭空消失）
+		_侍奉弃掉两张()
+		return SUCCESS
+	_侍奉同系 = true
+	return SUCCESS
+
+
+## 第 2 段答完：把选中的那张交给目标角色，另一张进弃牌堆；横置
+func _侍奉结算(答案: Array) -> int:
+	if not _侍奉同系 or 答案.size() < 2:
 		_侍奉牌 = []
-		player.tap = true
-		engine._broadcast_game()
+		return SUCCESS
+	var args: Array = (答案[1] as Dictionary).get("args", [])
+	var dsts: Array = (答案[1] as Dictionary).get("dsts", [])
+	if args.is_empty() or dsts.is_empty():
+		_侍奉弃掉两张()
+		return SUCCESS
+	var 选: int = int(args[0])
+	var dst: int = int(dsts[0])
+	var dp: BattlePlayer = engine.p(dst)
+	if dp == null or 选 < 1 or 选 > _侍奉牌.size():
+		engine.报错("【侍奉之道】提交的参数不合法", player.id)
+		_侍奉弃掉两张()
+		return SUCCESS
+	var 给: int = int(_侍奉牌[选 - 1])
+	var 另一: int = int(_侍奉牌[0]) if 选 == 2 else int(_侍奉牌[1])
+	dp.add_hand_cards([给])
+	engine.播获得牌日志(dst, [给])
+	engine.to_discard([另一], {"owner": player.id, "source": "cover", "cause": SHI_FENG_ZHI_DAO})
+	_侍奉牌 = []
+	player.tap = true
+	engine._broadcast_game()
 	return SUCCESS
 
 
