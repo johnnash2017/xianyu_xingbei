@@ -360,12 +360,12 @@ func _被动改伤(harm: Dictionary) -> void:
 	if src == player.id and dst_id != player.id:
 		var dst: BattlePlayer = engine.p(dst_id)
 		if dst != null and dst.cross_num > 0:
-			# 【神弃之裔】：对拥有【治疗】的角色伤害 +1 —— 加伤要有技能名飘字（飘在目标头上，同狂化）
-			notice_skill(SHEN_QI_ZHI_YI, [dst_id])
+			# 【神弃之裔】：对拥有【治疗】的角色伤害 +1 —— 技能名飘在**自己**头上（是我发动的）
+			notice_skill(SHEN_QI_ZHI_YI, [player.id])
 			harm["point"] = int(harm.get("point", 0)) + 1
 		if player.tap:
-			# 【狂戾之心】：狂戾形态下你造成的伤害 +1 —— 同样飘技能名
-			notice_skill(KUANG_LI_ZHI_XIN, [dst_id])
+			# 【狂戾之心】：狂戾形态下你造成的伤害 +1 —— 同样飘在自己头上
+			notice_skill(KUANG_LI_ZHI_XIN, [player.id])
 			harm["point"] = int(harm.get("point", 0)) + 1
 	if dst_id == player.id and src != player.id and player.tap and player.token_num(戾气槽) > 0:
 		if int(harm.get("point", 0)) > 0:
