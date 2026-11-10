@@ -38,10 +38,12 @@ func _ready() -> void:
 			路径列表.append(用例目录 + 文件)
 	路径列表.sort()
 
-	# 关键脚本先验一遍：坏了就别跑用例（否则界面用例会全员假通过）
+	# 关键脚本先验一遍：坏了就别跑用例（否则界面用例会全员假通过）。
+	# 注意 load() 对「有语法错的脚本」仍可能返回对象，必须用 reload() 看编译结果。
 	var 坏: Array[String] = []
 	for p: String in 关键脚本:
-		if load(p) == null:
+		var 脚本: GDScript = load(p) as GDScript
+		if 脚本 == null or 脚本.reload() != OK:
 			坏.append(p)
 	if not 坏.is_empty():
 		print("[自检] 关键脚本加载失败（语法错？）：%s" % str(坏))
