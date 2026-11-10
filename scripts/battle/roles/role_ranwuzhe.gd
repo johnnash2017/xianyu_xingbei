@@ -29,8 +29,6 @@ const 戾气槽: int = 0
 
 # 【扭曲之爱】的状态变量见下面 8306 那一段（三段式）
 var _戾如泉涌已用: bool = false
-## 狂戾之心：0＝未问 / 1＝等选弃牌 + 目标
-var _狂戾阶段: int = 0
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
@@ -71,127 +69,73 @@ func v_special_skill(action: Dictionary) -> int:
 	# 【宝石】：只能用宝石付，不能拿水晶顶
 	if player.gem <= 0:
 		return GConst.GE_INVALID_ACTION
-	# 新的一次发动：把三段询问的进度清掉（同一条技能行动的重入不会走到这里）
-	_扭曲段 = 0
-	_扭曲链中 = false
-	_扭曲弃 = []
-	_扭曲弃牌 = true
+	# 新的一次发动：把上一次没走完的链清掉（同一条技能行动的重入不会走到这里）
+	多步询问重置(NIU_QU_ZHI_AI)
 	return GConst.GE_SUCCESS
 
 
 # ============================================================
 # 【扭曲之爱】8306：三段询问（形态 → 弃/摸 → 戾气）
-#   写法照【军神威光】的两段式：每段一个函数、段号记在 _扭曲段 里，p_special_skill 按段号分派；
-#   后段「返回」＝重问前一段（整条链共用一个倒计时），第一段取消＝不发动（宝石不扣）。
-#   弃的牌先记着，三段都选完才和费用一起结算 —— 中途返回不会白弃牌。
+#   用 BattleRole.多步询问 声明三段，段之间不落副作用（弃牌 / 扣宝石 / 调戾气都在结算里做），
+#   所以第二、三段「返回」不用撤账；第一段取消＝不发动。
 # ============================================================
 const 扭曲_弃张数: int = 2
 const 扭曲_摸张数: int = 2
-## 0＝未开始 / 1＝问形态 / 2＝问弃或摸 / 3＝问戾气 / 4＝已结算（等压入的摸牌 / 弃牌跑完）
-const 扭曲_已完成: int = 4
-var _扭曲段: int = 0
-var _扭曲形态: int = 0
-var _扭曲弃牌: bool = true
-var _扭曲弃: Array = []
-## 是不是已经在这条询问链里了（第 1 段问过之后为 true）：后几段沿用同一次等待的倒计时
-var _扭曲链中: bool = false
 
 
 func p_special_skill(_action: Dictionary) -> int:
-	match _扭曲段:
-		扭曲_已完成:
-			# 结算完压了摸牌 / 弃牌状态，回来时不要再把第一段问一遍
-			return SUCCESS
-		1:
-			return _扭曲问形态()
-		2:
-			return _扭曲问弃摸()
-		3:
-			return _扭曲问戾气()
-	_扭曲段 = 1
-	return _扭曲问形态()
+	return 多步询问(NIU_QU_ZHI_AI, [
+		{"选项": _扭曲形态选项()},
+		{"选项": _扭曲弃摸选项(), "可返回": true},
+		{"选项": _扭曲戾气选项(), "可返回": true},
+	], _扭曲结算)
 
 
-## 第一段：调整形态（取消＝不发动整条技能，宝石不扣）
-func _扭曲问形态() -> int:
-	_扭曲段 = 1
-	if not engine.has_reply():
-		询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲形态选项(),
-			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中)
-		_扭曲链中 = true
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var a: Array = r.get("args", [])
-	if a.is_empty() or int(a[0]) < 0:
-		_扭曲段 = 0
-		_扭曲链中 = false
-		return SUCCESS
-	_扭曲形态 = 1 if int(a[0]) == 1 else 0
-	_扭曲段 = 2
-	return _扭曲问弃摸()
-
-
-## 第二段：弃 2 张（当场选牌）/ 摸 2 张；「返回」＝重问第一段
-func _扭曲问弃摸() -> int:
-	_扭曲段 = 2
-	if not engine.has_reply():
-		询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲弃摸选项(),
-			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中,
-			[], true, -1, 0, "", -1, "", [], [], 0, -1, true)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var a: Array = r.get("args", [])
-	if a.is_empty() or int(a[0]) <= 0:
-		_扭曲段 = 1
-		return _扭曲问形态()
-	if int(a[0]) == 1:
+## 三段都答完：扣宝石 → 调戾气 → 落形态 → 弃牌或摸牌
+func _扭曲结算(答案: Array) -> int:
+	var 形态: int = 0
+	var 弃牌: bool = false
+	var 弃: Array = []
+	var 戾气: int = 0
+	var a0: Array = (答案[0] as Dictionary).get("args", []) if 答案.size() > 0 else []
+	if not a0.is_empty():
+		形态 = 1 if int(a0[0]) == 1 else 0
+	var a1: Array = (答案[1] as Dictionary).get("args", []) if 答案.size() > 1 else []
+	弃牌 = not a1.is_empty() and int(a1[0]) == 1
+	if 弃牌:
 		# 有多少弃多少：手牌不足 2 张时按实际张数收（0 张就是空弃）
 		var 需弃: int = mini(扭曲_弃张数, player.hand_cards.size())
-		var 弃: Array = []
-		for c: Variant in r.get("card_ids", []):
+		for c: Variant in (答案[1] as Dictionary).get("cards", []):
 			var 实例: int = player.手牌实例(int(c))
 			if 实例 >= 0 and not 弃.has(实例):
 				弃.append(实例)
 		if 弃.size() != 需弃:
 			engine.报错("【扭曲之爱】提交的弃牌不合法", player.id)
-			_扭曲段 = 0
-			_扭曲链中 = false
 			return SUCCESS
-		_扭曲弃牌 = true
-		_扭曲弃 = 弃
-	else:
-		_扭曲弃牌 = false
-		_扭曲弃 = []
-	_扭曲段 = 3
-	return _扭曲问戾气()
+	var a2: Array = (答案[2] as Dictionary).get("args", []) if 答案.size() > 2 else []
+	if not a2.is_empty():
+		戾气 = clampi(int(a2[0]), 0, player.token_max(戾气槽))
+	notice_skill(NIU_QU_ZHI_AI, [player.id])
+	player.boot_skill_used = true
+	player.set_gem(player.gem - 1)
+	player.set_token_num(戾气槽, 戾气)
+	player.tap = 形态 == 1
+	engine._broadcast_game()
+	if 弃牌:
+		if not 弃.is_empty():
+			engine.take_from_hand(player.id, 弃)
+			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": NIU_QU_ZHI_AI})
+			engine._log_discard(player.id, 弃)
+		return SUCCESS
+	engine.push_强制摸牌(player.id, 扭曲_摸张数, NIU_QU_ZHI_AI)
+	return URGENT
 
 
-## 第三段：调整【戾气】数；「返回」＝重问第二段
-func _扭曲问戾气() -> int:
-	_扭曲段 = 3
-	if not engine.has_reply():
-		询问(player.id, NIU_QU_ZHI_AI, 0, 0, GConst.CardSource.Hand, _扭曲戾气选项(),
-			0, "", [], true, 0, -1, [], -1, {}, 0, 0, _扭曲链中,
-			[], true, -1, 0, "", -1, "", [], [], 0, -1, true)
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var a: Array = r.get("args", [])
-	if a.is_empty() or int(a[0]) < 0:
-		_扭曲段 = 2
-		return _扭曲问弃摸()
-	var 值: int = clampi(int(a[0]), 0, player.token_max(戾气槽))
-	_扭曲段 = 扭曲_已完成
-	_扭曲链中 = false
-	return _扭曲结算(值)
-
-
-## 第一段选项：调整形态（询问要 label/value；arg_choices 用 text/args，两套键都带上备用）
+## 第一段选项：调整形态
 func _扭曲形态选项() -> Array:
 	return [
-		{"value": 0, "args": [0],
-			"label": GConst.按钮原文(NIU_QU_ZHI_AI, 0), "text": GConst.按钮原文(NIU_QU_ZHI_AI, 0)},
-		{"value": 1, "args": [1],
-			"label": GConst.按钮原文(NIU_QU_ZHI_AI, 1), "text": GConst.按钮原文(NIU_QU_ZHI_AI, 1)},
+		{"value": 0, "label": GConst.按钮原文(NIU_QU_ZHI_AI, 0)},
+		{"value": 1, "label": GConst.按钮原文(NIU_QU_ZHI_AI, 1)},
 	]
 
 
@@ -214,26 +158,6 @@ func _扭曲戾气选项() -> Array:
 	for n: int in range(上限 + 1):
 		out.append({"value": n, "label": GConst.按钮原文(NIU_QU_ZHI_AI, 4) % n})
 	return out
-
-
-## 三段都选完：扣宝石 → 调戾气 → 落形态 → 弃牌或摸牌
-func _扭曲结算(戾气值: int) -> int:
-	notice_skill(NIU_QU_ZHI_AI, [player.id])
-	player.boot_skill_used = true
-	player.set_gem(player.gem - 1)
-	player.set_token_num(戾气槽, 戾气值)
-	player.tap = _扭曲形态 == 1
-	engine._broadcast_game()
-	if _扭曲弃牌:
-		var 弃: Array = _扭曲弃
-		_扭曲弃 = []
-		if not 弃.is_empty():
-			engine.take_from_hand(player.id, 弃)
-			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": NIU_QU_ZHI_AI})
-			engine._log_discard(player.id, 弃)
-		return SUCCESS
-	engine.push_强制摸牌(player.id, 扭曲_摸张数, NIU_QU_ZHI_AI)
-	return URGENT
 
 
 # ============================================================
@@ -290,30 +214,31 @@ func p_harm_end(ctx: Dictionary) -> int:
 ## 戾气满且还在【普通形态】时，询问「弃 1 张牌 + 指定 1 名角色移除 2 治疗」，
 ## 成立后横置进入【狂戾形态】。
 ## 手牌为空不算「不能发动」：这一步照样触发，只是没有牌可弃（need_card 给 0）。
+## 用多步询问框架：只有一段（选牌 + 选目标同一问），副作用在结算里做。
 func _尝试狂戾变身() -> int:
 	if player.tap or player.token_num(戾气槽) < player.token_max(戾气槽):
 		return SUCCESS
 	var 需弃: int = 1 if not player.hand_cards.is_empty() else 0
-	if _狂戾阶段 == 0:
-		_狂戾阶段 = 1
-		询问(player.id, KUANG_LI_ZHI_XIN, 需弃, 1, GConst.CardSource.Hand, [],
-			0, "", [], false, 0, -1, 全部角色(), -1, {})
-		return WAIT
-	_狂戾阶段 = 0
-	var r: Dictionary = take_skill_reply_full()
-	var cards: Array = r.get("card_ids", [])
-	var dsts: Array = r.get("dst_ids", [])
-	if dsts.is_empty():
+	return 多步询问(KUANG_LI_ZHI_XIN, [
+		{"需牌": 需弃, "需目标": 1, "目标白": 全部角色(), "可取消": false},
+	], _狂戾变身结算)
+
+
+func _狂戾变身结算(答案: Array) -> int:
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var 选牌: Array = 回.get("cards", [])
+	var 选目标: Array = 回.get("dsts", [])
+	if 选目标.is_empty():
 		return SUCCESS
-	var dst: BattlePlayer = engine.p(int(dsts[0]))
+	var dst: BattlePlayer = engine.p(int(选目标[0]))
 	if dst == null:
 		engine.报错("【狂戾之心】提交的目标不存在", player.id)
 		return SUCCESS
 	var card: int = -1
-	if 需弃 > 0:
-		if cards.is_empty():
+	if not player.hand_cards.is_empty():
+		if 选牌.is_empty():
 			return SUCCESS
-		card = player.手牌实例(int(cards[0]))
+		card = player.手牌实例(int(选牌[0]))
 		if card < 0:
 			engine.报错("【狂戾之心】提交的弃牌不在手牌里", player.id)
 			return SUCCESS
@@ -412,25 +337,29 @@ func _被动改伤(harm: Dictionary) -> void:
 
 
 ## 神智污染：狂戾形态下你对目标造成伤害时可选发动（移 1 戾气换 +1 且禁治疗抵御）
+## 用多步询问框架（只有一段「确认」），结算里改伤害。
 func _神智污染(harm: Dictionary) -> int:
 	if not player.tap or player.token_num(戾气槽) <= 0:
 		return SUCCESS
-	if int(harm.get("src", -1)) != player.id or int(harm.get("dst", -1)) == player.id:
+	var src: int = int(harm.get("src", -1))
+	var dst: int = int(harm.get("dst", -1))
+	if src != player.id or dst == player.id:
 		return SUCCESS
 	if int(harm.get("point", 0)) <= 0:
 		return SUCCESS
-	if step >= STEP_DONE:
+	if bool(harm.get("神智污染已处理", false)):
 		return SUCCESS
-	if not engine.has_reply():
-		var dst: int = int(harm.get("dst", -1))
-		询问(player.id, SHEN_ZHI_WU_RAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [dst] if dst >= 0 else [], -1, {},
-			int(harm.get("point", 0)), int(harm.get("type", GConst.HarmType.None)))
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	step = STEP_DONE
-	var args: Array = r.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
+	harm["神智污染已处理"] = true
+	return 多步询问(SHEN_ZHI_WU_RAN, [
+		{"目标白": [dst] if dst >= 0 else [],
+		 "预览基准": int(harm.get("point", 0)),
+		 "预览类型": int(harm.get("type", GConst.HarmType.None))},
+	], func(答案: Array) -> int: return _神智污染结算(harm, 答案))
+
+
+func _神智污染结算(harm: Dictionary, 答案: Array) -> int:
+	var a: Array = (答案[0] as Dictionary).get("args", []) if 答案.size() > 0 else []
+	if a.is_empty() or int(a[0]) != 1:
 		return SUCCESS
 	notice_skill(SHEN_ZHI_WU_RAN, [int(harm.get("dst", -1))])
 	player.remove_token(戾气槽, 1)
