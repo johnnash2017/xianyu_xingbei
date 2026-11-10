@@ -95,7 +95,10 @@ func 跑() -> void:
 		检(全灰2, "没有星石时军神威光五种组合应全部置灰")
 		# 第一段询问不再带「二选一，选好后点确定」这类操作说明：ask_text 留空，
 		# 客户端按「被动技能」的默认口径显示技能说明（见 battle_mobile._进入技能询问）
-		角色.call("_jun_shen_wen_guo_ju")
+		# 2026-11-10：军神威光已迁到 BattleRole.多步询问，第一段由 p_turn_begin 发起
+		引擎.current_id = 角色.player.id
+		角色.player.tap = true
+		角色.call("p_turn_begin", {})
 		var 军神问: Array = 引擎._最后询问.get(1, {}).get("commands", [])
 		检(not 军神问.is_empty(), "军神威光第一段应下发询问")
 		if not 军神问.is_empty():
