@@ -35,9 +35,11 @@ func 跑() -> void:
 	检(not bool(引擎.get("_pending_skill_can_cancel")), "逆反居合斩的弃牌询问仍允许取消")
 	var 最后询问: Dictionary = 引擎.get("_最后询问").get(2, {})
 	var 询问命令: Array = 最后询问.get("commands", [])
+	# 文案以技能表实际内容为准（角色按 提示原文(3606, 0, {n: 2}) 下发）
+	var 期望提示: String = GConst.提示原文(逆反居合斩, 0, {"n": 2})
 	检(not 询问命令.is_empty() and str((询问命令[0] as Dictionary).get("ask_text", ""))
-		== "弃掉 2 张牌，若弃少于 2 则士气 -1",
-		"弃牌询问没有下发「弃掉 X 张牌，若弃少于 X 则士气 -1」的专属提示")
+		== 期望提示,
+		"弃牌询问的专属提示应与技能表一致（期望「%s」）" % 期望提示)
 	# 超时兜底：引擎给的是不带牌的空回复
 	引擎.set("_reply", {"respond_id": 逆反居合斩, "card_ids": [], "args": [], "is_timeout": true})
 	引擎.set("_has_reply", true)

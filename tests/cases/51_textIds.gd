@@ -94,6 +94,10 @@ func _校验文本(全文: String) -> void:
 		return
 	for m: RegExMatch in re.search_all(全文):
 		var id: String = m.get_string(1)
+		# 拼接出来的 id（如 文本("日志_末日预言_" + 动作)）不按字面前缀查：后缀各有一条真 id
+		var 尾: String = 全文.substr(m.get_end())
+		if 尾.strip_edges(true, false).begins_with("+") :
+			continue
 		文本引用数 += 1
 		if not 数据表格.文本表.has(id):
 			失败引用.append("文本(\"%s\")：文本表里没有这个 id" % id)

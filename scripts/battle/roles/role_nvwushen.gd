@@ -196,7 +196,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		{"技能号": GConst.技能_英灵召唤治疗, "需牌": 1, "需目标": 1,
 		 "牌规则": "magic", "牌上限": 1, "目标白": engine.order,
 		 "跳过": func(_答案: Array) -> bool: return _英灵_阶段 >= 2,
-		 "询问文案": GConst.提示原文(GConst.技能_英灵召唤, 1),
+		 "询问文案": GConst.提示原文(GConst.技能_英灵召唤, 0),
 		 "取消": _英灵第二段取消},
 	], _英灵召唤结算)
 

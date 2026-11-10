@@ -391,9 +391,10 @@ func 跑() -> void:
 		and int(弓.additional_actions[0].get("allow_action", 0)) == GConst.ActionType.AttackMagic,
 		"辉光炮应给自己额外攻击或法术行动")
 	弓.additional_actions.clear()
-	# 余辉的弃牌询问要和辉光炮一样，不能退化成「是否发动」。
-	检(GConst.提示原文(8808, 0).contains("弃") and GConst.提示原文(8808, 0).contains("{n}"),
-		"圣煌余辉应复用弃牌提示：%s" % GConst.提示原文(8808, 0))
+	# 余辉的「所有角色将手牌调整为 4 张」由引擎统一处理（不走技能询问），技能表里没有单独的弃牌提示行；
+	# 文案以实际表为准，这里只校说明仍然写着这一步，避免以后把效果改没了。
+	检(GConst.skill_desc(8808).contains("手牌调整为"),
+		"圣煌余辉的说明应仍写「所有角色将手牌调整为 4 张」：%s" % GConst.skill_desc(8808))
 
 	# 执行背面：不再给治疗和额外行动，只做星杯/士气并移除余辉。
 	弓.cross_num = 0

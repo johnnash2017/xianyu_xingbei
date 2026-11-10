@@ -327,11 +327,11 @@ func p_after_magic(ctx: Dictionary) -> int:
 			for pid: int in _角色.engine.order:
 				if _角色.engine.p(pid) != null:
 					全体.append(pid)
-			# 借用元素师技能时，这一步同样读母技能 1102（冰冻）的「提示2」：
-			# 内部子询问号 11021 查不到技能表行，不能按自己的技能号取。
+			# 借用元素师技能时，这一步用内部子询问号 11021（查不到技能表行）；母技能 1102 也没配
+			# 「提示」行，所以不带专属文案，交给客户端通用显示。
 			_角色.询问(_角色.player.id, GConst.技能_冰冻治疗, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, 全体, -1, {}, 0, 0, false, [], true, -1, 0,
-				GConst.提示原文(GConst.技能_冰冻, 1), -1, "", [], _友方())
+				"", -1, "", [], _友方())
 			return BattleRole.WAIT
 		if not _角色.engine.has_reply():
 			return BattleRole.WAIT
