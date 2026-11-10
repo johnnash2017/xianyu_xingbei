@@ -27,6 +27,8 @@ func _ready() -> void:
 	_场景魔纹融合()
 	_场景圣剑()
 	_场景精灵剑舞()
+	_场景神之子()
+	_场景魑魅魍魉()
 	_扫全角色()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
@@ -355,6 +357,39 @@ func _场景精灵剑舞() -> void:
 	_跑(func() -> int: return int(引擎.p(1).role.p_attack_skill(动作)))
 	_录状态()
 	_输出("精灵的剑舞3805")
+
+## 神之子 4305（圣殿骑士）：攻击宣告时二选一（神威 / 圣裁），这里走「神威」一支
+func _场景神之子() -> void:
+	_新引擎({1: 43})
+	var 我: BattlePlayer = 引擎.p(1)
+	# 圣印放在哪个指示物槽由角色表决定：这里把所有槽都填 2，保证「圣印 ≥ 2」成立
+	for tt: Variant in 我.tokens:
+		if tt != null:
+			(tt as Dictionary)["num"] = 2
+	var ctx: Dictionary = {"src": 1, "dst": 2, "is_active": true,
+		"card_id": 66, "card_id_instance": 66,
+		"harm": {"src": 1, "dst": 2, "point": 2, "cause": GConst.CAUSE_ATTACK,
+			"type": GConst.HarmType.Attack, "card_id": 66, "card_id_instance": 66}}
+	应答序 = [_答([1]), _答([1], [], [2])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_timeline_1(ctx)))
+	_录状态()
+	_输出("神之子4305")
+
+## 魑魅魍魉 8404（咒符师）：命中时选符 → 选目标/费用 → 展示 → 逐个转移治疗
+func _场景魑魅魍魉() -> void:
+	_新引擎({1: 84})
+	var 我: BattlePlayer = 引擎.p(1)
+	我.hand_cards = [66, 22] as Array[int]
+	我.cover_cards = [87, 129] as Array[int]
+	var ctx: Dictionary = {"src": 1, "dst": 2, "is_active": true,
+		"card_id": 66, "card_id_instance": 66,
+		"harm": {"src": 1, "dst": 2, "point": 2, "cause": GConst.CAUSE_ATTACK,
+			"type": GConst.HarmType.Attack, "card_id": 66, "card_id_instance": 66}}
+	引擎.p(1).role.p_timeline_1(ctx)
+	应答序 = [_答([8401], [], [2]), _答([1], [87], [3]), _答([1], [], [2]), _答([1], [66], [3])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_timeline_2_hit(ctx)))
+	_录状态()
+	_输出("魑魅魍魉8404")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
