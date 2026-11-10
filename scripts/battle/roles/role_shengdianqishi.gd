@@ -390,47 +390,51 @@ func p_turn_end(ctx: Dictionary) -> int:
 func p_sheng_dian_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 圣炎收尾：对目标对手 1 点法术伤害
-	if _圣炎收尾 == 1:
-		if not engine.has_reply():
-			询问(player.id, SHEN_ZHI_ZI, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-				0, -1, enemy_ids(), -1, {}, 1, GConst.HarmType.Magic, false, [], true, -1, 0,
-				GConst.提示原文(SHEN_ZHI_ZI, 1))
-			return WAIT
-		var r3: Dictionary = take_skill_reply_full()
-		var ds: Array = r3.get("dst_ids", [])
-		_圣炎收尾 = 3
-		if ds.size() == 1:
-			engine.push_harm({
-				"src": player.id, "dst": int(ds[0]), "point": 1,
-				"cause": SHEN_ZHI_ZI, "type": GConst.HarmType.Magic,
-			})
-		# 即使没有合法目标 / 超时没选到人，也不能把后续的圣炎祈愿一起吞掉
-		engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
-		return URGENT
-	# 圣炎祈愿：退出形态时目标角色 +2 治疗（消耗 1 点能量）。
-	# 选目标本身就是「发动」：不再先问一次是否发动再问目标，取消即不发动。
-	if _圣炎收尾 == 2:
-		_圣炎收尾 = 3
-	if _圣炎收尾 == 3:
-		if player.get_energy() < 1:
-			_圣炎收尾 = 0
-			return SUCCESS
-		if not engine.has_reply():
-			询问(player.id, SHENG_YAN_QI_YUAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, _全体角色(), -1, {}, 2, GConst.预览类型_治疗, false, [], true, -1, 0,
-				"")
-			return WAIT
-		var r3: Dictionary = take_skill_reply_full()
-		var ds3: Array = r3.get("dst_ids", [])
-		_圣炎收尾 = 0
-		if ds3.size() == 1:
-			player.remove_energy(1)
-			notice_skill(SHENG_YAN_QI_YUAN, [int(ds3[0])])
-			施加治疗(int(ds3[0]), 2)
+	if _圣炎收尾 == 0:
 		return SUCCESS
-	return SUCCESS
+	# 圣炎收尾（对目标对手 1 点法术伤害）→ 圣炎祈愿（选目标 +2 治疗，耗 1 能量）。
+	# 两段用同一条链：第一段用「答完」压伤害 + 压一个新钩子（保证祈愿一定会被问到），
+	# 第二段在同一个钩子里继续；链走完把 _圣炎收尾 清 0。
+	var 做收尾伤害: bool = _圣炎收尾 == 1
+	_圣炎收尾 = 3
+	return 多步询问(SHEN_ZHI_ZI, [
+		{"技能号": SHEN_ZHI_ZI, "需目标": 1, "目标白": enemy_ids(), "可取消": false,
+		 "预览基准": 1, "预览类型": GConst.HarmType.Magic,
+		 "询问文案": GConst.提示原文(SHEN_ZHI_ZI, 1),
+		 "跳过": func(_答案: Array) -> bool: return not 做收尾伤害,
+		 "超时默认": [],
+		 "答完": _圣炎收尾伤害答完},
+		{"技能号": SHENG_YAN_QI_YUAN, "需目标": 1, "目标白": _全体角色(),
+		 "预览基准": 2, "预览类型": GConst.预览类型_治疗,
+		 "取消": func() -> void: _圣炎收尾 = 0,
+		 "跳过": func(_答案: Array) -> bool: return player.get_energy() < 1},
+	], _圣炎收尾结算)
 
+
+## 第一段答完：压收尾伤害（没选到目标也照样压钩子，别把圣炎祈愿吞掉）
+func _圣炎收尾伤害答完(回: Dictionary, _答案: Array) -> int:
+	var ds: Array = 回.get("dsts", [])
+	if ds.size() == 1:
+		engine.push_harm({
+			"src": player.id, "dst": int(ds[0]), "point": 1,
+			"cause": SHEN_ZHI_ZI, "type": GConst.HarmType.Magic,
+		})
+	engine.push(BattleEngine.SHook.new("p_sheng_dian_ask", {"player": player.id}, []))
+	return URGENT
+
+
+## 第二段答完：选到人就扣 1 点能量、+2 治疗；没选 / 没能量就什么都不做
+func _圣炎收尾结算(答案: Array) -> int:
+	_圣炎收尾 = 0
+	if 答案.size() < 2:
+		return SUCCESS
+	var ds: Array = (答案[1] as Dictionary).get("dsts", [])
+	if ds.is_empty() or player.get_energy() < 1:
+		return SUCCESS
+	player.remove_energy(1)
+	notice_skill(SHENG_YAN_QI_YUAN, [int(ds[0])])
+	施加治疗(int(ds[0]), 2)
+	return SUCCESS
 
 
 # ============================================================
