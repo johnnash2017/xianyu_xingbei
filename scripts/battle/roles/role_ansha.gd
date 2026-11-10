@@ -170,11 +170,6 @@ func v_attacked() -> int:
 	return GConst.GE_SUCCESS
 
 
-## 【水影】的推进阶段（0＝还没开始 / 1＝已问「弃 X 张水系牌」基础 / 2＝已问「额外弃 1 张法术牌」）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨若干次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己摸牌前（p_before_draw）触发一次，收尾清回 0，好让下一次摸牌前再次响应。
-var _shui_ying_step: int = 0
 
 
 # ============================================================
@@ -187,47 +182,52 @@ func p_before_draw(ctx: Dictionary) -> int:
 		return SUCCESS
 	# 同一枚摸牌事件只接管一次；若另一次摸牌的响应还没收尾，本次直接跳过（避免嵌套）
 	var 已接管: bool = bool(ctx.get("shui_ying_taken", false))
-	if not 已接管 and _shui_ying_step != 0:
+	if not 已接管 and 多步询问进行中(SHUI_YING):
 		return SUCCESS
 	ctx["shui_ying_taken"] = true
 
-	# 基础：弃 X 张水系牌【展示】（X＝1~手里的水系牌数）。
-	# 手里一张水系牌都没有也照样问（对照原客户端 AnSha::ShuiYing：永远弹「是否发动水影？」，
-	# 那时没有可点的牌，只能取消）；这种情况下白名单发「全禁」而不是空表 ——
-	# 空表在协议里表示「不限制」，别的系手牌反而会亮起来
-	if _shui_ying_step == 0:
-		var 水牌: Array[int] = _水系手牌()
-		var 白名单: Array = 水牌 if not 水牌.is_empty() else [GConst.手牌白名单_全禁]
-		# need_card=1 保证至少弃 1 张；card_max=水系牌数 放宽点选上限
-		询问(player.id, SHUI_YING, 1, 0, GConst.CardSource.Hand, [], 水牌.size(), "", 白名单, true, 0)
-		_shui_ying_step = 1
-		return WAIT
-	# 基础回复：没弃水系牌＝取消 / 超时，水影不发动（额外的法术牌那步也就不问）
-	if _shui_ying_step == 1:
-		var r: Dictionary = take_skill_reply_full()
-		var 弃水: Array = _有效水系牌(r.get("card_ids", []))
-		if 弃水.is_empty():
-			_shui_ying_step = 0
-			return SUCCESS
-		notice_skill(SHUI_YING, [player.id])
-		_展示并弃(player.id, 弃水)
-		# 基础成立后，若处于【潜行】效果下，再二次询问「是否额外弃 1 张法术牌」（纯可选）
-		if player.tap:
-			var 法术牌: Array[int] = magic_hand_ids()
-			# 手里没有法术牌就跳过这一步，直接收尾
-			if not 法术牌.is_empty():
-				询问(player.id, SHUI_YING, 1, 0, GConst.CardSource.Hand, [], 1, "magic", 法术牌, true, 1)
-				_shui_ying_step = 2
-				return WAIT
-		_shui_ying_step = 0
+	# 水影：先弃 1~N 张水系牌【展示】（基础），潜行形态下再可选弃 1 张法术牌（额外）。
+	# 没有水系牌也照问（白名单发「全禁」，只能取消）；第二步在没有法术牌 / 不在潜行时跳过。
+	var 水牌: Array[int] = _水系手牌()
+	var 白名单: Array = 水牌 if not 水牌.is_empty() else [GConst.手牌白名单_全禁]
+	var 可问额外: bool = player.tap
+	return 多步询问(SHUI_YING, [
+		{"需牌": 1, "牌上限": 水牌.size(), "牌白": 白名单},
+		{"需牌": 1, "牌规则": "magic", "牌上限": 1,
+		 # 白名单按第一步实际弃掉的水系牌现算：水系法术牌若已被第一步弃掉，就不该再出现在这一步
+		 "牌白": func(答案: Array) -> Array: return _水影剩余法术牌(答案),
+		 "跳过": func(答案: Array) -> bool:
+			if not 可问额外:
+				return true
+			return _水影剩余法术牌(答案).is_empty()},
+	], _水影结算)
+
+
+## 第一步答完后还剩几张可弃的法术牌（去掉第一步已经弃掉的那些）
+func _水影剩余法术牌(答案: Array) -> Array[int]:
+	if not player.tap:
+		return []
+	var 已弃: Array = _有效水系牌((答案[0] as Dictionary).get("cards", [])) if 答案.size() > 0 else []
+	var out: Array[int] = []
+	for id: int in magic_hand_ids():
+		if not 已弃.has(id):
+			out.append(id)
+	return out
+
+
+## 水影结算：先弃水系牌【展示】；潜行下若还选了法术牌，再弃那张【展示】
+func _水影结算(答案: Array) -> int:
+	var 弃水: Array = _有效水系牌((答案[0] as Dictionary).get("cards", [])) if 答案.size() > 0 else []
+	if 弃水.is_empty():
+		# 没弃水系牌＝取消 / 超时，水影不发动（额外那步也不结算）
 		return SUCCESS
-	# 额外回复：选「是」＝选中 1 张法术牌；选「否 / 取消」＝未选，两者水影均已发动
-	var r2: Dictionary = take_skill_reply_full()
-	_shui_ying_step = 0
-	var 弃法术: Array = _有效法术牌(r2.get("card_ids", []))
-	if not 弃法术.is_empty():
-		notice_skill(SHUI_YING, [player.id])
-		_展示并弃(player.id, 弃法术)
+	notice_skill(SHUI_YING, [player.id])
+	_展示并弃(player.id, 弃水)
+	if 答案.size() > 1:
+		var 弃法术: Array = _有效法术牌((答案[1] as Dictionary).get("cards", []))
+		if not 弃法术.is_empty():
+			notice_skill(SHUI_YING, [player.id])
+			_展示并弃(player.id, 弃法术)
 	return SUCCESS
 
 

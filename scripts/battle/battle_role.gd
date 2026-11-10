@@ -524,7 +524,7 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 			链["段"] = 段号 + 1
 			continue
 		if not engine.has_reply():
-			_多步问一段(链号, 段号, 段)
+			_多步问一段(链号, 段号, 段, 答案)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var 回: Dictionary = {
@@ -556,7 +556,7 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 			if bool(段.get("可取消", true)):
 				_多步链.erase(链号)
 				return SUCCESS
-			_多步问一段(链号, 段号, 段)
+			_多步问一段(链号, 段号, 段, 答案)
 			return WAIT
 		# 段自带的合法性校验：不过关就报错并按「校验失败回退」决定重问本段还是退回上一段
 		var 校验: Variant = 段.get("校验", null)
@@ -566,22 +566,29 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 				答案.resize(段号 - 1)
 				链["段"] = 段号 - 1
 				continue
-			_多步问一段(链号, 段号, 段)
+			_多步问一段(链号, 段号, 段, 答案)
 			return WAIT
 		答案.append(回)
 		链["段"] = 段号 + 1
 	return SUCCESS
 
 
+## 段字段可以是 Callable(答案) -> 值：按「已经答过的答案」现算（如第二步的白名单要看第一步丢了什么）
+func _多步取值(值: Variant, 答案: Array) -> Variant:
+	if 值 is Callable:
+		return (值 as Callable).call(答案)
+	return 值
+
+
 ## 问链里的某一段（内部用；询问参数照段规格逐项传，第二段起沿用同一次等待的倒计时）
-func _多步问一段(链号: int, 段号: int, 段: Dictionary) -> void:
+func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array = []) -> void:
 	询问(player.id, 链号,
-		int(段.get("需牌", 0)), int(段.get("需目标", 0)),
-		int(段.get("来源", GConst.CardSource.Hand)), 段.get("选项", []),
-		int(段.get("牌上限", 0)), str(段.get("牌规则", "")), 段.get("牌白", []),
+		int(_多步取值(段.get("需牌", 0), 答案)), int(_多步取值(段.get("需目标", 0), 答案)),
+		int(段.get("来源", GConst.CardSource.Hand)), _多步取值(段.get("选项", []), 答案),
+		int(_多步取值(段.get("牌上限", 0), 答案)), str(段.get("牌规则", "")), _多步取值(段.get("牌白", []), 答案),
 		bool(段.get("可取消", true)), int(段.get("提示序号", 0)), int(段.get("收牌人", -1)),
-		段.get("目标白", []), int(段.get("张数", -1)), 段.get("额外", {}),
-		int(段.get("预览基准", 0)), int(段.get("预览类型", 0)), 段号 > 0,
+			_多步取值(段.get("目标白", []), 答案), int(段.get("张数", -1)), 段.get("额外", {}),
+		int(_多步取值(段.get("预览基准", 0), 答案)), int(段.get("预览类型", 0)), 段号 > 0,
 		段.get("预览目标", []), bool(段.get("可圣光", true)), int(段.get("预览伤害", -1)),
 		int(段.get("需盖牌", 0)), str(段.get("询问文案", "")), int(段.get("默认选项", -1)),
 		"", 段.get("高亮", []), 段.get("超时目标", []),
@@ -591,6 +598,11 @@ func _多步问一段(链号: int, 段号: int, 段: Dictionary) -> void:
 ## 放弃一条还没走完的链（技能被别的原因中断 / 新一轮发动前清干净）
 func 多步询问重置(链号: int) -> void:
 	_多步链.erase(链号)
+
+
+## 这条链是不是正等着玩家回复（钩子类技能用它挡住「别的同类事件插进来」）
+func 多步询问进行中(链号: int) -> bool:
+	return _多步链.has(链号)
 
 
 ## 技能行动提交的牌本次「视为」哪个系别（如 3805 精灵的剑舞 = 风系）。
