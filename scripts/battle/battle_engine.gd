@@ -3819,8 +3819,11 @@ func push_harm(harm: Dictionary) -> void:
 	push(SHook.new("p_timeline_5", hc, []))
 	push(SAskCross.new(harm))
 	push(SHook.new("p_timeline_4", hc, []))
-	push(SHook.new("p_timeline_3", hc, []))
+	# 先跑③的改伤钩子，再广播受伤飘字 / 伤害事件：③（神弃之裔、狂戾形态、念气力场、圣炎抵御…）
+	# 会改 harm 的点数，飘字若抢先发出去，界面就会「飘 2 实际打 3」。
+	# 顺序仍是「飘字 → 伤害事件 → 治疗抵御」，只是把③挪到飘字之前。
 	push(SHarmTimeline3.new(harm))
+	push(SHook.new("p_timeline_3", hc, []))
 
 
 ## ⑥ 伤害转移（F6 / 4702）：把 harm 的承受者改成新目标，并声明这次伤害不因手牌超限掉士气。

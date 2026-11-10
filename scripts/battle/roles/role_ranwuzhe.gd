@@ -274,6 +274,14 @@ func p_turn_end(ctx: Dictionary) -> int:
 # ============================================================
 # 狂戾形态：无法使用【圣光】格挡（攻击 / 魔弹都走 v_block）
 # ============================================================
+## 被攻击时把下发给界面的 can_light 置 0：界面据此把【圣光】置灰、点不动
+## （v_block 是服务端兜底，只有它的话客户端仍会亮着、点了才被拒）
+func p_attacked(ctx: Dictionary) -> int:
+	if player.tap and int(ctx.get("dst", -1)) == player.id:
+		ctx["can_light"] = false
+	return SUCCESS
+
+
 func v_block(_card_id: int) -> int:
 	if not player.tap:
 		return V_NOT_OVERRIDE
