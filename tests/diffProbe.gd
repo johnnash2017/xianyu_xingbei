@@ -37,6 +37,8 @@ func _ready() -> void:
 	_场景双重回响()
 	_场景启示()
 	_场景弥撒()
+	_场景异教徒展示()
+	_场景异教徒展示地裂()
 	_扫全角色()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
@@ -516,6 +518,62 @@ func _场景弥撒() -> void:
 	_录状态()
 	_输出("弥撒9608")
 
+
+## 异教徒「展示」链（9506 贪婪 / 9507 天雷劫火 / 9508 地裂波涛）：
+## 场卡【末日预言】带 front → 置 _翻面步=1 → p_yi_jiao_tu_ask 翻面并进入展示
+func _场景异教徒展示() -> void:
+	_新引擎({1: 95})
+	# 展示的选项值是「系别枚举值」，且只放行当前正面（天雷）的两系：雷 / 火
+	var 对: Array[int] = _同系一对限定([GConst.CardElement.Thunder, GConst.CardElement.Fire])
+	var 系: int = GConst.CardElement.Thunder
+	if not 对.is_empty():
+		系 = Data.get_card(对[0]).element_enum()
+	var p: BattlePlayer = 引擎.p(1)
+	p.hand_cards = [0, 1, 2, 3, 4, 5, 对[0], 对[1]] as Array[int]
+	var 表: Dictionary = 引擎.加场卡({"id": "末日预言", "owner": 1, "attached": -1,
+		"counter": 6, "counter_max": 6, "state": 0})
+	if not 表.is_empty():
+		表["front"] = "天雷劫火"
+		表["pile"] = [0, 1, 2, 3, 4, 5]
+	p.role.set("_翻面步", 1)
+	应答序 = [_答([1], [], [2]), _答([系], [对[0], 对[1]], [2]), _答([1], [], [2]), _答([1], [], [2])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_yi_jiao_tu_ask({"player": 1})))
+	_录状态()
+	_输出("异教徒展示9507")
+
+
+## 指定几系里找两张同系牌
+func _同系一对限定(系列: Array) -> Array[int]:
+	for 系: Variant in 系列:
+		var 出: Array[int] = []
+		for c: GCard in Data.card_db:
+			if c != null and not c.is_virtual and c.element_enum() == int(系):
+				出.append(c.id)
+				if 出.size() >= 2:
+					return [出[0], 出[1]]
+	return []
+
+
+
+## 同一条展示链的地裂分支（9508 地裂波涛正面：只放行地 / 水两系）
+func _场景异教徒展示地裂() -> void:
+	_新引擎({1: 95})
+	var 对: Array[int] = _同系一对限定([GConst.CardElement.Earth, GConst.CardElement.Water])
+	var 系: int = GConst.CardElement.Earth
+	if not 对.is_empty():
+		系 = Data.get_card(对[0]).element_enum()
+	var p: BattlePlayer = 引擎.p(1)
+	p.hand_cards = [0, 1, 2, 3, 4, 5, 对[0], 对[1]] as Array[int]
+	var 表: Dictionary = 引擎.加场卡({"id": "末日预言", "owner": 1, "attached": -1,
+		"counter": 6, "counter_max": 6, "state": 0})
+	if not 表.is_empty():
+		表["front"] = "地裂波涛"
+		表["pile"] = [0, 1, 2, 3, 4, 5]
+	p.role.set("_翻面步", 1)
+	应答序 = [_答([1], [], [2]), _答([系], [对[0], 对[1]], [2]), _答([1], [], [2]), _答([1], [], [2])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_yi_jiao_tu_ask({"player": 1})))
+	_录状态()
+	_输出("异教徒展示9508-地裂")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
