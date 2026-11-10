@@ -26,6 +26,7 @@ func _ready() -> void:
 	_场景法术剥离()
 	_场景魔纹融合()
 	_场景圣剑()
+	_场景精灵剑舞()
 	_扫全角色()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
@@ -342,6 +343,18 @@ func _录简况() -> void:
 		p.crystal, str(_指示物(p)), p.additional_actions.size(), 引擎.deck.pile.size()])
 
 
+
+## 精灵的剑舞 3805（游击士）：支付 1 能量 + 指定一名对手，本次攻击按风系虚牌 66 结算
+func _场景精灵剑舞() -> void:
+	_新引擎({1: 38})
+	var 火攻: int = _找攻击牌(GConst.CardElement.Fire)
+	引擎.p(1).hand_cards = [火攻] as Array[int]
+	引擎.p(1).set_crystal(1)
+	var 动作: Dictionary = {"src_id": 1, "action_id": 3805, "card_ids": [火攻], "dst_ids": [2]}
+	应答序 = [_答([1], [], [2])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_attack_skill(动作)))
+	_录状态()
+	_输出("精灵的剑舞3805")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
