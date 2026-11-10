@@ -50,7 +50,6 @@ const 再睡治疗数: int = 1
 
 ## 10601 的分步进度（主动技能走 SkillRun，不经钩子轮次，用实例变量记进度）：
 ## 0＝还没开始 / 1＝在等右手边队友指定目标 / 2＝目标已定：等超限结算 / 等目标弃法术牌 / STEP_DONE＝已完成
-var _bie_fan_step: int = 0
 ## 本次 10601 的队友与目标（等回复期间可能被别的钩子插入，不能现算）
 var _bie_fan_队友: int = -1
 var _bie_fan_目标: int = -1
@@ -126,7 +125,7 @@ func _rang_wo_tang_ping(ctx: Dictionary) -> int:
 func 技能URGENT后重入(action: Dictionary = {}) -> bool:
 	# 只有「目标摸完 1 张、还要回来问弃不弃」这一处需要重入；惩罚的摸牌 URGENT
 	# 已经走完技能，若也重入会从 _bie_fan_step==STEP_DONE 重置成 0，把整个技能再发动一遍
-	return int(action.get("action_id", 0)) == BIE_FAN_WO and _bie_fan_step == 2
+	return int(action.get("action_id", 0)) == BIE_FAN_WO and 多步询问进行中(BIE_FAN_WO)
 
 
 func available_skills() -> Array:
@@ -213,76 +212,65 @@ func _v_bie_fan_wo(action: Dictionary) -> int:
 
 
 func _p_bie_fan_wo() -> int:
-	# 上一次 10601 已完成：本次是新的技能行动，重置分步
-	if _bie_fan_step >= STEP_DONE:
-		_bie_fan_step = 0
-	if _bie_fan_step == 0:
+	# 前置（只在链还没开始时做一次）：找右手边队友；队友先随机丢你 1 张手牌
+	if not 多步询问进行中(BIE_FAN_WO):
 		_bie_fan_队友 = nearest_teammate_id(player.id, true)
 		_bie_fan_目标 = -1
 		if _bie_fan_队友 < 0 or enemy_ids().is_empty():
-			_bie_fan_step = STEP_DONE
 			engine.取消技能行动()
 			return SUCCESS
-		_bie_fan_step = 1
 		# 技能原文：队友先随机丢弃你 1 张手牌，再来指定目标对手
 		engine.随机弃手牌(player.id, 1, BIE_FAN_WO)
 		engine._broadcast_game()
-		if not engine.has_reply():
-			# 由右手边队友（不是当前行动者）指定目标对手：回复仍回到本次 SkillRun。
-			# can_cancel=false（A41：必须给出目标；超时由引擎从合法目标里随机代选）。
-			# 询问文案直接给整段技能效果（技能太复杂，提示列那一句说不清）
-			询问(_bie_fan_队友, BIE_FAN_WO, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-				0, -1, enemy_ids(), -1, {}, 0, 0, false, [], true, -1, 0, "",
-				-1, GConst.提示原文(BIE_FAN_WO, 2))
-			return WAIT
-	if _bie_fan_step == 1:
-		if not engine.has_reply():
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var dsts: Array = r.get("dst_ids", [])
-		var dst_id: int = int(dsts[0]) if dsts.size() == 1 else -1
-		if not enemy_ids().has(dst_id):
-			# 询问不可取消：引擎超时会从合法目标里随机代选；客户端硬发的取消 / 空回复 / 非法目标
-			# 也按 A41「AI / 掉线按默认规则代选」兜底成随机一名合法对手，不让队友的回复吞掉整次技能行动
-			var 候选: Array[int] = enemy_ids()
-			if 候选.is_empty():
-				_bie_fan_step = STEP_DONE
-				engine.取消技能行动()
-				return SUCCESS
-			dst_id = int(候选[engine._rng.randi_range(0, 候选.size() - 1)])
-		_bie_fan_目标 = dst_id
-		_bie_fan_step = 2
-		notice_skill(BIE_FAN_WO, [dst_id])
-		# 目标【强制】摸 1 张 → 我方战绩区 +1 水晶（随机弃牌已在指定目标之前做掉了）
-		# 摸牌走标准摸牌状态：摸完由状态边界统一结算超限（弃到上限 + 掉士气），
-		# 结算完再回来问「弃 1 张法术牌」
-		engine.push_draw(dst_id, 目标摸牌数, BIE_FAN_WO)
-		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
-		engine._broadcast_game()
-		return URGENT
-	if _bie_fan_step != 2:
+	# ① 右手边队友指定一名目标对手（不可取消，超时随机代选）
+	# ② 目标【强制】摸 1 张后回来问「弃不弃 1 张法术牌」（不弃就按惩罚结算）
+	return 多步询问(BIE_FAN_WO, [
+		{"问谁": func(_答案: Array) -> int: return _bie_fan_队友,
+		 "需目标": 1, "目标白": func(_答案: Array) -> Array: return enemy_ids(),
+		 "可取消": false, "超时默认": [],
+		 "询问文案": GConst.提示原文(BIE_FAN_WO, 2),
+		 "答完": _别烦我选目标答完},
+		{"问谁": func(_答案: Array) -> int: return _bie_fan_目标,
+		 "需牌": 1, "牌规则": "magic",
+		 "高亮": [_bie_fan_队友],
+		 "取消": _bie_fan_惩罚,
+		 "跳过": func(_答案: Array) -> bool: return _bie_fan_目标 < 0},
+	], _别烦我结算)
+
+
+## 第 1 段答完：定下目标（非法 / 超时按 A41 随机代选），然后目标强制摸 1 张、我方 +1 水晶
+func _别烦我选目标答完(回: Dictionary, _答案: Array) -> int:
+	var dsts: Array = 回.get("dsts", [])
+	var dst_id: int = int(dsts[0]) if dsts.size() == 1 else -1
+	if not enemy_ids().has(dst_id):
+		# 询问不可取消：引擎超时会从合法目标里随机代选；客户端硬发的取消 / 空回复 / 非法目标
+		# 也按 A41「AI / 掉线按默认规则代选」兜底成随机一名合法对手，不让队友的回复吞掉整次技能行动
+		var 候选: Array[int] = enemy_ids()
+		if 候选.is_empty():
+			return SUCCESS
+		dst_id = int(候选[engine._rng.randi_range(0, 候选.size() - 1)])
+	_bie_fan_目标 = dst_id
+	notice_skill(BIE_FAN_WO, [dst_id])
+	# 目标【强制】摸 1 张 → 我方战绩区 +1 水晶（随机弃牌已在指定目标之前做掉了）
+	# 摸牌走标准摸牌状态：摸完由状态边界统一结算超限（弃到上限 + 掉士气），
+	# 结算完再回来问「弃 1 张法术牌」
+	engine.push_draw(dst_id, 目标摸牌数, BIE_FAN_WO)
+	engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
+	engine._broadcast_game()
+	return URGENT
+
+
+## 第 2 段答完：目标真弃了法术牌就结算；没弃（或取消 / 超时）按惩罚结算
+func _别烦我结算(答案: Array) -> int:
+	var 目标: BattlePlayer = engine.p(_bie_fan_目标)
+	if 目标 == null:
 		return SUCCESS
-	# 第二步：超限结算完之后问目标「弃 1 张法术牌」（超时 / 取消＝不走，按惩罚结算）。
-	# 手里有没有法术牌都照问一次：没有法术牌时界面整片置灰，只能取消 → 同样按「不如此做」结算
-	if not engine.has_reply():
-		# 「这一手问的是弃哪张牌」，所以目标自己由客户端点亮（谁被点名弃牌）；
-		# 「不弃就会 +1 治疗」的那名队友随询问下发（highlight_ids → 客户端把它一起高亮），
-		# 不再让客户端按座位自己猜是谁
-		询问(_bie_fan_目标, BIE_FAN_WO, 1, 0, GConst.CardSource.Hand, [], 0, "magic", [], true, 1,
-			-1, [], -1, {}, 0, 0, false, [], true, -1, 0, "", -1, "", [_bie_fan_队友])
-		return WAIT
-	var r2: Dictionary = take_skill_reply_full()
-	_bie_fan_step = STEP_DONE
-	if _目标弃出法术牌(_bie_fan_目标, r2):
+	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
+	if _目标弃出法术牌(目标.id, {"args": 回.get("args", []), "card_ids": 回.get("cards", [])}):
 		engine._broadcast_game()
 		return SUCCESS
 	return _bie_fan_惩罚()
-
-
-## 目标「不如此做」的惩罚：他摸 1 张【强制】，右手边队友 +1【治疗】。
-## 摸牌走标准状态；治疗压成钩子排在摸牌之后（摸牌状态在上，先摸完再结算治疗）。
 func _bie_fan_惩罚() -> int:
-	_bie_fan_step = STEP_DONE
 	engine.push(BattleEngine.SHook.new("p_daduoshaonv_惩罚治疗",
 		{"player": player.id, "target": _bie_fan_队友}, []))
 	engine.push_draw(_bie_fan_目标, 惩罚摸牌数, BIE_FAN_WO)
