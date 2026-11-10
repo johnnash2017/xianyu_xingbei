@@ -426,9 +426,13 @@ func _展示链(仅一项: bool = false, 跳过问贪婪: bool = false) -> int:
 		 "取消": func() -> int: return _展示不贪婪(),
 		 "跳过": func(_答案: Array) -> bool: return 跳过问贪婪 or player.get_energy() <= 0,
 		 "答完": _展示贪婪答完},
-		{"需目标": 1, "牌上限": 4, "张数": 4, "收牌人": player.id,
+		# 第 1 项：四系选项板 + 选牌 + 选目标在同一次询问里选完（旧实现就是一次 ask_skill 带 options；
+		# 迁移时漏了「选项」和「可取消=false」，结果四系点不了、还能点取消把整次展示白扔）。
+		{"选项": func(_答案: Array) -> Array: return _展示系别选项(),
+		 "需目标": 1, "牌上限": 4, "张数": 4, "收牌人": player.id,
 		 "牌白": func(_答案: Array) -> Array: return _展示可选牌(),
 		 "目标白": func(_答案: Array) -> Array: return enemy_ids(),
+		 "可取消": false, "提示序号": -1,
 		 "校验": _展示选系合法, "超时默认": [],
 		 "答完": func(回: Dictionary, _答案: Array) -> int: return _展示选中答完(回)},
 		{"问谁": func(_答案: Array) -> int: return _展示对手,
@@ -439,12 +443,15 @@ func _展示链(仅一项: bool = false, 跳过问贪婪: bool = false) -> int:
 		 "可取消": false,
 		 "询问文案": func(_答案: Array) -> String:
 			return GConst.提示原文(_展示技能号(), 4) % [_在展示, GConst.element_to_chinese(_展示系)],
-		 "跳过": func(_答案: Array) -> bool: return _展示对手上限() <= 0,
+		 "跳过": func(_答案: Array) -> bool: return _展示跳过对手弃牌(),
 		 "校验": _展示对手弃牌合法,
 		 "答完": _展示对手弃牌答完},
-		{"需目标": 1, "牌上限": 4, "张数": 4, "收牌人": player.id,
+		{"选项": func(_答案: Array) -> Array: return _展示系别选项(),
+		 "需目标": 1, "牌上限": 4, "张数": 4, "收牌人": player.id,
 		 "牌白": func(_答案: Array) -> Array: return _展示可选牌(),
 		 "目标白": func(_答案: Array) -> Array: return enemy_ids(),
+		 "可取消": false, "提示序号": -1,
+		 # 第二项只在「发动了贪婪且还有没用过的主动系」时才问
 		 "跳过": func(_答案: Array) -> bool: return 仅一项 or not _展示还有第二项(),
 		 "校验": _展示选系合法, "超时默认": [],
 		 "答完": func(回: Dictionary, _答案: Array) -> int: return _展示选中答完(回)},
@@ -456,11 +463,26 @@ func _展示链(仅一项: bool = false, 跳过问贪婪: bool = false) -> int:
 		 "可取消": false,
 		 "询问文案": func(_答案: Array) -> String:
 			return GConst.提示原文(_展示技能号(), 4) % [_在展示, GConst.element_to_chinese(_展示系)],
-		 "跳过": func(_答案: Array) -> bool:
-			return 仅一项 or not _展示还有第二项() or _展示对手上限() <= 0,
+		 # 用「第一项是否真的问过」（_展示已用 的条数）判断，不能再问 _展示还有第二项()：
+		 # 那时第一项已记进 _展示已用，它必为 false，第二项的弃牌与伤害会被整段跳过。
+		 "跳过": func(_答案: Array) -> bool: return _展示已用.size() < 2 or _展示跳过对手弃牌(),
 		 "校验": _展示对手弃牌合法,
 		 "答完": _展示对手弃牌答完},
 	], func(_答案: Array) -> int: return _展示收尾())
+
+
+## 「对手弃该系牌」这一段要不要跳过：对手手里没该系牌时整段不问，但伤害仍要照常打
+## （旧实现是 `if 上限 <= 0: return _展示本项伤害()`，不是跳过；伤害只能在这里补一次，
+## 因为跳过段不会跑它的「答完」）。
+func _展示跳过对手弃牌() -> bool:
+	if _展示对手上限() > 0:
+		return false
+	if _展示对手 >= 0:
+		engine.push_harm({
+			"src": player.id, "dst": _展示对手, "point": _展示X + 1,
+			"cause": _展示技能号(), "type": GConst.HarmType.Magic,
+		})
+	return true
 
 
 ## 贪婪这一步点了「取消」/不发动：只做一项，重新开一条只做一项的链
@@ -474,7 +496,9 @@ func _展示不贪婪() -> int:
 
 ## 贪婪问完：确定这一项还是两项（消耗 1 水晶）
 func _展示贪婪答完(回: Dictionary, _答案: Array) -> int:
-	var 发动: bool = not (回.get("args", []) as Array).is_empty()
+	var a: Array = 回.get("args", [])
+	# 旧实现用 take_skill_reply()：只认 args[0] == 1
+	var 发动: bool = not a.is_empty() and int(a[0]) == 1
 	_展示贪婪 = 发动
 	_展示已用.clear()
 	if 发动:

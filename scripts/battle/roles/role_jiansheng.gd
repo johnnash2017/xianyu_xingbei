@@ -224,10 +224,13 @@ func _sheng_jian_cycle() -> int:
 		# 第 1 段：选摸牌张数 X（1~3），答完立刻摸 X 张
 		{"选项": _圣剑摸牌选项(), "取消": _圣剑取消, "答完": _圣剑摸牌答完},
 		# 第 2 段：从手牌（含刚摸进来的）里弃 X 张（不能取消；超时也要补弃到 X 张）
+		# 第 1 段回的不是 1~3（构造客户端）时，摸牌答完已把 _sheng_jian_弃张数 留成 0，
+		# 这一段必须跳过：否则会带着「弃 0 张」继续问，回复没人取、链还残留在 _多步链 里。
 		{"需牌": func(_答案: Array) -> int: return _sheng_jian_弃张数,
 		 "牌上限": func(_答案: Array) -> int: return _sheng_jian_弃张数,
 		 "张数": func(_答案: Array) -> int: return _sheng_jian_弃张数,
 		 "提示序号": 1,
+		 "跳过": func(_答案: Array) -> bool: return _sheng_jian_弃张数 <= 0,
 		 "可取消": false},
 	], _圣剑弃牌结算)
 

@@ -207,10 +207,18 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	_shou_step = 1
 	# 收魔术：先问发动者要不要发动 → 再问被点名的目标弃哪张牌（第二段问的是他）
 	return 多步询问(SHOU_MO_CI, [
-		{"取消": _收魔术收尾},
+		{"取消": _收魔术收尾,
+		 # 旧实现用 take_skill_reply()，只认 args[0] == 1；这里显式判一次，
+		 # 不然构造客户端回 args=[0] 也会把目标点名的牌收进瓶子。
+		 "答完": func(回: Dictionary, _答案: Array) -> int:
+			var a1: Array = 回.get("args", [])
+			if a1.is_empty() or int(a1[0]) != 1:
+				return _收魔术收尾()
+			_shou_step = 2
+			return SUCCESS},
 		{"问谁": func(_答案: Array) -> int: return _shou_target,
 		 "需牌": 1, "可取消": false,
-		 "跳过": func(_答案: Array) -> bool: return not _收魔术目标可弃(),
+		 "跳过": func(_答案: Array) -> bool: return _shou_step != 2 or not _收魔术目标可弃(),
 		 "取消": _收魔术收尾},
 	], _收魔术结算)
 
@@ -254,10 +262,17 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	_boshi_step = 1
 	# 法术剥离：先问发动者要不要发动 → 再问被点名的目标弃哪张牌（第二段问的是他）
 	return 多步询问(FA_SHU_BO_LI, [
-		{"取消": _法术剥离收尾},
+		{"取消": _法术剥离收尾,
+		 # 同收魔术：旧 take_skill_reply() 只认 args[0] == 1
+		 "答完": func(回: Dictionary, _答案: Array) -> int:
+			var a1: Array = 回.get("args", [])
+			if a1.is_empty() or int(a1[0]) != 1:
+				return _法术剥离收尾()
+			_boshi_step = 2
+			return SUCCESS},
 		{"问谁": func(_答案: Array) -> int: return _boshi_target,
 		 "需牌": 1, "可取消": false,
-		 "跳过": func(_答案: Array) -> bool: return not _法术剥离目标可弃(),
+		 "跳过": func(_答案: Array) -> bool: return _boshi_step != 2 or not _法术剥离目标可弃(),
 		 "取消": _法术剥离收尾},
 	], _法术剥离结算)
 

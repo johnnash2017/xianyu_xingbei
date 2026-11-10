@@ -36,6 +36,9 @@ var used_yi_xiang_jian: bool = false
 ## 异象剑：目标弃掉的那张牌 / 第 3 段是否已判定（0＝未判 / 1＝跳过询问 / 2＝要问获得）/ 本次攻击的 harm
 var _异象牌: int = -1
 var _异象判定: int = 0
+## 第 1 段答了「不发动」：框架的「答完」返回 SUCCESS 只会继续问下一段，不会中止整条链，
+## 所以用这个标记让后面两段的「跳过」把它挡掉（否则选不发动照样逼目标弃牌、加伤、送牌）。
+var _异象否决: bool = false
 var _异象_harm: Dictionary = {}
 var used_jian_ying_duan_nian: bool = false
 
@@ -242,6 +245,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if not 链中:
 		_异象牌 = -1
 		_异象判定 = 0
+		_异象否决 = false
 		_异象_harm = ctx.get("harm", {})
 	# 异象剑：发动 → 目标弃 1 张牌【展示】→（法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要把牌拿走）
 	return 多步询问(YI_XIANG_JIAN, [
@@ -252,7 +256,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 				return _异象不发动()
 			return _异象发动答完(dst.id)},
 		{"问谁": dst.id, "需牌": 1, "可取消": false, "超时默认": [],
-		 "跳过": func(_答案: Array) -> bool: return dst.hand_cards.is_empty(),
+		 "跳过": func(_答案: Array) -> bool: return _异象否决 or dst.hand_cards.is_empty(),
 		 "答完": func(回: Dictionary, _答案: Array) -> int: return _异象弃牌答完(dst, 回)},
 		{"选项": func(_答案: Array) -> Array: return _异象获得选项(),
 		 "提示序号": 1,
@@ -260,9 +264,10 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	], _异象结算)
 
 
-## 第 1 段取消 / 超时：不发动
+## 第 1 段取消 / 超时 / 答「不发动」：不发动
 func _异象不发动() -> int:
 	used_yi_xiang_jian = false
+	_异象否决 = true
 	return SUCCESS
 
 
@@ -333,6 +338,7 @@ func _异象结算(答案: Array) -> int:
 	var 牌: int = _异象牌
 	_异象牌 = -1
 	_异象判定 = 0
+	_异象否决 = false
 	if not 获得 or 牌 < 0:
 		return SUCCESS
 	# 弃牌堆按实例号取出（同牌面可能有副本）：拿到实际那一份再入手，不能删完再拿牌号补一张

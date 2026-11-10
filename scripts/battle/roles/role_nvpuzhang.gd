@@ -450,6 +450,10 @@ func _侍奉之道() -> int:
 
 ## 第 1 段答完：两张【影】展示 + 移出盖牌区 + +1【糸】；不同系就直接都进弃牌堆，不再问交给谁
 func _侍奉取影答完(回: Dictionary, _答案: Array) -> int:
+	var args1: Array = 回.get("args", [])
+	# 旧实现只认 args[0] == 1（take_skill_reply 口径）：构造客户端回 [0] 不能照样把两张影移出盖牌区
+	if args1.is_empty() or int(args1[0]) != 1:
+		return SUCCESS
 	var cards: Array = 回.get("cards", [])
 	if cards.size() != 2:
 		return SUCCESS

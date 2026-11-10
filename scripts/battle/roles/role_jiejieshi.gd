@@ -197,6 +197,8 @@ func p_before_attack(ctx: Dictionary) -> int:
 # 分步全记在攻击 ctx 上：同一次攻击重入不重复询问，也不会被别的钩子改掉。
 # ============================================================
 var _荒神已发动: bool = false
+## 白二羯磨：第 1 段「发动」了才问第 2 段（框架的「答完」不能中止整条链，用标记 + 跳过表达）
+var _白二已发动: bool = false
 var _荒神_手: int = -1
 var _荒神_盖: int = -1
 var _荒神收尾步: int = 0
@@ -478,13 +480,15 @@ func p_action_end(ctx: Dictionary) -> int:
 	if not 多步询问进行中(白二羯磨) \
 			and player.token_num(JI_SLOT) >= player.token_max(JI_SLOT) and _结界().is_empty():
 		return SUCCESS
+	if not 多步询问进行中(白二羯磨):
+		_白二已发动 = false
 	# 白二羯磨：【绝界】持有者攻击行动结束时问他要不要发动 → 结界师给他 1 个【结界】（强制，超时拿第一个）
 	return 多步询问(白二羯磨, [
 		{"问谁": 持有者, "取消": _白二不发动, "答完": func(回: Dictionary, _答案: Array) -> int:
 			return _白二发动答完(持有者, 回)},
 		{"问谁": 持有者, "选项": func(_答案: Array) -> Array: return _白二_结界选项(),
 		 "可取消": false, "询问文案": GConst.skill_desc(白二羯磨),
-		 "跳过": func(_答案: Array) -> bool: return _结界().is_empty()},
+		 "跳过": func(_答案: Array) -> bool: return not _白二已发动 or _结界().is_empty()},
 	], _白二结算)
 
 
@@ -497,6 +501,7 @@ func _白二不发动() -> int:
 func _白二发动答完(持有者: int, 回: Dictionary) -> int:
 	if not _是发动(回):
 		return SUCCESS
+	_白二已发动 = true
 	notice_skill(白二羯磨, [持有者])
 	# 祭增加会触发【伏魔境】：先让它结算完，再给持有者发牌
 	if _加祭(1):
@@ -506,6 +511,8 @@ func _白二发动答完(持有者: int, 回: Dictionary) -> int:
 
 ## 第 2 段答完：把选中的【结界】交给持有者（超时 / 非法选项改拿第一个）
 func _白二结算(答案: Array) -> int:
+	if not _白二已发动:
+		return SUCCESS
 	var args: Array = (答案[1] as Dictionary).get("args", []) if 答案.size() > 1 else []
 	var cid: int = int(args[0]) if not args.is_empty() else -1
 	if cid < 0 or not player.有盖牌(cid):

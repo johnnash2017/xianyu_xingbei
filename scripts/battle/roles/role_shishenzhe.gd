@@ -501,7 +501,10 @@ func _噬灭结算(答案: Array) -> int:
 ## 共振：选 2~3 张同系牌弃之 → 四选一（不加 / 魔刃 / 异刃 / 两者）
 func _共振链() -> int:
 	_共振待问 = false
-	_共振弃牌成立 = false
+	# 「代价已付」只在新链开始时清：弃牌答完返回 URGENT 后引擎会重入本钩子，
+	# 每次都清会把第二段（四选一）连带结算一起跳过，玩家白付 1 能量 + 2~3 张同系牌。
+	if not 多步询问进行中(GONG_ZHEN):
+		_共振弃牌成立 = false
 	return 多步询问(GONG_ZHEN, [
 		{"需牌": 2, "牌上限": 3, "牌规则": "same",
 		 "牌白": func(_答案: Array) -> Array: return player.hand_cards.duplicate(),

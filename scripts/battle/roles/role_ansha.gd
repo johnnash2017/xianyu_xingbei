@@ -199,6 +199,10 @@ func p_before_draw(ctx: Dictionary) -> int:
 		 "跳过": func(答案: Array) -> bool:
 			if not 可问额外:
 				return true
+			# 第一步没真的弃出水系牌＝水影没成立（旧实现此时直接短路），第二步也不再问
+			if 答案.is_empty() \
+					or _有效水系牌((答案[0] as Dictionary).get("cards", [])).is_empty():
+				return true
 			return _水影剩余法术牌(答案).is_empty()},
 	], _水影结算)
 
