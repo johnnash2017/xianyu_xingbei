@@ -203,9 +203,12 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if dst == null or dst.hand_cards.size() >= 4 or dst.hand_cards.is_empty() or not _can_bottle():
 		_shou_step = 0
 		return SUCCESS
-	_shou_target = dst.id
-	_shou_step = 1
-	# 收魔术：先问发动者要不要发动 → 再问被点名的目标弃哪张牌（第二段问的是他）
+	# 这条链还在问（重入到下一段）时不能重置进度：第二段的「跳过」要读 `_shou_step == 2`，
+	# 每次进来都写 1 会让它永远判成「第一段没发动」而被跳过（第四轮跑测抓到的回归）。
+	if not 多步询问进行中(SHOU_MO_CI):
+		_shou_target = dst.id
+		_shou_step = 1
+	# 狩魔刺：先问发动者要不要发动 → 再问被点名的目标弃哪张牌（第二段问的是他）
 	return 多步询问(SHOU_MO_CI, [
 		{"取消": _收魔术收尾,
 		 # 旧实现用 take_skill_reply()，只认 args[0] == 1；这里显式判一次，
