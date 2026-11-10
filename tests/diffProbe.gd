@@ -32,6 +32,8 @@ func _ready() -> void:
 	_场景圣炎祈愿()
 	_场景剑影断念()
 	_场景水影()
+	_场景共振()
+	_场景侍奉之道()
 	_扫全角色()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
@@ -449,6 +451,31 @@ func _场景水影() -> void:
 	_跑(func() -> int: return int(引擎.p(1).role.p_before_draw(ctx)))
 	_录状态()
 	_输出("水影502")
+
+## 共振 7907（噬神者）：受到法术伤害 → 耗 1 能量 + 弃 2 张同系牌 → 四选一（刃 / 伤害 / 治疗）
+func _场景共振() -> void:
+	_新引擎({1: 79})
+	var 同系: Array[int] = _同系一对()
+	var p: BattlePlayer = 引擎.p(1)
+	p.hand_cards = [同系[0], 同系[1], 87, 129] as Array[int]
+	p.set_crystal(1)
+	var ctx: Dictionary = {"harm": {"src": 2, "dst": 1, "point": 2,
+		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Magic, "card_id": 87}}
+	应答序 = [_答([], [同系[0], 同系[1]]), _答([1], [], [2]), _答([1], [], [2])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_timeline_3(ctx)))
+	_录状态()
+	_输出("共振7907")
+
+## 侍奉之道 8105（女仆长）：回合结束移除 2 张【影】→ +1【糸】；两张同系时把 1 张交给目标并横置
+func _场景侍奉之道() -> void:
+	_新引擎({1: 81})
+	var 同系: Array[int] = _同系一对()
+	var p: BattlePlayer = 引擎.p(1)
+	p.cover_cards = [同系[0], 同系[1]] as Array[int]
+	应答序 = [_答([1], [同系[0], 同系[1]]), _答([1], [], [3])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_turn_end({"player": 1})))
+	_录状态()
+	_输出("侍奉之道8105")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
