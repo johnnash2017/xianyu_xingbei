@@ -164,11 +164,16 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _cu_yi_step >= STEP_DONE and not 多步询问进行中(CU_YI_XIU_XIN):
 		return SUCCESS
-	_cu_yi_目标 = -1
+	# 跨段状态只在新的一次发动时清：重入（等第二段回复）时必须保留第一段选好的目标
+	if not 多步询问进行中(CU_YI_XIU_XIN):
+		_cu_yi_目标 = -1
 	# 醋意休心：选一名目标角色（＝发动）→ 他不弃法术牌就吃 2 点法术伤害 + 我方战绩区 +1 水晶。
 	# 第二段问的是**目标自己**（问谁），「取消＝不弃」本身要结算（取消回调返回 URGENT）。
 	return 多步询问(CU_YI_XIU_XIN, [
-		{"需目标": 1, "目标白": _全部角色(), "答完": _醋意选目标答完},
+		{"需目标": 1, "目标白": _全部角色(), "答完": _醋意选目标答完,
+		 "取消": func() -> int:
+			_cu_yi_step = STEP_DONE
+			return SUCCESS},
 		{"问谁": func(_答案: Array) -> int: return _cu_yi_目标,
 		 "需牌": 1, "牌规则": "magic",
 		 "预览基准": CU_YI_HARM_POINT, "预览类型": GConst.HarmType.Magic,

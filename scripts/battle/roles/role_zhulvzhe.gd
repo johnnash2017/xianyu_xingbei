@@ -377,15 +377,17 @@ func _宝珠推进() -> int:
 	return 多步询问(SHENG_LV_WEI_YA, [
 		{"问谁": func(_答案: Array) -> int: return _宝珠持有者,
 		 "选项": func(_答案: Array) -> Array: return _圣律威压选项(_宝珠持有者),
+		 "问前": func(_答案: Array) -> void: notice_skill(SHENG_LV_WEI_YA, [_宝珠持有者]),
 		 "可取消": false, "超时默认": [],
 		 "答完": _圣律威压答完,
 		 "重复": func(_回: Dictionary, _答案: Array) -> bool: return _宝珠循环一步()},
 		{"技能号": SHEN_YAN_YONG_ZAN,
 		 "选项": func(_答案: Array) -> Array: return _神言咏赞选项(),
+		 "问前": func(_答案: Array) -> void: notice_skill(SHEN_YAN_YONG_ZAN, [player.id]),
 		 "可取消": false,
 		 "跳过": func(_答案: Array) -> bool: return not _宝珠到铸律者,
 		 "取消": func() -> int: return _神言咏赞收尾({})},
-	], _神言咏赞结算)
+	], _神言咏赞结算, func() -> int: return SUCCESS)
 
 
 ## 圣律威压答完：选摸牌就压摸牌状态（掉士气 / 传宝珠留到重入时判重复里做），否则弃牌
@@ -423,6 +425,9 @@ func _宝珠循环一步() -> bool:
 
 ## 神言咏赞答完：把选项回复转成原收尾函数要的形状
 func _神言咏赞结算(答案: Array) -> int:
+	# 宝珠没传回铸律者（半路因圣遗物不足被移除 / 段被跳过）：不问神言，直接结束
+	if not _宝珠到铸律者:
+		return SUCCESS
 	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
 	return _神言咏赞收尾({
 		"args": 回.get("args", []), "card_ids": 回.get("cards", []), "dst_ids": 回.get("dsts", []),

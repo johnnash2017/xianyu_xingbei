@@ -1062,7 +1062,6 @@ func 跑() -> void:
 	玩家1.hand_cards = [攻击牌甲.id, 攻击牌乙.id, 攻击牌甲.id]
 	var 圣剑原手: int = 玩家1.hand_cards.size()
 	圣剑._sheng_jian_active = true
-	圣剑._sheng_jian_step = 0
 	引擎.current_id = 1
 	引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
 	引擎.run()
@@ -1101,7 +1100,6 @@ func 跑() -> void:
 	玩家1.set_gem(0)
 	引擎.team_morale[玩家1.color] = 15
 	圣剑超._sheng_jian_active = true
-	圣剑超._sheng_jian_step = 0
 	引擎.current_id = 1
 	引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
 	引擎.run()

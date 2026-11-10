@@ -227,6 +227,7 @@ func _sheng_jian_cycle() -> int:
 		{"需牌": func(_答案: Array) -> int: return _sheng_jian_弃张数,
 		 "牌上限": func(_答案: Array) -> int: return _sheng_jian_弃张数,
 		 "张数": func(_答案: Array) -> int: return _sheng_jian_弃张数,
+		 "提示序号": 1,
 		 "可取消": false},
 	], _圣剑弃牌结算)
 

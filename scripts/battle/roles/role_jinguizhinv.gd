@@ -289,9 +289,12 @@ func p_magic_skill(action: Dictionary) -> int:
 		# 没发动友情羁绊：先摸 1 张当展示牌（走状态版摸牌，摸完回来再准备展示）
 		if not _7802启用友情羁绊 and not _7802展示已摸:
 			_7802展示已摸 = true
+			# step 推到下一步：摸牌回来重入时不能再跑一遍初始化（否则会再摸一张、再播报一次）
+			step = 1
 			engine.push_强制摸牌(player.id, 1, 魔法入门,
 				"p_jinguizhinv_7802摸到", {"player": player.id})
 			return URGENT
+		step = 1
 	# 已经结算过（URGENT 挂起后引擎重入本体）：不要再结算一次，直接收尾。
 	if _7802已结算 and not 多步询问进行中(魔法入门):
 		return SUCCESS
@@ -303,6 +306,8 @@ func p_magic_skill(action: Dictionary) -> int:
 			"args": func(_答案: Array) -> Array:
 				return [_7802友情角色[_7802友情下标], 友情羁绊, 1]},
 		 "问谁": func(_答案: Array) -> int: return _7802友情角色[_7802友情下标],
+		 # 强制弃牌：超时也要由答完按手牌顺序补一张
+		 "可取消": false,
 		 "跳过": func(_答案: Array) -> bool:
 			return not _7802启用友情羁绊 or _7802友情下标 >= _7802友情角色.size(),
 		 "答完": _7802友情弃牌答完,
@@ -311,25 +316,43 @@ func p_magic_skill(action: Dictionary) -> int:
 		{"需目标": func(_答案: Array) -> int: return _7802法术目标数(),
 		 "目标白": func(_答案: Array) -> Array: return enemy_ids(),
 		 "跳过": func(_答案: Array) -> bool: return _7802法术目标数() <= 0,
+		 "可取消": false, "预览基准": 法术伤害值, "预览类型": GConst.HarmType.Magic,
 		 "答完": _7802法术目标答完},
 		{"需目标": func(_答案: Array) -> int: return _7802咏目标数(),
 		 "目标白": func(_答案: Array) -> Array: return _全体角色id(),
 		 "跳过": func(_答案: Array) -> bool: return _7802咏目标数() <= 0,
+		 "可取消": false, "提示序号": 1,
+		 "张数": func(_答案: Array) -> int: return _7802咏数量,
+		 "预览基准": 法术伤害值, "预览类型": GConst.HarmType.Magic,
 		 "答完": _7802咏目标答完},
 		{"需目标": func(_答案: Array) -> int: return _7802水目标数(),
 		 "目标白": func(_答案: Array) -> Array: return _全体角色id(),
 		 "跳过": func(_答案: Array) -> bool: return _7802水目标数() <= 0,
+		 "可取消": false, "提示序号": 2,
+		 "张数": func(_答案: Array) -> int: return _7802水数量,
+		 "预览基准": 基础治疗值, "预览类型": GConst.预览类型_治疗,
 		 "答完": _7802水目标答完},
 		{"选项": func(_答案: Array) -> Array: return _7803选项(_7803下一档()),
 		 "跳过": func(_答案: Array) -> bool: return _7803下一档() <= 0,
+		 # 取消 / 超时＝后面的档不再问，但已经选过的档和 7805 收尾仍要结算
+		 "取消": _7803取消处理,
 		 "答完": _7803答完,
 		 "重复": func(_回: Dictionary, _答案: Array) -> bool: return _7803下一档() > 0},
 	], _7802收尾结算)
 
 
-## 展示牌准备（摸到展示牌之后做一次）：算出法术 / 咏 / 水各自的触发数量
+## 7803 取消 / 超时：剩余档位不再问，已选档与 7805 收尾照常结算
+func _7803取消处理() -> int:
+	_7803分支配平()
+	return _7802收尾结算([])
+
+
+## 展示牌准备（摸到展示牌之后做一次）：算出法术 / 咏 / 水各自的触发数量。
+## 友情羁绊这一路不摸展示牌（展示集合就是两名队友弃掉的牌），直接准备。
 func _确保7802展示准备() -> void:
-	if _7802展示已准备 or not _7802展示已摸:
+	if _7802展示已准备:
+		return
+	if not _7802启用友情羁绊 and not _7802展示已摸:
 		return
 	if _7802启用友情羁绊 and _7802友情下标 < _7802友情角色.size():
 		return
@@ -372,12 +395,7 @@ func _7802友情弃牌答完(回: Dictionary, _答案: Array) -> int:
 		已离手 = engine.take_from_hand(弃牌人, [弃出])
 	_7802友情弃牌.append({"pid": 弃牌人, "card": 弃出 if 已离手 else -1})
 	_7802友情下标 += 1
-	# 两个队友都问完：压「摸 1 张展示牌」，摸完再准备展示
-	if _7802友情下标 >= _7802友情角色.size() and not _7802展示已摸:
-		_7802展示已摸 = true
-		engine.push_强制摸牌(player.id, 1, 魔法入门,
-			"p_jinguizhinv_7802摸到", {"player": player.id})
-		return URGENT
+	# 友情羁绊这一路不再额外摸展示牌：展示集合就是这两张弃掉的牌（旧实现同口径）
 	return SUCCESS
 
 

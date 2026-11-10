@@ -2717,6 +2717,7 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 	# 这次应答不能用【圣光】（如染污者狂戾形态）：魔弹传递询问也走这条，客户端据此把圣光置灰
 	if not can_light:
 		cmd["can_light"] = false
+	_询问(pid, GConst.CmdType.Respond, [cmd])
 
 
 ## 询问某玩家是否发动某技能（客户端表现为「确定/取消」）

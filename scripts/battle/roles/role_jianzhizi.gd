@@ -480,7 +480,8 @@ func p_after_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get(KEY_10803_STEP, 0)) >= STEP_DONE:
 		return SUCCESS
 	# 牌库为空时没有任何牌可弃置 / 加入手牌，也没有法术牌可触发后续；不弹无用询问
-	if engine.deck.pile_size() <= 0:
+	# （链已经在走时不能再拦：第 1 段可能刚好把牌库取空，第二段的回复还要结算）
+	if not 多步询问进行中(剑守誓言) and engine.deck.pile_size() <= 0:
 		ctx[KEY_10803_STEP] = STEP_DONE
 		return SUCCESS
 	return 多步询问(剑守誓言, [

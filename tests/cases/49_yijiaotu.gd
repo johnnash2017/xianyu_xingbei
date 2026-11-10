@@ -636,7 +636,7 @@ func _检展示非法牌驳回() -> void:
 func _检放逐非法牌驳回() -> void:
 	_建引擎()
 	_发牌(玩家1, GConst.CardElement.Wind, 6)
-	角色._放逐步 = 2
+	角色._放逐待问 = true
 	引擎.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": 1}, []))
 	引擎.run()
 	检(引擎._await_id == 1 and 引擎._pending_respond_id == 9505, "应先问放逐的正面 + 6 张手牌")
@@ -927,11 +927,13 @@ func _检审判弃刃触发渗蚀() -> void:
 func _检审判残留状态() -> void:
 	_建引擎()
 	_发牌(玩家1, GConst.CardElement.Wind, 1)
-	角色._审判步 = 3
+	角色._审判待问 = true
+	角色._多步链[GConst.技能_审判] = {"段": 1, "答案": []}
 	var 残留弃牌: Array[int] = [int(玩家1.hand_cards[0])]
 	角色._审判弃牌 = 残留弃牌
 	角色.p_before_turn_begin({"player": 1})
-	检(int(角色.get("_审判步")) == 0 and (角色.get("_审判弃牌") as Array).is_empty(),
+	检(not bool(角色.get("_审判待问")) and not 角色.多步询问进行中(GConst.技能_审判) \
+		and (角色.get("_审判弃牌") as Array).is_empty(),
 		"新回合开始应清掉残留的审判流程状态")
 	_设伤害目标([2])
 	检(角色.p_turn_end({"player": 1}) == BattleRole.WAIT, "清掉残留后【审判】应能正常发动")
@@ -950,7 +952,7 @@ func _检审判选项值对应() -> void:
 	引擎.deck.push_discard([甲, 乙])
 	# 给牌目标白名单：本回合伤害过 2 号，才能把弃牌交给 2 号
 	_设伤害目标([2])
-	角色._审判步 = 3
+	角色._多步链[GConst.技能_审判] = {"段": 1, "答案": [{"args": [], "cards": [], "dsts": []}]}
 	var 候选弃牌: Array[int] = [甲, 乙]
 	角色._审判弃牌 = 候选弃牌
 	引擎.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": 1}, []))
@@ -975,7 +977,7 @@ func _检审判摸牌先结算超限() -> void:
 	_建引擎()
 	for i: int in range(GConst.HAND_CARDS_MAX):
 		_发牌(玩家1, GConst.CardElement.Wind, 1)
-	角色._审判步 = 2
+	角色._审判待问 = true
 	角色._审判下标 = 1
 	角色._审判待摸 = 1
 	引擎.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": 1}, []))
@@ -1130,10 +1132,9 @@ func _检审判零号座位摸牌() -> void:
 # ============================================================
 func _检展示零号座位伤害() -> void:
 	_建引擎()
-	角色._展示步 = 9
 	角色._展示对手 = 0
 	角色._展示X = 1
-	检(角色._展示本项伤害() == BattleRole.URGENT,
+	检(角色.call("_展示对手弃牌答完", {"args": [], "cards": [], "dsts": []}, []) == BattleRole.URGENT,
 		"展示对手为 0 号座位时也应压入伤害（不能被 > 0 哨兵吞掉）")
 	角色._展示对手 = -1
 
@@ -1154,9 +1155,9 @@ func _检审判预言不超上限() -> void:
 	for c: Variant in 三张:
 		审判弃牌.append(int(c))
 	角色._审判弃牌 = 审判弃牌
-	角色._审判给 = 0
-	角色._审判对手 = 2
-	角色._审判步 = 4
+	角色._多步链[GConst.技能_审判] = {"段": 2, "答案": [
+		{"args": [], "cards": [], "dsts": []},
+		{"args": [1], "cards": [], "dsts": [2]}]}
 	引擎.push(BattleEngine.SHook.new("p_yi_jiao_tu_ask", {"player": 1}, []))
 	引擎.run()
 	var 场: Dictionary = _场卡("末日预言")

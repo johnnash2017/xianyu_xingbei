@@ -485,6 +485,8 @@ func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, c
 # ============================================================
 ## 结算后还压了状态、要等引擎重入再跑一次收尾的链：{链号: true}
 var _多步收尾: Dictionary = {}
+## 结算里压的是「别的事」、不该登记收尾的链：{链号: true}（见 多步询问跳过收尾）
+var _多步不收尾: Dictionary = {}
 ## 正在进行的链：{链号: {"段": int, "答案": Array}}
 ## 答案项：{"args": Array, "cards": Array, "dsts": Array}
 var _多步链: Dictionary = {}
@@ -501,9 +503,11 @@ var _多步链: Dictionary = {}
 ##     "可返回"     bool    这一段空应答＝退回上一段重问（第一段无效）
 ##     "可取消"     bool    这一段空应答＝整条链不发动（默认 true）
 ##     "超时"       Callable 段号：超时（is_timeout）时直接调它收尾（优先于「超时默认」）
-##     "超时默认"   Variant 没有「超时」回调时，超时把这一段当作这个答案；都没有就按「不发动」收尾
-##     "响应"       {"type": int, "args": Array}  这一段改用「标准应答」发问（如 RespondType.Discard 让别人弃牌），
-##                  不再用技能询问；段里的选项/需牌等字段对它无效
+##     "超时默认"   Variant 没有「超时」回调时，超时把这一段当作这个答案，照常走 答完 / 重复 / 结算
+##                  （[] 就是「空答案交给答完兜底」）；可取消的段都没有时才按「不发动」收尾。
+##                  强制段（"可取消": false）超时没有默认答案时，也按空答案继续走 答完 / 结算。
+##     "响应"       {"type": int, "args": Array / Callable(答案)}  这一段改用「标准应答」发问
+##                  （如 RespondType.Discard 让别人弃牌），不再用技能询问；段里的选项/需牌等字段对它无效
 ##     "问谁"       int / Callable(答案)  这一段问哪名玩家（默认自己；队友代答 / 问别人时用）
 ##     "技能号"     int / Callable(答案)  这一段用哪个技能号发询问（默认＝链号；一条链里两段是不同技能时用）
 ##     "取消"       Callable() -> int  玩家在这一段取消整条链时调用（清阶段标记 / 还原本地状态）；
@@ -543,15 +547,19 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 			if 待段 < 段表.size():
 				var 待重复: Variant = (段表[待段] as Dictionary).get("重复", null)
 				if 待重复 is Callable and bool((待重复 as Callable).call(待.get("回", {}), 链.get("答案", []))):
+					# 这一段要重问：先把旧的答案去掉，免得后面的段索引整体错位
+					(链["答案"] as Array).resize(待段)
 					链["段"] = 待段
 		var 段号: int = int(链.get("段", 0))
 		var 答案: Array = 链.get("答案", [])
 		if 段号 >= 段表.size():
 			_多步链.erase(链号)
 			var 结算返回: int = int(结算.call(答案))
-			# 结算里压了状态：重入时先跑「收尾」（如摸完牌还要看摸到了什么）
-			if 结算返回 != SUCCESS and 收尾.is_valid():
+			# 结算里压了状态：重入时先跑「收尾」（如摸完牌还要看摸到了什么）。
+			# 结算压的是「别的事」（例如放路标顺带压的告解 / 弥撒）时，角色会先调 多步询问跳过收尾。
+			if 结算返回 != SUCCESS and 收尾.is_valid() and not _多步不收尾.has(链号):
 				_多步收尾[链号] = true
+			_多步不收尾.erase(链号)
 			return 结算返回
 		var 段: Dictionary = 段表[段号]
 		# 条件段：前面几段的答案决定这一段要不要问（如「怒火压制 / 魔纹融合」选了前者就不用问翻转档）
@@ -560,7 +568,7 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 			链["段"] = 段号 + 1
 			continue
 		if not engine.has_reply():
-			_多步问一段(链号, 段号, 段, 答案)
+			_多步开场问(链号, 段号, 段, 答案)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var 回: Dictionary = {
@@ -570,8 +578,10 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 		}
 		var 空: bool = (回["args"] as Array).is_empty() and (回["cards"] as Array).is_empty() \
 			and (回["dsts"] as Array).is_empty()
+		# 超时 / 段默认答案不是玩家的提交，不走段级校验
+		var 不校验: bool = false
 		if 空:
-			# 超时：这一段给了默认答案就当作选中了它，否则整条链按「不发动」收尾
+			# 超时：这一段给了默认答案就当作「已经这样答了」，否则整条链按「不发动」收尾
 			# （不能让掉线 / 不操作的玩家把整局卡在一条强制询问上）
 			if bool(r.get("is_timeout", false)):
 				var 超时处理: Variant = 段.get("超时", null)
@@ -579,47 +589,59 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 					_多步链.erase(链号)
 					return (超时处理 as Callable).call()
 				if 段.has("超时默认"):
+					# 照常走 答完 / 重复 / 结算：[] 就是「空答案交给答完兜底」
+					# （强制弃牌、强制取牌这类步骤的超时补齐都写在答完 / 结算里）
 					var 默认: Variant = 段["超时默认"]
-					答案.append({"args": 默认 if 默认 is Array else [默认], "cards": [], "dsts": []})
-					链["段"] = 段号 + 1
+					回 = {"args": (默认 as Array) if 默认 is Array else [默认],
+						"cards": [], "dsts": [], "timeout": true}
+					不校验 = true
+				elif not bool(段.get("可取消", true)):
+					# 强制段超时：玩家本来就不能取消，按「空答案」继续交给角色自己的兜底补完，
+					# 不能把整条链丢掉（否则强制的弃牌 / 取牌会静默不发生）
+					不校验 = true
+				else:
+					# 可取消的段超时＝按「不发动」收尾；和手动取消一样要调取消回调
+					_多步链.erase(链号)
+					var 超时取消: Variant = 段.get("取消", null)
+					if 超时取消 is Callable:
+						var 超时返回: int = int((超时取消 as Callable).call())
+						if 超时返回 != SUCCESS:
+							return 超时返回
+					return SUCCESS
+			else:
+				# 返回上一段：这一段允许返回且不是第一段
+				if bool(段.get("可返回", false)) and 段号 > 0:
+					答案.resize(段号 - 1)
+					链["段"] = 段号 - 1
 					continue
-				# 超时按「不发动」收尾时，和手动取消一样要调取消回调（清标记 / 该结算的照算）
-				_多步链.erase(链号)
-				var 超时取消: Variant = 段.get("取消", null)
-				if 超时取消 is Callable:
-					var 超时返回: int = int((超时取消 as Callable).call())
-					if 超时返回 != SUCCESS:
-						return 超时返回
-				return SUCCESS
-			# 返回上一段：这一段允许返回且不是第一段
-			if bool(段.get("可返回", false)) and 段号 > 0:
-				答案.resize(段号 - 1)
-				链["段"] = 段号 - 1
-				continue
-			# 其余空应答＝整条链不发动（可取消时）；不能取消（异常空应答）就重问这一段
-			if bool(段.get("可取消", true)):
-				_多步链.erase(链号)
-				# 「取消」回调可以返回 URGENT / WAIT：有的技能「不这么做」本身就是一次结算
-				# （如忌妒少女【醋意休心】：目标不弃法术牌 → 直接 2 点法术伤害 + 水晶）
-				var 取消回调: Variant = 段.get("取消", null)
-				if 取消回调 is Callable:
-					var 取消返回: int = int((取消回调 as Callable).call())
-					if 取消返回 != SUCCESS:
-						return 取消返回
-				return SUCCESS
-			_多步问一段(链号, 段号, 段, 答案)
-			return WAIT
+				# 其余空应答＝整条链不发动（可取消时）；不能取消（异常空应答）就重问这一段
+				if bool(段.get("可取消", true)):
+					_多步链.erase(链号)
+					# 「取消」回调可以返回 URGENT / WAIT：有的技能「不这么做」本身就是一次结算
+					# （如忌妒少女【醋意休心】：目标不弃法术牌 → 直接 2 点法术伤害 + 水晶）
+					var 取消回调: Variant = 段.get("取消", null)
+					if 取消回调 is Callable:
+						var 取消返回: int = int((取消回调 as Callable).call())
+						if 取消返回 != SUCCESS:
+							return 取消返回
+					return SUCCESS
+				_多步开场问(链号, 段号, 段, 答案)
+				return WAIT
 		# 段自带的合法性校验：不过关就报错并按「校验失败回退」决定重问本段还是退回上一段
 		var 校验: Variant = 段.get("校验", null)
-		if 校验 is Callable and not bool((校验 as Callable).call(回)):
+		if not 不校验 and 校验 is Callable and not bool((校验 as Callable).call(回)):
 			engine.报错(str(段.get("校验失败文案", "操作无效，请重新选择")), player.id)
 			if bool(段.get("校验失败回退", false)) and 段号 > 0:
 				答案.resize(段号 - 1)
 				链["段"] = 段号 - 1
 				continue
-			_多步问一段(链号, 段号, 段, 答案)
+			_多步开场问(链号, 段号, 段, 答案)
 			return WAIT
-		答案.append(回)
+		# 记答案：同一段被「重复」重问时就地覆盖，不然后面的段索引会整体错位
+		if 答案.size() > 段号:
+			答案[段号] = 回
+		else:
+			答案.append(回)
 		链["段"] = 段号 + 1
 		# 「答完」：这一段答完立刻做的结算（可能压状态并返回 URGENT/WAIT）。
 		# 段号已推进，引擎重入时会从下一段继续，不会把这一段重问一遍。
@@ -627,7 +649,7 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 		var 答完返回2: int = SUCCESS
 		if 答完 is Callable:
 			答完返回2 = int((答完 as Callable).call(回, 答案))
-		# 「重复」：这一段要对不同对象反复问（循环段）——为真时留在本段，答案就地覆盖
+		# 「重复」：这一段要对不同对象反复问（循环段）——为真时留在本段重问
 		var 重复: Variant = 段.get("重复", null)
 		if 答完返回2 != SUCCESS:
 			# 答完压了状态（URGENT/WAIT）：重复要等状态结算完再判，先记下来
@@ -635,8 +657,6 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 				链["待判重复"] = {"段": 段号, "回": 回}
 			return 答完返回2
 		if 重复 is Callable and bool((重复 as Callable).call(回, 答案)):
-			答案.resize(段号)
-			答案.append(回)
 			链["段"] = 段号
 	return SUCCESS
 
@@ -648,15 +668,28 @@ func _多步取值(值: Variant, 答案: Array) -> Variant:
 	return 值
 
 
-## 问链里的某一段（内部用；询问参数照段规格逐项传，第二段起沿用同一次等待的倒计时）
-func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array = []) -> void:
+## 问某一段，并记下「这条链已经问过」：第一问重新计时，之后（含返回重问）沿用同一次的截止时刻
+func _多步开场问(链号: int, 段号: int, 段: Dictionary, 答案: Array) -> void:
+	var 链: Dictionary = _多步链[链号]
+	var 保留: bool = bool(链.get("已问", false))
+	链["已问"] = true
+	# 段字段「问前」：发问之前要做的展示 / 播报（每次真正发问都会跑一次）
+	var 问前: Variant = 段.get("问前", null)
+	if 问前 is Callable:
+		(问前 as Callable).call(答案)
+	_多步问一段(链号, 段号, 段, 答案, 保留)
+
+
+## 问链里的某一段（内部用；询问参数照段规格逐项传）
+func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array = [],
+		保留倒计时: bool = false) -> void:
 	var 问谁: int = int(_多步取值(段.get("问谁", player.id), 答案))
 	# 这一段走「标准应答」而不是技能询问（如让别人弃 1 张牌：RespondType.Discard）
 	var 响应: Variant = 段.get("响应", null)
 	if 响应 is Dictionary:
-		var 响应参数: Array = ((响应 as Dictionary).get("args", []) as Array).duplicate()
+		var 响应参数: Array = (_多步取值((响应 as Dictionary).get("args", []), 答案) as Array).duplicate()
 		engine.ask_respond(问谁, int((响应 as Dictionary).get("type", 0)), 响应参数, [问谁])
-		engine.wait_for(问谁, GConst.Msg.Respond)
+		engine.wait_for(问谁, GConst.Msg.Respond, 保留倒计时)
 		return
 	# 段可以自带技能号（默认＝链号）：同一条链里两段是不同技能时用（如圣炎收尾 → 圣炎祈愿）
 	var 技能号: int = int(_多步取值(段.get("技能号", 链号), 答案))
@@ -666,7 +699,7 @@ func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array =
 		int(_多步取值(段.get("牌上限", 0), 答案)), str(段.get("牌规则", "")), _多步取值(段.get("牌白", []), 答案),
 		bool(段.get("可取消", true)), int(段.get("提示序号", 0)), int(段.get("收牌人", -1)),
 			_多步取值(段.get("目标白", []), 答案), int(段.get("张数", -1)), 段.get("额外", {}),
-		int(_多步取值(段.get("预览基准", 0), 答案)), int(段.get("预览类型", 0)), 段号 > 0,
+		int(_多步取值(段.get("预览基准", 0), 答案)), int(段.get("预览类型", 0)), 保留倒计时,
 		_多步取值(段.get("预览目标", []), 答案), bool(段.get("可圣光", true)),
 		int(段.get("预览伤害", -1)),
 		int(段.get("需盖牌", 0)), str(_多步取值(段.get("询问文案", ""), 答案)),
@@ -679,11 +712,23 @@ func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array =
 func 多步询问重置(链号: int) -> void:
 	_多步链.erase(链号)
 	_多步收尾.erase(链号)
+	_多步不收尾.erase(链号)
+
+
+## 结算里压的是「别的事」（例：启示放路标顺带压出的告解 / 弥撒），不要登记本链的收尾。
+## 不登记的话，下次重入会先跑收尾、把别的链的进度顶掉。
+func 多步询问跳过收尾(链号: int) -> void:
+	_多步不收尾[链号] = true
 
 
 ## 这条链是不是正等着玩家回复（钩子类技能用它挡住「别的同类事件插进来」）
 func 多步询问进行中(链号: int) -> bool:
 	return _多步链.has(链号)
+
+
+## 这条链的结算压了状态、还没跑完「收尾」（入口守卫要一起放过这种重入，否则收尾会被挡掉）
+func 多步询问待收尾(链号: int) -> bool:
+	return _多步收尾.has(链号)
 
 
 ## 技能行动提交的牌本次「视为」哪个系别（如 3805 精灵的剑舞 = 风系）。

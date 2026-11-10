@@ -362,6 +362,9 @@ func _退出圣炎(收尾: bool) -> void:
 	engine._broadcast_game()
 
 var _圣炎收尾: int = 0
+## 本次收尾要不要先打那 1 点伤害：链第一次进入时按 _圣炎收尾 定下，重入时不再改
+## （重入时 _圣炎收尾 已经是 3，再按它算会把第一段判成「不用打」而整段跳过）
+var _圣炎做伤害: bool = false
 
 
 ## 自己的下个回合结束时退出形态并结算收尾
@@ -392,16 +395,14 @@ func p_sheng_dian_ask(ctx: Dictionary) -> int:
 		return SUCCESS
 	if _圣炎收尾 == 0:
 		return SUCCESS
-	# 圣炎收尾（对目标对手 1 点法术伤害）→ 圣炎祈愿（选目标 +2 治疗，耗 1 能量）。
-	# 两段用同一条链：第一段用「答完」压伤害 + 压一个新钩子（保证祈愿一定会被问到），
-	# 第二段在同一个钩子里继续；链走完把 _圣炎收尾 清 0。
-	var 做收尾伤害: bool = _圣炎收尾 == 1
-	_圣炎收尾 = 3
+	if not 多步询问进行中(SHEN_ZHI_ZI):
+		_圣炎做伤害 = _圣炎收尾 == 1
+		_圣炎收尾 = 3
 	return 多步询问(SHEN_ZHI_ZI, [
 		{"技能号": SHEN_ZHI_ZI, "需目标": 1, "目标白": enemy_ids(), "可取消": false,
 		 "预览基准": 1, "预览类型": GConst.HarmType.Magic,
 		 "询问文案": GConst.提示原文(SHEN_ZHI_ZI, 1),
-		 "跳过": func(_答案: Array) -> bool: return not 做收尾伤害,
+		 "跳过": func(_答案: Array) -> bool: return not _圣炎做伤害,
 		 "超时默认": [],
 		 "答完": _圣炎收尾伤害答完},
 		{"技能号": SHENG_YAN_QI_YUAN, "需目标": 1, "目标白": _全体角色(),

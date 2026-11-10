@@ -355,7 +355,7 @@ func _神智污染(harm: Dictionary) -> int:
 		return SUCCESS
 	if int(harm.get("point", 0)) <= 0:
 		return SUCCESS
-	if bool(harm.get("神智污染已处理", false)):
+	if bool(harm.get("神智污染已处理", false)) and not 多步询问进行中(SHEN_ZHI_WU_RAN):
 		return SUCCESS
 	harm["神智污染已处理"] = true
 	return 多步询问(SHEN_ZHI_WU_RAN, [

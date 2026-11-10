@@ -1,4 +1,4 @@
-﻿extends BattleRole
+extends BattleRole
 ## 暗杀者（roleID 5）—— 移植自服务端 role/AnSha.cpp
 ## 技能：
 ##   反噬（501）——【被动】你承受攻击伤害时，攻击你的对手摸 1 张牌【强制】（p_timeline_6_drawn）
@@ -192,8 +192,8 @@ func p_before_draw(ctx: Dictionary) -> int:
 	var 白名单: Array = 水牌 if not 水牌.is_empty() else [GConst.手牌白名单_全禁]
 	var 可问额外: bool = player.tap
 	return 多步询问(SHUI_YING, [
-		{"需牌": 1, "牌上限": 水牌.size(), "牌白": 白名单},
-		{"需牌": 1, "牌规则": "magic", "牌上限": 1,
+		{"需牌": 1, "牌上限": 水牌.size(), "牌白": 白名单, "答完": _水影弃水答完},
+		{"需牌": 1, "牌规则": "magic", "牌上限": 1, "提示序号": 1,
 		 # 白名单按第一步实际弃掉的水系牌现算：水系法术牌若已被第一步弃掉，就不该再出现在这一步
 		 "牌白": func(答案: Array) -> Array: return _水影剩余法术牌(答案),
 		 "跳过": func(答案: Array) -> bool:
@@ -215,14 +215,19 @@ func _水影剩余法术牌(答案: Array) -> Array[int]:
 	return out
 
 
-## 水影结算：先弃水系牌【展示】；潜行下若还选了法术牌，再弃那张【展示】
-func _水影结算(答案: Array) -> int:
-	var 弃水: Array = _有效水系牌((答案[0] as Dictionary).get("cards", [])) if 答案.size() > 0 else []
+## 第一步答完：水影已经成立 —— 当场弃水系牌【展示】
+## （不能拖到结算：第二步是可选的额外弃牌，玩家点取消 / 超时只该少弃那一张，不该把水影本身吞掉）
+func _水影弃水答完(回: Dictionary, _答案: Array) -> int:
+	var 弃水: Array = _有效水系牌(回.get("cards", []))
 	if 弃水.is_empty():
-		# 没弃水系牌＝取消 / 超时，水影不发动（额外那步也不结算）
 		return SUCCESS
 	notice_skill(SHUI_YING, [player.id])
 	_展示并弃(player.id, 弃水)
+	return SUCCESS
+
+
+## 水影结算：潜行下若第二步还选了法术牌，再弃那张【展示】
+func _水影结算(答案: Array) -> int:
 	if 答案.size() > 1:
 		var 弃法术: Array = _有效法术牌((答案[1] as Dictionary).get("cards", []))
 		if not 弃法术.is_empty():

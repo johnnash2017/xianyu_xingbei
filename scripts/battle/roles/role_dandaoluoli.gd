@@ -301,8 +301,10 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
-	_垂迹选中 = -1
-	_垂迹同系 = []
+	# 跨段状态只在新的一次发动时清：重入（等第二段弃牌回复）时要保留第一段选中的 Tricky / 同系牌
+	if not 多步询问进行中(TRICKY):
+		_垂迹选中 = -1
+		_垂迹同系 = []
 	# T-r-i-c-k-y!：选一个 Tricky 私下看牌 → 弃 1 张同系牌 → 对他原拥有者 2 点法术伤害。
 	return 多步询问(TRICKY, [
 		{"选项": _垂迹选项(), "答完": _垂迹选牌答完},
@@ -603,6 +605,14 @@ func _糖果选项() -> Array:
 
 
 func _糖果结算(答案: Array) -> int:
+	# 一个目标都没问到（全员没有同系牌）：Tricky 还没清，先清掉并对「未做」的人压惩罚
+	if not _trickies.is_empty():
+		return _糖果收尾清理()
+	if _糖果我方 < _糖果敌方:
+		# 对方弃得比我方多：对方【战绩区】+1【宝石】
+		engine.set_team_gem(1 - player.color, engine.team_gem[1 - player.color] + 1)
+		engine._broadcast_game()
+		return SUCCESS
 	if _糖果我方 <= _糖果敌方:
 		return SUCCESS
 	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
@@ -631,7 +641,8 @@ func _糖果结算(答案: Array) -> int:
 		engine.take_from_hand(player.id, [弃])
 		engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": TRICK_OR_TREAT})
 		engine._log_discard(player.id, [弃])
-		安排额外回合(0, TRICK_OR_TREAT)
+	# 「弃 1 张牌，并额外获得一个回合」：弃不到牌也照样给额外回合（旧实现同口径）
+	安排额外回合(0, TRICK_OR_TREAT)
 	engine._broadcast_game()
 	return SUCCESS
 func p_before_turn_begin(ctx: Dictionary) -> int:

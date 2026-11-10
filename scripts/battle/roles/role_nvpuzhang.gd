@@ -433,9 +433,12 @@ func p_turn_end(ctx: Dictionary) -> int:
 
 
 func _侍奉之道() -> int:
-	if player.cover_cards.size() < 2:
-		return SUCCESS
-	_侍奉同系 = false
+	# 跨段状态只在新的一次发动时初始化：第一段答完已经把两张【影】移出盖牌区，
+	# 重入（等第二段回复）时盖牌数会不足 2，不能再拿它当入口门槛
+	if not 多步询问进行中(SHI_FENG_ZHI_DAO):
+		if player.cover_cards.size() < 2:
+			return SUCCESS
+		_侍奉同系 = false
 	return 多步询问(SHI_FENG_ZHI_DAO, [
 		# 第 1 段：选 2 个【影】（答完里展示、移出盖牌区、+1【糸】）
 		{"需牌": 2, "来源": GConst.CardSource.Cover, "答完": _侍奉取影答完},

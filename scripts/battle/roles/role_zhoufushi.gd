@@ -317,13 +317,16 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		{"技能号": func(_答案: Array) -> int: return _魑魅展示技能号(),
 		 "选项": func(_答案: Array) -> Array: return _魑魅展示选项(),
 		 "目标白": func(_答案: Array) -> Array: return _魑魅目标,
+		 # 取消 / 超时＝不展示（没有加成），但仍要照常结算
+		 "取消": func() -> int: return _魑魅真正结算(),
 		 "跳过": func(_答案: Array) -> bool: return _魑魅中止 or not _妖力是地系(),
 		 "答完": _魑魅结算答完},
 		{"技能号": GConst.技能_冻天转移, "需目标": 1,
 		 "目标白": func(_答案: Array) -> Array: return _有治疗的其他角色(),
 		 "可取消": false, "超时默认": [],
 		 "跳过": func(_答案: Array) -> bool:
-			return _魑魅中止 or _魑魅符 != 咒符_冻天 or _转移次数 <= 0,
+			return _魑魅中止 or _魑魅符 != 咒符_冻天 or _转移次数 <= 0 \
+				or _有治疗的其他角色().is_empty(),
 		 "答完": _魑魅转移答完,
 		 "重复": func(_回: Dictionary, _答案: Array) -> bool:
 			return _转移次数 > 0 and not _有治疗的其他角色().is_empty()},
@@ -386,6 +389,9 @@ func _魑魅选目标答完(回: Dictionary, _答案: Array) -> int:
 	_魑魅重塑 = 重塑
 	_魑魅妖力 = cid
 	_魑魅目标 = 目标
+	# 非地系【妖力】没有「要不要展示」那一步：直接进结算（旧实现同口径）
+	if not _妖力是地系():
+		return _魑魅真正结算()
 	return SUCCESS
 
 
@@ -398,7 +404,7 @@ func _魑魅展示选项() -> Array:
 	]
 
 
-## 第三段答完：展示加成 → 移除妖力 → 压火璃结算 / 冻天压弃牌并准备转移
+## 第三段答完：记下展示加成；真正的结算在 _魑魅真正结算（地系在这里、非地系在选完目标时）
 func _魑魅结算答完(回: Dictionary, _答案: Array) -> int:
 	var args: Array = 回.get("args", [])
 	if not args.is_empty() and int(args[0]) == 1:
@@ -407,7 +413,13 @@ func _魑魅结算答完(回: Dictionary, _答案: Array) -> int:
 			"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 			"card_ids": [_魑魅妖力], "is_real": true,
 		})
+	return _魑魅真正结算()
+
+
+## 移除妖力 → 压火璃结算 / 冻天压弃牌并准备转移（两条路径都走这里）
+func _魑魅真正结算() -> int:
 	_魑魅已用 = true
+	notice_skill(魑魅魍魉, _魑魅目标)
 	_移除妖力()
 	if _魑魅符 == 咒符_火璃:
 		_压火璃结算(_魑魅目标, _魑魅加成)

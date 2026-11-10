@@ -216,13 +216,17 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if 卡 == null or not 卡.is_attack() or not 系别.has(卡.element_enum()):
 		return SUCCESS
 	# 【祭】已满、又没有手牌 / 结界可付后半段代价时，这次响应什么都不会发生，不弹询问
-	if player.token_num(JI_SLOT) >= player.token_max(JI_SLOT) \
+	# （链已经在走 / 正等收尾时不能再拦：后半段付完代价就会变成「祭满 + 无结界」）
+	if not 多步询问进行中(HUANG_SHEN_JI_YI) and not 多步询问待收尾(HUANG_SHEN_JI_YI) \
+			and player.token_num(JI_SLOT) >= player.token_max(JI_SLOT) \
 			and (player.hand_cards.is_empty() or _结界().is_empty()):
 		return SUCCESS
-	_荒神已发动 = false
-	_荒神_手 = -1
-	_荒神_盖 = -1
-	_荒神收尾步 = 0
+	# 入口状态只在新的一次响应开始时清：重入时要保留「已发动 / 选好的牌 / 要移除的结界」
+	if not 多步询问进行中(HUANG_SHEN_JI_YI) and not 多步询问待收尾(HUANG_SHEN_JI_YI):
+		_荒神已发动 = false
+		_荒神_手 = -1
+		_荒神_盖 = -1
+		_荒神收尾步 = 0
 	# 荒神祭祀：先问发不发动（+1 祭）→ 再问「额外移除 3 祭 + 弃 1 张手牌 + 移 1 个结界」
 	return 多步询问(HUANG_SHEN_JI_YI, [
 		{"询问文案": _荒神_发动提示(), "取消": _荒神取消,
@@ -311,11 +315,12 @@ func _荒神收尾() -> int:
 	return SUCCESS
 
 
-## 两段都答完（或跳过）：一律清掉临时状态；真正的结算在「答完」里做过
-func _荒神结算(答案: Array) -> int:
+## 两段都答完（或跳过）：付过额外代价（有要移除的结界）才继续 收尾 回调（移除结界 → 横置）
+func _荒神结算(_答案: Array) -> int:
 	_荒神_手 = -1
-	_荒神_盖 = -1
-	return SUCCESS
+	if _荒神_盖 < 0:
+		return SUCCESS
+	return _荒神收尾()
 func p_lose_morale(ctx: Dictionary) -> int:
 	# 同步链不在这里问：扣完士气后由 p_lose_morale_after 补问
 	if bool(ctx.get("sync", false)):
@@ -358,6 +363,7 @@ func _琉璃响应(ctx: Dictionary, 前缀: String) -> int:
 		 "响应": {"type": GConst.RespondType.Discard,
 			"args": func(_答案: Array) -> Array:
 				return [_琉璃弃牌人[前缀], LIU_LI_JING, 1]},
+		 "可取消": false,
 		 "跳过": func(_答案: Array) -> bool: return _琉璃弃牌人[前缀] < 0,
 		 "答完": func(回: Dictionary, _答案: Array) -> int: return _琉璃取牌答完(前缀, 回)},
 		{"技能号": LIU_LI_JING, "可取消": true,
@@ -365,7 +371,7 @@ func _琉璃响应(ctx: Dictionary, 前缀: String) -> int:
 		 "跳过": func(_答案: Array) -> bool:
 			return _琉璃牌[前缀] < 0 or not player.can_add_cover_cards(1),
 		 "取消": func() -> int: return _琉璃弃置(前缀)},
-	], func(答案: Array) -> int: return _琉璃结算(前缀, 答案))
+	], func(答案: Array) -> int: return _琉璃结算(前缀, 答案), func() -> int: return SUCCESS)
 
 
 ## 第 1 段取消 / 超时：不发动
@@ -468,7 +474,9 @@ func p_action_end(ctx: Dictionary) -> int:
 	if 持有者 < 0 or int(ctx.get("player", -1)) != 持有者:
 		return SUCCESS
 	# 【祭】已满、又没有【结界】可给时，这次响应什么都不做，不弹询问
-	if player.token_num(JI_SLOT) >= player.token_max(JI_SLOT) and _结界().is_empty():
+	# （链已经在走时不能再拦：第 1 段发动的 +1 祭可能刚好把祭加满）
+	if not 多步询问进行中(白二羯磨) \
+			and player.token_num(JI_SLOT) >= player.token_max(JI_SLOT) and _结界().is_empty():
 		return SUCCESS
 	# 白二羯磨：【绝界】持有者攻击行动结束时问他要不要发动 → 结界师给他 1 个【结界】（强制，超时拿第一个）
 	return 多步询问(白二羯磨, [

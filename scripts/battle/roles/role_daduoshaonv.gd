@@ -231,7 +231,7 @@ func _p_bie_fan_wo() -> int:
 		 "询问文案": GConst.提示原文(BIE_FAN_WO, 2),
 		 "答完": _别烦我选目标答完},
 		{"问谁": func(_答案: Array) -> int: return _bie_fan_目标,
-		 "需牌": 1, "牌规则": "magic",
+		 "需牌": 1, "牌规则": "magic", "提示序号": 1,
 		 "高亮": [_bie_fan_队友],
 		 "取消": _bie_fan_惩罚,
 		 "跳过": func(_答案: Array) -> bool: return _bie_fan_目标 < 0},

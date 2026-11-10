@@ -79,8 +79,9 @@ func 跑() -> void:
 			"args": [2], "need_card": 1, "need_target": 1, "targets": [2]},
 	])
 	窗.set("_已选参数", [2])
-	窗.call("_进入苍白月第二段")
-	检(bool(窗.get("_苍白第二步")), "点第二项后应进入本地第二步")
+	窗.call("_进入本地二层", GConst.技能_苍白之月, 窗.get("_skill_arg_choices"), 窗.call("_苍白月子项"),
+		"请选择要移除的【新月】数", "请选择苍白之月的效果", Callable(窗, "_on_cancel"))
+	检(bool(窗.call("_在本地二层", GConst.技能_苍白之月)), "点第二项后应进入本地第二步")
 	var 二段: Array = 窗.get("_二级选项")
 	检(二段.size() == 2, "新月 2 点时应摆出移除 1 点 / 2 点两项：%s" % str(二段.size()))
 	if 二段.size() == 2:
@@ -103,7 +104,7 @@ func 跑() -> void:
 	if 返回按钮 != null and 返回按钮.plateButton != null:
 		返回按钮.plateButton.pressed.emit()
 	await 等帧(2)
-	检(not bool(窗.get("_苍白第二步")), "点返回后应回到第一层")
+	检(not bool(窗.call("_在本地二层", GConst.技能_苍白之月)), "点返回后应回到第一层")
 	var 回一层: Array = 窗.get("_二级选项")
 	检(回一层.size() == 2, "点返回后应重新摆出第一层两项：%s" % str(回一层.size()))
 	if 回一层.size() == 2:
