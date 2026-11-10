@@ -135,13 +135,6 @@ func _apply_fu_wen_gai_zao(action: Dictionary) -> int:
 # ============================================================
 # 主动攻击命中后：战纹碎击
 # ============================================================
-## 【战纹碎击】的推进阶段（0＝还没开始 / ZHAN_WEN_SUI_JI＝在问弃牌与额外翻转）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己主动攻击命中（p_timeline_2_hit）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）。
-## 结算完会返回 URGENT（压入了展示 / 弃牌后的伤势推进），引擎在 URGENT 挂起后会重入本钩子：
-## 这里仍旧借引擎 step 记「本轮已完成」来挡住重入（自有变量已清回 0，不影响这次拦截）。
-var _zhan_wen_step: int = 0
 
 
 func p_timeline_2_hit(ctx: Dictionary) -> int:
@@ -154,45 +147,32 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if step >= STEP_DONE:
 		return SUCCESS
-	if _zhan_wen_step == 0:
-		_zhan_wen_step = ZHAN_WEN_SUI_JI
-	if _zhan_wen_step == ZHAN_WEN_SUI_JI:
-		var r: int = _zhan_wen_sui_ji(ctx)
-		if r == WAIT:
-			return WAIT
-		_zhan_wen_step = 0
-		if r == URGENT:
-			step = STEP_DONE
-			return URGENT
-	return SUCCESS
+	var dst: int = int(ctx.get("dst", -1))
+	return 多步询问(ZHAN_WEN_SUI_JI, [
+		{"选项": _战纹碎击选项(), "需牌": 2, "牌规则": "same", "牌上限": player.hand_count(),
+		 "目标白": [dst] if dst >= 0 else [],
+		 "预览基准": int((ctx.get("harm", {}) as Dictionary).get("point", 0))},
+	], func(答案: Array) -> int: return _战纹碎击结算(ctx, 答案))
+
+
+## 战纹碎击的选项：额外翻转 Y 个【战纹】，value = 1 + Y（Y=0 表示不额外翻转）
+func _战纹碎击选项() -> Array:
+	var 选项: Array = []
+	for y: int in range(0, 3):
+		var 可用: bool = y == 0 or (player.tap and _zhan_wen() >= y + 1)
+		var 名: String = 提示(ZHAN_WEN_SUI_JI, 1) if y == 0 else 提示(ZHAN_WEN_SUI_JI, 2, y)
+		选项.append({"value": y + 1, "label": 名, "enabled": 可用})
+	return 选项
 
 
 ## 战纹碎击：翻转 1 个战纹，弃 X 张同系牌，本次伤害 +(X-1)（可额外翻转 Y 个战纹，再 +Y）
-func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
-	if not engine.has_reply():
-		# 弃 X 张同系牌（X≥2）：上限放到手牌数，并让客户端只让同系牌可点
-		# 额外翻转的【战纹】数做成选项按钮：value = 1 + Y（Y=0 表示不额外翻转）。
-		# 三档固定摆出；当前形态 / 战纹不够的档置灰，不再隐藏。
-		var 选项: Array = []
-		for y: int in range(0, 3):
-			var 可用: bool = y == 0 or (player.tap and _zhan_wen() >= y + 1)
-			var 名: String = 提示(ZHAN_WEN_SUI_JI, 1) if y == 0 else 提示(ZHAN_WEN_SUI_JI, 2, y)
-			选项.append({"value": y + 1, "label": 名, "enabled": 可用})
-		# 目标与「本次攻击原本的伤害」一并下发：客户端在目标头像上现算
-		# 「原伤害 + 弃牌加伤」，随玩家选 / 退牌实时变（本次 need_target 是 0，头像本来就点不动）
-		var dst: int = int(ctx.get("dst", -1))
-		var 本次伤害: Dictionary = ctx.get("harm", {})
-		# 座位号从 0 起：0 号也是合法目标，判「没取到」只能用 < 0
-		var 伤害目标: Array = [dst] if dst >= 0 else []
-		询问(player.id, ZHAN_WEN_SUI_JI, 2, 0, GConst.CardSource.Hand, 选项, player.hand_count(), "same",
-			[], true, 0, -1, 伤害目标, -1, {}, int(本次伤害.get("point", 0)))
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
+func _战纹碎击结算(ctx: Dictionary, 答案: Array) -> int:
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var args: Array = 回.get("args", [])
 	if args.is_empty() or int(args[0]) < 1:
 		return SUCCESS
 	var addition: int = int(args[0]) - 1
-	var cards: Array = r.get("card_ids", [])
+	var cards: Array = 回.get("cards", [])
 	if _zhan_wen() < 1 or cards.size() < 2:
 		return GConst.GE_INVALID_ARGUMENT
 	if _element_check(cards) != ElementKind.AllSame or not _has_cards(cards):
@@ -213,8 +193,12 @@ func _zhan_wen_sui_ji(ctx: Dictionary) -> int:
 	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	var harm: Dictionary = ctx.get("harm", {})
 	harm["point"] = int(harm.get("point", 0)) + cards.size() - 1 + addition
+	# 结算里压了伤害推进并返回 URGENT：引擎会重入本钩子，用 step 挡住（框架不接管重入）
+	step = STEP_DONE
 	engine._broadcast_game()
 	return URGENT
+
+
 
 
 # ============================================================
@@ -341,13 +325,8 @@ func _nu_huo_rong_he(dst_id: int, addition: int, cards: Array) -> int:
 # ============================================================
 # 对目标造成伤害时：双重回响
 # ============================================================
-## 【双重回响】的推进阶段（0＝还没开始 / SHUANG_CHONG_HUI_XIANG＝在问是否发动与目标）。
-## 用自有变量而不是引擎的 step：钩子轮次开始会把所有角色的 step 清零，而这条流程要跨一次询问，
-## 中途一旦被别的钩子轮次（改手牌 / 盖牌 / 基础效果 / 横置…）插进来，step 就被抹掉、流程退回第 0 步。
-## 每次自己造成伤害（p_timeline_3）触发一次，收尾清回 0（留 STEP_DONE 会让下一次触发不再发动）。
-## 收尾会返回 URGENT（压入了法术伤害），引擎在 URGENT 挂起后会重入本钩子：
-## 此时 shuangChongHuiXiangUsed 已置位，入口即被挡下，不会重复发动。
-var _hui_xiang_step: int = 0
+
+
 
 
 func p_timeline_3(ctx: Dictionary) -> int:
@@ -356,45 +335,38 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		return SUCCESS
 	if player.get_energy() < 1 or shuangChongHuiXiangUsed:
 		return SUCCESS
-	if _hui_xiang_step >= STEP_DONE:
-		return SUCCESS
-	if _hui_xiang_step == 0:
-		_hui_xiang_step = SHUANG_CHONG_HUI_XIANG
-	if _hui_xiang_step == SHUANG_CHONG_HUI_XIANG:
-		var r: int = _shuang_chong_hui_xiang(harm)
-		if r == WAIT:
-			return WAIT
-		_hui_xiang_step = 0
-		if r == URGENT:
-			return URGENT
-	return SUCCESS
+	return _shuang_chong_hui_xiang(harm)
 
 
 func _shuang_chong_hui_xiang(harm: Dictionary) -> int:
 	var from_dst: int = int(harm.get("dst", -1))
-	if not engine.has_reply():
-		# 不能选「当前正被这次伤害打中的人」（原版这里判非法）：把合法目标（除他以外的所有人）一并下发，
-		# 让那名角色的头像点不动 —— 否则玩家选了他，服务端只能重问一次，看着像「选好目标却点不下去」
-		var 合法目标: Array = []
-		for pid: int in engine.order:
-			if pid != from_dst:
-				合法目标.append(pid)
-		# 伤害＝本次伤害点数与 3 取小；只有服务端算得出来，随询问下发（preview_base），
-		# 客户端据此在选中目标的头像上写「N 法术伤害」
-		询问(player.id, SHUANG_CHONG_HUI_XIANG, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, 合法目标, -1, {},
-			mini(int(harm.get("point", 0)), 3))
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
+	# 不能选「当前正被这次伤害打中的人」：把合法目标（除他以外的所有人）一并下发，
+	# 让那名角色的头像点不动；服务端这层校验也再挡一次（选了他就重问本段）
+	var 合法目标: Array = []
+	for pid: int in engine.order:
+		if pid != from_dst:
+			合法目标.append(pid)
+	return 多步询问(SHUANG_CHONG_HUI_XIANG, [
+		{"需目标": 1, "目标白": 合法目标,
+		 "预览基准": mini(int(harm.get("point", 0)), 3),
+		 "校验": func(回: Dictionary) -> bool:
+			var ds: Array = 回.get("dsts", [])
+			return not ds.is_empty() and int(ds[0]) != from_dst},
+	], func(答案: Array) -> int: return _双重回响结算(harm, from_dst, 答案))
+
+
+## 双重回响结算：扣 1 能量（水晶优先），对选中的目标复制本次伤害（与 3 取小）
+func _双重回响结算(harm: Dictionary, from_dst: int, 答案: Array) -> int:
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var args: Array = 回.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
-	var dsts: Array = r.get("dst_ids", [])
+	var dsts: Array = 回.get("dsts", [])
 	if dsts.is_empty():
 		return SUCCESS
 	var dst_id: int = int(dsts[0])
 	if dst_id == from_dst:
-		# 不能选当前受伤者：服务端会重问同一名玩家（moveIterator 不推进）
-		return _shuang_chong_hui_xiang(harm)
+		return SUCCESS
 	notice_skill(SHUANG_CHONG_HUI_XIANG, [dst_id])
 	shuangChongHuiXiangUsed = true
 	if player.crystal > 0:
