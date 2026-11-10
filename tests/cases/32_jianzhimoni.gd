@@ -140,6 +140,10 @@ func _有额外行动(cause: int) -> bool:
 func _重置战斗() -> void:
 	引擎._states.clear()
 	引擎._清空等待()
+	# 多步询问链也要清：_清空等待 只清引擎的等待槽，角色对象里的链会留到下一段测试
+	角色._多步链.clear()
+	角色._多步收尾.clear()
+	角色._多步不收尾.clear()
 	引擎._最后询问.clear()
 	引擎.phase = BattleEngine.Phase.Playing
 	引擎.current_id = 1
