@@ -124,7 +124,7 @@ func _rang_wo_tang_ping(ctx: Dictionary) -> int:
 ## 只对 10601 生效 —— 10603 的 URGENT 是「魔弹结算完技能就结束」，重入会再打一发。
 func 技能URGENT后重入(action: Dictionary = {}) -> bool:
 	# 只有「目标摸完 1 张、还要回来问弃不弃」这一处需要重入；惩罚的摸牌 URGENT
-	# 已经走完技能，若也重入会从 _bie_fan_step==STEP_DONE 重置成 0，把整个技能再发动一遍
+# 只有「目标摸完 1 张、还要回来问弃不弃」这一处需要重入；惩罚的摸牌已经走完技能，链已结束，不会重入
 	return int(action.get("action_id", 0)) == BIE_FAN_WO and 多步询问进行中(BIE_FAN_WO)
 
 
