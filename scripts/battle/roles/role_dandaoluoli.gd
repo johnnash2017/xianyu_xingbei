@@ -34,7 +34,6 @@ const 手牌上限来源: String = "Surprise"
 ## [{dst, card}]
 var _trickies: Array = []
 ## 神秘伏笔：1＝等选放 1 还是 2 张 / 2＝等选目标
-var _伏笔阶段: int = 0
 var _伏笔张数: int = 0
 var _伏笔牌: Array = []
 ## Surprise!：1＝等选手牌放回 / 2＝等选目标
@@ -220,53 +219,71 @@ func _叛逆弃牌() -> int:
 func p_after_magic(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if _伏笔阶段 == 0:
-		if engine.deck.pile_size() <= 0:
-			return SUCCESS
-		var 上限: int = mini(2, engine.deck.pile_size())
-		_伏笔阶段 = 1
-		var 选项: Array = []
-		for n: int in range(1, 3):
-			选项.append({
-				"value": n,
-				"label": GConst.按钮原文(SHEN_MI_FU_BI, n - 1),
-				"text": GConst.按钮原文(SHEN_MI_FU_BI, n - 1),
-				"enabled": n <= 上限,
-			})
-		询问(player.id, SHEN_MI_FU_BI, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], false,
-			0, -1, [], -1, {})
-		return WAIT
-	if _伏笔阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		_伏笔阶段 = 0
-		if args.is_empty():
-			return SUCCESS
-		_伏笔张数 = int(args[0])
-		if _伏笔张数 < 1 or _伏笔张数 > mini(2, engine.deck.pile_size()):
-			engine.报错("【神秘伏笔】张数不合法", player.id)
-			return SUCCESS
-		_伏笔牌 = engine.移除牌库顶(_伏笔张数)
-		if _伏笔牌.is_empty():
-			return SUCCESS
-		_伏笔阶段 = 2
-		询问(player.id, SHEN_MI_FU_BI, 0, _伏笔张数, GConst.CardSource.Hand, [], 0, "", [], false,
-			0, -1, 全部角色(), -1, {})
-		return WAIT
-	# 阶段 2：给每个目标放 1 张
-	var r2: Dictionary = take_skill_reply_full()
-	var dsts: Array = r2.get("dst_ids", [])
-	_伏笔阶段 = 0
+	if engine.deck.pile_size() <= 0 and not 多步询问进行中(SHEN_MI_FU_BI):
+		return SUCCESS
+	# 神秘伏笔：选 X（1~2）→ 从牌库顶取 X 张 → 点 X 名角色，各放 1 张【Tricky】
+	return 多步询问(SHEN_MI_FU_BI, [
+		{"选项": _神秘伏笔选项(), "可取消": false, "答完": _神秘伏笔取牌答完},
+		{"需目标": func(_答案: Array) -> int: return _伏笔张数,
+		 "目标白": 全部角色(),
+		 "可取消": false,
+		 "取消": _神秘伏笔弃掉取到的牌,
+		 "跳过": func(_答案: Array) -> bool: return _伏笔张数 <= 0 or _伏笔牌.is_empty()},
+	], _神秘伏笔结算)
+
+
+## 第 1 段的两个选项：取 1 张 / 取 2 张（牌库不够的那项置灰）
+func _神秘伏笔选项() -> Array:
+	var 上限: int = mini(2, engine.deck.pile_size())
+	var 选项: Array = []
+	for n: int in range(1, 3):
+		选项.append({
+			"value": n,
+			"label": GConst.按钮原文(SHEN_MI_FU_BI, n - 1),
+			"text": GConst.按钮原文(SHEN_MI_FU_BI, n - 1),
+			"enabled": n <= 上限,
+		})
+	return 选项
+
+
+## 第 1 段答完：记下 X，立刻从牌库顶取 X 张（取不到就整段放弃）
+func _神秘伏笔取牌答完(回: Dictionary, _答案: Array) -> int:
+	var args: Array = 回.get("args", [])
+	if args.is_empty():
+		return SUCCESS
+	_伏笔张数 = int(args[0])
+	if _伏笔张数 < 1 or _伏笔张数 > mini(2, engine.deck.pile_size()):
+		engine.报错("【神秘伏笔】张数不合法", player.id)
+		_伏笔张数 = 0
+		_伏笔牌 = []
+		return SUCCESS
+	_伏笔牌 = engine.移除牌库顶(_伏笔张数)
+	return SUCCESS
+
+
+## 第 2 段取消 / 超时：取到的牌进弃牌堆，不留死牌
+func _神秘伏笔弃掉取到的牌() -> int:
+	for c: Variant in _伏笔牌:
+		engine.to_discard([int(c)], {"owner": player.id, "source": "deck", "cause": SHEN_MI_FU_BI})
+	_伏笔牌 = []
+	_伏笔张数 = 0
+	return SUCCESS
+
+
+## 第 2 段答完：点了几名角色就各放 1 张；目标数不对就把取到的牌弃掉
+func _神秘伏笔结算(答案: Array) -> int:
+	if _伏笔张数 <= 0 or _伏笔牌.is_empty():
+		return SUCCESS
+	var dsts: Array = (答案[1] as Dictionary).get("dsts", []) if 答案.size() > 1 else []
 	if dsts.size() != _伏笔张数:
 		engine.报错("【神秘伏笔】目标数不对", player.id)
-		for c: Variant in _伏笔牌:
-			engine.to_discard([int(c)], {"owner": player.id, "source": "deck", "cause": SHEN_MI_FU_BI})
-		_伏笔牌 = []
+		_神秘伏笔弃掉取到的牌()
 		return SUCCESS
 	notice_skill(SHEN_MI_FU_BI, dsts)
 	for i: int in range(_伏笔张数):
 		_放Tricky(int(dsts[i]), int(_伏笔牌[i]))
 	_伏笔牌 = []
+	_伏笔张数 = 0
 	engine._broadcast_game()
 	return SUCCESS
 
