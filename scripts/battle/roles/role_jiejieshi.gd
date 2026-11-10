@@ -200,6 +200,10 @@ var _荒神已发动: bool = false
 var _荒神_手: int = -1
 var _荒神_盖: int = -1
 var _荒神收尾步: int = 0
+## 琉璃境：按前缀（两次掉士气来源）分别记候选 / 要弃牌的人 / 展示出来的那张牌
+var _琉璃候选: Dictionary = {}
+var _琉璃弃牌人: Dictionary = {}
+var _琉璃牌: Dictionary = {}
 
 
 func p_timeline_1(ctx: Dictionary) -> int:
@@ -328,128 +332,118 @@ func p_lose_morale_after(ctx: Dictionary) -> int:
 func _琉璃响应(ctx: Dictionary, 前缀: String) -> int:
 	# 「已横置」只在流程起点判：发动后她自己会【重置】（tap=false），
 	# 重入时不能再拿它当门槛，否则后面的选人 / 弃牌 / 放结界整段不生效（约定 §20）。
-	if int(ctx.get(前缀, 0)) == 0 and not player.tap:
+	var 链号: int = LIU_LI_JING if 前缀 == 键_琉璃 else LIU_LI_JING + 1
+	var 链中: bool = 多步询问进行中(链号)
+	if not 链中 and int(ctx.get(前缀, 0)) == 0 and not player.tap:
 		return SUCCESS
 	var 掉方: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if 掉方 == null or 掉方.color != player.color:
 		return SUCCESS
-	while true:
-		match int(ctx.get(前缀, 0)):
-			0:
-				ctx[前缀] = 1
-				if not engine.has_reply():
-					询问(player.id, LIU_LI_JING)
-					return WAIT
-			1:
-				if not engine.has_reply():
-					return WAIT
-				var r: Dictionary = take_skill_reply_full()
-				if not _是发动(r):
-					ctx[前缀] = STEP_DONE
-					return SUCCESS
-				notice_skill(LIU_LI_JING, [player.id])
-				player.tap = false
-				engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
-				engine._broadcast_game()
-				var 有牌: Array[int] = _有手牌角色()
-				if 有牌.is_empty():
-					ctx[前缀] = STEP_DONE
-					return SUCCESS
-				ctx[前缀 + "候选"] = 有牌
-				ctx[前缀] = 2
-				if not engine.has_reply():
-					# 「目标角色」＝场上任意一名角色（自己 / 队友 / 对手都能选），没手牌的人不可选
-					询问(player.id, LIU_LI_JING, 0, 1, GConst.CardSource.Hand, [], 0, "", [],
-						false, 0, -1, 有牌, -1, {}, 0, 0, false, [], true, -1, 0,
-						提示原文(LIU_LI_JING, 2))
-					return WAIT
-			2:
-				if not engine.has_reply():
-					return WAIT
-				var r2: Dictionary = take_skill_reply_full()
-				var 候选: Array = ctx.get(前缀 + "候选", [])
-				var ds: Array = r2.get("dst_ids", [])
-				var 目标: int = int(ds[0]) if ds.size() == 1 else -1
-				if not 候选.has(目标):
-					ctx[前缀] = STEP_DONE
-					return SUCCESS
-				ctx[前缀 + "弃牌人"] = 目标
-				ctx[前缀] = 3
-				# 让别人弃牌走标准弃牌应答：客户端提示条自动写「【琉璃境】：请选择 1 张牌弃掉」
-				engine.ask_respond(目标, GConst.RespondType.Discard, [目标, LIU_LI_JING, 1], [目标])
-				engine.wait_for(目标, GConst.Msg.Respond)
-				return WAIT
-			3:
-				if not engine.has_reply():
-					return WAIT
-				var r3: Dictionary = take_skill_reply_full()
-				var tgt: BattlePlayer = engine.p(int(ctx.get(前缀 + "弃牌人", -1)))
-				if tgt == null or tgt.hand_cards.is_empty():
-					ctx[前缀] = STEP_DONE
-					return SUCCESS
-				var cid: int = _取一张手牌(tgt, r3.get("card_ids", []))
-				if cid < 0:
-					ctx[前缀] = STEP_DONE
-					return SUCCESS
-				ctx[前缀 + "牌"] = cid
-				# 【展示】：先公开再决定去向（作为结界 / 进弃牌堆）
-				engine.broadcast(GConst.Msg.Card, {
-					"type": GConst.CardMsgType.Show, "src_id": tgt.id, "dst_id": tgt.id,
-					"card_ids": [cid], "is_real": true,
-				})
-				engine.take_from_hand(tgt.id, [cid], true)
-				# 压了「展示手牌」钩子：先让它结算完，回来再问要不要放进盖牌区
-				ctx[前缀] = 4
-				return URGENT
-			4:
-				if int(ctx.get(前缀 + "牌", -1)) < 0:
-					ctx[前缀] = STEP_DONE
-					return SUCCESS
-				if not player.can_add_cover_cards(1):
-					_弃置琉璃弃牌(ctx, 前缀)
-					return URGENT
-				ctx[前缀] = 5
-				if not engine.has_reply():
-					询问(player.id, LIU_LI_JING, 0, 0, GConst.CardSource.Hand, [], 0, "", [],
-						true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-						提示原文(LIU_LI_JING, 4))
-					return WAIT
-			5:
-				if not engine.has_reply():
-					return WAIT
-				var r5: Dictionary = take_skill_reply_full()
-				if not _是发动(r5):
-					_弃置琉璃弃牌(ctx, 前缀)
-					return URGENT
-				var 放: int = int(ctx.get(前缀 + "牌", -1))
-				ctx[前缀] = STEP_DONE
-				engine.add_cover(player.id, [放], player.id, LIU_LI_JING, true)
-				return URGENT
-			_:
-				return SUCCESS
+	if not 链中:
+		ctx[前缀] = STEP_DONE
+		_琉璃牌[前缀] = -1
+		_琉璃弃牌人[前缀] = -1
+		_琉璃候选[前缀] = []
+	# 琉璃境：发动（重置 + 战绩区 +1 宝石）→ 选一名有手牌的角色 → 他弃 1 张牌【展示】
+	# → 问结界师要不要把这张牌放进盖牌区当【结界】（放不下 / 不发动就进弃牌堆）
+	return 多步询问(链号, [
+		{"技能号": LIU_LI_JING, "取消": _琉璃不发动, "答完": func(_回: Dictionary, _答案: Array) -> int:
+			return _琉璃发动答完(前缀)},
+		{"技能号": LIU_LI_JING, "需目标": 1,
+		 "目标白": func(_答案: Array) -> Array: return _琉璃候选[前缀],
+		 "可取消": false, "询问文案": 提示原文(LIU_LI_JING, 2),
+		 "跳过": func(_答案: Array) -> bool: return (_琉璃候选[前缀] as Array).is_empty(),
+		 "答完": func(回: Dictionary, _答案: Array) -> int: return _琉璃选人答完(前缀, 回)},
+		{"技能号": LIU_LI_JING, "问谁": func(_答案: Array) -> int: return _琉璃弃牌人[前缀],
+		 "响应": {"type": GConst.RespondType.Discard,
+			"args": func(_答案: Array) -> Array:
+				return [_琉璃弃牌人[前缀], LIU_LI_JING, 1]},
+		 "跳过": func(_答案: Array) -> bool: return _琉璃弃牌人[前缀] < 0,
+		 "答完": func(回: Dictionary, _答案: Array) -> int: return _琉璃取牌答完(前缀, 回)},
+		{"技能号": LIU_LI_JING, "可取消": true,
+		 "询问文案": 提示原文(LIU_LI_JING, 4),
+		 "跳过": func(_答案: Array) -> bool:
+			return _琉璃牌[前缀] < 0 or not player.can_add_cover_cards(1),
+		 "取消": func() -> int: return _琉璃弃置(前缀)},
+	], func(答案: Array) -> int: return _琉璃结算(前缀, 答案))
+
+
+## 第 1 段取消 / 超时：不发动
+func _琉璃不发动() -> int:
 	return SUCCESS
 
 
-## 琉璃境那张弃牌不进盖牌区：进弃牌堆（owner 必须是真正弃牌的人）
-func _弃置琉璃弃牌(ctx: Dictionary, 前缀: String) -> void:
-	var cid: int = int(ctx.get(前缀 + "牌", -1))
-	var 主人: int = int(ctx.get(前缀 + "弃牌人", -1))
-	ctx[前缀] = STEP_DONE
-	ctx[前缀 + "牌"] = -1
-	if cid < 0:
-		return
-	if 主人 < 0:
-		return
-	engine.to_discard([cid], {"owner": 主人, "source": "hand", "cause": LIU_LI_JING})
-	engine._log_discard(主人, [cid])
+## 第 1 段答完：发动（重置自己、战绩区 +1 宝石），算出「有手牌的角色」候选
+func _琉璃发动答完(前缀: String) -> int:
+	notice_skill(LIU_LI_JING, [player.id])
+	player.tap = false
+	engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 	engine._broadcast_game()
+	_琉璃候选[前缀] = _有手牌角色()
+	return SUCCESS
 
 
-# ============================================================
-# 8206 灭界破散（被动）/ 8208 白二羯磨（响应）/ 8209 虚空境（被动）
-# 三条都只认「绝界挂在谁面前」：attached 那名角色才是「拥有此卡的角色」。
-# ============================================================
-## 白二羯磨：把结界师的每个【结界】做成给持有者点的选项（值＝盖牌实例号）。
+## 第 2 段答完：记下要弃牌的人（必须是候选之一）
+func _琉璃选人答完(前缀: String, 回: Dictionary) -> int:
+	var ds: Array = 回.get("dsts", [])
+	var 目标: int = int(ds[0]) if ds.size() == 1 else -1
+	var 候选: Array = _琉璃候选[前缀]
+	if not 候选.has(目标):
+		_琉璃弃牌人[前缀] = -1
+		return SUCCESS
+	_琉璃弃牌人[前缀] = 目标
+	return SUCCESS
+
+
+## 第 3 段答完：取他弃的牌，公开【展示】并离手；压了展示钩子，等它结算完再问要不要放盖牌区
+func _琉璃取牌答完(前缀: String, 回: Dictionary) -> int:
+	var tgt: BattlePlayer = engine.p(_琉璃弃牌人[前缀])
+	if tgt == null or tgt.hand_cards.is_empty():
+		_琉璃弃牌人[前缀] = -1
+		return SUCCESS
+	var cid: int = _取一张手牌(tgt, 回.get("cards", []))
+	if cid < 0:
+		_琉璃弃牌人[前缀] = -1
+		return SUCCESS
+	_琉璃牌[前缀] = cid
+	# 【展示】：先公开再决定去向（作为结界 / 进弃牌堆）
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": tgt.id, "dst_id": tgt.id,
+		"card_ids": [cid], "is_real": true,
+	})
+	engine.take_from_hand(tgt.id, [cid], true)
+	# 压了「展示手牌」钩子：先让它结算完，回来再问要不要放进盖牌区
+	return URGENT
+
+
+## 第 4 段取消 / 超时：不放进盖牌区 → 那张牌进弃牌堆
+func _琉璃弃置(前缀: String) -> int:
+	var cid: int = _琉璃牌[前缀]
+	var 主人: int = _琉璃弃牌人[前缀]
+	_琉璃牌[前缀] = -1
+	_琉璃弃牌人[前缀] = -1
+	if cid >= 0 and 主人 >= 0:
+		engine.to_discard([cid], {"owner": 主人, "source": "hand", "cause": LIU_LI_JING})
+		engine._log_discard(主人, [cid])
+		engine._broadcast_game()
+	return SUCCESS
+
+
+## 第 4 段答完：发动＝放进盖牌区当【结界】；否则进弃牌堆
+func _琉璃结算(前缀: String, 答案: Array) -> int:
+	var cid: int = _琉璃牌[前缀]
+	if cid < 0:
+		return SUCCESS
+	var 发动: bool = false
+	if 答案.size() > 3:
+		var 回: Dictionary = 答案[3]
+		发动 = _是发动(回) and player.can_add_cover_cards(1)
+	if not 发动:
+		return _琉璃弃置(前缀)
+	_琉璃牌[前缀] = -1
+	_琉璃弃牌人[前缀] = -1
+	engine.add_cover(player.id, [cid], player.id, LIU_LI_JING, true)
+	return URGENT
 func _白二_结界选项() -> Array:
 	var out: Array = []
 	for cid: int in player.cover_cards:

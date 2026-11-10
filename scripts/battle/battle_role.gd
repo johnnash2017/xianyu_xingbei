@@ -502,6 +502,8 @@ var _多步链: Dictionary = {}
 ##     "可取消"     bool    这一段空应答＝整条链不发动（默认 true）
 ##     "超时"       Callable 段号：超时（is_timeout）时直接调它收尾（优先于「超时默认」）
 ##     "超时默认"   Variant 没有「超时」回调时，超时把这一段当作这个答案；都没有就按「不发动」收尾
+##     "响应"       {"type": int, "args": Array}  这一段改用「标准应答」发问（如 RespondType.Discard 让别人弃牌），
+##                  不再用技能询问；段里的选项/需牌等字段对它无效
 ##     "问谁"       int / Callable(答案)  这一段问哪名玩家（默认自己；队友代答 / 问别人时用）
 ##     "技能号"     int / Callable(答案)  这一段用哪个技能号发询问（默认＝链号；一条链里两段是不同技能时用）
 ##     "取消"       Callable() -> int  玩家在这一段取消整条链时调用（清阶段标记 / 还原本地状态）；
@@ -647,6 +649,13 @@ func _多步取值(值: Variant, 答案: Array) -> Variant:
 ## 问链里的某一段（内部用；询问参数照段规格逐项传，第二段起沿用同一次等待的倒计时）
 func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array = []) -> void:
 	var 问谁: int = int(_多步取值(段.get("问谁", player.id), 答案))
+	# 这一段走「标准应答」而不是技能询问（如让别人弃 1 张牌：RespondType.Discard）
+	var 响应: Variant = 段.get("响应", null)
+	if 响应 is Dictionary:
+		var 响应参数: Array = ((响应 as Dictionary).get("args", []) as Array).duplicate()
+		engine.ask_respond(问谁, int((响应 as Dictionary).get("type", 0)), 响应参数, [问谁])
+		engine.wait_for(问谁, GConst.Msg.Respond)
+		return
 	# 段可以自带技能号（默认＝链号）：同一条链里两段是不同技能时用（如圣炎收尾 → 圣炎祈愿）
 	var 技能号: int = int(_多步取值(段.get("技能号", 链号), 答案))
 	询问(问谁, 技能号,
