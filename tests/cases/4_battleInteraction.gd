@@ -6,6 +6,15 @@ func _init() -> void:
 	名称 = "战斗交互"
 
 
+## 客户端发完应答会「稍等一拍（0.15s）再清界面」避免闪屏（见 battle_mobile._稍后清空待选）。
+## 本用例大量断言「点了就回到等待态」，所以把等待放宽到至少 220ms；按真实时间算，
+## 不能按帧数（headless 帧率不稳定，2 帧可能远不到 0.15s）。
+func 等帧(_数: int = 2) -> void:
+	var 截止: int = Time.get_ticks_msec() + 220
+	while Time.get_ticks_msec() < 截止:
+		await get_tree().process_frame
+
+
 func 跑() -> void:
 	await 等帧(2)
 	# 先切回大厅：免得前面用例留下的「房间等待」旧战斗界面也在监听 Logic 的信号
