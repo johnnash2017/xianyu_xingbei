@@ -40,6 +40,8 @@ func _ready() -> void:
 	_场景异教徒展示()
 	_场景异教徒展示地裂()
 	_场景放逐()
+	_场景灾殃止息()
+	_场景白二羯磨()
 	_扫全角色()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
@@ -588,6 +590,28 @@ func _场景放逐() -> void:
 	_跑(func() -> int: return int(引擎.p(1).role.p_magic_skill(动作)))
 	_录状态()
 	_输出("放逐9505")
+
+## 灾殃止息 9509（异教徒）：回合开始时，场上有【天雷劫火】/【地裂波涛】→ 移除
+func _场景灾殃止息() -> void:
+	_新引擎({1: 95})
+	引擎.加场卡({"id": "天雷劫火", "owner": 1, "attached": 2, "counter": 3})
+	引擎.加场卡({"id": "末日预言", "owner": 1, "attached": -1, "counter": 6})
+	应答序 = []
+	_跑(func() -> int: return int(引擎.p(1).role.p_before_turn_begin({"player": 1})))
+	_录状态()
+	_输出("灾殃止息9509")
+
+
+## 白二羯磨 8208（结界师）：【绝界】持有者攻击行动结束 → 问持有者发不发动 → 他选 1 个【结界】
+func _场景白二羯磨() -> void:
+	_新引擎({1: 82})
+	var p: BattlePlayer = 引擎.p(1)
+	p.cover_cards = [87, 129] as Array[int]
+	引擎.加场卡({"id": "绝界", "owner": 1, "attached": 2, "counter": 0})
+	应答序 = [_答([1], [], []), _答([87], [], [])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_action_end({"kind": "attack", "player": 2})))
+	_录状态()
+	_输出("白二羯磨8208")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
