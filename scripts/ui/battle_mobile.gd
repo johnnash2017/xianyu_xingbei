@@ -4554,7 +4554,13 @@ func _退出本地二层() -> void:
 	_skill_need_target = 0
 	_skill_target_max = 0
 	_need_players = 0
-	_进入二级技能栏(int(层.get("技能号", 0)), 层.get("父"), _选项项(层.get("第一层", [])),
+	# 第一层选项可能是「原始选项」（苍白之月 / 圣光爆裂传 _skill_arg_choices），
+	# 也可能是「归一化后的选项项」（自动填充在询问进来时就存了一份）—— 按有没有「文本」键区分
+	var 第一层: Array = 层.get("第一层", [])
+	var 选项项: Array = 第一层
+	if not 第一层.is_empty() and not (第一层[0] as Dictionary).has("文本"):
+		选项项 = _选项项(第一层)
+	_进入二级技能栏(int(层.get("技能号", 0)), 层.get("父"), 选项项,
 		二级选项底色, 层.get("返回", Callable()))
 	_刷新交互()
 	_刷新二级栏提示()
