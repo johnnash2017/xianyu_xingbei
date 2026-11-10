@@ -317,8 +317,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		{"技能号": func(_答案: Array) -> int: return _魑魅展示技能号(),
 		 "选项": func(_答案: Array) -> Array: return _魑魅展示选项(),
 		 "目标白": func(_答案: Array) -> Array: return _魑魅目标,
-		 # 取消 / 超时＝不展示（没有加成），但仍要照常结算
-		 "取消": func() -> int: return _魑魅真正结算(),
+		 # 点取消 / 超时＝不展示（没有加成），但仍要照常结算、继续冻天转移
+		 "空继续": true, "超时默认": [],
 		 "跳过": func(_答案: Array) -> bool: return _魑魅中止 or not _妖力是地系(),
 		 "答完": _魑魅结算答完},
 		{"技能号": GConst.技能_冻天转移, "需目标": 1,

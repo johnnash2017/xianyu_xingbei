@@ -246,7 +246,11 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	# 异象剑：发动 → 目标弃 1 张牌【展示】→（法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要把牌拿走）
 	return 多步询问(YI_XIANG_JIAN, [
 		{"取消": _异象不发动, "提示序号": -1,
-		 "答完": func(_回: Dictionary, _答案: Array) -> int: return _异象发动答完(dst.id)},
+		 "答完": func(回: Dictionary, _答案: Array) -> int:
+			var a: Array = 回.get("args", [])
+			if a.is_empty() or int(a[0]) != 1:
+				return _异象不发动()
+			return _异象发动答完(dst.id)},
 		{"问谁": dst.id, "需牌": 1, "可取消": false, "超时默认": [],
 		 "跳过": func(_答案: Array) -> bool: return dst.hand_cards.is_empty(),
 		 "答完": func(回: Dictionary, _答案: Array) -> int: return _异象弃牌答完(dst, 回)},

@@ -427,9 +427,11 @@ func _圣炎收尾伤害答完(回: Dictionary, _答案: Array) -> int:
 ## 第二段答完：选到人就扣 1 点能量、+2 治疗；没选 / 没能量就什么都不做
 func _圣炎收尾结算(答案: Array) -> int:
 	_圣炎收尾 = 0
-	if 答案.size() < 2:
+	if 答案.is_empty():
 		return SUCCESS
-	var ds: Array = (答案[1] as Dictionary).get("dsts", [])
+	# 取「最后一段」的答案：收尾伤害那一段在受伤脱形态时会被跳过（不算一段），
+	# 这时祈愿的答案落在下标 0，不能写死 答案[1]（否则祈愿永远不结算）。
+	var ds: Array = (答案[答案.size() - 1] as Dictionary).get("dsts", [])
 	if ds.is_empty() or player.get_energy() < 1:
 		return SUCCESS
 	player.remove_energy(1)

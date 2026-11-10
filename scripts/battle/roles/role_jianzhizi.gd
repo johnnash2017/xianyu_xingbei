@@ -487,7 +487,12 @@ func p_after_turn_end(ctx: Dictionary) -> int:
 	return 多步询问(剑守誓言, [
 		# 第 1 段：是否发动（取消＝不发动，牌库不动）
 		{"取消": func() -> void: ctx[KEY_10803_STEP] = STEP_DONE,
-		 "答完": _剑守誓言取牌},
+		 "答完": func(回: Dictionary, 答案: Array) -> int:
+			var a: Array = 回.get("args", [])
+			if a.is_empty() or int(a[0]) != 1:
+				ctx[KEY_10803_STEP] = STEP_DONE
+				return SUCCESS
+			return _剑守誓言取牌(回, 答案)},
 		# 第 2 段：从摊开的牌里选 1 张加入手牌（不能取消，超时按第 1 张）
 		{"选项": func(_答案: Array) -> Array: return _剑守誓言选项(_剑守誓言牌),
 		 "可取消": false,
