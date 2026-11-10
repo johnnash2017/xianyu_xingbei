@@ -49,7 +49,12 @@ var _侵刻目标: int = -1
 ## 同一个 seq 只处理一次，避免渗蚀伤害/移除无限循环。
 var _渗蚀盖牌Seq: int = -1
 ## 御刃 / 共振 / 诸神终焉 的子流程
-var _步: int = 0
+## 三个子流程各自的「准备问」标记（触发钩子先置位，再由 p_shi_shen_ask 开链）
+var _噬灭待问: bool = false
+var _共振待问: bool = false
+var _诸神待问: bool = false
+## 共振第一步是否真的付出了代价（成立才开四选一）
+var _共振弃牌成立: bool = false
 ## 诸神终焉的目标询问钩子是一次性的：URGENT 后引擎会回栈重跑本钩子，
 ## 不挡住会再推一次询问/再打一次 2 点，形成无限循环。
 var _诸神问已处理: bool = false
@@ -406,7 +411,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	_噬灭已处理 = true
 	_噬灭技能 = 技能
 	_噬灭目标 = int(ctx.get("dst", -1))
-	_步 = 2
+	_噬灭待问 = true
 	engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 	return URGENT
 
@@ -418,191 +423,198 @@ var _噬灭目标: int = -1
 func p_shi_shen_ask(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	match _步:
-		2:  # 噬灭 / 殇灭：噬灭选弃牌；殇灭在同一个询问里选弃牌 + 目标，不再分两步
-			var 系表: Array = [GConst.CardElement.Water, GConst.CardElement.Fire] \
-				if _噬灭技能 == SHI_MIE else [GConst.CardElement.Wind, GConst.CardElement.Thunder]
-			var 可弃: Array[int] = _噬灭可弃(系表)
-			var 可弃牌面: Array[int] = []
-			for cid0: int in 可弃:
-				var 面0: int = GConst.牌号(cid0)
-				if not 可弃牌面.has(面0):
-					可弃牌面.append(面0)
-			# 空白名单在协议/客户端里表示「不限制」，会变成什么牌都能点；
-			# 用全禁哨兵表示「这次一张合法牌都没有」，仍然保留询问和取消。
-			if 可弃牌面.is_empty():
-				可弃牌面 = [GConst.手牌白名单_全禁]
-			var 殇灭池: Array[int] = []
-			if _噬灭技能 == SHANG_MIE:
-				for pid: int in enemy_ids():
-					if pid != _噬灭目标:
-						殇灭池.append(pid)
-				if 殇灭池.is_empty():
-					_步 = 0
-					return SUCCESS
-			if not engine.has_reply():
-				# 合法牌随询问下发：客户端只让点水/火（或风/雷）牌；可取消＝不发动。
-				# 殇灭把「选目标」并进同一询问：一次确认同时提交弃牌和目标。
-				询问(player.id, _噬灭技能, 1, 1 if _噬灭技能 == SHANG_MIE else 0,
-					GConst.CardSource.Hand, [], 1, "", 可弃牌面, true,
-					0, player.id, 殇灭池 if _噬灭技能 == SHANG_MIE else [_噬灭目标],
-					1, {}, 0, 0, false, [], true, -1, 0,
-					"")
-				return WAIT
-			var r2: Dictionary = take_skill_reply_full()
-			var cards: Array = r2.get("card_ids", [])
-			var ds2: Array = r2.get("dst_ids", [])
-			_步 = 0
-			if cards.size() != 1:
-				return SUCCESS
-			var cid: int = int(cards[0])
-			var 选中牌: GCard = Data.get_card(cid)
-			# 服务端兜底：必须正好 1 张、还在手里、且是水/火（或风/雷），否则这次询问作废
-			if 选中牌 == null or not 系表.has(选中牌.element_enum()) or not player.有手牌(cid):
-				return SUCCESS
-			var 移除目标: int = _噬灭目标
-			if _噬灭技能 == SHANG_MIE:
-				if ds2.size() != 1 or not 殇灭池.has(int(ds2[0])):
-					return SUCCESS
-				移除目标 = int(ds2[0])
-			engine.broadcast(GConst.Msg.Card, {
-				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-				"card_ids": [cid], "is_real": true,
-			})
-			engine.take_from_hand(player.id, [cid], false)
-			engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": _噬灭技能})
-			engine._log_discard(player.id, [cid], false)
-			notice_skill(_噬灭技能, [移除目标])
-			_移除治疗(移除目标, 1)
-			return SUCCESS
-		4:  # 共振：选 2~3 张同系牌弃之
-			if not engine.has_reply():
-				# 不预先固定某一系：多系别牌（魔刃/异刃）切换后也能马上参与同系组合。
-				# 候选给全部手牌，客户端按 "same" 规则逐张判同系；服务端下面再复核。
-				var 候选: Array[int] = player.hand_cards.duplicate()
-				询问(player.id, GONG_ZHEN, 2, 0, GConst.CardSource.Hand, [], 3, "same", 候选, true,
-					0, player.id, [], 3, {}, 0, 0, false, [], true, -1, 0,
-					_共振完整说明())
-				return WAIT
-			var r4: Dictionary = take_skill_reply_full()
-			var cards4: Array = r4.get("card_ids", [])
-			var 弃: Array = []
-			for c4: Variant in cards4:
-				if 弃.size() < 3 and player.有手牌(int(c4)):
-					弃.append(int(c4))
-			_步 = 0
-			if 弃.size() < 2:
-				return SUCCESS
-			# 服务端复核 2~3 张是否同系（按每张实例当前系别，而不是固定 _共振系）
-			var 系值: int = -1
-			for c4: Variant in 弃:
-				var 卡4: GCard = Data.get_card(int(c4))
-				var e4: int = 卡4.element_enum() if 卡4 != null else 0
-				if e4 <= 0:
-					return SUCCESS
-				if 系值 < 0:
-					系值 = e4
-				elif e4 != 系值:
-					return SUCCESS
-			# 代价在真正确认 2~3 张同系牌后才付；没有同系牌时仍然会询问，但不扣能量
-			if player.get_energy() < 1:
-				return SUCCESS
-			player.remove_energy(1)
-			engine.broadcast(GConst.Msg.Card, {
-				"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-				"card_ids": 弃, "is_real": true,
-			})
-			engine.take_from_hand(player.id, 弃, false)
-			# 共振可能由渗蚀伤害触发，此时正处在「弃牌前拦截」里：这次的弃牌代价仍要
-			# 走拦截（弃刃要触发渗蚀并移除），否则魔刃会直接进弃牌堆、第二步加不回来。
-			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": GONG_ZHEN}, true)
-			engine._log_discard(player.id, 弃, false)
-			notice_skill(GONG_ZHEN, [player.id])
-			# 弃牌代价里若有刃，渗蚀/移除结算会晚于本钩子；
-			# 先回到步骤 5，等刃真正被移除再开第二步（那时按唯一实例加回）。
-			# 没有刃时 to_discard 是同步的，直接开第二步即可。
-			var 有刃代价: bool = false
-			for c5: Variant in 弃:
-				var 面5: int = GConst.牌号(int(c5))
-				if 面5 == MO_REN_CARD or 面5 == YI_REN_CARD:
-					有刃代价 = true
-					break
-			if 有刃代价:
-				_步 = 5
-				return URGENT
-			engine._broadcast_game()
-			_步 = 6
-			engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
-			return URGENT
-		5:  # 共振：等弃牌代价和渗蚀结算完（刃已被移除，可加回）再开四选一
-			engine._broadcast_game()
-			_步 = 6
-			engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
-			return URGENT
-		6:  # 共振：四选一（不加 / 魔刃 / 异刃 / 两者），后三项再选 1 名目标造成 1 点法术伤害
-			if not engine.has_reply():
-				询问(player.id, GONG_ZHEN, 0, 0, GConst.CardSource.Hand, _共振选项(),
-					0, "", [], false, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0,
-					_共振完整说明())
-				return WAIT
-			var r6: Dictionary = take_skill_reply_full()
-			var args6: Array = r6.get("args", [])
-			var 选6: int = int(args6[0]) if not args6.is_empty() else 0
-			var ds6: Array = r6.get("dst_ids", [])
-			_步 = 0
-			var 场上: Array[int] = _在场刃()
-			var 加: Array[int] = []
-			for 面6: int in [MO_REN_CARD, YI_REN_CARD]:
-				if 场上.has(面6):
-					continue
-				var inst6: int = player.刃实例(面6)
-				if inst6 >= 0 and not engine.刃在场(player.id, 面6):
-					加.append(inst6)
-			var 要魔: bool = 选6 == 2 or 选6 == 4
-			var 要异: bool = 选6 == 3 or 选6 == 4
-			if 选6 == 1 or 加.is_empty() \
-					or (要魔 and not 加.has(player.刃实例(MO_REN_CARD))) \
-					or (要异 and not 加.has(player.刃实例(YI_REN_CARD))):
-				return SUCCESS
-			if 选6 == 2:
-				加 = [player.刃实例(MO_REN_CARD)]
-			elif 选6 == 3:
-				加 = [player.刃实例(YI_REN_CARD)]
-			for inst6: int in 加:
-				# 先取出（刃不在场时收在移除牌堆里），再加回手牌
-				var 取出6: int = engine.刃从移除牌堆取出(inst6)
-				if 取出6 >= 0:
-					engine.刃加入手牌(player.id, 取出6)
-			engine._broadcast_game()
-			if ds6.size() != 1:
-				return SUCCESS
-			engine.push_harm({
-				"src": player.id, "dst": int(ds6[0]), "point": 1,
-				"cause": GONG_ZHEN, "type": GConst.HarmType.Magic,
-			})
-			return URGENT
-		7:  # 诸神终焉：同时移除了自己的两张刃，选 1 名目标对手造成 2 点法术伤害
-			if not engine.has_reply():
-				var 敌7: Array[int] = enemy_ids()
-				if 敌7.is_empty():
-					_步 = 0
-					return SUCCESS
-				询问(player.id, ZHU_SHEN_ZHONG_YAN, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-					0, -1, 敌7, -1, {}, 0, 0, false, [], true, -1, 0,
-					GConst.skill_desc(ZHU_SHEN_ZHONG_YAN))
-				return WAIT
-			var r7: Dictionary = take_skill_reply_full()
-			var ds7: Array = r7.get("dst_ids", [])
-			_步 = 0
-			if ds7.size() == 1:
-				engine.push_harm({
-					"src": player.id, "dst": int(ds7[0]), "point": 2,
-					"cause": ZHU_SHEN_ZHONG_YAN, "type": GConst.HarmType.Magic,
-				})
-				return URGENT
-			return SUCCESS
+	# 三条链各自独立（噬灭/殇灭、共振、诸神终焉），靠链号分开，不再共用一个 _步 分发器
+	if _共振待问 or 多步询问进行中(GONG_ZHEN):
+		return _共振链()
+	if _诸神待问 or 多步询问进行中(ZHU_SHEN_ZHONG_YAN):
+		return _诸神链()
+	if _噬灭待问 or 多步询问进行中(SHI_MIE) or 多步询问进行中(SHANG_MIE):
+		return _噬灭链()
 	return SUCCESS
 
+
+## 噬灭 / 殇灭：选 1 张对应系别的牌弃掉（殇灭还要选 1 名目标外敌方）
+func _噬灭链() -> int:
+	_噬灭待问 = false
+	var 是魔: bool = _噬灭技能 == SHI_MIE
+	var 系表: Array = [GConst.CardElement.Water, GConst.CardElement.Fire] if 是魔 \
+		else [GConst.CardElement.Wind, GConst.CardElement.Thunder]
+	var 可弃: Array[int] = _噬灭可弃(系表)
+	var 可弃牌面: Array[int] = []
+	for cid0: int in 可弃:
+		var 面0: int = GConst.牌号(cid0)
+		if not 可弃牌面.has(面0):
+			可弃牌面.append(面0)
+	# 空白名单在协议/客户端里表示「不限制」，会变成什么牌都能点；
+	# 用全禁哨兵表示「这次一张合法牌都没有」，仍然保留询问和取消。
+	if 可弃牌面.is_empty():
+		可弃牌面 = [GConst.手牌白名单_全禁]
+	var 殇灭池: Array[int] = []
+	if not 是魔:
+		for pid: int in enemy_ids():
+			if pid != _噬灭目标:
+				殇灭池.append(pid)
+		if 殇灭池.is_empty():
+			return SUCCESS
+	_殇灭池 = 殇灭池
+	# 合法牌随询问下发：客户端只让点水/火（或风/雷）牌；可取消＝不发动。
+	# 殇灭把「选目标」并进同一询问：一次确认同时提交弃牌和目标。
+	return 多步询问(_噬灭技能, [
+		{"需牌": 1, "牌上限": 1, "牌白": 可弃牌面,
+		 "需目标": 0 if 是魔 else 1,
+		 "目标白": [_噬灭目标] if 是魔 else 殇灭池,
+		 "收牌人": player.id, "张数": 1},
+	], _噬灭结算)
+
+
+## 噬灭 / 殇灭结算：弃牌【展示】→ 对目标（殇灭是目标外 1 名敌方）移除 1【治疗】
+func _噬灭结算(答案: Array) -> int:
+	var 系表: Array = [GConst.CardElement.Water, GConst.CardElement.Fire] \
+		if _噬灭技能 == SHI_MIE else [GConst.CardElement.Wind, GConst.CardElement.Thunder]
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var cards: Array = 回.get("cards", [])
+	var ds2: Array = 回.get("dsts", [])
+	if cards.size() != 1:
+		return SUCCESS
+	var cid: int = int(cards[0])
+	var 选中牌: GCard = Data.get_card(cid)
+	# 服务端兜底：必须正好 1 张、还在手里、且是水/火（或风/雷），否则这次询问作废
+	if 选中牌 == null or not 系表.has(选中牌.element_enum()) or not player.有手牌(cid):
+		return SUCCESS
+	var 移除目标: int = _噬灭目标
+	if _噬灭技能 == SHANG_MIE:
+		if ds2.size() != 1 or not _殇灭池.has(int(ds2[0])):
+			return SUCCESS
+		移除目标 = int(ds2[0])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": [cid], "is_real": true,
+	})
+	engine.take_from_hand(player.id, [cid], false)
+	engine.to_discard([cid], {"owner": player.id, "source": "hand", "cause": _噬灭技能})
+	engine._log_discard(player.id, [cid], false)
+	notice_skill(_噬灭技能, [移除目标])
+	_移除治疗(移除目标, 1)
+	return SUCCESS
+
+
+## 共振：选 2~3 张同系牌弃之 → 四选一（不加 / 魔刃 / 异刃 / 两者）
+func _共振链() -> int:
+	_共振待问 = false
+	_共振弃牌成立 = false
+	return 多步询问(GONG_ZHEN, [
+		{"需牌": 2, "牌上限": 3, "牌规则": "same",
+		 "牌白": func(_答案: Array) -> Array: return player.hand_cards.duplicate(),
+		 "收牌人": player.id, "张数": 3,
+		 "询问文案": _共振完整说明(),
+		 "答完": _共振弃牌答完},
+		{"选项": _共振选项(), "可取消": false, "询问文案": _共振完整说明(),
+		 "跳过": func(_答案: Array) -> bool: return not _共振弃牌成立},
+	], _共振结算)
+
+
+## 共振第一步：真付得出 2~3 张同系牌才扣能量、弃牌（不成立就不开第二步）
+func _共振弃牌答完(回: Dictionary, _答案: Array) -> int:
+	var cards4: Array = 回.get("cards", [])
+	var 弃: Array = []
+	for c4: Variant in cards4:
+		if 弃.size() < 3 and player.有手牌(int(c4)):
+			弃.append(int(c4))
+	if 弃.size() < 2:
+		return SUCCESS
+	# 服务端复核 2~3 张是否同系（按每张实例当前系别，而不是固定 _共振系）
+	var 系值: int = -1
+	for c4: Variant in 弃:
+		var 卡4: GCard = Data.get_card(int(c4))
+		var e4: int = 卡4.element_enum() if 卡4 != null else 0
+		if e4 <= 0:
+			return SUCCESS
+		if 系值 < 0:
+			系值 = e4
+		elif e4 != 系值:
+			return SUCCESS
+	# 代价在真正确认 2~3 张同系牌后才付；没有同系牌时仍然会询问，但不扣能量
+	if player.get_energy() < 1:
+		return SUCCESS
+	player.remove_energy(1)
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
+		"card_ids": 弃, "is_real": true,
+	})
+	engine.take_from_hand(player.id, 弃, false)
+	# 共振可能由渗蚀伤害触发，此时正处在「弃牌前拦截」里：这次的弃牌代价仍要
+	# 走拦截（弃刃要触发渗蚀并移除），否则魔刃会直接进弃牌堆、第二步加不回来。
+	engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": GONG_ZHEN}, true)
+	engine._log_discard(player.id, 弃, false)
+	notice_skill(GONG_ZHEN, [player.id])
+	_共振弃牌成立 = true
+	# 弃牌代价里若有刃，渗蚀/移除结算会晚于本钩子：先返回 URGENT，等刃真正被移除再问四选一
+	return URGENT
+
+
+## 共振第二步：四选一，后三项再选 1 名目标造成 1 点法术伤害
+func _共振结算(答案: Array) -> int:
+	if not _共振弃牌成立:
+		return SUCCESS
+	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
+	var args6: Array = 回.get("args", [])
+	var 选6: int = int(args6[0]) if not args6.is_empty() else 0
+	var ds6: Array = 回.get("dsts", [])
+	var 场上: Array[int] = _在场刃()
+	var 加: Array[int] = []
+	for 面6: int in [MO_REN_CARD, YI_REN_CARD]:
+		if 场上.has(面6):
+			continue
+		var inst6: int = player.刃实例(面6)
+		if inst6 >= 0 and not engine.刃在场(player.id, 面6):
+			加.append(inst6)
+	var 要魔: bool = 选6 == 2 or 选6 == 4
+	var 要异: bool = 选6 == 3 or 选6 == 4
+	if 选6 == 1 or 加.is_empty() \
+			or (要魔 and not 加.has(player.刃实例(MO_REN_CARD))) \
+			or (要异 and not 加.has(player.刃实例(YI_REN_CARD))):
+		return SUCCESS
+	if 选6 == 2:
+		加 = [player.刃实例(MO_REN_CARD)]
+	elif 选6 == 3:
+		加 = [player.刃实例(YI_REN_CARD)]
+	for inst6: int in 加:
+		# 先取出（刃不在场时收在移除牌堆里），再加回手牌
+		var 取出6: int = engine.刃从移除牌堆取出(inst6)
+		if 取出6 >= 0:
+			engine.刃加入手牌(player.id, 取出6)
+	engine._broadcast_game()
+	if ds6.size() != 1:
+		return SUCCESS
+	engine.push_harm({
+		"src": player.id, "dst": int(ds6[0]), "point": 1,
+		"cause": GONG_ZHEN, "type": GConst.HarmType.Magic,
+	})
+	return URGENT
+
+
+## 诸神终焉：3 点伤害全部结算完，选 1 名目标对手造成 2 点法术伤害
+func _诸神链() -> int:
+	_诸神待问 = false
+	var 敌7: Array[int] = enemy_ids()
+	if 敌7.is_empty():
+		return SUCCESS
+	return 多步询问(ZHU_SHEN_ZHONG_YAN, [
+		{"需目标": 1, "目标白": 敌7, "可取消": false,
+		 "询问文案": GConst.skill_desc(ZHU_SHEN_ZHONG_YAN)},
+	], _诸神结算)
+
+
+func _诸神结算(答案: Array) -> int:
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var ds7: Array = 回.get("dsts", [])
+	if ds7.size() == 1:
+		engine.push_harm({
+			"src": player.id, "dst": int(ds7[0]), "point": 2,
+			"cause": ZHU_SHEN_ZHONG_YAN, "type": GConst.HarmType.Magic,
+		})
+		return URGENT
+	return SUCCESS
 var _殇灭池: Array[int] = []
 var _共振系: int = 0
 
@@ -623,12 +635,12 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		return SUCCESS
 	if int(harm.get("type", -1)) != GConst.HarmType.Magic:
 		return SUCCESS
-	if bool(harm.get("共振已处理", false)) or _步 != 0:
+	if bool(harm.get("共振已处理", false)) or _共振待问 or 多步询问进行中(GONG_ZHEN):
 		return SUCCESS
 	if player.get_energy() < 1:
 		return SUCCESS
 	harm["共振已处理"] = true
-	_步 = 4
+	_共振待问 = true
 	_共振系 = _同系两张的系别()
 	engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 	return URGENT
@@ -778,9 +790,8 @@ func p_shi_shen_诸神移除(ctx: Dictionary) -> int:
 				engine.放入移除牌堆(取到)
 				break
 	var 两张: bool = 持有.size() >= 2
-	# 3 点伤害（包括打回自己）必须能在 _步=0 下触发共振；目标询问单独放到
-	# p_shi_shen_诸神问 里，等 3 点全部结算完再把它自己的 _步 置 7。
-	_步 = 0
+	# 3 点伤害（包括打回自己）必须能在「共振链未开始」的状态下触发共振；
+	# 目标询问单独放到 p_shi_shen_诸神问 里，等 3 点全部结算完再开诸神链。
 	if 两张:
 		engine.push(BattleEngine.SHook.new("p_shi_shen_诸神问", {"player": player.id}, []))
 	for i: int in range(持有.size() - 1, -1, -1):
@@ -800,7 +811,7 @@ func p_shi_shen_诸神问(ctx: Dictionary) -> int:
 	if _诸神问已处理:
 		return SUCCESS
 	_诸神问已处理 = true
-	_步 = 7
+	_诸神待问 = true
 	engine.push(BattleEngine.SHook.new("p_shi_shen_ask", {"player": player.id}, []))
 	return URGENT
 
