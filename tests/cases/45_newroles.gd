@@ -1138,8 +1138,11 @@ func _检噬神者() -> void:
 	检(int(角色.call("p_cover_change", 盖牌上下文)) == BattleRole.SUCCESS,
 		"同一个盖牌变动回栈重跑时不应再次触发渗蚀")
 	# 共振四选一：不加 / 魔刃 / 异刃 / 两者；后三项都带 1 名目标，文案带系别与技能组
-	角色.set("_步", 6)
-	角色.set("_共振系", GConst.CardElement.Fire)
+	# 旧的 `_步` 分发器已删（bfe3b48 拆成独立链）：这里把链种到「第二段（四选一）」并标记代价已付，
+	# 等价于「玩家已经付过 1 能量 + 2~3 张同系牌」，重入就会直接问四选一。
+	角色.多步询问重置(7907)
+	角色.set("_共振弃牌成立", true)
+	角色._多步链[7907] = {"段": 1, "答案": [{"args": [], "cards": [], "dsts": []}]}
 	角色.call("p_shi_shen_ask", {"player": 1})
 	var 共振问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
 	var 共振命令表: Array = 共振问.get("commands", [])
@@ -1219,10 +1222,14 @@ func _检噬神者() -> void:
 		"噬灭指示器应写移除治疗并自动高亮攻击目标：%s" % str(噬灭指示))
 	检(str(殇灭指示.get("文案", "")).contains("移除") and str(殇灭指示.get("文案", "")).contains("治疗"),
 		"殇灭指示器应写移除治疗：%s" % str(殇灭指示))
+	# 共振这条链在上面一直等着回复，不清掉的话分发器会一直路由回共振（7907），后面的噬灭问不出来
+	角色.多步询问重置(7907)
+	角色.set("_共振弃牌成立", false)
 	# 噬灭询问应直接进入选牌（旧的「先确定发动」已删）；白名单只含合法牌，且可取消
+	# 分发器拆链后入口看的是 `_噬灭待问`（不再有 `_步`）
 	角色.set("_噬灭技能", 7903)
 	角色.set("_噬灭目标", 2)
-	角色.set("_步", 2)
+	角色.set("_噬灭待问", true)
 	角色.call("p_shi_shen_ask", {"player": 1})
 	var 问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
 	var 问命令表: Array = 问.get("commands", [])
@@ -1239,9 +1246,10 @@ func _检噬神者() -> void:
 	检((问命令.get("dst_ids", []) as Array).has(2),
 		"噬灭询问应带上本次攻击目标（2）用于头像高亮，实际：%s" % str(问命令.get("dst_ids", [])))
 	# 殇灭：同一个询问同时选弃牌与目标，不再分两步
+	角色.多步询问重置(7903)
 	角色.set("_噬灭技能", 7904)
 	角色.set("_噬灭目标", 2)
-	角色.set("_步", 2)
+	角色.set("_噬灭待问", true)
 	角色.call("p_shi_shen_ask", {"player": 1})
 	var 殇灭问: Dictionary = (引擎.get("_最后询问") as Dictionary).get(1, {})
 	var 殇灭命令表: Array = 殇灭问.get("commands", [])
@@ -1251,7 +1259,7 @@ func _检噬神者() -> void:
 		and (殇灭命令.get("dst_ids", []) as Array).has(4)
 		and not (殇灭命令.get("dst_ids", []) as Array).has(2),
 		"殇灭应在同一个询问里选弃牌和目标（目标=除攻击目标外的敌方），实际：%s" % str(殇灭问))
-	角色.set("_步", 0)
+	角色.多步询问重置(7904)
 	检(魔卡.可选元素 == [GConst.CardElement.Fire, GConst.CardElement.Water]
 		and 魔卡.element_enum() == GConst.CardElement.Fire,
 		"【魔刃】应配置 fire or water、默认火系：%s / %d" % [str(魔卡.可选元素), 魔卡.element_enum()])
@@ -1334,6 +1342,9 @@ func _检噬神者() -> void:
 		and int((侵刻命令[0] as Dictionary).get("respond_id", 0)) == 7902,
 		"【侵刻】命中后应弹出发动询问，实际返回=%d 询问=%s" % [侵刻返回, str(侵刻问)])
 	# 手牌不足时噬灭仍然要发起询问
+	# 这个引擎里前面【侵刻】那一步可能还挂着共振链；不清掉的话分发器先命中共振（7907）
+	无同系角色.多步询问重置(7907)
+	无同系角色.set("_共振待问", false)
 	无同系玩家.hand_cards.clear()
 	无同系角色.set("_步", 0)
 	无同系角色.set("_噬灭已处理", false)

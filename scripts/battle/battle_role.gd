@@ -637,7 +637,12 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 		# 段自带的合法性校验：不过关就报错并按「校验失败回退」决定重问本段还是退回上一段
 		var 校验: Variant = 段.get("校验", null)
 		if not 不校验 and 校验 is Callable and not bool((校验 as Callable).call(回)):
+			# 日志一条（所有人能看到原因）+ 给被问的人一条 ErrorInput（客户端弹「操作无效」并恢复待选）。
+			# 迁移前角色自己校验时发的就是 ErrorInput，只发日志会让玩家只看到询问重弹、不知道为什么。
 			engine.报错(str(段.get("校验失败文案", "操作无效，请重新选择")), player.id)
+			var 被问者: int = int(_多步取值(段.get("问谁", player.id), 答案))
+			engine.send(被问者, GConst.Msg.ErrorInput,
+				{"error_type": GConst.CmdType.Respond, "commands": []})
 			if bool(段.get("校验失败回退", false)) and 段号 > 0:
 				答案.resize(段号 - 1)
 				链["段"] = 段号 - 1

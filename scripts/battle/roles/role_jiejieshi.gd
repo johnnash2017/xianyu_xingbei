@@ -211,12 +211,15 @@ var _琉璃牌: Dictionary = {}
 func p_timeline_1(ctx: Dictionary) -> int:
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	var 系别: Array[int] = _结界系别()
-	if 系别.is_empty():
-		return SUCCESS
-	var 卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if 卡 == null or not 卡.is_attack() or not 系别.has(卡.element_enum()):
-		return SUCCESS
+	# 入口的「有结界 / 这张牌是攻击牌且同系」只挡新的一次发动：正等收尾时不能再拦 ——
+	# 收尾第 2 步（横置 + 查破散）恰恰发生在最后一个结界已经被移除之后。
+	if not 多步询问进行中(HUANG_SHEN_JI_YI) and not 多步询问待收尾(HUANG_SHEN_JI_YI):
+		var 系别: Array[int] = _结界系别()
+		if 系别.is_empty():
+			return SUCCESS
+		var 卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+		if 卡 == null or not 卡.is_attack() or not 系别.has(卡.element_enum()):
+			return SUCCESS
 	# 【祭】已满、又没有手牌 / 结界可付后半段代价时，这次响应什么都不会发生，不弹询问
 	# （链已经在走 / 正等收尾时不能再拦：后半段付完代价就会变成「祭满 + 无结界」）
 	if not 多步询问进行中(HUANG_SHEN_JI_YI) and not 多步询问待收尾(HUANG_SHEN_JI_YI) \
