@@ -506,6 +506,7 @@ var _多步链: Dictionary = {}
 ##     "技能号"     int / Callable(答案)  这一段用哪个技能号发询问（默认＝链号；一条链里两段是不同技能时用）
 ##     "取消"       Callable() -> int  玩家在这一段取消整条链时调用（清阶段标记 / 还原本地状态）；
 ##                  可以返回 URGENT/WAIT 表示「不这么做」本身要结算（框架原样返回）
+##     "重复"       Callable(回, 答案) -> bool  循环段：为真时留在本段重问（答案就地覆盖，给「对每个目标各问一次」用）
 ##     "答完"       Callable(回, 答案) -> int  这一段答完立刻结算（可压状态并返回 URGENT/WAIT），
 ##                  返回值非 SUCCESS 时框架原样返回；段号已推进，重入时从下一段继续
 ##     "跳过"       Callable(答案) -> bool  条件段：返回 true 就跳过这一段不问
@@ -514,14 +515,19 @@ var _多步链: Dictionary = {}
 ##     "提示序号"/"张数"/"收牌人"/"额外"/"预览基准"/"预览类型"/"预览目标"/"预览伤害"
 ##     "需盖牌"/"盖牌最多"/"手牌数"/"询问文案"/"默认选项"/"高亮"/"超时目标"/"可圣光"
 ##   结算   Callable(答案: Array) -> int：所有段都答完后调用；返回值原样传给引擎
-##   收尾   Callable() -> int：结算里压了状态（返回 URGENT/WAIT）时，引擎重入先跑它（如摸牌后要看摸到什么）
+##   收尾   Callable() -> int：结算里压了状态（返回 URGENT/WAIT）时，引擎重入先跑它（如摸牌后要看摸到什么）；
+##          它自己还能再压状态并返回 URGENT，会一直被重入，直到返回 SUCCESS
 ## 返回：WAIT＝正在问；否则是结算回调的返回值（SUCCESS / URGENT）
 func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable = Callable()) -> int:
 	# 结算里压过状态（返回 URGENT/WAIT）：引擎重入时先跑收尾，再交还给角色
 	if _多步收尾.has(链号):
-		_多步收尾.erase(链号)
 		if 收尾.is_valid():
-			return int(收尾.call())
+			# 收尾自己可能还要再压一次状态：只有它返回 SUCCESS 才真正收干净
+			var 收尾返回: int = int(收尾.call())
+			if 收尾返回 == SUCCESS:
+				_多步收尾.erase(链号)
+			return 收尾返回
+		_多步收尾.erase(链号)
 		return SUCCESS
 	if not _多步链.has(链号):
 		_多步链[链号] = {"段": 0, "答案": []}
@@ -605,10 +611,17 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 		# 「答完」：这一段答完立刻做的结算（可能压状态并返回 URGENT/WAIT）。
 		# 段号已推进，引擎重入时会从下一段继续，不会把这一段重问一遍。
 		var 答完: Variant = 段.get("答完", null)
+		var 答完返回2: int = SUCCESS
 		if 答完 is Callable:
-			var 答完返回: int = int((答完 as Callable).call(回, 答案))
-			if 答完返回 != SUCCESS:
-				return 答完返回
+			答完返回2 = int((答完 as Callable).call(回, 答案))
+		# 「重复」：这一段要对不同对象反复问（循环段）——为真时留在本段，答案就地覆盖
+		var 重复: Variant = 段.get("重复", null)
+		if 重复 is Callable and bool((重复 as Callable).call(回, 答案)):
+			答案.resize(段号)
+			答案.append(回)
+			链["段"] = 段号
+		if 答完返回2 != SUCCESS:
+			return 答完返回2
 	return SUCCESS
 
 

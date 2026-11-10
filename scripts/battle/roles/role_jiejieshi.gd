@@ -47,9 +47,7 @@ const 星石_宝石: int = 1
 const 星石_水晶: int = 2
 
 ## ctx 里的分步键：每个钩子一份，互不干扰
-const 键_荒神: String = "_jiejie_荒神"
 ## 荒神祭仪后半段一次提交时选中的那张【结界】（实例号）
-const 键_荒神_盖: String = "_jiejie_荒神盖"
 ## 琉璃境两条链的进度键前缀（键本身＝阶段；候选 / 弃牌人 / 牌 = 前缀 + 后缀）
 const 键_琉璃: String = "_jiejie_琉璃"
 ## 同步掉士气链（合成星杯 / 逆反居合斩 / 暗月诅咒）扣完士气后补问的那条
@@ -198,6 +196,12 @@ func p_before_attack(ctx: Dictionary) -> int:
 # 确认后 +1【祭】；（可额外移除 3 点【祭】）你弃 1 张牌、移除 1 个【结界】并【横置】。
 # 分步全记在攻击 ctx 上：同一次攻击重入不重复询问，也不会被别的钩子改掉。
 # ============================================================
+var _荒神已发动: bool = false
+var _荒神_手: int = -1
+var _荒神_盖: int = -1
+var _荒神收尾步: int = 0
+
+
 func p_timeline_1(ctx: Dictionary) -> int:
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
@@ -211,102 +215,103 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if player.token_num(JI_SLOT) >= player.token_max(JI_SLOT) \
 			and (player.hand_cards.is_empty() or _结界().is_empty()):
 		return SUCCESS
-	while true:
-		match int(ctx.get(键_荒神, 0)):
-			0:
-				ctx[键_荒神] = 1
-				if not engine.has_reply():
-					# 发动询问的提示用技能说明的前半段（只讲 +1 祭），后半段在额外代价那条询问里由「提示2」说明
-					询问(player.id, HUANG_SHEN_JI_YI, 0, 0, GConst.CardSource.Hand, [], 0, "", [],
-						true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 0, _荒神_发动提示())
-					return WAIT
-			1:
-				if not engine.has_reply():
-					return WAIT
-				var r: Dictionary = take_skill_reply_full()
-				if not _是发动(r):
-					ctx[键_荒神] = STEP_DONE
-					return SUCCESS
-				ctx[键_荒神] = 2
-				notice_skill(HUANG_SHEN_JI_YI, [player.id])
-				# 祭增加会触发【伏魔境】：压了询问钩子就先让它跑完，再回本步问后半段
-				if _加祭(1):
-					return URGENT
-			2:
-				if player.token_num(JI_SLOT) < 3 or player.hand_cards.is_empty() \
-						or _结界().is_empty():
-					ctx[键_荒神] = STEP_DONE
-					return SUCCESS
-				ctx[键_荒神] = 3
-				if not engine.has_reply():
-					# 一次问完：确认额外移除 3 祭 + 选 1 张手牌弃掉 + 选 1 个【结界】移除。
-					# 直接传「手牌 1 张（hand_need）+ 盖牌 1 张（cover_need）」，客户端按张数卡死。
-					# 取消＝不额外移除（保留前面 +1 祭）。
-					询问(player.id, HUANG_SHEN_JI_YI, 2, 0, GConst.CardSource.HandOrCover, [], 2, "", [],
-						true, 0, -1, [], -1, {}, 0, 0, false, [], true, -1, 1,
-						提示原文(HUANG_SHEN_JI_YI, 1), -1, "", [], [], 1, 1)
-					return WAIT
-			3:
-				if not engine.has_reply():
-					return WAIT
-				var r2: Dictionary = take_skill_reply_full()
-				if not _是发动(r2):
-					ctx[键_荒神] = STEP_DONE
-					return SUCCESS
-				var 提交: Array = r2.get("card_ids", [])
-				var 手卡: int = -1
-				var 盖卡: int = -1
-				for c: Variant in 提交:
-					var cid2: int = int(c)
-					if 手卡 < 0 and player.有手牌(cid2):
-						手卡 = cid2
-					elif 盖卡 < 0 and player.有盖牌(cid2):
-						盖卡 = cid2
-				if 提交.size() != 2 or 手卡 < 0 or 盖卡 < 0:
-					# 硬提交了不合法的组合（如两张手牌 / 两张盖牌）：驳回重问，不静默换牌
-					engine.send(player.id, GConst.Msg.ErrorInput,
-						{"error_type": GConst.CmdType.Respond, "commands": []})
-					ctx[键_荒神] = 2
-					continue
-				var 手实例: int = player.手牌实例(手卡)
-				var 盖实例: int = player.盖牌实例(盖卡)
-				if 手实例 < 0 or 盖实例 < 0 or not player.remove_token(JI_SLOT, 3):
-					ctx[键_荒神] = STEP_DONE
-					return SUCCESS
-				ctx[键_荒神_盖] = 盖实例
-				notice_skill(HUANG_SHEN_JI_YI, [player.id])
-				engine._broadcast_game()
-				# 结算顺序照原文：移除 3 点【祭】→ 弃 1 张牌 → 移除 1 个【结界】→ 横置
-				engine.take_from_hand(player.id, [手实例])
-				engine.to_discard([手实例], {"owner": player.id, "source": "hand",
-					"cause": HUANG_SHEN_JI_YI, "face_up": false})
-				engine._log_discard(player.id, [手实例])
-				ctx[键_荒神] = 4
-				return URGENT
-			4:
-				var 移: int = int(ctx.get(键_荒神_盖, -1))
-				ctx[键_荒神] = 5
-				if 移 >= 0:
-					_移除结界并弃置([移], HUANG_SHEN_JI_YI)
-				return URGENT
-			5:
-				ctx[键_荒神] = STEP_DONE
-				_横置并查破散()
-				return SUCCESS
-			_:
-				return SUCCESS
+	_荒神已发动 = false
+	_荒神_手 = -1
+	_荒神_盖 = -1
+	_荒神收尾步 = 0
+	# 荒神祭祀：先问发不发动（+1 祭）→ 再问「额外移除 3 祭 + 弃 1 张手牌 + 移 1 个结界」
+	return 多步询问(HUANG_SHEN_JI_YI, [
+		{"询问文案": _荒神_发动提示(), "取消": _荒神取消,
+		 "答完": _荒神发动答完},
+		{"需牌": 2, "来源": GConst.CardSource.HandOrCover, "牌上限": 2,
+		 "需盖牌": 1, "盖牌最多": 1, "手牌数": 1,
+		 "询问文案": 提示原文(HUANG_SHEN_JI_YI, 1),
+		 "跳过": func(_答案: Array) -> bool: return not _荒神有后半段(),
+		 "校验": _荒神选牌合法, "超时默认": [],
+		 "答完": _荒神选牌答完},
+	], _荒神结算, _荒神收尾)
+
+
+## 这一段还能不能问：发动过 + 祭够 3 + 手里有牌 + 有结界
+func _荒神有后半段() -> bool:
+	return _荒神已发动 and player.token_num(JI_SLOT) >= 3 \
+		and not player.hand_cards.is_empty() and not _结界().is_empty()
+
+
+## 第 1 段答完：发动就 +1 祭（可能压伏魔境钩子）
+func _荒神发动答完(回: Dictionary, _答案: Array) -> int:
+	if not _是发动(回):
+		return SUCCESS
+	_荒神已发动 = true
+	notice_skill(HUANG_SHEN_JI_YI, [player.id])
+	# 祭增加会触发【伏魔境】：压了询问钩子就先让它跑完，再回本步问后半段
+	if _加祭(1):
+		return URGENT
 	return SUCCESS
 
 
-# ============================================================
-# 8205 琉璃境：我方士气下降时，若你已【横置】→【重置】、战绩区 +1 宝石、
-# 指定 1 名目标角色弃 1 张牌【展示】，你可把该弃牌面朝上放进盖牌区作为【结界】。
-#
-# 两条链分开记进度：
-#   · 可等待的掉士气（伤害 / 超限）：SOverloadMorale 里 p_lose_morale 直接问；
-#   · 同步掉士气（合成星杯 / 逆反居合斩 / 暗月诅咒）：同步链不能等玩家输入，
-#     引擎在 lose_morale 扣完士气后补压 p_lose_morale_after，由那条钩子问。
-# ============================================================
+## 第 2 段的合法性：正好 1 张手牌 + 1 张盖牌
+func _荒神选牌合法(回: Dictionary) -> bool:
+	var 手: int = 0
+	var 盖: int = 0
+	for c: Variant in 回.get("cards", []):
+		var cid: int = int(c)
+		if player.手牌实例(cid) >= 0:
+			手 += 1
+		elif player.盖牌实例(cid) >= 0:
+			盖 += 1
+	return 手 == 1 and 盖 == 1
+
+
+## 第 2 段取消 / 超时：没付额外代价，前面 +1 祭保留
+func _荒神取消() -> int:
+	return SUCCESS
+
+
+## 第 2 段答完：移除 3 祭 → 弃 1 张手牌（面朝下）；结界留到收尾里移除
+func _荒神选牌答完(回: Dictionary, _答案: Array) -> int:
+	_荒神_手 = -1
+	_荒神_盖 = -1
+	for c: Variant in 回.get("cards", []):
+		var cid: int = int(c)
+		if _荒神_手 < 0 and player.手牌实例(cid) >= 0:
+			_荒神_手 = player.手牌实例(cid)
+		elif _荒神_盖 < 0 and player.盖牌实例(cid) >= 0:
+			_荒神_盖 = player.盖牌实例(cid)
+	if _荒神_手 < 0 or _荒神_盖 < 0:
+		return SUCCESS
+	if not player.remove_token(JI_SLOT, 3):
+		_荒神_手 = -1
+		_荒神_盖 = -1
+		return SUCCESS
+	notice_skill(HUANG_SHEN_JI_YI, [player.id])
+	engine._broadcast_game()
+	# 结算顺序照原文：移除 3 点【祭】→ 弃 1 张牌 → 移除 1 个【结界】→ 横置
+	engine.take_from_hand(player.id, [_荒神_手])
+	engine.to_discard([_荒神_手], {"owner": player.id, "source": "hand",
+		"cause": HUANG_SHEN_JI_YI, "face_up": false})
+	engine._log_discard(player.id, [_荒神_手])
+	return URGENT
+
+
+## 结算后的收尾（会再压状态，所以拆两步）：先移除结界，再横置并查破散
+func _荒神收尾() -> int:
+	if _荒神收尾步 == 0:
+		_荒神收尾步 = 1
+		if _荒神_盖 >= 0:
+			_移除结界并弃置([_荒神_盖], HUANG_SHEN_JI_YI)
+		return URGENT
+	_荒神收尾步 = 0
+	_荒神_盖 = -1
+	_横置并查破散()
+	return SUCCESS
+
+
+## 两段都答完（或跳过）：一律清掉临时状态；真正的结算在「答完」里做过
+func _荒神结算(答案: Array) -> int:
+	_荒神_手 = -1
+	_荒神_盖 = -1
+	return SUCCESS
 func p_lose_morale(ctx: Dictionary) -> int:
 	# 同步链不在这里问：扣完士气后由 p_lose_morale_after 补问
 	if bool(ctx.get("sync", false)):
