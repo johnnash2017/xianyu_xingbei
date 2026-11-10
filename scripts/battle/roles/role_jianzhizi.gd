@@ -111,6 +111,8 @@ func _同步梦想剑展示档() -> void:
 
 
 ## 10803 的回合条件跟踪
+## 剑守誓言第 1 段取到的牌（第 2 段从里面选 1 张）
+var _剑守誓言牌: Array = []
 var _本回合有主动攻击命中: bool = false
 var _回合开始星杯总数: int = 0
 
@@ -475,48 +477,49 @@ func _启动剑影断念() -> void:
 func p_after_turn_end(ctx: Dictionary) -> int:
 	if not _可发动剑守誓言():
 		return SUCCESS
-	var 阶段: int = int(ctx.get(KEY_10803_STEP, 0))
-	if 阶段 >= STEP_DONE:
+	if int(ctx.get(KEY_10803_STEP, 0)) >= STEP_DONE:
 		return SUCCESS
-	if 阶段 == 0:
-		# 牌库为空时没有任何牌可弃置 / 加入手牌，也没有法术牌可触发后续；不弹无用询问
-		if engine.deck.pile_size() <= 0:
-			ctx[KEY_10803_STEP] = STEP_DONE
-			return SUCCESS
-		if not engine.has_reply():
-			# 响应技能先问发动者；取消＝不发动，牌库不动
-			询问(player.id, 剑守誓言)
-			return WAIT
-		if not take_skill_reply():
-			ctx[KEY_10803_STEP] = STEP_DONE
-			return SUCCESS
-		# X＝双方星杯区星杯数之和（A51）；牌库顶 X+1 张，不洗回弃牌堆
-		var 取得: Array[int] = engine.移除牌库顶(engine.星杯总数() + 1)
-		if 取得.is_empty():
-			ctx[KEY_10803_STEP] = STEP_DONE
-			return SUCCESS
-		ctx[KEY_10803_CARDS] = 取得
-		# 持久展示：X+1 张牌一直摊在屏幕中间，直到玩家选完（或超时自动选择），不按 6.4 秒收起
-		engine.展示牌库顶(player.id, 取得, true)
-		notice_skill(剑守誓言, [player.id])
-		ctx[KEY_10803_STEP] = 1
-	if int(ctx.get(KEY_10803_STEP, 0)) == 1:
-		var 牌表: Array = ctx.get(KEY_10803_CARDS, [])
-		if not engine.has_reply():
-			# 「可选择其中 1 张加入手牌」：不能取消；展示一直留着，玩家慢慢选，超时由服务端自动选第 1 张。
-			# 牌不在手牌里，客户端不能按手牌白名单点选，故用固定选项逐张列出（选项值＝第几张）。
-			询问(player.id, 剑守誓言, 0, 0, GConst.CardSource.Hand, _剑守誓言选项(牌表), 0, "", [], false)
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
+	# 牌库为空时没有任何牌可弃置 / 加入手牌，也没有法术牌可触发后续；不弹无用询问
+	if engine.deck.pile_size() <= 0:
 		ctx[KEY_10803_STEP] = STEP_DONE
-		# 默认第 1 张：超时 / 空回复 / 非法选项都按「自动选择第一张」结算
-		var 选中: int = int(牌表[0]) if not 牌表.is_empty() else -1
-		var args: Array = r.get("args", [])
+		return SUCCESS
+	return 多步询问(剑守誓言, [
+		# 第 1 段：是否发动（取消＝不发动，牌库不动）
+		{"取消": func() -> void: ctx[KEY_10803_STEP] = STEP_DONE,
+		 "答完": _剑守誓言取牌},
+		# 第 2 段：从摊开的牌里选 1 张加入手牌（不能取消，超时按第 1 张）
+		{"选项": func(_答案: Array) -> Array: return _剑守誓言选项(_剑守誓言牌),
+		 "可取消": false,
+		 "跳过": func(_答案: Array) -> bool: return _剑守誓言牌.is_empty()},
+	], func(答案: Array) -> int: return _剑守誓言结算(ctx, 答案))
+
+
+## 第 1 段答完：牌库顶取 X+1 张（X＝双方星杯数之和）摊在屏幕中间，
+## 后面那一段就从这些牌里选 1 张
+func _剑守誓言取牌(_回: Dictionary, _答案: Array) -> int:
+	_剑守誓言牌 = engine.移除牌库顶(engine.星杯总数() + 1)
+	if _剑守誓言牌.is_empty():
+		return SUCCESS
+	# 持久展示：一直摊到玩家选完（或超时自动选第 1 张），不按 6.4 秒收起
+	engine.展示牌库顶(player.id, _剑守誓言牌, true)
+	notice_skill(剑守誓言, [player.id])
+	return SUCCESS
+
+
+## 第 2 段答完：把选中的那张加入手牌（超时 / 空回复 / 非法选项都按第 1 张）
+func _剑守誓言结算(ctx: Dictionary, 答案: Array) -> int:
+	ctx[KEY_10803_STEP] = STEP_DONE
+	if _剑守誓言牌.is_empty():
+		return SUCCESS
+	var 选中: int = int(_剑守誓言牌[0])
+	if 答案.size() > 1:
+		var args: Array = (答案[1] as Dictionary).get("args", [])
 		if not args.is_empty():
 			var 档: int = int(args[0])
-			if 档 >= 1 and 档 <= 牌表.size():
-				选中 = int(牌表[档 - 1])
-		_settle_jian_shou_shi_yan(牌表, 选中)
+			if 档 >= 1 and 档 <= _剑守誓言牌.size():
+				选中 = int(_剑守誓言牌[档 - 1])
+	_settle_jian_shou_shi_yan(_剑守誓言牌, 选中)
+	_剑守誓言牌 = []
 	return SUCCESS
 
 

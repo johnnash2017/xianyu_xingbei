@@ -500,6 +500,10 @@ var _多步链: Dictionary = {}
 ##     "可取消"     bool    这一段空应答＝整条链不发动（默认 true）
 ##     "超时"       Callable 段号：超时（is_timeout）时直接调它收尾（优先于「超时默认」）
 ##     "超时默认"   Variant 没有「超时」回调时，超时把这一段当作这个答案；都没有就按「不发动」收尾
+##     "问谁"       int / Callable(答案)  这一段问哪名玩家（默认自己；队友代答 / 问别人时用）
+##     "取消"       Callable()  玩家在这一段取消整条链时调用（清阶段标记 / 还原本地状态）
+##     "答完"       Callable(回, 答案) -> int  这一段答完立刻结算（可压状态并返回 URGENT/WAIT），
+##                  返回值非 SUCCESS 时框架原样返回；段号已推进，重入时从下一段继续
 ##     "跳过"       Callable(答案) -> bool  条件段：返回 true 就跳过这一段不问
 ##     "校验"       Callable(答案项) -> bool 这一段提交的答案合法吗；不合法报错后重问本段
 ##     "校验失败回退" bool   校验不过时退回上一段（默认 false＝重问本段）
@@ -555,6 +559,9 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 			# 其余空应答＝整条链不发动（可取消时）；不能取消（异常空应答）就重问这一段
 			if bool(段.get("可取消", true)):
 				_多步链.erase(链号)
+				var 取消回调: Variant = 段.get("取消", null)
+				if 取消回调 is Callable:
+					(取消回调 as Callable).call()
 				return SUCCESS
 			_多步问一段(链号, 段号, 段, 答案)
 			return WAIT
@@ -570,6 +577,13 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 			return WAIT
 		答案.append(回)
 		链["段"] = 段号 + 1
+		# 「答完」：这一段答完立刻做的结算（可能压状态并返回 URGENT/WAIT）。
+		# 段号已推进，引擎重入时会从下一段继续，不会把这一段重问一遍。
+		var 答完: Variant = 段.get("答完", null)
+		if 答完 is Callable:
+			var 答完返回: int = int((答完 as Callable).call(回, 答案))
+			if 答完返回 != SUCCESS:
+				return 答完返回
 	return SUCCESS
 
 
@@ -582,7 +596,8 @@ func _多步取值(值: Variant, 答案: Array) -> Variant:
 
 ## 问链里的某一段（内部用；询问参数照段规格逐项传，第二段起沿用同一次等待的倒计时）
 func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array = []) -> void:
-	询问(player.id, 链号,
+	var 问谁: int = int(_多步取值(段.get("问谁", player.id), 答案))
+	询问(问谁, 链号,
 		int(_多步取值(段.get("需牌", 0), 答案)), int(_多步取值(段.get("需目标", 0), 答案)),
 		int(段.get("来源", GConst.CardSource.Hand)), _多步取值(段.get("选项", []), 答案),
 		int(_多步取值(段.get("牌上限", 0), 答案)), str(段.get("牌规则", "")), _多步取值(段.get("牌白", []), 答案),
