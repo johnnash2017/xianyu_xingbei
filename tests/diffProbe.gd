@@ -23,6 +23,7 @@ func _ready() -> void:
 	_场景收魔术()
 	_场景法术剥离()
 	_场景魔纹融合()
+	_场景圣剑()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
 
@@ -51,6 +52,10 @@ func _新引擎(映射: Dictionary) -> void:
 		if pp != null:
 			pp.hand_cards.clear()
 			pp.cover_cards.clear()
+	# 牌库也固定：否则两棵树洗牌 / 发牌消耗的随机数不同，摸到的牌不一样，state 没法比
+	引擎.deck.pile.clear()
+	引擎.deck.pile.append_array(range(0, 40))
+	引擎.deck.discard.clear()
 
 
 func _找攻击牌(系: int) -> int:
@@ -243,6 +248,20 @@ func _场景魔纹融合() -> void:
 	_跑(func() -> int: return int(引擎.p(1).role.p_timeline_2_miss(ctx)))
 	_录状态()
 	_输出("魔纹融合2701")
+
+## 圣剑 104（风之剑圣）：本回合第 3 次攻击强制命中 → 攻击行动结束先摸 X 张、再弃 X 张（X=1~3）
+func _场景圣剑() -> void:
+	_新引擎({1: 1})
+	var 我: BattlePlayer = 引擎.p(1)
+	var 火攻: int = _找攻击牌(GConst.CardElement.Fire)
+	var 水攻: int = _找攻击牌(GConst.CardElement.Water)
+	var 风攻: int = _找攻击牌(GConst.CardElement.Wind)
+	我.hand_cards = [火攻, 水攻, 风攻] as Array[int]
+	# 直接调「圣剑摸弃链」：绕开 timeline_1 的烈风/疾风分支（那两步两棵树都在，不是本轮重点）
+	应答序 = [_答([2]), _答([], [水攻, 风攻])]
+	_跑(func() -> int: return int(引擎.p(1).role.call("_sheng_jian_cycle")))
+	_录状态()
+	_输出("圣剑104")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
