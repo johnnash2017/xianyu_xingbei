@@ -39,6 +39,7 @@ func _ready() -> void:
 	_场景弥撒()
 	_场景异教徒展示()
 	_场景异教徒展示地裂()
+	_场景放逐()
 	_扫全角色()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
@@ -574,6 +575,19 @@ func _场景异教徒展示地裂() -> void:
 	_跑(func() -> int: return int(引擎.p(1).role.p_yi_jiao_tu_ask({"player": 1})))
 	_录状态()
 	_输出("异教徒展示9508-地裂")
+
+## 放逐 9505（异教徒）：法术行动 → 摸 6~8 张 → 选正面（天雷 / 地裂）→ 6 张手牌作【预言】→ 放【末日预言】
+func _场景放逐() -> void:
+	_新引擎({1: 95})
+	var p: BattlePlayer = 引擎.p(1)
+	var 手: Array[int] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+	p.hand_cards = 手.duplicate()
+	p.set_crystal(1)
+	var 动作: Dictionary = {"src_id": 1, "action_id": 9505, "args": [6]}
+	应答序 = [_答([1], [0, 1, 2, 3, 4, 5], [2]), _答([2], [6, 7, 8, 9, 10, 11], [2])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_magic_skill(动作)))
+	_录状态()
+	_输出("放逐9505")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
