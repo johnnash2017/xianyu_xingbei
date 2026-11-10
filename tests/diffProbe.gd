@@ -34,6 +34,9 @@ func _ready() -> void:
 	_场景水影()
 	_场景共振()
 	_场景侍奉之道()
+	_场景双重回响()
+	_场景启示()
+	_场景弥撒()
 	_扫全角色()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
@@ -476,6 +479,42 @@ func _场景侍奉之道() -> void:
 	_跑(func() -> int: return int(引擎.p(1).role.p_turn_end({"player": 1})))
 	_录状态()
 	_输出("侍奉之道8105")
+
+## 双重回响 2706（英灵人形）：对目标造成伤害时 → 耗 1 能量 → 对另一名角色复制等量伤害（≤3）
+func _场景双重回响() -> void:
+	_新引擎({1: 27})
+	var p: BattlePlayer = 引擎.p(1)
+	p.set_crystal(1)
+	var ctx: Dictionary = {"harm": {"src": 1, "dst": 2, "point": 2,
+		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Magic, "card_id": 87}}
+	应答序 = [_答([1], [], [3])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_timeline_3(ctx)))
+	_录状态()
+	_输出("双重回响2706")
+
+## 启示 9604（传教士）：虔诚 ≥2 → 二选一（目标 +1 治疗 / 摸 1 张试图取消转移）→ 选 1 名目标
+func _场景启示() -> void:
+	_新引擎({1: 96})
+	var p: BattlePlayer = 引擎.p(1)
+	for tt: Variant in p.tokens:
+		if tt != null:
+			(tt as Dictionary)["num"] = 2
+	应答序 = [_答([1]), _答([1], [], [3])]
+	# 走公开入口 _转移路标：两棵树都有它，_启示链 只是新树的内部拆分
+	_跑(func() -> int: return int(引擎.p(1).role.call("_转移路标", 3)))
+	_录状态()
+	_输出("启示9604")
+
+
+## 弥撒 9608（传教士）：路标转移后 +1 虔诚 → 二选一（弃 1 张展示挂在持有者面前 / 收回 1 张基础效果）
+func _场景弥撒() -> void:
+	_新引擎({1: 96})
+	var p: BattlePlayer = 引擎.p(1)
+	p.hand_cards = [66, 87] as Array[int]
+	应答序 = [_答([1], [66]), _答([1], [66])]
+	_跑(func() -> int: return int(引擎.p(1).role.call("_弥撒")))
+	_录状态()
+	_输出("弥撒9608")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
