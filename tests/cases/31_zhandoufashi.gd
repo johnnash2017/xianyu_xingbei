@@ -623,6 +623,11 @@ func 跑() -> void:
 	get_tree().root.add_child(窗)
 	await 等帧(1)
 	窗.call("_on_command", {"cmd_type": GConst.CmdType.Respond, "commands": [客户端支付问]})
+	# 二级技能栏的按钮是 call_deferred 排出来的：等它真的摆出两个选项再点，否则点空
+	for _i: int in range(600):
+		await get_tree().process_frame
+		if (窗.get("_二级选项") as Array).size() >= 2:
+			break
 	await 等帧(1)
 	检(bool(窗.call("_确定不可用")), "熵变支付未选来源时不能确定")
 	窗.call("_选中二级选项", GConst.技能_熵变, 1)
