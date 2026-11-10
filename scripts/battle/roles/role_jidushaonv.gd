@@ -162,62 +162,51 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if _cu_yi_step >= STEP_DONE:
+	if _cu_yi_step >= STEP_DONE and not 多步询问进行中(CU_YI_XIU_XIN):
 		return SUCCESS
-	# 第 1 步：「是否发动」与「选目标角色」合并成一次询问 ——
-	# 点技能 → 直接选 1 名「目标角色」→ 按确定就发动；取消＝不发动（不再先单问一次「要不要发动」）。
-	if _cu_yi_step == 0:
-		_cu_yi_step = 1
-		_cu_yi_目标 = -1
-		if not engine.has_reply():
-			# 文案不在这里写死：客户端对响应技能默认就显示**完整的技能说明**
-			# （原文写了效果落在谁身上，比一句「请指定 1 名目标角色」更清楚）。
-			# 目标范围＝场上全部角色（技能原文写「目标角色」＝玩家可以指定一名角色）。
-			engine.ask_skill(player.id, CU_YI_XIU_XIN, 0, 1, GConst.CardSource.Hand, [], 0, "",
-				[], true, "", _全部角色())
-			return WAIT
-	# 第 2 步：读「选了谁」；接着问那名角色弃不弃法术牌（第 3 步等它的回复）
-	if _cu_yi_step == 1:
-		if not engine.has_reply():
-			return WAIT
-		var 选人: Dictionary = take_skill_reply_full()
-		var 目标表: Array = 选人.get("dst_ids", [])
-		if 目标表.is_empty():
-			# 取消 / 超时回空：视为不发动
-			_cu_yi_step = STEP_DONE
-			return SUCCESS
-		var 目标号: int = int(目标表[0]) if 目标表.size() == 1 else -1
-		if 目标号 < 0 or engine.p(目标号) == null:
-			# 硬提交的非法目标：按「AI / 掉线按默认规则代选」兜底成随机一名角色
-			目标号 = _cu_yi_兜底目标()
-		if 目标号 < 0:
-			_cu_yi_step = STEP_DONE
-			return SUCCESS
-		_cu_yi_目标 = 目标号
-		_cu_yi_step = 2
-		notice_skill(CU_YI_XIU_XIN, [目标号])
-		# 只能弃法术牌（card_rule = "magic"），不下发牌号白名单：手里没有法术牌时界面整片置灰，
-		# 与【魔爆冲击】/【贪欲黑洞】同口径 —— **可以取消**：取消 / 超时 / 硬提交非法牌都按
-		# 「不如此做」结算（2 点法术伤害 + 发动者一方战绩区 +1 水晶）。
-		# 提示整段从**目标视角**写（「你受到…」「我方 / 对方战绩区」）：
-		# 发动者与目标同队时水晶进的是目标自己这边（我方），否则是对面（对方）。
-		# 用 ask_prompt 下发（整段专属提示）：can_cancel=true 时客户端会拿技能说明盖掉 ask_text，
-		# 只有 ask_prompt 能保证这句「我方 / 对方」按目标视角原样显示。
-		# 同时把「要挨的 2 点法术伤害」随询问下发（预览基准 / 类型 / 目标）：客户端在**目标自己**的
-		# 头像上写「2 法术伤害」（他就是要挨这一下的人）。
-		engine.ask_skill(目标号, CU_YI_XIU_XIN, 1, 0, GConst.CardSource.Hand, [], 0, "magic",
-			[], true, "", [], CU_YI_HARM_POINT, GConst.HarmType.Magic, false, [目标号],
-			true, -1, 0, false, -1, false, _cu_yi_弃牌文案(目标号))
-		return WAIT
-	# 第 3 步：目标「弃 / 不弃」的回复；弃不出（回空、非法牌、手里已没有）一律走惩罚
-	if not engine.has_reply():
-		return WAIT
+	_cu_yi_目标 = -1
+	# 醋意休心：选一名目标角色（＝发动）→ 他不弃法术牌就吃 2 点法术伤害 + 我方战绩区 +1 水晶。
+	# 第二段问的是**目标自己**（问谁），「取消＝不弃」本身要结算（取消回调返回 URGENT）。
+	return 多步询问(CU_YI_XIU_XIN, [
+		{"需目标": 1, "目标白": _全部角色(), "答完": _醋意选目标答完},
+		{"问谁": func(_答案: Array) -> int: return _cu_yi_目标,
+		 "需牌": 1, "牌规则": "magic",
+		 "预览基准": CU_YI_HARM_POINT, "预览类型": GConst.HarmType.Magic,
+		 "预览目标": func(_答案: Array) -> Array: return [_cu_yi_目标],
+		 "询问文案": func(_答案: Array) -> String: return _cu_yi_弃牌文案(_cu_yi_目标),
+		 "取消": _醋意不弃惩罚,
+		 "跳过": func(_答案: Array) -> bool: return _cu_yi_目标 < 0},
+	], _醋意结算)
+
+
+## 第一段答完：记下目标（非法 / 超时没选到就按兜底随机一名）；发动通知也跟着发
+func _醋意选目标答完(回: Dictionary, _答案: Array) -> int:
+	var 目标表: Array = 回.get("dsts", [])
+	var 目标号: int = int(目标表[0]) if 目标表.size() == 1 else -1
+	if 目标号 < 0 or engine.p(目标号) == null:
+		目标号 = _cu_yi_兜底目标()
+	if 目标号 < 0:
+		return SUCCESS
+	_cu_yi_目标 = 目标号
+	notice_skill(CU_YI_XIU_XIN, [目标号])
+	return SUCCESS
+
+
+## 第二段的「取消」＝目标不弃法术牌：直接走惩罚（2 点法术伤害 + 我方水晶）
+func _醋意不弃惩罚() -> int:
+	if _cu_yi_目标 < 0:
+		return SUCCESS
+	return _cu_yi_惩罚(_cu_yi_目标)
+
+
+## 第二段答完：真弃了法术牌就结算弃牌；没弃 / 硬提交非法牌都按惩罚结算
+func _醋意结算(答案: Array) -> int:
 	_cu_yi_step = STEP_DONE
 	var dst: BattlePlayer = engine.p(_cu_yi_目标)
 	if dst == null:
 		return SUCCESS
-	var r: Dictionary = take_skill_reply_full()
-	if _target_discard_magic(dst, r):
+	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
+	if _target_discard_magic(dst, {"args": 回.get("args", []), "card_ids": 回.get("cards", [])}):
 		return SUCCESS
 	return _cu_yi_惩罚(dst.id)
 
