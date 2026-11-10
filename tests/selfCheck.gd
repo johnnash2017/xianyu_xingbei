@@ -5,8 +5,25 @@ extends Node
 
 const 用例目录: String = "res://tests/cases/"
 
+## 关键脚本：先确认它们能加载。改坏语法时这些脚本 load() 返回 null，
+## 界面用例会因为「窗口没有脚本、get/call 全是 null」而**假通过**（踩过一次）。
+const 关键脚本: Array[String] = [
+	"res://scripts/battle/battle_engine.gd",
+	"res://scripts/battle/battle_role.gd",
+	"res://scripts/battle/battle_player.gd",
+	"res://scripts/ui/battle_mobile.gd",
+	"res://scripts/ui/tip_box.gd",
+]
+
 
 func _ready() -> void:
+	# 可选：只跑名字里含某个子串的用例（排查不稳定用例时用，整包跑太慢）
+	#   godot --headless --path <工程> res://tests/selfCheck.tscn -- --case=战斗法师
+	var 筛选: String = ""
+	for 参数: String in OS.get_cmdline_user_args():
+		if 参数.begins_with("--case="):
+			筛选 = 参数.trim_prefix("--case=")
+
 	# 等一帧：启动时 root 正忙于挂主场景，这时 add_child 会失败
 	await get_tree().process_frame
 	# 主场景照真实启动走一遍（登录界面由它自动挂到界面层），用例都在它之上跑
@@ -21,12 +38,32 @@ func _ready() -> void:
 			路径列表.append(用例目录 + 文件)
 	路径列表.sort()
 
+	# 关键脚本先验一遍：坏了就别跑用例（否则界面用例会全员假通过）
+	var 坏: Array[String] = []
+	for p: String in 关键脚本:
+		if load(p) == null:
+			坏.append(p)
+	if not 坏.is_empty():
+		print("[自检] 关键脚本加载失败（语法错？）：%s" % str(坏))
+		get_tree().quit(2)
+		return
+	if not 筛选.is_empty():
+		var 保留: Array[String] = []
+		for 路径: String in 路径列表:
+			if 路径.contains(筛选):
+				保留.append(路径)
+		路径列表 = 保留
+
 	var 通过数: int = 0
 	var 失败数: int = 0
 	for 路径: String in 路径列表:
 		var 脚本: GDScript = load(路径)
 		var 用例: 自检用例 = 脚本.new()
 		add_child(用例)
+		# 名称筛选（名称在 _init 里就定好了）：--case=战斗法师 只跑名字含「战斗法师」的用例
+		if not 筛选.is_empty() and not 用例.名称.contains(筛选) and not 路径.contains(筛选):
+			用例.queue_free()
+			continue
 		await 用例.跑()
 		if 用例.失败.is_empty():
 			通过数 += 1

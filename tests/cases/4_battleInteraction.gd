@@ -15,6 +15,14 @@ func 等帧(_数: int = 2) -> void:
 		await get_tree().process_frame
 
 
+## 收集节点树下所有 RichTextLabel 的文本：角色说明的「整段富文本」和「分块」两种呈现都能取到
+func _收集富文本(节点: Node, 收集: Array[String]) -> void:
+	for 子: Node in 节点.get_children():
+		if 子 is RichTextLabel:
+			收集.append((子 as RichTextLabel).text)
+		_收集富文本(子, 收集)
+
+
 func 跑() -> void:
 	await 等帧(2)
 	# 先切回大厅：免得前面用例留下的「房间等待」旧战斗界面也在监听 Logic 的信号
@@ -280,8 +288,17 @@ func 跑() -> void:
 	# 说明框的宽度是一级一级量出来的（每帧一档），多等几帧等它定好
 	await 等帧(8)
 	检(说明.可见(), "鼠标指向头像后没有弹出角色说明")
-	检(说明.文本.text.length() > 10 and 说明.文本.text.find("[color=") >= 0,
-		"角色说明没有内容或没上色（BBCode）")
+	# 角色说明有两种呈现：没配专属卡牌时走一大段富文本（文本），配了专属卡牌时走「分块」（块容器里一行行 RichTextLabel）。
+	# 两种都要有内容且带颜色，不能是空框。
+	var 说明字串: Array[String] = []
+	_收集富文本(说明, 说明字串)
+	var 说明总长: int = 0
+	var 有颜色: bool = false
+	for s: String in 说明字串:
+		说明总长 += s.length()
+		if s.contains("[color=") or s.contains("[color=#"):
+			有颜色 = true
+	检(说明总长 > 10 and 有颜色, "角色说明没有内容或没上色（BBCode）：长度 %d 段数 %d" % [说明总长, 说明字串.size()])
 	头像面板.mouse_exited.emit()
 	await 等帧(2)
 	检(not 说明.可见(), "鼠标离开头像后角色说明没有收掉")

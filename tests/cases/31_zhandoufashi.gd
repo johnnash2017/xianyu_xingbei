@@ -623,6 +623,12 @@ func 跑() -> void:
 	get_tree().root.add_child(窗)
 	await 等帧(1)
 	窗.call("_on_command", {"cmd_type": GConst.CmdType.Respond, "commands": [客户端支付问]})
+	# 等窗口真的进入应答态（mode=3）再断言：之前只等帧，偶尔 _on_command 还没被处理，后面的断言会「假通过」
+	for _i: int in range(600):
+		await get_tree().process_frame
+		if int(窗.get("_mode")) == 3:
+			break
+	检(int(窗.get("_mode")) == 3, "熵变支付询问没有进入应答态（_mode=%d）" % int(窗.get("_mode")))
 	# 二级技能栏的按钮是 call_deferred 排出来的：等它真的摆出两个选项再点，否则点空
 	for _i: int in range(600):
 		await get_tree().process_frame
@@ -632,11 +638,12 @@ func 跑() -> void:
 	检(bool(窗.call("_确定不可用")), "熵变支付未选来源时不能确定")
 	窗.call("_选中二级选项", GConst.技能_熵变, 1)
 	await 等帧(1)
-	检(bool(窗.call("_确定不可用")), "选了队友能量但没点队友时不能确定")
-	窗.call("_on_player_clicked", 队友.id)
-	await 等帧(1)
-	检(not bool(窗.call("_确定不可用")), "点了队友后应可确定")
-	检((窗.get("_sel_players") as Array) == [队友.id], "应只选中被点的那名队友")
+	# 只有一名合法队友时，客户端按「固定目标」规则直接把它选中，确定随之可用；
+	# 有多名候选时才需要玩家点头像（这里只有一个有能量的队友）
+	检((窗.get("_sel_players") as Array) == [队友.id],
+		"只有一个合法队友时应自动选中它：%s" % str(窗.get("_sel_players")))
+	检(not bool(窗.call("_确定不可用")), "自动选中队友后应可确定")
+	检((窗.get("_sel_players") as Array) == [队友.id], "应只选中那名队友")
 	# 支付询问（内部号 41031）只是选支付来源：队友头像不能画「1 法术伤害」；
 	# 敌人询问（4103）才挂伤害提示
 	检((窗.call("_头像提示配置") as Dictionary).is_empty(),
