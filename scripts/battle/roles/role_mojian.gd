@@ -315,7 +315,6 @@ func p_additional_action(_ctx: Dictionary) -> int:
 # ============================================================
 ## 暗影流星追加效果的推进标记（跨询问，不能停在引擎 step 上）：
 ## 0＝还没问 / 1＝在等「要不要移除」 / 2＝在等「移除哪两颗」
-var _liu_xing_step: int = 0
 
 
 func v_magic_skill(action: Dictionary) -> int:
@@ -338,37 +337,45 @@ func p_magic_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != AN_YING_LIU_XING:
 		return GConst.GE_INVALID_ACTION
 	# 可选追加：额外移除我方【战绩区】2 星石 → 脱离[暗影形态]并 +1【宝石】（跨两次询问）。
-	# 这两步都是「释放暗影流星」的一部分：任意一步取消（没回值）＝这次不发动暗影流星，
-	# 牌不弃、不造成伤害，直接退回行动阶段重新来（同【不谐和弦】，见 engine.取消技能行动）。
-	# 第一步只问「要不要移除」（第一项固定是「不移除」，选了才继续走原效果；
-	# 一颗可行组合都没有时干脆不问）；选定要移除后第二步再问「移除哪两颗」。
-	if _liu_xing_step == 0:
-		if _liu_xing_any_combo():
-			询问(player.id, AN_YING_LIU_XING, 0, 0, GConst.CardSource.Hand, [
-				{"value": 0, "label": GConst.按钮原文(AN_YING_LIU_XING, 0)},
-				{"value": 1, "label": GConst.按钮原文(AN_YING_LIU_XING, 1)},
-			], 0, "", [], true, 0)
-			_liu_xing_step = 1
-			return WAIT
-	elif _liu_xing_step == 1:
-		var r0: Dictionary = take_skill_reply_full()
-		var args0: Array = r0.get("args", [])
-		_liu_xing_step = 0
-		if args0.is_empty():
-			engine.取消技能行动()
-			return SUCCESS
-		if int(args0[0]) == 1:
-			询问(player.id, AN_YING_LIU_XING, 0, 0, GConst.CardSource.Hand, _liu_xing_组合选项(), 0, "", [], true, 1)
-			_liu_xing_step = 2
-			return WAIT
-	else:
-		var r1: Dictionary = take_skill_reply_full()
-		var args1: Array = r1.get("args", [])
-		_liu_xing_step = 0
-		if args1.is_empty():
-			engine.取消技能行动()
-			return SUCCESS
-		_应用暗影流星追加(int(args1[0]))
+	# 任意一步取消（没回值）＝这次不发动暗影流星：牌不弃、不造成伤害，直接退回行动阶段重来。
+	# 用多步询问：第 1 段问「要不要移除」（没有可行组合就跳过），第 2 段问「移除哪两颗」。
+	return 多步询问(AN_YING_LIU_XING, [
+		{"选项": _暗影流星追加选项(), "取消": _取消暗影流星,
+		 "跳过": func(_答案: Array) -> bool: return not _liu_xing_any_combo()},
+		{"选项": func(_答案: Array) -> Array: return _liu_xing_组合选项(),
+		 "取消": _取消暗影流星,
+		 "跳过": func(答案: Array) -> bool: return _暗影流星第一段值(答案) != 1},
+	], func(答案: Array) -> int: return _暗影流星结算(action, 答案))
+
+
+## 第 1 段的两个选项：不移除 / 移除 2 星石并脱离暗影形态
+func _暗影流星追加选项() -> Array:
+	return [
+		{"value": 0, "label": GConst.按钮原文(AN_YING_LIU_XING, 0)},
+		{"value": 1, "label": GConst.按钮原文(AN_YING_LIU_XING, 1)},
+	]
+
+
+## 第 1 段选了什么（没答过就是 0＝不移除）
+func _暗影流星第一段值(答案: Array) -> int:
+	if 答案.is_empty():
+		return 0
+	var args: Array = (答案[0] as Dictionary).get("args", [])
+	return int(args[0]) if not args.is_empty() else 0
+
+
+## 任意一步取消：这次不发动暗影流星，退回行动阶段重新来
+func _取消暗影流星() -> int:
+	engine.取消技能行动()
+	return SUCCESS
+
+
+## 两段都答完（或跳过）：先应用追加，再结算暗影流星本体
+func _暗影流星结算(action: Dictionary, 答案: Array) -> int:
+	if 答案.size() > 1:
+		var args1: Array = (答案[1] as Dictionary).get("args", [])
+		if not args1.is_empty():
+			_应用暗影流星追加(int(args1[0]))
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
 	var dst_id: int = int(dsts[0]) if not dsts.is_empty() else player.id

@@ -31,11 +31,9 @@ const KEY_AFTER_STEP: String = "_jiansheng_after_step"
 
 ## 【圣剑】追踪：
 ## _sheng_jian_active 记「本次【攻击行动】是否触发了圣剑强制命中」，供 p_after_attack 收尾时先摸 X 张、再弃 X 张；
-## _sheng_jian_step 是该收尾流程的推进阶段（0＝在问要摸几张（据此摸牌）/ 1＝已摸牌、待问第二次弃牌 /
-## 2＝在等第二次弃牌 / STEP_DONE＝已完成）；_sheng_jian_弃张数 记第一步选中的摸牌张数 X。
+## _sheng_jian_弃张数 记第一步选中的摸牌张数 X。
 ## 用自有变量而不是引擎的 step：这条收尾要跨两次询问，中途一旦被别的钩子轮次插进来，step 会被清零。
 var _sheng_jian_active: bool = false
-var _sheng_jian_step: int = 0
 var _sheng_jian_弃张数: int = 0
 
 
@@ -52,7 +50,6 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	attack_count = 0
 	_jian_ying_paid = false
 	_sheng_jian_active = false
-	_sheng_jian_step = 0
 	_sheng_jian_弃张数 = 0
 	return SUCCESS
 
@@ -223,41 +220,49 @@ func _选项里有(选项: Array, 技能号: int) -> bool:
 ## 以前直接 engine.draw 把牌塞进手里，紧接着就在同一个钩子里问「弃 X 张」，
 ## 中间没有状态边界，超限从来没被判定过。
 func _sheng_jian_cycle() -> int:
-	if _sheng_jian_step >= STEP_DONE:
-		return SUCCESS
-	# 第一步：选摸牌张数 X（1~3）
-	if _sheng_jian_step == 0:
-		if not engine.has_reply():
-			询问(player.id, SHENG_JIAN, 0, 0, GConst.CardSource.Hand, [
-				{"value": 1, "label": GConst.按钮原文(SHENG_JIAN, 0)},
-				{"value": 2, "label": GConst.按钮原文(SHENG_JIAN, 1)},
-				{"value": 3, "label": GConst.按钮原文(SHENG_JIAN, 2)},
-			], 0, "", [], true, 0)
-			return WAIT
-		var r0: Dictionary = take_skill_reply_full()
-		var args0: Array = r0.get("args", [])
-		if args0.is_empty() or int(args0[0]) <= 0:
-			_sheng_jian_active = false
-			_sheng_jian_step = STEP_DONE
-			return SUCCESS
-		_sheng_jian_弃张数 = int(args0[0])
-		_sheng_jian_step = 1
-		engine.push_draw(player.id, _sheng_jian_弃张数, SHENG_JIAN)
-		return URGENT
-	# 第二步：从手牌（含刚摸进来的）里弃 X 张
-	if _sheng_jian_step == 1 and not engine.has_reply():
-		询问(player.id, SHENG_JIAN, _sheng_jian_弃张数, 0, GConst.CardSource.Hand, [], _sheng_jian_弃张数, "",
-				[], false, 1, -1, [], _sheng_jian_弃张数)
-		_sheng_jian_step = 2
-		return WAIT
-	if _sheng_jian_step != 2:
-		return SUCCESS
-	var r1: Dictionary = take_skill_reply_full()
+	return 多步询问(SHENG_JIAN, [
+		# 第 1 段：选摸牌张数 X（1~3），答完立刻摸 X 张
+		{"选项": _圣剑摸牌选项(), "取消": _圣剑取消, "答完": _圣剑摸牌答完},
+		# 第 2 段：从手牌（含刚摸进来的）里弃 X 张（不能取消；超时也要补弃到 X 张）
+		{"需牌": func(_答案: Array) -> int: return _sheng_jian_弃张数,
+		 "牌上限": func(_答案: Array) -> int: return _sheng_jian_弃张数,
+		 "张数": func(_答案: Array) -> int: return _sheng_jian_弃张数,
+		 "可取消": false},
+	], _圣剑弃牌结算)
+
+
+## 第 1 段的三个选项：摸 1 / 2 / 3 张
+func _圣剑摸牌选项() -> Array:
+	return [
+		{"value": 1, "label": GConst.按钮原文(SHENG_JIAN, 0)},
+		{"value": 2, "label": GConst.按钮原文(SHENG_JIAN, 1)},
+		{"value": 3, "label": GConst.按钮原文(SHENG_JIAN, 2)},
+	]
+
+
+## 第 1 段取消＝这次圣剑不发动
+func _圣剑取消() -> int:
 	_sheng_jian_active = false
-	_sheng_jian_step = STEP_DONE
+	return SUCCESS
+
+
+## 第 1 段答完：记下 X，立刻摸 X 张（摸完回来问弃哪 X 张）
+func _圣剑摸牌答完(回: Dictionary, _答案: Array) -> int:
+	var args: Array = 回.get("args", [])
+	if args.is_empty() or int(args[0]) <= 0:
+		_sheng_jian_active = false
+		return SUCCESS
+	_sheng_jian_弃张数 = int(args[0])
+	engine.push_draw(player.id, _sheng_jian_弃张数, SHENG_JIAN)
+	return URGENT
+
+
+## 第 2 段答完：弃 X 张（只弃确实还在手牌的；超时没选够就自动补到 X 张）
+func _圣剑弃牌结算(答案: Array) -> int:
+	_sheng_jian_active = false
 	var 需要弃: int = _sheng_jian_弃张数
 	_sheng_jian_弃张数 = 0
-	var cards1: Array = r1.get("card_ids", [])
+	var cards1: Array = (答案[1] as Dictionary).get("cards", []) if 答案.size() > 1 else []
 	# 收尾弃牌：只弃「确实还在手牌」的牌（客户端可能回带已离手的旧牌 id）。
 	# take_from_hand 遇到任一张不在手牌就整体失败、一张不扣，若仍调 to_discard 会把牌塞进弃牌堆造成牌张重复。
 	# 故先过滤成合法牌再弃。超时/跳过时回复为空：既然已经自动抽了 X 张，
