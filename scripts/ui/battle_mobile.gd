@@ -2878,9 +2878,9 @@ func _技能询问_摆选项() -> void:
 					有怒火 = true
 					break
 			父技能号 = 0 if 有怒火 else _skill_ask_id
-		elif bool(_pending.get("allow_back", false)) or bool(指示配置.get("选项可返回", false)):
-			# 指示器标了「选项可返回」的分段询问（如咒符师【魑魅魍魉】第二段）：
-			# 服务端把空应答当作「退回上一段重问」（同【魔纹融合】第二段），这里摆「返回」。
+		elif bool(_pending.get("allow_back", false)):
+			# 多步询问：服务端在段规格里标了可返回（询问参数 可返回=true）就摆「返回」。
+			# 空应答＝退回上一段重问，由服务端（BattleRole.多步询问）处理。
 			返回 = _on_cancel
 		_进入二级技能栏(父技能号, null, 项们, 二级选项底色, 返回)
 		# 服务端标了默认选项（行动结束响应）：选项摆出来的同时先替玩家选中它，

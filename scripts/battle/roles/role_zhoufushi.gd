@@ -324,7 +324,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 				# 选哪一档都不会被火璃 / 冻天 / 咒力重塑的说明顶掉。
 				询问(player.id, _魑魅符, 1, 1, GConst.CardSource.Cover,
 					_魑魅目标选项(), 0, "", [], true, 0, -1, _全体角色(),
-					-1, {}, 0, 0, false, [], true, -1, 0, _魑魅提示())
+					-1, {}, 0, 0, false, [], true, -1, 0, _魑魅提示(),
+					-1, "", [], [], 0, -1, true)
 				return WAIT
 			match _解析魑魅目标():
 				解析_返回:
