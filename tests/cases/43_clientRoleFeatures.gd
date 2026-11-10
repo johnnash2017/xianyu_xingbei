@@ -8,6 +8,14 @@ extends 自检用例
 ##   6) 额外回合展示、角色卡替换展示。
 ## 不按单一角色写死：角色特性按 GConst.本批角色 / 系别遍历校验，白名单与临时掌控用多个角色交叉验证。
 
+## 客户端发完应答会「稍等一拍（0.15s）再清界面」避免闪屏；本用例断言「点了就应提交/回到等待态」，
+## 等待放宽到至少 220ms（按真实时间，headless 帧率不稳不能按帧算）。
+func 等帧(_数: int = 2) -> void:
+	var 截止: int = Time.get_ticks_msec() + 220
+	while Time.get_ticks_msec() < 截止:
+		await get_tree().process_frame
+
+
 func _init() -> void:
 	名称 = "客户端角色特性收口（13 角色）"
 

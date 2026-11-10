@@ -4,6 +4,14 @@ extends 自检用例
 ## 复现的缺陷：神官【神圣领域】先选「队友」用法并给队友分配 1 点治疗，再切到「敌人」用法时，
 ## 队友已不在新用法的目标白名单里，却仍留在分配记录里（头像指示器不消、且旧逻辑可被带去误伤队友）。
 
+## 客户端发完应答会「稍等一拍（0.15s）再清界面」避免闪屏；本用例断言「点了就应提交/回到等待态」，
+## 等待放宽到至少 220ms（按真实时间，headless 帧率不稳不能按帧算）。
+func 等帧(_数: int = 2) -> void:
+	var 截止: int = Time.get_ticks_msec() + 220
+	while Time.get_ticks_msec() < 截止:
+		await get_tree().process_frame
+
+
 func _init() -> void:
 	名称 = "指示器切用法复检"
 
@@ -148,6 +156,8 @@ func 跑() -> void:
 		"args": [0, 1, GConst.CardSource.Hand, 5, 1, 2, 3, 4, 5],
 		"notes": ["组合一", "组合二", "组合三", "组合四", "组合五"],
 		"can_cancel": true,
+		# 服务端在这一段下发「可返回」（客户端不再按技能号硬编码，只认这个字段）
+		"allow_back": true,
 	})
 	窗.call("_进入技能询问")
 	await 等帧(2)

@@ -37,6 +37,14 @@ var 非咏攻击牌: GCard = null
 var 圣盾牌: GCard = null
 
 
+## 客户端发完应答会「稍等一拍（0.15s）再清界面」避免闪屏；本用例断言「点了就应提交/回到等待态」，
+## 等待放宽到至少 220ms（按真实时间，headless 帧率不稳不能按帧算）。
+func 等帧(_数: int = 2) -> void:
+	var 截止: int = Time.get_ticks_msec() + 220
+	while Time.get_ticks_msec() < 截止:
+		await get_tree().process_frame
+
+
 func _init() -> void:
 	名称 = "战斗法师"
 
