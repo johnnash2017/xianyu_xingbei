@@ -477,6 +477,99 @@ func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, c
 		false, 默认选项, false, ask_prompt, 高亮目标, 超时目标, 盖牌最多, 手牌数, 可返回)
 
 
+# ============================================================
+# 多步询问（分段询问）框架
+#   设计/需求/迁移进度：项目文档/多步询问统一框架-设计与迁移.md
+#   一条链＝若干段，每段一次询问；段之间不落副作用，副作用统一放在结算回调里，
+#   所以「返回上一段」不需要撤账。
+# ============================================================
+## 正在进行的链：{链号: {"段": int, "答案": Array}}
+## 答案项：{"args": Array, "cards": Array, "dsts": Array}
+var _多步链: Dictionary = {}
+
+
+## 推进一条多步询问链（角色在自己的 p_* / p_*_skill 里调用）：
+##   链号   技能号（也用作询问里的 skill_id，决定提示 / 指示器 / 飘字）
+##   段表   每一项描述一段：
+##     "选项"       Array   选项列表（空＝这一段只选牌 / 选目标 / 只是确认）
+##     "需牌"       int     要选几张牌（0＝不选牌）
+##     "需目标"     int     要点几名角色
+##     "来源"       int     GConst.CardSource，默认手牌
+##     "牌白"/"目标白" Array 白名单
+##     "可返回"     bool    这一段空应答＝退回上一段重问（第一段无效）
+##     "可取消"     bool    这一段空应答＝整条链不发动（默认 true）
+##     "超时默认"   Variant 超时（空应答且 is_timeout）时当作这个答案，没有就按「取消/返回」处理
+##     "提示序号"/"张数"/"收牌人"/"额外"/"预览基准"/"预览类型"/"预览目标"/"预览伤害"
+##     "需盖牌"/"盖牌最多"/"手牌数"/"询问文案"/"默认选项"/"高亮"/"超时目标"/"可圣光"
+##   结算   Callable(答案: Array) -> int：所有段都答完后调用；返回值原样传给引擎
+## 返回：WAIT＝正在问；否则是结算回调的返回值（SUCCESS / URGENT）
+func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
+	if not _多步链.has(链号):
+		_多步链[链号] = {"段": 0, "答案": []}
+	var 链: Dictionary = _多步链[链号]
+	while true:
+		var 段号: int = int(链.get("段", 0))
+		var 答案: Array = 链.get("答案", [])
+		if 段号 >= 段表.size():
+			_多步链.erase(链号)
+			return 结算.call(答案)
+		var 段: Dictionary = 段表[段号]
+		if not engine.has_reply():
+			_多步问一段(链号, 段号, 段)
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		var 回: Dictionary = {
+			"args": r.get("args", []), "cards": r.get("card_ids", []), "dsts": r.get("dst_ids", []),
+		}
+		var 空: bool = (回["args"] as Array).is_empty() and (回["cards"] as Array).is_empty() \
+			and (回["dsts"] as Array).is_empty()
+		if 空:
+			# 超时：这一段给了默认答案就当作选中了它，否则整条链按「不发动」收尾
+			# （不能让掉线 / 不操作的玩家把整局卡在一条强制询问上）
+			if bool(r.get("is_timeout", false)):
+				if 段.has("超时默认"):
+					var 默认: Variant = 段["超时默认"]
+					答案.append({"args": 默认 if 默认 is Array else [默认], "cards": [], "dsts": []})
+					链["段"] = 段号 + 1
+					continue
+				_多步链.erase(链号)
+				return SUCCESS
+			# 返回上一段：这一段允许返回且不是第一段
+			if bool(段.get("可返回", false)) and 段号 > 0:
+				答案.resize(段号 - 1)
+				链["段"] = 段号 - 1
+				continue
+			# 其余空应答＝整条链不发动（可取消时）；不能取消（异常空应答）就重问这一段
+			if bool(段.get("可取消", true)):
+				_多步链.erase(链号)
+				return SUCCESS
+			_多步问一段(链号, 段号, 段)
+			return WAIT
+		答案.append(回)
+		链["段"] = 段号 + 1
+	return SUCCESS
+
+
+## 问链里的某一段（内部用；询问参数照段规格逐项传，第二段起沿用同一次等待的倒计时）
+func _多步问一段(链号: int, 段号: int, 段: Dictionary) -> void:
+	询问(player.id, 链号,
+		int(段.get("需牌", 0)), int(段.get("需目标", 0)),
+		int(段.get("来源", GConst.CardSource.Hand)), 段.get("选项", []),
+		int(段.get("牌上限", 0)), str(段.get("牌规则", "")), 段.get("牌白", []),
+		bool(段.get("可取消", true)), int(段.get("提示序号", 0)), int(段.get("收牌人", -1)),
+		段.get("目标白", []), int(段.get("张数", -1)), 段.get("额外", {}),
+		int(段.get("预览基准", 0)), int(段.get("预览类型", 0)), 段号 > 0,
+		段.get("预览目标", []), bool(段.get("可圣光", true)), int(段.get("预览伤害", -1)),
+		int(段.get("需盖牌", 0)), str(段.get("询问文案", "")), int(段.get("默认选项", -1)),
+		"", 段.get("高亮", []), 段.get("超时目标", []),
+		int(段.get("盖牌最多", 0)), int(段.get("手牌数", -1)), bool(段.get("可返回", false)))
+
+
+## 放弃一条还没走完的链（技能被别的原因中断 / 新一轮发动前清干净）
+func 多步询问重置(链号: int) -> void:
+	_多步链.erase(链号)
+
+
 ## 技能行动提交的牌本次「视为」哪个系别（如 3805 精灵的剑舞 = 风系）。
 ## 0＝按牌面本身（默认）。额外行动的「该系攻击牌」白名单校验据此放行：
 ## 视为系别的技能不再按真实牌的系别驳回（牌本身是否合法由技能自己的 v_* 校验）。
