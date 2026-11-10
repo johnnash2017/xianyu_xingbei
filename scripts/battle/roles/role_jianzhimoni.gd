@@ -28,15 +28,15 @@ const KEY_AFTER_CARDS: String = "_jianzhimoni_after_cards"
 const KEY_4504_DONE: String = "_jianzhimoni_4504_done"
 ## 4502 的分步进度：0 未开始 / 1 已发动、等目标弃牌 / 2 已弃牌、等【展示】响应结算 /
 ##                 3 等是否获得攻击牌。
-const KEY_YI_XIANG_STEP: String = "_jianzhimoni_yixiang_step"
-const KEY_YI_XIANG_CARD: String = "_jianzhimoni_yixiang_card"
-const YI_XIANG_STEP_SHOWED: int = 2
-const YI_XIANG_STEP_ASK_OBTAIN: int = 3
 ## 4504 的分步进度：0 未开始 / 1 等选 2 张弃牌（还没付款）。
 const KEY_DUAN_NIAN_STEP: String = "_jianzhimoni_duannian_step"
 
 ## 回合限定：本回合是否已经发动过 4502 / 4504
 var used_yi_xiang_jian: bool = false
+## 异象剑：目标弃掉的那张牌 / 第 3 段是否已判定（0＝未判 / 1＝跳过询问 / 2＝要问获得）/ 本次攻击的 harm
+var _异象牌: int = -1
+var _异象判定: int = 0
+var _异象_harm: Dictionary = {}
 var used_jian_ying_duan_nian: bool = false
 
 ## 4503 梦想剑本回合已激活的档位（回合开始清零）
@@ -229,109 +229,116 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	var 阶段: int = int(ctx.get(KEY_YI_XIANG_STEP, 0))
-	if 阶段 >= STEP_DONE:
-		return SUCCESS
-	# 回合限定只挡「新的一次发动」；已经发动、正在走弃牌 / 获得流程时 used 已经是 true，必须继续
-	if 阶段 == 0 and used_yi_xiang_jian:
+	# 回合限定只挡「新的一次发动」；已经发动、正在走弃牌 / 获得流程的由链是否进行中区分
+	var 链中: bool = 多步询问进行中(YI_XIANG_JIAN)
+	if not 链中 and used_yi_xiang_jian:
 		return SUCCESS
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null:
 		return SUCCESS
 	# 目标没有手牌：弃不了牌，也就没有后续的获得 / 加伤
-	if 阶段 == 0 and dst.hand_cards.is_empty():
+	if not 链中 and dst.hand_cards.is_empty():
 		return SUCCESS
-	if 阶段 == 0:
-		if not engine.has_reply():
-			engine.ask_skill(player.id, YI_XIANG_JIAN)
-			return WAIT
-		if not take_skill_reply():
-			ctx[KEY_YI_XIANG_STEP] = STEP_DONE
-			return SUCCESS
-		used_yi_xiang_jian = true
-		notice_skill(YI_XIANG_JIAN, [dst.id])
-		ctx[KEY_YI_XIANG_STEP] = 1
-		阶段 = 1
-	if 阶段 == 1:
-		if dst.hand_cards.is_empty():
-			ctx[KEY_YI_XIANG_STEP] = STEP_DONE
-			return SUCCESS
-		if not engine.has_reply():
-			询问(dst.id, YI_XIANG_JIAN, 1, 0, GConst.CardSource.Hand, [], 0, "", [], false, 0)
-			return WAIT
-		var r: Dictionary = take_skill_reply_full()
-		var 弃牌: Array = _pick_hand_cards(dst, r.get("card_ids", []), 1)
-		_fill_from_hand(dst, 弃牌, 1)
-		if 弃牌.is_empty():
-			ctx[KEY_YI_XIANG_STEP] = STEP_DONE
-			return SUCCESS
-		var cid: int = int(弃牌[0])
-		# 【强制】【展示】：全场公开牌面，再离手进弃牌堆
-		engine.broadcast(GConst.Msg.Card, {
-			"type": GConst.CardMsgType.Show, "src_id": dst.id, "dst_id": dst.id,
-			"card_ids": [cid], "is_real": true,
-		})
-		engine.take_from_hand(dst.id, [cid], true)
-		engine.to_discard([cid], {"owner": dst.id, "source": "hand"})
-		engine._log_discard(dst.id, [cid], false)
-		ctx[KEY_YI_XIANG_CARD] = cid
-		# 弃牌带【展示】：take_from_hand(..., true) 已经压入了 p_show_hand 钩子。必须先让展示响应
-		# 结算完（可能是等待型响应，如圣女弃出水系牌触发【冰霜祷言】），再回重入里问「是否获得」——
-		# 否则询问会排在展示响应之前下发，玩家的第一次回答还会被后面的展示等待吞掉。
-		ctx[KEY_YI_XIANG_STEP] = YI_XIANG_STEP_SHOWED
-		engine._broadcast_game()
-		return URGENT
-	# 2：【展示】响应已经结算完。法术牌直接加伤；攻击牌进入「是否获得」询问。
-	if 阶段 == YI_XIANG_STEP_SHOWED:
-		var cid2: int = int(ctx.get(KEY_YI_XIANG_CARD, -1))
-		var card: GCard = Data.get_card(cid2) if cid2 >= 0 else null
-		if card != null and card.is_magic():
-			# 法术牌：本次攻击伤害 +2（本次攻击的 harm 与 ctx 是同一份字典）
-			var harm: Dictionary = ctx.get("harm", {})
-			harm["point"] = int(harm.get("point", 0)) + 2
-			ctx[KEY_YI_XIANG_STEP] = STEP_DONE
-			return SUCCESS
-		if card == null or not card.is_attack() or not engine.deck.discard.has(cid2):
-			ctx[KEY_YI_XIANG_STEP] = STEP_DONE
-			return SUCCESS
-		# 攻击牌：额外 +1【攻击行动】**与是否获得无关**（"获得该牌"只是可选的那一半效果），
-		# 所以在这里就先挂上，再去问要不要把牌拿走。
-		player.add_action(GConst.ActionType.Attack, YI_XIANG_JIAN, true, true)
-		engine._broadcast_game()
-		ctx[KEY_YI_XIANG_STEP] = YI_XIANG_STEP_ASK_OBTAIN
-		阶段 = YI_XIANG_STEP_ASK_OBTAIN
-	if 阶段 == YI_XIANG_STEP_ASK_OBTAIN:
-		var cid3: int = int(ctx.get(KEY_YI_XIANG_CARD, -1))
-		if not engine.has_reply():
-			# 两个选项：获得这张攻击牌 / 不获得。额外 +1【攻击行动】在上一步已经给过，与这里的选择无关。
-			# card_id 只用于客户端悬停选项时摊出牌面（同剑之子【剑守誓言】），服务端按选项值结算。
-			# 取消或超时都按「不获得」：空 args 时 take_skill_reply() 返回 false。
-			var 弃牌: GCard = Data.get_card(cid3) if cid3 >= 0 else null
-			if 弃牌 == null:
-				push_error(GConst.文本("报错_异象剑牌不存在"))
-				return SUCCESS
-			var 牌名: String = 弃牌.card_name
-			询问(player.id, YI_XIANG_JIAN, 0, 0, GConst.CardSource.Hand, [
-				{"value": 1, "label": GConst.按钮原文(YI_XIANG_JIAN, 0) % 牌名, "card_id": cid3},
-				{"value": 2, "label": GConst.按钮原文(YI_XIANG_JIAN, 1)},
-			], 0, "", [], true, 1)
-			return WAIT
-		ctx[KEY_YI_XIANG_STEP] = STEP_DONE
-		# 只有选项 1（获得）才算拿到牌；选项 2、取消、超时都不获得（额外行动不受影响）
-		if not take_skill_reply():
-			return SUCCESS
-		# 弃牌堆按实例号取出（同牌面可能有副本）：拿到实际那一份再入手，不能删完再拿牌号补一张
-		var 实例: int = engine.deck.取出实例(cid3)
-		if 实例 < 0:
-			return SUCCESS
-		player.add_hand_cards([实例])
-		engine._broadcast_game()
+	if not 链中:
+		_异象牌 = -1
+		_异象判定 = 0
+		_异象_harm = ctx.get("harm", {})
+	# 异象剑：发动 → 目标弃 1 张牌【展示】→（法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要把牌拿走）
+	return 多步询问(YI_XIANG_JIAN, [
+		{"取消": _异象不发动,
+		 "答完": func(_回: Dictionary, _答案: Array) -> int: return _异象发动答完(dst.id)},
+		{"问谁": dst.id, "需牌": 1, "可取消": false, "超时默认": [],
+		 "跳过": func(_答案: Array) -> bool: return dst.hand_cards.is_empty(),
+		 "答完": func(回: Dictionary, _答案: Array) -> int: return _异象弃牌答完(dst, 回)},
+		{"选项": func(_答案: Array) -> Array: return _异象获得选项(),
+		 "跳过": func(_答案: Array) -> bool: return _异象准备询问()},
+	], _异象结算)
+
+
+## 第 1 段取消 / 超时：不发动
+func _异象不发动() -> int:
+	used_yi_xiang_jian = false
 	return SUCCESS
 
 
-# ============================================================
-# 攻击行动结束后的通用钩子：梦想剑档位推进（4503）
-# ============================================================
+## 第 1 段答完：发动，记回合限定
+func _异象发动答完(dst_id: int) -> int:
+	used_yi_xiang_jian = true
+	notice_skill(YI_XIANG_JIAN, [dst_id])
+	return SUCCESS
+
+
+## 第 2 段答完：目标弃 1 张牌【强制】【展示】，然后等展示响应结算完再判断牌的种类
+func _异象弃牌答完(dst: BattlePlayer, 回: Dictionary) -> int:
+	var 弃牌: Array = _pick_hand_cards(dst, 回.get("cards", []), 1)
+	_fill_from_hand(dst, 弃牌, 1)
+	if 弃牌.is_empty():
+		return SUCCESS
+	var cid: int = int(弃牌[0])
+	engine.broadcast(GConst.Msg.Card, {
+		"type": GConst.CardMsgType.Show, "src_id": dst.id, "dst_id": dst.id,
+		"card_ids": [cid], "is_real": true,
+	})
+	engine.take_from_hand(dst.id, [cid], true)
+	engine.to_discard([cid], {"owner": dst.id, "source": "hand"})
+	engine._log_discard(dst.id, [cid], false)
+	_异象牌 = cid
+	# 弃牌带【展示】：take_from_hand(..., true) 已经压入了 p_show_hand 钩子。必须先让展示响应
+	# 结算完（可能是等待型响应，如圣女弃出水系牌触发【冰霜祷言】），再判断这张牌的种类。
+	engine._broadcast_game()
+	return URGENT
+
+
+## 第 3 段：展示响应结算完之后才能判断 —— 法术牌 +2 伤害（跳过询问）；攻击牌 +1 攻击行动并问要不要拿走
+func _异象准备询问() -> bool:
+	if _异象判定 != 0:
+		return _异象判定 != 2
+	var card: GCard = Data.get_card(_异象牌) if _异象牌 >= 0 else null
+	if card != null and card.is_magic():
+		# 法术牌：本次攻击伤害 +2（ctx.harm 与这里存的是同一份字典）
+		_异象_harm["point"] = int(_异象_harm.get("point", 0)) + 2
+		_异象判定 = 1
+		return true
+	if card == null or not card.is_attack() or not engine.deck.discard.has(_异象牌):
+		_异象判定 = 1
+		return true
+	# 攻击牌：额外 +1【攻击行动】**与是否获得无关**，先挂上；再去问要不要把牌拿走
+	player.add_action(GConst.ActionType.Attack, YI_XIANG_JIAN, true, true)
+	engine._broadcast_game()
+	_异象判定 = 2
+	return false
+
+
+## 第 3 段的两个选项：获得这张攻击牌 / 不获得（card_id 只用于客户端悬停摊牌）
+func _异象获得选项() -> Array:
+	var 牌: GCard = Data.get_card(_异象牌) if _异象牌 >= 0 else null
+	var 牌名: String = 牌.card_name if 牌 != null else ""
+	return [
+		{"value": 1, "label": GConst.按钮原文(YI_XIANG_JIAN, 0) % 牌名, "card_id": _异象牌},
+		{"value": 2, "label": GConst.按钮原文(YI_XIANG_JIAN, 1)},
+	]
+
+
+## 第 3 段答完：选项 1＝把那张牌收进手里；选项 2 / 取消 / 超时都不获得
+func _异象结算(答案: Array) -> int:
+	var 获得: bool = false
+	if 答案.size() > 2:
+		var args: Array = (答案[2] as Dictionary).get("args", [])
+		获得 = not args.is_empty() and int(args[0]) == 1
+	var 牌: int = _异象牌
+	_异象牌 = -1
+	_异象判定 = 0
+	if not 获得 or 牌 < 0:
+		return SUCCESS
+	# 弃牌堆按实例号取出（同牌面可能有副本）：拿到实际那一份再入手，不能删完再拿牌号补一张
+	var 实例: int = engine.deck.取出实例(牌)
+	if 实例 < 0:
+		return SUCCESS
+	player.add_hand_cards([实例])
+	engine._broadcast_game()
+	return SUCCESS
+
+
 func p_action_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
