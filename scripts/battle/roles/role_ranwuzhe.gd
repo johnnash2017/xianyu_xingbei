@@ -169,12 +169,13 @@ func _扭曲形态选项() -> Array:
 
 
 ## 第二段：弃 2 张（当场选牌）/ 摸 2 张。
-## 手牌不足 2 张也能选「弃」：有多少弃多少（标题里写的就是实际要弃的张数，0 张＝空弃）。
+## 标题固定写 2 张，不随手牌数变化；手牌不足时照样能选 —— 实际是「有多少弃多少」（0 张＝空弃），
+## 所以 need_card 给的是这一问实际要选的张数（min(2, 手牌数)），0 张时不用选牌也能确定。
 func _扭曲弃摸选项() -> Array:
-	var 弃张数: int = mini(扭曲_弃张数, player.hand_cards.size())
+	var 需选: int = mini(扭曲_弃张数, player.hand_cards.size())
 	return [
-		{"value": 1, "label": GConst.按钮原文(NIU_QU_ZHI_AI, 2) % 弃张数,
-			"need_card": 弃张数},
+		{"value": 1, "label": GConst.按钮原文(NIU_QU_ZHI_AI, 2) % 扭曲_弃张数,
+			"need_card": 需选},
 		{"value": 2, "label": GConst.按钮原文(NIU_QU_ZHI_AI, 3) % 扭曲_摸张数},
 	]
 
