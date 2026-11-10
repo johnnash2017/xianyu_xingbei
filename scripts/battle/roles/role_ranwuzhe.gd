@@ -71,6 +71,11 @@ func v_special_skill(action: Dictionary) -> int:
 	# 【宝石】：只能用宝石付，不能拿水晶顶
 	if player.gem <= 0:
 		return GConst.GE_INVALID_ACTION
+	# 新的一次发动：把三段询问的进度清掉（同一条技能行动的重入不会走到这里）
+	_扭曲段 = 0
+	_扭曲链中 = false
+	_扭曲弃 = []
+	_扭曲弃牌 = true
 	return GConst.GE_SUCCESS
 
 
@@ -82,7 +87,8 @@ func v_special_skill(action: Dictionary) -> int:
 # ============================================================
 const 扭曲_弃张数: int = 2
 const 扭曲_摸张数: int = 2
-## 0＝未开始 / 1＝问形态 / 2＝问弃或摸 / 3＝问戾气
+## 0＝未开始 / 1＝问形态 / 2＝问弃或摸 / 3＝问戾气 / 4＝已结算（等压入的摸牌 / 弃牌跑完）
+const 扭曲_已完成: int = 4
 var _扭曲段: int = 0
 var _扭曲形态: int = 0
 var _扭曲弃牌: bool = true
@@ -93,6 +99,9 @@ var _扭曲链中: bool = false
 
 func p_special_skill(_action: Dictionary) -> int:
 	match _扭曲段:
+		扭曲_已完成:
+			# 结算完压了摸牌 / 弃牌状态，回来时不要再把第一段问一遍
+			return SUCCESS
 		1:
 			return _扭曲问形态()
 		2:
@@ -169,7 +178,7 @@ func _扭曲问戾气() -> int:
 		_扭曲段 = 2
 		return _扭曲问弃摸()
 	var 值: int = clampi(int(a[0]), 0, player.token_max(戾气槽))
-	_扭曲段 = 0
+	_扭曲段 = 扭曲_已完成
 	_扭曲链中 = false
 	return _扭曲结算(值)
 
