@@ -2,6 +2,15 @@ extends 自检用例
 ## 用例 9c：式神咒束（3301）与阴阳转换（3306）共用同一套「攒应战」界面流程。
 ## 这里单独验证 3301 这条的差异：选项由服务端下发、仅应战不允许【圣光】。
 
+## 客户端发完应答要「稍等一拍（0.15s）再清界面」避免闪屏，断言得等它跑完。
+## 按帧轮询（不用计时器：headless 下计时器不推进会把用例挂住）。
+func _等提交(p窗: Control) -> void:
+	for _i: int in range(600):
+		await get_tree().process_frame
+		if int(p窗.get("_mode")) == 0:
+			return
+
+
 func _init() -> void:
 	名称 = "式神咒束单步应战"
 
@@ -123,7 +132,7 @@ func 跑() -> void:
 	检(not (窗.get("BtnOK") as Button).disabled, "3301 切换效果后「确定」不可用")
 
 	窗.call("_on_ok")
-	await 等帧(2)
+	await _等提交(窗)
 	检(int(窗.get("_mode")) == 0, "3301 点确定后没有一次性提交（_mode=%s）" % str(窗.get("_mode")))
 	检(int(窗.get("_攒应战应答号")) == 0, "3301 提交后仍停在攒应战状态")
 

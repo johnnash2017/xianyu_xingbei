@@ -2,6 +2,15 @@ extends 自检用例
 ## 用例 9：阴阳师【阴阳转换】（3306）直接询问（没有先走式神咒束）时，
 ## 选效果后同一步选应战牌 + 反击目标，确定一次性提交（不再被第二次应战询问打断）。
 
+## 客户端发完应答要「稍等一拍（0.15s）再清界面」避免闪屏，断言得等它跑完。
+## 按帧轮询（不用计时器：headless 下计时器不推进会把用例挂住）。
+func _等提交(p窗: Control) -> void:
+	for _i: int in range(600):
+		await get_tree().process_frame
+		if int(p窗.get("_mode")) == 0:
+			return
+
+
 func _init() -> void:
 	名称 = "阴阳转换单步应战"
 
@@ -136,7 +145,7 @@ func 跑() -> void:
 
 	# 确定：一次性提交，界面回到等待态（不再弹第二次询问）
 	窗.call("_on_ok")
-	await 等帧(2)
+	await _等提交(窗)
 	检(int(窗.get("_mode")) == 0, "点确定后没有一次性提交（_mode=%s）" % str(窗.get("_mode")))
 	检(not bool(窗.get("_攒应战选应战")), "提交后仍停在阴阳转换选应战状态")
 	# 提交后「同命格」许可必须撤掉，否则下一次普通应战也会按同命格过滤（圣光 / 同系牌全点不动）
@@ -156,7 +165,7 @@ func 跑() -> void:
 	检(int(窗.get("_mode")) == 2, "回退的应战询问没有进入响应态（_mode=%s）" % str(窗.get("_mode")))
 	检(bool(窗.get("_应战同命格")), "回退的应战询问没有恢复同命格过滤")
 	(窗.get("BtnCancel") as Button).pressed.emit()
-	await 等帧(2)
+	await _等提交(窗)
 	检(int(窗.get("_mode")) == 0, "回退的应战询问取消失败")
 	检(not bool(窗.get("_应战同命格")), "放弃应战后「同命格」许可没有清掉")
 
@@ -211,7 +220,7 @@ func 跑() -> void:
 		检((窗.get("_sel_cards") as Array) == [同系应战牌.id], "补选同系应战牌后没有选中")
 		检(not (窗.get("BtnOK") as Button).disabled, "补选合法应战牌后「确定」不可用")
 		窗.call("_on_ok")
-		await 等帧(2)
+		await _等提交(窗)
 		检(int(窗.get("_mode")) == 0, "仅应战没有一次性提交（_mode=%s）" % str(窗.get("_mode")))
 
 	# 仅应战 + 圣光：抵挡不需要反击目标
@@ -253,7 +262,7 @@ func 跑() -> void:
 		检((窗.get("_sel_players") as Array).is_empty(), "选【圣光】后反击目标没有清掉")
 		检(not (窗.get("BtnOK") as Button).disabled, "仅应战选【圣光】后「确定」不可用")
 		窗.call("_on_ok")
-		await 等帧(2)
+		await _等提交(窗)
 		检(int(窗.get("_mode")) == 0, "【圣光】抵挡没有一次性提交（_mode=%s）" % str(窗.get("_mode")))
 
 		# 服务端：把应战牌/目标预置给引擎紧接着的应战询问（不再弹第二次询问）
@@ -305,7 +314,7 @@ func 跑() -> void:
 	检(str(窗.get("_提示原文")).find("当前没有可用的应战方式") >= 0,
 		"三档全灰时提示条没有说明只能取消：%s" % str(窗.get("_提示原文")))
 	(窗.get("BtnCancel") as Button).pressed.emit()
-	await 等帧(2)
+	await _等提交(窗)
 	检(int(窗.get("_mode")) == 0, "三档全灰时点取消没有退出询问")
 
 	# 圣光被禁（can_light=false）：仅应战提示不写「或【圣光】抵挡」，改写「无法用【圣光】抵挡」
