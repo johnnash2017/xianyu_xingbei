@@ -131,7 +131,7 @@ func 跑() -> void:
 	角色.p_before_special({"player": 1})
 	引擎._reply = {"args": [2], "card_ids": [], "dst_ids": []}
 	引擎._has_reply = true
-	角色.p_after_special({"player": 1})
+	角色.p_after_special({"player": 1, "special_action": true})
 	检(int(弓.tokens[0]["num"]) == 1, "圣煌形态脱离时选信仰应 +1 信仰")
 	弓.tap = true
 	弓.cross_num = 0
@@ -139,7 +139,7 @@ func 跑() -> void:
 	角色.p_before_special({"player": 1})
 	引擎._reply = {"args": [1], "card_ids": [], "dst_ids": []}
 	引擎._has_reply = true
-	角色.p_after_special({"player": 1})
+	角色.p_after_special({"player": 1, "special_action": true})
 	检(弓.cross_num == 1, "圣煌形态脱离时选治疗应 +1 治疗")
 
 	# 客户端：37 的自动填充顺序、圣光爆裂辅助提示、没有攻击伤害/群体信仰
