@@ -514,6 +514,11 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 			_多步链.erase(链号)
 			return 结算.call(答案)
 		var 段: Dictionary = 段表[段号]
+		# 条件段：前面几段的答案决定这一段要不要问（如「怒火压制 / 魔纹融合」选了前者就不用问翻转档）
+		var 跳过: Variant = 段.get("跳过", null)
+		if 跳过 is Callable and bool((跳过 as Callable).call(答案)):
+			链["段"] = 段号 + 1
+			continue
 		if not engine.has_reply():
 			_多步问一段(链号, 段号, 段)
 			return WAIT
@@ -527,6 +532,10 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 			# 超时：这一段给了默认答案就当作选中了它，否则整条链按「不发动」收尾
 			# （不能让掉线 / 不操作的玩家把整局卡在一条强制询问上）
 			if bool(r.get("is_timeout", false)):
+				var 超时处理: Variant = 段.get("超时", null)
+				if 超时处理 is Callable:
+					_多步链.erase(链号)
+					return (超时处理 as Callable).call()
 				if 段.has("超时默认"):
 					var 默认: Variant = 段["超时默认"]
 					答案.append({"args": 默认 if 默认 is Array else [默认], "cards": [], "dsts": []})
@@ -543,6 +552,16 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 			if bool(段.get("可取消", true)):
 				_多步链.erase(链号)
 				return SUCCESS
+			_多步问一段(链号, 段号, 段)
+			return WAIT
+		# 段自带的合法性校验：不过关就报错并按「校验失败回退」决定重问本段还是退回上一段
+		var 校验: Variant = 段.get("校验", null)
+		if 校验 is Callable and not bool((校验 as Callable).call(回)):
+			engine.报错(str(段.get("校验失败文案", "操作无效，请重新选择")), player.id)
+			if bool(段.get("校验失败回退", false)) and 段号 > 0:
+				答案.resize(段号 - 1)
+				链["段"] = 段号 - 1
+				continue
 			_多步问一段(链号, 段号, 段)
 			return WAIT
 		答案.append(回)
