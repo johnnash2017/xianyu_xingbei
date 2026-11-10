@@ -11,6 +11,8 @@ var 引擎: BattleEngine = null
 var 记: Array[String] = []
 var 应答序: Array = []
 var 应答位: int = 0
+## 只记录「钩子驱动期间」的消息：开局被动的展示牌随洗牌变化，是噪声
+var 记录中: bool = false
 
 
 func _ready() -> void:
@@ -24,6 +26,7 @@ func _ready() -> void:
 	_场景法术剥离()
 	_场景魔纹融合()
 	_场景圣剑()
+	_扫全角色()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
 
@@ -33,6 +36,7 @@ func _ready() -> void:
 func _新引擎(映射: Dictionary) -> void:
 	引擎 = BattleEngine.new()
 	记.clear()
+	记录中 = false
 	应答位 = 0
 	引擎.send_cb = func(pid: int, msg: int, data: Dictionary) -> void:
 		_录消息(pid, msg, data)
@@ -93,6 +97,7 @@ func _调钩子(钩子: Callable) -> void:
 
 ## 按顺序把应答序里的答复喂给引擎；每次喂完都重入一次钩子（相当于引擎重入 SHook）
 func _跑(钩子: Callable) -> void:
+	记录中 = true
 	_调钩子(钩子)
 	var 上限: int = 0
 	while 引擎._await_id >= 0 and 上限 < 40:
@@ -146,6 +151,8 @@ func _记询问(pid: int, cmd_type: int, 命令表: Array) -> void:
 
 
 func _录消息(pid: int, msg: int, data: Dictionary) -> void:
+	if not 记录中:
+		return
 	if msg == GConst.Msg.CmdReq:
 		return
 	if msg == GConst.Msg.Skill:
@@ -164,7 +171,11 @@ func _录消息(pid: int, msg: int, data: Dictionary) -> void:
 			pid, int(data.get("point", -1)), int(data.get("type", -1)),
 			int(data.get("dst", -1)), int(data.get("src", -1)), str(键)])
 	elif msg == GConst.Msg.Gossip:
-		记.append("MSG Gossip pid=%d txt=%s" % [pid, str(data.get("txt", ""))])
+		var 文本: String = str(data.get("txt", ""))
+		# 「操作无效，请重新选择」是第三次审查补的校验日志（旧树静默重问），属登记差异
+		if 文本.contains("操作无效"):
+			return
+		记.append("MSG Gossip pid=%d txt=%s" % [pid, 文本])
 
 
 func _录状态() -> void:
@@ -262,6 +273,53 @@ func _场景圣剑() -> void:
 	_跑(func() -> int: return int(引擎.p(1).role.call("_sheng_jian_cycle")))
 	_录状态()
 	_输出("圣剑104")
+
+## 全角色 × 钩子序列扫描：按真实回合顺序串钩子（先 timeline_1 再 hit/miss、先 before_special 再 after_special），
+## 单钩子孤立调用会漏掉「上游先记状态」的响应技（试过：忌妒少女 107 / 英灵人形 27 会假阳）。
+## 两棵树用同一串钩子 + 同一串应答，diff 出「哪条序列的行为变了」。
+const 序列表: Array = [
+	# 真实攻击从「攻击牌宣告」开始：漏了 p_attack_card，靠它记状态的响应技会假阳（107 / 27 就是这么发现的）
+	["p_attack_card", "p_timeline_1", "p_timeline_2_hit", "p_timeline_3", "p_after_attack"],
+	["p_attack_card", "p_timeline_1", "p_timeline_2_miss", "p_after_attack"],
+	["p_before_special", "p_after_special"],
+	["p_before_turn_begin", "p_turn_begin", "p_before_draw", "p_before_discard", "p_heal_overflow", "p_turn_end"],
+]
+
+
+func _扫全角色() -> void:
+	for 角色号: int in Data.role_pool:
+		for 序号: int in range(序列表.size()):
+			_扫一序(角色号, 序号, 序列表[序号])
+
+
+func _扫一序(角色号: int, 序号: int, 钩子表: Array) -> void:
+	_新引擎({1: 角色号})
+	var p: BattlePlayer = 引擎.p(1)
+	p.hand_cards = [66, 87, 129, 22] as Array[int]
+	p.tap = true
+	引擎.current_id = 1
+	var ctx: Dictionary = {"src": 1, "dst": 2, "player": 1, "pid": 1, "is_active": true,
+		"card_id": 66, "card_id_instance": 66,
+		"harm": {"src": 1, "dst": 2, "point": 2, "cause": GConst.CAUSE_ATTACK,
+			"type": GConst.HarmType.Attack, "card_id": 66, "card_id_instance": 66}}
+	for 钩子: String in 钩子表:
+		记.append("---- %d seq%d %s" % [角色号, 序号, 钩子])
+		应答序 = [_答([1]), _答([0], [129]), _答([1], [], [3]), _答([1], [66], [2])]
+		_跑(func() -> int: return int(p.role.call(钩子, ctx)))
+		_录简况()
+	_输出("扫 %d seq%d" % [角色号, 序号])
+
+
+## 扫角色时用的一行状态，避免输出爆炸
+func _录简况() -> void:
+	var p: BattlePlayer = 引擎.p(1)
+	var 行: Array = p.hand_cards.duplicate()
+	行.sort()
+	记.append("STATE1 手数=%d 手=%s 盖=%d tap=%s 治疗=%d 水晶=%d 指示物=%s 额外=%d 牌库=%d" % [
+		p.hand_cards.size(), str(行), p.cover_cards.size(), str(p.tap), p.cross_num,
+		p.crystal, str(_指示物(p)), p.additional_actions.size(), 引擎.deck.pile.size()])
+
+
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
