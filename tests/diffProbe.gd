@@ -295,7 +295,10 @@ func _扫全角色() -> void:
 func _扫一序(角色号: int, 序号: int, 钩子表: Array) -> void:
 	_新引擎({1: 角色号})
 	var p: BattlePlayer = 引擎.p(1)
-	p.hand_cards = [66, 87, 129, 22] as Array[int]
+	# 手里放一对同系牌：【战纹碎击】这类「弃 2 张同系牌」的校验才过得去，
+	# 否则两棵树都判校验失败（旧静默 / 新重问），diff 出假差异
+	var 同系: Array[int] = _同系一对()
+	p.hand_cards = [同系[0], 同系[1], 87, 129] as Array[int]
 	p.tap = true
 	引擎.current_id = 1
 	var ctx: Dictionary = {"src": 1, "dst": 2, "player": 1, "pid": 1, "is_active": true,
@@ -304,10 +307,29 @@ func _扫一序(角色号: int, 序号: int, 钩子表: Array) -> void:
 			"type": GConst.HarmType.Attack, "card_id": 66, "card_id_instance": 66}}
 	for 钩子: String in 钩子表:
 		记.append("---- %d seq%d %s" % [角色号, 序号, 钩子])
-		应答序 = [_答([1]), _答([0], [129]), _答([1], [], [3]), _答([1], [66], [2])]
+		# 每条应答都带上牌和目标：只给 args 的畸形回复会走「校验失败重问」，两棵树处理不同（旧静默 / 新重问），属预期差异
+		应答序 = [_答([1], [同系[0], 同系[1]], [3]), _答([1], [同系[0], 同系[1]], [2]),
+			_答([1], [同系[0]], [3]), _答([1], [同系[1]], [2])]
 		_跑(func() -> int: return int(p.role.call(钩子, ctx)))
 		_录简况()
 	_输出("扫 %d seq%d" % [角色号, 序号])
+
+
+## 找两张同系牌（同一元素）
+func _同系一对() -> Array[int]:
+	var 按系: Dictionary = {}
+	for c: GCard in Data.card_db:
+		if c == null or c.is_virtual:
+			continue
+		var 系: int = c.element_enum()
+		if not 按系.has(系):
+			按系[系] = []
+		(按系[系] as Array).append(c.id)
+	for 系: Variant in 按系:
+		var 列: Array = 按系[系]
+		if 列.size() >= 2:
+			return [int(列[0]), int(列[1])]
+	return [66, 87]
 
 
 ## 扫角色时用的一行状态，避免输出爆炸
