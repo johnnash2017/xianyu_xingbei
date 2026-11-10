@@ -565,6 +565,8 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable
 		var r: Dictionary = take_skill_reply_full()
 		var 回: Dictionary = {
 			"args": r.get("args", []), "cards": r.get("card_ids", []), "dsts": r.get("dst_ids", []),
+			# 是不是超时兜底回复：答完里要按「伤害补敌人 / 治疗补友方」这类规则代打时会用到
+			"timeout": bool(r.get("is_timeout", false)),
 		}
 		var 空: bool = (回["args"] as Array).is_empty() and (回["cards"] as Array).is_empty() \
 			and (回["dsts"] as Array).is_empty()
