@@ -40,7 +40,9 @@ var _伏笔牌: Array = []
 var _惊爆阶段: int = 0
 var _惊爆牌: Array = []
 ## Trick or Treat：1＝等逐人弃牌 / 2＝等选结算分支
-var _糖果阶段: int = 0
+## 循环段当前问到的目标与他的同系手牌
+var _糖果当前目标: int = -1
+var _糖果当前同系: Array = []
 var _糖果已用: bool = false
 var _糖果对象: Array = []
 var _糖果下标: int = 0
@@ -470,7 +472,7 @@ func p_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	# Surprise! 的「本回合手牌上限 +5」只在本次回合内有效
 	player.清手牌上限修正(手牌上限来源)
-	if _糖果阶段 != 0:
+	if 多步询问进行中(TRICK_OR_TREAT):
 		return _糖果推进()
 	if _糖果已用 or _trickies.size() <= 4:
 		return SUCCESS
@@ -481,6 +483,8 @@ func p_turn_end(ctx: Dictionary) -> int:
 	_糖果我方 = 0
 	_糖果敌方 = 0
 	_糖果未做 = []
+	_糖果当前目标 = -1
+	_糖果当前同系 = []
 	var 已列: Array = []
 	for 项: Dictionary in _trickies:
 		var dst: int = int(项["dst"])
@@ -494,87 +498,99 @@ func p_turn_end(ctx: Dictionary) -> int:
 		_糖果对象.append({"pid": dst, "card": 真牌, "element": 牌.element_enum() if 牌 != null else 0})
 	# 【Tricky】是早已放在场上的暗牌（不是手牌），封印类「从手中展示出」不触发
 	engine._broadcast_game()
-	_糖果阶段 = 1
 	return _糖果推进()
 
 
-## 逐人问「弃 1 张与面前【Tricky】同系的牌」；没人有同系牌就算「不如此做」
+## Trick or Treat：逐人问「弃 1 张与面前【Tricky】同系的牌」（循环段），
+## 全部问完再清 Tricky / 压惩罚；我方弃得比敌方多时，最后再问一次「+水晶 / 弃 1 张牌换额外回合」。
 func _糖果推进() -> int:
-	if _糖果阶段 == 2:
-		return _糖果结算(take_skill_reply_full())
-	if _糖果阶段 == 1:
-		while _糖果下标 < _糖果对象.size():
-			var 项: Dictionary = _糖果对象[_糖果下标]
-			var dp: BattlePlayer = engine.p(int(项["pid"]))
-			if dp == null:
-				_糖果下标 += 1
-				continue
-			var 系: int = int(项["element"])
-			var 同系: Array = []
-			for cid: int in dp.hand_cards:
-				var c: GCard = Data.get_card(cid)
-				if c != null and c.element_enum() == 系:
-					同系.append(cid)
-			if 同系.is_empty():
-				_糖果未做.append(dp.id)
-				_糖果下标 += 1
-				continue
-			if not engine.has_reply():
-				询问(dp.id, TRICK_OR_TREAT, 1, 0, GConst.CardSource.Hand, [], 0, "", 同系, false,
-					0, -1, [], -1, {})
-				return WAIT
-			var r: Dictionary = take_skill_reply_full()
-			var 弃: int = -1
-			for c2: Variant in r.get("card_ids", []):
-				var 实例: int = dp.手牌实例(int(c2))
-				if 实例 >= 0 and 同系.has(实例):
-					弃 = 实例
+	return 多步询问(TRICK_OR_TREAT, [
+		{"问谁": func(_答案: Array) -> int: return _糖果当前目标,
+		 "需牌": 1, "牌白": func(_答案: Array) -> Array: return _糖果当前同系,
+		 "可取消": false, "超时默认": [],
+		 "跳过": func(_答案: Array) -> bool: return not _糖果准备目标(),
+		 "答完": _糖果弃牌答完,
+		 "重复": func(_回: Dictionary, _答案: Array) -> bool: return _糖果当前目标 >= 0},
+		{"选项": _糖果选项(),
+		 "跳过": func(_答案: Array) -> bool: return _糖果我方 <= _糖果敌方},
+	], _糖果结算)
+
+
+## 找下一个要问的目标（没有同系牌的记到「未做」，直接跳过）
+func _糖果准备目标() -> bool:
+	if _糖果当前目标 >= 0:
+		return true
+	while _糖果下标 < _糖果对象.size():
+		var 项: Dictionary = _糖果对象[_糖果下标]
+		_糖果下标 += 1
+		var dp: BattlePlayer = engine.p(int(项["pid"]))
+		if dp == null:
+			continue
+		var 系: int = int(项["element"])
+		var 同系: Array = []
+		for cid: int in dp.hand_cards:
+			var c: GCard = Data.get_card(cid)
+			if c != null and c.element_enum() == 系:
+				同系.append(cid)
+		if 同系.is_empty():
+			_糖果未做.append(dp.id)
+			continue
+		_糖果当前目标 = dp.id
+		_糖果当前同系 = 同系
+		return true
+	return false
+
+
+## 一个目标答完：弃 / 补齐一张同系牌并记比分；问完最后一个就清 Tricky、压惩罚伤害
+func _糖果弃牌答完(回: Dictionary, _答案: Array) -> int:
+	var dp: BattlePlayer = engine.p(_糖果当前目标)
+	var 同系: Array = _糖果当前同系
+	_糖果当前目标 = -1
+	_糖果当前同系 = []
+	if dp != null:
+		var 弃: int = -1
+		for c2: Variant in 回.get("cards", []):
+			var 实例: int = dp.手牌实例(int(c2))
+			if 实例 >= 0 and 同系.has(实例):
+				弃 = 实例
+				break
+		if 弃 < 0:
+			# 强制：超时 / 空回复按手牌顺序补一张同系牌
+			for c3: int in 同系:
+				if dp.has_discard_card(c3):
+					弃 = c3
 					break
-			if 弃 < 0:
-				# 强制：超时 / 空回复按手牌顺序补一张同系牌
-				for c3: int in 同系:
-					if dp.has_discard_card(c3):
-						弃 = c3
-						break
-			if 弃 < 0:
-				_糖果未做.append(dp.id)
+		if 弃 < 0:
+			_糖果未做.append(dp.id)
+		else:
+			engine.take_from_hand(dp.id, [弃])
+			engine.to_discard([弃], {"owner": dp.id, "source": "hand",
+				"cause": TRICK_OR_TREAT, "face_up": true})
+			engine._log_discard(dp.id, [弃], false)
+			if dp.color == player.color:
+				_糖果我方 += 1
 			else:
-				engine.take_from_hand(dp.id, [弃])
-				engine.to_discard([弃], {"owner": dp.id, "source": "hand",
-					"cause": TRICK_OR_TREAT, "face_up": true})
-				engine._log_discard(dp.id, [弃], false)
-				if dp.color == player.color:
-					_糖果我方 += 1
-				else:
-					_糖果敌方 += 1
-			_糖果下标 += 1
-		# 逐人问完：先移除所有【Tricky】，再对「不如此做」的人造成 2 点法术伤害③
-		_糖果阶段 = 3
-		for 项2: Dictionary in _trickies:
-			var dp2: BattlePlayer = engine.p(int(项2["dst"]))
-			if dp2 != null:
-				dp2.remove_basic_effect(Tricky占位牌)
-		_trickies.clear()
-		engine._broadcast_game()
-		var 有罚: bool = not _糖果未做.is_empty()
-		for dst2: Variant in _糖果未做:
-			engine.push_harm({"src": player.id, "dst": int(dst2), "point": 2,
-				"cause": TRICK_OR_TREAT, "type": GConst.HarmType.Magic})
-		_糖果未做 = []
-		if 有罚:
-			return URGENT
-	if _糖果阶段 != 3:
+				_糖果敌方 += 1
+	# 找下一个目标；没有就清 Tricky 并压惩罚（压了伤害要返回 URGENT，让伤害先结算）
+	if _糖果准备目标():
 		return SUCCESS
-	_糖果阶段 = 0
-	if _糖果我方 < _糖果敌方:
-		engine.set_team_gem(1 - player.color, engine.team_gem[1 - player.color] + 1)
-		return SUCCESS
-	if _糖果我方 == _糖果敌方:
-		return SUCCESS
-	_糖果阶段 = 2
-	询问(player.id, TRICK_OR_TREAT, 0, 0, GConst.CardSource.Hand, _糖果选项(), 0, "", [], true,
-		0, -1, [], -1, {})
-	return WAIT
+	return _糖果收尾清理()
+
+
+## 逐人问完：先移除所有【Tricky】，再对「不如此做」的人造成 2 点法术伤害③
+func _糖果收尾清理() -> int:
+	for 项2: Dictionary in _trickies:
+		var dp2: BattlePlayer = engine.p(int(项2["dst"]))
+		if dp2 != null:
+			dp2.remove_basic_effect(Tricky占位牌)
+	_trickies.clear()
+	engine._broadcast_game()
+	var 有罚: bool = not _糖果未做.is_empty()
+	for dst2: Variant in _糖果未做:
+		engine.push_harm({"src": player.id, "dst": int(dst2), "point": 2,
+			"cause": TRICK_OR_TREAT, "type": GConst.HarmType.Magic})
+	_糖果未做 = []
+	return URGENT if 有罚 else SUCCESS
 
 
 func _糖果选项() -> Array:
@@ -586,10 +602,12 @@ func _糖果选项() -> Array:
 	]
 
 
-func _糖果结算(r: Dictionary) -> int:
-	var args: Array = r.get("args", [])
-	var cards: Array = r.get("card_ids", [])
-	_糖果阶段 = 0
+func _糖果结算(答案: Array) -> int:
+	if _糖果我方 <= _糖果敌方:
+		return SUCCESS
+	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
+	var args: Array = 回.get("args", [])
+	var cards: Array = 回.get("cards", [])
 	if args.is_empty():
 		return SUCCESS
 	if int(args[0]) == 1:
@@ -613,14 +631,9 @@ func _糖果结算(r: Dictionary) -> int:
 		engine.take_from_hand(player.id, [弃])
 		engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": TRICK_OR_TREAT})
 		engine._log_discard(player.id, [弃])
-	安排额外回合(0, TRICK_OR_TREAT)
+		安排额外回合(0, TRICK_OR_TREAT)
 	engine._broadcast_game()
 	return SUCCESS
-
-
-# ============================================================
-# 回合开始：清零【回合限定】标记
-# ============================================================
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		_糖果已用 = false
