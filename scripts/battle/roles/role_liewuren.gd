@@ -261,8 +261,10 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if dst == null or dst.hand_cards.is_empty() or not _can_bottle():
 		_boshi_step = 0
 		return SUCCESS
-	_boshi_target = dst.id
-	_boshi_step = 1
+	# 同狩魔刺：链还在问（重入到下一段）时不能重置进度，否则第二段的「跳过」永远判成没发动
+	if not 多步询问进行中(FA_SHU_BO_LI):
+		_boshi_target = dst.id
+		_boshi_step = 1
 	# 法术剥离：先问发动者要不要发动 → 再问被点名的目标弃哪张牌（第二段问的是他）
 	return 多步询问(FA_SHU_BO_LI, [
 		{"取消": _法术剥离收尾,

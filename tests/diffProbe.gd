@@ -21,6 +21,7 @@ func _ready() -> void:
 	_场景军神威光_选一()
 	_场景军神威光_选二()
 	_场景收魔术()
+	_场景法术剥离()
 	print("[PROBE] DONE")
 	get_tree().quit(0)
 
@@ -212,6 +213,21 @@ func _场景收魔术() -> void:
 	_录状态()
 	_输出("收魔术4202")
 
+
+## 法术剥离 4203：攻击命中时问是否发动 → 目标弃 1 张牌收进【魔力瓶】
+func _场景法术剥离() -> void:
+	_新引擎({1: 42})
+	var 火攻: int = _找攻击牌(GConst.CardElement.Fire)
+	var 水攻: int = _找攻击牌(GConst.CardElement.Water)
+	引擎.p(2).hand_cards = [火攻, 水攻] as Array[int]
+	var ctx: Dictionary = {"src": 1, "dst": 2, "is_active": true,
+		"harm": {"src": 1, "dst": 2, "point": 2, "cause": GConst.CAUSE_ATTACK,
+			"type": GConst.HarmType.Attack, "card_id": 火攻, "card_id_instance": 火攻}}
+	引擎.p(1).role.p_timeline_2_hit(ctx)
+	应答序 = [_答([1]), _答([], [水攻])]
+	_跑(func() -> int: return int(引擎.p(1).role.p_timeline_2_hit(ctx)))
+	_录状态()
+	_输出("法术剥离4203")
 ## 异象剑 4502：发动 → 目标弃 1 张【展示】→ 法术牌 +2 伤害 / 攻击牌 +1 攻击行动并问要不要拿走
 func _场景异象剑() -> void:
 	_新引擎({1: 45})
