@@ -175,55 +175,69 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("src", -1)) != player.id:
 		return SUCCESS
-	if _英灵_阶段 >= 2:
+	var 链中: bool = 多步询问进行中(YING_LING_ZHAO_HUAN)
+	if _英灵_阶段 >= 2 and not 链中:
 		return SUCCESS
-	# 能量够不够只在「还没发动」这一步判：第二问是发动时已经付过 1 能量的后续步骤，
-	# 付完正好 0 能量很常见（第一次用就是这样）。这里再判一次会把第二问的回复整个挡在门外
-	# ——钩子直接 SUCCESS，`take_reply` 没被调用，弃牌与治疗都拿不到。
-	if _英灵_阶段 == 0 and player.get_energy() == 0:
+	# 能量够不够只在「还没发动」这一步判：第二段是发动时已经付过 1 能量的后续步骤
+	if _英灵_阶段 == 0 and not 链中 and player.get_energy() == 0:
 		return SUCCESS
-	if _英灵_阶段 == 0:
-		# 第 1 问只问「是否发动」；额外弃牌 + 治疗目标拆到第 2 问
-		if not engine.has_reply():
-			询问(player.id, YING_LING_ZHAO_HUAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-				0, -1, [], -1, {}, int(harm.get("point", 0)), int(harm.get("type", GConst.HarmType.Attack)),
-				false, [int(harm.get("dst", -1))], true, -1, 0,
-				GConst.skill_desc(YING_LING_ZHAO_HUAN))
-			return WAIT
-		var r0: Dictionary = take_skill_reply_full()
-		var args0: Array = r0.get("args", [])
-		if args0.is_empty() or int(args0[0]) != 1:
-			# 取消 / 超时：不发动；本次命中不再重问
-			_英灵_阶段 = 2
-			return SUCCESS
-		notice_skill(YING_LING_ZHAO_HUAN, [int(harm.get("dst", -1))])
-		if player.crystal > 0:
-			player.set_crystal(player.crystal - 1)
-		else:
-			player.set_gem(player.gem - 1)
-		# 和平行者：仅自身回合内发动【英灵召唤】才【横置】转入【英灵形态】。
-		# 这里只记下「要横置」，真正改形态留到第二问处理完（见下面 stage 1）：
-		# player.tap 的 setter 会压入一轮 p_tap 钩子，那一轮里别的角色可能开询问
-		# （如兽灵【兽魂警戒】），会把还没处理的第二问回复顶掉 —— 表现就是弃了法术牌也拿不到治疗。
-		_英灵_待横置 = engine.current_id == player.id
-		harm["point"] = int(harm.get("point", 0)) + 1
-		_英灵_阶段 = 1
-		# 第 2 问：额外弃 1 张法术牌【展示】→ 选 1 名角色 +1 治疗；可取消，超时自动取消
-		询问(player.id, GConst.技能_英灵召唤治疗, 1, 1, GConst.CardSource.Hand, [], 1, "magic", [], true,
-			0, -1, engine.order, -1, {}, 0, 0,
-			false, [], true, -1, 0,
-			GConst.提示原文(GConst.技能_英灵召唤, 1))
-		return WAIT
-	# _英灵_阶段 == 1：处理「额外弃牌 + 治疗」这一问
-	var r: Dictionary = take_skill_reply_full()
+	return 多步询问(YING_LING_ZHAO_HUAN, [
+		# 第 1 段：是否发动（付 1 能量、本次伤害 +1、记下「要不要横置」）
+		{"预览基准": int(harm.get("point", 0)),
+		 "预览类型": int(harm.get("type", GConst.HarmType.Attack)),
+		 "预览目标": [int(harm.get("dst", -1))],
+		 "询问文案": GConst.skill_desc(YING_LING_ZHAO_HUAN),
+		 "取消": _英灵不发动,
+		 "答完": func(回: Dictionary, _答案: Array) -> int: return _英灵发动答完(harm, 回)},
+		# 第 2 段：额外弃 1 张法术牌【展示】→ 选 1 名角色 +1 治疗（可取消，超时＝取消）
+		{"技能号": GConst.技能_英灵召唤治疗, "需牌": 1, "需目标": 1,
+		 "牌规则": "magic", "牌上限": 1, "目标白": engine.order,
+		 "询问文案": GConst.提示原文(GConst.技能_英灵召唤, 1),
+		 "取消": _英灵第二段取消},
+	], _英灵召唤结算)
+
+
+## 第 1 段取消 / 超时：本次不发动，同一处命中不再重问
+func _英灵不发动() -> int:
+	_英灵_阶段 = 2
+	return SUCCESS
+
+
+## 第 1 段答完：付 1 能量、本次伤害 +1、记下「要不要横置」；改形态留到第二段答完
+func _英灵发动答完(harm: Dictionary, 回: Dictionary) -> int:
+	var args: Array = 回.get("args", [])
+	if args.is_empty() or int(args[0]) != 1:
+		_英灵_阶段 = 2
+		return SUCCESS
+	notice_skill(YING_LING_ZHAO_HUAN, [int(harm.get("dst", -1))])
+	if player.crystal > 0:
+		player.set_crystal(player.crystal - 1)
+	else:
+		player.set_gem(player.gem - 1)
 	# 和平行者：仅自身回合内发动【英灵召唤】才【横置】转入【英灵形态】。
-	# 必须等这一问的回复取走之后再改形态：player.tap 的 setter 会压入一轮 p_tap 钩子，
-	# 那轮里别的角色可能开询问（兽灵【兽魂警戒】等），会把本问还没处理的回复顶掉。
+	# 真正改形态留到第二问处理完（见 _英灵召唤结算）：player.tap 的 setter 会压入一轮 p_tap 钩子，
+	# 那一轮里别的角色可能开询问（如兽灵【兽魂警戒】），会把还没处理的第二问回复顶掉。
+	_英灵_待横置 = engine.current_id == player.id
+	harm["point"] = int(harm.get("point", 0)) + 1
+	_英灵_阶段 = 1
+	return SUCCESS
+
+
+## 第 2 段取消 / 超时：什么都不弃、不加治疗，但「已经付过能量」的横置照旧要处理
+func _英灵第二段取消() -> int:
+	_英灵召唤结算([])
+	return SUCCESS
+
+
+## 第 2 段答完：改形态 → 弃法术牌【展示】→ 选到人就 +1 治疗
+func _英灵召唤结算(答案: Array) -> int:
+	# 和平行者：等第二问的回复取走之后再改形态，避免钩子轮顶掉回复
 	if _英灵_待横置:
 		_英灵_待横置 = false
 		player.tap = true
 		notice_skill(HE_PING_XING_ZHE, [player.id])
-	var cards: Array = r.get("card_ids", [])
+	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
+	var cards: Array = 回.get("cards", [])
 	var 弃了法术牌: bool = false
 	if not cards.is_empty():
 		var cid: int = int(cards[0])
@@ -237,7 +251,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			engine.to_discard([cid], {"owner": player.id, "source": "hand"})
 			弃了法术牌 = true
 	if 弃了法术牌:
-		var dsts: Array = r.get("dst_ids", [])
+		var dsts: Array = 回.get("dsts", [])
 		施加治疗(int(dsts[0]) if not dsts.is_empty() else player.id, 1)
 	_英灵_阶段 = 2
 	engine._broadcast_game()

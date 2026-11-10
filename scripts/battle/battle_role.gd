@@ -551,7 +551,13 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 					答案.append({"args": 默认 if 默认 is Array else [默认], "cards": [], "dsts": []})
 					链["段"] = 段号 + 1
 					continue
+				# 超时按「不发动」收尾时，和手动取消一样要调取消回调（清标记 / 该结算的照算）
 				_多步链.erase(链号)
+				var 超时取消: Variant = 段.get("取消", null)
+				if 超时取消 is Callable:
+					var 超时返回: int = int((超时取消 as Callable).call())
+					if 超时返回 != SUCCESS:
+						return 超时返回
 				return SUCCESS
 			# 返回上一段：这一段允许返回且不是第一段
 			if bool(段.get("可返回", false)) and 段号 > 0:
