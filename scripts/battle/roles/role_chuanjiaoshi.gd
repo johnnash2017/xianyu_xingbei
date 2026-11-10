@@ -220,7 +220,7 @@ func p_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	_告解已用 = false
-	if _弥撒阶段 != 0:
+	if 多步询问进行中(MI_SA):
 		return _弥撒()
 	if _路标阶段 != 0:
 		return _路标后续()
@@ -235,7 +235,7 @@ func p_turn_begin(ctx: Dictionary) -> int:
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if _弥撒阶段 != 0:
+	if 多步询问进行中(MI_SA):
 		return _弥撒()
 	if _路标阶段 != 0:
 		return _路标后续()
@@ -311,82 +311,90 @@ func _路标后续() -> int:
 # 弥撒 9608（响应·必杀【水晶】）：路标转移/放置后，+1 虔诚，二选一
 # ============================================================
 ## 0＝未问 / 1＝等选效果 / 2＝等选收入哪张基础效果
-var _弥撒阶段: int = 0
+## 弥撒：第一段选了什么（1＝弃牌挂基础效果 / 2＝收入基础效果）与持有者面前可收的基础效果表
+var _弥撒选择: int = 0
+var _弥撒可选: Array = []
 
 
 func _弥撒() -> int:
-	if _弥撒阶段 == 0:
-		_弥撒阶段 = 1
-		询问(player.id, MI_SA, 0, 0, GConst.CardSource.Hand, _弥撒选项(), 0, "", [], true,
-			0, -1, [], -1, {})
-		return WAIT
-	if _弥撒阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		var cards: Array = r.get("card_ids", [])
-		_弥撒阶段 = 0
-		if args.is_empty():
-			return SUCCESS
-		var 持有: int = 路标持有者()
-		var dp: BattlePlayer = engine.p(持有)
-		player.remove_energy(1)
-		player.add_token(虔诚槽, 1)
-		notice_skill(MI_SA, [持有])
-		engine._broadcast_game()
-		if int(args[0]) == 1:
-			# ·弃 1 张牌【展示】；（若为【虚弱】/【中毒】/【圣盾】）放到持有者面前作为基础效果
-			var 弃: int = -1
-			for c: Variant in cards:
-				var 实例: int = player.手牌实例(int(c))
-				if 实例 >= 0:
-					弃 = 实例
-					break
-			if 弃 < 0:
-				return SUCCESS
-			# 「弃 1 张牌【展示】」：统一入口（亮牌 + 触发封印 + 离手）；是基础效果牌就挂到持有者面前
-			engine.展示手牌(player.id, [弃])
-			engine.take_from_hand(player.id, [弃])
-			var 牌: GCard = Data.get_card(弃)
-			if dp != null and 牌 != null and _是基础效果牌(牌):
-				engine.add_basic_effect(持有, 弃, player.id, MI_SA)
-			else:
-				engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": MI_SA})
-				engine._log_discard(player.id, [弃], false)
-			engine._broadcast_game()
-			return SUCCESS
-		# ·把持有者面前 1 张基础效果收入手中，你 +1【虔诚】
-		if dp == null:
-			return SUCCESS
-		var 可选: Array = _基础效果列表(dp)
-		if 可选.is_empty():
-			return SUCCESS
-		player.add_token(虔诚槽, 1)
-		if 可选.size() == 1:
-			_收入基础效果(dp.id, int(可选[0]))
-			return SUCCESS
-		_弥撒阶段 = 2
-		询问(player.id, MI_SA, 0, 0, GConst.CardSource.Hand, _收入选项(可选), 0, "", [], false,
-			0, -1, [], -1, {})
-		return WAIT
-	# 阶段 2：从多张基础效果里选一张
-	var r2: Dictionary = take_skill_reply_full()
-	var args2: Array = r2.get("args", [])
-	_弥撒阶段 = 0
-	if args2.is_empty():
-		return SUCCESS
-	var 持有2: int = 路标持有者()
-	var dp2: BattlePlayer = engine.p(持有2)
-	if dp2 == null:
-		return SUCCESS
-	var 表: Array = _基础效果列表(dp2)
-	var 序: int = int(args2[0]) - 1
-	if 序 < 0 or 序 >= 表.size():
-		engine.报错("【弥撒】选项号越界", player.id)
-		return SUCCESS
-	_收入基础效果(持有2, int(表[序]))
+	_弥撒选择 = 0
+	_弥撒可选 = []
+	# 弥撒：【路标】转移/放置后 +1【虔诚】，二选一 ——
+	#   ① 弃 1 张牌【展示】（基础效果牌就挂到持有者面前）；② 把持有者面前 1 张基础效果收入手中 +1【虔诚】。
+	# ② 只有在持有者面前有 ≥2 张时才多问一段「收哪一张」。
+	return 多步询问(MI_SA, [
+		{"选项": _弥撒选项(), "答完": _弥撒记录选择},
+		{"选项": func(_答案: Array) -> Array: return _收入选项(_弥撒可选),
+		 "可取消": false,
+		 "跳过": func(_答案: Array) -> bool: return not _弥撒需要二段()},
+	], _弥撒结算)
+
+
+## 第 1 段答完：只记下选择；选②时顺便把持有者面前的基础效果表抄下来给第二段用
+func _弥撒记录选择(回: Dictionary, _答案: Array) -> int:
+	var args: Array = 回.get("args", [])
+	_弥撒选择 = int(args[0]) if not args.is_empty() else 0
+	if _弥撒选择 == 2:
+		var dp: BattlePlayer = engine.p(路标持有者())
+		_弥撒可选 = _基础效果列表(dp) if dp != null else []
 	return SUCCESS
 
 
+## 选②且持有者面前有 ≥2 张基础效果时才问第二段
+func _弥撒需要二段() -> bool:
+	return _弥撒选择 == 2 and _弥撒可选.size() > 1
+
+
+## 整条链走完：先扣能量 / +1 虔诚 / 播报，再按①或②结算
+func _弥撒结算(答案: Array) -> int:
+	if _弥撒选择 <= 0 or _弥撒选择 > 2:
+		return SUCCESS
+	var 持有: int = 路标持有者()
+	var dp: BattlePlayer = engine.p(持有)
+	player.remove_energy(1)
+	player.add_token(虔诚槽, 1)
+	notice_skill(MI_SA, [持有])
+	engine._broadcast_game()
+	if _弥撒选择 == 1:
+		# ① 弃 1 张牌【展示】；是基础效果牌就挂到持有者面前，否则进弃牌堆
+		var cards: Array = (答案[0] as Dictionary).get("cards", []) if 答案.size() > 0 else []
+		var 弃: int = -1
+		for c: Variant in cards:
+			var 实例: int = player.手牌实例(int(c))
+			if 实例 >= 0:
+				弃 = 实例
+				break
+		if 弃 < 0:
+			return SUCCESS
+		# 「弃 1 张牌【展示】」：统一入口（亮牌 + 触发封印 + 离手）；是基础效果牌就挂到持有者面前
+		engine.展示手牌(player.id, [弃])
+		engine.take_from_hand(player.id, [弃])
+		var 牌: GCard = Data.get_card(弃)
+		if dp != null and 牌 != null and _是基础效果牌(牌):
+			engine.add_basic_effect(持有, 弃, player.id, MI_SA)
+		else:
+			engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": MI_SA})
+			engine._log_discard(player.id, [弃], false)
+		engine._broadcast_game()
+		return SUCCESS
+	# ② 把持有者面前 1 张基础效果收入手中（有 ≥2 张时才多 +1 虔诚、多问一段）
+	if dp == null:
+		return SUCCESS
+	var 可选: Array = _弥撒可选 if _弥撒需要二段() else (_基础效果列表(dp))
+	if 可选.is_empty():
+		return SUCCESS
+	player.add_token(虔诚槽, 1)
+	var 序: int = 0
+	if _弥撒需要二段():
+		var args2: Array = (答案[1] as Dictionary).get("args", []) if 答案.size() > 1 else []
+		if args2.is_empty():
+			return SUCCESS
+		序 = int(args2[0]) - 1
+		if 序 < 0 or 序 >= 可选.size():
+			engine.报错("【弥撒】选项号越界", player.id)
+			return SUCCESS
+	_收入基础效果(dp.id, int(可选[序]))
+	return SUCCESS
 func _弥撒选项() -> Array:
 	var 持有: int = 路标持有者()
 	var dp: BattlePlayer = engine.p(持有)
