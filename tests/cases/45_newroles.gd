@@ -267,17 +267,30 @@ func _检结界师() -> void:
 			有后钩 = true
 	检(有后钩, "同步掉士气后引擎应补压 p_lose_morale_after")
 	引擎._states.clear()
-	var 零ctx: Dictionary = {"dst": 1, "amount": 1, "type": GConst.HarmType.Attack,
-		"_jiejie_琉璃": 5, "_jiejie_琉璃牌": 0, "_jiejie_琉璃弃牌人": 1}
-	_应答([1])
+	# 0 号牌是合法牌（-1 才是「没有」）：直接喂一条「四段已答完」的琉璃境链，
+	# 结算里把 0 号牌放进盖牌区 / 不发动时进弃牌堆。
+	角色.多步询问重置(8205)
+	var 零ctx: Dictionary = {"dst": 1, "amount": 1, "type": GConst.HarmType.Attack}
+	角色._琉璃牌["_jiejie_琉璃"] = 0
+	角色._琉璃弃牌人["_jiejie_琉璃"] = 1
+	角色._多步链[8205] = {"段": 4, "答案": [
+		{"args": [1], "cards": [], "dsts": []},
+		{"args": [], "cards": [], "dsts": [1]},
+		{"args": [], "cards": [], "dsts": []},
+		{"args": [1], "cards": [], "dsts": []}]}
 	检(角色.p_lose_morale(零ctx) == BattleRole.URGENT,
 		"琉璃境：0 号牌也要能放进盖牌区作为【结界】")
 	检(玩家.cover_cards.has(0), "0 号牌应作为【结界】进盖牌区")
 	玩家.cover_cards.clear()
-	var 零ctx2: Dictionary = {"dst": 1, "amount": 1, "type": GConst.HarmType.Attack,
-		"_jiejie_琉璃": 5, "_jiejie_琉璃牌": 0, "_jiejie_琉璃弃牌人": 1}
-	_应答([0])
-	角色.p_lose_morale(零ctx2)
+	角色.多步询问重置(8205)
+	角色._琉璃牌["_jiejie_琉璃"] = 0
+	角色._琉璃弃牌人["_jiejie_琉璃"] = 1
+	角色._多步链[8205] = {"段": 4, "答案": [
+		{"args": [1], "cards": [], "dsts": []},
+		{"args": [], "cards": [], "dsts": [1]},
+		{"args": [], "cards": [], "dsts": []},
+		{"args": [0], "cards": [], "dsts": []}]}
+	角色.p_lose_morale(零ctx)
 	检(引擎.deck.discard.has(0), "琉璃境：0 号牌不当作结界时必须进弃牌堆")
 
 	# ---- 琉璃境完整流程：是否发动 → 选目标 → 目标弃 1 张【展示】→ 放成结界 ----
