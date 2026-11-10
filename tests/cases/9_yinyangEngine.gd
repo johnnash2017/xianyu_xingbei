@@ -43,6 +43,7 @@ func 跑() -> void:
 	var harm: Dictionary = {
 		"src": 2, "dst": 1, "point": BattleEngine.ATTACK_BASE_POINT,
 		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack, "card_id": 攻击牌.id,
+		"card_id_instance": 攻击牌.id,
 	}
 	引擎.push(BattleEngine.SAttackCard.new(2, 1, 攻击牌.id, harm))
 	引擎.run()
@@ -106,6 +107,7 @@ func 跑() -> void:
 	var 形态攻击: Dictionary = {
 		"src": 2, "dst": 1, "point": BattleEngine.ATTACK_BASE_POINT,
 		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack, "card_id": 攻击牌.id,
+		"card_id_instance": 攻击牌.id,
 	}
 	引擎.push(BattleEngine.SAttackCard.new(2, 1, 攻击牌.id, 形态攻击))
 	引擎.run()
@@ -147,6 +149,7 @@ func 跑() -> void:
 	var 取消用攻击: Dictionary = {
 		"src": 2, "dst": 1, "point": BattleEngine.ATTACK_BASE_POINT,
 		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack, "card_id": 攻击牌.id,
+		"card_id_instance": 攻击牌.id,
 	}
 	引擎.push(BattleEngine.SAttackCard.new(2, 1, 攻击牌.id, 取消用攻击))
 	引擎.run()
@@ -186,6 +189,7 @@ func 跑() -> void:
 	var 无牌攻击: Dictionary = {
 		"src": 2, "dst": 1, "point": BattleEngine.ATTACK_BASE_POINT,
 		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack, "card_id": 攻击牌.id,
+		"card_id_instance": 攻击牌.id,
 	}
 	引擎.push(BattleEngine.SAttackCard.new(2, 1, 攻击牌.id, 无牌攻击))
 	引擎.run()
@@ -230,6 +234,7 @@ func 跑() -> void:
 	var 转换攻击: Dictionary = {
 		"src": 2, "dst": 1, "point": BattleEngine.ATTACK_BASE_POINT,
 		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack, "card_id": 攻击牌.id,
+		"card_id_instance": 攻击牌.id,
 	}
 	引擎.push(BattleEngine.SAttackCard.new(2, 1, 攻击牌.id, 转换攻击))
 	引擎.run()

@@ -62,6 +62,7 @@ func 跑() -> void:
 	var harm: Dictionary = {
 		"src": 3, "dst": 2, "point": BattleEngine.ATTACK_BASE_POINT,
 		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack, "card_id": 攻击牌.id,
+		"card_id_instance": 攻击牌.id,
 	}
 	引擎.push(BattleEngine.SAttackCard.new(3, 2, 攻击牌.id, harm))
 	引擎.run()
@@ -130,6 +131,7 @@ func 跑() -> void:
 	var 无牌攻击: Dictionary = {
 		"src": 3, "dst": 2, "point": BattleEngine.ATTACK_BASE_POINT,
 		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack, "card_id": 攻击牌.id,
+		"card_id_instance": 攻击牌.id,
 	}
 	引擎.push(BattleEngine.SAttackCard.new(3, 2, 攻击牌.id, 无牌攻击))
 	引擎.run()
