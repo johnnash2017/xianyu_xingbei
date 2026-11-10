@@ -800,6 +800,7 @@ func 跑() -> void:
 			"src": 1, "dst": 3, "point": BattleEngine.ATTACK_BASE_POINT,
 			"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack,
 			"card_id": 66, "is_active": true,
+			"card_id_instance": 66,  # 真实牌攻击（有实体实例）才会被引擎当「有命格」
 		}))
 		引擎.run()
 		var 对照问: Dictionary = _取询问(3, GConst.技能_阴阳转换)
