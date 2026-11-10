@@ -483,6 +483,8 @@ func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, c
 #   一条链＝若干段，每段一次询问；段之间不落副作用，副作用统一放在结算回调里，
 #   所以「返回上一段」不需要撤账。
 # ============================================================
+## 结算后还压了状态、要等引擎重入再跑一次收尾的链：{链号: true}
+var _多步收尾: Dictionary = {}
 ## 正在进行的链：{链号: {"段": int, "答案": Array}}
 ## 答案项：{"args": Array, "cards": Array, "dsts": Array}
 var _多步链: Dictionary = {}
@@ -512,8 +514,15 @@ var _多步链: Dictionary = {}
 ##     "提示序号"/"张数"/"收牌人"/"额外"/"预览基准"/"预览类型"/"预览目标"/"预览伤害"
 ##     "需盖牌"/"盖牌最多"/"手牌数"/"询问文案"/"默认选项"/"高亮"/"超时目标"/"可圣光"
 ##   结算   Callable(答案: Array) -> int：所有段都答完后调用；返回值原样传给引擎
+##   收尾   Callable() -> int：结算里压了状态（返回 URGENT/WAIT）时，引擎重入先跑它（如摸牌后要看摸到什么）
 ## 返回：WAIT＝正在问；否则是结算回调的返回值（SUCCESS / URGENT）
-func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
+func 多步询问(链号: int, 段表: Array, 结算: Callable, 收尾: Callable = Callable()) -> int:
+	# 结算里压过状态（返回 URGENT/WAIT）：引擎重入时先跑收尾，再交还给角色
+	if _多步收尾.has(链号):
+		_多步收尾.erase(链号)
+		if 收尾.is_valid():
+			return int(收尾.call())
+		return SUCCESS
 	if not _多步链.has(链号):
 		_多步链[链号] = {"段": 0, "答案": []}
 	var 链: Dictionary = _多步链[链号]
@@ -522,7 +531,11 @@ func 多步询问(链号: int, 段表: Array, 结算: Callable) -> int:
 		var 答案: Array = 链.get("答案", [])
 		if 段号 >= 段表.size():
 			_多步链.erase(链号)
-			return 结算.call(答案)
+			var 结算返回: int = int(结算.call(答案))
+			# 结算里压了状态：重入时先跑「收尾」（如摸完牌还要看摸到了什么）
+			if 结算返回 != SUCCESS and 收尾.is_valid():
+				_多步收尾[链号] = true
+			return 结算返回
 		var 段: Dictionary = 段表[段号]
 		# 条件段：前面几段的答案决定这一段要不要问（如「怒火压制 / 魔纹融合」选了前者就不用问翻转档）
 		var 跳过: Variant = 段.get("跳过", null)
@@ -629,6 +642,7 @@ func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array =
 ## 放弃一条还没走完的链（技能被别的原因中断 / 新一轮发动前清干净）
 func 多步询问重置(链号: int) -> void:
 	_多步链.erase(链号)
+	_多步收尾.erase(链号)
 
 
 ## 这条链是不是正等着玩家回复（钩子类技能用它挡住「别的同类事件插进来」）

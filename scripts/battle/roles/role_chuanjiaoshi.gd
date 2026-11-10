@@ -46,7 +46,6 @@ var _传道阶段: int = 0
 var _传道摸: int = 0
 var _传道弃: int = -1
 ## 启示：转移前的可选响应（0＝未开始 / 1＝等选效果 / 2＝等选目标 / 3＝等看摸到的牌）
-var _转移阶段: int = 0
 var _转移目标: int = -1
 var _启示分支: int = 1
 var _启示目标: int = -1
@@ -456,50 +455,62 @@ func _是基础效果牌(牌: GCard) -> bool:
 func _转移路标(目标: int) -> int:
 	if _路标阶段 != 0:
 		return _路标后续()
-	if _转移阶段 == 0:
-		_转移目标 = 目标
-		if player.token_num(虔诚槽) >= 2:
-			_转移阶段 = 1
-			询问(player.id, QI_SHI, 0, 0, GConst.CardSource.Hand, _启示选项(), 0, "", [], true,
-				0, -1, [], -1, {})
-			return WAIT
+	if player.token_num(虔诚槽) < 2:
 		return _放置路标(目标)
-	if _转移阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		var args: Array = r.get("args", [])
-		if args.is_empty():
-			_转移阶段 = 0
-			return _放置路标(_转移目标)
-		player.remove_token(虔诚槽, 2)
-		notice_skill(QI_SHI, [player.id])
-		_启示分支 = int(args[0])
-		_转移阶段 = 2
-		询问(player.id, QI_SHI, 0, 1, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, 全部角色(), -1, {}, 1, GConst.预览类型_治疗)
-		return WAIT
-	if _转移阶段 == 2:
-		var r2: Dictionary = take_skill_reply_full()
-		var dsts: Array = r2.get("dst_ids", [])
-		_启示目标 = int(dsts[0]) if not dsts.is_empty() else -1
-		if _启示目标 < 0 or engine.p(_启示目标) == null:
-			_转移阶段 = 0
-			return SUCCESS
-		if _启示分支 == 1:
-			_转移阶段 = 0
-			施加治疗(_启示目标, 1)
-			engine._broadcast_game()
-			return _放置路标(_转移目标)
-		_转移阶段 = 3
-		_启示摸前 = player.hand_cards.duplicate()
-		engine.push_强制摸牌(player.id, 1, QI_SHI)
-		return URGENT
-	# 阶段 3：看这次摸到的牌是不是法术牌 / 圣类命格
-	_转移阶段 = 0
+	_转移目标 = 目标
+	_启示分支 = 1
+	_启示目标 = -1
+	# 启示：路标转移前移除 2 点虔诚 → 二选一（目标 +1 治疗 / 摸 1 张牌试图取消本次转移）
+	return 多步询问(QI_SHI, [
+		{"选项": _启示选项(), "取消": _启示不发动, "答完": _启示选分支},
+		{"需目标": 1, "目标白": 全部角色(),
+		 "预览基准": 1, "预览类型": GConst.预览类型_治疗,
+		 "取消": func() -> int: return _放置路标(_转移目标)},
+	], _启示结算, _启示摸牌收尾)
+
+
+## 第一段取消 / 超时：不发动启示，照常放置路标
+func _启示不发动() -> int:
+	return _放置路标(_转移目标)
+
+
+## 第一段答完：移除 2 点虔诚、记下选的是哪一支
+func _启示选分支(回: Dictionary, _答案: Array) -> int:
+	var args: Array = 回.get("args", [])
+	if args.is_empty():
+		return SUCCESS
+	_启示分支 = int(args[0])
+	player.remove_token(虔诚槽, 2)
+	notice_skill(QI_SHI, [player.id])
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 第二段答完：选到目标后按分支结算（摸牌那一支要等摸完，见收尾）
+func _启示结算(答案: Array) -> int:
+	var dsts: Array = (答案[1] as Dictionary).get("dsts", []) if 答案.size() > 1 else []
+	_启示目标 = int(dsts[0]) if not dsts.is_empty() else -1
+	if _启示目标 < 0 or engine.p(_启示目标) == null:
+		return SUCCESS
+	if _启示分支 == 1:
+		_启示目标 = -1
+		施加治疗(int(dsts[0]), 1)
+		engine._broadcast_game()
+		return _放置路标(_转移目标)
+	# 分支 2：摸 1 张牌，摸完再看它是不是法术牌 / 圣类命格（收尾里判断）
+	_启示摸前 = player.hand_cards.duplicate()
+	engine.push_强制摸牌(player.id, 1, QI_SHI)
+	return URGENT
+
+
+## 结算里压了摸牌：摸完回来判断「能不能取消本次转移」
+func _启示摸牌收尾() -> int:
 	var 新牌: int = -1
 	for c: Variant in player.hand_cards:
 		if not _启示摸前.has(int(c)):
 			新牌 = int(c)
 			break
+	_启示摸前 = []
 	var 牌: GCard = Data.get_card(新牌) if 新牌 >= 0 else null
 	if 新牌 >= 0:
 		# 「你摸 1 张牌【强制】【展示】」：统一入口（亮牌 + 触发封印）
@@ -513,9 +524,9 @@ func _转移路标(目标: int) -> int:
 		engine._broadcast_game()
 		_路标阶段 = 1
 		return _路标后续()
-	return _放置路标(_转移目标)
-
-
+	var 原目标: int = _转移目标
+	_启示目标 = -1
+	return _放置路标(原目标)
 func _启示选项() -> Array:
 	return [
 		{"value": 1, "label": GConst.按钮原文(QI_SHI, 0), "text": GConst.按钮原文(QI_SHI, 0)},
