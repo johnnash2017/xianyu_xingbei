@@ -71,6 +71,7 @@ func v_special_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	# 新的一次发动：把上一次没走完的链清掉（同一条技能行动的重入不会走到这里）
 	多步询问重置(NIU_QU_ZHI_AI)
+	_扭曲已结算 = false
 	return GConst.GE_SUCCESS
 
 
@@ -81,9 +82,15 @@ func v_special_skill(action: Dictionary) -> int:
 # ============================================================
 const 扭曲_弃张数: int = 2
 const 扭曲_摸张数: int = 2
+## 结算完压了摸牌状态（返回 URGENT）：引擎会把 p_special_skill 再调一次，
+## 那一调不能再开一条新链（否则会把「形态」重新问一遍），用这个标记挡住。
+var _扭曲已结算: bool = false
 
 
 func p_special_skill(_action: Dictionary) -> int:
+	if _扭曲已结算:
+		_扭曲已结算 = false
+		return SUCCESS
 	return 多步询问(NIU_QU_ZHI_AI, [
 		{"选项": _扭曲形态选项()},
 		{"选项": _扭曲弃摸选项(), "可返回": true},
@@ -127,6 +134,7 @@ func _扭曲结算(答案: Array) -> int:
 			engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": NIU_QU_ZHI_AI})
 			engine._log_discard(player.id, 弃)
 		return SUCCESS
+	_扭曲已结算 = true
 	engine.push_强制摸牌(player.id, 扭曲_摸张数, NIU_QU_ZHI_AI)
 	return URGENT
 
