@@ -60,6 +60,11 @@ func _ready() -> void:
 	var 失败数: int = 0
 	for 路径: String in 路径列表:
 		var 脚本: GDScript = load(路径)
+		# 用例脚本语法坏时不要 new 出 null：那会让 await 永远等不到，整包挂死（79 号用例踩过）
+		if 脚本 == null or not 脚本.can_instantiate():
+			print("[失败] %s：脚本加载失败（语法错？）" % 路径)
+			失败数 += 1
+			continue
 		var 用例: 自检用例 = 脚本.new()
 		add_child(用例)
 		# 名称筛选（名称在 _init 里就定好了）：--case=战斗法师 只跑名字含「战斗法师」的用例
