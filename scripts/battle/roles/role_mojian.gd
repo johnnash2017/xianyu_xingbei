@@ -343,7 +343,8 @@ func p_magic_skill(action: Dictionary) -> int:
 		{"选项": _暗影流星追加选项(), "取消": _取消暗影流星,
 		 "跳过": func(_答案: Array) -> bool: return not _liu_xing_any_combo()},
 		{"选项": func(_答案: Array) -> Array: return _liu_xing_组合选项(),
-		 "提示序号": 1,
+		 # 第二段只显示技能说明：不要再提示「要不要移除我方战绩区的星石」（第一段已经问过）
+		 "询问文案": GConst.skill_desc(AN_YING_LIU_XING),
 		 "取消": _取消暗影流星,
 		 "跳过": func(答案: Array) -> bool: return _暗影流星第一段值(答案) != 1},
 	], func(答案: Array) -> int: return _暗影流星结算(action, 答案))

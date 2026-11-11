@@ -77,6 +77,34 @@ func 跑() -> void:
 		if 选项4.size() == 3:
 			检(bool(选项4[0].get("enabled", false)), "两水晶时第一组应可点")
 
+		# 第二段询问的提示：不要「要不要移除星石」那句，直接给技能说明（用户口径）
+		var 我: BattlePlayer = 引擎.p(1)
+		我.tap = true
+		var 法术: Array[int] = []
+		for c: GCard in Data.card_db:
+			if c != null and not c.is_virtual and c.is_magic() and 法术.size() < 2:
+				法术.append(c.id)
+		我.hand_cards = [法术[0], 法术[1]] as Array[int]
+		引擎.team_crystal[我.color] = 2
+		引擎.team_gem[我.color] = 0
+		角色.p_magic_skill({"src_id": 1, "action_id": 905,
+			"card_ids": [法术[0], 法术[1]], "dst_ids": [2], "args": []})
+		var 第一问: Array = (引擎._最后询问.get(1, {}) as Dictionary).get("commands", [])
+		检(not 第一问.is_empty(), "暗影流星第一段没有下发询问")
+		if not 第一问.is_empty():
+			引擎.on_message(1, GConst.Msg.Respond,
+				{"respond_id": 905, "args": [1], "card_ids": [], "dst_ids": []})
+			角色.p_magic_skill({"src_id": 1, "action_id": 905,
+				"card_ids": [法术[0], 法术[1]], "dst_ids": [2], "args": []})
+			var 第二问: Array = (引擎._最后询问.get(1, {}) as Dictionary).get("commands", [])
+			检(not 第二问.is_empty(), "暗影流星第二段没有下发询问")
+			if not 第二问.is_empty():
+				var 文案: String = str((第二问[0] as Dictionary).get("ask_text", ""))
+				检(文案 == GConst.skill_desc(905),
+					"暗影流星第二段应只显示技能说明，实际：%s" % 文案)
+				检(not 文案.contains("要不要额外移除"),
+					"暗影流星第二段仍在提示「要不要移除星石」：%s" % 文案)
+
 	# 女武神：军神威光固定两档 / 五种组合；没星石时只置灰不消失
 	引擎 = _新引擎()
 	角色 = _造角色(引擎, 25)
