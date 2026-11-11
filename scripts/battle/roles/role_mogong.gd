@@ -367,9 +367,11 @@ func _resolve_duo_chong(dst_id: int) -> int:
 		"card_ids": [充能], "is_real": true,
 	})
 	_remove_cover([充能], DUO_CHONG_SHE_JI)
+	# 这张「暗灭」只是借来播弹道 / 音效的虚拟牌：标 virtual_no_fate，日志 / 飘字只写「暗灭」，
+	# 不再带出卡表里那张牌的命格（否则会显示成「暗灭·圣」）
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id,
-		"card_ids": [VIRTUAL_DUO_CHONG_CARD], "is_real": false,
+		"card_ids": [VIRTUAL_DUO_CHONG_CARD], "is_real": false, "virtual_no_fate": true,
 	})
 	_available_mo_guan = false
 	_using_duo_chong = true
@@ -430,7 +432,7 @@ func _duo_chong_she_ji_ask() -> int:
 	# 客户端据此播放暗灭弹道与暗系出牌音效（对照【欺诈】虚牌广播的写法）
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id,
-		"card_ids": [VIRTUAL_DUO_CHONG_CARD], "is_real": false,
+		"card_ids": [VIRTUAL_DUO_CHONG_CARD], "is_real": false, "virtual_no_fate": true,
 	})
 	# 本回合不能再发动【魔贯冲击】；本次攻击的暗系修正交给 p_timeline_1
 	_available_mo_guan = false
