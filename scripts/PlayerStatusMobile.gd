@@ -124,6 +124,9 @@ const 补牌黄块材质: ShaderMaterial = preload("res://scripts/effects/refill
 const 红治疗预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HealRed.tscn")
 ## 红色治疗格的材质（与预制体共用同一份；受击时让它的描边也一起闪红）
 const 红治疗材质: ShaderMaterial = preload("res://scenes/prefabs/battlemobile/HealRedMaterial.tres")
+## 超过治疗上限的格子用的灰：比工程统一「置灰色」(0.5) 亮一点，
+## 既能和上限内的实心格区分，又不至于暗到看不清
+const 溢出治疗灰: Color = Color(0.72, 0.72, 0.72, 1.0)
 ## 新到手的宝石闪白时长（秒）：越短闪得越快
 const 宝石闪白时长: float = 0.3
 ## 闪白的起始强度：从纯白（1.0）开始往下淡
@@ -1051,7 +1054,7 @@ func set_HealCount(value: int) -> void:
 		# 画得和正常治疗一样会让人误以为上限涨了。用工程统一的「置灰色」，
 		# 不用半透明——半透明太虚，看不出这块还在。
 		if _j >= max_heal:
-			(实心格 as CanvasItem).modulate = GConst.置灰色
+			(实心格 as CanvasItem).modulate = 溢出治疗灰
 		_接格子提示(实心格, 提示)
 	for _k in range(maxi(max_heal - value, 0)):
 		var 空格: Control = _add_image(healArea, ps, "handcardempty", 扁平格尺寸, true, _治疗描边)
