@@ -440,6 +440,9 @@ func _建房间(数据: Dictionary, 房主连接: int) -> Dictionary:
 	battle.seat_mode = int(room["seat_mode"])
 	battle.send_cb = func(target: int, msg_type: int, fields: Dictionary) -> void:
 		_engine_send(rid, target, msg_type, fields)
+	# 对局埋点：引擎只把快照交给这个回调，组包 / 重试 / 上报在 Telemetry（见 scripts/net/telemetry.gd）
+	battle.telemetry_cb = func(事件名: String, 属性: Dictionary) -> void:
+		Telemetry.记录对局事件(事件名, 属性)
 	return room
 
 
@@ -1100,6 +1103,9 @@ func _start_battle(room: Dictionary, 角色表: Dictionary) -> void:
 	# 选角结束（Random 策略直接开局，压根没进过选角阶段，这里一并归零）
 	battle.room_picking = false
 	battle.pick_ready = []
+	# 埋点里的 steam_id 用登录时的身份标识（Steam = SteamID / 本地 = 昵称）：
+	# 座位号只是本局内部编号，拿它当玩家 ID 没法跨对局看同一个人
+	battle.玩家标识 = (room["client_of"] as Dictionary).duplicate()
 	battle.start_with_roles(角色表)
 	rooms_changed.emit()
 

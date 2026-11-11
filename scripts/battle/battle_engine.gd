@@ -78,6 +78,23 @@ var field_cards: Array[Dictionary] = []
 ## 发送回调：(目标id:int, 协议号:int, 字段:Dictionary) -> void
 var send_cb: Callable = Callable()
 
+# ---------- 对局埋点（battle_start / round_end / battle_end，只由房主进程上报） ----------
+## 上报回调：(事件名:String, 属性:Dictionary) -> void。LocalServer 建房间时注入；
+## 引擎只负责按当前对局状态组快照，组包 / 重试 / 网络在 scripts/net/telemetry.gd
+var telemetry_cb: Callable = Callable()
+## 座位 → 登录时的身份标识（Steam = SteamID，本地 = 昵称）。开局前由 LocalServer 写入。
+## 座位号只是本局内部编号，埋点里的 steam_id 要用这个
+var 玩家标识: Dictionary = {}
+## 本次战斗的唯一标识：开局时生成，三个事件共用，靠它把同一场战斗串起来
+var battle_id: String = ""
+## 本回合每个座位的统计（键就是埋点属性名：heal_amount / heal_enemy / 6 项伤害），每回合结束时清零
+var _回合统计: Dictionary = {}
+## 最近一次伤害的发起者：超限掉士气时按它归属到「谁的伤害把人打崩了」
+var _最后伤害来源: int = -1
+## 埋点取号专用的随机源：和战斗判定用的 _rng、牌库洗牌用的全局 randi() 都分开，
+## 免得为了取个号把对局随机结果改掉（tests/diffProbe 固定 _rng 种子做对比）
+var _埋点rng: RandomNumberGenerator = RandomNumberGenerator.new()
+
 ## 状态机
 var _states: Array = []
 ## 本回合要不要跳过行动阶段（虚弱拒绝 / 五系束缚拒绝）：轮到 SActionPhase 时它自己直接收尾进回合结束。
@@ -593,10 +610,20 @@ func start_with_roles(role_map: Dictionary, role_pool: Array = []) -> void:
 			p2.role.call_hook("p_before_turn_begin", {"init": true})
 	for pid: int in order:
 		players[pid].add_hand_cards(deck.draw(GConst.START_HAND))
+	# 埋点：这一局的标识 / 统计从零开始（battle_start / round_end / battle_end 共用 battle_id）。
+	# 随机段用埋点专用随机源：_rng 是战斗判定用的、全局 randi() 被牌库洗牌用，动哪个都会改对局结果。
+	# 三段各 6 位（1e18 种组合）：同一秒、同一微秒创建两间房也撞不上
+	_埋点rng.randomize()
+	battle_id = "R%d-%d-%d-%06d-%06d-%06d" % [
+		room_id, int(Time.get_unix_time_from_system()), Time.get_ticks_usec() % 1000000,
+		_埋点rng.randi_range(0, 999999), _埋点rng.randi_range(0, 999999), _埋点rng.randi_range(0, 999999)]
+	_回合统计.clear()
+	_最后伤害来源 = -1
 	_states.clear()
 	_进度表.clear()
 	_清空等待()
 	_broadcast_game()
+	_上报事件("battle_start", 0)
 	broadcast(GConst.Msg.TurnBegin, {"id": current_id, "round": round_id, "extra_turn": false})
 	push(SCheckTurnStart.new())
 	run()
@@ -1208,6 +1235,7 @@ func add_cross(pid: int, amount: int, src_id: int) -> void:
 		return
 	var 前: int = pp.cross_num
 	pp.add_cross_num(amount)
+	_统计治疗(src_id, pid, amount)
 	_播治疗日志(pp, amount, src_id, 前)
 	_治疗溢出后(pp, 前, amount, src_id)
 	_治疗增加后(pp, 前, amount, src_id)
@@ -1260,6 +1288,7 @@ func add_cross_pierce(pid: int, amount: int, src_id: int, 封顶: int) -> void:
 	if 封顶 > 0:
 		新 = mini(新, 封顶)
 	pp.cross_num = maxi(新, 前)
+	_统计治疗(src_id, pid, amount)
 	_播治疗日志(pp, amount, src_id, 前)
 	_治疗增加后(pp, 前, amount, src_id)
 
@@ -4788,6 +4817,8 @@ class SNextPlayer:
 		var nid: int = 续位 if 续位 >= 0 else e.next_id(e.current_id)
 		if nid == e.first_id:
 			var 旧回合: int = e.round_id
+			# 一轮（所有人各行动一次）到此结束：先把这一回合的统计报上去，再清零进下一回合
+			e._回合结束埋点()
 			e.round_id += 1
 			e.current_id = nid
 			e._检查神威过期(旧回合)
@@ -5629,6 +5660,8 @@ class SHarmTimeline6:
 	func _init(h: Dictionary) -> void:
 		harm = h
 	func handle(e: BattleEngine) -> int:
+		# 走到这里伤害点数必然 > 0，且治疗已抵完、⑥ 伤害转移已改好最终目标 —— 埋点的伤害记笔就在这里
+		e._统计伤害(harm)
 		# 摸牌前先让角色响应（如暗杀者【水影】：除特殊行动外，当你摸牌前发动）；
 		# 钩子先跑（LIFO），随后 SHarmDrawOverload 才真正摸牌
 		e.push(SHarmDrawOverload.new(harm))
@@ -6052,6 +6085,7 @@ class SApplyOverloadMorale:
 		if target != null:
 			var amount: int = maxi(int(ctx.get("amount", 0)), 0)
 			e.set_morale(target.color, e.team_morale[target.color] - amount)
+			e._统计士气(target, amount, int(ctx.get("type", GConst.HarmType.None)))
 		e.last_harm_cause = 0
 		e.last_harm_type = 0
 		e._broadcast_game()
@@ -6820,8 +6854,126 @@ func _game_over(win_color: int) -> void:
 	# 否则残留在这些字段里的回复会被后续流程（或下一次对局复用引擎时）误用
 	_清空等待()
 	_broadcast_game()
+	_上报事件("battle_end", round_id)
 	broadcast(GConst.Msg.Gossip, {
 		"type": GConst.GossipType.Notice,
 		"txt": "游戏结束，%s方获胜！" % ("红" if win_color == GConst.RED else "蓝"),
 		"id": 0,
 	})
+
+
+# ============================================================
+# 对局埋点（battle_start / round_end / battle_end）
+# 属性名、字段名、阵营口径都必须与埋点方案一致，改之前先对一遍方案。
+# ============================================================
+## 上报一次对局事件：属性按当前状态现算。
+## current_round：battle_start = 0（还没进入回合），round_end = 刚结束的那一回合，
+## battle_end = 结束时的回合
+func _上报事件(事件名: String, 回合数: int) -> void:
+	if not telemetry_cb.is_valid():
+		return
+	telemetry_cb.call(事件名, _埋点属性(回合数))
+
+
+## 回合结束：先按「刚打完的这一回合」上报，再清统计（下一回合从 0 记）
+func _回合结束埋点() -> void:
+	_上报事件("round_end", round_id)
+	_回合统计.clear()
+
+
+## 三个事件共用的 15 个属性里属于对局状态的这 12 个；
+## 另外 3 个（report_time / game_version / is_test_data）由 telemetry.gd 在上报时补。
+## team 0 = 红，team 1 = 蓝（引擎颜色是 1 红 / 0 蓝，转换见 _埋点阵营）。
+func _埋点属性(回合数: int) -> Dictionary:
+	var 明细: Array = []
+	for pid: int in order:
+		var pp: BattlePlayer = players.get(pid)
+		if pp == null:
+			continue
+		var 统计: Dictionary = _回合统计.get(pid, {})
+		明细.append({
+			"character_id": str(pp.role_id),
+			"player_name": pp.player_name,
+			"steam_id": str(玩家标识.get(pid, pp.player_name)),
+			"team": _埋点阵营(pp.color),
+			# 能量拆红蓝：红 = 宝石（gem），蓝 = 水晶（crystal）
+			"red_energy": pp.gem,
+			"blue_energy": pp.crystal,
+			"hand_card": pp.hand_cards.size(),
+			"heal_current": pp.cross_num,
+			# 本回合施加出去的治疗（按输出量记，含溢出；给队友/自己算友方，给敌方算敌方）
+			"heal_amount": int(统计.get("heal_amount", 0)),
+			"heal_enemy": int(统计.get("heal_enemy", 0)),
+			"attack_damage": int(统计.get("attack_damage", 0)),
+			"attack_self_damage": int(统计.get("attack_self_damage", 0)),
+			"spell_damage": int(统计.get("spell_damage", 0)),
+			"spell_self_damage": int(统计.get("spell_self_damage", 0)),
+			"morale_damage": int(统计.get("morale_damage", 0)),
+			"morale_self_damage": int(统计.get("morale_self_damage", 0)),
+		})
+	return {
+		"battle_id": battle_id,
+		"player_count": 明细.size(),
+		"character_details": 明细,
+		"team_0_morale": team_morale[GConst.RED],
+		"team_1_morale": team_morale[GConst.BLUE],
+		"current_round": 回合数,
+		"team_0_star_cup_count": team_grail[GConst.RED],
+		"team_1_star_cup_count": team_grail[GConst.BLUE],
+		# 星石拆红蓝：红 = 宝石（gem），蓝 = 水晶（crystal）
+		"team_0_red_star_stone": team_gem[GConst.RED],
+		"team_0_blue_star_stone": team_crystal[GConst.RED],
+		"team_1_red_star_stone": team_gem[GConst.BLUE],
+		"team_1_blue_star_stone": team_crystal[GConst.BLUE],
+	}
+
+
+## 埋点里的阵营编号：team_0 = 红，team_1 = 蓝。
+## 引擎自己那套是「1 红 / 0 蓝」（GConst.RED / BLUE），正好相反，别混。
+func _埋点阵营(color: int) -> int:
+	return 0 if color == GConst.RED else 1
+
+
+## 本回合施加出去的治疗：记在「施加者」头上，按输出量算（含溢出）。
+## 受益者与施加者同阵营算友方（含自己给自己加），否则算敌方。整笔被禁疗作废的不计。
+func _统计治疗(来源id: int, 受益id: int, 点: int) -> void:
+	var 来源: BattlePlayer = players.get(来源id)
+	var 受益: BattlePlayer = players.get(受益id)
+	if 来源 == null or 受益 == null or 点 <= 0:
+		return
+	_加统计(来源id, "heal_amount" if 来源.color == 受益.color else "heal_enemy", 点)
+
+
+## 伤害真正落地时记一笔（SGateTimeline6 之后进 SHarmTimeline6：治疗已抵完、伤害转移已改好目标）。
+## attack_* = 攻击伤害，spell_* = 法术伤害；承受者与发起者同阵营算「自残」，否则算「对敌方」。
+func _统计伤害(harm: Dictionary) -> void:
+	var 点: int = int(harm.get("point", 0))
+	var 类型: int = int(harm.get("type", GConst.HarmType.None))
+	var 我: BattlePlayer = players.get(int(harm.get("src", -1)))
+	var 他: BattlePlayer = players.get(int(harm.get("dst", -1)))
+	if 点 <= 0 or 我 == null or 他 == null or not _是伤害类型(类型):
+		return
+	var 前缀: String = "attack" if 类型 == GConst.HarmType.Attack else "spell"
+	_加统计(我.id, 前缀 + ("_self_damage" if 我.color == 他.color else "_damage"), 点)
+	_最后伤害来源 = 我.id
+
+
+## 超限掉士气：归属到「造成这次伤害的那个角色」。
+## 非伤害来源的掉士气（合成星杯扣士气、技能惩罚等，type = None）记不到具体角色头上，这里不计。
+func _统计士气(target: BattlePlayer, 点: int, 伤害类型: int) -> void:
+	if 点 <= 0 or target == null or not _是伤害类型(伤害类型):
+		return
+	var 来源: BattlePlayer = players.get(_最后伤害来源)
+	if 来源 == null:
+		return
+	_加统计(来源.id, "morale_self_damage" if 来源.color == target.color else "morale_damage", 点)
+
+
+func _加统计(pid: int, 键: String, 点: int) -> void:
+	var 统计: Dictionary = _回合统计.get(pid, {})
+	统计[键] = int(统计.get(键, 0)) + 点
+	_回合统计[pid] = 统计
+
+
+func _是伤害类型(t: int) -> bool:
+	return t == GConst.HarmType.Attack or t == GConst.HarmType.Magic

@@ -30,6 +30,7 @@ AssetIndex="*res://scripts/framework/AssetIndex.gd"
 MessageSystem="*res://scripts/framework/MessageSystem.gd"
 ClickDust="*res://scripts/effects/clickStardust.gd"
 EffectWarmer="*res://scripts/effects/effect_warmer.gd"
+Telemetry="*res://scripts/net/telemetry.gd"
 
 [display]
 
