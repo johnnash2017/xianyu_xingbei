@@ -30,11 +30,12 @@ func 跑() -> void:
 	var 格们: Array = (面板.get("healArea") as Node).get_children()
 	检(格们.size() == 5, "5 点治疗应画 5 格（实际 %d）" % 格们.size())
 	for i: int in range(格们.size()):
-		var a: float = float((格们[i] as CanvasItem).modulate.a)
+		var 色: Color = (格们[i] as CanvasItem).modulate
 		if i < 3:
-			检(is_equal_approx(a, 1.0), "第 %d 格在上限内，应不透明（实际 alpha=%s）" % [i + 1, str(a)])
+			检(色 == Color.WHITE, "第 %d 格在上限内，应正常颜色（实际 %s）" % [i + 1, str(色)])
 		else:
-			检(is_equal_approx(a, 0.5), "第 %d 格超过上限，应 50%% 透明（实际 alpha=%s）" % [i + 1, str(a)])
+			检(色 == GConst.置灰色, "第 %d 格超过上限，应置灰（实际 %s）" % [i + 1, str(色)])
+			检(is_equal_approx(色.a, 1.0), "第 %d 格超过上限也不该半透明（实际 alpha=%s）" % [i + 1, str(色.a)])
 
 	# 没溢出：全部不透明
 	面板.call("set_HealCount", 2)
@@ -42,8 +43,8 @@ func 跑() -> void:
 	var 格们2: Array = (面板.get("healArea") as Node).get_children()
 	检(格们2.size() == 3, "2 点治疗 + 上限 3 应画 3 格（实心 2 + 空 1，实际 %d）" % 格们2.size())
 	for i: int in range(mini(2, 格们2.size())):
-		检(is_equal_approx(float((格们2[i] as CanvasItem).modulate.a), 1.0),
-			"没溢出时第 %d 格不该发虚" % [i + 1])
+		检((格们2[i] as CanvasItem).modulate == Color.WHITE,
+			"没溢出时第 %d 格不该发灰" % [i + 1])
 
 	面板.queue_free()
 	await 等帧(1)
