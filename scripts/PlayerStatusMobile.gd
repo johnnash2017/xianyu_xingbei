@@ -1047,6 +1047,10 @@ func set_HealCount(value: int) -> void:
 		# 不再由代码写死。材质自己带受击描边，所以这里不再套 _治疗描边，避免覆盖预制体材质。
 		var 实心格: Control = _add_image(healArea, 红治疗预制 if 庭院在场 else ps, "heal",
 			扁平格尺寸, true, null if 庭院在场 else _治疗描边)
+		# 超过治疗上限的那几格半透明（发虚）：上限之外的【治疗】是临时溢出的，
+		# 画得和正常治疗一样会让人误以为上限涨了
+		if _j >= max_heal:
+			(实心格 as CanvasItem).modulate = Color(1.0, 1.0, 1.0, 0.5)
 		_接格子提示(实心格, 提示)
 	for _k in range(maxi(max_heal - value, 0)):
 		var 空格: Control = _add_image(healArea, ps, "handcardempty", 扁平格尺寸, true, _治疗描边)
