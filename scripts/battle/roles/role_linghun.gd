@@ -77,6 +77,25 @@ func _lan() -> int:
 	return int(t["num"])
 
 
+## 某色灵魂是不是已经满了（满了就不能再往那边转换）
+func _huang_full() -> bool:
+	return _huang() >= int(player.tokens[TOKEN_HUANG]["max"])
+
+
+func _lan_full() -> bool:
+	return _lan() >= int(player.tokens[TOKEN_LAN]["max"])
+
+
+## 是否可以「黄→蓝」（黄有余、蓝没满）
+func _can_huang_to_lan() -> bool:
+	return _huang() > 0 and not _lan_full()
+
+
+## 是否可以「蓝→黄」（蓝有余、黄没满）
+func _can_lan_to_huang() -> bool:
+	return _lan() > 0 and not _huang_full()
+
+
 ## 设置灵魂数（以指示物上限封顶，服务端 setToken 同样如此）
 func _set_token(idx: int, v: int) -> void:
 	var t: Dictionary = player.tokens[idx]
@@ -239,7 +258,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if _huang() <= 0 and _lan() <= 0:
+	# 目标色满了就不能往那边转；两个方向都转不了（含两色都满）就完全不问
+	if not _can_huang_to_lan() and not _can_lan_to_huang():
 		return SUCCESS
 	if _timeline_1_step >= STEP_DONE:
 		return SUCCESS
@@ -247,8 +267,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		# 两个方向各做成一个选项（value 0=黄→蓝、1=蓝→黄），只列当前真有对应灵魂的项；
 		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消，0 才能正常当选项值）
 		var 选项: Array = [
-			{"value": 0, "label": GConst.按钮文本(LING_HUN_ZHUAN_HUAN, 0), "enabled": _huang() > 0},
-			{"value": 1, "label": GConst.按钮文本(LING_HUN_ZHUAN_HUAN, 1), "enabled": _lan() > 0},
+			{"value": 0, "label": GConst.按钮文本(LING_HUN_ZHUAN_HUAN, 0),
+				"enabled": _can_huang_to_lan()},
+			{"value": 1, "label": GConst.按钮文本(LING_HUN_ZHUAN_HUAN, 1),
+				"enabled": _can_lan_to_huang()},
 		]
 		询问(player.id, LING_HUN_ZHUAN_HUAN, 0, 0, GConst.CardSource.Hand, 选项)
 		return WAIT
@@ -258,11 +280,11 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if args.is_empty():
 		return SUCCESS
 	var choice: int = int(args[0])
-	if choice == 0 and _huang() > 0:
+	if choice == 0 and _can_huang_to_lan():
 		# 黄 → 蓝
 		_set_token(TOKEN_HUANG, _huang() - 1)
 		_set_token(TOKEN_LAN, _lan() + 1)
-	elif choice == 1 and _lan() > 0:
+	elif choice == 1 and _can_lan_to_huang():
 		# 蓝 → 黄
 		_set_token(TOKEN_HUANG, _huang() + 1)
 		_set_token(TOKEN_LAN, _lan() - 1)
