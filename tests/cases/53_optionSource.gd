@@ -52,6 +52,7 @@ func 跑() -> void:
 		"option_cards": [{"ids": []}, {"ids": [5, -1]}],
 		"option_need_cards": [0, 2],
 		"option_need_targets": [0, 1],
+		"option_card_sources": [-1, 1],
 		"option_enabled": [true, false],
 		"option_targets": [{"ids": []}, {"ids": [2]}],
 		"option_preview_cards": [{"ids": []}, {"ids": [4]}],

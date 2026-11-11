@@ -65,17 +65,48 @@ func 跑() -> void:
 	await 等帧(1)
 	检(_取数组(窗, "_预亮盖牌").is_empty(), "询问结束后预亮应收掉")
 
-	# ---- 2) 多重射击：亮第一张风系【充能】 ----
+	# ---- 2) 多重射击：走真实的「行动结束响应（聚合器）」询问，选中它后亮盖牌 ----
 	_重置盖牌()
 	角色._available_duo_chong = true
 	角色._last_target = -1
-	角色.call("_duo_chong_she_ji_ask")
+	# 造一份行动结束响应：手里一张攻击牌 + 一张风系盖牌 + 一张迅捷赐福基础效果
+	var 攻击牌: int = -1
+	for c: GCard in Data.card_db:
+		if c != null and not c.is_virtual and c.is_attack():
+			攻击牌 = c.id
+			break
+	var 迅捷牌: int = -1
+	for c2: GCard in Data.card_db:
+		if c2 != null and not c2.is_virtual and c2.has_skill_id(GConst.技能_迅捷赐福):
+			迅捷牌 = c2.id
+			break
+	检(攻击牌 >= 0 and 迅捷牌 >= 0, "找不到攻击牌 / 迅捷赐福载体（前提不成立）")
+	玩家.hand_cards = [攻击牌] as Array[int]
+	检(引擎.add_basic_effect(1, 迅捷牌, 2, GConst.技能_迅捷赐福) == GConst.GE_SUCCESS,
+		"迅捷赐福应能贴上")
+	引擎.current_id = 1
+	引擎._push_action_end_hooks("p_after_attack", {"player": 1}, false, 0)
+	引擎.run()
 	var 问2: Dictionary = _命令(1)
-	检(int(问2.get("respond_id", 0)) == 2603, "应下发多重射击询问（实际 %s）" % str(问2.get("respond_id", 0)))
+	检(not 问2.is_empty(), "行动结束响应没有下发询问")
 	窗.call("_on_command", {"cmd_type": GConst.CmdType.Respond, "commands": [问2]})
 	await 等帧(2)
-	var 预亮2: Array = _取数组(窗, "_预亮盖牌")
-	检(预亮2 == ([风[0]] as Array[int]), "多重射击应预亮第一张风系充能：%s" % str(预亮2))
+	# 在响应列表里选中多重射击那一项
+	var 序号: int = -1
+	var 选项表: Array = 窗.get("_二级选项")
+	for i: int in range(选项表.size()):
+		if int((选项表[i] as Dictionary).get("技能号", 0)) == 2603:
+			序号 = i
+			break
+	检(序号 >= 0, "行动结束响应里应有【多重射击】：%s" % str(选项表))
+	if 序号 >= 0:
+		窗.call("_选中二级选项", int(问2.get("respond_id", 0)), 序号)
+		await 等帧(2)
+		var 预亮2: Array = _取数组(窗, "_预亮盖牌")
+		检(预亮2 == ([风[0]] as Array[int]), "多重射击应预亮第一张风系充能：%s" % str(预亮2))
+		检(bool(窗.get("_selecting_cover")), "选中多重射击后应把盖牌区摆出来")
+		var 盖牌区: Node = 窗.get("ChooseArea")
+		检(盖牌区 != null and (盖牌区 as Control).visible, "选中多重射击后盖牌区应可见")
 	窗.call("_清空待选")
 	await 等帧(1)
 

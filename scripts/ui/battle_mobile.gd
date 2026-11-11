@@ -2822,6 +2822,8 @@ func _选项源_嵌套(嵌套: Array) -> Array:
 			"牌白": _子id(o.get("cards", {})),
 			"需牌": int(o.get("need_card", 0)),
 			"需目标": int(o.get("need_target", 0)),
+			# 选项自带的选牌来源（-1＝沿用技能本体）：如【多重射击】选中后亮盖牌区
+			"选牌来源": int(o.get("card_source", -1)),
 			# 选项自带的混选张数（如美杜莎两个分支：0 手牌 / 1 手牌，都 1 张盖牌）
 			"需盖牌": int(o.get("cover_need", 0)),
 			"手牌数": int(o.get("hand_need", -1)),
@@ -2854,6 +2856,7 @@ func _选项源_平行数组() -> Array:
 			"牌白": _子id(_第i项(_pending.get("option_cards", []), i, {})),
 			"需牌": int(_第i项(_pending.get("option_need_cards", []), i, 0)),
 			"需目标": int(_第i项(_pending.get("option_need_targets", []), i, 0)),
+			"选牌来源": int(_第i项(_pending.get("option_card_sources", []), i, -1)),
 			"可用": bool(_第i项(_pending.get("option_enabled", []), i, true)),
 			"目标白名单": _子id(_第i项(_pending.get("option_targets", []), i, {})),
 			"预览牌": _子id(_第i项(_pending.get("option_preview_cards", []), i, {})),
@@ -3127,6 +3130,12 @@ func _应用选项目标数() -> void:
 		])
 		_刷新交互()
 		return
+	# 选项自带的选牌来源也要认（-1＝沿用技能本体的来源）：如行动结束响应里
+	# 魔弓【多重射击】要亮盖牌区（服务端自己挑充能）。选中别的响应时恢复原始来源。
+	var 项来源3: int = int(选中项.get("选牌来源", -1)) if not 选中项.is_empty() else -1
+	_skill_card_source = 项来源3 if 项来源3 >= 0 else _选项原始来源
+	_selecting_cover = _skill_card_source == GConst.CardSource.Cover \
+		or _skill_card_source == GConst.CardSource.HandOrCover or _skill_cover_need > 0
 	_skill_need_card = _选项原始需牌
 	_skill_card_max = _选项原始最多牌
 	_need_cards = _skill_card_max
@@ -5050,6 +5059,11 @@ func _应用攻击结束选项需求() -> void:
 	var 项: Dictionary = _二级选中项()
 	if 项.is_empty():
 		return
+	# 选项自带的选牌来源（-1＝沿用本体）：如行动结束响应里【多重射击】选中后要亮盖牌区
+	var 项来源: int = int(项.get("选牌来源", -1))
+	_skill_card_source = 项来源 if 项来源 >= 0 else _选项原始来源
+	_selecting_cover = _skill_card_source == GConst.CardSource.Cover \
+		or _skill_card_source == GConst.CardSource.HandOrCover or _skill_cover_need > 0
 	_skill_need_card = maxi(_选项原始需牌, int(项.get("需牌", 0)))
 	_skill_ask_need_target = maxi(_选项原始目标数, int(项.get("需目标", 0)))
 	_skill_card_max = maxi(_skill_need_card, _选项原始最多牌)
@@ -9335,20 +9349,22 @@ func _盖牌前N(元素: int, 数量: int) -> Array[int]:
 ## 只影响界面高亮，提交的内容不变。
 func _计算预亮盖牌() -> void:
 	_预亮盖牌.clear()
+	# 「当前这一手要发的是哪颗技能」：有选项时按选中项的技能号（行动结束响应里
+	# 多重射击可能是列表第二项，询问号并不是它），没选项时就是询问号
+	var 当前技: int = _skill_ask_id
+	if _二级选中 >= 0 and _二级选中 < _二级选项.size():
+		var 项技: int = int((_二级选项[_二级选中] as Dictionary).get("技能号", 0))
+		if 项技 > 0:
+			当前技 = 项技
 	if _mode == 3 and _是技能询问 and _skill_card_source == GConst.CardSource.Cover:
-		match _skill_ask_id:
+		match 当前技:
 			2601:
 				# 选「不发动」就不亮；还没选时先亮出来当提示
 				var 选: int = int(_已选参数[0]) if not _已选参数.is_empty() else 1
 				if 选 == 1:
 					_预亮盖牌 = _盖牌前N(GConst.CardElement.Fire, 1)
 			2603:
-				var 选中技: int = 0
-				if _二级选中 >= 0 and _二级选中 < _二级选项.size():
-					选中技 = int((_二级选项[_二级选中] as Dictionary).get("技能号", 0))
-				# 选中别的响应（迅捷赐福等）就不亮；还没选时先亮出来当提示
-				if 选中技 == 0 or 选中技 == 2603:
-					_预亮盖牌 = _盖牌前N(GConst.CardElement.Wind, 1)
+				_预亮盖牌 = _盖牌前N(GConst.CardElement.Wind, 1)
 	elif _mode == 4 and _pending_skill_id == 2602 and not _已选参数.is_empty():
 		_预亮盖牌 = _盖牌前N(GConst.CardElement.Thunder, int(_已选参数[0]))
 

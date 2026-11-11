@@ -341,8 +341,10 @@ func action_end_options(ctx: Dictionary) -> Array:
 		return []
 	var 可攻目标: Array[int] = player_ids_where(_duo_chong_dst_ok)
 	var 有风: bool = _cover_has_element(GConst.CardElement.Wind)
+	# 选牌来源写盖牌区：选中这一项时客户端把盖牌区摆出来（移除哪张由服务端自己挑）
 	return [{"value": DUO_CHONG_SHE_JI, "label": GConst.skill_name(DUO_CHONG_SHE_JI),
 		"skill_id": DUO_CHONG_SHE_JI, "need_target": 1, "targets": 可攻目标,
+		"card_source": GConst.CardSource.Cover,
 		"enabled": 有风 and not 可攻目标.is_empty()}]
 
 

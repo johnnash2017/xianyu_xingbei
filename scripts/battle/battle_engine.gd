@@ -2807,6 +2807,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var 选项元素: Array = []
 	var 选项技能组: Array = []
 	var 选项牌白: Array = []
+	var 选项来源: Array = []
 	var 有选项目标: bool = false
 	# 阶段 5.2：同一份选项再按「一个选项一条 Option 消息」攒一份（旧端会跳过这个字段号）
 	var 嵌套选项: Array = []
@@ -2826,6 +2827,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		选项元素.append({"ids": o.get("elements", [])})
 		选项技能组.append({"ids": o.get("技能组", [])})
 		选项牌白.append({"ids": _牌面表(o.get("cards", []))})
+		选项来源.append(int(o.get("card_source", -1)))
 		var 目标: Array = o.get("targets", [])
 		选项目标.append({"ids": 目标})
 		if not 目标.is_empty():
@@ -2921,6 +2923,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		# 选项自带牌白名单（空数组＝不限；有 -1 表示一张都不给点）
 		if 选项牌白.any(func(项: Dictionary) -> bool: return not (项.get("ids", []) as Array).is_empty()):
 			cmd["option_cards"] = 选项牌白
+	# 选项自带的选牌来源（-1＝沿用技能本体）：如行动结束响应里魔弓【多重射击】
+	# 选中后要把盖牌区亮出来（服务端自己挑充能）
+	if 选项来源.any(func(v: Variant) -> bool: return int(v) >= 0):
+		cmd["option_card_sources"] = 选项来源
 	# 选项带「悬停预览牌」时（如【三秒原则】的「获得 2 张【魔弹】」）：
 	# 客户端悬停那个选项按钮时把这几张牌的卡面并排摊出来
 	if not 选项预览牌.is_empty():

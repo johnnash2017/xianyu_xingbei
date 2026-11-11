@@ -325,6 +325,9 @@ const SUB: Dictionary = {
 		60: {"n": "need_target", "t": "u32"},
 		61: {"n": "target_max", "t": "u32"},
 		62: {"n": "card_source", "t": "u32"},
+		# 带选项的询问里，每项自带的选牌来源（-1＝沿用技能本体，与 args 的选项值一一对应）：
+		# 如行动结束响应里魔弓【多重射击】，选中后客户端把盖牌区摆出来（服务端自己挑充能）
+		66: {"n": "option_card_sources", "t": "i32", "r": true},
 	},
 	# 技能参数选项的一项（battle_engine 组装命令时放进 arg_choices）
 	"ArgChoice": {
