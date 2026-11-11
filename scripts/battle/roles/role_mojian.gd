@@ -341,6 +341,8 @@ func p_magic_skill(action: Dictionary) -> int:
 	# 用多步询问：第 1 段问「要不要移除」（没有可行组合就跳过），第 2 段问「移除哪两颗」。
 	return 多步询问(AN_YING_LIU_XING, [
 		{"选项": _暗影流星追加选项(), "取消": _取消暗影流星,
+		 # 两段都只显示技能说明：技能表里那两条「要不要移除 / 请选择组合」的提示已删
+		 "询问文案": GConst.skill_desc(AN_YING_LIU_XING),
 		 "跳过": func(_答案: Array) -> bool: return not _liu_xing_any_combo()},
 		{"选项": func(_答案: Array) -> Array: return _liu_xing_组合选项(),
 		 # 第二段只显示技能说明：不要再提示「要不要移除我方战绩区的星石」（第一段已经问过）

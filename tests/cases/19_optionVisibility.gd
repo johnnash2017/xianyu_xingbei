@@ -92,6 +92,9 @@ func 跑() -> void:
 		var 第一问: Array = (引擎._最后询问.get(1, {}) as Dictionary).get("commands", [])
 		检(not 第一问.is_empty(), "暗影流星第一段没有下发询问")
 		if not 第一问.is_empty():
+			检(str((第一问[0] as Dictionary).get("ask_text", "")) == GConst.skill_desc(905),
+				"暗影流星第一段也应只显示技能说明，实际：%s" % str((第一问[0] as Dictionary).get("ask_text", "")))
+		if not 第一问.is_empty():
 			引擎.on_message(1, GConst.Msg.Respond,
 				{"respond_id": 905, "args": [1], "card_ids": [], "dst_ids": []})
 			角色.p_magic_skill({"src_id": 1, "action_id": 905,
