@@ -483,6 +483,9 @@ var _skill_ask_need_target: int = 0
 var _skill_ask_can_cancel: bool = true
 ## 本次询问是否要选盖牌（盖牌区可见且可点）
 var _selecting_cover: bool = false
+## 预亮盖牌（实例号）：魔弓【魔贯冲击】/【多重射击】/【雷光散射】服务端自己挑盖牌，
+## 界面上把这次要用到的那几张提前点亮；只做高亮，不进 _sel_cards、不参与提交
+var _预亮盖牌: Array[int] = []
 ## 是否正在「查看盖牌」（点「盖牌」按钮打开，只读，不影响回合）
 var _查看盖牌: bool = false
 ## 查看盖牌时按「最多能放几张」补在最后几张牌后面的空槽（个数由 _刷新盖牌空槽 维护）
@@ -7854,6 +7857,7 @@ func _回到行动阶段() -> void:
 	_先弹选项 = false
 	_已选参数.clear()
 	_目标锁死 = false
+	_预亮盖牌.clear()
 	# 退回行动阶段＝放弃【冒险者天堂】提炼流程 / 特殊行动的选星石步骤
 	_提炼阶段 = 0
 	_本地选项阶段 = 0
@@ -8927,6 +8931,7 @@ func _清空待选() -> void:
 	# 「攻击结束二选一」处理，选项自带的需牌 / 需目标全部不生效。
 	_攻击结束二选一 = false
 	_已选参数.clear()
+	_预亮盖牌.clear()
 	_攒应战应答号 = 0
 	_攒应战选应战 = false
 	_攒应战选择 = 0
@@ -9294,6 +9299,7 @@ func _盖牌此刻可用() -> bool:
 # 渲染：手牌 / 盖牌 / 玩家面板选中 / 按钮
 # ============================================================
 func _刷新交互() -> void:
+	_计算预亮盖牌()
 	刷新手牌()
 	刷新盖牌()
 	刷新选中面板()
@@ -9305,6 +9311,46 @@ func _刷新交互() -> void:
 	# 【元素射击】选/取消子弹后，刷新「视为系别」选项的可点状态
 	if _mode == 3 and _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
 		_刷新视为系别可用()
+
+
+## 盖牌区里某系的前 N 张（实例号）：与服务端 _cover_ids_of_element 的取法一致（按盖牌区顺序取前几张）
+func _盖牌前N(元素: int, 数量: int) -> Array[int]:
+	var out: Array[int] = []
+	if 数量 <= 0:
+		return out
+	for k: int in range(Data.cover_cards.size()):
+		var c: GCard = Data.cover_cards[k]
+		if c == null or c.element_enum() != 元素:
+			continue
+		out.append(Data.cover_iids[k] if k < Data.cover_iids.size() else c.id)
+		if out.size() >= 数量:
+			break
+	return out
+
+
+## 魔弓三招的「本次要移除的盖牌」预亮：
+##   魔贯冲击 2601（本次 + 命中追加）：服务端取第一张火系【充能】；
+##   多重射击 2603：服务端取第一张风系【充能】；
+##   雷光散射 2602：二级栏选 X 张时，服务端取前 X 张雷系【充能】。
+## 只影响界面高亮，提交的内容不变。
+func _计算预亮盖牌() -> void:
+	_预亮盖牌.clear()
+	if _mode == 3 and _是技能询问 and _skill_card_source == GConst.CardSource.Cover:
+		match _skill_ask_id:
+			2601:
+				# 选「不发动」就不亮；还没选时先亮出来当提示
+				var 选: int = int(_已选参数[0]) if not _已选参数.is_empty() else 1
+				if 选 == 1:
+					_预亮盖牌 = _盖牌前N(GConst.CardElement.Fire, 1)
+			2603:
+				var 选中技: int = 0
+				if _二级选中 >= 0 and _二级选中 < _二级选项.size():
+					选中技 = int((_二级选项[_二级选中] as Dictionary).get("技能号", 0))
+				# 选中别的响应（迅捷赐福等）就不亮；还没选时先亮出来当提示
+				if 选中技 == 0 or 选中技 == 2603:
+					_预亮盖牌 = _盖牌前N(GConst.CardElement.Wind, 1)
+	elif _mode == 4 and _pending_skill_id == 2602 and not _已选参数.is_empty():
+		_预亮盖牌 = _盖牌前N(GConst.CardElement.Thunder, int(_已选参数[0]))
 
 
 ## 点了场上的某枚基础效果图标（CardSource.BasicEffect 要选的就是它）：连它所在的玩家一起记下来
@@ -9493,7 +9539,7 @@ func 刷新盖牌() -> void:
 				(ChooseArea.size.x - 总宽) * 0.5 + float(序) * (尺寸.x + 间距),
 				(ChooseArea.size.y - 尺寸.y) * 0.5 + 盖牌显示下移)
 		# 盖牌太小：选中的整张牌染黄（学头像选中色），不只看边框
-		go.call("设置选中", _sel_cards.has(实例), true)
+		go.call("设置选中", _sel_cards.has(实例) or _预亮盖牌.has(实例), true)
 		序 += 1
 	# 空槽紧跟最后一张盖牌，用与牌完全相同的定位算式摆（同一行、同一间距）；
 	# 槽里写的是「整行的第几个位置」，所以编号接着已有的盖牌往下数
