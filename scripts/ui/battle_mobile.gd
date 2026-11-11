@@ -5430,7 +5430,12 @@ func _按钮可用核心(服务端可用: bool, 技能类型: int, 固定系: in
 	if not 服务端可用:
 		return false
 	if not GConst.放行动作(技能类型, 放行):
-		return false
+		# 被【挑衅】时只能攻击，但「启动」技能不消耗行动：服务端已经把这类按钮标成可用，
+		# 客户端不要再按放行种类拦一次
+		var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+		var 挑衅中: bool = 我 != null and 我.get_special(GConst.Exclusive.TiaoXin)
+		if not (挑衅中 and 技能类型 == GConst.ActionType.SpecialSkill):
+			return false
 	return not (固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别)
 
 

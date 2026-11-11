@@ -2628,8 +2628,14 @@ func _技能按钮命令(pl: BattlePlayer, sk: Dictionary, action_type: int) -> 
 			and pl.role.is_free_skill(int(sk.get("id", 0))):
 		技能可用 = false
 	# 本阶段放行的行动种类也管技能按钮：额外行动只允许攻击 / 法术时，特殊技能（启动）
-	# 一律置灰 —— 口径同 base_v_allow_action，避免玩家点了才被驳回
-	if not GConst.放行动作(int(sk.get("type", 0)), action_type):
+	# 一律置灰 —— 口径同 base_v_allow_action，避免玩家点了才被驳回。
+	# 例外：被【挑衅】时只能攻击，但「启动」技能不消耗本回合行动，仍然放行。
+	var 放行: bool = GConst.放行动作(int(sk.get("type", 0)), action_type)
+	if not 放行 and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
+			and pl.check_exclusive_effect(GConst.Exclusive.TiaoXin) \
+			and pl.role != null and pl.role.is_free_skill(int(sk.get("id", 0))):
+		放行 = true
+	if not 放行:
 		技能可用 = false
 	# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时置灰。
 	# 空列表在协议/客户端那里等于「不限制」（_玩家可选），会让本该被挡住的人
@@ -6187,7 +6193,15 @@ func resolve_action(action_type: int, data: Dictionary) -> int:
 				return _reject_action(cur)
 	# 行动合法性总闸：对照原版 StateActionPhase → PlayerEntity::v_allow_action(action, allowAction, canGiveUp)。
 	# 角色可覆写 v_allow_action 追加限制（如「审判满 4 时该阶段只能发动末日审判」「暗影抗拒禁用法术牌」）
-	var 总闸: int = cur.v_allow_action(action_type, data.get("args", []), 行动允许, 行动可放弃) if cur != null else GConst.GE_SUCCESS
+	# 被【挑衅】时只能攻击，但「启动」技能不消耗本回合行动：总闸按「特殊」放行一次
+	# （只替换放行种类，角色自己的其它限制仍由 v_allow_action 照常判）
+	var 放行种类: int = 行动允许
+	if cur != null and action_type == GConst.ActionType.SpecialSkill \
+			and not GConst.放行动作(action_type, 行动允许) \
+			and cur.check_exclusive_effect(GConst.Exclusive.TiaoXin) \
+			and cur.role != null and cur.role.is_free_skill(int(data.get("action_id", 0))):
+		放行种类 = GConst.ActionType.Special
+	var 总闸: int = cur.v_allow_action(action_type, data.get("args", []), 放行种类, 行动可放弃) if cur != null else GConst.GE_SUCCESS
 	if 总闸 != GConst.GE_SUCCESS:
 		return _reject_action(cur)
 	# 发动过「启动」技能后本阶段禁止特殊行动（购买/合成/提炼）：客户端已把按钮收掉，这里兜底驳回
