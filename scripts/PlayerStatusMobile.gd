@@ -124,9 +124,9 @@ const 补牌黄块材质: ShaderMaterial = preload("res://scripts/effects/refill
 const 红治疗预制: PackedScene = preload("res://scenes/prefabs/battlemobile/HealRed.tscn")
 ## 红色治疗格的材质（与预制体共用同一份；受击时让它的描边也一起闪红）
 const 红治疗材质: ShaderMaterial = preload("res://scenes/prefabs/battlemobile/HealRedMaterial.tres")
-## 超过治疗上限的格子用的灰：比工程统一「置灰色」(0.5) 亮一点，
+## 超过治疗上限的格子用的灰：比工程统一「置灰色」(0.5) 稍亮一点，
 ## 既能和上限内的实心格区分，又不至于暗到看不清
-const 溢出治疗灰: Color = Color(0.72, 0.72, 0.72, 1.0)
+const 溢出治疗灰: Color = Color(0.60, 0.60, 0.60, 1.0)
 ## 新到手的宝石闪白时长（秒）：越短闪得越快
 const 宝石闪白时长: float = 0.3
 ## 闪白的起始强度：从纯白（1.0）开始往下淡
