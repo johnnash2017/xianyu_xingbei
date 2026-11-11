@@ -2629,11 +2629,15 @@ func _技能按钮命令(pl: BattlePlayer, sk: Dictionary, action_type: int) -> 
 		技能可用 = false
 	# 本阶段放行的行动种类也管技能按钮：额外行动只允许攻击 / 法术时，特殊技能（启动）
 	# 一律置灰 —— 口径同 base_v_allow_action，避免玩家点了才被驳回。
-	# 例外：被【挑衅】时只能攻击，但「启动」技能不消耗本回合行动，仍然放行。
+	# 另：「启动」是免费动作，但只能在本回合第一个行动之前执行（额外行动阶段一律不行）。
+	var 启动: bool = int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
+			and pl.role != null and pl.role.is_free_skill(int(sk.get("id", 0)))
+	if 启动 and not 可发动启动(pl.id):
+		技能可用 = false
 	var 放行: bool = GConst.放行动作(int(sk.get("type", 0)), action_type)
-	if not 放行 and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
-			and pl.check_exclusive_effect(GConst.Exclusive.TiaoXin) \
-			and pl.role != null and pl.role.is_free_skill(int(sk.get("id", 0))):
+	# 例外：被【挑衅】时只能攻击，但启动是免费动作，普通行动阶段仍可先用它
+	if not 放行 and 启动 and not 行动额外 \
+			and pl.check_exclusive_effect(GConst.Exclusive.TiaoXin):
 		放行 = true
 	if not 放行:
 		技能可用 = false
@@ -4073,6 +4077,18 @@ func 攻击表现牌(card_id: int) -> int:
 		return card_id
 	var 表现: int = int(GConst.元素斩击表现牌.get(卡.element_enum(), 0))
 	return 表现 if 表现 > 0 else card_id
+
+
+## 「启动」能不能发动：它是一次免费动作，但只能在本回合**第一个行动之前**执行。
+## 已经做过攻击 / 法术 / 特殊行动（含额外行动）之后就不能再启动；
+## 额外行动阶段同样不行（那一阶段是消耗已获得的行动，不是本回合的第一个行动）。
+func 可发动启动(pid: int) -> bool:
+	var p0: BattlePlayer = players.get(pid)
+	if p0 == null:
+		return false
+	if 行动额外:
+		return false
+	return p0.action_count() == 0
 
 
 ## 本回合的行动计数（只读查询，F2）：供角色 / 头像提示 / 测试读取
@@ -6203,6 +6219,11 @@ func resolve_action(action_type: int, data: Dictionary) -> int:
 		放行种类 = GConst.ActionType.Special
 	var 总闸: int = cur.v_allow_action(action_type, data.get("args", []), 放行种类, 行动可放弃) if cur != null else GConst.GE_SUCCESS
 	if 总闸 != GConst.GE_SUCCESS:
+		return _reject_action(cur)
+	# 「启动」：免费动作，但只能在本回合第一个行动之前（客户端已置灰，这里兜底）
+	if cur != null and action_type == GConst.ActionType.SpecialSkill \
+			and cur.role != null and cur.role.is_free_skill(int(data.get("action_id", 0))) \
+			and not 可发动启动(cur.id):
 		return _reject_action(cur)
 	# 发动过「启动」技能后本阶段禁止特殊行动（购买/合成/提炼）：客户端已把按钮收掉，这里兜底驳回
 	if 行动禁特殊 and (action_type == GConst.ActionType.Special or action_type == GConst.ActionType.SpecialSkill):

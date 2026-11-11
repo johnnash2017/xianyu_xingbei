@@ -1,12 +1,14 @@
 extends 自检用例
-## 用例 88：被【挑衅】的角色仍然可以使用「启动」技能
+## 用例 88：【挑衅】+「启动」的放行规则
 ##
-## 勇者【挑衅】把目标压成「本回合只能攻击」；但「启动」技能（is_free_skill）不消耗行动，
-## 被挑衅时也应该能发动。覆盖两处卡口：
-##   服务端 _技能按钮命令：被挑衅时启动技能仍 enabled（其它特殊技能仍置灰）
-##   客户端 _按钮可用核心：被挑衅时不再按「只放行攻击」拦启动技能
+## 规则（用户口径）：
+##   - 启动是免费动作，只能在本回合**第一个行动之前**执行；
+##   - 被【挑衅】时仍可先用启动（启动不消耗行动）；
+##   - 额外行动阶段不能用启动；
+##   - 已经做过攻击 / 法术 / 特殊行动后不能再用启动；
+##   - 非启动的特殊技能，被挑衅时仍置灰。
 ##
-## 用血色剑灵【散华轮舞】3406 当启动技能样本（role.is_free_skill(3406) == true）。
+## 样本：血色剑灵【散华轮舞】3406（role.is_free_skill(3406) == true）。
 
 const 角色脚本: GDScript = preload("res://scripts/battle/roles/role_xuejian.gd")
 
@@ -23,22 +25,35 @@ func 跑() -> void:
 	await 等帧(1)
 	_建引擎()
 	检(角色.is_free_skill(3406), "散华轮舞应是启动技能（前提不成立）")
-
-	# ---- 1) 正常状态：只放行攻击时，启动技能置灰 ----
 	var 技能: Dictionary = {"type": GConst.ActionType.SpecialSkill, "id": 3406, "enabled": true}
-	var 命令: Dictionary = 引擎.call("_技能按钮命令", 玩家, 技能, GConst.ActionType.Attack)
-	检(not bool(命令.get("enabled", true)), "没被挑衅时，只放行攻击的阶段不该放行启动技能")
 
-	# ---- 2) 被挑衅：启动技能可用 ----
+	# ---- 1) 普通行动阶段、还没行动、没被挑衅：启动可用 ----
+	var 命令: Dictionary = 引擎.call("_技能按钮命令", 玩家, 技能, GConst.ActionType.Any)
+	检(bool(命令.get("enabled", false)), "本回合第一个行动前应能启动")
+
+	# ---- 2) 只放行攻击（被挑衅）：启动仍可用 ----
 	玩家.exclusive_effects[GConst.Exclusive.TiaoXin] = true
 	命令 = 引擎.call("_技能按钮命令", 玩家, 技能, GConst.ActionType.Attack)
 	检(bool(命令.get("enabled", false)), "被挑衅时应能用启动技能")
-	# 非启动的特殊技能仍然置灰
 	var 非启动: Dictionary = {"type": GConst.ActionType.SpecialSkill, "id": 999999, "enabled": true}
 	var 命令2: Dictionary = 引擎.call("_技能按钮命令", 玩家, 非启动, GConst.ActionType.Attack)
 	检(not bool(命令2.get("enabled", true)), "非启动的特殊技能被挑衅时仍应置灰")
 
-	# ---- 3) 客户端判定：被挑衅时启动技能不再被放行种类拦住 ----
+	# ---- 3) 额外行动阶段：不能用启动 ----
+	引擎.行动额外 = true
+	命令 = 引擎.call("_技能按钮命令", 玩家, 技能, GConst.ActionType.Attack)
+	检(not bool(命令.get("enabled", true)), "额外行动阶段不该放行启动技能")
+	引擎.行动额外 = false
+
+	# ---- 4) 已经做过行动：不能用启动 ----
+	玩家.attack_action_count = 1
+	命令 = 引擎.call("_技能按钮命令", 玩家, 技能, GConst.ActionType.Any)
+	检(not bool(命令.get("enabled", true)), "已经攻击过之后不该再用启动")
+	检(not bool(引擎.call("可发动启动", 玩家.id)), "本回合做过行动后 可发动启动 应为假")
+	玩家.attack_action_count = 0
+	检(bool(引擎.call("可发动启动", 玩家.id)), "计数清零后 可发动启动 应为真")
+
+	# ---- 5) 客户端判定：被挑衅时启动按钮放行 ----
 	Logic.my_player_id = 1
 	var 旧列表: Array[GPlayer] = []
 	旧列表.append_array(Data.player_list)
