@@ -255,11 +255,12 @@ func p_after_magic(ctx: Dictionary) -> int:
 			for pid: int in engine.order:
 				if engine.p(pid) != null:
 					全体.append(pid)
-			# 冰冻治疗是内部子询问（技能号 11021 没有技能表行），技能表 1102 也没有配「提示」行，
-			# 所以这里不带专属文案（客户端按通用「【技能名】：说明」显示）。
+			# 冰冻治疗是内部子询问（技能号 11021 没有技能表行），文案取技能表 1102 的「提示」列。
+			# 不能留空：留空会落到客户端的强制询问兜底「请选 N 名目标，本次必须执行，不能取消」，
+			# 玩家看不出这一步是「指定角色 +1 治疗」。
 			询问(player.id, GConst.技能_冰冻治疗, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
 				0, -1, 全体, -1, {}, 0, 0, false, [], true, -1, 0,
-				"", -1, "", [], _友方())
+				"", -1, GConst.提示原文(BING_DONG, 0), [], _友方())
 			return WAIT
 		if not engine.has_reply():
 			return WAIT
