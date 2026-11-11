@@ -252,13 +252,13 @@ func _检献祭同系() -> void:
 	玩家1.set_crystal(0)
 	var 两张: Array = _发牌(玩家1, GConst.CardElement.Wind, 2)
 	_放末日(两张)
-	# 【献祭】是「启动」：技能类型必须是 SpecialSkill（不是法术技能），否则会去消耗放逐给的额外行动
+	# 【献祭】是「启动」：技能类型必须是 ActivateSkill（不是法术技能），否则会去消耗放逐给的额外行动
 	var 献祭项: Dictionary = {}
 	for 项: Dictionary in 角色.available_skills():
 		if int(项.get("id", 0)) == 9503:
 			献祭项 = 项
 	检(int(献祭项.get("type", 0)) == GConst.ActionType.ActivateSkill,
-		"【献祭】应作为启动技（SpecialSkill）下发：%s" % str(献祭项.get("type", 0)))
+		"【献祭】应作为启动技（ActivateSkill）下发：%s" % str(献祭项.get("type", 0)))
 	# 和【魔眼】一样：点技能进二级技能栏选系别，选项 7 系齐全（含光/暗）并带系别标色
 	var 献祭选项: Array = 献祭项.get("arg_choices", [])
 	var 七系: Array[int] = [GConst.CardElement.Wind, GConst.CardElement.Water, GConst.CardElement.Fire,

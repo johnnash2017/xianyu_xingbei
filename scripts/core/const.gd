@@ -146,7 +146,7 @@ enum ActionType {
 	Special = 3,
 	AttackSkill = 4,
 	MagicSkill = 5,
-	SpecialSkill = 6,
+	# 6 曾用于「特殊技 SpecialSkill」，该类型已删除；这个值不要再复用（避免和历史数据冲突）
 	Any = 7,
 	AttackMagic = 8,
 	## 启动技能：免费动作（不消耗本回合行动），只能在本回合第一个行动前发动。
@@ -162,14 +162,6 @@ enum ActionType {
 ## 攻击技 / 法术技折算成对应的基础行动（它们确实消耗那次攻击 / 法术行动）；
 ## **启动技能（ActivateSkill）不参与这里**：它是免费动作，只看「本回合第一个行动之前」，
 ## 由引擎 可发动启动() 判，和「特殊行动放不放行」无关。
-## **特殊技（SpecialSkill）也不折算**：特殊行动是购买 / 合成 / 提炼那个槽，特殊技要用
-## 放行特殊行动技() 单独判（本工程目前没有消耗特殊行动的特殊技）。
-## 消耗「特殊行动」的那类特殊技：只有本阶段放行特殊行动（Any / Special）才行。
-## 启动技能不要用它——启动不看放行种类。
-static func 放行特殊行动技(允许: int) -> bool:
-	return 允许 == ActionType.Any or 允许 == ActionType.Special
-
-
 static func 放行动作(动作种类: int, 允许: int) -> bool:
 	var 类别: int = 动作种类
 	match 类别:
@@ -177,7 +169,7 @@ static func 放行动作(动作种类: int, 允许: int) -> bool:
 			类别 = ActionType.Attack
 		ActionType.MagicSkill:
 			类别 = ActionType.Magic
-		ActionType.SpecialSkill, ActionType.ActivateSkill:
+		ActionType.ActivateSkill:
 			return false
 	match 允许:
 		ActionType.Any:

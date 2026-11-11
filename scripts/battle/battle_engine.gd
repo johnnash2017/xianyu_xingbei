@@ -2631,10 +2631,6 @@ func _技能按钮命令(pl: BattlePlayer, sk: Dictionary, action_type: int) -> 
 	if 技能类型 == GConst.ActionType.ActivateSkill:
 		if not 可发动启动(pl.id) or 行动禁特殊:
 			技能可用 = false
-	elif 技能类型 == GConst.ActionType.SpecialSkill:
-		# 消耗特殊行动的特殊技（本工程暂无）：按特殊行动的放行口径
-		if not GConst.放行特殊行动技(action_type):
-			技能可用 = false
 	elif not GConst.放行动作(技能类型, action_type):
 		技能可用 = false
 	# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时置灰。
@@ -6243,16 +6239,13 @@ func resolve_action(action_type: int, data: Dictionary) -> int:
 		GConst.ActionType.ActivateSkill:
 			_进入技能行动(cur, "special", data, true)
 			return CONTINUE
-		GConst.ActionType.SpecialSkill:
-			_进入技能行动(cur, "special", data)
-			return CONTINUE
 		_:
 			push(STurnEnd.new())
 			return CONTINUE
 
 
-## 技能行动入栈：普通技能用完即结束行动阶段；「启动」技能（角色 is_free_skill 认可，如格斗家
-## 【百式幻龙拳】【斗神天驱】）不消耗行动，结算完重新进入行动阶段让玩家继续本回合行动
+## 技能行动入栈：普通技能用完即结束行动阶段；启动技能（ActivateSkill，如格斗家
+## 【百式幻龙拳】【斗神天驱】）是免费动作，不消耗行动，结算完重新进入行动阶段让玩家继续本回合行动
 func _进入技能行动(cur: BattlePlayer, kind: String, data: Dictionary, 是启动: bool = false) -> void:
 	var 技能号: int = int(data.get("action_id", 0))
 	# 「启动」现在是独立动作类型（ActivateSkill，由调用方传 是启动）；

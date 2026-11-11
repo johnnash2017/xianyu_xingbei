@@ -5430,11 +5430,8 @@ func _按钮可用核心(服务端可用: bool, 技能类型: int, 固定系: in
 	if not 服务端可用:
 		return false
 	# 启动技能（ActivateSkill）的可用性由服务端按「第一个行动前」算好（enabled），
-	# 客户端不拿放行种类拦；消耗特殊行动的特殊技才按特殊行动口径判。
-	if 技能类型 == GConst.ActionType.SpecialSkill:
-		if not GConst.放行特殊行动技(放行):
-			return false
-	elif 技能类型 != GConst.ActionType.ActivateSkill and not GConst.放行动作(技能类型, 放行):
+	# 客户端不再拿「本阶段放行哪种行动」拦它。
+	if 技能类型 != GConst.ActionType.ActivateSkill and not GConst.放行动作(技能类型, 放行):
 		return false
 	return not (固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别)
 

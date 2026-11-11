@@ -20,7 +20,7 @@ func _情形(选中: int) -> void:
 		for sk: Dictionary in 角色.available_skills():
 			if int(sk.get("id", 0)) == 503:
 				print("【结果】潜行技能项 arg_choices=%s" % str(sk.get("arg_choices", [])))
-		for c: Variant in e.action_commands(1, GConst.ActionType.SpecialSkill, true, false, false):
+		for c: Variant in e.action_commands(1, GConst.ActionType.ActivateSkill, true, false, false):
 			var d: Dictionary = c
 			var a: Array = d.get("args", [])
 			if not a.is_empty() and int(a[0]) == 503:

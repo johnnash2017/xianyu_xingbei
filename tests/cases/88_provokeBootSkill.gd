@@ -35,8 +35,8 @@ func 跑() -> void:
 	玩家.exclusive_effects[GConst.Exclusive.TiaoXin] = true
 	命令 = 引擎.call("_技能按钮命令", 玩家, 技能, GConst.ActionType.Attack)
 	检(bool(命令.get("enabled", false)), "被挑衅时应能用启动技能")
-	# 反例用「消耗特殊行动的特殊技」（SpecialSkill，本工程暂无实例）：被挑衅时仍应置灰
-	var 非启动: Dictionary = {"type": GConst.ActionType.SpecialSkill, "id": 999999, "enabled": true}
+	# 反例用普通法术技：只放行攻击的阶段仍应置灰
+	var 非启动: Dictionary = {"type": GConst.ActionType.MagicSkill, "id": 999999, "enabled": true}
 	var 命令2: Dictionary = 引擎.call("_技能按钮命令", 玩家, 非启动, GConst.ActionType.Attack)
 	检(not bool(命令2.get("enabled", true)), "非启动的特殊技能被挑衅时仍应置灰")
 
