@@ -52,9 +52,9 @@ func available_skills() -> Array:
 		"cards": 赐予牌, "enabled": _lan() >= 3 and not 赐予牌.is_empty()})
 	# 【灵魂转换】不再提供技能栏按钮：它只能在主动攻击时响应发动，故不在这里列按钮
 	# 启动技能（每回合只能发动一个，由引擎统一下发/校验）；条件不满足时按钮仍摆出、置灰
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_ZENG_FU, "need_card": 0, "need_target": 0,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": LING_HUN_ZENG_FU, "need_card": 0, "need_target": 0,
 		"enabled": player.gem > 0 and not used_zeng_fu})
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": LING_HUN_LIAN_JIE, "need_card": 0, "need_target": 1,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": LING_HUN_LIAN_JIE, "need_card": 0, "need_target": 1,
 		"targets": ally_ids(), "enabled": _can_lian_jie()})
 	return out
 

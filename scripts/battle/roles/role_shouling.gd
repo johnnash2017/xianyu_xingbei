@@ -65,7 +65,7 @@ func available_skills() -> Array:
 	# need_card 给 0：弃不弃牌由选中那一项自带的 need_card 决定（只有弃牌项要 1 张）；
 	# card_max 给 1：选中弃牌项后才放出手牌可选，且最多 1 张。
 	# 已是【御魂流居合形态】（横置）或没有宝石时按钮照摆、置灰。
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": YU_HUN_BOOT,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": YU_HUN_BOOT,
 		"need_card": 0, "card_max": 1, "need_target": 0,
 		"arg_choices": _yu_hun_boot_choices(),
 		"enabled": player.gem > 0 and not player.tap})

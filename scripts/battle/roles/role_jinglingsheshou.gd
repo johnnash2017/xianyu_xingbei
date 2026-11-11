@@ -55,7 +55,7 @@ func 盖牌可当手牌() -> bool:
 func available_skills() -> Array:
 	var out: Array = []
 	# 精灵密仪：有宝石且未横置（未处于【精灵祝福形态】）时才能发动（耗 1 宝石并横置）
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": JING_LING_MI_YI,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": JING_LING_MI_YI,
 		"need_card": 0, "need_target": 0,
 		"enabled": player.gem > 0 and not player.tap})
 	return out

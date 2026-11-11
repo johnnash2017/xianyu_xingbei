@@ -53,7 +53,7 @@ func available_skills() -> Array:
 		"enabled": player.get_energy() >= 1,
 	})
 	# 【神圣契约】为「启动」：有能量且有治疗时可发动，把治疗转移给队友（不消耗本回合行动）；不满足时置灰
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": SHEN_SHENG_QI_YUE,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": SHEN_SHENG_QI_YUE,
 		"need_card": 0, "need_target": 1, "targets": ally_ids(),
 		"enabled": player.get_energy() >= 1 and player.cross_num > 0})
 	return out

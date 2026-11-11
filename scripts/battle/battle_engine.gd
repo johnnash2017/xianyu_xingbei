@@ -2623,23 +2623,19 @@ func _技能按钮命令(pl: BattlePlayer, sk: Dictionary, action_type: int) -> 
 	var 技能视为: int = int(pl.role.call("技能视为系别",
 		{"action_id": int(sk.get("id", 0)), "src_id": pl.id}))
 	# 「启动」技能每回合只能发动一个：本回合已发动过就置灰
-	# （「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不受这条限制）
-	if pl.boot_skill_used and int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
-			and pl.role.is_free_skill(int(sk.get("id", 0))):
+	if pl.boot_skill_used and int(sk.get("type", 0)) == GConst.ActionType.ActivateSkill:
 		技能可用 = false
-	# 本阶段放行的行动种类也管技能按钮：额外行动只允许攻击 / 法术时，特殊技能（启动）
-	# 一律置灰 —— 口径同 base_v_allow_action，避免玩家点了才被驳回。
-	# 另：「启动」是免费动作，但只能在本回合第一个行动之前执行（额外行动阶段一律不行）。
-	var 启动: bool = int(sk.get("type", 0)) == GConst.ActionType.SpecialSkill \
-			and pl.role != null and pl.role.is_free_skill(int(sk.get("id", 0)))
-	if 启动 and not 可发动启动(pl.id):
-		技能可用 = false
-	var 放行: bool = GConst.放行动作(int(sk.get("type", 0)), action_type)
-	# 例外：被【挑衅】时只能攻击，但启动是免费动作，普通行动阶段仍可先用它
-	if not 放行 and 启动 and not 行动额外 \
-			and pl.check_exclusive_effect(GConst.Exclusive.TiaoXin):
-		放行 = true
-	if not 放行:
+	# 启动技能是独立类型（ActivateSkill）：不看本阶段放行哪种行动（被【挑衅】只放行攻击时也能用），
+	# 只看「本回合第一个行动之前 + 非额外行动阶段」这一条（见 可发动启动）。
+	var 技能类型: int = int(sk.get("type", 0))
+	if 技能类型 == GConst.ActionType.ActivateSkill:
+		if not 可发动启动(pl.id) or 行动禁特殊:
+			技能可用 = false
+	elif 技能类型 == GConst.ActionType.SpecialSkill:
+		# 消耗特殊行动的特殊技（本工程暂无）：按特殊行动的放行口径
+		if not GConst.放行特殊行动技(action_type):
+			技能可用 = false
+	elif not GConst.放行动作(技能类型, action_type):
 		技能可用 = false
 	# 声明了 targets 就等于「本次目标受限」：一个合法目标都没有时置灰。
 	# 空列表在协议/客户端那里等于「不限制」（_玩家可选），会让本该被挡住的人
@@ -6208,25 +6204,23 @@ func resolve_action(action_type: int, data: Dictionary) -> int:
 			if not _切换额外行动(cur, 选中ID, action_type):
 				return _reject_action(cur)
 	# 行动合法性总闸：对照原版 StateActionPhase → PlayerEntity::v_allow_action(action, allowAction, canGiveUp)。
-	# 角色可覆写 v_allow_action 追加限制（如「审判满 4 时该阶段只能发动末日审判」「暗影抗拒禁用法术牌」）
-	# 被【挑衅】时只能攻击，但「启动」技能不消耗本回合行动：总闸按「特殊」放行一次
-	# （只替换放行种类，角色自己的其它限制仍由 v_allow_action 照常判）
-	var 放行种类: int = 行动允许
-	if cur != null and action_type == GConst.ActionType.SpecialSkill \
-			and not GConst.放行动作(action_type, 行动允许) \
-			and cur.check_exclusive_effect(GConst.Exclusive.TiaoXin) \
-			and cur.role != null and cur.role.is_free_skill(int(data.get("action_id", 0))):
-		放行种类 = GConst.ActionType.Special
-	var 总闸: int = cur.v_allow_action(action_type, data.get("args", []), 放行种类, 行动可放弃) if cur != null else GConst.GE_SUCCESS
-	if 总闸 != GConst.GE_SUCCESS:
-		return _reject_action(cur)
-	# 「启动」：免费动作，但只能在本回合第一个行动之前（客户端已置灰，这里兜底）
-	if cur != null and action_type == GConst.ActionType.SpecialSkill \
-			and cur.role != null and cur.role.is_free_skill(int(data.get("action_id", 0))) \
-			and not 可发动启动(cur.id):
-		return _reject_action(cur)
+	# 角色可覆写 v_allow_action 追加限制（如「审判满 4 时该阶段只能发动末日审判」「暗影抗拒禁用法术牌」）。
+	# 启动技能（ActivateSkill）是独立类型：不看放行种类，只按「本回合第一个行动之前」判；
+	# 角色自己的覆写仍要问一次（如仲裁满审判时专门放行），没覆写就跳过 base 的种类判定。
+	if action_type == GConst.ActionType.ActivateSkill:
+		if cur == null or not 可发动启动(cur.id):
+			return _reject_action(cur)
+		var 角色判定: int = BattleRole.V_NOT_OVERRIDE
+		if cur.role != null:
+			角色判定 = cur.role.v_allow_action(action_type, data.get("args", []), 行动允许, 行动可放弃)
+		if 角色判定 != BattleRole.V_NOT_OVERRIDE and 角色判定 != GConst.GE_SUCCESS:
+			return _reject_action(cur)
+	else:
+		var 总闸: int = cur.v_allow_action(action_type, data.get("args", []), 行动允许, 行动可放弃) if cur != null else GConst.GE_SUCCESS
+		if 总闸 != GConst.GE_SUCCESS:
+			return _reject_action(cur)
 	# 发动过「启动」技能后本阶段禁止特殊行动（购买/合成/提炼）：客户端已把按钮收掉，这里兜底驳回
-	if 行动禁特殊 and (action_type == GConst.ActionType.Special or action_type == GConst.ActionType.SpecialSkill):
+	if 行动禁特殊 and (action_type == GConst.ActionType.Special or action_type == GConst.ActionType.ActivateSkill):
 		return _reject_action(cur)
 	match action_type:
 		GConst.ActionType.None:
@@ -6246,6 +6240,9 @@ func resolve_action(action_type: int, data: Dictionary) -> int:
 		GConst.ActionType.MagicSkill:
 			_进入技能行动(cur, "magic", data)
 			return CONTINUE
+		GConst.ActionType.ActivateSkill:
+			_进入技能行动(cur, "special", data, true)
+			return CONTINUE
 		GConst.ActionType.SpecialSkill:
 			_进入技能行动(cur, "special", data)
 			return CONTINUE
@@ -6256,11 +6253,12 @@ func resolve_action(action_type: int, data: Dictionary) -> int:
 
 ## 技能行动入栈：普通技能用完即结束行动阶段；「启动」技能（角色 is_free_skill 认可，如格斗家
 ## 【百式幻龙拳】【斗神天驱】）不消耗行动，结算完重新进入行动阶段让玩家继续本回合行动
-func _进入技能行动(cur: BattlePlayer, kind: String, data: Dictionary) -> void:
+func _进入技能行动(cur: BattlePlayer, kind: String, data: Dictionary, 是启动: bool = false) -> void:
 	var 技能号: int = int(data.get("action_id", 0))
-	# 「启动」都是特殊技能；同一个技能号另有攻击 / 法术入口时不算启动（如苍炎魔女【魔女之怒】的启动与攻击入口同号）
-	var 启动: bool = kind == "special" and 技能号 > 0 and cur != null and cur.role != null \
-			and cur.role.is_free_skill(技能号)
+	# 「启动」现在是独立动作类型（ActivateSkill，由调用方传 是启动）；
+	# 老口径（kind="special" + is_free_skill）保留兜底，兼容同号另有攻击 / 法术入口的技能。
+	var 启动: bool = 是启动 or (kind == "special" and 技能号 > 0 and cur != null and cur.role != null \
+			and cur.role.is_free_skill(技能号))
 	if 启动:
 		# 「启动」技能不消耗本回合行动，发动后行动阶段照旧继续；但只能再攻击 / 法术，
 		# 不能再走特殊行动（启动技与特殊行动互斥）

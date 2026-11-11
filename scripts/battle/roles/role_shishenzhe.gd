@@ -90,7 +90,7 @@ func available_skills() -> Array:
 			"preview_cards": [MO_REN_CARD if 是魔 else YI_REN_CARD],
 		})
 	技能.append({
-		"type": GConst.ActionType.SpecialSkill,
+		"type": GConst.ActionType.ActivateSkill,
 		"id": YU_REN,
 		"arg_choices": 御刃选项,
 		"enabled": not 御刃选项.is_empty(),

@@ -48,7 +48,7 @@ func 禁止获得治疗() -> bool:
 # ============================================================
 func available_skills() -> Array:
 	return [{
-		"type": GConst.ActionType.SpecialSkill,
+		"type": GConst.ActionType.ActivateSkill,
 		"id": NIU_QU_ZHI_AI,
 		"need_card": 0,
 		"need_target": 0,

@@ -35,7 +35,7 @@ func 跑() -> void:
 			break
 	检(not 项.is_empty(), "散华轮舞不在技能栏里（前提不成立）")
 	# ---- 1) 发动画散轮舞：按指示器「自动选目标自己」，客户端应把目标锁死 ----
-	窗.call("_选择技能", 3406, int(项.get("type", GConst.ActionType.SpecialSkill)),
+	窗.call("_选择技能", 3406, int(项.get("type", GConst.ActionType.ActivateSkill)),
 		int(项.get("need_card", 0)), int(项.get("need_target", 0)),
 		项.get("targets", []), 项.get("cards", []), int(项.get("card_max", 0)),
 		int(项.get("target_max", 0)), 0, GConst.CardSource.Hand, "",

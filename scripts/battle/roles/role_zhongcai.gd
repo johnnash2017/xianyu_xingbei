@@ -42,9 +42,9 @@ func available_skills() -> Array:
 		],
 		"enabled": t < _shen_pan_max() and player.get_energy() > 0})
 	# 启动技能：按形态互斥（每回合只能发动一个，由引擎统一下发/校验）
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": YI_SHI_ZHONG_DUAN, "need_card": 0, "need_target": 0,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": YI_SHI_ZHONG_DUAN, "need_card": 0, "need_target": 0,
 		"enabled": player.tap})
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": ZHONG_CAI_YI_SHI, "need_card": 0, "need_target": 0,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": ZHONG_CAI_YI_SHI, "need_card": 0, "need_target": 0,
 		"enabled": not player.tap and player.gem > 0})
 	return out
 
@@ -70,9 +70,9 @@ func v_allow_action(action_type: int, args: Array, allow: int, can_give_up: bool
 	if action_type == GConst.ActionType.MagicSkill:
 		return GConst.GE_SUCCESS
 	# 【仪式中断】【仲裁仪式】是「启动」技能，原版在行动阶段之前询问、不受满审判限制
-	# （【仪式中断】还是脱离审判形态的唯一手段），故这里放行 SpecialSkill；
+	# （【仪式中断】还是脱离审判形态的唯一手段），故这里放行 ActivateSkill；
 	# 具体哪个技能能不能发动由 v_special_skill 按技能号继续把关
-	if action_type == GConst.ActionType.SpecialSkill:
+	if action_type == GConst.ActionType.ActivateSkill:
 		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 

@@ -349,7 +349,7 @@ func 跑() -> void:
 
 	# ---- 场景 6：「启动」技能不是行动：不计、不触发 p_action_end、行动阶段继续 ----
 	_重置战斗()
-	引擎.resolve_action(GConst.ActionType.SpecialSkill,
+	引擎.resolve_action(GConst.ActionType.ActivateSkill,
 		{"action_id": 计数角色.启动技能号, "args": [], "card_ids": [], "dst_ids": []})
 	引擎.run()
 	检(玩家1.action_count() == 0 and 玩家1.special_action_count == 0,
@@ -360,7 +360,7 @@ func 跑() -> void:
 
 	# ---- 场景 7：被取消的技能行动撤销计数、不触发 p_action_end、退回行动阶段 ----
 	_重置战斗()
-	引擎.resolve_action(GConst.ActionType.SpecialSkill,
+	引擎.resolve_action(GConst.ActionType.ActivateSkill,
 		{"action_id": 计数角色.取消技能号, "args": [], "card_ids": [], "dst_ids": []})
 	引擎.run()
 	检(玩家1.action_count() == 0 and 玩家1.special_action_count == 0,

@@ -218,7 +218,7 @@ func _开魔法入门(选择: int = 1, dsts: Array = []) -> void:
 
 ## 发起一次 7804 技能行动（选项 / 弃牌 / 目标随行动一起提交）并推进到下一次等待
 func _开强予愿行(选择: int = 1, cards: Array = [], dsts: Array = []) -> void:
-	引擎.resolve_action(GConst.ActionType.SpecialSkill, {
+	引擎.resolve_action(GConst.ActionType.ActivateSkill, {
 		"src_id": 1, "action_id": 强予愿行, "args": [选择], "card_ids": cards, "dst_ids": dsts,
 	})
 	引擎.run()
@@ -296,7 +296,7 @@ func 跑() -> void:
 	检(int(技能7802.get("type", 0)) == GConst.ActionType.MagicSkill, "7802 应是法术技能")
 	检(bool(技能7802.get("enabled", true)), "7802 应默认可发动")
 	检(not 技能7804.is_empty(), "技能栏应下发 7804【强予愿行】")
-	检(int(技能7804.get("type", 0)) == GConst.ActionType.SpecialSkill, "7804 应是特殊技能（启动）")
+	检(int(技能7804.get("type", 0)) == GConst.ActionType.ActivateSkill, "7804 应是特殊技能（启动）")
 	检(not bool(技能7804.get("enabled", true)), "能量 0 时 7804 应置灰")
 	玩家.set_crystal(1)
 	检(bool(_找技能(角色.available_skills(), 强予愿行).get("enabled", false)),
@@ -891,7 +891,7 @@ func 跑() -> void:
 
 	# 7804：能量不足时被引擎驳回
 	_重置战斗()
-	引擎.resolve_action(GConst.ActionType.SpecialSkill, {
+	引擎.resolve_action(GConst.ActionType.ActivateSkill, {
 		"src_id": 1, "action_id": 强予愿行, "card_ids": [], "dst_ids": [], "args": [1],
 	})
 	引擎.run()

@@ -5429,13 +5429,13 @@ func _技能按钮可用(命令: Dictionary, 阶段系别: int) -> bool:
 func _按钮可用核心(服务端可用: bool, 技能类型: int, 固定系: int, 放行: int, 阶段系别: int) -> bool:
 	if not 服务端可用:
 		return false
-	if not GConst.放行动作(技能类型, 放行):
-		# 被【挑衅】时只能攻击，但「启动」技能不消耗行动：服务端已经把这类按钮标成可用，
-		# 客户端不要再按放行种类拦一次
-		var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-		var 挑衅中: bool = 我 != null and 我.get_special(GConst.Exclusive.TiaoXin)
-		if not (挑衅中 and 技能类型 == GConst.ActionType.SpecialSkill):
+	# 启动技能（ActivateSkill）的可用性由服务端按「第一个行动前」算好（enabled），
+	# 客户端不拿放行种类拦；消耗特殊行动的特殊技才按特殊行动口径判。
+	if 技能类型 == GConst.ActionType.SpecialSkill:
+		if not GConst.放行特殊行动技(放行):
 			return false
+	elif 技能类型 != GConst.ActionType.ActivateSkill and not GConst.放行动作(技能类型, 放行):
+		return false
 	return not (固定系 > 0 and 阶段系别 > 0 and 固定系 != 阶段系别)
 
 
@@ -8877,7 +8877,7 @@ func _发送行动(action_type: int, action_id: int, dst: Array, cards: Array, a
 	_等待技能选项 = not 额外记录.is_empty() \
 		and (action_type == GConst.ActionType.AttackSkill \
 			or action_type == GConst.ActionType.MagicSkill \
-			or action_type == GConst.ActionType.SpecialSkill)
+			or action_type == GConst.ActionType.ActivateSkill)
 	# 行动一发出，服务端可能在同一帧就把下一条询问递回来（进程内直连 / 快速回包，如
 	# 【扭曲之爱】这种「选完选项接着问下一段」的技能）：那时界面已经按新询问重建，
 	# 再 _清空待选 会把刚摆好的选项 / 提示一起抹掉，表现是「确认后界面闪一下」甚至「选项自动退出」。

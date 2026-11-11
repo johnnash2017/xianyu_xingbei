@@ -257,7 +257,7 @@ func _检献祭同系() -> void:
 	for 项: Dictionary in 角色.available_skills():
 		if int(项.get("id", 0)) == 9503:
 			献祭项 = 项
-	检(int(献祭项.get("type", 0)) == GConst.ActionType.SpecialSkill,
+	检(int(献祭项.get("type", 0)) == GConst.ActionType.ActivateSkill,
 		"【献祭】应作为启动技（SpecialSkill）下发：%s" % str(献祭项.get("type", 0)))
 	# 和【魔眼】一样：点技能进二级技能栏选系别，选项 7 系齐全（含光/暗）并带系别标色
 	var 献祭选项: Array = 献祭项.get("arg_choices", [])

@@ -41,7 +41,7 @@ func available_skills() -> Array:
 	# 弃牌张数只放在宝石选项自己的 need_card 上：水晶选项不弃牌，技能本体不能设 card_max，
 	# 否则客户端会把宝石方案的最多牌数当成普惠上限，导致水晶选项也被要求先选牌。
 	var 需弃: int = maxi(player.hand_cards.size() - 4, 0)
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": SAN_HUA_LUN_WU,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": SAN_HUA_LUN_WU,
 		"need_card": 0, "need_target": 0,
 		"arg_choices": [
 			{"text": GConst.按钮原文(SAN_HUA_LUN_WU, 0),

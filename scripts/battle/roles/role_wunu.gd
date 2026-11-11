@@ -54,7 +54,7 @@ func available_skills() -> Array:
 	# 【血之哀伤】为「启动」：自己场上有【同生共死】时可发动（二选一：转移 / 移除）
 	# 转移只能选「当前【同生共死】目标以外」的角色
 	var 转移目标: Array[int] = _转移可选目标()
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": XUE_ZHI_AI_SHANG,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": XUE_ZHI_AI_SHANG,
 		"need_card": 0, "need_target": 1, "targets": 转移目标,
 		"arg_choices": [
 			{"text": GConst.按钮文本(XUE_ZHI_AI_SHANG, 0), "args": [1], "need_card": 0, "need_target": 1,

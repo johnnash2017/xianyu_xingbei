@@ -25,7 +25,7 @@ func 跑() -> void:
 	await 等帧(1)
 	_建引擎()
 	检(角色.is_free_skill(3406), "散华轮舞应是启动技能（前提不成立）")
-	var 技能: Dictionary = {"type": GConst.ActionType.SpecialSkill, "id": 3406, "enabled": true}
+	var 技能: Dictionary = {"type": GConst.ActionType.ActivateSkill, "id": 3406, "enabled": true}
 
 	# ---- 1) 普通行动阶段、还没行动、没被挑衅：启动可用 ----
 	var 命令: Dictionary = 引擎.call("_技能按钮命令", 玩家, 技能, GConst.ActionType.Any)
@@ -35,6 +35,7 @@ func 跑() -> void:
 	玩家.exclusive_effects[GConst.Exclusive.TiaoXin] = true
 	命令 = 引擎.call("_技能按钮命令", 玩家, 技能, GConst.ActionType.Attack)
 	检(bool(命令.get("enabled", false)), "被挑衅时应能用启动技能")
+	# 反例用「消耗特殊行动的特殊技」（SpecialSkill，本工程暂无实例）：被挑衅时仍应置灰
 	var 非启动: Dictionary = {"type": GConst.ActionType.SpecialSkill, "id": 999999, "enabled": true}
 	var 命令2: Dictionary = 引擎.call("_技能按钮命令", 玩家, 非启动, GConst.ActionType.Attack)
 	检(not bool(命令2.get("enabled", true)), "非启动的特殊技能被挑衅时仍应置灰")
@@ -64,7 +65,7 @@ func 跑() -> void:
 	var 窗: Control = (load("res://scenes/BattleUIMobile.tscn") as PackedScene).instantiate()
 	get_tree().root.add_child(窗)
 	await 等帧(1)
-	检(bool(窗.call("_按钮可用核心", true, GConst.ActionType.SpecialSkill, 0,
+	检(bool(窗.call("_按钮可用核心", true, GConst.ActionType.ActivateSkill, 0,
 		GConst.ActionType.Attack, 0)), "被挑衅时客户端应放行启动技能按钮")
 	检(not bool(窗.call("_按钮可用核心", true, GConst.ActionType.Attack, 0,
 		GConst.ActionType.Magic, 0)), "只放行攻击时，法术行动按钮仍应拦下")

@@ -129,8 +129,8 @@ func available_skills() -> Array:
 	return [
 		星环技能,
 		{
-			# 群星启示是「启动」：必须是 SpecialSkill（见 v_special_skill / p_special_skill）
-			"type": GConst.ActionType.SpecialSkill,
+			# 群星启示是「启动」：必须是 ActivateSkill（见 v_special_skill / p_special_skill）
+			"type": GConst.ActionType.ActivateSkill,
 			"id": QUN_XING_QI_SHI,
 			"arg_choices": 启示选项,
 			"enabled": 模式1可用 or not 卢恩.is_empty(),

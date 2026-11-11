@@ -30,7 +30,7 @@ var using_hei_an_zhen_chan: bool = false
 func available_skills() -> Array:
 	var out: Array = []
 	# 暗影凝聚（启动）：未处于[暗影形态]（未横置）时可发动；已横置时按钮仍摆出、置灰
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": AN_YING_NING_JU, "need_card": 0, "need_target": 0,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": AN_YING_NING_JU, "need_card": 0, "need_target": 0,
 		"enabled": not player.tap})
 	# 暗影流星（905）：仅[暗影形态]（tap）下可用，代价是弃 2 张法术牌（服务端 v_magic_skill 也按 2 张校验）；
 	# 条件不满足时按钮仍摆出、置灰

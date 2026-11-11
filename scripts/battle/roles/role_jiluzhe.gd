@@ -99,7 +99,7 @@ func available_skills() -> Array:
 			"enabled": _史书在手(),
 		},
 		{
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": GU_JIN_HU_JIAN,
 			"need_card": 0,
 			"need_target": 0,

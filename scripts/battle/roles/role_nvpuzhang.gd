@@ -65,7 +65,7 @@ func available_skills() -> Array:
 	var 对手: Array[int] = 敌人()
 	return [
 		{
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": YING_ZHI_XUE,
 			"need_card": 0,
 			"need_target": 1,
@@ -74,7 +74,7 @@ func available_skills() -> Array:
 			"enabled": player.token_num(糸槽) >= 1 and not _影之穴可选目标().is_empty(),
 		},
 		{
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": ZHEN_MO_YING,
 			"need_card": 2,
 			"need_target": 0,

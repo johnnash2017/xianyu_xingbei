@@ -399,7 +399,7 @@ func _尝试出牌(命令表: Array) -> void:
 ## 任一条满足不了就返回 false，交给调用方换下一项技能、或退回出手牌。
 func _试着用技能(cmd: Dictionary, 允许: int, 禁特殊: bool) -> bool:
 	var 类型: int = int(cmd.get("respond_id", 0))
-	if 类型 != GConst.ActionType.AttackSkill and 类型 != GConst.ActionType.MagicSkill and 类型 != GConst.ActionType.SpecialSkill:
+	if 类型 != GConst.ActionType.AttackSkill and 类型 != GConst.ActionType.MagicSkill and 类型 != GConst.ActionType.ActivateSkill:
 		return false
 	# 服务端把「现在不能用」的技能也留在命令表里，只把 enabled 置 false（客户端据此置灰、点不动）。
 	# 机器人必须跟着跳过 —— 否则点了就是「操作无效」（实测：格斗家【百式幻龙拳】本回合已发动过启动技能，
@@ -408,7 +408,7 @@ func _试着用技能(cmd: Dictionary, 允许: int, 禁特殊: bool) -> bool:
 		return false
 	if not GConst.放行动作(类型, 允许):
 		return false
-	if 禁特殊 and 类型 == GConst.ActionType.SpecialSkill:
+	if 禁特殊 and 类型 == GConst.ActionType.ActivateSkill:
 		return false
 	var 参数: Array = cmd.get("args", [])
 	if 参数.size() < 5:
@@ -684,7 +684,7 @@ func _on_gossip(txt: String) -> void:
 		if str(_上次提交.get("kind", "")) == "行动":
 			var t: int = int(_上次提交.get("type", 0))
 			是技能尝试 = t == GConst.ActionType.AttackSkill \
-				or t == GConst.ActionType.MagicSkill or t == GConst.ActionType.SpecialSkill
+				or t == GConst.ActionType.MagicSkill or t == GConst.ActionType.ActivateSkill
 		if not 是技能尝试:
 			_非技能驳回 += 1
 		_拉黑上次尝试()

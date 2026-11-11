@@ -149,6 +149,9 @@ enum ActionType {
 	SpecialSkill = 6,
 	Any = 7,
 	AttackMagic = 8,
+	## 启动技能：免费动作（不消耗本回合行动），只能在本回合第一个行动前发动。
+	## 它**不是**特殊行动（购买 / 合成 / 提炼），也不看「本阶段放行哪种行动」。
+	ActivateSkill = 11,
 	Unactional = 9,
 	ChooseExtraAction = 10,
 	None = 100000,
@@ -156,9 +159,17 @@ enum ActionType {
 
 ## 本行动阶段是否放行某个「动作种类」（对照服务端 PlayerEntity::v_allow_action 的 allow 判定）：
 ## Any 放行攻击/法术/特殊；AttackMagic 放行攻击与法术；其余只放行完全相同的种类。
-## 技能类（AttackSkill / MagicSkill / SpecialSkill）先归入对应的基础种类。
-## 服务端行动总闸 base_v_allow_action 与客户端「手牌、技能按钮能不能点」共用这一处规则，
-## 免得界面上亮着、点下去却被服务端拒。
+## 攻击技 / 法术技折算成对应的基础行动（它们确实消耗那次攻击 / 法术行动）；
+## **启动技能（ActivateSkill）不参与这里**：它是免费动作，只看「本回合第一个行动之前」，
+## 由引擎 可发动启动() 判，和「特殊行动放不放行」无关。
+## **特殊技（SpecialSkill）也不折算**：特殊行动是购买 / 合成 / 提炼那个槽，特殊技要用
+## 放行特殊行动技() 单独判（本工程目前没有消耗特殊行动的特殊技）。
+## 消耗「特殊行动」的那类特殊技：只有本阶段放行特殊行动（Any / Special）才行。
+## 启动技能不要用它——启动不看放行种类。
+static func 放行特殊行动技(允许: int) -> bool:
+	return 允许 == ActionType.Any or 允许 == ActionType.Special
+
+
 static func 放行动作(动作种类: int, 允许: int) -> bool:
 	var 类别: int = 动作种类
 	match 类别:
@@ -166,8 +177,8 @@ static func 放行动作(动作种类: int, 允许: int) -> bool:
 			类别 = ActionType.Attack
 		ActionType.MagicSkill:
 			类别 = ActionType.Magic
-		ActionType.SpecialSkill:
-			类别 = ActionType.Special
+		ActionType.SpecialSkill, ActionType.ActivateSkill:
+			return false
 	match 允许:
 		ActionType.Any:
 			return 类别 == ActionType.Attack or 类别 == ActionType.Magic or 类别 == ActionType.Special

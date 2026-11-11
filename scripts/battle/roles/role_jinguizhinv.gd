@@ -131,7 +131,7 @@ func available_skills() -> Array:
 			"enabled": true,
 		},
 		{
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": 强予愿行,
 			"need_card": 0,
 			"need_target": 0,

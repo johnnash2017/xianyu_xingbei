@@ -30,7 +30,7 @@ func available_skills() -> Array:
 	var out: Array = []
 	# 祈祷（启动）：手牌非空、有宝石且未处于祈祷形态时可发动（耗 1 宝石横置进入祈祷形态）；
 	# 条件不满足时按钮仍摆出、置灰
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": QI_DAO, "need_card": 0, "need_target": 0,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": QI_DAO, "need_card": 0, "need_target": 0,
 		"enabled": not player.hand_cards.is_empty() and player.gem > 0 and not player.tap})
 	# 光辉信仰 / 黑暗诅咒：仅祈祷形态（横置）且符文 > 0；条件不满足时按钮仍摆出、置灰
 	# 光辉信仰：发动时须弃 min(2, 手牌) 张牌（手牌不足 2 张就按实际张数弃，0 张也能发动）；

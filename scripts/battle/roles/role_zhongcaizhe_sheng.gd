@@ -75,7 +75,7 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 func available_skills() -> Array:
 	return [
 		{
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": TIAN_ZUI,
 			"need_card": 0,
 			"need_target": 0,

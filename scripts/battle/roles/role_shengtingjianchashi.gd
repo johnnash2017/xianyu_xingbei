@@ -67,9 +67,9 @@ func available_skills() -> Array:
 		})
 	return [
 		{
-			# 裁决者是「启动」：技能类型必须是 SpecialSkill（引擎按这个 + is_free_skill 判启动），
+			# 裁决者是「启动」：技能类型必须是 ActivateSkill（引擎按这个 + is_free_skill 判启动），
 			# 写成 MagicSkill 会绕开「每回合一个启动技」，还会去消耗别人给的额外法术行动
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": CAI_JUE_ZHE,
 			"enabled": player.get_energy() >= 1,
 		},

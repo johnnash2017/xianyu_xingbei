@@ -61,13 +61,13 @@ func available_skills() -> Array:
 	# 摸几张由 arg_choices 在二级技能栏里选 —— 点技能后弃牌与摸牌数一起选，最后按一次「确定」，
 	# 不再先确定、再由服务端补问一次摸牌数；条件不满足时按钮仍摆出、置灰
 	var 需弃: int = maxi(player.hand_cards.size() - CHONG_NENG_KEEP_HAND, 0)
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": CHONG_NENG, "need_card": 需弃, "need_target": 0,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": CHONG_NENG, "need_card": 需弃, "need_target": 0,
 		"arg_choices": _chong_neng_choices(), "enabled": player.get_energy() > 0})
 	# 魔眼：点技能后先在二级技能栏里二选一（对照原服务端 MoGong::MoYan）——
 	# 「自己摸 3 张牌」不点目标；「指定一名角色弃 1 张牌」再点 1 名角色（可点自己）。
 	# need_target 给 0、不给 target_max：目标数完全由选项自带（选了要目标的那项客户端才放开点头像）；
 	# 条件不满足时按钮仍摆出、置灰
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": MO_YAN, "need_card": 0, "need_target": 0,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": MO_YAN, "need_card": 0, "need_target": 0,
 		"arg_choices": _mo_yan_choices(), "enabled": player.gem > 0})
 	# 雷光散射：不再让玩家点盖牌，改成二级技能栏里选「移除几张」（移除哪几张由服务端自动挑盖牌区
 	# 最前面那几张，见 _lei_guang_san_she）。选项各自带目标数：只移除 1 张时每名对手各 1 点、不用选人；

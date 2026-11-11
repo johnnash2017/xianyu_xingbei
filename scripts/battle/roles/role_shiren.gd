@@ -78,7 +78,7 @@ func available_skills() -> Array:
 		"enabled": _ling_gan() > 1})
 	# 希望赋格曲（启动）：点开技能就先问「摸不摸牌」（技能自带选项，选完按「确定」发动），
 	# 之后由服务端接着问「选效果 + 点角色」与（转移时）「弃 1 张牌 + 选收益」；不满足条件时置灰
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": XI_WANG_FU_GE_QU,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": XI_WANG_FU_GE_QU,
 		"need_card": 0, "need_target": 0, "arg_choices": _xi_wang_draw_choices(),
 		"enabled": _can_xi_wang()})
 	return out

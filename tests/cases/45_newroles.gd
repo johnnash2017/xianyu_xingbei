@@ -553,13 +553,13 @@ func _检圣庭检察士() -> void:
 	检(int(引擎.取场卡("异端裁决所").get("counter", 0)) == 1,
 		"【裁决论定】应给裁决所 +1 治疗")
 	检(玩家.crystal == 水晶前 + 1, "【裁决论定】应让发动者 +1 水晶")
-	# 【裁决者】是启动技：必须作为 SpecialSkill 下发，且不能有法术技能入口
+	# 【裁决者】是启动技：必须作为 ActivateSkill 下发，且不能有法术技能入口
 	var 裁决项: Dictionary = {}
 	for 项: Dictionary in 角色.available_skills():
 		if int(项.get("id", 0)) == 3906:
 			裁决项 = 项
-	检(int(裁决项.get("type", 0)) == GConst.ActionType.SpecialSkill,
-		"【裁决者】应作为启动技（SpecialSkill）下发")
+	检(int(裁决项.get("type", 0)) == GConst.ActionType.ActivateSkill,
+		"【裁决者】应作为启动技（ActivateSkill）下发")
 	检(角色.v_magic_skill({"action_id": 3906, "src_id": 1}) == GConst.GE_INVALID_ACTION,
 		"【裁决者】不应有法术技能入口")
 	# 【狂信徒】攻击行动结束时由玩家指定 1 名「目标角色」+1 治疗 ——
@@ -1060,8 +1060,8 @@ func _检噬神者() -> void:
 	var 御刃角色: BattleRole = _建引擎(79)
 	var 御刃玩家: BattlePlayer = 引擎.p(1)
 	var 御刃: Dictionary = _找技能(御刃角色.available_skills(), 7901)
-	检(not 御刃.is_empty() and int(御刃.get("type", 0)) == GConst.ActionType.SpecialSkill,
-		"【御刃】应是启动技能（SpecialSkill）")
+	检(not 御刃.is_empty() and int(御刃.get("type", 0)) == GConst.ActionType.ActivateSkill,
+		"【御刃】应是启动技能（ActivateSkill）")
 	var 刃选项: Array = 御刃.get("arg_choices", [])
 	检(刃选项.size() == 2, "两张刃都不在场时【御刃】应给两条选项：%d" % 刃选项.size())
 	检(not 刃选项.is_empty() and (刃选项[0] as Dictionary).has("text")
@@ -1588,13 +1588,13 @@ func _检星坠女巫() -> void:
 	检(int(GConst.律法技能.get(1, 0)) == 4006 and int(GConst.律法技能.get(2, 0)) == 4007
 		and int(GConst.律法技能.get(3, 0)) == 4008,
 		"【律法】状态图标要能查到对应的技能行（悬停显示技能说明）")
-	# 【群星启示】是启动技：必须作为 SpecialSkill 下发，且不能有法术技能入口
+	# 【群星启示】是启动技：必须作为 ActivateSkill 下发，且不能有法术技能入口
 	var 启示项: Dictionary = {}
 	for 项: Dictionary in 技能表:
 		if int(项.get("id", 0)) == 4004:
 			启示项 = 项
-	检(int(启示项.get("type", 0)) == GConst.ActionType.SpecialSkill,
-		"【群星启示】应作为启动技（SpecialSkill）下发")
+	检(int(启示项.get("type", 0)) == GConst.ActionType.ActivateSkill,
+		"【群星启示】应作为启动技（ActivateSkill）下发")
 	var 启示选项: Array = 启示项.get("arg_choices", [])
 	检(not 启示选项.is_empty(), "【群星启示】应下发模式选项")
 	for 项3: Dictionary in 启示选项:

@@ -60,14 +60,14 @@ var _启示收尾步: int = 0
 func available_skills() -> Array:
 	return [
 		{
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": CHUAN_DAO,
 			"need_card": 0,
 			"need_target": 0,
 			"enabled": true,
 		},
 		{
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": SHU_LING_EN_CI,
 			"need_card": 1,
 			"need_target": 0,

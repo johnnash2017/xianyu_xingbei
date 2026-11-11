@@ -39,7 +39,7 @@ func available_skills() -> Array:
 	return [
 		# 驱魔式：让我方一名有手牌的角色弃 1 张（目标自己点）
 		{
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": QU_MO_SHI,
 			"need_card": 0,
 			"need_target": 1,
@@ -48,7 +48,7 @@ func available_skills() -> Array:
 		},
 		# 圣典：水晶
 		{
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": SHENG_DIAN,
 			"enabled": player.get_energy() >= 1,
 		},

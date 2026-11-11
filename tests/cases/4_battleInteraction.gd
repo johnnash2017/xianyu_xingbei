@@ -699,7 +699,7 @@ func 跑() -> void:
 		{"text": "【战绩区】-1【宝石】调整其他角色手牌为 4", "args": [3], "enabled": true,
 			"need_card": 0, "need_target": 1, "targets": [2, 3]},
 	]
-	窗.call("_选择技能", GConst.技能_强予愿行, GConst.ActionType.SpecialSkill, 0, 0,
+	窗.call("_选择技能", GConst.技能_强予愿行, GConst.ActionType.ActivateSkill, 0, 0,
 		[2, 3], [], 0, 0, 0, GConst.CardSource.Hand, "", 0, 0, 强予参数, null, 0)
 	await 等帧(1)
 	检(int(窗.get("_mode")) == 4,
@@ -714,7 +714,7 @@ func 跑() -> void:
 		await 等帧(1)
 		检(int(窗.get("_mode")) == 1, "点 7804 的「返回」应退回行动阶段（实际 _mode=%d）" % int(窗.get("_mode")))
 		# 再进一次，验证「选中选项 → 选角色 → 确定」一次提交
-		窗.call("_选择技能", GConst.技能_强予愿行, GConst.ActionType.SpecialSkill, 0, 0,
+		窗.call("_选择技能", GConst.技能_强予愿行, GConst.ActionType.ActivateSkill, 0, 0,
 			[2, 3], [], 0, 0, 0, GConst.CardSource.Hand, "", 0, 0, 强予参数, null, 0)
 		await 等帧(1)
 	强予选项 = 窗.get("_二级选项")

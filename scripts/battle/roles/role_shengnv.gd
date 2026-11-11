@@ -32,7 +32,7 @@ func available_skills() -> Array:
 	out.append({"type": GConst.ActionType.MagicSkill, "id": SHENG_LIAO, "need_card": 0, "need_target": 1,
 		"target_max": 3, "enabled": player.get_energy() >= 1 and not used_sheng_liao})
 	# 怜悯（启动）：有宝石且未横置时可发动 —— 耗 1 宝石转怜悯形态、+1 水晶（手牌上限恒为 7）；无宝石或已横置时置灰
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": LIAN_MIN, "need_card": 0, "need_target": 0,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": LIAN_MIN, "need_card": 0, "need_target": 0,
 		"enabled": player.gem > 0 and not player.tap})
 	return out
 

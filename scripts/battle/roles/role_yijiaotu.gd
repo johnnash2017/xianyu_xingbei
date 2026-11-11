@@ -94,10 +94,10 @@ func available_skills() -> Array:
 	var 手牌: Array[int] = player.hand_cards.duplicate()
 	return [
 		{
-			# 献祭是「启动」：技能类型必须是 SpecialSkill（引擎按这个 + is_free_skill 判启动，
+			# 献祭是「启动」：技能类型必须是 ActivateSkill（引擎按这个 + is_free_skill 判启动，
 			# 才能走「每回合只能发动一个启动技」「启动技与特殊行动互斥」那套约束），
 			# 不能写成 MagicSkill —— 否则它会当成法术行动去消耗放逐给的额外行动
-			"type": GConst.ActionType.SpecialSkill,
+			"type": GConst.ActionType.ActivateSkill,
 			"id": XIAN_JI,
 			"enabled": 有末日 and engine.取场卡(末日预言名).get("pile", []).size() > 0,
 			# 和魔弓【魔眼】一样：点技能直接进二级技能栏选系别，可以按「返回」退出来；

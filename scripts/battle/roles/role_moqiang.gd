@@ -62,10 +62,10 @@ func available_skills() -> Array:
 	# 启动（由 is_free_skill 认可）：两条都摆出，按当前形态把不能发动的那条置灰
 	# （每回合只能发动一个启动技能由引擎统一过滤，这里不重复判）
 	# 未横置：[暗之解放]
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": AN_ZHI_JIE_FANG,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": AN_ZHI_JIE_FANG,
 		"need_card": 0, "need_target": 0, "enabled": not player.tap})
 	# 横置[幻影形态]：[幻影星辰]，须选 1 名对手为追加伤害目标
-	out.append({"type": GConst.ActionType.SpecialSkill, "id": HUAN_YING_XING_CHEN,
+	out.append({"type": GConst.ActionType.ActivateSkill, "id": HUAN_YING_XING_CHEN,
 		"need_card": 0, "need_target": 1, "targets": enemy_ids(), "enabled": player.tap})
 	return out
 
