@@ -362,16 +362,14 @@ func _resolve_duo_chong(dst_id: int) -> int:
 		return SUCCESS
 	var 充能: int = 风系[0]
 	notice_skill(DUO_CHONG_SHE_JI, [dst_id])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [充能], "is_real": true,
-	})
 	_remove_cover([充能], DUO_CHONG_SHE_JI)
-	# 这张「暗灭」只是借来播弹道 / 音效的虚拟牌：标 virtual_no_fate，日志 / 飘字只写「暗灭」，
-	# 不再带出卡表里那张牌的命格（否则会显示成「暗灭·圣」）
+	# 打出去的仍是那张真实的风系【充能】（展示 / 日志都按它写）；
+	# 攻击本身按「暗灭」结算 —— as_card_id 让客户端照暗系播弹道 / 音效
+	# （对照普通攻击 p_attack_card「视为」的写法：卡面用真实牌，表现用视为牌）
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id,
-		"card_ids": [VIRTUAL_DUO_CHONG_CARD], "is_real": false, "virtual_no_fate": true,
+		"card_ids": [充能], "is_real": true,
+		"as_card_id": GConst.牌号(VIRTUAL_DUO_CHONG_CARD),
 	})
 	_available_mo_guan = false
 	_using_duo_chong = true
@@ -423,16 +421,12 @@ func _duo_chong_she_ji_ask() -> int:
 	if not _duo_chong_dst_ok(engine.p(dst_id)):
 		return SUCCESS
 	notice_skill(DUO_CHONG_SHE_JI, [dst_id])
-	engine.broadcast(GConst.Msg.Card, {
-		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
-		"card_ids": [充能], "is_real": true,
-	})
 	_remove_cover([充能], DUO_CHONG_SHE_JI)
-	# 多重射击本身视为一次暗系主动攻击：广播一张「暗灭」虚拟牌（is_real=false 不摊牌），
-	# 客户端据此播放暗灭弹道与暗系出牌音效（对照【欺诈】虚牌广播的写法）
+	# 同 _resolve_duo_chong：打出的牌是那张真实风系【充能】，攻击按暗灭结算
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Use, "src_id": player.id, "dst_id": dst_id,
-		"card_ids": [VIRTUAL_DUO_CHONG_CARD], "is_real": false, "virtual_no_fate": true,
+		"card_ids": [充能], "is_real": true,
+		"as_card_id": GConst.牌号(VIRTUAL_DUO_CHONG_CARD),
 	})
 	# 本回合不能再发动【魔贯冲击】；本次攻击的暗系修正交给 p_timeline_1
 	_available_mo_guan = false

@@ -1,15 +1,15 @@
 extends 自检用例
-## 用例 91：魔弓【多重射击】的虚拟攻击牌播报不带命格
+## 用例 91：魔弓【多重射击】「打出的牌」是那张真实风系【充能】，攻击按暗灭表现
 ##
-## 多重射击广播一张「暗灭」（卡 39，卡表命格=圣）来播暗系弹道 / 音效。
-## 那张牌只是借来用的虚拟牌：如果没标 virtual_no_fate，战斗日志 / 飘字会按卡表写
-## 「暗灭·圣」，看起来像是打出了一张圣命格攻击牌。
+## 用户口径：多重射击打出的还是原来那张风系【充能】（展示 / 日志按它写），
+## 但这次攻击是暗系攻击 —— 客户端用 as_card_id=暗灭 播暗系弹道 / 音效。
 ##
-## 覆盖：_resolve_duo_chong 发出的 Card Use 消息里 card_ids=[39]、is_real=false、
-## 且 virtual_no_fate=true；同时确认这一手确实移除了风系【充能】。
+## 覆盖：_resolve_duo_chong 发出的 Card Use 消息里
+##   card_ids = 实际被移除的那张充能（牌面）、is_real = true、as_card_id = 暗灭(39)；
+##   且风系【充能】确实被移除。
 
 const 角色脚本: GDScript = preload("res://scripts/battle/roles/role_mogong.gd")
-const 虚拟牌: int = 39
+const 暗灭: int = 39
 
 var 引擎: BattleEngine = null
 var 角色: BattleRole = null
@@ -18,13 +18,12 @@ var 消息: Array = []
 
 
 func _init() -> void:
-	名称 = "多重射击播报无命格"
+	名称 = "多重射击打出真实充能"
 
 
 func 跑() -> void:
 	await 等帧(1)
 	_建引擎()
-	# 放一张风系盖牌当【充能】
 	var 风牌: int = -1
 	for c: GCard in Data.card_db:
 		if c != null and not c.is_virtual and c.element_enum() == GConst.CardElement.Wind \
@@ -39,7 +38,6 @@ func 跑() -> void:
 		消息.append({"type": 类型, "data": 数据})
 	角色.call("_resolve_duo_chong", 3)
 
-	# 找那一条「使用暗灭」的 Card 消息
 	var 使用卡: Dictionary = {}
 	for 条: Dictionary in 消息:
 		if int(条["type"]) != GConst.Msg.Card:
@@ -47,14 +45,16 @@ func 跑() -> void:
 		var d: Dictionary = 条["data"]
 		if int(d.get("type", 0)) != GConst.CardMsgType.Use:
 			continue
-		if (d.get("card_ids", []) as Array).has(虚拟牌):
-			使用卡 = d
-			break
-	检(not 使用卡.is_empty(), "多重射击没有广播「使用暗灭」的 Card 消息")
+		使用卡 = d
+		break
+	检(not 使用卡.is_empty(), "多重射击没有广播「使用」的 Card 消息")
 	if not 使用卡.is_empty():
-		检(not bool(使用卡.get("is_real", true)), "暗灭虚拟牌应标 is_real=false")
-		检(bool(使用卡.get("virtual_no_fate", false)),
-			"暗灭虚拟牌应标 virtual_no_fate（否则日志会写成「暗灭·圣」）：%s" % str(使用卡))
+		var 打出: Array = 使用卡.get("card_ids", [])
+		检(打出.size() == 1 and int(打出[0]) == GConst.牌号(风牌),
+			"打出的应是那张真实风系充能（牌面 %d），实际 %s" % [GConst.牌号(风牌), str(打出)])
+		检(bool(使用卡.get("is_real", false)), "打出的真实充能应标 is_real=true")
+		检(int(使用卡.get("as_card_id", -1)) == 暗灭,
+			"攻击表现应按暗灭播（as_card_id=39），实际 %s" % str(使用卡.get("as_card_id", -1)))
 	检(not 玩家.cover_cards.has(风牌), "多重射击应移除 1 张风系【充能】")
 
 
