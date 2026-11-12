@@ -1524,11 +1524,12 @@ const 状态图标预览预制: PackedScene = preload("res://scenes/prefabs/batt
 const 状态图标材质: ShaderMaterial = preload("res://scenes/prefabs/battlemobile/StatusIconMaterial.tres")
 
 
-## 展示代号：每摊出一拨 +1。等待到点后只有「还是当前这一拨」才收起 ——
-## 否则上一拨的计时器到点会把刚摊出来的下一拨一起收掉（表现成展示时间被上一张牌拖短）
-var _展示代号: int = 0
+## 展示区里当前摊着的每一批牌（一条 Show 一批，元素 = {"视图们": Array}）。
+## 新摊出来的一批不再清掉旧的一批，而是接在后面一起摆（后加的盖在上层）；
+## 每一批各自到点只收自己那一批，所以连续展示的牌能同时看到，不会互相顶掉。
+var _展示批: Array = []
 ## 当前这拨是不是持久展示（10803 剑守誓言选牌）：持久展示不启动 6.4 秒自动收起，
-## 一直留到收到 Pick（选走一张）或下一条 Show 顶掉。
+## 一直留到收到 Pick（选走一张）或整片收起。
 var _展示持久: bool = false
 
 ## 最近一拨摊出的牌在屏幕上的全局中心（(-1, -1) = 这条消息没摊牌）：斩击 / 魔弹的出手特效
@@ -1576,14 +1577,12 @@ func _造展示卡牌视图(牌号: int, 显示元素: int = 0) -> Control:
 	return 视图
 
 
-## 把这几张牌摊到屏幕中间给所有人看；默认停了 展示停留秒数 秒后自动收起，
-## 持久=true 时一直留着，直到收到 Pick / 下一条 Show（10803 选牌期间不自动收起）。
+## 把这几张牌摊到屏幕中间给所有人看；默认停了 展示停留秒数 秒后只收掉自己这一批。
+## 旧的一批不会因为新的一批摊出来就被清掉 —— 各批一起摆着，各自到点自己收。
+## 持久=true 时这一批一直留着，直到收到 Pick（10803 选牌期间不自动收起）。
 ## 飞行起点 >= 0 时这几张牌先在那名玩家（出牌人 / 展示者）头像处现身，再一张接一张飞到自己的展示位；
 ## 自己的牌不飞，由调用方传 -1 进来（见 _on_card）
 func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, 元素表: Array = []) -> void:
-	_收起展示卡牌()
-	_展示代号 += 1
-	var 本代号: int = _展示代号
 	var 视图表: Array[Control] = []
 	for i: int in range(卡号表.size()):
 		var cid: Variant = 卡号表[i]
@@ -1593,13 +1592,10 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 			continue
 		ShowCardArea.add_child(视图)
 		视图表.append(视图)
-	# 排成一行并水平居中：位置够就摊开，牌多了就像手牌一样挤在一起（同一套间距算法），绝不换行
-	var 排布: Array = _单行间距与起点(视图表.size(), ShowCardArea.size.x, 手牌尺寸, 手牌最多重叠比例)
-	var 间距: float = float(排布[0])
-	var 起点: float = float(排布[1])
-	var 行y: float = (ShowCardArea.size.y - 手牌尺寸.y) * 0.5 + 展示牌下移像素
-	for i: int in range(视图表.size()):
-		视图表[i].position = Vector2(起点 + 间距 * float(i), 行y)
+	var 批: Dictionary = {"视图们": 视图表}
+	if not 视图表.is_empty():
+		_展示批.append(批)
+		_重排展示区()
 	# 记下这拨牌在屏幕上的全局中心与「牌就位、再停一下」的总耗时：别人的牌摊过来后，
 	# 斩击 / 魔弹就从这张牌上起飞，并等上这么久（自己打的牌不飞、也不等，见 _播出手特效）
 	if not 视图表.is_empty() and 飞行起点 >= 0:
@@ -1607,14 +1603,47 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 		_展示飞行延迟 = 展示飞行时长 + 展示飞行间隔 * float(视图表.size() - 1) + 出手等待秒数
 	_展示飞行(视图表, 飞行起点)
 	_展示持久 = 持久
-	if 持久:
-		# 持久展示：不启动自动收起；等 Pick（选走）或下一条 Show 顶掉
+	if 持久 or 视图表.is_empty():
+		# 持久展示：不启动自动收起；等 Pick（选走）或整片收起
 		return
 	await get_tree().create_timer(展示停留秒数).timeout
-	# 等待期间又摊出了新的一拨：收起交给新那拨，这里不动
-	if 本代号 != _展示代号:
+	# 到点只收自己这一批（期间可能已经被 Pick / 整片收起收走了）
+	_移除展示批(批)
+
+
+## 按当前所有批次重排展示区：先摊出来的排在前面，后加的接在后面（画在上层），排成一行不换行。
+## 上一批可能还在播进场飞行（终点是按旧位置算的），先掐掉并摆正，免得落到旧位置上错位
+func _重排展示区() -> void:
+	var 视图们: Array[Control] = []
+	for 批: Dictionary in _展示批:
+		for 视图: Variant in 批.get("视图们", []):
+			if is_instance_valid(视图):
+				var 控件: Control = 视图 as Control
+				var 旧t: Variant = 控件.get_meta(元数据_展示飞行tween, null)
+				if 旧t is Tween and (旧t as Tween).is_valid():
+					(旧t as Tween).kill()
+					控件.scale = Vector2.ONE
+					控件.modulate.a = 1.0
+				视图们.append(控件)
+	if 视图们.is_empty():
 		return
-	_收起展示卡牌()
+	var 排布: Array = _单行间距与起点(视图们.size(), ShowCardArea.size.x, 手牌尺寸, 手牌最多重叠比例)
+	var 间距: float = float(排布[0])
+	var 起点: float = float(排布[1])
+	var 行y: float = (ShowCardArea.size.y - 手牌尺寸.y) * 0.5 + 展示牌下移像素
+	for i: int in range(视图们.size()):
+		视图们[i].position = Vector2(起点 + 间距 * float(i), 行y)
+
+
+## 收掉某一批展示牌（别的批次不动），收完按剩下的重排
+func _移除展示批(批: Dictionary) -> void:
+	_展示批.erase(批)
+	for 视图: Variant in 批.get("视图们", []):
+		if is_instance_valid(视图):
+			(视图 as Node).queue_free()
+	_重排展示区()
+	if _展示批.is_empty():
+		_展示持久 = false
 
 
 ## 展示飞行：把已经摆到展示位的这几张牌先挪到该玩家的头像上（缩小 + 全透明），
@@ -1651,8 +1680,9 @@ func _展示飞行(视图表: Array[Control], 玩家id: int) -> void:
 ## 从展示区选走一张牌（10803）：把这张牌的视图从展示位飞向选牌者头像，其余展示牌收起。
 ## 视图找不到（重连 / 展示已被顶掉）时现造一张，保证其他人仍能看到「牌飞向头像」。
 func _选走展示牌(玩家id: int, 牌号: int) -> void:
-	_展示代号 += 1  # 作废可能还在等待的 6.4 秒收起
 	_展示持久 = false
+	# 其余的展示牌全部收走（含其它批次）：剩下的这一张正在飞走，不再参与排队
+	_展示批.clear()
 	var 选中视图: Control = null
 	for 子: Node in ShowCardArea.get_children():
 		if not (子 is Control):
@@ -1693,9 +1723,10 @@ func _选走展示牌(玩家id: int, 牌号: int) -> void:
 	t.finished.connect(选中视图.queue_free)
 
 
-## 收掉当前摊出来的牌
+## 整片收掉当前摊出来的牌（所有批次一起收）
 func _收起展示卡牌() -> void:
 	_展示持久 = false
+	_展示批.clear()
 	for 旧: Node in ShowCardArea.get_children():
 		旧.queue_free()
 
@@ -1720,7 +1751,6 @@ func _on_card(msg: Dictionary) -> void:
 		var 取走: Array = msg.get("card_ids", [])
 		if not 取走.is_empty():
 			if src == Logic.my_player_id:
-				_展示代号 += 1
 				_收起展示卡牌()
 			else:
 				_选走展示牌(src, int(取走[0]))
