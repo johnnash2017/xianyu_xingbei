@@ -1509,7 +1509,8 @@ func _on_error(_err_id: int, msg: String) -> void:
 # ============================================================
 ## 展示区里的牌按批摊开、各自计时：
 ##   · 一条 Show 是一批；一批装在一个 CanvasGroup 里，整批合成后再调透明度（叠着也不会互相穿透）；
-##   · 一批停留 展示停留秒数 秒，最后 展示淡出秒数 秒淡到 0，到点整批移除、腾出格子（剩下的牌滑过去补位）；
+##   · 一批停留 展示停留秒数 秒，最后 展示淡出秒数 秒淡到 0；淡完**继续占着格子**（空白占位），
+##     不让剩下的牌挪位置（挪了会跳一下，看着很怪）；
 ##   · 放得下居中、放不下靠右：新牌从右边进，老的被挤向左；被挤进左边淡出带的整批一起变淡，
 ##     整张越过左边界（x = 0）才移除；
 ##   · 整片清空后，下一批新牌重新从中间开始摆。
@@ -1733,43 +1734,38 @@ func _展示牌透明度(位置x: float) -> float:
 	return clampf(右边缘 / maxf(展示淡出宽度, 1.0), 0.0, 1.0)
 
 
-## 展示区每帧算一遍透明度 + 处理到点清除（不靠 tween，免得和挪位动画抢 modulate）：
+## 展示区每帧算一遍透明度（不靠 tween，免得和挪位动画抢 modulate）：
 ##   整批透明度（挂在 CanvasGroup 上）＝ 进场淡入 × 停留时间系数 × 左边淡出带系数
 ## **牌自己一律不透明**：两张半透明的牌叠在一起必然互相穿透（能透过上面那张看见下面那张），
 ## 所以淡出、淡入全部只作用在「整批合成后的那张图」上，批内永远保持覆盖关系。
 ## 左边淡出带取这一批里最靠左那张牌来算 —— 整批一起变淡，不单张变淡。
-## 一批牌过了停留时长（已淡到 0%）就整批移除、腾出格子，剩下的牌滑过去重新排。
+## 一批牌过了停留时长就淡到 0% 并**继续占着格子**（空白占位）：不让剩下的牌跟着挪位置
+## （位置一动整排就跳一下，看着很怪）。空白占位只在两种情况下才真的消失：
+##   · 被新牌一路挤到整张越过左边界（_重排展示区 里移除）；
+##   · 全场的牌都成了空白占位 —— 整片清掉，下一批新牌重新从中间开始摆。
 func _更新展示透明度() -> void:
 	if _展示批.is_empty():
 		return
 	var 现在: int = Time.get_ticks_msec()
-	var 到点: bool = false
+	var 有时间: bool = false
 	var 剩下批: Array = []
 	for 批: Dictionary in _展示批:
 		var 时刻: int = int(批.get("时刻", 现在))
 		var 已过: float = float(现在 - 时刻) / 1000.0
-		# 总时长（每来一批新牌就续一次，见 _刷新展示计时）；剩余为 0 就整批移除
+		# 总时长（每来一批新牌就续一次，见 _刷新展示计时）
 		var 剩余: float = float(批.get("时长", 展示停留秒数)) - 已过
-		var 视图们: Array = 批.get("视图们", [])
-		var 批组: CanvasGroup = 批.get("组") as CanvasGroup
-		if 剩余 <= 0.0:
-			# 停留期到点：整批移除、腾出格子（下面重排，剩下的牌滑过去补位）
-			到点 = true
-			for 视图: Variant in 视图们:
-				if is_instance_valid(视图):
-					(视图 as Node).queue_free()
-			if is_instance_valid(批组):
-				批组.queue_free()
-			continue
-		# 时间系数：最后 展示淡出秒数 秒里从 1 线性降到 0
-		var 时间系数: float = 1.0
-		if 剩余 < 展示淡出秒数:
-			时间系数 = 剩余 / maxf(展示淡出秒数, 0.001)
+		# 时间系数：最后 展示淡出秒数 秒里从 1 线性降到 0；到 0 就变成空白占位（仍占格子）
+		var 时间系数: float = 0.0
+		if 剩余 > 0.0:
+			有时间 = true
+			时间系数 = 1.0
+			if 剩余 < 展示淡出秒数:
+				时间系数 = 剩余 / maxf(展示淡出秒数, 0.001)
 		var 进场系数: float = clampf(已过 / maxf(展示进场淡入秒数, 0.001), 0.0, 1.0)
 		# 左边淡出带：这一批里最靠左那张决定整批的淡出程度
 		var 位置系数: float = 1.0
 		var 活: Array = []
-		for 视图: Variant in 视图们:
+		for 视图: Variant in 批.get("视图们", []):
 			if not is_instance_valid(视图) or (视图 as Node).is_queued_for_deletion():
 				continue
 			活.append(视图)
@@ -1778,14 +1774,23 @@ func _更新展示透明度() -> void:
 			位置系数 = minf(位置系数, _展示牌透明度(槽位x))
 			# 牌自己永远不透明：透明度只在整批（CanvasGroup）上变化
 			控件.modulate.a = 1.0
+		var 批组: CanvasGroup = 批.get("组") as CanvasGroup
 		if is_instance_valid(批组):
 			批组.modulate.a = 进场系数 * 时间系数 * 位置系数
 		if not 活.is_empty():
 			批["视图们"] = 活
 			剩下批.append(批)
 	_展示批 = 剩下批
-	if 到点:
-		_重排展示区()
+	# 全场的牌都成了空白占位：整片清掉，下一批新牌重新从中间开始摆（否则看不见的占位一直占着位置）
+	if not 有时间:
+		for 批: Dictionary in _展示批:
+			for 视图: Variant in 批.get("视图们", []):
+				if is_instance_valid(视图):
+					(视图 as Node).queue_free()
+			var 批组: Variant = 批.get("组")
+			if is_instance_valid(批组):
+				(批组 as Node).queue_free()
+		_展示批 = []
 
 
 ## 把一张已经在展示区的牌挪到新位置：距离再近也走 tween，别瞬间跳
