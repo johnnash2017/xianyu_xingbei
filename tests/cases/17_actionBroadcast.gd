@@ -375,9 +375,15 @@ func 跑() -> void:
 		var 展示区: Node = 战.get("ShowCardArea")
 		var 记住牌号: bool = false
 		if 展示区 != null:
+			# 展示牌装在「每批一个 CanvasGroup」里（整批合成再调透明度），要往下找一层
 			for 子: Node in 展示区.get_children():
 				if 子 is Control and (子 as Control).has_meta(&"show_card_id"):
 					记住牌号 = true
+					break
+				for 孙: Node in 子.get_children():
+					if 孙 is Control and (孙 as Control).has_meta(&"show_card_id"):
+						记住牌号 = true
+						break
 		检(记住牌号, "展示卡牌视图没有记住牌号（元数据键必须是 ASCII 标识符）")
 
 		战.call("_排行动播报", 1, "测试技能")

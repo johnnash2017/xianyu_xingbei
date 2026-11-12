@@ -1514,10 +1514,9 @@ func _on_error(_err_id: int, msg: String) -> void:
 ##   · 全部牌都成了空白占位时整片清掉，下一批新牌重新从中间开始摆。
 ## 不同批（不是同一次丢弃 / 展示）之间的横向空隙：一批挨着摆，批与批之间空开，一眼能分出是几次
 const 展示组间隙: float = 10.0
-## 同一批内部的横向重叠比例：0＝并排挨着放，谁都不盖谁。
-## 不能叠（原来 0.32）：这一批淡出时每张牌都是半透明的，叠在一起会互相穿透（能看见下面那张的边），
-## 看着很脏 —— 所以同批的牌只挨着、不重叠。
-const 展示组内重叠: float = 0.0
+## 同一批内部的横向重叠比例（同一次丢的那几张叠一点，像手牌一样）。
+## 叠着不会互相穿透：每一批装在 CanvasGroup 里，整批合成一张再调透明度（见 _造展示批组）。
+const 展示组内重叠: float = 0.32
 ## 一拨展示合计停留多少秒（含最后那段淡出）
 const 展示停留秒数: float = 9.0
 ## 停留的最后这么多秒里逐渐变透明到 0，到点就整批移除、腾出格子（剩下的牌滑过去补位）
@@ -1613,17 +1612,22 @@ func _造展示卡牌视图(牌号: int, 显示元素: int = 0) -> Control:
 func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, 元素表: Array = [],
 		起点坐标: Vector2 = Vector2(-1.0, -1.0)) -> void:
 	var 视图表: Array[Control] = []
+	# 一批牌装在一个 CanvasGroup 里：先把整批合成一张再整体调透明度，
+	# 这样批内叠着的牌不会互相穿透（半透明时会透出下面那张的边）。
+	var 组: CanvasGroup = null
 	for i: int in range(卡号表.size()):
 		var cid: Variant = 卡号表[i]
 		var 显示元素: int = int(元素表[i]) if i < 元素表.size() else 0
 		var 视图: Control = _造展示卡牌视图(int(cid), 显示元素)
 		if 视图 == null:
 			continue
-		ShowCardArea.add_child(视图)
+		if 组 == null:
+			组 = _造展示批组()
+		组.add_child(视图)
 		视图.modulate.a = 0.0  # 进场从透明淡入，由 _更新展示透明度 每帧算
 		视图表.append(视图)
 	if not 视图表.is_empty():
-		_展示批.append({"视图们": 视图表, "时刻": Time.get_ticks_msec()})
+		_展示批.append({"组": 组, "视图们": 视图表, "时刻": Time.get_ticks_msec()})
 		# 让位：老的牌动画挪开、挤出左边界的消失；
 		# 这一批新的先直接落位，下面再由 _展示飞行 从起点飞上来
 		_重排展示区(视图表)
@@ -1635,6 +1639,21 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 		_展示飞行延迟 = 展示飞行时长 + 展示飞行间隔 * float(视图表.size() - 1) + 出手等待秒数
 	_展示飞行(视图表, 飞行起点, 起点坐标)
 	_展示持久 = 持久
+
+
+## 一批展示牌的分组容器（CanvasGroup）：整批先合成一张图，再对这张图整体调透明度。
+## 位置与展示区重合（孩子坐标 = 展示区坐标），fit_margin 放大一圈，
+## 保证被挤到左边（负坐标）的牌不会被缓冲区裁掉。
+const 展示批组留白: float = 260.0
+func _造展示批组() -> CanvasGroup:
+	var 组: CanvasGroup = CanvasGroup.new()
+	组.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	组.position = Vector2.ZERO
+	组.size = ShowCardArea.size
+	组.fit_margin = 展示批组留白
+	组.modulate.a = 0.0
+	ShowCardArea.add_child(组)
+	return 组
 
 
 ## 按当前所有批次重排展示区，并把变化做成动画（不瞬间跳位）：
@@ -1722,17 +1741,23 @@ func _更新展示透明度() -> void:
 		var 已过: float = float(现在 - 时刻) / 1000.0
 		var 剩余: float = 展示停留秒数 - 已过
 		var 视图们: Array = 批.get("视图们", [])
+		var 批组: CanvasGroup = 批.get("组") as CanvasGroup
 		if 剩余 <= 0.0:
 			# 停留期到点：整批移除、腾出格子（下面重排，剩下的牌滑过去补位）
 			到点 = true
 			for 视图: Variant in 视图们:
 				if is_instance_valid(视图):
 					(视图 as Node).queue_free()
+			if is_instance_valid(批组):
+				批组.queue_free()
 			continue
-		# 时间系数：最后 展示淡出秒数 秒里从 1 线性降到 0
+		# 时间系数：最后 展示淡出秒数 秒里从 1 线性降到 0。
+		# 整批的透明度挂在 CanvasGroup 上（成组变化），这样批内叠着的牌不会互相穿透
 		var 时间系数: float = 1.0
 		if 剩余 < 展示淡出秒数:
 			时间系数 = 剩余 / maxf(展示淡出秒数, 0.001)
+		if is_instance_valid(批组):
+			批组.modulate.a = 时间系数
 		var 活: Array = []
 		for i: int in range(视图们.size()):
 			var 视图: Variant = 视图们[i]
@@ -1743,7 +1768,8 @@ func _更新展示透明度() -> void:
 			var 进场: float = clampf((已过 - 展示飞行间隔 * float(i)) / maxf(展示进场淡入秒数, 0.001),
 				0.0, 1.0)
 			var 槽位x: float = float(控件.get_meta(元数据_展示槽位, 控件.position.x))
-			控件.modulate.a = 进场 * 时间系数 * _展示牌透明度(槽位x)
+			# 牌自身的透明度只管进场淡入和被挤到左边变淡；整批的时间淡出在上面挂在组上
+			控件.modulate.a = 进场 * _展示牌透明度(槽位x)
 		if not 活.is_empty():
 			批["视图们"] = 活
 			剩下批.append(批)
@@ -1771,14 +1797,21 @@ func _停展示tween(视图: Control) -> void:
 	视图.scale = Vector2.ONE
 
 
-## 一批牌全被挤出去（或选走）之后，把这批从 _展示批 里删掉
+## 一批牌全被挤出去（或选走）之后，把这批连同它的 CanvasGroup 一起删掉
 func _清理空批() -> void:
 	var 剩下: Array = []
 	for 批: Dictionary in _展示批:
+		var 有活: bool = false
 		for 视图: Variant in 批.get("视图们", []):
 			if is_instance_valid(视图) and not (视图 as Node).is_queued_for_deletion():
-				剩下.append(批)
+				有活 = true
 				break
+		if 有活:
+			剩下.append(批)
+		else:
+			var 批组: Variant = 批.get("组")
+			if is_instance_valid(批组):
+				(批组 as Node).queue_free()
 	_展示批 = 剩下
 
 
@@ -1826,16 +1859,24 @@ func _展示飞行(视图表: Array[Control], 玩家id: int, 起点坐标: Vecto
 ## 视图找不到（重连 / 展示已被顶掉）时现造一张，保证其他人仍能看到「牌飞向头像」。
 func _选走展示牌(玩家id: int, 牌号: int) -> void:
 	_展示持久 = false
-	# 其余的展示牌全部收走（含其它批次）：剩下的这一张正在飞走，不再参与排队
-	_展示批.clear()
+	# 先把选中的那张从它的 CanvasGroup 里摘出来（组要整体收掉，留在里面会被一起删掉）
 	var 选中视图: Control = null
+	for 批: Dictionary in _展示批:
+		for 视图: Variant in 批.get("视图们", []):
+			if 选中视图 != null or not is_instance_valid(视图):
+				continue
+			var 控件: Control = 视图 as Control
+			if int(控件.get_meta(元数据_展示牌号, 0)) == 牌号:
+				选中视图 = 控件
+	if 选中视图 != null and 选中视图.get_parent() != ShowCardArea:
+		选中视图.reparent(ShowCardArea)
+	# 其余的展示牌（含其它批次）全部收走：剩下的这一张正在飞走，不再参与排队
+	_展示批.clear()
 	for 子: Node in ShowCardArea.get_children():
-		if not (子 is Control):
-			continue
-		if 选中视图 == null and int(子.get_meta(元数据_展示牌号, 0)) == 牌号:
-			选中视图 = 子
-		else:
+		if 子 != 选中视图:
 			子.queue_free()
+	if 选中视图 != null:
+		选中视图.modulate.a = 1.0
 	var 中心: Vector2 = _面板中心(玩家id)
 	if 选中视图 == null:
 		# 展示已不在：现造一张，从展示区正中飞过去
