@@ -346,7 +346,10 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 			return "",
 		 "校验": _垂迹校验,
 		 "预览基准": 2, "预览类型": GConst.HarmType.Magic,
-		 "预览目标": func(_答案: Array) -> Array: return _垂迹目标()},
+		 "预览目标": func(_答案: Array) -> Array: return _垂迹目标(),
+		 # 高亮（＝客户端把原拥有者的头像画成「已选中」的黄色并锁住、点不动）：
+		 # 这一步的目标是固定目标，玩家不能改，只是让他看清这段伤害落在谁头上
+		 "高亮": func(_答案: Array) -> Array: return _垂迹目标()},
 	], _垂迹结算)
 
 
