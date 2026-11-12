@@ -202,7 +202,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 			ctx["jian_di_emo_done"] = true
 			used_e_mo_zhi_hun = false
 			notice_skill(E_MO_ZHI_HUN, [int(harm.get("dst", -1))])
-			harm["point"] = int(harm.get("point", 0)) + 1
+			# 伤害由引擎在命中时按 p_attack_preview 统一加（这里只清标记、播报）
 		_timeline_2_hit_step = TIAN_SHI_ZHI_HUN
 	if _timeline_2_hit_step == TIAN_SHI_ZHI_HUN:
 		if used_tian_shi_zhi_hun and not bool(ctx.get("jian_di_tianshi_done", false)):

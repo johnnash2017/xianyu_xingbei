@@ -144,7 +144,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	step = STEP_DONE
 	notice_skill(SHENG_XUE_ZHI_JI, [int(harm.get("dst", -1))])
-	harm["point"] = int(harm.get("point", 0)) + 1
+	# 伤害由引擎在命中时按 p_attack_preview 统一加（这里只播报 + 给自己上治疗）
 	施加治疗(player.id, 1)
 	engine._broadcast_game()
 	return SUCCESS

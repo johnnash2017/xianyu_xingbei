@@ -210,7 +210,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if _timeline_2_hit_step == AN_YING_ZHI_LI:
 		if player.tap:
 			notice_skill(AN_YING_ZHI_LI, [int(harm.get("dst", -1))])
-			harm["point"] = int(harm.get("point", 0)) + 1
+			# 伤害由引擎在命中时按 p_attack_preview 统一加（这里只播报）
 		_timeline_2_hit_step = HEI_AN_ZHEN_CHAN_BU_PAI
 	if _timeline_2_hit_step == HEI_AN_ZHEN_CHAN_BU_PAI:
 		var r: int = _hei_an_zhen_chan_bu_pai()

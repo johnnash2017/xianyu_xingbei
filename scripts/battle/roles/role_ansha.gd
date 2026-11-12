@@ -138,25 +138,19 @@ func p_timeline_1(ctx: Dictionary) -> int:
 
 
 # ============================================================
-# 命中后（p_timeline_2_hit）：潜行中你的主动攻击伤害额外 +X（X = 剩余能量）
+# 命中时：潜行中你的主动攻击伤害额外 +X（X = 剩余能量）
+#   数值由引擎按 p_attack_preview 统一加（结算与预览同一份），这里不再改 harm
 # ============================================================
-func p_timeline_2_hit(ctx: Dictionary) -> int:
-	var harm: Dictionary = ctx.get("harm", {})
-	if int(harm.get("src", -1)) != player.id or not player.tap:
-		return SUCCESS
-	if int(harm.get("type", -1)) != GConst.HarmType.Attack:
-		return SUCCESS
-	if engine.current_id != player.id:
-		return SUCCESS
-	harm["point"] = int(harm.get("point", 0)) + player.get_energy()
-	return SUCCESS
 
 
-## 【潜行】的攻击加伤（+剩余能量）预告给被攻击者看：只用于应战提示，不改变实际结算
+## 【潜行】的攻击加伤（+剩余能量）：只用于应战提示，不改变实际结算
 func p_attack_preview(ctx: Dictionary) -> int:
 	if not bool(ctx.get("is_active", false)) or not player.tap:
 		return 0
 	if int(ctx.get("src", -1)) != player.id:
+		return 0
+	# 与原来的命中应用条件严格一致：只在「自己的回合」才加
+	if engine.current_id != player.id:
 		return 0
 	return player.get_energy()
 

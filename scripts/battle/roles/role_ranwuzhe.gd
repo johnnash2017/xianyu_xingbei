@@ -291,7 +291,8 @@ func 能否使用圣光() -> bool:
 #   神弃之裔（目标有治疗 +1）＋ 狂戾形态（造成伤害 +1）—— 两项都在③结算，预告要算进去
 # ============================================================
 func p_attack_preview(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+	# 与原来的应用条件一致：只要是我造成的攻击伤害就加（反击也算），不再要求 is_active
+	if int(ctx.get("src", -1)) != player.id:
 		return 0
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	var 加: int = 0
@@ -318,6 +319,24 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	return _神智污染(harm)
 
 
+## 命中时：被动加伤的「技能名播报」（数值由引擎按 p_attack_preview 统一加）
+func p_timeline_2_hit(ctx: Dictionary) -> int:
+	var harm: Dictionary = ctx.get("harm", {})
+	if int(harm.get("src", -1)) != player.id:
+		return SUCCESS
+	if int(harm.get("type", -1)) != GConst.HarmType.Attack:
+		return SUCCESS
+	var dst_id: int = int(harm.get("dst", -1))
+	if dst_id == player.id:
+		return SUCCESS
+	var dst: BattlePlayer = engine.p(dst_id)
+	if dst != null and dst.cross_num > 0:
+		notice_skill(SHEN_QI_ZHI_YI, [player.id])
+	if player.tap:
+		notice_skill(KUANG_LI_ZHI_XIN, [player.id])
+	return SUCCESS
+
+
 ## 被动加伤（每笔伤害只跑一次，见 p_timeline_3 的 step 守卫）
 func _被动改伤(harm: Dictionary) -> void:
 	var src: int = int(harm.get("src", -1))
@@ -326,6 +345,9 @@ func _被动改伤(harm: Dictionary) -> void:
 	if int(harm.get("point", 0)) <= 0:
 		return
 	if src == player.id and dst_id != player.id:
+		# 攻击伤害由引擎在命中时按 p_attack_preview 统一加（这里只管法术等非攻击伤害）
+		if int(harm.get("type", 0)) == GConst.HarmType.Attack:
+			return
 		var dst: BattlePlayer = engine.p(dst_id)
 		if dst != null and dst.cross_num > 0:
 			# 【神弃之裔】：对拥有【治疗】的角色伤害 +1 —— 技能名飘在**自己**头上（是我发动的）

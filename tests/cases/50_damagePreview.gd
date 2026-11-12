@@ -82,6 +82,8 @@ func 跑() -> void:
 	await _检格斗蓄力气绝()
 	await _检血影狂刀()
 	await _检多重射击()
+	await _检狂化结算()
+	await _检染污者结算()
 
 
 ## 格斗：百式形态下问蓄力/气绝 —— 基准＝保持百式（2+2），蓄力档 = 当前 +1
@@ -196,3 +198,31 @@ func _检多重射击() -> void:
 		"多重射击基准应是 2+荒神 1=3（实际 %d）" % int(项.get("preview_base", 0)))
 	检(int(项.get("damage", 0)) == 2,
 		"多重射击发动后应是 3-1=2（实际 %d）" % int(项.get("damage", 0)))
+
+
+## 结算走同一个入口：命中时引擎按 p_attack_preview 把狂化并进 harm（角色自己不再改）
+func _检狂化结算() -> void:
+	var 角色: BattleRole = _建引擎(GConst.角色_狂战士)
+	引擎.p(3).hand_cards = [] as Array[int]
+	var harm: Dictionary = {"src": 1, "dst": 3, "point": 2, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "is_active": true, "card_id": 0}
+	引擎.push(BattleEngine.STimeline2Hit.new(harm))
+	引擎.run()
+	检(int(harm["point"]) == 3,
+		"狂化应由引擎统一并入结算：2+1=3（实际 %d）" % int(harm["point"]))
+
+
+## 染污者的被动：攻击伤害走引擎统一入口，法术伤害仍由角色自己加
+func _检染污者结算() -> void:
+	var 角色: BattleRole = _建引擎(83)   # 染污者（roleID 83）
+	var 攻击: Dictionary = {"src": 1, "dst": 3, "point": 2, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "is_active": true, "card_id": 0}
+	引擎.push(BattleEngine.STimeline2Hit.new(攻击))
+	引擎.run()
+	检(int(攻击["point"]) == 2,
+		"目标没有治疗、自己没横置时，染污者的攻击不该有被动加伤（实际 %d）" % int(攻击["point"]))
+	# 法术伤害：不进 T2，仍由 _被动改伤 在 T3 加（这里直接调它验证分支没被误删）
+	var 法术: Dictionary = {"src": 1, "dst": 3, "point": 2, "type": GConst.HarmType.Magic}
+	角色.call("_被动改伤", 法术)
+	检(int(法术["point"]) == 2,
+		"没触发条件时法术伤害也不该加（实际 %d）" % int(法术["point"]))

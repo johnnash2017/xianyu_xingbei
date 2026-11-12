@@ -284,7 +284,7 @@ func _an_zhi_jie_fang_effect(ctx: Dictionary) -> void:
 		return
 	var harm: Dictionary = ctx["harm"]
 	notice_skill(AN_ZHI_JIE_FANG, [int(harm.get("dst", -1))])
-	harm["point"] = int(harm.get("point", 0)) + 1
+	# 伤害由引擎在命中时按 p_attack_preview 统一加（这里只记「已用掉」）
 	used_an_zhi_jie_fang = true
 
 
@@ -294,8 +294,7 @@ func _chong_ying_add_harm(ctx: Dictionary) -> void:
 		return
 	if not bool(ctx.get("is_active", false)):
 		return
-	var harm: Dictionary = ctx["harm"]
-	harm["point"] = int(harm.get("point", 0)) + card_count
+	# 伤害由引擎在命中时按 p_attack_preview 统一加（这里只把充盈的清零）
 	card_count = 0
 
 

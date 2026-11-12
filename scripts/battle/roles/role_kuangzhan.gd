@@ -121,11 +121,8 @@ func _xue_xing_pao_xiao(ctx: Dictionary) -> int:
 
 func _kuang_hua(harm: Dictionary) -> int:
 	notice_skill(KUANG_HUA, [int(harm["dst"])])
-	# 基础：自己发动的所有攻击伤害额外 +1（固定加成由客户端 GConst.攻击提示角色加成 显示）
-	harm["point"] = int(harm["point"]) + 1
-	# 追加：攻击命中时若自己手牌数 > 3，本次攻击伤害再额外 +1
-	if player.hand_cards.size() > 3:
-		harm["point"] = int(harm["point"]) + 1
+	# 伤害由引擎在命中时按 p_attack_preview 统一加（这里只播报）：
+	# 无条件 +1、手牌 > 3 再 +1，两边共用同一份声明
 	return SUCCESS
 
 

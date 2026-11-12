@@ -5572,6 +5572,10 @@ class STimeline2Hit:
 			else:
 				e.set_team_gem(src_p.color, e.team_gem[src_p.color] + 1)
 		e._broadcast_game()
+		# 结算和预览共用同一个数：把「命中时才结算」的被动加伤在这里并进 harm。
+		# 角色脚本只负责声明（p_attack_preview）与播报，不再各自改 harm.point——
+		# 以前每个角色在两处各写一遍（应用 + 预告），两边一不一致就出现「显示≠实际」。
+		harm["point"] = e.攻击预览伤害(e.harm_ctx(harm))
 		# 先让钩子跑（可能改伤害值），再进入伤害流水线
 		e.push_harm(harm)
 		e.push(SHook.new("p_timeline_2_hit", e.harm_ctx(harm), []))
