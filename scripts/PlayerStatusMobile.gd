@@ -694,15 +694,26 @@ func _刷新状态图标() -> void:
 		_加状态图标(ps, _load_sprite(sprite_name), "b:%d" % int(item), 新起点, int(item),
 			"", -1, 状态名(card))
 	for idx: Variant in _状态独有效果:
-		# 独有效果没有卡牌对象，报不出「哪一张牌」，提示里只写这个状态做什么；
-		# 【五系束缚】把两个选项和「触发时会摸几张牌」一起写出来，供玩家判断要不要选摸牌继续行动
+		# 独有效果没有卡牌对象，报不出「哪一张牌」；说明按 GConst.独有效果显示 配的
+		# 「专属卡包含的技能」逐条列出（同场卡提示），【五系束缚】再把应摸张数写在图标上。
 		var i: int = int(idx)
 		var 名: String = GConst.独有效果名[i] if 0 <= i and i < GConst.独有效果名.size() else ""
+		var 配置: Dictionary = GConst.独有效果显示.get(名, {})
+		var 被动们: Array = []
+		var 被动配置: Variant = 配置.get("被动技能", null)
+		if 被动配置 is Array:
+			被动们 = (被动配置 as Array).duplicate()
+		elif 被动配置 != null and int(被动配置) > 0:
+			被动们 = [int(被动配置)]
+		var 数量: int = -1
 		var 提示: String = 名
 		if i == GConst.Exclusive.WuXiShuFu:
-			# 状态名和效果说明分两行（提示框是 RichTextLabel，真换行即可）
-			提示 = "%s\n摸 %d 张牌 或 跳过回合" % [名, 五系束缚应摸张数()]
-		_加状态图标(ps, Art.exclusive_icon(i), "e:%d" % i, 新起点, -1, 提示, -1, 名)
+			# 状态名和效果说明分两行（提示框是 RichTextLabel，真换行即可）；
+			# 摸牌数同时画在图标右下角，封印增减时随重渲染实时变
+			数量 = 五系束缚应摸张数()
+			提示 = "%s\n摸 %d 张牌 或 跳过回合" % [名, 数量]
+		_加状态图标(ps, Art.exclusive_icon(i), "e:%d" % i, 新起点, -1, 提示, -1, 名,
+			数量, 被动们, int(配置.get("被动技能角色", -1)))
 	# 额外状态：服务端只下发状态标记，图标与说明由 GConst 提供；
 	# 用图标路径作标识，同一状态重复渲染时仍能续播弹出动画
 	for 状态: Variant in _状态额外:
