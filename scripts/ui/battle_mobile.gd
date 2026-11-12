@@ -9164,14 +9164,20 @@ func _发送应答(respond_id: int, dst: Array, cards: Array, args: Array) -> vo
 ## 提交的这一刻手牌还在，先记下每张牌（按牌面）在屏幕上的中心；收到 Card 消息时
 ## 按牌面取回来当进场飞行的起点（手牌随即刷新，节点已经没了，只能提交时记）。
 func _记录出牌起飞点(实例们: Array) -> void:
-	if 实例们.is_empty():
+	if 实例们.is_empty() or Root == null:
 		return
 	var 现在: int = Time.get_ticks_msec()
+	# 记的是 **Root 局部坐标**：_展示飞行 的起点算法是「起点 - ShowCardArea.position」，
+	# 和 _面板中心（面板在父节点里的矩形中心）同一套空间。
+	# 不能用 get_global_rect()：整个战斗界面挂在带 1.5 缩放的根节点下，全局坐标会被放大 1.5 倍，
+	# 牌就会从离手牌很远的地方飞出来（踩过）。
+	var 反变换: Transform2D = Root.get_global_transform().affine_inverse()
 	for 实例: Variant in 实例们:
 		var 控件: Control = _手牌视图(int(实例))
-		if 控件 != null:
-			_出牌起飞点[GConst.牌号(int(实例))] = {
-				"点": 控件.get_global_rect().get_center(), "时刻": 现在}
+		if 控件 == null:
+			continue
+		var 局部: Vector2 = 反变换 * 控件.get_global_rect().get_center()
+		_出牌起飞点[GConst.牌号(int(实例))] = {"点": 局部, "时刻": 现在}
 
 
 ## 这条 Card 消息该不该「从手里那张牌」起飞：自己打出的牌，按牌面取回提交时记的起飞点；
