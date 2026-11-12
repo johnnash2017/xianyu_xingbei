@@ -557,6 +557,10 @@ func _报告基础效果悬停(牌id: int, 图标: Control) -> void:
 	var 牌: GCard = Data.get_card(牌id)
 	if 牌 == null:
 		return
+	# 【Tricky】是面朝下的暗牌：占位牌自身的命格 / 系别跟真实牌无关，不能报出来（会误导成「地系」）
+	if 牌.id == GConst.卡_Tricky:
+		状态图标悬停.emit(图标, "基础效果：Tricky（面朝下）", 牌id, true, [], -1)
+		return
 	状态图标悬停.emit(图标,
 		"基础效果：%s（%s·%s）" % [状态名(牌), 牌.fate_pattern, GConst.element_to_chinese(牌.element_enum())],
 		牌id, true, [], -1)
@@ -863,6 +867,9 @@ func set_基础牌可点(value: bool) -> void:
 ## 对应 C# BasicAndExCards setter 里的一长串 if/else 贴图名映射
 ## 卡名用 CardName 枚举判断；技能用技能号判断（号来自卡表「技能1/技能2」的引用）
 func _basic_card_sprite(card: GCard) -> String:
+	# 【Tricky】（卡表#1008）：面朝下的牌，没有卡面 —— 画成一张卡背，别让它从状态区里消失
+	if card.id == GConst.卡_Tricky:
+		return "KaBei"
 	match card.card_name_enum():
 		GConst.CardName.Poison:
 			return "du"

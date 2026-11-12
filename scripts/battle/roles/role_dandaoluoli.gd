@@ -1,99 +1,100 @@
 extends BattleRole
-## 捣蛋萝莉（roleID 86）
+## 捣蛋萝莉（roleID 86 / 技能 8601~8606）
 ##
-## 【Tricky】＝面朝下放在角色面前的基础效果：客户端只看得到占位牌 卡表#1008（无卡面），
-## 真实牌面只存在服务端（本脚本的 _trickies）。场上 Tricky 用 basic_effects 里的 1008 占位，
-## 一张占位对应 _trickies 里的一条 {dst, card}。
+## 【Tricky】＝面朝下放在角色面前、视为基础效果的一张牌（卡表#1008 是无卡面的虚拟牌）。
+## 真实牌面只存在服务端：_trickies 里一条 {dst, card} 对应一张占位。
+## 规则口径（图鉴备注）：**每人面前至多存在 1 张【Tricky】**，放置前一律过这一关。
 ##
 ## 技能：
-##   天使？ 8601（响应）：你可将手牌里带【天使之墙】的牌当作【圣盾】使用
-##       （照 7 号守护天使 701 的做法：牌本身放进目标的基础效果区，引擎把它视作【圣盾】格挡）。
-##   叛逆之墙 8602（法术）：将手牌 1 个【圣盾】【展示】与场上 1 个基础效果交换；你弃 1 张牌。
-##   神秘伏笔 8603（被动）：【法术行动】结束后，牌库顶 1~2 张面朝下放到 X 名角色面前作为【Tricky】。
-##   T-r-i-c-k-y! 8604（响应）：主动攻击未命中②，查看 1 个【Tricky】；
-##       若你移除该【Tricky】并额外弃 1 张同系牌，对原拥有者造成 2 点法术伤害③。
-##   Trick or Treat 8605（被动）：你的回合结束时若场上【Tricky】>4，展示全部【Tricky】，
-##       所有人各弃 1 张与面前【Tricky】同系的牌，然后移除所有【Tricky】；每有人不如此做吃 2 点法术伤害③；
+##   天使？ 8601（法术行动）：把手里带【天使之墙】的牌当【圣盾】放到一名角色面前
+##       （照守护天使 701：牌本身进基础效果区，引擎自动格挡路径认 701 为【圣盾】）。
+##   叛逆之墙 8602（法术行动）：把手牌 1 张【圣盾】【展示】与场上 1 个基础效果交换，然后你弃 1 张牌。
+##   神秘伏笔 8603（被动）：【法术行动】结束后，牌库顶 1~2 张面朝下放到 X 名角色面前作【Tricky】。
+##   T-r-i-c-k-y! 8604（响应）：你的主动攻击未命中时，查看 1 个【Tricky】；
+##       若移除它并额外弃 1 张同系牌，对原拥有者造成 2 点法术伤害。
+##   Trick or Treat 8605（被动）：你的行动阶段结束时场上【Tricky】>4：展示全部，所有人各弃 1 张
+##       与面前【Tricky】同系的牌，然后移除全部；没弃到的人吃 2 点法术伤害；
 ##       再按双方弃牌数比大小给战绩区星石 / 额外回合。
-##   Surprise! 8606（法术·必杀【水晶】）：弃 1 张牌，本回合手牌上限 +5，收走场上所有【Tricky】，
-##       再把 X 张手牌面朝下放到 X 名角色面前作为【Tricky】。
+##   Surprise! 8606（法术行动·必杀【水晶】）：弃 1 张牌，本回合手牌上限 +5，收走场上所有【Tricky】，
+##       再把 X 张手牌面朝下放到 X 名角色面前作【Tricky】。
 ##
-## 参考实现：守护天使 701（牌本身当【圣盾】放基础效果）、矜贵之女 7802（多步询问 + 逐人问弃牌）、
-## 10803【剑守誓言】（展示牌库顶后选目标）。
+## 参考实现：守护天使 701（牌本身当【圣盾】）、天使 703（选目标→选场上基础效果牌）、
+## 矜贵之女 7802（多步询问）、10803（展示牌库顶后选目标）。
 
-const TIAN_SHI: int = 8601
-const PAN_NI_ZHI_QIANG: int = 8602
-const SHEN_MI_FU_BI: int = 8603
-const TRICKY: int = 8604
-const TRICK_OR_TREAT: int = 8605
-const SURPRISE: int = 8606
+const 天使问: int = 8601
+const 叛逆之墙: int = 8602
+const 神秘伏笔: int = 8603
+const 垂迹: int = 8604
+const 糖果: int = 8605
+const 惊爆: int = 8606
 
-const Tricky占位牌: int = 1008
+## 面朝下的【Tricky】占位牌（卡表#1008，无卡面；真实牌面只在本脚本里）
+const Tricky占位牌: int = GConst.卡_Tricky
 const 手牌上限来源: String = "Surprise"
 
-## [{dst, card}]
+## 场上的【Tricky】：[{dst: 拥有者 id, card: 真实牌实例号}]；每人最多 1 条
 var _trickies: Array = []
-## 神秘伏笔：1＝等选放 1 还是 2 张 / 2＝等选目标
+## 神秘伏笔：本链要放的张数 + 已从牌库顶取到的牌
 var _伏笔张数: int = 0
 var _伏笔牌: Array = []
-## Surprise!：1＝等选手牌放回 / 2＝等选目标
-var _惊爆阶段: int = 0
-var _惊爆牌: Array = []
-## Trick or Treat：1＝等逐人弃牌 / 2＝等选结算分支
-## 循环段当前问到的目标与他的同系手牌
-var _糖果当前目标: int = -1
-var _糖果当前同系: Array = []
-var _糖果已用: bool = false
+## T-r-i-c-k-y!：第 1 段选中的下标 + 这次可弃的同系手牌（第 2 段白名单）
+var _垂迹选中: int = -1
+var _垂迹同系: Array = []
+## Trick or Treat：循环段当前问的人 / 他的同系手牌 / 待问名单 / 双方弃牌数 / 分支答案
 var _糖果对象: Array = []
 var _糖果下标: int = 0
+var _糖果目标: int = -1
+var _糖果同系: Array = []
 var _糖果我方: int = 0
 var _糖果敌方: int = 0
 var _糖果未做: Array = []
-## T-r-i-c-k-y!：0＝未问 / 1＝等选查看哪个 / 2＝等选同系弃牌
-## T-r-i-c-k-y! 第一段选中后可弃的同系手牌（第二段白名单）
-var _垂迹同系: Array = []
-var _垂迹选中: int = -1
-## 叛逆之墙：0＝未问 / 1＝等选要弃的牌
-var _叛逆阶段: int = 0
+var _糖果分支: Dictionary = {}
+var _糖果已用: bool = false
+## Surprise!：第 1 段选了几张手牌放回（＝第 2 段要选几名角色）
+var _惊爆牌数: int = 0
 
 
 # ============================================================
 # 技能栏
 # ============================================================
 func available_skills() -> Array:
+	var out: Array = []
+	# 天使？：牌白名单＝手里带【天使之墙】的牌；目标＝面前还没有【圣盾】/【天使之墙】、能接收基础效果的人
 	var 墙牌: Array[int] = hand_ids_with_skill(GConst.技能_天使之墙)
-	var 圣盾牌: Array[int] = _手牌圣盾()
-	return [
-		{
-			"type": GConst.ActionType.MagicSkill,
-			"id": TIAN_SHI,
-			"need_card": 1,
-			"need_target": 1,
-			"cards": 墙牌,
-			"targets": player_ids_where(func(p: BattlePlayer) -> bool:
-				return not p.check_basic_effect_name(GConst.CardName.Shield) \
-					and not p.check_basic_effect_skill(GConst.技能_天使之墙) \
-					and 目标可接收基础效果(p.id, GConst.技能_天使之墙), true),
-			"enabled": not 墙牌.is_empty(),
-		},
-		{
-			"type": GConst.ActionType.MagicSkill,
-			"id": PAN_NI_ZHI_QIANG,
-			"need_card": 1,
-			"need_target": 1,
-			"cards": 圣盾牌,
-			"targets": _有基础效果者(),
-			"enabled": not 圣盾牌.is_empty() and not _有基础效果者().is_empty() \
-				and not player.hand_cards.is_empty(),
-		},
-		{
-			"type": GConst.ActionType.MagicSkill,
-			"id": SURPRISE,
-			"need_card": 1,
-			"need_target": 0,
-			"enabled": player.get_energy() >= 1 and not player.hand_cards.is_empty(),
-		},
-	]
+	var 墙目标: Array = player_ids_where(func(p: BattlePlayer) -> bool: return _墙目标可收(p.id), true)
+	out.append({
+		"type": GConst.ActionType.MagicSkill,
+		"id": 天使问,
+		"need_card": 1,
+		"need_target": 1,
+		"cards": 墙牌,
+		"targets": 墙目标,
+		"enabled": not 墙牌.is_empty() and not 墙目标.is_empty(),
+	})
+	# 叛逆之墙：先选手牌【圣盾】+ 目标，再由客户端列出该目标身上的基础效果供选（args[0] 回传）
+	var 圣盾牌: Array[int] = hand_ids_where(func(_cid: int, c: GCard) -> bool:
+		return c.card_name_enum() == GConst.CardName.Shield)
+	var 有基础效果的目标: Array = player_ids_where(func(p: BattlePlayer) -> bool:
+		return not p.basic_effects.is_empty() and 目标可接收基础效果(p.id, 叛逆之墙), true)
+	out.append({
+		"type": GConst.ActionType.MagicSkill,
+		"id": 叛逆之墙,
+		"need_card": 1,
+		"need_target": 1,
+		"card_source": GConst.CardSource.HandAndBasicEffect,
+		"cards": 圣盾牌,
+		"targets": 有基础效果的目标,
+		"enabled": not 圣盾牌.is_empty() and not 有基础效果的目标.is_empty(),
+	})
+	# Surprise!：必杀【水晶】，另需弃 1 张手牌作发动牌
+	out.append({
+		"type": GConst.ActionType.MagicSkill,
+		"id": 惊爆,
+		"need_card": 1,
+		"need_target": 0,
+		"enabled": player.get_energy() >= 1 and not player.hand_cards.is_empty(),
+	})
+	return out
 
 
 func v_magic_skill(action: Dictionary) -> int:
@@ -102,39 +103,46 @@ func v_magic_skill(action: Dictionary) -> int:
 	var 技能号: int = int(action.get("action_id", 0))
 	var cards: Array = action.get("card_ids", [])
 	var dsts: Array = action.get("dst_ids", [])
-	if 技能号 == TIAN_SHI:
-		if cards.is_empty() or not _是天使之墙(int(cards[0])):
+	if 技能号 == 天使问:
+		if cards.is_empty() or player.手牌实例(int(cards[0])) < 0 or not _是天使之墙(int(cards[0])):
 			return GConst.GE_INVALID_ACTION
-		if dsts.is_empty() or engine.p(int(dsts[0])) == null:
-			return GConst.GE_INVALID_ARGUMENT
-		if not _墙目标可收(int(dsts[0])):
+		if dsts.is_empty() or not _墙目标可收(int(dsts[0])):
 			return GConst.GE_INVALID_PLAYERID
 		return GConst.GE_SUCCESS
-	if 技能号 == PAN_NI_ZHI_QIANG:
+	if 技能号 == 叛逆之墙:
 		if cards.is_empty() or player.手牌实例(int(cards[0])) < 0 or not _是圣盾(int(cards[0])):
 			return GConst.GE_INVALID_ACTION
 		if dsts.is_empty() or engine.p(int(dsts[0])) == null:
-			return GConst.GE_INVALID_ARGUMENT
-		if not _有基础效果者().has(int(dsts[0])):
 			return GConst.GE_INVALID_PLAYERID
-		if player.hand_cards.size() < 2:
+		var args: Array = action.get("args", [])
+		if args.is_empty() or not _面前有(int(dsts[0]), int(args[0])):
 			return GConst.GE_INVALID_ACTION
-		_叛逆阶段 = 0
 		return GConst.GE_SUCCESS
-	if 技能号 != SURPRISE:
+	if 技能号 != 惊爆:
 		return GConst.GE_INVALID_ACTION
-	if player.get_energy() < 1 or cards.is_empty():
+	if player.get_energy() < 1 or cards.is_empty() or player.手牌实例(int(cards[0])) < 0:
 		return GConst.GE_INVALID_ACTION
-	_惊爆阶段 = 0
 	return GConst.GE_SUCCESS
 
 
-func p_magic_skill(action: Dictionary) -> int:
+## 这次技能会把哪张牌放到谁面前（引擎在结算前统一问目标角色的 v_basic_effect_target）
+func basic_effect_placements(action: Dictionary) -> Array:
 	var 技能号: int = int(action.get("action_id", 0))
-	if 技能号 == TIAN_SHI:
-		return _天使(action)
-	if 技能号 == PAN_NI_ZHI_QIANG:
-		return _叛逆之墙(action)
+	if 技能号 != 天使问 and 技能号 != 叛逆之墙:
+		return []
+	var cards: Array = action.get("card_ids", [])
+	var dsts: Array = action.get("dst_ids", [])
+	if cards.is_empty() or dsts.is_empty():
+		return []
+	return [{"card": GConst.牌号(int(cards[0])), "dst": int(dsts[0])}]
+
+
+func p_magic_skill(action: Dictionary) -> int:
+	match int(action.get("action_id", 0)):
+		天使问:
+			return _天使(action)
+		叛逆之墙:
+			return _叛逆之墙(action)
 	return _惊爆(action)
 
 
@@ -144,12 +152,10 @@ func p_magic_skill(action: Dictionary) -> int:
 func _天使(action: Dictionary) -> int:
 	var 牌: int = int((action.get("card_ids", []) as Array)[0])
 	var dst: int = int((action.get("dst_ids", []) as Array)[0])
-	if not _是天使之墙(牌) or not _墙目标可收(dst):
-		return SUCCESS
-	notice_skill(TIAN_SHI, [dst])
-	# 手牌公开亮出当作【圣盾】：统一入口（亮牌 + 触发封印）+ 进目标的基础效果区
+	notice_skill(天使问, [dst])
+	# 手牌公开亮出（统一入口：亮牌 + 触发 p_show_hand），再进目标的基础效果区
 	engine.展示手牌(player.id, [牌])
-	engine.take_from_hand(player.id, [牌])
+	engine.take_from_hand(player.id, [牌], true)
 	engine.add_basic_effect(dst, 牌, player.id, GConst.CAUSE_USE)
 	engine._broadcast_game()
 	return SUCCESS
@@ -159,50 +165,48 @@ func _天使(action: Dictionary) -> int:
 # 叛逆之墙 8602：手牌【圣盾】与场上 1 个基础效果交换，然后你弃 1 张牌
 # ============================================================
 func _叛逆之墙(action: Dictionary) -> int:
-	if _叛逆阶段 == 1:
-		return _叛逆弃牌()
-	var 牌: int = int((action.get("card_ids", []) as Array)[0])
+	# 交换只在第一次进入时做；等弃牌回复回来时直接接着走弃牌那一段
+	if not 多步询问进行中(叛逆之墙):
+		if not _做交换(action):
+			return SUCCESS
+	return 多步询问(叛逆之墙, [
+		{"需牌": 1, "可取消": false, "超时默认": []},
+	], _叛逆弃牌)
+
+
+## 交换：自己的【圣盾】进目标的基础效果区，目标那 1 个基础效果进自己手牌。
+## 目标选的基础效果是【Tricky】占位牌时，交出的是它藏着的真实牌（并摘掉 _trickies 里那一条）。
+func _做交换(action: Dictionary) -> bool:
 	var 目标: int = int((action.get("dst_ids", []) as Array)[0])
-	var dp: BattlePlayer = engine.p(目标)
-	if dp == null or player.手牌实例(牌) < 0 or not _是圣盾(牌):
-		return SUCCESS
-	notice_skill(PAN_NI_ZHI_QIANG, [目标])
-	# 手牌【圣盾】公开亮出：统一入口（亮牌 + 触发封印）
-	engine.展示手牌(player.id, [牌])
-	# 拿走对方面前 1 个基础效果（跳过 Tricky 占位，避免与 _trickies 脱节）
-	var 拿: int = -1
-	for be: Dictionary in dp.basic_effects:
-		if int(be["card"]) != Tricky占位牌:
-			拿 = int(be["card"])
-			break
-	if 拿 >= 0:
-		engine.remove_basic_effect(目标, 拿, PAN_NI_ZHI_QIANG, player.id)
-		player.add_hand_cards([拿])
-		engine.播获得牌日志(player.id, [拿])
-	# 自己的圣盾放到对方面前（手牌【圣盾】已在上面统一亮出）
-	engine.take_from_hand(player.id, [牌])
-	engine.add_basic_effect(目标, 牌, player.id, PAN_NI_ZHI_QIANG)
+	var 效果: int = int((action.get("args", []) as Array)[0])
+	var 圣盾: int = player.手牌实例(int((action.get("card_ids", []) as Array)[0]))
+	if 圣盾 < 0 or not _面前有(目标, 效果):
+		return false
+	notice_skill(叛逆之墙, [目标])
+	engine.展示手牌(player.id, [圣盾])
+	var 换来: int = 效果
+	if 效果 == Tricky占位牌:
+		换来 = _移除Tricky(_Tricky序号(目标), 叛逆之墙)
+	else:
+		engine.remove_basic_effect(目标, 效果, 叛逆之墙, player.id)
+	engine.take_from_hand(player.id, [圣盾], true)
+	engine.add_basic_effect(目标, 圣盾, player.id, 叛逆之墙)
+	player.add_hand_cards([换来])
+	engine.播获得牌日志(player.id, [换来])
 	engine._broadcast_game()
-	# 你弃 1 张牌（由本人选）
-	if player.hand_cards.is_empty():
-		return SUCCESS
-	_叛逆阶段 = 1
-	询问(player.id, PAN_NI_ZHI_QIANG, 1, 0, GConst.CardSource.Hand, [], 0, "", [], false,
-		0, -1, [], -1, {})
-	return WAIT
+	return true
 
 
-func _叛逆弃牌() -> int:
-	var r: Dictionary = take_skill_reply_full()
-	_叛逆阶段 = 0
+func _叛逆弃牌(答案: Array) -> int:
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
 	var 弃: int = -1
-	for c: Variant in r.get("card_ids", []):
+	for c: Variant in 回.get("cards", []):
 		var 实例: int = player.手牌实例(int(c))
 		if 实例 >= 0:
 			弃 = 实例
 			break
+	# 强制弃 1 张：超时 / 空回复按手牌顺序补一张
 	if 弃 < 0:
-		# 强制弃 1 张：超时 / 空回复按手牌顺序补一张
 		for cid: int in player.hand_cards:
 			if player.has_discard_card(cid):
 				弃 = cid
@@ -210,81 +214,97 @@ func _叛逆弃牌() -> int:
 	if 弃 < 0:
 		return SUCCESS
 	engine.take_from_hand(player.id, [弃])
-	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": PAN_NI_ZHI_QIANG})
+	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": 叛逆之墙})
 	engine._log_discard(player.id, [弃])
 	engine._broadcast_game()
 	return SUCCESS
 
 
 # ============================================================
-# 神秘伏笔 8603：法术行动结束后放 Tricky
+# 神秘伏笔 8603：法术行动结束后，牌库顶 1~2 张面朝下放到 X 名角色面前
 # ============================================================
 func p_after_magic(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if engine.deck.pile_size() <= 0 and not 多步询问进行中(SHEN_MI_FU_BI):
-		return SUCCESS
-	# 神秘伏笔：选 X（1~2）→ 从牌库顶取 X 张 → 点 X 名角色，各放 1 张【Tricky】
-	return 多步询问(SHEN_MI_FU_BI, [
-		{"选项": _神秘伏笔选项(), "可取消": false, "答完": _神秘伏笔取牌答完},
+	if not 多步询问进行中(神秘伏笔) and not 多步询问待收尾(神秘伏笔):
+		_伏笔张数 = 0
+		_伏笔牌 = []
+		# 牌库没牌、或场上没有能放【Tricky】的角色：这次什么都不做
+		if engine.deck.pile_size() <= 0 or _可放Tricky角色().is_empty():
+			return SUCCESS
+	return 多步询问(神秘伏笔, [
+		{"选项": _伏笔选项(), "可取消": false, "超时默认": [1], "答完": _伏笔取牌},
 		{"需目标": func(_答案: Array) -> int: return _伏笔张数,
-		 "目标白": 全部角色(),
-		 "可取消": false,
-		 "取消": _神秘伏笔弃掉取到的牌,
-		 "跳过": func(_答案: Array) -> bool: return _伏笔张数 <= 0 or _伏笔牌.is_empty()},
-	], _神秘伏笔结算)
+		 "目标白": func(_答案: Array) -> Array: return _可放Tricky角色(),
+		 "可取消": false, "超时默认": [],
+		 "校验": _伏笔校验,
+		 "跳过": func(_答案: Array) -> bool: return _伏笔张数 <= 0},
+	], _伏笔结算)
 
 
-## 第 1 段的两个选项：取 1 张 / 取 2 张（牌库不够的那项置灰）
-func _神秘伏笔选项() -> Array:
-	var 上限: int = mini(2, engine.deck.pile_size())
+## 第 1 段：放 1 张还是 2 张（牌库不够 / 能放 Tricky 的人不够的那一档置灰，但仍下发）
+func _伏笔选项() -> Array:
+	var 上限: int = mini(2, mini(engine.deck.pile_size(), _可放Tricky角色().size()))
 	var 选项: Array = []
 	for n: int in range(1, 3):
 		选项.append({
 			"value": n,
-			"label": GConst.按钮原文(SHEN_MI_FU_BI, n - 1),
-			"text": GConst.按钮原文(SHEN_MI_FU_BI, n - 1),
+			"label": GConst.按钮原文(神秘伏笔, n - 1),
+			"text": GConst.按钮原文(神秘伏笔, n - 1),
 			"enabled": n <= 上限,
 		})
 	return 选项
 
 
-## 第 1 段答完：记下 X，立刻从牌库顶取 X 张（取不到就整段放弃）
-func _神秘伏笔取牌答完(回: Dictionary, _答案: Array) -> int:
+## 第 1 段答完：记下 X 并立刻从牌库顶取走那几张（取到几张就放几张）
+func _伏笔取牌(回: Dictionary, _答案: Array) -> int:
 	var args: Array = 回.get("args", [])
 	if args.is_empty():
 		return SUCCESS
-	_伏笔张数 = int(args[0])
-	if _伏笔张数 < 1 or _伏笔张数 > mini(2, engine.deck.pile_size()):
+	var 张数: int = int(args[0])
+	var 上限: int = mini(2, mini(engine.deck.pile_size(), _可放Tricky角色().size()))
+	if 张数 < 1 or 张数 > 上限:
 		engine.报错("【神秘伏笔】张数不合法", player.id)
 		_伏笔张数 = 0
-		_伏笔牌 = []
 		return SUCCESS
-	_伏笔牌 = engine.移除牌库顶(_伏笔张数)
+	_伏笔牌 = engine.移除牌库顶(张数)
+	_伏笔张数 = _伏笔牌.size()
 	return SUCCESS
 
 
-## 第 2 段取消 / 超时：取到的牌进弃牌堆，不留死牌
-func _神秘伏笔弃掉取到的牌() -> int:
-	for c: Variant in _伏笔牌:
-		engine.to_discard([int(c)], {"owner": player.id, "source": "deck", "cause": SHEN_MI_FU_BI})
-	_伏笔牌 = []
-	_伏笔张数 = 0
-	return SUCCESS
+## 第 2 段校验：目标数＝张数、不重复、都是当前能放【Tricky】的角色
+func _伏笔校验(回: Dictionary) -> bool:
+	var dsts: Array = 回.get("dsts", [])
+	if dsts.size() != _伏笔张数:
+		return false
+	var 已: Array = []
+	for d: Variant in dsts:
+		var pid: int = int(d)
+		if 已.has(pid) or not _可放Tricky(pid):
+			return false
+	已.append(pid)
+	return true
 
 
-## 第 2 段答完：点了几名角色就各放 1 张；目标数不对就把取到的牌弃掉
-func _神秘伏笔结算(答案: Array) -> int:
+func _伏笔结算(答案: Array) -> int:
 	if _伏笔张数 <= 0 or _伏笔牌.is_empty():
 		return SUCCESS
 	var dsts: Array = (答案[1] as Dictionary).get("dsts", []) if 答案.size() > 1 else []
-	if dsts.size() != _伏笔张数:
-		engine.报错("【神秘伏笔】目标数不对", player.id)
-		_神秘伏笔弃掉取到的牌()
-		return SUCCESS
-	notice_skill(SHEN_MI_FU_BI, dsts)
-	for i: int in range(_伏笔张数):
-		_放Tricky(int(dsts[i]), int(_伏笔牌[i]))
+	var 目标们: Array = []
+	for d: Variant in dsts:
+		var pid: int = int(d)
+		if _可放Tricky(pid) and not 目标们.has(pid):
+			目标们.append(pid)
+	# 超时没选目标：按座位顺序替玩家补齐（强制段，不能把取到的牌留在半空）
+	if 目标们.size() != _伏笔张数:
+		目标们 = []
+		for pid2: int in _可放Tricky角色():
+			目标们.append(pid2)
+			if 目标们.size() >= _伏笔张数:
+				break
+	notice_skill(神秘伏笔, 目标们)
+	for i: int in range(目标们.size()):
+		_放Tricky(int(目标们[i]), int(_伏笔牌[i]), 神秘伏笔)
 	_伏笔牌 = []
 	_伏笔张数 = 0
 	engine._broadcast_game()
@@ -292,87 +312,72 @@ func _神秘伏笔结算(答案: Array) -> int:
 
 
 # ============================================================
-# T-r-i-c-k-y! 8604：主动攻击未命中② → 查看 1 个【Tricky】→ 可移除并弃 1 张同系牌 → 2 点法术伤害
+# T-r-i-c-k-y! 8604：主动攻击未命中 → 查看 1 个【Tricky】→ 可移除并弃 1 张同系牌 → 2 点法术伤害
 # ============================================================
 func p_timeline_2_miss(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
-	if _trickies.is_empty():
+	if _trickies.is_empty() or step >= STEP_DONE:
 		return SUCCESS
-	if step >= STEP_DONE:
-		return SUCCESS
-	# 跨段状态只在新的一次发动时清：重入（等第二段弃牌回复）时要保留第一段选中的 Tricky / 同系牌
-	if not 多步询问进行中(TRICKY):
+	# 跨段的两个成员只在「新的一次发动」时清：等第二段回复的重入要保留它们
+	if not 多步询问进行中(垂迹):
 		_垂迹选中 = -1
 		_垂迹同系 = []
-	# T-r-i-c-k-y!：选一个 Tricky 私下看牌 → 弃 1 张同系牌 → 对他原拥有者 2 点法术伤害。
-	return 多步询问(TRICKY, [
-		{"选项": _垂迹选项(), "答完": _垂迹选牌答完},
+	return 多步询问(垂迹, [
+		{"选项": _垂迹选项(), "答完": _垂迹查看},
 		{"需牌": 1, "牌白": func(_答案: Array) -> Array: return _垂迹同系,
 		 "跳过": func(_答案: Array) -> bool: return _垂迹同系.is_empty()},
 	], _垂迹结算)
 
 
-## 第 1 段答完：记下选中的 Tricky、私下看牌、算出可弃的同系牌
-func _垂迹选牌答完(回: Dictionary, _答案: Array) -> int:
+## 第 1 段：选看哪一个（选项只写拥有者），私下看牌、算出可弃的同系手牌
+func _垂迹查看(回: Dictionary, _答案: Array) -> int:
 	var args: Array = 回.get("args", [])
 	if args.is_empty():
 		return SUCCESS
-	var 档: int = int(args[0])
-	if 档 < 1 or 档 > _trickies.size():
+	var 序: int = int(args[0]) - 1
+	if 序 < 0 or 序 >= _trickies.size():
 		engine.报错("【T-r-i-c-k-y!】选项号越界", player.id)
 		return SUCCESS
-	_垂迹选中 = 档 - 1
-	var 项: Dictionary = _trickies[_垂迹选中]
-	var 真牌: int = int(项["card"])
-	var 牌: GCard = Data.get_card(真牌)
-	if 牌 == null:
-		_垂迹选中 = -1
-		return SUCCESS
-	# 查看：只把这张牌给发动者本人看（私下看牌，不广播、不触发封印）
+	_垂迹选中 = 序
+	var 真牌: int = int(_trickies[序]["card"])
+	# 查看只给发动者本人看（不广播、不触发 p_show_hand）
 	engine.私下看牌(player.id, [真牌])
-	_垂迹同系 = hand_ids_where(func(_cid: int, c: GCard) -> bool:
-		return c.element_enum() == 牌.element_enum())
-	if _垂迹同系.is_empty():
-		_垂迹选中 = -1
+	var 系: int = Data.get_card(真牌).element_enum()
+	_垂迹同系 = hand_ids_where(func(_cid: int, c: GCard) -> bool: return c.element_enum() == 系)
 	return SUCCESS
 
 
-## 第 2 段答完：弃 1 张同系牌 → 移除该 Tricky → 对原拥有者 2 点法术伤害
+## 第 2 段答完：弃 1 张同系牌 → 移除该【Tricky】→ 对原拥有者 2 点法术伤害
 func _垂迹结算(答案: Array) -> int:
 	var 序: int = _垂迹选中
 	_垂迹选中 = -1
 	_垂迹同系 = []
 	if 序 < 0 or 序 >= _trickies.size():
 		return SUCCESS
-	var 项2: Dictionary = _trickies[序]
-	var 真牌2: int = int(项2["card"])
-	var 牌2: GCard = Data.get_card(真牌2)
-	var cards2: Array = (答案[1] as Dictionary).get("cards", []) if 答案.size() > 1 else []
+	var 项: Dictionary = _trickies[序]
+	var 目标: int = int(项["dst"])
+	var 真牌: int = int(项["card"])
+	var 系: int = Data.get_card(真牌).element_enum()
+	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
 	var 弃: int = -1
-	for c: Variant in cards2:
+	for c: Variant in 回.get("cards", []):
 		var 实例: int = player.手牌实例(int(c))
-		if 实例 < 0 or 牌2 == null:
-			continue
-		var 弃牌: GCard = Data.get_card(实例)
-		if 弃牌 != null and 弃牌.element_enum() == 牌2.element_enum():
+		if 实例 >= 0 and Data.get_card(实例).element_enum() == 系:
 			弃 = 实例
 			break
 	if 弃 < 0:
-		engine.报错("【T-r-i-c-k-y!】弃的牌与 Tricky 不同系", player.id)
 		return SUCCESS
-	var 目标: int = int(项2["dst"])
-	notice_skill(TRICKY, [目标])
-	_trickies.remove_at(序)
-	var dp2: BattlePlayer = engine.p(目标)
-	if dp2 != null:
-		dp2.remove_basic_effect(Tricky占位牌)
+	notice_skill(垂迹, [目标])
 	engine.take_from_hand(player.id, [弃])
-	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": TRICKY})
+	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": 垂迹})
 	engine._log_discard(player.id, [弃])
+	# 移除这个【Tricky】：占位与真实牌一起离场，真实牌进弃牌堆
+	var 移除牌: int = _移除Tricky(序, 垂迹)
+	engine.to_discard([移除牌], {"owner": 目标, "source": "other", "cause": 垂迹})
 	engine.push_harm({"src": player.id, "dst": 目标, "point": 2,
-		"cause": TRICKY, "type": GConst.HarmType.Magic})
-	# 结算里压了伤害并返回 URGENT：引擎重入本钩子时用 step 挡住
+		"cause": 垂迹, "type": GConst.HarmType.Magic})
+	# 压了伤害：引擎重入本钩子时用 step 挡住，避免再问一遍
 	step = STEP_DONE
 	engine._broadcast_game()
 	return URGENT
@@ -381,89 +386,11 @@ func _垂迹结算(答案: Array) -> int:
 func _垂迹选项() -> Array:
 	var out: Array = []
 	for i: int in range(_trickies.size()):
-		var 项: Dictionary = _trickies[i]
-		var dp: BattlePlayer = engine.p(int(项["dst"]))
+		var dp: BattlePlayer = engine.p(int(_trickies[i]["dst"]))
 		var 名: String = Data.role_name(dp.role_id) if dp != null else ""
-		var 文案: String = GConst.按钮原文(TRICKY, 0) % 名
-		out.append({
-			"value": i + 1,
-			"label": 文案,
-			"text": 文案,
-		})
+		var 文案: String = GConst.按钮原文(垂迹, 0) % 名
+		out.append({"value": i + 1, "label": 文案, "text": 文案})
 	return out
-
-
-# ============================================================
-# Surprise! 8606（法术·必杀【水晶】）
-# ============================================================
-func _惊爆(action: Dictionary) -> int:
-	if _惊爆阶段 != 0:
-		return _惊爆放回()
-	var 弃: Array = []
-	for c: Variant in action.get("card_ids", []):
-		var 实例: int = player.手牌实例(int(c))
-		if 实例 >= 0 and not 弃.has(实例):
-			弃.append(实例)
-	if 弃.size() != 1:
-		return SUCCESS
-	notice_skill(SURPRISE, [player.id])
-	player.remove_energy(1)
-	engine.take_from_hand(player.id, 弃)
-	engine.to_discard(弃, {"owner": player.id, "source": "hand", "cause": SURPRISE})
-	engine._log_discard(player.id, 弃)
-	# 本回合手牌上限 +5（自己的回合结束时清，见 p_turn_end）
-	player.设手牌上限修正(手牌上限来源, 5)
-	# 收走场上所有【Tricky】
-	var 收: Array = []
-	for 项: Dictionary in _trickies:
-		var dp: BattlePlayer = engine.p(int(项["dst"]))
-		if dp != null:
-			dp.remove_basic_effect(Tricky占位牌)
-		收.append(int(项["card"]))
-	_trickies.clear()
-	if not 收.is_empty():
-		player.add_hand_cards(收)
-		engine.播获得牌日志(player.id, 收)
-	engine._broadcast_game()
-	if player.hand_cards.is_empty():
-		return SUCCESS
-	_惊爆牌 = []
-	_惊爆阶段 = 1
-	询问(player.id, SURPRISE, 1, 0, GConst.CardSource.Hand, [], player.hand_cards.size(), "", [], true,
-		0, -1, [], -1, {})
-	return WAIT
-
-
-func _惊爆放回() -> int:
-	if _惊爆阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		var 选: Array = []
-		for c: Variant in r.get("card_ids", []):
-			var 实例: int = player.手牌实例(int(c))
-			if 实例 >= 0 and not 选.has(实例):
-				选.append(实例)
-		_惊爆阶段 = 0
-		if 选.is_empty():
-			return SUCCESS
-		_惊爆牌 = 选
-		_惊爆阶段 = 2
-		询问(player.id, SURPRISE, 0, 选.size(), GConst.CardSource.Hand, [], 0, "", [], false,
-			0, -1, 全部角色(), -1, {})
-		return WAIT
-	# 阶段 2：收目标
-	var r2: Dictionary = take_skill_reply_full()
-	var dsts: Array = r2.get("dst_ids", [])
-	_惊爆阶段 = 0
-	if dsts.size() != _惊爆牌.size():
-		engine.报错("【Surprise!】目标数不对", player.id)
-		_惊爆牌 = []
-		return SUCCESS
-	engine.take_from_hand(player.id, _惊爆牌)
-	for i: int in range(_惊爆牌.size()):
-		_放Tricky(int(dsts[i]), int(_惊爆牌[i]))
-	_惊爆牌 = []
-	engine._broadcast_game()
-	return SUCCESS
 
 
 # ============================================================
@@ -472,55 +399,49 @@ func _惊爆放回() -> int:
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# Surprise! 的「本回合手牌上限 +5」只在本次回合内有效
+	# Surprise! 的「本回合手牌上限 +5」只在本回合内有效
 	player.清手牌上限修正(手牌上限来源)
-	if 多步询问进行中(TRICK_OR_TREAT):
+	if 多步询问进行中(糖果) or 多步询问待收尾(糖果):
 		return _糖果推进()
 	if _糖果已用 or _trickies.size() <= 4:
 		return SUCCESS
 	_糖果已用 = true
-	notice_skill(TRICK_OR_TREAT, [player.id])
+	notice_skill(糖果, [player.id])
+	# 展示所有【Tricky】：牌早在场上（不是手牌），走「展示牌」不触发封印
 	_糖果对象 = []
+	for 项: Dictionary in _trickies:
+		var 真牌: int = int(项["card"])
+		engine.展示牌(int(项["dst"]), [真牌])
+		_糖果对象.append({"pid": int(项["dst"]), "element": Data.get_card(真牌).element_enum()})
 	_糖果下标 = 0
+	_糖果目标 = -1
+	_糖果同系 = []
 	_糖果我方 = 0
 	_糖果敌方 = 0
 	_糖果未做 = []
-	_糖果当前目标 = -1
-	_糖果当前同系 = []
-	var 已列: Array = []
-	for 项: Dictionary in _trickies:
-		var dst: int = int(项["dst"])
-		var 真牌: int = int(项["card"])
-		# 展示所有【Tricky】（牌早已放在场上，不是手牌 → 只广播、不触发封印）
-		engine.展示牌(dst, [真牌])
-		if 已列.has(dst):
-			continue
-		已列.append(dst)
-		var 牌: GCard = Data.get_card(真牌)
-		_糖果对象.append({"pid": dst, "card": 真牌, "element": 牌.element_enum() if 牌 != null else 0})
-	# 【Tricky】是早已放在场上的暗牌（不是手牌），封印类「从手中展示出」不触发
-	engine._broadcast_game()
+	_糖果分支 = {}
 	return _糖果推进()
 
 
-## Trick or Treat：逐人问「弃 1 张与面前【Tricky】同系的牌」（循环段），
-## 全部问完再清 Tricky / 压惩罚；我方弃得比敌方多时，最后再问一次「+水晶 / 弃 1 张牌换额外回合」。
 func _糖果推进() -> int:
-	return 多步询问(TRICK_OR_TREAT, [
-		{"问谁": func(_答案: Array) -> int: return _糖果当前目标,
-		 "需牌": 1, "牌白": func(_答案: Array) -> Array: return _糖果当前同系,
+	return 多步询问(糖果, [
+		{"问谁": func(_答案: Array) -> int: return _糖果目标,
+		 "需牌": 1,
+		 "牌白": func(_答案: Array) -> Array: return _糖果同系,
 		 "可取消": false, "超时默认": [],
-		 "跳过": func(_答案: Array) -> bool: return not _糖果准备目标(),
+		 "跳过": func(_答案: Array) -> bool: return not _糖果下一个目标(),
 		 "答完": _糖果弃牌答完,
-		 "重复": func(_回: Dictionary, _答案: Array) -> bool: return _糖果当前目标 >= 0},
+		 "重复": func(_回: Dictionary, _答案: Array) -> bool: return _糖果目标 >= 0},
 		{"选项": _糖果选项(),
+		 "答完": _糖果记分支,
+		 "可取消": false, "超时默认": [1],
 		 "跳过": func(_答案: Array) -> bool: return _糖果我方 <= _糖果敌方},
 	], _糖果结算)
 
 
-## 找下一个要问的目标（没有同系牌的记到「未做」，直接跳过）
-func _糖果准备目标() -> bool:
-	if _糖果当前目标 >= 0:
+## 找下一个要问的人：面前有【Tricky】、手里有同系牌；没有同系牌的直接记「不如此做」
+func _糖果下一个目标() -> bool:
+	if _糖果目标 >= 0:
 		return true
 	while _糖果下标 < _糖果对象.size():
 		var 项: Dictionary = _糖果对象[_糖果下标]
@@ -528,86 +449,85 @@ func _糖果准备目标() -> bool:
 		var dp: BattlePlayer = engine.p(int(项["pid"]))
 		if dp == null:
 			continue
-		var 系: int = int(项["element"])
 		var 同系: Array = []
 		for cid: int in dp.hand_cards:
-			var c: GCard = Data.get_card(cid)
-			if c != null and c.element_enum() == 系:
+			if Data.get_card(cid).element_enum() == int(项["element"]):
 				同系.append(cid)
 		if 同系.is_empty():
-			_糖果未做.append(dp.id)
+			if not _糖果未做.has(dp.id):
+				_糖果未做.append(dp.id)
 			continue
-		_糖果当前目标 = dp.id
-		_糖果当前同系 = 同系
+		_糖果目标 = dp.id
+		_糖果同系 = 同系
 		return true
 	return false
 
 
-## 一个目标答完：弃 / 补齐一张同系牌并记比分；问完最后一个就清 Tricky、压惩罚伤害
+## 一个人答完：弃 / 按手牌顺序替他补一张同系牌，按阵营记比分
 func _糖果弃牌答完(回: Dictionary, _答案: Array) -> int:
-	var dp: BattlePlayer = engine.p(_糖果当前目标)
-	var 同系: Array = _糖果当前同系
-	_糖果当前目标 = -1
-	_糖果当前同系 = []
+	var dp: BattlePlayer = engine.p(_糖果目标)
+	var 同系: Array = _糖果同系
+	_糖果目标 = -1
+	_糖果同系 = []
+	var 弃: int = -1
 	if dp != null:
-		var 弃: int = -1
-		for c2: Variant in 回.get("cards", []):
-			var 实例: int = dp.手牌实例(int(c2))
+		for c: Variant in 回.get("cards", []):
+			var 实例: int = dp.手牌实例(int(c))
 			if 实例 >= 0 and 同系.has(实例):
 				弃 = 实例
 				break
+		# 强制：超时 / 空回复按手牌顺序补一张同系牌
 		if 弃 < 0:
-			# 强制：超时 / 空回复按手牌顺序补一张同系牌
-			for c3: int in 同系:
-				if dp.has_discard_card(c3):
-					弃 = c3
+			for cid: int in 同系:
+				if dp.has_discard_card(cid):
+					弃 = cid
 					break
-		if 弃 < 0:
-			_糖果未做.append(dp.id)
+	if 弃 >= 0 and dp != null:
+		engine.take_from_hand(dp.id, [弃])
+		engine.to_discard([弃], {"owner": dp.id, "source": "hand", "cause": 糖果})
+		engine._log_discard(dp.id, [弃])
+		if dp.color == player.color:
+			_糖果我方 += 1
 		else:
-			engine.take_from_hand(dp.id, [弃])
-			engine.to_discard([弃], {"owner": dp.id, "source": "hand",
-				"cause": TRICK_OR_TREAT, "face_up": true})
-			engine._log_discard(dp.id, [弃], false)
-			if dp.color == player.color:
-				_糖果我方 += 1
-			else:
-				_糖果敌方 += 1
-	# 找下一个目标；没有就清 Tricky 并压惩罚（压了伤害要返回 URGENT，让伤害先结算）
-	if _糖果准备目标():
+			_糖果敌方 += 1
+	# 还有下一个人要问就留在本段（重复）；问完了收尾
+	if _糖果下一个目标():
 		return SUCCESS
-	return _糖果收尾清理()
+	_糖果收尾()
+	return SUCCESS
 
 
-## 逐人问完：先移除所有【Tricky】，再对「不如此做」的人造成 2 点法术伤害③
-func _糖果收尾清理() -> int:
-	for 项2: Dictionary in _trickies:
-		var dp2: BattlePlayer = engine.p(int(项2["dst"]))
-		if dp2 != null:
-			dp2.remove_basic_effect(Tricky占位牌)
-	_trickies.clear()
+## 问完所有人：先移除所有【Tricky】，再对「不如此做」的人各 2 点法术伤害
+## （伤害压进栈里，本段答完后由引擎先结算它，再问「比大小」那一段）
+func _糖果收尾() -> void:
+	while not _trickies.is_empty():
+		var 目标: int = int(_trickies[0]["dst"])
+		var 真牌: int = _移除Tricky(0, 糖果)
+		engine.to_discard([真牌], {"owner": 目标, "source": "other", "cause": 糖果})
 	engine._broadcast_game()
-	var 有罚: bool = not _糖果未做.is_empty()
-	for dst2: Variant in _糖果未做:
-		engine.push_harm({"src": player.id, "dst": int(dst2), "point": 2,
-			"cause": TRICK_OR_TREAT, "type": GConst.HarmType.Magic})
+	for pid: Variant in _糖果未做:
+		engine.push_harm({"src": player.id, "dst": int(pid), "point": 2,
+			"cause": 糖果, "type": GConst.HarmType.Magic})
 	_糖果未做 = []
-	return URGENT if 有罚 else SUCCESS
 
 
 func _糖果选项() -> Array:
 	return [
-		{"value": 1, "label": GConst.按钮原文(TRICK_OR_TREAT, 0), "text": GConst.按钮原文(TRICK_OR_TREAT, 0),
-			"need_card": 0},
-		{"value": 2, "label": GConst.按钮原文(TRICK_OR_TREAT, 1), "text": GConst.按钮原文(TRICK_OR_TREAT, 1),
-			"need_card": 1},
+		{"value": 1, "label": GConst.按钮原文(糖果, 0), "text": GConst.按钮原文(糖果, 0)},
+		{"value": 2, "label": GConst.按钮原文(糖果, 1), "text": GConst.按钮原文(糖果, 1),
+		 "need_card": 1, "enabled": not player.hand_cards.is_empty()},
 	]
 
 
-func _糖果结算(答案: Array) -> int:
-	# 一个目标都没问到（全员没有同系牌）：Tricky 还没清，先清掉并对「未做」的人压惩罚
+func _糖果记分支(回: Dictionary, _答案: Array) -> int:
+	_糖果分支 = 回
+	return SUCCESS
+
+
+func _糖果结算(_答案: Array) -> int:
+	# 一个人都没问到（全员面前没有同系牌）：Tricky 还没收，先收尾并压惩罚伤害
 	if not _trickies.is_empty():
-		return _糖果收尾清理()
+		_糖果收尾()
 	if _糖果我方 < _糖果敌方:
 		# 对方弃得比我方多：对方【战绩区】+1【宝石】
 		engine.set_team_gem(1 - player.color, engine.team_gem[1 - player.color] + 1)
@@ -615,19 +535,18 @@ func _糖果结算(答案: Array) -> int:
 		return SUCCESS
 	if _糖果我方 <= _糖果敌方:
 		return SUCCESS
-	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
-	var args: Array = 回.get("args", [])
-	var cards: Array = 回.get("cards", [])
+	var args: Array = _糖果分支.get("args", [])
 	if args.is_empty():
 		return SUCCESS
 	if int(args[0]) == 1:
+		# 我方【战绩区】+1【水晶】且你 +1【水晶】
 		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
 		player.set_crystal(player.crystal + 1)
 		engine._broadcast_game()
 		return SUCCESS
-	# 分支 2：你弃 1 张牌，并额外获得一个回合
+	# 你弃 1 张牌，并额外获得一个回合
 	var 弃: int = -1
-	for c: Variant in cards:
+	for c: Variant in _糖果分支.get("cards", []):
 		var 实例: int = player.手牌实例(int(c))
 		if 实例 >= 0:
 			弃 = 实例
@@ -637,72 +556,205 @@ func _糖果结算(答案: Array) -> int:
 			if player.has_discard_card(cid):
 				弃 = cid
 				break
-	if 弃 >= 0:
-		engine.take_from_hand(player.id, [弃])
-		engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": TRICK_OR_TREAT})
-		engine._log_discard(player.id, [弃])
-	# 「弃 1 张牌，并额外获得一个回合」：弃不到牌也照样给额外回合（旧实现同口径）
-	安排额外回合(0, TRICK_OR_TREAT)
+	if 弃 < 0:
+		return SUCCESS
+	engine.take_from_hand(player.id, [弃])
+	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": 糖果})
+	engine._log_discard(player.id, [弃])
+	安排额外回合(0, 糖果)
 	engine._broadcast_game()
 	return SUCCESS
+
+
+# ============================================================
+# Surprise! 8606（法术行动 · 必杀【水晶】）
+# ============================================================
+func _惊爆(action: Dictionary) -> int:
+	if not 多步询问进行中(惊爆):
+		if not _惊爆前半段(action) or player.hand_cards.is_empty():
+			return SUCCESS
+	return 多步询问(惊爆, [
+		{"需牌": 1, "牌上限": player.hand_cards.size(),
+		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
+		 "可取消": false, "超时默认": [], "答完": _惊爆记张数},
+		{"需目标": func(_答案: Array) -> int: return _惊爆牌数,
+		 "目标白": func(_答案: Array) -> Array: return _可放Tricky角色(),
+		 "可取消": false, "超时默认": [],
+		 "校验": _惊爆校验,
+		 "跳过": func(_答案: Array) -> bool: return _惊爆牌数 <= 0},
+	], _惊爆结算)
+
+
+## 付【水晶】+ 弃 1 张牌，本回合手牌上限 +5，把场上所有【Tricky】收进手牌
+func _惊爆前半段(action: Dictionary) -> bool:
+	var 弃牌: int = player.手牌实例(int((action.get("card_ids", []) as Array)[0]))
+	if 弃牌 < 0 or player.get_energy() < 1:
+		return false
+	_惊爆牌数 = 0
+	notice_skill(惊爆, [player.id])
+	player.remove_energy(1)
+	engine.take_from_hand(player.id, [弃牌])
+	engine.to_discard([弃牌], {"owner": player.id, "source": "hand", "cause": 惊爆})
+	engine._log_discard(player.id, [弃牌])
+	# 「本回合结束前」手牌上限 +5（自己在回合结束时清，见 p_turn_end）
+	player.设手牌上限修正(手牌上限来源, 5)
+	var 收: Array = []
+	for 项: Dictionary in _trickies:
+		engine.remove_basic_effect(int(项["dst"]), Tricky占位牌, 惊爆, player.id)
+		收.append(int(项["card"]))
+	_trickies.clear()
+	if not 收.is_empty():
+		player.add_hand_cards(收)
+		engine.播获得牌日志(player.id, 收)
+	engine._broadcast_game()
+	return true
+
+
+## 第 1 段选了几张牌 → 第 2 段就要选几名角色（X 张放 X 名）
+func _惊爆记张数(回: Dictionary, _答案: Array) -> int:
+	_惊爆牌数 = (回.get("cards", []) as Array).size()
+	return SUCCESS
+
+
+func _惊爆校验(回: Dictionary) -> bool:
+	return _惊爆牌数 > 0 and _目标够放(回.get("dsts", []), _惊爆牌数)
+
+
+func _惊爆结算(答案: Array) -> int:
+	var 实际: Array = []
+	if not 答案.is_empty():
+		for c: Variant in (答案[0] as Dictionary).get("cards", []):
+			var 实例: int = player.手牌实例(int(c))
+			if 实例 >= 0 and not 实际.has(实例):
+				实际.append(实例)
+	# 超时 / 空选：强制至少放回 1 张
+	if 实际.is_empty() and not player.hand_cards.is_empty():
+		实际 = [player.hand_cards[0]]
+	if 实际.is_empty():
+		return SUCCESS
+	var dsts: Array = (答案[1] as Dictionary).get("dsts", []) if 答案.size() > 1 else []
+	var 目标们: Array = []
+	for d: Variant in dsts:
+		var pid: int = int(d)
+		if _可放Tricky(pid) and not 目标们.has(pid):
+			目标们.append(pid)
+	# 超时没选目标：按座位顺序补齐
+	if 目标们.size() != 实际.size():
+		目标们 = []
+		for pid2: int in _可放Tricky角色():
+			目标们.append(pid2)
+			if 目标们.size() >= 实际.size():
+				break
+	if 目标们.size() != 实际.size():
+		engine.报错("【Surprise!】没有足够的目标存放【Tricky】", player.id)
+		return SUCCESS
+	engine.take_from_hand(player.id, 实际)
+	for i: int in range(实际.size()):
+		_放Tricky(int(目标们[i]), int(实际[i]), 惊爆)
+	engine._broadcast_game()
+	return SUCCESS
+
+
+## 目标数＝张数、不重复、都能放【Tricky】
+func _目标够放(dsts: Array, 张数: int) -> bool:
+	if dsts.size() != 张数:
+		return false
+	var 已: Array = []
+	for d: Variant in dsts:
+		var pid: int = int(d)
+		if 已.has(pid) or not _可放Tricky(pid):
+			return false
+	已.append(pid)
+	return true
+
+
+# ============================================================
+# 回合开始 / 角色被替换
+# ============================================================
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		_糖果已用 = false
 	return SUCCESS
 
 
+## 角色被替换时把场上的【Tricky】一并收掉：真实牌面只在本脚本里，跟着旧角色一起消失就成了幽灵占位。
+func p_before_role_replace(_ctx: Dictionary) -> int:
+	for 项: Dictionary in _trickies:
+		engine.remove_basic_effect(int(项["dst"]), Tricky占位牌, 0, player.id)
+		engine.to_discard([int(项["card"])], {"owner": int(项["dst"]), "source": "other"})
+	_trickies.clear()
+	return SUCCESS
+
+
 # ============================================================
-# 工具
+# 【Tricky】与牌面工具
 # ============================================================
-func _放Tricky(dst: int, card: int) -> void:
-	var dp: BattlePlayer = engine.p(dst)
-	if dp == null:
-		return
-	dp.add_basic_effect(Tricky占位牌, player.id)
+## 这名玩家面前有没有【Tricky】（每人至多 1 张）
+func _有Tricky(pid: int) -> bool:
+	for 项: Dictionary in _trickies:
+		if int(项["dst"]) == pid:
+			return true
+	return false
+
+
+func _Tricky序号(pid: int) -> int:
+	for i: int in range(_trickies.size()):
+		if int(_trickies[i]["dst"]) == pid:
+			return i
+	return -1
+
+
+## 能不能往他面前放【Tricky】：面前还没有，且目标角色不拒收基础效果（4601 这类）
+func _可放Tricky(pid: int) -> bool:
+	if _有Tricky(pid):
+		return false
+	return engine.v_basic_effect_target(pid, Tricky占位牌) == GConst.GE_SUCCESS
+
+
+## 当前所有能放【Tricky】的角色（座位顺序）
+func _可放Tricky角色() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		if _可放Tricky(pid):
+			out.append(pid)
+	return out
+
+
+## 放一张【Tricky】：占位进基础效果区、真实牌记账（调用方先确认 _可放Tricky）
+func _放Tricky(dst: int, card: int, cause: int) -> void:
+	engine.add_basic_effect(dst, Tricky占位牌, player.id, cause)
 	_trickies.append({"dst": dst, "card": card})
 
 
-func 全部角色() -> Array[int]:
-	var out: Array[int] = []
-	for pid: int in engine.order:
-		out.append(pid)
-	return out
+## 摘掉一条【Tricky】（占位与记账一起），返回它藏着的真实牌；序号不合法返回 -1
+func _移除Tricky(序: int, cause: int) -> int:
+	if 序 < 0 or 序 >= _trickies.size():
+		return -1
+	var 项: Dictionary = _trickies[序]
+	_trickies.remove_at(序)
+	engine.remove_basic_effect(int(项["dst"]), Tricky占位牌, cause, player.id)
+	return int(项["card"])
+
+
+## 这名玩家面前有没有这一张基础效果牌（选出来的那张必须真在他面前）
+func _面前有(pid: int, card: int) -> bool:
+	var dp: BattlePlayer = engine.p(pid)
+	if dp == null:
+		return false
+	for be: Dictionary in dp.basic_effects:
+		if int(be["card"]) == card:
+			return true
+	return false
 
 
 func _是圣盾(cid: int) -> bool:
-	var 牌: GCard = Data.get_card(cid)
-	return 牌 != null and 牌.card_name_enum() == GConst.CardName.Shield
+	return Data.get_card(cid).card_name_enum() == GConst.CardName.Shield
 
 
-## 手牌里【圣盾】的实例号
-func _手牌圣盾() -> Array[int]:
-	var out: Array[int] = []
-	for cid: int in player.hand_cards:
-		if _是圣盾(cid):
-			out.append(cid)
-	return out
-
-
-## 面前有基础效果（不含纯 Tricky 占位）的角色
-func _有基础效果者() -> Array:
-	var out: Array = []
-	for pid: int in engine.order:
-		var p0: BattlePlayer = engine.p(pid)
-		if p0 == null:
-			continue
-		for be: Dictionary in p0.basic_effects:
-			if int(be["card"]) != Tricky占位牌:
-				out.append(pid)
-				break
-	return out
-
-
-## 手牌里带【天使之墙】的牌（圣命格攻击牌）
+## 手里带【天使之墙】（701）的圣命格攻击牌——就是这张牌能当【圣盾】用
 func _是天使之墙(cid: int) -> bool:
 	var 牌: GCard = Data.get_card(cid)
-	if 牌 == null or not 牌.is_attack():
-		return false
-	return 牌.fate_pattern_enum() == GConst.FatePattern.Holy and 牌.has_skill_id(GConst.技能_天使之墙)
+	return 牌 != null and 牌.is_attack() and 牌.has_skill_id(GConst.技能_天使之墙)
 
 
 ## 目标能不能接收这张【天使之墙】（当作【圣盾】）：面前已有【圣盾】/【天使之墙】就不行
