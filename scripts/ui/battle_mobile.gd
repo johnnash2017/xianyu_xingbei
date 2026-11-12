@@ -192,6 +192,9 @@ const 元数据_行动技能系别: StringName = &"extra_action_element"
 ## 结果是「选走哪张」永远认不出（只能现造一张）、旧 tween 也杀不掉。
 const 元数据_展示牌号: StringName = &"show_card_id"
 const 元数据_展示飞行tween: StringName = &"show_fly_tween"
+## 这张展示牌该站的槽位 x（左边坐标）：透明度按它算，别按飞行途中的当前位置算
+## （不然牌从头像飞过来的路上会被当成「挤在左边」而变暗）
+const 元数据_展示槽位: StringName = &"show_card_slot"
 ## 玩家面板：常态 / 选中（目标）颜色
 const 面板常态色: Color = Color(1.0, 1.0, 1.0)
 const 面板选中色: Color = Color(1.0, 1.0, 0.55)
@@ -910,6 +913,8 @@ func _读取等待(info: Dictionary) -> void:
 ## 等待进度条：服务端只在「开始等待 / 等待结束」广播，剩余时间由客户端自己倒数
 func _process(delta: float) -> void:
 	_推进法术伤害队列(delta)
+	# 展示区的透明度要每帧现算（停留到点后的淡出 / 被挤到左边变淡），不能在等询问时才更新
+	_更新展示透明度()
 	if _等待方 < 0:
 		return
 	_等待剩余 = maxf(_等待剩余 - delta, 0.0)
@@ -1502,12 +1507,21 @@ func _on_error(_err_id: int, msg: String) -> void:
 # ============================================================
 # 屏幕中间的展示卡牌区（Root/ShowCardArea）
 # ============================================================
-## 展示区里的牌**不随时间消失**：一直摆着，直到被 Pick（选走一张）整片收掉，
-## 或者被后来的牌一路挤到左边淡出、挤出左边界后消失（见 _重排展示区）。
+## 展示区里的牌按批摊开、各自计时：
+##   · 一批牌合计停留 展示停留秒数 秒，最后 展示淡出秒数 秒里逐渐变透明到 0；
+##   · 变透明**不腾位置**：那张牌仍占着格子（空白占位），新牌照样从右边进来、
+##     把老的往左挤，空白占位被挤出左边界（x = 0）时才移除；
+##   · 全部牌都成了空白占位时整片清掉，下一批新牌重新从中间开始摆。
 ## 不同批（不是同一次丢弃 / 展示）之间的横向空隙：一批挨着摆，批与批之间空开，一眼能分出是几次
 const 展示组间隙: float = 10.0
 ## 同一批内部的重叠比例（同一次丢的那几张，像手牌一样挨着叠一点）
 const 展示组内重叠: float = 0.32
+## 一拨展示合计停留多少秒（含最后那段淡出）
+const 展示停留秒数: float = 9.0
+## 停留的最后这么多秒里逐渐变透明到 0（到点后仍是空白占位，等被挤出线才移除）
+const 展示淡出秒数: float = 3.0
+## 牌刚摊出来时的淡入时长（秒）：与「从头像飞上来」同步，靠每帧算透明度实现
+const 展示进场淡入秒数: float = 0.24
 ## 展示区左边的淡出带宽度（px）：牌的右边缘进到这条带里就开始变透明，越往左越透明；
 ## 右边缘越过展示区左边界（x = 0）＝完全挤出，直接移除
 const 展示淡出宽度: float = 150.0
@@ -1586,11 +1600,12 @@ func _造展示卡牌视图(牌号: int, 显示元素: int = 0) -> Control:
 	return 视图
 
 
-## 把这几张牌摊到屏幕中间给所有人看。**不随时间消失**：摊上去就一直摆着，
-## 直到被 Pick（选走一张）整片收掉，或者被后来的牌挤到左边淡出、挤出左边界后消失。
+## 把这几张牌摊到屏幕中间给所有人看。**计时但不腾位置**：这一批停留 展示停留秒数 秒，
+## 最后 展示淡出秒数 秒里淡到全透明；淡成空白后仍占着格子，直到被新牌挤过左边界才移除
+## （全部都是空白占位时整片清掉，下一批重新从中间开始）。
 ## 旧的一批不会因为新的一批摊出来就被清掉 —— 各批一起摆着（批与批之间空开），
-## 让位时老的牌是**滑过去**的（_重排展示区 里的挪位 tween），不是瞬间跳位。
-## 持久 参数保留兼容：展示本来就不会自动收，传 true / false 现在没有区别。
+## 让位时老的牌是**滑过去**的（挪位 tween），不是瞬间跳位。
+## 持久 参数保留兼容：现在展示不会自己腾位置，传 true / false 没有区别。
 ## 飞行起点 >= 0 时这几张牌先在那名玩家（出牌人 / 展示者）头像处现身，再一张接一张飞到自己的展示位；
 ## 自己的牌不飞，由调用方传 -1 进来（见 _on_card）
 func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, 元素表: Array = []) -> void:
@@ -1602,10 +1617,11 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 		if 视图 == null:
 			continue
 		ShowCardArea.add_child(视图)
+		视图.modulate.a = 0.0  # 进场从透明淡入，由 _更新展示透明度 每帧算
 		视图表.append(视图)
 	if not 视图表.is_empty():
-		_展示批.append({"视图们": 视图表})
-		# 让位：老的牌动画挪开、被挤到淡出带的变透明、挤出左边界的消失；
+		_展示批.append({"视图们": 视图表, "时刻": Time.get_ticks_msec()})
+		# 让位：老的牌动画挪开、挤出左边界的消失；
 		# 这一批新的先直接落位，下面再由 _展示飞行 从打牌人头像飞上来
 		_重排展示区(视图表)
 	# 记下这拨牌在屏幕上的全局中心与「牌就位、再停一下」的总耗时：别人的牌摊过来后，
@@ -1619,7 +1635,8 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 
 ## 按当前所有批次重排展示区，并把变化做成动画（不瞬间跳位）：
 ##   · 放得下时整排居中；放不下就整排靠右 —— 新牌从右边进来，老的被一路挤向左边；
-##   · 牌被挤进左边淡出带就逐渐变透明（见 _展示牌透明度），右边缘越过展示区左边界就移除；
+##   · 右边缘越过展示区左边界（x = 0）的牌直接移除（淡成空白的占位也靠这条排队清出去）；
+##   · 透明度不在这里管：每帧由 _更新展示透明度 现算（时间淡出 / 挤到左边 / 进场淡入）。
 ##   · 直落 里的视图是这一批新摊出来的：先直接摆到位（由调用方播「从头像飞上来」），不参与挪位动画。
 func _重排展示区(直落: Array = []) -> void:
 	# 1) 反复算：算出来发现有的牌已经整个越过左边界，先移除、再按剩下的重算
@@ -1640,7 +1657,8 @@ func _重排展示区(直落: Array = []) -> void:
 		目标们 = _算展示位置(组们)
 		var 要移除: Array = []
 		for 项: Dictionary in 目标们:
-			if float(项["透明度"]) <= 0.0:
+			var 位置: Vector2 = 项["位置"] as Vector2
+			if 位置.x + 手牌尺寸.x <= 0.0 and not 直落.has(项["视图"]):
 				要移除.append(项["视图"])
 		if 要移除.is_empty():
 			break
@@ -1651,17 +1669,16 @@ func _重排展示区(直落: Array = []) -> void:
 	for 项: Dictionary in 目标们:
 		var 视图: Control = 项["视图"] as Control
 		var 目标: Vector2 = 项["位置"] as Vector2
-		var 透明度: float = float(项["透明度"])
+		视图.set_meta(元数据_展示槽位, 目标.x)
 		if 直落.has(视图):
 			_停展示tween(视图)
 			视图.position = 目标
-			视图.modulate.a = 透明度
 		else:
-			_挪展示牌(视图, 目标, 透明度)
+			_挪展示牌(视图, 目标)
 	_清理空批()
 
 
-## 按当前分组算出每张牌该在的位置和不透明度（只算不动）
+## 按当前分组算出每张牌该在的位置（只算不动）
 func _算展示位置(组们: Array) -> Array:
 	var 步长: float = 手牌尺寸.x * (1.0 - 展示组内重叠)
 	var 内容宽: float = _展示总宽(组们, 步长, 展示组间隙)
@@ -1674,27 +1691,74 @@ func _算展示位置(组们: Array) -> Array:
 	for 组: Array[Control] in 组们:
 		for i: int in range(组.size()):
 			var 目标: Vector2 = Vector2(x + float(i) * 步长, 行y)
-			结果.append({"视图": 组[i], "位置": 目标, "透明度": _展示牌透明度(目标.x)})
+			结果.append({"视图": 组[i], "位置": 目标})
 		x += 手牌尺寸.x + float(组.size() - 1) * 步长 + 展示组间隙
 	return 结果
 
 
 ## 牌摆在 位置x（左边）时该有多不透明：右边缘进到左边淡出带里就开始变淡，
-## 越往左越透明，右边缘越过左边界（x = 0）就是 0（调用方据此移除这张牌）
+## 越往左越透明，右边缘越过左边界（x = 0）就是 0
 func _展示牌透明度(位置x: float) -> float:
 	var 右边缘: float = 位置x + 手牌尺寸.x
 	return clampf(右边缘 / maxf(展示淡出宽度, 1.0), 0.0, 1.0)
 
 
-## 把一张已经在展示区的牌挪到新位置（顺带淡入淡出）：距离再近也走 tween，别瞬间跳
-func _挪展示牌(视图: Control, 目标: Vector2, 透明度: float) -> void:
+## 展示区每帧算一遍透明度（不靠 tween，免得和挪位动画抢 modulate）：
+##   透明度 = 进场淡入 × 停留时间系数 × 左边淡出带系数
+## 三项里任一项到 0 就是「空白占位」：仍占着格子，等被挤出左边界才移除；
+## 全部牌都成了空白占位时整片清掉，下一批新牌重新从中间开始摆。
+func _更新展示透明度() -> void:
+	if _展示批.is_empty():
+		return
+	var 现在: int = Time.get_ticks_msec()
+	# 还有批次停在停留期内吗（进场淡入时也是 0 透明度，不能拿「看不见」当清空条件）
+	var 有时间: bool = false
+	var 剩下批: Array = []
+	for 批: Dictionary in _展示批:
+		var 时刻: int = int(批.get("时刻", 现在))
+		var 已过: float = float(现在 - 时刻) / 1000.0
+		# 时间系数：最后 展示淡出秒数 秒里从 1 线性降到 0，到点之后一直是 0
+		var 时间系数: float = 1.0
+		var 剩余: float = 展示停留秒数 - 已过
+		if 剩余 <= 0.0:
+			时间系数 = 0.0
+		elif 剩余 < 展示淡出秒数:
+			时间系数 = 剩余 / maxf(展示淡出秒数, 0.001)
+		if 时间系数 > 0.0:
+			有时间 = true
+		var 视图们: Array = 批.get("视图们", [])
+		var 活: Array = []
+		for i: int in range(视图们.size()):
+			var 视图: Variant = 视图们[i]
+			if not is_instance_valid(视图) or (视图 as Node).is_queued_for_deletion():
+				continue
+			活.append(视图)
+			var 控件: Control = 视图 as Control
+			var 进场: float = clampf((已过 - 展示飞行间隔 * float(i)) / maxf(展示进场淡入秒数, 0.001),
+				0.0, 1.0)
+			var 槽位x: float = float(控件.get_meta(元数据_展示槽位, 控件.position.x))
+			控件.modulate.a = 进场 * 时间系数 * _展示牌透明度(槽位x)
+		if not 活.is_empty():
+			批["视图们"] = 活
+			剩下批.append(批)
+	_展示批 = 剩下批
+	# 全部批次都过了停留时间（全是空白占位）：直接移除，下一批新牌重新占据中间
+	if not 有时间:
+		for 批: Dictionary in _展示批:
+			for 视图: Variant in 批.get("视图们", []):
+				if is_instance_valid(视图):
+					(视图 as Node).queue_free()
+		_展示批 = []
+
+
+## 把一张已经在展示区的牌挪到新位置：距离再近也走 tween，别瞬间跳
+## （透明度不在这里管，见 _更新展示透明度）
+func _挪展示牌(视图: Control, 目标: Vector2) -> void:
 	_停展示tween(视图)
 	var t: Tween = 视图.create_tween()
 	视图.set_meta(元数据_展示飞行tween, t)
-	t.set_parallel(true)
 	t.tween_property(视图, "position", 目标, 展示挪位时长) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	t.tween_property(视图, "modulate:a", 透明度, 展示挪位时长)
 
 
 ## 掐掉这张牌身上还在跑的展示 tween（进场飞行 / 上一次挪位），免得两个 tween 抢 position，
@@ -1727,8 +1791,9 @@ func _展示总宽(组们: Array, 步长: float, 间隙: float) -> float:
 	return 宽
 
 
-## 展示飞行：把已经摆到展示位的这几张牌先挪到该玩家的头像上（缩小 + 全透明），
-## 再飞回展示位、同时清晰起来 —— 一眼能看出「这是谁出的牌」。
+## 展示飞行：把已经摆到展示位的这几张牌先挪到该玩家的头像上（缩小），
+## 再飞回展示位、一路长回原大 —— 一眼能看出「这是谁出的牌」。
+## 透明度不在这里 tween：由 _更新展示透明度 每帧按进场时长淡入（免得两条 tween 抢 modulate）。
 ## 头像中心是 Root 坐标，而展示位是 ShowCardArea 的局部坐标（它是 Root 正中一块），换算要减掉它的位置
 func _展示飞行(视图表: Array[Control], 玩家id: int) -> void:
 	if 玩家id < 0:
@@ -1743,11 +1808,8 @@ func _展示飞行(视图表: Array[Control], 玩家id: int) -> void:
 		视图.pivot_offset = 手牌尺寸 * 0.5
 		视图.position = 起飞
 		视图.scale = Vector2.ONE * 展示飞行起始缩放
-		var 透明: Color = 视图.modulate
-		透明.a = 0.0
-		视图.modulate = 透明
 		var 延迟: float = 展示飞行间隔 * float(i)
-		# 三样一起走：位置飞回展示位、缩放长回原大、透明度在开头四成里亮起来
+		# 两样一起走：位置飞回展示位、缩放长回原大
 		var t: Tween = 视图.create_tween()
 		视图.set_meta(元数据_展示飞行tween, t)
 		t.set_parallel(true)
@@ -1755,7 +1817,6 @@ func _展示飞行(视图表: Array[Control], 玩家id: int) -> void:
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT).set_delay(延迟)
 		t.tween_property(视图, "scale", Vector2.ONE, 展示飞行时长) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT).set_delay(延迟)
-		t.tween_property(视图, "modulate:a", 1.0, 展示飞行时长 * 0.4).set_delay(延迟)
 
 
 ## 从展示区选走一张牌（10803）：把这张牌的视图从展示位飞向选牌者头像，其余展示牌收起。
