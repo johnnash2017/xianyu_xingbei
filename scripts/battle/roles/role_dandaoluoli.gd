@@ -34,8 +34,7 @@ const 手牌上限来源: String = "Surprise"
 
 ## 场上的【Tricky】：[{dst: 拥有者 id, card: 真实牌实例号}]；每人最多 1 条
 var _trickies: Array = []
-## 神秘伏笔：本链要放的张数 + 已从牌库顶取到的牌
-var _伏笔张数: int = 0
+## 神秘伏笔：本链从牌库顶取到的牌
 var _伏笔牌: Array = []
 ## T-r-i-c-k-y!：第 1 段选中的下标 + 这次可弃的同系手牌（第 2 段白名单）
 var _垂迹选中: int = -1
@@ -238,55 +237,45 @@ func p_after_magic(ctx: Dictionary) -> int:
 	if bool(ctx.get("cancelled", false)):
 		return SUCCESS
 	if not 多步询问进行中(神秘伏笔) and not 多步询问待收尾(神秘伏笔):
-		_伏笔张数 = 0
 		_伏笔牌 = []
 		# 牌库没牌、或场上没有能放【Tricky】的角色：这次什么都不做
 		if engine.deck.pile_size() <= 0 or _可放Tricky角色().is_empty():
 			return SUCCESS
+	# 选项与目标同一问：点「放 N 张」→ 直接点 N 名角色 → 按一次「确定」一起提交
+	# （选项各自带 need_target + targets，客户端配了「攻击结束二选一」就会按选中项放开目标）
 	return 多步询问(神秘伏笔, [
-		{"选项": _伏笔选项(), "可取消": false, "超时默认": [1], "答完": _伏笔取牌},
-		{"需目标": func(_答案: Array) -> int: return _伏笔张数,
-		 "目标白": func(_答案: Array) -> Array: return _可放Tricky角色(),
-		 "可取消": false, "超时默认": [],
-		 "校验": _伏笔校验,
-		 "跳过": func(_答案: Array) -> bool: return _伏笔张数 <= 0},
+		{"选项": _伏笔选项(), "需目标": 0, "可取消": false, "超时默认": [1],
+		 "校验": _伏笔校验},
 	], _伏笔结算)
 
 
-## 第 1 段：放 1 张还是 2 张（牌库不够 / 能放 Tricky 的人不够的那一档置灰，但仍下发）
+## 放 1 张还是 2 张（牌库不够 / 能放 Tricky 的人不够的那一档置灰，但仍下发）。
+## 每一项自己带需目标数与目标白名单：选 1 张就点 1 人、选 2 张就点 2 人。
 func _伏笔选项() -> Array:
-	var 上限: int = mini(2, mini(engine.deck.pile_size(), _可放Tricky角色().size()))
+	var 候选: Array[int] = _可放Tricky角色()
+	var 上限: int = mini(2, mini(engine.deck.pile_size(), 候选.size()))
 	var 选项: Array = []
 	for n: int in range(1, 3):
+		var 文案: String = GConst.按钮原文(神秘伏笔, n - 1)
 		选项.append({
-			"value": n,
-			"label": GConst.按钮原文(神秘伏笔, n - 1),
-			"text": GConst.按钮原文(神秘伏笔, n - 1),
+			"value": n, "label": 文案, "text": 文案,
+			"need_target": n, "targets": 候选,
 			"enabled": n <= 上限,
 		})
 	return 选项
 
 
-## 第 1 段答完：记下 X 并立刻从牌库顶取走那几张（取到几张就放几张）
-func _伏笔取牌(回: Dictionary, _答案: Array) -> int:
+## 这一问的校验：张数合法（1~2 且不超过牌库 / 可放人数）、目标数＝张数、不重复、都能放
+func _伏笔校验(回: Dictionary) -> bool:
 	var args: Array = 回.get("args", [])
 	if args.is_empty():
-		return SUCCESS
+		return false
 	var 张数: int = int(args[0])
 	var 上限: int = mini(2, mini(engine.deck.pile_size(), _可放Tricky角色().size()))
 	if 张数 < 1 or 张数 > 上限:
-		engine.报错("【神秘伏笔】张数不合法", player.id)
-		_伏笔张数 = 0
-		return SUCCESS
-	_伏笔牌 = engine.移除牌库顶(张数)
-	_伏笔张数 = _伏笔牌.size()
-	return SUCCESS
-
-
-## 第 2 段校验：目标数＝张数、不重复、都是当前能放【Tricky】的角色
-func _伏笔校验(回: Dictionary) -> bool:
+		return false
 	var dsts: Array = 回.get("dsts", [])
-	if dsts.size() != _伏笔张数:
+	if dsts.size() != 张数:
 		return false
 	var 已: Array = []
 	for d: Variant in dsts:
@@ -298,26 +287,30 @@ func _伏笔校验(回: Dictionary) -> bool:
 
 
 func _伏笔结算(答案: Array) -> int:
-	if _伏笔张数 <= 0 or _伏笔牌.is_empty():
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var args: Array = 回.get("args", [])
+	if args.is_empty():
 		return SUCCESS
-	var dsts: Array = (答案[1] as Dictionary).get("dsts", []) if 答案.size() > 1 else []
 	var 目标们: Array = []
-	for d: Variant in dsts:
+	for d: Variant in 回.get("dsts", []):
 		var pid: int = int(d)
 		if _可放Tricky(pid) and not 目标们.has(pid):
 			目标们.append(pid)
-	# 超时没选目标：按座位顺序替玩家补齐（强制段，不能把取到的牌留在半空）
-	if 目标们.size() != _伏笔张数:
-		目标们 = []
-		for pid2: int in _可放Tricky角色():
-			目标们.append(pid2)
-			if 目标们.size() >= _伏笔张数:
-				break
+	# 超时（超时默认只给张数、没给目标）：按座位顺序补 1 名，别把取到的牌留在半空
+	if 目标们.is_empty():
+		var 候选: Array[int] = _可放Tricky角色()
+		if 候选.is_empty():
+			return SUCCESS
+		目标们.append(候选[0])
+	var 张数: int = mini(mini(int(args[0]), 目标们.size()), mini(2, engine.deck.pile_size()))
+	if 张数 <= 0:
+		return SUCCESS
+	_伏笔牌 = engine.移除牌库顶(张数)
+	目标们.resize(_伏笔牌.size())
 	notice_skill(神秘伏笔, 目标们)
 	for i: int in range(目标们.size()):
 		_放Tricky(int(目标们[i]), int(_伏笔牌[i]), 神秘伏笔)
 	_伏笔牌 = []
-	_伏笔张数 = 0
 	engine._broadcast_game()
 	return SUCCESS
 
