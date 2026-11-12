@@ -1642,15 +1642,15 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 
 
 ## 一批展示牌的分组容器（CanvasGroup）：整批先合成一张图，再对这张图整体调透明度。
-## 位置与展示区重合（孩子坐标 = 展示区坐标），fit_margin 放大一圈，
-## 保证被挤到左边（负坐标）的牌不会被缓冲区裁掉。
-const 展示批组留白: float = 260.0
+## 注意 CanvasGroup 继承的是 **Node2D**（不是 Control）：没有 size / mouse_filter，
+## 缓冲区按孩子的包围盒（再加 fit_margin）自动算，所以被挤到负坐标的牌也不会被裁掉。
+## 组挂在展示区原点、不缩放，孩子的坐标和展示区坐标一致。
+const 展示批组留白: float = 60.0
 func _造展示批组() -> CanvasGroup:
 	var 组: CanvasGroup = CanvasGroup.new()
-	组.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	组.position = Vector2.ZERO
-	组.size = ShowCardArea.size
 	组.fit_margin = 展示批组留白
+	组.clear_margin = 0.0
 	组.modulate.a = 0.0
 	ShowCardArea.add_child(组)
 	return 组
