@@ -10627,9 +10627,16 @@ func _攻击伤害头像提示() -> Dictionary:
 	var 基准: int = int(_pending.get("preview_base", 0))
 	if 基准 <= 0:
 		return out
-	# 选牌没选够时先不加规则（那是「还没选完」的中间态，预览应显示当前伤害）
+	# 带常数的规则（如战纹碎击「选项+张数-2」）要选满牌才算，否则会出现负数；
+	# 只按选项/系别算的规则（暗月斩、禁断之力、索拉）选几张就按几张预览
+	var 规则串: String = str(_pending.get("preview_rule", ""))
+	var 含常数: bool = false
+	for 段: String in 规则串.split(","):
+		if 段.strip_edges().is_valid_int():
+			含常数 = true
+			break
 	var 加成: int = 0
-	if _need_cards <= 0 or _sel_cards.size() >= _need_cards:
+	if not 含常数 or _need_cards <= 0 or _sel_cards.size() >= _need_cards:
 		加成 = _预览规则加成()
 	var 新伤害: int = int(_pending.get("preview_damage", -1))
 	if 新伤害 < 0:
@@ -10680,8 +10687,18 @@ func _预览规则加成() -> int:
 			合计 += int(项)
 			continue
 		if 项 == "option":
+			var 选项值: int = 0
 			if not _已选参数.is_empty():
-				合计 += int(_已选参数[0])
+				选项值 = int(_已选参数[0])
+			else:
+				# 还没选时按第一项可用选项的值算（如战纹碎击默认「不额外翻转」）
+				for 项2: Dictionary in _二级选项:
+					if bool(项2.get("可用", true)):
+						var 参数: Array = 项2.get("参数", [])
+						if not 参数.is_empty():
+							选项值 = int(参数[0])
+						break
+			合计 += 选项值
 			continue
 		if 项.begins_with("eff:"):
 			if _有效攻击系别() == int(项.get_slice(":", 1)):
