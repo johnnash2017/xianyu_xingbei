@@ -32,7 +32,8 @@ func 跑() -> void:
 	]
 	Data.player_list = 玩家
 	玩家[0].role_id = 33
-	# 攻击者用狂战士：验证「通用应战的固定角色加伤」也用在 3306/3301 提示里
+	# 攻击者用狂战士：狂化 +1 由服务端并进 preview_damage（客户端不再自己加），
+	# 所以下面这条询问直接给 3 点（＝2 基础 + 1 狂化），提示应原样显示
 	玩家[1].role_id = GConst.角色_狂战士
 
 	# 找两张同命格、非光系的攻击牌：一张当本次攻击牌，一张当应战牌
@@ -74,7 +75,7 @@ func 跑() -> void:
 			"is_skill": true,
 			"preview_base": 攻击牌.id,
 			"preview_ids": [2],
-			"preview_damage": 2,
+			"preview_damage": 3,
 			"option_enabled": [false, true, true],
 		}],
 	})
@@ -243,7 +244,7 @@ func 跑() -> void:
 				"is_skill": true,
 				"preview_base": 攻击牌.id,
 				"preview_ids": [2],
-				"preview_damage": 2,
+				"preview_damage": 3,
 			}],
 		})
 		await 等帧(2)
