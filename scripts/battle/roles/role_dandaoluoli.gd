@@ -46,7 +46,6 @@ var _糖果目标: int = -1
 var _糖果同系: Array = []
 var _糖果我方: int = 0
 var _糖果敌方: int = 0
-var _糖果未做: Array = []
 var _糖果分支: Dictionary = {}
 var _糖果已用: bool = false
 ## Surprise!：第 1 段选了几张手牌放回（＝第 2 段要选几名角色）
@@ -468,20 +467,32 @@ func p_turn_end(ctx: Dictionary) -> int:
 	_糖果同系 = []
 	_糖果我方 = 0
 	_糖果敌方 = 0
-	_糖果未做 = []
 	_糖果分支 = {}
+	# 比分从 0:0 开始挂在头像上，之后每弃一张刷新一次
+	_刷新比分状态()
+	engine._broadcast_game()
 	return _糖果推进()
 
 
 func _糖果推进() -> int:
 	return 多步询问(糖果, [
+		# 逐个问：轮到谁就先把谁那张【Tricky】摊开（见 _糖果下一个目标），再问他弃哪一张。
+		# 手里没有同系牌的人也照常问（「不如此做」就该吃 2 点伤害）：不要求选牌、
+		# 牌白名单给「全禁」，答完当场结算伤害并返回 URGENT —— 伤害先算完再问下一个人。
 		{"问谁": func(_答案: Array) -> int: return _糖果目标,
-		 "需牌": 1,
-		 "牌白": func(_答案: Array) -> Array: return _糖果同系,
+		 "需牌": func(_答案: Array) -> int: return 0 if _糖果同系.is_empty() else 1,
+		 "牌白": func(_答案: Array) -> Array:
+			return [GConst.手牌白名单_全禁] if _糖果同系.is_empty() else _糖果同系,
+		 "询问文案": func(_答案: Array) -> String:
+			if _糖果同系.is_empty():
+				return "【Trick or Treat】：手里没有与这张【Tricky】同系的牌，弃不了，受到 2 点法术伤害"
+			return "",
+		 "校验": _糖果校验,
 		 "可取消": false, "超时默认": [],
 		 "跳过": func(_答案: Array) -> bool: return not _糖果下一个目标(),
 		 "答完": _糖果弃牌答完,
-		 "重复": func(_回: Dictionary, _答案: Array) -> bool: return _糖果目标 >= 0},
+		 # 循环段：答完一个人后接着找下一个（答完返回 URGENT 时，引擎重入后再补判）
+		 "重复": func(_回: Dictionary, _答案: Array) -> bool: return _糖果下一个目标()},
 		{"选项": _糖果选项(),
 		 "答完": _糖果记分支,
 		 "可取消": false, "超时默认": [1],
@@ -489,7 +500,17 @@ func _糖果推进() -> int:
 	], _糖果结算)
 
 
-## 找下一个要问的人：面前有【Tricky】、手里有同系牌；没有同系牌的直接记「不如此做」
+## 这一问的校验：空答案＝弃不了（照常结算 2 点伤害）；真提交了牌就必须是手里那张同系牌
+func _糖果校验(回: Dictionary) -> bool:
+	var cards: Array = 回.get("cards", [])
+	if cards.is_empty():
+		return true
+	if cards.size() != 1 or _糖果同系.is_empty():
+		return false
+	return _糖果同系.has(int(cards[0]))
+
+
+## 找下一个要问的人：面前有【Tricky】的人逐个来（手里没有同系牌也算一个，他要吃 2 点伤害）
 func _糖果下一个目标() -> bool:
 	if _糖果目标 >= 0:
 		return true
@@ -503,19 +524,22 @@ func _糖果下一个目标() -> bool:
 		for cid: int in dp.hand_cards:
 			if Data.get_card(cid).element_enum() == int(项["element"]):
 				同系.append(cid)
-		if 同系.is_empty():
-			if not _糖果未做.has(dp.id):
-				_糖果未做.append(dp.id)
-			continue
 		_糖果目标 = dp.id
 		_糖果同系 = 同系
-		# 一个一个来：轮到谁才把谁面前那张【Tricky】摊开（每人至多 1 张），再问他要弃哪一张。
+		# 轮到谁才把谁面前那张【Tricky】摊开（每人至多 1 张）。
 		# 这一步每次重入都会调用，但 _糖果目标 已置位就直接返回，所以只会摊一次。
 		var 序: int = _Tricky序号(dp.id)
 		if 序 >= 0:
 			engine.展示牌(dp.id, [int(_trickies[序]["card"])])
 		return true
 	return false
+
+
+## 把当前比分写到自己的角色状态上（红队:蓝队）：过程中每弃一张就刷新一次，头像上的图标随之变化
+func _刷新比分状态() -> void:
+	var 红: int = _糖果我方 if player.color == GConst.RED else _糖果敌方
+	var 蓝: int = _糖果敌方 if player.color == GConst.RED else _糖果我方
+	player.trick_score = [红, 蓝]
 
 
 ## 一个人答完：弃 / 按手牌顺序替他补一张同系牌，按阵营记比分
@@ -552,24 +576,28 @@ func _糖果弃牌答完(回: Dictionary, _答案: Array) -> int:
 			_糖果我方 += 1
 		else:
 			_糖果敌方 += 1
-	# 还有下一个人要问就留在本段（重复）；问完了收尾
-	if _糖果下一个目标():
+		# 比分当场更新到自己头像上（不必等全部问完）
+		_刷新比分状态()
+		engine._broadcast_game()
+		# 还有下一个人要问就留在本段（重复）；问完了收尾
+		if _糖果下一个目标():
+			return SUCCESS
+		_糖果收尾()
 		return SUCCESS
-	_糖果收尾()
-	return SUCCESS
+	# 手里没有同系牌（或没选出合法的牌）＝「不如此做」：当场 2 点法术伤害。
+	# 返回 URGENT 让这一下先结算完，引擎重入后再由「重复」找下一个人（伤害不会被攒到最后）。
+	if dp != null:
+		engine.push_harm({"src": player.id, "dst": dp.id, "point": 2,
+			"cause": 糖果, "type": GConst.HarmType.Magic})
+	return URGENT
 
 
-## 问完所有人：先移除所有【Tricky】，再对「不如此做」的人各 2 点法术伤害
-## （伤害压进栈里，本段答完后由引擎先结算它，再问「比大小」那一段）
+## 问完所有人：移除所有【Tricky】（「不如此做」的 2 点伤害已经在各自那一手当场结算过了）
 func _糖果收尾() -> void:
 	while not _trickies.is_empty():
 		var 真牌: int = _移除Tricky(0, 糖果)
 		engine.to_discard([真牌], {"source": "other", "cause": 糖果})
 	engine._broadcast_game()
-	for pid: Variant in _糖果未做:
-		engine.push_harm({"src": player.id, "dst": int(pid), "point": 2,
-			"cause": 糖果, "type": GConst.HarmType.Magic})
-	_糖果未做 = []
 
 
 func _糖果选项() -> Array:
@@ -586,14 +614,11 @@ func _糖果记分支(回: Dictionary, _答案: Array) -> int:
 
 
 func _糖果结算(_答案: Array) -> int:
-	# 一个人都没问到（全员面前没有同系牌）：Tricky 还没收，先收尾并压惩罚伤害
+	# 还剩 Trickys（一个人都没问到 / 最后一手的收尾没跑到）：补收一次
 	if not _trickies.is_empty():
 		_糖果收尾()
-	# 这一局的比分挂在自己头像上：[红队弃掉同系牌数, 蓝队弃掉同系牌数]
-	# （客户端画成「红:蓝」状态图标；她自己下个回合开始时清空，见 p_before_turn_begin）
-	var 红: int = _糖果我方 if player.color == GConst.RED else _糖果敌方
-	var 蓝: int = _糖果敌方 if player.color == GConst.RED else _糖果我方
-	player.trick_score = [红, 蓝]
+	# 比分在过程中已经每弃一张刷新过一次；这里再刷一次兜底（值不变时等于没刷新）
+	_刷新比分状态()
 	engine._broadcast_game()
 	if _糖果我方 < _糖果敌方:
 		# 对方弃得比我方多：对方【战绩区】+1【宝石】
