@@ -902,11 +902,11 @@ func _检圣庭检察士() -> void:
 	# 【庇护领域】改伤害：头像上写「原伤害划掉 → 减 1 后的伤害」（学【精准射击】那套写法）
 	窗.set("_mode", 3)
 	窗.set("_skill_ask_id", 3905)
-	窗.set("_pending", {"preview_base": 3, "preview_kind": GConst.HarmType.Attack, "preview_ids": [2]})
-	检(str((窗.call("_庇护领域头像提示") as Dictionary).get(2, "")) == "[zwj]3 攻击伤害\n2 攻击伤害",
+	窗.set("_pending", {"preview_base": 3, "preview_damage": 2, "preview_kind": GConst.HarmType.Attack, "preview_ids": [2]})
+	检(str((窗.call("_攻击伤害头像提示") as Dictionary).get(2, "")) == "[zwj]3 攻击伤害\n2 攻击伤害",
 		"【庇护领域】应在挨打者头像写「原伤害划掉 + 减 1」")
-	窗.set("_pending", {"preview_base": 2, "preview_kind": GConst.HarmType.Magic, "preview_ids": [3]})
-	检(str((窗.call("_庇护领域头像提示") as Dictionary).get(3, "")) == "[zwj]2 法术伤害\n1 法术伤害",
+	窗.set("_pending", {"preview_base": 2, "preview_damage": 1, "preview_kind": GConst.HarmType.Magic, "preview_ids": [3]})
+	检(str((窗.call("_攻击伤害头像提示") as Dictionary).get(3, "")) == "[zwj]2 法术伤害\n1 法术伤害",
 		"【庇护领域】对法术伤害也应写两行")
 	窗.free()
 

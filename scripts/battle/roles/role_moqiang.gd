@@ -265,6 +265,17 @@ func p_attack_preview(ctx: Dictionary) -> int:
 	return 0
 
 
+## 客户端状态图标：本回合还没用掉的加伤挂在角色身上（图标 / 说明按技能号配在 GConst.角色状态图标）。
+## 暗之解放优先 —— 它在的时候充盈加伤本来就不生效（见 p_attack_preview）。
+## 加伤用掉（含打空）或回合结束后这里返回空，图标随之消失。
+func 角色状态标记() -> Array:
+	if using_an_zhi_jie_fang and not used_an_zhi_jie_fang:
+		return [{"cause": AN_ZHI_JIE_FANG, "count": 1}]
+	if used_chong_ying and not using_an_zhi_jie_fang and card_count > 0:
+		return [{"cause": CHONG_YING, "count": card_count}]
+	return []
+
+
 ## 暗之解放：仅[幻影形态]下本回合首次主动攻击伤害 +1
 func _an_zhi_jie_fang_effect(ctx: Dictionary) -> void:
 	if not using_an_zhi_jie_fang or used_an_zhi_jie_fang:
@@ -311,11 +322,13 @@ func _qi_hei_zhi_qiang(ctx: Dictionary) -> int:
 		# 本次询问的指令条文案改用第 2 条（「发动【漆黑之枪】：选择投入的能量」），故 序号 传 1。
 		# 目标固定是本次攻击目标：随询问下发，客户端自动选中并锁死；preview_base 是加伤前伤害。
 		var 攻击目标: Array = [dst_p.id]
+		var 基准: int = 攻击预览伤害(ctx)
 		var options: Array = []
 		for n: int in range(1, player.get_energy() + 1):
-			options.append({"value": n, "label": GConst.按钮文本(QI_HEI_ZHI_QIANG, 0, {"n": n, "n2": n + 2})})
+			options.append({"value": n, "label": GConst.按钮文本(QI_HEI_ZHI_QIANG, 0, {"n": n, "n2": n + 2}),
+				"damage": 基准 + n + 2})
 		询问(player.id, QI_HEI_ZHI_QIANG, 0, 0, GConst.CardSource.Hand, options, 0, "", [], true,
-			1, -1, 攻击目标, -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
+			1, -1, 攻击目标, -1, {}, 基准, GConst.HarmType.Attack)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	_hit_step = 0

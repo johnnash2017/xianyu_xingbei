@@ -171,6 +171,14 @@ func _p_禁魔境(action: Dictionary) -> int:
 	return URGENT
 
 
+## 荒神之力的「预览版」：某个系别的攻击会不会 +1（只回答数值，不改任何状态）。
+## 结算仍归 p_before_attack；这里供「还没打出攻击牌」的虚拟攻击预览用（如魔弓【多重射击】的暗系虚拟攻击）。
+func p_attack_element_bonus(元素: int) -> int:
+	if 元素 <= 0:
+		return 0
+	return 1 if _结界系别().has(元素) else 0
+
+
 # ============================================================
 # 8202 荒神之力：所有与【结界】系别相同的攻击伤害额外 +1。
 # 结算放在攻击宣告前（p_before_attack）：后面所有询问拿到的 harm.point 都已含这 1 点。

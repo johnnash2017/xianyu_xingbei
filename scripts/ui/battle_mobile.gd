@@ -1220,6 +1220,29 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 				"icon": 回合图标,
 				"desc": "本回合攻击伤害额外+%d" % p.extra_turn_bonus,
 			})
+	# 角色状态标记（魔枪加伤 / 剑圣圣剑已砍刀数…）：服务端只给「技能号 + 计数」，
+	# 图标与说明按技能号配在 GConst.角色状态图标；计数写在图标上（同指示物）。
+	# 标记什么时候消失由角色决定（加伤用掉、回合结束…），客户端不自己判断。
+	for i: int in range(mini(p.state_marks.size(), p.state_mark_counts.size())):
+		var 标记技能号: int = p.state_marks[i]
+		var 标记配置: Dictionary = GConst.角色状态图标.get(标记技能号, {})
+		if 标记配置.is_empty():
+			continue
+		var 标记计数: int = p.state_mark_counts[i]
+		var 标记项: Dictionary = {
+			"name": GConst.skill_name(标记技能号),
+			"icon": str(标记配置.get("icon", "")),
+			"count": 标记计数,
+		}
+		if bool(标记配置.get("技能说明", false)):
+			# 配了「技能说明」的（剑圣【圣剑】）悬停学魔刃：大图 → 名字 → 「【类型】技能名：说明」，
+			# 走 _造被动状态内容（技能说明不再当普通一行字塞进提示框）
+			标记项["被动技能"] = [标记技能号]
+			标记项["被动技能角色"] = p.role_id
+		else:
+			var 说明模板: String = str(标记配置.get("说明", ""))
+			标记项["desc"] = 说明模板.replace("{n}", str(标记计数)) if not 说明模板.is_empty() else GConst.skill_desc(标记技能号)
+		额外状态.append(标记项)
 	if GConst.圣弓角色号.has(p.role_id):
 		if p.sheng_huang_side == 0:
 			额外状态.append({
@@ -2495,12 +2518,11 @@ func _进入待选() -> void:
 				_need_cards = 1
 				# 应战要指定「反击目标」（敌方、且不是原攻击者）
 				_need_players = 1
-				# 本次攻击伤害（服务端随询问下发，args[5]）＋攻击者的角色被动加伤
-				# （如狂战士【狂化】+1 —— 服务端在命中时才结算，这里提前算进去）：
-				# 写在提示最前面，让被攻击者一眼看到不阻止的话要挨多少
+				# 本次攻击伤害（服务端随询问下发，args[5]，已含攻击者命中时才会结算的加伤，
+				# 如狂战士【狂化】）：写在提示最前面，让被攻击者一眼看到不阻止的话要挨多少
 				var 受伤前缀: String = ""
 				if args.size() > 5:
-					受伤前缀 = "受到 %d 伤害攻击，" % (int(args[5]) + _攻击提示加伤(_原攻击者()))
+					受伤前缀 = "受到 %d 伤害攻击，" % int(args[5])
 				# 本次攻击禁用的应战牌（如 9703 爱死天流禁【暗灭】）：牌置灰，提示里也要点明
 				var 禁暗灭: bool = (_pending.get("ban_reattack_card_names", []) as Array).has(GConst.CardName.DarkSlash)
 				# 应战牌必须与本次攻击同系，暗系牌可替任意系：提示点名「X或暗系斩」并给系别上色；
@@ -2830,6 +2852,8 @@ func _选项源_嵌套(嵌套: Array) -> Array:
 			"可用": bool(o.get("enabled", true)),
 			"目标白名单": _子id(o.get("targets", {})),
 			"预览牌": _子id(o.get("preview_cards", {})),
+			# 选中这一项之后本次攻击的伤害（0＝这一项不改伤害；客户端据此画「原值划掉 → 新值」）
+			"伤害": int(o.get("damage", 0)),
 		})
 	return out
 
@@ -2860,6 +2884,8 @@ func _选项源_平行数组() -> Array:
 			"可用": bool(_第i项(_pending.get("option_enabled", []), i, true)),
 			"目标白名单": _子id(_第i项(_pending.get("option_targets", []), i, {})),
 			"预览牌": _子id(_第i项(_pending.get("option_preview_cards", []), i, {})),
+			# 选中这一项之后本次攻击的伤害（0＝这一项不改伤害）
+			"伤害": int(_第i项(_pending.get("option_damages", []), i, 0)),
 		})
 	return out
 
@@ -6529,7 +6555,7 @@ func _刷新攒应战提示() -> void:
 	if _攒应战伤害 >= 0:
 		var 攒应战攻牌: GCard = Data.get_card(_攒应战攻击牌)
 		var 攒应战元素: int = 攒应战攻牌.element_enum() if 攒应战攻牌 != null else 0
-		var 提示伤害: int = _攒应战伤害 + _攻击提示加伤(_攒应战攻击者)
+		var 提示伤害: int = _攒应战伤害
 		if 是3301:
 			受伤前缀 = "队友受到 %d 点伤害攻击，" % 提示伤害
 		else:
@@ -9021,11 +9047,7 @@ func _原攻击者() -> int:
 	return int(args[3]) if args.size() > 3 else -1
 
 
-## 通用应战提示里的固定角色加伤（目前是狂战士【狂化】+1）：
-## 服务端下发的 N 已含条件加伤，这里只补客户端能现算的固定部分。
-func _攻击提示加伤(player_id: int) -> int:
-	var 攻击者: GPlayer = Data.get_player_by_id(player_id)
-	return int(GConst.攻击提示角色加成.get(攻击者.role_id, 0)) if 攻击者 != null else 0
+
 
 
 ## 结界师【荒神之力】（8202）：场上有结界师、且她面朝上的【结界】里有与本次攻击同系的牌，
@@ -9877,7 +9899,9 @@ func _选项参数值(配置: Dictionary) -> int:
 ## 没选中的收起提示。与分配型共用同一批 Label（_取治疗提示），只是文案来源不同
 func _刷新头像提示() -> void:
 	# 【恩典神授】选代价目标：点的人头上写「移除 N 治疗」（选 1 人 2 点 / 2 人各 1 点）
-	var 动态提示: Dictionary = _恩典代价头像提示()
+	var 动态提示: Dictionary = _攻击伤害头像提示()
+	if 动态提示.is_empty():
+		动态提示 = _恩典代价头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _恩典弃牌头像提示()
 	if 动态提示.is_empty():
@@ -9909,29 +9933,13 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _魔纹融合头像提示()
 	if 动态提示.is_empty():
-		动态提示 = _战纹碎击头像提示()
-	if 动态提示.is_empty():
 		动态提示 = _双重回响头像提示()
 	if 动态提示.is_empty():
-		动态提示 = _多重射击头像提示()
-	if 动态提示.is_empty():
 		动态提示 = _血之悲鸣头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _杀戮盛宴头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _禁断之力头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _英灵召唤头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _军神威光头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _撕裂头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _暗月斩头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _威力赐福头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _漆黑之枪头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _圣屑飓暴未命中头像提示()
 	if 动态提示.is_empty():
@@ -9943,11 +9951,7 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _圣煌辉光炮头像提示()
 	if 动态提示.is_empty():
-		动态提示 = _圣屑飓暴头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _转换头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _攻击加成头像提示()
+		动态提示 = _攻击技能伤害头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _怒潮荒涛头像提示()
 	if 动态提示.is_empty():
@@ -9990,12 +9994,6 @@ func _刷新头像提示() -> void:
 		动态提示 = _神威头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _圣裁头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _元素射击头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _元素射击索拉头像提示()
-	if 动态提示.is_empty():
-		动态提示 = _地枪头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _圣愈头像提示()
 	if 动态提示.is_empty():
@@ -10416,21 +10414,6 @@ func _圣愈头像提示() -> Dictionary:
 	return out
 
 
-## 狂战士【撕裂】的指示器（现算）：目标固定是本次攻击目标，头像已自动选中并锁死。
-## 上行写加伤前的原始攻击伤害并划掉，下行写 +2 后的伤害；原始伤害由服务端随询问下发。
-func _撕裂头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_撕裂 or _skill_targets.is_empty():
-		return out
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	for 目标id: int in _skill_targets:
-		if 原伤害 > 0:
-			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 2]
-		else:
-			out[目标id] = "%d 攻击伤害" % (原伤害 + 2)
-	return out
-
-
 ## 圣弓【圣屑飓暴·未命中】：X 既从自己移除 X 治疗，也让目标队友弃 X 张牌。
 ## X 来自选项 args[0]；目标还没选时只写自己的代价，不画「弃 X 张」。
 func _圣屑飓暴未命中头像提示() -> Dictionary:
@@ -10524,6 +10507,10 @@ func _圣光爆裂头像提示() -> Dictionary:
 	var 我: int = Logic.my_player_id
 	var 模式: int = int(_已选参数[0])
 	var 新版37: bool = _pending_skill_id == GConst.技能_圣光爆裂
+	# 伤害数字按规则表算（每个“有治疗”的目标 +1），提示只负责排版
+	var 伤害: Dictionary = _派生伤害(_pending_skill_id)
+	var 基础: int = int(伤害.get("基础", 2))
+	var 合计: int = int(伤害.get("合计", 基础))
 	if 模式 == 1:
 		if 新版37:
 			# 新版 37：辅助分支，不再是单体攻击；目标可以是自己，自己头像上要同时写代价和 +1 治疗。
@@ -10537,95 +10524,14 @@ func _圣光爆裂头像提示() -> Dictionary:
 		else:
 			out[我] = "移除 1 治疗\n+1 信仰"
 			for 目标id: Variant in _sel_players:
-				out[int(目标id)] = "2 攻击伤害"
+				out[int(目标id)] = "%d 攻击伤害" % 基础
 	elif 模式 == 2:
 		var x: int = int(_已选参数[1]) if _已选参数.size() > 1 else 0
-		var y: int = 0
-		for 目标id: Variant in _sel_players:
-			var 目标: GPlayer = Data.get_player_by_id(int(目标id))
-			if 目标 != null and 目标.cross_num > 0:
-				y += 1
 		out[我] = "移除 %d 治疗\n弃 %d 张牌" % [x, x]
 		if not 新版37:
 			out[我] += "\n+%d 信仰" % x
 		for 目标id: Variant in _sel_players:
-			out[int(目标id)] = "%d 攻击伤害" % (2 + y)
-	return out
-
-
-## 月女【暗月斩】的指示器（现算）：目标固定为本次攻击目标，头像自动选中并锁死。
-## 上行写加伤前的原始攻击伤害并划掉，下行写移除 X 张【暗月】后的伤害；未选牌时只写原伤害。
-func _暗月斩头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_暗月斩 or _skill_targets.is_empty():
-		return out
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	var 加伤: int = _sel_cards.size()
-	for 目标id: int in _skill_targets:
-		if 原伤害 <= 0:
-			continue
-		if 加伤 > 0:
-			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 加伤]
-		else:
-			out[目标id] = "%d 攻击伤害" % 原伤害
-	return out
-
-
-## 魔枪【漆黑之枪】的指示器（现算）：目标固定是本次攻击目标，头像已自动选中并锁死。
-## 未选投入能量时显示原伤害；选了 n 点后上行划掉原伤害，下行写 +(n+2) 后的伤害。
-func _漆黑之枪头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_漆黑之枪 or _skill_targets.is_empty():
-		return out
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	var 投入: int = int(_已选参数[0]) if not _已选参数.is_empty() else 0
-	var 新伤害: int = 原伤害 + 投入 + 2
-	for 目标id: int in _skill_targets:
-		if 投入 > 0 and 原伤害 > 0:
-			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 新伤害]
-		elif 投入 > 0:
-			out[目标id] = "%d 攻击伤害" % 新伤害
-		else:
-			out[目标id] = "%d 攻击伤害" % 原伤害
-	return out
-
-
-## 祈祷师【威力赐福】的指示器（现算）：被攻击的目标固定，头像已自动选中并锁死。
-## 上行写加伤前的原始攻击伤害并划掉，下行写 +2 后的伤害；原始伤害由服务端随询问下发。
-func _威力赐福头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_威力赐福 or _skill_targets.is_empty():
-		return out
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	for 目标id: int in _skill_targets:
-		if 原伤害 > 0:
-			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 2]
-		else:
-			out[目标id] = "%d 攻击伤害" % (原伤害 + 2)
-	return out
-
-
-## 英灵人形【战纹碎击】的指示器（现算，写不进静态指示器表）：
-## 伤害＝本次攻击原本的伤害 + 弃牌加伤（张数 - 1）+ 额外翻转数，随玩家选 / 退牌实时变；
-## 画在这次攻击的目标头像上（这次询问问的是「弃几张」，目标不由玩家点选，故用服务端下发的 _skill_targets）。
-## 原本的伤害只有服务端算得出来，随询问下发（preview_base）；还没选效果时按不额外翻转算
-## 有加伤时写两行（学【灵力崩解】）：上行原伤害划掉（行首 [zwj]）、下行加上后的伤害
-func _战纹碎击头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_战纹碎击 or _skill_targets.is_empty():
-		return out
-	# 选项值 = 1 + Y：值 1 是不额外翻转（Y = 0）；还没选效果时也按不额外翻转算
-	var 额外翻转: int = int(_已选参数[0]) - 1 if not _已选参数.is_empty() else 0
-	# 弃牌加伤那部分是「张数 - 1」，还没选够 2 张时按 0 算（此时显示的就是原本的伤害）
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	var 加伤: int = maxi(_sel_cards.size() - 1, 0) + 额外翻转
-	if 原伤害 <= 0:
-		return out
-	for 目标id: int in _skill_targets:
-		if 加伤 == 0:
-			out[目标id] = "%d 攻击伤害" % 原伤害
-		else:
-			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 加伤]
+			out[int(目标id)] = "%d 攻击伤害" % 合计
 	return out
 
 
@@ -10644,127 +10550,170 @@ func _双重回响头像提示() -> Dictionary:
 	return out
 
 
-## 精灵射手【元素射击】（3201）：攻击宣告①的响应，按攻击牌系别附加元素箭。
-## 只有【火之矢】改本次攻击伤害（+1），其余几根箭不改伤害 ——
-## 所以在被攻击的目标头像上写「原伤害划掉 → +1 后的伤害」，别的箭只写原伤害。
-## 原伤害由服务端随询问下发 preview_base（已在 _荒神补预览伤害 里并进荒神之力）。
-func _元素射击头像提示() -> Dictionary:
+## 无询问攻击技能里「伤害随当前点选的目标变」的求值器（规则表在 GConst.攻击技能派生伤害）：
+## 返回 {"基础", "加伤", "合计"}；没有配置时返回空字典。
+func _派生伤害(技能号: int) -> Dictionary:
+	var 配置: Dictionary = GConst.攻击技能派生伤害.get(技能号, {})
+	if 配置.is_empty():
+		return {}
+	var 基础: int = int(配置.get("基础", BattleEngine.ATTACK_BASE_POINT))
+	var 加伤: int = 0
+	match str(配置.get("规则", "")):
+		"tgt_heal":
+			for pid: Variant in _sel_players:
+				var 目标: GPlayer = Data.get_player_by_id(int(pid))
+				if 目标 != null and 目标.cross_num > 0:
+					加伤 += 1
+		"morale":
+			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+			if 我 != null:
+				var 我方士气: int = Data.team_of(我.color).morale
+				for pid: Variant in _sel_players:
+					var 目标: GPlayer = Data.get_player_by_id(int(pid))
+					if 目标 != null and Data.team_of(目标.color).morale > 我方士气:
+						加伤 = int(配置.get("落后", 0))
+						break
+	return {"基础": 基础, "加伤": 加伤, "合计": 基础 + 加伤}
+
+
+## 「无询问的攻击技能」的伤害预览（圣屑飓暴 / 欺诈 / 转换）：一张表配系别来源，
+## 伤害＝攻击基础 + 结界师【荒神之力】。只画、不判规则。
+func _攻击技能伤害头像提示() -> Dictionary:
 	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_元素射击:
+	if _mode != 4 or _sel_players.is_empty():
 		return out
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	if 原伤害 <= 0:
+	var 配置: Dictionary = GConst.攻击技能伤害预览.get(_pending_skill_id, {})
+	if 配置.is_empty():
 		return out
-	# 攻击牌是刚打出的那张（不是这次要弃的法术牌 / 【祝福】），按它判是不是火之矢
-	var 攻: GCard = Data.get_card(_最近攻击牌)
-	var 火: bool = 攻 != null and 攻.element_enum() == GConst.CardElement.Fire
-	for 目标: Variant in _pending.get("preview_ids", []):
-		var pid: int = int(目标)
-		if pid < 0:
-			continue
-		if 火:
-			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 1]
-		else:
-			out[pid] = "%d 攻击伤害" % 原伤害
+	var 系别: int = 0
+	if int(配置.get("来源", 0)) == 1:
+		# 二级栏选项里的虚牌（欺诈：弃同系牌、视为任选一系的攻击，真正打出去的是虚牌那张）
+		if not _已选参数.is_empty():
+			var 虚牌: GCard = Data.get_card(int(_已选参数[0]))
+			if 虚牌 != null:
+				系别 = 虚牌.element_enum()
+	else:
+		# 系别取「已选的那张牌」（圣屑飓暴弃的两张同系 / 转换打出的法术牌）；
+		# 还没选牌时按 0 算，不要拿上一张攻击牌兜底（那会是别的攻击的系别）
+		if not _sel_cards.is_empty():
+			var 牌: GCard = Data.get_card(int(_sel_cards[0]))
+			if 牌 != null:
+				系别 = 牌.element_enum()
+	var 伤害: int = BattleEngine.ATTACK_BASE_POINT + _荒神之力加伤(系别)
+	for pid: int in _sel_players:
+		out[int(pid)] = "%d 攻击伤害" % 伤害
 	return out
 
-## 圣枪【地枪】（1005）：主动攻击命中后②移除 X 点【治疗】、本次攻击伤害 +X（X 最高 4）。
-## 选 X 后在被攻击目标头像上写「原伤害划掉 → +X 后的伤害」；还没选时只写原伤害。
-## 原伤害由服务端随询问下发 preview_base（荒神之力已在攻击宣告前并进 harm）。
-func _地枪头像提示() -> Dictionary:
+
+## 攻击伤害预览（服务端给数，客户端只负责画）：
+## preview_base ＝ 不发动这次技能时的伤害（已含荒神 / 狂化 / 百式这些自动加成）；
+## preview_damage ＝ 发动之后的伤害；多选项询问每个选项自带「伤害」（option_damages）。
+## 两个数不同就画两行「原值划掉 → 新值」；相同时这里不出，交给通用单值预览画一个数。
+func _攻击伤害头像提示() -> Dictionary:
 	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_地枪:
+	if _mode != 3 or _skill_ask_id <= 0:
 		return out
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	if 原伤害 <= 0:
+	# 神威 / 圣裁 / 朝圣 / 英灵召唤：服务端已给数，但提示还带「自身吃 1 点法术伤害」「选 X」
+	# 「N 点XX伤害」「+1 治疗」这类自己的排版，仍走它们自己的函数（数字照样来自 preview_base / preview_damage）
+	if _skill_ask_id == 4302 or _skill_ask_id == 4303 or _skill_ask_id == GConst.技能_朝圣 \
+			or _skill_ask_id == GConst.技能_英灵召唤:
 		return out
-	var 加伤: int = int(_已选参数[0]) if not _已选参数.is_empty() else 0
-	for 目标: Variant in _pending.get("preview_ids", []):
-		var pid: int = int(目标)
-		if pid < 0:
-			continue
-		if 加伤 > 0:
-			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 加伤]
-		else:
-			out[pid] = "%d 攻击伤害" % 原伤害
+	# 式神咒束 / 阴阳转换的 preview_base 是「本次攻击牌 id」而不是伤害，不能按伤害画
+	if _skill_ask_id == GConst.技能_式神咒束 or _skill_ask_id == GConst.技能_阴阳转换:
+		return out
+	# 治疗预览（预览类型＝治疗）不走伤害渲染
+	if int(_pending.get("preview_kind", 0)) == GConst.预览类型_治疗:
+		return out
+	var 基准: int = int(_pending.get("preview_base", 0))
+	if 基准 <= 0:
+		return out
+	# 选牌没选够时先不加规则（那是「还没选完」的中间态，预览应显示当前伤害）
+	var 加成: int = 0
+	if _need_cards <= 0 or _sel_cards.size() >= _need_cards:
+		加成 = _预览规则加成()
+	var 新伤害: int = int(_pending.get("preview_damage", -1))
+	if 新伤害 < 0:
+		新伤害 = 基准 + 加成
+	var 选中项: Dictionary = _二级选中项()
+	if not 选中项.is_empty() and int(选中项.get("伤害", 0)) > 0:
+		新伤害 = int(选中项.get("伤害", 0))
+	if 新伤害 < 0 or 新伤害 == 基准:
+		return out
+	var 词: String = "法术伤害" if int(_pending.get("preview_kind", 0)) == GConst.HarmType.Magic else "攻击伤害"
+	# 个别技能历史上用的不是「攻击伤害」这个说法（见 GConst.攻击伤害用词），保持原样
+	词 = str(GConst.攻击伤害用词.get(_skill_ask_id, 词))
+	var 目标表: Array = _pending.get("preview_ids", [])
+	if 目标表.is_empty():
+		目标表 = _pending.get("dst_ids", [])
+	if 目标表.is_empty():
+		目标表 = _sel_players.duplicate()
+	for pid: Variant in 目标表:
+		if int(pid) >= 0:
+			out[int(pid)] = "[zwj]%d %s\n%d %s" % [基准, 词, 新伤害, 词]
+	# 有些技能在自己头像上还有附带代价（如【杀戮盛宴】自己吃 4 点法术伤害；
+	# 【禁断之力】反噬＝加伤的点数，写成字典 {"文案": "%d 法术伤害", "用": "加成"}）
+	var 附带: Variant = GConst.攻击伤害自身附带.get(_skill_ask_id, "")
+	if 附带 is Dictionary:
+		var 模板: String = str((附带 as Dictionary).get("文案", ""))
+		if not 模板.is_empty():
+			out[Logic.my_player_id] = 模板 % (新伤害 - 基准)
+	else:
+		var 文: String = str(附带)
+		if not 文.is_empty():
+			out[Logic.my_player_id] = 文
 	return out
 
-## 游击士【元素射击*索拉】（3802）：攻击宣告①移除 1 个【子弹】，按子弹系别追加效果。
-## 火系子弹＝本次攻击伤害 +1，所以被攻击的目标头像写「原伤害划掉 → +1 后的伤害」；
-## 其余系别只写原伤害。子弹还没选、或选的是光/暗但还没选定视为系别时，先按原伤害显示。
-## 原伤害由服务端随询问下发 preview_base（荒神之力已在宣告前并进 harm）。
-func _元素射击索拉头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_元素射击SORA:
-		return out
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	if 原伤害 <= 0:
-		return out
-	# 选中的【子弹】是盖牌，进 _sel_cards；光/暗要再看「视为系别」选项选了什么
+
+## 按服务端给的 `preview_rule` 现算加伤（只算「随选择变化」的那部分，规则本身在服务端）：
+## 逗号分隔的项 —— `card`＝每张已选牌、`card:3`＝每张所选牌里系别为 3 的、`option`＝选中选项的值、
+## 纯数字＝常数。例：`card:3`＝每张所选火系牌 +1；`option,card,-2`＝选项值 + 张数 - 2。
+func _预览规则加成() -> int:
+	var 规则: String = str(_pending.get("preview_rule", ""))
+	if 规则.is_empty():
+		return 0
+	var 合计: int = 0
+	for 段: String in 规则.split(","):
+		var 项: String = 段.strip_edges()
+		if 项.is_empty():
+			continue
+		if 项.is_valid_int():
+			合计 += int(项)
+			continue
+		if 项 == "option":
+			if not _已选参数.is_empty():
+				合计 += int(_已选参数[0])
+			continue
+		if 项.begins_with("eff:"):
+			if _有效攻击系别() == int(项.get_slice(":", 1)):
+				合计 += 1
+			continue
+		if 项.begins_with("card"):
+			var 系别: int = -1
+			if 项.contains(":"):
+				系别 = int(项.get_slice(":", 1))
+			for cid: Variant in _sel_cards:
+				var 卡: GCard = Data.get_card(int(cid))
+				if 卡 != null and (系别 < 0 or 卡.element_enum() == 系别):
+					合计 += 1
+	return 合计
+
+
+## 「这次攻击算哪个系」：取已选牌（子弹 / 攻击牌）的系别；光/暗且选了「视为系别」时按选项的系别算。
+func _有效攻击系别() -> int:
 	var 系别: int = 0
 	if not _sel_cards.is_empty():
-		var 子弹: GCard = Data.get_card(int(_sel_cards[0]))
-		if 子弹 != null:
-			系别 = 子弹.element_enum()
-	if (系别 == GConst.CardElement.Light or 系别 == GConst.CardElement.Darkness) \
-			and not _已选参数.is_empty():
+		var 卡: GCard = Data.get_card(int(_sel_cards[0]))
+		if 卡 != null:
+			系别 = 卡.element_enum()
+	if (系别 == GConst.CardElement.Light or 系别 == GConst.CardElement.Darkness) and not _已选参数.is_empty():
 		系别 = int(_已选参数[0])
-	for 目标: Variant in _pending.get("preview_ids", []):
-		var pid: int = int(目标)
-		if pid < 0:
-			continue
-		if 系别 == GConst.CardElement.Fire:
-			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 1]
-		else:
-			out[pid] = "%d 攻击伤害" % 原伤害
-	return out
+	return 系别
 
-## 圣弓【圣屑飓暴】（3702 / Trick 8802）：弃 2 张同系牌，以**该系**【圣】命格攻击牌发起一次主动攻击，
-## 基础 2 点攻击伤害。攻击牌的系别就是弃掉那两张的系别，所以按已选牌取系别再叠【荒神之力】。
-func _圣屑飓暴头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 4:
-		return out
-	if _pending_skill_id != GConst.技能_圣屑飓暴 and _pending_skill_id != GConst.技能_圣屑飓暴Trick:
-		return out
-	if _sel_players.is_empty():
-		return out
-	var 伤害: int = BattleEngine.ATTACK_BASE_POINT + _荒神之力加伤(_本次攻击元素())
-	for pid: int in _sel_players:
-		out[int(pid)] = "%d 攻击伤害" % 伤害
-	return out
-
-
-## 猎巫人【转换】（4201）：法术牌按对应系攻击牌结算，基础 2 点攻击伤害。
-## 攻击牌就是打出的那张法术牌（同系），按它的系别叠【荒神之力】。
-func _转换头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 4 or _pending_skill_id != GConst.技能_转换:
-		return out
-	if _sel_players.is_empty():
-		return out
-	var 伤害: int = BattleEngine.ATTACK_BASE_POINT + _荒神之力加伤(_本次攻击元素())
-	for pid: int in _sel_players:
-		out[int(pid)] = "%d 攻击伤害" % 伤害
-	return out
 
 ## 魔弓【多重射击】的指示器（现算）：这次额外攻击视为**暗系**主动攻击、伤害 -1，
 ## 所以点选的敌人头像上写「不发动时的伤害划掉 → 发动后的伤害」——
 ## 和【精准射击】-1 同一套写法，不能只写减完之后的数。
 ## 不发动时的伤害里还要算上结界师【荒神之力】（暗系结界在场时 +1）。
-func _多重射击头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_多重射击 or _sel_players.is_empty():
-		return out
-	# 不发动时的伤害＝暗系攻击基础 + 结界师【荒神之力】（暗系结界在场时 +1）；
-	# 发动后 -1。两者被抵平（3 − 1 = 2）时也要看得见划掉的那行，所以固定写两行。
-	var 原伤害: int = BattleEngine.ATTACK_BASE_POINT + _荒神之力加伤(GConst.CardElement.Darkness)
-	var 新伤害: int = maxi(原伤害 - GConst.多重射击减伤, 0)
-	for 目标id: int in _sel_players:
-		out[int(目标id)] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 新伤害]
-	return out
-
-
 ## 血之巫女【血之悲鸣】的指示器（现算，数值就是选中的那一档）：
 ## 对目标与自己各造成「所选点数」法术伤害 —— 自己那句一选好档位就画在自己头像上，
 ## 目标那句等选好目标再画到目标头像上（两边同一个数）。
@@ -10786,52 +10735,12 @@ func _血之悲鸣头像提示() -> Dictionary:
 	return out
 
 
-## 红莲骑士【杀戮盛宴】的指示器（现算）：发动后这次攻击的伤害 +2，所以敌人头像上写
-## 两行（学【灵力崩解】）——上行原伤害划掉（行首 [zwj]）、下行 +2 后的伤害
-## （原伤害只有服务端算得出来，随询问下发 preview_base）；
-## 自己还要吃 4 点法术伤害，那句写在自己头像上
-func _杀戮盛宴头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_杀戮盛宴:
-		return out
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	for 目标id: int in _skill_targets:
-		if 原伤害 > 0:
-			out[int(目标id)] = "[zwj]%d 物理伤害\n%d 物理伤害" % [原伤害, 原伤害 + 2]
-		else:
-			out[int(目标id)] = "%d 物理伤害" % (原伤害 + 2)
-	out[Logic.my_player_id] = "4 法术伤害"
-	return out
-
-
 ## 勇者【禁断之力】的指示器（现算，写不进静态指示器表）：命中后发动时弃牌加伤 ——
 ## 敌人头像写「本次攻击伤害」＝发动前伤害（已含怒吼等）+ 已选火系牌数；
 ## 弃了火系牌时写两行（学【灵力崩解】）：上行原伤害划掉（行首 [zwj]）、下行加上后的伤害。
 ## 自己头像写弃掉的火系牌会造成的等量法术伤害。数值随选 / 退牌实时变。
 ## 这次询问问的是「弃哪些牌」，目标不由玩家点选，故用服务端下发的 _skill_targets；
 ## 未命中那条（服务端不发 targets）谁都不画。
-func _禁断之力头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	if _mode != 3 or _skill_ask_id != GConst.技能_禁断之力 or _skill_targets.is_empty():
-		return out
-	var 火系数: int = 0
-	for cid: int in _sel_cards:
-		var 牌: GCard = Data.get_card(cid)
-		if 牌 != null and 牌.element_enum() == GConst.CardElement.Fire:
-			火系数 += 1
-	var 原伤害: int = int(_pending.get("preview_base", 0))
-	var 攻击伤害: int = 原伤害 + 火系数
-	if 攻击伤害 > 0:
-		for 目标id: int in _skill_targets:
-			if 原伤害 > 0 and 火系数 > 0:
-				out[int(目标id)] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 攻击伤害]
-			else:
-				out[int(目标id)] = "%d 攻击伤害" % 攻击伤害
-	if 火系数 > 0:
-		out[Logic.my_player_id] = "%d 法术伤害" % 火系数
-	return out
-
-
 ## 女武神【军神威光】第 2 段（选移除哪几个星石 + 点一名角色 +X 治疗）：在点中的目标头像上写「X 治疗」。
 ## X ＝ 所选星石组合的星石数，与服务端共用 GConst.军神威光组合，客户端不必自己另立一张表
 func _军神威光头像提示() -> Dictionary:
@@ -10855,12 +10764,14 @@ func _英灵召唤头像提示() -> Dictionary:
 	if _mode != 3 or _skill_ask_id != GConst.技能_英灵召唤:
 		return out
 	var 原伤害: int = int(_pending.get("preview_base", 0))
+	# 发动后的伤害由服务端给（preview_damage），这里只负责排版与「+1 治疗」那行
+	var 新伤害: int = int(_pending.get("preview_damage", 原伤害 + 1))
 	for 目标id: Variant in _pending.get("preview_ids", []):
 		var pid: int = int(目标id)
-		if 原伤害 > 0:
-			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 原伤害 + 1]
+		if 新伤害 != 原伤害:
+			out[pid] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, 新伤害]
 		else:
-			out[pid] = "%d 攻击伤害" % (原伤害 + 1)
+			out[pid] = "%d 攻击伤害" % 新伤害
 	# 治疗那行：与静态指示器的「每目标 1 / 文案 +%d 治疗」一致（选中的治疗目标才画）
 	for pid2: int in _sel_players:
 		var 治疗句: String = "+1 治疗"
@@ -10868,71 +10779,6 @@ func _英灵召唤头像提示() -> Dictionary:
 			out[pid2] = "%s\n%s" % [out[pid2], 治疗句]
 		else:
 			out[pid2] = 治疗句
-	return out
-
-
-## 「攻击宣告阶段响应、会改变本次攻击伤害」的技能的指示器（现算，规则见 GConst.攻击提示加成）：
-## 在目标头像上写「本次攻击伤害」＝基础伤害 + 技能加成。两种入口都算 ——
-## 被询问时（技能询问）＝服务端随询问下发的发动前伤害；从技能栏点它发起攻击时（发动技能）
-## ＝主动攻击基础伤害。如【怒吼】+2、【精准射击】-1、【血影狂刀】按目标手牌数算
-## 有加成（加伤或减伤）时都写两行（学【灵力崩解】）：上行原伤害划掉（行首 [zwj]）、下行加上后的伤害。
-## 特例：格斗在【百式幻龙拳】形态下发【蓄力一击】会脱离该形态（丢掉百式的 +2）——
-## 划掉的那行写「保持百式」的伤害（4），下面是用了蓄力之后的伤害（3）
-func _攻击加成头像提示() -> Dictionary:
-	var out: Dictionary = {}
-	var 技能号: int = _当前技能号()
-	var 规则: Variant = GConst.攻击提示加成.get(技能号, null)
-	# 灭茶苦茶（9704）：二选一按选中项现算加伤（【宝石】+2 / 【水晶】+1）。
-	# 还没选中时不出提示（目标头像先显示当前伤害），选中哪档就划掉旧值、写加伤后的新值。
-	var 选项加成: int = 0
-	if 技能号 == GConst.技能_灭茶苦茶:
-		选项加成 = _灭茶苦茶选项加成()
-		if 选项加成 <= 0:
-			return out
-	elif 规则 == null:
-		return out
-	# 格斗【蓄力一击 / 气绝崩击】共用一条二选一询问：只有选中【蓄力一击】那档才加这 1 点
-	if 技能号 == GConst.技能_蓄力一击 and not _选中蓄力一击():
-		return out
-	var 基础: int = 0
-	var 目标们: Array[int] = []
-	if _mode == 3:
-		基础 = int(_pending.get("preview_base", 0))
-		for 目标id: int in _skill_targets:
-			目标们.append(int(目标id))
-	elif _mode == 4:
-		基础 = BattleEngine.ATTACK_BASE_POINT
-		for 目标id: int in _sel_players:
-			目标们.append(int(目标id))
-	else:
-		return out
-	# 角色被动（如狂战士【狂化】）对所有主动攻击都加成，与具体技能无关。
-	# 它是「不发动本技能时就有的伤害」，并入划掉的那一行；只有本技能自己的加成才另起一行写新伤害。
-	# 结界师【荒神之力】同理（同系结界在场时攻击伤害 +1），也并进划掉的那一行。
-	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	# 命中后才询问的技能（如【撕裂】）：服务端的 preview_base 已经是命中时的当前伤害，
-	# 已含狂化，客户端再并一次就会多算 1 点
-	var 被动: int = 0 if GConst.攻击提示_命中后结算.has(技能号) \
-			else int(GConst.攻击提示角色加成.get(我.role_id, 0))
-	# 发动技能（mode 4）时基础伤害是本地常量，这里补荒神；技能询问（mode 3）的 preview_base
-	# 已在 _荒神补预览伤害 里补过，不能再加一次
-	var 荒神: int = _荒神之力加伤(_本次攻击元素()) if _mode == 4 else 0
-	# 格斗【蓄力一击】会脱离【百式幻龙拳】（主动攻击 +2）：这一下不是「只 +1」，而是先丢掉百式的 +2。
-	# 于是划掉的那行写「保持百式」的伤害（基础 + 百式 +2），下面写用了【蓄力一击】之后的伤害（基础 +1）
-	var 破百式: bool = 技能号 == GConst.技能_蓄力一击 \
-			and 我.role_id == GConst.角色_格斗 and 我.tap
-	for 目标id: int in 目标们:
-		var 原伤害: int = maxi(基础 + 被动 + 荒神, 0)
-		var 加成: int = 选项加成 if 技能号 == GConst.技能_灭茶苦茶 else _攻击加成值(规则, 目标id)
-		if 破百式:
-			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [
-				原伤害 + GConst.百式幻龙拳主动加成, maxi(原伤害 + 加成, 0)]
-		elif 加成 != 0:
-			# 加伤 / 减伤都写两行：上行原值划掉、下行是这次攻击的实际伤害
-			# （【精准射击】-1 也要看到「2 攻击伤害划掉 → 1 攻击伤害」，不能只写 1）
-			out[目标id] = "[zwj]%d 攻击伤害\n%d 攻击伤害" % [原伤害, maxi(原伤害 + 加成, 0)]
-		else:
-			out[目标id] = "%d 攻击伤害" % 原伤害
 	return out
 
 
@@ -10949,9 +10795,10 @@ func _朝圣头像提示() -> Dictionary:
 	if 伤害 <= 0:
 		return out
 	var 词: String = "法术伤害" if int(_pending.get("preview_kind", 0)) == GConst.HarmType.Magic else "攻击伤害"
-	# 【朝圣】抵御 1 点：下面那行就是本次伤害 - 1（最低 0）。
+	# 抵御 1 点之后的伤害由服务端给（preview_damage），这里只负责排版
+	var 余: int = int(_pending.get("preview_damage", maxi(伤害 - 1, 0)))
 	# 第一行开头挂 [zwj] 当标记 —— 界面据此给它压一条删除线（见 _铺粗删除线）
-	out[Logic.my_player_id] = "[zwj]%d 点%s\n%d 点%s" % [伤害, 词, maxi(伤害 - 1, 0), 词]
+	out[Logic.my_player_id] = "[zwj]%d 点%s\n%d 点%s" % [伤害, 词, 余, 词]
 	return out
 
 
@@ -11199,19 +11046,13 @@ func _天火断空头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 4 or _pending_skill_id != GConst.技能_天火断空:
 		return out
-	var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-	if 我 == null:
-		return out
-	var 我方士气: int = Data.team_of(我.color).morale
-	var 加伤: bool = false
-	for 目标id: int in _sel_players:
-		var 目标: GPlayer = Data.get_player_by_id(int(目标id))
-		if 目标 != null and Data.team_of(目标.color).morale > 我方士气:
-			加伤 = true
-	var 文: String = "%d 法术伤害" % GConst.天火断空基础伤害
-	if 加伤:
-		文 = "[zwj]%d 法术伤害\n%d 法术伤害" % [
-			GConst.天火断空基础伤害, GConst.天火断空基础伤害 + GConst.天火断空士气落后加成]
+	# 数字按规则表算（有目标队伍士气高于我方时 +落后值），提示只负责排版
+	var 伤害: Dictionary = _派生伤害(GConst.技能_天火断空)
+	var 基础: int = int(伤害.get("基础", GConst.天火断空基础伤害))
+	var 合计: int = int(伤害.get("合计", 基础))
+	var 文: String = "%d 法术伤害" % 基础
+	if 合计 != 基础:
+		文 = "[zwj]%d 法术伤害\n%d 法术伤害" % [基础, 合计]
 	for 目标id: int in _sel_players:
 		out[int(目标id)] = 文
 	out[Logic.my_player_id] = 文
@@ -11236,36 +11077,6 @@ func _末日审判头像提示() -> Dictionary:
 	return out
 
 
-## 本技能对某名目标的实际加成（规则见 GConst.攻击提示加成 的取值说明）
-func _攻击加成值(规则: Variant, 目标id: int) -> int:
-	if 规则 is int:
-		return int(规则)
-	# "目标手牌"：【血影狂刀】目标手牌 2 张 +2、3 张 +1，其余张数不加
-	var 目标: GPlayer = Data.get_player_by_id(目标id)
-	if 目标 == null:
-		return 0
-	# 客户端玩家视图只有手牌「张数」（hand_cards_num），没有服务端那套 hand_count()
-	var 张数: int = 目标.hand_cards_num
-	if 张数 == 2:
-		return 2
-	if 张数 == 3:
-		return 1
-	return 0
-
-
-## 灭茶苦茶（9704）当前选中档位的加伤：1＝【宝石】+2、2＝【水晶】+1（与角色脚本里的选项值一致）；
-## 还没选中 / 非法值返回 0（此时不画加成，头像先显示当前伤害）
-func _灭茶苦茶选项加成() -> int:
-	if _已选参数.is_empty():
-		return 0
-	match int(_已选参数[0]):
-		1:
-			return 2
-		2:
-			return 1
-	return 0
-
-
 ## 怒潮荒涛（4605）：询问时选中的每名角色各挨「1 + 自己面前基础效果数」点法术伤害。
 ## 基础效果数因人而异，静态指示器的「每目标」固定值写不出来，这里按目标现算；
 ## 目标由玩家自己挑（技能原文是「对 4 名目标角色」，6 人局要选 4 人）。
@@ -11281,17 +11092,6 @@ func _怒潮荒涛头像提示() -> Dictionary:
 			continue
 		out[pid] = "%d 法术伤害" % (1 + 目标.basic_status_list.size())
 	return out
-
-
-## 格斗的加成询问里，当前要发动的（二级技能栏选中的 / 技能栏点的 / 单项直接问的）是不是【蓄力一击】
-## （选【气绝崩击】、或直接问【气绝崩击】时不改伤害，不画攻击伤害提示）
-func _选中蓄力一击() -> bool:
-	if _mode == 4:
-		return _pending_skill_id == GConst.技能_蓄力一击
-	# 只有一个可发动时走「一问一答」，这次询问没有选项：问的就是【蓄力一击】自己
-	if _二级选项.is_empty():
-		return _skill_ask_id == GConst.技能_蓄力一击
-	return int(_二级选中项().get("技能号", 0)) == GConst.技能_蓄力一击
 
 
 ## 灵魂术士【灵魂镜像】的指示器（现算）：在选中的目标头像上写他「会摸几张」——

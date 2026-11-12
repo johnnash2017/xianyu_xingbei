@@ -738,9 +738,9 @@ func 跑() -> void:
 	# 精准射击（301，减 1 攻击伤害）：头像提示也要写两行 —— 原伤害划掉、下面是减伤后的伤害
 	窗.set("_mode", 3)
 	窗.set("_skill_ask_id", GConst.技能_精准射击)
-	窗.set("_pending", {"preview_base": 2})
+	窗.set("_pending", {"preview_base": 2, "preview_damage": 1, "preview_ids": [2]})
 	窗.set("_skill_targets", [2] as Array[int])
-	var 精准提示: Dictionary = 窗.call("_攻击加成头像提示")
+	var 精准提示: Dictionary = 窗.call("_攻击伤害头像提示")
 	检(str(精准提示.get(2, "")) == "[zwj]2 攻击伤害\n1 攻击伤害",
 		"精准射击应写原伤害划掉、下面是减 1 后的伤害（实际：%s）" % str(精准提示.get(2, "")))
 	窗.set("_mode", 0)
@@ -755,13 +755,13 @@ func 跑() -> void:
 			"args": [0, 0, GConst.CardSource.Hand, 0],
 			"card_max": 0, "card_rule": "", "can_cancel": false,
 			"ask_text": "（攻击命中时②）持续移除牌库顶牌",
-			"preview_base": 3, "preview_kind": GConst.HarmType.Attack,
+			"preview_base": 3, "preview_damage": 4, "preview_kind": GConst.HarmType.Attack,
 		}],
 	})
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 3, "9701 询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
 	检(not bool(窗.call("_取消可用")), "9701 的询问不能取消")
-	var 喧哗提示: Dictionary = 窗.call("_攻击加成头像提示")
+	var 喧哗提示: Dictionary = 窗.call("_攻击伤害头像提示")
 	检(str(喧哗提示.get(2, "")) == "[zwj]3 攻击伤害\n4 攻击伤害",
 		"9701 应在目标头像画「原伤害划掉 → +1」：%s" % str(喧哗提示.get(2, "")))
 	(窗.get("BtnOK") as Button).pressed.emit()
@@ -776,12 +776,12 @@ func 跑() -> void:
 			"args": [0, 0, GConst.CardSource.Hand, 0],
 			"card_max": 0, "card_rule": "", "can_cancel": false,
 			"ask_text": "（攻击命中时②）持续移除牌库顶牌",
-			"preview_base": 4, "preview_kind": GConst.HarmType.Attack,
+			"preview_base": 4, "preview_damage": 5, "preview_kind": GConst.HarmType.Attack,
 		}],
 	})
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 3, "9701 的第二条询问也应弹出（实际 %d）" % int(窗.get("_mode")))
-	var 喧哗提示2: Dictionary = 窗.call("_攻击加成头像提示")
+	var 喧哗提示2: Dictionary = 窗.call("_攻击伤害头像提示")
 	检(str(喧哗提示2.get(2, "")) == "[zwj]4 攻击伤害\n5 攻击伤害",
 		"9701 第二次询问应画「4 划掉 → 5」：%s" % str(喧哗提示2.get(2, "")))
 	(窗.get("BtnOK") as Button).pressed.emit()
@@ -847,21 +847,22 @@ func 跑() -> void:
 			"dst_ids": [2], "card_ids": [],
 			"args": [0, 0, GConst.CardSource.Hand, 2, 1, 2],
 			"notes": ["【宝石】本次攻击伤害 +2", "【水晶】本次攻击伤害 +1"],
+			"option_damages": [5, 4],
 			"card_max": 0, "card_rule": "", "can_cancel": true,
 			"preview_base": 3, "preview_kind": GConst.HarmType.Attack,
 		}],
 	})
 	await 等帧(2)
 	检(int(窗.get("_mode")) == 3, "灭茶苦茶询问后应进入技能询问（实际 %d）" % int(窗.get("_mode")))
-	检((窗.call("_攻击加成头像提示") as Dictionary).is_empty(), "还没选档时不应画加伤提示")
+	检((窗.call("_攻击伤害头像提示") as Dictionary).is_empty(), "还没选档时不应画加伤提示")
 	窗.call("_选中二级选项", GConst.技能_灭茶苦茶, 0)
 	await 等帧(1)
-	var 宝石提示: Dictionary = 窗.call("_攻击加成头像提示")
+	var 宝石提示: Dictionary = 窗.call("_攻击伤害头像提示")
 	检(str(宝石提示.get(2, "")) == "[zwj]3 攻击伤害\n5 攻击伤害",
 		"选【宝石】应画「3 划掉 → 5」：%s" % str(宝石提示.get(2, "")))
 	窗.call("_选中二级选项", GConst.技能_灭茶苦茶, 1)
 	await 等帧(1)
-	var 水晶提示: Dictionary = 窗.call("_攻击加成头像提示")
+	var 水晶提示: Dictionary = 窗.call("_攻击伤害头像提示")
 	检(str(水晶提示.get(2, "")) == "[zwj]3 攻击伤害\n4 攻击伤害",
 		"选【水晶】应画「3 划掉 → 4」：%s" % str(水晶提示.get(2, "")))
 	(窗.get("BtnCancel") as Button).pressed.emit()

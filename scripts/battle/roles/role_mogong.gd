@@ -221,10 +221,11 @@ func _mo_guan_chong_ji(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 移除哪张火系【充能】由服务端自己挑（玩家只回答要不要发动），故 need_card=0（界面上一张牌都点不动，
 		# 但盖牌区照样亮出来给他看）；张数传 1 只为让提示文案说「移除 1 个火系【充能】」。
-		# 顺带下发攻击目标与发动前的伤害，客户端据此在目标头像上现算「本次攻击伤害」
+		# 预览：基准＝当前伤害，发动后 +1
+		var 基准: int = 攻击预览伤害(ctx)
 		询问(player.id, MO_GUAN_CHONG_JI, 0, 0, GConst.CardSource.Cover, [], 0, "",
 			[], true, 0, -1, [dst.id], 1, {},
-			int(ctx.get("harm", {}).get("point", 0)))
+			基准, GConst.HarmType.Attack, false, [], true, 基准 + 1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -341,11 +342,15 @@ func action_end_options(ctx: Dictionary) -> Array:
 		return []
 	var 可攻目标: Array[int] = player_ids_where(_duo_chong_dst_ok)
 	var 有风: bool = _cover_has_element(GConst.CardElement.Wind)
+	# 这次虚拟攻击视为暗系主动攻击：伤害 = 攻击基础 + 荒神（暗系结界在场时 +1），发动后再 -1。
+	# 两个数随选项下发（preview_base / damage），客户端只画「原值划掉 → 新值」，不再自己算荒神。
+	var 基准: int = BattleEngine.ATTACK_BASE_POINT + engine.攻击元素加伤(GConst.CardElement.Darkness)
 	# 选牌来源写盖牌区：选中这一项时客户端把盖牌区摆出来（移除哪张由服务端自己挑）
 	return [{"value": DUO_CHONG_SHE_JI, "label": GConst.skill_name(DUO_CHONG_SHE_JI),
 		"skill_id": DUO_CHONG_SHE_JI, "need_target": 1, "targets": 可攻目标,
 		"card_source": GConst.CardSource.Cover,
-		"enabled": 有风 and not 可攻目标.is_empty()}]
+		"enabled": 有风 and not 可攻目标.is_empty(),
+		"preview_base": 基准, "damage": maxi(基准 - GConst.多重射击减伤, 0)}]
 
 
 func resolve_action_end_option(cause: int, reply: Dictionary, _ctx: Dictionary) -> int:

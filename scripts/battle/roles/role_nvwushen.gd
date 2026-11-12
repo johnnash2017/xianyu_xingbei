@@ -184,6 +184,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	return 多步询问(YING_LING_ZHAO_HUAN, [
 		# 第 1 段：是否发动（付 1 能量、本次伤害 +1、记下「要不要横置」）
 		{"预览基准": int(harm.get("point", 0)),
+		 "预览伤害": int(harm.get("point", 0)) + 1,
 		 "预览类型": int(harm.get("type", GConst.HarmType.Attack)),
 		 "预览目标": [int(harm.get("dst", -1))],
 		 "询问文案": GConst.skill_desc(YING_LING_ZHAO_HUAN),

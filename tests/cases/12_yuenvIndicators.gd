@@ -33,8 +33,8 @@ func 跑() -> void:
 	var 暗月斩: Dictionary = GConst.技能指示器[GConst.技能_暗月斩]
 	检(str(暗月斩.get("自动选目标", "")) == "询问目标",
 		"暗月斩应自动选中本次攻击目标，头像才亮")
-	检(GConst.攻击提示加成.has(GConst.技能_血影狂刀),
-		"血影狂刀应继续走攻击伤害头像提示")
+	检(GConst.技能指示器.has(GConst.技能_血影狂刀),
+		"血影狂刀应保留头像指示器配置（伤害数字改由服务端给）")
 	检(str((GConst.技能指示器.get(GConst.技能_撕裂, {}) as Dictionary).get("自动选目标", "")) == "询问目标",
 		"撕裂应自动选中本次攻击目标，头像才亮");
 
@@ -72,19 +72,19 @@ func 跑() -> void:
 	检(int(苍配.get("每目标", 0)) == 1 and int(苍配.get("加参数下标", -1)) == 1,
 		"苍白之月第二项的头像配置应接 X 现算")
 
-	# 暗月斩：目标固定，选 1 张暗月后头像从原伤害变成 +1 伤害
+	# 暗月斩：目标固定，选 1 张暗月后头像从原伤害变成 +1 伤害（规则 preview_rule＝card）
 	窗.set("_mode", 3)
 	窗.set("_skill_ask_id", GConst.技能_暗月斩)
 	var 目标们: Array[int] = [2]
 	var 未选牌: Array[int] = []
 	var 选一张: Array[int] = [1]
 	窗.set("_skill_targets", 目标们)
-	窗.set("_pending", {"preview_base": 2})
+	窗.set("_pending", {"preview_base": 2, "preview_rule": "card", "preview_ids": [2]})
 	窗.set("_sel_cards", 未选牌)
-	var 暗月斩原: Dictionary = 窗.call("_暗月斩头像提示")
+	var 暗月斩原: Dictionary = 窗.call("_预览伤害头像提示")
 	检(str(暗月斩原.get(2, "")) == "2 攻击伤害",
 		"暗月斩未选暗月时应写原攻击伤害")
 	窗.set("_sel_cards", 选一张)
-	var 暗月斩加: Dictionary = 窗.call("_暗月斩头像提示")
+	var 暗月斩加: Dictionary = 窗.call("_攻击伤害头像提示")
 	检(str(暗月斩加.get(2, "")) == "[zwj]2 攻击伤害\n3 攻击伤害",
 		"暗月斩选 1 张暗月后应写原伤害划掉、+1 后伤害")

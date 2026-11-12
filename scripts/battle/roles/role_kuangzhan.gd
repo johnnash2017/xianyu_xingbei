@@ -87,9 +87,10 @@ func _xue_ying_kuang_dao(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 目标与发动前的伤害一并下发：客户端据此在目标头像上现算「本次攻击伤害」。
 		# 狂化「手牌 > 3 再 +1」只有服务端算得出来，随预览基准一起带上。
-		var 预览基准: int = int(ctx.get("harm", {}).get("point", 0)) + p_attack_preview(ctx)
+		var 预览基准: int = 攻击预览伤害(ctx)
+		var 刀加伤: int = 2 if n == 2 else 1
 		询问(player.id, XUE_YING_KUANG_DAO, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [dst.id], -1, {}, 预览基准)
+			0, -1, [dst.id], -1, {}, 预览基准, GConst.HarmType.Attack, false, [], true, 预览基准 + 刀加伤)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS
@@ -129,10 +130,10 @@ func _kuang_hua(harm: Dictionary) -> int:
 
 
 ## 【狂化】的条件加伤（手牌 > 3 时 +1）预告给被攻击者看：
-## 基础 +1 由客户端 GConst.攻击提示角色加成 现算，这里只补「客户端算不出的条件加成」；
-## 只用于显示（见 p_attack_preview 约定），不改变实际结算
+## 这里返回**全部**「命中时才加、还没进 harm.point」的加伤（无条件 +1 ＋ 手牌 > 3 再 +1），
+## 服务端统一用它算预览，客户端不再自己补这 1 点。只用于显示，不改变实际结算。
 func p_attack_preview(_ctx: Dictionary) -> int:
-	return 1 if player.hand_cards.size() > 3 else 0
+	return 1 + (1 if player.hand_cards.size() > 3 else 0)
 
 
 func _si_lie(harm: Dictionary) -> int:
@@ -145,7 +146,8 @@ func _si_lie(harm: Dictionary) -> int:
 		# 目标就是本次攻击目标：随询问下发 targets，客户端进场自动选中并锁死；
 		# preview_base 是加伤前的原始攻击伤害，客户端据此在头像上画「原伤害划掉 → 新伤害」
 		询问(player.id, SI_LIE, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [dst], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
+			0, -1, [dst], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack, false, [], true,
+			int(harm.get("point", 0)) + 2)
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS

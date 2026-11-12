@@ -205,7 +205,8 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			# 客户端据此在目标头像上写「原伤害划掉 → 加 1 后的伤害」
 			询问(player.id, YUAN_SU_SHE_JI, 1, 0, GConst.CardSource.Cover, _视为系别选项(),
 				0, "", [], true, 0, -1, [], -1, {}, int((ctx.get("harm", {}) as Dictionary).get("point", 0)),
-				GConst.HarmType.Attack, false, [int(ctx.get("dst", -1))])
+				GConst.HarmType.Attack, false, [int(ctx.get("dst", -1))], true, -1, 0, "", -1, "", [], [], 0, -1, false,
+				"eff:3")
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var cid: int = _取盖牌(r.get("card_ids", []))

@@ -215,8 +215,8 @@ func 牌系别属性名() -> String:
 func p_attack_card(_ctx: Dictionary) -> int: return SUCCESS
 ## 攻击「预告加伤」：本次攻击在**命中时**还会追加多少伤害（对照各角色 p_timeline_2_hit 里对
 ## harm["point"] 的追加）。引擎发「应战询问」时把它加上去一起告诉被攻击者 —— **只用于显示，
-## 不改变实际结算**，默认 0。用它补「客户端算不出的角色状态类」加伤（如魔剑士【暗影之力】+1、
-## 魔枪【暗之解放】+1）；客户端能自己算的角色被动（狂战士【狂化】）走 GConst.攻击提示角色加成。
+## 不改变实际结算**，默认 0。用它补「命中时才加」的全部加伤（如魔剑士【暗影之力】+1、
+## 魔枪【暗之解放】+1、狂战士【狂化】）；客户端不再自己算任何角色被动。
 ## ctx 与 p_timeline_1 同形（src / dst / is_active / harm / hit_rate…）。
 func p_attack_preview(_ctx: Dictionary) -> int: return 0
 
@@ -363,6 +363,25 @@ func 按系攻击牌(系: int) -> Array:
 func dream_tier() -> int: return 0
 
 
+## 角色状态标记：给客户端画头像旁的状态图标用，返回 [{"cause": 技能号, "count": 计数}, ...]，没有就返回空。
+## **只用于显示**，不参与规则结算。图标与说明按技能号配在 GConst.角色状态图标，计数写在图标上（同指示物）。
+## 什么时候出现 / 消失由角色自己决定（加伤用掉、回合结束、计数归零…）。
+func 角色状态标记() -> Array: return []
+
+
+## 按「攻击系别」加伤的被动（如结界师【荒神之力】）：给定系别返回会加的点数。
+## 只用于预览那些还没建立 harm 的虚拟攻击（如魔弓【多重射击】）；正常攻击由 p_before_attack 直接改 harm。
+func p_attack_element_bonus(_元素: int) -> int: return 0
+
+
+## 本次攻击「现在」会打出的伤害（含命中时才结算的自动加伤，见 BattleEngine.攻击预览伤害）。
+## 所有会改变这次攻击伤害的询问都用它当预览基准 —— 客户端不再自己叠加角色被动 / 荒神 / 百式。
+func 攻击预览伤害(ctx: Dictionary) -> int:
+	if engine == null:
+		return int(ctx.get("harm", {}).get("point", 0))
+	return engine.攻击预览伤害(ctx)
+
+
 # ============================================================
 # 校验与技能执行（默认无效）
 # ============================================================
@@ -466,7 +485,7 @@ func _收牌人称号(收牌人id: int) -> String:
 ## 可圣光 见 engine.ask_skill：false＝这次攻击不能用【圣光】抵挡（如【阴阳转换】的询问）
 ## 高亮目标 见 engine.ask_skill：非空时随询问下发（highlight_ids），只把这几名角色点亮给人看，
 ## 不参与选择、不参与提交（如【别烦我……】目标弃牌那一步顺带点亮「不弃就 +1 治疗」的队友）
-func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = [], 张数: int = -1, 额外: Dictionary = {}, 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], 可圣光: bool = true, 预览伤害: int = -1, cover_need: int = 0, ask_prompt: String = "", 默认选项: int = -1, 询问文案: String = "", 高亮目标: Array = [], 超时目标: Array = [], 盖牌最多: int = 0, 手牌数: int = -1, 可返回: bool = false) -> void:
+func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = [], 张数: int = -1, 额外: Dictionary = {}, 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], 可圣光: bool = true, 预览伤害: int = -1, cover_need: int = 0, ask_prompt: String = "", 默认选项: int = -1, 询问文案: String = "", 高亮目标: Array = [], 超时目标: Array = [], 盖牌最多: int = 0, 手牌数: int = -1, 可返回: bool = false, 伤害规则: String = "") -> void:
 	# 提示里的 {n}：need_card 为 0 表示「可弃可不弃」，这时取上限（card_max）才说得通，
 	# 否则文案会变成「弃 0 张」。需要「可弃可不弃、但文案要显式给出张数」时用 张数 覆盖。
 	var n: int = 张数 if 张数 >= 0 else (need_card if need_card > 0 else card_max)
@@ -474,7 +493,7 @@ func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, c
 	var 文案: String = 询问文案 if not 询问文案.is_empty() else 提示(skill_id, 序号, n, 收牌人id, 额外)
 	engine.ask_skill(pid, skill_id, need_card, need_target, card_source, options, card_max, card_rule, cards, can_cancel,
 		文案, targets, 预览基准, 预览类型, 保留倒计时, 预览目标, 可圣光, 预览伤害, cover_need,
-		false, 默认选项, false, ask_prompt, 高亮目标, 超时目标, 盖牌最多, 手牌数, 可返回)
+		false, 默认选项, false, ask_prompt, 高亮目标, 超时目标, 盖牌最多, 手牌数, 可返回, 伤害规则)
 
 
 # ============================================================
@@ -725,7 +744,8 @@ func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array =
 		# 和 询问文案（ask_text，迁移前角色直接调 询问(...) 时就是这条）。
 		# 只传 ask_prompt 时，读 ask_text 的技能/用例（别烦我、逆反居合斩）会拿到「提示」列第 0 条。
 		str(_多步取值(段.get("询问文案", ""), 答案)), 段.get("高亮", []), 段.get("超时目标", []),
-		int(段.get("盖牌最多", 0)), int(段.get("手牌数", -1)), bool(段.get("可返回", false)))
+		int(段.get("盖牌最多", 0)), int(段.get("手牌数", -1)), bool(段.get("可返回", false)),
+		str(_多步取值(段.get("伤害规则", ""), 答案)))
 
 
 ## 放弃一条还没走完的链（技能被别的原因中断 / 新一轮发动前清干净）

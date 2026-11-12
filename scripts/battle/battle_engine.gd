@@ -2781,7 +2781,7 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 用于「效果落在不受玩家选择的角色身上」的技能 —— 如【别烦我……】让目标弃牌那一步，
 ## 同时点亮「不弃就 +1 治疗」的那名队友（目标自己由客户端点亮）
 func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = [], timeout_targets: Array = [], cover_max: int = 0, hand_need: int = -1,
-		allow_back: bool = false) -> void:
+		allow_back: bool = false, 预览规则: String = "") -> void:
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
@@ -2837,6 +2837,8 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	var 选项技能组: Array = []
 	var 选项牌白: Array = []
 	var 选项来源: Array = []
+	# 每个选项「选了它之后本次攻击会打多少」（只用于画头像提示；0＝这一项不改伤害）
+	var 选项伤害: Array = []
 	var 有选项目标: bool = false
 	# 阶段 5.2：同一份选项再按「一个选项一条 Option 消息」攒一份（旧端会跳过这个字段号）
 	var 嵌套选项: Array = []
@@ -2857,6 +2859,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 		选项技能组.append({"ids": o.get("技能组", [])})
 		选项牌白.append({"ids": _牌面表(o.get("cards", []))})
 		选项来源.append(int(o.get("card_source", -1)))
+		选项伤害.append(int(o.get("damage", 0)))
 		var 目标: Array = o.get("targets", [])
 		选项目标.append({"ids": 目标})
 		if not 目标.is_empty():
@@ -2883,6 +2886,7 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 			"skill_group": {"ids": o.get("技能组", [])},
 			"prompt": str(o.get("提示", "")),
 			"no_prompt_change": bool(o.get("no_prompt_change", false)),
+			"damage": int(o.get("damage", 0)),
 		})
 	var cmd: Dictionary = {
 		"respond_id": skill_id,
@@ -2956,6 +2960,10 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 选中后要把盖牌区亮出来（服务端自己挑充能）
 	if 选项来源.any(func(v: Variant) -> bool: return int(v) >= 0):
 		cmd["option_card_sources"] = 选项来源
+	# 有「选中后本次伤害变成多少」的选项时才下发（与 args 一一对应；0＝这一项不改伤害）：
+	# 客户端据此画「原值划掉 → 新值」，不再按技能名自己现算加成
+	if 选项伤害.any(func(v: Variant) -> bool: return int(v) > 0):
+		cmd["option_damages"] = 选项伤害
 	# 选项带「悬停预览牌」时（如【三秒原则】的「获得 2 张【魔弹】」）：
 	# 客户端悬停那个选项按钮时把这几张牌的卡面并排摊出来
 	if not 选项预览牌.is_empty():
@@ -3001,6 +3009,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 3306 这种在同一步里先问效果的技能询问也要带上，提示才对得上。
 	if 预览伤害 >= 0:
 		cmd["preview_damage"] = 预览伤害
+	# 按「玩家当前选择」现算的预览加伤规则（如「每张所选火系牌 +1」）：客户端只按它加，不判规则
+	if not 预览规则.is_empty():
+		cmd["preview_rule"] = 预览规则
 	# 询问别人的场合（如请人交牌）：下发目标侧文案，客户端优先显示它
 	if not ask_text.is_empty():
 		cmd["ask_text"] = ask_text
@@ -3172,6 +3183,25 @@ func _禁应战(攻击ctx: Dictionary, 应战牌: int) -> bool:
 	return 名单.has(card.card_name_enum())
 
 
+## 本次攻击「现在」的伤害（含命中时才会生效的自动加伤）：`攻击伤害 = harm.point + 攻击者角色的 p_attack_preview`。
+## 所有要显示"这一击会打多少"的地方（应战提示、改伤技能的询问）都从这里取，客户端不再自己叠加角色被动 / 荒神 / 百式。
+## 注意：p_attack_preview 只该返回「尚未加进 harm.point 的、必将在命中时加上」的那部分；
+## 已经在 harm.point 里的（如荒神之力在 p_before_attack 就加了）不要再返回，否则这里会重复算。
+func 攻击预览伤害(ctx: Dictionary) -> int:
+	return int(ctx.get("harm", {}).get("point", 0)) + _预告加伤(int(ctx.get("src", -1)), ctx)
+
+
+## 某个系别的攻击会被「按系别加伤」的被动加多少（如结界师【荒神之力】）。
+## 只用于预览还没建立 harm 的虚拟攻击（如魔弓【多重射击】）：
+## 正常攻击在 p_before_attack 已经把这份加伤并进 harm.point，不要再调它重复加。
+func 攻击元素加伤(元素: int) -> int:
+	var 合计: int = 0
+	for p: BattlePlayer in players.values():
+		if p != null and p.role != null:
+			合计 += p.role.p_attack_element_bonus(元素)
+	return 合计
+
+
 ## 本次攻击「命中时才会结算」的加伤合计（只用于给被攻击者看提示，不改变实际结算）。
 ## 问一遍攻击者的角色（p_attack_preview）：如魔剑士【暗影之力】+1、魔枪【暗之解放】+1。
 func _预告加伤(src: int, ctx: Dictionary) -> int:
@@ -3182,10 +3212,12 @@ func _预告加伤(src: int, ctx: Dictionary) -> int:
 
 
 ## 应战提示里的「受到 N 伤害」：本次伤害 + 攻击者预告加伤。
-## 客户端另外补 GConst.攻击提示角色加成（固定角色加伤）；这里由通用应战和
-## 3301/3306 的技能询问共用，避免各算一套。
+## 加伤全部由服务端算（含狂化这类角色被动），客户端不再自己补，直接显示这个数。
 func _应战提示伤害(src: int, ctx: Dictionary, harm: Dictionary) -> int:
-	return int(harm.get("point", 0)) + _预告加伤(src, ctx)
+	var 预览上下文: Dictionary = ctx.duplicate()
+	预览上下文["harm"] = harm
+	预览上下文["src"] = src
+	return 攻击预览伤害(预览上下文)
 
 
 # ============================================================
@@ -4929,10 +4961,17 @@ class S行动聚合器:
 					if int(o.get("need_card", 0)) > 0 and o.has("card_source"):
 						选牌来源 = int(o.get("card_source", 选牌来源))
 						break
+				# 选项自带「本次攻击的基准伤害」时（如多重射击的虚拟暗系攻击），随询问下发，
+				# 客户端就能按 preview_base / option_damage 画「原值划掉 → 新值」，不用自己算荒神
+				var 预览基: int = 0
+				for o: Dictionary in 待问:
+					if o.has("preview_base"):
+						预览基 = int(o.get("preview_base", 0))
+						break
 				e.ask_skill(pid, 首, 0, 0, 选牌来源,
 					待问, 0, "", [], true,
 					"行动结束时可以发动以下行动，选择一项（发动后还能发动另一项）",
-					[], 0, 0, false, [], true, -1, 0, true, 0, true)
+					[], 预览基, 0, false, [], true, -1, 0, true, 0, true)
 				return BattleEngine.WAIT
 			var r: Dictionary = _取回复(e)
 			var args: Array = r.get("args", [])

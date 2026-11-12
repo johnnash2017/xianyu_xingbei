@@ -1182,6 +1182,9 @@ var ping_ms: int = GConst.PING_未测
 
 ## 序列化为 SinglePlayerInfo 字段字典
 func to_proto(viewer_id: int) -> Dictionary:
+	# 角色状态标记（魔枪加伤 / 剑圣圣剑计数…）：状态在角色自己身上，这里只问一次；
+	# 客户端按 cause 取图标与说明，计数画在图标上
+	var 状态标记: Array = role.角色状态标记() if role != null else []
 	var d: Dictionary = {
 		"id": id,
 		"team": color,
@@ -1239,6 +1242,15 @@ func to_proto(viewer_id: int) -> Dictionary:
 			ex_from.append(exclusive_owners[i])
 	d["ex_cards"] = exs
 	d["ex_from"] = ex_from
+	# 角色状态标记：技能号与计数两个平行数组（一一对应），客户端按技能号取图标 / 说明
+	var 标记号: Array = []
+	var 标记计数: Array = []
+	for 项: Variant in 状态标记:
+		var 标记: Dictionary = 项
+		标记号.append(int(标记.get("cause", 0)))
+		标记计数.append(int(标记.get("count", 0)))
+	d["state_marks"] = 标记号
+	d["state_mark_counts"] = 标记计数
 	# 公开信息：这名玩家手牌里的魔刃/异刃（所有人可见，头像旁状态）
 	var 手中刃: Array = []
 	for cid: int in hand_cards:

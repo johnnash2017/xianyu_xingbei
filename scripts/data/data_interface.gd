@@ -622,6 +622,13 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	# 额外回合的加伤（剑守誓言 10803）：客户端在状态区画「剑守誓言」图标
 	p.extra_turn_cause = int(pi.get("extra_turn_cause", 0))
 	p.extra_turn_bonus = int(pi.get("extra_turn_bonus", 0))
+	# 角色状态标记（魔枪加伤 / 剑圣圣剑计数…）：技能号 + 计数，客户端按技能号取图标
+	p.state_marks.clear()
+	for 标记: Variant in pi.get("state_marks", []):
+		p.state_marks.append(int(标记))
+	p.state_mark_counts.clear()
+	for 计数: Variant in pi.get("state_mark_counts", []):
+		p.state_mark_counts.append(int(计数))
 	p.ready = bool(pi.get("ready", false))
 	p.leader = int(pi.get("leader", 0)) == 1
 	p.online = bool(pi.get("online", true))

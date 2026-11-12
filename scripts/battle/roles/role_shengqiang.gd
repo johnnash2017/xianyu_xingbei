@@ -1,4 +1,4 @@
-﻿extends BattleRole
+extends BattleRole
 ## 圣枪（roleID 10）—— 移植自服务端 role/ShengQiang.cpp
 ## 技能：
 ##   辉耀（1001，法术，弃 1 张水系牌，所有人各 +1 治疗，额外 +1 攻击行动）
@@ -141,14 +141,15 @@ func _di_qiang(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 移除的治疗点数做成选项（1 ~ min(4, 当前治疗)），value 即点数；
 		# 「取消」回空 args＝不发动（通用客户端不再拿 0 当取消）
+		var 基准: int = 攻击预览伤害(ctx)
 		var 上限: int = mini(4, player.cross_num)
 		var 选项: Array = []
 		for n: int in range(1, 5):
-			选项.append({"value": n, "label": GConst.按钮文本(DI_QIANG, 0, {"n": n}), "enabled": n <= 上限})
-			# 预览：把「本次攻击伤害」和攻击目标随询问下发，选 X 后目标头像上
-			# 写「原伤害划掉 → +X 后的伤害」
+			选项.append({"value": n, "label": GConst.按钮文本(DI_QIANG, 0, {"n": n}), "enabled": n <= 上限,
+				"damage": 基准 + n})
+			# 预览：基准随询问下发；每个 X 选项各自带「选了它之后的伤害」
 			询问(player.id, DI_QIANG, 0, 0, GConst.CardSource.Hand, 选项, 0, "", [], true,
-				0, -1, [], -1, {}, int((ctx.get("harm", {}) as Dictionary).get("point", 0)),
+				0, -1, [], -1, {}, 基准,
 				GConst.HarmType.Attack, false, [int(ctx.get("dst", -1))])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()

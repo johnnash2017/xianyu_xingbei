@@ -190,8 +190,10 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		# 并在自己头像上写自身要吃的 4 点法术伤害
 		var dst: int = int(harm.get("dst", -1))
 		# 座位号从 0 起：0 号也是合法对手，判「没取到」只能用 < 0
+		# 基准＝当前伤害，发动后 +2（服务端给数，客户端只画两行；自己吃 4 点由附加文案表补）
+		var 基准: int = 攻击预览伤害(ctx)
 		询问(player.id, SHA_LU_SHENG_YAN, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [dst] if dst >= 0 else [], -1, {}, int(harm.get("point", 0)))
+			0, -1, [dst] if dst >= 0 else [], -1, {}, 基准, GConst.HarmType.Attack, false, [], true, 基准 + 2)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

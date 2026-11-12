@@ -460,7 +460,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		# 头像提示走通用「伤害预览」通道：把本次伤害的原值画在挨打的人头上（preview_base / kind / ids）
 		询问(player.id, BI_HU_LING_YU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 			0, -1, [], -1, {}, int(harm.get("point", 0)), int(harm.get("type", 0)), false,
-			[dst.id], true, -1, 0, "")
+			[dst.id], true, maxi(int(harm.get("point", 0)) - 1, 0), 0, "")
 		return WAIT
 	var 发动: bool = take_skill_reply()
 	_庇护步 = 0

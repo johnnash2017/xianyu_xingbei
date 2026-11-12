@@ -71,9 +71,11 @@ func _jing_zhun_she_ji(ctx: Dictionary) -> int:
 	if card == null or not card.has_skill_id(JING_ZHUN_SHE_JI):
 		return SUCCESS
 	if not engine.has_reply():
-		# 目标与发动前的伤害一并下发：客户端据此在目标头像上现算「本次攻击伤害」
+		# 目标与发动前的伤害一并下发：基准＝当前伤害，发动后＝-1（最低 0）
+		var 基准: int = 攻击预览伤害(ctx)
 		询问(player.id, JING_ZHUN_SHE_JI, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [int(ctx.get("dst", -1))], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
+			0, -1, [int(ctx.get("dst", -1))], -1, {}, 基准, GConst.HarmType.Attack, false, [], true,
+			maxi(基准 - 1, 0))
 		return WAIT
 	if not take_skill_reply():
 		return SUCCESS

@@ -151,7 +151,9 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	return 多步询问(ZHAN_WEN_SUI_JI, [
 		{"选项": _战纹碎击选项(), "需牌": 2, "牌规则": "same", "牌上限": player.hand_count(),
 		 "目标白": [dst] if dst >= 0 else [],
-		 "预览基准": int((ctx.get("harm", {}) as Dictionary).get("point", 0))},
+		 "预览基准": int((ctx.get("harm", {}) as Dictionary).get("point", 0)),
+		 # 加伤 = 弃牌张数 - 1 + 额外翻转数（选项值 - 1），规则交给客户端按当前选择现算
+		 "伤害规则": "option,card,-2"},
 	], func(答案: Array) -> int: return _战纹碎击结算(ctx, 答案))
 
 

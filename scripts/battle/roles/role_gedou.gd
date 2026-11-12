@@ -173,6 +173,15 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 百式幻龙拳这一下会不会生效（+2）——与 _bai_shi_harm 同一套条件；只用于给客户端算伤害预览。
+func _百式加成(ctx: Dictionary) -> int:
+	if not player.tap:
+		return 0
+	if not bai_shi_used and bai_shi_target != int(ctx.get("dst", -1)):
+		return 0
+	return GConst.百式幻龙拳主动加成
+
+
 ## 主动攻击宣告后的询问（对照原版客户端 GeDouJia::XuLiCangYan 的「请选择要发动的技能」）：
 ## 斗气未满才可给【蓄力一击】、斗气 ≥ 1 才可给【气绝崩击】，两个都给不了就不问（照旧只算百式加成）。
 ## 只有一个可发动时直接问「是否发动【X】？」；两个都可发动时才进二级技能栏二选一。
@@ -190,9 +199,11 @@ func _询问攻击加成(ctx: Dictionary) -> int:
 	# 两个都能发动：进二级技能栏二选一。选项本身就是两颗技能，
 	# 故不再摆「技能本体」那一颗（见 const.技能指示器「无父技能」）
 	if not engine.has_reply():
-		engine.ask_skill(player.id, XU_LI_YI_JI, 0, 0, GConst.CardSource.Hand, _攻击加成选项(), 0, "", [], true,
+		# 预览：基准＝不发动（保持百式）的伤害；两个选项各带「选了它之后的伤害」
+		var 基准: int = 攻击预览伤害(ctx) + _百式加成(ctx)
+		engine.ask_skill(player.id, XU_LI_YI_JI, 0, 0, GConst.CardSource.Hand, _攻击加成选项(ctx), 0, "", [], true,
 			提示原文(XU_LI_YI_JI, 1),
-			[int(ctx.get("dst", -1))], int(ctx.get("harm", {}).get("point", 0)))
+			[int(ctx.get("dst", -1))], 基准, 0, false, [], true, -1)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -207,9 +218,12 @@ func _询问攻击加成(ctx: Dictionary) -> int:
 ## 只有一个可发动时的直接询问：不打二级技能栏，一问一答（确定＝发动、取消＝不发动）
 func _问单项加成(技能号: int, ctx: Dictionary) -> int:
 	if not engine.has_reply():
+		# 基准＝不发动（保持百式）的伤害；只有【蓄力一击】会改伤害，且它会打断百式（+1 而不加 +2）
+		var 基准: int = 攻击预览伤害(ctx) + _百式加成(ctx)
+		var 发动后: int = (攻击预览伤害(ctx) + 1) if 技能号 == XU_LI_YI_JI else -1
 		engine.ask_skill(player.id, 技能号, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
 			提示原文(技能号, 0),
-			[int(ctx.get("dst", -1))], int(ctx.get("harm", {}).get("point", 0)))
+			[int(ctx.get("dst", -1))], 基准, 0, false, [], true, 发动后)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -223,11 +237,15 @@ func _问单项加成(技能号: int, ctx: Dictionary) -> int:
 
 
 ## 二级技能栏里的两个选项（供两技能都可发动时二选一用）。
-## 带上 skill_id：这两项本身就是技能，客户端鼠标指向选项按钮时据此弹技能说明
-func _攻击加成选项() -> Array:
+## 带上 skill_id：这两项本身就是技能，客户端鼠标指向选项按钮时据此弹技能说明；
+## damage＝选了这一项之后的伤害（蓄力会打断百式，所以是「当前 +1」；气绝不改伤害、保持百式）
+func _攻击加成选项(ctx: Dictionary) -> Array:
+	var 基准: int = 攻击预览伤害(ctx) + _百式加成(ctx)
 	return [
-		{"value": XU_LI_YI_JI, "label": GConst.skill_desc_name(XU_LI_YI_JI), "skill_id": XU_LI_YI_JI},
-		{"value": QI_JUE_BENG_JI, "label": GConst.skill_desc_name(QI_JUE_BENG_JI), "skill_id": QI_JUE_BENG_JI},
+		{"value": XU_LI_YI_JI, "label": GConst.skill_desc_name(XU_LI_YI_JI), "skill_id": XU_LI_YI_JI,
+			"damage": 攻击预览伤害(ctx) + 1},
+		{"value": QI_JUE_BENG_JI, "label": GConst.skill_desc_name(QI_JUE_BENG_JI), "skill_id": QI_JUE_BENG_JI,
+			"damage": 基准},
 	]
 
 

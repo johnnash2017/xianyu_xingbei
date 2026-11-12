@@ -318,7 +318,8 @@ func p_timeline_6(ctx: Dictionary) -> int:
 			# 头像提示另要「本次伤害」与「其类型」（preview_base / preview_kind）现算两行数字
 			询问(player.id, CHAO_SHENG, 1, 0, GConst.CardSource.Cover, [], 0, "", [], true, 0, -1, [],
 				-1, {"dmg": int(harm.get("point", 0))},
-				int(harm.get("point", 0)), int(harm.get("type", 0)))
+				int(harm.get("point", 0)), int(harm.get("type", 0)), false, [], true,
+				maxi(int(harm.get("point", 0)) - 1, 0))
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var args: Array = r.get("args", [])

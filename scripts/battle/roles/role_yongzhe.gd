@@ -176,8 +176,10 @@ func _怒吼摸牌选项() -> Array:
 func _问怒吼(ctx: Dictionary) -> void:
 	var dst: int = int(ctx.get("dst", -1))
 	# 座位号从 0 起：0 号也是合法对手，判「没取到」只能用 < 0
+	var 基准: int = 攻击预览伤害(ctx)
 	询问(player.id, NU_HOU, 0, 0, GConst.CardSource.Hand, _怒吼摸牌选项(), 0, "", [], true,
-		0, -1, [dst] if dst >= 0 else [], -1, {}, int(ctx.get("harm", {}).get("point", 0)))
+		0, -1, [dst] if dst >= 0 else [], -1, {}, 基准, GConst.HarmType.Attack, false, [], true,
+		基准 + GConst.怒吼加伤)
 
 
 ## 读取怒吼询问回复：返回 -1＝不发动（取消），0/1＝发动并摸对应张数
@@ -333,7 +335,8 @@ func _jin_duan_zhi_li(ctx: Dictionary, hit: bool) -> int:
 		var 攻击目标: Array = [dst] if hit and dst >= 0 else []
 		var 发动前伤害: int = int(ctx.get("harm", {}).get("point", 0)) if hit else 0
 		询问(player.id, JIN_DUAN_ZHI_LI, player.hand_cards.size(), 0,
-			GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, 攻击目标, -1, {}, 发动前伤害)
+			GConst.CardSource.Hand, [], 0, "", [], true, 0, -1, 攻击目标, -1, {}, 发动前伤害,
+			GConst.HarmType.Attack, false, [], true, -1, 0, "", -1, "", [], [], 0, -1, false, "card:3")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])

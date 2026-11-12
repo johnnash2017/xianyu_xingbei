@@ -340,7 +340,8 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		# preview_base＝加伤前的本次攻击伤害，客户端据此画「原伤害划掉 → +X 后伤害」。
 		var 攻击目标: int = int(harm.get("dst", -1))
 		询问(player.id, AN_YUE_ZHAN, 1, 0, GConst.CardSource.Cover, [], 2, "", [], true,
-			0, -1, [攻击目标], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
+			0, -1, [攻击目标], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack,
+			false, [], true, -1, 0, "", -1, "", [], [], 0, -1, false, "card")
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	step = STEP_DONE

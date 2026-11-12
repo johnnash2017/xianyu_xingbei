@@ -142,8 +142,9 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if not engine.has_reply():
 		# 被攻击的目标固定：随询问下发 targets，客户端自动选中并锁死；
 		# preview_base 是加伤前的原始攻击伤害，头像上画「原伤害划掉 → 新伤害」
+		var 基准: int = int(harm.get("point", 0))
 		询问(attacker_id, WEI_LI_CI_FU, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [dst], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
+			0, -1, [dst], -1, {}, 基准, GConst.HarmType.Attack, false, [], true, 基准 + 2)
 		return WAIT
 	if not take_skill_reply():
 		step = STEP_DONE

@@ -146,8 +146,9 @@ func _喧哗上等(harm: Dictionary) -> int:
 		if engine.deck.pile.is_empty():
 			break
 		if not 自动 and not engine.has_reply():
+			var 基准: int = int(harm.get("point", 0))
 			询问(player.id, 喧哗上等, 0, 0, GConst.CardSource.Hand, [], 0, "", [], false, 0, -1,
-				[int(harm.get("dst", -1))], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
+				[int(harm.get("dst", -1))], -1, {}, 基准, GConst.HarmType.Attack, false, [], true, 基准 + 1)
 			return WAIT
 		if not 自动:
 			var 回复: Dictionary = take_skill_reply_full()
@@ -190,10 +191,11 @@ func _灭茶苦茶(harm: Dictionary) -> int:
 		return SUCCESS
 	if not engine.has_reply():
 		# 目标就是本次攻击目标：随询问下发 targets，客户端进场自动选中并锁死；
-		# 预览基准＝9701 加伤后的当前伤害，客户端据此画「原伤害划掉 → 新伤害」。
+		# 预览基准＝9701 加伤后的当前伤害，两个选项各带「选了它之后的伤害」
+		var 基准: int = int(harm.get("point", 0))
 		询问(player.id, 灭茶苦茶, 0, 0, GConst.CardSource.Hand,
-			_灭茶苦茶选项(可宝石, 可水晶), 0, "", [], true, 0, -1,
-			[int(harm.get("dst", -1))], -1, {}, int(harm.get("point", 0)), GConst.HarmType.Attack)
+			_灭茶苦茶选项(可宝石, 可水晶, 基准), 0, "", [], true, 0, -1,
+			[int(harm.get("dst", -1))], -1, {}, 基准, GConst.HarmType.Attack)
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var args: Array = r.get("args", [])
@@ -219,10 +221,12 @@ func _灭茶苦茶(harm: Dictionary) -> int:
 
 
 ## 9704 的固定选项：两项顺序 / 文案稳定，做不了的那项 enabled=false（客户端置灰）。
-func _灭茶苦茶选项(可宝石: bool, 可水晶: bool) -> Array:
+func _灭茶苦茶选项(可宝石: bool, 可水晶: bool, 基准: int) -> Array:
 	return [
-		{"value": 灭茶苦茶_选项宝石, "label": GConst.按钮原文(灭茶苦茶, 0) % 灭茶苦茶_宝石加伤, "enabled": 可宝石},
-		{"value": 灭茶苦茶_选项水晶, "label": GConst.按钮原文(灭茶苦茶, 1) % 灭茶苦茶_水晶加伤, "enabled": 可水晶},
+		{"value": 灭茶苦茶_选项宝石, "label": GConst.按钮原文(灭茶苦茶, 0) % 灭茶苦茶_宝石加伤,
+			"enabled": 可宝石, "damage": 基准 + 灭茶苦茶_宝石加伤},
+		{"value": 灭茶苦茶_选项水晶, "label": GConst.按钮原文(灭茶苦茶, 1) % 灭茶苦茶_水晶加伤,
+			"enabled": 可水晶, "damage": 基准 + 灭茶苦茶_水晶加伤},
 	]
 
 
