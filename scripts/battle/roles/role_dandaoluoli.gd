@@ -335,20 +335,32 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		_垂迹选中 = -1
 		_垂迹同系 = []
 	return 多步询问(垂迹, [
-		{"选项": _垂迹选项(), "答完": _垂迹查看},
+		# 第 1 段：点头像选「看谁面前的【Tricky】」（每人至多 1 张，选中的人↔他那张）；
+		# 头像上的「查看Tricky」由客户端的 _垂迹头像提示 按这里下发的目标画
+		{"需目标": 1, "目标白": _垂迹候选(), "答完": _垂迹查看},
 		{"需牌": 1, "牌白": func(_答案: Array) -> Array: return _垂迹同系,
 		 "跳过": func(_答案: Array) -> bool: return _垂迹同系.is_empty()},
 	], _垂迹结算)
 
 
-## 第 1 段：选看哪一个（选项只写拥有者），私下看牌、算出可弃的同系手牌
+## 这一手可以查看的【Tricky】在谁面前（每人至多 1 张，所以直接按拥有者列）
+func _垂迹候选() -> Array[int]:
+	var out: Array[int] = []
+	for 项: Dictionary in _trickies:
+		var dst: int = int(项["dst"])
+		if not out.has(dst):
+			out.append(dst)
+	return out
+
+
+## 第 1 段答完：按选中的那名角色找到他面前的【Tricky】，私下看牌、算出可弃的同系手牌
 func _垂迹查看(回: Dictionary, _答案: Array) -> int:
-	var args: Array = 回.get("args", [])
-	if args.is_empty():
+	var dsts: Array = 回.get("dsts", [])
+	if dsts.is_empty():
 		return SUCCESS
-	var 序: int = int(args[0]) - 1
-	if 序 < 0 or 序 >= _trickies.size():
-		engine.报错("【T-r-i-c-k-y!】选项号越界", player.id)
+	var 序: int = _Tricky序号(int(dsts[0]))
+	if 序 < 0:
+		engine.报错("【T-r-i-c-k-y!】选中的角色面前没有【Tricky】", player.id)
 		return SUCCESS
 	_垂迹选中 = 序
 	var 真牌: int = int(_trickies[序]["card"])
@@ -393,16 +405,6 @@ func _垂迹结算(答案: Array) -> int:
 	step = STEP_DONE
 	engine._broadcast_game()
 	return URGENT
-
-
-func _垂迹选项() -> Array:
-	var out: Array = []
-	for i: int in range(_trickies.size()):
-		var dp: BattlePlayer = engine.p(int(_trickies[i]["dst"]))
-		var 名: String = Data.role_name(dp.role_id) if dp != null else ""
-		var 文案: String = GConst.按钮原文(垂迹, 0) % 名
-		out.append({"value": i + 1, "label": 文案, "text": 文案})
-	return out
 
 
 # ============================================================

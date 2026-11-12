@@ -9939,6 +9939,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _再睡一下头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _垂迹头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _魔眼头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _亡女金库头像提示()
@@ -10289,6 +10291,17 @@ func _别烦我头像提示() -> Dictionary:
 			var 队友2: int = _右手边队友(_上次别烦我发动者)
 			if 队友2 >= 0 and 队友2 != Logic.my_player_id:
 				out[队友2] = "+1 治疗"
+	return out
+
+
+## 捣蛋萝莉【T-r-i-c-k-y!】8604 第 1 段：点头像选「看谁面前的【Tricky】」。
+## 服务端下发的候选（面前有 Tricky 的人）头像统一写「查看Tricky」，选完再进弃牌那一段。
+func _垂迹头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or int(_skill_ask_id) != 8604:
+		return out
+	for pid: int in _skill_targets:
+		out[pid] = "查看Tricky"
 	return out
 
 
