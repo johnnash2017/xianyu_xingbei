@@ -458,16 +458,11 @@ func p_turn_end(ctx: Dictionary) -> int:
 		return SUCCESS
 	_糖果已用 = true
 	notice_skill(糖果, [player.id])
-	# 展示所有【Tricky】：牌早在场上（不是手牌），走「展示牌」不触发封印
+	# 一个一个来：轮到谁才摊开谁面前那张【Tricky】（见 _糖果下一个目标），不在这里一次全摊。
 	_糖果对象 = []
-	# 「展示所有【Tricky】」：合成一条 Show 一起摊开（分多条发，展示区只会留最后一张）
-	var 全部真牌: Array = []
 	for 项: Dictionary in _trickies:
 		var 真牌: int = int(项["card"])
-		全部真牌.append(真牌)
 		_糖果对象.append({"pid": int(项["dst"]), "element": Data.get_card(真牌).element_enum()})
-	if not 全部真牌.is_empty():
-		engine.展示牌(player.id, 全部真牌)
 	_糖果下标 = 0
 	_糖果目标 = -1
 	_糖果同系 = []
@@ -514,6 +509,11 @@ func _糖果下一个目标() -> bool:
 			continue
 		_糖果目标 = dp.id
 		_糖果同系 = 同系
+		# 一个一个来：轮到谁才把谁面前那张【Tricky】摊开（每人至多 1 张），再问他要弃哪一张。
+		# 这一步每次重入都会调用，但 _糖果目标 已置位就直接返回，所以只会摊一次。
+		var 序: int = _Tricky序号(dp.id)
+		if 序 >= 0:
+			engine.展示牌(dp.id, [int(_trickies[序]["card"])])
 		return true
 	return false
 
