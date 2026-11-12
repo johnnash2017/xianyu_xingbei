@@ -1791,9 +1791,12 @@ func _挪展示牌(视图: Control, 目标: Vector2) -> void:
 ## 掐掉这张牌身上还在跑的展示 tween（进场飞行 / 上一次挪位），免得两个 tween 抢 position，
 ## 顺手把缩放摆回原大（进场飞行是从 50% 缩放长回来的）
 func _停展示tween(视图: Control) -> void:
-	var 旧: Variant = 视图.get_meta(元数据_展示飞行tween, null)
-	if 旧 is Tween and (旧 as Tween).is_valid():
-		(旧 as Tween).kill()
+	# 注意：get_meta(键, null) 在键不存在时会报错（Godot 里 null 当作「没给默认值」），
+	# 所以先 has_meta 再取 —— 否则每次重排都往日志里刷一条 ERROR。
+	if 视图.has_meta(元数据_展示飞行tween):
+		var 旧: Variant = 视图.get_meta(元数据_展示飞行tween)
+		if 旧 is Tween and (旧 as Tween).is_valid():
+			(旧 as Tween).kill()
 	视图.scale = Vector2.ONE
 
 
@@ -1892,9 +1895,10 @@ func _选走展示牌(玩家id: int, 牌号: int) -> void:
 		选中视图.queue_free()
 		return
 	# 进场飞行可能还在跑：先杀掉，免得和新 tween 抢 position
-	var 旧: Variant = 选中视图.get_meta(元数据_展示飞行tween, null)
-	if 旧 is Tween and (旧 as Tween).is_valid():
-		(旧 as Tween).kill()
+	if 选中视图.has_meta(元数据_展示飞行tween):
+		var 旧: Variant = 选中视图.get_meta(元数据_展示飞行tween)
+		if 旧 is Tween and (旧 as Tween).is_valid():
+			(旧 as Tween).kill()
 	选中视图.pivot_offset = 手牌尺寸 * 0.5
 	var 终点: Vector2 = 中心 - ShowCardArea.position - 手牌尺寸 * 0.5
 	var t: Tween = 选中视图.create_tween()
