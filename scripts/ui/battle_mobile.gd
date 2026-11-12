@@ -1551,9 +1551,12 @@ const 状态图标材质: ShaderMaterial = preload("res://scenes/prefabs/battlem
 ## 新摊出来的一批不再清掉旧的一批，而是接在后面一起摆（后加的盖在上层）；
 ## 每一批各自到点只收自己那一批，所以连续展示的牌能同时看到，不会互相顶掉。
 var _展示批: Array = []
-## 当前这拨是不是持久展示（10803 剑守誓言选牌）：持久展示不启动 6.4 秒自动收起，
+## 当前这拨是不是持久展示（10803 剑守誓言选牌）：持久展示不启动自动收起，
 ## 一直留到收到 Pick（选走一张）或整片收起。
 var _展示持久: bool = false
+## 自己出牌的起飞点（牌面 → {"点": 屏幕中心, "时刻": 毫秒}）：
+## 提交那一刻手牌还在，记下这些牌在屏幕上的位置；Card 消息回来时让它们「从手里那张牌」飞进展示区
+var _出牌起飞点: Dictionary = {}
 
 ## 最近一拨摊出的牌在屏幕上的全局中心（(-1, -1) = 这条消息没摊牌）：斩击 / 魔弹的出手特效
 ## 就「从这张牌上起飞」飞向目标头像，见 _播出手特效、_飞牌特效
@@ -1600,15 +1603,13 @@ func _造展示卡牌视图(牌号: int, 显示元素: int = 0) -> Control:
 	return 视图
 
 
-## 把这几张牌摊到屏幕中间给所有人看。**计时但不腾位置**：这一批停留 展示停留秒数 秒，
-## 最后 展示淡出秒数 秒里淡到全透明；淡成空白后仍占着格子，直到被新牌挤过左边界才移除
-## （全部都是空白占位时整片清掉，下一批重新从中间开始）。
-## 旧的一批不会因为新的一批摊出来就被清掉 —— 各批一起摆着（批与批之间空开），
-## 让位时老的牌是**滑过去**的（挪位 tween），不是瞬间跳位。
-## 持久 参数保留兼容：现在展示不会自己腾位置，传 true / false 没有区别。
-## 飞行起点 >= 0 时这几张牌先在那名玩家（出牌人 / 展示者）头像处现身，再一张接一张飞到自己的展示位；
-## 自己的牌不飞，由调用方传 -1 进来（见 _on_card）
-func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, 元素表: Array = []) -> void:
+## 把这几张牌摊到屏幕中间给所有人看。一批牌停留 展示停留秒数 秒，最后 展示淡出秒数 秒淡到 0，
+## 到点整批移除、腾出格子（剩下的牌滑过去补位）。
+## 旧的一批不会因为新的一批摊出来就被清掉 —— 各批一起摆着（批与批之间空开）。
+## 进场飞行：飞行起点 >= 0 时从那名玩家头像飞进来；起点坐标 有效时从那个点飞进来
+## （自己打出的牌＝从手牌里那张牌飞出来，见 _取出出牌起飞点）。
+func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, 元素表: Array = [],
+		起点坐标: Vector2 = Vector2(-1.0, -1.0)) -> void:
 	var 视图表: Array[Control] = []
 	for i: int in range(卡号表.size()):
 		var cid: Variant = 卡号表[i]
@@ -1622,16 +1623,15 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 	if not 视图表.is_empty():
 		_展示批.append({"视图们": 视图表, "时刻": Time.get_ticks_msec()})
 		# 让位：老的牌动画挪开、挤出左边界的消失；
-		# 这一批新的先直接落位，下面再由 _展示飞行 从打牌人头像飞上来
+		# 这一批新的先直接落位，下面再由 _展示飞行 从起点飞上来
 		_重排展示区(视图表)
 	# 记下这拨牌在屏幕上的全局中心与「牌就位、再停一下」的总耗时：别人的牌摊过来后，
 	# 斩击 / 魔弹就从这张牌上起飞，并等上这么久。
-	# 自己的牌现在也播进场飞行，但**不记出手点** —— 自己打的牌仍按老样子从自己头像出手，
-	# 不让特效多等 0.6 秒（见 _播出手特效）
+	# 自己的牌**不记出手点** —— 自己打的牌仍从自己头像出手，不让特效多等 0.6 秒（见 _播出手特效）
 	if not 视图表.is_empty() and 飞行起点 >= 0 and 飞行起点 != Logic.my_player_id:
 		_展示全局中心 = 视图表[0].get_global_rect().get_center()
 		_展示飞行延迟 = 展示飞行时长 + 展示飞行间隔 * float(视图表.size() - 1) + 出手等待秒数
-	_展示飞行(视图表, 飞行起点)
+	_展示飞行(视图表, 飞行起点, 起点坐标)
 	_展示持久 = 持久
 
 
@@ -1790,14 +1790,16 @@ func _展示总宽(组们: Array, 步长: float, 间隙: float) -> float:
 	return 宽
 
 
-## 展示飞行：把已经摆到展示位的这几张牌先挪到该玩家的头像上（缩小），
-## 再飞回展示位、一路长回原大 —— 一眼能看出「这是谁出的牌」。
+## 展示飞行：把已经摆到展示位的这几张牌先挪到起点（缩小），再飞回展示位、一路长回原大。
+## 起点优先用 起点坐标（自己打出的牌＝手牌里那张牌的位置）；没给就用 玩家id 的头像中心。
 ## 透明度不在这里 tween：由 _更新展示透明度 每帧按进场时长淡入（免得两条 tween 抢 modulate）。
-## 头像中心是 Root 坐标，而展示位是 ShowCardArea 的局部坐标（它是 Root 正中一块），换算要减掉它的位置
-func _展示飞行(视图表: Array[Control], 玩家id: int) -> void:
-	if 玩家id < 0:
-		return
-	var 中心: Vector2 = _面板中心(玩家id)
+## 起点是 Root 坐标，而展示位是 ShowCardArea 的局部坐标（它是 Root 正中一块），换算要减掉它的位置
+func _展示飞行(视图表: Array[Control], 玩家id: int, 起点坐标: Vector2 = Vector2(-1.0, -1.0)) -> void:
+	var 中心: Vector2 = 起点坐标
+	if 中心.x < 0.0:
+		if 玩家id < 0:
+			return
+		中心 = _面板中心(玩家id)
 	if 中心.x < 0.0:
 		return
 	var 起飞: Vector2 = 中心 - ShowCardArea.position - 手牌尺寸 * 0.5
@@ -1935,9 +1937,10 @@ func _on_card(msg: Dictionary) -> void:
 	# 屏幕中间把牌摊出来（自己和其他人都看得到）。
 	# 虚拟牌（如【欺诈】变出来的那张攻击牌，is_real=false）不摊牌，只播声音 / 特效 / 日志
 	if bool(msg.get("is_real", true)):
-		# 摊出来的牌从出牌人 / 展示者的头像飞过来 —— 自己的牌也一样飞（出牌动画统一）
+		# 摊出来的牌从出牌人 / 展示者的头像飞过来；**自己打出的牌**从手牌里那张飞出来
 		_展示卡牌(msg.get("card_ids", []), src,
-			bool(msg.get("persist", false)), msg.get("card_elements", []))
+			bool(msg.get("persist", false)), msg.get("card_elements", []),
+			_取出出牌起飞点(msg))
 	if 是展示:
 		_日志追加("%s 展示：%s" % [谁, ", ".join(names)], "行动")
 		return
@@ -9145,14 +9148,56 @@ func _发送行动(action_type: int, action_id: int, dst: Array, cards: Array, a
 	# 再 _清空待选 会把刚摆好的选项 / 提示一起抹掉，表现是「确认后界面闪一下」甚至「选项自动退出」。
 	# 同 _发送应答 的处理：询问代没变才清。
 	var 发前代: int = _询问代
+	_记录出牌起飞点(cards)
 	Logic.send_action(action_type, action_id, dst, cards, args, 额外ID)
 	_稍后清空待选(发前代)
 
 
 func _发送应答(respond_id: int, dst: Array, cards: Array, args: Array) -> void:
 	var 发前代: int = _询问代
+	_记录出牌起飞点(cards)
 	Logic.send_respond(respond_id, dst, cards, args)
 	_稍后清空待选(发前代)
+
+
+## 出牌起飞点：自己打出的牌要「从手里那张牌飞出来」，不是从头像飞。
+## 提交的这一刻手牌还在，先记下每张牌（按牌面）在屏幕上的中心；收到 Card 消息时
+## 按牌面取回来当进场飞行的起点（手牌随即刷新，节点已经没了，只能提交时记）。
+func _记录出牌起飞点(实例们: Array) -> void:
+	if 实例们.is_empty():
+		return
+	var 现在: int = Time.get_ticks_msec()
+	for 实例: Variant in 实例们:
+		var 控件: Control = _手牌视图(int(实例))
+		if 控件 != null:
+			_出牌起飞点[GConst.牌号(int(实例))] = {
+				"点": 控件.get_global_rect().get_center(), "时刻": 现在}
+
+
+## 这条 Card 消息该不该「从手里那张牌」起飞：自己打出的牌，按牌面取回提交时记的起飞点；
+## 不是自己打的 / 没记到（盖牌、场上牌）就返回 (-1, -1)，退回从头像飞
+func _取出出牌起飞点(msg: Dictionary) -> Vector2:
+	if int(msg.get("src_id", -1)) != Logic.my_player_id:
+		return Vector2(-1.0, -1.0)
+	var 现在: int = Time.get_ticks_msec()
+	for cid: Variant in (msg.get("card_ids", []) as Array):
+		var 面: int = GConst.牌号(int(cid))
+		if not _出牌起飞点.has(面):
+			continue
+		var 项: Dictionary = _出牌起飞点[面]
+		_出牌起飞点.clear()  # 一次出牌只用它起飞一次
+		if 现在 - int(项.get("时刻", 0)) <= 3000:
+			return 项.get("点", Vector2(-1.0, -1.0)) as Vector2
+		return Vector2(-1.0, -1.0)
+	return Vector2(-1.0, -1.0)
+
+
+## 按实例号找手牌区里那张牌的视图（找不到返回 null）
+func _手牌视图(实例: int) -> Control:
+	for 子: Node in HandArea.get_children():
+		if int(子.get("实例号")) == 实例:
+			return 子 as Control
+	return null
 
 
 ## 发完应答 / 行动后「稍等一拍再清界面」：
