@@ -331,8 +331,17 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		# 第 1 段：点头像选「看谁面前的【Tricky】」（每人至多 1 张，选中的人↔他那张）；
 		# 头像上的「查看Tricky」由客户端的 _垂迹头像提示 按这里下发的目标画
 		{"需目标": 1, "目标白": _垂迹候选(), "答完": _垂迹查看},
-		{"需牌": 1, "牌白": func(_答案: Array) -> Array: return _垂迹同系,
-		 "跳过": func(_答案: Array) -> bool: return _垂迹同系.is_empty()},
+		# 第 2 段：弃 1 张同系牌 → 移除该【Tricky】→ 2 点法术伤害。
+		# 手里一张同系牌都没有时也照常问（不能静默把后半段跳过）：这时不要求选牌，
+		# 提示条直接说明原因，玩家按「确定 / 取消」结束这一手。
+		# 三项都按「段真正被问到时」的 _垂迹同系 现算（它是第 1 段答完才有的），所以给 Callable。
+		{"需牌": func(_答案: Array) -> int: return 0 if _垂迹同系.is_empty() else 1,
+		 "牌白": func(_答案: Array) -> Array:
+			return [GConst.手牌白名单_全禁] if _垂迹同系.is_empty() else _垂迹同系,
+		 "询问文案": func(_答案: Array) -> String:
+			if _垂迹同系.is_empty():
+				return "【T-r-i-c-k-y!】：手里没有与这张【Tricky】同系的牌，无法移除它，本次不造成伤害"
+			return ""},
 	], _垂迹结算)
 
 
