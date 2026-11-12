@@ -192,7 +192,10 @@ func _做交换(action: Dictionary) -> bool:
 	engine.take_from_hand(player.id, [圣盾], true)
 	engine.add_basic_effect(目标, 圣盾, player.id, 叛逆之墙)
 	player.add_hand_cards([换来])
-	engine.播获得牌日志(player.id, [换来])
+	# 明牌基础效果（圣盾 / 封印…）换进手里时牌名本来就是公开的，照常播；
+	# 换到的是面朝下的【Tricky】时只让本人看到牌（不播牌名，界面靠快照/张数日志体现）
+	if 效果 != Tricky占位牌:
+		engine.播获得牌日志(player.id, [换来])
 	engine._broadcast_game()
 	return true
 
@@ -225,6 +228,9 @@ func _叛逆弃牌(答案: Array) -> int:
 # ============================================================
 func p_after_magic(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
+		return SUCCESS
+	# 被取消的技能行动没真正发生（引擎在 ctx 里标了 cancelled），不算「法术行动结束」
+	if bool(ctx.get("cancelled", false)):
 		return SUCCESS
 	if not 多步询问进行中(神秘伏笔) and not 多步询问待收尾(神秘伏笔):
 		_伏笔张数 = 0
@@ -373,8 +379,9 @@ func _垂迹结算(答案: Array) -> int:
 	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": 垂迹})
 	engine._log_discard(player.id, [弃])
 	# 移除这个【Tricky】：占位与真实牌一起离场，真实牌进弃牌堆
+	# （牌从来不在谁手里，不记 owner：否则会被「牌主是队友」这类弃牌拦截误判）
 	var 移除牌: int = _移除Tricky(序, 垂迹)
-	engine.to_discard([移除牌], {"owner": 目标, "source": "other", "cause": 垂迹})
+	engine.to_discard([移除牌], {"source": "other", "cause": 垂迹})
 	engine.push_harm({"src": player.id, "dst": 目标, "point": 2,
 		"cause": 垂迹, "type": GConst.HarmType.Magic})
 	# 压了伤害：引擎重入本钩子时用 step 挡住，避免再问一遍
@@ -501,9 +508,8 @@ func _糖果弃牌答完(回: Dictionary, _答案: Array) -> int:
 ## （伤害压进栈里，本段答完后由引擎先结算它，再问「比大小」那一段）
 func _糖果收尾() -> void:
 	while not _trickies.is_empty():
-		var 目标: int = int(_trickies[0]["dst"])
 		var 真牌: int = _移除Tricky(0, 糖果)
-		engine.to_discard([真牌], {"owner": 目标, "source": "other", "cause": 糖果})
+		engine.to_discard([真牌], {"source": "other", "cause": 糖果})
 	engine._broadcast_game()
 	for pid: Variant in _糖果未做:
 		engine.push_harm({"src": player.id, "dst": int(pid), "point": 2,
@@ -573,8 +579,12 @@ func _惊爆(action: Dictionary) -> int:
 	if not 多步询问进行中(惊爆):
 		if not _惊爆前半段(action) or player.hand_cards.is_empty():
 			return SUCCESS
+		# 场上没有能放【Tricky】的角色：收进手牌就到此为止，不再要求选牌
+		if _可放Tricky角色().is_empty():
+			return SUCCESS
 	return 多步询问(惊爆, [
-		{"需牌": 1, "牌上限": player.hand_cards.size(),
+		# 放回的张数既不能超过手牌数，也不能超过「还有几个角色能放」（X 张放 X 名角色）
+		{"需牌": 1, "牌上限": mini(player.hand_cards.size(), _可放Tricky角色().size()),
 		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
 		 "可取消": false, "超时默认": [], "答完": _惊爆记张数},
 		{"需目标": func(_答案: Array) -> int: return _惊爆牌数,
@@ -603,9 +613,9 @@ func _惊爆前半段(action: Dictionary) -> bool:
 		engine.remove_basic_effect(int(项["dst"]), Tricky占位牌, 惊爆, player.id)
 		收.append(int(项["card"]))
 	_trickies.clear()
+	# 收进手里的是面朝下的暗牌：不播牌名，只让本人从手牌看到（张数变化由引擎边界统一写日志）
 	if not 收.is_empty():
 		player.add_hand_cards(收)
-		engine.播获得牌日志(player.id, 收)
 	engine._broadcast_game()
 	return true
 
@@ -681,8 +691,29 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 func p_before_role_replace(_ctx: Dictionary) -> int:
 	for 项: Dictionary in _trickies:
 		engine.remove_basic_effect(int(项["dst"]), Tricky占位牌, 0, player.id)
-		engine.to_discard([int(项["card"])], {"owner": int(项["dst"]), "source": "other"})
+		engine.to_discard([int(项["card"])], {"source": "other"})
 	_trickies.clear()
+	return SUCCESS
+
+
+## 别的技能从场上拿走了【Tricky】占位牌（封印破碎 408「拿走」/ 风之洁净 703 / 天使之歌 705…）：
+## 真实牌面只在本脚本里，不跟着处理就成了一张永远拿不回来的死牌。这里把记账一并收掉并交出真实牌：
+##   · 占位进了某人的手牌（408 那种）→ 真实牌替换掉手里那张占位
+##   · 其余（移除后弃掉）→ 真实牌进弃牌堆
+## 自己摘占位（_移除Tricky / 收走全部）会先删掉记账再移除，所以这条钩子对自己不生效。
+func p_basic_effect_change(ctx: Dictionary) -> int:
+	if bool(ctx.get("add", false)) or int(ctx.get("card", -1)) != Tricky占位牌:
+		return SUCCESS
+	var 序: int = _Tricky序号(int(ctx.get("dst", -1)))
+	if 序 < 0:
+		return SUCCESS
+	var 真牌: int = int(_trickies[序]["card"])
+	_trickies.remove_at(序)
+	var 谁: BattlePlayer = engine.p(int(ctx.get("doer", -1)))
+	if 谁 != null and 谁.取出一张手牌(Tricky占位牌) >= 0:
+		谁.add_hand_cards([真牌])
+	else:
+		engine.to_discard([真牌], {"source": "other"})
 	return SUCCESS
 
 

@@ -6211,6 +6211,9 @@ class SkillRun:
 		var ctx: Dictionary = {
 			"player": src, "kind": kind, "is_skill": true,
 			"action_id": int(action.get("action_id", 0)),
+			# 被取消的技能行动：p_after_* 照旧触发（现有角色靠它收尾），但要能认出「这次行动没真正发生」
+			# —— 被动挂在「某种行动结束后」的技能（如捣蛋萝莉【神秘伏笔】）据此跳过
+			"cancelled": 已取消,
 		}
 		# 「启动」技能不是一次行动：照旧只触发 p_after_special（现有角色靠它收尾），不计入 F2
 		if 启动:
