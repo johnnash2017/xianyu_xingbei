@@ -334,15 +334,25 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 		# 第 2 段：弃 1 张同系牌 → 移除该【Tricky】→ 2 点法术伤害。
 		# 手里一张同系牌都没有时也照常问（不能静默把后半段跳过）：这时不要求选牌，
 		# 提示条直接说明原因，玩家按「确定 / 取消」结束这一手。
-		# 三项都按「段真正被问到时」的 _垂迹同系 现算（它是第 1 段答完才有的），所以给 Callable。
+		# 需牌 / 牌白 / 文案 都按「段真正被问到时」的 _垂迹同系 现算（它是第 1 段答完才有的），所以给 Callable。
+		# 预览：把原拥有者点亮、并在其头像上写「2 法术伤害」（客户端走 preview_base / preview_ids 那条通用提示）。
 		{"需牌": func(_答案: Array) -> int: return 0 if _垂迹同系.is_empty() else 1,
 		 "牌白": func(_答案: Array) -> Array:
 			return [GConst.手牌白名单_全禁] if _垂迹同系.is_empty() else _垂迹同系,
 		 "询问文案": func(_答案: Array) -> String:
 			if _垂迹同系.is_empty():
 				return "【T-r-i-c-k-y!】：手里没有与这张【Tricky】同系的牌，无法移除它，本次不造成伤害"
-			return ""},
+			return "",
+		 "预览基准": 2, "预览类型": GConst.HarmType.Magic,
+		 "预览目标": func(_答案: Array) -> Array: return _垂迹目标()},
 	], _垂迹结算)
+
+
+## 后半段要打的人：原拥有这张【Tricky】的角色（头像伤害提示 / 高亮都用它）
+func _垂迹目标() -> Array[int]:
+	if _垂迹选中 < 0 or _垂迹选中 >= _trickies.size():
+		return []
+	return [int(_trickies[_垂迹选中]["dst"])]
 
 
 ## 这一手可以查看的【Tricky】在谁面前（每人至多 1 张，所以直接按拥有者列）
