@@ -26,6 +26,9 @@ var 异刃实例: int = -1
 var cover_open: Dictionary = {}
 ## 【律法】（星坠女巫放在角色面前的标记）：1=繁星 / 2=影月 / 3=蚀日，按放置顺序存
 var laws: Array[int] = []
+## 【Trick or Treat】（捣蛋萝莉 8605）结算出的比分：[红队弃掉同系牌的张数, 蓝队弃掉同系牌的张数]。
+## 空＝没有这个状态（她自己下回合开始时清空）；客户端在角色状态区画「红:蓝」，悬停看技能说明。
+var trick_score: Array[int] = []
 ## 「本回合无法获得治疗」标记：记下设置时的回合号，回合号变了自动失效
 ## （圣殿骑士【神威】：本回合你与攻击目标无法获得治疗）
 var no_heal_round: int = -1
@@ -1209,6 +1212,8 @@ func to_proto(viewer_id: int) -> Dictionary:
 		"cover_opens": 公开盖牌牌面(),
 		# 【律法】标记（星坠女巫）：客户端在状态区显示名字
 		"laws": laws.duplicate(),
+		# 【Trick or Treat】比分（捣蛋萝莉）：[红, 蓝]；空数组＝没有这个状态
+		"trick_score": trick_score.duplicate(),
 		"is_knelt": tap,
 		# 血色剑灵【血蔷薇庭院】：独立状态，客户端画状态图标（不是形态名）
 		"xue_qiang_wei": xue_qiang_wei,

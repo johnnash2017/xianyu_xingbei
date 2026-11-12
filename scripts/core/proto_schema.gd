@@ -85,6 +85,9 @@ const PLAYER_INFO_FIELDS: Dictionary = {
 	# 客户端按技能号取图标与说明，计数画在图标上；标记消失时服务端不再下发。
 	42: {"n": "state_marks", "t": "u32", "r": true},
 	43: {"n": "state_mark_counts", "t": "u32", "r": true},
+	# 捣蛋萝莉【Trick or Treat】8605 结算出的比分：[红队弃掉同系牌的张数, 蓝队弃掉同系牌的张数]。
+	# 长度 0＝没有这个状态（回合结束后不再下发）；2＝有，客户端在角色状态区画「红:蓝」。
+	44: {"n": "trick_score", "t": "u32", "r": true},
 }
 
 ## 子消息字段表（作为 msg 类型的 schema）

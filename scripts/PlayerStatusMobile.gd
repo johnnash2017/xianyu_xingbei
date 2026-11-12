@@ -749,7 +749,7 @@ func _刷新状态图标() -> void:
 %s" % [状态提示, 状态说明]
 		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示,
 			额外牌id, 状态文字, int(d.get("count", -1)), 被动们,
-			int(d.get("被动技能角色", -1)))
+			int(d.get("被动技能角色", -1)), str(d.get("count_bbcode", "")))
 	_状态已初始化 = true
 	_状态弹出起点 = 新起点
 	_状态上次数量 = _状态本次数量.duplicate()
@@ -777,7 +777,8 @@ func 五系束缚应摸张数() -> int:
 ## 提示 是给独有效果用的纯文字提示（它们没有卡牌对象，弹不出卡面）
 func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary,
 		基础牌id: int = -1, 提示: String = "", 额外牌id: int = -1, 名称: String = "",
-		数量: int = -1, 被动技能们: Array = [], 被动技能角色: int = -1) -> void:
+		数量: int = -1, 被动技能们: Array = [], 被动技能角色: int = -1,
+		数量富文本: String = "") -> void:
 	if tex == null:
 		return
 	var go := ps.instantiate()
@@ -799,6 +800,28 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 			(数标签 as Label).text = str(数量)
 		else:
 			(数标签 as Label).visible = false
+	# 彩色分段计数（如捣蛋萝莉【Trick or Treat】的「红:蓝」比分）：预制体的 Text 是单色 Label，
+	# 这里临时盖一层 RichTextLabel 画 BBCode，原 Label 藏起来。只在传了 数量富文本 时用，别的计数不受影响。
+	if not 数量富文本.is_empty():
+		if 数标签 is Label:
+			(数标签 as Label).visible = false
+		var 富文本: RichTextLabel = RichTextLabel.new()
+		富文本.bbcode_enabled = true
+		富文本.scroll_active = false
+		富文本.fit_content = false
+		富文本.autowrap_mode = TextServer.AUTOWRAP_OFF
+		富文本.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		富文本.add_theme_font_size_override("normal_font_size", 14)
+		富文本.add_theme_constant_override("outline_size", 6)
+		富文本.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+		富文本.anchor_right = 1.0
+		富文本.anchor_bottom = 1.0
+		富文本.offset_left = 5.0
+		富文本.offset_right = 5.0
+		富文本.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		富文本.grow_vertical = Control.GROW_DIRECTION_BOTH
+		富文本.text = 数量富文本
+		go.add_child(富文本)
 	var 名标签: Node = go.get_node_or_null("Name")
 	if 名标签 is Label:
 		(名标签 as Label).text = 名称

@@ -460,10 +460,14 @@ func p_turn_end(ctx: Dictionary) -> int:
 	notice_skill(糖果, [player.id])
 	# 展示所有【Tricky】：牌早在场上（不是手牌），走「展示牌」不触发封印
 	_糖果对象 = []
+	# 「展示所有【Tricky】」：合成一条 Show 一起摊开（分多条发，展示区只会留最后一张）
+	var 全部真牌: Array = []
 	for 项: Dictionary in _trickies:
 		var 真牌: int = int(项["card"])
-		engine.展示牌(int(项["dst"]), [真牌])
+		全部真牌.append(真牌)
 		_糖果对象.append({"pid": int(项["dst"]), "element": Data.get_card(真牌).element_enum()})
+	if not 全部真牌.is_empty():
+		engine.展示牌(player.id, 全部真牌)
 	_糖果下标 = 0
 	_糖果目标 = -1
 	_糖果同系 = []
@@ -534,9 +538,16 @@ func _糖果弃牌答完(回: Dictionary, _答案: Array) -> int:
 					弃 = cid
 					break
 	if 弃 >= 0 and dp != null:
+		# 这个人的这一手亮给所有人看：他面前那张【Tricky】的真实牌面 + 他弃的同系牌。
+		# 合成一条 Show（客户端的展示区每条会先收起上一批，分两次发只看得到后一张）；
+		# 只有手牌那张补 p_show_hand（封印触发点），暗牌不是从手里打出的。
+		var 序: int = _Tricky序号(dp.id)
+		if 序 >= 0:
+			engine.展示牌(dp.id, [int(_trickies[序]["card"]), 弃])
+		engine.push_show_hand(dp.id, [弃])
 		engine.take_from_hand(dp.id, [弃])
 		engine.to_discard([弃], {"owner": dp.id, "source": "hand", "cause": 糖果})
-		engine._log_discard(dp.id, [弃])
+		engine._log_discard(dp.id, [弃], false)
 		if dp.color == player.color:
 			_糖果我方 += 1
 		else:
@@ -578,6 +589,12 @@ func _糖果结算(_答案: Array) -> int:
 	# 一个人都没问到（全员面前没有同系牌）：Tricky 还没收，先收尾并压惩罚伤害
 	if not _trickies.is_empty():
 		_糖果收尾()
+	# 这一局的比分挂在自己头像上：[红队弃掉同系牌数, 蓝队弃掉同系牌数]
+	# （客户端画成「红:蓝」状态图标；她自己下个回合开始时清空，见 p_before_turn_begin）
+	var 红: int = _糖果我方 if player.color == GConst.RED else _糖果敌方
+	var 蓝: int = _糖果敌方 if player.color == GConst.RED else _糖果我方
+	player.trick_score = [红, 蓝]
+	engine._broadcast_game()
 	if _糖果我方 < _糖果敌方:
 		# 对方弃得比我方多：对方【战绩区】+1【宝石】
 		engine.set_team_gem(1 - player.color, engine.team_gem[1 - player.color] + 1)
@@ -728,6 +745,8 @@ func _目标够放(dsts: Array, 张数: int) -> bool:
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) == player.id:
 		_糖果已用 = false
+		#【Trick or Treat】的比分只挂到自己的下个回合开始：头像上那枚「红:蓝」状态随之消失
+		player.trick_score = []
 	return SUCCESS
 
 

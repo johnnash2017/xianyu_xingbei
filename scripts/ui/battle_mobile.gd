@@ -1267,6 +1267,19 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 		var 场卡项: Dictionary = 场卡状态项(str(表.get("id", "")), 表)
 		if not 场卡项.is_empty():
 			额外状态.append(场卡项)
+	# 【Trick or Treat】（捣蛋萝莉 8605）：把这一局结算出的红蓝比分挂在她的头像上。
+	# 图标用 Tricky 那枚，计数位置写「红:蓝」（红队红字、蓝队蓝字），名字取技能名，
+	# 悬停按技能说明排（学魔刃/律法那条：大图 → 名字 → 【类型】技能名：说明）。
+	# 状态什么时候消失由服务端决定（她自己下回合开始时清空 trick_score），客户端不自己判断。
+	if p.trick_score.size() >= 2:
+		额外状态.append({
+			"name": GConst.skill_name(8605),
+			"icon": "res://assets/textures/icon/Tricky.png",
+			"count_bbcode": "[center][color=#ff5a5a]%d[/color]:[color=#5a9bff]%d[/color][/center]" % [
+				p.trick_score[0], p.trick_score[1]],
+			"被动技能": 8605,
+			"被动技能角色": p.role_id,
+		})
 	# 【律法】（星坠女巫）：放在角色面前的标记，状态区显示名字；
 	# 悬停按对应的技能行（繁星/影月/蚀日）显示完整说明，口径同魔刃/异刃的状态提示
 	for 号: int in p.laws:

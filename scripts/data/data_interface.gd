@@ -647,6 +647,10 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.laws.clear()
 	for 号: Variant in pi.get("laws", []):
 		p.laws.append(int(号))
+	# 【Trick or Treat】比分（捣蛋萝莉）：[红队, 蓝队]；空＝没有这个状态
+	p.trick_score.clear()
+	for 数: Variant in pi.get("trick_score", []):
+		p.trick_score.append(int(数))
 	# 盖牌此刻能不能当手牌用（精灵射手【精灵祝福形态】/ 神秘学者【真言术】窗口）
 	p.cover_as_hand = bool(pi.get("cover_as_hand", false))
 	if pi.has("max_hand"):
