@@ -559,7 +559,7 @@ func _报告基础效果悬停(牌id: int, 图标: Control) -> void:
 		return
 	# 【Tricky】是面朝下的暗牌：占位牌自身的命格 / 系别跟真实牌无关，不能报出来（会误导成「地系」）
 	if 牌.id == GConst.卡_Tricky:
-		状态图标悬停.emit(图标, "基础效果：Tricky（面朝下）", 牌id, true, [], -1)
+		状态图标悬停.emit(图标, "基础效果：Tricky", 牌id, true, [], -1)
 		return
 	状态图标悬停.emit(图标,
 		"基础效果：%s（%s·%s）" % [状态名(牌), 牌.fate_pattern, GConst.element_to_chinese(牌.element_enum())],
