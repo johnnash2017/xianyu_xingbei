@@ -555,6 +555,9 @@ var _skill_targets: Array[int] = []
 ## 本次发动技能的合法手牌（服务端在技能上给的 cards，非空时只让这几张牌可点；
 ## 例：【暗影流星】只能弃法术牌）
 var _skill_cards: Array[int] = []
+## 提问那一刻自己手里的实例号：白名单是按那一刻的手牌算的，之后新到手的牌不在名单里。
+## 调试模式下用它把「提问后才发进来的牌」放行（测试指令发牌能马上用），规则仍由服务端判定。
+var _问时手牌: Array[int] = []
 ## 本次发动技能的点选上限（服务端在技能上给的 card_max，≥ 需牌数；如【欺诈】可弃 2~3 张）
 var _skill_card_max: int = 0
 ## 本次发动技能的选牌系别规则（服务端给的 card_rule：""＝不限 / "same"＝必须同系 / "diff"＝必须互异系）
@@ -2357,6 +2360,9 @@ func _on_command(data: Dictionary) -> void:
 	if cmds.is_empty():
 		return
 	_询问代 += 1
+	# 记下「提问这一刻手里的牌」：技能白名单是按这一刻算的，之后新到手的牌不在名单里
+	# （调试模式据此放行刚发进来的牌，见 _技能牌能点）
+	_问时手牌 = Data.hand_iids.duplicate()
 	# 「随这一手提交的额外行动」只服务于紧接着的那一次技能询问：来的是别的询问
 	# （应战 / 行动结束响应 / 下一次行动）就不再带进二级技能栏，免得显示上一手已经用掉的行动。
 	var 首命令: Dictionary = cmds[0]
@@ -5928,7 +5934,10 @@ func _技能牌能点(面: int, card_id: int) -> bool:
 			if _是普通盖牌(card_id):
 				return false
 	if not _skill_cards.is_empty() and not _skill_cards.has(面):
-		return false
+		# 调试模式例外：白名单是提问那一刻按手牌算的，测试指令（1/2/3）之后才发进来的牌不在里面。
+		# 提问后才到手的牌照常放行，合法与否仍由服务端判定（角色侧自己会复核 / 驳回）。
+		if not (_调试模式 and not _问时手牌.has(card_id)):
+			return false
 	# 盖牌最多 N 张（如黄金律：1 张手牌 + 1 个卢恩，盖牌不能再点第二张）：
 	# 已选够盖牌后，其余盖牌置灰；要换先点掉已选的那张
 	if _skill_cover_max > 0 and _is_my_cover(card_id) and not _sel_cards.has(card_id):

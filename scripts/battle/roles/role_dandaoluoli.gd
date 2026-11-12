@@ -343,9 +343,25 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 			if _垂迹同系.is_empty():
 				return "【T-r-i-c-k-y!】：手里没有与这张【Tricky】同系的牌，无法移除它，本次不造成伤害"
 			return "",
+		 "校验": _垂迹校验,
 		 "预览基准": 2, "预览类型": GConst.HarmType.Magic,
 		 "预览目标": func(_答案: Array) -> Array: return _垂迹目标()},
 	], _垂迹结算)
+
+
+## 第 2 段校验：空答案＝不做后半段（没有同系牌时按「确定」就是这个意思）；
+## 真提交了牌就必须正好 1 张、在手、且与那张【Tricky】同系（不合法回「操作无效」重问，不静默吞掉）
+func _垂迹校验(回: Dictionary) -> bool:
+	var cards: Array = 回.get("cards", [])
+	if cards.is_empty():
+		return true
+	if cards.size() != 1:
+		return false
+	var 实例: int = player.手牌实例(int(cards[0]))
+	if 实例 < 0 or _垂迹选中 < 0 or _垂迹选中 >= _trickies.size():
+		return false
+	var 系: int = Data.get_card(int(_trickies[_垂迹选中]["card"])).element_enum()
+	return Data.get_card(实例).element_enum() == 系
 
 
 ## 后半段要打的人：原拥有这张【Tricky】的角色（头像伤害提示 / 高亮都用它）
