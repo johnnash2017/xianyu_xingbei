@@ -117,6 +117,11 @@ func v_magic_skill(action: Dictionary) -> int:
 		var args: Array = action.get("args", [])
 		if args.is_empty() or not _面前有(int(dsts[0]), int(args[0])):
 			return GConst.GE_INVALID_ACTION
+		# 【圣盾】只能有一层（同 base_v_shield）：换完之后目标面前不能还留着另一张「视作【圣盾】」的牌，
+		# 否则会叠成两层圣盾。目标只有那一张盾时把它换出来是合法的。
+		for be: Dictionary in engine.p(int(dsts[0])).basic_effects:
+			if int(be["card"]) != int(args[0]) and _是盾牌(int(be["card"])):
+				return GConst.GE_BASIC_EFFECT_ALREADY_EXISTS
 		return GConst.GE_SUCCESS
 	if 技能号 != 惊爆:
 		return GConst.GE_INVALID_ACTION
@@ -780,6 +785,14 @@ func _面前有(pid: int, card: int) -> bool:
 
 func _是圣盾(cid: int) -> bool:
 	return Data.get_card(cid).card_name_enum() == GConst.CardName.Shield
+
+
+## 这张牌是不是「视作【圣盾】」的那一种（【圣盾】牌本身，或带【天使之墙】701 的攻击牌）
+func _是盾牌(cid: int) -> bool:
+	var 牌: GCard = Data.get_card(cid)
+	if 牌 == null:
+		return false
+	return 牌.card_name_enum() == GConst.CardName.Shield or 牌.has_skill_id(GConst.技能_天使之墙)
 
 
 ## 手里带【天使之墙】（701）的圣命格攻击牌——就是这张牌能当【圣盾】用

@@ -6986,6 +6986,13 @@ func _技能是基础效果牌型() -> bool:
 	return false
 
 
+## 这张牌摆在面前时是不是「视作【圣盾】」：卡名【圣盾】，或带【天使之墙】701 的攻击牌
+func _是盾类牌(card: GCard) -> bool:
+	if card == null:
+		return false
+	return card.card_name_enum() == GConst.CardName.Shield or card.has_skill_id(GConst.技能_天使之墙)
+
+
 ## 【风之洁净】【天使之歌】【封印破碎】这类「选目标 → 场上基础效果牌」技能的选项：
 ## 按已选目标身上现有的基础效果列出（args 里带该效果牌 id），选哪张就处理哪张。对应原客户端
 ## 选中目标后在提示区列出该玩家全部基础效果、再点其一确定的做法。
@@ -7015,9 +7022,20 @@ func _基础效果选项() -> Array:
 	# 显示动词按技能号取（【封印破碎】是「拿走」进自己手牌，天使【风之洁净】/【天使之歌】是「移除」弃掉）
 	var 技能号: int = _pending_skill_id if _mode == 4 else _skill_ask_id
 	var 动作: String = _基础效果动作(技能号)
+	# 【叛逆之墙】8602 会把自己的【圣盾】顶到目标面前：换完之后目标面前不能还留着另一张
+	# 「视作【圣盾】」的牌，否则会叠出两层圣盾（服务端 v_magic_skill 按同一条规则驳回）。
+	var 不放重复圣盾: bool = bool(GConst.技能指示器.get(技能号, {}).get("不放重复圣盾", false))
+	var 目标盾数: int = 0
+	if 不放重复圣盾:
+		for 已有: GPlayer.BasicStatus in 目标.basic_status_list:
+			if 已有.card != null and _是盾类牌(已有.card):
+				目标盾数 += 1
 	var 选项: Array = []
 	for 效果: GPlayer.BasicStatus in 目标.basic_status_list:
 		if 效果.card == null:
+			continue
+		# 换出这一张之后还剩几层盾：还剩（≥1）就不列它
+		if 不放重复圣盾 and 目标盾数 - (1 if _是盾类牌(效果.card) else 0) > 0:
 			continue
 		for 组合: Dictionary in 能量组合:
 			选项.append({
