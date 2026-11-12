@@ -306,7 +306,7 @@ func _异象准备询问() -> bool:
 	var card: GCard = Data.get_card(_异象牌) if _异象牌 >= 0 else null
 	if card != null and card.is_magic():
 		# 法术牌：本次攻击伤害 +2（ctx.harm 与这里存的是同一份字典）
-		_异象_harm["point"] = int(_异象_harm.get("point", 0)) + 2
+		加伤害(_异象_harm, 2)
 		_异象判定 = 1
 		return true
 	if card == null or not card.is_attack() or not engine.deck.discard.has(_异象牌):

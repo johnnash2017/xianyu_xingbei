@@ -151,7 +151,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		return SUCCESS
 	step = STEP_DONE
 	engine.broadcast(GConst.Msg.Skill, {"skill_id": WEI_LI_CI_FU, "src_id": attacker_id, "dst_ids": [attacker_id]})
-	harm["point"] = int(harm.get("point", 0)) + 2
+	加伤害(harm, 2)
 	# 移除该赐福牌并弃置
 	engine.remove_basic_effect(attacker_id, effect_card, WEI_LI_CI_FU, player.id)
 	engine.to_discard([effect_card])

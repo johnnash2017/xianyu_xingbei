@@ -194,7 +194,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	match atk.element_enum():
 		GConst.CardElement.Fire:
-			harm["point"] = int(harm.get("point", 0)) + 1
+			加伤害(harm, 1)
 		GConst.CardElement.Earth:
 			di_zhi_shi = true
 		GConst.CardElement.Thunder:

@@ -352,11 +352,11 @@ func _被动改伤(harm: Dictionary) -> void:
 		if dst != null and dst.cross_num > 0:
 			# 【神弃之裔】：对拥有【治疗】的角色伤害 +1 —— 技能名飘在**自己**头上（是我发动的）
 			notice_skill(SHEN_QI_ZHI_YI, [player.id])
-			harm["point"] = int(harm.get("point", 0)) + 1
+			加伤害(harm, 1)
 		if player.tap:
 			# 【狂戾之心】：狂戾形态下你造成的伤害 +1 —— 同样飘在自己头上
 			notice_skill(KUANG_LI_ZHI_XIN, [player.id])
-			harm["point"] = int(harm.get("point", 0)) + 1
+			加伤害(harm, 1)
 	if dst_id == player.id and src != player.id and player.tap and player.token_num(戾气槽) > 0:
 		if int(harm.get("point", 0)) > 0:
 			player.remove_token(戾气槽, 1)
@@ -393,7 +393,7 @@ func _神智污染结算(harm: Dictionary, 答案: Array) -> int:
 		return SUCCESS
 	notice_skill(SHEN_ZHI_WU_RAN, [int(harm.get("dst", -1))])
 	player.remove_token(戾气槽, 1)
-	harm["point"] = int(harm.get("point", 0)) + 1
+	加伤害(harm, 1)
 	# 本次伤害无法用【治疗】抵御（SAskCross 看到 cross_available=0 就不问治疗）
 	harm["cross_available"] = 0
 	engine._broadcast_game()

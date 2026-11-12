@@ -343,7 +343,7 @@ func _qi_hei_zhi_qiang(ctx: Dictionary) -> int:
 		else:
 			player.set_gem(player.gem - 1)
 	notice_skill(QI_HEI_ZHI_QIANG, [dst_p.id])
-	harm["point"] = int(harm.get("point", 0)) + use + 2
+	加伤害(harm, use + 2)
 	engine._broadcast_game()
 	return SUCCESS
 

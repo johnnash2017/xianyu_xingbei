@@ -159,7 +159,7 @@ func _发动怒吼(ctx: Dictionary, 摸牌数: int) -> void:
 		engine.push_draw(player.id, 摸牌数)
 	using_NuHou = true
 	var harm: Dictionary = ctx.get("harm", {})
-	harm["point"] = int(harm.get("point", 0)) + GConst.怒吼加伤
+	加伤害(harm, GConst.怒吼加伤)
 	engine._broadcast_game()
 
 
@@ -361,7 +361,7 @@ func _jin_duan_zhi_li(ctx: Dictionary, hit: bool) -> int:
 		_set_zhi_xing(_zhi_xing() + elem_num)
 	else:
 		var harm: Dictionary = ctx.get("harm", {})
-		harm["point"] = int(harm.get("point", 0)) + elem_num
+		加伤害(harm, elem_num)
 	# 发动精疲力竭
 	_jing_pi_li_jie()
 	if hit and elem_num > 0:

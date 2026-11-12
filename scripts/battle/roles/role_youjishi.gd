@@ -106,7 +106,8 @@ func p_attack_skill(action: Dictionary) -> int:
 	# 真牌照常展示并进弃牌堆；本次攻击按风系虚拟牌结算
 	var 视为: int = VIRTUAL_WIND_SLASH
 	engine.push(BattleEngine.SAttackCard.new(player.id, dst_id, 视为, {
-		"src": player.id, "dst": dst_id, "point": BattleEngine.ATTACK_BASE_POINT,
+		"src": player.id, "dst": dst_id,
+		"point": engine.构造攻击伤害(player.id, 视为, GConst.CardElement.Wind),
 		"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack,
 		"card_id": 视为, "is_active": true,
 		# 这次攻击背后有真实打出的牌（她用的那张）：记录实体实例，供「真实 / 虚拟攻击」判定
@@ -254,7 +255,7 @@ func _结算子弹(ctx: Dictionary) -> int:
 		GConst.CardElement.Fire:
 			# 火系：本次攻击伤害额外 +1（宣告阶段就加，应战提示里也是加后的伤害）
 			if not harm.is_empty():
-				harm["point"] = int(harm.get("point", 0)) + 1
+				加伤害(harm, 1)
 		GConst.CardElement.Thunder:
 			# 雷系：本次攻击无法应战
 			ctx["hit_rate"] = GConst.HitRate.NoReattack

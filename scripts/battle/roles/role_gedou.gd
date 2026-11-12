@@ -258,7 +258,7 @@ func _结算蓄力一击(ctx: Dictionary) -> void:
 		player.tap = false
 		bai_shi_target = -1
 	var harm: Dictionary = ctx.get("harm", {})
-	harm["point"] = int(harm.get("point", 0)) + 1
+	加伤害(harm, 1)
 	engine._broadcast_game()
 
 
@@ -288,10 +288,10 @@ func _bai_shi_harm(ctx: Dictionary) -> void:
 			engine._broadcast_game()
 			return
 		notice_skill(BAI_SHI_HUAN_LONG_QUAN, [dst_id])
-		harm["point"] = int(harm.get("point", 0)) + GConst.百式幻龙拳主动加成
+		加伤害(harm, GConst.百式幻龙拳主动加成)
 	else:
 		notice_skill(BAI_SHI_HUAN_LONG_QUAN, [dst_id])
-		harm["point"] = int(harm.get("point", 0)) + GConst.百式幻龙拳应战加成
+		加伤害(harm, GConst.百式幻龙拳应战加成)
 
 
 # ============================================================

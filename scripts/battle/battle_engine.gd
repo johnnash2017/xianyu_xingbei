@@ -3191,6 +3191,16 @@ func 攻击预览伤害(ctx: Dictionary) -> int:
 	return int(ctx.get("harm", {}).get("point", 0)) + _预告加伤(int(ctx.get("src", -1)), ctx)
 
 
+## 攻击伤害的唯一构造入口：基础（含额外回合）+ 按系别加伤（荒神等）。
+## 元素 < 0 时按卡牌自身系别（仅攻击牌）；虚拟攻击 / 法术牌视为攻击时由调用方显式给系别。
+func 构造攻击伤害(攻击者id: int, 卡牌id: int, 元素: int = -1) -> int:
+	var 系: int = 元素
+	if 系 < 0:
+		var 卡: GCard = Data.get_card(卡牌id)
+		系 = 卡.element_enum() if 卡 != null and 卡.is_attack() else 0
+	return 攻击基础伤害(攻击者id) + 攻击元素加伤(系)
+
+
 ## 某个系别的攻击会被「按系别加伤」的被动加多少（如结界师【荒神之力】）。
 ## 只用于预览还没建立 harm 的虚拟攻击（如魔弓【多重射击】）：
 ## 正常攻击在 p_before_attack 已经把这份加伤并进 harm.point，不要再调它重复加。
@@ -5390,7 +5400,7 @@ class SReattackGo:
 		# 反击是应战者自己的攻击：伤害按「攻击牌基础值」重建，不继承原攻击者本次的加成
 		# （如格斗【蓄力一击】的 +1 只属于他这次主动攻击；应战者的加伤由他自己的角色钩子按 is_active=false 施加）
 		var new_harm: Dictionary = {
-			"src": defender.id, "dst": 目标, "point": e.攻击基础伤害(defender.id),
+			"src": defender.id, "dst": 目标, "point": e.构造攻击伤害(defender.id, 用牌),
 			"cause": GConst.CAUSE_ATTACK, "type": GConst.HarmType.Attack,
 			"reattack": true, "card_id": 用牌, "is_active": false,
 			# 反击用的是应战者真实打出的那张牌（「视为」只换牌面，牌本身是他的）
@@ -6464,7 +6474,7 @@ func _do_attack(cur: BattlePlayer, data: Dictionary) -> int:
 	var 表现用牌: int = 攻击表现牌(用牌)
 	var 表现面: int = GConst.牌号(表现用牌)
 	var harm: Dictionary = {
-		"src": cur.id, "dst": dst_id, "point": 攻击基础伤害(cur.id), "cause": GConst.CAUSE_ATTACK,
+		"src": cur.id, "dst": dst_id, "point": 构造攻击伤害(cur.id, 用牌), "cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": 用牌, "is_active": true,
 		# 真正打出去的那张实体牌（实例号）：card_id 被「视为」换成虚拟牌面时靠它找回原件。
 		# 角色据此区分「真实牌」与「被视为的虚拟牌」（如女仆长【影之风】只认真实牌）

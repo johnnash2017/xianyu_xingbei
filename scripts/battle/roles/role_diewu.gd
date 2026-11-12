@@ -245,7 +245,7 @@ func _du_fen(harm: Dictionary) -> int:
 	notice_skill(DU_FEN, [int(harm.get("dst", -1))])
 	# 服务端移牌 isShown=false：不移牌展示这张【茧】
 	_remove_cover([cid], DU_FEN)
-	harm["point"] = int(harm.get("point", 0)) + 1
+	加伤害(harm, 1)
 	engine._broadcast_game()
 	# 服务端移除盖牌后返回 GE_URGENT：让 p_cover_change（凋零）先跑，再回来继续镜花水月
 	return URGENT
@@ -338,7 +338,7 @@ func p_timeline_6(ctx: Dictionary) -> int:
 		})
 		_remove_cover([cid], CHAO_SHENG)
 		# 抵御该来源 1 点伤害
-		harm["point"] = int(harm.get("point", 0)) - 1
+		加伤害(harm, -1)
 		ctx["chao_sheng_done"] = true
 		_chao_sheng_step = 0
 		# 服务端移除盖牌后返回 GE_URGENT：让 p_cover_change（凋零）先跑

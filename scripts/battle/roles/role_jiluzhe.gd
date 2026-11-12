@@ -525,7 +525,7 @@ func _遗迹论破(ctx: Dictionary) -> int:
 	engine.to_discard(取, {"owner": player.id, "source": "cover", "cause": YI_JI_LUN_PO})
 	engine._log_discard(player.id, 取, false)
 	var harm: Dictionary = ctx.get("harm", {})
-	harm["point"] = int(harm.get("point", 0)) + (X - 1)
+	加伤害(harm, X - 1)
 	if X > 1:
 		player.add_action(GConst.ActionType.Magic, YI_JI_LUN_PO, true)
 	if _遗迹数() == 0:

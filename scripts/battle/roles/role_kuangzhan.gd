@@ -96,7 +96,7 @@ func _xue_ying_kuang_dao(ctx: Dictionary) -> int:
 		return SUCCESS
 	notice_skill(XUE_YING_KUANG_DAO, [dst.id])
 	var harm: Dictionary = ctx["harm"]
-	harm["point"] = int(harm["point"]) + (2 if n == 2 else 1)
+	加伤害(harm, (2 if n == 2 else 1))
 	return SUCCESS
 
 
@@ -149,7 +149,7 @@ func _si_lie(harm: Dictionary) -> int:
 	if not take_skill_reply():
 		return SUCCESS
 	notice_skill(SI_LIE, [int(harm["dst"])])
-	harm["point"] = int(harm["point"]) + 2
+	加伤害(harm, 2)
 	player.set_gem(player.gem - 1)
 	engine._broadcast_game()
 	return SUCCESS

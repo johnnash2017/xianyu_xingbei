@@ -132,8 +132,12 @@ func p_attack_skill(action: Dictionary) -> int:
 	})
 	# 结算用的 card_id 仍是原法术牌：转换只改变「按攻击结算」，不改变原牌的系别 / 命格。
 	# 客户端表现用 as_card_id 播对应系的斩击特效。
+	# 按原法术牌的系别显式算荒神（它不是「攻击牌」，但转换后按攻击结算）
+	var 转换卡: GCard = Data.get_card(cid)
+	var 转换元素: int = 转换卡.element_enum() if 转换卡 != null else 0
 	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": 2, "cause": GConst.CAUSE_ATTACK,
+		"src": player.id, "dst": dst_id, "point": engine.构造攻击伤害(player.id, cid, 转换元素),
+		"cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": cid, "is_active": true,
 		# 这次攻击背后就是玩家真实打出的那张牌：记录实体实例，供「真实 / 虚拟攻击」判定
 		"card_id_instance": cid,

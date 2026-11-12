@@ -338,7 +338,7 @@ func p_timeline_6(ctx: Dictionary) -> int:
 	notice_skill(LING_HUN_LIAN_JIE, [other_id])
 	using_lian_jie = true
 	_set_token(TOKEN_LAN, _lan() - howmany)
-	harm["point"] = int(harm.get("point", 0)) - howmany
+	加伤害(harm, -howmany)
 	engine.push_draw(other_id, howmany)
 	engine._broadcast_game()
 	return SUCCESS

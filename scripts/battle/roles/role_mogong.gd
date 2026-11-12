@@ -248,7 +248,7 @@ func _mo_guan_chong_ji(ctx: Dictionary) -> int:
 func _结算魔贯冲击(ctx: Dictionary) -> void:
 	notice_skill(MO_GUAN_CHONG_JI, [int(ctx.get("dst", -1))])
 	var harm: Dictionary = ctx.get("harm", {})
-	harm["point"] = int(harm.get("point", 0)) + 1
+	加伤害(harm, 1)
 	_using_mo_guan = true
 	# 每次发动【魔贯冲击】都清空「命中追加」的推进阶段，好让本次命中仍能问一次是否追加
 	_mo_guan_hit_step = 0
@@ -306,7 +306,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		})
 		_remove_cover([cid], MO_GUAN_CHONG_JI)
 		var harm: Dictionary = ctx.get("harm", {})
-		harm["point"] = int(harm.get("point", 0)) + 1
+		加伤害(harm, 1)
 		engine._broadcast_game()
 		return SUCCESS
 	return SUCCESS
@@ -344,7 +344,7 @@ func action_end_options(ctx: Dictionary) -> Array:
 	var 有风: bool = _cover_has_element(GConst.CardElement.Wind)
 	# 这次虚拟攻击视为暗系主动攻击：伤害 = 攻击基础 + 荒神（暗系结界在场时 +1），发动后再 -1。
 	# 两个数随选项下发（preview_base / damage），客户端只画「原值划掉 → 新值」，不再自己算荒神。
-	var 基准: int = BattleEngine.ATTACK_BASE_POINT + engine.攻击元素加伤(GConst.CardElement.Darkness)
+	var 基准: int = engine.构造攻击伤害(player.id, VIRTUAL_DUO_CHONG_CARD, GConst.CardElement.Darkness)
 	# 选牌来源写盖牌区：选中这一项时客户端把盖牌区摆出来（移除哪张由服务端自己挑）
 	return [{"value": DUO_CHONG_SHE_JI, "label": GConst.skill_name(DUO_CHONG_SHE_JI),
 		"skill_id": DUO_CHONG_SHE_JI, "need_target": 1, "targets": 可攻目标,
@@ -381,7 +381,8 @@ func _resolve_duo_chong(dst_id: int) -> int:
 	_available_mo_guan = false
 	_using_duo_chong = true
 	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": 2,
+		"src": player.id, "dst": dst_id,
+		"point": engine.构造攻击伤害(player.id, VIRTUAL_DUO_CHONG_CARD, GConst.CardElement.Darkness),
 		"cause": DUO_CHONG_SHE_JI, "type": GConst.HarmType.Attack,
 		"card_id": VIRTUAL_DUO_CHONG_CARD, "is_active": true,
 		# 这次攻击背后是玩家真实付出的那张风系【充能】（移除的盖牌）：记录实体实例，供「真实 / 虚拟攻击」判定
@@ -439,7 +440,8 @@ func _duo_chong_she_ji_ask() -> int:
 	_available_mo_guan = false
 	_using_duo_chong = true
 	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": 2,
+		"src": player.id, "dst": dst_id,
+		"point": engine.构造攻击伤害(player.id, VIRTUAL_DUO_CHONG_CARD, GConst.CardElement.Darkness),
 		"cause": DUO_CHONG_SHE_JI, "type": GConst.HarmType.Attack,
 		"card_id": VIRTUAL_DUO_CHONG_CARD, "is_active": true,
 		# 这次攻击背后是玩家真实付出的那张风系【充能】（移除的盖牌）：记录实体实例，供「真实 / 虚拟攻击」判定

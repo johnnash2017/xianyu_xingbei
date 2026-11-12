@@ -201,7 +201,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
 	notice_skill(SHA_LU_SHENG_YAN, [int(harm.get("dst", -1))])
-	harm["point"] = int(harm.get("point", 0)) + 2
+	加伤害(harm, 2)
 	player.tokens[0]["num"] = int(player.tokens[0]["num"]) - 1
 	engine.push_harm({
 		"src": player.id, "dst": player.id, "point": 4,

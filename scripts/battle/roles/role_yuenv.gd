@@ -359,7 +359,7 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		player.set_crystal(player.crystal - 1)
 	else:
 		player.set_gem(player.gem - 1)
-	harm["point"] = int(harm.get("point", 0)) + cards.size()
+	加伤害(harm, cards.size())
 	engine.broadcast(GConst.Msg.Card, {
 		"type": GConst.CardMsgType.Show, "src_id": player.id, "dst_id": player.id,
 		"card_ids": cards, "is_real": true,

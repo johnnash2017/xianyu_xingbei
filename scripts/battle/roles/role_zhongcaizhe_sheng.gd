@@ -307,9 +307,9 @@ func _神之审判() -> int:
 	notice_skill(SHEN_ZHI_SHEN_PAN, [甲, 乙])
 	_移除侧(左)
 	_移除侧(右)
-	engine.push_harm({"src": player.id, "dst": 甲, "point": 2,
+	engine.push_harm({"src": player.id, "dst": 甲, "point": engine.构造攻击伤害(player.id, -1, 0),
 		"cause": SHEN_ZHI_SHEN_PAN, "type": GConst.HarmType.Attack})
-	engine.push_harm({"src": player.id, "dst": 乙, "point": 2,
+	engine.push_harm({"src": player.id, "dst": 乙, "point": engine.构造攻击伤害(player.id, -1, 0),
 		"cause": SHEN_ZHI_SHEN_PAN, "type": GConst.HarmType.Attack})
 	engine._broadcast_game()
 	return URGENT

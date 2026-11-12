@@ -207,7 +207,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 			var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 			if dst != null and dst.tap:
 				var harm: Dictionary = ctx.get("harm", {})
-				harm["point"] = int(harm.get("point", 0)) + 1
+				加伤害(harm, 1)
 		step = YU_HUN_ATK
 	if step == YU_HUN_ATK:
 		var r: int = _ni_fan_zhan(ctx)

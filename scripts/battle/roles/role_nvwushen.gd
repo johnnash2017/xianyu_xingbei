@@ -223,7 +223,7 @@ func _英灵发动答完(harm: Dictionary, 回: Dictionary) -> int:
 	# 真正改形态留到第二问处理完（见 _英灵召唤结算）：player.tap 的 setter 会压入一轮 p_tap 钩子，
 	# 那一轮里别的角色可能开询问（如兽灵【兽魂警戒】），会把还没处理的第二问回复顶掉。
 	_英灵_待横置 = engine.current_id == player.id
-	harm["point"] = int(harm.get("point", 0)) + 1
+	加伤害(harm, 1)
 	_英灵_阶段 = 1
 	return SUCCESS
 

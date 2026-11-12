@@ -189,12 +189,16 @@ func _检结界师() -> void:
 	检(玩家.cover_cards.size() == 2, "【结界】应放进盖牌区")
 	检(玩家.公开盖牌牌面().size() == 2, "【结界】应面朝上（公开牌面）")
 	检(玩家.token_num(0) == 1, "【祭】应加进 0 号指示物")
-	# 荒神之力：火系攻击 +1
-	var harm: Dictionary = {"src": 2, "dst": 1, "point": 1, "type": GConst.HarmType.Attack}
+	# 荒神之力：火系攻击 +1（结算已并入 BattleEngine.构造攻击伤害 这个唯一入口）
 	var 火攻击: int = _找牌("火", "attack")
-	var ctx: Dictionary = {"src": 2, "dst": 1, "is_active": true, "card_id": 火攻击, "harm": harm}
-	角色.p_before_attack(ctx)
-	检(int(harm.get("point", 0)) == 2, "【荒神之力】应让同系攻击伤害 +1：%d" % int(harm.get("point", 0)))
+	var 他系攻击: int = _找牌("水", "attack")
+	检(引擎.攻击元素加伤(GConst.CardElement.Fire) == 1,
+		"【荒神之力】应让同系攻击伤害 +1")
+	var 基础: int = 引擎.攻击基础伤害(2)
+	检(引擎.构造攻击伤害(2, 火攻击) == 基础 + 1,
+		"统一入口应把荒神并进攻击伤害：%d" % 引擎.构造攻击伤害(2, 火攻击))
+	检(引擎.构造攻击伤害(2, 他系攻击) == 基础,
+		"不同系的攻击不该加荒神：%d" % 引擎.构造攻击伤害(2, 他系攻击))
 
 	# ---- 禁魔境：绝界只挂在目标面前，不能再画在拥有者（结界师）自己面板上 ----
 	玩家.add_token(0, 1)

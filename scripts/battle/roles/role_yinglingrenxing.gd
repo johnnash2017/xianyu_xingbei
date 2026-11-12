@@ -194,7 +194,7 @@ func _战纹碎击结算(ctx: Dictionary, 答案: Array) -> int:
 	engine.take_from_hand(player.id, cards, true)
 	engine.to_discard(cards, {"owner": player.id, "source": "hand"})
 	var harm: Dictionary = ctx.get("harm", {})
-	harm["point"] = int(harm.get("point", 0)) + cards.size() - 1 + addition
+	加伤害(harm, cards.size() - 1 + addition)
 	# 结算里压了伤害推进并返回 URGENT：引擎会重入本钩子，用 step 挡住（框架不接管重入）
 	step = STEP_DONE
 	engine._broadcast_game()

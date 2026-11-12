@@ -160,7 +160,7 @@ func _di_qiang(ctx: Dictionary) -> int:
 	player.sub_cross_num(used)
 	notice_skill(DI_QIANG, [int(ctx.get("dst", -1))])
 	var harm: Dictionary = ctx["harm"]
-	harm["point"] = int(harm["point"]) + used
+	加伤害(harm, used)
 	used_di_qiang = true
 	engine._broadcast_game()
 	return SUCCESS

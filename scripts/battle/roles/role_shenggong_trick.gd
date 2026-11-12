@@ -40,8 +40,6 @@ const SHENG_XIE_MISS_DISCARD: int = 88022   # 圣屑飓暴·未命中：请目�
 
 const TOKEN_XIN_YANG: int = 0
 const CROSS_MAX_SHENG_GONG: int = 3
-const SHENG_GUANG_BAO_LIE_BASE: int = 2     # 圣光爆裂基础伤害
-const ATTACK_BASE_POINT: int = 2            # 攻击牌基础伤害
 const HUI_GUANG_KEEP: int = 4               # 圣煌辉光炮/余辉：全场手牌补/弃到 4 张（上限不足 4 的补到上限）
 const HUI_GUANG_PAO_COST: int = 4           # 圣煌辉光炮/余辉：基础信仰消耗；另加落后士气差
 const HUI_GUANG_SIDE_FRONT: int = 0
@@ -377,7 +375,7 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		var card: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 		if card != null and card.fate_pattern_enum() != GConst.FatePattern.Holy:
 			var harm: Dictionary = ctx.get("harm", {})
-			harm["point"] = int(harm.get("point", 0)) - 1
+			加伤害(harm, -1)
 		_timeline_1_step = SHENG_LIU_XING_DAN
 	if _timeline_1_step == SHENG_LIU_XING_DAN:
 		var r: int = _sheng_liu_xing_atk()
@@ -732,7 +730,7 @@ func _sheng_xie_ju_bao(action: Dictionary) -> int:
 		"card_ids": [virtual_card], "is_real": false,
 	})
 	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": ATTACK_BASE_POINT,
+		"src": player.id, "dst": dst_id, "point": engine.构造攻击伤害(player.id, virtual_card),
 		"cause": SHENG_XIE_JU_BAO, "type": GConst.HarmType.Attack,
 		"card_id": virtual_card, "is_active": true,
 	}
@@ -782,7 +780,7 @@ func _sheng_guang_bao_lie(action: Dictionary) -> int:
 		notice_skill(SHENG_GUANG_BAO_LIE, [player.id, dst_id])
 		engine._broadcast_game()
 		engine.push_harm({
-			"src": player.id, "dst": dst_id, "point": SHENG_GUANG_BAO_LIE_BASE,
+			"src": player.id, "dst": dst_id, "point": engine.构造攻击伤害(player.id, -1, 0),
 			"cause": SHENG_GUANG_BAO_LIE, "type": GConst.HarmType.Attack,
 		})
 		# 先摸 1 张再结算伤害：后压的摸牌状态先执行（LIFO），伤害在摸牌完成后才落。
@@ -794,7 +792,7 @@ func _sheng_guang_bao_lie(action: Dictionary) -> int:
 	var x: int = int(args[1])
 	if x < 1 or x > player.cross_num or cards.size() != x:
 		return GConst.GE_INVALID_ACTION
-	var point: int = SHENG_GUANG_BAO_LIE_BASE
+	var point: int = engine.构造攻击伤害(player.id, -1, 0)
 	for d: Variant in dsts:
 		var dp: BattlePlayer = engine.p(int(d))
 		if dp != null and dp.cross_num > 0:

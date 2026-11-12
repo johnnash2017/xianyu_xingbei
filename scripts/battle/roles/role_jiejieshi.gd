@@ -14,8 +14,8 @@ extends BattleRole
 ##    写法照剑之子【风之剑】10802、圣庭检察士【狂信徒】3901。
 ## 2. 8201 放牌进盖牌区照魔弓【充能】2604：take_from_hand -> add_cover；牌是【展示】的，
 ##    take_from_hand(..., true) 会压「展示手牌」钩子，压了钩子就 return URGENT，别让行动结束响应插到前面。
-## 3. 8202 在 p_before_attack 改 harm.point：后面的应战提示、荒神祭仪的询问都拿得到加后的伤害
-##    （同游击士【元素射击】3802 在宣告阶段改点数的口径）。
+## 3. 8202 荒神之力不再改 harm：结算并入 BattleEngine.构造攻击伤害（唯一入口），
+##    这里只通过 p_attack_element_bonus 回答「这个系别会加几点」。
 ## 4. 8203 是响应：先问是否发动，确认才 +1【祭】；额外移除 3 点【祭】、弃 1 张牌、移除 1 个【结界】
 ##    合成**一次**询问：直接传「手牌 hand_need=1 张 + 盖牌 cover_need=1 张」，
 ##    取消＝不额外移除。结算顺序固定：移除 3 祭 → 弃手牌 → 移除结界 → 横置。
@@ -58,8 +58,6 @@ const 键_伏魔: String = "_jiejie_伏魔"
 const 键_伏魔前士气: String = "_jiejie_伏魔前士气"
 ## p_harm_end 的分步（和 p_fu_mo_ask 的键分开）
 const 键_伏魔尾: String = "_jiejie_伏魔尾"
-## 荒神之力写进 harm 的「本次攻击已加过」标记（与攻击 ctx 的分步键分开）
-const 键_荒神加伤: String = "_jiejie_荒神加伤"
 
 
 # ============================================================
@@ -171,8 +169,8 @@ func _p_禁魔境(action: Dictionary) -> int:
 	return URGENT
 
 
-## 荒神之力的「预览版」：某个系别的攻击会不会 +1（只回答数值，不改任何状态）。
-## 结算仍归 p_before_attack；这里供「还没打出攻击牌」的虚拟攻击预览用（如魔弓【多重射击】的暗系虚拟攻击）。
+## 荒神之力的唯一入口：某个系别的攻击会不会 +1（只回答数值，不改任何状态）。
+## 实际结算由 BattleEngine.构造攻击伤害 调用它并入；预览（应战 / 虚拟攻击）也用同一份。
 func p_attack_element_bonus(元素: int) -> int:
 	if 元素 <= 0:
 		return 0
@@ -181,22 +179,9 @@ func p_attack_element_bonus(元素: int) -> int:
 
 # ============================================================
 # 8202 荒神之力：所有与【结界】系别相同的攻击伤害额外 +1。
-# 结算放在攻击宣告前（p_before_attack）：后面所有询问拿到的 harm.point 都已含这 1 点。
-# 一次攻击只加一次（同系多张【结界】不叠加），harm 上打标记防钩子回栈重跑。
+# 结算已并入 BattleEngine.构造攻击伤害（唯一入口），这里只负责「按系别回答会加几点」：
+# p_attack_element_bonus 同时供实际结算和预览使用，不再在钩子里改 harm。
 # ============================================================
-func p_before_attack(ctx: Dictionary) -> int:
-	var harm: Dictionary = ctx.get("harm", {})
-	if harm.is_empty() or bool(harm.get(键_荒神加伤, false)):
-		return SUCCESS
-	var 卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if 卡 == null or not 卡.is_attack():
-		return SUCCESS
-	var 系别: Array[int] = _结界系别()
-	if 系别.is_empty() or not 系别.has(卡.element_enum()):
-		return SUCCESS
-	harm["point"] = int(harm.get("point", 0)) + 1
-	harm[键_荒神加伤] = true
-	return SUCCESS
 
 
 # ============================================================

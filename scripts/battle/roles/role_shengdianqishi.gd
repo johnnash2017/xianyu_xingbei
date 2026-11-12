@@ -231,7 +231,7 @@ func _应用神威(ctx: Dictionary) -> void:
 	var 卡: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	var harm: Dictionary = ctx.get("harm", {})
 	if 卡 != null and 卡.fate_pattern_enum() == GConst.FatePattern.Holy and not harm.is_empty():
-		harm["point"] = int(harm.get("point", 0)) + 1
+		加伤害(harm, 1)
 	var 新禁疗: Array[int] = []
 	if not player.无法获得治疗():
 		新禁疗.append(player.id)

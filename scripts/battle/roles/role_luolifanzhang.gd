@@ -163,7 +163,7 @@ func _喧哗上等(harm: Dictionary) -> int:
 		_喧哗上等_移除数 += 1
 		_喧哗上等_移除牌.push_back(牌号)
 		engine.展示牌库顶(player.id, [牌号])
-		harm["point"] = int(harm.get("point", 0)) + 1
+		加伤害(harm, 1)
 		engine._broadcast_game()
 		var 牌: GCard = Data.get_card(牌号)
 		if 牌 == null:
@@ -207,12 +207,12 @@ func _灭茶苦茶(harm: Dictionary) -> int:
 		if player.gem <= 0:
 			return SUCCESS
 		player.set_gem(player.gem - 1)
-		harm["point"] = int(harm.get("point", 0)) + 灭茶苦茶_宝石加伤
+		加伤害(harm, 灭茶苦茶_宝石加伤)
 	elif 选项 == 灭茶苦茶_选项水晶:
 		if player.get_energy() <= 0:
 			return SUCCESS
 		player.remove_energy(1)
-		harm["point"] = int(harm.get("point", 0)) + 灭茶苦茶_水晶加伤
+		加伤害(harm, 灭茶苦茶_水晶加伤)
 	else:
 		return SUCCESS
 	notice_skill(灭茶苦茶, [int(harm.get("dst", -1))])

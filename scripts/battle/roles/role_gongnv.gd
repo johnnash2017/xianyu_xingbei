@@ -88,7 +88,7 @@ func _应用精准射击(ctx: Dictionary) -> void:
 	notice_skill(JING_ZHUN_SHE_JI, [int(ctx.get("dst", -1))])
 	ctx["hit_rate"] = GConst.HitRate.NoMiss
 	var harm: Dictionary = ctx["harm"]
-	harm["point"] = int(harm["point"]) - 1
+	加伤害(harm, -1)
 
 
 ## 【贯穿射击】的推进阶段（0＝本次未命中还没处理 / STEP_DONE＝本次已处理）。

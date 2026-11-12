@@ -488,7 +488,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 	if int(harm.get("cause", 0)) == 怒潮荒涛:
 		var dst: BattlePlayer = engine.p(int(harm.get("dst", -1)))
 		if dst != null:
-			harm["point"] = int(harm.get("point", 0)) + dst.basic_effects.size()
+			加伤害(harm, dst.basic_effects.size())
 	return SUCCESS
 
 

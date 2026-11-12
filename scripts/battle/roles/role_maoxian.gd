@@ -175,7 +175,8 @@ func _qi_zha(action: Dictionary, virtual_card: int) -> int:
 	})
 	engine._broadcast_game()
 	var harm: Dictionary = {
-		"src": player.id, "dst": dst_id, "point": 2, "cause": GConst.CAUSE_ATTACK,
+		"src": player.id, "dst": dst_id, "point": engine.构造攻击伤害(player.id, virtual_card),
+		"cause": GConst.CAUSE_ATTACK,
 		"type": GConst.HarmType.Attack, "card_id": virtual_card, "is_active": true,
 		# 虚牌不是真实卡：不继承卡面的命格，阴阳转换等「同命格」效果不能匹配
 		"virtual_no_fate": true,
