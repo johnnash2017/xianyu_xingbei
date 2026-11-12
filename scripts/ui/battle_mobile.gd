@@ -1537,8 +1537,6 @@ const 选走飞行时长: float = 1.0
 const 展示飞行间隔: float = 0.06
 ## 展示牌起飞时的缩放：小一点起步，飞到展示位正好长回原大
 const 展示飞行起始缩放: float = 0.5
-## 牌摊到展示位之后、出手弹道飞出去之前的停顿（秒）：留一点「看清这张牌」的空档
-const 出手等待秒数: float = 0.6
 ## 卡牌视图预制体：和手牌同一个 Card.tscn（卡图 + 左上角命格/元素 + 底部字形与技能名1/2）
 const 卡牌视图预制: PackedScene = preload("res://scenes/prefabs/battlemobile/Card.tscn")
 ## 悬停基础效果牌时摊出的「状态名 + 完整卡面」预制体（见 悬停卡预览）
@@ -1559,12 +1557,6 @@ var _展示持久: bool = false
 ## 自己出牌的起飞点（牌面 → {"点": 屏幕中心, "时刻": 毫秒}）：
 ## 提交那一刻手牌还在，记下这些牌在屏幕上的位置；Card 消息回来时让它们「从手里那张牌」飞进展示区
 var _出牌起飞点: Dictionary = {}
-
-## 最近一拨摊出的牌在屏幕上的全局中心（(-1, -1) = 这条消息没摊牌）：斩击 / 魔弹的出手特效
-## 就「从这张牌上起飞」飞向目标头像，见 _播出手特效、_飞牌特效
-var _展示全局中心: Vector2 = Vector2(-1.0, -1.0)
-## 牌飞到展示位要多久（秒）：出手特效得等牌自己就位再起飞，这就是它的起跑延迟
-var _展示飞行延迟: float = 0.0
 
 ## 行动播报队列：玩家 id → [文本]；同一玩家一条播完再接下一行，避免多个名字叠在一起
 var _行动播报队列: Dictionary = {}
@@ -1634,12 +1626,7 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 		# 让位：老的牌动画挪开、挤出左边界的消失；
 		# 这一批新的先直接落位，下面再由 _展示飞行 从起点飞上来
 		_重排展示区(视图表)
-	# 记下这拨牌在屏幕上的全局中心与「牌就位、再停一下」的总耗时：别人的牌摊过来后，
-	# 斩击 / 魔弹就从这张牌上起飞，并等上这么久。
-	# 自己的牌**不记出手点** —— 自己打的牌仍从自己头像出手，不让特效多等 0.6 秒（见 _播出手特效）
-	if not 视图表.is_empty() and 飞行起点 >= 0 and 飞行起点 != Logic.my_player_id:
-		_展示全局中心 = 视图表[0].get_global_rect().get_center()
-		_展示飞行延迟 = 展示飞行时长 + 展示飞行间隔 * float(视图表.size() - 1) + 出手等待秒数
+	# 出手特效与展示区无关：一律从出牌人头像飞向目标头像（见 _播出手特效）
 	_展示飞行(视图表, 飞行起点, 起点坐标)
 	_展示持久 = 持久
 
@@ -1944,9 +1931,6 @@ func _收起展示卡牌() -> void:
 func _on_card(msg: Dictionary) -> void:
 	var src: int = int(msg.get("src_id", -1))
 	var dst: int = int(msg.get("dst_id", -1))
-	# 出手特效的起飞点是「本条消息摊出来的那张牌」，先清掉上一条的，免得串台
-	_展示全局中心 = Vector2(-1.0, -1.0)
-	_展示飞行延迟 = 0.0
 	# 「给牌」不发牌面、也不进这里写日志（日志由服务端的 Gossip 写好了），
 	# 只是要播一个「牌从甲飘到乙」的给牌动效 —— 见 engine._log_give_cards
 	if int(msg.get("type", 0)) == GConst.CardMsgType.Give:
@@ -2021,17 +2005,11 @@ func _on_card(msg: Dictionary) -> void:
 
 ## 出手特效分发：这几种牌放专属粒子特效（打向别人时飞过去、对自己结算时原地炸开），
 ## 其它指向性牌退化成公用弹道。
-## 斩击 / 魔弹指向别人时改走「飞牌出手」：牌这时已经摊在展示位上，特效就从那张牌上起飞
-## 飞向目标头像，音效也跟到起飞那一刻 —— 观感上就是「把这张牌打过去」。
-## 但自己打的牌不这么走（自己摊牌时就没让牌飞，_展示全局中心 为 -1）：不等、也不从牌上飞出，
-## 仍按老样子从自己头像飞向目标；其余情况（展示 / 虚拟牌 / 对自己结算的原地炸开 / 公用弹道）保持原样。
+## **一律从出牌人头像飞向目标头像**：不再从展示位上那张牌起飞（展示区只负责亮牌，
+## 特效的观感统一成「从人打出去」）。
 ## 音效名 由调用方算好（见 _出手音效），空串 = 不出声
 func _播出手特效(src: int, dst: int, msg: Dictionary, 音效名: String) -> void:
 	var 牌号: int = _特效牌号(msg) if src >= 0 and dst >= 0 else -1
-	var 目标: 战斗玩家面板 = _玩家面板(dst)
-	if 牌号 >= 0 and dst != src and _展示全局中心.x >= 0.0 and 目标 != null:
-		_飞牌特效(牌号, _展示全局中心, 目标.get_global_rect().get_center(), _展示飞行延迟, 音效名)
-		return
 	if 音效名 != "":
 		Audio.播音效(音效名)
 	if src < 0 or dst < 0:
@@ -2049,22 +2027,6 @@ func _出手音效(牌: GCard) -> String:
 		return "atk-" + GConst.element_to_string(牌.element_enum())
 	var 后缀: String = str(法术音效后缀.get(牌.card_name, ""))
 	return "" if 后缀 == "" else "spell-" + 后缀
-
-
-## 飞牌出手：先等牌自己飞进展示位（延迟 = 0 表示这牌本来就没飞），
-## 再在展示位那张牌上生成斩击 / 魔弹特效飞向目标头像，起飞的同时打响这一声。
-## 起 / 止 与 _粒子特效 一样取全局坐标（特效预制体挂在 Root 下、按 global_position 走）
-func _飞牌特效(牌号: int, 起: Vector2, 止: Vector2, 延迟: float, 音效名: String) -> void:
-	var 牌: GCard = Data.get_card(牌号)
-	if 牌 == null or Root == null:
-		return
-	if 延迟 > 0.0:
-		await get_tree().create_timer(延迟).timeout
-	var go: Node2D = (EffectWarmer.特效预制表[牌.card_name_enum()] as PackedScene).instantiate() as Node2D
-	Root.add_child(go)
-	if 音效名 != "":
-		Audio.播音效(音效名)
-	go.call("播放", 起, 止, true)
 
 
 ## 这次出牌「视为」的那张牌（Card 消息的 as_card_id）：-1 或查不到时返回 null。
