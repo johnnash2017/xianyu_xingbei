@@ -288,7 +288,7 @@ func _伏笔校验(回: Dictionary) -> bool:
 		var pid: int = int(d)
 		if 已.has(pid) or not _可放Tricky(pid):
 			return false
-	已.append(pid)
+		已.append(pid)
 	return true
 
 
@@ -674,7 +674,7 @@ func _目标够放(dsts: Array, 张数: int) -> bool:
 		var pid: int = int(d)
 		if 已.has(pid) or not _可放Tricky(pid):
 			return false
-	已.append(pid)
+		已.append(pid)
 	return true
 
 
