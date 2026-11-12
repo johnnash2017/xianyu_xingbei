@@ -867,9 +867,9 @@ func set_基础牌可点(value: bool) -> void:
 ## 对应 C# BasicAndExCards setter 里的一长串 if/else 贴图名映射
 ## 卡名用 CardName 枚举判断；技能用技能号判断（号来自卡表「技能1/技能2」的引用）
 func _basic_card_sprite(card: GCard) -> String:
-	# 【Tricky】（卡表#1008）：面朝下的牌，没有卡面 —— 画成一张卡背，别让它从状态区里消失
+	# 【Tricky】（卡表#1008）：面朝下的牌，没有卡面 —— 用 assets/textures/icon/Tricky.png 当状态图标
 	if card.id == GConst.卡_Tricky:
-		return "KaBei"
+		return "Tricky"
 	match card.card_name_enum():
 		GConst.CardName.Poison:
 			return "du"

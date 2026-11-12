@@ -532,7 +532,7 @@ const 技能_剧毒新星: int = 1305
 const 技能_天使之墙: int = 701
 ## 【Tricky】占位牌（卡表#1008）：捣蛋萝莉面朝下放在角色面前、视为基础效果的那张牌。
 ## 它是无卡面的虚拟牌 —— 服务端只认占位，真实牌面在 role_dandaoluoli 的 _trickies 里；
-## 客户端把它画成一张卡背（PlayerStatusMobile._basic_card_sprite）。
+## 客户端用 assets/textures/icon/Tricky.png 当状态图标（PlayerStatusMobile._basic_card_sprite）。
 const 卡_Tricky: int = 1008
 ## 技能指示器（见下方的 技能指示器 表）里的技能号
 const 技能_天使祝福: int = 702
