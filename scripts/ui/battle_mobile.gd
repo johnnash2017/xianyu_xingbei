@@ -1502,8 +1502,14 @@ func _on_error(_err_id: int, msg: String) -> void:
 # ============================================================
 # 屏幕中间的展示卡牌区（Root/ShowCardArea）
 # ============================================================
-## 一拨展示的停留秒数，到点自动收起（下一拨出现会立刻顶掉上一拨）
+## 一拨展示的停留秒数，到点只收这一拨（别的批次不受影响）
 const 展示停留秒数: float = 6.4
+## 不同批（不是同一次丢弃 / 展示）之间的横向空隙：一批挨着摆，批与批之间空开，一眼能分出是几次
+const 展示组间隙: float = 30.0
+## 同一批内部的重叠比例（同一次丢的那几张，像手牌一样挨着叠一点）
+const 展示组内重叠: float = 0.32
+## 展示区同时最多摆这么多张：再来新的就把最早的牌立刻清掉（先清最老那批的前几张）
+const 展示最多张数: int = 12
 ## 展示牌从玩家头像飞到展示位的时长（秒）
 const 展示飞行时长: float = 0.6
 ## 选中后从展示位飞向角色头像的时长（秒）
@@ -1595,6 +1601,8 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 	var 批: Dictionary = {"视图们": 视图表}
 	if not 视图表.is_empty():
 		_展示批.append(批)
+		# 超过展示最多张数：最早的牌立刻清掉（先清最老那批的前几张）
+		_限制展示张数()
 		_重排展示区()
 	# 记下这拨牌在屏幕上的全局中心与「牌就位、再停一下」的总耗时：别人的牌摊过来后，
 	# 斩击 / 魔弹就从这张牌上起飞，并等上这么久（自己打的牌不飞、也不等，见 _播出手特效）
@@ -1611,28 +1619,74 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 	_移除展示批(批)
 
 
-## 按当前所有批次重排展示区：先摊出来的排在前面，后加的接在后面（画在上层），排成一行不换行。
+## 按当前所有批次重排展示区：一批挨着摆（同一次丢的那几张叠一点），批与批之间空开 展示组间隙，
+## 整体水平居中、不换行；总宽超过展示区就整体等比压窄（牌多时重叠更多）。
 ## 上一批可能还在播进场飞行（终点是按旧位置算的），先掐掉并摆正，免得落到旧位置上错位
 func _重排展示区() -> void:
-	var 视图们: Array[Control] = []
+	var 组们: Array = []
+	var 总数: int = 0
 	for 批: Dictionary in _展示批:
+		var 组: Array[Control] = []
 		for 视图: Variant in 批.get("视图们", []):
-			if is_instance_valid(视图):
-				var 控件: Control = 视图 as Control
-				var 旧t: Variant = 控件.get_meta(元数据_展示飞行tween, null)
-				if 旧t is Tween and (旧t as Tween).is_valid():
-					(旧t as Tween).kill()
-					控件.scale = Vector2.ONE
-					控件.modulate.a = 1.0
-				视图们.append(控件)
-	if 视图们.is_empty():
+			if not is_instance_valid(视图):
+				continue
+			var 控件: Control = 视图 as Control
+			var 旧t: Variant = 控件.get_meta(元数据_展示飞行tween, null)
+			if 旧t is Tween and (旧t as Tween).is_valid():
+				(旧t as Tween).kill()
+				控件.scale = Vector2.ONE
+				控件.modulate.a = 1.0
+			组.append(控件)
+		if not 组.is_empty():
+			组们.append(组)
+			总数 += 组.size()
+	if 总数 == 0:
 		return
-	var 排布: Array = _单行间距与起点(视图们.size(), ShowCardArea.size.x, 手牌尺寸, 手牌最多重叠比例)
-	var 间距: float = float(排布[0])
-	var 起点: float = float(排布[1])
+	# 每组内部的步长（同批叠一点）、组与组之间的空隙
+	var 步长: float = 手牌尺寸.x * (1.0 - 展示组内重叠)
+	var 间隙: float = 展示组间隙
+	var 内容宽: float = _展示总宽(组们, 步长, 间隙)
+	# 放不下就整体等比压窄：步长和间隙一起缩，牌宽不变（重叠加深）
+	if 内容宽 > ShowCardArea.size.x and 内容宽 > 0.0:
+		var 缩放: float = ShowCardArea.size.x / 内容宽
+		步长 *= 缩放
+		间隙 *= 缩放
+		内容宽 = _展示总宽(组们, 步长, 间隙)
 	var 行y: float = (ShowCardArea.size.y - 手牌尺寸.y) * 0.5 + 展示牌下移像素
-	for i: int in range(视图们.size()):
-		视图们[i].position = Vector2(起点 + 间距 * float(i), 行y)
+	var x: float = (ShowCardArea.size.x - 内容宽) * 0.5
+	for 组: Array[Control] in 组们:
+		for i: int in range(组.size()):
+			组[i].position = Vector2(x + float(i) * 步长, 行y)
+		x += 手牌尺寸.x + float(组.size() - 1) * 步长 + 间隙
+
+
+## 展示区这批牌一共占多宽：每组第一张到最后一整张，组与组之间加空隙
+func _展示总宽(组们: Array, 步长: float, 间隙: float) -> float:
+	var 宽: float = 0.0
+	for 组: Array[Control] in 组们:
+		宽 += 手牌尺寸.x + float(组.size() - 1) * 步长
+	if 组们.size() > 1:
+		宽 += 间隙 * float(组们.size() - 1)
+	return 宽
+
+
+## 展示区同时最多摆 展示最多张数 张：超了就把最早（最老那一批、批内最前）的牌立刻清掉。
+## 清掉的牌不播任何特效，直接从展示区消失（不是弃置、不改任何游戏状态）。
+func _限制展示张数() -> void:
+	var 总数: int = 0
+	for 批: Dictionary in _展示批:
+		总数 += (批.get("视图们", []) as Array).size()
+	var 要清: int = 总数 - 展示最多张数
+	while 要清 > 0 and not _展示批.is_empty():
+		var 最老: Dictionary = _展示批[0]
+		var 视图们: Array = 最老.get("视图们", [])
+		while 要清 > 0 and not 视图们.is_empty():
+			var 视图: Variant = 视图们.pop_front()
+			if is_instance_valid(视图):
+				(视图 as Node).queue_free()
+			要清 -= 1
+		if 视图们.is_empty():
+			_展示批.erase(最老)
 
 
 ## 收掉某一批展示牌（别的批次不动），收完按剩下的重排
