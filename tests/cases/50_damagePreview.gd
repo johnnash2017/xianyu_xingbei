@@ -84,6 +84,7 @@ func 跑() -> void:
 	await _检多重射击()
 	await _检狂化结算()
 	await _检染污者结算()
+	await _检受击侧()
 
 
 ## 格斗：百式形态下问蓄力/气绝 —— 基准＝保持百式（2+2），蓄力档 = 当前 +1
@@ -226,3 +227,44 @@ func _检染污者结算() -> void:
 	角色.call("_被动改伤", 法术)
 	检(int(法术["point"]) == 2,
 		"没触发条件时法术伤害也不该加（实际 %d）" % int(法术["point"]))
+
+
+## 受击侧被动：结算与预览共用 p_damage_taken（预览不得产生副作用）
+func _检受击侧() -> void:
+	# 格斗【念气力场】：每次受伤最高 4
+	var 格斗: BattleRole = _建引擎(GConst.角色_格斗)
+	var 伤害: Dictionary = {"src": 3, "dst": 1, "point": 6, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "is_active": false}
+	检(引擎.受击预览伤害(伤害, 6) == 4,
+		"念气力场的预览应封顶到 4（实际 %d）" % 引擎.受击预览伤害(伤害, 6))
+	引擎.push(BattleEngine.STimeline2Hit.new(伤害))
+	引擎.run()
+	检(int(伤害["point"]) == 4,
+		"念气力场应由受击入口统一封顶：6→4（实际 %d）" % int(伤害["point"]))
+
+	# 染污者【狂戾之体】：别人打你时移 1 戾气、本次 +1（最高 4）
+	var 染污者: BattleRole = _建引擎(83)
+	var 玩家: BattlePlayer = 引擎.p(1)
+	玩家.tap = true
+	玩家.add_token(0, 1)
+	var 伤害2: Dictionary = {"src": 3, "dst": 1, "point": 2, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "is_active": false}
+	检(引擎.受击预览伤害(伤害2, 2) == 3,
+		"狂戾之体的预览应是 2+1=3（实际 %d）" % 引擎.受击预览伤害(伤害2, 2))
+	检(玩家.token_num(0) == 1, "预览不能真的移掉戾气（实际 %d）" % 玩家.token_num(0))
+	引擎.push(BattleEngine.STimeline2Hit.new(伤害2))
+	引擎.run()
+	检(int(伤害2["point"]) == 3, "狂戾之体应加 1：2→3（实际 %d）" % int(伤害2["point"]))
+	检(玩家.token_num(0) == 0, "结算后应移掉 1 点戾气（实际 %d）" % 玩家.token_num(0))
+
+	# 圣殿骑士【神之子】：圣炎形态下抵御本次伤害（改吃 1 点自伤）
+	var 圣殿: BattleRole = _建引擎(43)   # 圣殿骑士（roleID 43，工程里没有 角色_圣殿骑士 常量）
+	圣殿.set("_圣炎", true)
+	var 伤害3: Dictionary = {"src": 3, "dst": 1, "point": 3, "cause": GConst.CAUSE_ATTACK,
+		"type": GConst.HarmType.Attack, "is_active": false}
+	检(引擎.受击预览伤害(伤害3, 3) == 0, "神之子的预览应显示 0")
+	检(bool(圣殿.get("_圣炎")), "预览不能退出圣炎形态")
+	引擎.push(BattleEngine.STimeline2Hit.new(伤害3))
+	引擎.run()
+	检(int(伤害3["point"]) == 0, "神之子应把本次伤害清零（实际 %d）" % int(伤害3["point"]))
+	检(not bool(圣殿.get("_圣炎")), "结算后应退出圣炎形态")

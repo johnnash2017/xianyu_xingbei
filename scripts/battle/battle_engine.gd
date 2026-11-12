@@ -3227,7 +3227,19 @@ func _应战提示伤害(src: int, ctx: Dictionary, harm: Dictionary) -> int:
 	var 预览上下文: Dictionary = ctx.duplicate()
 	预览上下文["harm"] = harm
 	预览上下文["src"] = src
-	return 攻击预览伤害(预览上下文)
+	return 受击预览伤害(harm, 攻击预览伤害(预览上下文))
+
+
+## 受击侧预览：把受伤角色的被动改伤算进来（不产生副作用），供应战提示 / 头像数字使用。
+## 结算走 STakenDamage → 同一个 p_damage_taken(预览=false)，两边不会各算一套。
+func 受击预览伤害(harm: Dictionary, 点数: int) -> int:
+	var dst: BattlePlayer = p(int(harm.get("dst", -1)))
+	if dst == null or dst.role == null:
+		return 点数
+	var 试算: Dictionary = harm.duplicate()
+	试算["point"] = 点数
+	var 修正: int = dst.role.p_damage_taken(harm_ctx(试算), true)
+	return 修正 if 修正 >= 0 else 点数
 
 
 # ============================================================
@@ -3910,6 +3922,8 @@ func push_harm(harm: Dictionary) -> void:
 	# 会改 harm 的点数，飘字若抢先发出去，界面就会「飘 2 实际打 3」。
 	# 顺序仍是「飘字 → 伤害事件 → 治疗抵御」，只是把③挪到飘字之前。
 	push(SHarmTimeline3.new(harm))
+	# 受击侧的被动改伤（封顶 / 清零…）在飘字前统一结算，保证飘出来的就是最终点数
+	push(STakenDamage.new(harm))
 	push(SHook.new("p_timeline_3", hc, []))
 
 
@@ -5619,6 +5633,21 @@ class SHarmTimeline3:
 			"src_id": harm["src"], "dst_id": harm["dst"], "hurt": harm["point"],
 			"cause": harm["cause"], "type": harm["type"],
 		})
+		return BattleEngine.CONTINUE
+
+
+## 受击侧结算：命中后、跑治疗和飘字之前，统一问受伤角色的被动改伤
+## （念气力场封顶、狂戾之体、圣炎抵御…）。结算与预览共用 p_damage_taken 同一个钩子。
+class STakenDamage:
+	var harm: Dictionary
+	func _init(h: Dictionary) -> void:
+		harm = h
+	func handle(e: BattleEngine) -> int:
+		var dst: BattlePlayer = e.p(int(harm.get("dst", -1)))
+		if dst != null and dst.role != null:
+			var 修正: int = dst.role.p_damage_taken(e.harm_ctx(harm), false)
+			if 修正 >= 0:
+				harm["point"] = 修正
 		return BattleEngine.CONTINUE
 
 

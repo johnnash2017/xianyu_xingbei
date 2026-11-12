@@ -357,13 +357,26 @@ func _被动改伤(harm: Dictionary) -> void:
 			# 【狂戾之心】：狂戾形态下你造成的伤害 +1 —— 同样飘在自己头上
 			notice_skill(KUANG_LI_ZHI_XIN, [player.id])
 			加伤害(harm, 1)
-	if dst_id == player.id and src != player.id and player.tap and player.token_num(戾气槽) > 0:
-		if int(harm.get("point", 0)) > 0:
-			player.remove_token(戾气槽, 1)
-			harm["point"] = mini(int(harm.get("point", 0)) + 1, 4)
-			# 【狂戾之体】：承受伤害 +1 —— 飘在自己头上
-			notice_skill(KUANG_LI_ZHI_TI, [player.id])
-			engine._broadcast_game()
+
+
+## 受击侧被动【狂戾之体】：别人打你时移 1 戾气，本次伤害 +1（最高 4）。
+## 结算与预览都走这个钩子，角色不再自己改 harm。
+func p_damage_taken(ctx: Dictionary, 预览: bool = false) -> int:
+	if int(ctx.get("dst", -1)) != player.id:
+		return -1
+	var harm: Dictionary = ctx.get("harm", {})
+	if int(harm.get("src", -1)) == player.id:
+		return -1
+	if not player.tap or player.token_num(戾气槽) <= 0:
+		return -1
+	var 点: int = int(harm.get("point", 0))
+	if 点 <= 0:
+		return -1
+	if not 预览:
+		player.remove_token(戾气槽, 1)
+		notice_skill(KUANG_LI_ZHI_TI, [player.id])
+		engine._broadcast_game()
+	return mini(点 + 1, 4)
 
 
 ## 神智污染：狂戾形态下你对目标造成伤害时可选发动（移 1 戾气换 +1 且禁治疗抵御）

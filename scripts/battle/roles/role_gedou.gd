@@ -318,16 +318,18 @@ func p_timeline_2_miss(ctx: Dictionary) -> int:
 
 # ============================================================
 # 承受伤害：念气力场（每次伤害最高 GConst.念气力场上限 点，客户端据此画两行飘字）
+# 受击侧统一入口：结算与预览都问这个钩子，角色不再自己改 harm。
 # ============================================================
-func p_timeline_3(ctx: Dictionary) -> int:
+func p_damage_taken(ctx: Dictionary, 预览: bool = false) -> int:
 	if int(ctx.get("dst", -1)) != player.id:
-		return SUCCESS
+		return -1
 	var harm: Dictionary = ctx.get("harm", {})
-	if int(harm.get("point", 0)) <= GConst.念气力场上限:
-		return SUCCESS
-	notice_skill(NIAN_QI_LI_CHANG, [player.id])
-	harm["point"] = GConst.念气力场上限
-	return SUCCESS
+	var 点: int = int(harm.get("point", 0))
+	if 点 <= GConst.念气力场上限:
+		return -1
+	if not 预览:
+		notice_skill(NIAN_QI_LI_CHANG, [player.id])
+	return GConst.念气力场上限
 
 
 # ============================================================

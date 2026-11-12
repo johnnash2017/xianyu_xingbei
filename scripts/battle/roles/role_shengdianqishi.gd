@@ -319,20 +319,21 @@ func morale_floor() -> int:
 	return 1 if _圣炎 else 0
 
 
-## 形态下受到伤害③：抵御本次伤害，改为承受 1 点来自自身的法术伤害⑥，然后退出形态
-func p_timeline_3(ctx: Dictionary) -> int:
+## 形态下受到伤害：受击侧统一入口——抵御本次伤害，改为承受 1 点来自自身的法术伤害，然后退出形态
+func p_damage_taken(ctx: Dictionary, 预览: bool = false) -> int:
 	if not _圣炎:
-		return SUCCESS
+		return -1
 	var harm: Dictionary = ctx.get("harm", {})
 	if harm.is_empty() or int(harm.get("dst", -1)) != player.id:
-		return SUCCESS
+		return -1
 	# 已经被其他效果减到 0 的伤害不算“受到伤害”，不触发圣炎抵御/退出
 	if int(harm.get("point", 0)) <= 0:
-		return SUCCESS
+		return -1
 	if bool(harm.get("圣炎已抵御", false)):
-		return SUCCESS
+		return -1
+	if 预览:
+		return 0
 	harm["圣炎已抵御"] = true
-	harm["point"] = 0
 	notice_skill(SHEN_ZHI_ZI, [player.id])
 	# 先记形态退出并压「圣炎祈愿」钩子，再把 1 点自伤压到它上面：
 	# 栈是后进先出，自伤先结算，之后才询问祈愿。
@@ -341,7 +342,7 @@ func p_timeline_3(ctx: Dictionary) -> int:
 		"src": player.id, "dst": player.id, "point": 1,
 		"cause": SHEN_ZHI_ZI, "type": GConst.HarmType.Magic,
 	})
-	return URGENT
+	return 0
 
 
 ## 退出形态：重置 + 清标记；收尾伤害 / 圣炎祈愿 由 _圣炎收尾 结算
