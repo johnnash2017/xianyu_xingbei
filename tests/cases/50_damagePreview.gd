@@ -81,6 +81,7 @@ func 跑() -> void:
 	await 等帧(2)
 	await _检格斗蓄力气绝()
 	await _检血影狂刀()
+	await _检多重射击()
 
 
 ## 格斗：百式形态下问蓄力/气绝 —— 基准＝保持百式（2+2），蓄力档 = 当前 +1
@@ -155,3 +156,43 @@ func _检血影狂刀() -> void:
 	检(str(提示.get(3, "")) == "[zwj]3 攻击伤害\n5 攻击伤害",
 		"血影狂刀应画「3 划掉 → 5」（实际：%s）" % str(提示.get(3, "")))
 	窗.free()
+
+
+## 魔弓【多重射击】：行动结束响应的选项自带「基准 + 发动后的伤害」；
+## 虚拟攻击是暗系，场上结界师有暗系【结界】时基准要含荒神 +1
+func _检多重射击() -> void:
+	var 风牌: int = 0
+	var 暗牌: int = 0
+	for c: GCard in Data.card_db:
+		if c == null:
+			continue
+		if 风牌 == 0 and c.element_enum() == GConst.CardElement.Wind:
+			风牌 = c.id
+		if 暗牌 == 0 and c.element_enum() == GConst.CardElement.Darkness:
+			暗牌 = c.id
+	检(风牌 > 0 and 暗牌 > 0, "卡库找不到风系/暗系牌，用例前提不成立")
+	if 风牌 <= 0 or 暗牌 <= 0:
+		return
+
+	var 魔弓: BattleRole = _建引擎(26)   # 魔弓（roleID 26，工程里没有 角色_魔弓 常量）
+	引擎.p(1).cover_cards = [风牌] as Array[int]
+	# 给乙挂结界师，盖牌区里放一张暗系【结界】→ 暗系攻击荒神 +1
+	var 脚本: GDScript = load(str(Data.role_script(GConst.角色_结界师))) as GDScript
+	var 结界角色: BattleRole = 脚本.new()
+	引擎.p(2).role_id = GConst.角色_结界师
+	结界角色.setup(引擎.p(2), 引擎)
+	引擎.p(2).role = 结界角色
+	引擎.p(2).cover_cards = [暗牌] as Array[int]
+	检(引擎.攻击元素加伤(GConst.CardElement.Darkness) == 1,
+		"暗系结界在场时，暗系的按系别加伤应为 1（实际 %d）" % 引擎.攻击元素加伤(GConst.CardElement.Darkness))
+
+	var 选项们: Array = 魔弓.action_end_options({})
+	检(not 选项们.is_empty(), "有多重射击可发动时，行动结束选项不该为空")
+	if 选项们.is_empty():
+		return
+	var 项: Dictionary = 选项们[0]
+	检(bool(项.get("enabled", false)), "有风系充能、有可攻目标时多重射击应可发动")
+	检(int(项.get("preview_base", 0)) == 3,
+		"多重射击基准应是 2+荒神 1=3（实际 %d）" % int(项.get("preview_base", 0)))
+	检(int(项.get("damage", 0)) == 2,
+		"多重射击发动后应是 3-1=2（实际 %d）" % int(项.get("damage", 0)))
