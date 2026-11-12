@@ -424,9 +424,14 @@ func _垂迹结算(答案: Array) -> int:
 	if 弃 < 0:
 		return SUCCESS
 	notice_skill(垂迹, [目标])
+	# 两张牌一起摊给所有人看：这张【Tricky】的真实牌面 + 你要弃的同系牌。
+	# 必须合成一条消息（客户端的展示区每条 Show 会先收起上一批，分两次发只看得到后一张）；
+	# 只有手牌那张补 p_show_hand（封印类技能的触发点）—— 暗牌不是从手里打出的，不按手牌算。
+	engine.展示牌(player.id, [真牌, 弃])
+	engine.push_show_hand(player.id, [弃])
 	engine.take_from_hand(player.id, [弃])
 	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": 垂迹})
-	engine._log_discard(player.id, [弃])
+	engine._log_discard(player.id, [弃], false)
 	# 移除这个【Tricky】：占位与真实牌一起离场，真实牌进弃牌堆
 	# （牌从来不在谁手里，不记 owner：否则会被「牌主是队友」这类弃牌拦截误判）
 	var 移除牌: int = _移除Tricky(序, 垂迹)
