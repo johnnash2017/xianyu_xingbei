@@ -81,7 +81,7 @@ func 跑() -> void:
 	窗.set("_skill_targets", 目标们)
 	窗.set("_pending", {"preview_base": 2, "preview_rule": "card", "preview_ids": [2]})
 	窗.set("_sel_players", [] as Array[int])
-	窗.set("_need_cards", 0)
+	窗.set("_skill_need_card", 0)
 	窗.set("_skill_ask_need_target", 0)
 	窗.set("_sel_cards", 未选牌)
 	var 暗月斩原: Dictionary = 窗.call("_预览伤害头像提示")

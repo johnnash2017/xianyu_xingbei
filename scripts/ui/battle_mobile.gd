@@ -10636,7 +10636,7 @@ func _攻击伤害头像提示() -> Dictionary:
 			含常数 = true
 			break
 	var 加成: int = 0
-	if not 含常数 or _need_cards <= 0 or _sel_cards.size() >= _need_cards:
+	if not 含常数 or _skill_need_card <= 0 or _sel_cards.size() >= _skill_need_card:
 		加成 = _预览规则加成()
 	var 新伤害: int = int(_pending.get("preview_damage", -1))
 	if 新伤害 < 0:
