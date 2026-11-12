@@ -1624,7 +1624,7 @@ func _展示卡牌(卡号表: Array, 飞行起点: int, 持久: bool = false, �
 		if 组 == null:
 			组 = _造展示批组()
 		组.add_child(视图)
-		视图.modulate.a = 0.0  # 进场从透明淡入，由 _更新展示透明度 每帧算
+		视图.modulate.a = 1.0  # 牌自己永远不透明：淡入淡出只作用在整批（CanvasGroup）上
 		视图表.append(视图)
 	if not 视图表.is_empty():
 		_展示批.append({"组": 组, "视图们": 视图表, "时刻": Time.get_ticks_msec()})
@@ -1727,9 +1727,11 @@ func _展示牌透明度(位置x: float) -> float:
 
 
 ## 展示区每帧算一遍透明度 + 处理到点清除（不靠 tween，免得和挪位动画抢 modulate）：
-##   透明度 = 进场淡入 × 停留时间系数 × 左边淡出带系数
-## 一批牌过了 展示停留秒数（已淡到 0%）就整批移除、腾出格子，剩下的牌滑过去重新排
-## （所以淡掉的牌不会留下占位）；被挤到左边淡出带而变淡的牌仍占位，整个越过左边界才移除。
+##   整批透明度（挂在 CanvasGroup 上）＝ 进场淡入 × 停留时间系数 × 左边淡出带系数
+## **牌自己一律不透明**：两张半透明的牌叠在一起必然互相穿透（能透过上面那张看见下面那张），
+## 所以淡出、淡入全部只作用在「整批合成后的那张图」上，批内永远保持覆盖关系。
+## 左边淡出带取这一批里最靠左那张牌的位置算 —— 这一批被挤出去时整批一起变淡。
+## 一批牌过了 展示停留秒数（已淡到 0%）就整批移除、腾出格子，剩下的牌滑过去重新排。
 func _更新展示透明度() -> void:
 	if _展示批.is_empty():
 		return
@@ -1751,25 +1753,25 @@ func _更新展示透明度() -> void:
 			if is_instance_valid(批组):
 				批组.queue_free()
 			continue
-		# 时间系数：最后 展示淡出秒数 秒里从 1 线性降到 0。
-		# 整批的透明度挂在 CanvasGroup 上（成组变化），这样批内叠着的牌不会互相穿透
+		# 时间系数：最后 展示淡出秒数 秒里从 1 线性降到 0
 		var 时间系数: float = 1.0
 		if 剩余 < 展示淡出秒数:
 			时间系数 = 剩余 / maxf(展示淡出秒数, 0.001)
-		if is_instance_valid(批组):
-			批组.modulate.a = 时间系数
+		var 进场系数: float = clampf(已过 / maxf(展示进场淡入秒数, 0.001), 0.0, 1.0)
+		# 左边淡出带：取这一批里最靠左的那张算（整批一起淡，不单张淡）
+		var 位置系数: float = 1.0
 		var 活: Array = []
-		for i: int in range(视图们.size()):
-			var 视图: Variant = 视图们[i]
+		for 视图: Variant in 视图们:
 			if not is_instance_valid(视图) or (视图 as Node).is_queued_for_deletion():
 				continue
 			活.append(视图)
 			var 控件: Control = 视图 as Control
-			var 进场: float = clampf((已过 - 展示飞行间隔 * float(i)) / maxf(展示进场淡入秒数, 0.001),
-				0.0, 1.0)
 			var 槽位x: float = float(控件.get_meta(元数据_展示槽位, 控件.position.x))
-			# 牌自身的透明度只管进场淡入和被挤到左边变淡；整批的时间淡出在上面挂在组上
-			控件.modulate.a = 进场 * _展示牌透明度(槽位x)
+			位置系数 = minf(位置系数, _展示牌透明度(槽位x))
+			# 牌自己永远不透明：透明度只在整批（CanvasGroup）上变化
+			控件.modulate.a = 1.0
+		if is_instance_valid(批组):
+			批组.modulate.a = 进场系数 * 时间系数 * 位置系数
 		if not 活.is_empty():
 			批["视图们"] = 活
 			剩下批.append(批)
