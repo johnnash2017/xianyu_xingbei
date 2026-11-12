@@ -10295,12 +10295,13 @@ func _别烦我头像提示() -> Dictionary:
 
 
 ## 捣蛋萝莉【T-r-i-c-k-y!】8604 第 1 段：点头像选「看谁面前的【Tricky】」。
-## 服务端下发的候选（面前有 Tricky 的人）头像统一写「查看Tricky」，选完再进弃牌那一段。
+## 只在**已点选**的那名角色头像上写「查看Tricky」（候选头像本身不写，靠点亮提示可点）；
+## 选完进弃牌那一段时 _sel_players 清空，提示随之消失。
 func _垂迹头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 3 or int(_skill_ask_id) != 8604:
 		return out
-	for pid: int in _skill_targets:
+	for pid: int in _sel_players:
 		out[pid] = "查看Tricky"
 	return out
 
