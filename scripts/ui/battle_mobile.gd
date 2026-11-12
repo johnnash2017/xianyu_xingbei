@@ -694,6 +694,8 @@ func _ready() -> void:
 	Logic.resource_gained.connect(_on_resource_gained)
 	Logic.discard_received.connect(_on_discard_received)
 	Logic.special_action_received.connect(_on_special_action)
+	# 纯头像飘字（服务端 Gossip.float_text）：如【Trick or Treat】比较结果飘「胜利！」
+	Logic.float_text_received.connect(_on_float_text)
 	Logic.basic_effect_removed.connect(_on_basic_effect_removed)
 	Logic.error_received.connect(_on_error)
 	BtnSubmit.pressed.connect(_on_submit)
@@ -2106,6 +2108,12 @@ func _特殊行动播报名(action_id: int) -> String:
 ## 收到特殊行动事件（服务端随「执行【…】」日志附带 special_action）：在行动者头像上飘字
 func _on_special_action(pid: int, action_id: int) -> void:
 	_排行动播报(pid, _特殊行动播报名(action_id))
+
+
+## 纯头像飘字（服务端 Gossip.float_text）：只在这名角色头像上飘一句字，不写日志、不进聊天区。
+## 如捣蛋萝莉【Trick or Treat】比较结果的「胜利！」/「败北！」/「可恶！」。
+func _on_float_text(pid: int, 文本: String) -> void:
+	_排行动播报(pid, 文本)
 
 
 ## 玩家发言：既进日志，也在聊天区加一条

@@ -2375,6 +2375,20 @@ func 报错(文本: String, pid: int = -1) -> void:
 	})
 
 
+## 在某人头像上飘一句字（纯展示：不写日志、不进聊天区）。
+## 客户端收到 Gossip 的 float_text 后走 _排行动播报，与技能名 / 卡名同一套飘字。
+## 例：捣蛋萝莉【Trick or Treat】比较结果飘「胜利！」/「败北！」/「可恶！」
+func 播头像飘字(pid: int, 文本: String) -> void:
+	if pid < 0 or 文本.is_empty():
+		return
+	broadcast(GConst.Msg.Gossip, {
+		"type": GConst.GossipType.Notice,
+		"txt": "",
+		"id": pid,
+		"float_text": 文本,
+	})
+
+
 ## 行动阶段询问（附带角色可选技能）
 ## can_give_up：本阶段是否允许「放弃行动」（对照原版 Coder::askForAction 的 canGiveUp 分支，
 ## 允许时额外下发一条 ACTION_NONE 命令，客户端据此显示「放弃行动」）

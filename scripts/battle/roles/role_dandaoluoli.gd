@@ -620,6 +620,13 @@ func _糖果结算(_答案: Array) -> int:
 	# 比分在过程中已经每弃一张刷新过一次；这里再刷一次兜底（值不变时等于没刷新）
 	_刷新比分状态()
 	engine._broadcast_game()
+	# 比较结果在自己头像上飘一句（纯展示，不写日志）：赢 / 输 / 平各一句
+	if _糖果我方 > _糖果敌方:
+		engine.播头像飘字(player.id, "胜利！")
+	elif _糖果我方 < _糖果敌方:
+		engine.播头像飘字(player.id, "败北！")
+	else:
+		engine.播头像飘字(player.id, "可恶！")
 	if _糖果我方 < _糖果敌方:
 		# 对方弃得比我方多：对方【战绩区】+1【宝石】
 		engine.set_team_gem(1 - player.color, engine.team_gem[1 - player.color] + 1)

@@ -561,6 +561,9 @@ const TABLE: Dictionary = {
 		10: {"n": "res_name", "t": "str"},
 		# 资源槽：0＝黄魂、1＝蓝魂、2＝盖牌（客户端据此选飘字颜色）
 		11: {"n": "res_slot", "t": "u32"},
+		# 纯头像飘字（捣蛋萝莉【Trick or Treat】的「胜利！」/「败北！」/「可恶！」这类）：
+		# 有这一项就按 id 在那名角色头像上飘一句字；txt 一般为空，客户端不写日志、不进聊天区
+		12: {"n": "float_text", "t": "str"},
 	},
 	GConst.Msg.Error: {
 		1: {"n": "id", "t": "i32"},

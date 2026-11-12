@@ -12,6 +12,9 @@ signal notice_received(txt: String, kind: int)
 signal heal_received(pid: int, num: int)
 ## 指示物 / 盖牌获得（目标 id + 数量 + 名字 + 槽位）：战斗界面头像飘「+ X 名字」
 signal resource_gained(pid: int, num: int, res_name: String, slot: int)
+## 纯头像飘字（Gossip 带 float_text 字段）：只在那名角色头像上飘一句字，不写日志、不进聊天区
+## （捣蛋萝莉【Trick or Treat】的「胜利！」/「败北！」/「可恶！」走这条）
+signal float_text_received(pid: int, txt: String)
 ## 基础效果被移除（Gossip 带 card 字段）：被移除的牌面 + 这次是不是被自身效果触发。
 ## 战斗界面据此在【圣盾】/【天使之墙】抵挡攻击 / 魔弹时补音效。
 signal basic_effect_removed(dst_id: int, card_id: int, triggered: bool)
@@ -169,6 +172,9 @@ func _on_message(msg_type: int, data: Dictionary) -> void:
 				if 资源数 > 0:
 					resource_gained.emit(int(data.get("id", -1)), 资源数,
 						str(data.get("res_name", "")), int(data.get("res_slot", 2)))
+				# 纯头像飘字：只飘一句字，不写日志（txt 一般是空的）
+				if data.has("float_text"):
+					float_text_received.emit(int(data.get("id", -1)), str(data.get("float_text", "")))
 				var 正文: String = str(data.get("txt", ""))
 				if not 正文.is_empty():
 					notice_received.emit(正文, kind)
