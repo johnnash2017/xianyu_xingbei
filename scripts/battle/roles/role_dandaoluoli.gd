@@ -423,11 +423,9 @@ func _垂迹结算(答案: Array) -> int:
 	if 弃 < 0:
 		return SUCCESS
 	notice_skill(垂迹, [目标])
-	# 两张牌一起摊给所有人看：这张【Tricky】的真实牌面 + 你要弃的同系牌。
-	# 合成一条消息让这两张并排摆、一起消失（分两条发也能都留在屏幕上，只是各自排到行尾）；
-	# 只有手牌那张补 p_show_hand（封印类技能的触发点）—— 暗牌不是从手里打出的，不按手牌算。
-	engine.展示牌(player.id, [真牌, 弃])
-	engine.push_show_hand(player.id, [弃])
+	# 只摊「你要弃的那张同系牌」，不再额外翻一次【Tricky】的真实牌面（需求方要求）。
+	# 走 展示手牌 = 摊牌 + p_show_hand（封印类技能的触发点），弃牌日志不再播弃牌特效。
+	engine.展示手牌(player.id, [弃])
 	engine.take_from_hand(player.id, [弃])
 	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": 垂迹})
 	engine._log_discard(player.id, [弃], false)
@@ -562,13 +560,10 @@ func _糖果弃牌答完(回: Dictionary, _答案: Array) -> int:
 					弃 = cid
 					break
 	if 弃 >= 0 and dp != null:
-		# 这个人的这一手亮给所有人看：他面前那张【Tricky】的真实牌面 + 他弃的同系牌。
-		# 合成一条 Show 让两张并排摆、一起消失（分两条也能都留着，只是各自排到行尾）；
-		# 只有手牌那张补 p_show_hand（封印触发点），暗牌不是从手里打出的。
-		var 序: int = _Tricky序号(dp.id)
-		if 序 >= 0:
-			engine.展示牌(dp.id, [int(_trickies[序]["card"]), 弃])
-		engine.push_show_hand(dp.id, [弃])
+		# 只摊「他弃的那张同系牌」，不再额外翻一次【Tricky】的真实牌面（需求方要求；
+		# 轮到谁时已经单独摊过他那张了，见 _糖果下一个目标）。
+		# 走 展示手牌 = 摊牌 + p_show_hand（封印触发点），弃牌日志不再播弃牌特效。
+		engine.展示手牌(dp.id, [弃])
 		engine.take_from_hand(dp.id, [弃])
 		engine.to_discard([弃], {"owner": dp.id, "source": "hand", "cause": 糖果})
 		engine._log_discard(dp.id, [弃], false)
