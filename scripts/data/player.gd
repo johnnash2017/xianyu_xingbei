@@ -74,6 +74,9 @@ var hand_blades: Array[int] = []
 var laws: Array[int] = []
 ## 【Trick or Treat】比分（捣蛋萝莉）：[红队弃牌数, 蓝队弃牌数]；空＝没有这个状态
 var trick_score: Array[int] = []
+## 面前每一张基础效果「在查看者眼里其实是什么牌」：与 basic_status_list 等长，0＝看不到。
+## 目前只有捣蛋萝莉【Surprise!】面朝下放的【Tricky】——只有放牌的人自己拿得到（悬停提示用）
+var basic_hidden: Array[int] = []
 ## 盖牌此刻能不能当手牌用（服务端 BattleRole.盖牌可当手牌()）：
 ## 精灵射手【精灵祝福形态】、神秘学者【真言术】选言灵之后这类窗口 —— 客户端据此让盖牌区的牌可点
 var cover_as_hand: bool = false

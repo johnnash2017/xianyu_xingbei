@@ -672,6 +672,14 @@ func set_ExclusiveCards(value: Array) -> void:
 	_刷新状态图标()
 
 
+## 面前每张基础效果「在自己眼里其实是什么牌」（与 BasicAndExCards 等长，0＝看不到）。
+## 目前只有捣蛋萝莉【Surprise!】面朝下放的【Tricky】：图标仍是 Tricky，悬停时显示真实牌面。
+var 基础暗牌: Array = []:
+	set(value):
+		基础暗牌 = value.duplicate()
+		_刷新状态图标()
+
+
 ## 状态图标区（BasicAndExCards）里除 token 之外的图标 —— 基础效果 + 独有效果，一次渲染
 func _刷新状态图标() -> void:
 	if basicAndExCardArea == null:
@@ -685,7 +693,8 @@ func _刷新状态图标() -> void:
 	# 这次渲染后各图标的新起点表（键＝图标标识，值＝该标识各实例的起点），渲染完整体换掉旧的
 	var 新起点: Dictionary = {}
 	_状态本次数量.clear()
-	for item: Variant in _状态基础牌:
+	for i0: int in range(_状态基础牌.size()):
+		var item: Variant = _状态基础牌[i0]
 		var card: GCard = Data.get_card(int(item))
 		if card == null:
 			continue
@@ -695,8 +704,10 @@ func _刷新状态图标() -> void:
 			# 全部标记（圣盾/封印…）一起丢掉（battle_audit C-2）。
 			push_error("Basic card is error! CardID = %s" % str(item))
 			continue
+		# 这张基础效果自己知道内容时（【Surprise!】面朝下的【Tricky】）：图标照旧，悬停报真实牌
+		var 悬停牌: int = int(基础暗牌[i0]) if i0 < 基础暗牌.size() else 0
 		_加状态图标(ps, _load_sprite(sprite_name), "b:%d" % int(item), 新起点, int(item),
-			"", -1, 状态名(card))
+			"", -1, 状态名(card), -1, [], -1, "", 悬停牌)
 	for idx: Variant in _状态独有效果:
 		# 独有效果没有卡牌对象，报不出「哪一张牌」；说明按 GConst.独有效果显示 配的
 		# 「专属卡包含的技能」逐条列出（同场卡提示），【五系束缚】再把应摸张数写在图标上。
@@ -778,7 +789,7 @@ func 五系束缚应摸张数() -> int:
 func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary,
 		基础牌id: int = -1, 提示: String = "", 额外牌id: int = -1, 名称: String = "",
 		数量: int = -1, 被动技能们: Array = [], 被动技能角色: int = -1,
-		数量富文本: String = "") -> void:
+		数量富文本: String = "", 悬停牌id: int = -1) -> void:
 	if tex == null:
 		return
 	var go := ps.instantiate()
@@ -832,7 +843,9 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 		# 额外状态带 card_id 时也摊卡面（如手牌里的魔刃/异刃）
 		var 图标: Control = go as Control
 		if 基础牌id >= 0:
-			图标.mouse_entered.connect(func() -> void: _报告基础效果悬停(基础牌id, 图标))
+			# 悬停报「自己知道的真实牌」（悬停牌id）而不是场上那张占位（【Tricky】= 1008）
+			var 报牌: int = 悬停牌id if 悬停牌id >= 0 else 基础牌id
+			图标.mouse_entered.connect(func() -> void: _报告基础效果悬停(报牌, 图标))
 		elif 提示 != "":
 			图标.mouse_entered.connect(func() -> void: 状态图标悬停.emit(
 				图标, 提示, 额外牌id, true, 被动技能们, 被动技能角色))

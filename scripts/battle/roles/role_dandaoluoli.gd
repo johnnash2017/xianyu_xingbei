@@ -806,6 +806,22 @@ func p_basic_effect_change(ctx: Dictionary) -> int:
 	return SUCCESS
 
 
+## 面朝下放在某人面前的【Tricky】，**只有放牌的人自己**知道里面是什么牌（悬停提示用）。
+## 引擎按 basic_cards 的顺序逐张问，这里按「拥有者 + 第几张」回牌面；别人问一律 0。
+func 隐藏基础效果牌面(拥有者: int, 第几张: int, 查看者: int) -> int:
+	if 查看者 != player.id:
+		return 0
+	var 谁: BattlePlayer = engine.p(拥有者)
+	if 谁 == null or 第几张 < 0 or 第几张 >= 谁.basic_effects.size():
+		return 0
+	if int(谁.basic_effects[第几张]["card"]) != Tricky占位牌:
+		return 0
+	var 序: int = _Tricky序号(拥有者)
+	if 序 < 0:
+		return 0
+	return GConst.牌号(int(_trickies[序]["card"]))
+
+
 ## 这张实例是不是噬神者的【魔刃】/【异刃】（牌面 1005 / 1006）
 func _是刃卡(cid: int) -> bool:
 	var 面: int = GConst.牌号(cid)

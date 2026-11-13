@@ -651,6 +651,10 @@ func _apply_player_info(p: GPlayer, pi: Dictionary) -> void:
 	p.trick_score.clear()
 	for 数: Variant in pi.get("trick_score", []):
 		p.trick_score.append(int(数))
+	# 面朝下的基础效果（【Tricky】）在「该知道的人」眼里是什么牌：与 basic_cards 等长，0＝看不到
+	p.basic_hidden.clear()
+	for 面: Variant in pi.get("basic_hidden", []):
+		p.basic_hidden.append(int(面))
 	# 盖牌此刻能不能当手牌用（精灵射手【精灵祝福形态】/ 神秘学者【真言术】窗口）
 	p.cover_as_hand = bool(pi.get("cover_as_hand", false))
 	if pi.has("max_hand"):

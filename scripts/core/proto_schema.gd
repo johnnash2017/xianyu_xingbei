@@ -88,6 +88,10 @@ const PLAYER_INFO_FIELDS: Dictionary = {
 	# 捣蛋萝莉【Trick or Treat】8605 结算出的比分：[红队弃掉同系牌的张数, 蓝队弃掉同系牌的张数]。
 	# 长度 0＝没有这个状态（回合结束后不再下发）；2＝有，客户端在角色状态区画「红:蓝」。
 	44: {"n": "trick_score", "t": "u32", "r": true},
+	# 面前每一张基础效果「在查看者眼里其实是什么牌」：与 basic_cards 等长，0＝看不到 / 本来就不是暗牌。
+	# 目前只有捣蛋萝莉【Surprise!】面朝下放的【Tricky】：只有放牌的人自己拿得到真实牌面，
+	# 客户端用它在悬停提示里显示「这张 Tricky 是什么牌」。
+	45: {"n": "basic_hidden", "t": "u32", "r": true},
 }
 
 ## 子消息字段表（作为 msg 类型的 schema）

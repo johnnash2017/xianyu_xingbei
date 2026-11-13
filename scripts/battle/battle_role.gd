@@ -445,6 +445,13 @@ func 技能URGENT后重入(_action: Dictionary = {}) -> bool:
 	return false
 
 
+## 某人面前第几张基础效果，在查看者眼里「其实是什么牌」：0＝不知道 / 不是暗牌。
+## 只有放牌的人自己知道内容时用（如捣蛋萝莉【Surprise!】面朝下放的【Tricky】）：
+## 引擎按 basic_cards 的顺序逐张问全场角色，谁认领就填谁给的牌面，客户端只拿来看悬停提示。
+func 隐藏基础效果牌面(_拥有者: int, _第几张: int, _查看者: int) -> int:
+	return 0
+
+
 ## 额外行动的「出牌 / 目标限制」不再由角色按 cause 提供：授予行动时用 spec 写进那份行动
 ## （见 BattlePlayer.add_action 的 cards / targets / element），引擎照单执行。
 ## 技能自己算白名单可用下面的 helper（按系攻击牌），或直接遍历 player.hand_cards。

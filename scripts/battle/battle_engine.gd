@@ -3103,10 +3103,36 @@ func _等待文案() -> String:
 	return "等待响应"
 
 
+## 某人面前每一张基础效果「在查看者眼里其实是什么牌」：返回与 basic_cards 等长的牌面数组，
+## 0 ＝看不到 / 本来就不是暗牌。逐张问全场角色的 隐藏基础效果牌面 钩子（谁认领就用谁的）。
+func _基础效果暗牌(拥有者: int, 查看者: int) -> Array:
+	var out: Array = []
+	var 谁: BattlePlayer = players.get(拥有者)
+	if 谁 == null:
+		return out
+	for i: int in range(谁.basic_effects.size()):
+		if int(谁.basic_effects[i]["card"]) != GConst.卡_Tricky:
+			out.append(0)
+			continue
+		var 明: int = 0
+		for p: BattlePlayer in players.values():
+			if p.role == null:
+				continue
+			明 = int(p.role.隐藏基础效果牌面(拥有者, i, 查看者))
+			if 明 > 0:
+				break
+		out.append(maxi(明, 0))
+	return out
+
+
 func game_info(viewer_id: int) -> Dictionary:
 	var infos: Array = []
 	for pid: int in order:
-		infos.append(players[pid].to_proto(viewer_id))
+		var info: Dictionary = players[pid].to_proto(viewer_id)
+		# 面朝下的基础效果（【Tricky】）在「该知道的人」眼里是什么牌：与 basic_cards 等长，
+		# 0＝看不到。只给放牌的人自己（角色钩子按查看者判），客户端拿它做悬停提示。
+		info["basic_hidden"] = _基础效果暗牌(pid, viewer_id)
+		infos.append(info)
 	# 当前在等谁回复、还剩多久（客户端据 wait_pid 在对应玩家面板底部画进度条）
 	var 剩余: int = 0
 	if _await_id >= 0 and wait_deadline_ms > 0:

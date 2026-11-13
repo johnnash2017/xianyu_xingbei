@@ -1350,6 +1350,9 @@ func _填面板(面板: 战斗玩家面板, p: GPlayer) -> void:
 			# 传实例号（没记就退回牌面）：图标点击要能认出「哪一张」
 			基础牌.append(st.实例号 if st.实例号 >= 0 else st.card.id)
 	面板.set("BasicAndExCards", 基础牌)
+	# 这几张基础效果在自己眼里「其实是什么牌」（只有放牌的人拿得到，如【Surprise!】面朝下的【Tricky】）：
+	# 与 基础牌 一一对应，0＝看不到。面板拿它做悬停提示，图标不变（仍是 Tricky）。
+	面板.set("基础暗牌", p.basic_hidden)
 	# 虚空境：这名角色面前的基础效果一律不触发 → 图标置灰
 	面板.set("BasicDisabled", p.no_basic)
 	var 独有效果: Array = []
