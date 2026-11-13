@@ -9237,6 +9237,13 @@ func _发送应答(respond_id: int, dst: Array, cards: Array, args: Array) -> vo
 	var 发前代: int = _询问代
 	_记录出牌起飞点(cards)
 	Logic.send_respond(respond_id, dst, cards, args)
+	# 提交之后本地就不该再有「选中」了。服务端可能把刚选的牌挪到别的区（如记录者交换：
+	# 选中的【遗迹】进手、手牌进【遗迹】），快照会先到，带着旧选中重画就会让刚进手的牌
+	# 一直保持「抬起」状态（_稍后清空待选 要等 0.15 秒、还可能被别人的询问顶掉）。
+	# 这里立刻清掉选中并重画；提示 / 选项仍留着，等下一份询问来重建。
+	_sel_cards.clear()
+	_sel_players.clear()
+	_刷新交互()
 	_稍后清空待选(发前代)
 
 
