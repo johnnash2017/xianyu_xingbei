@@ -775,7 +775,8 @@ func p_before_role_replace(_ctx: Dictionary) -> int:
 ## 别的技能从场上拿走了【Tricky】占位牌（封印破碎 408「拿走」/ 风之洁净 703 / 天使之歌 705…）：
 ## 真实牌面只在本脚本里，不跟着处理就成了一张永远拿不回来的死牌。这里把记账一并收掉并交出真实牌：
 ##   · 占位进了某人的手牌（408 那种）→ 真实牌替换掉手里那张占位
-##   · 其余（移除后弃掉）→ 真实牌进弃牌堆
+##   · 其余（移除后弃掉）→ 真实牌进弃牌堆；**魔刃/异刃例外**：刃被移除＝收进移除牌堆（不进弃牌堆，
+##     否则御刃/共振再也取不回来，洗牌时也会被当成特殊牌过滤掉）
 ## 自己摘占位（_移除Tricky / 收走全部）会先删掉记账再移除，所以这条钩子对自己不生效。
 func p_basic_effect_change(ctx: Dictionary) -> int:
 	if bool(ctx.get("add", false)) or int(ctx.get("card", -1)) != Tricky占位牌:
@@ -788,9 +789,17 @@ func p_basic_effect_change(ctx: Dictionary) -> int:
 	var 谁: BattlePlayer = engine.p(int(ctx.get("doer", -1)))
 	if 谁 != null and 谁.取出一张手牌(Tricky占位牌) >= 0:
 		谁.add_hand_cards([真牌])
+	elif _是刃卡(真牌):
+		engine.放入移除牌堆(真牌)
 	else:
 		engine.to_discard([真牌], {"source": "other"})
 	return SUCCESS
+
+
+## 这张实例是不是噬神者的【魔刃】/【异刃】（牌面 1005 / 1006）
+func _是刃卡(cid: int) -> bool:
+	var 面: int = GConst.牌号(cid)
+	return 面 == GConst.噬神者_魔刃卡 or 面 == GConst.噬神者_异刃卡
 
 
 # ============================================================
@@ -827,9 +836,11 @@ func _可放Tricky角色() -> Array[int]:
 	return out
 
 
-## 放一张【Tricky】：占位进基础效果区、真实牌记账（调用方先确认 _可放Tricky）
+## 放一张【Tricky】：占位进基础效果区、真实牌记账（调用方先确认 _可放Tricky）。
+## 真实牌一并交给引擎的「基础效果变动」：面朝下的占位背后可能是【魔刃】/【异刃】，
+## 噬神者靠它判渗蚀（见 role_shishenzhe.p_basic_effect_change）。
 func _放Tricky(dst: int, card: int, cause: int) -> void:
-	engine.add_basic_effect(dst, Tricky占位牌, player.id, cause)
+	engine.add_basic_effect(dst, Tricky占位牌, player.id, cause, card)
 	_trickies.append({"dst": dst, "card": card})
 
 

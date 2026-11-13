@@ -4379,7 +4379,7 @@ func v_basic_effect_target(dst_id: int, card_id: int) -> int:
 ## 增删基础效果（会触发 p_basic_effect_change 钩子）；角色应优先用这两个方法。
 ## 放置前统一问目标角色 v_basic_effect_target（F4 / 4601）：被拒时不挂效果并返回该错误码，
 ## 调用方应把它当「非法目标」处理（各条正常施放路径已在上游先校验，这里是最后一道兜底）。
-func add_basic_effect(dst_id: int, card_id: int, src_id: int, cause: int = 0) -> int:
+func add_basic_effect(dst_id: int, card_id: int, src_id: int, cause: int = 0, 真牌: int = -1) -> int:
 	var dst: BattlePlayer = players.get(dst_id)
 	if dst == null:
 		return GConst.GE_INVALID_PLAYERID
@@ -4390,6 +4390,9 @@ func add_basic_effect(dst_id: int, card_id: int, src_id: int, cause: int = 0) ->
 	push(SHook.new("p_basic_effect_change", {
 		"dst": dst_id, "card": card_id, "doer": src_id, "cause": cause, "add": true,
 		"triggered": false,
+		# 面朝下的占位牌（【Tricky】1008）背后那张真实牌：发起方知道就带上，
+		# 角色侧按它判「贴上去的其实是魔刃/异刃」（渗蚀）。没带就是 -1。
+		"true_card": 真牌,
 	}, []))
 	return GConst.GE_SUCCESS
 

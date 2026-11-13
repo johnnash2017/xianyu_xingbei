@@ -389,6 +389,43 @@ func p_shi_shen_盖牌移除(ctx: Dictionary) -> int:
 
 
 # ============================================================
+# 渗蚀·基础效果：魔刃/异刃因技能被贴到角色身前（含面朝下当【Tricky】）
+# ============================================================
+## 图鉴原文：「（【魔刃】因技能放置在角色旁时）对该角色造成 1 点法术伤害，然后移除【魔刃】」。
+## 判定放在「基础效果变动」这个统一入口上，所以不管哪个技能把刃贴上去都会触发
+## （如捣蛋萝莉 8606 Surprise! 把魔刃面朝下当成【Tricky】放到某人面前）。
+## 面朝下的占位牌是 1008，背后的真实牌由发起方随 ctx.true_card 带过来。
+## 伤害是固定的 1 点，不受【同调】影响（同调只把「自己使用/打出/弃置」的 3 点降为 1 点）。
+func p_basic_effect_change(ctx: Dictionary) -> int:
+	if not bool(ctx.get("add", false)):
+		return SUCCESS
+	var 键: String = "_渗蚀基础_%d" % player.id
+	if bool(ctx.get(键, false)):
+		return SUCCESS  # 压了状态、URGENT 后引擎回栈重跑本钩子：按 ctx 去重
+	var 场上牌: int = int(ctx.get("card", -1))
+	var 真牌: int = int(ctx.get("true_card", -1))
+	var 刃: int = 真牌 if 真牌 >= 0 else 场上牌
+	if not _是我的刃(刃):
+		return SUCCESS
+	var dst: int = int(ctx.get("dst", -1))
+	if dst < 0:
+		return SUCCESS
+	ctx[键] = true
+	notice_skill(SHEN_SHI, [dst])
+	# 先压「移除基础效果」，再压伤害：LIFO 下伤害先结算，回来再移除（图鉴顺序）
+	engine.remove_basic_effect(dst, 场上牌, SHEN_SHI, player.id)
+	if 场上牌 == 刃:
+		# 场上那张就是刃本身（不是面朝下占位）：直接收进移除牌堆
+		engine.放入移除牌堆(刃)
+	# 面朝下占位的真实刃由发起方（捣蛋萝莉 p_basic_effect_change）收进移除牌堆
+	engine.push_harm({
+		"src": player.id, "dst": dst, "point": 1,
+		"cause": SHEN_SHI, "type": GConst.HarmType.Magic, "virtual_no_fate": true,
+	})
+	return URGENT
+
+
+# ============================================================
 # 7903 噬灭 / 7904 殇灭：攻击时①额外弃 1 张指定系别的牌
 # ============================================================
 ## 本次合法可弃的手牌（噬灭：水/火；殇灭：风/雷）；询问白名单和服务端校验共用这一份
