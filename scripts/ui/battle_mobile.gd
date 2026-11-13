@@ -3886,7 +3886,7 @@ func _显示技能说明(按钮: 技能按钮) -> void:
 					if 法号 > 0:
 						_显示律法选项悬停(法号, int(技能号), 按钮, 视觉矩形)
 						return
-					var 单条: String = 角色技能提示.单个技能(int(技能号), 0, GConst.角色_噬神者)
+					var 单条: String = 角色技能提示.单个技能(int(技能号))
 					if 单条.is_empty():
 						continue
 					if not 说明.is_empty():
@@ -4660,6 +4660,13 @@ func _规整选项(d: Dictionary) -> Dictionary:
 	for k: Variant in d.keys():
 		if not 项.has(k):
 			项[k] = d[k]
+	# 选项带系别、但文案里**没有**「X系」字样的（如记录者【遗迹论破】里因为【选淬精炼】
+	# 才多出来的档位）：整条文字按那颗遗迹的系别上色。文案里写了「X系」的仍由
+	# _选项系别着色 只给那几个字标色；带多个系别的选项（御刃的「火/水、雷/风」）也保持原样。
+	var 元素们: Array = 项.get("元素", [])
+	if 项["字色"] == Color.TRANSPARENT and 元素们.size() == 1:
+		if not str(项["文本"]).contains("%s系" % GConst.element_to_chinese(int(元素们[0]))):
+			项["字色"] = _选项字色({"element": int(元素们[0])})
 	return 项
 
 

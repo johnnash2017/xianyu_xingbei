@@ -663,9 +663,11 @@ func _遗迹论破(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
 	var 基准: int = int(harm.get("point", 0))
 	var 目标: int = int(ctx.get("dst", -1))
+	var 分: Dictionary = _遗迹分系(牌.element_enum())
+	var 本系数: int = (分["本系"] as Array).size()
+	var 同系: Array = (分["本系"] as Array) + (分["灵活"] as Array)
 	return 多步询问(YI_JI_LUN_PO, [
-		{"选项": func(_答案: Array) -> Array:
-			return _遗迹论破选项(_同系遗迹(牌.element_enum()).size(), 基准),
+		{"选项": func(_答案: Array) -> Array: return _遗迹论破选项(同系, 本系数, 基准),
 		 "可取消": true,
 		 "预览基准": 基准,
 		 "预览类型": GConst.HarmType.Attack,
@@ -683,7 +685,7 @@ func _遗迹论破结算(答案: Array, ctx: Dictionary) -> int:
 		return SUCCESS
 	var 同系: Array = _同系遗迹(牌.element_enum())
 	var X: int = int(args[0])
-	if X < 1 or X > mini(同系.size(), 3):
+	if X < 1 or X > 同系.size():
 		engine.报错("【遗迹论破】移除张数不对", player.id)
 		return SUCCESS
 	_遗迹论破已用 = true
@@ -704,19 +706,29 @@ func _遗迹论破结算(答案: Array, ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-## 移除 X 个的档位（1~3）：每档自带「这一档打出去之后本次攻击是多少伤害」，
-## 客户端据此在目标头像上画「原值划掉 → 新值」（同狂战士【撕裂】的 preview 口径）。
-func _遗迹论破选项(上限: int, 基准: int) -> Array:
+## 移除 X 个的档位：X 从 1 到「同系遗迹数」（遗迹上限 8，没有规则上限）。
+## 每档自带「这一档打出去之后本次攻击是多少伤害」，客户端据此在目标头像上画
+## 「原值划掉 → 新值」（同狂战士【撕裂】的 preview 口径）。
+## X 超过本系遗迹数时必然要动用光/暗遗迹（【选淬精炼】把光暗视为任意系别）：
+## 这些档位按那颗遗迹的系别上色，并在悬停里补上【选淬精炼】的说明。
+func _遗迹论破选项(同系: Array, 本系数: int, 基准: int) -> Array:
 	var 选项: Array = []
-	for x: int in range(1, 4):
+	for x: int in range(1, 同系.size() + 1):
 		var 文案: String = GConst.按钮原文(YI_JI_LUN_PO, x - 1)
-		选项.append({
+		if 文案.is_empty():
+			# 表里还没配第 4 档以后：拿第 1 档当模板把数字换掉，补表后自动改用表里的文案
+			文案 = GConst.按钮原文(YI_JI_LUN_PO, 0).replace("1", str(x))
+		var 项: Dictionary = {
 			"value": x,
 			"label": 文案,
 			"text": 文案,
-			"enabled": x <= 上限,
 			"damage": 基准 + (x - 1),
-		})
+		}
+		if x > 本系数:
+			var 灵活牌: GCard = Data.get_card(int(同系[本系数]))
+			项["elements"] = [灵活牌.element_enum()] if 灵活牌 != null else []
+			项["skill_group"] = [XUAN_CUI_JING_LIAN]
+		选项.append(项)
 	return 选项
 
 
@@ -844,17 +856,28 @@ func _遗迹数() -> int:
 	return player.cover_cards.size()
 
 
-## 与给定系别同系的【遗迹】：光系 / 暗系遗迹视为任意系别（9405 选淬精炼）
-func _同系遗迹(系: int) -> Array:
-	var out: Array = []
+## 与给定系别同系的【遗迹】：光系 / 暗系遗迹视为任意系别（9405 选淬精炼）。
+## 顺序＝**先本系、再光/暗**：移除时先吃本系的，多余的档位才会用到光/暗，
+## 选项上色 / 悬停说明按「第几个开始动用光暗」来判，所以顺序固定在这里，别处不要再排。
+func _遗迹分系(系: int) -> Dictionary:
+	var 本系: Array = []
+	var 灵活: Array = []
 	for cid: int in player.cover_cards:
 		var 牌: GCard = Data.get_card(cid)
 		if 牌 == null:
 			continue
 		var 牌系: int = 牌.element_enum()
-		if 牌系 == 系 or 牌系 == GConst.CardElement.Light or 牌系 == GConst.CardElement.Darkness:
-			out.append(cid)
-	return out
+		if 牌系 == 系:
+			本系.append(cid)
+		elif 牌系 == GConst.CardElement.Light or 牌系 == GConst.CardElement.Darkness:
+			灵活.append(cid)
+	return {"本系": 本系, "灵活": 灵活}
+
+
+## 与给定系别同系的【遗迹】清单（本系在前、光暗在后）
+func _同系遗迹(系: int) -> Array:
+	var 分: Dictionary = _遗迹分系(系)
+	return (分["本系"] as Array) + (分["灵活"] as Array)
 
 
 func _史书在手() -> bool:
