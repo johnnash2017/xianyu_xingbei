@@ -2401,6 +2401,14 @@ func ask_action(pid: int, action_type: int, can_give_up: bool = false, extra: bo
 
 ## 下发一条询问给某玩家，并把它记下来：玩家重连回来时照原样补发（见 重发当前询问）
 func _询问(pid: int, cmd_type: int, commands: Array) -> void:
+	# 客户端的手牌 / 盖牌 / 指示物以快照为准：这一次询问之前刚改过（摸牌、交牌、放言灵、
+	# 弃牌…）时，那份快照还压在 _快照待发 里没发。先把它补发出去，客户端才有「提问这一刻」
+	# 的准确手牌 —— 否则客户端拿到的是上一份快照，白名单 / 调试模式「提问后才到手的牌放行」
+	# 会把刚摸到的那张当成新牌（神秘学者【言灵术】的额外弃牌就踩过：摸到的牌总被点亮）。
+	# 只在没有别的等待时补发：发快照会顺带刷新技能栏（_刷新技能可用），别把别人的询问顶掉。
+	if _快照待发 and _await_id < 0:
+		_快照待发 = false
+		_发送对局快照()
 	_询问计数 += 1
 	_最后询问[pid] = {"cmd_type": cmd_type, "commands": commands}
 	send(pid, GConst.Msg.CmdReq, {"cmd_type": cmd_type, "commands": commands})
