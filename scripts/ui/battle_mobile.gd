@@ -2059,8 +2059,17 @@ func _特效牌号(msg: Dictionary) -> int:
 		return 视为.id
 	for raw: Variant in msg.get("card_ids", []):
 		var 牌: GCard = Data.get_card(int(raw))
-		if 牌 != null and EffectWarmer.特效预制表.has(牌.card_name_enum()):
+		if 牌 == null:
+			continue
+		if EffectWarmer.特效预制表.has(牌.card_name_enum()):
 			return 牌.id
+		# 没有专属特效的攻击牌（如记录者【史书】1007）：借同系普通斩击牌的表现。
+		# 音效一直是按系别走的（atk-<系别>），特效以前只按卡名查表 —— 新加的攻击牌
+		# 就会「有音效没特效」。这里统一成按系别兜底，两张表口径一致。
+		if 牌.is_attack():
+			var 借: int = int(GConst.元素斩击表现牌.get(牌.element_enum(), 0))
+			if 借 > 0:
+				return 借
 	return -1
 
 

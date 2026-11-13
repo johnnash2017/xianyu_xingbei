@@ -405,11 +405,15 @@ enum CardElement {
 
 ## 虚拟攻击牌（魔刃 / 异刃）没有自己的斩击特效：Card 消息的 as_card_id 用同系普通斩击牌表现，
 ## 只影响客户端音效 / 特效，不影响摊牌、日志和规则结算。
+## 客户端还拿它兜底：任何**没有专属特效的攻击牌**（如记录者【史书】1007）都借同系普通斩击牌的表现，
+## 与「音效按系别（atk-<系别>）」同一口径 —— 新加的攻击牌不会再出现「只有音效没特效」。
 const 元素斩击表现牌: Dictionary = {
 	CardElement.Wind: 66,
 	CardElement.Water: 129,
 	CardElement.Fire: 87,
 	CardElement.Thunder: 108,
+	CardElement.Earth: 45,
+	CardElement.Darkness: 39,
 }
 
 enum FatePattern {
