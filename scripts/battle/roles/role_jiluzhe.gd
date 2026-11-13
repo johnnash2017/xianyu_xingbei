@@ -186,7 +186,11 @@ func _知行合一() -> int:
 		 "需牌": 1,
 		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
 		 "可取消": true,
-		 "取消": _知行取消},
+		 "取消": _知行取消,
+		 # 只交了手牌、没选档位＝这次提交不完整：驳回重问，别当成「不发动」把两张展示牌都弃了
+		 "校验": func(回: Dictionary) -> bool:
+			var a: Array = 回.get("args", [])
+			return not a.is_empty() and int(a[0]) >= 1 and int(a[0]) <= _知行展示.size()},
 	], _知行结算)
 
 
