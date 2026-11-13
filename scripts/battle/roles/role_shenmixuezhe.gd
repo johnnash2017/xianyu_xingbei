@@ -203,6 +203,11 @@ func _真言术(action: Dictionary) -> int:
 		return SUCCESS
 	var dst: int = int(dsts[0])
 	notice_skill(ZHEN_YAN_SHU, [dst])
+	# 每一次真言术都是独立的一次结算：第二段（1 点法术伤害③）的进度必须从头开始。
+	# 真言压制白送的那次不经过 v_magic_skill，不在这里清就会被上一次真言术留下的
+	# 「已完成（3）」挡住，表现就是「真言压制发动的那次真言术没有第二段」。
+	_真言伤阶段 = 0
+	_真言加伤 = false
 	# 出牌这一步里这张盖牌要能当手牌用（引擎出牌路径靠 has_hand_card 认牌、remove_hand_cards 从盖牌区删）
 	_真言行动中 = true
 	var 种类: int = GConst.ActionType.Attack if 牌.is_attack() else GConst.ActionType.Magic
