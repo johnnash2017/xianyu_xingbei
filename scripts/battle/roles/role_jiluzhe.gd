@@ -37,7 +37,8 @@ const YIN_JI_BIAN_JIAN: int = 9409
 
 const 史料槽: int = 0
 const 史书号: int = 1007
-## 一次交换最多几张（9408 / 9409 都是「X<3」，即 1~2 张，按钮表也只有两档）
+## 引稽编鉴的交换最多几张（原文「X<3」，即 1~2 张；按钮表也只有两档）。
+## 古今互鉴 9408 不用这个上限：它是「2 张手牌 + 至少 1 个【遗迹】」，遗迹张数由玩家自己点。
 const 交换上限: int = 2
 
 ## 知行合一：本次展示的牌（还没结算的）/ 打出那张之后要弃掉并换成【史料】的剩余展示牌
@@ -193,8 +194,9 @@ func p_magic_skill(action: Dictionary) -> int:
 ## 顺序固定：付代价 +2【史料】→ **先把这次 +2 触发的【稽古识典】走完** → 再做交换。
 ## 反过来的话，交换把一堆【遗迹】换进手造成的爆牌询问会被【稽古识典】挤到后面（需求方报过）。
 func p_special_skill(action: Dictionary) -> int:
+	# 只认自己的【古今互鉴】；别的特殊技能不归这份脚本管，按约定返回 SUCCESS（校验在 v_special_skill）
 	if int(action.get("action_id", 0)) != GU_JIN_HU_JIAN:
-		return GConst.GE_INVALID_ACTION
+		return SUCCESS
 	if _古今已换:
 		return SUCCESS
 	if not _古今已付:
@@ -596,12 +598,12 @@ func _引稽编鉴(ctx: Dictionary) -> int:
 		 "询问文案": _引稽收牌提示()},
 		# 「然后将你手上 X 张牌与 X 个【遗迹】交换，X<3」：可选
 		{"选项": func(_答案: Array) -> Array:
-			return _交换选项(YIN_JI_BIAN_JIAN, 0, _交换上限(), true),
+			return _交换选项(YIN_JI_BIAN_JIAN, _交换上限()),
 		 "来源": GConst.CardSource.HandOrCover,
 		 "可取消": true,
 		 "取消": _引稽跳过交换.bind(ctx),
 		 "跳过": func(_答案: Array) -> bool: return _交换上限() <= 0,
-		 "校验": func(回: Dictionary) -> bool: return _交换校验(回, 0, true)},
+		 "校验": _交换校验},
 	], _引稽结算.bind(ctx))
 
 
@@ -876,28 +878,17 @@ func _遗迹数() -> int:
 	return player.cover_cards.size()
 
 
-## 与给定系别同系的【遗迹】：光系 / 暗系遗迹视为任意系别（9405 选淬精炼）。
-## 顺序＝**先本系、再光/暗**：移除时先吃本系的，多余的档位才会用到光/暗，
-## 选项上色 / 悬停说明按「第几个开始动用光暗」来判，所以顺序固定在这里，别处不要再排。
-func _遗迹分系(系: int) -> Dictionary:
-	var 本系: Array = []
-	var 灵活: Array = []
+## 与给定系别同系的【遗迹】：光系 / 暗系遗迹视为任意系别（9405 选淬精炼）
+func _同系遗迹(系: int) -> Array:
+	var out: Array = []
 	for cid: int in player.cover_cards:
 		var 牌: GCard = Data.get_card(cid)
 		if 牌 == null:
 			continue
 		var 牌系: int = 牌.element_enum()
-		if 牌系 == 系:
-			本系.append(cid)
-		elif 牌系 == GConst.CardElement.Light or 牌系 == GConst.CardElement.Darkness:
-			灵活.append(cid)
-	return {"本系": 本系, "灵活": 灵活}
-
-
-## 与给定系别同系的【遗迹】清单（本系在前、光暗在后）
-func _同系遗迹(系: int) -> Array:
-	var 分: Dictionary = _遗迹分系(系)
-	return (分["本系"] as Array) + (分["灵活"] as Array)
+		if 牌系 == 系 or 牌系 == GConst.CardElement.Light or 牌系 == GConst.CardElement.Darkness:
+			out.append(cid)
+	return out
 
 
 func _史书在手() -> bool:
@@ -911,42 +902,35 @@ func _移除史书() -> void:
 	engine.放入移除牌堆(史书号)
 
 
-## 交换选项：value＝换几张；每档自带「手牌几张 + 盖牌几张」的混选要求
-func _交换选项(技能号: int, 手牌数: int, 上限: int = 0, 手牌随档: bool = false) -> Array:
-	var 可换: int = mini(交换上限, _遗迹数())
-	if 上限 > 0:
-		可换 = mini(可换, 上限)
+## 交换选项（引稽编鉴 9409）：value＝换几张；每档「X 张手牌 + X 个【遗迹】」各出 X 张
+func _交换选项(技能号: int, 上限: int) -> Array:
+	var 可换: int = mini(mini(交换上限, _遗迹数()), 上限)
 	var 选项: Array = []
 	for x: int in range(1, 交换上限 + 1):
-		var 手: int = x if 手牌随档 else 手牌数
-		# 按钮文案优先读技能表「提示」列；9409 那张表还没配，兜一句同口径的说明，
-		# 否则选项会是空白按钮（表补了就直接用表里的）
+		# 按钮文案优先读技能表「按钮」列；表里没配时兜一句同口径的说明，免得是空白按钮
 		var 文案: String = GConst.按钮原文(技能号, x - 1)
 		if 文案.is_empty():
-			文案 = "换 %d 张手牌 + %d 个【遗迹】" % [手, x] if 手牌随档 else "与 %d 个【遗迹】交换" % x
+			文案 = "换 %d 张手牌 + %d 个【遗迹】" % [x, x]
 		选项.append({
 			"value": x,
 			"label": 文案,
 			"text": 文案,
-			"enabled": x <= 可换 and 手 <= player.hand_cards.size(),
-			# 手牌 + 盖牌混选：这一档要「手牌 手 张 + 盖牌 X 张」（客户端据此卡选牌数）
-			"need_card": 手 + x,
-			"hand_need": 手,
+			"enabled": x <= 可换,
+			# 手牌 + 盖牌混选：这一档要「手牌 x 张 + 盖牌 x 张」（客户端据此卡选牌数）
+			"need_card": x * 2,
+			"hand_need": x,
 			"cover_need": x,
 		})
 	return 选项
 
 
-## 交换提交的合法性：X 在 1~上限；手牌正好 手数、盖牌正好 X，且都在本区
-func _交换校验(回: Dictionary, 需要手: int, 随档: bool) -> bool:
+## 交换提交的合法性：X 在 1~上限；手牌正好 X 张、盖牌正好 X 张，且都在本区
+func _交换校验(回: Dictionary) -> bool:
 	var args: Array = 回.get("args", [])
 	if args.is_empty():
 		return false
 	var X: int = int(args[0])
-	if X < 1 or X > mini(交换上限, _遗迹数()):
-		return false
-	var 手数: int = X if 随档 else 需要手
-	if 手数 > player.hand_cards.size():
+	if X < 1 or X > mini(交换上限, _遗迹数()) or X > player.hand_cards.size():
 		return false
 	var 手: Array = []
 	var 盖: Array = []
@@ -959,7 +943,7 @@ func _交换校验(回: Dictionary, 需要手: int, 随档: bool) -> bool:
 		var 盖实例: int = player.盖牌实例(int(c))
 		if 盖实例 >= 0 and not 盖.has(盖实例):
 			盖.append(盖实例)
-	return 手.size() == 手数 and 盖.size() == X
+	return 手.size() == X and 盖.size() == X
 
 
 ## 【遗迹】交换：把 X 张手牌放进【遗迹】区、取回 X 个【遗迹】；手牌那几张面朝上亮出来
