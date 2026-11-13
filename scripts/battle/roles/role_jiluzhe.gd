@@ -324,13 +324,13 @@ func _知行出牌校验(回: Dictionary) -> bool:
 	return dsts.size() == 1 and _知行能打(选中, 牌, int(dsts[0]))
 
 
-## 这张牌此刻能不能对着这名角色主动打出（攻击 / 法术的合法性走 BattleRole.可主动打出，
-## 与真言术同一套 v_* 判断）。
-## 那些 v_* 都要求「牌在手里」，所以这里先把牌临时塞进手牌，查完立刻取回，不留下痕迹。
+## 这张牌此刻能不能对着这名角色主动打出（攻击 / 法术的合法性走 BattleRole.可主动打出）。
+## 展示区的牌不在手里，所以判断期间把它放���「强制出牌」窗口里当手牌用（引擎那套 v_* 认这个窗口），
+## 不往手牌数组里塞、也不绕规则。
 func _知行能打(选中: int, 牌: GCard, dst: int) -> bool:
-	player.add_hand_cards([选中])
+	engine.强制出牌视为手牌.append(选中)
 	var 可: bool = 可主动打出(牌, 选中, dst)
-	player.取出一张手牌(选中)
+	engine.强制出牌视为手牌.erase(选中)
 	return 可
 
 
@@ -357,15 +357,16 @@ func _知行出牌(回: Dictionary, _答案: Array) -> int:
 			_知行余.append(int(c))
 	_知行展示 = []
 	notice_skill(ZHI_XING_HE_YI, [player.id])
-	player.add_hand_cards([选中])
-	engine.播获得牌日志(player.id, [选中])
+	# 展示区的牌不在手里：靠引擎的「强制出牌」窗口让它这一次算手牌（不塞手牌数组、不绕规则）。
+	# 出牌走引擎原生的 _do_attack / _do_magic，牌打完由引擎自己送进弃牌堆。
 	var 种类: int = GConst.ActionType.Attack if 牌.is_attack() else GConst.ActionType.Magic
+	engine.强制出牌视为手牌.append(选中)
 	var 结果: int = engine.技能出牌(player.id, 种类, [选中], [dst], ZHI_XING_HE_YI)
+	engine.强制出牌视为手牌.erase(选中)
 	if 结果 < 0:
-		# 校验放过、真打却被打回（极少）：这张牌回到待弃队列，跟着剩余展示牌一起弃掉，不白拿
+		# 校验放过、真打却被打回（极少）：这张牌回到待弃队列，跟着剩余展示牌一起弃掉
 		engine.报错("【知行合一】这张牌打不出去", player.id)
-		if player.取出一张手牌(选中) >= 0:
-			_知行余.append(选中)
+		_知行余.append(选中)
 		engine._broadcast_game()
 		return SUCCESS
 	engine._broadcast_game()

@@ -248,6 +248,9 @@ func 有手牌(牌id: int) -> bool:
 func remove_hand_cards(cards: Array) -> void:
 	for c: Variant in cards:
 		var cid: int = int(c)
+		# 强制出牌的牌不在手牌区（也不在盖牌区）：别按牌面把她手里同名的另一张删掉
+		if engine != null and engine.强制出牌视为手牌.has(cid):
+			continue
 		if _删实例(hand_cards, cid):
 			continue
 		# 精确是盖牌区里的那一份：只按盖牌处理，不能再按牌面删一张同牌面的手牌
@@ -266,6 +269,9 @@ func remove_hand_cards(cards: Array) -> void:
 ## 盖牌能当手牌用的形态下，盖牌同时算手牌（如精灵射手的【祝福】）——
 ## 只用于「打出 / 应战」这类把牌用出去的场合
 func has_hand_card(cid: int) -> bool:
+	# 技能「强制出牌」窗口内的牌（不在手里，但这一刻当手牌用）：见 BattleEngine.强制出牌视为手牌
+	if engine != null and engine.强制出牌视为手牌.has(cid):
+		return true
 	if hand_cards.has(cid):
 		return true
 	var 可当手: bool = role != null and role.盖牌可当手牌()
