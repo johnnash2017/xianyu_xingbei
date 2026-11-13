@@ -188,6 +188,10 @@ func _做交换(action: Dictionary) -> bool:
 	var 换来: int = 效果
 	if 效果 == Tricky占位牌:
 		换来 = _移除Tricky(_Tricky序号(目标), 叛逆之墙)
+		if 换来 < 0:
+			# 记账和场面对不上（理论上不会）：占位按普通基础效果摘掉，别把 -1 塞进手里
+			engine.remove_basic_effect(目标, 效果, 叛逆之墙, player.id)
+			换来 = 效果
 	else:
 		engine.remove_basic_effect(目标, 效果, 叛逆之墙, player.id)
 	engine.take_from_hand(player.id, [圣盾], true)
