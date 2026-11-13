@@ -654,44 +654,64 @@ func _遗迹论破(ctx: Dictionary) -> int:
 	var 牌: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if 牌 == null:
 		return SUCCESS
+	var 同系: Array = _同系遗迹(牌.element_enum())
 	if not 多步询问进行中(YI_JI_LUN_PO):
-		if _同系遗迹(牌.element_enum()).is_empty():
+		if 同系.is_empty():
 			return SUCCESS
 		_遗迹论破已问 = true
-	# 头像提示（同狂战士【撕裂】那一套）：把这次攻击的目标点亮，并按「当前攻击伤害」画
-	# 「原值划掉 → 新值」——新值由每个选项自带（damage = 原值 + (X-1)），选中哪档就画哪个数。
+	# 头像提示（同狂战士【撕裂】那一套）：点亮这次攻击的目标，并按「当前攻击伤害」画
+	# 「原值划掉 → 新值」——加伤＝移除张数-1，客户端按已选张数现算（preview_rule card,-1）。
 	var harm: Dictionary = ctx.get("harm", {})
 	var 基准: int = int(harm.get("point", 0))
 	var 目标: int = int(ctx.get("dst", -1))
-	var 分: Dictionary = _遗迹分系(牌.element_enum())
-	var 本系数: int = (分["本系"] as Array).size()
-	var 同系: Array = (分["本系"] as Array) + (分["灵活"] as Array)
 	return 多步询问(YI_JI_LUN_PO, [
-		{"选项": func(_答案: Array) -> Array: return _遗迹论破选项(同系, 本系数, 基准),
+		# 不给选项：直接把盖牌区亮出来，同系遗迹（光/暗也算，见 9405 选淬精炼）可点、
+		# 其余置灰，玩家自己点要移除的几个，按「确定」提交（点「取消」＝不发动）。
+		{"来源": GConst.CardSource.Cover,
+		 "需牌": 1,
+		 "牌上限": 同系.size(),
+		 "牌白": 同系,
 		 "可取消": true,
+		 "校验": _遗迹论破选牌校验.bind(同系),
 		 "预览基准": 基准,
 		 "预览类型": GConst.HarmType.Attack,
 		 "预览目标": [目标] if 目标 >= 0 else [],
-		 "高亮": [目标] if 目标 >= 0 else []},
+		 "高亮": [目标] if 目标 >= 0 else [],
+		 "伤害规则": "card,-1"},
 	], _遗迹论破结算.bind(ctx))
+
+
+## 提交校验：至少 1 张、全是自己面前同系的【遗迹】（光/暗也算）、不重复
+func _遗迹论破选牌校验(回: Dictionary, 同系: Array) -> bool:
+	var 取: Array = 回.get("cards", [])
+	if 取.is_empty() or 取.size() > 同系.size():
+		return false
+	var 已: Array = []
+	for c: Variant in 取:
+		var 盖实例: int = player.盖牌实例(int(c))
+		if 盖实例 < 0 or not 同系.has(盖实例) or 已.has(盖实例):
+			return false
+		已.append(盖实例)
+	return true
 
 
 func _遗迹论破结算(答案: Array, ctx: Dictionary) -> int:
 	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
-	var args: Array = 回.get("args", [])
 	# 回来时重新算一次同系遗迹：询问期间盖牌可能变过（如【引稽编鉴】刚加了 1 张）
 	var 牌: GCard = Data.get_card(int(ctx.get("card_id", -1)))
-	if 牌 == null or args.is_empty():
+	if 牌 == null:
 		return SUCCESS
 	var 同系: Array = _同系遗迹(牌.element_enum())
-	var X: int = int(args[0])
-	if X < 1 or X > 同系.size():
-		engine.报错("【遗迹论破】移除张数不对", player.id)
-		return SUCCESS
-	_遗迹论破已用 = true
+	# 玩家点的就是实际要移除的那几张（客户端已按白名单置灰，这里再复核一遍）
 	var 取: Array = []
-	for i: int in range(X):
-		取.append(int(同系[i]))
+	for c: Variant in 回.get("cards", []):
+		var 盖实例: int = player.盖牌实例(int(c))
+		if 盖实例 >= 0 and 同系.has(盖实例) and not 取.has(盖实例):
+			取.append(盖实例)
+	if 取.is_empty():
+		return SUCCESS
+	var X: int = 取.size()
+	_遗迹论破已用 = true
 	notice_skill(YI_JI_LUN_PO, [player.id])
 	engine.remove_cover(player.id, 取, player.id, YI_JI_LUN_PO)
 	engine.to_discard(取, {"owner": player.id, "source": "cover", "cause": YI_JI_LUN_PO})
@@ -704,32 +724,6 @@ func _遗迹论破结算(答案: Array, ctx: Dictionary) -> int:
 		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
 	engine._broadcast_game()
 	return SUCCESS
-
-
-## 移除 X 个的档位：X 从 1 到「同系遗迹数」（遗迹上限 8，没有规则上限）。
-## 每档自带「这一档打出去之后本次攻击是多少伤害」，客户端据此在目标头像上画
-## 「原值划掉 → 新值」（同狂战士【撕裂】的 preview 口径）。
-## X 超过本系遗迹数时必然要动用光/暗遗迹（【选淬精炼】把光暗视为任意系别）：
-## 这些档位把 skill_id 指向【选淬精炼】—— 按钮底色就用它的响应技能色，悬停弹它的技能说明。
-func _遗迹论破选项(同系: Array, 本系数: int, 基准: int) -> Array:
-	var 选项: Array = []
-	for x: int in range(1, 同系.size() + 1):
-		var 文案: String = GConst.按钮原文(YI_JI_LUN_PO, x - 1)
-		if 文案.is_empty():
-			# 表里还没配第 4 档以后：拿第 1 档当模板把数字换掉，补表后自动改用表里的文案
-			文案 = GConst.按钮原文(YI_JI_LUN_PO, 0).replace("1", str(x))
-		var 项: Dictionary = {
-			"value": x,
-			"label": 文案,
-			"text": 文案,
-			"damage": 基准 + (x - 1),
-		}
-		if x > 本系数:
-			项["skill_id"] = XUAN_CUI_JING_LIAN
-			# 选中这一档不把提示条换成【选淬精炼】的说明，仍写【遗迹论破】
-			项["no_prompt_change"] = true
-		选项.append(项)
-	return 选项
 
 
 # ============================================================
