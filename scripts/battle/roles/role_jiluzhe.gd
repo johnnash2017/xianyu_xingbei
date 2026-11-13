@@ -189,7 +189,9 @@ func _知行合一() -> int:
 		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
 		 "可取消": false,
 		 "跳过": func(_答案: Array) -> bool: return player.hand_cards.is_empty(),
-		 "询问文案": "弃 1 张牌"},
+		 # 这一步的提示条文案走技能表「提示2」（约定：技能提示文本放表里，脚本不许写死）。
+		 # 表里没配就退回技能说明。
+		 "询问文案": 提示(ZHI_XING_HE_YI, 1, 1)},
 	], _知行结算)
 
 
