@@ -48,8 +48,6 @@ var _糖果我方: int = 0
 var _糖果敌方: int = 0
 var _糖果分支: Dictionary = {}
 var _糖果已用: bool = false
-## Surprise!：第 1 段选了几张手牌放回（＝第 2 段要选几名角色）
-var _惊爆牌数: int = 0
 
 
 # ============================================================
@@ -665,23 +663,23 @@ func _糖果结算(_答案: Array) -> int:
 # ============================================================
 func _惊爆(action: Dictionary) -> int:
 	if not 多步询问进行中(惊爆):
-		if not _惊爆前半段(action) or player.hand_cards.is_empty():
+		if not _惊爆前半段(action):
 			return SUCCESS
-		# 场上没有能放【Tricky】的角色：收进手牌就到此为止，不再要求选牌
-		if _可放Tricky角色().is_empty():
+		# 手里没牌、或者场上没有能放【Tricky】的角色：收进手牌就到此为止
+		if not _还能继续放():
 			return SUCCESS
+	# 循环段：一次放一张 —— 选 1 张手牌 + 点 1 名合法目标，答完**立刻**给他放上【Tricky】；
+	# 放完还有牌、还有能放的人就留在本段接着问，直到放不了为止。
+	# 玩家点「取消」＝就此打住（已经放出去的不收回）。
+	# 提示条固定用技能说明原文（需求方要求），不写「请选…本次必须执行」那种步骤提示。
 	return 多步询问(惊爆, [
-		# 放回的张数既不能超过手牌数，也不能超过「还有几个角色能放」（X 张放 X 名角色）。
-		# 两段的提示条都固定用技能说明原文（需求方要求）：不写「请选…本次必须执行」那种步骤提示。
-		{"需牌": 1, "牌上限": mini(player.hand_cards.size(), _可放Tricky角色().size()),
+		{"需牌": 1, "需目标": 1,
 		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
-		 "可取消": false, "超时默认": [], "答完": _惊爆记张数,
-		 "询问文案": GConst.skill_desc(惊爆)},
-		{"需目标": func(_答案: Array) -> int: return _惊爆牌数,
 		 "目标白": func(_答案: Array) -> Array: return _可放Tricky角色(),
-		 "可取消": false, "超时默认": [],
 		 "校验": _惊爆校验,
-		 "跳过": func(_答案: Array) -> bool: return _惊爆牌数 <= 0,
+		 "答完": _惊爆放一张,
+		 "跳过": func(_答案: Array) -> bool: return not _还能继续放(),
+		 "重复": func(_回: Dictionary, _答案: Array) -> bool: return _还能继续放(),
 		 "询问文案": GConst.skill_desc(惊爆)},
 	], _惊爆结算)
 
@@ -691,7 +689,6 @@ func _惊爆前半段(action: Dictionary) -> bool:
 	var 弃牌: int = player.手牌实例(int((action.get("card_ids", []) as Array)[0]))
 	if 弃牌 < 0 or player.get_energy() < 1:
 		return false
-	_惊爆牌数 = 0
 	notice_skill(惊爆, [player.id])
 	player.remove_energy(1)
 	engine.take_from_hand(player.id, [弃牌])
@@ -711,62 +708,44 @@ func _惊爆前半段(action: Dictionary) -> bool:
 	return true
 
 
-## 第 1 段选了几张牌 → 第 2 段就要选几名角色（X 张放 X 名）
-func _惊爆记张数(回: Dictionary, _答案: Array) -> int:
-	_惊爆牌数 = (回.get("cards", []) as Array).size()
-	return SUCCESS
-
-
+## 一次放一张的校验：牌必须还在手里、目标必须还能放【Tricky】，各恰好 1 个
 func _惊爆校验(回: Dictionary) -> bool:
-	return _惊爆牌数 > 0 and _目标够放(回.get("dsts", []), _惊爆牌数)
+	var cards: Array = 回.get("cards", [])
+	var dsts: Array = 回.get("dsts", [])
+	if cards.size() != 1 or dsts.size() != 1:
+		return false
+	return player.手牌实例(int(cards[0])) >= 0 and _可放Tricky(int(dsts[0]))
 
 
-func _惊爆结算(答案: Array) -> int:
-	var 实际: Array = []
-	if not 答案.is_empty():
-		for c: Variant in (答案[0] as Dictionary).get("cards", []):
-			var 实例: int = player.手牌实例(int(c))
-			if 实例 >= 0 and not 实际.has(实例):
-				实际.append(实例)
-	# 超时 / 空选：强制至少放回 1 张
-	if 实际.is_empty() and not player.hand_cards.is_empty():
-		实际 = [player.hand_cards[0]]
-	if 实际.is_empty():
+## 手里还有牌、场上还有能放【Tricky】的人 —— 还能继续放下一张
+func _还能继续放() -> bool:
+	return not player.hand_cards.is_empty() and not _可放Tricky角色().is_empty()
+
+
+## 这一手答完：点的那张手牌面朝下放到点的那名角色面前（立刻生效，接着问下一张）
+func _惊爆放一张(回: Dictionary, _答案: Array) -> int:
+	var 牌: int = -1
+	for c: Variant in 回.get("cards", []):
+		var 实例: int = player.手牌实例(int(c))
+		if 实例 >= 0:
+			牌 = 实例
+			break
+	var 目标: int = -1
+	for d: Variant in 回.get("dsts", []):
+		if _可放Tricky(int(d)):
+			目标 = int(d)
+			break
+	if 牌 < 0 or 目标 < 0:
 		return SUCCESS
-	var dsts: Array = (答案[1] as Dictionary).get("dsts", []) if 答案.size() > 1 else []
-	var 目标们: Array = []
-	for d: Variant in dsts:
-		var pid: int = int(d)
-		if _可放Tricky(pid) and not 目标们.has(pid):
-			目标们.append(pid)
-	# 超时没选目标：按座位顺序补齐
-	if 目标们.size() != 实际.size():
-		目标们 = []
-		for pid2: int in _可放Tricky角色():
-			目标们.append(pid2)
-			if 目标们.size() >= 实际.size():
-				break
-	if 目标们.size() != 实际.size():
-		engine.报错("【Surprise!】没有足够的目标存放【Tricky】", player.id)
-		return SUCCESS
-	engine.take_from_hand(player.id, 实际)
-	for i: int in range(实际.size()):
-		_放Tricky(int(目标们[i]), int(实际[i]), 惊爆)
+	engine.take_from_hand(player.id, [牌])
+	_放Tricky(目标, 牌, 惊爆)
 	engine._broadcast_game()
 	return SUCCESS
 
 
-## 目标数＝张数、不重复、都能放【Tricky】
-func _目标够放(dsts: Array, 张数: int) -> bool:
-	if dsts.size() != 张数:
-		return false
-	var 已: Array = []
-	for d: Variant in dsts:
-		var pid: int = int(d)
-		if 已.has(pid) or not _可放Tricky(pid):
-			return false
-		已.append(pid)
-	return true
+func _惊爆结算(_答案: Array) -> int:
+	# 放【Tricky】在 _惊爆放一张 里已经逐张结算完了，这里没有收尾动作
+	return SUCCESS
 
 
 # ============================================================

@@ -5953,6 +5953,13 @@ func _on_player_clicked(player_id: int) -> void:
 		else:
 			_发送应答(_skill_ask_id, _sel_players, _sel_cards, [1])
 		return
+	# 「点目标即提交」（【Surprise!】8606 这种一张一张放的循环）：牌和目标都齐了就直接提交，
+	# 不再要求按「确定」——服务端放完这一张会把下一问递回来，玩家接着点下一张
+	if _mode == 3 and bool(_指示器配置().get("点目标即提交", false)) \
+			and _skill_need_card > 0 and _sel_cards.size() >= _skill_need_card \
+			and _sel_players.size() >= maxi(_skill_ask_need_target, 1):
+		_发送应答(_skill_ask_id, _sel_players, _sel_cards, [1])
+		return
 	# 「基础效果牌」这类（【封印破碎】/【风之洁净】/【天使之歌】）：目标一变就把技能栏里的
 	# 「基础效果」选项跟着换（取消选中目标＝清空）
 	if _二级栏 and (_技能是基础效果牌型()):
