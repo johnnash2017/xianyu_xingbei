@@ -222,32 +222,12 @@ func _真言术(action: Dictionary) -> int:
 
 ## 这张言灵能不能对这名角色用（与引擎出牌路径同一套 v_* 校验；v_magic_skill 用它复核提交）
 func _真言能打(cid: int, 牌: GCard, dst: int) -> bool:
-	var dp: BattlePlayer = engine.p(dst)
-	if dp == null:
-		return false
 	# v_attack / v_shield 这些校验都走 has_hand_card：校验期间要把这张盖牌当手牌用
 	var 原窗口: bool = _真言行动中
 	_真言行动中 = true
-	var 结果: bool = _真言能打内(牌, cid, dst, dp)
+	var 结果: bool = 可主动打出(牌, cid, dst)
 	_真言行动中 = 原窗口
 	return 结果
-
-
-func _真言能打内(牌: GCard, cid: int, dst: int, dp: BattlePlayer) -> bool:
-	if 牌.is_attack():
-		return player.v_attack(cid, dst, engine.players) == GConst.GE_SUCCESS \
-			and dp.v_attacked() == GConst.GE_SUCCESS
-	match 牌.card_name_enum():
-		GConst.CardName.Shield:
-			return player.v_shield(dst, engine.players) == GConst.GE_SUCCESS \
-				and engine.v_basic_effect_target(dst, cid) == GConst.GE_SUCCESS
-		GConst.CardName.Weaken:
-			return player.v_weaken(dst, engine.players) == GConst.GE_SUCCESS
-		GConst.CardName.Poison:
-			return engine.v_basic_effect_target(dst, cid) == GConst.GE_SUCCESS
-		GConst.CardName.Missile:
-			return player.v_missile(cid, dst) == GConst.GE_SUCCESS
-	return false
 
 
 ## 出牌那一下盖牌区里的【言灵】可以当手牌用（引擎 has_hand_card / remove_hand_cards 都认）

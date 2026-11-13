@@ -314,32 +314,12 @@ func _知行出牌校验(回: Dictionary) -> bool:
 	return dsts.size() == 1 and _知行能打(选中, 牌, int(dsts[0]))
 
 
-## 这张牌此刻能不能对着这名角色主动打出：攻击走 v_attack + v_attacked，
-## 法术按卡名逐一走 v_*（与真言术同一套口径）。
-## v_* 都要求「牌在手里」，所以这里先把牌临时塞进手牌，查完立刻取回，不留下痕迹。
+## 这张牌此刻能不能对着这名角色主动打出（攻击 / 法术的合法性走 BattleRole.可主动打出，
+## 与真言术同一套 v_* 判断）。
+## 那些 v_* 都要求「牌在手里」，所以这里先把牌临时塞进手牌，查完立刻取回，不留下痕迹。
 func _知行能打(选中: int, 牌: GCard, dst: int) -> bool:
-	var dp: BattlePlayer = engine.p(dst)
-	if dp == null:
-		return false
 	player.add_hand_cards([选中])
-	var 可: bool = false
-	if 牌.is_attack():
-		可 = player.v_attack(选中, dst, engine.players) == GConst.GE_SUCCESS \
-			and dp.v_attacked() == GConst.GE_SUCCESS
-	else:
-		match 牌.card_name_enum():
-			GConst.CardName.Shield:
-				可 = player.v_shield(dst, engine.players) == GConst.GE_SUCCESS \
-					and engine.v_basic_effect_target(dst, 选中) == GConst.GE_SUCCESS
-			GConst.CardName.Weaken:
-				可 = player.v_weaken(dst, engine.players) == GConst.GE_SUCCESS
-			GConst.CardName.Poison:
-				可 = engine.v_basic_effect_target(dst, 选中) == GConst.GE_SUCCESS
-			GConst.CardName.Missile:
-				可 = player.v_missile(选中, dst) == GConst.GE_SUCCESS
-			_:
-				# 其余法术牌（只能响应的【圣光】等）不能主动打出
-				可 = false
+	var 可: bool = 可主动打出(牌, 选中, dst)
 	player.取出一张手牌(选中)
 	return 可
 

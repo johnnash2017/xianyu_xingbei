@@ -928,6 +928,32 @@ func 盖牌可当手牌() -> bool:
 	return false
 
 
+## 这张牌此刻能不能对这名角色**主动打出**（不是响应）：
+## 攻击走 v_attack + 目标的 v_attacked；法术按卡名走 v_shield / v_weaken /
+## v_basic_effect_target / v_missile；其余（只能响应的【圣光】等）一律不行。
+## 这些 v_* 都要求「牌在手里」，调用方负责让它在判断期间算作手牌 ——
+## 真言术用 盖牌可当手牌() 窗口，记录者【知行合一】临时塞进手牌。
+## 「技能里把一张牌当成本次行动打出去」的判断统一用它，不要再各自复制一份 v_* 组合。
+func 可主动打出(牌: GCard, 实例: int, dst: int) -> bool:
+	var dp: BattlePlayer = engine.p(dst)
+	if 牌 == null or dp == null:
+		return false
+	if 牌.is_attack():
+		return player.v_attack(实例, dst, engine.players) == GConst.GE_SUCCESS \
+			and dp.v_attacked() == GConst.GE_SUCCESS
+	match 牌.card_name_enum():
+		GConst.CardName.Shield:
+			return player.v_shield(dst, engine.players) == GConst.GE_SUCCESS \
+				and engine.v_basic_effect_target(dst, 实例) == GConst.GE_SUCCESS
+		GConst.CardName.Weaken:
+			return player.v_weaken(dst, engine.players) == GConst.GE_SUCCESS
+		GConst.CardName.Poison:
+			return engine.v_basic_effect_target(dst, 实例) == GConst.GE_SUCCESS
+		GConst.CardName.Missile:
+			return player.v_missile(实例, dst) == GConst.GE_SUCCESS
+	return false
+
+
 ## 场上满足条件的玩家 id（默认不含自己：只挑「别人」；确实允许指向自己的技能传 含自己 = true）。
 ## 需要按条件过滤目标的技能，available_skills 的 "targets" 用它
 func player_ids_where(条件: Callable, 含自己: bool = false) -> Array[int]:
