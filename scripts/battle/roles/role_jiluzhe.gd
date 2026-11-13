@@ -655,10 +655,19 @@ func _遗迹论破(ctx: Dictionary) -> int:
 		if _同系遗迹(牌.element_enum()).is_empty():
 			return SUCCESS
 		_遗迹论破已问 = true
+	# 头像提示（同狂战士【撕裂】那一套）：把这次攻击的目标点亮，并按「当前攻击伤害」画
+	# 「原值划掉 → 新值」——新值由每个选项自带（damage = 原值 + (X-1)），选中哪档就画哪个数。
+	var harm: Dictionary = ctx.get("harm", {})
+	var 基准: int = int(harm.get("point", 0))
+	var 目标: int = int(ctx.get("dst", -1))
 	return 多步询问(YI_JI_LUN_PO, [
 		{"选项": func(_答案: Array) -> Array:
-			return _遗迹论破选项(_同系遗迹(牌.element_enum()).size()),
-		 "可取消": true},
+			return _遗迹论破选项(_同系遗迹(牌.element_enum()).size(), 基准),
+		 "可取消": true,
+		 "预览基准": 基准,
+		 "预览类型": GConst.HarmType.Attack,
+		 "预览目标": [目标] if 目标 >= 0 else [],
+		 "高亮": [目标] if 目标 >= 0 else []},
 	], _遗迹论破结算.bind(ctx))
 
 
@@ -692,7 +701,9 @@ func _遗迹论破结算(答案: Array, ctx: Dictionary) -> int:
 	return SUCCESS
 
 
-func _遗迹论破选项(上限: int) -> Array:
+## 移除 X 个的档位（1~3）：每档自带「这一档打出去之后本次攻击是多少伤害」，
+## 客户端据此在目标头像上画「原值划掉 → 新值」（同狂战士【撕裂】的 preview 口径）。
+func _遗迹论破选项(上限: int, 基准: int) -> Array:
 	var 选项: Array = []
 	for x: int in range(1, 4):
 		var 文案: String = GConst.按钮原文(YI_JI_LUN_PO, x - 1)
@@ -701,6 +712,7 @@ func _遗迹论破选项(上限: int) -> Array:
 			"label": 文案,
 			"text": 文案,
 			"enabled": x <= 上限,
+			"damage": 基准 + (x - 1),
 		})
 	return 选项
 
