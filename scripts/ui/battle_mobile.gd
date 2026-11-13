@@ -5568,6 +5568,11 @@ func _二级栏提示文案() -> String:
 			return 启动说明
 	var 前缀: String = "【%s】：" % GConst.skill_name(_二级栏父技能号) if _二级栏父技能号 > 0 else ""
 	if _二级选中 < 0:
+		# 服务端给了整段专属提示（ask_prompt，如记录者【知行合一】的技能说明）：
+		# 还没选选项时也写它，不要换成「请选择一个选项」——需求方要求默认就显示技能说明
+		var 整段: String = str(_pending.get("ask_prompt", ""))
+		if not 整段.is_empty():
+			return 整段
 		return 前缀 + GConst.文本("提示_选择一个选项")
 	var 需牌: int = _skill_need_card
 	var 需目标: int = _skill_need_target if _mode == 4 else _skill_ask_need_target
@@ -5977,11 +5982,15 @@ func _on_player_clicked(player_id: int) -> void:
 func _点目标即提交尝试() -> bool:
 	if _mode != 3 or not bool(_指示器配置().get("点目标即提交", false)):
 		return false
+	# 这一问带选项（如记录者【知行合一】选哪张展示牌）：没选选项就提交等于空答案，
+	# 服务端会驳回重问 —— 先把选项选好再点头像
+	if not _skill_options.is_empty() and _二级选中 < 0:
+		return false
 	if _skill_need_card <= 0 or _sel_cards.size() < _skill_need_card:
 		return false
 	if _sel_players.size() < maxi(_skill_ask_need_target, 1):
 		return false
-	_发送应答(_skill_ask_id, _sel_players, _sel_cards, [1])
+	_发送应答(_skill_ask_id, _sel_players, _sel_cards, _已选参数)
 	return true
 
 

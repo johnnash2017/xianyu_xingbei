@@ -40,10 +40,8 @@ const 史书号: int = 1007
 ## 一次交换最多几张（9408 / 9409 都是「X<3」，即 1~2 张，按钮表也只有两档）
 const 交换上限: int = 2
 
-## 知行合一：本次展示的牌（还没结算的）/ 选中并已放进手里、等「立刻行动」打出去的那张 /
-## 结算完成后要弃掉并换成【史料】的剩余展示牌
+## 知行合一：本次展示的牌（还没结算的）/ 打出那张之后要弃掉并换成【史料】的剩余展示牌
 var _知行展示: Array = []
-var _知行待打: int = -1
 var _知行余: Array = []
 var _知行已结算: bool = false
 ## 本次发动已经把展示牌翻出来了（重入时不要重复翻牌 / 重复扣费）
@@ -124,7 +122,6 @@ func v_magic_skill(action: Dictionary) -> int:
 		# 新的一次发动：把上一次可能残留的链 / 中间态清干净（v_* 只在技能开始时调一次）
 		多步询问重置(ZHI_XING_HE_YI)
 		_知行展示 = []
-		_知行待打 = -1
 		_知行余 = []
 		_知行已结算 = false
 		_知行已付 = false
@@ -177,20 +174,22 @@ func _知行合一() -> int:
 		if _知行展示.is_empty():
 			return SUCCESS
 		engine.展示牌库顶(player.id, _知行展示, true)
-		_知行待打 = -1
 		_知行余 = []
 		_知行已结算 = false
-	# 「选哪张展示牌」和代价「弃 1 张手牌」同一问提交（选项 = 展示牌第几张）
+	# 「选哪张展示牌」+ 代价「弃 1 张手牌」+「这张牌打谁」同一问提交：
+	# 选项 = 展示牌第几张，确认后就把那张牌当相应行动**立刻打出**（同真言术的「当牌打出」），
+	# 客户端点头像即提交（技能指示器配了「点目标即提交」）。
+	# 提示条固定用技能说明原文（需求方要求），不让客户端换成「请选择一个选项」。
 	return 多步询问(ZHI_XING_HE_YI, [
 		{"选项": func(_答案: Array) -> Array: return _知行选项(),
 		 "需牌": 1,
+		 "需目标": 1,
 		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
+		 "目标白": 全部角色(),
 		 "可取消": true,
 		 "取消": _知行取消,
-		 # 只交了手牌、没选档位＝这次提交不完整：驳回重问，别当成「不发动」把两张展示牌都弃了
-		 "校验": func(回: Dictionary) -> bool:
-			var a: Array = 回.get("args", [])
-			return not a.is_empty() and int(a[0]) >= 1 and int(a[0]) <= _知行展示.size()},
+		 "校验": _知行校验,
+		 "询问文案": GConst.skill_desc(ZHI_XING_HE_YI)},
 	], _知行结算)
 
 
@@ -212,12 +211,63 @@ func _知行选项() -> Array:
 	return 选项
 
 
+## 提交校验：档位合法、目标恰好 1 名且这张牌真能对他打出去、代价牌真在手里。
+## 不完整 / 打不出去的提交一律驳回重问，别当成「不发动」把两张展示牌都弃了。
+func _知行校验(回: Dictionary) -> bool:
+	var args: Array = 回.get("args", [])
+	if args.is_empty():
+		return false
+	var 档: int = int(args[0])
+	if 档 < 1 or 档 > _知行展示.size():
+		return false
+	var 选中: int = int(_知行展示[档 - 1])
+	var 牌: GCard = Data.get_card(选中)
+	if 牌 == null:
+		return false
+	var dsts: Array = 回.get("dsts", [])
+	if dsts.size() != 1 or not _知行能打(选中, 牌, int(dsts[0])):
+		return false
+	for c: Variant in 回.get("cards", []):
+		if player.手牌实例(int(c)) >= 0:
+			return true
+	return false
+
+
+## 这张牌此刻能不能对着这名角色主动打出：攻击走 v_attack + v_attacked，
+## 法术按卡名逐一走 v_*（与真言术同一套口径）。
+## v_* 都要求「牌在手里」，所以这里先把牌临时塞进手牌，查完立刻取回，不留下痕迹。
+func _知行能打(选中: int, 牌: GCard, dst: int) -> bool:
+	var dp: BattlePlayer = engine.p(dst)
+	if dp == null:
+		return false
+	player.add_hand_cards([选中])
+	var 可: bool = false
+	if 牌.is_attack():
+		可 = player.v_attack(选中, dst, engine.players) == GConst.GE_SUCCESS \
+			and dp.v_attacked() == GConst.GE_SUCCESS
+	else:
+		match 牌.card_name_enum():
+			GConst.CardName.Shield:
+				可 = player.v_shield(dst, engine.players) == GConst.GE_SUCCESS \
+					and engine.v_basic_effect_target(dst, 选中) == GConst.GE_SUCCESS
+			GConst.CardName.Weaken:
+				可 = player.v_weaken(dst, engine.players) == GConst.GE_SUCCESS
+			GConst.CardName.Poison:
+				可 = engine.v_basic_effect_target(dst, 选中) == GConst.GE_SUCCESS
+			GConst.CardName.Missile:
+				可 = player.v_missile(选中, dst) == GConst.GE_SUCCESS
+			_:
+				# 其余法术牌（只能响应的【圣光】等）不能主动打出
+				可 = false
+	player.取出一张手牌(选中)
+	return 可
+
+
 ## 「你可选择其中1张」：不选＝不把展示牌作为行动打出，展示的牌全部弃掉、按张数 +【史料】
 func _知行取消() -> int:
 	var 全部: Array = _知行展示.duplicate()
 	_知行展示 = []
 	_知行余 = []
-	_知行待打 = -1
 	_知行已结算 = true
 	if not 全部.is_empty():
 		engine.to_discard(全部, {"owner": player.id, "source": "deck", "cause": ZHI_XING_HE_YI, "face_up": true})
@@ -238,6 +288,11 @@ func _知行结算(答案: Array) -> int:
 	if 牌 == null:
 		engine.报错("【知行合一】选中的牌不存在", player.id)
 		return _知行取消()
+	var dsts: Array = 回.get("dsts", [])
+	if dsts.size() != 1:
+		engine.报错("【知行合一】没有选目标", player.id)
+		return _知行取消()
+	var dst: int = int(dsts[0])
 	# 代价：弃 1 张手牌（强制；超时 / 空回复按手牌顺序补一张，不能白拿这张）
 	var 弃: int = -1
 	for c: Variant in 回.get("cards", []):
@@ -262,20 +317,26 @@ func _知行结算(答案: Array) -> int:
 	engine.take_from_hand(player.id, [弃])
 	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": ZHI_XING_HE_YI})
 	engine._log_discard(player.id, [弃])
-	# 选中的牌加入手牌，再给一份「只能用这张牌」的立刻行动（同 7803 / 9303 的写法）
+	# 选中的牌进手，然后**当场当那张牌打出**（技能出牌：不额外占一次行动）
 	player.add_hand_cards([选中])
 	engine.播获得牌日志(player.id, [选中])
-	_知行待打 = 选中
 	_知行已结算 = false
 	var 种类: int = GConst.ActionType.Attack if 牌.is_attack() else GConst.ActionType.Magic
-	player.add_action(种类, ZHI_XING_HE_YI, true, false, {"cards": [GConst.牌号(选中)]})
+	var 结果: int = engine.技能出牌(player.id, 种类, [选中], [dst], ZHI_XING_HE_YI)
+	if 结果 < 0:
+		# 校验放过、真打却被打回（极少）：这张牌跟着剩余展示牌一起弃掉，不白拿
+		engine.报错("【知行合一】这张牌打不出去", player.id)
+		if player.取出一张手牌(选中) >= 0:
+			_知行余.append(选中)
+		_知行已结算 = true
+		_知行收尾()
+		return _稽古流程()
 	engine._broadcast_game()
-	return SUCCESS
+	return URGENT
 
 
-## 那个「立刻行动」结算完成（或本回合结束没打出去）：剩余展示牌弃掉、你 +X【史料】
+## 打出的那张牌行动结算完成：剩余展示牌弃掉、你 +X【史料】
 func _知行收尾() -> void:
-	_知行待打 = -1
 	if _知行余.is_empty():
 		return
 	var 余: Array = _知行余.duplicate()
@@ -639,7 +700,7 @@ func p_before_turn_begin(ctx: Dictionary) -> int:
 func p_action_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 知行合一白送的那次行动结算完成：剩余展示牌弃掉、你 +X【史料】
+	# 知行合一打出的那张牌结算完成：剩余展示牌弃掉、你 +X【史料】
 	if bool(ctx.get("is_extra", false)) and int(ctx.get("extra_cause", 0)) == ZHI_XING_HE_YI:
 		if not _知行已结算:
 			_知行已结算 = true
@@ -651,13 +712,9 @@ func p_action_end(ctx: Dictionary) -> int:
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	# 选了牌却没打出去（额外行动被放弃）：这张不算白拿，按技能口径弃掉，剩余展示牌照常结算
-	if not _知行已结算 and (_知行待打 >= 0 or not _知行余.is_empty()):
+	# 打出的那张牌没走到行动结束（中途被打断）：剩余展示牌照常结算
+	if not _知行已结算 and not _知行余.is_empty():
 		_知行已结算 = true
-		if _知行待打 >= 0 and player.has_discard_card(_知行待打):
-			engine.take_from_hand(player.id, [_知行待打])
-			engine.to_discard([_知行待打], {"owner": player.id, "source": "hand", "cause": ZHI_XING_HE_YI})
-			engine._log_discard(player.id, [_知行待打])
 		_知行收尾()
 	return _稽古流程()
 
