@@ -1,27 +1,29 @@
 extends BattleRole
-## 记录者（roleID 94）
+## 记录者（roleID 94 / 技能 9401~9409）
 ##
-## 【遗迹】＝角色旁面朝上的牌（盖牌区 open=true，上限读角色表盖牌槽：8）；
-## 【史料】＝0 号指示物（上限 3）；【史书】＝卡表#1007（地系·幻类命格攻击牌，用掉 / 弃掉就移出游戏）。
+## 【遗迹】＝角色旁面朝上的牌（盖牌区 open=true，上限读角色表盖牌槽：8），属于她自己的资源；
+## 【史料】＝0 号指示物（上限读角色表：3）；【史书】＝卡表#1007（地系·幻类命格攻击牌，唯一实例，
+## 不在牌库；被使用 / 弃置 / 转移 / 因技能放置到角色旁时移出游戏）。
 ##
 ## 技能：
-##   传说之地 9401（被动）：开局把牌库顶 3 张面朝上放在角色旁作为【遗迹】。
-##   知行合一 9402（法术）：展示牌库顶 2 张，你选其中 1 张并弃 1 张手牌；选中的牌加入手牌并获得
-##       一次「只能用这张牌」的立刻行动；该行动结算完成后，把剩余展示牌弃掉、你 +X【史料】。
+##   传说之地 9401（被动）：游戏初始时把牌库顶 3 张面朝上放在自己角色旁作为【遗迹】。
+##   知行合一 9402（法术）：展示牌库顶 2 张，你可选其中 1 张作为相应行动打出并弃 1 张手牌；
+##       那个行动结算完成后，把剩余展示牌弃掉、你 +X【史料】。
 ##   稽古识典 9403（被动）：【史料】达到上限时，移除所有【史料】，你弃 1 张牌，
-##       将【史书】加入手牌【强制】。
-##   遗迹论破 9404（响应【回合限定】）：主动攻击①，移除与攻击牌同系的 X 个【遗迹】→
-##       本次攻击伤害 +（X-1）；（若 X>1）额外+1【法术行动】；（若遗迹因此为 0）我方【战绩区】+1【宝石】。
-##   选淬精炼 9405（被动）：光系与暗系的【遗迹】视为任意系别（见 _同系遗迹）。
-##   秘境万象 9406（法术）：移除【史书】与所有【遗迹】，逐张展示牌库顶直到出现同系的第 2 张；
-##       展示的 X 张都作为【遗迹】；（若 X>3）对（X-3）名目标角色各 2 点法术伤害③。
-##   以史为镜 9407（被动）：【史书】视为地系幻类命格攻击牌；被使用 / 弃置时移出游戏（弃牌拦截）。
-##   古今互鉴 9408（启动·必杀【水晶】）：你 +2【史料】；（若手牌 >1）可将 2 张手牌与 X 个【遗迹】交换，X>0。
-##   引稽编鉴 9409（响应）：使用【史书】主动攻击①，指定攻击目标将 1 张手牌加入【遗迹】，
+##       将【史书】加入手牌（强制）。
+##   遗迹论破 9404（响应·回合限定）：主动攻击① 时，移除与攻击牌同系的 X 个【遗迹】→
+##       本次攻击伤害额外 +（X-1）；（X>1）额外 +1【法术行动】；（遗迹因此为 0）我方【战绩区】+1【宝石】。
+##   选淬精炼 9405（被动）：光系 / 暗系的【遗迹】视为任意系别（见 _同系遗迹）。
+##   秘境万象 9406（法术）：移除【史书】与所有【遗迹】，展示牌库顶直到出现同系牌为止；
+##       展示的 X 张都面朝上作为【遗迹】；（X>3）对（X-3）名目标角色各 2 点法术伤害。
+##   以史为镜 9407（被动）：【史书】视为地系幻类命格攻击牌；被使用 / 打出 / 弃置 / 转移拥有者 /
+##       因技能放置在角色旁时，移除此卡。
+##   古今互鉴 9408（启动·必杀【水晶】）：你 +2【史料】；（手牌数>1）可将 2 张手牌与 X 个【遗迹】交换，X>0。
+##   引稽编鉴 9409（响应）：用【史书】主动攻击① 时，指定攻击目标将 1 张手牌加入【遗迹】，
 ##       然后将你手上 X 张牌与 X 个【遗迹】交换，X<3。
 ##
-## 参考实现：9801【幽行】/10803【剑守誓言】的牌库顶展示与「选 1 张入手」、矜贵之女 7802 的多步询问、
-## 剑圣 104【圣剑】的「行动结束后弃 N 张」。
+## 写法：一个技能要分几次问玩家一律走 `BattleRole.多步询问`（段表 + 结算回调），
+## 不再自己维护 `_xxx阶段` 状态机（见 项目文档/技能维护约定.md「多步询问」小节）。
 
 const CHUAN_SHUO_ZHI_DI: int = 9401
 const ZHI_XING_HE_YI: int = 9402
@@ -38,39 +40,39 @@ const 史书号: int = 1007
 ## 一次交换最多几张（9408 / 9409 都是「X<3」，即 1~2 张，按钮表也只有两档）
 const 交换上限: int = 2
 
-## 知行合一：0＝未开始 / 1＝等选展示牌 + 弃 1 张手牌
-var _知行阶段: int = 0
-## 本次展示的牌（还没结算的：选中前是全部，选中后是剩余）
+## 知行合一：本次展示的牌（还没结算的）/ 选中并已放进手里、等「立刻行动」打出去的那张 /
+## 结算完成后要弃掉并换成【史料】的剩余展示牌
 var _知行展示: Array = []
-var _知行余: Array = []
-## 选中的那张（还在手里时，回合结束要按技能口径弃掉，避免白拿一张）
 var _知行待打: int = -1
+var _知行余: Array = []
 var _知行已结算: bool = false
+## 本次发动已经把展示牌翻出来了（重入时不要重复翻牌 / 重复扣费）
+var _知行已付: bool = false
 
-## 秘境万象：0＝未开始 / 1＝等选伤害目标
-var _秘境阶段: int = 0
-var _秘境目标数: int = 0
+## 古今互鉴：本次发动已经付过【水晶】、加过【史料】（重入时不要重复付）
+var _古今已付: bool = false
 
-## 古今互鉴：0＝未开始 / 1＝等选要交换的手牌
-var _古今阶段: int = 0
-
-## 引稽编鉴：0＝未开始 / 1＝等攻击目标交牌 / 2＝等自己选交换的手牌
-var _引稽阶段: int = 0
-var _引稽目标: int = -1
-## 本次攻击的引稽编鉴已处理完（同一张【史书】再进 p_timeline_1 时不再重复问）
-var _引稽已完结: bool = false
-
-## 遗迹论破：0＝未开始 / 1＝等选移除几个遗迹；本回合已用
-var _遗迹论破阶段: int = 0
+## 遗迹论破：【回合限定】本回合已发动 / 本次攻击已经问过（同一张攻击牌不要再问第二次）
 var _遗迹论破已用: bool = false
+var _遗迹论破已问: bool = false
 
-## 稽古识典：史料已清空、正等「弃 1 张牌」
-var _稽古待弃: bool = false
+## 引稽编鉴：本次攻击已经问过 / 整条链已经结算完（之后同类攻击直接走遗迹论破）
+var _引稽已问: bool = false
+var _引稽已完结: bool = false
 
 
 func setup(p: BattlePlayer, e: BattleEngine) -> void:
 	super.setup(p, e)
-	# 【传说之地】：牌库顶 3 张面朝上作为【遗迹】
+	_传说之地()
+
+
+# ============================================================
+# 传说之地 9401：开局把牌库顶 3 张面朝上放到角色旁作为【遗迹】
+# ============================================================
+## 只在「游戏初始」那一次。角色替换进来的不算开局：否则等于凭空再生 3 张【遗迹】。
+func _传说之地() -> void:
+	if engine.round_id > 1 or not player.hand_cards.is_empty():
+		return
 	var cards: Array[int] = engine.移除牌库顶(3)
 	if cards.is_empty():
 		return
@@ -79,7 +81,7 @@ func setup(p: BattlePlayer, e: BattleEngine) -> void:
 
 
 # ============================================================
-# 技能栏
+# 技能栏 / 校验 / 入口
 # ============================================================
 func available_skills() -> Array:
 	return [
@@ -112,18 +114,6 @@ func is_free_skill(skill_id: int) -> bool:
 	return skill_id == GU_JIN_HU_JIAN
 
 
-func v_special_skill(action: Dictionary) -> int:
-	if int(action.get("src_id", -1)) != player.id:
-		return GConst.GE_INVALID_PLAYERID
-	if int(action.get("action_id", 0)) != GU_JIN_HU_JIAN:
-		return GConst.GE_INVALID_ACTION
-	if player.get_energy() < 1:
-		return GConst.GE_INVALID_ACTION
-	# 新的一次发动：清掉上一次的分步（v_* 只在技能开始时调一次，等回复重入不会再进来）
-	_古今阶段 = 0
-	return GConst.GE_SUCCESS
-
-
 func v_magic_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
@@ -131,93 +121,139 @@ func v_magic_skill(action: Dictionary) -> int:
 	if 技能号 == ZHI_XING_HE_YI:
 		if engine.deck.pile_size() <= 0 or player.hand_cards.is_empty():
 			return GConst.GE_INVALID_ACTION
-		_知行阶段 = 0
-		_知行已结算 = false
-		_知行余 = []
+		# 新的一次发动：把上一次可能残留的链 / 中间态清干净（v_* 只在技能开始时调一次）
+		多步询问重置(ZHI_XING_HE_YI)
+		_知行展示 = []
 		_知行待打 = -1
+		_知行余 = []
+		_知行已结算 = false
+		_知行已付 = false
 		return GConst.GE_SUCCESS
 	if 技能号 == MI_JING_WAN_XIANG:
 		if not _史书在手():
 			return GConst.GE_INVALID_ACTION
-		_秘境阶段 = 0
+		多步询问重置(MI_JING_WAN_XIANG)
 		return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 
 
+func v_special_skill(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return GConst.GE_INVALID_PLAYERID
+	if int(action.get("action_id", 0)) != GU_JIN_HU_JIAN:
+		return GConst.GE_INVALID_ACTION
+	if player.get_energy() < 1:
+		return GConst.GE_INVALID_ACTION
+	多步询问重置(GU_JIN_HU_JIAN)
+	_古今已付 = false
+	return GConst.GE_SUCCESS
+
+
 func p_magic_skill(action: Dictionary) -> int:
-	# 上一次收尾还停在【稽古识典】的「弃 1 张牌」上：先把它结算完
-	if _稽古待弃:
-		return _稽古推进()
-	var 技能号: int = int(action.get("action_id", 0))
-	if 技能号 == ZHI_XING_HE_YI:
-		return _知行合一()
-	if 技能号 == MI_JING_WAN_XIANG:
-		return _秘境万象()
+	match int(action.get("action_id", 0)):
+		ZHI_XING_HE_YI:
+			return _知行合一()
+		MI_JING_WAN_XIANG:
+			return _秘境万象()
 	return EMPTY_HANDLE
+
+
+func p_special_skill(action: Dictionary) -> int:
+	if int(action.get("action_id", 0)) != GU_JIN_HU_JIAN:
+		return GConst.GE_INVALID_ACTION
+	return _古今互鉴()
 
 
 # ============================================================
 # 知行合一 9402：展示 2 张 → 同一步选 1 张 + 弃 1 张手牌 → 立刻行动 → 结算剩余
 # ============================================================
 func _知行合一() -> int:
-	if _知行阶段 == 3:
-		# 已经选过牌、只等【稽古识典】收尾
-		return _稽古推进()
-	if _知行阶段 == 0:
+	if _知行已付 and not 多步询问进行中(ZHI_XING_HE_YI):
+		# 本技能的询问已经结束，现在只剩【稽古识典】的收尾在等她答
+		return _稽古流程()
+	if not _知行已付:
+		_知行已付 = true
 		_知行展示 = engine.移除牌库顶(2)
 		if _知行展示.is_empty():
 			return SUCCESS
 		engine.展示牌库顶(player.id, _知行展示, true)
-		_知行阶段 = 1
-		询问(player.id, ZHI_XING_HE_YI, 1, 0, GConst.CardSource.Hand, _知行选项(), 0, "", [], true,
-			0, -1, [], -1, {})
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	_知行阶段 = 3
-	var args: Array = r.get("args", [])
-	var cards: Array = r.get("card_ids", [])
-	if args.is_empty():
-		# 取消 = 不把展示牌作为行动发出：全部展示牌弃掉、按张数 +【史料】
-		_知行余 = _知行展示.duplicate()
-		_知行展示 = []
-		_知行结算()
-		_稽古检查()
-		return _稽古推进()
-	var 档: int = int(args[0])
+		_知行待打 = -1
+		_知行余 = []
+		_知行已结算 = false
+	# 「选哪张展示牌」和代价「弃 1 张手牌」同一问提交（选项 = 展示牌第几张）
+	return 多步询问(ZHI_XING_HE_YI, [
+		{"选项": func(_答案: Array) -> Array: return _知行选项(),
+		 "需牌": 1,
+		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
+		 "可取消": true,
+		 "取消": _知行取消},
+	], _知行结算)
+
+
+func _知行选项() -> Array:
+	var 选项: Array = []
+	for i: int in range(_知行展示.size()):
+		var 牌: GCard = Data.get_card(int(_知行展示[i]))
+		if 牌 == null:
+			continue
+		选项.append({
+			"value": i + 1,
+			"label": "%s %s" % [牌.card_name, GConst.element_to_chinese(牌.element_enum())],
+		})
+	return 选项
+
+
+## 「你可选择其中1张」：不选＝不把展示牌作为行动打出，展示的牌全部弃掉、按张数 +【史料】
+func _知行取消() -> int:
+	var 全部: Array = _知行展示.duplicate()
+	_知行展示 = []
+	_知行余 = []
+	_知行待打 = -1
+	_知行已结算 = true
+	if not 全部.is_empty():
+		engine.to_discard(全部, {"owner": player.id, "source": "deck", "cause": ZHI_XING_HE_YI, "face_up": true})
+		player.add_token(史料槽, 全部.size())
+	engine._broadcast_game()
+	return _稽古流程()
+
+
+func _知行结算(答案: Array) -> int:
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var args: Array = 回.get("args", [])
+	var 档: int = int(args[0]) if not args.is_empty() else -1
 	if 档 < 1 or 档 > _知行展示.size():
-		engine.报错("【知行合一】选项号越界", player.id)
-		_知行余 = _知行展示.duplicate()
-		_知行展示 = []
-		_知行结算()
-		_稽古检查()
-		return _稽古推进()
+		engine.报错("【知行合一】选项号越界，按不发动处理", player.id)
+		return _知行取消()
 	var 选中: int = int(_知行展示[档 - 1])
 	var 牌: GCard = Data.get_card(选中)
 	if 牌 == null:
 		engine.报错("【知行合一】选中的牌不存在", player.id)
-		_知行余 = _知行展示.duplicate()
-		_知行展示 = []
-		_知行结算()
-		_稽古检查()
-		return _稽古推进()
-	# 弃 1 张手牌（代价；超时 / 空回复按手牌顺序补一张，不能白发动）
+		return _知行取消()
+	# 代价：弃 1 张手牌（强制；超时 / 空回复按手牌顺序补一张，不能白拿这张）
 	var 弃: int = -1
-	for c: Variant in cards:
+	for c: Variant in 回.get("cards", []):
 		var 实例: int = player.手牌实例(int(c))
 		if 实例 >= 0:
 			弃 = 实例
 			break
-	if 弃 < 0 and not player.hand_cards.is_empty():
-		弃 = int(player.hand_cards[0])
-	for c0: Variant in _知行展示:
-		if int(c0) != 选中:
-			_知行余.append(int(c0))
+	if 弃 < 0:
+		for c0: int in player.hand_cards:
+			if player.has_discard_card(c0):
+				弃 = c0
+				break
+	if 弃 < 0:
+		engine.报错("【知行合一】没有可弃的手牌", player.id)
+		return _知行取消()
+	_知行余 = []
+	for c1: Variant in _知行展示:
+		if int(c1) != 选中:
+			_知行余.append(int(c1))
 	_知行展示 = []
 	notice_skill(ZHI_XING_HE_YI, [player.id])
 	engine.take_from_hand(player.id, [弃])
 	engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": ZHI_XING_HE_YI})
 	engine._log_discard(player.id, [弃])
-	# 选中的牌加入手牌，再给一份「只能用这张牌」的立刻行动（同 7803 / 9303 的做法）
+	# 选中的牌加入手牌，再给一份「只能用这张牌」的立刻行动（同 7803 / 9303 的写法）
 	player.add_hand_cards([选中])
 	engine.播获得牌日志(player.id, [选中])
 	_知行待打 = 选中
@@ -228,62 +264,48 @@ func _知行合一() -> int:
 	return SUCCESS
 
 
-func _知行选项() -> Array:
-	var 选项: Array = []
-	for i: int in range(_知行展示.size()):
-		var cid: int = int(_知行展示[i])
-		var 牌: GCard = Data.get_card(cid)
-		if 牌 == null:
-			continue
-		var 文案: String = "%s %s" % [牌.card_name, GConst.element_to_chinese(牌.element_enum())]
-		选项.append({"value": i + 1, "label": 文案})
-	return 选项
-
-
-## 把「剩余展示牌」弃掉并 +X【史料】
-func _知行结算() -> void:
+## 那个「立刻行动」结算完成（或本回合结束没打出去）：剩余展示牌弃掉、你 +X【史料】
+func _知行收尾() -> void:
 	_知行待打 = -1
-	if not _知行余.is_empty():
-		engine.to_discard(_知行余, {"owner": player.id, "source": "deck", "cause": ZHI_XING_HE_YI, "face_up": true})
-		player.add_token(史料槽, _知行余.size())
-		_知行余 = []
-	engine._broadcast_game()
-
-
-# ============================================================
-# 稽古识典 9403：【史料】满 → 移除全部史料、弃 1 张、把【史书】加入手牌
-# ============================================================
-func _稽古检查() -> void:
-	if player.token_num(史料槽) < player.token_max(史料槽):
+	if _知行余.is_empty():
 		return
-	notice_skill(JI_GU_SHI_DIAN, [player.id])
-	player.clear_token(史料槽)
-	_稽古待弃 = true
+	var 余: Array = _知行余.duplicate()
+	_知行余 = []
+	engine.to_discard(余, {"owner": player.id, "source": "deck", "cause": ZHI_XING_HE_YI, "face_up": true})
+	player.add_token(史料槽, 余.size())
 	engine._broadcast_game()
 
 
-## 推进「弃 1 张牌」这一步；返回 WAIT（等回复）/ SUCCESS（完成）
-func _稽古推进() -> int:
-	if not _稽古待弃:
-		return SUCCESS
-	if player.hand_cards.is_empty():
-		_稽古待弃 = false
-		_发史书()
-		return SUCCESS
-	if not engine.has_reply():
-		询问(player.id, JI_GU_SHI_DIAN, 1, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [], -1, {})
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	_稽古待弃 = false
+# ============================================================
+# 稽古识典 9403：【史料】满 → 移除全部史料、弃 1 张牌、把【史书】加入手牌（强制）
+# ============================================================
+## 触发点：知行合一 / 古今互鉴 结算之后，以及她自己回合开始 / 结束的兜底。
+## 返回 WAIT＝正在等她选弃哪张牌，SUCCESS＝没触发或已结算完。
+func _稽古流程() -> int:
+	if not 多步询问进行中(JI_GU_SHI_DIAN) and not 多步询问待收尾(JI_GU_SHI_DIAN):
+		if player.token_num(史料槽) < player.token_max(史料槽):
+			return SUCCESS
+		notice_skill(JI_GU_SHI_DIAN, [player.id])
+		player.clear_token(史料槽)
+		engine._broadcast_game()
+	return 多步询问(JI_GU_SHI_DIAN, [
+		# 【强制】：一张手牌都没有时整段跳过（结算里直接发史书），有牌就必须弃 1 张
+		{"需牌": 1,
+		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
+		 "可取消": false,
+		 "跳过": func(_答案: Array) -> bool: return player.hand_cards.is_empty()},
+	], _稽古结算)
+
+
+func _稽古结算(答案: Array) -> int:
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
 	var 弃: int = -1
-	for c: Variant in r.get("card_ids", []):
+	for c: Variant in 回.get("cards", []):
 		var 实例: int = player.手牌实例(int(c))
 		if 实例 >= 0:
 			弃 = 实例
 			break
 	if 弃 < 0:
-		# 「弃 1 张牌」是强制项：超时 / 空回复按手牌顺序补一张
 		for c0: int in player.hand_cards:
 			if player.has_discard_card(c0):
 				弃 = c0
@@ -301,7 +323,7 @@ func _发史书() -> void:
 	if player.has_discard_card(史书号):
 		engine._broadcast_game()
 		return
-	# 之前被【以史为镜】移出游戏的史书：先从移除牌堆取回来，再加回手牌（约定 13）
+	# 之前被【以史为镜】移出游戏的史书：先从移除牌堆取回来，再加回手牌
 	engine.从移除牌堆取出(史书号)
 	player.add_hand_cards([史书号])
 	engine.播获得牌日志(player.id, [史书号])
@@ -312,24 +334,73 @@ func _发史书() -> void:
 # 秘境万象 9406：移除史书 + 所有遗迹 → 逐张翻到同系第 2 张 → 都作为遗迹 → 可能群伤
 # ============================================================
 func _秘境万象() -> int:
-	if _秘境阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		_秘境阶段 = 0
-		var dsts: Array = _取目标(r.get("dst_ids", []), 全部角色(), _秘境目标数)
-		if dsts.size() < _秘境目标数:
-			engine.报错("【秘境万象】目标数不对", player.id)
-		for d: Variant in dsts:
-			engine.push_harm({"src": player.id, "dst": int(d), "point": 2,
-				"cause": MI_JING_WAN_XIANG, "type": GConst.HarmType.Magic})
+	if not 多步询问进行中(MI_JING_WAN_XIANG):
+		notice_skill(MI_JING_WAN_XIANG, [player.id])
+		_移除史书()
+		var 旧: Array = player.cover_cards.duplicate()
+		if not 旧.is_empty():
+			engine.remove_cover(player.id, 旧, player.id, MI_JING_WAN_XIANG)
+			engine.to_discard(旧, {"owner": player.id, "source": "cover", "cause": MI_JING_WAN_XIANG, "face_up": true})
+		var 展示: Array = _翻到同系()
+		if not 展示.is_empty():
+			engine.展示牌库顶(player.id, 展示)
+			engine.add_cover(player.id, 展示, player.id, MI_JING_WAN_XIANG, true)
 		engine._broadcast_game()
-		return URGENT if not dsts.is_empty() else SUCCESS
-	notice_skill(MI_JING_WAN_XIANG, [player.id])
-	_移除史书()
-	var 旧: Array = player.cover_cards.duplicate()
-	if not 旧.is_empty():
-		engine.remove_cover(player.id, 旧, player.id, MI_JING_WAN_XIANG)
-		engine.to_discard(旧, {"owner": player.id, "source": "cover", "cause": MI_JING_WAN_XIANG, "face_up": true})
-		engine._log_discard(player.id, 旧, false)
+		if 展示.size() <= 3:
+			return SUCCESS
+	# 「对（X-3）名目标角色造成 2 点法术伤害」：X 就是现在面前的【遗迹】数
+	var 需要: int = mini(_秘境目标数(), engine.order.size())
+	if 需要 <= 0:
+		return SUCCESS
+	return 多步询问(MI_JING_WAN_XIANG, [
+		{"需目标": 需要,
+		 "目标白": 全部角色(),
+		 "可取消": false,
+		 "预览基准": 2, "预览类型": GConst.HarmType.Magic,
+		 "校验": _秘境校验},
+	], _秘境结算)
+
+
+## 这次要打几个人：X-3（X＝展示出来摆成遗迹的张数）
+func _秘境目标数() -> int:
+	return maxi(_遗迹数() - 3, 0)
+
+
+func _秘境校验(回: Dictionary) -> bool:
+	var dsts: Array = 回.get("dsts", [])
+	if dsts.size() != mini(_秘境目标数(), engine.order.size()):
+		return false
+	var 已: Array = []
+	for d: Variant in dsts:
+		var pid: int = int(d)
+		if not 全部角色().has(pid) or 已.has(pid):
+			return false
+		已.append(pid)
+	return true
+
+
+func _秘境结算(答案: Array) -> int:
+	var 需要: int = mini(_秘境目标数(), engine.order.size())
+	if 需要 <= 0:
+		return SUCCESS
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var 目标们: Array = _取目标(回.get("dsts", []), 全部角色(), 需要)
+	# 超时 / 少选：按座位顺序补齐 —— 强制伤害不能因为没点人就丢掉
+	if 目标们.size() < 需要:
+		for pid: int in 全部角色():
+			if not 目标们.has(pid):
+				目标们.append(pid)
+			if 目标们.size() >= 需要:
+				break
+	for d: Variant in 目标们:
+		engine.push_harm({"src": player.id, "dst": int(d), "point": 2,
+			"cause": MI_JING_WAN_XIANG, "type": GConst.HarmType.Magic})
+	engine._broadcast_game()
+	return URGENT
+
+
+## 「展示牌库顶牌直至展示牌中有同系牌为止」：一直翻，翻到出现第二张同系牌（这张也算）为止
+func _翻到同系() -> Array:
 	var 展示: Array = []
 	var 已见: Array = []
 	while engine.deck.pile_size() > 0:
@@ -339,194 +410,157 @@ func _秘境万象() -> int:
 		var cid: int = int(一张[0])
 		展示.append(cid)
 		var 牌: GCard = Data.get_card(cid)
-		var 系: int = 牌.element_enum() if 牌 != null else 0
+		var 系: int = 牌.element_enum() if 牌 != null else -1
 		if 已见.has(系):
 			break
 		已见.append(系)
-	if 展示.is_empty():
+	return 展示
+
+
+# ============================================================
+# 古今互鉴 9408（启动·必杀）：+2【史料】；（手牌>1）2 张手牌与 X 个【遗迹】交换
+# ============================================================
+func _古今互鉴() -> int:
+	if _古今已付 and not 多步询问进行中(GU_JIN_HU_JIAN):
+		# 交换问完（或本来就不用问），现在只剩【稽古识典】的收尾
+		return _稽古流程()
+	if not _古今已付:
+		_古今已付 = true
+		notice_skill(GU_JIN_HU_JIAN, [player.id])
+		player.boot_skill_used = true
+		player.remove_energy(1)
+		player.add_token(史料槽, 2)
+		engine._broadcast_game()
+		# 交换是可选的：换不了（手牌不足 2 张 / 没有【遗迹】）就只剩 +2【史料】
+		if player.hand_cards.size() < 2 or _遗迹数() <= 0:
+			return _稽古流程()
+	return 多步询问(GU_JIN_HU_JIAN, [
+		{"选项": func(_答案: Array) -> Array: return _交换选项(GU_JIN_HU_JIAN, 2),
+		 "来源": GConst.CardSource.HandOrCover,
+		 "可取消": true,
+		 "校验": func(回: Dictionary) -> bool: return _交换校验(回, 2, false)},
+	], _古今结算)
+
+
+func _古今结算(答案: Array) -> int:
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var args: Array = 回.get("args", [])
+	if not args.is_empty():
+		_交换遗迹(int(args[0]), 回.get("cards", []), GU_JIN_HU_JIAN, 2)
+	return _稽古流程()
+
+
+# ============================================================
+# 引稽编鉴 9409：【史书】主动攻击① → 目标交 1 张手牌进【遗迹】 → 你交换 → 再做遗迹论破
+# ============================================================
+func _引稽编鉴(ctx: Dictionary) -> int:
+	if _引稽已完结 or (_引稽已问 and not 多步询问进行中(YIN_JI_BIAN_JIAN)):
+		return _遗迹论破(ctx)
+	_引稽已问 = true
+	return 多步询问(YIN_JI_BIAN_JIAN, [
+		# 「指定攻击目标将 1 张手牌加入【遗迹】」：强制；他一张手牌都没有就跳过
+		{"问谁": func(_答案: Array) -> int: return int(ctx.get("dst", -1)),
+		 "需牌": 1,
+		 "牌白": func(_答案: Array) -> Array:
+			var dp: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+			return dp.hand_cards if dp != null else [],
+		 "可取消": false,
+		 "跳过": func(_答案: Array) -> bool:
+			var dp: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+			return dp == null or dp.hand_cards.is_empty(),
+		 "答完": _引稽收牌.bind(ctx)},
+		# 「然后将你手上 X 张牌与 X 个【遗迹】交换，X<3」：可选
+		{"选项": func(_答案: Array) -> Array:
+			return _交换选项(YIN_JI_BIAN_JIAN, 0, _交换上限(), true),
+		 "来源": GConst.CardSource.HandOrCover,
+		 "可取消": true,
+		 "跳过": func(_答案: Array) -> bool: return _交换上限() <= 0,
+		 "校验": func(回: Dictionary) -> bool: return _交换校验(回, 0, true)},
+	], _引稽结算.bind(ctx))
+
+
+## 目标交牌那一段答完：他选的那张面朝上摆进【遗迹】（展示归属＝交牌的人）
+func _引稽收牌(回: Dictionary, _答案: Array, ctx: Dictionary) -> int:
+	var dp: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
+	if dp == null:
 		return SUCCESS
-	engine.展示牌库顶(player.id, 展示)
-	engine.add_cover(player.id, 展示, player.id, MI_JING_WAN_XIANG, true)
-	var X: int = 展示.size()
-	if X > 3:
-		# 「对（X-3）名目标角色」：目标多于在场人数时按 min 取（约定 23）
-		_秘境目标数 = mini(X - 3, engine.order.size())
-		_秘境阶段 = 1
-		询问(player.id, MI_JING_WAN_XIANG, 0, _秘境目标数, GConst.CardSource.Hand, [], 0, "", [], false,
-			0, -1, 全部角色(), -1, {}, 2, GConst.HarmType.Magic)
-		return WAIT
+	var 入: int = -1
+	for c: Variant in 回.get("cards", []):
+		if dp.has_discard_card(int(c)):
+			入 = int(c)
+			break
+	if 入 < 0:
+		for c0: int in dp.hand_cards:
+			if dp.has_discard_card(c0):
+				入 = c0
+				break
+	if 入 < 0:
+		return SUCCESS
+	engine.展示手牌(dp.id, [入])
+	engine.take_from_hand(dp.id, [入])
+	engine.add_cover(player.id, [入], player.id, YIN_JI_BIAN_JIAN, true)
+	engine._broadcast_game()
 	return SUCCESS
 
 
-# ============================================================
-# 古今互鉴 9408（启动·必杀）
-# ============================================================
-func p_special_skill(action: Dictionary) -> int:
-	if int(action.get("action_id", 0)) != GU_JIN_HU_JIAN:
-		return GConst.GE_INVALID_ACTION
-	if _稽古待弃:
-		return _稽古推进()
-	if _古今阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		_古今阶段 = 3
-		_古今交换(r)
-		_稽古检查()
-		return _稽古推进()
-	if _古今阶段 == 3:
-		return _稽古推进()
-	_古今阶段 = 3
-	player.boot_skill_used = true
-	notice_skill(GU_JIN_HU_JIAN, [player.id])
-	player.remove_energy(1)
-	player.add_token(史料槽, 2)
-	engine._broadcast_game()
-	# 先问交换、再做【稽古识典】：稽古要等玩家选弃哪张牌，放在最后收尾
-	if player.hand_cards.size() >= 2 and _遗迹数() > 0:
-		_古今阶段 = 1
-		询问(player.id, GU_JIN_HU_JIAN, 0, 0, GConst.CardSource.HandOrCover,
-			_交换选项(GU_JIN_HU_JIAN, 交换上限), 0, "", [], true, 0, -1, [], -1, {})
-		return WAIT
-	_稽古检查()
-	return _稽古推进()
-
-
-func _古今交换(r: Dictionary) -> void:
-	var args: Array = r.get("args", [])
-	if args.is_empty():
-		return
-	var X: int = int(args[0])
-	if X < 1 or X > mini(交换上限, _遗迹数()):
-		engine.报错("【古今互鉴】交换参数不对", player.id)
-		return
-	_交换遗迹(X, r.get("card_ids", []), GU_JIN_HU_JIAN, 交换上限)
-
-
-# ============================================================
-# 引稽编鉴 9409：用【史书】主动攻击① → 攻击目标交 1 张手牌作【遗迹】 → 交换
-# ============================================================
-func p_timeline_1(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
-		return SUCCESS
-	if GConst.牌号(int(ctx.get("card_id", -1))) == 史书号 and not _引稽已完结:
-		return _引稽编鉴(ctx)
+func _引稽结算(答案: Array, ctx: Dictionary) -> int:
+	_引稽已完结 = true
+	# 被跳过的段不占答案槽位：交换那一段是最后答的，取最后一条
+	var 回: Dictionary = 答案[答案.size() - 1] if not 答案.is_empty() else {}
+	var args: Array = 回.get("args", [])
+	if not args.is_empty():
+		_交换遗迹(int(args[0]), 回.get("cards", []), YIN_JI_BIAN_JIAN, int(args[0]))
 	return _遗迹论破(ctx)
 
 
-## 每次攻击开始时复位「本次攻击已经问过」的标记
-func p_before_attack(ctx: Dictionary) -> int:
-	if int(ctx.get("src", -1)) == player.id and bool(ctx.get("is_active", false)):
-		_引稽已完结 = false
-		_遗迹论破阶段 = 0
-	return SUCCESS
-
-
-func _引稽编鉴(ctx: Dictionary) -> int:
-	if _引稽阶段 == 1:
-		var r: Dictionary = take_skill_reply_full()
-		_引稽阶段 = 0
-		var dp: BattlePlayer = engine.p(_引稽目标)
-		_引稽目标 = -1
-		if dp == null:
-			_引稽已完结 = true
-			return _遗迹论破(ctx)
-		var 入: int = -1
-		for c: Variant in r.get("card_ids", []):
-			if dp.has_discard_card(int(c)):
-				入 = int(c)
-				break
-		if 入 < 0:
-			# 「将 1 张手牌加入【遗迹】」是强制项：超时 / 空回复按手牌顺序补一张
-			for c0: int in dp.hand_cards:
-				if dp.has_discard_card(c0):
-					入 = c0
-					break
-		if 入 < 0:
-			_引稽已完结 = true
-			return _遗迹论破(ctx)
-		# 这张是攻击目标从手里拿出来、面朝上摆在【遗迹】区的：统一入口（亮牌 + 触发封印，
-		# 展示归属＝交牌的那名角色）
-		engine.展示手牌(dp.id, [入])
-		engine.take_from_hand(dp.id, [入])
-		engine.add_cover(player.id, [入], player.id, YIN_JI_BIAN_JIAN, true)
-		engine._broadcast_game()
-		return _引稽交换(ctx)
-	if _引稽阶段 == 2:
-		var r2: Dictionary = take_skill_reply_full()
-		_引稽阶段 = 0
-		_引稽已完结 = true
-		var args2: Array = r2.get("args", [])
-		if args2.is_empty():
-			return _遗迹论破(ctx)
-		var X: int = int(args2[0])
-		if X < 1 or X > mini(交换上限, _遗迹数()):
-			engine.报错("【引稽编鉴】交换参数不对", player.id)
-			return _遗迹论破(ctx)
-		_交换遗迹(X, r2.get("card_ids", []), YIN_JI_BIAN_JIAN, X)
-		return _遗迹论破(ctx)
-	var dst: int = int(ctx.get("dst", -1))
-	var dp2: BattlePlayer = engine.p(dst)
-	if dp2 == null or dp2.hand_cards.is_empty():
-		_引稽已完结 = true
-		return _遗迹论破(ctx)
-	notice_skill(YIN_JI_BIAN_JIAN, [dst])
-	_引稽目标 = dst
-	_引稽阶段 = 1
-	# 「指定攻击目标将 1 张手牌加入【遗迹】」：让别人选牌，用技能询问，回复仍回到本钩子
-	询问(dst, YIN_JI_BIAN_JIAN, 1, 0, GConst.CardSource.Hand, [], 0, "", dp2.hand_cards.duplicate(), false,
-		0, -1, [], -1, {})
-	return WAIT
-
-
-func _引稽交换(ctx: Dictionary) -> int:
-	var 上限: int = mini(mini(交换上限, player.hand_cards.size()), _遗迹数())
-	if 上限 <= 0:
-		_引稽已完结 = true
-		return _遗迹论破(ctx)
-	_引稽阶段 = 2
-	询问(player.id, YIN_JI_BIAN_JIAN, 0, 0, GConst.CardSource.HandOrCover,
-		_交换选项(YIN_JI_BIAN_JIAN, 0, 上限, true), 0, "", [], true, 0, -1, [], -1, {})
-	return WAIT
+## 引稽编鉴这次最多能换几张：手牌数 / 【遗迹】数 / 2 三者取小
+func _交换上限() -> int:
+	return mini(mini(交换上限, player.hand_cards.size()), _遗迹数())
 
 
 # ============================================================
 # 遗迹论破 9404：主动攻击① 移除同系遗迹加伤（回合限定）
 # ============================================================
 func _遗迹论破(ctx: Dictionary) -> int:
-	if _遗迹论破已用:
+	if _遗迹论破已用 or (_遗迹论破已问 and not 多步询问进行中(YI_JI_LUN_PO)):
 		return SUCCESS
 	var 牌: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if 牌 == null:
 		return SUCCESS
-	var 同系: Array = _同系遗迹(牌.element_enum())
-	if 同系.is_empty():
-		return SUCCESS
-	if _遗迹论破阶段 == 0:
-		_遗迹论破阶段 = 1
-		询问(player.id, YI_JI_LUN_PO, 0, 0, GConst.CardSource.Hand,
-			_遗迹论破选项(同系.size()), 0, "", [], true, 0, -1, [], -1, {})
-		return WAIT
+	if not 多步询问进行中(YI_JI_LUN_PO):
+		if _同系遗迹(牌.element_enum()).is_empty():
+			return SUCCESS
+		_遗迹论破已问 = true
+	return 多步询问(YI_JI_LUN_PO, [
+		{"选项": func(_答案: Array) -> Array:
+			return _遗迹论破选项(_同系遗迹(牌.element_enum()).size()),
+		 "可取消": true},
+	], _遗迹论破结算.bind(ctx))
+
+
+func _遗迹论破结算(答案: Array, ctx: Dictionary) -> int:
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var args: Array = 回.get("args", [])
 	# 回来时重新算一次同系遗迹：询问期间盖牌可能变过（如【引稽编鉴】刚加了 1 张）
-	_遗迹论破阶段 = 0
-	var r: Dictionary = take_skill_reply_full()
-	var args: Array = r.get("args", [])
-	var 同系2: Array = _同系遗迹(牌.element_enum())
-	if args.is_empty() or 同系2.is_empty():
+	var 牌: GCard = Data.get_card(int(ctx.get("card_id", -1)))
+	if 牌 == null or args.is_empty():
 		return SUCCESS
+	var 同系: Array = _同系遗迹(牌.element_enum())
 	var X: int = int(args[0])
-	if X < 1 or X > 同系2.size():
+	if X < 1 or X > mini(同系.size(), 3):
 		engine.报错("【遗迹论破】移除张数不对", player.id)
 		return SUCCESS
 	_遗迹论破已用 = true
 	var 取: Array = []
 	for i: int in range(X):
-		取.append(int(同系2[i]))
+		取.append(int(同系[i]))
 	notice_skill(YI_JI_LUN_PO, [player.id])
 	engine.remove_cover(player.id, 取, player.id, YI_JI_LUN_PO)
 	engine.to_discard(取, {"owner": player.id, "source": "cover", "cause": YI_JI_LUN_PO})
-	engine._log_discard(player.id, 取, false)
 	var harm: Dictionary = ctx.get("harm", {})
 	加伤害(harm, X - 1)
 	if X > 1:
+		# 「额外 +1【法术行动】」：直接进入那份额外行动（不想要就在额外行动阶段放弃）
 		player.add_action(GConst.ActionType.Magic, YI_JI_LUN_PO, true)
 	if _遗迹数() == 0:
 		engine.set_team_gem(player.color, engine.team_gem[player.color] + 1)
@@ -547,50 +581,63 @@ func _遗迹论破选项(上限: int) -> Array:
 	return 选项
 
 
+# ============================================================
+# 时机钩子
+# ============================================================
+## 每次主动攻击开始：复位「本次攻击问过」的标记
+func p_before_attack(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) == player.id and bool(ctx.get("is_active", false)):
+		_引稽已问 = false
+		_引稽已完结 = false
+		_遗迹论破已问 = false
+	return SUCCESS
+
+
+func p_timeline_1(ctx: Dictionary) -> int:
+	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
+		return SUCCESS
+	# 用【史书】主动攻击：先引稽编鉴，再遗迹论破（两件事可以同时发）
+	if GConst.牌号(int(ctx.get("card_id", -1))) == 史书号:
+		return _引稽编鉴(ctx)
+	return _遗迹论破(ctx)
+
+
 func p_before_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
 	_遗迹论破已用 = false
-	if _稽古待弃:
-		return _稽古推进()
-	return SUCCESS
+	# 上一次的【稽古识典】没结算完（被打断 / 跨回合）时在这里补
+	return _稽古流程()
 
 
-# ============================================================
-# 知行合一的收尾：该行动结算完成后弃剩余牌 + 【史料】
-# ============================================================
 func p_action_end(ctx: Dictionary) -> int:
-	if _稽古待弃:
-		return _稽古推进()
-	if not bool(ctx.get("is_extra", false)) or int(ctx.get("extra_cause", 0)) != ZHI_XING_HE_YI:
+	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if _知行已结算:
-		return SUCCESS
-	_知行已结算 = true
-	_知行结算()
-	_稽古检查()
-	return _稽古推进()
+	# 知行合一白送的那次行动结算完成：剩余展示牌弃掉、你 +X【史料】
+	if bool(ctx.get("is_extra", false)) and int(ctx.get("extra_cause", 0)) == ZHI_XING_HE_YI:
+		if not _知行已结算:
+			_知行已结算 = true
+			_知行收尾()
+			return _稽古流程()
+	return _稽古流程()
 
 
 func p_turn_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
-	if _稽古待弃:
-		return _稽古推进()
-	if _知行余.is_empty() and _知行待打 < 0:
-		return SUCCESS
-	# 选了牌却没打出去（额外行动被放弃）：这张牌不算白拿，按技能口径弃掉
-	if _知行待打 >= 0 and player.has_discard_card(_知行待打):
-		engine.take_from_hand(player.id, [_知行待打])
-		engine.to_discard([_知行待打], {"owner": player.id, "source": "hand", "cause": ZHI_XING_HE_YI})
-		engine._log_discard(player.id, [_知行待打])
-	_知行结算()
-	_稽古检查()
-	return _稽古推进()
+	# 选了牌却没打出去（额外行动被放弃）：这张不算白拿，按技能口径弃掉，剩余展示牌照常结算
+	if not _知行已结算 and (_知行待打 >= 0 or not _知行余.is_empty()):
+		_知行已结算 = true
+		if _知行待打 >= 0 and player.has_discard_card(_知行待打):
+			engine.take_from_hand(player.id, [_知行待打])
+			engine.to_discard([_知行待打], {"owner": player.id, "source": "hand", "cause": ZHI_XING_HE_YI})
+			engine._log_discard(player.id, [_知行待打])
+		_知行收尾()
+	return _稽古流程()
 
 
 # ============================================================
-# 以史为镜 9407：【史书】被弃置 / 打出时移出游戏
+# 以史为镜 9407：【史书】被使用 / 打出 / 弃置 / 转移拥有者 / 因技能放置在角色旁 → 移除此卡
 # ============================================================
 func wants_before_discard(ctx: Dictionary) -> bool:
 	for c: Variant in ctx.get("cards", []):
@@ -608,6 +655,55 @@ func p_before_discard(ctx: Dictionary) -> int:
 		return SUCCESS
 	ctx["removed"] = 移
 	notice_skill(YI_SHI_WEI_JING, [player.id])
+	return SUCCESS
+
+
+## 「因技能放置在角色旁」：史书被当成基础效果贴到某人面前 → 移除这张基础效果并移出游戏
+func p_basic_effect_change(ctx: Dictionary) -> int:
+	if not bool(ctx.get("add", false)):
+		return SUCCESS
+	var 场上牌: int = int(ctx.get("card", -1))
+	if GConst.牌号(场上牌) != 史书号:
+		return SUCCESS
+	var dst: int = int(ctx.get("dst", -1))
+	notice_skill(YI_SHI_WEI_JING, [dst])
+	engine.remove_basic_effect(dst, 场上牌, YI_SHI_WEI_JING, player.id)
+	engine.放入移除牌堆(场上牌)
+	return SUCCESS
+
+
+## 同理：史书被放进盖牌区 / 遗迹区 → 拿走并移出游戏
+func p_cover_change(ctx: Dictionary) -> int:
+	if int(ctx.get("direction", 0)) != GConst.CHANGE_ADD:
+		return SUCCESS
+	var 移: Array = []
+	for c: Variant in ctx.get("cards", []):
+		if GConst.牌号(int(c)) == 史书号 and not 移.has(int(c)):
+			移.append(int(c))
+	if 移.is_empty():
+		return SUCCESS
+	var dst: int = int(ctx.get("dst", -1))
+	notice_skill(YI_SHI_WEI_JING, [dst])
+	engine.remove_cover(dst, 移, player.id, YI_SHI_WEI_JING)
+	for c2: Variant in 移:
+		engine.放入移除牌堆(int(c2))
+	return SUCCESS
+
+
+## 「转移拥有者」：史书进了别人的手牌 → 移出游戏（它只属于记录者）
+func p_hand_change(ctx: Dictionary) -> int:
+	var 谁: int = int(ctx.get("player", -1))
+	if 谁 < 0 or 谁 == player.id:
+		return SUCCESS
+	var 他: BattlePlayer = engine.p(谁)
+	if 他 == null or not 他.has_hand_card(史书号):
+		return SUCCESS
+	var 实例: int = 他.取出一张手牌(史书号)
+	if 实例 < 0:
+		return SUCCESS
+	notice_skill(YI_SHI_WEI_JING, [谁])
+	engine.放入移除牌堆(实例)
+	engine._broadcast_game()
 	return SUCCESS
 
 
@@ -642,6 +738,7 @@ func _移除史书() -> void:
 	engine.放入移除牌堆(史书号)
 
 
+## 交换选项：value＝换几张；每档自带「手牌几张 + 盖牌几张」的混选要求
 func _交换选项(技能号: int, 手牌数: int, 上限: int = 0, 手牌随档: bool = false) -> Array:
 	var 可换: int = mini(交换上限, _遗迹数())
 	if 上限 > 0:
@@ -654,7 +751,7 @@ func _交换选项(技能号: int, 手牌数: int, 上限: int = 0, 手牌随档
 			"value": x,
 			"label": 文案,
 			"text": 文案,
-			"enabled": x <= 可换,
+			"enabled": x <= 可换 and 手 <= player.hand_cards.size(),
 			# 手牌 + 盖牌混选：这一档要「手牌 手 张 + 盖牌 X 张」（客户端据此卡选牌数）
 			"need_card": 手 + x,
 			"hand_need": 手,
@@ -663,8 +760,32 @@ func _交换选项(技能号: int, 手牌数: int, 上限: int = 0, 手牌随档
 	return 选项
 
 
-## 【遗迹】交换：把 X 张手牌放进【遗迹】区、取回 X 个【遗迹】。
-## 给牌是两个区混选的回复，按「在手牌 / 在盖牌」拆开；张数不对按非法提交处理（不静默少换）。
+## 交换提交的合法性：X 在 1~上限；手牌正好 手数、盖牌正好 X，且都在本区
+func _交换校验(回: Dictionary, 需要手: int, 随档: bool) -> bool:
+	var args: Array = 回.get("args", [])
+	if args.is_empty():
+		return false
+	var X: int = int(args[0])
+	if X < 1 or X > mini(交换上限, _遗迹数()):
+		return false
+	var 手数: int = X if 随档 else 需要手
+	if 手数 > player.hand_cards.size():
+		return false
+	var 手: Array = []
+	var 盖: Array = []
+	for c: Variant in 回.get("cards", []):
+		var 手实例: int = player.手牌实例(int(c))
+		if 手实例 >= 0:
+			if not 手.has(手实例):
+				手.append(手实例)
+			continue
+		var 盖实例: int = player.盖牌实例(int(c))
+		if 盖实例 >= 0 and not 盖.has(盖实例):
+			盖.append(盖实例)
+	return 手.size() == 手数 and 盖.size() == X
+
+
+## 【遗迹】交换：把 X 张手牌放进【遗迹】区、取回 X 个【遗迹】；手牌那几张面朝上亮出来
 func _交换遗迹(X: int, 给牌: Array, cause: int, 需要手牌数: int) -> void:
 	if X <= 0 or X > _遗迹数():
 		return
