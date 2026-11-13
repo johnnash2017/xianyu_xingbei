@@ -713,6 +713,15 @@ func _遗迹论破结算(答案: Array, ctx: Dictionary) -> int:
 	var X: int = 取.size()
 	_遗迹论破已用 = true
 	notice_skill(YI_JI_LUN_PO, [player.id])
+	# 移除的里面有光/暗遗迹＝这次是拿【选淬精炼】的「光暗视为任意系别」当同系用的：补一条发动播报
+	for c: Variant in 取:
+		var 牌面: GCard = Data.get_card(int(c))
+		if 牌面 == null:
+			continue
+		var 牌系: int = 牌面.element_enum()
+		if 牌系 == GConst.CardElement.Light or 牌系 == GConst.CardElement.Darkness:
+			notice_skill(XUAN_CUI_JING_LIAN, [player.id])
+			break
 	engine.remove_cover(player.id, 取, player.id, YI_JI_LUN_PO)
 	engine.to_discard(取, {"owner": player.id, "source": "cover", "cause": YI_JI_LUN_PO})
 	var harm: Dictionary = ctx.get("harm", {})
