@@ -101,35 +101,15 @@ func available_skills() -> Array:
 			"id": GU_JIN_HU_JIAN,
 			"need_card": 0,
 			"need_target": 0,
-			# 点技能先开二级技能栏（同魔眼）：选「不换（只 +2【史料】）」或「与 N 个【遗迹】交换」，
-			# 选完 2 张手牌 + N 个【遗迹】再按「确定」——没确定之前可以点「返回」退出，
-			# 【水晶】代价与服务端结算都在收到这次行动之后（不再点一下就扣）。
-			"arg_choices": _古今选择项(),
+			# 没有选项：点技能进选牌状态（取消＝什么都不做），
+			# 不选牌直接「确定」＝只 +2【史料】；选了牌就必须 2 张手牌 + 至少 1 个【遗迹】
+			# （客户端 技能指示器「混选成对」先把关，服务端 v_/p_special_skill 再校验一次）。
+			#"card_max" = 2 张手牌 + 最多全部遗迹
 			"card_source": GConst.CardSource.HandOrCover,
+			"card_max": 2 + _遗迹数(),
 			"enabled": player.get_energy() >= 1,
 		},
 	]
-
-
-## 古今互鉴的交换档：0＝不换（只 +2【史料】）；N＝2 张手牌与 N 个【遗迹】交换（N 从 1 到现有遗迹数）。
-## 手牌固定 2 张、遗迹张数由玩家选 —— 不是「1 换 1 / 2 换 2」。
-func _古今选择项() -> Array:
-	var 项: Array = []
-	var 不换: String = "不交换，只 +2【%s】" % str(player.token_def(史料槽).get("name", ""))
-	项.append({"text": 不换, "args": [0]})
-	for n: int in range(1, _遗迹数() + 1):
-		var 文案: String = GConst.按钮原文(GU_JIN_HU_JIAN, n - 1)
-		if 文案.is_empty():
-			# 表里只配了前两档：拿第 1 档当模板换掉数字，补表后自动改用表里的
-			文案 = GConst.按钮原文(GU_JIN_HU_JIAN, 0).replace("1", str(n))
-		项.append({
-			"text": 文案,
-			"args": [n],
-			"hand_need": 2,
-			"cover_need": n,
-			"enabled": player.hand_cards.size() >= 2,
-		})
-	return 项
 
 
 func is_free_skill(skill_id: int) -> bool:
@@ -165,14 +145,28 @@ func v_special_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if player.get_energy() < 1:
 		return GConst.GE_INVALID_ACTION
-	# args[0]＝交换几个【遗迹】（0＝不换，只 +2【史料】）；要换就得交 2 张手牌 + 对应张数的【遗迹】
-	var args: Array = action.get("args", [])
-	var X: int = int(args[0]) if not args.is_empty() else 0
-	if X < 0 or X > _遗迹数():
-		return GConst.GE_INVALID_ACTION
-	if X > 0 and not _交换校验({"args": [X], "cards": action.get("card_ids", [])}, 2, false, _遗迹数()):
+	# 不选牌＝不交换（只 +2【史料】）；选了牌就必须「2 张手牌 + 至少 1 个【遗迹】」
+	if not _古今选的牌合法(action.get("card_ids", [])):
 		return GConst.GE_INVALID_ACTION
 	return GConst.GE_SUCCESS
+
+
+## 古今互鉴提交的牌：空＝不交换；否则必须正好 2 张手牌 + 至少 1 个【遗迹】，且全都是自己的牌
+func _古今选的牌合法(选牌: Array) -> bool:
+	if 选牌.is_empty():
+		return true
+	var 手: Array = []
+	var 盖: Array = []
+	for c: Variant in 选牌:
+		var 手实例: int = player.手牌实例(int(c))
+		if 手实例 >= 0:
+			if not 手.has(手实例):
+				手.append(手实例)
+			continue
+		var 盖实例: int = player.盖牌实例(int(c))
+		if 盖实例 >= 0 and not 盖.has(盖实例):
+			盖.append(盖实例)
+	return 手.size() == 2 and not 盖.is_empty() and 手.size() + 盖.size() == 选牌.size()
 
 
 func p_magic_skill(action: Dictionary) -> int:
@@ -185,18 +179,21 @@ func p_magic_skill(action: Dictionary) -> int:
 
 
 ## 古今互鉴 9408（启动·必杀【水晶】）：你 +2【史料】；（手牌>1）可将 2 张手牌与 X 个【遗迹】交换，X>0。
-## 代价与结算都放在这里：客户端没按「确定」之前不会走到这一步（返回＝什么都没发生）。
+## 代价与结算都放在这里：客户端没按「确定」之前不会走到这一步（取消＝什么都没发生）。
 func p_special_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != GU_JIN_HU_JIAN:
 		return GConst.GE_INVALID_ACTION
-	var args: Array = action.get("args", [])
-	var X: int = int(args[0]) if not args.is_empty() else 0
+	var 选牌: Array = action.get("card_ids", [])
 	notice_skill(GU_JIN_HU_JIAN, [player.id])
 	player.boot_skill_used = true
 	player.remove_energy(1)
 	player.add_token(史料槽, 2)
-	if X > 0:
-		_交换遗迹(X, action.get("card_ids", []), GU_JIN_HU_JIAN, 2)
+	if not 选牌.is_empty():
+		var 盖数: int = 0
+		for c: Variant in 选牌:
+			if player.盖牌实例(int(c)) >= 0:
+				盖数 += 1
+		_交换遗迹(盖数, 选牌, GU_JIN_HU_JIAN, 2)
 	engine._broadcast_game()
 	return _稽古流程()
 
@@ -933,12 +930,12 @@ func _交换选项(技能号: int, 手牌数: int, 上限: int = 0, 手牌随档
 
 
 ## 交换提交的合法性：X 在 1~上限；手牌正好 手数、盖牌正好 X，且都在本区
-func _交换校验(回: Dictionary, 需要手: int, 随档: bool, X上限: int = 交换上限) -> bool:
+func _交换校验(回: Dictionary, 需要手: int, 随档: bool) -> bool:
 	var args: Array = 回.get("args", [])
 	if args.is_empty():
 		return false
 	var X: int = int(args[0])
-	if X < 1 or X > mini(X上限, _遗迹数()):
+	if X < 1 or X > mini(交换上限, _遗迹数()):
 		return false
 	var 手数: int = X if 随档 else 需要手
 	if 手数 > player.hand_cards.size():

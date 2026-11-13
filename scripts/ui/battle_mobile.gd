@@ -12014,6 +12014,16 @@ func _确定_技能询问() -> bool:
 func _确定_发动技能() -> bool:
 	if not _分配配置().is_empty():
 		return _确定_分配型()
+	# 「不选就跳过、选了就成对」型（记录者【古今互鉴】：不选牌直接确定＝只 +2【史料】；
+	# 一旦选了牌，就必须正好 2 张手牌 + 至少 1 个【遗迹】）。服务端 v_/p_special_skill 同一口径再校验。
+	var 成对: Dictionary = GConst.技能指示器.get(_pending_skill_id, {}).get("混选成对", {})
+	if not 成对.is_empty() and not _sel_cards.is_empty():
+		var 盖已: int = 0
+		for c0: Variant in _sel_cards:
+			if _is_my_cover(int(c0)):
+				盖已 += 1
+		if _sel_cards.size() - 盖已 != int(成对.get("手", 0)) or 盖已 < int(成对.get("盖", 0)):
+			return true
 	# 二级技能栏：得先在技能栏里选一个效果，且选够它要求的牌 / 目标，才让点「确定」
 	# （「先弹选项」型的需牌 / 目标已在选效果时由 _应用选项目标数 还原 / 收紧）
 	if _二级栏:
