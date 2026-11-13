@@ -3009,7 +3009,10 @@ func _技能询问_选项前置() -> void:
 	# `_skill_target_max` 是**发动技能（mode 4）那条通道**的字段，`_on_command` 不会复位它们，
 	# 所以「要不要替玩家预选」取决于上一手点过什么技能。它只影响预选，不影响合法性和提交。
 	# 改法（待确认）：换成 `_skill_ask_need_target <= 1`（本通道自己的目标数）。
-	if not _目标锁死 and _skill_need_target <= 0 and _skill_target_max <= 0 \
+	# 「点目标即提交」型（8606 Surprise! 一张一张点）不预选：预选之后玩家点那张已选中的头像
+	# 会变成「取消选中」，要再点一次才生效 —— 表现就是「莫名选中自己、还要点两下」。
+	if not bool(指示配置.get("点目标即提交", false)) and not _目标锁死 \
+			and _skill_need_target <= 0 and _skill_target_max <= 0 \
 			and _skill_targets.size() == 1 and not _sel_players.has(_skill_targets[0]):
 		_sel_players = [_skill_targets[0]]
 	# 【别烦我……】目标被问「弃 1 张法术牌」那一步：把目标自己点亮（谁被点名弃牌一目了然），
@@ -5868,6 +5871,8 @@ func _on_card_clicked(card_id: int) -> void:
 	# 换了牌就要重算「哪些敌人能打」：攻击牌选出后目标才亮
 	刷新选中面板()
 	_更新按键()
+	# 牌这一侧也试一次「点目标即提交」：先点头像、再点牌的玩家，不该还要再点一次头像
+	_点目标即提交尝试()
 
 
 func _on_player_pressed(面板: 战斗玩家面板) -> void:
@@ -5955,15 +5960,26 @@ func _on_player_clicked(player_id: int) -> void:
 		return
 	# 「点目标即提交」（【Surprise!】8606 这种一张一张放的循环）：牌和目标都齐了就直接提交，
 	# 不再要求按「确定」——服务端放完这一张会把下一问递回来，玩家接着点下一张
-	if _mode == 3 and bool(_指示器配置().get("点目标即提交", false)) \
-			and _skill_need_card > 0 and _sel_cards.size() >= _skill_need_card \
-			and _sel_players.size() >= maxi(_skill_ask_need_target, 1):
-		_发送应答(_skill_ask_id, _sel_players, _sel_cards, [1])
+	if _点目标即提交尝试():
 		return
 	# 「基础效果牌」这类（【封印破碎】/【风之洁净】/【天使之歌】）：目标一变就把技能栏里的
 	# 「基础效果」选项跟着换（取消选中目标＝清空）
 	if _二级栏 and (_技能是基础效果牌型()):
 		_刷新基础效果选项()
+
+
+## 「点目标即提交」：本次询问配了这一型、且牌与目标都齐了，就直接提交。
+## 牌和头像两条点击路径都调它（见 _on_card_clicked / _on_player_clicked），
+## 免得玩家先点了头像、再点牌时还要多点一下头像（点已选中的头像＝取消选中，会白点一次）。
+func _点目标即提交尝试() -> bool:
+	if _mode != 3 or not bool(_指示器配置().get("点目标即提交", false)):
+		return false
+	if _skill_need_card <= 0 or _sel_cards.size() < _skill_need_card:
+		return false
+	if _sel_players.size() < maxi(_skill_ask_need_target, 1):
+		return false
+	_发送应答(_skill_ask_id, _sel_players, _sel_cards, [1])
+	return true
 
 
 ## 这张牌此刻能不能点选
