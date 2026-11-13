@@ -6226,6 +6226,11 @@ func _技能牌能点(面: int, card_id: int) -> bool:
 	# 混选手牌上限：服务端给了「手牌几张」就直接用；没给才用「总上限 - 至少盖牌数」倒算。
 	# 选满手牌上限后其余手牌置灰，逼玩家去盖牌区选（如荒神祭仪 1 手牌 + 1 结界）。
 	var 手上限: int = _本题手牌上限()
+	# 「混选成对」型（记录者【古今互鉴】：2 张手牌 + 至少 1 个【遗迹】）：
+	# 手牌这一侧也要封顶，否则能选出「3 张手牌 + 2 个遗迹」这种服务端必驳回的组合。
+	var 成对: Dictionary = GConst.技能指示器.get(_当前技能号(), {}).get("混选成对", {})
+	if not 成对.is_empty():
+		手上限 = maxi(手上限, int(成对.get("手", 0)))
 	if 手上限 >= 0 and not _is_my_cover(card_id) and not _sel_cards.has(card_id):
 		var 手已选: int = 0
 		for c2: Variant in _sel_cards:
@@ -9230,6 +9235,13 @@ func _发送行动(action_type: int, action_id: int, dst: Array, cards: Array, a
 	var 发前代: int = _询问代
 	_记录出牌起飞点(cards)
 	Logic.send_action(action_type, action_id, dst, cards, args, 额外ID)
+	# 提交之后本地就不该再有「选中」了：服务端可能把刚选的牌挪到别的区
+	# （如记录者【古今互鉴】的交换：选中的【遗迹】进手、手牌进【遗迹】），
+	# 快照先到、带着旧选中重画就会让刚进手的牌一直「抬起」。
+	# 与 _发送应答 同一口径：立刻清选中并重画，提示 / 选项等下一份询问来重建。
+	_sel_cards.clear()
+	_sel_players.clear()
+	_刷新交互()
 	_稍后清空待选(发前代)
 
 
