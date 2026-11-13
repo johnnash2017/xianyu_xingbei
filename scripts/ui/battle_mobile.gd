@@ -5987,7 +5987,7 @@ func _点目标即提交尝试() -> bool:
 	# 服务端会驳回重问 —— 先把选项选好再点头像
 	if not _skill_options.is_empty() and _二级选中 < 0:
 		return false
-	if _skill_need_card <= 0 or _sel_cards.size() < _skill_need_card:
+	if _skill_need_card > 0 and _sel_cards.size() < _skill_need_card:
 		return false
 	if _sel_players.size() < maxi(_skill_ask_need_target, 1):
 		return false
