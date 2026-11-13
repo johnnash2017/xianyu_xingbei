@@ -671,15 +671,18 @@ func _惊爆(action: Dictionary) -> int:
 		if _可放Tricky角色().is_empty():
 			return SUCCESS
 	return 多步询问(惊爆, [
-		# 放回的张数既不能超过手牌数，也不能超过「还有几个角色能放」（X 张放 X 名角色）
+		# 放回的张数既不能超过手牌数，也不能超过「还有几个角色能放」（X 张放 X 名角色）。
+		# 两段的提示条都固定用技能说明原文（需求方要求）：不写「请选…本次必须执行」那种步骤提示。
 		{"需牌": 1, "牌上限": mini(player.hand_cards.size(), _可放Tricky角色().size()),
 		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
-		 "可取消": false, "超时默认": [], "答完": _惊爆记张数},
+		 "可取消": false, "超时默认": [], "答完": _惊爆记张数,
+		 "询问文案": GConst.skill_desc(惊爆)},
 		{"需目标": func(_答案: Array) -> int: return _惊爆牌数,
 		 "目标白": func(_答案: Array) -> Array: return _可放Tricky角色(),
 		 "可取消": false, "超时默认": [],
 		 "校验": _惊爆校验,
-		 "跳过": func(_答案: Array) -> bool: return _惊爆牌数 <= 0},
+		 "跳过": func(_答案: Array) -> bool: return _惊爆牌数 <= 0,
+		 "询问文案": GConst.skill_desc(惊爆)},
 	], _惊爆结算)
 
 
