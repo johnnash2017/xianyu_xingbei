@@ -175,7 +175,7 @@ func _知行合一() -> int:
 		_知行余 = []
 	# 第 1 步：选哪张展示牌 + 这张牌打谁，答完当场把那张牌打出去（同真言术的「当牌打出」，
 	# 客户端点头像即提交）；第 2 步等那张牌结算完再问「弃 1 张手牌」这个代价。
-	# 两段的提示条都用技能说明原文（需求方要求），不让客户端换成「请选择一个选项」。
+	# 提示条：第 1 步用技能说明原文（需求方要求）；第 2 步只写「弃 1 张牌」，不再铺一遍技能说明。
 	return 多步询问(ZHI_XING_HE_YI, [
 		{"选项": func(_答案: Array) -> Array: return _知行选项(),
 		 "需目标": 1,
@@ -189,7 +189,7 @@ func _知行合一() -> int:
 		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
 		 "可取消": false,
 		 "跳过": func(_答案: Array) -> bool: return player.hand_cards.is_empty(),
-		 "询问文案": GConst.skill_desc(ZHI_XING_HE_YI)},
+		 "询问文案": "弃 1 张牌"},
 	], _知行结算)
 
 
