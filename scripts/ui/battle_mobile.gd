@@ -3434,11 +3434,18 @@ func _应用选项目标数() -> void:
 	# 选项自带「手牌几张」：按 hand_need + cover_need 直接定总数（如美杜莎之眼的两个分支）
 	var 项手牌3: int = int(选中项.get("手牌数", -1)) if not 选中项.is_empty() else -1
 	_skill_hand_need = 项手牌3 if 项手牌3 >= 0 else _选项原始手牌数
+	# 选项自带的「需盖牌」也要认（如记录者【引稽编鉴】的换档＝1 张手牌 + 1 个【遗迹】）。
+	# 这条分支原来只认技能本体给的 cover_need：选中档位后盖牌数仍是 0，总数只按手牌算，
+	# 点 1 张牌就到上限 —— 手牌和遗迹凑不到一起（选了手牌遗迹点不动，反之亦然）。
+	_skill_cover_need = maxi(_选项原始盖牌需数, int(选中项.get("需盖牌", 0)))
 	if _skill_hand_need >= 0:
 		_skill_need_card = _skill_hand_need + _skill_cover_need
 		_skill_card_max = _skill_need_card
 		_need_cards = _skill_card_max
 		_skill_cover_max = _skill_cover_need
+	# 来源 / 需盖牌可能刚被选项改过（如选项把来源收紧成盖牌、或抬高盖牌数）：重新判盖牌区亮不亮
+	_selecting_cover = _skill_card_source == GConst.CardSource.Cover \
+		or _skill_card_source == GConst.CardSource.HandOrCover or _skill_cover_need > 0
 	var 片段: Array[String] = []
 	if _skill_need_card > 0:
 		片段.append("选%d张盖牌" % _skill_need_card if _skill_card_source == GConst.CardSource.Cover
