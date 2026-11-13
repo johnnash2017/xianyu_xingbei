@@ -91,8 +91,9 @@ func available_skills() -> Array:
 			"id": ZHI_XING_HE_YI,
 			"need_card": 0,
 			"need_target": 0,
-			# 「并弃 1 张牌」是发动的代价：手里一张牌都没有时发动不了
-			"enabled": engine.deck.pile_size() > 0 and not player.hand_cards.is_empty(),
+			# 只要牌库还有牌就能发动：手里没牌也能用（这时只能选「全部化为【史料】」，
+			# 要当牌打出去那几档因为付不出「弃 1 张牌」而置灰，见 _知行选项）
+			"enabled": engine.deck.pile_size() > 0,
 		},
 		{
 			"type": GConst.ActionType.MagicSkill,
@@ -126,7 +127,8 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	var 技能号: int = int(action.get("action_id", 0))
 	if 技能号 == ZHI_XING_HE_YI:
-		if engine.deck.pile_size() <= 0 or player.hand_cards.is_empty():
+		# 手里没牌也能发动（只能走「全部化为【史料】」那档），只要求牌库还有牌
+		if engine.deck.pile_size() <= 0:
 			return GConst.GE_INVALID_ACTION
 		# 新的一次发动：把上一次可能残留的链 / 中间态清干净（v_* 只在技能开始时调一次）
 		多步询问重置(ZHI_XING_HE_YI)
@@ -272,6 +274,8 @@ func 技能URGENT后重入(_action: Dictionary = {}) -> bool:
 
 func _知行选项() -> Array:
 	var 选项: Array = []
+	# 手里一张牌都没有：当牌打出去那几档付不出「弃 1 张牌」的代价 → 置灰（照约定仍要下发）
+	var 有代价牌: bool = not player.hand_cards.is_empty()
 	for i: int in range(_知行展示.size()):
 		var cid: int = int(_知行展示[i])
 		var 牌: GCard = Data.get_card(cid)
@@ -284,6 +288,7 @@ func _知行选项() -> Array:
 			"card_id": GConst.牌号(cid),
 			# 选哪一档都不改提示条：全程显示【知行合一】的技能说明（同 8006 / 8403 的写法）
 			"no_prompt_change": true,
+			"enabled": 有代价牌,
 		})
 	# 「全部化为【史料】」＝不把任何一张当行动打出，等于取消（展示的牌全弃掉、+X【史料】）。
 	# value 0 与展示牌档位（1..n）区分；技能指示器里配「选项目标数 {0:0}」让客户端不再要求目标。
@@ -305,6 +310,9 @@ func _知行出牌校验(回: Dictionary) -> bool:
 	if 档 == 0:
 		return true  # 「全部化为【史料】」：不要目标，也不打出任何牌
 	if 档 < 1 or 档 > _知行展示.size():
+		return false
+	# 当牌打出去那一档要付「弃 1 张手牌」：手里一张都没有就不合法（客户端已把这几档置灰）
+	if player.hand_cards.is_empty():
 		return false
 	var 选中: int = int(_知行展示[档 - 1])
 	var 牌: GCard = Data.get_card(选中)
