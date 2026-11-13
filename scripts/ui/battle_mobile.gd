@@ -4987,7 +4987,8 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 		var 项3: Dictionary = _二级选中项()
 		var 项3有要求: bool = int(项3.get("需牌", 0)) > 0 or int(项3.get("需目标", 0)) > 0 \
 			or not (项3.get("牌白", []) as Array).is_empty() \
-			or int(项3.get("手牌数", -1)) >= 0 or int(项3.get("需盖牌", 0)) > 0
+			or int(项3.get("手牌数", -1)) >= 0 or int(项3.get("需盖牌", 0)) > 0 \
+			or bool(_指示器配置().get("选项当牌打出", false))
 		if not 项3.is_empty() and 项3有要求:
 			_应用选项目标数()
 			_换选项后重校验()
@@ -11680,7 +11681,15 @@ func _可选_本地步骤(player_id: int) -> bool:
 ## 行动阶段（mode 1）：先选牌，再亮目标
 func _可选_行动(player_id: int) -> bool:
 	# 还没选牌时谁都不亮
-	var 牌: GCard = Data.get_card(_sel_cards[0]) if not _sel_cards.is_empty() else null
+	if _sel_cards.is_empty():
+		return false
+	return _可选_按卡牌(int(_sel_cards[0]), player_id)
+
+
+## 「这一手就是出这张牌」的目标判定（普通出牌 / 当作卡牌、选项当牌打出的技能询问共用）：
+## 攻击牌只亮合法目标（敌方、非潜行、【挑衅】与攻击锁定白名单），法术按法术目标规则。
+func _可选_按卡牌(牌id: int, player_id: int) -> bool:
+	var 牌: GCard = Data.get_card(牌id)
 	if 牌 == null:
 		return false
 	# 攻击牌只能打敌方（服务端 v_attack 对同队直接拒）；法术按 _do_magic 的分支判
@@ -11728,6 +11737,17 @@ func _可选_技能询问(player_id: int) -> bool:
 	# 「当作卡牌」型询问（真言压制白送的真言术）：目标整个复用普通出牌口径
 	if _当作出牌():
 		return _可选_行动(player_id)
+	# 「选项当牌打出」型（记录者【知行合一】：选项就是展示牌，选中的那张当场当牌打出）：
+	# 目标按**选中那张牌**的口径点亮（攻击只亮敌方、法术按法术目标规则），
+	# 不再把服务端「全部角色」的目标白名单整个亮出来；还没选选项时谁都不亮。
+	if bool(_指示器配置().get("选项当牌打出", false)) and _skill_ask_need_target > 0:
+		var 选中项: Dictionary = _二级选中项()
+		if 选中项.is_empty():
+			return false
+		var 选项牌号: int = int(选中项.get("卡牌", -1))
+		if 选项牌号 < 0:
+			return false
+		return _可选_按卡牌(选项牌号, player_id) and _可选_按选项与白名单(player_id)
 	# 「先弹选项」型还没选效果时不让点目标 —— 与发动技能（_可选_发动技能）同一口径：
 	# 目标数与白名单都由选中的那一档决定（如咒符师【魑魅魍魉】第二段「对 1 名 / 对 2 名」），
 	# 没选档位就点头像等于先猜一个数字。牌不受这条限制（配了「允许先选牌」的照样能先点费用牌）。
