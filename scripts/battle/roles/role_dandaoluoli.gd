@@ -726,7 +726,10 @@ func _还能继续放() -> bool:
 	return not player.hand_cards.is_empty() and not _可放Tricky角色().is_empty()
 
 
-## 这一手答完：点的那张手牌面朝下放到点的那名角色面前（立刻生效，接着问下一张）
+## 这一手答完：点的那张手牌面朝下放到点的那名角色面前（立刻生效，接着问下一张）。
+## **放完必须返回 URGENT**：add_basic_effect 会把「基础效果变动」钩子压进栈（渗蚀、占位同步…），
+## 直接 SUCCESS 的话本段会立刻 re-ask 并 WAIT，压进去的钩子要等玩家答下一张才跑 ——
+## 表现就是「贴上去不掉血，贴下一张才掉」。返回 URGENT 让引擎先生效一次再回来问。
 func _惊爆放一张(回: Dictionary, _答案: Array) -> int:
 	var 牌: int = -1
 	for c: Variant in 回.get("cards", []):
@@ -744,7 +747,7 @@ func _惊爆放一张(回: Dictionary, _答案: Array) -> int:
 	engine.take_from_hand(player.id, [牌])
 	_放Tricky(目标, 牌, 惊爆)
 	engine._broadcast_game()
-	return SUCCESS
+	return URGENT
 
 
 func _惊爆结算(_答案: Array) -> int:
