@@ -43,6 +43,8 @@ const 交换上限: int = 2
 ## 知行合一：本次展示的牌（还没结算的）/ 打出那张之后要弃掉并换成【史料】的剩余展示牌
 var _知行展示: Array = []
 var _知行余: Array = []
+## 这一次走的是「全部化为【史料】」/取消（展示牌已换成史料，第 2 步与结算都不再做别的）
+var _知行已取消: bool = false
 ## 本次发动已经把展示牌翻出来了（重入时不要重复翻牌 / 重复扣费）
 var _知行已付: bool = false
 
@@ -122,6 +124,7 @@ func v_magic_skill(action: Dictionary) -> int:
 		多步询问重置(ZHI_XING_HE_YI)
 		_知行展示 = []
 		_知行余 = []
+		_知行已取消 = false
 		_知行已付 = false
 		return GConst.GE_SUCCESS
 	if 技能号 == MI_JING_WAN_XIANG:
@@ -173,6 +176,7 @@ func _知行合一() -> int:
 			return SUCCESS
 		engine.展示牌库顶(player.id, _知行展示, true)
 		_知行余 = []
+		_知行已取消 = false
 	# 第 1 步：选哪张展示牌 + 这张牌打谁，答完当场把那张牌打出去（同真言术的「当牌打出」，
 	# 客户端点头像即提交）；第 2 步等那张牌结算完再问「弃 1 张手牌」这个代价。
 	# 两段的提示条都以「【知行合一】：」开头（约定：步骤提示要点名技能名就用这个格式），
@@ -189,7 +193,8 @@ func _知行合一() -> int:
 		{"需牌": 1,
 		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
 		 "可取消": false,
-		 "跳过": func(_答案: Array) -> bool: return player.hand_cards.is_empty(),
+		 # 「全部化为【史料】」不需要付代价；一张手牌都没有时这一步也跳过
+		 "跳过": func(_答案: Array) -> bool: return _知行已取消 or player.hand_cards.is_empty(),
 		 "询问文案": _知行提示(1)},
 	], _知行结算)
 
@@ -224,6 +229,13 @@ func _知行选项() -> Array:
 			# 选哪一档都不改提示条：全程显示【知行合一】的技能说明（同 8006 / 8403 的写法）
 			"no_prompt_change": true,
 		})
+	# 「全部化为【史料】」＝不把任何一张当行动打出，等于取消（展示的牌全弃掉、+X【史料】）。
+	# value 0 与展示牌档位（1..n）区分；技能指示器里配「选项目标数 {0:0}」让客户端不再要求目标。
+	# 按钮文案优先取技能表「按钮3」；表里没配时按角色表的指示物名兜底（不写死「史料」两个字）。
+	var 文案: String = GConst.按钮原文(ZHI_XING_HE_YI, 2)
+	if 文案.is_empty():
+		文案 = "全部化为【%s】" % str(player.token_def(史料槽).get("name", ""))
+	选项.append({"value": 0, "label": 文案, "text": 文案, "no_prompt_change": true})
 	return 选项
 
 
@@ -234,6 +246,8 @@ func _知行出牌校验(回: Dictionary) -> bool:
 	if args.is_empty():
 		return false
 	var 档: int = int(args[0])
+	if 档 == 0:
+		return true  # 「全部化为【史料】」：不要目标，也不打出任何牌
 	if 档 < 1 or 档 > _知行展示.size():
 		return false
 	var 选中: int = int(_知行展示[档 - 1])
@@ -279,6 +293,10 @@ func _知行能打(选中: int, 牌: GCard, dst: int) -> bool:
 func _知行出牌(回: Dictionary, _答案: Array) -> int:
 	var args: Array = 回.get("args", [])
 	var 档: int = int(args[0]) if not args.is_empty() else -1
+	if 档 == 0:
+		# 「全部化为【史料】」：什么都不打出去，等于取消；第 2 步（代价弃牌）也跟着跳过
+		_知行化为史料()
+		return SUCCESS
 	if 档 < 1 or 档 > _知行展示.size():
 		return SUCCESS
 	var 选中: int = int(_知行展示[档 - 1])
@@ -309,21 +327,30 @@ func _知行出牌(回: Dictionary, _答案: Array) -> int:
 	return URGENT
 
 
-## 「你可选择其中1张」：不选＝不把展示牌作为行动打出，展示的牌全部弃掉、按张数 +【史料】
-func _知行取消() -> int:
+## 「全部化为【史料】」/ 点取消：不把任何一张当行动打出，展示的牌全部弃掉、按张数 +【史料】
+func _知行化为史料() -> void:
 	var 全部: Array = _知行展示.duplicate()
 	_知行展示 = []
 	_知行余 = []
+	_知行已取消 = true
 	if not 全部.is_empty():
 		engine.to_discard(全部, {"owner": player.id, "source": "deck", "cause": ZHI_XING_HE_YI, "face_up": true})
 		player.add_token(史料槽, 全部.size())
 	engine._broadcast_game()
+
+
+## 框架的「取消」回调（点取消 / 超时）：等于「全部化为【史料】」
+func _知行取消() -> int:
+	_知行化为史料()
 	return _稽古流程()
 
 
 ## 结算（第 2 步答完）：先付代价「弃 1 张手牌」，再把剩余展示牌弃掉、你 +X【史料】
 func _知行结算(答案: Array) -> int:
-	# 第 1 步必答，第 2 步可能被跳过（没手牌）：取最后一条答案＝第 2 步
+	# 「全部化为【史料】」：第 1 步已经把展示牌全换成史料了，这里什么都不做
+	if _知行已取消:
+		return _稽古流程()
+	# 第 2 步可能被跳过（没手牌）：取最后一条答案＝第 2 步
 	var 回: Dictionary = 答案[答案.size() - 1] if not 答案.is_empty() else {}
 	# 代价：弃 1 张手牌（【强制】；超时 / 空回复按手牌顺序补一张）
 	var 弃: int = -1
