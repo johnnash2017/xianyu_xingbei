@@ -704,8 +704,11 @@ func _刷新状态图标() -> void:
 			# 全部标记（圣盾/封印…）一起丢掉（battle_audit C-2）。
 			push_error("Basic card is error! CardID = %s" % str(item))
 			continue
-		# 这张基础效果自己知道内容时（【Surprise!】面朝下的【Tricky】）：图标照旧，悬停报真实牌
-		var 悬停牌: int = int(基础暗牌[i0]) if i0 < 基础暗牌.size() else 0
+		# 这张基础效果自己知道内容时（【Surprise!】面朝下的【Tricky】）：图标照旧，悬停报真实牌。
+		# 看不到时传 -1（不是 0！0 是合法牌面「圣盾」的编号，会报出一张莫名其妙的牌）
+		var 悬停牌: int = -1
+		if i0 < 基础暗牌.size() and int(基础暗牌[i0]) > 0:
+			悬停牌 = int(基础暗牌[i0])
 		_加状态图标(ps, _load_sprite(sprite_name), "b:%d" % int(item), 新起点, int(item),
 			"", -1, 状态名(card), -1, [], -1, "", 悬停牌)
 	for idx: Variant in _状态独有效果:
