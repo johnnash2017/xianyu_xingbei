@@ -48,6 +48,11 @@ var _知行已取消: bool = false
 ## 本次发动已经把展示牌翻出来了（重入时不要重复翻牌 / 重复扣费）
 var _知行已付: bool = false
 
+## 古今互鉴：本次发动已经付过【水晶】、加过【史料】（重入时不要重复付）
+var _古今已付: bool = false
+## 本次发动的交换已经做完（重入时不要再换一遍）
+var _古今已换: bool = false
+
 ## 遗迹论破：【回合限定】本回合已发动 / 本次攻击已经问过（同一张攻击牌不要再问第二次）
 var _遗迹论破已用: bool = false
 var _遗迹论破已问: bool = false
@@ -148,6 +153,9 @@ func v_special_skill(action: Dictionary) -> int:
 	# 不选牌＝不交换（只 +2【史料】）；选了牌就必须「2 张手牌 + 至少 1 个【遗迹】」
 	if not _古今选的牌合法(action.get("card_ids", [])):
 		return GConst.GE_INVALID_ACTION
+	# 新的一次发动：代价 / 稽古 / 交换的进度清干净
+	_古今已付 = false
+	_古今已换 = false
 	return GConst.GE_SUCCESS
 
 
@@ -180,22 +188,34 @@ func p_magic_skill(action: Dictionary) -> int:
 
 ## 古今互鉴 9408（启动·必杀【水晶】）：你 +2【史料】；（手牌>1）可将 2 张手牌与 X 个【遗迹】交换，X>0。
 ## 代价与结算都放在这里：客户端没按「确定」之前不会走到这一步（取消＝什么都没发生）。
+## 顺序固定：付代价 +2【史料】→ **先把这次 +2 触发的【稽古识典】走完** → 再做交换。
+## 反过来的话，交换把一堆【遗迹】换进手造成的爆牌询问会被【稽古识典】挤到后面（需求方报过）。
 func p_special_skill(action: Dictionary) -> int:
 	if int(action.get("action_id", 0)) != GU_JIN_HU_JIAN:
 		return GConst.GE_INVALID_ACTION
+	if _古今已换:
+		return SUCCESS
+	if not _古今已付:
+		_古今已付 = true
+		notice_skill(GU_JIN_HU_JIAN, [player.id])
+		player.boot_skill_used = true
+		player.remove_energy(1)
+		player.add_token(史料槽, 2)
+		engine._broadcast_game()
+	# 重入也要走这一步：稽古识典的弃牌询问要靠它消费回复、跑结算
+	var 稽古: int = _稽古流程()
+	if 稽古 != SUCCESS:
+		return 稽古
 	var 选牌: Array = action.get("card_ids", [])
-	notice_skill(GU_JIN_HU_JIAN, [player.id])
-	player.boot_skill_used = true
-	player.remove_energy(1)
-	player.add_token(史料槽, 2)
 	if not 选牌.is_empty():
 		var 盖数: int = 0
 		for c: Variant in 选牌:
 			if player.盖牌实例(int(c)) >= 0:
 				盖数 += 1
 		_交换遗迹(盖数, 选牌, GU_JIN_HU_JIAN, 2)
+	_古今已换 = true
 	engine._broadcast_game()
-	return _稽古流程()
+	return SUCCESS
 
 
 # ============================================================
