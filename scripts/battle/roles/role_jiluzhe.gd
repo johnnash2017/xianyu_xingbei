@@ -762,8 +762,12 @@ func _交换选项(技能号: int, 手牌数: int, 上限: int = 0, 手牌随档
 		可换 = mini(可换, 上限)
 	var 选项: Array = []
 	for x: int in range(1, 交换上限 + 1):
-		var 文案: String = GConst.按钮原文(技能号, x - 1)
 		var 手: int = x if 手牌随档 else 手牌数
+		# 按钮文案优先读技能表「提示」列；9409 那张表还没配，兜一句同口径的说明，
+		# 否则选项会是空白按钮（表补了就直接用表里的）
+		var 文案: String = GConst.按钮原文(技能号, x - 1)
+		if 文案.is_empty():
+			文案 = "换 %d 张手牌 + %d 个【遗迹】" % [手, x] if 手牌随档 else "与 %d 个【遗迹】交换" % x
 		选项.append({
 			"value": x,
 			"label": 文案,
