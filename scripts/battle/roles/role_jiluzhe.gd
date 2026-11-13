@@ -197,12 +197,17 @@ func _知行合一() -> int:
 func _知行选项() -> Array:
 	var 选项: Array = []
 	for i: int in range(_知行展示.size()):
-		var 牌: GCard = Data.get_card(int(_知行展示[i]))
+		var cid: int = int(_知行展示[i])
+		var 牌: GCard = Data.get_card(cid)
 		if 牌 == null:
 			continue
 		选项.append({
 			"value": i + 1,
 			"label": "%s %s" % [牌.card_name, GConst.element_to_chinese(牌.element_enum())],
+			# 悬停直接摊这张牌的卡面（同 7801【剑守誓言】：选项带 card_id，客户端读作「卡牌」）
+			"card_id": GConst.牌号(cid),
+			# 选哪一档都不改提示条：全程显示【知行合一】的技能说明（同 8006 / 8403 的写法）
+			"no_prompt_change": true,
 		})
 	return 选项
 
