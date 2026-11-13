@@ -587,7 +587,9 @@ func _引稽编鉴(ctx: Dictionary) -> int:
 		 "跳过": func(_答案: Array) -> bool:
 			var dp: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 			return dp == null or dp.hand_cards.is_empty(),
-		 "答完": _引稽收牌.bind(ctx)},
+		 "答完": _引稽收牌.bind(ctx),
+		 # 这一问是发给**对手**的：提示条写清交哪张牌、交给谁的【遗迹】
+		 "询问文案": _引稽收牌提示()},
 		# 「然后将你手上 X 张牌与 X 个【遗迹】交换，X<3」：可选
 		{"选项": func(_答案: Array) -> Array:
 			return _交换选项(YIN_JI_BIAN_JIAN, 0, _交换上限(), true),
@@ -597,6 +599,17 @@ func _引稽编鉴(ctx: Dictionary) -> int:
 		 "跳过": func(_答案: Array) -> bool: return _交换上限() <= 0,
 		 "校验": func(回: Dictionary) -> bool: return _交换校验(回, 0, true)},
 	], _引稽结算.bind(ctx))
+
+
+## 让对方交牌那一步的提示条（这一问发给被指定的对手）：
+## 「【引稽编鉴】：选择 1 张手牌作为[记录者]的【遗迹】」。
+## 优先读技能表「提示2」（{n}/{src} 由 提示() 填好），表里没配时按同一格式兜底。
+func _引稽收牌提示() -> String:
+	var 表: String = 提示(YIN_JI_BIAN_JIAN, 1, 1)
+	if not 表.is_empty():
+		return 表
+	return "【%s】：选择 1 张手牌作为%s的【遗迹】" % [
+		GConst.skill_name(YIN_JI_BIAN_JIAN), engine._称号(player)]
 
 
 ## 目标交牌那一段答完：他选的那张面朝上摆进【遗迹】（展示归属＝交牌的人）
