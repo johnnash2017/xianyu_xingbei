@@ -721,6 +721,13 @@ func _惊爆校验(回: Dictionary) -> bool:
 	return player.手牌实例(int(cards[0])) >= 0 and _可放Tricky(int(dsts[0]))
 
 
+## Surprise! 的循环段每放一张都要先让「基础效果变动」的钩子（渗蚀等）跑完、再回来问下一张：
+## 答完压了状态会返回 URGENT，SkillRun 重入时靠这里放行；不声明的话它按「技能已执行完」收尾，
+## 表现就是「贴一张、掉血、然后技能直接结束」。
+func 技能URGENT后重入(_action: Dictionary = {}) -> bool:
+	return int(_action.get("action_id", 0)) == 惊爆 and 多步询问进行中(惊爆)
+
+
 ## 手里还有牌、场上还有能放【Tricky】的人 —— 还能继续放下一张
 func _还能继续放() -> bool:
 	return not player.hand_cards.is_empty() and not _可放Tricky角色().is_empty()
