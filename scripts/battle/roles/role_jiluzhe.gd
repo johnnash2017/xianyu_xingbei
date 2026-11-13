@@ -710,7 +710,7 @@ func _遗迹论破结算(答案: Array, ctx: Dictionary) -> int:
 ## 每档自带「这一档打出去之后本次攻击是多少伤害」，客户端据此在目标头像上画
 ## 「原值划掉 → 新值」（同狂战士【撕裂】的 preview 口径）。
 ## X 超过本系遗迹数时必然要动用光/暗遗迹（【选淬精炼】把光暗视为任意系别）：
-## 这些档位按那颗遗迹的系别上色，并在悬停里补上【选淬精炼】的说明。
+## 这些档位把 skill_id 指向【选淬精炼】—— 按钮底色就用它的响应技能色，悬停弹它的技能说明。
 func _遗迹论破选项(同系: Array, 本系数: int, 基准: int) -> Array:
 	var 选项: Array = []
 	for x: int in range(1, 同系.size() + 1):
@@ -725,9 +725,9 @@ func _遗迹论破选项(同系: Array, 本系数: int, 基准: int) -> Array:
 			"damage": 基准 + (x - 1),
 		}
 		if x > 本系数:
-			var 灵活牌: GCard = Data.get_card(int(同系[本系数]))
-			项["elements"] = [灵活牌.element_enum()] if 灵活牌 != null else []
-			项["skill_group"] = [XUAN_CUI_JING_LIAN]
+			项["skill_id"] = XUAN_CUI_JING_LIAN
+			# 选中这一档不把提示条换成【选淬精炼】的说明，仍写【遗迹论破】
+			项["no_prompt_change"] = true
 		选项.append(项)
 	return 选项
 
