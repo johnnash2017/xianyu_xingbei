@@ -323,8 +323,10 @@ func _发史书() -> void:
 	if player.has_discard_card(史书号):
 		engine._broadcast_game()
 		return
-	# 之前被【以史为镜】移出游戏的史书：先从移除牌堆取回来，再加回手牌
+	# 它可能被【以史为镜】移出游戏，也可能（极少数）绕过拦截落在弃牌堆里：
+	# 先按唯一实例从「移除牌堆 / 弃牌堆 / 牌库」里取出来，再进手牌，避免同一实例出现在两处
 	engine.从移除牌堆取出(史书号)
+	engine.deck.取出实例(史书号)
 	player.add_hand_cards([史书号])
 	engine.播获得牌日志(player.id, [史书号])
 	engine._broadcast_game()
@@ -438,8 +440,15 @@ func _古今互鉴() -> int:
 		{"选项": func(_答案: Array) -> Array: return _交换选项(GU_JIN_HU_JIAN, 2),
 		 "来源": GConst.CardSource.HandOrCover,
 		 "可取消": true,
+		 "取消": _古今跳过交换,
 		 "校验": func(回: Dictionary) -> bool: return _交换校验(回, 2, false)},
 	], _古今结算)
+
+
+## 不换（点取消 / 超时）：交换整段不做，但要照常走【稽古识典】的收尾
+## （取消时框架不会调结算回调，+2【史料】可能刚好顶满，不收尾就会漏掉一次稽古）
+func _古今跳过交换() -> int:
+	return _稽古流程()
 
 
 func _古今结算(答案: Array) -> int:
@@ -474,6 +483,7 @@ func _引稽编鉴(ctx: Dictionary) -> int:
 			return _交换选项(YIN_JI_BIAN_JIAN, 0, _交换上限(), true),
 		 "来源": GConst.CardSource.HandOrCover,
 		 "可取消": true,
+		 "取消": _引稽跳过交换.bind(ctx),
 		 "跳过": func(_答案: Array) -> bool: return _交换上限() <= 0,
 		 "校验": func(回: Dictionary) -> bool: return _交换校验(回, 0, true)},
 	], _引稽结算.bind(ctx))
@@ -510,6 +520,13 @@ func _引稽结算(答案: Array, ctx: Dictionary) -> int:
 	var args: Array = 回.get("args", [])
 	if not args.is_empty():
 		_交换遗迹(int(args[0]), 回.get("cards", []), YIN_JI_BIAN_JIAN, int(args[0]))
+	return _遗迹论破(ctx)
+
+
+## 换那一问被取消 / 超时：框架不会调结算回调，这里补上「引稽已经完结」并接着走遗迹论破，
+## 否则这一次攻击的遗迹论破会被整段吞掉（`_引稽已问` 已经置位，不会再问第二次）
+func _引稽跳过交换(ctx: Dictionary) -> int:
+	_引稽已完结 = true
 	return _遗迹论破(ctx)
 
 
