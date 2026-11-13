@@ -449,9 +449,7 @@ func _秘境万象() -> int:
 		var 旧: Array = player.cover_cards.duplicate()
 		if not 旧.is_empty():
 			engine.remove_cover(player.id, 旧, player.id, MI_JING_WAN_XIANG)
-			# 「移除所有【遗迹】」＝移出游戏（收进移除牌堆），不是丢进弃牌堆
-			for c: Variant in 旧:
-				engine.放入移除牌堆(int(c))
+			engine.to_discard(旧, {"owner": player.id, "source": "cover", "cause": MI_JING_WAN_XIANG, "face_up": true})
 		var 展示: Array = _翻到同系()
 		if not 展示.is_empty():
 			engine.展示牌库顶(player.id, 展示)
@@ -725,9 +723,7 @@ func _遗迹论破结算(答案: Array, ctx: Dictionary) -> int:
 			notice_skill(XUAN_CUI_JING_LIAN, [player.id])
 			break
 	engine.remove_cover(player.id, 取, player.id, YI_JI_LUN_PO)
-	# 「移除」＝移出游戏（收进移除牌堆），不是丢进弃牌堆
-	for c2: Variant in 取:
-		engine.放入移除牌堆(int(c2))
+	engine.to_discard(取, {"owner": player.id, "source": "cover", "cause": YI_JI_LUN_PO})
 	var harm: Dictionary = ctx.get("harm", {})
 	加伤害(harm, X - 1)
 	if X > 1:
