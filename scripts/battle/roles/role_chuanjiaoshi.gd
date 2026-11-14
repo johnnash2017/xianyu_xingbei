@@ -4,28 +4,32 @@ extends BattleRole
 ## 【路标】＝一张场卡（owner 始终是传教士，attached＝当前持有者）；【虔诚】＝0 号指示物（上限 4）。
 ## 左右手约定：座位链的 pre_id 是左手边、post_id 是右手边。
 ##
-## 技能原文与实现：
-##   神的门徒 9601（被动·恒定）：你无法成为【路标】的目标；2V2 中此技能无效。
-##       ⚠ 后半句「你的行动顺序改为拥有【路标】的角色之后」引擎没有动态行动顺序，仍未实现（见遗留）。
+## 逐技能口径（原文见技能表）：
+##   神的门徒 9601（被动·恒定）：队友数 > 1（6 人局）时你无法成为【路标】的目标；4 人局此技能无效。
+##       ⚠「你的行动顺序改为拥有【路标】的角色之后」引擎没有动态行动顺序，未实现（见遗留）。
 ##   信仰之路 9602（被动）：你的第一回合开始把【路标】放到你左手边最近的角色面前；
 ##       你的回合结束若本回合未执行【特殊行动】，把【路标】转移到持有者左手边最近的角色面前。
 ##   传道 9603（启动）：摸 0~1 张牌、弃 1 张牌【强制】【展示】，你 +1【虔诚】；
 ##       持有【路标】的角色弃 1 张牌【展示】，你获得该牌【强制】；
-##       若该牌与你弃牌的系别或命格相同，你额外 +1【虔诚】。
-##   启示 9604（响应·路标转移前）：移除 2 点【虔诚】，二选一 —— 目标角色 +1【治疗】；
-##       或你摸 1 张牌【强制】【展示】，若该牌为法术牌或圣类命格，取消本次转移、移除【路标】，
-##       然后把【路标】放到目标角色面前。
-##   事奉 9605（响应）：你因自身技能弃的牌置入弃牌堆时，移除你 1【治疗】，把该弃牌加入拥有
-##       【路标】的角色手牌【强制】；（若没有因此造成该角色阵营士气下降）指定除你外的目标角色 +1【治疗】。
-##   路标 9606（响应·专属技·告解式·回合限定）：此卡被转移至某人面前时，他摸 2 张牌【强制】，
-##       我方【战绩区】+1【水晶】，然后把此卡转移至他左手边最近的角色面前，传教士弃 1 张牌。
+##       该牌与你弃的牌同系别或同命格 → 你额外 +1【虔诚】。
+##   启示 9604（响应·转移前）：移除 2 点【虔诚】，二选一 —— 目标角色 +1【治疗】；
+##       或你摸 1 张牌【强制】【展示】，是法术牌 / 圣类命格就取消本次转移、把【路标】放到目标角色面前。
+##   事奉 9605（响应）：你因自身技能弃的牌置入弃牌堆时，移除你 1【治疗】，把该牌交给【路标】持有者；
+##       若没有因此让他掉士气，指定除你外的目标角色 +1【治疗】。
+##   路标 9606（响应·专属技·告解式·回合限定）：此卡被转移到你面前时，你摸 2 张牌【强制】，
+##       我方【战绩区】+1【水晶】，然后把此卡转移至你左手边最近的角色面前，传教士弃 1 张牌。
 ##   属灵恩赐 9607（启动·必杀【水晶】）：你 +1【治疗】，弃 1 张牌。
 ##   弥撒 9608（响应·必杀【水晶】）：【路标】转移或放置后，你 +1【虔诚】，二选一 ——
-##       弃 1 张牌【展示】（是【虚弱】/【中毒】/【圣盾】就放到持有【路标】的角色面前作为基础效果）；
-##       或把持有【路标】的角色面前 1 张基础效果牌收入自己手中，你额外 +1【虔诚】。
+##       弃 1 张牌【展示】（是【虚弱】/【中毒】/【圣盾】就放到【路标】持有者面前作为基础效果）；
+##       或把持有者面前 1 张基础效果牌收入自己手中，你额外 +1【虔诚】。
 ##
-## 写法：所有「分几次问玩家」的技能都走 `BattleRole.多步询问`（约定见 项目文档/技能维护约定.md），
-## 不再自己维护阶段机；跨段依赖放在段字段 `答完` 里。
+## 写法：分几次问玩家统一走 `BattleRole.多步询问`（约定见 项目文档/技能维护约定.md），
+## 副作用放段「答完」/结算里。【路标】到达之后的推进集中在 `_到达后续()`：
+##   0 空闲 / 1 到达判定（告解只认「转移」，放置直接跳到 5）/ 2 告解摸牌已结算（+1 水晶、转交）/
+##   3 传教士弃牌 / 4 等启示链 / 5 收尾弥撒
+## 任何重入（钩子重入、启示链回来）都从 `_到达后续()` 这同一个入口继续，不在里面递归新链。
+## 告解（9606）的触发条件写的是「此卡被转移至你面前」，弥撒（9608）写的是「转移或放置后」——
+## 所以「放置」（信仰之路第一回合放、启示取消转移后改放）只走弥撒，不走告解。
 
 const SHEN_DE_MEN_TU: int = 9601
 const XIN_YANG_ZHI_LU: int = 9602
@@ -42,26 +46,43 @@ const 路标名: String = "路标"
 const 基础效果牌名: Array[int] = [
 	GConst.CardName.Shield, GConst.CardName.Weaken, GConst.CardName.Poison,
 ]
+## 事奉在弃牌上下文里打的「这次由我接管」标记（每个 ctx 是一次弃牌事件，天然唯一）
+const _事奉接管键: String = "_事奉接管"
 
 ## 信仰之路：第一回合的路标已经放过了
 var _首回合已放: bool = false
-## 路标到达之后的后续：0＝无 / 1＝等告解式的摸牌 / 2＝等传教士弃牌 / 3＝弥撒
+## 【路标】到达之后的推进阶段，取值见文件头
 var _到达阶段: int = 0
-## 告解式【回合限定】：记「哪一回合已经发动过告解式」（engine.round_id；-1＝本局还没用过）
-var _告解回合: int = -1
+## 告解式【回合限定】：本回合是否已经发动过（每进入一个回合复位，见 p_before_turn_begin）
+var _告解已用: bool = false
+## 信仰之路：本回合的「回合结束转移」已经做过了。
+## 钩子在压了状态后返回 URGENT 会被引擎重跑同一个钩子（SHook 不推进座位），
+## 没有这个标记的话，告解摸牌 / 传教士弃牌一结算完就会再转移一次。
+var _本回合已转移: bool = false
 
 ## 传道：段 2 答完时弃掉的自己的那张（段 3 收下对方的牌后比系别 / 命格用）
 var _传道自己弃: int = -1
 
-## 启示：本次想转移到的目标 / 她在第 2 段选的目标 / 摸牌前的手牌快照 / 收尾是否已经处理过
+## 启示：本次原定转移到的目标 / 选的分支 / 启示结束后回到的阶段
 var _转移目标: int = -1
-var _启示目标: int = -1
+var _启示分支值: int = 1
+## 启示落标之后接着跑哪一段：1＝新到达（跑告解）/ 3＝告解链内（接着弃牌）
+var _启示后阶段: int = 1
+## 这次到达算不算「转移」（告解式只认转移；放置只走弥撒）
+var _到达来自转移: bool = false
+## 启示分支②：摸牌前的手牌快照、摸到的那张（-2＝还没判定 / -1＝没摸到）
 var _启示摸前: Array = []
-var _启示已处理: bool = false
+var _启示新牌: int = -2
 
 ## 弥撒：第 1 段选的分支、以及「收哪张基础效果」的候选表
 var _弥撒选择: int = 0
 var _弥撒可选: Array = []
+
+## 事奉：本次要转交的牌 / 收牌人 / 会不会让他爆牌（＝会不会因此掉士气）/ 那条弃牌上下文
+var _事奉牌: Array = []
+var _事奉收牌人: int = -1
+var _事奉可给治疗: bool = false
+var _事奉上下文: Dictionary = {}
 
 
 # ============================================================
@@ -74,8 +95,7 @@ func available_skills() -> Array:
 			"id": CHUAN_DAO,
 			"need_card": 0,
 			"need_target": 0,
-			# 手里没牌也能发动：先摸 1 张再弃；连牌库都空了才会白跑一趟
-			"enabled": true,
+			"enabled": _传道可用(),
 		},
 		{
 			"type": GConst.ActionType.ActivateSkill,
@@ -87,6 +107,16 @@ func available_skills() -> Array:
 	]
 
 
+## 传道要付「弃 1 张牌（强制）」：手里有牌，或者摸得到 1 张。
+## 两样都没有时整颗发不动（否则会白占本回合的启动、还一张牌都弃不了）。
+func _传道可用() -> bool:
+	return not player.hand_cards.is_empty() or _牌库还有牌()
+
+
+func _牌库还有牌() -> bool:
+	return not engine.deck.pile.is_empty() or not engine.deck.discard.is_empty()
+
+
 func is_free_skill(skill_id: int) -> bool:
 	return skill_id == CHUAN_DAO or skill_id == SHU_LING_EN_CI
 
@@ -94,16 +124,16 @@ func is_free_skill(skill_id: int) -> bool:
 func v_special_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
-	var 技能号: int = int(action.get("action_id", 0))
-	if 技能号 == SHU_LING_EN_CI:
-		# 【水晶】费用：宝石可顶水晶（get_energy）；代价「弃 1 张牌」必须真交一张手牌
-		if player.get_energy() < 1 or _提交的手牌(action.get("card_ids", [])) < 0:
-			return GConst.GE_INVALID_ACTION
-		return GConst.GE_SUCCESS
-	if 技能号 == CHUAN_DAO:
-		多步询问重置(CHUAN_DAO)
-		_传道自己弃 = -1
-		return GConst.GE_SUCCESS
+	match int(action.get("action_id", 0)):
+		CHUAN_DAO:
+			if not _传道可用():
+				return GConst.GE_INVALID_ACTION
+			return GConst.GE_SUCCESS
+		SHU_LING_EN_CI:
+			# 【水晶】费用：宝石可顶水晶（get_energy）；代价「弃 1 张牌」必须真交一张手牌
+			if player.get_energy() < 1 or _提交的手牌(action.get("card_ids", [])) < 0:
+				return GConst.GE_INVALID_ACTION
+			return GConst.GE_SUCCESS
 	return GConst.GE_INVALID_ACTION
 
 
@@ -135,44 +165,67 @@ func _属灵恩赐(action: Dictionary) -> int:
 
 
 # ============================================================
-# 传道 9603（启动）：摸 0~1 → 弃 1【展示】→ 持有者弃 1【展示】→ 你收下
+# 传道 9603（启动）：摸 0~1 → 弃 1【展示】(+1 虔诚) → 持有者弃 1【展示】、你收下
 # ============================================================
 func _传道() -> int:
 	if not 多步询问进行中(CHUAN_DAO):
-		# 「启动」技能：本回合只能发动一个（引擎只校验这个标记）
+		# 「启动」技能：本回合只能发动一个（引擎按这个标记把关）
 		player.boot_skill_used = true
+		_传道自己弃 = -1
+		notice_skill(CHUAN_DAO, [player.id])
 	return 多步询问(CHUAN_DAO, [
 		{"选项": _传道摸牌选项(), "可取消": false, "答完": _传道摸牌},
-		# 自己的代价：弃 1 张牌【强制】【展示】
-		{"需牌": 1,
-		 "牌白": func(_答案: Array) -> Array: return player.hand_cards,
-		 "可取消": false,
-		 "跳过": func(_答案: Array) -> bool: return player.hand_cards.is_empty(),
-		 "答完": _传道弃自己的},
-		# 持有【路标】的角色弃 1 张【展示】，你获得该牌
-		{"问谁": func(_答案: Array) -> int: return 路标持有者(),
-		 "需牌": 1,
-		 "牌白": func(_答案: Array) -> Array:
-			var dp: BattlePlayer = engine.p(路标持有者())
-			return dp.hand_cards if dp != null else [],
-		 "可取消": false,
-		 "跳过": func(_答案: Array) -> bool:
-			return _传道自己弃 < 0 or not _可向他收牌(路标持有者()),
-		 "答完": _传道收牌},
+		# 自己的代价：弃 1 张牌【强制】【展示】（超时 / 空回复按手牌顺序补一张）
+		{"需牌": 1, "牌白": _传道自己的手牌, "可取消": false, "超时默认": [],
+		 "跳过": _传道无需弃牌, "答完": _传道弃自己的},
+		# 持有【路标】的角色弃 1 张【展示】，你获得该牌【强制】
+		{"问谁": _传道收牌人, "需牌": 1, "牌白": _传道对方的手牌,
+		 "可取消": false, "超时默认": [],
+		 "跳过": _传道无需收牌, "答完": _传道收牌},
 	], _传道结算)
 
 
 func _传道摸牌选项() -> Array:
 	return [
-		{"value": 0, "label": GConst.按钮原文(CHUAN_DAO, 0), "text": GConst.按钮原文(CHUAN_DAO, 0)},
-		{"value": 1, "label": GConst.按钮原文(CHUAN_DAO, 1), "text": GConst.按钮原文(CHUAN_DAO, 1)},
+		{
+			"value": 0, "label": GConst.按钮原文(CHUAN_DAO, 0), "text": GConst.按钮原文(CHUAN_DAO, 0),
+			# 不摸牌也要有牌可弃
+			"enabled": not player.hand_cards.is_empty(),
+		},
+		{
+			"value": 1, "label": GConst.按钮原文(CHUAN_DAO, 1), "text": GConst.按钮原文(CHUAN_DAO, 1),
+			# 摸 1 张就得真摸得到（牌库 + 弃牌堆）
+			"enabled": _牌库还有牌(),
+		},
 	]
+
+
+func _传道自己的手牌(_答案: Array) -> Array:
+	return player.hand_cards
+
+
+func _传道无需弃牌(_答案: Array) -> bool:
+	return player.hand_cards.is_empty()
+
+
+func _传道收牌人(_答案: Array) -> int:
+	return 路标持有者()
+
+
+func _传道对方的手牌(_答案: Array) -> Array:
+	var dp: BattlePlayer = engine.p(路标持有者())
+	return dp.hand_cards if dp != null else []
+
+
+## 第 3 段要不要问：持有者得是「别人」且手里有牌（否则这半句弃不了牌、也收不到牌）
+func _传道无需收牌(_答案: Array) -> bool:
+	return not _可向他收牌(路标持有者())
 
 
 ## 向某人收牌的前提：是别人、且手里有牌
 func _可向他收牌(pid: int) -> bool:
 	var dp: BattlePlayer = engine.p(pid)
-	return pid >= 0 and pid != player.id and dp != null and not dp.hand_cards.is_empty()
+	return pid >= 0 and dp != null and not dp.hand_cards.is_empty()
 
 
 ## 第 1 段答完：按选项摸牌（摸牌要等引擎跑完，重入再问第 2 段，见 技能URGENT后重入）
@@ -180,13 +233,14 @@ func _传道摸牌(回: Dictionary, _答案: Array) -> int:
 	var args: Array = 回.get("args", [])
 	if args.is_empty() or int(args[0]) != 1:
 		return SUCCESS
-	engine.push_强制摸牌(player.id, 1, CHUAN_DAO)
+	# 「摸 0-1 张牌」没写【强制】→ 走普通摸牌（会过 p_before_draw 的响应）
+	engine.push_draw(player.id, 1, CHUAN_DAO)
 	return URGENT
 
 
 ## 第 2 段答完：把自己的代价牌【展示】弃掉、+1【虔诚】
 func _传道弃自己的(回: Dictionary, _答案: Array) -> int:
-	var 弃: int = _提交的手牌(回.get("cards", []))
+	var 弃: int = _认一张手牌(player, 回.get("cards", []))
 	if 弃 < 0:
 		return SUCCESS
 	_传道自己弃 = 弃
@@ -203,15 +257,11 @@ func _传道收牌(回: Dictionary, _答案: Array) -> int:
 	var dp: BattlePlayer = engine.p(到)
 	if dp == null:
 		return SUCCESS
-	var 得: int = -1
-	for c: Variant in 回.get("cards", []):
-		var 实例: int = dp.手牌实例(int(c))
-		if 实例 >= 0:
-			得 = 实例
-			break
+	var 得: int = _认一张手牌(dp, 回.get("cards", []))
 	if 得 < 0:
 		return SUCCESS
-	# 「持有【路标】的角色弃 1 张牌【展示】」：统一入口（亮牌 + 触发封印）；牌不进弃牌堆，直接归你
+	# 「弃 1 张牌【展示】，你获得该牌【强制】」：牌从他的手直接到你手里，不进弃牌堆，
+	# 所以不走 to_discard（别人的「弃牌前拦截」等的是「置入弃牌堆」，这半句根本没进弃牌堆）
 	engine.展示手牌(到, [得])
 	engine.take_from_hand(到, [得])
 	player.add_hand_cards([得])
@@ -232,17 +282,20 @@ func _传道结算(_答案: Array) -> int:
 
 ## 摸牌那段答完会返回 URGENT：让 SkillRun 放行重入技能本体，接着问第 2 段
 func 技能URGENT后重入(_action: Dictionary = {}) -> bool:
-	var 技能号: int = int(_action.get("action_id", 0))
-	if 技能号 == CHUAN_DAO:
-		return 多步询问进行中(CHUAN_DAO)
-	if 技能号 == QI_SHI:
-		return 多步询问进行中(QI_SHI) or 多步询问待收尾(QI_SHI)
-	return false
+	return int(_action.get("action_id", 0)) == CHUAN_DAO and 多步询问进行中(CHUAN_DAO)
 
 
 # ============================================================
 # 信仰之路 9602：第一回合放【路标】；回合结束（未执行特殊行动）转移【路标】
 # ============================================================
+## 告解式的【回合限定】＝本回合一次：每进入一个回合复位一次。
+## 本钩子自己从不等待，所以每个回合只会跑一次，不会因为重入把标记提前清掉。
+func p_before_turn_begin(_ctx: Dictionary) -> int:
+	_告解已用 = false
+	_本回合已转移 = false
+	return SUCCESS
+
+
 func p_turn_begin(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
@@ -263,6 +316,9 @@ func p_turn_end(ctx: Dictionary) -> int:
 	var 续: int = _收尾没走完的部分()
 	if 续 != SUCCESS:
 		return 续
+	# 本回合的转移已经做过（重入）：只把剩下的链跑完，别再转移一次
+	if _本回合已转移:
+		return SUCCESS
 	# 本回合执行过【特殊行动】就不转移
 	if player.action_count_of("special") > 0:
 		return SUCCESS
@@ -272,170 +328,127 @@ func p_turn_end(ctx: Dictionary) -> int:
 	var 左: int = _下一个可持路标者(持有者)
 	if 左 < 0:
 		return SUCCESS
-	return _转移路标(左)
+	_本回合已转移 = true
+	# 转移前先给【启示】一次机会（落点 1＝转移完是一次新到达，接着跑告解 / 弥撒）
+	return _转移路标(左, 1)
 
 
-## 上一次的路标到达 / 弥撒 / 启示链被打断时，先把它们走完再处理这次的新触发
+## 上一次的路标到达 / 弥撒链被打断时，先把它们走完再处理这次的新触发
 func _收尾没走完的部分() -> int:
 	if _到达阶段 != 0:
 		return _到达后续()
 	if 多步询问进行中(MI_SA):
 		return _弥撒()
-	if 多步询问进行中(QI_SHI) or 多步询问待收尾(QI_SHI):
-		return _启示链()
 	return SUCCESS
 
 
 # ============================================================
 # 路标放置 / 转移：到达后依次跑【告解式】与【弥撒】
 # ============================================================
+## 把【路标】放到某人面前（保留 owner），并接着跑到达链。
+## 「放置」不等于「转移」：告解式的触发条件写的是「此卡被转移至你面前」，
+## 所以放置只走【弥撒】（弥撒写的是「转移或放置后」）。
 func _放置路标(目标: int) -> int:
-	if not _可持路标(目标):
-		return SUCCESS
-	engine.加场卡({"id": 路标名, "owner": player.id, "attached": 目标})
-	engine._broadcast_game()
+	_路标放下(目标)
+	_到达来自转移 = false
 	_到达阶段 = 1
 	return _到达后续()
 
 
-## 把【路标】转移给某人（保留 owner）
+## 只挪位置，不跑链（链由 `_到达后续()` 推）。
+## 「神的门徒」下不能被放路标的角色（6 人局里的她自己）直接不挪。
 func _路标放下(目标: int) -> void:
+	if not _可持路标(目标):
+		return
 	engine.加场卡({"id": 路标名, "owner": player.id, "attached": 目标})
-	engine._broadcast_game()
 
 
-## 路标到达之后的后续：告解式（摸 2 张 → 战绩区 +1 水晶 → 移给左手边 → 传教士弃 1 张）→ 弥撒
+## 转移【路标】给某人：先问【启示】（虔诚 ≥ 2 时才有得选），落标之后回到 落点 阶段。
+## 落点 1（默认）＝转移完算一次新到达（跑告解 / 弥撒）；落点 3＝告解链内部的「转到左手边」，接着弃牌。
+func _转移路标(目标: int, 落点: int = 1) -> int:
+	_启示后阶段 = 落点
+	if player.token_num(虔诚槽) < 2:
+		_路标放下(目标)
+		_到达阶段 = 落点
+		if 落点 != 1:
+			return SUCCESS
+		_到达来自转移 = true
+		return _到达后续()
+	_转移目标 = 目标
+	_启示分支值 = 1
+	_启示摸前 = []
+	_启示新牌 = -2
+	_到达阶段 = 4
+	return _启示链()
+
+
+## 【路标】到达之后的推进：告解（摸 2 → 战绩区 +1 水晶 → 转到左手边 → 传教士弃 1 张）→ 弥撒
 func _到达后续() -> int:
-	if _到达阶段 == 1:
-		var 到: int = 路标持有者()
-		if not _可发动告解(到):
+	while true:
+		if _到达阶段 == 0:
+			return SUCCESS
+		if _到达阶段 == 1:
+			var 到: int = 路标持有者()
+			# 告解式的触发条件是「此卡被转移至你面前」：放置进来（第一回合放置 / 启示改放）不算
+			if not _到达来自转移 or not _可发动告解(到):
+				_到达阶段 = 5
+				continue
+			_告解已用 = true
+			notice_skill(LU_BIAO, [到])
+			_到达阶段 = 2
+			engine.push_强制摸牌(到, 2, LU_BIAO)
+			return URGENT
+		if _到达阶段 == 2:
+			engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
+			var 下: int = _下一个可持路标者(路标持有者())
 			_到达阶段 = 3
-			return _到达后续()
-		_告解回合 = engine.round_id
-		notice_skill(LU_BIAO, [到])
-		_到达阶段 = 2
-		engine.push_强制摸牌(到, 2, LU_BIAO)
-		return URGENT
-	if _到达阶段 == 2:
-		engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
-		# 「然后将此卡转移至你左手边最近的角色面前」：这里跳过的只有不能被放路标的传教士
-		var 下: int = _下一个可持路标者(路标持有者())
-		if 下 >= 0:
-			_路标放下(下)
-		_到达阶段 = 3
-		if player.hand_cards.is_empty():
-			return _到达后续()
-		engine.push(BattleEngine.SRequestDiscard.new(player.id, 1, 0, LU_BIAO))
-		return URGENT
-	_到达阶段 = 0
-	# 弥撒是【必杀·水晶】：没有能量就不问
-	if player.get_energy() < 1:
-		return SUCCESS
-	return _弥撒()
+			if 下 < 0:
+				continue
+			# 「将此卡转移至你左手边最近的角色面前」也是一次转移 → 转移前同样可以【启示】
+			var 返: int = _转移路标(下, 3)
+			if 返 != SUCCESS:
+				return 返
+			continue
+		if _到达阶段 == 3:
+			_到达阶段 = 5
+			if player.hand_cards.is_empty():
+				continue
+			engine.push(BattleEngine.SRequestDiscard.new(player.id, 1, 0, LU_BIAO))
+			return URGENT
+		if _到达阶段 == 4:
+			# 正在问启示：把这条链接上（回合一到、回复在它手里）
+			if 多步询问进行中(QI_SHI):
+				return _启示链()
+			_到达阶段 = _启示后阶段
+			continue
+		# 5：收尾 → 弥撒
+		_到达阶段 = 0
+		if player.get_energy() < 1 or not _弥撒可用():
+			return SUCCESS
+		return _弥撒()
+	return SUCCESS
 
 
-## 告解式能不能发动：回合限定（一回合一次），且到达者不是传教士自己
+## 告解式能不能发动：【回合限定】（本回合一次），且到达者不是传教士自己（2V2 除外）
 func _可发动告解(到: int) -> bool:
-	return _告解回合 != engine.round_id and _可持路标(到)
+	return not _告解已用 and _可持路标(到)
 
 
 # ============================================================
 # 启示 9604（响应·路标转移前）：移除 2【虔诚】→ 二选一
 # ============================================================
-func _转移路标(目标: int) -> int:
-	if not _可持路标(目标):
-		return SUCCESS
-	# 链已经在问（重入）：继续把链跑完
-	if 多步询问进行中(QI_SHI) or 多步询问待收尾(QI_SHI):
-		return _启示链()
-	if player.token_num(虔诚槽) < 2:
-		return _放置路标(目标)
-	_转移目标 = 目标
-	_启示目标 = -1
-	_启示已处理 = false
-	return _启示链()
-
-
 func _启示链() -> int:
 	return 多步询问(QI_SHI, [
 		{"选项": _启示选项(), "取消": _启示不发动, "答完": _启示选分支},
-		# 分支①选治疗目标；分支②选「若成功就改放到谁面前」（神的门徒：不能是自己）
+		# 分支①选治疗目标；分支②摸到法术牌 / 圣命格后选「路标放到谁面前」
 		{"需目标": 1,
-		 "目标白": func(_答案: Array) -> Array: return 全部角色() if _启示分支值 == 1 else 除自己(),
-		 "预览基准": 1, "预览类型": GConst.预览类型_治疗,
-		 "取消": _启示不发动},
-	], _启示结算, _启示摸牌收尾)
-
-
-## 启示第 1 段选的分支（1＝目标 +1 治疗 / 2＝摸 1 张牌试图取消转移）
-var _启示分支值: int = 1
-
-
-## 启示不发动（第 1 段取消 / 第 2 段取消 / 超时）：什么都不扣，照常把路标放到原定目标
-func _启示不发动() -> int:
-	_启示目标 = -1
-	return _放置路标(_转移目标)
-
-
-## 第 1 段答完：只记分支（【虔诚】等结算时再扣 —— 中途取消不该白扣 2 点）
-func _启示选分支(回: Dictionary, _答案: Array) -> int:
-	var args: Array = 回.get("args", [])
-	_启示分支值 = int(args[0]) if not args.is_empty() else 1
-	return SUCCESS
-
-
-func _启示结算(答案: Array) -> int:
-	var 回2: Dictionary = 答案[答案.size() - 1] if not 答案.is_empty() else {}
-	var dsts: Array = 回2.get("dsts", [])
-	_启示目标 = int(dsts[0]) if not dsts.is_empty() else -1
-	if _启示目标 < 0 or engine.p(_启示目标) == null:
-		return _放置路标(_转移目标)
-	# 发动代价：移除 2 点【虔诚】
-	player.remove_token(虔诚槽, 2)
-	notice_skill(QI_SHI, [player.id])
-	engine._broadcast_game()
-	if _启示分支值 == 1:
-		施加治疗(_启示目标, 1)
-		engine._broadcast_game()
-		# 放置路标会顺带压告解 / 弥撒：那是别的流程，不登记本链的收尾。
-		# 放完如果没压任何状态就把这个标记清掉，别让它漏给下一次启示链。
-		多步询问跳过收尾(QI_SHI)
-		var 返: int = _放置路标(_转移目标)
-		if 返 == SUCCESS:
-			多步询问重置(QI_SHI)
-		return 返
-	# 分支②：摸 1 张牌，摸完再看它是不是法术牌 / 圣类命格（收尾里判断）
-	_启示摸前 = player.hand_cards.duplicate()
-	engine.push_强制摸牌(player.id, 1, QI_SHI)
-	return URGENT
-
-
-## 分支②摸完牌后的收尾：是法术牌 / 圣类命格就取消本次转移、把路标改放到启示目标面前
-func _启示摸牌收尾() -> int:
-	if _启示已处理:
-		# 判断和放置已经做过：把告解 / 弥撒继续跑
-		if _到达阶段 != 0:
-			return _到达后续()
-		return SUCCESS
-	_启示已处理 = true
-	var 新牌: int = -1
-	for c: Variant in player.hand_cards:
-		if not _启示摸前.has(int(c)):
-			新牌 = int(c)
-			break
-	_启示摸前 = []
-	var 牌: GCard = Data.get_card(新牌) if 新牌 >= 0 else null
-	if 新牌 >= 0:
-		# 「你摸 1 张牌【强制】【展示】」：统一入口（亮牌 + 触发封印）
-		engine.展示手牌(player.id, [新牌])
-	var 成: bool = 牌 != null and (牌.is_magic() or 牌.fate_pattern_enum() == GConst.FatePattern.Holy)
-	if 成 and _可持路标(_启示目标):
-		# 取消本次转移：移除【路标】，改放到启示目标面前（这也是一次放置，照样跑告解 / 弥撒）
-		engine.移除场卡(路标名)
-		_路标放下(_启示目标)
-		_到达阶段 = 1
-		return _到达后续()
-	return _放置路标(_转移目标)
+		 "跳过": _启示无需选目标,
+		 "可取消": false,
+		 "目标白": _启示目标候选,
+		 "超时目标": _启示目标候选,
+		 "预览基准": _启示预览基准,
+		 "预览类型": GConst.预览类型_治疗},
+	], _启示结算)
 
 
 func _启示选项() -> Array:
@@ -443,6 +456,96 @@ func _启示选项() -> Array:
 		{"value": 1, "label": GConst.按钮原文(QI_SHI, 0), "text": GConst.按钮原文(QI_SHI, 0)},
 		{"value": 2, "label": GConst.按钮原文(QI_SHI, 1), "text": GConst.按钮原文(QI_SHI, 1)},
 	]
+
+
+## 启示不发动（第 1 段取消 / 超时）：什么都不扣，照常把路标转移到原定目标
+func _启示不发动() -> int:
+	_启示摸前 = []
+	_启示新牌 = -2
+	return _落标并继续(_转移目标, true)
+
+
+## 第 1 段答完：只记分支；分支②当场把那 1 张摸掉（摸完再问目标，顺序与原文一致）
+func _启示选分支(回: Dictionary, _答案: Array) -> int:
+	var args: Array = 回.get("args", [])
+	_启示分支值 = int(args[0]) if not args.is_empty() else 1
+	if _启示分支值 != 2:
+		return SUCCESS
+	_启示摸前 = player.hand_cards.duplicate()
+	_启示新牌 = -2
+	engine.push_强制摸牌(player.id, 1, QI_SHI)
+	return URGENT
+
+
+## 第 2 段要不要问：分支①一定要选治疗目标；分支②只有摸到法术牌 / 圣命格才选「路标放谁面前」
+func _启示无需选目标(_答案: Array) -> bool:
+	return _启示分支值 == 2 and not _启示摸牌成立()
+
+
+func _启示目标候选(_答案: Array) -> Array:
+	return 全部角色() if _启示分支值 == 1 else _可持路标列表()
+
+
+## 分支①的目标头上写「+1 治疗」；分支②是选路标落点，不画治疗提示
+func _启示预览基准(_答案: Array) -> int:
+	return 1 if _启示分支值 == 1 else 0
+
+
+## 分支②摸到的那张是不是「法术牌或者圣类命格」：摸牌前拍过快照，只差这一张。
+## 判定只做一次（跳过会被重复求值），顺手把它【展示】出来。
+func _启示摸牌成立() -> bool:
+	if _启示新牌 == -2:
+		_启示新牌 = -1
+		for c: Variant in player.hand_cards:
+			if not _启示摸前.has(int(c)):
+				_启示新牌 = int(c)
+				break
+		if _启示新牌 >= 0:
+			# 「你摸 1 张牌【强制】【展示】」：亮给全场（封印类响应压在后面的结算之上）
+			engine.展示手牌(player.id, [_启示新牌])
+	var 牌: GCard = Data.get_card(_启示新牌) if _启示新牌 >= 0 else null
+	return 牌 != null and (牌.is_magic() or 牌.fate_pattern_enum() == GConst.FatePattern.Holy)
+
+
+func _启示结算(答案: Array) -> int:
+	var 目标: int = -1
+	if 答案.size() > 1:
+		var dsts: Array = (答案[1] as Dictionary).get("dsts", [])
+		if not dsts.is_empty():
+			目标 = int(dsts[0])
+	# 发动代价：移除 2 点【虔诚】（中途不发动时不扣，见 _启示不发动）
+	player.remove_token(虔诚槽, 2)
+	var 播报: Array = []
+	if 目标 >= 0:
+		播报.append(目标)
+	else:
+		播报.append(player.id)
+	notice_skill(QI_SHI, 播报)
+	engine._broadcast_game()
+	var 目的: int = _转移目标
+	var 是转移: bool = true
+	if _启示分支值 == 1:
+		# 分支①：目标角色 +1【治疗】，本次转移照常进行
+		施加治疗(目标, 1)
+		engine._broadcast_game()
+	elif 目标 >= 0 and _启示摸牌成立():
+		# 分支②：取消本次转移并移除【路标】，然后把它「放置」到目标角色面前
+		engine.移除场卡(路标名)
+		目的 = 目标
+		是转移 = false
+	_启示摸前 = []
+	_启示新牌 = -2
+	return _落标并继续(目的, 是转移)
+
+
+## 把【路标】挪到某人面前，并按「这次转移属于哪条流程」继续（见 _启示后阶段）。
+## 是转移：来自信仰之路 / 告解的「转移」，到达后会触发告解式；
+## 不是转移：启示改放的「放置」，只触发弥撒。
+func _落标并继续(目标: int, 是转移: bool) -> int:
+	_路标放下(目标)
+	_到达来自转移 = 是转移
+	_到达阶段 = _启示后阶段
+	return _到达后续()
 
 
 # ============================================================
@@ -458,7 +561,7 @@ func _事奉可发动(ctx: Dictionary) -> bool:
 		return false
 	if str(ctx.get("source", "")) != "hand":
 		return false
-	if not [CHUAN_DAO, SHU_LING_EN_CI, MI_SA, LU_BIAO].has(int(ctx.get("cause", 0))):
+	if not _自身技能弃牌(int(ctx.get("cause", 0))):
 		return false
 	if player.cross_num <= 0:
 		return false
@@ -466,49 +569,77 @@ func _事奉可发动(ctx: Dictionary) -> bool:
 	return 持有者 >= 0 and 持有者 != player.id
 
 
+## 「你因自身技能弃的牌」＝ 传道 / 属灵恩赐 / 弥撒 / 路标 这四颗技能的弃牌
+func _自身技能弃牌(cause: int) -> bool:
+	return cause == CHUAN_DAO or cause == SHU_LING_EN_CI or cause == MI_SA or cause == LU_BIAO
+
+
 func p_before_discard(ctx: Dictionary) -> int:
+	# 这次弃牌已经由【事奉】接管（回复回来 / 压了状态被重入）：先把链跑完。
+	# 必须放在资源门槛之前 —— 发动时已经扣过 1 点【治疗】，重入时它可能正好是 0，
+	# 再判一次门槛就会把回复吞掉（约定 §20）。
+	if bool(ctx.get(_事奉接管键, false)):
+		return _事奉链() if 多步询问进行中(SHI_FENG) else SUCCESS
 	if not _事奉可发动(ctx):
 		return SUCCESS
-	# 已经在问「给谁 +1 治疗」：重入继续把链跑完（回复要靠它消费）
-	if 多步询问进行中(SHI_FENG):
-		return _事奉链()
-	var 键: String = "_事奉_%d" % int(ctx.get("cause", 0))
-	if bool(ctx.get(键, false)):
-		return SUCCESS
-	ctx[键] = true
-	var 取: Array = []
-	for c: Variant in ctx.get("cards", []):
-		取.append(int(c))
-	if 取.is_empty():
-		return SUCCESS
-	var 持有者: int = 路标持有者()
-	# 代价：移除你 1【治疗】；弃牌改由他收下（taken / taker 交给引擎结算）
-	player.sub_cross_num(1)
-	ctx["taken"] = 取
-	ctx["taker"] = 持有者
-	notice_skill(SHI_FENG, [持有者])
-	engine._broadcast_game()
-	# 「若没有因此造成该角色阵营士气下降」＝这张牌不会让他爆牌
-	var 他: BattlePlayer = engine.p(持有者)
-	if 他 == null or 他.hand_cards.size() + 取.size() > 他.hand_cards_max:
-		return SUCCESS
+	ctx[_事奉接管键] = true
+	_事奉上下文 = ctx
+	_事奉收牌人 = 路标持有者()
+	_事奉牌 = (ctx.get("cards", []) as Array).duplicate()
+	_事奉可给治疗 = false
 	return _事奉链()
 
 
+## 两段：先问发不发动（取消＝不发动，代价是移除 1 点【治疗】）；
+## 发动后若不会让持有者爆牌（＝不因此掉士气），再问一次「除你外的目标角色 +1【治疗】」
 func _事奉链() -> int:
 	return 多步询问(SHI_FENG, [
-		{"需目标": 1,
-		 "目标白": 除自己(),
+		{"取消": _事奉不发动, "答完": _事奉发动},
+		{"需目标": 1, "目标白": 除自己(), "可取消": false, "超时目标": 除自己(),
+		 "跳过": _事奉无需给治疗,
 		 "预览基准": 1, "预览类型": GConst.预览类型_治疗},
 	], _事奉结算)
 
 
-func _事奉结算(答案: Array) -> int:
-	var dsts: Array = (答案[0] as Dictionary).get("dsts", []) if not 答案.is_empty() else []
-	if dsts.is_empty():
+func _事奉无需给治疗(_答案: Array) -> bool:
+	return not _事奉可给治疗
+
+
+## 第 1 段答完：发动 —— 扣 1【治疗】，把这次弃的牌改交给他（taken / taker 交给引擎结算）
+func _事奉发动(_回: Dictionary, _答案: Array) -> int:
+	var 他: BattlePlayer = engine.p(_事奉收牌人)
+	if 他 == null:
+		_事奉可给治疗 = false
 		return SUCCESS
-	施加治疗(int(dsts[0]), 1)
+	player.sub_cross_num(1)
+	_事奉上下文["taken"] = _事奉牌
+	_事奉上下文["taker"] = _事奉收牌人
+	notice_skill(SHI_FENG, [_事奉收牌人])
 	engine._broadcast_game()
+	# 「若没有因此造成该角色阵营士气下降」＝这几张牌交过去不会让他爆牌。
+	# 提前估算（超限掉士气要等弃牌结算完才知道，这里只做得到「加进来会不会超上限」）。
+	_事奉可给治疗 = 他.hand_cards.size() + _事奉牌.size() <= 他.hand_cards_max
+	return SUCCESS
+
+
+func _事奉不发动() -> int:
+	_事奉牌 = []
+	_事奉上下文 = {}
+	engine._broadcast_game()
+	return SUCCESS
+
+
+func _事奉结算(答案: Array) -> int:
+	var 目标: int = -1
+	if 答案.size() > 1:
+		var dsts: Array = (答案[1] as Dictionary).get("dsts", [])
+		if not dsts.is_empty():
+			目标 = int(dsts[0])
+	_事奉牌 = []
+	_事奉上下文 = {}
+	if 目标 >= 0:
+		施加治疗(目标, 1)
+		engine._broadcast_game()
 	return SUCCESS
 
 
@@ -526,6 +657,14 @@ func _弥撒() -> int:
 		 "可取消": false,
 		 "跳过": func(_答案: Array) -> bool: return not _弥撒需要二段()},
 	], _弥撒结算)
+
+
+## 弥撒的两档都可能是「没得选」（手里没牌 / 持有者面前没有基础效果）：都不可用就不问
+func _弥撒可用() -> bool:
+	if not player.hand_cards.is_empty():
+		return true
+	var dp: BattlePlayer = engine.p(路标持有者())
+	return dp != null and not _基础效果列表(dp).is_empty()
 
 
 ## 第 1 段答完：只记下选择；选②时把持有者面前的基础效果表抄下来给第 2 段用
@@ -569,7 +708,10 @@ func _弥撒弃牌(答案: Array, 持有: int) -> int:
 	engine.展示手牌(player.id, [弃])
 	engine.take_from_hand(player.id, [弃])
 	var 牌: GCard = Data.get_card(弃)
-	if 牌 != null and 基础效果牌名.has(牌.card_name_enum()):
+	# 目标不能接收基础效果（如灵熙之潮 4601）时不能白吃这张牌：照常弃掉
+	var 能挂: bool = 牌 != null and 基础效果牌名.has(牌.card_name_enum()) \
+		and engine.v_basic_effect_target(持有, 弃) == GConst.GE_SUCCESS
+	if 能挂:
 		engine.add_basic_effect(持有, 弃, player.id, MI_SA)
 	else:
 		engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": MI_SA})
@@ -612,7 +754,7 @@ func _弥撒选项() -> Array:
 			"value": 1,
 			"label": GConst.按钮原文(MI_SA, 0),
 			"text": GConst.按钮原文(MI_SA, 0),
-			"need_card": 1 if not player.hand_cards.is_empty() else 0,
+			"need_card": 1,
 			"enabled": not player.hand_cards.is_empty(),
 		},
 		{
@@ -624,11 +766,11 @@ func _弥撒选项() -> Array:
 	]
 
 
-## 持有者面前的基础效果牌（跳过 Tricky 占位，避免与捣蛋萝莉的脚本状态脱节）
+## 持有者面前的基础效果牌（跳过【Tricky】占位：那张是捣蛋萝莉的代理牌，真实牌面在别处）
 func _基础效果列表(dp: BattlePlayer) -> Array:
 	var out: Array = []
 	for be: Dictionary in dp.basic_effects:
-		if int(be["card"]) != 1008:
+		if int(be["card"]) != GConst.卡_Tricky:
 			out.append(int(be["card"]))
 	return out
 
@@ -645,6 +787,18 @@ func _收入选项(表: Array) -> Array:
 # ============================================================
 # 小工具
 # ============================================================
+## 提交的牌里第一张「确实在他手里」的实例号；没有（超时 / 空回复）就按手牌顺序补第一张。
+## 强制弃牌不能静默不发生（约定 §16）。返回 -1＝他手里一张牌都没有。
+func _认一张手牌(dp: BattlePlayer, 提交: Array) -> int:
+	for c: Variant in 提交:
+		var 实例: int = dp.手牌实例(int(c))
+		if 实例 >= 0:
+			return 实例
+	if dp.hand_cards.is_empty():
+		return -1
+	return int(dp.hand_cards[0])
+
+
 ## 提交的牌里第一张「确实在自己手里」的实例号（没有返回 -1）
 func _提交的手牌(cards: Array) -> int:
 	for c: Variant in cards:
@@ -669,29 +823,24 @@ func 路标持有者() -> int:
 	return int(表.get("attached", -1))
 
 
-## 神的门徒 9601：【路标】不能放在传教士自己面前；2V2 里此技能无效（她也算合法目标）
+## 神的门徒 9601：队友数 > 1（6 人局）时她无法成为【路标】的目标【恒定】；
+## 4 人局（队友只有 1 人）此技能无效，她也可以是【路标】的落点。
 func _可持路标(pid: int) -> bool:
 	if engine.p(pid) == null:
 		return false
-	return pid != player.id or _是2v2()
+	return pid != player.id or 队友数() > 1
 
 
-## 2V2：两队各 2 人（4 人局）
-func _是2v2() -> bool:
-	var 红: int = 0
-	var 蓝: int = 0
+func 队友数() -> int:
+	var n: int = 0
 	for pid: int in engine.order:
 		var p0: BattlePlayer = engine.p(pid)
-		if p0 == null:
-			continue
-		if p0.color == GConst.RED:
-			红 += 1
-		else:
-			蓝 += 1
-	return 红 == 2 and 蓝 == 2
+		if p0 != null and pid != player.id and p0.color == player.color:
+			n += 1
+	return n
 
 
-## 从某人往里找「左手边最近、且能被放路标」的角色（跳过传教士自己）
+## 从某人往里找「左手边最近、且能被放路标」的角色；找不到返回 -1
 func _下一个可持路标者(从前: int) -> int:
 	var 当前: int = 从前
 	for _i: int in range(engine.order.size()):
@@ -703,7 +852,16 @@ func _下一个可持路标者(从前: int) -> int:
 	return -1
 
 
-## 除自己以外的全部在场角色（神之门徒：路标不能放在传教士自己面前；事奉的治疗目标同理）
+## 能被放【路标】的全部角色（启示分支②选落点用，口径同 _可持路标）
+func _可持路标列表() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		if _可持路标(pid):
+			out.append(pid)
+	return out
+
+
+## 除自己以外的全部在场角色（事奉的治疗目标：原文写明「除你外」）
 func 除自己() -> Array[int]:
 	var out: Array[int] = []
 	for pid: int in engine.order:
