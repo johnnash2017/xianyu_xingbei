@@ -238,8 +238,11 @@ func p_timeline_2_hit(ctx: Dictionary) -> int:
 		_侵刻已处理 = true
 		_侵刻目标 = dst.id
 		# 无选项，只有「确定 / 取消」：确定发动，取消不发动
+		# 末位「提示牌」把这次的【魔刃/异刃】随询问下发：客户端据此写「给予【魔刃/异刃】」，
+		# 不再靠「最近一张打出的攻击牌」那种跨询问的记录（中间插一手就会串味）
 		询问(player.id, QIN_KE, 0, 0, GConst.CardSource.Hand, [], 0, "", [], true,
-			0, -1, [dst.id], -1, {}, 0, 0, false, [], true, -1, 0, "")
+			0, -1, [dst.id], -1, {}, 0, 0, false, [], true, -1, 0, "", -1, "", [], [], 0, -1,
+			false, "", _本次刃面)
 		return WAIT
 	_侵刻目标 = -1
 	if not take_skill_reply():

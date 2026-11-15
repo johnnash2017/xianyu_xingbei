@@ -9494,10 +9494,21 @@ func _最近攻击元素() -> int:
 	return 卡.element_enum() if 卡 != null else 0
 
 
-## 本次攻击的元素：发动技能时＝这次要打出的那张攻击牌；技能询问时＝刚打出的那张攻击牌
+## 本次攻击的元素，按「作用域由近到远」取：
+##   ① 自己手上正选着要打的那张（发动技能那条）；
+##   ② 这条询问自己带的攻击牌（args[1]，应战 / 反击类服务端都会带）；
+##   ③ 都没有才退回「最近打出的攻击牌」兜底（会跨询问，尽量别走到这里）。
 func _本次攻击元素() -> int:
-	var 牌id: int = int(_sel_cards[0]) if not _sel_cards.is_empty() else _最近攻击牌
-	var 卡: GCard = Data.get_card(牌id)
+	if not _sel_cards.is_empty():
+		var 选中卡: GCard = Data.get_card(int(_sel_cards[0]))
+		if 选中卡 != null:
+			return 选中卡.element_enum()
+	var 询问元素: int = _攻击牌元素(_pending.get("args", []))
+	if 询问元素 > 0:
+		return 询问元素
+	if _最近攻击牌 <= 0:
+		return 0
+	var 卡: GCard = Data.get_card(_最近攻击牌)
 	return 卡.element_enum() if 卡 != null else 0
 
 
@@ -10569,12 +10580,13 @@ func _亡女金库头像提示() -> Dictionary:
 
 
 ## 噬神者【侵刻】询问时：在攻击目标头像上写「给予【魔刃/异刃】」。
-## 牌面取最近一张公开打出的攻击牌（Card.Use 消息）；目标由询问自动选中/高亮。
+## 牌面取这条询问自带的 hint_card；目标由询问自动选中/高亮。
 func _侵刻头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _mode != 3 or int(_skill_ask_id) != GConst.技能_侵刻:
 		return out
-	var 面: int = _最近攻击牌
+	# 牌面取服务端随这条询问下发的 hint_card（这次用的那张【魔刃/异刃】），不用「最近打出的攻击牌」
+	var 面: int = int(_pending.get("hint_card", -1))
 	if 面 != GConst.噬神者_魔刃卡 and 面 != GConst.噬神者_异刃卡:
 		return out
 	var 刃名: String = "魔刃" if 面 == GConst.噬神者_魔刃卡 else "异刃"
