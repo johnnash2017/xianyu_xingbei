@@ -64,6 +64,8 @@ var _本回合已转移: bool = false
 
 ## 传道：段 2 答完时弃掉的自己的那张（段 3 收下对方的牌后比系别 / 命格用）
 var _传道自己弃: int = -1
+## 传道：这一步的「摸 1 张牌」已经摸过了（摸牌会等引擎跑完并重入技能本体）
+var _传道已摸: bool = false
 
 ## 启示：本次原定转移到的目标 / 选的分支 / 启示结束后回到的阶段
 var _转移目标: int = -1
@@ -96,6 +98,8 @@ func available_skills() -> Array:
 			"id": CHUAN_DAO,
 			"need_card": 0,
 			"need_target": 0,
+			# 「摸 0~1 张」的点法同魔弓【魔眼】：点技能进二级技能栏选一项，点「返回」退出来
+			"arg_choices": _传道选项(),
 			"enabled": _传道可用(),
 		},
 		{
@@ -129,6 +133,15 @@ func v_special_skill(action: Dictionary) -> int:
 		CHUAN_DAO:
 			if not _传道可用():
 				return GConst.GE_INVALID_ACTION
+			var 参数: Array = action.get("args", [])
+			var 摸: int = int(参数[0]) if not 参数.is_empty() else 0
+			if 摸 != 0 and 摸 != 1:
+				return GConst.GE_INVALID_ARGUMENT
+			# 一次发动只初始化一次：v_ 每份行动只走一遍，p_ 会因为摸牌结算重入
+			_传道自己弃 = -1
+			_传道已摸 = false
+			player.boot_skill_used = true
+			notice_skill(CHUAN_DAO, [player.id])
 			return GConst.GE_SUCCESS
 		SHU_LING_EN_CI:
 			# 【水晶】费用：宝石可顶水晶（get_energy）；代价「弃 1 张牌」必须真交一张手牌
@@ -143,7 +156,7 @@ func p_special_skill(action: Dictionary) -> int:
 		SHU_LING_EN_CI:
 			return _属灵恩赐(action)
 		CHUAN_DAO:
-			return _传道()
+			return _传道(action)
 	return SUCCESS
 
 
@@ -168,37 +181,42 @@ func _属灵恩赐(action: Dictionary) -> int:
 # ============================================================
 # 传道 9603（启动）：摸 0~1 → 弃 1【展示】(+1 虔诚) → 持有者弃 1【展示】、你收下
 # ============================================================
-func _传道() -> int:
-	if not 多步询问进行中(CHUAN_DAO):
-		# 「启动」技能：本回合只能发动一个（引擎按这个标记把关）
-		player.boot_skill_used = true
-		_传道自己弃 = -1
-		notice_skill(CHUAN_DAO, [player.id])
+func _传道(action: Dictionary) -> int:
+	var 参数: Array = action.get("args", [])
+	var 要摸: bool = not 参数.is_empty() and int(参数[0]) == 1
+	# 「你摸 0-1 张牌」：选了摸就先摸（摸完引擎重入，见 技能URGENT后重入）再问弃牌
+	if 要摸 and not _传道已摸:
+		_传道已摸 = true
+		engine.push_draw(player.id, 1, CHUAN_DAO)
+		return URGENT
 	return 多步询问(CHUAN_DAO, [
-		{"选项": _传道摸牌选项(), "可取消": false, "答完": _传道摸牌},
-		# 自己的代价：弃 1 张牌【强制】【展示】（超时 / 空回复按手牌顺序补一张）
+		# 自己的代价：弃 1 张牌【强制】【展示】（提示条＝整段技能说明）
 		{"需牌": 1, "牌白": _传道自己的手牌, "可取消": false, "超时默认": [],
-		 "跳过": _传道无需弃牌, "答完": _传道弃自己的},
+		 "跳过": _传道无需弃牌, "答完": _传道弃自己的, "询问文案": _传道提示()},
 		# 持有【路标】的角色弃 1 张【展示】，你获得该牌【强制】
 		{"问谁": _传道收牌人, "需牌": 1, "牌白": _传道对方的手牌,
 		 "可取消": false, "超时默认": [],
-		 "跳过": _传道无需收牌, "答完": _传道收牌},
+		 "跳过": _传道无需收牌, "答完": _传道收牌, "询问文案": _传道收牌提示()},
 	], _传道结算)
 
 
-func _传道摸牌选项() -> Array:
-	return [
-		{
-			"value": 0, "label": GConst.按钮原文(CHUAN_DAO, 0), "text": GConst.按钮原文(CHUAN_DAO, 0),
-			# 不摸牌也要有牌可弃
-			"enabled": not player.hand_cards.is_empty(),
-		},
-		{
-			"value": 1, "label": GConst.按钮原文(CHUAN_DAO, 1), "text": GConst.按钮原文(CHUAN_DAO, 1),
-			# 摸 1 张就得真摸得到（牌库 + 弃牌堆）
-			"enabled": _牌库还有牌(),
-		},
-	]
+## 传道两步弃牌的提示条（一次性初始化在 v_special_skill 里做，那里每份行动只走一遍）：
+## 自己那一步是整个技能在推进 → 标准整体提示「【技能名】：说明」；
+## 对方那一步只做「弃 1 张给他、可能再加虔诚」→ 写清他要做什么、之后会发生什么。
+func _传道提示() -> String:
+	return "【%s】：%s" % [GConst.skill_name(CHUAN_DAO), GConst.skill_desc(CHUAN_DAO)]
+
+
+func _传道收牌提示() -> String:
+	return "【%s】：弃 1 张牌【展示】，传教士获得该牌【强制】，（若该牌与你的弃牌系别或命格相同）传教士额外+1【虔诚】" % GConst.skill_name(CHUAN_DAO)
+
+
+## 二级技能栏里的两个选项（同魔弓【魔眼】：点技能进栏选，点「返回」退出）
+func _传道选项() -> Array:
+	var out: Array = []
+	for i: int in range(2):
+		out.append({"text": GConst.按钮原文(CHUAN_DAO, i), "args": [i]})
+	return out
 
 
 func _传道自己的手牌(_答案: Array) -> Array:
@@ -229,16 +247,6 @@ func _可向他收牌(pid: int) -> bool:
 	return pid >= 0 and dp != null and not dp.hand_cards.is_empty()
 
 
-## 第 1 段答完：按选项摸牌（摸牌要等引擎跑完，重入再问第 2 段，见 技能URGENT后重入）
-func _传道摸牌(回: Dictionary, _答案: Array) -> int:
-	var args: Array = 回.get("args", [])
-	if args.is_empty() or int(args[0]) != 1:
-		return SUCCESS
-	# 「摸 0-1 张牌」没写【强制】→ 走普通摸牌（会过 p_before_draw 的响应）
-	engine.push_draw(player.id, 1, CHUAN_DAO)
-	return URGENT
-
-
 ## 第 2 段答完：把自己的代价牌【展示】弃掉、+1【虔诚】
 func _传道弃自己的(回: Dictionary, _答案: Array) -> int:
 	var 弃: int = _认一张手牌(player, 回.get("cards", []))
@@ -266,7 +274,8 @@ func _传道收牌(回: Dictionary, _答案: Array) -> int:
 	engine.展示手牌(到, [得])
 	engine.take_from_hand(到, [得])
 	player.add_hand_cards([得])
-	engine.播获得牌日志(player.id, [得])
+	# 统一入口：日志「X 交给 Y 【牌】」+ 客户端「牌从甲飘到乙」的给牌动效
+	engine._log_give_cards(到, player.id, [得])
 	var 我: GCard = Data.get_card(_传道自己弃)
 	var 他: GCard = Data.get_card(得)
 	if 我 != null and 他 != null and (我.element_enum() == 他.element_enum()
