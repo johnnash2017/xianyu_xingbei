@@ -71,9 +71,16 @@ var _传道待续: bool = false
 
 ## 启示：本次原定转移到的目标 / 选的分支 / 启示结束后回到的阶段
 var _转移目标: int = -1
-var _启示分支值: int = 1
+## 分支②摸到的那张是不是「法术牌 / 圣类命格」（收尾里算一次，重入靠它）
+var _启示成立: bool = false
+## 分支②的「摸牌判定」是否已经做过（收尾会因压状态被重入）
+var _启示已判定: bool = false
+## 分支②的「落标 + 接着跑到达链」是否已经开始（同样只做一次）
+var _启示已落标: bool = false
 ## 启示落标之后接着跑哪一段：1＝新到达（跑告解）/ 3＝告解链内（接着弃牌）
 var _启示后阶段: int = 1
+## 启示选中的目标（分支①的治疗对象 / 分支②要把【路标】放谁面前）
+var _启示目标: int = -1
 ## 这次到达算不算「转移」（告解式只认转移；放置只走弥撒）
 ## 启示分支②：摸牌前的手牌快照、摸到的那张（-2＝还没判定 / -1＝没摸到）
 var _启示摸前: Array = []
@@ -369,6 +376,8 @@ func p_turn_end(ctx: Dictionary) -> int:
 func _收尾没走完的部分() -> int:
 	if _到达阶段 != 0:
 		return _到达后续()
+	if 多步询问进行中(QI_SHI) or 多步询问待收尾(QI_SHI):
+		return _启示链()
 	if 多步询问进行中(MI_SA):
 		return _弥撒()
 	return SUCCESS
@@ -405,9 +414,10 @@ func _转移路标(目标: int, 落点: int = 1) -> int:
 			return SUCCESS
 		return _到达后续()
 	_转移目标 = 目标
-	_启示分支值 = 1
 	_启示摸前 = []
 	_启示新牌 = -2
+	_启示已判定 = false
+	_启示已落标 = false
 	_到达阶段 = 4
 	return _启示链()
 
@@ -443,8 +453,8 @@ func _到达后续() -> int:
 			engine.push(BattleEngine.SRequestDiscard.new(player.id, 1, 0, LU_BIAO))
 			return URGENT
 		if _到达阶段 == 4:
-			# 正在问启示：把这条链接上（回合一到、回复在它手里）
-			if 多步询问进行中(QI_SHI):
+			# 正在问启示（或在跑它的收尾：摸牌后要看摸到什么）：把这条链接上
+			if 多步询问进行中(QI_SHI) or 多步询问待收尾(QI_SHI):
 				return _启示链()
 			_到达阶段 = _启示后阶段
 			continue
@@ -499,24 +509,28 @@ func _可发动告解(到: int) -> bool:
 # 启示 9604（响应·路标转移前）：移除 2【虔诚】→ 二选一
 # ============================================================
 func _启示链() -> int:
+	# 两个选项各自要选 1 名目标：选效果的同一步就点头像，再按确定（不再先选效果、后补问目标）
 	return 多步询问(QI_SHI, [
-		{"选项": _启示选项(), "取消": _启示不发动, "答完": _启示选分支},
-		# 分支①选治疗目标；分支②摸到法术牌 / 圣命格后选「路标放到谁面前」
-		{"需目标": 1,
-		 "跳过": _启示无需选目标,
-		 "可取消": false,
-		 "目标白": _启示目标候选,
-		 "超时目标": _启示目标候选,
-		 "预览基准": _启示预览基准,
-		 "预览类型": GConst.预览类型_治疗},
-	], _启示结算)
+		{"选项": _启示选项(), "取消": _启示不发动, "询问文案": _启示提示()},
+	], _启示结算, _启示摸牌收尾)
 
 
+## 「目标角色」原文＝谁都能选；分支②要放【路标】，所以按「能被放路标」过滤（神的门徒：不选自己）
 func _启示选项() -> Array:
+	var 治疗白: Array = 全部角色()
+	# 分支②的文案按需求方口径整句写死（表里「按钮2」还是旧的短句，等表里改了再切回 GConst.按钮原文）
+	var 摸牌文: String = "你摸 1 张牌【强制】【展示】，若为法术牌或圣类命格，转移【路标】"
 	return [
-		{"value": 1, "label": GConst.按钮原文(QI_SHI, 0), "text": GConst.按钮原文(QI_SHI, 0)},
-		{"value": 2, "label": GConst.按钮原文(QI_SHI, 1), "text": GConst.按钮原文(QI_SHI, 1)},
+		{"value": 1, "label": GConst.按钮原文(QI_SHI, 0), "text": GConst.按钮原文(QI_SHI, 0),
+		 "need_target": 1, "targets": 治疗白},
+		{"value": 2, "label": 摸牌文, "text": 摸牌文,
+		 "need_target": 1, "targets": _可持路标列表()},
 	]
+
+
+## 询问文案＝整段技能说明（标准写法）
+func _启示提示() -> String:
+	return "【%s】：%s" % [GConst.skill_name(QI_SHI), GConst.skill_desc(QI_SHI)]
 
 
 ## 启示不发动（第 1 段取消 / 超时）：什么都不扣，照常把路标转移到原定目标
@@ -524,32 +538,6 @@ func _启示不发动() -> int:
 	_启示摸前 = []
 	_启示新牌 = -2
 	return _落标并继续(_转移目标)
-
-
-## 第 1 段答完：只记分支；分支②当场把那 1 张摸掉（摸完再问目标，顺序与原文一致）
-func _启示选分支(回: Dictionary, _答案: Array) -> int:
-	var args: Array = 回.get("args", [])
-	_启示分支值 = int(args[0]) if not args.is_empty() else 1
-	if _启示分支值 != 2:
-		return SUCCESS
-	_启示摸前 = player.hand_cards.duplicate()
-	_启示新牌 = -2
-	engine.push_强制摸牌(player.id, 1, QI_SHI)
-	return URGENT
-
-
-## 第 2 段要不要问：分支①一定要选治疗目标；分支②只有摸到法术牌 / 圣命格才选「路标放谁面前」
-func _启示无需选目标(_答案: Array) -> bool:
-	return _启示分支值 == 2 and not _启示摸牌成立()
-
-
-func _启示目标候选(_答案: Array) -> Array:
-	return 全部角色() if _启示分支值 == 1 else _可持路标列表()
-
-
-## 分支①的目标头上写「+1 治疗」；分支②是选路标落点，不画治疗提示
-func _启示预览基准(_答案: Array) -> int:
-	return 1 if _启示分支值 == 1 else 0
 
 
 ## 分支②摸到的那张是不是「法术牌或者圣类命格」：摸牌前拍过快照，只差这一张。
@@ -569,12 +557,12 @@ func _启示摸牌成立() -> bool:
 
 
 func _启示结算(答案: Array) -> int:
-	var 目标: int = -1
-	if 答案.size() > 1:
-		var dsts: Array = (答案[1] as Dictionary).get("dsts", [])
-		if not dsts.is_empty():
-			目标 = int(dsts[0])
-	# 发动代价：移除 2 点【虔诚】（中途不发动时不扣，见 _启示不发动）
+	var 回: Dictionary = 答案[0] if not 答案.is_empty() else {}
+	var args: Array = 回.get("args", [])
+	var dsts: Array = 回.get("dsts", [])
+	var 分支: int = int(args[0]) if not args.is_empty() else 1
+	var 目标: int = int(dsts[0]) if dsts.size() == 1 else -1
+	# 发动代价：移除 2 点【虔诚】（不发动 / 超时时不扣，见 _启示不发动）
 	player.remove_token(虔诚槽, 2)
 	var 播报: Array = []
 	if 目标 >= 0:
@@ -583,18 +571,46 @@ func _启示结算(答案: Array) -> int:
 		播报.append(player.id)
 	notice_skill(QI_SHI, 播报)
 	engine._broadcast_game()
-	var 目的: int = _转移目标
-	if _启示分支值 == 1:
-		# 分支①：目标角色 +1【治疗】，本次转移照常进行
+	_启示目标 = 目标
+	if 分支 == 1:
+		# ① 目标角色 +1【治疗】，本次转移照常进行
 		施加治疗(目标, 1)
 		engine._broadcast_game()
-	elif 目标 >= 0 and _启示摸牌成立():
-		# 分支②：取消本次转移并移除【路标】，然后重新放到目标角色面前（同样是一次到达）
-		engine.移除场卡(路标名)
-		目的 = 目标
-	_启示摸前 = []
+		# 放置路标会顺带压告解 / 弥撒：那是别的流程，不登记本链的收尾
+		多步询问跳过收尾(QI_SHI)
+		var 返1: int = _落标并继续(_转移目标)
+		if 返1 == SUCCESS:
+			多步询问重置(QI_SHI)
+		return 返1
+	# ② 先摸 1 张牌；摸完由收尾判断「是不是法术牌 / 圣类命格」，成立就把路标改放到目标面前
+	_启示摸前 = player.hand_cards.duplicate()
 	_启示新牌 = -2
-	return _落标并继续(目的)
+	_启示已判定 = false
+	_启示已落标 = false
+	engine.push_强制摸牌(player.id, 1, QI_SHI)
+	return URGENT
+
+
+## 分支②摸完牌后的收尾：法术牌 / 圣类命格 → 取消本次转移、把【路标】放到选中的目标面前。
+## 判定与落标各只做一次：收尾会因为后面压出的告解 / 弥撒被反复重入。
+func _启示摸牌收尾() -> int:
+	if not _启示已判定:
+		_启示已判定 = true
+		_启示成立 = _启示摸牌成立()
+		_启示摸前 = []
+		_启示新牌 = -2
+		if _启示成立 and _启示目标 >= 0:
+			engine.移除场卡(路标名)
+	var 目的: int = _启示目标 if (_启示成立 and _启示目标 >= 0) else _转移目标
+	if not _启示已落标:
+		_启示已落标 = true
+		return _落标并继续(目的)
+	var 返: int = _到达后续()
+	if 返 == SUCCESS:
+		_启示已判定 = false
+		_启示成立 = false
+		_启示已落标 = false
+	return 返
 
 
 ## 把【路标】挪到某人面前，并按「这次属于哪条流程」继续（见 _启示后阶段）。

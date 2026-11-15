@@ -10393,6 +10393,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _侍奉之道头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _启示头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _传道头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _诸神终焉头像提示()
@@ -10623,6 +10625,21 @@ func _侍奉之道头像提示() -> Dictionary:
 	if 卡 == null:
 		return out
 	var 文: String = "给予【%s】" % 卡.card_name
+	for pid: int in _sel_players:
+		out[pid] = 文
+	return out
+
+
+## 传教士【启示】9604：选好效果 + 目标后，在目标头像上写效果
+##   ① 目标角色 +1【治疗】→「+1 治疗」
+##   ② 摸 1 张牌，若为法术牌 / 圣类命格就把【路标】转移过去 →「【路标】转移至此」
+func _启示头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _当前技能号() != 9604:
+		return out
+	if _已选参数.is_empty():
+		return out
+	var 文: String = "+1 治疗" if int(_已选参数[0]) == 1 else "【路标】转移至此"
 	for pid: int in _sel_players:
 		out[pid] = 文
 	return out
