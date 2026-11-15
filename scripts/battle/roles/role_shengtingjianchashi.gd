@@ -198,7 +198,9 @@ const KUANG_XIN_STEP_ASK: int = 1
 
 ## 你的【攻击行动】结束时：由你指定 1 名「目标角色」+1【治疗】。
 ## 原文写「目标角色」＝玩家可以指定场上的任意一名角色（自己 / 队友 / 对手都能选），
-## 不是本次攻击的目标；原文没有「可」＝强制选人，不能取消，超时由引擎从下发的 targets 里替选一名。
+## 不是本次攻击的目标；原文没有「可」＝强制选人，不能取消。
+## 超时 / 点到「跳过」时由引擎从「超时目标」里替选一名：只给友方（自己 + 队友），
+## 不能让它从全体白名单里随机挑到敌人（需求方报过：跳过 / 超时把治疗加到敌人身上）。
 func p_action_end(ctx: Dictionary) -> int:
 	if int(ctx.get("player", -1)) != player.id:
 		return SUCCESS
@@ -212,8 +214,11 @@ func p_action_end(ctx: Dictionary) -> int:
 		if not engine.has_reply():
 			# 文案不在这里写死：客户端对技能询问默认显示技能说明（原文已写清效果落在谁身上）；
 			# 目标白名单＝场上全部角色（「目标角色」＝要选人，不限于本次攻击目标）。
+			# 超时 / 点跳过时的兜底目标：只从友方（自己 + 队友）里挑 ——
+			# 不给「超时目标」的话，引擎会从全体白名单里随机挑，可能直接把治疗丢给敌人
 			询问(player.id, KUANG_XIN_TU, 0, 1, GConst.CardSource.Hand, [], 0, "", [], false,
-				0, -1, _全体角色())
+				0, -1, _全体角色(), -1, {}, 0, 0, false, [], true, -1, 0,
+				"", -1, "", [], _友方())
 			return WAIT
 	if 阶段 != KUANG_XIN_STEP_ASK:
 		return SUCCESS
@@ -225,6 +230,10 @@ func p_action_end(ctx: Dictionary) -> int:
 	var 目标表: Array = 回复.get("dst_ids", [])
 	# 0 是合法座位号，「没有」才是 -1（超时兜底会在不可取消 + 有目标时补一名，正常不会为空）
 	var 目标号: int = int(目标表[0]) if 目标表.size() == 1 else -1
+	if 目标号 < 0:
+		# 跳过 / 兜底没给出目标：按「加给友方」处理，绝不落到敌人身上
+		var 友: Array[int] = _友方()
+		目标号 = 友[0] if not 友.is_empty() else player.id
 	var dst: BattlePlayer = engine.p(目标号)
 	if dst == null:
 		return SUCCESS
@@ -555,6 +564,16 @@ func p_sheng_ting_ask(ctx: Dictionary) -> int:
 # ============================================================
 # 小工具
 # ============================================================
+## 友方（自己 + 同队队友），按座位顺序
+func _友方() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		var pp: BattlePlayer = engine.p(pid)
+		if pp != null and pp.color == player.color:
+			out.append(pid)
+	return out
+
+
 func _全体角色() -> Array[int]:
 	var out: Array[int] = []
 	for pid: int in engine.order:
