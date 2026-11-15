@@ -433,24 +433,17 @@ func _到达后续() -> int:
 func _问告解(到: int) -> int:
 	_告解到 = 到
 	return 多步询问(LU_BIAO, [
+		# 不摆选项：标准「是否发动」询问，客户端就是「确定 / 取消」两下
 		{"问谁": func(_答案: Array) -> int: return _告解到,
-		 "选项": _告解选项(),
 		 "可取消": true,
 		 "取消": _告解不发动,
 		 "询问文案": _告解询问文案()},
 	], _告解结算)
 
 
-## 告解式只有一个选项：发动（不想发动就按取消）
-func _告解选项() -> Array:
-	return [{"value": 1, "label": "%s 摸 2 张牌" % 路标名, "text": "%s 摸 2 张牌" % 路标名}]
-
-
+## 提示条就写技能原文（标准写法：「【技能名】：说明」），不另编一句话
 func _告解询问文案() -> String:
-	var 表: String = GConst.提示原文(LU_BIAO, 1)
-	if 表.is_empty():
-		表 = "是否发动【%s】的告解式（摸 2 张牌，我方战绩区 +1【水晶】）？" % 路标名
-	return 表
+	return "【%s】：%s" % [GConst.skill_name(LU_BIAO), GConst.skill_desc(LU_BIAO)]
 
 
 ## 取消 / 超时＝不发动：告解式整段跳过，直接进弥撒
@@ -459,11 +452,8 @@ func _告解不发动() -> int:
 	return _到达后续()
 
 
-func _告解结算(答案: Array) -> int:
-	var args: Array = (答案[0] as Dictionary).get("args", []) if not 答案.is_empty() else []
-	if args.is_empty() or int(args[0]) != 1:
-		_到达阶段 = 5
-		return _到达后续()
+## 走到结算＝玩家按了「确定」（按取消 / 超时走 _告解不发动，不进来）
+func _告解结算(_答案: Array) -> int:
 	_告解已用 = true
 	notice_skill(LU_BIAO, [_告解到])
 	# 先记阶段再压摸牌：摸牌跑完回到 _到达后续 时从阶段 2 接着走（同原来的写法）
