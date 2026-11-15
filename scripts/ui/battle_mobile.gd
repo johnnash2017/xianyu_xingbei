@@ -10663,12 +10663,8 @@ func _启示头像提示() -> Dictionary:
 		文 = "【路标】转移至此"
 	if 文.is_empty():
 		return out
-	var 目标们: Array[int] = _sel_players.duplicate()
-	if 目标们.is_empty():
-		# 还没点目标：先写在所有候选上，选的时候就能看见这句话
-		for t: Variant in _skill_targets:
-			目标们.append(int(t))
-	for pid: int in 目标们:
+	# 只写在已经选中的目标上（同其它技能）：候选目标不预先写，免得满屏都是这句话
+	for pid: int in _sel_players:
 		out[pid] = 文
 	return out
 
