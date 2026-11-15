@@ -93,6 +93,8 @@ func _init() -> void:
 # 回合开始：清 4603 的回合限定与伤害记录（4605 的询问进度属于上一回合，一并清掉）
 # ============================================================
 func p_before_turn_begin(_ctx: Dictionary) -> int:
+	# 4606 的「待弃牌」是一次性的跨钩子标记：回合开始兜一次，别让它活过这一回合
+	_4606待弃牌 = false
 	if engine == null or player == null or engine.current_id != player.id:
 		return SUCCESS
 	_本回合已触发4603 = false
@@ -434,7 +436,9 @@ func p_basic_effect_change(ctx: Dictionary) -> int:
 				return URGENT
 
 	if _变动阶段 == 变动阶段_待4606弃牌:
-		if not _4606待弃牌:
+		# 只认「这次基础效果是 4606 借来的那一张」：标记若因为别的原因留了下来
+		# （这次放置没走这条链），下一次无关的放置不该让玩家白弃一张
+		if not _4606待弃牌 or int(ctx.get("cause", 0)) != 4606:
 			_变动阶段 = 变动阶段_空闲
 			return SUCCESS
 		_4606待弃牌 = false

@@ -135,6 +135,16 @@ func v_magic_skill(action: Dictionary) -> int:
 	return GConst.GE_SUCCESS
 
 
+## 火璃的「摸 1 张牌 → 弃 1 张牌」整段结算完之后再解除「不爆牌」。
+## 原来挂在 p_timeline_2_hit 上：那个钩子在「伤害」结算时就跑，摸牌还没发生，
+## 保险等于白挂（满手牌照样爆）。
+func p_after_magic(ctx: Dictionary) -> int:
+	if int(ctx.get("player", -1)) == player.id and _持不爆牌:
+		_持不爆牌 = false
+		engine.解除不爆牌(player.id)
+	return SUCCESS
+
+
 func p_magic_skill(action: Dictionary) -> int:
 	if _持不爆牌:
 		engine.解除不爆牌(player.id)
@@ -280,12 +290,6 @@ func p_timeline_1(ctx: Dictionary) -> int:
 
 
 func p_timeline_2_hit(ctx: Dictionary) -> int:
-	if _持不爆牌:
-		# 视为发动的火璃「摸 → 弃」已经整段结算完
-		engine.解除不爆牌(player.id)
-		_持不爆牌 = false
-		# 不能在这里 return：火璃那一段的链还停在转移段（对火璃本来就是跳过），提前 return
-		# 会把整条链留在 _多步链 里，下一次命中被旧链吞掉、整段魑魅不发生。清完标记继续往下走。
 	if int(ctx.get("src", -1)) != player.id or not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	var 链中: bool = 多步询问进行中(魑魅魍魉)

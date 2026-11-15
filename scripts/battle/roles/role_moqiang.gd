@@ -197,8 +197,9 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 func p_harm_end(ctx: Dictionary) -> int:
 	if not using_huan_ying_xing_chen:
 		return SUCCESS
-	if int(ctx.get("dst", -1)) != player.id:
-		return SUCCESS
+	# 按「技能号」认这一笔自伤，不再要求 dst 一定是自己：
+	# 伤害若被转移（如【转移伤害】改了 harm.dst），照 dst 判会整段不收尾
+	#（不脱离幻影形态、手牌上限不复原、追加伤害也不结算）
 	var harm: Dictionary = ctx.get("harm", {})
 	if int(harm.get("cause", -1)) != HUAN_YING_XING_CHEN:
 		return SUCCESS

@@ -25,7 +25,6 @@ var _boshi_step: int = 0
 var _boshi_target: int = -1
 var _guanyin_step: int = 0
 var _touxi_step: int = 0
-var _touxi_target: int = -1
 var _touxi_x: int = 0
 var _touxi_same: bool = false
 var _touxi_two_attack: bool = false
@@ -33,7 +32,6 @@ var _touxi_same_step: int = 0
 var _used_touxi: bool = false
 ## 【转换】作为攻击技能时，p_after_attack 的 ctx 只有 player/action_id，没有 dst；
 ## 把这次攻击的目标记下来，供后面的【偷袭】使用。
-var _last_attack_dst: int = -1
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
@@ -43,7 +41,6 @@ func p_before_turn_begin(_ctx: Dictionary) -> int:
 	_touxi_step = 0
 	_touxi_same_step = 0
 	_used_touxi = false
-	_last_attack_dst = -1
 	return SUCCESS
 
 
@@ -116,7 +113,6 @@ func p_attack_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	var cid: int = int((action.get("card_ids", []) as Array)[0])
 	var dst_id: int = int((action.get("dst_ids", []) as Array)[0])
-	_last_attack_dst = dst_id
 	var card: GCard = Data.get_card(cid)
 	var 攻击牌: int = _virtual_attack(card.element_enum()) if card != null else -1
 	if 攻击牌 < 0:
@@ -386,7 +382,6 @@ func resolve_action_end_option(cause: int, reply: Dictionary, ctx: Dictionary) -
 		return resolve_queued_extra_action(cause)
 	if _touxi_step == 0:
 		_touxi_step = 1
-		_touxi_target = int(ctx.get("dst", _last_attack_dst))
 		return _touxi_process_cards(reply)
 	if _touxi_step == 2:
 		return _touxi_process_targets(reply)
@@ -404,7 +399,6 @@ func _touxi_process_cards(r: Dictionary) -> int:
 			break
 	if bottles.size() < 2:
 		_touxi_step = 0
-		_touxi_target = -1
 		return SUCCESS
 	player.remove_energy(1)
 	engine.broadcast(GConst.Msg.Card, {
@@ -467,7 +461,6 @@ func _touxi_process_targets(r: Dictionary) -> int:
 	notice_skill(TOU_XI, 目标)
 	engine._broadcast_game()
 	_touxi_step = 0
-	_touxi_target = -1
 	_touxi_x = 0
 	_touxi_same = false
 	_touxi_two_attack = false
