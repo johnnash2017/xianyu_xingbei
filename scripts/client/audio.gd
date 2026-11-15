@@ -11,6 +11,8 @@ extends Node
 ## 说明：界面上的 wav 音效（按钮点击 Equip）沿用 Art.play_sfx，
 ##      因为参考项目没有这些界面音（它的音频只有这张 ogg 表）。
 ## 多开时只有当前在用的那个窗口出声：窗口失焦就把声音压到听不见，回到前台再恢复。
+## 「在不在后台」每 0.2 秒轮询一次（正式单窗口看窗口焦点；多开窗口上窗口焦点信号不可靠，
+## 改看鼠标落点 / 输入去向，见 _随焦点切声音）。
 ## 这条「切出游戏就静音」是默认行为，设置窗里可以改成「后台播放」（后台照常出声，见 后台静音）。
 ## 用「音量置 0」而不是「禁音（bus_mute）」或「不播」：音频流水线照常走，切回前台时
 ## 本该在播的声音（BGM / 长音效）会接着放，不会因为后台期间被丢掉而断裂。
@@ -63,6 +65,8 @@ var _拿过焦点: bool = false
 ## 最近一次焦点通知是「失去焦点」：有的平台 window_is_focused() 更新慢半拍，
 ## 通知说已经失焦就先按失焦算；拿到焦点时清掉
 var _刚失焦: bool = false
+## 最后一次收到输入事件（键盘 / 鼠标 / 触摸）的时刻：多开窗口上「鼠标在不在窗口里」之外的第二个证据
+var _最后输入时刻: float = -100.0
 ## 临时诊断（多开模式才写）：把焦点判定的输入与结果记进 user://声音焦点_<槽位>.txt，
 ## 用来定位「多开窗口后台不静音」到底是哪个判据不对。查完这一段可以整块删。
 const 焦点诊断: bool = true
@@ -97,22 +101,31 @@ func _ready() -> void:
 	_随焦点切声音()
 
 
-## 只有当前聚焦的窗口出声（设置成「后台播放」时不静音，切出去照常出声）。
-## 每 焦点轮询间隔（0.2 秒）由 Timer 调一次；收到焦点通知时也立刻调一次，切窗口不会慢半拍。
-## 「在后台」的判定 = 最小化 或 窗口没焦点 或（多开模式下）从启动起就没拿到过焦点：
-##   · 最小化：window_is_focused() 在部分平台仍报 true，所以单独问一次 window_get_mode；
-##   · 从没聚焦：见 _拿过焦点 的注释（就是用户报的那个「窗口弹出来但我在用别的软件」）。
+## 只有当前在用的那个窗口出声（设置成「后台播放」时不静音，切出去照常出声）。
+## 每 焦点轮询间隔（0.2 秒）由 Timer 调一次；收到焦点通知时也立刻调一次。
+## 「在后台」怎么判：
+##   · 最小化 → 后台（window_is_focused() 在部分平台这时还报 true，所以单独问 window_get_mode）；
+##   · 多开窗口 → 看「鼠标落点 + 最近输入」：实测这类窗口上 window_is_focused() 会四个窗口同时报
+##     「有焦点」、焦点通知也收不到失焦，只有鼠标 / 键盘是真的只落在正在用的那个窗口上；
+##   · 正式单窗口 → 照旧看窗口焦点（简单、够用）。
 ## headless（自检）没有窗口与音频输出，不做焦点静音。
 func _随焦点切声音() -> void:
 	if DisplayServer.get_name() == "headless":
 		_切声音(false)
 		return
 	var 最小化: bool = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_MINIMIZED
-	var 从没聚焦: bool = Cfg.本地模式 and not _拿过焦点
-	var 在前台: bool = not 最小化 and not 从没聚焦 and not _刚失焦 \
-			and bool(DisplayServer.window_is_focused())
+	var 在前台: bool = false
+	if not 最小化:
+		if Cfg.本地模式:
+			# 多开测试窗口上 window_is_focused() / 焦点通知都不可靠（实测四个窗口会同时「有焦点」、
+			# 也收不到失焦通知），改用「鼠标在不在这块窗口里」＋「最近 1.5 秒有没有输入到它」——
+			# 鼠标与键盘只会落在真正在用的那个窗口上，这才是实打实的「我在用它」。
+			在前台 = _鼠标在窗口内() or Time.get_ticks_msec() / 1000.0 - _最后输入时刻 < 1.5
+		else:
+			# 正式单窗口：照旧用窗口焦点
+			在前台 = not _刚失焦 and bool(DisplayServer.window_is_focused())
 	_切声音(后台静音 and not 在前台)
-	_写焦点诊断(最小化, 从没聚焦, 在前台)
+	_写焦点诊断(最小化, 在前台)
 
 
 ## 焦点通知：拿到焦点的这一刻就记下来（此后 window_is_focused() 才可信），并立刻重算一次。
@@ -133,6 +146,8 @@ func _notification(what: int) -> void:
 ## 兜底「启动时不发获得焦点通知」的平台：只认键盘 / 鼠标按键 / 触摸这类**真的在操作**的事件。
 ## 不能用鼠标移动 —— 未激活的窗口在鼠标划过时也会收到 Motion 事件，那不能证明它有焦点。
 func _input(event: InputEvent) -> void:
+	# 输入只送到前台窗口：收到就说明这一手是打给它的（多开判后台时当第二证据用）
+	_最后输入时刻 = Time.get_ticks_msec() / 1000.0
 	if _拿过焦点:
 		return
 	if not (event is InputEventKey or event is InputEventMouseButton \
@@ -145,15 +160,18 @@ func _input(event: InputEvent) -> void:
 
 ## 临时诊断：状态有变化、或每 2 秒，往 user://声音焦点_<槽位>.txt 覆盖写一份最近 40 行。
 ## 只在多开模式（Cfg.本地模式）写，正式玩家不留文件。
-func _写焦点诊断(最小化: bool, 从没聚焦: bool, 在前台: bool) -> void:
+func _写焦点诊断(最小化: bool, 在前台: bool) -> void:
 	if not 焦点诊断 or not Cfg.本地模式:
 		return
 	var 现在: float = Time.get_ticks_msec() / 1000.0
-	var 文本: String = "%s 槽%d 模式=%s 焦点=%s 最小化=%s 拿过焦点=%s 刚失焦=%s 进入=%d 离开=%d 后台静音=%s 静音=%s master=%.1fdB 前台=%s" % [
-		Time.get_time_string_from_system(), Cfg.slot, DisplayServer.get_name(),
-		str(DisplayServer.window_is_focused()), str(最小化), str(_拿过焦点), str(_刚失焦),
+	var 文本: String = "%s 槽%d 焦点=%s 最小化=%s 鼠标在内=%s 输入距今=%.1fs 拿过焦点=%s 刚失焦=%s 进入=%d 离开=%d 后台静音=%s 静音=%s master=%.1fdB 前台=%s 窗口=%s 鼠标=%s" % [
+		Time.get_time_string_from_system(), Cfg.slot,
+		str(DisplayServer.window_is_focused()), str(最小化), str(_鼠标在窗口内()),
+		Time.get_ticks_msec() / 1000.0 - _最后输入时刻,
+		str(_拿过焦点), str(_刚失焦),
 		_焦点进入次数, _焦点离开次数, str(后台静音), str(_静音),
-		AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Master")), str(在前台)]
+		AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Master")), str(在前台),
+		str(DisplayServer.window_get_position()), str(DisplayServer.mouse_get_position())]
 	if 文本 == _上次诊断文本 and 现在 - _上次诊断时刻 < 2.0:
 		return
 	_上次诊断文本 = 文本
@@ -168,6 +186,17 @@ func _写焦点诊断(最小化: bool, 从没聚焦: bool, 在前台: bool) -> v
 	if f != null:
 		f.store_string("\n".join(行))
 		f.close()
+
+
+## 鼠标此刻在不在这个窗口的矩形里（多开判「我在用哪一块」的主要证据）。
+## window_get_position 给的是客户区左上角，所以把标题栏那一条也算进来，别让鼠标停在标题栏被判成外面。
+func _鼠标在窗口内() -> bool:
+	if DisplayServer.get_name() == "headless":
+		return true
+	var 位置: Vector2i = DisplayServer.window_get_position()
+	var 尺寸: Vector2i = DisplayServer.window_get_size()
+	var 矩形: Rect2i = Rect2i(位置 - Vector2i(0, 48), 尺寸 + Vector2i(0, 48))
+	return 矩形.has_point(DisplayServer.mouse_get_position())
 
 
 ## 失焦就把声音压到听不见（BGM 与音效，含 Art.play_sfx 的界面 wav）；回到前台恢复。
