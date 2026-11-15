@@ -511,10 +511,7 @@ var _攒应战攻击牌: int = -1
 ## 最近一张公开打出的攻击牌（牌面）：侵刻询问时据此写「把【魔刃/异刃】给他」。
 ## -1＝还没打过；0 是合法牌号（卡表#0 圣盾），不能拿 0 当「没有」。
 var _最近攻击牌: int = -1
-## 最近一次「我方提交的牌」牌面（-1＝没有）：传教士【事奉】的确认询问用它写「给他【这张牌】」。
-## 用提交的牌、而不是「最近一次展示」—— 属灵恩赐 / 弥撒 / 路标 这几颗技能的弃牌根本不展示，
-## 拿展示记录会读到上一手别人的牌（踩过：弃【虚弱】却写成「给他【火焰斩】」）。
-var _最近提交牌面: int = -1
+
 var _攒应战攻击者: int = -1
 ## 本次攻击的伤害预览（只有「自己挨打」的 3306 才有；3301 替队友挡时 -1）
 var _攒应战伤害: int = -1
@@ -9278,7 +9275,6 @@ func _发送行动(action_type: int, action_id: int, dst: Array, cards: Array, a
 	# 同 _发送应答 的处理：询问代没变才清。
 	var 发前代: int = _询问代
 	_记录出牌起飞点(cards)
-	_记最近提交牌(cards)
 	Logic.send_action(action_type, action_id, dst, cards, args, 额外ID)
 	# 提交之后本地就不该再有「选中」了：服务端可能把刚选的牌挪到别的区
 	# （如记录者【古今互鉴】的交换：选中的【遗迹】进手、手牌进【遗迹】），
@@ -9293,7 +9289,6 @@ func _发送行动(action_type: int, action_id: int, dst: Array, cards: Array, a
 func _发送应答(respond_id: int, dst: Array, cards: Array, args: Array) -> void:
 	var 发前代: int = _询问代
 	_记录出牌起飞点(cards)
-	_记最近提交牌(cards)
 	Logic.send_respond(respond_id, dst, cards, args)
 	# 提交之后本地就不该再有「选中」了。服务端可能把刚选的牌挪到别的区（如记录者交换：
 	# 选中的【遗迹】进手、手牌进【遗迹】），快照会先到，带着旧选中重画就会让刚进手的牌
@@ -9303,15 +9298,6 @@ func _发送应答(respond_id: int, dst: Array, cards: Array, args: Array) -> vo
 	_sel_players.clear()
 	_刷新交互()
 	_稍后清空待选(发前代)
-
-
-## 记下「我这一手提交的牌」里第一张的牌面（事奉询问要写「给他【XX】」）
-func _记最近提交牌(实例们: Array) -> void:
-	if 实例们.is_empty():
-		return
-	var 卡: GCard = Data.get_card(int(实例们[0]))
-	if 卡 != null:
-		_最近提交牌面 = 卡.id
 
 
 ## 出牌起飞点：自己打出的牌要「从手里那张牌飞出来」，不是从头像飞。
@@ -10667,9 +10653,12 @@ func _事奉头像提示() -> Dictionary:
 	# 只在「展示的人就是我自己」时才算数（传道弃牌那条流程）
 	var 收牌人: int = _路标持有者()
 	if 收牌人 >= 0 and 收牌人 != Logic.my_player_id:
+		# 牌面取服务端随这条询问下发的 hint_card：发问时定下来，整条询问期间不变
+		# （不用「最近一次提交 / 最近一次展示」那种全局记录 —— 中间插一手就会被换掉）
 		var 文: String = "给他 1 张牌"
-		if _最近提交牌面 >= 0:
-			var 卡: GCard = Data.get_card(_最近提交牌面)
+		var 提示牌: int = int(_pending.get("hint_card", -1))
+		if 提示牌 >= 0:
+			var 卡: GCard = Data.get_card(提示牌)
 			if 卡 != null:
 				文 = "给他【%s】" % 卡.card_name
 		out[收牌人] = 文
