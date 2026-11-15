@@ -695,10 +695,22 @@ func p_before_discard(ctx: Dictionary) -> int:
 func _事奉链() -> int:
 	return 多步询问(SHI_FENG, [
 		{"取消": _事奉不发动, "答完": _事奉发动},
-		{"需目标": 1, "目标白": 除自己(), "可取消": false, "超时目标": 除自己(),
+		{"需目标": 1, "目标白": 除自己(), "可取消": false,
+		 # 超时兜底只从「除你以外的友方」里挑，别把治疗丢给敌人（没有队友才退回全体）
+		 "超时目标": _事奉超时目标(),
 		 "跳过": _事奉无需给治疗,
 		 "预览基准": 1, "预览类型": GConst.预览类型_治疗},
 	], _事奉结算)
+
+
+## 事奉加治疗那一步的超时兜底名单：除自己以外的友方；一个队友都没有时退回「除自己」全体
+func _事奉超时目标() -> Array[int]:
+	var out: Array[int] = []
+	for pid: int in engine.order:
+		var pp: BattlePlayer = engine.p(pid)
+		if pp != null and pp.id != player.id and pp.color == player.color:
+			out.append(pid)
+	return out if not out.is_empty() else 除自己()
 
 
 func _事奉无需给治疗(_答案: Array) -> bool:
