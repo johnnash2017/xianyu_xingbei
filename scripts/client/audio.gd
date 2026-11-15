@@ -63,6 +63,13 @@ var _拿过焦点: bool = false
 ## 最近一次焦点通知是「失去焦点」：有的平台 window_is_focused() 更新慢半拍，
 ## 通知说已经失焦就先按失焦算；拿到焦点时清掉
 var _刚失焦: bool = false
+## 临时诊断（多开模式才写）：把焦点判定的输入与结果记进 user://声音焦点_<槽位>.txt，
+## 用来定位「多开窗口后台不静音」到底是哪个判据不对。查完这一段可以整块删。
+const 焦点诊断: bool = true
+var _焦点进入次数: int = 0
+var _焦点离开次数: int = 0
+var _上次诊断文本: String = ""
+var _上次诊断时刻: float = 0.0
 
 
 func _ready() -> void:
@@ -105,6 +112,7 @@ func _随焦点切声音() -> void:
 	var 在前台: bool = not 最小化 and not 从没聚焦 and not _刚失焦 \
 			and bool(DisplayServer.window_is_focused())
 	_切声音(后台静音 and not 在前台)
+	_写焦点诊断(最小化, 从没聚焦, 在前台)
 
 
 ## 焦点通知：拿到焦点的这一刻就记下来（此后 window_is_focused() 才可信），并立刻重算一次。
@@ -112,10 +120,12 @@ func _随焦点切声音() -> void:
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_WM_WINDOW_FOCUS_IN:
+			_焦点进入次数 += 1
 			_拿过焦点 = true
 			_刚失焦 = false
 			_随焦点切声音()
 		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+			_焦点离开次数 += 1
 			_刚失焦 = true
 			_随焦点切声音()
 
@@ -131,6 +141,33 @@ func _input(event: InputEvent) -> void:
 	_拿过焦点 = true
 	_刚失焦 = false
 	_随焦点切声音()
+
+
+## 临时诊断：状态有变化、或每 2 秒，往 user://声音焦点_<槽位>.txt 覆盖写一份最近 40 行。
+## 只在多开模式（Cfg.本地模式）写，正式玩家不留文件。
+func _写焦点诊断(最小化: bool, 从没聚焦: bool, 在前台: bool) -> void:
+	if not 焦点诊断 or not Cfg.本地模式:
+		return
+	var 现在: float = Time.get_ticks_msec() / 1000.0
+	var 文本: String = "%s 槽%d 模式=%s 焦点=%s 最小化=%s 拿过焦点=%s 刚失焦=%s 进入=%d 离开=%d 后台静音=%s 静音=%s master=%.1fdB 前台=%s" % [
+		Time.get_time_string_from_system(), Cfg.slot, DisplayServer.get_name(),
+		str(DisplayServer.window_is_focused()), str(最小化), str(_拿过焦点), str(_刚失焦),
+		_焦点进入次数, _焦点离开次数, str(后台静音), str(_静音),
+		AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Master")), str(在前台)]
+	if 文本 == _上次诊断文本 and 现在 - _上次诊断时刻 < 2.0:
+		return
+	_上次诊断文本 = 文本
+	_上次诊断时刻 = 现在
+	var 路径: String = "user://声音焦点_%d.txt" % Cfg.slot
+	var 旧: String = FileAccess.get_file_as_string(路径) if FileAccess.file_exists(路径) else ""
+	var 行: PackedStringArray = 旧.split("\n", false)
+	行.append(文本)
+	while 行.size() > 40:
+		行.remove_at(0)
+	var f: FileAccess = FileAccess.open(路径, FileAccess.WRITE)
+	if f != null:
+		f.store_string("\n".join(行))
+		f.close()
 
 
 ## 失焦就把声音压到听不见（BGM 与音效，含 Art.play_sfx 的界面 wav）；回到前台恢复。
