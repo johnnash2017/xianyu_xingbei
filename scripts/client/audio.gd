@@ -51,6 +51,9 @@ var _上一首战斗: int = -1
 var _随机: RandomNumberGenerator = RandomNumberGenerator.new()
 ## 此刻是否静音：窗口失焦（且设置里选的是「后台静音」）时为 true，回到前台再恢复
 var _静音: bool = false
+## 现在算不算「在窗口里」：启动默认 false（＝离开状态），只有真的收到获得焦点通知才置 true。
+## 这样后台启动的窗口一上来就是静音，不用去猜它到底有没有焦点。
+var _在前台: bool = false
 
 
 func _ready() -> void:
@@ -67,13 +70,10 @@ func _ready() -> void:
 	_bgm.volume_db = linear_to_db(音乐音量)
 	_bgm.finished.connect(_on_bgm_finished)
 	add_child(_bgm)
-	_随焦点切声音()
-
-
-## 启动时先按当前焦点算一次；之后由焦点通知（见 _notification）在切进切出时改。
-## headless（自检）没有窗口与音频输出，不做焦点静音。
-func _随焦点切声音() -> void:
-	_切声音(后台静音 and DisplayServer.get_name() != "headless" and not DisplayServer.window_is_focused())
+	# 启动默认当「离开」：选了后台静音就先静着，等真的进到这个窗口（收到获得焦点通知）才出声。
+	# 如果启动过程里已经先收到过获得焦点通知（_在前台 已置 true），就按前台算，别把它静掉。
+	if DisplayServer.get_name() != "headless":
+		_切声音(后台静音 and not _在前台)
 
 
 ## 切出游戏就静音、回到前台恢复：只认系统的焦点通知，不做轮询。
@@ -81,8 +81,10 @@ func _随焦点切声音() -> void:
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+			_在前台 = false
 			_切声音(后台静音)
 		NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_WM_WINDOW_FOCUS_IN:
+			_在前台 = true
 			_切声音(false)
 
 
@@ -155,10 +157,7 @@ func 设置音效音量(v: float) -> void:
 ## 「这会儿该不该静音」；勾选过程只改内存，落盘统一在 保存声音设置
 func 设置后台静音(v: bool) -> void:
 	后台静音 = v
-	if not v:
-		_切声音(false)
-	elif not DisplayServer.window_is_focused():
-		_切声音(true)
+	_切声音(v and not _在前台)
 
 
 ## 把当前的音量与「后台静音」写进本地配置（设置窗收起时调一次，避免拖动过程频繁写盘）
