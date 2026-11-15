@@ -435,7 +435,11 @@ func _到达后续() -> int:
 			# 告解式是【响应】：先问到他面前的那个人要不要发动，确认了才摸牌、加水晶、往下传
 			return _问告解(到)
 		if _到达阶段 == 2:
-			engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
+			# 「我方【战绩区】+1【水晶】」的「我方」＝被路标找上的那一方（刚摸 2 张牌的人所在阵营），
+			# 不是传教士自己的阵营
+			var 得牌人: BattlePlayer = engine.p(路标持有者())
+			if 得牌人 != null:
+				engine.set_team_crystal(得牌人.color, engine.team_crystal[得牌人.color] + 1)
 			var 下: int = _下一个可持路标者(路标持有者())
 			_到达阶段 = 3
 			if 下 < 0:
