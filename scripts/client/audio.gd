@@ -37,8 +37,6 @@ var 后台静音: bool = true
 ## 场景号（对照参考项目 GameManager 的 current_scene_index）
 const 场景主界面: int = 1
 const 场景战斗: int = 2
-## 焦点轮询间隔（秒）：太短白忙，太长会让切窗口后声音慢半拍
-const 焦点轮询间隔: float = 0.2
 ## 失焦时的音量（dB）：够低就是听不见，但不打断播放
 const 失焦音量db: float = -80.0
 
@@ -69,20 +67,23 @@ func _ready() -> void:
 	_bgm.volume_db = linear_to_db(音乐音量)
 	_bgm.finished.connect(_on_bgm_finished)
 	add_child(_bgm)
-	# 多开时几个窗口各自是独立进程，只有当前聚焦的那个出声；定时问窗口自己有没有焦点
-	var 轮询: Timer = Timer.new()
-	轮询.wait_time = 焦点轮询间隔
-	轮询.autostart = true
-	轮询.timeout.connect(_随焦点切声音)
-	add_child(轮询)
 	_随焦点切声音()
 
 
-## 只有当前聚焦的窗口出声（设置成「后台播放」时不静音，切出去照常出声）。
-## 不用失焦通知：后台启动、从没拿到过焦点的窗口收不到通知，会一直出声。
+## 启动时先按当前焦点算一次；之后由焦点通知（见 _notification）在切进切出时改。
 ## headless（自检）没有窗口与音频输出，不做焦点静音。
 func _随焦点切声音() -> void:
 	_切声音(后台静音 and DisplayServer.get_name() != "headless" and not DisplayServer.window_is_focused())
+
+
+## 切出游戏就静音、回到前台恢复：只认系统的焦点通知，不做轮询。
+## 设置成「后台播放」（后台静音 = false）时切出去也不静音。
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+			_切声音(后台静音)
+		NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_WM_WINDOW_FOCUS_IN:
+			_切声音(false)
 
 
 ## 失焦就把声音压到听不见（BGM 与音效，含 Art.play_sfx 的界面 wav）；回到前台恢复。
@@ -154,7 +155,10 @@ func 设置音效音量(v: float) -> void:
 ## 「这会儿该不该静音」；勾选过程只改内存，落盘统一在 保存声音设置
 func 设置后台静音(v: bool) -> void:
 	后台静音 = v
-	_随焦点切声音()
+	if not v:
+		_切声音(false)
+	elif not DisplayServer.window_is_focused():
+		_切声音(true)
 
 
 ## 把当前的音量与「后台静音」写进本地配置（设置窗收起时调一次，避免拖动过程频繁写盘）
