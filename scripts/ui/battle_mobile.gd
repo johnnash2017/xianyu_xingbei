@@ -511,6 +511,10 @@ var _攒应战攻击牌: int = -1
 ## 最近一张公开打出的攻击牌（牌面）：侵刻询问时据此写「把【魔刃/异刃】给他」。
 ## -1＝还没打过；0 是合法牌号（卡表#0 圣盾），不能拿 0 当「没有」。
 var _最近攻击牌: int = -1
+## 最近一次「【展示】」的牌面与是谁展示的：传教士【事奉】的确认询问要用它写「给他【这张牌】」。
+## 传道弃牌的流程是「先展示、再置入弃牌堆」，展示那条 Card 消息一定先到，所以这里拿得到。
+var _最近展示牌面: int = -1
+var _最近展示玩家: int = -1
 var _攒应战攻击者: int = -1
 ## 本次攻击的伤害预览（只有「自己挨打」的 3306 才有；3301 替队友挡时 -1）
 var _攒应战伤害: int = -1
@@ -1987,6 +1991,9 @@ func _on_card(msg: Dictionary) -> void:
 				首张 = c
 	if not 是展示 and 首张 != null and 首张.is_attack():
 		_最近攻击牌 = 首张.id
+	if 是展示 and 首张 != null:
+		_最近展示牌面 = 首张.id
+		_最近展示玩家 = src
 	# 出牌音效（对照参考项目 AudioManager 的 CARDMSG 分支）：攻击牌 atk-<系别>，法术牌 spell-<卡名>。
 	# 这次出牌「视为」另一张牌时（msg.as_card_id，如地/火牌当【魔弹】打）按那张牌出声；
 	# 摊牌与日志仍用真正打出的牌（card_ids）。
@@ -3038,10 +3045,14 @@ func _技能询问_选项前置() -> void:
 	# 这一步的代价是「移除你 1【治疗】」，头像文案见 _事奉头像提示；选治疗目标那一步不锁
 	if _skill_ask_id == 9605 and _skill_ask_need_target <= 0:
 		var 我身: int = Logic.my_player_id
-		if not _高亮目标.has(我身):
-			_高亮目标.append(我身)
-		if not _sel_players.has(我身):
-			_sel_players.append(我身)
+		var 收牌人: int = _路标持有者()
+		for 位: int in [我身, 收牌人]:
+			if 位 < 0:
+				continue
+			if not _高亮目标.has(位):
+				_高亮目标.append(位)
+			if not _sel_players.has(位):
+				_sel_players.append(位)
 		_目标锁死 = true
 	# 传教士【传道】9603 的弃牌两步：点亮 + 锁住「这一手要牵扯的那个人」，只在弃牌询问里做
 	# （点开技能选「不摸牌 / 摸 1 张牌」那一步不锁、也不高亮）。
@@ -10643,7 +10654,18 @@ func _事奉头像提示() -> Dictionary:
 		return {}
 	if _skill_ask_need_target > 0:
 		return {}
-	return {Logic.my_player_id: "移除 1【治疗】"}
+	var out: Dictionary = {Logic.my_player_id: "移除 1【治疗】"}
+	# 收牌人（【路标】持有者）：写上「给他【这张牌】」——牌面取刚展示的那张，
+	# 只在「展示的人就是我自己」时才算数（传道弃牌那条流程）
+	var 收牌人: int = _路标持有者()
+	if 收牌人 >= 0 and 收牌人 != Logic.my_player_id:
+		var 文: String = "给他 1 张牌"
+		if _最近展示玩家 == Logic.my_player_id and _最近展示牌面 >= 0:
+			var 卡: GCard = Data.get_card(_最近展示牌面)
+			if 卡 != null:
+				文 = "给他【%s】" % 卡.card_name
+		out[收牌人] = 文
+	return out
 
 
 ## 传教士【启示】9604：选好效果 + 目标后，在目标头像上写效果
