@@ -71,6 +71,7 @@ func _set_zhi_xing(v: int) -> void:
 # ============================================================
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	toRemoveTiaoXin = false
+	using_NuHou = false
 	return SUCCESS
 
 
@@ -121,6 +122,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 	if not bool(ctx.get("is_active", false)):
 		return SUCCESS
 	if _timeline_1_step == 0:
+		# 新一次主动攻击：这一击有没有发动怒吼，从零开始记。
+		# 只有在「未命中」时才会被 _nu_hou_miss 清；命中过的那一击会把 true 留到下一击，
+		# 下一击若没发动怒吼又被打空，就会白给 +1【知性】（需求方排查出来的同类问题）。
+		using_NuHou = false
 		# 恢复原版询问链（先问怒吼、再问明镜止水）
 		_timeline_1_step = T1_ASK_NU_HOU
 	# 先问怒吼

@@ -340,6 +340,9 @@ func p_timeline_4(ctx: Dictionary) -> int:
 func p_timeline_2_miss(ctx: Dictionary) -> int:
 	if int(ctx.get("src", -1)) == player.id:
 		ni_fan_atk = false
+		# 未命中时 p_timeline_4 不会跑，X 也就没人清：这里一并归零，
+		# 免得下一次攻击拿着上一击的加伤/弃牌数算
+		ni_fan_add_harm = 0
 	return SUCCESS
 
 

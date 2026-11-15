@@ -434,7 +434,12 @@ func p_turn_end(ctx: Dictionary) -> int:
 ## 妖精秘术给出的攻击命中则 +2【秘术】
 func p_timeline_2_hit(ctx: Dictionary) -> int:
 	var harm: Dictionary = ctx.get("harm", {})
-	if _妖精攻击中 and int(harm.get("src", -1)) == player.id and bool(ctx.get("is_active", false)):
+	# 「妖精秘术给出的那一击」才 +2【秘术】：光看 _妖精攻击中 不够 ——
+	# 同一次行动结束里若还发动了别的技能（如【真言压制】→【真言术】打出的攻击牌），
+	# 那一击命中也会被当成妖精秘术的攻击。按「当前这份额外行动的来源」认。
+	var 是妖精那一击: bool = _妖精攻击中 and bool(engine.行动额外) \
+		and int(engine.行动额外来源) == YAO_JING_MI_SHU
+	if 是妖精那一击 and int(harm.get("src", -1)) == player.id and bool(ctx.get("is_active", false)):
 		player.add_token(秘术槽, 2)
 		notice_skill(YAO_JING_MI_SHU, [player.id])
 		engine._broadcast_game()

@@ -37,6 +37,9 @@ var _dw_target: int = -1
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	used_yuan_su_she_ji = false
+	# 箭支的「待结算」标记按攻击结算清；回合开始再兜一次，别让上一击的标记留到下一击
+	shui_zhi_shi = false
+	di_zhi_shi = false
 	return SUCCESS
 
 
@@ -154,6 +157,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 		return SUCCESS
 	if used_yuan_su_she_ji:
 		return SUCCESS
+	# 新一次主动攻击：先把上一击遗留的箭支标记清掉，再按本次箭支置位
+	if step == 0:
+		shui_zhi_shi = false
+		di_zhi_shi = false
 	var atk: GCard = Data.get_card(int(ctx.get("card_id", -1)))
 	if atk == null or atk.element_enum() == GConst.CardElement.Darkness:
 		return SUCCESS

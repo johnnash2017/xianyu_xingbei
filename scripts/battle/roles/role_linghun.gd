@@ -160,6 +160,9 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 
 
 func p_before_turn_begin(_ctx: Dictionary) -> int:
+	# 灵魂链接的「正在转移」守卫按每次伤害清（p_harm_end）；回合开始兜一次，
+	# 免得某次伤害流程中途被打断后，这个标记一直挡住之后的转移
+	using_lian_jie = false
 	used_zeng_fu = false
 	return SUCCESS
 

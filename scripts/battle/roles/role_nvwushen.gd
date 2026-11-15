@@ -32,6 +32,10 @@ func available_skills() -> Array:
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	# 每回合开始清一次链：上一回合没走完的（例如中途被别的效果打断）不能残留到这一回合
 	多步询问重置(JUN_SHEN_WEI_GUANG)
+	# 英灵召唤的「本次命中问过没有」也在这里归零：别人回合内应战反击命中发动过一次时，
+	# 没有 p_after_attack / p_after_magic 帮她清，会挡住自己回合第一次攻击的命中询问
+	_英灵_阶段 = 0
+	_英灵_待横置 = false
 	return SUCCESS
 
 

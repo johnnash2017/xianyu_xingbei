@@ -377,6 +377,10 @@ func p_after_special(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not bool(ctx.get("special_action", false)):
 		return SUCCESS
+	# 只认「提炼」这一步：v_extract 通过后若还有别的否决钩子把它拦掉，
+	# 标记会留到下一次购买 / 合成的 p_after_special 上（按 action_id 再收一道）
+	if int(ctx.get("action_id", 0)) != GConst.SpecialAction.Extract:
+		return SUCCESS
 	if not _提炼待补子弹:
 		return SUCCESS
 	if _附魔_step >= STEP_DONE:
