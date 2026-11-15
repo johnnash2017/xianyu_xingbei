@@ -66,6 +66,8 @@ var _本回合已转移: bool = false
 var _传道自己弃: int = -1
 ## 传道：这一步的「摸 1 张牌」已经摸过了（摸牌会等引擎跑完并重入技能本体）
 var _传道已摸: bool = false
+## 传道：摸牌结算完还要重入本技能接着问弃牌（见 技能URGENT后重入）
+var _传道待续: bool = false
 
 ## 启示：本次原定转移到的目标 / 选的分支 / 启示结束后回到的阶段
 var _转移目标: int = -1
@@ -140,6 +142,7 @@ func v_special_skill(action: Dictionary) -> int:
 			# 一次发动只初始化一次：v_ 每份行动只走一遍，p_ 会因为摸牌结算重入
 			_传道自己弃 = -1
 			_传道已摸 = false
+			_传道待续 = false
 			player.boot_skill_used = true
 			notice_skill(CHUAN_DAO, [player.id])
 			# 「你+1【虔诚】」按描述在发动这一步就结算，不等摸牌 / 弃牌 / 收牌走完
@@ -190,8 +193,10 @@ func _传道(action: Dictionary) -> int:
 	# 「你摸 0-1 张牌」：选了摸就先摸（摸完引擎重入，见 技能URGENT后重入）再问弃牌
 	if 要摸 and not _传道已摸:
 		_传道已摸 = true
+		_传道待续 = true
 		engine.push_draw(player.id, 1, CHUAN_DAO)
 		return URGENT
+	_传道待续 = false
 	return 多步询问(CHUAN_DAO, [
 		# 自己的代价：弃 1 张牌【强制】【展示】（提示条＝整段技能说明）
 		{"需牌": 1, "牌白": _传道自己的手牌, "可取消": false, "超时默认": [],
@@ -294,7 +299,11 @@ func _传道结算(_答案: Array) -> int:
 
 ## 摸牌那段答完会返回 URGENT：让 SkillRun 放行重入技能本体，接着问第 2 段
 func 技能URGENT后重入(_action: Dictionary = {}) -> bool:
-	return int(_action.get("action_id", 0)) == CHUAN_DAO and 多步询问进行中(CHUAN_DAO)
+	# 传道：选「摸 1 张牌」时先压了一张摸牌、链还没建起来 —— 这时也必须放行重入，
+	# 否则摸完这一手就结束了（漏掉两步弃牌）。_传道待续 只在「摸牌→接着问」这一跳里为真。
+	if int(_action.get("action_id", 0)) == CHUAN_DAO:
+		return _传道待续
+	return false
 
 
 # ============================================================
