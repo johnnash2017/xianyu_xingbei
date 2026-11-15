@@ -10656,8 +10656,6 @@ func _启示头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _当前技能号() != 9604:
 		return out
-	if _已选参数.is_empty():
-		return out
 	var 文: String = ""
 	if not _已选参数.is_empty():
 		# 第 1 段：选了「+1 治疗」那一项才画治疗量；「摸 1 张牌」那一步没有目标、不画
@@ -10668,7 +10666,12 @@ func _启示头像提示() -> Dictionary:
 		文 = "【路标】转移至此"
 	if 文.is_empty():
 		return out
-	for pid: int in _sel_players:
+	var 目标们: Array[int] = _sel_players.duplicate()
+	if 目标们.is_empty():
+		# 还没点目标：先写在所有候选上，选的时候就能看见这句话
+		for t: Variant in _skill_targets:
+			目标们.append(int(t))
+	for pid: int in 目标们:
 		out[pid] = 文
 	return out
 
