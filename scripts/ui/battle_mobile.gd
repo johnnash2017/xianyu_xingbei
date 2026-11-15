@@ -3034,6 +3034,15 @@ func _技能询问_选项前置() -> void:
 	if _skill_ask_id == GConst.技能_醋意羞心 and _skill_need_card > 0 \
 			and not _高亮目标.has(Logic.my_player_id):
 		_高亮目标.append(Logic.my_player_id)
+	# 传教士【事奉】9605 的「是否发动」那一步（不需要目标）：把指示器锁在自己身上 ——
+	# 这一步的代价是「移除你 1【治疗】」，头像文案见 _事奉头像提示；选治疗目标那一步不锁
+	if _skill_ask_id == 9605 and _skill_ask_need_target <= 0:
+		var 我身: int = Logic.my_player_id
+		if not _高亮目标.has(我身):
+			_高亮目标.append(我身)
+		if not _sel_players.has(我身):
+			_sel_players.append(我身)
+		_目标锁死 = true
 	# 传教士【传道】9603 的弃牌两步：点亮 + 锁住「这一手要牵扯的那个人」，只在弃牌询问里做
 	# （点开技能选「不摸牌 / 摸 1 张牌」那一步不锁、也不高亮）。
 	#   一般情况：锁【路标】持有者（要弃 1 张给你）；
@@ -10388,6 +10397,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _侍奉之道头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _事奉头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _启示头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _传道头像提示()
@@ -10623,6 +10634,16 @@ func _侍奉之道头像提示() -> Dictionary:
 	for pid: int in _sel_players:
 		out[pid] = 文
 	return out
+
+
+## 传教士【事奉】9605 的「是否发动」那一步：自己头像上写「移除 1【治疗】」（这就是发动代价）。
+## 选「除你外的目标角色 +1【治疗】」那一步不写这句。
+func _事奉头像提示() -> Dictionary:
+	if _mode != 3 or _当前技能号() != 9605:
+		return {}
+	if _skill_ask_need_target > 0:
+		return {}
+	return {Logic.my_player_id: "移除 1【治疗】"}
 
 
 ## 传教士【启示】9604：选好效果 + 目标后，在目标头像上写效果
