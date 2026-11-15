@@ -142,6 +142,9 @@ func v_special_skill(action: Dictionary) -> int:
 			_传道已摸 = false
 			player.boot_skill_used = true
 			notice_skill(CHUAN_DAO, [player.id])
+			# 「你+1【虔诚】」按描述在发动这一步就结算，不等摸牌 / 弃牌 / 收牌走完
+			player.add_token(虔诚槽, 1)
+			engine._broadcast_game()
 			return GConst.GE_SUCCESS
 		SHU_LING_EN_CI:
 			# 【水晶】费用：宝石可顶水晶（get_energy）；代价「弃 1 张牌」必须真交一张手牌
@@ -247,7 +250,7 @@ func _可向他收牌(pid: int) -> bool:
 	return pid >= 0 and dp != null and not dp.hand_cards.is_empty()
 
 
-## 第 2 段答完：把自己的代价牌【展示】弃掉、+1【虔诚】
+## 第 1 段答完：把自己的代价牌【展示】弃掉（+1【虔诚】已在发动时结算）
 func _传道弃自己的(回: Dictionary, _答案: Array) -> int:
 	var 弃: int = _认一张手牌(player, 回.get("cards", []))
 	if 弃 < 0:
@@ -255,7 +258,6 @@ func _传道弃自己的(回: Dictionary, _答案: Array) -> int:
 	_传道自己弃 = 弃
 	# 「弃 1 张牌【强制】【展示】」：统一入口（亮牌 + 触发封印 + 离手 + 弃牌堆 + 日志）
 	engine.展示手牌并弃(player.id, [弃], {"cause": CHUAN_DAO})
-	player.add_token(虔诚槽, 1)
 	engine._broadcast_game()
 	return SUCCESS
 
