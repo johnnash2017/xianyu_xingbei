@@ -453,6 +453,9 @@ func p_fix_morale(ctx: Dictionary) -> int:
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null or dst.color != player.color:
 		return SUCCESS
+	# 只认「因承受（法术）伤害」的掉士气：别人塞牌 / 技能弃牌导致的超限不该被锁成 1
+	if not bool(ctx.get("from_damage", false)):
+		return SUCCESS
 	if int(ctx.get("type", -1)) != GConst.HarmType.Magic:
 		return SUCCESS
 	if int(ctx.get("amount", 0)) > 1:

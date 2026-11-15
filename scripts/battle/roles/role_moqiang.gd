@@ -186,6 +186,9 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not using_huan_ying_xing_chen:
 		return SUCCESS
+	# 必须是因承受伤害掉士气，且这次伤害的 cause 是幻影星辰
+	if not bool(ctx.get("from_damage", false)):
+		return SUCCESS
 	if int(ctx.get("harm_cause", 0)) != HUAN_YING_XING_CHEN:
 		return SUCCESS
 	huan_ying_morale_lost = true

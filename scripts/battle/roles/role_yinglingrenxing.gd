@@ -385,6 +385,10 @@ func _双重回响结算(harm: Dictionary, from_dst: int, 答案: Array) -> int:
 
 ## 双重回响的伤害不造成士气下降（服务端据 con->harm.cause == 双重回响 判定）
 func p_before_lose_morale(ctx: Dictionary) -> int:
+	# 先要求这次掉士气真的是因承受伤害（from_damage）：通用摸牌超限会退回去读
+	# 「最近一次伤害」的 cause，别人塞牌导致的超限会被误当成双重回响的伤害而全额免掉
+	if not bool(ctx.get("from_damage", false)):
+		return SUCCESS
 	if int(ctx.get("harm_cause", 0)) == SHUANG_CHONG_HUI_XIANG:
 		ctx["amount"] = 0
 	return SUCCESS

@@ -313,7 +313,11 @@ func p_lose_morale(ctx: Dictionary) -> int:
 	var dst: BattlePlayer = engine.p(int(ctx.get("dst", -1)))
 	if dst == null or dst.color != player.color:
 		return SUCCESS
-	# 仅「因法术伤害」掉士气时可发动（con->harm.type == HARM_MAGIC）
+	# 仅「因法术伤害」掉士气时可发动：先要求真的是因承受伤害（引擎的 from_damage），
+	# 再要求伤害类型是法术 —— 通用超限会退回去读「最近一次伤害」的类型，
+	# 别人塞牌导致的士气下降会被误当成法术伤害掉士气（红莲骑士【热血沸腾】踩过的坑）
+	if not bool(ctx.get("from_damage", false)):
+		return SUCCESS
 	if int(ctx.get("type", 0)) != GConst.HarmType.Magic:
 		return SUCCESS
 	var amount: int = int(ctx.get("amount", 0))

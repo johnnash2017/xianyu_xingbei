@@ -537,6 +537,10 @@ func _随机敌人() -> int:
 func p_before_lose_morale(ctx: Dictionary) -> int:
 	if int(ctx.get("dst", -1)) != player.id:
 		return SUCCESS
+	# 只认真的是「因承受伤害」掉士气（from_damage）：通用超限会退回读最近一次伤害的 cause，
+	# 别人塞牌导致的士气下降不能被生命结界免掉
+	if not bool(ctx.get("from_damage", false)):
+		return SUCCESS
 	if int(ctx.get("harm_cause", 0)) != SHENG_MING_JIE_JIE:
 		return SUCCESS
 	if _gui_huo() != _gui_huo_max():
