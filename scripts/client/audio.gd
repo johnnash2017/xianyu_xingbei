@@ -53,10 +53,22 @@ var _上一首战斗: int = -1
 var _随机: RandomNumberGenerator = RandomNumberGenerator.new()
 ## 此刻是否静音：窗口失焦（且设置里选的是「后台静音」）时为 true，回到前台再恢复
 var _静音: bool = false
+## 本进程启动之后，窗口有没有**真的**拿到过焦点。
+## 为什么需要它：多开时被别的软件占着前台的那些窗口，从启动起就没被激活过，而 Godot 对
+## 「从没激活过的窗口」仍然回报 window_is_focused() = true（默认值就是「有焦点」）——
+## 只看这个接口就会以为它一直在前台，永远不会静音（需求方报的现象：
+## 窗口弹出来但我在用别的软件，选了「后台静音」它们却照样出声）。
+## 所以多开模式下「从启动起没拿到过焦点」一律按后台处理，见 _随焦点切声音。
+var _拿过焦点: bool = false
+## 最近一次焦点通知是「失去焦点」：有的平台 window_is_focused() 更新慢半拍，
+## 通知说已经失焦就先按失焦算；拿到焦点时清掉
+var _刚失焦: bool = false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# 焦点兜底要看「有没有真的在操作这个窗口」（见 _input）：显式打开输入处理，不靠编辑器自动推断
+	set_process_input(true)
 	_随机.randomize()
 	# 读回上次在设置窗里调好的音量与「后台静音」（没存过就用默认值）
 	总音量 = clampf(float(Cfg.get_setting(键_总音量, 默认总音量)), 0.0, 1.0)
@@ -79,10 +91,46 @@ func _ready() -> void:
 
 
 ## 只有当前聚焦的窗口出声（设置成「后台播放」时不静音，切出去照常出声）。
-## 不用失焦通知：后台启动、从没拿到过焦点的窗口收不到通知，会一直出声。
+## 每 焦点轮询间隔（0.2 秒）由 Timer 调一次；收到焦点通知时也立刻调一次，切窗口不会慢半拍。
+## 「在后台」的判定 = 最小化 或 窗口没焦点 或（多开模式下）从启动起就没拿到过焦点：
+##   · 最小化：window_is_focused() 在部分平台仍报 true，所以单独问一次 window_get_mode；
+##   · 从没聚焦：见 _拿过焦点 的注释（就是用户报的那个「窗口弹出来但我在用别的软件」）。
 ## headless（自检）没有窗口与音频输出，不做焦点静音。
 func _随焦点切声音() -> void:
-	_切声音(后台静音 and DisplayServer.get_name() != "headless" and not DisplayServer.window_is_focused())
+	if DisplayServer.get_name() == "headless":
+		_切声音(false)
+		return
+	var 最小化: bool = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_MINIMIZED
+	var 从没聚焦: bool = Cfg.本地模式 and not _拿过焦点
+	var 在前台: bool = not 最小化 and not 从没聚焦 and not _刚失焦 \
+			and bool(DisplayServer.window_is_focused())
+	_切声音(后台静音 and not 在前台)
+
+
+## 焦点通知：拿到焦点的这一刻就记下来（此后 window_is_focused() 才可信），并立刻重算一次。
+## 有些平台启动时不给「获得焦点」通知，所以 _input 里也补一刀（能收到输入就说明有焦点）。
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_FOCUS_IN, NOTIFICATION_WM_WINDOW_FOCUS_IN:
+			_拿过焦点 = true
+			_刚失焦 = false
+			_随焦点切声音()
+		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+			_刚失焦 = true
+			_随焦点切声音()
+
+
+## 兜底「启动时不发获得焦点通知」的平台：只认键盘 / 鼠标按键 / 触摸这类**真的在操作**的事件。
+## 不能用鼠标移动 —— 未激活的窗口在鼠标划过时也会收到 Motion 事件，那不能证明它有焦点。
+func _input(event: InputEvent) -> void:
+	if _拿过焦点:
+		return
+	if not (event is InputEventKey or event is InputEventMouseButton \
+			or event is InputEventScreenTouch):
+		return
+	_拿过焦点 = true
+	_刚失焦 = false
+	_随焦点切声音()
 
 
 ## 失焦就把声音压到听不见（BGM 与音效，含 Art.play_sfx 的界面 wav）；回到前台恢复。
