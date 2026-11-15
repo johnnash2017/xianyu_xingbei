@@ -2194,6 +2194,8 @@ func 场卡快照(viewer_id: int) -> Array:
 			"pile_count": (表.get("pile", []) as Array).size(),
 			# 场卡上叠着的明牌（【王权宝珠】）：牌面，-1＝没有牌
 			"card": int(表.get("card", -1)),
+			# 本回合这张场卡的效果已经用过（1＝用过）：客户端把图标置灰（传教士【路标】告解式）
+			"used": int(表.get("used", 0)),
 		}
 		# 隐藏信息（【末日预言】的正面）：只给拥有者自己看，别人拿不到
 		if int(表.get("owner", -1)) == viewer_id and 表.has("front"):

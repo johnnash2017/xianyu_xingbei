@@ -763,7 +763,8 @@ func _刷新状态图标() -> void:
 %s" % [状态提示, 状态说明]
 		_加状态图标(ps, 图标贴图, "s:%s" % 图标路径, 新起点, -1, 状态提示,
 			额外牌id, 状态文字, int(d.get("count", -1)), 被动们,
-			int(d.get("被动技能角色", -1)), str(d.get("count_bbcode", "")))
+			int(d.get("被动技能角色", -1)), str(d.get("count_bbcode", "")), -1,
+			bool(d.get("灰", false)))
 	_状态已初始化 = true
 	_状态弹出起点 = 新起点
 	_状态上次数量 = _状态本次数量.duplicate()
@@ -792,7 +793,7 @@ func 五系束缚应摸张数() -> int:
 func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表: Dictionary,
 		基础牌id: int = -1, 提示: String = "", 额外牌id: int = -1, 名称: String = "",
 		数量: int = -1, 被动技能们: Array = [], 被动技能角色: int = -1,
-		数量富文本: String = "", 悬停牌id: int = -1) -> void:
+		数量富文本: String = "", 悬停牌id: int = -1, 整枚置灰: bool = false) -> void:
 	if tex == null:
 		return
 	var go := ps.instantiate()
@@ -800,7 +801,8 @@ func _加状态图标(ps: PackedScene, tex: Texture2D, 标识: String, 起点表
 		(go as TextureRect).texture = tex
 		(go as TextureRect).custom_minimum_size = Vector2(状态图标尺寸, 状态图标尺寸)
 		# 虚空境：基础效果图标保留，但整枚置灰（悬停说明仍可看）
-		if 基础牌id >= 0 and BasicDisabled:
+		# 场卡也可以单独要求置灰（如本回合已经发动过的【路标】告解式）
+		if 整枚置灰 or (基础牌id >= 0 and BasicDisabled):
 			(go as TextureRect).modulate = Color(0.45, 0.45, 0.45, 1.0)
 		if 基础牌id >= 0 and _基础牌可点:
 			(go as TextureRect).mouse_filter = Control.MOUSE_FILTER_STOP

@@ -1184,6 +1184,8 @@ static func 场卡状态项(卡号: String, 表: Dictionary) -> Dictionary:
 		"desc": 说明,
 		"tip": 提示名,
 		"count": 计数,
+		# 整枚置灰（如本回合已经发动过告解式的【路标】）
+		"灰": bool(int(表.get("used", 0)) != 0),
 		"被动技能": 被动返回,
 		"被动技能角色": int(显示.get("被动技能角色", -1)),
 	}

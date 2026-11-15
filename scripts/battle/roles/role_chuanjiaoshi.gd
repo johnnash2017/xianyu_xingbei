@@ -326,6 +326,7 @@ func 技能URGENT后重入(_action: Dictionary = {}) -> bool:
 ## 本钩子自己从不等待，所以每个回合只会跑一次，不会因为重入把标记提前清掉。
 func p_before_turn_begin(_ctx: Dictionary) -> int:
 	_告解已用 = false
+	_标记路标已用(false)
 	_本回合已转移 = false
 	return SUCCESS
 
@@ -395,7 +396,8 @@ func _放置路标(目标: int) -> int:
 func _路标放下(目标: int) -> void:
 	if not _可持路标(目标):
 		return
-	engine.加场卡({"id": 路标名, "owner": player.id, "attached": 目标})
+	engine.加场卡({"id": 路标名, "owner": player.id, "attached": 目标,
+		"used": 1 if _告解已用 else 0})
 
 
 ## 转移【路标】给某人：先问【启示】（虔诚 ≥ 2 时才有得选），落标之后回到 落点 阶段。
@@ -487,11 +489,25 @@ func _告解不发动() -> int:
 ## 走到结算＝玩家按了「确定」（按取消 / 超时走 _告解不发动，不进来）
 func _告解结算(_答案: Array) -> int:
 	_告解已用 = true
+	_标记路标已用(true)
 	notice_skill(LU_BIAO, [_告解到])
 	# 先记阶段再压摸牌：摸牌跑完回到 _到达后续 时从阶段 2 接着走（同原来的写法）
 	_到达阶段 = 2
 	engine.push_强制摸牌(_告解到, 2, LU_BIAO)
 	return URGENT
+
+
+## 本回合的告解式用没用过写进【路标】场卡（used=1）：客户端把那一枚图标置灰。
+## 回合开始复位（见 p_before_turn_begin），路标挪位置时保持原值（见 _路标放下）。
+func _标记路标已用(已用: bool) -> void:
+	var 表: Dictionary = engine.取场卡(路标名)
+	if 表.is_empty():
+		return
+	var 新值: int = 1 if 已用 else 0
+	if int(表.get("used", 0)) == 新值:
+		return
+	表["used"] = 新值
+	engine._broadcast_game()
 
 
 ## 告解式能不能发动：【回合限定】（本回合一次），且到达者不是传教士自己（2V2 除外）
