@@ -89,6 +89,8 @@ var _弥撒可选: Array = []
 var _事奉牌: Array = []
 var _事奉收牌人: int = -1
 var _事奉可给治疗: bool = false
+## 待发「+1【治疗】」：等收牌人手上真的多了这几张牌（p_hand_change）再问
+var _事奉待加治疗: bool = false
 var _事奉上下文: Dictionary = {}
 
 
@@ -690,17 +692,22 @@ func p_before_discard(ctx: Dictionary) -> int:
 	return _事奉链()
 
 
-## 两段：先问发不发动（取消＝不发动，代价是移除 1 点【治疗】）；
-## 发动后若不会让持有者爆牌（＝不因此掉士气），再问一次「除你外的目标角色 +1【治疗】」
+## 第 1 问：要不要发动（取消＝不发动，代价是移除 1 点【治疗】）
 func _事奉链() -> int:
 	return 多步询问(SHI_FENG, [
 		{"取消": _事奉不发动, "答完": _事奉发动},
+	], _事奉结算)
+
+
+## 第 2 问：加给谁 1【治疗】。挂在 p_hand_change 里发 —— 要等这几张牌真的进了他的手、
+## 客户端手牌方块已经涨了再问，否则会出现「牌还没显示出来就先弹加治疗」（需求方指出时机不对）
+func _事奉加治疗链() -> int:
+	return 多步询问(SHI_FENG, [
 		{"需目标": 1, "目标白": 除自己(), "可取消": false,
 		 # 超时兜底只从「除你以外的友方」里挑，别把治疗丢给敌人（没有队友才退回全体）
 		 "超时目标": _事奉超时目标(),
-		 "跳过": _事奉无需给治疗,
 		 "预览基准": 1, "预览类型": GConst.预览类型_治疗},
-	], _事奉结算)
+	], _事奉加治疗结算)
 
 
 ## 事奉加治疗那一步的超时兜底名单：除自己以外的友方；一个队友都没有时退回「除自己」全体
@@ -711,10 +718,6 @@ func _事奉超时目标() -> Array[int]:
 		if pp != null and pp.id != player.id and pp.color == player.color:
 			out.append(pid)
 	return out if not out.is_empty() else 除自己()
-
-
-func _事奉无需给治疗(_答案: Array) -> bool:
-	return not _事奉可给治疗
 
 
 ## 第 1 段答完：发动 —— 扣 1【治疗】，把这次弃的牌改交给他（taken / taker 交给引擎结算）
@@ -731,27 +734,44 @@ func _事奉发动(_回: Dictionary, _答案: Array) -> int:
 	# 「若没有因此造成该角色阵营士气下降」＝这几张牌交过去不会让他爆牌。
 	# 提前估算（超限掉士气要等弃牌结算完才知道，这里只做得到「加进来会不会超上限」）。
 	_事奉可给治疗 = 他.hand_cards.size() + _事奉牌.size() <= 他.hand_cards_max
+	# 加治疗那一问等到手牌变化之后再发（见 p_hand_change）
+	_事奉待加治疗 = _事奉可给治疗
 	return SUCCESS
 
 
+## 牌已经进到收牌人手里（手牌数变化）→ 这时才问他之外的谁 +1【治疗】
+func p_hand_change(ctx: Dictionary) -> int:
+	if 多步询问进行中(SHI_FENG):
+		return _事奉加治疗链()
+	if not _事奉待加治疗:
+		return SUCCESS
+	if int(ctx.get("player", -1)) != _事奉收牌人:
+		return SUCCESS
+	_事奉待加治疗 = false
+	return _事奉加治疗链()
+
+
 func _事奉不发动() -> int:
+	_事奉牌 = []
+	_事奉上下文 = {}
+	_事奉待加治疗 = false
+	engine._broadcast_game()
+	return SUCCESS
+
+
+func _事奉结算(_答案: Array) -> int:
 	_事奉牌 = []
 	_事奉上下文 = {}
 	engine._broadcast_game()
 	return SUCCESS
 
 
-func _事奉结算(答案: Array) -> int:
-	var 目标: int = -1
-	if 答案.size() > 1:
-		var dsts: Array = (答案[1] as Dictionary).get("dsts", [])
-		if not dsts.is_empty():
-			目标 = int(dsts[0])
-	_事奉牌 = []
-	_事奉上下文 = {}
-	if 目标 >= 0:
-		施加治疗(目标, 1)
+func _事奉加治疗结算(答案: Array) -> int:
+	var dsts: Array = (答案[0] as Dictionary).get("dsts", []) if not 答案.is_empty() else []
+	if not dsts.is_empty():
+		施加治疗(int(dsts[0]), 1)
 		engine._broadcast_game()
+	return SUCCESS
 	return SUCCESS
 
 
