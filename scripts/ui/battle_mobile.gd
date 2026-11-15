@@ -10658,7 +10658,16 @@ func _启示头像提示() -> Dictionary:
 		return out
 	if _已选参数.is_empty():
 		return out
-	var 文: String = "+1 治疗" if int(_已选参数[0]) == 1 else "【路标】转移至此"
+	var 文: String = ""
+	if not _已选参数.is_empty():
+		# 第 1 段：选了「+1 治疗」那一项才画治疗量；「摸 1 张牌」那一步没有目标、不画
+		if int(_已选参数[0]) == 1:
+			文 = "+1 治疗"
+	else:
+		# 第 2 段：只有摸到法术牌 / 圣类命格时服务端才会问这一段，写「路标要放到谁面前」
+		文 = "【路标】转移至此"
+	if 文.is_empty():
+		return out
 	for pid: int in _sel_players:
 		out[pid] = 文
 	return out
