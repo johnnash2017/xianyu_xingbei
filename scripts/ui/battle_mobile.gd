@@ -426,6 +426,11 @@ var _sel_cards: Array[int] = []
 var _sel_players: Array[int] = []
 ## 目标是否已锁死（【瘟疫】/【剧毒新星】：进场自动选中全体打架目标，点头像也改不了，只能用「取消」退出）
 var _目标锁死: bool = false
+## 进二级技能栏时按「进栏自动选目标」锁住的那一份（离开栏时要把锁解开，见 _清空二级选项）
+var _进栏锁目标: bool = false
+## 点开技能进二级栏时就要先把某个头像锁死的技能（技能号 → _套用自动选目标 认的类型）。
+## 传教士【传道】9603：点开就把目标指示器锁在【路标】持有者身上，头像写「给你 1 张牌」。
+const 进栏自动选目标: Dictionary = {9603: "路标持有者"}
 ## 我的手牌上一次刷新时的牌 id：用来认出这一轮新补进来的牌，只给它们播「向下放置」动画
 var _上次手牌: Array[int] = []
 ## 新补牌的落点起算时刻（card_id → 毫秒），落回原位后清掉
@@ -4700,6 +4705,12 @@ func _进入二级技能栏(父技能号: int, 父按钮: 技能按钮, 选项: 
 	_二级栏 = true
 	_二级选中 = -1
 	_已选参数.clear()
+	# 「点开技能就把某个头像锁死」的技能（传道 9603 锁【路标】持有者）：
+	# 进栏这一刻先锁上，离开栏时由 _清空二级选项 解开
+	var 锁型: String = str(进栏自动选目标.get(父技能号, ""))
+	if not 锁型.is_empty() and _套用自动选目标({"自动选目标": 锁型}):
+		_目标锁死 = true
+		_进栏锁目标 = true
 	_显示技能区()
 	_更新按键()
 	_排技能栏.call_deferred()
@@ -4827,6 +4838,10 @@ func _清空二级选项() -> void:
 	_二级选项.clear()
 	_二级栏 = false
 	_二级选中 = -1
+	# 进栏时锁的头像（见 进栏自动选目标）在这里解开
+	if _进栏锁目标:
+		_目标锁死 = false
+		_进栏锁目标 = false
 	_二级栏父技能号 = 0
 	_二级栏父按钮 = null
 	_额外行动用二级栏 = false
@@ -4977,6 +4992,17 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 			_skill_cover_max = _skill_cover_need
 		# 雷光散射只移除 1 张雷系【充能】时是全体敌方 AOE：把所有敌方头像选中并锁死，
 		# 不再让玩家点目标。移除 2 张以上才有「指定一名额外受伤」的目标，保持可点选。
+		# 传教士【传道】9603：选项只是「不摸牌 / 摸 1 张牌」，目标指示器始终锁在【路标】持有者身上
+		# （选哪一项都不改这个锁；头像文案见 _传道头像提示）
+		if _pending_skill_id == 9603:
+			var 持: int = _路标持有者()
+			_目标锁死 = true
+			_进栏锁目标 = true
+			_sel_players.clear()
+			if 持 >= 0:
+				_sel_players.append(持)
+			_skill_need_target = 0
+			_need_players = 0
 		if _pending_skill_id == GConst.技能_雷光散射 and not _已选参数.is_empty():
 			if int(_已选参数[0]) == 1:
 				_目标锁死 = true
@@ -8278,6 +8304,12 @@ func _套用自动选目标(指示配置: Dictionary) -> bool:
 					_sel_players.append(玩家.id)
 		"询问目标":
 			_sel_players.append_array(_skill_targets)
+		"路标持有者":
+			# 传教士【传道】：把【路标】现在在谁面前的那个人锁出来（场卡表的 attached）
+			var 持: int = _路标持有者()
+			if 持 < 0:
+				return false
+			_sel_players.append(持)
 		"队友":
 			# 把「会受影响的所有队友」点亮给人看（如【再睡一下】：队友各 +1 治疗）。
 			# 同样只高亮：这条询问要选的是弃哪张牌，不选目标
@@ -10361,6 +10393,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _侍奉之道头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _传道头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _诸神终焉头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _神威头像提示()
@@ -10592,6 +10626,27 @@ func _侍奉之道头像提示() -> Dictionary:
 	for pid: int in _sel_players:
 		out[pid] = 文
 	return out
+
+
+## 传教士【传道】9603：点开技能（发动 / 二级栏）时，【路标】持有者头像上写「给你 1 张牌」——
+## 这边只负责文案，头像的锁由 进栏自动选目标 + _套用自动选目标 负责
+func _传道头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _当前技能号() != 9603:
+		return out
+	var 持有者: int = _路标持有者()
+	if 持有者 < 0:
+		return out
+	out[持有者] = "给你 1 张牌"
+	return out
+
+
+## 【路标】此刻在谁面前（场卡表里 id 为「路标」那条的 attached）；不在场返回 -1
+func _路标持有者() -> int:
+	for 表: Dictionary in Data.场卡表:
+		if str(表.get("id", "")) == "路标":
+			return int(表.get("attached", -1))
+	return -1
 
 
 ## 噬神者【诸神终焉】发动时（mode 4）：
