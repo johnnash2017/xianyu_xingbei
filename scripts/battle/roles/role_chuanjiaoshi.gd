@@ -55,6 +55,8 @@ var _首回合已放: bool = false
 var _到达阶段: int = 0
 ## 告解式【回合限定】：本回合是否已经发动过（每进入一个回合复位，见 p_before_turn_begin）
 var _告解已用: bool = false
+## 告解式正在问谁：问的是「路标刚到他面前」的那个人，不一定是传教士自己
+var _告解到: int = -1
 ## 信仰之路：本回合的「回合结束转移」已经做过了。
 ## 钩子在压了状态后返回 URGENT 会被引擎重跑同一个钩子（SHook 不推进座位），
 ## 没有这个标记的话，告解摸牌 / 传教士弃牌一结算完就会再转移一次。
@@ -393,11 +395,8 @@ func _到达后续() -> int:
 			if not _到达来自转移 or not _可发动告解(到):
 				_到达阶段 = 5
 				continue
-			_告解已用 = true
-			notice_skill(LU_BIAO, [到])
-			_到达阶段 = 2
-			engine.push_强制摸牌(到, 2, LU_BIAO)
-			return URGENT
+			# 告解式是【响应】：先问到他面前的那个人要不要发动，确认了才摸牌、加水晶、往下传
+			return _问告解(到)
 		if _到达阶段 == 2:
 			engine.set_team_crystal(player.color, engine.team_crystal[player.color] + 1)
 			var 下: int = _下一个可持路标者(路标持有者())
@@ -427,6 +426,50 @@ func _到达后续() -> int:
 			return SUCCESS
 		return _弥撒()
 	return SUCCESS
+
+
+## 【路标】告解式：问「路标到谁面前」的那个人要不要发动（【响应】技能，不是自动生效）。
+## 确认后才摸 2 张、我方战绩区 +1【水晶】、把卡转到他左手边、传教士弃 1 张（阶段 2 起接着跑）。
+func _问告解(到: int) -> int:
+	_告解到 = 到
+	return 多步询问(LU_BIAO, [
+		{"问谁": func(_答案: Array) -> int: return _告解到,
+		 "选项": _告解选项(),
+		 "可取消": true,
+		 "取消": _告解不发动,
+		 "询问文案": _告解询问文案()},
+	], _告解结算)
+
+
+## 告解式只有一个选项：发动（不想发动就按取消）
+func _告解选项() -> Array:
+	return [{"value": 1, "label": "%s 摸 2 张牌" % 路标名, "text": "%s 摸 2 张牌" % 路标名}]
+
+
+func _告解询问文案() -> String:
+	var 表: String = GConst.提示原文(LU_BIAO, 1)
+	if 表.is_empty():
+		表 = "是否发动【%s】的告解式（摸 2 张牌，我方战绩区 +1【水晶】）？" % 路标名
+	return 表
+
+
+## 取消 / 超时＝不发动：告解式整段跳过，直接进弥撒
+func _告解不发动() -> int:
+	_到达阶段 = 5
+	return _到达后续()
+
+
+func _告解结算(答案: Array) -> int:
+	var args: Array = (答案[0] as Dictionary).get("args", []) if not 答案.is_empty() else []
+	if args.is_empty() or int(args[0]) != 1:
+		_到达阶段 = 5
+		return _到达后续()
+	_告解已用 = true
+	notice_skill(LU_BIAO, [_告解到])
+	# 先记阶段再压摸牌：摸牌跑完回到 _到达后续 时从阶段 2 接着走（同原来的写法）
+	_到达阶段 = 2
+	engine.push_强制摸牌(_告解到, 2, LU_BIAO)
+	return URGENT
 
 
 ## 告解式能不能发动：【回合限定】（本回合一次），且到达者不是传教士自己（2V2 除外）
