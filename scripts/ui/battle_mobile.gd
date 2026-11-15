@@ -3036,6 +3036,17 @@ func _技能询问_选项前置() -> void:
 	if _skill_ask_id == GConst.技能_醋意羞心 and _skill_need_card > 0 \
 			and not _高亮目标.has(Logic.my_player_id):
 		_高亮目标.append(Logic.my_player_id)
+	# 传教士【传道】9603 被点名弃牌那一步（【路标】就在我面前）：点亮 + 锁住施法者（传教士），
+	# 头像上写「给其 1 张牌」（见 _传道头像提示）——
+	# 这一步我做的是「弃 1 张给他」，不是「给别人 1 张牌」，别把我自己点亮
+	if _skill_ask_id == 9603 and _路标持有者() == Logic.my_player_id:
+		var 传教士位: int = _传教士id()
+		if 传教士位 >= 0:
+			if not _高亮目标.has(传教士位):
+				_高亮目标.append(传教士位)
+			if not _sel_players.has(传教士位):
+				_sel_players.append(传教士位)
+			_目标锁死 = true
 	_已选参数.clear()
 	if _先弹选项:
 		# 服务端原本给的目标数 / 需牌先记下，选完效果由 _应用选项目标数 还原 / 收紧
@@ -8305,11 +8316,19 @@ func _套用自动选目标(指示配置: Dictionary) -> bool:
 		"询问目标":
 			_sel_players.append_array(_skill_targets)
 		"路标持有者":
-			# 传教士【传道】：把【路标】现在在谁面前的那个人锁出来（场卡表的 attached）
+			# 传教士【传道】：平时锁「【路标】在谁面前」那个人；
+			# 但被点名弃牌的就是我自己时（路标就在我面前），要反过来锁施法者（传教士）——
+			# 这一步我做的是「弃 1 张给他」，不是「给别人 1 张牌」
 			var 持: int = _路标持有者()
 			if 持 < 0:
 				return false
-			_sel_players.append(持)
+			if 持 == Logic.my_player_id:
+				var 施: int = _传教士id()
+				if 施 < 0:
+					return false
+				_sel_players.append(施)
+			else:
+				_sel_players.append(持)
 		"队友":
 			# 把「会受影响的所有队友」点亮给人看（如【再睡一下】：队友各 +1 治疗）。
 			# 同样只高亮：这条询问要选的是弃哪张牌，不选目标
@@ -10654,8 +10673,22 @@ func _传道头像提示() -> Dictionary:
 	var 持有者: int = _路标持有者()
 	if 持有者 < 0:
 		return out
+	if 持有者 == Logic.my_player_id:
+		# 我就是被点名弃牌的那个：写在施法者（传教士）头上——「弃 1 张给他」
+		var 施: int = _传教士id()
+		if 施 >= 0:
+			out[施] = "给其 1 张牌"
+		return out
 	out[持有者] = "给你 1 张牌"
 	return out
+
+
+## 场上传教士的玩家 id（传道 9603 的施法者）；没有返回 -1
+func _传教士id() -> int:
+	for p: GPlayer in Data.player_list:
+		if p != null and int(p.role_id) == 96:
+			return p.id
+	return -1
 
 
 ## 【路标】此刻在谁面前（场卡表里 id 为「路标」那条的 attached）；不在场返回 -1
