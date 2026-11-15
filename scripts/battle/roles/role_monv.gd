@@ -151,6 +151,9 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 		return SUCCESS
 	if int(ctx.get("amount", 0)) < 1:
 		return SUCCESS
+	# 必须真的是「因承受伤害」掉士气（别人给牌导致的超限不算），再要求是法术伤害
+	if not bool(ctx.get("from_damage", false)):
+		return SUCCESS
 	if int(ctx.get("type", -1)) != GConst.HarmType.Magic:
 		return SUCCESS
 	if int(player.tokens[0]["num"]) >= int(player.tokens[0]["max"]):

@@ -6184,7 +6184,8 @@ class SHandOverflow:
 			e.last_harm_cause = 0
 			e.last_harm_type = 0
 		else:
-			e.push(SOverloadMorale.new(target.id, _pending_over, GConst.CAUSE_OVERLOAD, harm_cause, harm_type))
+			e.push(SOverloadMorale.new(target.id, _pending_over, GConst.CAUSE_OVERLOAD,
+				harm_cause, harm_type, _from_damage))
 		e.to_discard(_pending_cards, {"owner": target.id, "source": "hand", "cause": GConst.CAUSE_OVERLOAD, "face_up": false})
 		e._log_discard(target.id, _pending_cards)
 		e._broadcast_game()
@@ -6201,9 +6202,14 @@ class SOverloadMorale:
 	var target_id: int
 	var ctx: Dictionary
 	var started: bool = false
-	func _init(t: int, amount: int, cause: int, harm_cause: int, harm_type: int) -> void:
+	func _init(t: int, amount: int, cause: int, harm_cause: int, harm_type: int,
+			from_damage: bool = false) -> void:
 		target_id = t
-		ctx = {"dst": t, "amount": amount, "cause": cause, "harm_cause": harm_cause, "type": harm_type}
+		# from_damage：这次掉士气的超限是不是「因承受伤害摸牌」造成的（由 SHandOverflow 的
+		# 权威标记带过来）。不能拿 type 判：通用的摸牌超限会退回去读「最近一次伤害」的类型，
+		# 别人塞给他一张牌导致的超限就会被当成伤害掉士气（红莲骑士【热血沸腾】踩过）。
+		ctx = {"dst": t, "amount": amount, "cause": cause, "harm_cause": harm_cause,
+			"type": harm_type, "from_damage": from_damage}
 	func handle(e: BattleEngine) -> int:
 		if started:
 			return BattleEngine.CONTINUE

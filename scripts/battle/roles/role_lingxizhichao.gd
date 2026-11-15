@@ -506,6 +506,8 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 		return SUCCESS
 	if int(ctx.get("amount", 0)) <= 0:
 		return SUCCESS
+	if not bool(ctx.get("from_damage", false)):
+		return SUCCESS
 	var 类型: int = int(ctx.get("type", GConst.HarmType.None))
 	if 类型 != GConst.HarmType.Attack and 类型 != GConst.HarmType.Magic:
 		return SUCCESS

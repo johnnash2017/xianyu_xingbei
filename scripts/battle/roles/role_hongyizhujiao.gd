@@ -130,7 +130,10 @@ func p_timeline_1(ctx: Dictionary) -> int:
 # 掉士气链是同步调用（ctx.sync），这里只改 ctx、不开询问。
 # ============================================================
 func p_before_lose_morale(ctx: Dictionary) -> int:
-	if int(ctx.get("type", GConst.HarmType.None)) != GConst.HarmType.None:
+	# 「非因承受伤害掉士气」：以引擎的权威标记 from_damage 为准。
+	# 不能用 type：通用摸牌超限会退回去读「最近一次伤害」的类型，
+	# 别人塞给他一张牌导致的超限就会被当成伤害掉士气（红莲骑士【热血沸腾】踩过的同一个坑）
+	if bool(ctx.get("from_damage", false)):
 		return SUCCESS
 	if int(ctx.get("amount", 0)) <= 0:
 		return SUCCESS

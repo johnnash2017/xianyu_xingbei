@@ -284,7 +284,9 @@ func p_before_lose_morale(ctx: Dictionary) -> int:
 		return SUCCESS
 	if not player.tap or int(ctx.get("amount", 0)) <= 0:
 		return SUCCESS
-	if int(ctx.get("type", 0)) == GConst.HarmType.None:
+	# 「此形态下你承受伤害不会导致我方士气下降」：只认因伤害摸牌造成的超限。
+	# 别人塞牌 / 技能弃牌导致的士气下降不属于「承受伤害」，不能免
+	if not bool(ctx.get("from_damage", false)):
 		return SUCCESS
 	ctx["amount"] = 0
 	return SUCCESS
@@ -295,7 +297,9 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 		return SUCCESS
 	if int(ctx.get("amount", 0)) <= 0:
 		return SUCCESS
-	if int(ctx.get("type", 0)) == GConst.HarmType.None:
+	# 原文「当你因承受伤害而导致我方士气下降时」：只认因伤害摸牌造成的超限，
+	# 别人给牌 / 技能弃牌导致的士气下降不进入形态
+	if not bool(ctx.get("from_damage", false)):
 		return SUCCESS
 	notice_skill(RE_XUE_FEI_TENG, [player.id])
 	player.tap = true

@@ -178,8 +178,9 @@ func p_true_lose_morale(ctx: Dictionary) -> int:
 		return SUCCESS
 	if int(ctx.get("amount", 0)) <= 0:
 		return SUCCESS
-	# 服务端要求本次掉士气由伤害造成（con->harm.type != HARM_NONE）
-	if int(ctx.get("type", 0)) == GConst.HarmType.None:
+	# 服务端要求本次掉士气由伤害造成：用引擎的 from_damage（别用 type —— 通用超限会
+	# 退回去读「最近一次伤害」的类型，别人给牌导致的超限会被误当成伤害）
+	if not bool(ctx.get("from_damage", false)):
 		return SUCCESS
 	engine.set_tap(player.id, true)
 	施加治疗(player.id, 1)
