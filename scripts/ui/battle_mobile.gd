@@ -3176,8 +3176,9 @@ func _技能询问_摆选项() -> void:
 		var 项们: Array = []
 		for 项: Dictionary in _技能询问_选项源():
 			项们.append(_规整选项(项))
-		# 自动填充第二层取消时要原样退回第一层；先留一份第一层的归一化选项。
-		if 圣弓_自动填充.has(_skill_ask_id):
+		# 本地二层的技能：取消第二层时要原样退回第一层，先留一份第一层的归一化选项
+		# （哪些技能走本地二层看 本地二层入口表，不再逐个认技能号）
+		if (本地二层入口表.get(3, {}) as Dictionary).has(_skill_ask_id):
 			_自动填充第一层选项 = 项们.duplicate(true)
 		# 「无父技能」型（格斗【蓄力一击 / 气绝崩击】这条询问）：选项本身就是技能，
 		# 这一排只摆选项，不摆「被问的技能」那颗本体（否则会多出一颗与选项同名的按钮）。
@@ -5279,6 +5280,47 @@ func _进入圣裁下级() -> void:
 	_刷新交互()
 
 
+## 客户端本地二层入口表：按「哪条通道（mode）→ 哪个技能 → 点哪个选项值就进层」查。
+## 值里的「调」是 _进本地二层 里的处理分支名；进层选项 -2＝任何选项都进（自动填充那种先选资源）。
+## 新技能要「点选项 → 就地摆子选项 → 返回」这套手感：加一行 + 在 _进本地二层 加一个分支。
+const 本地二层入口表: Dictionary = {
+	# 发动技能这条通道（mode 4）
+	4: {
+		GConst.技能_苍白之月: {"进层选项": 2, "调": "苍白之月"},
+		GConst.技能_圣光爆裂: {"进层选项": 2, "调": "圣光爆裂"},
+		GConst.技能_圣光爆裂Trick: {"进层选项": 2, "调": "圣光爆裂"},
+	},
+	# 技能询问这条通道（mode 3）
+	3: {
+		GConst.技能_自动填充: {"进层选项": -2, "调": "自动填充"},
+		GConst.技能_自动填充Trick: {"进层选项": -2, "调": "自动填充"},
+	},
+}
+
+
+## 进入本地二层（参数与改造前逐项一致，只是把「认哪个技能」挪到了表里）
+func _进本地二层(处理: String, 技能号: int, 选项值: int) -> bool:
+	match 处理:
+		"苍白之月":
+			_进入本地二层(GConst.技能_苍白之月, _skill_arg_choices, _苍白月子项(),
+				"请选择要移除的【新月】数", "请选择苍白之月的效果", _on_cancel)
+			return true
+		"圣光爆裂":
+			var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
+			_进入本地二层(技能号, _skill_arg_choices,
+				_圣光爆裂第二层选项(我.cross_num if 我 != null else 0),
+				"请选择移除多少治疗", "请选择圣光爆裂的效果", _on_cancel)
+			return true
+		"自动填充":
+			_进入本地二层(技能号, _自动填充第一层选项, _自动填充第二层选项(选项值),
+				"请选择加信仰还是加治疗" if 技能号 == GConst.技能_自动填充 \
+					else "请选择加治疗还是加信仰",
+				"请选择消耗水晶还是宝石",
+				_on_cancel if _mode == 4 else Callable())
+			return true
+	return false
+
+
 func _选项选中立刻处理(序号: int) -> bool:
 	# 咒符师【魑魅魍魉】第一段（视为发动哪个咒符）：这一段没有牌 / 目标要选，点一项就交上去，
 	# 服务端收到后直接发第二段（选 1 名 / 重塑后 2 名 + 挑【妖力】），不再要求先按一次「确定」。
@@ -5328,43 +5370,29 @@ func _选项选中立刻处理(序号: int) -> bool:
 	if _本地选项阶段 == 7:
 		_确认12提炼方式()
 		return true
-	# 本地第二层：第一层选中下面这些项时不提交，先在本地摆出它的子选项
-	#   月女【苍白之月】第二项 → 选「移除 1/2 点【新月】」
-	#   圣弓【圣光爆裂】选「群体」 → 选移除多少治疗 X
-	#   圣弓【自动填充】选「水晶 / 宝石」 → 选「治疗 / 信仰」
+	# 本地第二层（表驱动）：第一层选中「进层选项」时先不提交，就地摆出它的子选项；
+	# 「返回」＝退回第一层。表在 本地二层入口表，新技能加一行 + 在 _进本地二层 加一个分支即可。
 	if not _本地二层.is_empty():
 		# 已经在第二层：子选项只按普通选项处理，不再往下触发任何「点选项即进下一层」
 		return false
-	if _mode == 4 and _pending_skill_id == GConst.技能_苍白之月 \
-			and _已选参数.size() == 1 and int(_已选参数[0]) == 2:
-		_进入本地二层(GConst.技能_苍白之月, _skill_arg_choices, _苍白月子项(),
-			"请选择要移除的【新月】数", "请选择苍白之月的效果", _on_cancel)
-		return true
-	if _mode == 4 and 圣弓_圣光爆裂.has(_pending_skill_id) \
-			and _已选参数.size() == 1 and int(_已选参数[0]) == 2:
-		var 我: GPlayer = Data.get_player_by_id(Logic.my_player_id)
-		_进入本地二层(_pending_skill_id, _skill_arg_choices,
-			_圣光爆裂第二层选项(我.cross_num if 我 != null else 0),
-			"请选择移除多少治疗", "请选择圣光爆裂的效果", _on_cancel)
-		return true
-	if _是技能询问 and 圣弓_自动填充.has(_skill_ask_id) and not _已选参数.is_empty():
-		var 资源: int = int(_已选参数[0])
-		_进入本地二层(_skill_ask_id, _自动填充第一层选项, _自动填充第二层选项(资源),
-			"请选择加信仰还是加治疗" if _skill_ask_id == GConst.技能_自动填充 \
-				else "请选择加治疗还是加信仰",
-			"请选择消耗水晶还是宝石",
-			_on_cancel if _mode == 4 else Callable())
-		return true
+	var 层技能号: int = _pending_skill_id if _mode == 4 else _skill_ask_id
+	var 层配: Dictionary = (本地二层入口表.get(_mode, {}) as Dictionary).get(层技能号, {})
+	if not 层配.is_empty():
+		var 进层值: int = int(层配.get("进层选项", -2))
+		var 当前选项值: int = int(_已选参数[0]) if _已选参数.size() == 1 else -999
+		# -2＝任何选项都进（自动填充：先选水晶/宝石）——但仍要求「已经选了一项」
+		if (进层值 == -2 and not _已选参数.is_empty()) or 当前选项值 == 进层值:
+			return _进本地二层(str(层配.get("调", "")), 层技能号, 当前选项值)
 	# 式神咒束 / 阴阳转换：选效果、选应战牌、选反击目标都在同一步里完成。
 	# 点中效果只切到「可选牌/选目标」，技能栏和选项不收起；选完再按确定。
 	if _攒应战应答号 > 0:
 		var 选择: int = int(_已选参数[0]) if not _已选参数.is_empty() else 1
 		_进入攒应战选应战(选择)
 		return true
-	# 英灵人形第一段：点「魔纹融合」这颗技能本体＝直接进子项，不用再按「确定」
-	# （怒火压制仍按普通选项走：选中后按确定；子项里的三个翻转档要选牌，也不能点一下就提交）
-	if _是技能询问 and _skill_ask_id == GConst.技能_魔纹融合 and _二级选项.size() == 2 \
-			and int(_二级选项[序号].get("技能号", 0)) == GConst.技能_魔纹融合:
+	# 「点技能本体即提交」：技能指示器配了这条的技能（英灵人形【魔纹融合】），
+	# 点它本体就直接把当前选中的参数交上去，由服务端下发下一段；别的选项仍按普通选项走
+	if _是技能询问 and bool(GConst.技能指示器.get(_skill_ask_id, {}).get("点技能本体即提交", false)) \
+			and int(_二级选项[序号].get("技能号", 0)) == _skill_ask_id:
 		_发送应答(_skill_ask_id, [], [], _已选参数)
 		return true
 	# 「点中某一项就进下一段」：由技能指示器的「点选项即进下一层」配（值＝第 1 段的那个选项值）。
@@ -5568,12 +5596,13 @@ func _二级栏提示文案() -> String:
 	var 项提示: String = str(选中项.get("提示", ""))
 	if not 项提示.is_empty():
 		return _选项系别着色(项提示, 选中项.get("元素", []))
-	# 圣光爆裂：选中单体 / 群体 X 后，提示条直接显示该选项的说明，
-	# 群体档的说明已把目标手牌上限算好，不再让玩家看「你的手牌数 - X」公式。
-	if _mode == 4 and 圣弓_圣光爆裂.has(_pending_skill_id) and not 选中项.is_empty():
-		var 爆裂说明: String = str(选中项.get("说明", ""))
-		if not 爆裂说明.is_empty():
-			return 爆裂说明
+	# 「选项说明进提示条」：技能指示器配了这条的技能（圣弓【圣光爆裂】），
+	# 选中某项后提示条直接显示该项自带的说明（群体档已把目标手牌上限算好，不让玩家看公式）
+	if _mode == 4 and bool(GConst.技能指示器.get(_pending_skill_id, {}).get("选项说明进提示条", false)) \
+			and not 选中项.is_empty():
+		var 选项说明: String = str(选中项.get("说明", ""))
+		if not 选项说明.is_empty():
+			return 选项说明
 	var 选中技能号: int = int(选中项.get("技能号", 0))
 	# 迅捷赐福 / 威力赐福选项选中后只提示「移除赐福 + 换来效果」，不显示整段技能说明 ——
 	# 仅限它们作为「持有者行动结束时的响应」出现（聚合器下发的 no_parent 询问）。
