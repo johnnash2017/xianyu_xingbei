@@ -2899,7 +2899,7 @@ func _进入技能询问() -> void:
 	_技能询问_摆选项()
 	# 【元素射击】把「选子弹」与「视为系别」合成一次询问：五个系别选项先全部置灰，
 	# 选中光/暗子弹后才点亮（普通子弹不需要选系别，直接按「确定」）
-	if _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
+	if _二级栏:
 		_刷新视为系别可用()
 	# 攻击结束响应期间：已获得但还没用的攻击行动摆成红色快捷按钮（只展示、不可点）
 	_技能询问_摆额外攻击响应()
@@ -5956,7 +5956,7 @@ func _on_card_clicked(card_id: int) -> void:
 	刷新手牌()
 	刷新盖牌()
 	# 【元素射击】选/换【子弹】后，刷新「视为系别」选项的可点状态（只有光/暗子弹才点亮）
-	if _mode == 3 and _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
+	if _mode == 3 and _二级栏:
 		_刷新视为系别可用()
 	# 群星启示②：卢恩一改，三颗律法的条件就可能变 —— 重新点亮 / 置灰，选中项失效就撤销
 	if _群星启示下级中():
@@ -9803,7 +9803,7 @@ func _刷新交互() -> void:
 	for 面板: 战斗玩家面板 in _面板列表:
 		面板.set_基础牌可点(基础可点)
 	# 【元素射击】选/取消子弹后，刷新「视为系别」选项的可点状态
-	if _mode == 3 and _二级栏 and _skill_ask_id == GConst.技能_元素射击SORA:
+	if _mode == 3 and _二级栏:
 		_刷新视为系别可用()
 
 
@@ -12074,21 +12074,26 @@ func _更新按键() -> void:
 
 
 ## 【元素射击】合成的询问：只有选中的【子弹】是光/暗时才让选「视为系别」
-func _选中子弹是光暗() -> bool:
+## 已选的牌里有没有这些系别的（供「选项可用需牌系别」判断）
+func _选中牌系别在(系别们: Array) -> bool:
 	for cid: int in _sel_cards:
 		var 牌: GCard = Data.get_card(cid)
 		if 牌 == null:
 			continue
-		var 元: int = 牌.element_enum()
-		if 元 == GConst.CardElement.Light or 元 == GConst.CardElement.Darkness:
+		if 系别们.has(牌.element_enum()):
 			return true
 	return false
 
 
 ## 【元素射击】的「视为系别」选项：普通【子弹】不需要选系别 → 整排置灰；
 ## 选中光/暗【子弹】后才点亮。切回普通子弹时把之前选过的系别作废。
+## 选项的可用性由「已选牌的系别」决定时（元素射击*索拉：光/暗子弹要先选一种视为系别）：
+## 技能指示器配 选项可用需牌系别 = [系别再按此判]；没配的技能直接返回，不刷。
 func _刷新视为系别可用() -> void:
-	var 光暗: bool = _选中子弹是光暗()
+	var 需: Array = GConst.技能指示器.get(_skill_ask_id, {}).get("选项可用需牌系别", [])
+	if 需.is_empty():
+		return
+	var 光暗: bool = _选中牌系别在(需)
 	for 项: Dictionary in _二级选项:
 		var 钮: Variant = 项.get("按钮")
 		if not is_instance_valid(钮):
@@ -12182,10 +12187,12 @@ func _确定_技能询问() -> bool:
 		return true
 	# 【元素射击】把「选子弹」与「视为系别」合成一次询问：
 	# 普通【子弹】选 1 张就能确定；光/暗【子弹】必须先选一种视为系别
-	if _skill_ask_id == GConst.技能_元素射击SORA and _二级栏:
+	# 「选项可用需牌系别」型询问：选到需要选系别的那张牌后，必须先选中一项才让点确定
+	var 需系选项: Array = GConst.技能指示器.get(_skill_ask_id, {}).get("选项可用需牌系别", [])
+	if not 需系选项.is_empty() and _二级栏:
 		if _sel_cards.is_empty():
 			return true
-		return _选中子弹是光暗() and _二级选中 < 0
+		return _选中牌系别在(需系选项) and _二级选中 < 0
 	# 「需盖牌系别」的询问（如魔弓【魔贯冲击】）：盖牌区里已经没有该系的牌可移除 → 发动不了，
 	# 「确定」灰着（盖牌区照样摆着给他看，只能按「取消」放弃）
 	var 需系: int = _需盖牌系别()
