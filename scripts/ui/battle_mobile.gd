@@ -5367,6 +5367,12 @@ func _选项选中立刻处理(序号: int) -> bool:
 			and int(_二级选项[序号].get("技能号", 0)) == GConst.技能_魔纹融合:
 		_发送应答(_skill_ask_id, [], [], _已选参数)
 		return true
+	# 传教士【弥撒】第一段第二项：点它就进第二段（选要收入手中的基础效果），不用再按「确定」；
+	# 第二段右侧有「返回」，点它退回这一步重选 ①/②。
+	if _是技能询问 and _skill_ask_id == 9608 and _二级选项.size() == 2 \
+			and _已选参数.size() == 1 and int(_已选参数[0]) == 2:
+		_发送应答(_skill_ask_id, [], [], _已选参数)
+		return true
 	# 军神威光第一段第二项：点它就进第二段（选星石组合），不用再按「确定」。
 	# 服务端收到 args=[2] 会直接下发第二段询问；第二段右侧有「返回」。
 	if _是技能询问 and _skill_ask_id == GConst.技能_军神威光 and _二级选项.size() == 2 \
@@ -7135,8 +7141,11 @@ func _on_cancel() -> void:
 		_回到行动阶段()
 		return
 	# 不能取消的那次技能询问（如【水之神力】交牌）直接忽略：键盘快捷键也得挡住，
-	# 否则会回一个空应答，服务端只好替玩家随机交一张，等于「取消」反而生效了
-	if _mode == 3 and _是技能询问 and not _skill_ask_can_cancel:
+	# 否则会回一个空应答，服务端只好替玩家随机交一张，等于「取消」反而生效了。
+	# 例外：这一段标了「可返回」（询问参数 allow_back）—— 空应答就是「退回上一段」的约定，
+	# 必须放行，否则「返回」按钮会像死键（传教士【弥撒】第二段踩过）
+	if _mode == 3 and _是技能询问 and not _skill_ask_can_cancel \
+			and not bool(_pending.get("allow_back", false)):
 		return
 	var respond_id: int = int(_pending.get("respond_id", 0))
 	# 技能询问：取消=放弃。回空 args（不再回 [0]）——「取消」用「没有给值」表达，
