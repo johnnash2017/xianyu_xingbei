@@ -627,7 +627,6 @@ const 冒险家Trick角色号: int = 89
 const 圣弓_圣煌模式: Array[int] = [GConst.技能_圣煌模式, GConst.技能_圣煌模式Trick]
 const 圣弓_圣光爆裂: Array[int] = [GConst.技能_圣光爆裂, GConst.技能_圣光爆裂Trick]
 const 圣弓_圣流星弹: Array[int] = [GConst.技能_圣流星弹, GConst.技能_圣流星弹Trick]
-const 圣弓_自动填充: Array[int] = [GConst.技能_自动填充, GConst.技能_自动填充Trick]
 const 圣弓_辉光炮: Array[int] = [GConst.技能_圣煌辉光炮, GConst.技能_圣煌辉光炮Trick]
 const 圣弓_余辉: Array[int] = [GConst.技能_圣煌余辉, GConst.技能_圣煌余辉Trick]
 const 圣弓_圣屑未命中: Array[int] = [37021, 88021]
@@ -5379,7 +5378,8 @@ func _选项选中立刻处理(序号: int) -> bool:
 	var 层配: Dictionary = (本地二层入口表.get(_mode, {}) as Dictionary).get(层技能号, {})
 	if not 层配.is_empty():
 		var 进层值: int = int(层配.get("进层选项", -2))
-		var 当前选项值: int = int(_已选参数[0]) if _已选参数.size() == 1 else -999
+		# 与原逻辑一致：非空就取第一个参数（自动填充第一层只有一个参数，-999 只在空选择时出现）
+		var 当前选项值: int = int(_已选参数[0]) if not _已选参数.is_empty() else -999
 		# -2＝任何选项都进（自动填充：先选水晶/宝石）——但仍要求「已经选了一项」
 		if (进层值 == -2 and not _已选参数.is_empty()) or 当前选项值 == 进层值:
 			return _进本地二层(str(层配.get("调", "")), 层技能号, 当前选项值)
@@ -5391,7 +5391,8 @@ func _选项选中立刻处理(序号: int) -> bool:
 		return true
 	# 「点技能本体即提交」：技能指示器配了这条的技能（英灵人形【魔纹融合】），
 	# 点它本体就直接把当前选中的参数交上去，由服务端下发下一段；别的选项仍按普通选项走
-	if _是技能询问 and bool(GConst.技能指示器.get(_skill_ask_id, {}).get("点技能本体即提交", false)) \
+	var 本体提交项数: int = int(GConst.技能指示器.get(_skill_ask_id, {}).get("点技能本体即提交", 0))
+	if _是技能询问 and 本体提交项数 > 0 and _二级选项.size() == 本体提交项数 \
 			and int(_二级选项[序号].get("技能号", 0)) == _skill_ask_id:
 		_发送应答(_skill_ask_id, [], [], _已选参数)
 		return true
