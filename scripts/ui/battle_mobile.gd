@@ -5007,10 +5007,12 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 			_skill_card_max = _skill_need_card
 			_need_cards = _skill_card_max
 			_skill_cover_max = _skill_cover_need
-		# 雷光散射只移除 1 张雷系【充能】时是全体敌方 AOE：把所有敌方头像选中并锁死，
-		# 不再让玩家点目标。移除 2 张以上才有「指定一名额外受伤」的目标，保持可点选。
-		if _pending_skill_id == GConst.技能_雷光散射 and not _已选参数.is_empty():
-			if int(_已选参数[0]) == 1:
+		# 「选项自动选目标」：指示器里配了 {选项值: 目标筛选} 的技能（雷光散射：只移除 1 张时是
+		# 全体敌方 AOE），选中那一档就把目标自动选好并锁死；选别的档则恢复可点选。
+		var 自动配: Dictionary = GConst.技能指示器.get(_pending_skill_id, {}).get("选项自动选目标", {})
+		if not 自动配.is_empty():
+			var 选值: int = int(_已选参数[0]) if not _已选参数.is_empty() else -1
+			if 自动配.has(选值):
 				_目标锁死 = true
 				_sel_players.clear()
 				_sel_players.append_array(_skill_targets)
@@ -9820,6 +9822,14 @@ func _盖牌前N(元素: int, 数量: int) -> Array[int]:
 	return out
 
 
+## 预亮盖牌表：技能号 → {元素: GConst.CardElement, 数量: 张数(-1＝按选项值), 选项: 只在选中这一档时才亮(0＝不限)}
+const 预亮盖牌表: Dictionary = {
+	2601: {"元素": GConst.CardElement.Fire, "选项": 1},        # 魔贯冲击：选「不发动」就不亮
+	2603: {"元素": GConst.CardElement.Wind},                    # 多重射击：取第一张风系【充能】
+	2602: {"元素": GConst.CardElement.Thunder, "数量": -1},     # 雷光散射：选 X 张就预亮 X 张雷系
+}
+
+
 ## 魔弓三招的「本次要移除的盖牌」预亮：
 ##   魔贯冲击 2601（本次 + 命中追加）：服务端取第一张火系【充能】；
 ##   多重射击 2603：服务端取第一张风系【充能】；
@@ -9834,17 +9844,30 @@ func _计算预亮盖牌() -> void:
 		var 项技: int = int((_二级选项[_二级选中] as Dictionary).get("技能号", 0))
 		if 项技 > 0:
 			当前技 = 项技
-	if _mode == 3 and _是技能询问 and _skill_card_source == GConst.CardSource.Cover:
-		match 当前技:
-			2601:
-				# 选「不发动」就不亮；还没选时先亮出来当提示
-				var 选: int = int(_已选参数[0]) if not _已选参数.is_empty() else 1
-				if 选 == 1:
-					_预亮盖牌 = _盖牌前N(GConst.CardElement.Fire, 1)
-			2603:
-				_预亮盖牌 = _盖牌前N(GConst.CardElement.Wind, 1)
-	elif _mode == 4 and _pending_skill_id == 2602 and not _已选参数.is_empty():
-		_预亮盖牌 = _盖牌前N(GConst.CardElement.Thunder, int(_已选参数[0]))
+	# 规则查表（预亮盖牌表）：改哪个技能预亮哪些牌只改表，不再写分支
+	var 配: Dictionary = 预亮盖牌表.get(当前技, {})
+	if 配.is_empty():
+		return
+	if _mode == 3:
+		# 询问里选盖牌的那条通道
+		if not (_是技能询问 and _skill_card_source == GConst.CardSource.Cover):
+			return
+	elif _mode == 4:
+		# 发动技能那条通道：只在选中项的技能号就是它、且已经选了参数时
+		if _pending_skill_id != 当前技 or _已选参数.is_empty():
+			return
+	else:
+		return
+	# 「选某一档才亮」：没选时按 1 处理（与原 2601 的行为一致：还没选就亮出来当提示）
+	var 选值: int = int(_已选参数[0]) if not _已选参数.is_empty() else 1
+	var 要选项: int = int(配.get("选项", 0))
+	if 要选项 > 0 and 选值 != 要选项:
+		return
+	# 数量 -1＝按选项值取（雷光散射选几张就预亮几张）
+	var 数量: int = int(配.get("数量", 1))
+	if 数量 < 0:
+		数量 = int(_已选参数[0]) if not _已选参数.is_empty() else 0
+	_预亮盖牌 = _盖牌前N(int(配.get("元素", 0)), 数量)
 
 
 ## 点了场上的某枚基础效果图标（CardSource.BasicEffect 要选的就是它）：连它所在的玩家一起记下来
