@@ -5055,6 +5055,12 @@ func _选中二级选项(_技能号: int, 序号: int) -> void:
 	# （服务端也不会造成伤害；头像高亮跟着收掉）
 	if _是技能询问 and _skill_ask_id == 恩典神授技能号 and not _恩典选展示():
 		_sel_players.clear()
+	# 「点选项即提交行动」：发动技能时选的参数选项（如【不谐和弦】的「移除几点灵感」），
+	# 点一下就提交这次行动，由服务端下发下一步询问，不用再按「确定」
+	if _mode == 4 and not _已选参数.is_empty() \
+			and bool(GConst.技能指示器.get(_pending_skill_id, {}).get("点选项即提交行动", false)):
+		_on_ok()
+		return
 	_切换收尾(切换来源.二级栏选项)
 
 
@@ -10452,6 +10458,8 @@ func _刷新头像提示() -> void:
 	if 动态提示.is_empty():
 		动态提示 = _血染蔷薇水晶头像提示()
 	if 动态提示.is_empty():
+		动态提示 = _不谐和弦头像提示()
+	if 动态提示.is_empty():
 		动态提示 = _沉沦协奏曲头像提示()
 	if 动态提示.is_empty():
 		动态提示 = _兽返头像提示()
@@ -11580,6 +11588,21 @@ func _血染蔷薇水晶头像提示() -> Dictionary:
 ## 那 1 点法术伤害（服务端同判，见 role_shiren.p_harm_end 的 is_magic 校验）——
 ## 所以没挑到法术牌时这行整条不画（静态指示器表那条也已在 _头像提示配置 里让开）。
 ## 文案与数值仍取静态指示器表（技能指示器的 文案 / 每目标），这里只负责「什么时候画」
+## 吟游诗人【不谐和弦】第二步（选各摸/各弃 + 点目标）：在选中的目标头像上写张数。
+## 张数由服务端随询问下发（hint_num = 移除的灵感数 - 1），选的是哪一档看选项值（1＝摸、2＝弃）
+func _不谐和弦头像提示() -> Dictionary:
+	var out: Dictionary = {}
+	if _mode != 3 or int(_skill_ask_id) != GConst.技能_不谐和弦:
+		return out
+	var 张数: int = int(_pending.get("hint_num", -1))
+	if 张数 < 0 or _已选参数.is_empty():
+		return out
+	var 句: String = ("摸 %d 张牌" if int(_已选参数[0]) == 1 else "弃 %d 张牌") % 张数
+	for pid: int in _sel_players:
+		out[pid] = 句
+	return out
+
+
 func _沉沦协奏曲头像提示() -> Dictionary:
 	var out: Dictionary = {}
 	if _当前技能号() != GConst.技能_沉沦协奏曲:

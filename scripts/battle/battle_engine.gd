@@ -2805,7 +2805,8 @@ func ask_respond(pid: int, respond_id: int, args: Array, dst_ids: Array = [], sr
 ## 用于「效果落在不受玩家选择的角色身上」的技能 —— 如【别烦我……】让目标弃牌那一步，
 ## 同时点亮「不弃就 +1 治疗」的那名队友（目标自己由客户端点亮）
 func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, ask_text: String = "", targets: Array = [], 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], can_light: bool = true, 预览伤害: int = -1, cover_need: int = 0, 允许额外攻击快捷: bool = false, default_option: int = -1, no_parent: bool = false, ask_prompt: String = "", 高亮目标: Array = [], timeout_targets: Array = [], cover_max: int = 0, hand_need: int = -1,
-		allow_back: bool = false, 预览规则: String = "", 提示牌: int = -1) -> void:
+		allow_back: bool = false, 预览规则: String = "", 提示牌: int = -1,
+		提示数: int = -1) -> void:
 	# 基础效果授予的额外行动（迅捷赐福等）：未确认时作为普通响应选项摆出来；
 	# 确认后不再出现选项，改由额外的行动快捷按钮显示。
 	var 用选项: Array = options.duplicate(true)
@@ -3045,6 +3046,9 @@ func ask_skill(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0
 	# 顺带给玩家看的一张牌（牌面）：传教士【事奉】用它写「给他【这张牌】」
 	if 提示牌 >= 0:
 		cmd["hint_card"] = 提示牌
+	# 顺带给玩家看的一个数：吟游诗人【不谐和弦】用它把「各摸/各弃 X 张」画在目标头像上
+	if 提示数 >= 0:
+		cmd["hint_num"] = 提示数
 	_pending_respond_id = skill_id
 	_pending_args = args.duplicate()
 	_pending_is_skill = true

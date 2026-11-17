@@ -128,9 +128,13 @@ func _bu_xie_num_choices() -> Array:
 ## （技能表原文：「你和目标角色各摸 (X-1) 张牌」「各弃 (X-1) 张牌」）
 func _bu_xie_effect_options() -> Array:
 	var x: int = bu_xie_num - 1
+	# 每项自带提示条文案：取技能说明里对应那一分支的原文（摸牌那句带【强制】，弃牌那句没有）
+	var 名: String = GConst.skill_name(BU_XIE_HE_XIAN)
 	return [
-		{"value": 1, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 1) % x},
-		{"value": 2, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 2) % x},
+		{"value": 1, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 1) % x,
+		 "提示": "【%s】：你和目标角色各摸 %d 张牌【强制】" % [名, x]},
+		{"value": 2, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 2) % x,
+		 "提示": "【%s】：你和目标角色各弃 %d 张牌" % [名, x]},
 	]
 
 
@@ -159,7 +163,8 @@ func _request_discard(pid: int, n: int, cause: int) -> int:
 	# 要弃的张数最多到他的手牌数（问超过手牌数会让他永远选不够、只能放弃）
 	var want: int = mini(n, target.hand_cards.size())
 	if not engine.has_reply():
-		询问(pid, cause, want)
+		# 提示只要一句「【技能名】：弃 N 张牌」，不套整段技能说明（同其他要求弃牌的技能）
+		询问弃牌(pid, cause, want, "【%s】：弃 %d 张牌" % [GConst.skill_name(cause), want])
 		return WAIT
 	var r: Dictionary = take_skill_reply_full()
 	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
@@ -751,9 +756,14 @@ func _bu_xie_he_xian(action: Dictionary) -> int:
 		# 第二步：选效果 + 点目标（可取消 → 退回行动阶段重新来）
 		if not engine.has_reply():
 			# 提示取技能表 3102「提示2」那条：张数传 bu_xie_num 填 {n}，额外传 n2 填 {n2}，
-			# 避免客户端露出「移除 0 点灵感，双方各摸 {n2} 张牌」这种裸露占位符
+			# 避免客户端露出「移除 0 点灵感，双方各摸 {n2} 张牌」这种裸露占位符。
+			# 可返回：客户端右上角摆「返回」，空应答＝退回行动阶段重新点技能、重选移除几点灵感；
+			# 提示数＝各摸/各弃几张，客户端按它把张数画在目标头像上
+			var 文案: String = "【%s】：%s" % [GConst.skill_name(BU_XIE_HE_XIAN),
+				GConst.skill_desc(BU_XIE_HE_XIAN)]
 			询问(player.id, BU_XIE_HE_XIAN, 0, 1, GConst.CardSource.Hand, _bu_xie_effect_options(), 0, "", [], true,
-				1, -1, [], bu_xie_num, {"n2": bu_xie_num - 1})
+				1, -1, [], bu_xie_num, {"n2": bu_xie_num - 1}, 0, 0, false, [], true, -1, 0, "",
+				-1, 文案, [], [], 0, -1, true, "", -1, bu_xie_num - 1)
 			return WAIT
 		var r: Dictionary = take_skill_reply_full()
 		var 效args: Array = r.get("args", [])
