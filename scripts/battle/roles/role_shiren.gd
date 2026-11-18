@@ -150,26 +150,6 @@ func _pick_cards(target: BattlePlayer, ids: Array, n: int) -> Array:
 	return out
 
 
-## 请某名角色弃 n 张牌（服务端 StateRequestHand）
-func _request_discard(pid: int, n: int, cause: int) -> int:
-	var target: BattlePlayer = engine.p(pid)
-	if target == null or n <= 0 or target.hand_cards.is_empty():
-		return SUCCESS
-	# 要弃的张数最多到他的手牌数（问超过手牌数会让他永远选不够、只能放弃）
-	var want: int = mini(n, target.hand_cards.size())
-	if not engine.has_reply():
-		# 提示只要一句「【技能名】：弃 N 张牌」，不套整段技能说明（同其他要求弃牌的技能）
-		询问弃牌(pid, cause, want, "【%s】：弃 %d 张牌" % [GConst.skill_name(cause), want])
-		return WAIT
-	var r: Dictionary = take_skill_reply_full()
-	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
-	engine.take_from_hand(pid, chosen)
-	engine.to_discard(chosen, {"owner": pid, "source": "hand"})
-	engine._log_discard(pid, chosen)
-	engine._broadcast_game()
-	return SUCCESS
-
-
 ## 「放置」可点的角色：除自己以外的队友（描述：「放置于目标队友面前」）
 func _xi_wang_place_targets() -> Array:
 	return ally_ids()
