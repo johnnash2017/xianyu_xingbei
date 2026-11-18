@@ -507,8 +507,7 @@ func _收牌人称号(收牌人id: int) -> String:
 ## 可圣光 见 engine.ask_skill：false＝这次攻击不能用【圣光】抵挡（如【阴阳转换】的询问）
 ## 高亮目标 见 engine.ask_skill：非空时随询问下发（highlight_ids），只把这几名角色点亮给人看，
 ## 不参与选择、不参与提交（如【别烦我……】目标弃牌那一步顺带点亮「不弃就 +1 治疗」的队友）
-func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = [], 张数: int = -1, 额外: Dictionary = {}, 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], 可圣光: bool = true, 预览伤害: int = -1, cover_need: int = 0, ask_prompt: String = "", 默认选项: int = -1, 询问文案: String = "", 高亮目标: Array = [], 超时目标: Array = [], 盖牌最多: int = 0, 手牌数: int = -1, 可返回: bool = false, 伤害规则: String = "", 提示牌: int = -1,
-		提示数: int = -1) -> void:
+func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, card_source: int = GConst.CardSource.Hand, options: Array = [], card_max: int = 0, card_rule: String = "", cards: Array = [], can_cancel: bool = true, 序号: int = 0, 收牌人id: int = -1, targets: Array = [], 张数: int = -1, 额外: Dictionary = {}, 预览基准: int = 0, 预览类型: int = 0, 保留倒计时: bool = false, 预览目标: Array = [], 可圣光: bool = true, 预览伤害: int = -1, cover_need: int = 0, ask_prompt: String = "", 默认选项: int = -1, 询问文案: String = "", 高亮目标: Array = [], 超时目标: Array = [], 盖牌最多: int = 0, 手牌数: int = -1, 可返回: bool = false, 伤害规则: String = "", 提示牌: int = -1) -> void:
 	# 提示里的 {n}：need_card 为 0 表示「可弃可不弃」，这时取上限（card_max）才说得通，
 	# 否则文案会变成「弃 0 张」。需要「可弃可不弃、但文案要显式给出张数」时用 张数 覆盖。
 	var n: int = 张数 if 张数 >= 0 else (need_card if need_card > 0 else card_max)
@@ -517,7 +516,7 @@ func 询问(pid: int, skill_id: int, need_card: int = 0, need_target: int = 0, c
 	engine.ask_skill(pid, skill_id, need_card, need_target, card_source, options, card_max, card_rule, cards, can_cancel,
 		文案, targets, 预览基准, 预览类型, 保留倒计时, 预览目标, 可圣光, 预览伤害, cover_need,
 		false, 默认选项, false, ask_prompt, 高亮目标, 超时目标, 盖牌最多, 手牌数, 可返回, 伤害规则,
-		提示牌, 提示数)
+		提示牌)
 
 
 # ============================================================
@@ -771,8 +770,7 @@ func _多步问一段(链号: int, 段号: int, 段: Dictionary, 答案: Array =
 		_多步取值(段.get("超时目标", []), 答案),
 		int(段.get("盖牌最多", 0)), int(段.get("手牌数", -1)), bool(段.get("可返回", false)),
 		str(_多步取值(段.get("伤害规则", ""), 答案)),
-		int(_多步取值(段.get("提示牌", -1), 答案)),
-		int(_多步取值(段.get("提示数", -1), 答案)))
+		int(_多步取值(段.get("提示牌", -1), 答案)))
 
 
 ## 放弃一条还没走完的链（技能被别的原因中断 / 新一轮发动前清干净）

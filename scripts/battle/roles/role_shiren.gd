@@ -54,9 +54,10 @@ var use_yue_zhang: bool = false            # 本次触发是否使用了永恒�
 var chen_lun_used: bool = false            # 本回合是否已发动沉沦协奏曲
 var chen_lun_dsts: Array = []              # 本回合我方法术伤害命中的敌方角色
 
-## 不谐和弦本次选定的目标角色（-1＝还没选）；第二步询问的进度由 多步询问 自己保存
+## 不谐和弦的进度（主动法术技能不在钩子轮次内，step 不会被重置，故单独记阶段）：
+## 0＝刚收到行动（灵感数在行动 args 里）/ 1＝在问「哪个效果 + 点目标」/ 2＝自己弃牌 / 3＝目标弃牌
+var bu_xie_phase: int = 0
 var bu_xie_dst: int = -1
-## 第一步（技能栏参数选项）选定的灵感数
 var bu_xie_num: int = 0
 
 ## 希望赋格曲的进度（同上：启动技能里也要连着问玩家几次，靠自有阶段推进）：
@@ -69,8 +70,8 @@ var xi_wang_kind: int = 0
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 不谐和弦（法术）：点开技能先在二级技能栏里选「移除几点灵感」（本地选择，右侧有「返回」
-	# 退回技能栏），点一下就直接提交、进入服务端问的「各摸/各弃 + 点目标」那一步；
+	# 不谐和弦（法术）：点开技能先选「移除几点灵感」（技能自带选项，选完按「确定」发动），
+	# 之后服务端再问一步「各摸还是各弃 x 张牌」+ 点目标（那步可取消，退回行动阶段重来）；
 	# 灵感不多于 1 点时置灰
 	out.append({"type": GConst.ActionType.MagicSkill, "id": BU_XIE_HE_XIAN,
 		"need_card": 0, "need_target": 0, "arg_choices": _bu_xie_num_choices(),
@@ -114,8 +115,8 @@ func _set_ling_gan(v: int) -> void:
 	t["num"] = clampi(v, 0, int(t["max"]))
 
 
-## 第一步的选项（发动技能的参数选项）：移除几点【灵感】（X＞1，且手里的灵感花得起）
-## 这一步只是选择、先不扣灵感；点一下就提交行动，服务端接着问第二步
+## 不谐和弦点开技能时的选项：移除几点【灵感】（X＞1，且手里的灵感花得起）。
+## 这一步只是选择，先不扣灵感 —— 后面那步取消的话退回行动阶段，重新点技能再选
 func _bu_xie_num_choices() -> Array:
 	var out: Array = []
 	for num: int in range(2, _ling_gan() + 1):
@@ -125,15 +126,11 @@ func _bu_xie_num_choices() -> Array:
 
 ## 第二步的选项：双方各摸 / 各弃 x 张牌，x＝第一步选的灵感数 - 1
 ## （技能表原文：「你和目标角色各摸 (X-1) 张牌」「各弃 (X-1) 张牌」）
-## 每项自带提示条文案：取技能说明里对应那一分支的原文（摸牌那句带【强制】，弃牌那句没有）
-func _bu_xie_effect_options(_答案: Array) -> Array:
-	var x: int = _bu_xie_张数()
-	var 名: String = GConst.skill_name(BU_XIE_HE_XIAN)
+func _bu_xie_effect_options() -> Array:
+	var x: int = bu_xie_num - 1
 	return [
-		{"value": 1, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 1) % x,
-		 "提示": "【%s】：你和目标角色各摸 %d 张牌【强制】" % [名, x]},
-		{"value": 2, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 2) % x,
-		 "提示": "【%s】：你和目标角色各弃 %d 张牌" % [名, x]},
+		{"value": 1, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 1) % x},
+		{"value": 2, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 2) % x},
 	]
 
 
@@ -152,6 +149,25 @@ func _pick_cards(target: BattlePlayer, ids: Array, n: int) -> Array:
 		if not out.has(cid2):
 			out.append(cid2)
 	return out
+
+
+## 请某名角色弃 n 张牌（服务端 StateRequestHand）
+func _request_discard(pid: int, n: int, cause: int) -> int:
+	var target: BattlePlayer = engine.p(pid)
+	if target == null or n <= 0 or target.hand_cards.is_empty():
+		return SUCCESS
+	# 要弃的张数最多到他的手牌数（问超过手牌数会让他永远选不够、只能放弃）
+	var want: int = mini(n, target.hand_cards.size())
+	if not engine.has_reply():
+		询问(pid, cause, want)
+		return WAIT
+	var r: Dictionary = take_skill_reply_full()
+	var chosen: Array = _pick_cards(target, r.get("card_ids", []), want)
+	engine.take_from_hand(pid, chosen)
+	engine.to_discard(chosen, {"owner": pid, "source": "hand"})
+	engine._log_discard(pid, chosen)
+	engine._broadcast_game()
+	return SUCCESS
 
 
 ## 「放置」可点的角色：除自己以外的队友（描述：「放置于目标队友面前」）
@@ -708,7 +724,8 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	if int(action.get("action_id", 0)) != BU_XIE_HE_XIAN:
 		return GConst.GE_INVALID_ACTION
-	# 随行动回来的是第一步选的「移除几点灵感」；各摸/各弃与目标由服务端再问一步
+	# 随行动回来的只有「移除几点灵感」这个选项值：点开技能就得选它，没选不算数。
+	# 效果与目标由服务端再问一步，不随行动提交
 	var args: Array = action.get("args", [])
 	if args.is_empty() or int(args[0]) <= 1 or int(args[0]) > _ling_gan():
 		return GConst.GE_INVALID_ARGUMENT
@@ -719,109 +736,55 @@ func p_magic_skill(action: Dictionary) -> int:
 	return _bu_xie_he_xian(action)
 
 
-## 不谐和弦：第一步是技能栏里的参数选项（移除几点灵感，点一下就提交），
-## 这里从第二步开始问：
-##   ① 各摸还是各弃 + 点目标（可取消＝这次不发动，灵感还没扣）
-##   ② 选「各弃」时：自己弃 X-1 张（提示一句「弃 N 张牌」）
-##   ③ 选「各弃」时：目标弃 X-1 张
-## 选「各摸」直接双方各摸 X-1 张
+## 不谐和弦：点技能时先选「移除几点灵感」（技能自带选项，随行动 args 回来），
+## 再问一步「各摸还是各弃 x 张牌」+ 点目标。
+## 那一步可以取消 —— 取消＝这次不算发动（灵感也还没扣），退回行动阶段重新点技能来一遍
 func _bu_xie_he_xian(action: Dictionary) -> int:
-	var args: Array = action.get("args", [])
-	bu_xie_num = int(args[0]) if not args.is_empty() else 0
-	var 名: String = GConst.skill_name(BU_XIE_HE_XIAN)
-	return 多步询问(BU_XIE_HE_XIAN, [
-		{"选项": _bu_xie_effect_options,
-		 "需目标": 1, "目标白": func(_答案: Array) -> Array: return engine.order,
-		 "可取消": true, "取消": _bu_xie_不发动,
-		 "提示数": _bu_xie_张数,
-		 "询问文案": func(_答案: Array) -> String: return "【%s】：%s" % [名, GConst.skill_desc(BU_XIE_HE_XIAN)],
-		 "答完": _bu_xie_记录选择},
-		{"需牌": func(_答案: Array) -> int: return _bu_xie_可弃张数(player.id),
-		 "可取消": false,
-		 "跳过": func(答案: Array) -> bool: return not _bu_xie_走弃牌(答案) or _bu_xie_可弃张数(player.id) <= 0,
-		 "询问文案": func(_答案: Array) -> String:
-			return "【%s】：弃 %d 张牌" % [GConst.skill_name(BU_XIE_HE_XIAN), _bu_xie_可弃张数(player.id)],
-		 "答完": func(回: Dictionary, _答案: Array) -> int: return _bu_xie_弃掉(player.id, 回)},
-		{"需牌": func(_答案: Array) -> int: return _bu_xie_可弃张数(bu_xie_dst),
-		 "问谁": func(_答案: Array) -> int: return bu_xie_dst,
-		 "可取消": false,
-		 "跳过": func(答案: Array) -> bool: return not _bu_xie_走弃牌(答案) or _bu_xie_可弃张数(bu_xie_dst) <= 0,
-		 "询问文案": func(_答案: Array) -> String:
-			return "【%s】：弃 %d 张牌" % [GConst.skill_name(BU_XIE_HE_XIAN), _bu_xie_可弃张数(bu_xie_dst)],
-		 "答完": func(回: Dictionary, _答案: Array) -> int: return _bu_xie_弃掉(bu_xie_dst, 回)},
-	], _bu_xie_结算)
-
-
-## 第一步取消：这次不算发动（灵感还没扣），退回行动阶段
-func _bu_xie_不发动() -> int:
-	bu_xie_dst = -1
-	engine.取消技能行动()
-	return SUCCESS
-
-
-## 「各摸/各弃」的张数 = 第一步选的灵感数 - 1
-func _bu_xie_张数(_答案: Array = []) -> int:
-	return maxi(bu_xie_num - 1, 0)
-
-
-## 第二步选的是不是「各弃」（选项值 2；还没答就当摸牌）
-func _bu_xie_走弃牌(答案: Array) -> bool:
-	if 答案.is_empty():
-		return false
-	return int(((答案[0] as Dictionary).get("args", [1]) as Array)[0]) == 2
-
-
-## 某名角色这一步实际要弃几张（最多到他的手牌数）
-func _bu_xie_可弃张数(pid: int) -> int:
-	var 目标: BattlePlayer = engine.p(pid)
-	if 目标 == null:
-		return 0
-	return mini(_bu_xie_张数(), 目标.hand_cards.size())
-
-
-## 第二步答完：记目标，扣灵感（到这一步才扣），播报
-func _bu_xie_记录选择(回: Dictionary, _答案: Array) -> int:
-	var dsts: Array = 回.get("dst_ids", [])
-	bu_xie_dst = int(dsts[0]) if not dsts.is_empty() else -1
-	if bu_xie_dst < 0:
-		engine.取消技能行动()
-		return SUCCESS
-	# 到这一步才真的扣灵感
-	if player.tap:
-		player.tap = false
-	_set_ling_gan(_ling_gan() - bu_xie_num)
-	notice_skill(BU_XIE_HE_XIAN, [bu_xie_dst])
-	engine._broadcast_game()
-	return SUCCESS
-
-
-## 某一方弃牌那一段的答完：把选中的牌移出手中、进弃牌堆、写日志
-func _bu_xie_弃掉(pid: int, 回: Dictionary) -> int:
-	var 目标: BattlePlayer = engine.p(pid)
-	if 目标 == null:
-		return SUCCESS
-	var chosen: Array = _pick_cards(目标, 回.get("cards", []), _bu_xie_可弃张数(pid))
-	if chosen.is_empty():
-		return SUCCESS
-	engine.take_from_hand(pid, chosen)
-	engine.to_discard(chosen, {"owner": pid, "source": "hand"})
-	engine._log_discard(pid, chosen)
-	engine._broadcast_game()
-	return SUCCESS
-
-
-## 收尾：各摸 → 双方各摸 X-1 张；各弃 → 前面两段已经弃完
-func _bu_xie_结算(答案: Array) -> int:
-	if _bu_xie_走弃牌(答案):
-		bu_xie_dst = -1
-		return SUCCESS
-	var 张: int = _bu_xie_张数()
-	if bu_xie_dst >= 0 and 张 > 0:
-		engine.push_draw(bu_xie_dst, 张)
-		engine.push_draw(player.id, 张)
-		bu_xie_dst = -1
+	if bu_xie_phase == 0:
+		var args: Array = action.get("args", [])
+		bu_xie_num = int(args[0]) if not args.is_empty() else 0
+		if bu_xie_num <= 1 or bu_xie_num > _ling_gan():
+			engine.取消技能行动()
+			return SUCCESS
+		bu_xie_phase = 1
+	if bu_xie_phase == 1:
+		# 第二步：选效果 + 点目标（可取消 → 退回行动阶段重新来）
+		if not engine.has_reply():
+			# 提示取技能表 3102「提示2」那条：张数传 bu_xie_num 填 {n}，额外传 n2 填 {n2}，
+			# 避免客户端露出「移除 0 点灵感，双方各摸 {n2} 张牌」这种裸露占位符
+			询问(player.id, BU_XIE_HE_XIAN, 0, 1, GConst.CardSource.Hand, _bu_xie_effect_options(), 0, "", [], true,
+				1, -1, [], bu_xie_num, {"n2": bu_xie_num - 1})
+			return WAIT
+		var r: Dictionary = take_skill_reply_full()
+		var 效args: Array = r.get("args", [])
+		var 目标s: Array = r.get("dst_ids", [])
+		if 效args.is_empty() or 目标s.is_empty():
+			bu_xie_phase = 0
+			engine.取消技能行动()
+			return SUCCESS
+		var choice: int = int(效args[0])
+		bu_xie_dst = int(目标s[0])
+		# 到这一步才真的扣灵感：点技能时那一步只是选择，取消掉就当没发动过
+		if player.tap:
+			player.tap = false
+		_set_ling_gan(_ling_gan() - bu_xie_num)
+		notice_skill(BU_XIE_HE_XIAN, [bu_xie_dst])
 		engine._broadcast_game()
-		# 压了摸牌就必须 URGENT：先摸完再压行动结束响应
-		return URGENT
-	bu_xie_dst = -1
+		if choice == 1:
+			engine.push_draw(bu_xie_dst, bu_xie_num - 1)
+			engine.push_draw(player.id, bu_xie_num - 1)
+			engine._broadcast_game()
+			bu_xie_phase = 0
+			# 压了摸牌就必须 URGENT：先摸完再压行动结束响应
+			return URGENT
+		bu_xie_phase = 2
+	if bu_xie_phase == 2:
+		# 服务端先压目标弃牌、后压自己弃牌（LIFO）→ 自己先弃，再让目标弃
+		if _request_discard(player.id, bu_xie_num - 1, BU_XIE_HE_XIAN) == WAIT:
+			return WAIT
+		bu_xie_phase = 3
+	if bu_xie_phase == 3:
+		if _request_discard(bu_xie_dst, bu_xie_num - 1, BU_XIE_HE_XIAN) == WAIT:
+			return WAIT
+		bu_xie_phase = 0
 	return SUCCESS
