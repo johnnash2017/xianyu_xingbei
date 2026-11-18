@@ -54,8 +54,10 @@ var use_yue_zhang: bool = false            # 本次触发是否使用了永恒�
 var chen_lun_used: bool = false            # 本回合是否已发动沉沦协奏曲
 var chen_lun_dsts: Array = []              # 本回合我方法术伤害命中的敌方角色
 
-## 不谐和弦本次选定的目标角色（-1＝还没到第二步）。两步询问的进度由 多步询问 自己保存
+## 不谐和弦本次选定的目标角色（-1＝还没选）；第二步询问的进度由 多步询问 自己保存
 var bu_xie_dst: int = -1
+## 第一步（技能栏参数选项）选定的灵感数
+var bu_xie_num: int = 0
 
 ## 希望赋格曲的进度（同上：启动技能里也要连着问玩家几次，靠自有阶段推进）：
 ## 0＝刚收到发动（扣费、按选项摸牌）/ 1＝在问「选效果 + 点角色」/ 2＝在问「弃牌 + 收益」
@@ -67,11 +69,12 @@ var xi_wang_kind: int = 0
 
 func available_skills() -> Array:
 	var out: Array = []
-	# 不谐和弦（法术）：点技能直接发动，两步都由服务端问（见 _bu_xie_he_xian）——
-	# 第一步「移除几点灵感」、第二步「各摸/各弃 + 点目标」（第二步可返回第一步重选）。
+	# 不谐和弦（法术）：点开技能先在二级技能栏里选「移除几点灵感」（本地选择，右侧有「返回」
+	# 退回技能栏），点一下就直接提交、进入服务端问的「各摸/各弃 + 点目标」那一步；
 	# 灵感不多于 1 点时置灰
 	out.append({"type": GConst.ActionType.MagicSkill, "id": BU_XIE_HE_XIAN,
-		"need_card": 0, "need_target": 0, "enabled": _ling_gan() > 1})
+		"need_card": 0, "need_target": 0, "arg_choices": _bu_xie_num_choices(),
+		"enabled": _ling_gan() > 1})
 	# 希望赋格曲（启动）：点开技能就先问「摸不摸牌」（技能自带选项，选完按「确定」发动），
 	# 之后由服务端接着问「选效果 + 点角色」与（转移时）「弃 1 张牌 + 选收益」；不满足条件时置灰
 	out.append({"type": GConst.ActionType.ActivateSkill, "id": XI_WANG_FU_GE_QU,
@@ -111,19 +114,20 @@ func _set_ling_gan(v: int) -> void:
 	t["num"] = clampi(v, 0, int(t["max"]))
 
 
-## 第一步的选项：移除几点【灵感】（X＞1，且手里的灵感花得起）
+## 第一步的选项（发动技能的参数选项）：移除几点【灵感】（X＞1，且手里的灵感花得起）
+## 这一步只是选择、先不扣灵感；点一下就提交行动，服务端接着问第二步
 func _bu_xie_num_choices() -> Array:
 	var out: Array = []
 	for num: int in range(2, _ling_gan() + 1):
-		out.append({"value": num, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 0) % num})
+		out.append({"text": GConst.按钮原文(BU_XIE_HE_XIAN, 0) % num, "args": [num]})
 	return out
 
 
 ## 第二步的选项：双方各摸 / 各弃 x 张牌，x＝第一步选的灵感数 - 1
 ## （技能表原文：「你和目标角色各摸 (X-1) 张牌」「各弃 (X-1) 张牌」）
 ## 每项自带提示条文案：取技能说明里对应那一分支的原文（摸牌那句带【强制】，弃牌那句没有）
-func _bu_xie_effect_options(答案: Array) -> Array:
-	var x: int = _bu_xie_张数(答案)
+func _bu_xie_effect_options(_答案: Array) -> Array:
+	var x: int = _bu_xie_张数()
 	var 名: String = GConst.skill_name(BU_XIE_HE_XIAN)
 	return [
 		{"value": 1, "label": GConst.按钮原文(BU_XIE_HE_XIAN, 1) % x,
@@ -704,8 +708,9 @@ func v_magic_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_PLAYERID
 	if int(action.get("action_id", 0)) != BU_XIE_HE_XIAN:
 		return GConst.GE_INVALID_ACTION
-	# 行动本身不带参数：移除几点灵感、各摸还是各弃，都由服务端两步询问收集
-	if not (action.get("args", []) as Array).is_empty():
+	# 随行动回来的是第一步选的「移除几点灵感」；各摸/各弃与目标由服务端再问一步
+	var args: Array = action.get("args", [])
+	if args.is_empty() or int(args[0]) <= 1 or int(args[0]) > _ling_gan():
 		return GConst.GE_INVALID_ARGUMENT
 	return GConst.GE_SUCCESS
 
@@ -714,35 +719,36 @@ func p_magic_skill(action: Dictionary) -> int:
 	return _bu_xie_he_xian(action)
 
 
-## 不谐和弦：两步都由服务端问，第二步可「返回」第一步 ——
-##   ① 移除几点【灵感】（X＞1，且花得起；取消＝这次不发动，灵感一点不扣）
-##   ② 各摸还是各弃 + 点目标（可返回①：退回去重选灵感数）
-## 选「各弃」再依次问 ③ 自己弃 X-1 张、④ 目标弃 X-1 张（手牌不够就按手牌数弃）
+## 不谐和弦：第一步是技能栏里的参数选项（移除几点灵感，点一下就提交），
+## 这里从第二步开始问：
+##   ① 各摸还是各弃 + 点目标（可取消＝这次不发动，灵感还没扣）
+##   ② 选「各弃」时：自己弃 X-1 张（提示一句「弃 N 张牌」）
+##   ③ 选「各弃」时：目标弃 X-1 张
 ## 选「各摸」直接双方各摸 X-1 张
-func _bu_xie_he_xian(_action: Dictionary) -> int:
+func _bu_xie_he_xian(action: Dictionary) -> int:
+	var args: Array = action.get("args", [])
+	bu_xie_num = int(args[0]) if not args.is_empty() else 0
 	var 名: String = GConst.skill_name(BU_XIE_HE_XIAN)
 	return 多步询问(BU_XIE_HE_XIAN, [
-		{"选项": _bu_xie_num_choices(), "可取消": true, "取消": _bu_xie_不发动,
-		 "询问文案": "【%s】：移除几点【灵感】？" % 名},
 		{"选项": _bu_xie_effect_options,
 		 "需目标": 1, "目标白": func(_答案: Array) -> Array: return engine.order,
-		 "可返回": true,
-		 "提示数": func(答案: Array) -> int: return _bu_xie_张数(答案),
+		 "可取消": true, "取消": _bu_xie_不发动,
+		 "提示数": _bu_xie_张数,
 		 "询问文案": func(_答案: Array) -> String: return "【%s】：%s" % [名, GConst.skill_desc(BU_XIE_HE_XIAN)],
 		 "答完": _bu_xie_记录选择},
-		{"需牌": func(答案: Array) -> int: return _bu_xie_可弃张数(player.id, 答案),
+		{"需牌": func(_答案: Array) -> int: return _bu_xie_可弃张数(player.id),
 		 "可取消": false,
-		 "跳过": func(答案: Array) -> bool: return not _bu_xie_走弃牌(答案) or _bu_xie_可弃张数(player.id, 答案) <= 0,
-		 "询问文案": func(答案: Array) -> String:
-			return "【%s】：弃 %d 张牌" % [GConst.skill_name(BU_XIE_HE_XIAN), _bu_xie_可弃张数(player.id, 答案)],
-		 "答完": func(回: Dictionary, 答案: Array) -> int: return _bu_xie_弃掉(player.id, 回, 答案)},
-		{"需牌": func(答案: Array) -> int: return _bu_xie_可弃张数(bu_xie_dst, 答案),
+		 "跳过": func(答案: Array) -> bool: return not _bu_xie_走弃牌(答案) or _bu_xie_可弃张数(player.id) <= 0,
+		 "询问文案": func(_答案: Array) -> String:
+			return "【%s】：弃 %d 张牌" % [GConst.skill_name(BU_XIE_HE_XIAN), _bu_xie_可弃张数(player.id)],
+		 "答完": func(回: Dictionary, _答案: Array) -> int: return _bu_xie_弃掉(player.id, 回)},
+		{"需牌": func(_答案: Array) -> int: return _bu_xie_可弃张数(bu_xie_dst),
 		 "问谁": func(_答案: Array) -> int: return bu_xie_dst,
 		 "可取消": false,
-		 "跳过": func(答案: Array) -> bool: return not _bu_xie_走弃牌(答案) or _bu_xie_可弃张数(bu_xie_dst, 答案) <= 0,
-		 "询问文案": func(答案: Array) -> String:
-			return "【%s】：弃 %d 张牌" % [GConst.skill_name(BU_XIE_HE_XIAN), _bu_xie_可弃张数(bu_xie_dst, 答案)],
-		 "答完": func(回: Dictionary, 答案: Array) -> int: return _bu_xie_弃掉(bu_xie_dst, 回, 答案)},
+		 "跳过": func(答案: Array) -> bool: return not _bu_xie_走弃牌(答案) or _bu_xie_可弃张数(bu_xie_dst) <= 0,
+		 "询问文案": func(_答案: Array) -> String:
+			return "【%s】：弃 %d 张牌" % [GConst.skill_name(BU_XIE_HE_XIAN), _bu_xie_可弃张数(bu_xie_dst)],
+		 "答完": func(回: Dictionary, _答案: Array) -> int: return _bu_xie_弃掉(bu_xie_dst, 回)},
 	], _bu_xie_结算)
 
 
@@ -753,35 +759,28 @@ func _bu_xie_不发动() -> int:
 	return SUCCESS
 
 
-## 第一步选了几点灵感（答案[0] 的 args[0]；还没答就是 0）
-func _bu_xie_点数(答案: Array) -> int:
-	if 答案.is_empty():
-		return 0
-	return int(((答案[0] as Dictionary).get("args", [0]) as Array)[0])
-
-
-## 「各摸/各弃」的张数 = 灵感数 - 1
-func _bu_xie_张数(答案: Array) -> int:
-	return maxi(_bu_xie_点数(答案) - 1, 0)
+## 「各摸/各弃」的张数 = 第一步选的灵感数 - 1
+func _bu_xie_张数(_答案: Array = []) -> int:
+	return maxi(bu_xie_num - 1, 0)
 
 
 ## 第二步选的是不是「各弃」（选项值 2；还没答就当摸牌）
 func _bu_xie_走弃牌(答案: Array) -> bool:
-	if 答案.size() < 2:
+	if 答案.is_empty():
 		return false
-	return int(((答案[1] as Dictionary).get("args", [1]) as Array)[0]) == 2
+	return int(((答案[0] as Dictionary).get("args", [1]) as Array)[0]) == 2
 
 
 ## 某名角色这一步实际要弃几张（最多到他的手牌数）
-func _bu_xie_可弃张数(pid: int, 答案: Array) -> int:
+func _bu_xie_可弃张数(pid: int) -> int:
 	var 目标: BattlePlayer = engine.p(pid)
 	if 目标 == null:
 		return 0
-	return mini(_bu_xie_张数(答案), 目标.hand_cards.size())
+	return mini(_bu_xie_张数(), 目标.hand_cards.size())
 
 
 ## 第二步答完：记目标，扣灵感（到这一步才扣），播报
-func _bu_xie_记录选择(回: Dictionary, 答案: Array) -> int:
+func _bu_xie_记录选择(回: Dictionary, _答案: Array) -> int:
 	var dsts: Array = 回.get("dst_ids", [])
 	bu_xie_dst = int(dsts[0]) if not dsts.is_empty() else -1
 	if bu_xie_dst < 0:
@@ -790,18 +789,18 @@ func _bu_xie_记录选择(回: Dictionary, 答案: Array) -> int:
 	# 到这一步才真的扣灵感
 	if player.tap:
 		player.tap = false
-	_set_ling_gan(_ling_gan() - _bu_xie_点数(答案))
+	_set_ling_gan(_ling_gan() - bu_xie_num)
 	notice_skill(BU_XIE_HE_XIAN, [bu_xie_dst])
 	engine._broadcast_game()
 	return SUCCESS
 
 
 ## 某一方弃牌那一段的答完：把选中的牌移出手中、进弃牌堆、写日志
-func _bu_xie_弃掉(pid: int, 回: Dictionary, 答案: Array) -> int:
+func _bu_xie_弃掉(pid: int, 回: Dictionary) -> int:
 	var 目标: BattlePlayer = engine.p(pid)
 	if 目标 == null:
 		return SUCCESS
-	var chosen: Array = _pick_cards(目标, 回.get("cards", []), _bu_xie_可弃张数(pid, 答案))
+	var chosen: Array = _pick_cards(目标, 回.get("cards", []), _bu_xie_可弃张数(pid))
 	if chosen.is_empty():
 		return SUCCESS
 	engine.take_from_hand(pid, chosen)
@@ -816,7 +815,7 @@ func _bu_xie_结算(答案: Array) -> int:
 	if _bu_xie_走弃牌(答案):
 		bu_xie_dst = -1
 		return SUCCESS
-	var 张: int = _bu_xie_张数(答案)
+	var 张: int = _bu_xie_张数()
 	if bu_xie_dst >= 0 and 张 > 0:
 		engine.push_draw(bu_xie_dst, 张)
 		engine.push_draw(player.id, 张)
