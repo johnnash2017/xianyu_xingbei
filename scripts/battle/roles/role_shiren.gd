@@ -6,17 +6,19 @@ extends BattleRole
 ##                 弃 2 张同系牌【展示】→ 对目标造成 1 点法术伤害）、
 ##       不谐和弦（3102，法术：点开技能先选「移除几点灵感」（X＞1，只是选择、先不扣），
 ##                 按「确定」发动后服务端再问一步 —— 选「你与目标各摸 X－1 张牌」或
-##                 「各弃 X－1 张牌」+ 点目标；那一步可取消，取消就退回行动阶段重来）、
+##                 「各弃 X－1 张牌」+ 点目标；那一步「返回」＝退回上一步重选，
+##                 只有在第一步取消才退回行动阶段（这时不扣灵感、不消耗本回合行动））、
 ##       禁忌诗篇（3103，被动：永恒乐章被触发后 +1 灵感并把乐章收回；
 ##                 若灵感已达上限则横置并对自己造成 3 点法术伤害）、
 ##       激昂狂想曲（3105，响应：回合开始时若当前角色持有永恒乐章 →
 ##                 对两名目标各 1 点法术伤害，或弃 2 张牌）、
 ##       胜利交响诗（3106，响应：回合结束时若当前角色持有永恒乐章 →
 ##                 将我方 1 星石提炼为自身能量，或我方 +1 宝石且自身 +1 治疗）、
-##       希望赋格曲（3107，启动：点开技能先选「摸不摸 1 张牌」，按「确定」发动后服务端再问两步 ——
-##                 ① 选效果 + 点角色：「放置」只能点除自己外的队友、「转移」可点除当前持有者外的
-##                 我方（含自己），乐章不在场上时不显示「转移」；
-##                 ② 选了「转移」才问：弃 1 张牌 + 选 +1【治疗】或 +1【灵感】）
+##       希望赋格曲（3107，启动：客户端本地走三步 ——「摸不摸 1 张牌」→「放置 / 转移」→
+##                 （转移才有的）「+1【治疗】 / +1【灵感】 + 弃 1 张牌」——每步都能返回，
+##                 全部选完按一次「确定」随行动一起提交；服务端 v_/p_ 一次校验、一次结算。
+##                 「放置」只能点除自己外的队友、「转移」可点除当前持有者外的我方（含自己），
+##                 乐章不在场上时「转移」置灰）
 ##
 ## 变通说明：
 ## - 服务端在 STATE_TURN_BEGIN_SHIREN 调用 p_turn_begin_shiren；本引擎只在回合开始调用
@@ -56,13 +58,6 @@ var chen_lun_dsts: Array = []              # 本回合我方法术伤害命中�
 
 ## 不谐和弦本次选定的目标角色（-1＝还没到第二步）；两步询问的进度由 多步询问 自己保存
 var bu_xie_dst: int = -1
-
-## 希望赋格曲的进度（同上：启动技能里也要连着问玩家几次，靠自有阶段推进）：
-## 0＝刚收到发动（扣费、按选项摸牌）/ 1＝在问「选效果 + 点角色」/ 2＝在问「弃牌 + 收益」
-## 希望赋格曲：第 1 段选了「放置」时不再问第二段
-var _xi_wang_已放置: bool = false
-var xi_wang_dst: int = -1
-var xi_wang_kind: int = 0
 
 
 func available_skills() -> Array:
@@ -195,16 +190,6 @@ func _xi_wang_option(效果: int) -> Dictionary:
 		if int(项.get("value", -1)) == 效果:
 			return 项
 	return {}
-
-
-## 第二步那次询问里可点角色的并集（还没选效果时用；选定某项后客户端按该项自己的白名单收紧）
-func _xi_wang_targets() -> Array:
-	var out: Array = []
-	for 项: Dictionary in _xi_wang_effect_options():
-		for pid: Variant in 项["targets"]:
-			if not out.has(int(pid)):
-				out.append(int(pid))
-	return out
 
 
 ## 希望赋格曲的发动条件：耗 1 能量，且至少有一个 enabled 的效果（可放对象或可转对象）。
@@ -546,6 +531,10 @@ func p_harm_end(ctx: Dictionary) -> int:
 # 启动技能（行动阶段按钮）：希望赋格曲（3107）
 # （「每回合只能发动一个启动技能」由引擎统一把关，这里只校验本技能自己的条件）
 # ============================================================
+## 一次提交的内容（客户端本地走完「摸不摸 → 放置/转移 → 收益」再提交，每个中间步都能返回）：
+##   args     = [摸不摸(1 摸 / 0 不摸), 效果(1 放置 / 2 转移), 收益(1 +1治疗 / 2 +1灵感；放置时为 0)]
+##   dst_ids  = [目标角色]（放置＝队友；转移＝我方除当前持有者，含自己）
+##   card_ids = [转移时弃的那 1 张手牌]（放置时为空）
 func v_special_skill(action: Dictionary) -> int:
 	if int(action.get("src_id", -1)) != player.id:
 		return GConst.GE_INVALID_PLAYERID
@@ -553,10 +542,28 @@ func v_special_skill(action: Dictionary) -> int:
 		return GConst.GE_INVALID_ACTION
 	if not _can_xi_wang():
 		return GConst.GE_INVALID_ACTION
-	# 随行动回来的只有「摸不摸牌」这个选项值（1＝摸、0＝不摸）：点开技能就得选它，没选不算数。
-	# 效果与目标由服务端在后面几步里问，不随行动提交
 	var args: Array = action.get("args", [])
-	if args.is_empty() or (int(args[0]) != XI_WANG_DRAW_YES and int(args[0]) != XI_WANG_DRAW_NO):
+	if args.size() != 3:
+		return GConst.GE_INVALID_ARGUMENT
+	var 摸: int = int(args[0])
+	var 效果: int = int(args[1])
+	var 收益: int = int(args[2])
+	if 摸 != XI_WANG_DRAW_YES and 摸 != XI_WANG_DRAW_NO:
+		return GConst.GE_INVALID_ARGUMENT
+	var 选择项: Dictionary = _xi_wang_option(效果)
+	if 选择项.is_empty() or not bool(选择项.get("enabled", true)):
+		return GConst.GE_INVALID_ARGUMENT
+	var 目标s: Array = action.get("dst_ids", [])
+	if 目标s.size() != 1 or not (选择项.get("targets", []) as Array).has(int(目标s[0])):
+		return GConst.GE_INVALID_ARGUMENT
+	var 牌s: Array = action.get("card_ids", [])
+	if 效果 == XI_WANG_MOVE:
+		# 转移要弃 1 张手牌、并选一项收益
+		if 收益 != XI_WANG_HEAL and 收益 != XI_WANG_LING_GAN:
+			return GConst.GE_INVALID_ARGUMENT
+		if 牌s.size() != 1 or player.手牌实例(int(牌s[0])) < 0:
+			return GConst.GE_INVALID_ACTION
+	elif 收益 != 0 or not 牌s.is_empty():
 		return GConst.GE_INVALID_ARGUMENT
 	return GConst.GE_SUCCESS
 
@@ -577,125 +584,60 @@ func _xi_wang_attach(dst_id: int) -> void:
 		dst.add_exclusive_effect(GConst.Exclusive.YongHengYueZhang)
 
 
-## 希望赋格曲：点开技能时先选「摸不摸牌」（技能自带选项，随行动 args 回来），
-## 之后由服务端再问两步，各一个「确定」——
-##   ① 选哪个效果 + 点哪名角色 →（选了「转移」才有的）② 弃 1 张牌 + 选 +1【治疗】或 +1【灵感】。
-## 两步都是不能取消的询问（中途没有回退）。超时由引擎回一条空 args 的回复兜底，据此自动代打：
-##   ①＝第一项效果 + 它的第一个可点角色；②＝随机一项收益 + 随机弃一张。
-## 「已执行过」由引擎的 SkillRun.checked 记着：回复后引擎会再进来一次接着走多步询问的链
+## 希望赋格曲：客户端把「摸不摸 / 放置还是转移 / 收益 + 目标 + 弃牌」本地选完一次提交，
+## 服务端一次结算（中途不再问玩家）。顺序照原文：付【水晶】→ 摸 1 张（可选）→ 放置 / 转移。
 func _xi_wang_fu_ge_qu(action: Dictionary) -> int:
-	# 扣费、按选项摸牌与广播只在开头做一次，后面几步都只是选东西
-	if not 多步询问进行中(XI_WANG_FU_GE_QU):
-		var args: Array = action.get("args", [])
-		notice_skill(XI_WANG_FU_GE_QU, [player.id])
-		player.boot_skill_used = true
-		if player.crystal > 0:
-			player.set_crystal(player.crystal - 1)
-		else:
-			player.set_gem(player.gem - 1)
-		if not args.is_empty() and int(args[0]) == XI_WANG_DRAW_YES:
-			# 先压「接着走第一步询问」的钩子、后压摸牌（状态栈后进先出）→ 摸牌（含【水影】响应）
-			# 先结算，再问「选效果」；摸牌改走 push_draw 之后是延迟结算的，
-			# 直接往下走会变成先问效果、最后才摸牌
-			engine.push(BattleEngine.SHook.new("p_xi_wang_effects", {"player": player.id}, []))
-			engine.push_draw(player.id, 1)
-			engine._broadcast_game()
-			# 压了摸牌就必须 URGENT：先摸完（含【水影】响应），再压行动结束响应 / 继续选效果
-			return URGENT
-		engine._broadcast_game()
-	return _xi_wang_effects()
-
-
-## 希望赋格曲：摸了那 1 张牌（含【水影】等摸牌前响应）结算完之后，接着走第一步询问
-func p_xi_wang_effects(ctx: Dictionary) -> int:
-	if int(ctx.get("player", -1)) != player.id:
-		return SUCCESS
-	return _xi_wang_effects()
-
-
-## 希望赋格曲：第一步起（选效果 + 点角色 →「转移」才有的第二步：弃 1 张牌 + 选收益）。
-## 选了摸牌时它由 p_xi_wang_effects 钩子在摸牌之后调用；没选摸牌时 _xi_wang_fu_ge_qu 直接调用
-func _xi_wang_effects() -> int:
-	# 希望赋格曲：先「选效果 + 点角色」（不可取消）→ 选「转移」时再问「弃 1 张牌 + 选 +1 治疗 / +1 灵感」
-	if not 多步询问进行中(XI_WANG_FU_GE_QU):
-		_xi_wang_已放置 = false
-	return 多步询问(XI_WANG_FU_GE_QU, [
-		{"选项": func(_答案: Array) -> Array: return _xi_wang_effect_options(),
-		 "需目标": 1, "目标白": func(_答案: Array) -> Array: return _xi_wang_targets(),
-		 "可取消": false, "超时默认": [],
-		 "答完": _xi_wang_选效果答完},
-		{"选项": [
-			{"value": XI_WANG_HEAL, "label": GConst.按钮原文(XI_WANG_FU_GE_QU, 4)},
-			{"value": XI_WANG_LING_GAN, "label": GConst.按钮原文(XI_WANG_FU_GE_QU, 5)},
-		 ], "需牌": 1, "牌上限": 1, "可取消": false, "超时默认": [],
-		 "跳过": func(_答案: Array) -> bool: return _xi_wang_已放置},
-	], _xi_wang_结算)
-
-
-## 第 1 段答完：定下效果与目标；「放置」在这一步就做完（不再问第二段）
-func _xi_wang_选效果答完(回: Dictionary, _答案: Array) -> int:
-	var 效果args: Array = 回.get("args", [])
-	var 目标s: Array = 回.get("dsts", [])
-	var 选项: Array = _xi_wang_effect_options()
-	var 首选: Dictionary = {}
-	for 项: Dictionary in 选项:
-		if bool(项.get("enabled", true)):
-			首选 = 项
-			break
-	if 首选.is_empty():
-		return SUCCESS
-	var 效果: int = int(效果args[0]) if not 效果args.is_empty() else int(首选["value"])
-	var 选择项: Dictionary = _xi_wang_option(效果)
-	if 选择项.is_empty() or not bool(选择项.get("enabled", true)):
-		效果 = int(首选["value"])
-	var 白名单: Array = _xi_wang_option_targets(效果)
-	var 目标: int = int(目标s[0]) if not 目标s.is_empty() else -1
-	if not 白名单.has(目标):
-		# 超时兜底（或选了个不合法的）：按第一个可用效果 + 它的第一个可点角色代打
-		效果 = int(首选["value"])
-		白名单 = _xi_wang_option_targets(效果)
-		目标 = int(白名单[0]) if not 白名单.is_empty() else -1
-	if 目标 < 0:
-		return SUCCESS
-	xi_wang_kind = 效果
-	xi_wang_dst = 目标
-	if 效果 == XI_WANG_PLACE:
-		# 放置：把乐章挂到目标面前，到此结束
-		_xi_wang_attach(目标)
-		_xi_wang_已放置 = true
-		engine._broadcast_game()
-	return SUCCESS
-
-
-## 第 2 段答完（只有「转移」会走到）：弃 1 张牌，然后 +1 治疗或 +1 灵感
-func _xi_wang_结算(答案: Array) -> int:
-	if _xi_wang_已放置 or xi_wang_dst < 0:
-		return SUCCESS
-	var 回: Dictionary = 答案[1] if 答案.size() > 1 else {}
-	var 回复args: Array = 回.get("args", [])
-	var 回复牌: Array = 回.get("cards", [])
-	# 超时兜底：收益随机挑一项、手牌随机抽一张
-	var 收益: int = int(回复args[0]) if not 回复args.is_empty() \
-		else (XI_WANG_HEAL if randi() % 2 == 0 else XI_WANG_LING_GAN)
-	var 候选: Array = 回复牌
-	if 候选.is_empty():
-		# _pick_cards 按给定顺序补齐，先洗一遍手牌即是「随机弃一张」
-		候选 = player.hand_cards.duplicate()
-		候选.shuffle()
-	var 弃: Array = _pick_cards(player, 候选, 1)
-	if not 弃.is_empty():
-		engine.take_from_hand(player.id, 弃)
-		engine.to_discard(弃, {"owner": player.id, "source": "hand"})
-		engine._log_discard(player.id, 弃)
-	if 收益 == XI_WANG_HEAL:
-		施加治疗(player.id, 1)
-	else:
-		_set_ling_gan(_ling_gan() + 1)
-	_xi_wang_attach(xi_wang_dst)
+	var args: Array = action.get("args", [])
+	notice_skill(XI_WANG_FU_GE_QU, [player.id])
+	player.boot_skill_used = true
+	# 费用写【水晶】：宝石可以顶水晶（约定§2），remove_energy 先扣水晶、再扣宝石
+	player.remove_energy(1)
 	engine._broadcast_game()
+	if int(args[0]) == XI_WANG_DRAW_YES:
+		# 摸牌要单独压状态（会触发【水影】这类「摸牌前」响应）：先把「接着结算」的钩子压上去、
+		# 再压摸牌 —— 状态栈后进先出，摸完再回来把效果一次做完，中途不再问玩家
+		engine.push(BattleEngine.SHook.new("p_xi_wang_apply", action, []))
+		engine.push_draw(player.id, 1)
+		return URGENT
+	_xi_wang_apply(action)
 	return SUCCESS
-func _xi_wang_option_targets(效果: int) -> Array:
-	return _xi_wang_move_targets() if 效果 == XI_WANG_MOVE else _xi_wang_place_targets()
+
+
+## 希望赋格曲：摸了那 1 张牌（含摸牌前响应）之后，把这次提交的效果一次做完
+func p_xi_wang_apply(action: Dictionary) -> int:
+	if int(action.get("src_id", -1)) != player.id:
+		return SUCCESS
+	_xi_wang_apply(action)
+	return SUCCESS
+
+
+## 希望赋格曲的结算本体：放置 / 转移【永恒乐章】；转移时先弃 1 张牌，再 +1【治疗】或 +1【灵感】
+func _xi_wang_apply(action: Dictionary) -> void:
+	var args: Array = action.get("args", [])
+	var 效果: int = int(args[1]) if args.size() > 1 else XI_WANG_PLACE
+	var 收益: int = int(args[2]) if args.size() > 2 else 0
+	var 目标s: Array = action.get("dst_ids", [])
+	if 目标s.is_empty():
+		engine.报错("【希望赋格曲】缺少目标角色", player.id)
+		return
+	var 目标: int = int(目标s[0])
+	if 效果 == XI_WANG_MOVE:
+		var 牌s: Array = action.get("card_ids", [])
+		var 弃: int = player.手牌实例(int(牌s[0])) if not 牌s.is_empty() else -1
+		if 弃 < 0 and not player.hand_cards.is_empty():
+			# 提交时点的那张已经不在手里了（典型：选了摸牌、摸完爆牌时正好把它弃掉了）：
+			# 代价不能静默不发生（约定§16），按手牌顺序补一张
+			弃 = int(player.hand_cards[0])
+		if 弃 >= 0:
+			engine.take_from_hand(player.id, [弃])
+			engine.to_discard([弃], {"owner": player.id, "source": "hand", "cause": XI_WANG_FU_GE_QU})
+			engine._log_discard(player.id, [弃])
+		if 收益 == XI_WANG_HEAL:
+			施加治疗(player.id, 1)
+		elif 收益 == XI_WANG_LING_GAN:
+			_set_ling_gan(_ling_gan() + 1)
+	_xi_wang_attach(目标)
+	engine._broadcast_game()
 
 
 # ============================================================
@@ -731,6 +673,7 @@ func _bu_xie_he_xian(_action: Dictionary) -> int:
 		 "询问文案": "【%s】：移除几点【灵感】？" % 名},
 		{"选项": _bu_xie_effect_options,
 		 "需目标": 1, "目标白": func(_答案: Array) -> Array: return engine.order,
+		 "校验": _bu_xie_提交合法, "校验失败文案": "请选择 1 名目标角色，再按「确定」",
 		 "可返回": true,
 		 "提示数": func(答案: Array) -> int: return _bu_xie_张数(答案),
 		 "询问文案": func(_答案: Array) -> String:
@@ -757,6 +700,18 @@ func _bu_xie_不发动() -> int:
 	bu_xie_dst = -1
 	engine.取消技能行动()
 	return SUCCESS
+
+
+## 第二步的提交必须「摸/弃那一项 + 1 名真实存在的目标角色」一次给齐：
+## 只有选项（客户端提前提交）或目标不存在时驳回重问，不能静默当成「取消」把整次行动吞掉。
+func _bu_xie_提交合法(回: Dictionary) -> bool:
+	var args: Array = 回.get("args", [])
+	if args.is_empty() or (int(args[0]) != 1 and int(args[0]) != 2):
+		return false
+	var dsts: Array = 回.get("dsts", [])
+	if dsts.is_empty():
+		return false
+	return engine.p(int(dsts[0])) != null
 
 
 ## 第一步选了几点灵感（答案[0] 的 args[0]；还没答就是 0）
@@ -786,13 +741,13 @@ func _bu_xie_可弃张数(pid: int, 答案: Array) -> int:
 	return mini(_bu_xie_张数(答案), 目标.hand_cards.size())
 
 
-## 第二步答完：记目标，扣灵感（到这一步才扣），播报
+## 第二步答完：记目标，扣灵感（到这一步才扣），播报。
+## 回包的键是多步询问统一给的 dsts（不是 Respond 上的 dst_ids）—— 取错键会永远取空，
+## 于是每次都在这里判成「没选目标 → 取消技能行动」：技能不结算、灵感不扣、回合不结束，
+## 表现就是「放完还能继续做其他行动」。漏选 / 点错由这一段自己的「校验」驳回重问。
 func _bu_xie_记录选择(回: Dictionary, 答案: Array) -> int:
-	var dsts: Array = 回.get("dst_ids", [])
-	bu_xie_dst = int(dsts[0]) if not dsts.is_empty() else -1
-	if bu_xie_dst < 0:
-		engine.取消技能行动()
-		return SUCCESS
+	var dsts: Array = 回.get("dsts", [])
+	bu_xie_dst = int(dsts[0])
 	if player.tap:
 		player.tap = false
 	_set_ling_gan(_ling_gan() - _bu_xie_点数(答案))
@@ -810,7 +765,7 @@ func _bu_xie_弃掉(pid: int, 回: Dictionary, 答案: Array) -> int:
 	if chosen.is_empty():
 		return SUCCESS
 	engine.take_from_hand(pid, chosen)
-	engine.to_discard(chosen, {"owner": pid, "source": "hand"})
+	engine.to_discard(chosen, {"owner": pid, "source": "hand", "cause": BU_XIE_HE_XIAN})
 	engine._log_discard(pid, chosen)
 	engine._broadcast_game()
 	return SUCCESS
@@ -823,8 +778,9 @@ func _bu_xie_结算(答案: Array) -> int:
 		return SUCCESS
 	var 张: int = _bu_xie_张数(答案)
 	if bu_xie_dst >= 0 and 张 > 0:
-		engine.push_draw(bu_xie_dst, 张)
-		engine.push_draw(player.id, 张)
+		# 原文这一条写的是【强制】：走强制摸牌，不让「摸牌前发动」的响应（如水影）插进来
+		engine.push_强制摸牌(bu_xie_dst, 张, BU_XIE_HE_XIAN)
+		engine.push_强制摸牌(player.id, 张, BU_XIE_HE_XIAN)
 		bu_xie_dst = -1
 		engine._broadcast_game()
 		# 压了摸牌就必须 URGENT：先摸完再压行动结束响应
